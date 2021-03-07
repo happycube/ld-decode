@@ -170,14 +170,7 @@ parser.add_argument(
     default=None,
     help="If set to 0 or 1, force use of video track phase.",
 )
-parser.add_argument(
-    "-sl",
-    "--sharpness",
-    metavar="sharpness",
-    type=int,
-    default=100,
-    help="Sharpness level (0~100)",
-)
+
 parser.add_argument(
     "-U",
     "--u-matic",
@@ -187,10 +180,17 @@ parser.add_argument(
     help="Decode u-matic",
 )
 
-
-
 parser.add_argument(
     "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"
+)
+
+parser.add_argument(
+    "-sl",
+    "--sharpness",
+    metavar="sharpness",
+    type=int,
+    default=50,
+    help="Sharpness level (0~100)",
 )
 
 args = parser.parse_args()

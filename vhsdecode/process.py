@@ -13,7 +13,6 @@ import vhsdecode.utils as utils
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.FMdeemph import FMDeEmphasis
 
-
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
     S16_ABS_MAX = 32767
@@ -1049,7 +1048,7 @@ class VHSDecode(ldd.LDdecode):
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=0,
         level_adjust=0.2,
-        sharpness_level=100,
+        sharpness_level=50,
         extra_options={},
     ):
         super(VHSDecode, self).__init__(
@@ -1174,13 +1173,16 @@ class VHSRFDecode(ldd.RFDecode):
         dod_threshold_a=None,
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=None,
-        sharpness_level=100
+        sharpness_level=50
     ):
 
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(
             inputfreq, system, decode_analog_audio=False, has_analog_audio=False
         )
+
+        #controls the sharpness EQ gain
+        self.sharpness_level = sharpness_level / 100
 
         self.dod_threshold_p = dod_threshold_p
         self.dod_threshold_a = dod_threshold_a
@@ -1374,17 +1376,32 @@ class VHSRFDecode(ldd.RFDecode):
             het_filter, cc_wave_270 * self.fsc_wave
         )
 
-        #moving average filter for Y DC bias comp
-        self.min_video_peaks = list()
-
-        #sharpness filter
-        iir_sharp = utils.firdes_lowpass(self.freq_hz, DP['video_lpf_freq'], 700e3)
-        self.sharpnessFilter = utils.FiltersClass(iir_sharp[0], iir_sharp[1], self.freq_hz)
-
-
         # Increase the cutoff at the end of blocks to avoid edge distortion from filters
         # making it through.
         self.blockcut_end = 1024
+
+        #moving average filter for Y DC bias comp
+        self.min_video_peaks = list()
+
+        #sharpness filter / video EQ
+        iir_sharp = utils.firdes_highpass(
+            self.freq_hz,
+            1.25e6, 39e6,
+            order_limit=1
+        )
+        iir_hiband = utils.firdes_highpass(
+            self.freq_hz,
+            3e6, 15e6,
+            order_limit=2
+        )
+        self.plot = False
+        self.hiband_gain = 60
+        self.loband_gain = 12
+
+        self.sharpnessFilter = {
+            0: utils.FiltersClass(iir_sharp[0], iir_sharp[1], self.freq_hz),
+            1: utils.FiltersClass(iir_hiband[0], iir_hiband[1], self.freq_hz)
+        }
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1396,6 +1413,24 @@ class VHSRFDecode(ldd.RFDecode):
         self.delays = {}
         self.delays["video_sync"] = 0
         self.delays["video_white"] = 0
+
+    def video_EQ(self, demod):
+        ha = self.sharpnessFilter[0].lfilt(demod), self.sharpnessFilter[1].lfilt(demod)
+        hb = self.sharpnessFilter[0].lfilt(demod[:11]), self.sharpnessFilter[1].lfilt(demod[:11])
+        hc = np.append(hb[0][:10], ha[0][10:]), np.append(hb[1][:10], ha[1][10:])  # first edge distortion hack
+        hf = np.multiply(
+            np.add(
+                np.multiply(self.loband_gain, hc[0]),
+                np.multiply(self.hiband_gain, hc[1])
+            ), 0.5)
+        gain = 0.7 * self.sharpness_level
+        #utils.dualplot_scope(demod[:1024], np.roll((hf * 10)[:1024], 0))
+        result = np.multiply(
+                    np.add(np.roll(np.multiply(gain, hf), 0), demod),
+                    1
+        )
+        #utils.plot_scope(result[:1024])
+        return result
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
         rv = {}
@@ -1419,16 +1454,30 @@ class VHSRFDecode(ldd.RFDecode):
         # Roll this a bit to compensate for filter delay, value eyballed for now.
         env = np.roll(env, 4)
 
+        # Applies RF filters
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
-
         hilbert = np.fft.ifft(indata_fft_filt)
 
+        # FM demodulator
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
-        demod_fft = np.fft.rfft(demod)
 
+        # applies the video EQ
+        if self.sharpness_level > 0:
+            demod = self.video_EQ(demod)
+
+        # applies main deemphasis filter
+        demod_fft = np.fft.rfft(demod)
         out_video = np.fft.irfft(
-            demod_fft * self.Filters["FVideo"][0 : (self.blocklen // 2) + 1]
+            demod_fft * self.Filters["FVideo"][0: (self.blocklen // 2) + 1]
         ).real
+
+        # applies clipping at vsync_ire
+        out_video = np.clip(out_video, a_min=self.iretohz(self.SysParams['vsync_ire']), a_max=max(out_video))
+
+        # DC offset removal of luminance
+        self.min_video_peaks.append(min(out_video))
+        out_video -= utils.moving_average(self.min_video_peaks, window=self.SysParams["frame_lines"])
+        out_video += self.iretohz(self.SysParams['vsync_ire'])
 
         out_video05 = np.fft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
@@ -1445,29 +1494,29 @@ class VHSRFDecode(ldd.RFDecode):
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
 
-        if False:
+        if self.plot:
             import matplotlib.pyplot as plt
 
             fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
-            #            ax1.axhline(self.iretohz(0))
-            #            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            #            ax1.axhline(self.iretohz(7.5))
-            #            ax1.axhline(self.iretohz(100))
+            ax1.axhline(self.iretohz(0))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            ax1.axhline(self.iretohz(7.5))
+            ax1.axhline(self.iretohz(100))
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(hilbert)
-            ax2.plot(out_chroma)
+            ax1.plot(out_video[:2048])
+            ax2.plot(out_chroma[:2048])
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
             #            ax4.plot(hilbert.imag)
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
-
+            exit(0)
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
             [out_video, demod, out_video05, out_chroma, env, data],

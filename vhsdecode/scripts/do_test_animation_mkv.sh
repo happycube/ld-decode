@@ -14,8 +14,8 @@ ffmpeg -hide_banner -thread_queue_size 1024 -f rawvideo \
     [eq];
     [eq]
       eq=
-      contrast=2:
-      brightness=0.3:
+      contrast=1.7:
+      brightness=0.15:
       saturation=1:
       gamma=1:
       gamma_r=1:
