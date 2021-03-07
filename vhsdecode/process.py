@@ -1380,28 +1380,30 @@ class VHSRFDecode(ldd.RFDecode):
         # making it through.
         self.blockcut_end = 1024
 
-        #moving average filter for Y DC bias comp
+        # moving average filter for Y DC bias comp
         self.min_video_peaks = list()
 
-        #sharpness filter / video EQ
-        iir_sharp = utils.firdes_highpass(
+        # sharpness filter / video EQ
+        iir_eq_loband = utils.firdes_highpass(
             self.freq_hz,
-            1.25e6, 39e6,
-            order_limit=1
+            DP['video_eq']['loband']['corner'],
+            DP['video_eq']['loband']['transition'],
+            DP['video_eq']['loband']['order_limit']
         )
-        iir_hiband = utils.firdes_highpass(
+        iir_eq_hiband = utils.firdes_highpass(
             self.freq_hz,
-            3e6, 15e6,
-            order_limit=2
+            DP['video_eq']['hiband']['corner'],
+            DP['video_eq']['hiband']['transition'],
+            DP['video_eq']['hiband']['order_limit']
         )
-        self.plot = False
-        self.hiband_gain = 60
-        self.loband_gain = 12
 
-        self.sharpnessFilter = {
-            0: utils.FiltersClass(iir_sharp[0], iir_sharp[1], self.freq_hz),
-            1: utils.FiltersClass(iir_hiband[0], iir_hiband[1], self.freq_hz)
+        self.videoEQFilter = {
+            0: utils.FiltersClass(iir_eq_loband[0], iir_eq_loband[1], self.freq_hz),
+            1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz)
         }
+
+        self.plot = False
+
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1415,21 +1417,23 @@ class VHSRFDecode(ldd.RFDecode):
         self.delays["video_white"] = 0
 
     def video_EQ(self, demod):
-        ha = self.sharpnessFilter[0].lfilt(demod), self.sharpnessFilter[1].lfilt(demod)
-        hb = self.sharpnessFilter[0].lfilt(demod[:11]), self.sharpnessFilter[1].lfilt(demod[:11])
+        ha = self.videoEQFilter[0].lfilt(demod), self.videoEQFilter[1].lfilt(demod)
+        hb = self.videoEQFilter[0].lfilt(demod[:11]), self.videoEQFilter[1].lfilt(demod[:11])
         hc = np.append(hb[0][:10], ha[0][10:]), np.append(hb[1][:10], ha[1][10:])  # first edge distortion hack
+
         hf = np.multiply(
             np.add(
-                np.multiply(self.loband_gain, hc[0]),
-                np.multiply(self.hiband_gain, hc[1])
+                np.multiply(self.DecoderParams['video_eq']['loband']['gain'], hc[0]),
+                np.multiply(self.DecoderParams['video_eq']['hiband']['gain'], hc[1])
             ), 0.5)
+
         gain = 0.7 * self.sharpness_level
-        #utils.dualplot_scope(demod[:1024], np.roll((hf * 10)[:1024], 0))
+
         result = np.multiply(
-                    np.add(np.roll(np.multiply(gain, hf), 0), demod),
-                    1
+            np.add(np.roll(np.multiply(gain, hf), 0), demod),
+            1
         )
-        #utils.plot_scope(result[:1024])
+
         return result
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
@@ -1517,6 +1521,7 @@ class VHSRFDecode(ldd.RFDecode):
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
             exit(0)
+
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
             [out_video, demod, out_video05, out_chroma, env, data],
