@@ -22,10 +22,6 @@ ffmpeg -hide_banner -thread_queue_size 1024 -f rawvideo \
       gamma_g=1:
       gamma_b=1:
       gamma_weight=1
-    [denoise];
-    [denoise]
-      nlmeans=
-      s=2.2
     [chroma];
     [chroma]
         mergeplanes=0x001112:yuv422p10le

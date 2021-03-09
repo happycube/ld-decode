@@ -1048,7 +1048,7 @@ class VHSDecode(ldd.LDdecode):
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=0,
         level_adjust=0.2,
-        sharpness_level=50,
+        sharpness_level=60,
         extra_options={},
     ):
         super(VHSDecode, self).__init__(
@@ -1173,7 +1173,7 @@ class VHSRFDecode(ldd.RFDecode):
         dod_threshold_a=None,
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=None,
-        sharpness_level=50
+        sharpness_level=60
     ):
 
         # First init the rf decoder normally.
@@ -1417,7 +1417,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.delays["video_white"] = 0
 
     def video_EQ(self, demod):
-        ha = self.videoEQFilter[0].lfilt(demod), self.videoEQFilter[1].lfilt(demod)
+        ha = self.videoEQFilter[0].filtfilt(demod), self.videoEQFilter[1].filtfilt(demod)
         hb = self.videoEQFilter[0].lfilt(demod[:11]), self.videoEQFilter[1].lfilt(demod[:11])
         hc = np.append(hb[0][:10], ha[0][10:]), np.append(hb[1][:10], ha[1][10:])  # first edge distortion hack
 

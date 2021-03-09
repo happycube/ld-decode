@@ -145,3 +145,4 @@ class FiltersClass:
     def lfilt(self, data):
         output, self.z = signal.lfilter(self.iir_b, self.iir_a, data, zi=self.z)
         return output
+
