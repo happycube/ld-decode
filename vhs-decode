@@ -6,7 +6,6 @@ import argparse
 import json
 import traceback
 
-
 import lddecode.utils as lddu
 from lddecode.utils_logging import init_logging
 from vhsdecode.process import VHSDecode
@@ -184,6 +183,14 @@ parser.add_argument(
     "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"
 )
 
+parser.add_argument(
+    "--high_boost",
+    metavar="high_boost",
+    type=float,
+    default=None,
+    help="Multiplier for boost to high rf frequencies, uses default if not specified. Subject to change.",
+)
+
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
@@ -222,6 +229,14 @@ dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
 if args.cxadc or args.cxadc3 or args.cxadc_tenbit or args.cxadc3_tenbit:
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
 
+rf_options = {
+    "dod_threshold_p": dod_threshold_p,
+    "dod_threshold_a": args.dod_threshold_a,
+    "dod_hysteresis": args.dod_hysteresis,
+    "track_phase": args.track_phase,
+    "high_boost": args.high_boost,
+}
+
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
 # allowing SIGINT/control-C's to be handled cleanly
 original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -241,11 +256,8 @@ vhsd = VHSDecode(
     doDOD=args.dodod,
     threads=args.threads,
     inputfreq=40,
-    dod_threshold_p=dod_threshold_p,
-    dod_threshold_a=args.dod_threshold_a,
-    dod_hysteresis=args.dod_hysteresis,
-    track_phase=args.track_phase,
     level_adjust=args.level_adjust,
+    rf_options=rf_options,
     extra_options=extra_options,
 )
 
