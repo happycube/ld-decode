@@ -50,7 +50,7 @@ RFParams_PAL_VHS["video_eq"] = {
         'corner': 3e6,
         'transition': 15e6,
         'order_limit': 2,
-        'gain': 60
+        'gain': 200
     }
 }
 
@@ -92,13 +92,13 @@ RFParams_NTSC_VHS["video_eq"] = {
         'corner': 1.25e6,
         'transition': 39e6,
         'order_limit': 1,
-        'gain': 12
+        'gain': 15
     },
     'hiband': {
         'corner': 3e6,
         'transition': 15e6,
         'order_limit': 2,
-        'gain': 60
+        'gain': 150
     }
 }
 

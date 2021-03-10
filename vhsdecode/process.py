@@ -12,6 +12,10 @@ import vhsdecode.utils as utils
 
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.FMdeemph import FMDeEmphasis
+from collections import deque
+from fractions import Fraction
+from samplerate import resample
+from vhsdecode.addons.goertzelmb import GoertzelMBmetrics
 
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
@@ -1048,7 +1052,7 @@ class VHSDecode(ldd.LDdecode):
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=0,
         level_adjust=0.2,
-        sharpness_level=60,
+        sharpness_level=50,
         extra_options={},
     ):
         super(VHSDecode, self).__init__(
@@ -1173,7 +1177,7 @@ class VHSRFDecode(ldd.RFDecode):
         dod_threshold_a=None,
         dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
         track_phase=None,
-        sharpness_level=60
+        sharpness_level=50
     ):
 
         # First init the rf decoder normally.
@@ -1403,6 +1407,7 @@ class VHSRFDecode(ldd.RFDecode):
         }
 
         self.plot = False
+        self.gmb = GoertzelMBmetrics(self.freq_hz)
 
 
     def computedelays(self, mtf_level=0):
@@ -1416,6 +1421,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.delays["video_sync"] = 0
         self.delays["video_white"] = 0
 
+    # It enhances the upper band of the video signal
     def video_EQ(self, demod):
         ha = self.videoEQFilter[0].filtfilt(demod), self.videoEQFilter[1].filtfilt(demod)
         hb = self.videoEQFilter[0].lfilt(demod[:11]), self.videoEQFilter[1].lfilt(demod[:11])
@@ -1434,6 +1440,28 @@ class VHSRFDecode(ldd.RFDecode):
             1
         )
 
+        return result
+
+    # It resamples the luminance data to 4 * Fc
+    # Applies the comb filter, then resamples it back
+    # The converter params are the same as in libsamplerate:
+    # In ascending quality/complexity order:
+    #   zero_order_hold, linear, sinc_fastest, sinc_best
+    def subcarrier_trap(self, luminance, converter='linear', delay=-2):
+        quotients_limit = int(1e4)
+        Fc = int(self.SysParams["fsc_mhz"] * 4 * 1e6)
+        ratio = Fraction(Fc/self.freq_hz).limit_denominator(quotients_limit)
+        dw_ratio = ratio.numerator / ratio.denominator
+        up_ratio = ratio.denominator / ratio.numerator
+        downsampled = resample(luminance, ratio=dw_ratio, converter_type=converter)
+        delayed = deque(downsampled.copy())
+        delayed.rotate(delay)
+        combed = np.multiply(np.add(downsampled, np.asarray(delayed)), 0.5)
+        result = resample(combed, ratio=up_ratio, converter_type=converter)
+        result = utils.pad_or_truncate(result, luminance)
+        assert len(luminance) == len(result), \
+            'Something wrong happened during the comb filtering stage. Expected samples %d, got %d' % \
+            (len(luminance), len(result))
         return result
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
@@ -1465,6 +1493,9 @@ class VHSRFDecode(ldd.RFDecode):
         # FM demodulator
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
 
+        # applies the Subcarrier trap
+        demod = self.subcarrier_trap(demod)
+
         # applies the video EQ
         if self.sharpness_level > 0:
             demod = self.video_EQ(demod)
@@ -1482,6 +1513,9 @@ class VHSRFDecode(ldd.RFDecode):
         self.min_video_peaks.append(min(out_video))
         out_video -= utils.moving_average(self.min_video_peaks, window=self.SysParams["frame_lines"])
         out_video += self.iretohz(self.SysParams['vsync_ire'])
+
+        # prints the bursts amplitude
+        self.gmb.debug(out_video)
 
         out_video05 = np.fft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
