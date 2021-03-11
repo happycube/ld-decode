@@ -1058,12 +1058,8 @@ class VHSDecode(ldd.LDdecode):
         doDOD=True,
         threads=1,
         inputfreq=40,
-        dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD,
-        dod_threshold_a=None,
-        dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
-        track_phase=0,
         level_adjust=0.2,
-        sharpness_level=50,
+        rf_options={},
         extra_options={},
     ):
         super(VHSDecode, self).__init__(
@@ -1084,11 +1080,7 @@ class VHSDecode(ldd.LDdecode):
             system=system,
             tape_format=tape_format,
             inputfreq=inputfreq,
-            track_phase=track_phase,
-            dod_threshold_p=dod_threshold_p,
-            dod_threshold_a=dod_threshold_a,
-            dod_hysteresis=dod_hysteresis,
-            sharpness_level=sharpness_level
+            rf_options=rf_options,
         )
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -1206,7 +1198,6 @@ class VTRDemodCache(ldd.DemodCache):
         )
 
     def worker(self, pipein):
-        gmb = GoertzelMBmetrics(self.rf.freq_hz)
         while True:
             ispiped = False
             if pipein.poll():
@@ -1257,15 +1248,11 @@ class VTRDemodCache(ldd.DemodCache):
 
 class VHSRFDecode(ldd.RFDecode):
     def __init__(
-        self,
-        inputfreq=40,
-        system="NTSC",
-        tape_format="VHS",
-        dod_threshold_p=vhs_formats.DEFAULT_THRESHOLD_P_DDD,
-        dod_threshold_a=None,
-        dod_hysteresis=vhs_formats.DEFAULT_HYSTERESIS,
-        track_phase=None,
-        sharpness_level=50
+            self,
+            inputfreq=40,
+            system="NTSC",
+            tape_format="VHS",
+            rf_options={}
     ):
 
         # First init the rf decoder normally.
@@ -1273,12 +1260,20 @@ class VHSRFDecode(ldd.RFDecode):
             inputfreq, system, decode_analog_audio=False, has_analog_audio=False
         )
 
-        #controls the sharpness EQ gain
-        self.sharpness_level = sharpness_level / 100
+        # controls the sharpness EQ gain
+        self.sharpness_level = rf_options.get(
+            "sharpness", vhs_formats.DEFAULT_SHARPNESS
+        ) / 100
 
-        self.dod_threshold_p = dod_threshold_p
-        self.dod_threshold_a = dod_threshold_a
-        self.dod_hysteresis = dod_hysteresis
+        self.dod_threshold_p = rf_options.get(
+            "dod_threshold_p", vhs_formats.DEFAULT_THRESHOLD_P_DDD
+        )
+        self.dod_threshold_a = rf_options.get("dod_threshold_a", None)
+        self.dod_hysteresis = rf_options.get(
+            "dod_hysteresis", vhs_formats.DEFAULT_HYSTERESIS
+        )
+        track_phase = rf_options.get("track_phase", None)
+        high_boost = rf_options.get("high_boost", None)
 
         if track_phase is None:
             self.track_phase = 0
@@ -1316,6 +1311,8 @@ class VHSRFDecode(ldd.RFDecode):
         cc = self.DecoderParams["color_under_carrier"] / 1000000
 
         DP = self.DecoderParams
+
+        self.high_boost = high_boost if high_boost is not None else DP["boost_bpf_mult"]
 
         self.Filters["RFVideoRaw"] = lddu.filtfft(
             sps.butter(
@@ -1364,15 +1361,23 @@ class VHSRFDecode(ldd.RFDecode):
             self.blocklen,
         )
 
-        y_fm_filter = y_fm * y_fm_lowpass * y_fm_highpass * self.Filters["hilbert"]
+        self.Filters["RFVideo"] = y_fm * y_fm_lowpass * y_fm_highpass
 
-        self.Filters["RFVideo"] = y_fm_filter
+        self.Filters["RFTop"] = sps.butter(
+            1,
+            [
+                DP["boost_bpf_low"] / self.freq_hz_half,
+                DP["boost_bpf_high"] / self.freq_hz_half,
+            ],
+            btype="bandpass",
+            output="sos",
+        )
 
         # Video (luma) de-emphasis
         db, da = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
 
         self.Filters["FEnvPost"] = sps.butter(
-            1, [1000000 / self.freq_hz_half], btype="lowpass", output="sos"
+            1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
         self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
@@ -1471,6 +1476,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Increase the cutoff at the end of blocks to avoid edge distortion from filters
         # making it through.
         self.blockcut_end = 1024
+        self.demods = 0
 
         # moving average filter for Y DC bias comp
         self.min_video_peaks = list()
@@ -1495,8 +1501,10 @@ class VHSRFDecode(ldd.RFDecode):
         }
 
         self.plot = False
+        self.mblog = rf_options.get(
+            "mblog", False
+        )
         self.gmb = GoertzelMBmetrics(self.freq_hz)
-
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1565,18 +1573,26 @@ class VHSRFDecode(ldd.RFDecode):
         if data is None:
             data = np.fft.ifft(indata_fft).real
 
-        from scipy.signal import hilbert as hilbt
-
-        raw_filtered = np.fft.ifft(indata_fft * self.Filters["RFVideoRaw"]).real
+        raw_filtered = np.fft.ifft(
+            indata_fft * self.Filters["RFVideoRaw"] * self.Filters["hilbert"]
+        ).real
         # Calculate an evelope with signal strength using absolute of hilbert transform.
-        raw_env = np.abs(hilbt(raw_filtered))
-        env = filter_simple(raw_env, self.Filters["FEnvPost"])
         # Roll this a bit to compensate for filter delay, value eyballed for now.
-        env = np.roll(env, 4)
+        raw_env = np.roll(np.abs(raw_filtered), 4)
+        env = filter_simple(raw_env, self.Filters["FEnvPost"])
+        env_mean = np.mean(env)
 
         # Applies RF filters
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
-        hilbert = np.fft.ifft(indata_fft_filt)
+        data_filtered = np.fft.ifft(indata_fft_filt)
+        # Boost high frequencies in areas where the signal is weak to reduce missed zero crossings
+        # on sharp transitions. Using filtfilt to avoid phase issues.
+        high_part = filter_simple(data_filtered, self.Filters["RFTop"]) * (
+            (env_mean * 0.9) / env
+        )
+        indata_fft_filt += np.fft.fft(high_part * self.high_boost)
+
+        hilbert = np.fft.ifft(indata_fft_filt * self.Filters["hilbert"])
 
         # FM demodulator
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
@@ -1603,7 +1619,8 @@ class VHSRFDecode(ldd.RFDecode):
         out_video += self.iretohz(self.SysParams['vsync_ire'])
 
         # prints the bursts amplitude
-        self.gmb.debug(out_video)
+        if self.mblog:
+            self.gmb.debug(out_video)
 
         out_video05 = np.fft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
@@ -1654,6 +1671,8 @@ class VHSRFDecode(ldd.RFDecode):
             video_out[self.blockcut : -self.blockcut_end] if cut else video_out
         )
 
+        #        self.demods += 1
+
         return rv
 
     def cvbsblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
@@ -1665,7 +1684,8 @@ class VHSRFDecode(ldd.RFDecode):
         data *= self.iretohz(100)
         data += self.iretohz(self.SysParams['vsync_ire'])
 
-        self.gmb.debug(data)
+        if self.mblog:
+            self.gmb.debug(data)
 
         if self.plot:
             import matplotlib.pyplot as plt

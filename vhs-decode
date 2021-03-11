@@ -6,7 +6,6 @@ import argparse
 import json
 import traceback
 
-
 import lddecode.utils as lddu
 from lddecode.utils_logging import init_logging
 from vhsdecode.process import VHSDecode
@@ -185,6 +184,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--high_boost",
+    metavar="high_boost",
+    type=float,
+    default=None,
+    help="Multiplier for boost to high rf frequencies, uses default if not specified. Subject to change.",
+)
+
+parser.add_argument(
     "-sl",
     "--sharpness",
     metavar="sharpness",
@@ -197,6 +204,10 @@ parser.add_argument(
     "--cvbs", dest="cvbs", action="store_true", default=False, help="Decode raw CVBS"
 )
 
+parser.add_argument(
+    "--mblog", dest="mblog", action="store_true", default=False, help="Log multiburst tones for EQ calibration"
+)
+
 
 args = parser.parse_args()
 filename = args.infile
@@ -205,11 +216,6 @@ firstframe = args.start
 req_frames = args.length
 tape_format = "UMATIC" if args.umatic else "VHS"
 system = "PAL" if args.pal else "NTSC"
-
-extra_options = {
-    "useAGC": not args.noAGC,
-    "cvbs": args.cvbs
-}
 
 if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
@@ -237,6 +243,21 @@ dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
 if args.cxadc or args.cxadc3 or args.cxadc_tenbit or args.cxadc3_tenbit:
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
 
+rf_options = {
+    "dod_threshold_p": dod_threshold_p,
+    "dod_threshold_a": args.dod_threshold_a,
+    "dod_hysteresis": args.dod_hysteresis,
+    "track_phase": args.track_phase,
+    "high_boost": args.high_boost,
+    "sharpness": args.sharpness,
+    "mblog": args.mblog,
+}
+
+extra_options = {
+    "useAGC": not args.noAGC,
+    "cvbs": args.cvbs,
+}
+
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
 # allowing SIGINT/control-C's to be handled cleanly
 original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -256,12 +277,8 @@ vhsd = VHSDecode(
     doDOD=args.dodod,
     threads=args.threads,
     inputfreq=40,
-    dod_threshold_p=dod_threshold_p,
-    dod_threshold_a=args.dod_threshold_a,
-    dod_hysteresis=args.dod_hysteresis,
-    track_phase=args.track_phase,
     level_adjust=args.level_adjust,
-    sharpness_level=args.sharpness,
+    rf_options=rf_options,
     extra_options=extra_options,
 )
 
