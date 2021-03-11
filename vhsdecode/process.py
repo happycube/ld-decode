@@ -17,6 +17,17 @@ from fractions import Fraction
 from samplerate import resample
 from vhsdecode.addons.goertzelmb import GoertzelMBmetrics
 
+# Use PyFFTW's faster FFT implementation if available
+try:
+    import pyfftw.interfaces.numpy_fft as npfft
+    import pyfftw.interfaces
+
+    pyfftw.interfaces.cache.enable()
+    pyfftw.interfaces.cache.set_keepalive_time(10)
+except ImportError:
+    import numpy.fft as npfft
+
+
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
     S16_ABS_MAX = 32767
@@ -1091,8 +1102,10 @@ class VHSDecode(ldd.LDdecode):
                 self.FieldClass = FieldNTSCVHS
         else:
             raise Exception("Unknown video system!", system)
-        self.demodcache = ldd.DemodCache(
-            self.rf, self.infile, self.freader, num_worker_threads=self.numthreads
+
+        self.demodcache = VTRDemodCache(
+            self.rf, self.infile, self.freader, num_worker_threads=self.numthreads,
+            cvbs_decode=extra_options['cvbs']
         )
 
         if fname_out is not None:
@@ -1158,13 +1171,88 @@ class VHSDecode(ldd.LDdecode):
         return None
 
     def build_json(self, f):
-        jout = super(VHSDecode, self).build_json(f)
-        black = jout["videoParameters"]["black16bIre"]
-        white = jout["videoParameters"]["white16bIre"]
+        try:
+            jout = super(VHSDecode, self).build_json(f)
+            black = jout["videoParameters"]["black16bIre"]
+            white = jout["videoParameters"]["white16bIre"]
 
-        jout["videoParameters"]["black16bIre"] = black * (1 - self.level_adjust)
-        jout["videoParameters"]["white16bIre"] = white * (1 + self.level_adjust)
-        return jout
+            jout["videoParameters"]["black16bIre"] = black * (1 - self.level_adjust)
+            jout["videoParameters"]["white16bIre"] = white * (1 + self.level_adjust)
+            return jout
+        except TypeError as e:
+            print('Cannot build json: %s' % e)
+            return None
+
+
+class VTRDemodCache(ldd.DemodCache):
+    def __init__(self,
+                 rf,
+                 infile,
+                 loader,
+                 cachesize=256,
+                 num_worker_threads=1,
+                 MTF_tolerance=0.05,
+                 cvbs_decode=False):
+
+        self.cvbs_decode = cvbs_decode
+
+        super(VTRDemodCache, self).__init__(
+            rf,
+            infile,
+            loader,
+            cachesize,
+            -1,
+            MTF_tolerance
+        )
+
+    def worker(self, pipein):
+        gmb = GoertzelMBmetrics(self.rf.freq_hz)
+        while True:
+            ispiped = False
+            if pipein.poll():
+                item = pipein.recv()
+                ispiped = True
+            else:
+                item = self.q_in.get()
+
+            if item is None or item[0] == "END":
+                return
+
+            if item[0] == "DEMOD":
+                blocknum, block, target_MTF = item[1:]
+
+                output = {}
+
+                if "fft" not in block:
+                    output["fft"] = npfft.fft(block["rawinput"])
+                    fftdata = output["fft"]
+                else:
+                    fftdata = block["fft"]
+
+                if (
+                    "demod" not in block
+                    or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
+                ):
+                    if not self.cvbs_decode:
+                        # RF decode
+                        output["demod"] = self.rf.demodblock(
+                            fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        )
+                    else:
+                        # CVBS decode
+                        output["demod"] = self.rf.cvbsblock(
+                            fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        )
+
+                    output["MTF"] = target_MTF
+                    self.q_out.put((blocknum, output))
+
+
+            elif item[0] == "NEWPARAMS":
+                self.apply_newparams(item[1])
+
+            if not ispiped:
+                self.q_in.task_done()
 
 
 class VHSRFDecode(ldd.RFDecode):
@@ -1559,6 +1647,52 @@ class VHSRFDecode(ldd.RFDecode):
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
             [out_video, demod, out_video05, out_chroma, env, data],
+            names=["demod", "demod_raw", "demod_05", "demod_burst", "envelope", "raw"],
+        )
+
+        rv["video"] = (
+            video_out[self.blockcut : -self.blockcut_end] if cut else video_out
+        )
+
+        return rv
+
+    def cvbsblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
+        data = np.fft.ifft(fftdata).real
+
+        rv = {}
+        data += 0xFFFF / 2
+        data /= 4 * 0xFFFF
+        data *= self.iretohz(100)
+        data += self.iretohz(self.SysParams['vsync_ire'])
+
+        self.gmb.debug(data)
+
+        if self.plot:
+            import matplotlib.pyplot as plt
+
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+            # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
+            #        ax1.plot(hilbert, color='#FF0000')
+            # ax1.plot(data, color="#00FF00")
+            ax1.axhline(self.iretohz(0))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            ax1.axhline(self.iretohz(7.5))
+            ax1.axhline(self.iretohz(100))
+            # print("Vsync IRE", self.SysParams["vsync_ire"])
+            #            ax2 = ax1.twinx()
+            #            ax3 = ax1.twinx()
+            ax1.plot(data[:2048])
+            #ax2.plot(data[:2048])
+            #            ax4.plot(env, color="#00FF00")
+            #            ax3.plot(np.angle(hilbert))
+            #            ax4.plot(hilbert.imag)
+            #            crossings = find_crossings(env, 700)
+            #            ax3.plot(crossings, color="#0000FF")
+            plt.show()
+            exit(0)
+
+        video_out = np.rec.array(
+            [data, data, data, data, np.abs(data), data],
             names=["demod", "demod_raw", "demod_05", "demod_burst", "envelope", "raw"],
         )
 

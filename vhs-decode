@@ -193,6 +193,11 @@ parser.add_argument(
     help="Sharpness level (0~100)",
 )
 
+parser.add_argument(
+    "--cvbs", dest="cvbs", action="store_true", default=False, help="Decode raw CVBS"
+)
+
+
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
@@ -203,6 +208,7 @@ system = "PAL" if args.pal else "NTSC"
 
 extra_options = {
     "useAGC": not args.noAGC,
+    "cvbs": args.cvbs
 }
 
 if args.pal and args.ntsc:

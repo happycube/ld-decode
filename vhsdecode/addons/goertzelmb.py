@@ -2,10 +2,15 @@
     Provides a way to measure the power of each burst in the multiburst test pattern
     using the Goertzel algorithm
 """
-from gofft.alg import goertzel
+try:
+    from gofft.alg import goertzel
+except ImportError:
+    print('goertzel-fft missing:')
+    print('exec: pip3 install git+https://github.com/NaleRaphael/goertzel-fft.git')
+    exit(0)
+
 from vhsdecode.addons.mbgen.multiburst_generator import burst_frequencies
 import numpy as np
-
 
 class GoertzelMBmetrics:
 
