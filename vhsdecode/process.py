@@ -15,7 +15,6 @@ from vhsdecode.addons.FMdeemph import FMDeEmphasis
 from collections import deque
 from fractions import Fraction
 from samplerate import resample
-from vhsdecode.addons.goertzelmb import GoertzelMBmetrics
 
 # Use PyFFTW's faster FFT implementation if available
 try:
@@ -1501,10 +1500,6 @@ class VHSRFDecode(ldd.RFDecode):
         }
 
         self.plot = False
-        self.mblog = rf_options.get(
-            "mblog", False
-        )
-        self.gmb = GoertzelMBmetrics(self.freq_hz)
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1619,10 +1614,6 @@ class VHSRFDecode(ldd.RFDecode):
         out_video -= utils.moving_average(self.min_video_peaks, window=self.SysParams["frame_lines"])
         out_video += self.iretohz(self.SysParams['vsync_ire'])
 
-        # prints the bursts amplitude
-        if self.mblog:
-            self.gmb.debug(out_video)
-
         out_video05 = np.fft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
         ).real
@@ -1685,9 +1676,6 @@ class VHSRFDecode(ldd.RFDecode):
         data /= 4 * 0xFFFF
         data *= self.iretohz(100)
         data += self.iretohz(self.SysParams['vsync_ire'])
-
-        if self.mblog:
-            self.gmb.debug(data)
 
         if self.plot:
             import matplotlib.pyplot as plt

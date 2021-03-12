@@ -204,11 +204,6 @@ parser.add_argument(
     "--cvbs", dest="cvbs", action="store_true", default=False, help="Decode raw CVBS"
 )
 
-parser.add_argument(
-    "--mblog", dest="mblog", action="store_true", default=False, help="Log multiburst tones for EQ calibration"
-)
-
-
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
@@ -250,7 +245,6 @@ rf_options = {
     "track_phase": args.track_phase,
     "high_boost": args.high_boost,
     "sharpness": args.sharpness,
-    "mblog": args.mblog,
 }
 
 extra_options = {
