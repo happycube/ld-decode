@@ -1499,8 +1499,6 @@ class VHSRFDecode(ldd.RFDecode):
             1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz)
         }
 
-        self.plot = False
-
     def computedelays(self, mtf_level=0):
         """Override computedelays
         It's normally used for dropout compensation, but the dropout compensation implementation
@@ -1625,11 +1623,11 @@ class VHSRFDecode(ldd.RFDecode):
         # Move chroma to compensate for Y filter delay.
         # value needs tweaking, ideally it should be calculated if possible.
         # TODO: Not sure if we need this after hilbert filter change, needs check.
-        out_chroma = np.roll(out_chroma, 20)
+        out_chroma = np.roll(out_chroma, 10)
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
 
-        if self.plot:
+        if False:
             import matplotlib.pyplot as plt
 
             fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
@@ -1664,8 +1662,6 @@ class VHSRFDecode(ldd.RFDecode):
             video_out[self.blockcut : -self.blockcut_end] if cut else video_out
         )
 
-        #        self.demods += 1
-
         return rv
 
     def cvbsblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
@@ -1677,7 +1673,7 @@ class VHSRFDecode(ldd.RFDecode):
         data *= self.iretohz(100)
         data += self.iretohz(self.SysParams['vsync_ire'])
 
-        if self.plot:
+        if False:
             import matplotlib.pyplot as plt
 
             fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
