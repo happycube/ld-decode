@@ -45,13 +45,13 @@ RFParams_PAL_VHS["video_eq"] = {
         'corner': 1.25e6,
         'transition': 39e6,
         'order_limit': 1,
-        'gain': 12
+        'gain': 9.6
     },
     'hiband': {
-        'corner': 3e6,
-        'transition': 15e6,
+        'corner': 3.38e6,
+        'transition': 16e6,
         'order_limit': 2,
-        'gain': 200
+        'gain': 320
     }
 }
 
@@ -102,13 +102,13 @@ RFParams_NTSC_VHS["video_eq"] = {
         'corner': 1.25e6,
         'transition': 39e6,
         'order_limit': 1,
-        'gain': 15
+        'gain': 9.6
     },
     'hiband': {
-        'corner': 3e6,
-        'transition': 15e6,
-        'order_limit': 2,
-        'gain': 150
+        'corner': 3.38e6,
+        'transition': 8e6,
+        'order_limit': 3,
+        'gain': 960
     }
 }
 
@@ -134,19 +134,19 @@ RFParams_PAL_UMATIC["video_lpf_order"] = 2
 RFParams_PAL_UMATIC["color_under_carrier"] = 685991
 RFParams_PAL_UMATIC["chroma_bpf_upper"] = 1500000
 
-# Video EQ after FM demod (PAL UMATIC) (needs tweak)
+# Video EQ after FM demod (PAL UMATIC) (based on NTSC one, needs tweak)
 RFParams_PAL_UMATIC["video_eq"] = {
     'loband': {
         'corner': 1.25e6,
         'transition': 39e6,
         'order_limit': 1,
-        'gain': 12
+        'gain': 4.75
     },
     'hiband': {
-        'corner': 3e6,
-        'transition': 15e6,
-        'order_limit': 2,
-        'gain': 60
+        'corner': 3.58e6,
+        'transition': 16e6,
+        'order_limit': 3,
+        'gain': 480
     }
 }
 
@@ -183,13 +183,13 @@ RFParams_NTSC_UMATIC["video_eq"] = {
         'corner': 1.25e6,
         'transition': 39e6,
         'order_limit': 1,
-        'gain': 12
+        'gain': 4.75
     },
     'hiband': {
-        'corner': 3e6,
-        'transition': 15e6,
-        'order_limit': 2,
-        'gain': 60
+        'corner': 3.58e6,
+        'transition': 16e6,
+        'order_limit': 3,
+        'gain': 480
     }
 }
 
@@ -258,5 +258,5 @@ DEFAULT_HYSTERESIS = 1.25
 # Merge dropouts if they there is less than this number of samples between them.
 DOD_MERGE_THRESHOLD = 30
 DOD_MIN_LENGTH = 10
-
 DEFAULT_SHARPNESS = 50
+

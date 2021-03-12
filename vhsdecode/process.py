@@ -1373,7 +1373,7 @@ class VHSRFDecode(ldd.RFDecode):
             output="sos",
         )
 
-        # Video (luma) de-emphasis
+        # Video (luma) main de-emphasis
         db, da = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
 
         self.Filters["FEnvPost"] = sps.butter(
@@ -1576,6 +1576,7 @@ class VHSRFDecode(ldd.RFDecode):
         raw_filtered = np.fft.ifft(
             indata_fft * self.Filters["RFVideoRaw"] * self.Filters["hilbert"]
         ).real
+
         # Calculate an evelope with signal strength using absolute of hilbert transform.
         # Roll this a bit to compensate for filter delay, value eyballed for now.
         raw_env = np.roll(np.abs(raw_filtered), 4)
@@ -1633,7 +1634,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Move chroma to compensate for Y filter delay.
         # value needs tweaking, ideally it should be calculated if possible.
         # TODO: Not sure if we need this after hilbert filter change, needs check.
-        out_chroma = np.roll(out_chroma, 10)
+        out_chroma = np.roll(out_chroma, 20)
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
 
@@ -1660,6 +1661,7 @@ class VHSRFDecode(ldd.RFDecode):
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
             exit(0)
+
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
@@ -1711,8 +1713,10 @@ class VHSRFDecode(ldd.RFDecode):
             plt.show()
             exit(0)
 
+        env = np.ones(len(data))
+
         video_out = np.rec.array(
-            [data, data, data, data, np.abs(data), data],
+            [data, data, data, data, env, data],
             names=["demod", "demod_raw", "demod_05", "demod_burst", "envelope", "raw"],
         )
 
