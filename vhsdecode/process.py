@@ -1668,10 +1668,14 @@ class VHSRFDecode(ldd.RFDecode):
         data = np.fft.ifft(fftdata).real
 
         rv = {}
-        data += 0xFFFF / 2
-        data /= 4 * 0xFFFF
-        data *= self.iretohz(100)
-        data += self.iretohz(self.SysParams['vsync_ire'])
+
+        # applies the Subcarrier trap
+        luma = self.subcarrier_trap(data)
+
+        luma += 0xFFFF / 2
+        luma /= 4 * 0xFFFF
+        luma *= self.iretohz(100)
+        luma += self.iretohz(self.SysParams['vsync_ire'])
 
         if False:
             import matplotlib.pyplot as plt
@@ -1687,7 +1691,7 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(data[:2048])
+            ax1.plot(luma[:2048])
             #ax2.plot(data[:2048])
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
@@ -1697,10 +1701,10 @@ class VHSRFDecode(ldd.RFDecode):
             plt.show()
             exit(0)
 
-        env = np.ones(len(data))
+        env = np.ones(len(luma))
 
         video_out = np.rec.array(
-            [data, data, data, data, env, data],
+            [luma, luma, luma, luma, env, data],
             names=["demod", "demod_raw", "demod_05", "demod_burst", "envelope", "raw"],
         )
 
