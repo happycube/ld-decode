@@ -12,9 +12,7 @@ import vhsdecode.utils as utils
 
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.FMdeemph import FMDeEmphasis
-from collections import deque
-from fractions import Fraction
-from samplerate import resample
+from vhsdecode.addons.chromasep import ChromaSepClass
 
 # Use PyFFTW's faster FFT implementation if available
 try:
@@ -1192,7 +1190,7 @@ class VTRDemodCache(ldd.DemodCache):
             infile,
             loader,
             cachesize,
-            -1,
+            -1 if cvbs_decode else num_worker_threads,
             MTF_tolerance
         )
 
@@ -1499,6 +1497,8 @@ class VHSRFDecode(ldd.RFDecode):
             1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz)
         }
 
+        self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+
     def computedelays(self, mtf_level=0):
         """Override computedelays
         It's normally used for dropout compensation, but the dropout compensation implementation
@@ -1529,28 +1529,6 @@ class VHSRFDecode(ldd.RFDecode):
             1
         )
 
-        return result
-
-    # It resamples the luminance data to 4 * Fc
-    # Applies the comb filter, then resamples it back
-    # The converter params are the same as in libsamplerate:
-    # In ascending quality/complexity order:
-    #   zero_order_hold, linear, sinc_fastest, sinc_best
-    def subcarrier_trap(self, luminance, converter='linear', delay=-2):
-        quotients_limit = int(1e4)
-        Fc = int(self.SysParams["fsc_mhz"] * 4 * 1e6)
-        ratio = Fraction(Fc/self.freq_hz).limit_denominator(quotients_limit)
-        dw_ratio = ratio.numerator / ratio.denominator
-        up_ratio = ratio.denominator / ratio.numerator
-        downsampled = resample(luminance, ratio=dw_ratio, converter_type=converter)
-        delayed = deque(downsampled.copy())
-        delayed.rotate(delay)
-        combed = np.multiply(np.add(downsampled, np.asarray(delayed)), 0.5)
-        result = resample(combed, ratio=up_ratio, converter_type=converter)
-        result = utils.pad_or_truncate(result, luminance)
-        assert len(luminance) == len(result), \
-            'Something wrong happened during the comb filtering stage. Expected samples %d, got %d' % \
-            (len(luminance), len(result))
         return result
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
@@ -1591,11 +1569,10 @@ class VHSRFDecode(ldd.RFDecode):
         # FM demodulator
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
 
-        # applies the Subcarrier trap
-        demod = self.subcarrier_trap(demod)
-
-        # applies the video EQ
         if self.sharpness_level > 0:
+            # applies the Subcarrier trap
+            demod = self.chromaTrap.work(demod)
+            # applies the video EQ
             demod = self.video_EQ(demod)
 
         # applies main deemphasis filter
@@ -1603,14 +1580,6 @@ class VHSRFDecode(ldd.RFDecode):
         out_video = np.fft.irfft(
             demod_fft * self.Filters["FVideo"][0: (self.blocklen // 2) + 1]
         ).real
-
-        # applies clipping at vsync_ire
-        out_video = np.clip(out_video, a_min=self.iretohz(self.SysParams['vsync_ire']), a_max=max(out_video))
-
-        # DC offset removal of luminance
-        self.min_video_peaks.append(min(out_video))
-        out_video -= utils.moving_average(self.min_video_peaks, window=self.SysParams["frame_lines"])
-        out_video += self.iretohz(self.SysParams['vsync_ire'])
 
         out_video05 = np.fft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
@@ -1670,7 +1639,7 @@ class VHSRFDecode(ldd.RFDecode):
         rv = {}
 
         # applies the Subcarrier trap
-        luma = self.subcarrier_trap(data)
+        luma = self.chromaTrap.work(data)
 
         luma += 0xFFFF / 2
         luma /= 4 * 0xFFFF
