@@ -12,9 +12,7 @@ RFParams_NTSC_UMATIC = {**RFParams_NTSC}
 # Add SP/hi-band etc later
 
 # Tape-specific paramaters that differs from the laserdisc analogues
-# Video Y deemphasis
-# Not used, generated elsewhere.
-# RFParams_PAL_VHS['video_deemp'] = (100*.24, 400*.24)
+# VHS PAL section
 
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
@@ -41,6 +39,22 @@ RFParams_PAL_VHS["color_under_carrier"] = ((625 * 25) * 40) + 1953
 # For vhs decks it's typically a bit more than 2x cc
 RFParams_PAL_VHS["chroma_bpf_upper"] = 1400000
 
+# Video EQ after FM demod (PAL VHS)
+RFParams_PAL_VHS["video_eq"] = {
+    'loband': {
+        'corner': 1.25e6,
+        'transition': 39e6,
+        'order_limit': 1,
+        'gain': 9.6
+    },
+    'hiband': {
+        'corner': 3.38e6,
+        'transition': 16e6,
+        'order_limit': 2,
+        'gain': 320
+    }
+}
+
 # Video Y FM de-emphasis (1.25~1.35µs)
 RFParams_PAL_VHS["deemph_tau"] = 1.30e-6
 
@@ -52,6 +66,8 @@ RFParams_PAL_VHS["boost_bpf_low"] = 4200000
 RFParams_PAL_VHS["boost_bpf_high"] = 5600000
 # Multiplier for the boosted signal to add in.
 RFParams_PAL_VHS["boost_bpf_mult"] = 2
+
+# NTSC VHS section
 
 # Band-pass filter for Video rf.
 # TODO: Needs tweaking
@@ -80,6 +96,22 @@ RFParams_NTSC_VHS["chroma_bpf_upper"] = 1400000
 
 RFParams_NTSC_VHS["luma_carrier"] = 455.0 * ((525 * (30 / 1.001)) / 2.0)
 
+# Video EQ after FM demod (NTSC VHS)
+RFParams_NTSC_VHS["video_eq"] = {
+    'loband': {
+        'corner': 1.25e6,
+        'transition': 39e6,
+        'order_limit': 1,
+        'gain': 9.6
+    },
+    'hiband': {
+        'corner': 3.38e6,
+        'transition': 8e6,
+        'order_limit': 3,
+        'gain': 960
+    }
+}
+
 # Video Y FM de-emphasis (1.25~1.35µs)
 RFParams_NTSC_VHS["deemph_tau"] = 1.30e-6
 
@@ -87,6 +119,8 @@ RFParams_NTSC_VHS["boost_bpf_low"] = 4100000
 RFParams_NTSC_VHS["boost_bpf_high"] = 5000000
 RFParams_NTSC_VHS["boost_bpf_mult"] = 1
 
+
+# UMATIC section
 # Not yet correct
 RFParams_PAL_UMATIC["video_bpf_low"] = 3200000
 RFParams_PAL_UMATIC["video_bpf_high"] = 6500000
@@ -99,6 +133,22 @@ RFParams_PAL_UMATIC["video_lpf_freq"] = 4000000
 RFParams_PAL_UMATIC["video_lpf_order"] = 2
 RFParams_PAL_UMATIC["color_under_carrier"] = 685991
 RFParams_PAL_UMATIC["chroma_bpf_upper"] = 1500000
+
+# Video EQ after FM demod (PAL UMATIC) (based on NTSC one, needs tweak)
+RFParams_PAL_UMATIC["video_eq"] = {
+    'loband': {
+        'corner': 1.25e6,
+        'transition': 39e6,
+        'order_limit': 1,
+        'gain': 4.75
+    },
+    'hiband': {
+        'corner': 3.58e6,
+        'transition': 16e6,
+        'order_limit': 3,
+        'gain': 480
+    }
+}
 
 # Video Y FM de-emphasis (550 ~ 650ns)
 RFParams_PAL_UMATIC["deemph_tau"] = 600e-9
@@ -115,12 +165,7 @@ RFParams_PAL_UMATIC_HI["video_lpf_order"] = 0
 RFParams_PAL_UMATIC_HI["color_under_carrier"] = 983803
 RFParams_PAL_UMATIC_HI["chroma_bpf_upper"] = 0
 
-# Video Y FM de-emphasis (550 ~ 650ns)
-RFParams_PAL_UMATIC_HI["deemph_tau"] = 600e-9
-
-# ref sync is 3.8 mhz
 RFParams_NTSC_UMATIC["video_bpf_low"] = 3200000
-# ref white is 5.4 mhz
 RFParams_NTSC_UMATIC["video_bpf_high"] = 6500000
 RFParams_NTSC_UMATIC["video_bpf_order"] = 1
 RFParams_NTSC_UMATIC["video_lpf_extra"] = 6900000
@@ -131,6 +176,22 @@ RFParams_NTSC_UMATIC["video_lpf_freq"] = 4000000
 RFParams_NTSC_UMATIC["video_lpf_order"] = 1
 RFParams_NTSC_UMATIC["color_under_carrier"] = 688373
 RFParams_NTSC_UMATIC["chroma_bpf_upper"] = 1500000
+
+# Video EQ after FM demod (NTSC UMATIC) (needs tweak)
+RFParams_NTSC_UMATIC["video_eq"] = {
+    'loband': {
+        'corner': 1.25e6,
+        'transition': 39e6,
+        'order_limit': 1,
+        'gain': 4.75
+    },
+    'hiband': {
+        'corner': 3.58e6,
+        'transition': 16e6,
+        'order_limit': 3,
+        'gain': 480
+    }
+}
 
 # Video Y FM de-emphasis (550 ~ 650ns)
 RFParams_NTSC_UMATIC["deemph_tau"] = 600e-9
@@ -197,3 +258,5 @@ DEFAULT_HYSTERESIS = 1.25
 # Merge dropouts if they there is less than this number of samples between them.
 DOD_MERGE_THRESHOLD = 30
 DOD_MIN_LENGTH = 10
+DEFAULT_SHARPNESS = 50
+

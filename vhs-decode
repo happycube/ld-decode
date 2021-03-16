@@ -191,6 +191,19 @@ parser.add_argument(
     help="Multiplier for boost to high rf frequencies, uses default if not specified. Subject to change.",
 )
 
+parser.add_argument(
+    "-sl",
+    "--sharpness",
+    metavar="sharpness",
+    type=int,
+    default=50,
+    help="Sharpness level (0~100)",
+)
+
+parser.add_argument(
+    "--cvbs", dest="cvbs", action="store_true", default=False, help="Decode raw CVBS"
+)
+
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
@@ -198,10 +211,6 @@ firstframe = args.start
 req_frames = args.length
 tape_format = "UMATIC" if args.umatic else "VHS"
 system = "PAL" if args.pal else "NTSC"
-
-extra_options = {
-    "useAGC": not args.noAGC,
-}
 
 if args.pal and args.ntsc:
     print("ERROR: Can only be PAL or NTSC")
@@ -235,6 +244,12 @@ rf_options = {
     "dod_hysteresis": args.dod_hysteresis,
     "track_phase": args.track_phase,
     "high_boost": args.high_boost,
+    "sharpness": args.sharpness,
+}
+
+extra_options = {
+    "useAGC": not args.noAGC,
+    "cvbs": args.cvbs,
 }
 
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
