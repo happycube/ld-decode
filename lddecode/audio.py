@@ -195,13 +195,13 @@ def audio_bandpass_butter(center, closerange = 125000, longrange = 180000):
 audio_lfilt_full = utils.filtfft(audio_bandpass_butter(SP['audio_lfreq']), blocklen)
 audio_rfilt_full = utils.filtfft(audio_bandpass_butter(SP['audio_rfreq']), blocklen)
 
-lowbin, nbins, a1_freq = utils.fft_determine_slices(SP['audio_lfreq'], 150000, freq_hz, blocklen)
+lowbin, nbins, a1_freq = utils.fft_determine_slices(SP['audio_lfreq'], 200000, freq_hz, blocklen)
 hilbert = utils.build_hilbert(nbins)
 left_slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
 #left_slicer = partial(utils.fft_do_slice, lowbin=lowbin, nbins=nbins, blocklen=blocklen)
 left_filter = left_slicer(audio_lfilt_full) * hilbert
 
-lowbin, nbins, a1_freq = utils.fft_determine_slices(SP['audio_rfreq'], 150000, freq_hz, blocklen)
+lowbin, nbins, a1_freq = utils.fft_determine_slices(SP['audio_rfreq'], 200000, freq_hz, blocklen)
 hilbert = utils.build_hilbert(nbins)
 right_slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
 #right_slicer = partial(utils.fft_do_slice, lowbin=lowbin, nbins=nbins, blocklen=blocklen)
@@ -280,7 +280,7 @@ for ch in aa_channels:
     afreq = SP[ch[1]]
     
     audio1_fir = utils.filtfft([sps.firwin(afilt_len, [(afreq-apass)/freq_hz_half, (afreq+apass)/freq_hz_half], pass_zero=False), 1.0], blocklen)
-    lowbin, nbins, audio1_freq = utils.fft_determine_slices(afreq, 150000, freq_hz, blocklen)
+    lowbin, nbins, audio1_freq = utils.fft_determine_slices(afreq, 200000, freq_hz, blocklen)
     hilbert = utils.build_hilbert(nbins)
 
     # Add the demodulated output to this to get actual freq
