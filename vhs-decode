@@ -192,12 +192,21 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "-ct",
+    "--chroma_trap",
+    dest="chroma_trap",
+    action="store_true",
+    default=False,
+    help="Enable filter to reduce chroma interference on luma.",
+)
+
+parser.add_argument(
     "-sl",
     "--sharpness",
     metavar="sharpness",
     type=int,
     default=50,
-    help="Sharpness level (0~100)",
+    help="Sharpness level (0~100) (temporarily disabled)",
 )
 
 parser.add_argument(
@@ -244,6 +253,7 @@ rf_options = {
     "dod_hysteresis": args.dod_hysteresis,
     "track_phase": args.track_phase,
     "high_boost": args.high_boost,
+    "chroma_trap": args.chroma_trap,
     "sharpness": args.sharpness,
 }
 

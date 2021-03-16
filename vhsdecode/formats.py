@@ -58,6 +58,12 @@ RFParams_PAL_VHS["video_eq"] = {
 # Video Y FM de-emphasis (1.25~1.35µs)
 RFParams_PAL_VHS["deemph_tau"] = 1.30e-6
 
+# Temporary video emphasis filter constants
+# Ideally we would calculate this based on tau and 'x' value, for now
+# it's eyeballed based on graph and output.
+RFParams_PAL_VHS["deemph_mid"] = 260000
+RFParams_PAL_VHS["deemph_gain"] = 14
+
 # Filter to pull out high frequencies for high frequency boost
 # This should cover the area around reference white.
 # Used to reduce streaks due to amplitude loss on phase change around
@@ -114,6 +120,9 @@ RFParams_NTSC_VHS["video_eq"] = {
 
 # Video Y FM de-emphasis (1.25~1.35µs)
 RFParams_NTSC_VHS["deemph_tau"] = 1.30e-6
+
+RFParams_NTSC_VHS["deemph_mid"] = RFParams_PAL_VHS["deemph_mid"]
+RFParams_NTSC_VHS["deemph_gain"] = RFParams_PAL_VHS["deemph_gain"]
 
 RFParams_NTSC_VHS["boost_bpf_low"] = 4100000
 RFParams_NTSC_VHS["boost_bpf_high"] = 5000000
@@ -196,6 +205,9 @@ RFParams_NTSC_UMATIC["video_eq"] = {
 # Video Y FM de-emphasis (550 ~ 650ns)
 RFParams_NTSC_UMATIC["deemph_tau"] = 600e-9
 
+RFParams_NTSC_UMATIC["deemph_mid"] = 500000
+RFParams_NTSC_UMATIC["deemph_gain"] = 10.8
+
 # This has not really been stress-tested due to lack of crummy umatic samples.
 RFParams_NTSC_UMATIC["boost_bpf_low"] = 5000000
 RFParams_NTSC_UMATIC["boost_bpf_high"] = 5800000
@@ -258,5 +270,4 @@ DEFAULT_HYSTERESIS = 1.25
 # Merge dropouts if they there is less than this number of samples between them.
 DOD_MERGE_THRESHOLD = 30
 DOD_MIN_LENGTH = 10
-DEFAULT_SHARPNESS = 50
-
+DEFAULT_SHARPNESS = 0
