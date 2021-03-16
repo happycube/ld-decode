@@ -1475,9 +1475,6 @@ class VHSRFDecode(ldd.RFDecode):
         self.blockcut_end = 1024
         self.demods = 0
 
-        # moving average filter for Y DC bias comp
-        self.min_video_peaks = list()
-
         # sharpness filter / video EQ
         iir_eq_loband = utils.firdes_highpass(
             self.freq_hz,
