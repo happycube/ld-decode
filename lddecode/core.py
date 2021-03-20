@@ -2688,7 +2688,7 @@ class Field:
         # copy and get the mean of the burst area to factor out wow/flutter
         burstarea = self.data["video"]["demod_burst"][s + bstart : s + bend]
         if len(burstarea) == 0:
-            print("null")
+            return None, None
 
         burstarea = burstarea - nb_mean(burstarea)
         threshold = 5 * self.rf.SysParams["hz_ire"]
@@ -3019,7 +3019,11 @@ class FieldNTSC(Field):
     def get_burstlevel(self, l, linelocs=None):
         burstarea = self.data["video"]["demod"][self.lineslice(l, 5.5, 2.4, linelocs)]
 
-        return rms(burstarea) * np.sqrt(2)
+        # Issue #621 - fields w/skips may be complete nonsense, so bail out if so
+        try:
+            return rms(burstarea) * np.sqrt(2)
+        except:
+            return 0
 
     def compute_burst_offsets(self, linelocs):
         rising_sum = 0
