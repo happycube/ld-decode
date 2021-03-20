@@ -15,6 +15,8 @@ from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.addons.dtw import TimeWarper
 
+from numba import njit
+
 # Use PyFFTW's faster FFT implementation if available
 try:
     import pyfftw.interfaces.numpy_fft as npfft
@@ -35,6 +37,7 @@ def chroma_to_u16(chroma):
     return np.uint16(chroma + S16_ABS_MAX)
 
 
+@njit
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
 
@@ -48,6 +51,7 @@ def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     return output
 
 
+@njit
 def acc_line(chroma, burst_abs_ref, burststart, burstend):
     """Scale chroma according to the level of the color burst the line."""
     output = np.zeros(chroma.size, dtype=np.double)
@@ -143,23 +147,31 @@ def getpulses_override(field):
 
 
 def filter_simple(data, filter_coeffs):
-    #    fb, fa = filter_coeffs
     return sps.sosfiltfilt(filter_coeffs, data, padlen=150)
 
 
-# def comb_c_pal(data, linelen):
-#     """Very basic comb filter, adds the signal together with a signal delayed by 2H,
-#     line by line. VCRs do this to reduce crosstalk.
-#     """
+@njit
+def comb_c_pal(data, line_len):
+    """Very basic comb filter, adds the signal together with a signal delayed by 2H,
+    and one advanced by 2H
+    line by line. VCRs do this to reduce crosstalk.
+    """
 
-#     data2 = data.copy()
-#     numlines = len(data) // linelen
-#     for l in range(16,numlines - 2):
-#         delayed2h = data[(l - 2) * linelen:(l - 1) * linelen]
-#         data[l * linelen:(l + 1) * linelen] += (delayed2h / 2)
-#     return data
+    data2 = data.copy()
+    numlines = len(data) // line_len
+    for line_num in range(16, numlines - 2):
+        adv2h = data2[(line_num + 2) * line_len : (line_num + 3) * line_len]
+        delayed2h = data2[(line_num - 2) * line_len : (line_num - 1) * line_len]
+        line_slice = data[line_num * line_len : (line_num + 1) * line_len]
+        # Let the delayed signal contribute 1/4 and advanced 1/4.
+        # Could probably make the filtering configurable later.
+        data[line_num * line_len : (line_num + 1) * line_len] = (
+            (line_slice) - (delayed2h) - adv2h
+        ) / 3
+    return data
 
 
+@njit
 def comb_c_ntsc(data, line_len):
     """Very basic comb filter, adds the signal together with a signal delayed by 1H,
     line by line. VCRs do this to reduce crosstalk.
@@ -178,6 +190,7 @@ def comb_c_ntsc(data, line_len):
     return data
 
 
+@njit
 def upconvert_chroma(
     chroma,
     lineoffset,
@@ -187,7 +200,7 @@ def upconvert_chroma(
     phase_rotation,
     starting_phase,
 ):
-    uphet = np.zeros(chroma.size, dtype=np.double)
+    uphet = np.zeros(len(chroma), dtype=np.double)
     if phase_rotation == 0:
         # Track 1 - for PAL, phase doesn't change.
         start = lineoffset
@@ -221,6 +234,7 @@ def upconvert_chroma(
     return uphet
 
 
+@njit
 def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
     for line in range(lineoffset, linesout + lineoffset):
         linestart = (line - lineoffset) * outwidth
@@ -287,6 +301,8 @@ def process_chroma(field, track_phase, disable_deemph=False):
     # Basic comb filter for NTSC to calm the color a little.
     if field.rf.system == "NTSC":
         uphet = comb_c_ntsc(uphet, outwidth)
+    #    else:
+    #        uphet = comb_c_pal(uphet, outwidth)
 
     # Final automatic chroma gain.
     uphet = acc(
@@ -351,6 +367,7 @@ def get_burst_area(field):
     )
 
 
+@njit
 def get_line(data, line_length, line):
     return data[line * line_length : (line + 1) * line_length]
 
@@ -509,6 +526,7 @@ def detect_burst_pal_line(
     return line
 
 
+@njit
 def detect_burst_ntsc(
     chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
 ):
@@ -536,6 +554,7 @@ def detect_burst_ntsc(
     return even_i_acc / num_lines, odd_i_acc / num_lines
 
 
+@njit
 def detect_burst_ntsc_line(
     chroma_data, sine, cosine, burst_area, line_length, line_number
 ):
@@ -907,6 +926,55 @@ class FieldPALVHS(ldd.FieldPAL):
         return detect_dropouts_rf(self)
 
 
+class FieldPALUMatic(ldd.FieldPAL):
+    def __init__(self, *args, **kwargs):
+        super(FieldPALUMatic, self).__init__(*args, **kwargs)
+
+    def refine_linelocs_pilot(self, linelocs=None):
+        """Override this as regular-band u-matic does not have a pilot burst."""
+        if linelocs is None:
+            linelocs = self.linelocs2.copy()
+        else:
+            linelocs = linelocs.copy()
+
+        return linelocs
+
+    def downscale(self, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldPALUMatic, self).downscale(
+            final, *args, **kwargs
+        )
+        dschroma = decode_chroma_umatic(self)
+
+        return (dsout, dschroma), dsaudio, dsefm
+
+    def calc_burstmedian(self):
+        # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
+        return 1.0
+
+    def determine_field_number(self):
+        """Workaround to shut down phase id mismatch warnings, the actual code
+        doesn't work properly with the vhs output at the moment."""
+        return 1 + (self.rf.field_number % 8)
+
+    def getpulses(self):
+        """Find sync pulses in the demodulated video sigal
+
+        NOTE: TEMPORARY override until an override for the value itself is added upstream.
+        """
+        return getpulses_override(self)
+
+    def compute_deriv_error(self, linelocs, baserr):
+        """Disabled this for now as tapes have large variations in line pos
+        Due to e.g head switch.
+        compute errors based off the second derivative - if it exceeds 1 something's wrong,
+        and if 4 really wrong...
+        """
+        return baserr
+
+    def dropout_detect(self):
+        return detect_dropouts_rf(self)
+
+
 class FieldNTSCVHS(ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCVHS, self).__init__(*args, **kwargs)
@@ -1084,7 +1152,10 @@ class VHSDecode(ldd.LDdecode):
         # phase, may want to do this in a better way later.
         self.rf.decoder = self
         if system == "PAL":
-            self.FieldClass = FieldPALVHS
+            if tape_format == "UMATIC":
+                self.FieldClass = FieldPALUMatic
+            else:
+                self.FieldClass = FieldPALVHS
         elif system == "NTSC":
             if tape_format == "UMATIC":
                 self.FieldClass = FieldNTSCUMatic
@@ -1289,9 +1360,13 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Then we override the laserdisc parameters with VHS ones.
         if system == "PAL":
-            # Give the decoder it's separate own full copy to be on the safe side.
-            self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_VHS)
-            self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_VHS)
+            if tape_format == "UMATIC":
+                self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_UMATIC)
+                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_UMATIC)
+            else:
+                # Give the decoder it's separate own full copy to be on the safe side.
+                self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_VHS)
+                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_VHS)
         elif system == "NTSC":
             if tape_format == "UMATIC":
                 self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_UMATIC)
@@ -1382,10 +1457,10 @@ class VHSRFDecode(ldd.RFDecode):
             corner_freq = 1 / (math.pi * 2 * DP["deemph_tau"])
 
             db2, da2 = FMDeEmphasisB(
-                self.freq_hz, DP["deemph_gain"] + 0.5, DP["deemph_mid"]
+                self.freq_hz, DP["deemph_gain"], DP["deemph_mid"] + 50000
             ).get()
             db3, da3 = FMDeEmphasisB(
-                self.freq_hz, DP["deemph_gain"] + 1, DP["deemph_mid"]
+                self.freq_hz, DP["deemph_gain"], DP["deemph_mid"] - 50000
             ).get()
             self.Filters["FVideo2"] = (
                 lddu.filtfft((db2, da2), self.blocklen) * self.Filters["Fvideo_lpf"]
@@ -1399,6 +1474,7 @@ class VHSRFDecode(ldd.RFDecode):
             w1, h1 = sps.freqz(db, da, fs=self.freq_hz)
             w2, h2 = sps.freqz(db2, da2, fs=self.freq_hz)
             w3, h3 = sps.freqz(db3, da3, fs=self.freq_hz)
+            # VHS eyeballed freqs.
             test_arr = np.array(
                 [
                     [
@@ -1437,7 +1513,7 @@ class VHSRFDecode(ldd.RFDecode):
                     ],
                 ]
             )
-            print(test_arr[0])
+            # print(test_arr[0])
             test_arr[0] *= 1000000.0
             test_arr[1] *= -1
             #            test_arr[0::] *= 1e6
@@ -1471,7 +1547,7 @@ class VHSRFDecode(ldd.RFDecode):
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
-        #            exit(0)
+            #            exit(0)
 
         self.Filters["FEnvPost"] = sps.butter(
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
@@ -1555,19 +1631,13 @@ class VHSRFDecode(ldd.RFDecode):
         # We combine the color carrier with a wave with a frequency of the
         # subcarrier + the downconverted chroma carrier to get the original
         # color wave back.
-        self.chroma_heterodyne = {}
-
-        self.chroma_heterodyne[0] = sps.sosfiltfilt(
-            het_filter, self.cc_wave * self.fsc_wave
-        )
-        self.chroma_heterodyne[1] = sps.sosfiltfilt(
-            het_filter, cc_wave_90 * self.fsc_wave
-        )
-        self.chroma_heterodyne[2] = sps.sosfiltfilt(
-            het_filter, cc_wave_180 * self.fsc_wave
-        )
-        self.chroma_heterodyne[3] = sps.sosfiltfilt(
-            het_filter, cc_wave_270 * self.fsc_wave
+        self.chroma_heterodyne = np.array(
+            [
+                sps.sosfiltfilt(het_filter, self.cc_wave * self.fsc_wave),
+                sps.sosfiltfilt(het_filter, cc_wave_90 * self.fsc_wave),
+                sps.sosfiltfilt(het_filter, cc_wave_180 * self.fsc_wave),
+                sps.sosfiltfilt(het_filter, cc_wave_270 * self.fsc_wave),
+            ]
         )
 
         # Increase the cutoff at the end of blocks to avoid edge distortion from filters
