@@ -13,6 +13,7 @@ import vhsdecode.utils as utils
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
+from vhsdecode.addons.dtw import TimeWarper
 
 # Use PyFFTW's faster FFT implementation if available
 try:
@@ -1594,6 +1595,13 @@ class VHSRFDecode(ldd.RFDecode):
         }
 
         self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+        self.dtw = TimeWarper(
+            self.DecoderParams["color_under_carrier"],
+            self.SysParams["FPS"] * 2,
+            self.freq_hz,
+            blocklen=self.blocklen
+        )
+
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1608,15 +1616,13 @@ class VHSRFDecode(ldd.RFDecode):
 
     # It enhances the upper band of the video signal
     def video_EQ(self, demod):
-        ha = self.videoEQFilter[0].filtfilt(demod), self.videoEQFilter[1].filtfilt(
-            demod
-        )
-        hb = self.videoEQFilter[0].lfilt(demod[:11]), self.videoEQFilter[1].lfilt(
-            demod[:11]
-        )
-        hc = np.append(hb[0][:10], ha[0][10:]), np.append(
-            hb[1][:10], ha[1][10:]
-        )  # first edge distortion hack
+        overlap = 10
+        ha = self.videoEQFilter[0].filtfilt(demod), \
+             self.videoEQFilter[1].filtfilt(demod)
+        hb = self.videoEQFilter[0].lfilt(demod[:overlap]), \
+             self.videoEQFilter[1].lfilt(demod[:overlap])
+        hc = np.append(hb[0][:overlap], ha[0][overlap:]), \
+             np.append(hb[1][:overlap], ha[1][overlap:])  # first edge distortion hack
 
         hf = np.multiply(
             np.add(
@@ -1632,6 +1638,15 @@ class VHSRFDecode(ldd.RFDecode):
 
         return result
 
+    def timewarp(self, data):
+        #image, _ = self.dtw.loss_map(data)
+        #utils.plot_image(image)
+        dewarp, state = self.dtw.velocity_compensatorB(data)
+        if not state:
+            return self.timewarp(data)
+
+        return dewarp
+
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
         rv = {}
 
@@ -1644,6 +1659,9 @@ class VHSRFDecode(ldd.RFDecode):
 
         if data is None:
             data = npfft.ifft(indata_fft).real
+
+        data = self.timewarp(data)
+        indata_fft = npfft.fft(data[: self.blocklen])
 
         raw_filtered = npfft.ifft(
             indata_fft * self.Filters["RFVideoRaw"] * self.Filters["hilbert"]
@@ -1700,37 +1718,37 @@ class VHSRFDecode(ldd.RFDecode):
         # crude DC offset removal
         out_chroma = out_chroma - np.mean(out_chroma)
 
-        if False:
+        if True:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+            fig, ax1 = plt.subplots()
 
-            out_video2 = np.fft.irfft(
-                demod_fft * self.Filters["FVideo2"][0 : (self.blocklen // 2) + 1]
-            ).real
-            out_video3 = np.fft.irfft(
-                demod_fft * self.Filters["FVideo3"][0 : (self.blocklen // 2) + 1]
-            ).real
+            #out_video2 = np.fft.irfft(
+            #    demod_fft * self.Filters["FVideo2"][0 : (self.blocklen // 2) + 1]
+            #).real
+            #out_video3 = np.fft.irfft(
+            #    demod_fft * self.Filters["FVideo3"][0 : (self.blocklen // 2) + 1]
+            #).real
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
-            # ax1.axhline(self.iretohz(0))
-            # ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            # ax1.axhline(self.iretohz(7.5))
-            # ax1.axhline(self.iretohz(100))
+            ax1.axhline(self.iretohz(0))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            ax1.axhline(self.iretohz(7.5))
+            ax1.axhline(self.iretohz(100))
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
             ax1.plot(out_video)
-            ax2.plot(out_video2)
-            ax3.plot(out_video3)
+            #ax2.plot(out_video2[:2048])
+            #ax3.plot(out_video3[:2048])
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
             #            ax4.plot(hilbert.imag)
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
-            exit(0)
+            #exit(0)
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
