@@ -37,7 +37,7 @@ RFParams_PAL_VHS["color_under_carrier"] = ((625 * 25) * 40) + 1953
 
 # Upper frequency of bandpass to filter out chroma from the rf signal.
 # For vhs decks it's typically a bit more than 2x cc
-RFParams_PAL_VHS["chroma_bpf_upper"] = 1400000
+RFParams_PAL_VHS["chroma_bpf_upper"] = 1200000
 
 # Video EQ after FM demod (PAL VHS)
 RFParams_PAL_VHS["video_eq"] = {
@@ -122,7 +122,7 @@ RFParams_PAL_UMATIC["video_lpf_freq"] = 4200000
 RFParams_PAL_UMATIC["video_lpf_order"] = 2
 # 685546 ± 200
 RFParams_PAL_UMATIC["color_under_carrier"] = (625 * 25) * (351 / 8)
-RFParams_PAL_UMATIC["chroma_bpf_upper"] = 1500000
+RFParams_PAL_UMATIC["chroma_bpf_upper"] = 1300000
 
 # Video EQ after FM demod (PAL UMATIC) (based on NTSC one, needs tweak)
 RFParams_PAL_UMATIC["video_eq"] = {

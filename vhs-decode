@@ -213,6 +213,24 @@ parser.add_argument(
     "--cvbs", dest="cvbs", action="store_true", default=False, help="Decode raw CVBS"
 )
 
+parser.add_argument(
+    "--notch",
+    dest="notch",
+    metavar="notch",
+    type=lddu.parse_frequency,
+    default=None,
+    help="Center frequency of optional notch filter on rf and chroma.",
+)
+
+parser.add_argument(
+    "--notch_q",
+    dest="notch_q",
+    metavar="notch_q",
+    type=float,
+    default=10.0,
+    help="Q factor for notch filter",
+)
+
 args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
@@ -255,6 +273,8 @@ rf_options = {
     "high_boost": args.high_boost,
     "chroma_trap": args.chroma_trap,
     "sharpness": args.sharpness,
+    "notch": args.notch,
+    "notch_q": args.notch_q,
 }
 
 extra_options = {

@@ -1341,6 +1341,8 @@ class VHSRFDecode(ldd.RFDecode):
         self.chroma_trap = rf_options.get("chroma_trap", False)
         track_phase = rf_options.get("track_phase", None)
         high_boost = rf_options.get("high_boost", None)
+        self.notch = rf_options.get("notch", None)
+        self.notch_q = rf_options.get("notch_q", 10.0)
 
         if track_phase is None:
             self.track_phase = 0
@@ -1566,8 +1568,16 @@ class VHSRFDecode(ldd.RFDecode):
             [50000 / self.freq_hz_half, DP["chroma_bpf_upper"] / self.freq_hz_half],
             btype="bandpass",
             output="sos",
-        )  # sps.butter(4, [1.2/self.freq_half], btype='lowpass')
+        )
         self.Filters["FVideoBurst"] = chroma_lowpass
+
+        if self.notch is not None:
+            self.Filters["FVideoNotch"] = sps.iirnotch(
+                self.notch / self.freq_half, self.notch_q
+            )
+            self.Filters["FVideoNotchF"] = lddu.filtfft(
+                self.Filters["FVideoNotch"], self.blocklen
+            )
 
         # The following filters are for post-TBC:
         # The output sample rate is at approx 4fsc
@@ -1715,6 +1725,9 @@ class VHSRFDecode(ldd.RFDecode):
         if data is None:
             data = npfft.ifft(indata_fft).real
 
+        if self.notch is not None:
+            indata_fft = indata_fft * self.Filters["FVideoNotchF"]
+
         raw_filtered = npfft.ifft(
             indata_fft * self.Filters["RFVideoRaw"] * self.Filters["hilbert"]
         ).real
@@ -1763,24 +1776,34 @@ class VHSRFDecode(ldd.RFDecode):
         # Filter out the color-under signal from the raw data.
         out_chroma = filter_simple(data[: self.blocklen], self.Filters["FVideoBurst"])
 
+        if self.notch is not None:
+            out_chroma = sps.filtfilt(
+                self.Filters["FVideoNotch"][0],
+                self.Filters["FVideoNotch"][1],
+                out_chroma,
+            )
+
         # Move chroma to compensate for Y filter delay.
         # value needs tweaking, ideally it should be calculated if possible.
         # TODO: Not sure if we need this after hilbert filter change, needs check.
         out_chroma = np.roll(out_chroma, 10)
+
         # crude DC offset removal
-        out_chroma = out_chroma - np.mean(out_chroma)
+        out_chroma = out_chroma - np.mean(
+            out_chroma[self.blockcut : -self.blockcut_end]
+        )
 
         if False:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
 
-            out_video2 = np.fft.irfft(
-                demod_fft * self.Filters["FVideo2"][0 : (self.blocklen // 2) + 1]
-            ).real
-            out_video3 = np.fft.irfft(
-                demod_fft * self.Filters["FVideo3"][0 : (self.blocklen // 2) + 1]
-            ).real
+            # out_video2 = np.fft.irfft(
+            #     demod_fft * self.Filters["FVideo2"][0 : (self.blocklen // 2) + 1]
+            # ).real
+            # out_video3 = np.fft.irfft(
+            #     demod_fft * self.Filters["FVideo3"][0 : (self.blocklen // 2) + 1]
+            # ).real
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
@@ -1791,16 +1814,34 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(out_video)
-            ax2.plot(out_video2)
-            ax3.plot(out_video3)
+            w, h = sps.sosfreqz(self.Filters["FVideoBurst"], self.blocklen, whole=True)
+            w = (w / math.pi) * self.freq_hz_half
+            w2, h2 = sps.freqz(
+                self.Filters["FVideoNotch"][0],
+                self.Filters["FVideoNotch"][1],
+                self.blocklen,
+                whole=True,
+            )
+            w2 = (w / math.pi) * self.freq_hz_half
+            ax1.plot(w[2:], indata_fft[2:])
+            ax2.plot(w[2:], out_chroma[2:])
+            #            ax2.plot(w[2:], indata_fft_filt[2:], color="#FF0000")
+            #            ax1.plot(w[2:], h[2:], color="#000000")
+            #            ax1.plot(w[2:], h2[2:], color="#FF0000")
+            ax3.plot(w[2:], np.fft.fft(out_chroma)[2:])
+            chroma_filt = sps.filtfilt(
+                self.Filters["FVideoNotch"][0],
+                self.Filters["FVideoNotch"][1],
+                out_chroma,
+            )
+            ax4.plot(w[2:], np.fft.fft(chroma_filt)[2:])
+            # ax4.plot(out_chroma[2:])
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
             #            ax4.plot(hilbert.imag)
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
-            exit(0)
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
@@ -1844,12 +1885,10 @@ class VHSRFDecode(ldd.RFDecode):
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
             ax1.axhline(self.iretohz(0))
-            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]), color="#FF0000")
             ax1.axhline(self.iretohz(7.5))
             ax1.axhline(self.iretohz(100))
             # print("Vsync IRE", self.SysParams["vsync_ire"])
-            #            ax2 = ax1.twinx()
-            #            ax3 = ax1.twinx()
             ax1.plot(luma[:2048])
             ax2.plot(luma05[:2048])
             #            ax4.plot(env, color="#00FF00")
