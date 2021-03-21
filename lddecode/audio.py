@@ -1,4 +1,7 @@
 #!/usr/bin/python3
+
+# Draft of new-audio code
+
 import argparse
 import copy
 import itertools
@@ -130,7 +133,7 @@ else:
     args = handle_options(sys.argv)
 
 if args.infile == '-':
-    in_fd = sys.stdin
+    in_fd = None
 else:
     in_fd = open(args.infile, 'rb')
 
@@ -149,7 +152,7 @@ else:
 
     efm_decode = not args.noefm
     if efm_decode:
-        efm_pll = efm_pll.EFM_PLL()
+        efm_pll_object = efm_pll.EFM_PLL()
         efm_fd = open(args.outfile + '.efm', 'wb')
 
 # Common top-level code
@@ -179,17 +182,22 @@ blockskip = SysParams['blocklen_dropb'] + SysParams['blocklen_drope']
 dropb = SysParams['blocklen_dropb']
 drope = SysParams['blocklen_drope']
 
+apass = SysParams['audio_filterwidth']
 afilt_len = 512
 
 freq = utils.parse_frequency(args.freq)
 freq_hz = (freq * 1.0e6)
 freq_hz_half = freq_hz / 2
 
+efm_filter = efm_pll.computeefmfilter(freq_hz, blocklen)
+
 def audio_bandpass_butter(center, closerange = 125000, longrange = 180000):
-    #center = SP['audio_lfreq']
+    ''' Returns filter coefficients for first stage per-channel filtering '''
     freqs_inner = [(center - closerange) / freq_hz_half, (center + closerange) / freq_hz_half]
     freqs_outer = [(center - longrange) / freq_hz_half, (center + longrange) / freq_hz_half]
+    
     N, Wn = sps.buttord(freqs_inner, freqs_outer, 1, 15)
+
     return sps.butter(N, Wn, btype='bandpass')
 
 audio_lfilt_full = utils.filtfft(audio_bandpass_butter(SP['audio_lfreq']), blocklen)
@@ -217,49 +225,6 @@ audio2_deemp = utils.filtfft(utils.emphasis_iir(5.3e-6, 75e-6, a1_freq), blockle
 
 audio2_filter = audio2_lpf * audio2_deemp
 
-def computeefmfilter():
-    """Frequency-domain equalisation filter for the LaserDisc EFM signal.
-    This was inspired by the input signal equaliser in WSJT-X, described in
-    Steven J. Franke and Joseph H. Taylor, "The MSK144 Protocol for
-    Meteor-Scatter Communication", QEX July/August 2017.
-    <http://physics.princeton.edu/pulsar/k1jt/MSK144_Protocol_QEX.pdf>
-
-    This improved EFM filter was devised by Adam Sampson (@atsampson)
-    """
-    # Frequency bands
-    freqs = np.linspace(0.0e6, 2.0e6, num=11)
-    freq_per_bin = freq_hz / blocklen
-    # Amplitude and phase adjustments for each band.
-    # These values were adjusted empirically based on a selection of NTSC and PAL samples.
-    amp = np.array([0.0, 0.2, 0.41, 0.73, 0.98, 1.03, 0.99, 0.81, 0.59, 0.42, 0.0])
-    phase = np.array(
-        [0.0, -0.95, -1.05, -1.05, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2]
-    )
-    coeffs = None
-
-    """Compute filter coefficients for the given FFTFilter."""
-    # Anything above the highest frequency is left as zero.
-    coeffs = np.zeros(blocklen, dtype=np.complex)
-
-    # Generate the frequency-domain coefficients by cubic interpolation between the equaliser values.
-    a_interp = spi.interp1d(freqs, amp, kind="cubic")
-    p_interp = spi.interp1d(freqs, phase, kind="cubic")
-
-    nonzero_bins = int(freqs[-1] / freq_per_bin) + 1
-
-    bin_freqs = np.arange(nonzero_bins) * freq_per_bin
-    bin_amp = a_interp(bin_freqs)
-    bin_phase = p_interp(bin_freqs)
-
-    # Scale by the amplitude, rotate by the phase
-    coeffs[:nonzero_bins] = bin_amp * (
-        np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase))
-    )
-
-    return coeffs * 8
-
-efm_filter = computeefmfilter()
-
 aa_channels = []
 
 if True:
@@ -273,8 +238,7 @@ filt1 = {}
 filt1f = {}
 audio1_buffer = {}
 
-apass = 150000 #SysParams['audio_filterwidth']
-
+# Compute first phase audio filters
 for ch in aa_channels:
     cname = ch[0]
     afreq = SP[ch[1]]
@@ -287,7 +251,6 @@ for ch in aa_channels:
     low_freq[cname] = freq_hz * (lowbin / blocklen)
     
     slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
-    #left_slicer = partial(utils.fft_do_slice, lowbin=lowbin, nbins=nbins, blocklen=blocklen)
     filt1[cname] = slicer(audio1_fir) * hilbert
     filt1f[cname] = audio1_fir * utils.build_hilbert(blocklen)
     
@@ -299,6 +262,7 @@ audio1_clip = blockskip // (blocklen // nbins)
 input_buffer = utils.StridedCollector(blocklen*2, blockskip*2)
 
 def proc1(fft_in):
+    ''' Applies first stage audio filters '''
     for ch in aa_channels:
         a1 = npfft.ifft(slicer(fft_in) * filt1[ch[0]])
         a1u = utils.unwrap_hilbert(a1, audio1_freq)
@@ -308,7 +272,8 @@ def proc1(fft_in):
         
     return fft_in
 
-def proc2():
+def proc2(decimation = 4):
+    ''' Applies second stage audio filters '''
     output = []
     inputs = []
     
@@ -317,17 +282,22 @@ def proc2():
         a2_fft = npfft.fft(a2_in)
         inputs.append(a2_fft)
         a2 = npfft.ifft(a2_fft * audio2_filter)
-        output.append(utils.sqsum(a2[dropb:-drope]))
+
+        filtered = utils.sqsum(a2[dropb:-drope])
+        output.append(filtered[::decimation])
         
-    return inputs, output    
+    return inputs, output
 
 inputs = []
 output = []
 allout = []
 
 while True:
-#for x in range(5000):
-    inbuf = in_fd.read(65536)
+    if args.infile == '-':
+        inbuf = sys.stdin.buffer.read(65536)
+    else:
+        inbuf = in_fd.read(65536)
+
     if len(inbuf) == 0:
         break
         
@@ -374,7 +344,7 @@ while True:
             if args.prefm:
                 rawefm_fd.write(filtered_efm2.tobytes())
 
-            efm_out = efm_pll.process(filtered_efm2)
+            efm_out = efm_pll_object.process(filtered_efm2)
             #print(efm_out.shape, max(filtered_efm.imag))
             efm_fd.write(efm_out.tobytes())
             
