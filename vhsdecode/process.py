@@ -1651,16 +1651,10 @@ class VHSRFDecode(ldd.RFDecode):
             DP["video_eq"]["loband"]["transition"],
             DP["video_eq"]["loband"]["order_limit"],
         )
-        iir_eq_hiband = utils.firdes_highpass(
-            self.freq_hz,
-            DP["video_eq"]["hiband"]["corner"],
-            DP["video_eq"]["hiband"]["transition"],
-            DP["video_eq"]["hiband"]["order_limit"],
-        )
 
         self.videoEQFilter = {
             0: utils.FiltersClass(iir_eq_loband[0], iir_eq_loband[1], self.freq_hz),
-            1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
+            # 1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
         }
 
         self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
@@ -1678,26 +1672,14 @@ class VHSRFDecode(ldd.RFDecode):
 
     # It enhances the upper band of the video signal
     def video_EQ(self, demod):
-        overlap = 10
-        ha = self.videoEQFilter[0].filtfilt(demod), \
-             self.videoEQFilter[1].filtfilt(demod)
-        hb = self.videoEQFilter[0].lfilt(demod[:overlap]), \
-             self.videoEQFilter[1].lfilt(demod[:overlap])
-        hc = np.append(hb[0][:overlap], ha[0][overlap:]), \
-             np.append(hb[1][:overlap], ha[1][overlap:])  # first edge distortion hack
+        overlap = 10 # how many samples the edge distortion produces
+        ha = self.videoEQFilter[0].filtfilt(demod)
+        hb = self.videoEQFilter[0].lfilt(demod[:overlap])
+        hc = np.concatenate((hb[:overlap], ha[overlap:]))  # edge distortion compensation, needs check
+        hf = np.multiply(self.DecoderParams["video_eq"]["loband"]["gain"], hc)
 
-        hf = np.multiply(
-            np.add(
-                np.multiply(self.DecoderParams["video_eq"]["loband"]["gain"], hc[0]),
-                np.multiply(self.DecoderParams["video_eq"]["hiband"]["gain"], hc[1]),
-            ),
-            0.5,
-        )
-
-        gain = 0.7 * self.sharpness_level
-
+        gain = self.sharpness_level
         result = np.multiply(np.add(np.roll(np.multiply(gain, hf), 0), demod), 1)
-
         return result
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
@@ -1743,9 +1725,9 @@ class VHSRFDecode(ldd.RFDecode):
             demod = self.chromaTrap.work(demod)
 
         # Temporarily disabled until adapted for different deemph.
-        # if self.sharpness_level > 0:
-        # applies the video EQ
-        # demod = self.video_EQ(demod)
+        if self.sharpness_level > 0:
+            #applies the video EQ
+            demod = self.video_EQ(demod)
 
         # applies main deemphasis filter
         demod_fft = npfft.rfft(demod)
@@ -1789,7 +1771,7 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(out_video)
+            ax1.plot(out_video[:2048])
             #ax2.plot(out_video2[:2048])
             #ax3.plot(out_video3[:2048])
             #            ax4.plot(env, color="#00FF00")
