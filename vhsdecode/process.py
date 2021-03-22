@@ -1724,7 +1724,7 @@ class VHSRFDecode(ldd.RFDecode):
             # applies the Subcarrier trap
             demod = self.chromaTrap.work(demod)
 
-        # Temporarily disabled until adapted for different deemph.
+        # Disabled if sharpness level is zero (default).
         if self.sharpness_level > 0:
             #applies the video EQ
             demod = self.video_EQ(demod)
