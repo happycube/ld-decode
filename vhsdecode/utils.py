@@ -52,9 +52,6 @@ def dualplot_scope(ch0, ch1):
     ax1.plot(ch1, color="#0000FF")
     plt.show()
 
-def plot_image(data):
-    plt.imshow(data,  cmap="hot", clim=(0, 1.0))
-    plt.show()
 
 # pads data with filler is len(data) < len(filler), otherwise truncates it
 def pad_or_truncate(data, filler):
