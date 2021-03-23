@@ -1661,16 +1661,10 @@ class VHSRFDecode(ldd.RFDecode):
             DP["video_eq"]["loband"]["transition"],
             DP["video_eq"]["loband"]["order_limit"],
         )
-        iir_eq_hiband = utils.firdes_highpass(
-            self.freq_hz,
-            DP["video_eq"]["hiband"]["corner"],
-            DP["video_eq"]["hiband"]["transition"],
-            DP["video_eq"]["hiband"]["order_limit"],
-        )
 
         self.videoEQFilter = {
             0: utils.FiltersClass(iir_eq_loband[0], iir_eq_loband[1], self.freq_hz),
-            1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
+            # 1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
         }
 
         self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
@@ -1688,26 +1682,13 @@ class VHSRFDecode(ldd.RFDecode):
 
     # It enhances the upper band of the video signal
     def video_EQ(self, demod):
-        ha = self.videoEQFilter[0].filtfilt(demod), self.videoEQFilter[1].filtfilt(
-            demod
-        )
-        hb = self.videoEQFilter[0].lfilt(demod[:11]), self.videoEQFilter[1].lfilt(
-            demod[:11]
-        )
-        hc = np.append(hb[0][:10], ha[0][10:]), np.append(
-            hb[1][:10], ha[1][10:]
-        )  # first edge distortion hack
+        overlap = 10 # how many samples the edge distortion produces
+        ha = self.videoEQFilter[0].filtfilt(demod)
+        hb = self.videoEQFilter[0].lfilt(demod[:overlap])
+        hc = np.concatenate((hb[:overlap], ha[overlap:]))  # edge distortion compensation, needs check
+        hf = np.multiply(self.DecoderParams["video_eq"]["loband"]["gain"], hc)
 
-        hf = np.multiply(
-            np.add(
-                np.multiply(self.DecoderParams["video_eq"]["loband"]["gain"], hc[0]),
-                np.multiply(self.DecoderParams["video_eq"]["hiband"]["gain"], hc[1]),
-            ),
-            0.5,
-        )
-
-        gain = 0.7 * self.sharpness_level
-
+        gain = self.sharpness_level
         result = np.multiply(np.add(np.roll(np.multiply(gain, hf), 0), demod), 1)
 
         return result
@@ -1757,10 +1738,10 @@ class VHSRFDecode(ldd.RFDecode):
             # applies the Subcarrier trap
             demod = self.chromaTrap.work(demod)
 
-        # Temporarily disabled until adapted for different deemph.
-        # if self.sharpness_level > 0:
-        # applies the video EQ
-        # demod = self.video_EQ(demod)
+        # Disabled if sharpness level is zero (default).
+        if self.sharpness_level > 0:
+            #applies the video EQ
+            demod = self.video_EQ(demod)
 
         # applies main deemphasis filter
         demod_fft = npfft.rfft(demod)
@@ -1783,65 +1764,45 @@ class VHSRFDecode(ldd.RFDecode):
                 out_chroma,
             )
 
+
         # Move chroma to compensate for Y filter delay.
         # value needs tweaking, ideally it should be calculated if possible.
         # TODO: Not sure if we need this after hilbert filter change, needs check.
         out_chroma = np.roll(out_chroma, 10)
-
         # crude DC offset removal
-        out_chroma = out_chroma - np.mean(
-            out_chroma[self.blockcut : -self.blockcut_end]
-        )
+        out_chroma = out_chroma - np.mean(out_chroma[self.blockcut : -self.blockcut_end])
 
         if False:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
+            fig, ax1 = plt.subplots()
 
-            # out_video2 = np.fft.irfft(
-            #     demod_fft * self.Filters["FVideo2"][0 : (self.blocklen // 2) + 1]
-            # ).real
-            # out_video3 = np.fft.irfft(
-            #     demod_fft * self.Filters["FVideo3"][0 : (self.blocklen // 2) + 1]
-            # ).real
+            #out_video2 = np.fft.irfft(
+            #    demod_fft * self.Filters["FVideo2"][0 : (self.blocklen // 2) + 1]
+            #).real
+            #out_video3 = np.fft.irfft(
+            #    demod_fft * self.Filters["FVideo3"][0 : (self.blocklen // 2) + 1]
+            #).real
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
-            # ax1.axhline(self.iretohz(0))
-            # ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            # ax1.axhline(self.iretohz(7.5))
-            # ax1.axhline(self.iretohz(100))
+            ax1.axhline(self.iretohz(0))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            ax1.axhline(self.iretohz(7.5))
+            ax1.axhline(self.iretohz(100))
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            w, h = sps.sosfreqz(self.Filters["FVideoBurst"], self.blocklen, whole=True)
-            w = (w / math.pi) * self.freq_hz_half
-            w2, h2 = sps.freqz(
-                self.Filters["FVideoNotch"][0],
-                self.Filters["FVideoNotch"][1],
-                self.blocklen,
-                whole=True,
-            )
-            w2 = (w / math.pi) * self.freq_hz_half
-            ax1.plot(w[2:], indata_fft[2:])
-            ax2.plot(w[2:], out_chroma[2:])
-            #            ax2.plot(w[2:], indata_fft_filt[2:], color="#FF0000")
-            #            ax1.plot(w[2:], h[2:], color="#000000")
-            #            ax1.plot(w[2:], h2[2:], color="#FF0000")
-            ax3.plot(w[2:], np.fft.fft(out_chroma)[2:])
-            chroma_filt = sps.filtfilt(
-                self.Filters["FVideoNotch"][0],
-                self.Filters["FVideoNotch"][1],
-                out_chroma,
-            )
-            ax4.plot(w[2:], np.fft.fft(chroma_filt)[2:])
-            # ax4.plot(out_chroma[2:])
+            ax1.plot(out_video[:2048])
+            #ax2.plot(out_video2[:2048])
+            #ax3.plot(out_video3[:2048])
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
             #            ax4.plot(hilbert.imag)
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
+            exit(0)
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
@@ -1885,10 +1846,12 @@ class VHSRFDecode(ldd.RFDecode):
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
             ax1.axhline(self.iretohz(0))
-            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]), color="#FF0000")
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
             ax1.axhline(self.iretohz(7.5))
             ax1.axhline(self.iretohz(100))
             # print("Vsync IRE", self.SysParams["vsync_ire"])
+            #            ax2 = ax1.twinx()
+            #            ax3 = ax1.twinx()
             ax1.plot(luma[:2048])
             ax2.plot(luma05[:2048])
             #            ax4.plot(env, color="#00FF00")
