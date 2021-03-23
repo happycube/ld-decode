@@ -205,8 +205,8 @@ parser.add_argument(
     "--sharpness",
     metavar="sharpness",
     type=int,
-    default=50,
-    help="Sharpness level (0~100) (temporarily disabled)",
+    default=0,
+    help="Sharpness level (0~100)",
 )
 
 parser.add_argument(

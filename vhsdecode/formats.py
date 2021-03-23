@@ -41,8 +41,7 @@ RFParams_PAL_VHS["chroma_bpf_upper"] = 1400000
 
 # Video EQ after FM demod (PAL VHS)
 RFParams_PAL_VHS["video_eq"] = {
-    "loband": {"corner": 1.25e6, "transition": 39e6, "order_limit": 1, "gain": 9.6},
-    "hiband": {"corner": 3.38e6, "transition": 16e6, "order_limit": 2, "gain": 320},
+    "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 2},
 }
 
 # Video Y FM de-emphasis (1.25~1.35µs)
@@ -94,8 +93,7 @@ RFParams_NTSC_VHS["luma_carrier"] = 455.0 * ((525 * (30 / 1.001)) / 2.0)
 
 # Video EQ after FM demod (NTSC VHS)
 RFParams_NTSC_VHS["video_eq"] = {
-    "loband": {"corner": 1.25e6, "transition": 39e6, "order_limit": 1, "gain": 9.6},
-    "hiband": {"corner": 3.38e6, "transition": 8e6, "order_limit": 3, "gain": 960},
+    "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 4},
 }
 
 # Video Y FM de-emphasis (1.25~1.35µs)
@@ -126,8 +124,7 @@ RFParams_PAL_UMATIC["chroma_bpf_upper"] = 1500000
 
 # Video EQ after FM demod (PAL UMATIC) (based on NTSC one, needs tweak)
 RFParams_PAL_UMATIC["video_eq"] = {
-    "loband": {"corner": 1.25e6, "transition": 39e6, "order_limit": 1, "gain": 4.75},
-    "hiband": {"corner": 3.58e6, "transition": 16e6, "order_limit": 3, "gain": 480},
+    "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 1},
 }
 
 # Video Y FM de-emphasis (550 ~ 650ns)
@@ -172,8 +169,7 @@ RFParams_NTSC_UMATIC["chroma_bpf_upper"] = 1500000
 
 # Video EQ after FM demod (NTSC UMATIC) (needs tweak)
 RFParams_NTSC_UMATIC["video_eq"] = {
-    "loband": {"corner": 1.25e6, "transition": 39e6, "order_limit": 1, "gain": 4.75},
-    "hiband": {"corner": 3.58e6, "transition": 16e6, "order_limit": 3, "gain": 480},
+    "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 2},
 }
 
 # Video Y FM de-emphasis (550 ~ 650ns)
