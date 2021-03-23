@@ -85,15 +85,15 @@ parser.add_argument(
     action="store_true",
     help="source is in NTSC-J (IRE 0 black) format (untested)",
 )
-parser.add_argument(
-    "-L",
-    "--level_adjust",
-    dest="level_adjust",
-    metavar="value",
-    type=float,
-    default=0.2,
-    help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
-)
+# parser.add_argument(
+#     "-L",
+#     "--level_adjust",
+#     dest="level_adjust",
+#     metavar="value",
+#     type=float,
+#     default=0.2,
+#     help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder) _ .",
+# )
 parser.add_argument(
     "--cxadc",
     dest="cxadc",
@@ -208,7 +208,8 @@ vhsd = CVBSDecode(
     system=system,
     threads=args.threads,
     inputfreq=40,
-    level_adjust=args.level_adjust,
+    level_adjust=0.2,
+    # level_adjust=args.level_adjust,
     rf_options=rf_options,
     extra_options=extra_options,
 )

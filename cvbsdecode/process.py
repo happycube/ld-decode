@@ -36,35 +36,6 @@ def chroma_to_u16(chroma):
     return np.uint16(chroma + S16_ABS_MAX)
 
 
-@njit
-def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
-    """Scale chroma according to the level of the color burst on each line."""
-
-    output = np.zeros(chroma.size, dtype=np.double)
-    for linenumber in range(16, lines):
-        linestart = linelength * linenumber
-        lineend = linestart + linelength
-        line = chroma[linestart:lineend]
-        output[linestart:lineend] = acc_line(line, burst_abs_ref, burststart, burstend)
-
-    return output
-
-
-@njit
-def acc_line(chroma, burst_abs_ref, burststart, burstend):
-    """Scale chroma according to the level of the color burst the line."""
-    output = np.zeros(chroma.size, dtype=np.double)
-
-    line = chroma
-    burst_abs_mean = lddu.rms(line[burststart:burstend])
-    # np.sqrt(np.mean(np.square(line[burststart:burstend])))
-    #    burst_abs_mean = np.mean(np.abs(line[burststart:burstend]))
-    scale = burst_abs_ref / burst_abs_mean if burst_abs_mean != 0 else 1
-    output = line * scale
-
-    return output
-
-
 def getpulses_override(field):
     """Find sync pulses in the demodulated video sigal
 
@@ -147,90 +118,6 @@ def getpulses_override(field):
 
 def filter_simple(data, filter_coeffs):
     return sps.sosfiltfilt(filter_coeffs, data, padlen=150)
-
-
-@njit
-def comb_c_pal(data, line_len):
-    """Very basic comb filter, adds the signal together with a signal delayed by 2H,
-    and one advanced by 2H
-    line by line. VCRs do this to reduce crosstalk.
-    """
-
-    data2 = data.copy()
-    numlines = len(data) // line_len
-    for line_num in range(16, numlines - 2):
-        adv2h = data2[(line_num + 2) * line_len : (line_num + 3) * line_len]
-        delayed2h = data2[(line_num - 2) * line_len : (line_num - 1) * line_len]
-        line_slice = data[line_num * line_len : (line_num + 1) * line_len]
-        # Let the delayed signal contribute 1/4 and advanced 1/4.
-        # Could probably make the filtering configurable later.
-        data[line_num * line_len : (line_num + 1) * line_len] = (
-            (line_slice) - (delayed2h) - adv2h
-        ) / 3
-    return data
-
-
-@njit
-def comb_c_ntsc(data, line_len):
-    """Very basic comb filter, adds the signal together with a signal delayed by 1H,
-    line by line. VCRs do this to reduce crosstalk.
-    """
-
-    data2 = data.copy()
-    numlines = len(data) // line_len
-    for line_num in range(16, numlines - 2):
-        delayed1h = data2[(line_num - 1) * line_len : (line_num) * line_len]
-        line_slice = data[line_num * line_len : (line_num + 1) * line_len]
-        # Let the delayed signal contribute 1/3.
-        # Could probably make the filtering configurable later.
-        data[line_num * line_len : (line_num + 1) * line_len] = (
-            (line_slice * 2) - (delayed1h)
-        ) / 3
-    return data
-
-
-@njit
-def upconvert_chroma(
-    chroma,
-    lineoffset,
-    linesout,
-    outwidth,
-    chroma_heterodyne,
-    phase_rotation,
-    starting_phase,
-):
-    uphet = np.zeros(len(chroma), dtype=np.double)
-    if phase_rotation == 0:
-        # Track 1 - for PAL, phase doesn't change.
-        start = lineoffset
-        end = lineoffset + (outwidth * linesout)
-        heterodyne = chroma_heterodyne[0][start:end]
-        c = chroma[start:end]
-        # Mixing the chroma signal with a signal at the frequency of colour under + fsc gives us
-        # a signal with frequencies at the difference and sum, the difference is what we want as
-        # it's at the right frequency.
-        mixed = heterodyne * c
-
-        uphet[start:end] = mixed
-
-    else:
-        #        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
-        # Track 2 - needs phase rotation or the chroma will be inverted.
-        phase = starting_phase
-        for linenumber in range(lineoffset, linesout + lineoffset):
-            linestart = (linenumber - lineoffset) * outwidth
-            lineend = linestart + outwidth
-
-            heterodyne = chroma_heterodyne[phase][linestart:lineend]
-
-            c = chroma[linestart:lineend]
-
-            line = heterodyne * c
-
-            uphet[linestart:lineend] = line
-
-            phase = (phase + phase_rotation) % 4
-    return uphet
 
 
 def get_burst_area(field):
@@ -489,205 +376,6 @@ def get_field_phase_id(field):
     return phase_id
 
 
-def find_crossings(data, threshold):
-    """Find where the data crosses the set threshold."""
-
-    # We do this by constructing array where positions above
-    # the threshold are marked as true, other sfalse,
-    # and use diff to mark where the value changes.
-    crossings = np.diff(data < threshold)
-    # TODO: See if we can avoid reduntantly looking for both up and
-    # down crossing when we just need one of them.
-    return crossings
-
-
-def find_crossings_dir(data, threshold, look_for_down):
-    """Find where the data crosses the set threshold
-    the look_for_down parameters determines if the crossings returned are down
-    or up crossings.
-    ."""
-    crossings = find_crossings(data, threshold)
-    crossings_pos = np.argwhere(crossings)[:, 0]
-    if len(crossings_pos) <= 0:
-        return []
-    first_cross = crossings_pos[0]
-    if first_cross >= len(data):
-        return []
-    first_crossing_is_down = data[first_cross] > data[first_cross + 1]
-    if first_crossing_is_down == look_for_down:
-        return crossings_pos[::2]
-    else:
-        return crossings_pos[1::2]
-
-
-def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
-    """Combine arrays of up and down crossings, and merge ones with small gaps between them.
-    Intended to be used where up and down crossing levels are different, the two lists will not
-    always alternate or have the same length.
-    Returns a list of start/end tuples.
-    """
-    used = []
-
-    # TODO: Fix when ending on dropout
-
-    cr_up = iter(crossings_up)
-    last_u = 0
-    # Loop through crossings and combine
-    # TODO: Doing this via a loop is probably not ideal in python,
-    # we may want to look for a way to more directly generate a list of down/up crossings
-    # with hysteresis.
-    for d in crossings_down:
-        if d < last_u:
-            continue
-
-        # If the distance between two dropouts is very small, we merge them.
-        if d - last_u < merge_threshold and len(used) > 0:
-            # Pop the last added dropout and use it's starting point
-            # as the start of the merged one.
-            last = used.pop()
-            d = last[0]
-
-        for u in cr_up:
-            if u > d:
-                used.append((d, u))
-                last_u = u
-                break
-
-    return used
-
-
-def detect_dropouts_rf(field):
-    """Look for dropouts in the input data, based on rf envelope amplitude.
-    Uses either an percentage of the frame average rf level, or an absolute value.
-    TODO: A more advanced algorithm with hysteresis etc.
-    """
-    env = field.data["video"]["envelope"]
-    threshold_p = field.rf.dod_threshold_p
-    threshold_abs = field.rf.dod_threshold_a
-    hysteresis = field.rf.dod_hysteresis
-
-    threshold = 0.0
-    if threshold_abs is not None:
-        threshold = threshold_abs
-    else:
-        # Generate a threshold based on the field envelope average.
-        # This may not be ideal on a field with a lot of droputs,
-        # so we may want to use statistics of the previous averages
-        # to avoid the threshold ending too low.
-        field_average = np.mean(field.data["video"]["envelope"])
-        threshold = field_average * threshold_p
-
-    errlist = []
-
-    crossings_down = find_crossings_dir(env, threshold, True)
-    crossings_up = find_crossings_dir(env, threshold * hysteresis, False)
-
-    if (
-        len(crossings_down) > 0
-        and len(crossings_up) > 0
-        and crossings_down[0] > crossings_up[0]
-        and env[0] < threshold
-    ):
-        # Handle if we start on a dropout by adding a zero at the start since we won't have any
-        # down crossing for it in the data.
-        crossings_down = np.concatenate((np.array([0]), crossings_down), axis=None)
-
-    errlist = combine_to_dropouts(
-        crossings_down, crossings_up, vhs_formats.DOD_MERGE_THRESHOLD
-    )
-
-    # Drop very short dropouts that were not merged.
-    # We do this after mergin to avoid removing short consecutive dropouts that
-    # could be merged.
-    errlist = list(filter(lambda s: s[1] - s[0] > vhs_formats.DOD_MIN_LENGTH, errlist))
-
-    rv_lines = []
-    rv_starts = []
-    rv_ends = []
-
-    # Convert to tbc positions.
-    dropouts = dropout_errlist_to_tbc(field, errlist)
-    for r in dropouts:
-        rv_lines.append(r[0] - 1)
-        rv_starts.append(int(r[1]))
-        rv_ends.append(int(r[2]))
-
-    return rv_lines, rv_starts, rv_ends
-
-
-def dropout_errlist_to_tbc(field, errlist):
-    """Convert data from raw data coordinates to tbc coordinates, and splits up
-    multi-line dropouts.
-    """
-    dropouts = []
-
-    if len(errlist) == 0:
-        return dropouts
-
-    # Now convert the above errlist into TBC locations
-    errlistc = errlist.copy()
-
-    lineoffset = -field.lineoffset
-
-    # Remove dropouts occuring before the start of the frame so they don't
-    # cause the rest to be skipped
-    curerr = errlistc.pop(0)
-    while len(errlistc) > 0 and curerr[0] < field.linelocs[field.lineoffset]:
-        curerr = errlistc.pop(0)
-
-    # TODO: This could be reworked to be a bit cleaner and more performant.
-
-    for line in range(field.lineoffset, field.linecount + field.lineoffset):
-        while curerr is not None and inrange(
-            curerr[0], field.linelocs[line], field.linelocs[line + 1]
-        ):
-            start_rf_linepos = curerr[0] - field.linelocs[line]
-            start_linepos = start_rf_linepos / (
-                field.linelocs[line + 1] - field.linelocs[line]
-            )
-            start_linepos = int(start_linepos * field.outlinelen)
-
-            end_rf_linepos = curerr[1] - field.linelocs[line]
-            end_linepos = end_rf_linepos / (
-                field.linelocs[line + 1] - field.linelocs[line]
-            )
-            end_linepos = int(np.round(end_linepos * field.outlinelen))
-
-            first_line = line + 1 + lineoffset
-
-            # If the dropout spans multiple lines, we need to split it up into one for each line.
-            if end_linepos > field.outlinelen:
-                num_lines = end_linepos // field.outlinelen
-
-                # First line.
-                dropouts.append((first_line, start_linepos, field.outlinelen))
-                # Full lines in the middle.
-                for n in range(num_lines - 1):
-                    dropouts.append((first_line + n + 1, 0, field.outlinelen))
-                # leftover on last line.
-                dropouts.append(
-                    (
-                        first_line + (num_lines),
-                        0,
-                        np.remainder(end_linepos, field.outlinelen),
-                    )
-                )
-            else:
-                dropouts.append((first_line, start_linepos, end_linepos))
-
-            if len(errlistc):
-                curerr = errlistc.pop(0)
-            else:
-                curerr = None
-
-    return dropouts
-
-
-# Phase comprensation stuff - needs rework.
-# def phase_shift(data, angle):
-#     return np.fft.irfft(np.fft.rfft(data) * np.exp(1.0j * angle), len(data)).real
-
-
 def check_increment_field_no(rf):
     """Increment field number if the raw data location moved significantly since the last call"""
     raw_loc = rf.decoder.readloc / rf.decoder.bytes_per_field
@@ -706,7 +394,7 @@ class FieldPALCVBS(ldd.FieldPAL):
         super(FieldPALCVBS, self).__init__(*args, **kwargs)
 
     def refine_linelocs_pilot(self, linelocs=None):
-        """Override this as regular-band u-matic does not have a pilot burst."""
+        """Override this as most sources won't have a pilot burst."""
         if linelocs is None:
             linelocs = self.linelocs2.copy()
         else:
@@ -714,20 +402,8 @@ class FieldPALCVBS(ldd.FieldPAL):
 
         return linelocs
 
-    def downscale(self, final=False, *args, **kwargs):
-        dsout, dsaudio, dsefm = super(FieldPALCVBS, self).downscale(
-            final, *args, **kwargs
-        )
-
-        return (dsout, []), dsaudio, dsefm
-
-    def calc_burstmedian(self):
-        # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
-        return 1.0
-
-    def determine_field_number(self):
-        """Workaround to shut down phase id mismatch warnings, the actual code
-        doesn't work properly with the vhs output at the moment."""
+    def _determine_field_number(self):
+        """Using LD code as it should work on stable sources, but may not work on stuff like vhs."""
         return 1 + (self.rf.field_number % 8)
 
     def getpulses(self):
@@ -746,7 +422,7 @@ class FieldPALCVBS(ldd.FieldPAL):
         return baserr
 
     def dropout_detect(self):
-        return detect_dropouts_rf(self)
+        return None
 
 
 class FieldNTSCCVBS(ldd.FieldNTSC):
@@ -754,9 +430,8 @@ class FieldNTSCCVBS(ldd.FieldNTSC):
         super(FieldNTSCCVBS, self).__init__(*args, **kwargs)
 
     def _refine_linelocs_burst(self, linelocs=None):
-        """Override this as it's LD specific
-        At some point in the future we could maybe use the burst location to improve hsync accuracy,
-        but ignore it for now.
+        """Standard impl works for stable sources, we may need to override this for
+        unstable ones though.
         """
         if linelocs is None:
             linelocs = self.linelocs2
@@ -765,19 +440,8 @@ class FieldNTSCCVBS(ldd.FieldNTSC):
 
         return linelocs
 
-    def calc_burstmedian(self):
-        # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
-        return 1.0
-
-    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
-        dsout, dsaudio, dsefm = super(FieldNTSCCVBS, self).downscale(
-            linesoffset, final, *args, **kwargs
-        )
-
-        return (dsout, []), dsaudio, dsefm
-
     def dropout_detect(self):
-        return detect_dropouts_rf(self)
+        return None
 
     def getpulses(self):
         """Find sync pulses in the demodulated video sigal
@@ -824,7 +488,7 @@ class CVBSDecode(ldd.LDdecode):
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
         # Overwrite the rf decoder with the VHS-altered one
-        self.rf = VHSRFDecode(
+        self.rf = VHSDecodeInner(
             system=system,
             tape_format="UMATIC",
             inputfreq=inputfreq,
@@ -872,53 +536,29 @@ class CVBSDecode(ldd.LDdecode):
         return 20 * np.log10(100 / noise)
 
     def buildmetadata(self, f):
+        # Avoid crash if this is NaN
         if math.isnan(f.burstmedian):
             f.burstmedian = 0.0
         return super(CVBSDecode, self).buildmetadata(f)
 
     # For laserdisc this decodes frame numbers from VBI metadata, but there won't be such a thing on
-    # VHS, so just skip it.
+    # other sources, so just skip it for now.
     def decodeFrameNumber(self, f1, f2):
         return None
 
-    # Again ignored for tapes
+    # Again ignored for non-ld sources.
     def checkMTF(self, field, pfield=None):
         return True
-
-    def writeout(self, dataset):
-        f, fi, (picturey, picturec), audio, efm = dataset
-
-        fi["audioSamples"] = 0
-        self.fieldinfo.append(fi)
-
-        self.outfile_video.write(picturey)
-        self.fields_written += 1
-
-    def close(self):
-        super(CVBSDecode, self).close()
 
     def computeMetricsNTSC(self, metrics, f, fp=None):
         return None
 
-    def build_json(self, f):
-        try:
-            jout = super(CVBSDecode, self).build_json(f)
-            black = jout["videoParameters"]["black16bIre"]
-            white = jout["videoParameters"]["white16bIre"]
 
-            jout["videoParameters"]["black16bIre"] = black * (1 - self.level_adjust)
-            jout["videoParameters"]["white16bIre"] = white * (1 + self.level_adjust)
-            return jout
-        except TypeError as e:
-            print("Cannot build json: %s" % e)
-            return None
-
-
-class VHSRFDecode(ldd.RFDecode):
+class VHSDecodeInner(ldd.RFDecode):
     def __init__(self, inputfreq=40, system="NTSC", tape_format="VHS", rf_options={}):
 
         # First init the rf decoder normally.
-        super(VHSRFDecode, self).__init__(
+        super(VHSDecodeInner, self).__init__(
             inputfreq, system, decode_analog_audio=False, has_analog_audio=False
         )
 
