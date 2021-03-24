@@ -1595,7 +1595,7 @@ class VHSRFDecode(ldd.RFDecode):
             1,
             [
                 (fsc_mhz - 0.64) / out_frequency_half,
-                (fsc_mhz + 0.24) / out_frequency_half,
+                (fsc_mhz + 0.34) / out_frequency_half,
             ],
             btype="bandpass",
             output="sos",
