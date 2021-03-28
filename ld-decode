@@ -276,13 +276,16 @@ if args.newaudio:
     if args.daa:
         cmd.append('--daa')
 
+    if args.pal:
+        cmd.append('--PAL')
+
     if args.prefm:
         cmd.append('--preEFM')
 
     if args.noefm:
         cmd.append('--noEFM')
 
-    if False:
+    if False: # Flip this around when it becomes the default, remove when only
         args.daa = True
         args.noefm = True
         args.prefm = False

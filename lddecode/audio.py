@@ -117,7 +117,7 @@ def handle_options(argstring = sys.argv):
     
     args = parser.parse_args(argstring[1:])
 
-    if args.pal and (args.ntsc or args.ntscj):
+    if args.pal and args.ntsc:
         print("ERROR: Can only be PAL or NTSC")
         exit(1)
 
