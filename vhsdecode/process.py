@@ -37,7 +37,7 @@ def chroma_to_u16(chroma):
     return np.uint16(chroma + S16_ABS_MAX)
 
 
-@njit
+@njit(cache=True)
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
 
@@ -51,7 +51,7 @@ def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     return output
 
 
-@njit
+@njit(cache=True)
 def acc_line(chroma, burst_abs_ref, burststart, burstend):
     """Scale chroma according to the level of the color burst the line."""
     output = np.zeros(chroma.size, dtype=np.double)
@@ -146,7 +146,7 @@ def getpulses_override(field):
     return lddu.findpulses(field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
 
-@njit
+@njit(cache=True)
 def comb_c_pal(data, line_len):
     """Very basic comb filter, adds the signal together with a signal delayed by 2H,
     and one advanced by 2H
@@ -167,7 +167,7 @@ def comb_c_pal(data, line_len):
     return data
 
 
-@njit
+@njit(cache=True)
 def comb_c_ntsc(data, line_len):
     """Very basic comb filter, adds the signal together with a signal delayed by 1H,
     line by line. VCRs do this to reduce crosstalk.
@@ -186,7 +186,7 @@ def comb_c_ntsc(data, line_len):
     return data
 
 
-@njit
+@njit(cache=True)
 def upconvert_chroma(
     chroma,
     lineoffset,
@@ -230,7 +230,7 @@ def upconvert_chroma(
     return uphet
 
 
-@njit
+@njit(cache=True)
 def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
     for line in range(lineoffset, linesout + lineoffset):
         linestart = (line - lineoffset) * outwidth
@@ -517,7 +517,7 @@ def detect_burst_pal_line(
     return line
 
 
-@njit
+@njit(cache=True)
 def detect_burst_ntsc(
     chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
 ):
@@ -545,7 +545,7 @@ def detect_burst_ntsc(
     return even_i_acc / num_lines, odd_i_acc / num_lines
 
 
-@njit
+@njit(cache=True)
 def detect_burst_ntsc_line(
     chroma_data, sine, cosine, burst_area, line_length, line_number
 ):
@@ -608,6 +608,7 @@ def get_field_phase_id(field):
     return phase_id
 
 
+@njit(cache=True)
 def find_crossings(data, threshold):
     """Find where the data crosses the set threshold."""
 
@@ -639,6 +640,7 @@ def find_crossings_dir(data, threshold, look_for_down):
         return crossings_pos[1::2]
 
 
+@njit(cache=True)
 def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
     """Combine arrays of up and down crossings, and merge ones with small gaps between them.
     Intended to be used where up and down crossing levels are different, the two lists will not
@@ -646,7 +648,6 @@ def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
     Returns a list of start/end tuples.
     """
     used = []
-
     # TODO: Fix when ending on dropout
 
     cr_up = iter(crossings_up)
@@ -711,9 +712,10 @@ def detect_dropouts_rf(field):
         # down crossing for it in the data.
         crossings_down = np.concatenate((np.array([0]), crossings_down), axis=None)
 
-    errlist = combine_to_dropouts(
-        crossings_down, crossings_up, vhs_formats.DOD_MERGE_THRESHOLD
-    )
+    if len(crossings_down) > 0 and len(crossings_up) > 0:
+        errlist = combine_to_dropouts(
+            crossings_down, crossings_up, vhs_formats.DOD_MERGE_THRESHOLD
+        )
 
     # Drop very short dropouts that were not merged.
     # We do this after mergin to avoid removing short consecutive dropouts that
@@ -1692,7 +1694,9 @@ class VHSRFDecode(ldd.RFDecode):
         # Calculate an evelope with signal strength using absolute of hilbert transform.
         # Roll this a bit to compensate for filter delay, value eyballed for now.
         raw_env = np.roll(np.abs(raw_filtered), 4)
-        env = utils.filter_simple(raw_env, self.Filters["FEnvPost"])
+        # Downconvert to single precision for some possible speedup since we don't need
+        # super high accuracy for the dropout detection.
+        env = utils.filter_simple(raw_env, self.Filters["FEnvPost"]).astype(np.single)
         env_mean = np.mean(env)
 
         # Applies RF filters
