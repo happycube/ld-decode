@@ -126,7 +126,7 @@ parser.add_argument(
     dest="level_adjust",
     metavar="value",
     type=float,
-    default=0,
+    default=0.1,
     help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
 )
 # parser.add_argument('--noDOD', dest='nodod', action='store_true', default=False,

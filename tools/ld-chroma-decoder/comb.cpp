@@ -60,14 +60,14 @@ static constexpr quint32 CANDIDATE_SHADES[] = {
     0xFF80FF, // CAND_NEXT_FRAME - purple
 };
 
-constexpr std::array<double, 4> sin4fsc_data = {1, 0, -1, 0};
-// constexpr std::array<double, 4> cos4fsc_data = {0, -1, 0, 1};
+static constexpr std::array<double, 4> sin4fsc_data = {1, 0, -1, 0};
 
 constexpr double sin4fsc(const std::size_t i) {
     return sin4fsc_data[i % 4];
 }
 
 constexpr double cos4fsc(const std::size_t i) {
+    // cos(i) is just sin(i + pi/2) and we are at 4 fsc.
     return sin4fsc(i + 1);
 }
 
@@ -117,6 +117,7 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
 
     if (videoParameters.sampleRate / videoParameters.fsc != 4)
     {
+        // Decoder assumes 4fsc sample rate at the moment.
         qCritical() << "Data is not in 4fsc sample rate, color decoding will not work properly!";
     }
 
@@ -535,7 +536,7 @@ namespace {
         bsin /= burstNorm;
         bcos /= burstNorm;
 
-        BurstInfo info{bsin, bcos};
+        const BurstInfo info{bsin, bcos};
         return info;
     }
 }
@@ -554,17 +555,17 @@ void Comb::FrameBuffer::splitIQlocked()
         // Get a pointer to the line's data
         const quint16 *line = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
         // Calculate burst phase
-        auto info = detectBurst(line, videoParameters);
+        const auto info = detectBurst(line, videoParameters);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            auto val = clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
+            const auto val = clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
 
             // Demodulate the sine and cosine components.
-            auto lsin = val * sin4fsc(h) * 2;
-            auto lcos = val * cos4fsc(h) * 2;
+            const auto lsin = val * sin4fsc(h) * 2;
+            const auto lcos = val * cos4fsc(h) * 2;
             // Rotate the demodulated vector by the burst phase.
-            auto ti = (lsin * info.bcos - lcos * info.bsin);
-            auto tq = (lsin * info.bsin + lcos * info.bcos);
+            const auto ti = (lsin * info.bcos - lcos * info.bsin);
+            const auto tq = (lsin * info.bsin + lcos * info.bcos);
             // Rotate back 33 degrees and invert Q to get the correct I/Q vector.
             yiqBuffer[lineNumber][h].i = (ti * 0.83867056794 - tq * -0.54463903501);
             yiqBuffer[lineNumber][h].q = -(ti * -0.54463903501 + tq * 0.83867056794);
