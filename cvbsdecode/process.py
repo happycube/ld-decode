@@ -80,7 +80,7 @@ def find_sync_levels(field):
         #        ax1.plot(hilbert, color='#FF0000')
         # ax1.plot(data, color="#00FF00")
         ax1.axhline(sync_min, color="#0000FF")
-#        ax1.axhline(blank_level, color="#000000")
+        #        ax1.axhline(blank_level, color="#000000")
         ax1.axvline(search_start, color="#FF0000")
         ax1.axvline(next_cross_raw, color="#00FF00")
         ax1.axvline(next_cross, color="#0000FF")
@@ -104,6 +104,7 @@ def find_sync_levels(field):
 
     return sync_min, blank_level
 
+
 def getpulses_override(field):
     """Find sync pulses in the demodulated video sigal
 
@@ -115,7 +116,9 @@ def getpulses_override(field):
 
         if sync_level is not None and blank_level is not None:
             field.rf.SysParams["ire0"] = blank_level
-            field.rf.SysParams["hz_ire"] = (blank_level - sync_level) / (-field.rf.SysParams["vsync_ire"])
+            field.rf.SysParams["hz_ire"] = (blank_level - sync_level) / (
+                -field.rf.SysParams["vsync_ire"]
+            )
 
         if False:
             import matplotlib.pyplot as plt
@@ -128,7 +131,7 @@ def getpulses_override(field):
             # ax1.plot(data, color="#00FF00")
             ax1.axhline(field.rf.iretohz(0), color="#000000")
             #        ax1.axhline(blank_level, color="#000000")
-            ax1.axhline(field.rf.iretohz(-40))
+            ax1.axhline(field.rf.iretohz(field.rf.SysParams["vsync_ire"]))
             #            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
             #            ax1.axhline(self.iretohz(7.5))
             #            ax1.axhline(self.iretohz(100))
@@ -379,6 +382,7 @@ def detect_burst_pal_line(
     line.bq /= burst_norm
 
     return line
+
 
 def check_increment_field_no(rf):
     """Increment field number if the raw data location moved significantly since the last call"""

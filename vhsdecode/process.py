@@ -1116,7 +1116,7 @@ class VHSDecode(ldd.LDdecode):
         doDOD=True,
         threads=1,
         inputfreq=40,
-        level_adjust=0.2,
+        level_adjust=0,
         rf_options={},
         extra_options={},
     ):
@@ -1156,12 +1156,11 @@ class VHSDecode(ldd.LDdecode):
         else:
             raise Exception("Unknown video system!", system)
 
-        self.demodcache = VTRDemodCache(
+        self.demodcache = ldd.DemodCache(
             self.rf,
             self.infile,
             self.freader,
             num_worker_threads=self.numthreads,
-            cvbs_decode=extra_options["cvbs"],
         )
 
         if fname_out is not None:
@@ -1170,12 +1169,12 @@ class VHSDecode(ldd.LDdecode):
             self.outfile_chroma = None
 
     # Override to avoid NaN in JSON.
-    def calcsnr(self, f, snrslice):
-        data = f.output_to_ire(f.dspicture[snrslice])
+    def calcsnr(self, f, snrslice, psnr=False):
+        # if dspicture isn't converted to float, this underflows at -40IRE
+        data = f.output_to_ire(f.dspicture[snrslice].astype(float))
 
-        signal = np.mean(data)
+        signal = np.mean(data) if not psnr else 100
         noise = np.std(data)
-
         # Make sure signal is positive so we don't try to do log on a negative value.
         if signal < 0.0:
             ldd.logger.info(
@@ -1185,15 +1184,6 @@ class VHSDecode(ldd.LDdecode):
         if noise == 0:
             return 0
         return 20 * np.log10(signal / noise)
-
-    def calcpsnr(self, f, snrslice):
-        data = f.output_to_ire(f.dspicture[snrslice])
-
-        #        signal = np.mean(data)
-        noise = np.std(data)
-        if noise == 0:
-            return 0
-        return 20 * np.log10(100 / noise)
 
     def buildmetadata(self, f):
         if math.isnan(f.burstmedian):
@@ -1249,17 +1239,14 @@ class VTRDemodCache(ldd.DemodCache):
         cachesize=256,
         num_worker_threads=1,
         MTF_tolerance=0.05,
-        cvbs_decode=False,
     ):
-
-        self.cvbs_decode = cvbs_decode
 
         super(VTRDemodCache, self).__init__(
             rf,
             infile,
             loader,
             cachesize,
-            -1 if cvbs_decode else num_worker_threads,
+            num_worker_threads,
             MTF_tolerance,
         )
 
@@ -1290,16 +1277,10 @@ class VTRDemodCache(ldd.DemodCache):
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
-                    if not self.cvbs_decode:
-                        # RF decode
-                        output["demod"] = self.rf.demodblock(
-                            fftdata=fftdata, mtf_level=target_MTF, cut=True
-                        )
-                    else:
-                        # CVBS decode
-                        output["demod"] = self.rf.cvbsblock(
-                            fftdata=fftdata, mtf_level=target_MTF, cut=True
-                        )
+                    # RF decode
+                    output["demod"] = self.rf.demodblock(
+                        fftdata=fftdata, mtf_level=target_MTF, cut=True
+                    )
 
                     output["MTF"] = target_MTF
                     self.q_out.put((blocknum, output))
@@ -1750,7 +1731,9 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         # Filter out the color-under signal from the raw data.
-        out_chroma = utils.filter_simple(data[: self.blocklen], self.Filters["FVideoBurst"])
+        out_chroma = utils.filter_simple(
+            data[: self.blocklen], self.Filters["FVideoBurst"]
+        )
 
         if self.notch is not None:
             out_chroma = sps.filtfilt(
@@ -1804,63 +1787,6 @@ class VHSRFDecode(ldd.RFDecode):
         video_out = np.rec.array(
             [out_video, demod, out_video05, out_chroma, env, data],
             names=["demod", "demod_raw", "demod_05", "demod_burst", "envelope", "raw"],
-        )
-
-        rv["video"] = (
-            video_out[self.blockcut : -self.blockcut_end] if cut else video_out
-        )
-
-        return rv
-
-    def cvbsblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
-        data = npfft.ifft(fftdata).real
-
-        rv = {}
-
-        # applies the Subcarrier trap
-        # (this will remove most chroma info)
-        # luma = self.chromaTrap.work(data)
-        luma = data
-
-        luma += 0xFFFF / 2
-        luma /= 4 * 0xFFFF
-        luma *= self.iretohz(100)
-        luma += self.iretohz(self.SysParams["vsync_ire"])
-
-        luma05_fft = (
-            npfft.rfft(luma)
-            * self.Filters["F05"][: (len(self.Filters["F05"]) // 2) + 1]
-        )
-        luma05 = npfft.irfft(luma05_fft)
-        luma05 = np.roll(luma05, -self.Filters["F05_offset"])
-
-        if False:
-            import matplotlib.pyplot as plt
-
-            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-            # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
-            #        ax1.plot(hilbert, color='#FF0000')
-            # ax1.plot(data, color="#00FF00")
-            ax1.axhline(self.iretohz(0))
-            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            ax1.axhline(self.iretohz(7.5))
-            ax1.axhline(self.iretohz(100))
-            # print("Vsync IRE", self.SysParams["vsync_ire"])
-            #            ax2 = ax1.twinx()
-            #            ax3 = ax1.twinx()
-            ax1.plot(luma[:2048])
-            ax2.plot(luma05[:2048])
-            #            ax4.plot(env, color="#00FF00")
-            #            ax3.plot(np.angle(hilbert))
-            #            ax4.plot(hilbert.imag)
-            #            crossings = find_crossings(env, 700)
-            #            ax3.plot(crossings, color="#0000FF")
-            plt.show()
-        #            exit(0)
-
-        video_out = np.rec.array(
-            [luma, luma05, luma, data],
-            names=["demod", "demod_05", "demod_burst", "raw"],
         )
 
         rv["video"] = (
