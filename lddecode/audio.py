@@ -143,7 +143,7 @@ if args.outfile == '-':
     efm_decode = False
 else:
     if not args.daa:
-        out_fd = open(args.outfile + '.pcm32', 'wb')
+        out_fd = open(args.outfile + '.pcmf32', 'wb')
 
     if args.prefm:
         rawefm_fd = open(args.outfile + '.prefm', 'wb')
@@ -306,21 +306,21 @@ while True:
                 print("ERROR: mismatch in # of processed channels")
                 sys.exit(-1)
             else:
-                o32 = []
+                ofloat = []
 
                 for output, channel in zip(outputs, aa_channels):
                     o = output + channel.low_freq - channel.center_freq
                     #print(np.mean(o), np.std(o))
-                    o32.append(np.clip(o, -150000, 150000) * (2**31 / 150000))
+                    ofloat.append(np.clip((o / 150000), -16, 16).astype(np.float32))
                 
                 if len(outputs) == 2:
                     #print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
                     
-                    outdata = np.zeros(len(o32[0]) * 2, dtype=np.int32)
-                    outdata[0::2] = o32[0]
-                    outdata[1::2] = o32[1]
+                    outdata = np.zeros(len(ofloat[0]) * 2, dtype=np.float32)
+                    outdata[0::2] = ofloat[0]
+                    outdata[1::2] = ofloat[1]
                 else:
-                    outdata = np.array(o32[0], dtype=np.int32)
+                    outdata = np.array(ofloat[0], dtype=np.float32)
                     
                 out_fd.write(outdata)
 

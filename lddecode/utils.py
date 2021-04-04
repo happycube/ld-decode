@@ -113,6 +113,8 @@ def make_loader(filename, inputfreq=None):
             input_args = ["-f", "f32le"]
         elif filename.endswith(".r8") or filename.endswith(".u8"):
             input_args = ["-f", "u8"]
+        elif filename.endswith(".u16"):
+            input_args = ["-f", "u16le"]
         elif filename.endswith(".lds") or filename.endswith(".r30"):
             raise ValueError("File format not supported when resampling: " + filename)
         else:
@@ -135,6 +137,8 @@ def make_loader(filename, inputfreq=None):
         return load_unpacked_data_float32
     elif filename.endswith(".r16") or filename.endswith(".s16"):
         return load_unpacked_data_s16
+    elif filename.endswith(".r16") or filename.endswith(".u16"):
+        return load_unpacked_data_u16
     elif filename.endswith(".r8") or filename.endswith(".u8"):
         return load_unpacked_data_u8
     elif filename.endswith("raw.oga") or filename.endswith(".ldf"):
@@ -150,12 +154,18 @@ def make_loader(filename, inputfreq=None):
 
 
 def load_unpacked_data(infile, sample, readlen, sampletype):
-    # this is run for unpacked data - 1 is for old cxadc data, 2 for 16bit DD
-    infile.seek(sample * sampletype, 0)
-    inbuf = infile.read(readlen * sampletype)
+    # this is run for unpacked data:
+    # 1 is for 8-bit cxadc data, 2 for 16bit DD, 3 for 16bit cxadc
+    
+    samplelength = 2 if sampletype == 3 else sampletype
+    
+    infile.seek(sample * samplelength, 0)
+    inbuf = infile.read(readlen * samplelength)
 
     if sampletype == 4:
         indata = np.fromstring(inbuf, "float32", len(inbuf) // 4) * 32768
+    elif sampletype == 3:
+        indata = np.fromstring(inbuf, "uint16", len(inbuf) // 2)
     elif sampletype == 2:
         indata = np.fromstring(inbuf, "int16", len(inbuf) // 2)
     else:
@@ -170,10 +180,11 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
 def load_unpacked_data_u8(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 1)
 
-
 def load_unpacked_data_s16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
 
+def load_unpacked_data_u16(infile, sample, readlen):
+    return load_unpacked_data(infile, sample, readlen, 3)
 
 def load_unpacked_data_float32(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 4)
@@ -1002,6 +1013,8 @@ class StridedCollector:
             self.buffer = data
         else:
             self.buffer = np.concatenate([self.buffer, data])
+
+        return self.have_block()
         
     def have_block(self):
         return (self.buffer is not None) and (len(self.buffer) >= self.blocklen)
