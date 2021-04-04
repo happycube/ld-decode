@@ -200,93 +200,71 @@ def audio_bandpass_butter(center, closerange = 125000, longrange = 180000):
 
     return sps.butter(N, Wn, btype='bandpass')
 
-audio_lfilt_full = utils.filtfft(audio_bandpass_butter(SP['audio_lfreq']), blocklen)
-audio_rfilt_full = utils.filtfft(audio_bandpass_butter(SP['audio_rfreq']), blocklen)
+class AudioRF:
+    def __init__(self, center_freq):
+        self.center_freq = center_freq
 
-lowbin, nbins, a1_freq = utils.fft_determine_slices(SP['audio_lfreq'], 200000, freq_hz, blocklen)
-hilbert = utils.build_hilbert(nbins)
-left_slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
-#left_slicer = partial(utils.fft_do_slice, lowbin=lowbin, nbins=nbins, blocklen=blocklen)
-left_filter = left_slicer(audio_lfilt_full) * hilbert
+        # Compute stage 1 filters
 
-lowbin, nbins, a1_freq = utils.fft_determine_slices(SP['audio_rfreq'], 200000, freq_hz, blocklen)
-hilbert = utils.build_hilbert(nbins)
-right_slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
-#right_slicer = partial(utils.fft_do_slice, lowbin=lowbin, nbins=nbins, blocklen=blocklen)
-right_filter = right_slicer(audio_rfilt_full) * hilbert
+        audio1_fir = utils.filtfft([sps.firwin(afilt_len, [(self.center_freq-apass)/freq_hz_half, (self.center_freq+apass)/freq_hz_half], pass_zero=False), 1.0], blocklen)
+        lowbin, nbins, a1_freq = utils.fft_determine_slices(self.center_freq, 200000, freq_hz, blocklen)
+        hilbert = utils.build_hilbert(nbins)
 
-# Compute stage 2 audio filters: 20k-ish LPF and deemp
+        self.a1_freq = a1_freq
 
-N, Wn = sps.buttord(20000 / (a1_freq / 2), 24000 / (a1_freq / 2), 1, 9)
-audio2_lpf = utils.filtfft(sps.butter(N, Wn), blocklen)
-# 75e-6 is 75usec/2133khz (matching American FM emphasis) and 5.3e-6 is approx
-# a 30khz break frequency
-audio2_deemp = utils.filtfft(utils.emphasis_iir(5.3e-6, 75e-6, a1_freq), blocklen)
+        # Add the demodulated output to this to get actual freq
+        self.low_freq = freq_hz * (lowbin / blocklen)
+        
+        self.slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
+        self.filt1 = self.slicer(audio1_fir) * hilbert
+        self.filt1f = audio1_fir * utils.build_hilbert(blocklen)
+        
+        self.audio1_buffer = utils.StridedCollector(blocklen, blockskip)
+        self.audio1_clip = blockskip // (blocklen // nbins)
 
-audio2_filter = audio2_lpf * audio2_deemp
+        # Compute stage 2 audio filters: 20k-ish LPF and deemp (center_freq independent)
+
+        N, Wn = sps.buttord(20000 / (a1_freq / 2), 24000 / (a1_freq / 2), 1, 9)
+        audio2_lpf = utils.filtfft(sps.butter(N, Wn), blocklen)
+        # 75e-6 is 75usec/2133khz (matching American FM emphasis) and 5.3e-6 is approx
+        # a 30khz break frequency
+        audio2_deemp = utils.filtfft(utils.emphasis_iir(5.3e-6, 75e-6, a1_freq), blocklen)
+
+        self.audio2_decimation = 4
+        self.audio2_filter = audio2_lpf * audio2_deemp
+
+    def process_stage1(self, fft_in):
+        ''' Apply first state audio filters '''
+        a1 = npfft.ifft(self.slicer(fft_in) * self.filt1)
+        a1u = utils.unwrap_hilbert(a1, self.a1_freq)
+        a1u = a1u[self.audio1_clip:]
+
+        return self.audio1_buffer.add(a1u)
+
+    def process_stage2(self):
+        ''' Applies second stage audio filters '''
+
+        if not self.audio1_buffer.have_block():
+            return None
+
+        a2_in = self.audio1_buffer.get_block()
+        a2_fft = npfft.fft(a2_in)
+        a2 = npfft.ifft(a2_fft * self.audio2_filter)
+
+        filtered = utils.sqsum(a2[dropb:-drope])
+
+        return filtered[::self.audio2_decimation]
 
 aa_channels = []
 
 if True:
-    aa_channels.append(('left', 'audio_lfreq'))
+    aa_channels.append(AudioRF(SP['audio_lfreq']))
     
 if True:
-    aa_channels.append(('right', 'audio_rfreq'))
-
-low_freq = {}
-filt1 = {}
-filt1f = {}
-audio1_buffer = {}
-
-# Compute first phase audio filters
-for ch in aa_channels:
-    cname = ch[0]
-    afreq = SP[ch[1]]
-    
-    audio1_fir = utils.filtfft([sps.firwin(afilt_len, [(afreq-apass)/freq_hz_half, (afreq+apass)/freq_hz_half], pass_zero=False), 1.0], blocklen)
-    lowbin, nbins, audio1_freq = utils.fft_determine_slices(afreq, 200000, freq_hz, blocklen)
-    hilbert = utils.build_hilbert(nbins)
-
-    # Add the demodulated output to this to get actual freq
-    low_freq[cname] = freq_hz * (lowbin / blocklen)
-    
-    slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
-    filt1[cname] = slicer(audio1_fir) * hilbert
-    filt1f[cname] = audio1_fir * utils.build_hilbert(blocklen)
-    
-    audio1_buffer[cname] = utils.StridedCollector(blocklen, blockskip)
-
-audio1_clip = blockskip // (blocklen // nbins)
+    aa_channels.append(AudioRF(SP['audio_rfreq']))
 
 # Have input_buffer store 8-bit bytes, then convert afterwards
 input_buffer = utils.StridedCollector(blocklen*2, blockskip*2)
-
-def proc1(fft_in):
-    ''' Applies first stage audio filters '''
-    for ch in aa_channels:
-        a1 = npfft.ifft(slicer(fft_in) * filt1[ch[0]])
-        a1u = utils.unwrap_hilbert(a1, audio1_freq)
-        a1u = a1u[audio1_clip:]
-
-        audio1_buffer[ch[0]].add(a1u)
-        
-    return fft_in
-
-def proc2(decimation = 4):
-    ''' Applies second stage audio filters '''
-    output = []
-    inputs = []
-    
-    for ch in aa_channels:
-        a2_in = audio1_buffer[ch[0]].get_block()
-        a2_fft = npfft.fft(a2_in)
-        inputs.append(a2_fft)
-        a2 = npfft.ifft(a2_fft * audio2_filter)
-
-        filtered = utils.sqsum(a2[dropb:-drope])
-        output.append(filtered[::decimation])
-        
-    return inputs, output
 
 inputs = []
 output = []
@@ -313,27 +291,36 @@ while True:
         fft_in = npfft.fft(s16)
 
         if not args.daa:
-            proc1(fft_in)
 
-            if audio1_buffer['left'].have_block():
-                infft, outputs = proc2()
+            outputs = []
 
-                if testmode:
-                    inputs.append(infft)
-                    allout.append(outputs)
-                
-                oleft = outputs[0] + low_freq['left'] - SP['audio_lfreq']
-                olefts32 = np.clip(oleft, -150000, 150000) * (2**31 / 150000)
+            for channel in aa_channels:
+                if channel.process_stage1(fft_in):
+                    # if True, we have enough data to process stage2
+                    outputs.append(channel.process_stage2())
+
+
+            if len(outputs) == 0:
+                continue
+            elif (len(outputs) != len(aa_channels)):
+                print("ERROR: mismatch in # of processed channels")
+                sys.exit(-1)
+            else:
+                o32 = []
+
+                for output, channel in zip(outputs, aa_channels):
+                    o = output + channel.low_freq - channel.center_freq
+                    print(np.mean(o), np.std(o))
+                    o32.append(np.clip(o, -150000, 150000) * (2**31 / 150000))
                 
                 if len(outputs) == 2:
-                    oright = outputs[1] + low_freq['right'] - SP['audio_rfreq']
-                    orights32 = np.clip(oright, -150000, 150000) * (2**31 / 150000)
+                    print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
                     
-                    outdata = np.zeros(len(olefts32) * 2, dtype=np.int32)
-                    outdata[0::2] = olefts32
-                    outdata[1::2] = orights32
+                    outdata = np.zeros(len(o32[0]) * 2, dtype=np.int32)
+                    outdata[0::2] = o32[0]
+                    outdata[1::2] = o32[1]
                 else:
-                    outdata = np.array(olefts32, dtype=np.int32)
+                    outdata = np.array(o32[0], dtype=np.int32)
                     
                 out_fd.write(outdata)
 
