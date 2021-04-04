@@ -310,11 +310,11 @@ while True:
 
                 for output, channel in zip(outputs, aa_channels):
                     o = output + channel.low_freq - channel.center_freq
-                    print(np.mean(o), np.std(o))
+                    #print(np.mean(o), np.std(o))
                     o32.append(np.clip(o, -150000, 150000) * (2**31 / 150000))
                 
                 if len(outputs) == 2:
-                    print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
+                    #print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
                     
                     outdata = np.zeros(len(o32[0]) * 2, dtype=np.int32)
                     outdata[0::2] = o32[0]
