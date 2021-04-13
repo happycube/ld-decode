@@ -5,7 +5,8 @@
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
-    Copyright (C) 2020 Adam Sampson
+    Copyright (C) 2020-2021 Adam Sampson
+    Copyright (C) 2021 Phillip Blucas
 
     This file is part of ld-decode-tools.
 
