@@ -773,8 +773,8 @@ OutputFrame Comb::FrameBuffer::yiqToYUVFrame()
 
         // Fill the output line with YCbCr values
         ycbcr.convertLine(&yiqBuffer[lineNumber][videoParameters.activeVideoStart],
-                        &yiqBuffer[lineNumber][videoParameters.activeVideoEnd],
-                        &linePointerY[o], &linePointerCb[o], &linePointerCr[o]);
+                          &yiqBuffer[lineNumber][videoParameters.activeVideoEnd],
+                          &linePointerY[o], &linePointerCb[o], &linePointerCr[o]);
     }
 
     return outputFrame;
