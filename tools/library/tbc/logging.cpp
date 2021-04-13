@@ -100,7 +100,7 @@ void openDebugFile(QString filename)
     debugFile = new QFile(filename);
     if (!debugFile->open(QIODevice::WriteOnly)) {
         // Failed to open source sample file
-        qDebug() << "Could not open " << filename << "as debug output file";
+        qDebug() << "Could not open" << filename << "as debug output file";
     } else saveDebug = true;
 }
 

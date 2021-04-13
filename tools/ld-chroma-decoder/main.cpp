@@ -348,7 +348,7 @@ int main(int argc, char *argv[])
         monoConfig.outputYCbCr = true;
         monoConfig.pixelFormat = Decoder::PixelFormat::GRAY16;
     } else if (outputFormatName != "rgb") {
-        qCritical() << "Unknown output format " << outputFormatName;
+        qCritical() << "Unknown output format" << outputFormatName;
         return -1;
     }
 
@@ -390,7 +390,7 @@ int main(int argc, char *argv[])
             palConfig.transformMode = TransformPal::thresholdMode;
         } else {
             // Quit with error
-            qCritical() << "Unknown Transform mode " << name;
+            qCritical() << "Unknown Transform mode" << name;
             return -1;
         }
     }
@@ -495,7 +495,7 @@ int main(int argc, char *argv[])
     } else if (decoderName == "mono") {
         decoder.reset(new MonoDecoder(monoConfig));
     } else {
-        qCritical() << "Unknown decoder " << decoderName;
+        qCritical() << "Unknown decoder" << decoderName;
         return -1;
     }
 
