@@ -28,8 +28,8 @@
 #ifndef PALCOLOUR_H
 #define PALCOLOUR_H
 
+#include <QtGlobal>
 #include <QDebug>
-#include <QObject>
 #include <QScopedPointer>
 #include <QVector>
 #include <QtMath>
@@ -41,12 +41,10 @@
 #include "sourcefield.h"
 #include "transformpal.h"
 
-class PalColour : public QObject
+class PalColour
 {
-    Q_OBJECT
-
 public:
-    explicit PalColour(QObject *parent = nullptr);
+    PalColour();
 
     // Specify which filter to use to separate luma and chroma information.
     enum ChromaFilterMode {
