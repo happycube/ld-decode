@@ -526,8 +526,8 @@ namespace {
     // Rotate the burst angle to get the correct values.
     // We do the 33 degree rotation here to avoid computing it for every pixel.
     // TODO: additionally we need to rotate another ~10 degrees to get the correct hue, find out why.
-    constexpr double BURST_COMP_SIN = 0.17364817766693033 + SIN33;
-    constexpr double BURST_COMP_COS = 0.984807753012208 + COS33;
+    constexpr double ROTATE_SIN = 0.6819983600624985;
+    constexpr double ROTATE_COS = 0.7313537016191705;
 
     BurstInfo detectBurst(const quint16* lineData,
                           const LdDecodeMetaData::VideoParameters& videoParameters)
@@ -547,10 +547,6 @@ namespace {
         const qint32 colourBurstLength = videoParameters.colourBurstEnd - videoParameters.colourBurstStart;
         bsin /= colourBurstLength;
         bcos /= colourBurstLength;
-
-        // Rotate the read phase to get the correct hue.
-        bsin = bsin * BURST_COMP_COS - bcos * BURST_COMP_SIN;
-        bcos = bsin * BURST_COMP_SIN + bcos * BURST_COMP_COS;
 
         const double burstNorm = qMax(sqrt(bsin * bsin + bcos * bcos), 130000.0 / 128);
 
@@ -587,12 +583,12 @@ void Comb::FrameBuffer::splitIQlocked()
             // Rotate the demodulated vector by the burst phase.
             const auto ti = (lsin * info.bcos - lcos * info.bsin);
             const auto tq = (lsin * info.bsin + lcos * info.bcos);
-            // Invert Q get the correct I/Q vector.
-            // Don't need to rotate 33 degrees as we already did that on the burst phase.
+
+            // Invert Q and rorate to get the correct I/Q vector.
             // TODO: Needed to shift the chroma 1 sample to the right to get it to line up
             // may not get the first pixel in each line correct because of this.
-            yiqBuffer[lineNumber][h + 1].i = ti;
-            yiqBuffer[lineNumber][h + 1].q = -tq;
+            yiqBuffer[lineNumber][h + 1].i = ti * ROTATE_COS - tq * -ROTATE_SIN;
+            yiqBuffer[lineNumber][h + 1].q = -(ti * -ROTATE_SIN + tq * ROTATE_COS);
             // Subtract the split chroma part from the luma signal.
             yiqBuffer[lineNumber][h].y = line[h] - val;
         }
