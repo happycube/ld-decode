@@ -263,6 +263,15 @@ void Comb::FrameBuffer::loadFields(const SourceField &firstField, const SourceFi
     // Set the phase IDs for the frame
     firstFieldPhaseID = firstField.field.fieldPhaseID;
     secondFieldPhaseID = secondField.field.fieldPhaseID;
+
+    // Clear clpbuffer
+    for (qint32 buf = 0; buf < 3; buf++) {
+        for (qint32 y = 0; y < MAX_HEIGHT; y++) {
+            for (qint32 x = 0; x < MAX_WIDTH; x++) {
+                clpbuffer[buf].pixel[y][x] = 0.0;
+            }
+        }
+    }
 }
 
 // Extract chroma into clpbuffer[0] using a 1D bandpass filter.
