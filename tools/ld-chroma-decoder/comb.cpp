@@ -589,8 +589,10 @@ void Comb::FrameBuffer::splitIQlocked()
             const auto tq = (lsin * info.bsin + lcos * info.bcos);
             // Invert Q get the correct I/Q vector.
             // Don't need to rotate 33 degrees as we already did that on the burst phase.
-            yiqBuffer[lineNumber][h].i = ti;
-            yiqBuffer[lineNumber][h].q = -tq;
+            // TODO: Needed to shift the chroma 1 sample to the right to get it to line up
+            // may not get the first pixel in each line correct because of this.
+            yiqBuffer[lineNumber][h + 1].i = ti;
+            yiqBuffer[lineNumber][h + 1].q = -tq;
             // Subtract the split chroma part from the luma signal.
             yiqBuffer[lineNumber][h].y = line[h] - val;
         }
