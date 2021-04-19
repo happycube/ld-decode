@@ -60,14 +60,18 @@ static constexpr quint32 CANDIDATE_SHADES[] = {
     0xFF80FF, // CAND_NEXT_FRAME - purple
 };
 
-static constexpr std::array<double, 4> sin4fsc_data = {1, 0, -1, 0};
+// Since we are at exactly 4fsc, calculating the value of a in-phase sine wave at a specific position
+// is very simple.
+static constexpr std::array<double, 4> sin4fsc_data = {1.0, 0.0, -1.0, 0.0};
 
-constexpr double sin4fsc(const std::size_t i) {
+// 4fsc sine wave
+constexpr double sin4fsc(const qint32 i) {
     return sin4fsc_data[i % 4];
 }
 
-constexpr double cos4fsc(const std::size_t i) {
-    // cos(i) is just sin(i + pi/2) and we are at 4 fsc.
+// 4fsc cos wave
+constexpr double cos4fsc(const qint32 i) {
+    // cos(rad) is just sin(rad + pi/2) and we are at 4 fsc.
     return sin4fsc(i + 1);
 }
 
@@ -519,6 +523,12 @@ namespace {
         double bsin, bcos;
     };
 
+    // Rotate the burst angle to get the correct values.
+    // We do the 33 degree rotation here to avoid computing it for every pixel.
+    // TODO: additionally we need to rotate another ~10 degrees to get the correct hue, find out why.
+    constexpr double BURST_COMP_SIN = 0.17364817766693033 + SIN33;
+    constexpr double BURST_COMP_COS = 0.984807753012208 + COS33;
+
     BurstInfo detectBurst(const quint16* lineData,
                           const LdDecodeMetaData::VideoParameters& videoParameters)
     {
@@ -538,9 +548,11 @@ namespace {
         bsin /= colourBurstLength;
         bcos /= colourBurstLength;
 
-        const double burstNorm = qMax(sqrt(bsin * bsin + bcos * bcos), 130000.0 / 128);
+        // Rotate the read phase to get the correct hue.
+        bsin = bsin * BURST_COMP_COS - bcos * BURST_COMP_SIN;
+        bcos = bsin * BURST_COMP_SIN + bcos * BURST_COMP_COS;
 
-        //qDebug() << "burst norm " << burstNorm;
+        const double burstNorm = qMax(sqrt(bsin * bsin + bcos * bcos), 130000.0 / 128);
 
         bsin /= burstNorm;
         bcos /= burstNorm;
@@ -575,9 +587,10 @@ void Comb::FrameBuffer::splitIQlocked()
             // Rotate the demodulated vector by the burst phase.
             const auto ti = (lsin * info.bcos - lcos * info.bsin);
             const auto tq = (lsin * info.bsin + lcos * info.bcos);
-            // Rotate back 33 degrees and invert Q to get the correct I/Q vector.
-            yiqBuffer[lineNumber][h].i = (ti * 0.83867056794 - tq * -0.54463903501);
-            yiqBuffer[lineNumber][h].q = -(ti * -0.54463903501 + tq * 0.83867056794);
+            // Invert Q get the correct I/Q vector.
+            // Don't need to rotate 33 degrees as we already did that on the burst phase.
+            yiqBuffer[lineNumber][h].i = ti;
+            yiqBuffer[lineNumber][h].q = -tq;
             // Subtract the split chroma part from the luma signal.
             yiqBuffer[lineNumber][h].y = line[h] - val;
         }
