@@ -55,7 +55,8 @@ public:
         qint32 dimensions = 2;
         bool adaptive = true;
         bool showMap = false;
-        Decoder::PixelFormat pixelFormat = Decoder::PixelFormat::RGB48;
+        bool phaseCompensation = false;
+	Decoder::PixelFormat pixelFormat = Decoder::PixelFormat::RGB48;
         bool outputYCbCr = false;
         bool outputY4m = false;
 
@@ -98,7 +99,9 @@ private:
         void split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame);
 
         void splitIQ();
+        void splitIQlocked();
         void filterIQ();
+        void filterIQFull();
         void adjustY();
 
         void doCNR();
@@ -126,7 +129,7 @@ private:
         qint32 secondFieldPhaseID;
 
         // 1D, 2D and 3D-filtered chroma samples
-        struct {
+        struct Sample {
             double pixel[MAX_HEIGHT][MAX_WIDTH];
         } clpbuffer[3];
 
