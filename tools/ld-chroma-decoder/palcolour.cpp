@@ -400,22 +400,33 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
 // Perform analog-style noise coring.
 void PalColour::doYNR(double *Yline)
 {
+    // nr_y is the coring level
+    const double irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
+    double nr_y = configuration.yNRLevel * irescale;
+
     // High-pass filter for Y
     auto yFilter(f_nrpal);
 
-    const double irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
+    // Filter delay (since it's a symmetric FIR filter)
+    const qint32 delay = c_nrpal_b.size() / 2;
 
-    double nr_y = configuration.yNRLevel * irescale;
+    // High-pass result
+    double hpY[videoParameters.activeVideoEnd + delay];
 
-    double hplinef[videoParameters.fieldWidth];
-
-    for (qint32 h = 0; h < videoParameters.fieldWidth; h++) {
-        hplinef[h] = yFilter.feed(Yline[h]);
+    // Feed zeros into the filter outside the active area
+    for (qint32 h = videoParameters.activeVideoStart - delay; h < videoParameters.activeVideoStart; h++) {
+        yFilter.feed(0.0);
+    }
+    for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+        hpY[h] = yFilter.feed(Yline[h]);
+    }
+    for (qint32 h = videoParameters.activeVideoEnd; h < videoParameters.activeVideoEnd + delay; h++) {
+        hpY[h] = yFilter.feed(0.0);
     }
 
     for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-        // Compensate for 12-sample filter delay
-        double a = hplinef[h + 12];
+        // Offset to cover the filter delay
+        double a = hpY[h + delay];
 
         // Clip the filter strength
         if (fabs(a) > nr_y) {
@@ -425,7 +436,6 @@ void PalColour::doYNR(double *Yline)
         Yline[h] -= a;
     }
 }
-
 
 // Decode one line into outputFrame.
 // chromaData (templated, so it can be any numeric type) is the input to
@@ -574,7 +584,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     // extract luma first so it can be run through NR
     double extractedY[videoParameters.fieldWidth];
 
-    for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
+    for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
         // Compute luma by...
         double rY;
         if (PREFILTERED_CHROMA) {
