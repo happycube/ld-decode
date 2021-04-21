@@ -48,7 +48,7 @@ static constexpr double ONE_MINUS_Kr = 1.0 - 0.299;
 // kR = sqrt(221990474.0 / 288439473.0)
 // [Poynton eq 28.1 p336]
 static constexpr double kB = 0.49211104112248356308804691718185;
-static constexpr double kR = 0.877283221458919247158029475165; // XXX doesn't match the equation above
+static constexpr double kR = 0.87728321993817866838972487283129;
 
 void OutputWriter::updateConfiguration(LdDecodeMetaData::VideoParameters &_videoParameters,
                                        const OutputWriter::Configuration &_config)
