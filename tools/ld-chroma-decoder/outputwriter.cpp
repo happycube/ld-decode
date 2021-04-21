@@ -32,7 +32,7 @@
 // [Poynton ch25 p305] [BT.601-7 sec 2.5.3]
 static constexpr double Y_MIN   = 1.0    * 256.0;
 static constexpr double Y_ZERO  = 16.0   * 256.0;
-static constexpr double Y_SCALE = 219.0  * 257.0; // XXX Why 257?
+static constexpr double Y_SCALE = 219.0  * 256.0;
 static constexpr double Y_MAX   = 254.75 * 256.0;
 static constexpr double C_MIN   = 1.0    * 256.0;
 static constexpr double C_ZERO  = 128.0  * 256.0;
