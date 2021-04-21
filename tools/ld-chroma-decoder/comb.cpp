@@ -604,33 +604,44 @@ void Comb::FrameBuffer::doCNR()
 {
     if (configuration.cNRLevel == 0) return;
 
+    // nr_c is the coring level
+    const double nr_c = configuration.cNRLevel * irescale;
+
     // High-pass filters for I/Q
     auto iFilter(f_nrc);
     auto qFilter(f_nrc);
 
-    // nr_c is the coring level
-    double nr_c = configuration.cNRLevel * irescale;
+    // Filter delay (since it's a symmetric FIR filter)
+    const qint32 delay = c_nrc_b.size() / 2;
 
-    QVector<YIQ> hplinef;
-    hplinef.resize(videoParameters.fieldWidth + 32);
+    // High-pass result
+    double hpI[videoParameters.activeVideoEnd + delay];
+    double hpQ[videoParameters.activeVideoEnd + delay];
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        // Filters not cleared from previous line
-
-        for (qint32 h = videoParameters.activeVideoStart; h <= videoParameters.activeVideoEnd; h++) {
-            hplinef[h].i = iFilter.feed(yiqBuffer[lineNumber][h].i);
-            hplinef[h].q = qFilter.feed(yiqBuffer[lineNumber][h].q);
+        // Feed zeros into the filter outside the active area
+        for (qint32 h = videoParameters.activeVideoStart - delay; h < videoParameters.activeVideoStart; h++) {
+            iFilter.feed(0.0);
+            qFilter.feed(0.0);
+        }
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            hpI[h] = iFilter.feed(yiqBuffer[lineNumber][h].i);
+            hpQ[h] = qFilter.feed(yiqBuffer[lineNumber][h].q);
+        }
+        for (qint32 h = videoParameters.activeVideoEnd; h < videoParameters.activeVideoEnd + delay; h++) {
+            hpI[h] = iFilter.feed(0.0);
+            hpQ[h] = qFilter.feed(0.0);
         }
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            // Offset by 12 to cover the filter delay
-            double ai = hplinef[h + 12].i;
-            double aq = hplinef[h + 12].q;
+            // Offset to cover the filter delay
+            double ai = hpI[h + delay];
+            double aq = hpQ[h + delay];
 
+            // Clip the filter strength
             if (fabs(ai) > nr_c) {
                 ai = (ai > 0) ? nr_c : -nr_c;
             }
-
             if (fabs(aq) > nr_c) {
                 aq = (aq > 0) ? nr_c : -nr_c;
             }
@@ -645,25 +656,35 @@ void Comb::FrameBuffer::doYNR()
 {
     if (configuration.yNRLevel == 0) return;
 
-    // High-pass filter for Y
-    auto yFilter(f_nr);
-
     // nr_y is the coring level
     double nr_y = configuration.yNRLevel * irescale;
 
-    QVector<YIQ> hplinef;
-    hplinef.resize(videoParameters.fieldWidth + 32);
+    // High-pass filter for Y
+    auto yFilter(f_nr);
+
+    // Filter delay (since it's a symmetric FIR filter)
+    const qint32 delay = c_nr_b.size() / 2;
+
+    // High-pass result
+    double hpY[videoParameters.activeVideoEnd + delay];
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        // Filter not cleared from previous line
-
-        for (qint32 h = videoParameters.activeVideoStart; h <= videoParameters.activeVideoEnd; h++) {
-            hplinef[h].y = yFilter.feed(yiqBuffer[lineNumber][h].y);
+        // Feed zeros into the filter outside the active area
+        for (qint32 h = videoParameters.activeVideoStart - delay; h < videoParameters.activeVideoStart; h++) {
+            yFilter.feed(0.0);
+        }
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            hpY[h] = yFilter.feed(yiqBuffer[lineNumber][h].y);
+        }
+        for (qint32 h = videoParameters.activeVideoEnd; h < videoParameters.activeVideoEnd + delay; h++) {
+            hpY[h] = yFilter.feed(0.0);
         }
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            double a = hplinef[h + 12].y;
+            // Offset to cover the filter delay
+            double a = hpY[h + delay];
 
+            // Clip the filter strength
             if (fabs(a) > nr_y) {
                 a = (a > 0) ? nr_y : -nr_y;
             }
