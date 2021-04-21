@@ -55,12 +55,14 @@ ChromaDecoderConfigDialog::~ChromaDecoderConfigDialog()
 }
 
 void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalColour::Configuration &_palConfiguration,
-                                                 const Comb::Configuration &_ntscConfiguration)
+                                                 const Comb::Configuration &_ntscConfiguration,
+                                                 const OutputWriter::Configuration &_outputConfiguration)
 {
     double yNRLevel = _isSourcePal ? palConfiguration.yNRLevel : ntscConfiguration.yNRLevel;
     isSourcePal = _isSourcePal;
     palConfiguration = _palConfiguration;
     ntscConfiguration = _ntscConfiguration;
+    outputConfiguration = _outputConfiguration;
 
     palConfiguration.chromaGain = qBound(0.0, palConfiguration.chromaGain, 2.0);
     palConfiguration.transformThreshold = qBound(0.0, palConfiguration.transformThreshold, 1.0);
@@ -90,6 +92,11 @@ const PalColour::Configuration &ChromaDecoderConfigDialog::getPalConfiguration()
 const Comb::Configuration &ChromaDecoderConfigDialog::getNtscConfiguration()
 {
     return ntscConfiguration;
+}
+
+const OutputWriter::Configuration &ChromaDecoderConfigDialog::getOutputConfiguration()
+{
+    return outputConfiguration;
 }
 
 void ChromaDecoderConfigDialog::updateDialog()
@@ -171,7 +178,7 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->showMapCheckBox->setChecked(ntscConfiguration.showMap);
 
     ui->whitePoint75CheckBox->setEnabled(isSourceNtsc);
-    ui->whitePoint75CheckBox->setChecked(ntscConfiguration.whitePoint75);
+    ui->whitePoint75CheckBox->setChecked(outputConfiguration.whitePoint75);
 
     ui->colorLpfCheckBox->setEnabled(isSourceNtsc);
     ui->colorLpfCheckBox->setChecked(ntscConfiguration.colorlpf);
@@ -268,7 +275,7 @@ void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
 
 void ChromaDecoderConfigDialog::on_whitePoint75CheckBox_clicked()
 {
-    ntscConfiguration.whitePoint75 = ui->whitePoint75CheckBox->isChecked();
+    outputConfiguration.whitePoint75 = ui->whitePoint75CheckBox->isChecked();
     emit chromaDecoderConfigChanged();
 }
 

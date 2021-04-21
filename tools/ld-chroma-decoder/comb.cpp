@@ -27,9 +27,12 @@
 
 #include "comb.h"
 
+#include "framecanvas.h"
+
 #include "deemp.h"
 
 #include <QScopedPointer>
+#include <cmath>
 
 // Definitions of static constexpr data members, for compatibility with
 // pre-C++17 compilers
@@ -109,10 +112,10 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
 }
 
 void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                        QVector<OutputFrame> &outputFrames)
+                        QVector<ComponentFrame> &componentFrames)
 {
     assert(configurationSet);
-    assert((outputFrames.size() * 2) == (endIndex - startIndex));
+    assert((componentFrames.size() * 2) == (endIndex - startIndex));
 
     // Buffers for the next, current and previous frame.
     // Because we only need three of these, we allocate them upfront then
@@ -160,6 +163,10 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
             currentFrameBuffer->split3D(*previousFrameBuffer, *nextFrameBuffer);
         }
 
+        // Initialise and clear the component frame
+        componentFrames[frameIndex].init(videoParameters);
+        currentFrameBuffer->setComponentFrame(componentFrames[frameIndex]);
+
         // Demodulate chroma giving I/Q
         currentFrameBuffer->splitIQ();
 
@@ -170,16 +177,15 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         if (configuration.colorlpf) currentFrameBuffer->filterIQ();
 
         // Apply noise reduction
-        currentFrameBuffer->doYNR();
         currentFrameBuffer->doCNR();
+        currentFrameBuffer->doYNR();
 
-        // Convert the YIQ result to RGB or YCbCr
-        outputFrames[frameIndex] = configuration.outputYCbCr ? currentFrameBuffer->yiqToYUVFrame() :
-                                                               currentFrameBuffer->yiqToRGBFrame();
+        // Transform I/Q to U/V
+        currentFrameBuffer->transformIQ(configuration.chromaGain);
 
         // Overlay the map if required
         if (configuration.dimensions == 3 && configuration.showMap) {
-            currentFrameBuffer->overlayMap(*previousFrameBuffer, *nextFrameBuffer, outputFrames[frameIndex]);
+            currentFrameBuffer->overlayMap(*previousFrameBuffer, *nextFrameBuffer);
         }
     }
 }
@@ -253,6 +259,9 @@ void Comb::FrameBuffer::loadFields(const SourceField &firstField, const SourceFi
             }
         }
     }
+
+    // No component frame yet
+    componentFrame = nullptr;
 }
 
 // Extract chroma into clpbuffer[0] using a 1D bandpass filter.
@@ -497,16 +506,14 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
 // Spilt the I and Q
 void Comb::FrameBuffer::splitIQ()
 {
-    // Clear the target frame YIQ buffer
-    for (qint32 lineNumber = 0; lineNumber < MAX_HEIGHT; lineNumber++) {
-        for (qint32 h = 0; h < MAX_WIDTH; h++) {
-            yiqBuffer[lineNumber][h] = YIQ();
-        }
-    }
-
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         // Get a pointer to the line's data
         const quint16 *line = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+
+        double *Y = componentFrame->y(lineNumber);
+        double *I = componentFrame->u(lineNumber);
+        double *Q = componentFrame->v(lineNumber);
+
         bool linePhase = getLinePhase(lineNumber);
 
         double si = 0, sq = 0;
@@ -525,20 +532,23 @@ void Comb::FrameBuffer::splitIQ()
                 default: break;
             }
 
-            yiqBuffer[lineNumber][h].y = line[h];
-            yiqBuffer[lineNumber][h].i = si;
-            yiqBuffer[lineNumber][h].q = sq;
+            Y[h] = line[h];
+            I[h] = si;
+            Q[h] = sq;
         }
     }
 }
 
-// Filter the IQ from the input YIQ buffer
+// Filter the IQ from the component frame
 void Comb::FrameBuffer::filterIQ()
 {
     auto iFilter(f_colorlpi);
     auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        double *I = componentFrame->u(lineNumber);
+        double *Q = componentFrame->v(lineNumber);
+
         iFilter.clear();
         qFilter.clear();
 
@@ -550,15 +560,15 @@ void Comb::FrameBuffer::filterIQ()
             qint32 phase = h % 4;
 
             switch (phase) {
-                case 0: filti = iFilter.feed(yiqBuffer[lineNumber][h].i); break;
-                case 1: filtq = qFilter.feed(yiqBuffer[lineNumber][h].q); break;
-                case 2: filti = iFilter.feed(yiqBuffer[lineNumber][h].i); break;
-                case 3: filtq = qFilter.feed(yiqBuffer[lineNumber][h].q); break;
+                case 0: filti = iFilter.feed(I[h]); break;
+                case 1: filtq = qFilter.feed(Q[h]); break;
+                case 2: filti = iFilter.feed(I[h]); break;
+                case 3: filtq = qFilter.feed(Q[h]); break;
                 default: break;
             }
 
-            yiqBuffer[lineNumber][h - qoffset].i = filti;
-            yiqBuffer[lineNumber][h - qoffset].q = filtq;
+            I[h - qoffset] = filti;
+            Q[h - qoffset] = filtq;
         }
     }
 }
@@ -568,26 +578,26 @@ void Comb::FrameBuffer::adjustY()
 {
     // remove color data from baseband (Y)
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        double *Y = componentFrame->y(lineNumber);
+        double *I = componentFrame->u(lineNumber);
+        double *Q = componentFrame->v(lineNumber);
+
         bool linePhase = getLinePhase(lineNumber);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             double comp = 0;
             qint32 phase = h % 4;
 
-            YIQ y = yiqBuffer[lineNumber][h];
-
             switch (phase) {
-                case 0: comp = -y.q; break;
-                case 1: comp = y.i; break;
-                case 2: comp = y.q; break;
-                case 3: comp = -y.i; break;
+                case 0: comp = -Q[h]; break;
+                case 1: comp = I[h]; break;
+                case 2: comp = Q[h]; break;
+                case 3: comp = -I[h]; break;
                 default: break;
             }
 
             if (!linePhase) comp = -comp;
-            y.y -= comp;
-
-            yiqBuffer[lineNumber][h] = y;
+            Y[h] -= comp;
         }
     }
 }
@@ -619,14 +629,17 @@ void Comb::FrameBuffer::doCNR()
     double hpQ[videoParameters.activeVideoEnd + delay];
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        double *I = componentFrame->u(lineNumber);
+        double *Q = componentFrame->v(lineNumber);
+
         // Feed zeros into the filter outside the active area
         for (qint32 h = videoParameters.activeVideoStart - delay; h < videoParameters.activeVideoStart; h++) {
             iFilter.feed(0.0);
             qFilter.feed(0.0);
         }
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            hpI[h] = iFilter.feed(yiqBuffer[lineNumber][h].i);
-            hpQ[h] = qFilter.feed(yiqBuffer[lineNumber][h].q);
+            hpI[h] = iFilter.feed(I[h]);
+            hpQ[h] = qFilter.feed(Q[h]);
         }
         for (qint32 h = videoParameters.activeVideoEnd; h < videoParameters.activeVideoEnd + delay; h++) {
             hpI[h] = iFilter.feed(0.0);
@@ -646,8 +659,8 @@ void Comb::FrameBuffer::doCNR()
                 aq = (aq > 0) ? nr_c : -nr_c;
             }
 
-            yiqBuffer[lineNumber][h].i -= ai;
-            yiqBuffer[lineNumber][h].q -= aq;
+            I[h] -= ai;
+            Q[h] -= aq;
         }
     }
 }
@@ -669,12 +682,14 @@ void Comb::FrameBuffer::doYNR()
     double hpY[videoParameters.activeVideoEnd + delay];
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        double *Y = componentFrame->y(lineNumber);
+
         // Feed zeros into the filter outside the active area
         for (qint32 h = videoParameters.activeVideoStart - delay; h < videoParameters.activeVideoStart; h++) {
             yFilter.feed(0.0);
         }
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            hpY[h] = yFilter.feed(yiqBuffer[lineNumber][h].y);
+            hpY[h] = yFilter.feed(Y[h]);
         }
         for (qint32 h = videoParameters.activeVideoEnd; h < videoParameters.activeVideoEnd + delay; h++) {
             hpY[h] = yFilter.feed(0.0);
@@ -689,115 +704,66 @@ void Comb::FrameBuffer::doYNR()
                 a = (a > 0) ? nr_y : -nr_y;
             }
 
-            yiqBuffer[lineNumber][h].y -= a;
+            Y[h] -= a;
         }
     }
 }
 
-// Convert buffer from YIQ to RGB and store as packed RGB48
-OutputFrame Comb::FrameBuffer::yiqToRGBFrame()
+// Transform I/Q into U/V, and apply chroma gain
+void Comb::FrameBuffer::transformIQ(double chromaGain)
 {
-    OutputFrame outputFrame;
-    outputFrame.RGB.resize(videoParameters.fieldWidth * frameHeight * 3); // for RGB 16-16-16
+    // Compute components for the rotation vector
+    const double bp = sin((33 * M_PI) / 180) * chromaGain;
+    const double bq = cos((33 * M_PI) / 180) * chromaGain;
 
-    // Initialise the output frame
-    outputFrame.RGB.fill(0);
-
-    // Initialise YIQ to RGB converter
-    RGB rgb(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint75, configuration.chromaGain);
-
-    // Perform YIQ to RGB conversion
+    // Apply the vector to all the samples
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        // Get a pointer to the line
-        quint16 *linePointer = outputFrame.RGB.data() + (videoParameters.fieldWidth * 3 * lineNumber);
+        double *I = componentFrame->u(lineNumber);
+        double *Q = componentFrame->v(lineNumber);
 
-        // Offset the output by the activeVideoStart to keep the output frame
-        // in the same x position as the input video frame
-        qint32 o = (videoParameters.activeVideoStart * 3);
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            double U = (-bp * I[h]) + (bq * Q[h]);
+            double V = ( bq * I[h]) + (bp * Q[h]);
 
-        // Fill the output line with the RGB values
-        rgb.convertLine(&yiqBuffer[lineNumber][videoParameters.activeVideoStart],
-                        &yiqBuffer[lineNumber][videoParameters.activeVideoEnd],
-                        &linePointer[o]);
+            I[h] = U;
+            Q[h] = V;
+        }
     }
-
-    return outputFrame;
 }
 
-// Convert buffer from YIQ to RGB
-void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, OutputFrame &rgbFrame)
+// Overlay the 3D filter map onto the output
+void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame)
 {
-    qDebug() << "Comb::FrameBuffer::overlayMap(): Overlaying map onto RGB output";
+    qDebug() << "Comb::FrameBuffer::overlayMap(): Overlaying map onto output";
 
-    // Overlay the map on the output RGB
+    // Create a canvas for colour conversion
+    FrameCanvas canvas(*componentFrame, videoParameters);
+
+    // Convert CANDIDATE_SHADES into Y'UV form
+    FrameCanvas::Colour shades[NUM_CANDIDATES];
+    for (qint32 i = 0; i < NUM_CANDIDATES; i++) {
+        const quint32 shade = CANDIDATE_SHADES[i];
+        shades[i] = canvas.rgb(
+            ((shade >> 16) & 0xff) << 8,
+            ((shade >> 8) & 0xff) << 8,
+            (shade & 0xff) << 8
+        );
+    }
+
+    // For each sample in the frame...
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        // Get a pointer to the line
-        quint16 *linePointer = rgbFrame.RGB.data() + (videoParameters.fieldWidth * 3 * lineNumber);
+        double *U = componentFrame->u(lineNumber);        
+        double *V = componentFrame->v(lineNumber);        
 
-        const quint16 *lineData = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
-
-        // Fill the output frame with the RGB values
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             // Select the best candidate
             qint32 bestIndex;
             double bestSample;
             getBestCandidate(lineNumber, h, previousFrame, nextFrame, bestIndex, bestSample);
 
-            // Take the 2D luma, and colour according to the candidate index
-            const double luma = (lineData[h] - clpbuffer[1].pixel[lineNumber][h]) / 65535.0;
-            const quint32 shade = CANDIDATE_SHADES[bestIndex];
-            qint32 red = luma * (((shade >> 16) & 0xff) << 8);
-            qint32 green = luma * (((shade >> 8) & 0xff) << 8);
-            qint32 blue = luma * ((shade & 0xff) << 8);
-
-            if (red > 65535) red = 65535;
-            if (green > 65535) green = 65535;
-            if (blue > 65535) blue = 65535;
-
-            linePointer[(h * 3)] = static_cast<quint16>(red);
-            linePointer[(h * 3) + 1] = static_cast<quint16>(green);
-            linePointer[(h * 3) + 2] = static_cast<quint16>(blue);
+            // Leave Y' the same, but replace UV with the appropriate shade
+            U[h] = shades[bestIndex].u;
+            V[h] = shades[bestIndex].v;
         }
     }
-}
-
-// Convert buffer from YIQ to YCbCr and store as planer YUV444P16
-OutputFrame Comb::FrameBuffer::yiqToYUVFrame()
-{
-    OutputFrame outputFrame;
-
-    outputFrame.Y.resize(videoParameters.fieldWidth * frameHeight);
-    outputFrame.Y.fill(16 * 256);
-
-    if (configuration.chromaGain > 0) {
-        outputFrame.Cb.resize(videoParameters.fieldWidth * frameHeight);
-        outputFrame.Cr.resize(videoParameters.fieldWidth * frameHeight);
-        outputFrame.Cb.fill(128 * 256);
-        outputFrame.Cr.fill(128 * 256);
-    } else {
-        outputFrame.Cb.clear();
-        outputFrame.Cr.clear();
-    }
-
-    // Initialise YIQ to YCbCr converter
-    YCbCr ycbcr(videoParameters.white16bIre, videoParameters.black16bIre, configuration.whitePoint75, configuration.chromaGain);
-
-    // Perform YIQ to YCbCr conversion
-    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        // Get a pointer to each plane
-        quint16 *linePointerY = outputFrame.Y.data() + (videoParameters.fieldWidth * lineNumber);
-        quint16 *linePointerCb = outputFrame.Cb.data() + (videoParameters.fieldWidth * lineNumber);
-        quint16 *linePointerCr = outputFrame.Cr.data() + (videoParameters.fieldWidth * lineNumber);
-
-        // Offset the output by the activeVideoStart to keep the output frame
-        // in the same x position as the input video frame
-        qint32 o = videoParameters.activeVideoStart;
-
-        // Fill the output line with YCbCr values
-        ycbcr.convertLine(&yiqBuffer[lineNumber][videoParameters.activeVideoStart],
-                          &yiqBuffer[lineNumber][videoParameters.activeVideoEnd],
-                          &linePointerY[o], &linePointerCb[o], &linePointerCr[o]);
-    }
-
-    return outputFrame;
 }
