@@ -5,7 +5,7 @@
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018 Chad Page
     Copyright (C) 2018-2019 Simon Inns
-    Copyright (C) 2020 Adam Sampson
+    Copyright (C) 2020-2021 Adam Sampson
     Copyright (C) 2021 Phillip Blucas
 
     This file is part of ld-decode-tools.
@@ -47,6 +47,7 @@ public:
     // Comb filter configuration parameters
     struct Configuration {
         double chromaGain = 1.0;
+        double chromaPhase = 0.0;
         bool colorlpf = false;
         bool colorlpf_hq = true;
         qint32 dimensions = 2;
@@ -100,7 +101,7 @@ private:
         void adjustY();
         void doCNR();
         void doYNR();
-        void transformIQ(double chromaGain);
+        void transformIQ(double chromaGain, double chromaPhase);
 
         void overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame);
 

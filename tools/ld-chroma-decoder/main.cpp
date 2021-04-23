@@ -157,6 +157,12 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(chromaGainOption);
 
+    // Option to specify chroma phase
+    QCommandLineOption chromaPhaseOption(QStringList() << "chroma-phase",
+                                        QCoreApplication::translate("main", "Phase rotation applied to chroma components (degrees; default 0.0)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(chromaPhaseOption);
+
     // Option to select the output format (-p)
     QCommandLineOption outputFormatOption(QStringList() << "p" << "output-format",
                                        QCoreApplication::translate("main", "Output format (rgb, yuv, y4m; default rgb); RGB48, YUV444P16, GRAY16 pixel formats are supported"),
@@ -322,6 +328,12 @@ int main(int argc, char *argv[])
             qCritical("Chroma gain must not be less than 0");
             return -1;
         }
+    }
+
+    if (parser.isSet(chromaPhaseOption)) {
+        const double value = parser.value(chromaPhaseOption).toDouble();
+        palConfig.chromaPhase = value;
+        combConfig.chromaPhase = value;
     }
 
     bool bwMode = parser.isSet(setBwModeOption);

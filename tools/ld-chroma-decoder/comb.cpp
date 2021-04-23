@@ -181,7 +181,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         currentFrameBuffer->doYNR();
 
         // Transform I/Q to U/V
-        currentFrameBuffer->transformIQ(configuration.chromaGain);
+        currentFrameBuffer->transformIQ(configuration.chromaGain, configuration.chromaPhase);
 
         // Overlay the map if required
         if (configuration.dimensions == 3 && configuration.showMap) {
@@ -710,11 +710,12 @@ void Comb::FrameBuffer::doYNR()
 }
 
 // Transform I/Q into U/V, and apply chroma gain
-void Comb::FrameBuffer::transformIQ(double chromaGain)
+void Comb::FrameBuffer::transformIQ(double chromaGain, double chromaPhase)
 {
     // Compute components for the rotation vector
-    const double bp = sin((33 * M_PI) / 180) * chromaGain;
-    const double bq = cos((33 * M_PI) / 180) * chromaGain;
+    const double theta = ((33 + chromaPhase) * M_PI) / 180;
+    const double bp = sin(theta) * chromaGain;
+    const double bq = cos(theta) * chromaGain;
 
     // Apply the vector to all the samples
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
