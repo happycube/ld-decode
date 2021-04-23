@@ -26,6 +26,36 @@
 #include "chromadecoderconfigdialog.h"
 #include "ui_chromadecoderconfigdialog.h"
 
+#include <cmath>
+
+/*
+ * These two functions provide a non-linear mapping for sliders that control
+ * phase adjustments in degrees. The maximum range is from -180 to +180
+ * degrees, but phase errors are usually < 10 degrees so we need more precise
+ * adjustment in the middle.
+ */
+
+static constexpr double DEGREE_SLIDER_POWER = 3.0;
+static constexpr qint32 DEGREE_SLIDER_SCALE = 1000;
+
+static double degreesToSliderPos(double degrees) {
+    double sliderPos = pow(abs(degrees) / 180, 1 / DEGREE_SLIDER_POWER) * DEGREE_SLIDER_SCALE;
+    if (degrees < 0) {
+        return -sliderPos;
+    } else {
+        return sliderPos;
+    }
+}
+
+static double sliderPosToDegrees(double sliderPos) {
+    double degrees = pow(abs(sliderPos) / DEGREE_SLIDER_SCALE, DEGREE_SLIDER_POWER) * 180;
+    if (sliderPos < 0) {
+        return -degrees;
+    } else {
+        return degrees;
+    }
+}
+
 ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::ChromaDecoderConfigDialog)
@@ -35,6 +65,9 @@ ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
 
     ui->chromaGainHorizontalSlider->setMinimum(0);
     ui->chromaGainHorizontalSlider->setMaximum(200);
+
+    ui->chromaPhaseHorizontalSlider->setMinimum(-DEGREE_SLIDER_SCALE);
+    ui->chromaPhaseHorizontalSlider->setMaximum(DEGREE_SLIDER_SCALE);
 
     ui->thresholdHorizontalSlider->setMinimum(0);
     ui->thresholdHorizontalSlider->setMaximum(100);
@@ -65,6 +98,7 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
     outputConfiguration = _outputConfiguration;
 
     palConfiguration.chromaGain = qBound(0.0, palConfiguration.chromaGain, 2.0);
+    palConfiguration.chromaPhase = qBound(-180.0, palConfiguration.chromaPhase, 180.0);
     palConfiguration.transformThreshold = qBound(0.0, palConfiguration.transformThreshold, 1.0);
     palConfiguration.yNRLevel = qBound(0.0, yNRLevel, 10.0);
     ntscConfiguration.cNRLevel = qBound(0.0, ntscConfiguration.cNRLevel, 10.0);
@@ -72,6 +106,7 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
 
     // For settings that both decoders share, the PAL default takes precedence
     ntscConfiguration.chromaGain = palConfiguration.chromaGain;
+    ntscConfiguration.chromaPhase = palConfiguration.chromaPhase;
 
     // Select the tab corresponding to the current standard automatically
     if (isSourcePal) {
@@ -108,6 +143,12 @@ void ChromaDecoderConfigDialog::updateDialog()
 
     ui->chromaGainValueLabel->setEnabled(true);
     ui->chromaGainValueLabel->setText(QString::number(palConfiguration.chromaGain, 'f', 2));
+
+    ui->chromaPhaseHorizontalSlider->setEnabled(true);
+    ui->chromaPhaseHorizontalSlider->setValue(static_cast<qint32>(degreesToSliderPos(palConfiguration.chromaPhase)));
+
+    ui->chromaPhaseValueLabel->setEnabled(true);
+    ui->chromaPhaseValueLabel->setText(QString::number(palConfiguration.chromaPhase, 'f', 1) + QChar(0xB0));
     
     double yNRLevel = isSourcePal ? palConfiguration.yNRLevel : ntscConfiguration.yNRLevel;
     
@@ -202,6 +243,14 @@ void ChromaDecoderConfigDialog::on_chromaGainHorizontalSlider_valueChanged(int v
     palConfiguration.chromaGain = static_cast<double>(value) / 100;
     ntscConfiguration.chromaGain = palConfiguration.chromaGain;
     ui->chromaGainValueLabel->setText(QString::number(palConfiguration.chromaGain, 'f', 2));
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_chromaPhaseHorizontalSlider_valueChanged(int value)
+{
+    palConfiguration.chromaPhase = sliderPosToDegrees(static_cast<double>(value));
+    ntscConfiguration.chromaPhase = palConfiguration.chromaPhase;
+    ui->chromaPhaseValueLabel->setText(QString::number(palConfiguration.chromaPhase, 'f', 1) + QChar(0xB0));
     emit chromaDecoderConfigChanged();
 }
 

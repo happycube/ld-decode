@@ -56,6 +56,7 @@ public:
 
     struct Configuration {
         double chromaGain = 1.0;
+        double chromaPhase = 0.0;
         double yNRLevel = 0.5;
         bool simplePAL = false;
         ChromaFilterMode chromaFilter = palColourFilter;

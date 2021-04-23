@@ -286,9 +286,11 @@ void PalColour::decodeField(const SourceField &inputField, const double *chromaD
         // Detect the colourburst from the composite signal
         detectBurst(line, compPtr);
 
-        // Scale line.bp/line.bq to apply gain adjustment
-        line.bp *= configuration.chromaGain;
-        line.bq *= configuration.chromaGain;
+        // Rotate and scale line.bp/line.bq to apply gain and phase adjustment
+        const double oldBp = line.bp, oldBq = line.bq;
+        const double theta = (configuration.chromaPhase * M_PI) / 180;
+        line.bp = (oldBp * cos(theta) - oldBq * sin(theta)) * configuration.chromaGain;
+        line.bq = (oldBp * sin(theta) + oldBq * cos(theta)) * configuration.chromaGain;
 
         if (configuration.chromaFilter == palColourFilter) {
             // Decode chroma and luma from the composite signal

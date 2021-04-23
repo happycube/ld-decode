@@ -56,6 +56,7 @@ signals:
 
 private slots:
     void on_chromaGainHorizontalSlider_valueChanged(int value);
+    void on_chromaPhaseHorizontalSlider_valueChanged(int value);
 
     void on_palFilterButtonGroup_buttonClicked(QAbstractButton *button);
     void on_thresholdModeCheckBox_clicked();
