@@ -12,6 +12,7 @@ from vhsdecode.utils import get_line
 
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.chromasep import ChromaSepClass
+from vhsdecode.process import getpulses_override as vhs_getpulses_override
 
 # Use PyFFTW's faster FFT implementation if available
 try:
@@ -106,7 +107,7 @@ def find_sync_levels(field):
 
 
 def getpulses_override(field):
-    """Find sync pulses in the demodulated video sigal
+    """Find sync pulses in the demodulated video signal
 
     NOTE: TEMPORARY override until an override for the value itself is added upstream.
     """
@@ -148,79 +149,7 @@ def getpulses_override(field):
             plt.show()
             #            exit(0)
 
-    # pass one using standard levels
-
-    # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-    pulse_hz_min = field.rf.iretohz(field.rf.SysParams["vsync_ire"] - 10)
-    pulse_hz_max = field.rf.iretohz(field.rf.SysParams["vsync_ire"] / 2)
-
-    pulses = lddu.findpulses(
-        field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
-    )
-
-    if len(pulses) == 0:
-        # can't do anything about this
-        return pulses
-
-    # determine sync pulses from vsync
-    vsync_locs = []
-    vsync_means = []
-
-    for i, p in enumerate(pulses):
-        if p.len > field.usectoinpx(10):
-            vsync_locs.append(i)
-            vsync_means.append(
-                np.mean(
-                    field.data["video"]["demod_05"][
-                        int(p.start + field.rf.freq) : int(
-                            p.start + p.len - field.rf.freq
-                        )
-                    ]
-                )
-            )
-
-    if len(vsync_means) == 0:
-        return None
-
-    synclevel = np.median(vsync_means)
-
-    if np.abs(field.rf.hztoire(synclevel) - field.rf.SysParams["vsync_ire"]) < 5:
-        # sync level is close enough to use
-        return pulses
-
-    if vsync_locs is None or not len(vsync_locs):
-        return None
-
-    # Now compute black level and try again
-
-    # take the eq pulses before and after vsync
-    r1 = range(vsync_locs[0] - 5, vsync_locs[0])
-    r2 = range(vsync_locs[-1] + 1, vsync_locs[-1] + 6)
-
-    black_means = []
-
-    for i in itertools.chain(r1, r2):
-        if i < 0 or i >= len(pulses):
-            continue
-
-        p = pulses[i]
-        if inrange(p.len, field.rf.freq * 0.75, field.rf.freq * 3):
-            black_means.append(
-                np.mean(
-                    field.data["video"]["demod_05"][
-                        int(p.start + (field.rf.freq * 5)) : int(
-                            p.start + (field.rf.freq * 20)
-                        )
-                    ]
-                )
-            )
-
-    blacklevel = np.median(black_means)
-
-    pulse_hz_min = synclevel - (field.rf.SysParams["hz_ire"] * 10)
-    pulse_hz_max = (blacklevel + synclevel) / 2
-
-    return lddu.findpulses(field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
+    return vhs_getpulses_override(field)
 
 
 def get_burst_area(field):
@@ -415,7 +344,7 @@ class FieldPALCVBS(ldd.FieldPAL):
         return 1 + (self.rf.field_number % 8)
 
     def getpulses(self):
-        """Find sync pulses in the demodulated video sigal
+        """Find sync pulses in the demodulated video signal
 
         NOTE: TEMPORARY override until an override for the value itself is added upstream.
         """
@@ -452,7 +381,7 @@ class FieldNTSCCVBS(ldd.FieldNTSC):
         return None
 
     def getpulses(self):
-        """Find sync pulses in the demodulated video sigal
+        """Find sync pulses in the demodulated video signal
 
         NOTE: TEMPORARY override until an override for the value itself is added upstream.
         """
@@ -666,8 +595,10 @@ class VHSDecodeInner(ldd.RFDecode):
 
         # applies the Subcarrier trap
         # (this will remove most chroma info)
-        # luma = self.chromaTrap.work(data)
-        luma = data
+        if self.chroma_trap:
+            luma = self.chromaTrap.work(data)
+        else:
+            luma = data
 
         if not self.auto_sync:
             luma += 0xFFFF / 2
