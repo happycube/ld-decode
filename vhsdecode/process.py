@@ -41,7 +41,7 @@ def replace_spikes(demod, demod_diffed, max_value):
     """Go through and replace spikes and some samples after them with data
     from the diff demod pass"""
     too_high = max_value
-    to_fix = np.argwhere(demod[:-20] > too_high)
+    to_fix = np.where(demod > too_high)[0]
 
     replace_spikes_inner(demod, demod_diffed, to_fix)
 
@@ -52,8 +52,8 @@ def replace_spikes_inner(demod, demod_diffed, to_fix):
     Separate as arghwere is a very recent addition in numba.
     """
     for i in to_fix:
-        start = min(i[0] - 4, 0)
-        end = i[0] + 20
+        start = min(i - 4, 0)
+        end = i + 20
         demod[start:end] = demod_diffed[start:end]
 
 
