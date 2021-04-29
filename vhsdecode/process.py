@@ -37,11 +37,20 @@ def chroma_to_u16(chroma):
     return np.uint16(chroma + S16_ABS_MAX)
 
 
-@njit(cache=True)
 def replace_spikes(demod, demod_diffed, max_value):
+    """Go through and replace spikes and some samples after them with data
+    from the diff demod pass"""
     too_high = max_value
     to_fix = np.argwhere(demod[:-20] > too_high)
 
+    replace_spikes_inner(demod, demod_diffed, to_fix)
+
+
+@njit(cache=True)
+def replace_spikes_inner(demod, demod_diffed, to_fix):
+    """Inner loop for the previous function that to be compiled by numba.
+    Separate as arghwere is a very recent addition in numba.
+    """
     for i in to_fix:
         start = min(i[0] - 4, 0)
         end = i[0] + 20
@@ -1155,12 +1164,14 @@ class FieldNTSCUMatic(ldd.FieldNTSC):
         """Disabled this for now as line starts can vary widely."""
         return baserr
 
+
 def parent_system(system):
-    if system is 'MPAL':
-        parent_system = 'NTSC'
+    if system is "MPAL":
+        parent_system = "NTSC"
     else:
         parent_system = system
     return parent_system
+
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
@@ -1360,7 +1371,10 @@ class VHSRFDecode(ldd.RFDecode):
 
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(
-            inputfreq, parent_system(system), decode_analog_audio=False, has_analog_audio=False
+            inputfreq,
+            parent_system(system),
+            decode_analog_audio=False,
+            has_analog_audio=False,
         )
 
         # controls the sharpness EQ gain
@@ -1844,7 +1858,7 @@ class VHSRFDecode(ldd.RFDecode):
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
             ax1.plot(demod)
-            #ax1.plot(demod_b, color="#000000")
+            # ax1.plot(demod_b, color="#000000")
             ax2.plot(out_video)
 
             # ax3.plot(hilbert)
@@ -1856,7 +1870,7 @@ class VHSRFDecode(ldd.RFDecode):
             #            crossings = find_crossings(env, 700)
             #            ax3.plot(crossings, color="#0000FF")
             plt.show()
-            #exit(0)
+            # exit(0)
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
