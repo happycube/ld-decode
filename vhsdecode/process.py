@@ -1166,7 +1166,7 @@ class FieldNTSCUMatic(ldd.FieldNTSC):
 
 
 def parent_system(system):
-    if system is "MPAL":
+    if system == "MPAL":
         parent_system = "NTSC"
     else:
         parent_system = system
@@ -1783,7 +1783,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Boost high frequencies in areas where the signal is weak to reduce missed zero crossings
         # on sharp transitions. Using filtfilt to avoid phase issues.
         high_part = utils.filter_simple(data_filtered, self.Filters["RFTop"]) * (
-            (env_mean * 0.9) / env
+            (env_mean * 0.9) / np.maximum(env, 0.05)
         )
         indata_fft_filt += npfft.fft(high_part * self.high_boost)
 
