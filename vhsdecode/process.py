@@ -192,7 +192,8 @@ def getpulses_override(field):
                 )
             )
 
-    blacklevel = np.median(black_means)
+    # Set to nan if empty to avoid warning.
+    blacklevel = math.nan if len(black_means) == 0 else np.median(black_means)
 
     if np.isnan(blacklevel).any() or np.isnan(synclevel).any():
         # utils.plot_scope(field.data["video"]["demod_05"], title='Failed field demod05')
