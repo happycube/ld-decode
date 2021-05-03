@@ -151,11 +151,11 @@ private:
     PalColour::Configuration palConfiguration;
     Comb::Configuration ntscConfiguration;
     OutputWriter::Configuration outputConfiguration;
-    bool decoderConfigurationChanged;
 
     // Chapter map
     QVector<qint32> chapterMap;
 
+    void invalidateFrameCache();
     QImage generateQImage(qint32 frameNumber);
     void generateData();
     void startBackgroundLoad(QString sourceFilename);
