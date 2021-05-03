@@ -29,12 +29,13 @@
 
 TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
+    invalidateFrameCache();
+
     // Default frame image options
     chromaOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
-    frameCacheFrameNumber = -1;
 
     // Configure the chroma decoder
     palConfiguration = palColour.getConfiguration();
@@ -42,7 +43,6 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     ntscConfiguration = ntscColour.getConfiguration();
     outputConfiguration.pixelFormat = OutputWriter::PixelFormat::RGB48;
     outputConfiguration.usePadding = false;
-    decoderConfigurationChanged = false;
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
@@ -93,21 +93,21 @@ QString TbcSource::getCurrentSourceFilename()
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
 void TbcSource::setHighlightDropouts(bool _state)
 {
-    frameCacheFrameNumber = -1;
+    invalidateFrameCache();
     dropoutsOn = _state;
 }
 
 // Method to set the chroma decoder mode (true = on)
 void TbcSource::setChromaDecoder(bool _state)
 {
-    frameCacheFrameNumber = -1;
+    invalidateFrameCache();
     chromaOn = _state;
 }
 
 // Method to set the field order (true = reversed, false = normal)
 void TbcSource::setFieldOrder(bool _state)
 {
-    frameCacheFrameNumber = -1;
+    invalidateFrameCache();
     reverseFoOn = _state;
 
     if (reverseFoOn) ldDecodeMetaData.setIsFirstFieldFirst(false);
@@ -138,11 +138,8 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
     if (!sourceReady) return QImage();
 
     // Check cached QImage
-    if (frameCacheFrameNumber == frameNumber && !decoderConfigurationChanged) return frameCache;
-    else {
-        frameCacheFrameNumber = frameNumber;
-        decoderConfigurationChanged = false;
-    }
+    if (frameCacheFrameNumber == frameNumber) return frameCache;
+    frameCacheFrameNumber = frameNumber;
 
     // Get the required field numbers
     qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
@@ -424,6 +421,8 @@ void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfi
                                        const Comb::Configuration &_ntscConfiguration,
                                        const OutputWriter::Configuration &_outputConfiguration)
 {
+    invalidateFrameCache();
+
     palConfiguration = _palConfiguration;
     ntscConfiguration = _ntscConfiguration;
     outputConfiguration = _outputConfiguration;
@@ -439,8 +438,6 @@ void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfi
     // Configure the OutputWriter.
     // Because we have padding disabled, this won't change the VideoParameters.
     outputWriter.updateConfiguration(videoParameters, outputConfiguration);
-
-    decoderConfigurationChanged = true;
 }
 
 const PalColour::Configuration &TbcSource::getPalConfiguration()
@@ -504,6 +501,12 @@ qint32 TbcSource::startOfChapter(qint32 currentFrameNumber)
 
 
 // Private methods ----------------------------------------------------------------------------------------------------
+
+// Mark the cached frame as invalid
+void TbcSource::invalidateFrameCache()
+{
+    frameCacheFrameNumber = -1;
+}
 
 // Method to create a QImage for a source video frame
 QImage TbcSource::generateQImage(qint32 frameNumber)
