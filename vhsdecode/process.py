@@ -40,13 +40,15 @@ def chroma_to_u16(chroma):
 def replace_spikes(demod, demod_diffed, max_value, replace_start=4, replace_end=20):
     """Go through and replace spikes and some samples after them with data
     from the diff demod pass"""
-    assert len(demod) == len(demod_diffed), "diff demod length doesn't match demod length"
+    assert len(demod) == len(
+        demod_diffed
+    ), "diff demod length doesn't match demod length"
     too_high = max_value
     to_fix = np.where(demod > too_high)[0]
 
     for i in to_fix:
         start = max(i - replace_start, 0)
-        end = min(i + replace_end, len(demod_diffed) -1)
+        end = min(i + replace_end, len(demod_diffed) - 1)
         demod[start:end] = demod_diffed[start:end]
 
     return demod
@@ -265,7 +267,7 @@ def decode_chroma_vhs(field):
 
     # If we moved significantly more than the length of one field, re-check phase
     # as we may have skipped fields.
-    if raw_loc - rf.last_raw_loc > 1.1:
+    if raw_loc - rf.last_raw_loc > 1.3:
         if rf.detect_track:
             ldd.logger.info("Possibly skipped a track, re-checking phase..")
             rf.needs_detect = True
@@ -1234,12 +1236,8 @@ class VHSRFDecode(ldd.RFDecode):
         high_boost = rf_options.get("high_boost", None)
         self.notch = rf_options.get("notch", None)
         self.notch_q = rf_options.get("notch_q", 10.0)
-        self.disable_diff_demod = (
-            rf_options.get("disable_diff_demod", False)
-        )
-        self.disable_dc_offset = (
-            rf_options.get("disable_dc_offset", False)
-        )
+        self.disable_diff_demod = rf_options.get("disable_diff_demod", False)
+        self.disable_dc_offset = rf_options.get("disable_dc_offset", False)
 
         if track_phase is None:
             self.track_phase = 0

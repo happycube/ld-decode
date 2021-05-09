@@ -1,5 +1,11 @@
 import copy
-from lddecode.core import RFParams_PAL, RFParams_NTSC, SysParams_PAL, SysParams_NTSC, calclinelen
+from lddecode.core import (
+    RFParams_PAL,
+    RFParams_NTSC,
+    SysParams_PAL,
+    SysParams_NTSC,
+    calclinelen,
+)
 
 # We base the parameters off the original laserdisc ones and override the ones
 # we need.
@@ -228,7 +234,7 @@ SysParams_MPAL_VHS["fieldPhases"] = 8
 ## Should be the same as NTSC in practice
 SysParams_MPAL_VHS["line_period"] = 1 / (SysParams_MPAL_VHS["fsc_mhz"] / (909 / 4.0))
 SysParams_MPAL_VHS["activeVideoUS"] = (9.45, SysParams_MPAL_VHS["line_period"] - 1.0)
-#SysParams_NTSC["FPS"] = 1000000 / (525 * SysParams_MPAL_VHS["line_period"])
+# SysParams_NTSC["FPS"] = 1000000 / (525 * SysParams_MPAL_VHS["line_period"])
 
 SysParams_MPAL_VHS["outlinelen"] = calclinelen(SysParams_MPAL_VHS, 4, "fsc_mhz")
 SysParams_MPAL_VHS["outfreq"] = 4 * SysParams_MPAL_VHS["fsc_mhz"]

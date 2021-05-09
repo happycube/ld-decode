@@ -12,6 +12,7 @@ from vhsdecode.utils import get_line
 
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.chromasep import ChromaSepClass
+
 # from vhsdecode.process import getpulses_override as vhs_getpulses_override
 # from vhsdecode.addons.vsyncserration import VsyncSerration
 
@@ -653,7 +654,6 @@ class VHSDecodeInner(ldd.RFDecode):
 
         self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
         # self.VsyncSerration = VsyncSerration(self.freq_hz, self.SysParams)
-
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
