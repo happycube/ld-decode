@@ -208,10 +208,10 @@ class VsyncSerration:
     def work(self, data):
         self.vsync_envelope(data)
         if self.has_levels():
-            ldd.logger.info('VBI serration levels %d - Sync tip: %.02f kHz, Blanking (ire0): %.02f kHz' %
+            ldd.logger.debug('VBI serration levels %d - Sync tip: %.02f kHz, Blanking (ire0): %.02f kHz' %
                   (len(self.levels[0]), self.get_levels()[0] / 1e3, self.get_levels()[1] / 1e3))
         elif self.fieldcount % 10 == 0:
-            ldd.logger.info('VBI EQ serration pulses search failed (using fallback logic)')
+            ldd.logger.debug('VBI EQ serration pulses search failed (using fallback logic)')
 
         self.fieldcount += 1
 
@@ -232,4 +232,3 @@ class VsyncSerration:
                 data[begin:begin + clip_len[ix]] = sync
 
         return data
-

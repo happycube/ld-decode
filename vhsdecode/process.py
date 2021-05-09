@@ -265,7 +265,7 @@ def decode_chroma_vhs(field):
 
     # If we moved significantly more than the length of one field, re-check phase
     # as we may have skipped fields.
-    if raw_loc - rf.last_raw_loc > 2.0:
+    if raw_loc - rf.last_raw_loc > 1.1:
         if rf.detect_track:
             ldd.logger.info("Possibly skipped a track, re-checking phase..")
             rf.needs_detect = True
@@ -760,7 +760,7 @@ def check_increment_field_no(rf):
     if raw_loc > rf.last_raw_loc:
         rf.field_number += 1
     else:
-        ldd.logger.info("Raw data loc didn't advance.")
+        ldd.logger.debug("Raw data loc didn't advance.")
 
 
 def try_detect_track_vhs_pal(field):
@@ -772,7 +772,7 @@ def try_detect_track_vhs_pal(field):
     Additionally, most tapes are recorded with a luma half-shift which shifts the fm-encoded
     luma frequencies slightly depending on the track to avoid luma crosstalk.
     """
-    ldd.logger.info("Trying to detect track phase...")
+    ldd.logger.debug("Trying to detect track phase...")
     burst_area = (
         math.floor(field.usectooutpx(field.rf.SysParams["colorBurstUS"][0])),
         math.ceil(field.usectooutpx(field.rf.SysParams["colorBurstUS"][1])),
@@ -946,7 +946,7 @@ class FieldNTSCVHS(ldd.FieldNTSC):
         sum will be much higher. This seem to give a reasonably good guess, but could probably
         be improved.
         """
-        ldd.logger.info("Trying to detect track phase...")
+        ldd.logger.debug("Trying to detect track phase...")
         burst_area = (
             math.floor(self.usectooutpx(self.rf.SysParams["colorBurstUS"][0])),
             math.ceil(self.usectooutpx(self.rf.SysParams["colorBurstUS"][1])),
