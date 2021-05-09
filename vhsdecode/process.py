@@ -3,8 +3,6 @@ import numpy as np
 import scipy.signal as sps
 import copy
 
-import itertools
-
 import lddecode.core as ldd
 import lddecode.utils as lddu
 from lddecode.utils import unwrap_hilbert, inrange
@@ -14,6 +12,7 @@ from vhsdecode.utils import get_line
 import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
+from vhsdecode.addons.resync import Resync
 
 from numba import njit
 
@@ -52,6 +51,7 @@ def replace_spikes(demod, demod_diffed, max_value, replace_start=4, replace_end=
 
     return demod
 
+
 @njit(cache=True)
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
@@ -81,152 +81,8 @@ def acc_line(chroma, burst_abs_ref, burststart, burstend):
     return output
 
 
-# stores the last valid blacklevel, synclevel and vsynclocs state
-# preliminary solution to fix spurious decoding halts (numpy error case)
-class FieldState:
-    def __init__(self):
-        self.blanklevels = np.array([])
-        self.synclevels = np.array([])
-        self.locs = None
-        self.field_average = 30
-
-    def setSyncLevel(self, level):
-        self.synclevels = np.append(self.synclevels, level)
-
-    def setLevels(self, blank, sync):
-        self.blanklevels = np.append(self.blanklevels, blank)
-        self.setSyncLevel(sync)
-
-    def getSyncLevel(self):
-        if np.size(self.synclevels) > 0:
-            synclevel, self.synclevels = utils.moving_average(self.synclevels, window=self.field_average)
-            return synclevel
-        else:
-            return None
-
-    def getLevels(self):
-        if np.size(self.blanklevels) > 0:
-            blacklevel, self.blanklevels = utils.moving_average(self.blanklevels, window=self.field_average)
-            return blacklevel, self.getSyncLevel()
-        else:
-            return None, None
-
-    def setLocs(self, locs):
-        self.locs = locs
-
-    def getLocs(self):
-        return self.locs
-
-    def hasLevels(self):
-        return np.size(self.blanklevels) > 0 and np.size(self.synclevels) > 0
-
-
-field_state = FieldState()
-
-
 def getpulses_override(field):
-    """Find sync pulses in the demodulated video signal
-
-    NOTE: TEMPORARY override until an override for the value itself is added upstream.
-    """
-
-    if field_state.hasLevels():
-        blank, sync = field_state.getLevels()
-        dc_offset = field.rf.SysParams["ire0"] - blank
-        field.data["video"]["demod_05"] = np.clip(field.data["video"]["demod_05"], a_min=sync, a_max=blank)
-        if not field.rf.disable_dc_offset:
-            field.data["video"]["demod"] += dc_offset
-        sync_ire, blank_ire = field.rf.hztoire(sync), field.rf.hztoire(blank)
-        pulse_hz_min = field.rf.iretohz(sync_ire - 10)
-        pulse_hz_max = field.rf.iretohz(sync_ire / 2)
-    else:
-        # pass one using standard levels
-        # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-        pulse_hz_min = field.rf.iretohz(field.rf.SysParams["vsync_ire"] - 10)
-        pulse_hz_max = field.rf.iretohz(field.rf.SysParams["vsync_ire"] / 2)
-
-    pulses = lddu.findpulses(
-        field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
-    )
-
-    if len(pulses) == 0:
-        # can't do anything about this
-        return pulses
-
-    # determine sync pulses from vsync
-    vsync_locs = []
-    vsync_means = []
-
-    for i, p in enumerate(pulses):
-        if p.len > field.usectoinpx(10):
-            vsync_locs.append(i)
-            vsync_means.append(
-                np.mean(
-                    field.data["video"]["demod_05"][
-                        int(p.start + field.rf.freq) : int(
-                            p.start + p.len - field.rf.freq
-                        )
-                    ]
-                )
-            )
-
-    if len(vsync_means) == 0:
-        synclevel = field_state.getSyncLevel()
-        if synclevel is None:
-            return None
-    else:
-        synclevel = np.median(vsync_means)
-        field_state.setSyncLevel(synclevel)
-        field_state.setLocs(vsync_locs)
-
-    if np.abs(field.rf.hztoire(synclevel) - field.rf.SysParams["vsync_ire"]) < 5:
-        # sync level is close enough to use
-        return pulses
-
-    if vsync_locs is None or not len(vsync_locs):
-        vsync_locs = field_state.getLocs()
-
-    # Now compute black level and try again
-
-    # take the eq pulses before and after vsync
-    r1 = range(vsync_locs[0] - 5, vsync_locs[0])
-    r2 = range(vsync_locs[-1] + 1, vsync_locs[-1] + 6)
-
-    black_means = []
-
-    for i in itertools.chain(r1, r2):
-        if i < 0 or i >= len(pulses):
-            continue
-
-        p = pulses[i]
-        if inrange(p.len, field.rf.freq * 0.75, field.rf.freq * 3):
-            black_means.append(
-                np.mean(
-                    field.data["video"]["demod_05"][
-                        int(p.start + (field.rf.freq * 5)) : int(
-                            p.start + (field.rf.freq * 20)
-                        )
-                    ]
-                )
-            )
-
-    # Set to nan if empty to avoid warning.
-    blacklevel = math.nan if len(black_means) == 0 else np.median(black_means)
-
-    if np.isnan(blacklevel).any() or np.isnan(synclevel).any():
-        # utils.plot_scope(field.data["video"]["demod_05"], title='Failed field demod05')
-        bl, sl = field_state.getLevels()
-        if bl is not None and sl is not None:
-            blacklevel, synclevel = bl, sl
-        else:
-            return None
-    else:
-        field_state.setLevels(blacklevel, synclevel)
-
-    pulse_hz_min = synclevel - (field.rf.SysParams["hz_ire"] * 10)
-    pulse_hz_max = (blacklevel + synclevel) / 2
-
-    return lddu.findpulses(field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
+    return field.rf.Resync.getpulses_override(field)
 
 
 @njit(cache=True)
@@ -1688,6 +1544,7 @@ class VHSRFDecode(ldd.RFDecode):
         }
 
         self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+        self.Resync = Resync(self.freq_hz, self.SysParams)
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1755,7 +1612,7 @@ class VHSRFDecode(ldd.RFDecode):
             )
             indata_fft_filt += npfft.fft(high_part * self.high_boost)
         else:
-            print('WARN: RF signal is weak. Is your deck tracking properly?')
+            ldd.logger.warning("RF signal is weak. Is your deck tracking properly?")
 
         hilbert = npfft.ifft(indata_fft_filt * self.Filters["hilbert"])
 
