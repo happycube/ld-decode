@@ -4,6 +4,7 @@
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2021 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -72,29 +73,31 @@ public:
     bool getChromaDecoder();
     bool getFieldOrder();
 
-    QImage getFrameImage(qint32 frameNumber);
+    void loadFrame(qint32 frameNumber);
+
+    QImage getFrameImage();
     qint32 getNumberOfFrames();
     qint32 getNumberOfFields();
     bool getIsSourcePal();
     qint32 getFrameHeight();
     qint32 getFrameWidth();
 
-    VbiDecoder::Vbi getFrameVbi(qint32 frameNumber);
-    bool getIsFrameVbiValid(qint32 frameNumber);
+    VbiDecoder::Vbi getFrameVbi();
+    bool getIsFrameVbiValid();
 
     QVector<qreal> getBlackSnrGraphData();
     QVector<qreal> getWhiteSnrGraphData();
     QVector<qreal> getDropOutGraphData();
     qint32 getGraphDataSize();
 
-    bool getIsDropoutPresent(qint32 frameNumber);
-    ScanLineData getScanLineData(qint32 frameNumber, qint32 scanLine);
+    bool getIsDropoutPresent();
+    ScanLineData getScanLineData(qint32 scanLine);
 
-    qint32 getFirstFieldNumber(qint32 frameNumber);
-    qint32 getSecondFieldNumber(qint32 frameNumber);
+    qint32 getFirstFieldNumber();
+    qint32 getSecondFieldNumber();
 
-    qint32 getCcData0(qint32 frameNumber);
-    qint32 getCcData1(qint32 frameNumber);
+    qint32 getCcData0();
+    qint32 getCcData1();
 
     void setChromaConfiguration(const PalColour::Configuration &palConfiguration, const Comb::Configuration &ntscConfiguration,
                                 const OutputWriter::Configuration &outputConfiguration);
@@ -143,9 +146,14 @@ private:
     QFutureWatcher<void> watcher;
     QFuture <void> future;
 
-    // Cache of current frame QImage
+    // Metadata for the loaded frame
+    qint32 firstFieldNumber, secondFieldNumber;
+    LdDecodeMetaData::Field firstField, secondField;
+    qint32 loadedFrameNumber;
+
+    // Image data for the loaded frame
     QImage frameCache;
-    qint32 frameCacheFrameNumber;
+    bool frameCacheValid;
 
     // Chroma decoder configuration
     PalColour::Configuration palConfiguration;
@@ -156,7 +164,7 @@ private:
     QVector<qint32> chapterMap;
 
     void invalidateFrameCache();
-    QImage generateQImage(qint32 frameNumber);
+    QImage generateQImage();
     void generateData();
     void startBackgroundLoad(QString sourceFilename);
 };

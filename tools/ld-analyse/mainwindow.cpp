@@ -274,15 +274,18 @@ void MainWindow::updateGuiUnloaded()
 
 // Frame display methods ----------------------------------------------------------------------------------------------
 
-// Method to display a sequential frame
+// Update the UI and displays when currentFrameNumber has changed
 void MainWindow::showFrame()
 {
+    // Load the frame
+    tbcSource.loadFrame(currentFrameNumber);
+
     // Show the field numbers
-    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber(currentFrameNumber)) + "/" +
-                              QString::number(tbcSource.getSecondFieldNumber(currentFrameNumber)));
+    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber()) + "/" +
+                              QString::number(tbcSource.getSecondFieldNumber()));
 
     // If there are dropouts in the frame, highlight the show dropouts button
-    if (tbcSource.getIsDropoutPresent(currentFrameNumber)) {
+    if (tbcSource.getIsDropoutPresent()) {
         QPalette tempPalette = buttonPalette;
         tempPalette.setColor(QPalette::Button, QColor(Qt::lightGray));
         ui->dropoutsPushButton->setAutoFillBackground(true);
@@ -295,8 +298,8 @@ void MainWindow::showFrame()
     }
 
     // Update the VBI dialogue
-    if (vbiDialog->isVisible()) vbiDialog->updateVbi(tbcSource.getFrameVbi(currentFrameNumber),
-                                                     tbcSource.getIsFrameVbiValid(currentFrameNumber)); 
+    if (vbiDialog->isVisible()) vbiDialog->updateVbi(tbcSource.getFrameVbi(),
+                                                     tbcSource.getIsFrameVbiValid());
 
     // Add the QImage to the QLabel in the dialogue
     ui->frameViewerLabel->clear();
@@ -312,7 +315,7 @@ void MainWindow::showFrame()
 
     // Update the closed caption dialog
     if (!tbcSource.getIsSourcePal()) {
-        closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(currentFrameNumber), tbcSource.getCcData1(currentFrameNumber));
+        closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(), tbcSource.getCcData1());
     }
     // QT Bug workaround for some macOS versions
     #if defined(Q_OS_MACOS)
@@ -323,7 +326,7 @@ void MainWindow::showFrame()
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
 void MainWindow::updateFrameViewer()
 {
-    QImage frameImage = tbcSource.getFrameImage(currentFrameNumber);
+    QImage frameImage = tbcSource.getFrameImage();
 
     if (ui->mouseModePushButton->isChecked()) {
         // Create a painter object
@@ -391,7 +394,7 @@ void MainWindow::loadTbcFile(QString inputFileName)
 void MainWindow::updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot)
 {
     // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(currentFrameNumber, scanLine),
+    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(scanLine),
                                        scanLine, pictureDot, tbcSource.getFrameHeight());
 }
 
@@ -451,7 +454,7 @@ void MainWindow::on_actionAbout_ld_analyse_triggered()
 void MainWindow::on_actionVBI_triggered()
 {
     // Show the VBI dialogue
-    vbiDialog->updateVbi(tbcSource.getFrameVbi(currentFrameNumber), tbcSource.getIsFrameVbiValid(currentFrameNumber));
+    vbiDialog->updateVbi(tbcSource.getFrameVbi(), tbcSource.getIsFrameVbiValid());
     vbiDialog->show();
 }
 
@@ -505,7 +508,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
 
         // Generate QImage for the current frame
-        QImage imageToSave = tbcSource.getFrameImage(currentFrameNumber);
+        QImage imageToSave = tbcSource.getFrameImage();
 
         // Change to 4:3 aspect ratio?
         if (aspect43On) {

@@ -29,13 +29,13 @@
 
 TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
-    invalidateFrameCache();
-
     // Default frame image options
     chromaOn = false;
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
+    loadedFrameNumber = -1;
+    frameCacheValid = false;
 
     // Configure the chroma decoder
     palConfiguration = palColour.getConfiguration();
@@ -55,7 +55,8 @@ void TbcSource::loadSource(QString sourceFilename)
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
-    frameCacheFrameNumber = -1;
+    loadedFrameNumber = -1;
+    frameCacheValid = false;
 
     // Set the current file name
     QFileInfo inFileInfo(sourceFilename);
@@ -136,18 +137,17 @@ bool TbcSource::getFieldOrder()
     return reverseFoOn;
 }
 
-// Method to get a QImage from a frame number
-QImage TbcSource::getFrameImage(qint32 frameNumber)
+// Load the metadata for a frame
+void TbcSource::loadFrame(qint32 frameNumber)
 {
-    if (!sourceReady) return QImage();
-
-    // Check cached QImage
-    if (frameCacheFrameNumber == frameNumber) return frameCache;
-    frameCacheFrameNumber = frameNumber;
+    // If there's no source, or we've already loaded that frame, nothing to do
+    if (!sourceReady || loadedFrameNumber == frameNumber) return;
+    loadedFrameNumber = frameNumber;
+    invalidateFrameCache();
 
     // Get the required field numbers
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
 
     // Make sure we have a valid response from the frame determination
     if (firstFieldNumber == -1 || secondFieldNumber == -1) {
@@ -160,15 +160,24 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
             firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
             secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
         }
-        qDebug() << "TbcSource::getFrameImage(): Jumping back one frame due to error";
+        qDebug() << "TbcSource::loadFrame(): Jumping back one frame due to error";
     }
 
-    // Get a QImage for the frame
-    QImage frameImage = generateQImage(frameNumber);
-
     // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(firstFieldNumber);
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(secondFieldNumber);
+    firstField = ldDecodeMetaData.getField(firstFieldNumber);
+    secondField = ldDecodeMetaData.getField(secondFieldNumber);
+}
+
+// Method to get a QImage from a frame number
+QImage TbcSource::getFrameImage()
+{
+    if (loadedFrameNumber == -1) return QImage();
+
+    // Check cached QImage
+    if (frameCacheValid) return frameCache;
+
+    // Get a QImage for the frame
+    QImage frameImage = generateQImage();
 
     // Highlight dropouts
     if (dropoutsOn) {
@@ -201,6 +210,7 @@ QImage TbcSource::getFrameImage(qint32 frameNumber)
     }
 
     frameCache = frameImage;
+    frameCacheValid = true;
     return frameImage;
 }
 
@@ -275,30 +285,19 @@ qint32 TbcSource::getGraphDataSize()
 }
 
 // Method returns true if frame contains dropouts
-bool TbcSource::getIsDropoutPresent(qint32 frameNumber)
+bool TbcSource::getIsDropoutPresent()
 {
-    if (!sourceReady) return false;
+    if (loadedFrameNumber == -1) return false;
 
-    bool dropOutsPresent = false;
-
-    // Determine the first and second fields for the frame number
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
-
-    if (ldDecodeMetaData.getFieldDropOuts(firstFieldNumber).size() > 0) dropOutsPresent = true;
-    if (ldDecodeMetaData.getFieldDropOuts(secondFieldNumber).size() > 0) dropOutsPresent = true;
-
-    return dropOutsPresent;
+    if (firstField.dropOuts.size() > 0) return true;
+    if (secondField.dropOuts.size() > 0) return true;
+    return false;
 }
 
-// Get scan line data from a frame
-TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 scanLine)
+// Get scan line data from the frame
+TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 {
-    if (!sourceReady) return ScanLineData();
-
-    // Determine the first and second fields for the frame number
-    qint32 firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
-    qint32 secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    if (loadedFrameNumber == -1) return ScanLineData();
 
     ScanLineData scanLineData;
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -330,10 +329,10 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
     DropOuts dropouts;
     if (isFieldTop) {
         fieldData = sourceVideo.getVideoField(firstFieldNumber);
-        dropouts = ldDecodeMetaData.getFieldDropOuts(firstFieldNumber);
+        dropouts = firstField.dropOuts;
     } else {
         fieldData = sourceVideo.getVideoField(secondFieldNumber);
-        dropouts = ldDecodeMetaData.getFieldDropOuts(secondFieldNumber);
+        dropouts = secondField.dropOuts;
     }
 
     scanLineData.data.resize(videoParameters.fieldWidth);
@@ -353,69 +352,51 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 frameNumber, qint32 sc
     return scanLineData;
 }
 
-// Method to return the decoded VBI data for a frame
-VbiDecoder::Vbi TbcSource::getFrameVbi(qint32 frameNumber)
+// Method to return the decoded VBI data for the frame
+VbiDecoder::Vbi TbcSource::getFrameVbi()
 {
-    if (!sourceReady) return VbiDecoder::Vbi();
+    if (loadedFrameNumber == -1) return VbiDecoder::Vbi();
 
-    // Get the field VBI data
-    LdDecodeMetaData::Vbi firstField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
-    LdDecodeMetaData::Vbi secondField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
-
-    return vbiDecoder.decodeFrame(firstField.vbiData[0], firstField.vbiData[1], firstField.vbiData[2],
-            secondField.vbiData[0], secondField.vbiData[1], secondField.vbiData[2]);
+    return vbiDecoder.decodeFrame(firstField.vbi.vbiData[0], firstField.vbi.vbiData[1], firstField.vbi.vbiData[2],
+                                  secondField.vbi.vbiData[0], secondField.vbi.vbiData[1], secondField.vbi.vbiData[2]);
 }
 
-// Method returns true if the VBI is valid for the specified frame number
-bool TbcSource::getIsFrameVbiValid(qint32 frameNumber)
+// Method returns true if the VBI is valid for the frame
+bool TbcSource::getIsFrameVbiValid()
 {
-    if (!sourceReady) return false;
+    if (loadedFrameNumber == -1) return false;
 
-    // Get the field VBI data
-    LdDecodeMetaData::Vbi firstField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
-    LdDecodeMetaData::Vbi secondField = ldDecodeMetaData.getFieldVbi(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
-
-    if (firstField.vbiData[0] == -1 || firstField.vbiData[1] == -1 || firstField.vbiData[2] == -1) return false;
-    if (secondField.vbiData[0] == -1 || secondField.vbiData[1] == -1 || secondField.vbiData[2] == -1) return false;
+    if (firstField.vbi.vbiData[0] == -1 || firstField.vbi.vbiData[1] == -1 || firstField.vbi.vbiData[2] == -1) return false;
+    if (secondField.vbi.vbiData[0] == -1 || secondField.vbi.vbiData[1] == -1 || secondField.vbi.vbiData[2] == -1) return false;
 
     return true;
 }
 
-// Method to get the field number of the first field of the specified frame
-qint32 TbcSource::getFirstFieldNumber(qint32 frameNumber)
+// Method to get the field number of the first field of the frame
+qint32 TbcSource::getFirstFieldNumber()
 {
-    if (!sourceReady) return 0;
-
-    return ldDecodeMetaData.getFirstFieldNumber(frameNumber);
+    if (loadedFrameNumber == -1) return 0;
+    return firstFieldNumber;
 }
 
-// Method to get the field number of the second field of the specified frame
-qint32 TbcSource::getSecondFieldNumber(qint32 frameNumber)
+// Method to get the field number of the second field of the frame
+qint32 TbcSource::getSecondFieldNumber()
 {
-    if (!sourceReady) return 0;
-
-    return ldDecodeMetaData.getSecondFieldNumber(frameNumber);
+    if (loadedFrameNumber == -1) return 0;
+    return secondFieldNumber;
 }
 
-qint32 TbcSource::getCcData0(qint32 frameNumber)
+qint32 TbcSource::getCcData0()
 {
-    if (!sourceReady) return false;
-
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
+    if (loadedFrameNumber == -1) return 0;
 
     if (firstField.ntsc.ccData0 != -1) return firstField.ntsc.ccData0;
     return secondField.ntsc.ccData0;
 }
 
-qint32 TbcSource::getCcData1(qint32 frameNumber)
+qint32 TbcSource::getCcData1()
 {
-    if (!sourceReady) return false;
-
-    // Get the field metadata
-    LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber));
-    LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber));
+    if (loadedFrameNumber == -1) return 0;
 
     if (firstField.ntsc.ccData1 != -1) return firstField.ntsc.ccData1;
     return secondField.ntsc.ccData1;
@@ -509,11 +490,11 @@ qint32 TbcSource::startOfChapter(qint32 currentFrameNumber)
 // Mark the cached frame as invalid
 void TbcSource::invalidateFrameCache()
 {
-    frameCacheFrameNumber = -1;
+    frameCacheValid = false;
 }
 
 // Method to create a QImage for a source video frame
-QImage TbcSource::generateQImage(qint32 frameNumber)
+QImage TbcSource::generateQImage()
 {
     // Get the metadata for the video parameters
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
@@ -523,10 +504,10 @@ QImage TbcSource::generateQImage(qint32 frameNumber)
 
     // Show debug information
     if (chromaOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << frameNumber <<
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << loadedFrameNumber <<
                     " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     } else {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << frameNumber <<
+        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << loadedFrameNumber <<
                     " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
     }
 
@@ -551,7 +532,7 @@ QImage TbcSource::generateQImage(qint32 frameNumber)
     QVector<SourceField> inputFields;
     qint32 startIndex, endIndex;
     SourceField::loadFields(sourceVideo, ldDecodeMetaData,
-                            frameNumber, 1, lookBehind, lookAhead,
+                            loadedFrameNumber, 1, lookBehind, lookAhead,
                             inputFields, startIndex, endIndex);
 
     if (chromaOn) {
