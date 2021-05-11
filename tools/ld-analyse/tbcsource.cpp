@@ -620,8 +620,8 @@ QImage TbcSource::generateQImage(qint32 frameNumber)
     return frameImage;
 }
 
-// Generate the data points for the Drop-out and SNR analysis graphs
-// We do these both at the same time to reduce calls to the metadata
+// Generate the data points for the Drop-out and SNR analysis graphs, and the chapter map.
+// We do these all at the same time to reduce calls to the metadata.
 void TbcSource::generateData()
 {
     dropoutGraphData.clear();
@@ -632,7 +632,13 @@ void TbcSource::generateData()
     blackSnrGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
     whiteSnrGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
 
-    for (qint32 frameNumber = 0; frameNumber < ldDecodeMetaData.getNumberOfFrames(); frameNumber++) {
+    bool ignoreChapters = false;
+    qint32 lastChapter = -1;
+    qint32 giveUpCounter = 0;
+    chapterMap.clear();
+
+    const qint32 numFrames = ldDecodeMetaData.getNumberOfFrames();
+    for (qint32 frameNumber = 0; frameNumber < numFrames; frameNumber++) {
         qreal doLength = 0;
         qreal blackSnrTotal = 0;
         qreal whiteSnrTotal = 0;
@@ -689,6 +695,27 @@ void TbcSource::generateData()
         dropoutGraphData[frameNumber] = doLength;
         blackSnrGraphData[frameNumber] = blackSnrTotal / blackSnrPoints; // Calc average for frame
         whiteSnrGraphData[frameNumber] = whiteSnrTotal / whiteSnrPoints; // Calc average for frame
+
+        if (ignoreChapters) continue;
+
+        // Decode the VBI
+        VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(
+            firstField.vbi.vbiData[0], firstField.vbi.vbiData[1], firstField.vbi.vbiData[2],
+            secondField.vbi.vbiData[0], secondField.vbi.vbiData[1], secondField.vbi.vbiData[2]);
+
+        // Get the chapter number
+        qint32 currentChapter = vbi.chNo;
+        if (currentChapter != -1) {
+            if (currentChapter != lastChapter) {
+                lastChapter = currentChapter;
+                chapterMap.append(frameNumber);
+            } else giveUpCounter++;
+        }
+
+        if (frameNumber == 100 && giveUpCounter < 50) {
+            qDebug() << "Not seeing valid chapter numbers, giving up chapter mapping";
+            ignoreChapters = true;
+        }
     }
 }
 
@@ -735,30 +762,9 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
     }
 
-    // Generate the graph data for the source
-    emit busyLoading("Generating graph data...");
+    // Analyse the metadata
+    emit busyLoading("Generating graph data and chapter map...");
     generateData();
-
-    // Generate a chapter map (used by the chapter skip
-    // forwards and backwards buttons)
-    emit busyLoading("Generating VBI chapter map...");
-    qint32 lastChapter = -1;
-    qint32 giveUpCounter = 0;
-    chapterMap.clear();
-    for (qint32 i = 1; i <= getNumberOfFrames(); i++) {
-        qint32 currentChapter = getFrameVbi(i).chNo;
-        if (currentChapter != -1) {
-            if (currentChapter != lastChapter) {
-                lastChapter = currentChapter;
-                chapterMap.append(i);
-            } else giveUpCounter++;
-        }
-
-        if (i == 100 && giveUpCounter < 50) {
-            qDebug() << "Not seeing valid chapter numbers, giving up chapter mapping";
-            break;
-        }
-    }
 }
 
 void TbcSource::finishBackgroundLoad()
