@@ -151,7 +151,16 @@ private:
     LdDecodeMetaData::Field firstField, secondField;
     qint32 loadedFrameNumber;
 
-    // Image data for the loaded frame
+    // Source fields needed to decode the loaded frame
+    QVector<SourceField> inputFields;
+    qint32 inputStartIndex, inputEndIndex;
+    bool inputFieldsValid;
+
+    // Chroma decoder output for the loaded frame
+    QVector<ComponentFrame> componentFrames;
+    bool decodedFrameValid;
+
+    // RGB image data for the loaded frame
     QImage frameCache;
     bool frameCacheValid;
 
@@ -165,6 +174,8 @@ private:
 
     void resetState();
     void invalidateFrameCache();
+    void loadInputFields();
+    void decodeFrame();
     QImage generateQImage();
     void generateData();
     void startBackgroundLoad(QString sourceFilename);

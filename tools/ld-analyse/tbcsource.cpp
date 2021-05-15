@@ -127,6 +127,7 @@ void TbcSource::loadFrame(qint32 frameNumber)
     // If there's no source, or we've already loaded that frame, nothing to do
     if (!sourceReady || loadedFrameNumber == frameNumber) return;
     loadedFrameNumber = frameNumber;
+    inputFieldsValid = false;
     invalidateFrameCache();
 
     // Get the required field numbers
@@ -308,16 +309,14 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     scanLineData.activeVideoEnd = videoParameters.activeVideoEnd;
     scanLineData.isSourcePal = videoParameters.isSourcePal;
 
+    // Load SourceFields for the current frame
+    loadInputFields();
+
     // Get the field video and dropout data
-    SourceVideo::Data fieldData;
-    DropOuts dropouts;
-    if (isFieldTop) {
-        fieldData = sourceVideo.getVideoField(firstFieldNumber);
-        dropouts = firstField.dropOuts;
-    } else {
-        fieldData = sourceVideo.getVideoField(secondFieldNumber);
-        dropouts = secondField.dropOuts;
-    }
+    const SourceVideo::Data &fieldData = isFieldTop ? inputFields[inputStartIndex].data
+                                                    : inputFields[inputStartIndex + 1].data;
+    DropOuts &dropouts = isFieldTop ? firstField.dropOuts
+                                    : secondField.dropOuts;
 
     scanLineData.data.resize(videoParameters.fieldWidth);
     scanLineData.isDropout.resize(videoParameters.fieldWidth);
@@ -482,13 +481,62 @@ void TbcSource::resetState()
 
     // Cache state
     loadedFrameNumber = -1;
+    inputFieldsValid = false;
+    decodedFrameValid = false;
     frameCacheValid = false;
 }
 
-// Mark the cached frame as invalid
+// Mark any cached data for the current frame as invalid
 void TbcSource::invalidateFrameCache()
 {
+    // Note this includes the input fields, because the number of fields we
+    // load depends on the decoder parameters
+    inputFieldsValid = false;
+    decodedFrameValid = false;
     frameCacheValid = false;
+}
+
+// Ensure the SourceFields for the current frame are loaded
+void TbcSource::loadInputFields()
+{
+    if (inputFieldsValid) return;
+
+    // Work out how many frames ahead/behind we need to fetch
+    qint32 lookBehind, lookAhead;
+    if (getIsSourcePal()) {
+        lookBehind = palConfiguration.getLookBehind();
+        lookAhead = palConfiguration.getLookAhead();
+    } else {
+        lookBehind = ntscConfiguration.getLookBehind();
+        lookAhead = ntscConfiguration.getLookAhead();
+    }
+
+    // Fetch the input fields and metadata
+    SourceField::loadFields(sourceVideo, ldDecodeMetaData,
+                            loadedFrameNumber, 1, lookBehind, lookAhead,
+                            inputFields, inputStartIndex, inputEndIndex);
+
+    inputFieldsValid = true;
+}
+
+// Ensure the current frame has been decoded
+void TbcSource::decodeFrame()
+{
+    if (decodedFrameValid) return;
+
+    loadInputFields();
+
+    // Decode the current frame to components
+    componentFrames.resize(1);
+    if (getIsSourcePal()) {
+        // PAL source
+        palColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+    } else {
+        // NTSC source
+        ntscColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+    }
+
+    decodedFrameValid = true;
 }
 
 // Method to create a QImage for a source video frame
@@ -512,39 +560,9 @@ QImage TbcSource::generateQImage()
     // Create a QImage
     QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
 
-    // Work out how many frames ahead/behind we need to fetch
-    qint32 lookBehind, lookAhead;
-    if (!chromaOn) {
-        // Not decoding chroma -- so none
-        lookBehind = 0;
-        lookAhead = 0;
-    } else if (videoParameters.isSourcePal) {
-        lookBehind = palConfiguration.getLookBehind();
-        lookAhead = palConfiguration.getLookAhead();
-    } else {
-        lookBehind = ntscConfiguration.getLookBehind();
-        lookAhead = ntscConfiguration.getLookAhead();
-    }
-
-    // Fetch the input fields and metadata
-    QVector<SourceField> inputFields;
-    qint32 startIndex, endIndex;
-    SourceField::loadFields(sourceVideo, ldDecodeMetaData,
-                            loadedFrameNumber, 1, lookBehind, lookAhead,
-                            inputFields, startIndex, endIndex);
-
     if (chromaOn) {
-        // Chroma decode the current frame and display
-
-        // Decode the current frame to components
-        QVector<ComponentFrame> componentFrames(1);
-        if (videoParameters.isSourcePal) {
-            // PAL source
-            palColour.decodeFrames(inputFields, startIndex, endIndex, componentFrames);
-        } else {
-            // NTSC source
-            ntscColour.decodeFrames(inputFields, startIndex, endIndex, componentFrames);
-        }
+        // Chroma decode the current frame
+        decodeFrame();
 
         // Convert component video to RGB
         OutputFrame outputFrame;
@@ -570,11 +588,12 @@ QImage TbcSource::generateQImage()
             }
         }
     } else {
-        // Display the current frame as source data
+        // Load SourceFields for the current frame
+        loadInputFields();
 
         // Get pointers to the 16-bit greyscale data
-        const quint16 *firstFieldPointer = inputFields[startIndex].data.data();
-        const quint16 *secondFieldPointer = inputFields[startIndex + 1].data.data();
+        const quint16 *firstFieldPointer = inputFields[inputStartIndex].data.data();
+        const quint16 *secondFieldPointer = inputFields[inputStartIndex + 1].data.data();
 
         // Copy the raw 16-bit grayscale data into the RGB888 QImage
         for (qint32 y = 0; y < frameHeight; y++) {
@@ -735,7 +754,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Configure the chroma decoder
-    if (videoParameters.isSourcePal) {
+    if (getIsSourcePal()) {
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
