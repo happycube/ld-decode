@@ -29,13 +29,7 @@
 
 TbcSource::TbcSource(QObject *parent) : QObject(parent)
 {
-    // Default frame image options
-    chromaOn = false;
-    dropoutsOn = false;
-    reverseFoOn = false;
-    sourceReady = false;
-    loadedFrameNumber = -1;
-    frameCacheValid = false;
+    resetState();
 
     // Configure the chroma decoder
     palConfiguration = palColour.getConfiguration();
@@ -50,13 +44,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
 // Method to load a TBC source file
 void TbcSource::loadSource(QString sourceFilename)
 {
-    // Default frame options
-    chromaOn = false;
-    dropoutsOn = false;
-    reverseFoOn = false;
-    sourceReady = false;
-    loadedFrameNumber = -1;
-    frameCacheValid = false;
+    resetState();
 
     // Set the current file name
     QFileInfo inFileInfo(sourceFilename);
@@ -74,7 +62,7 @@ void TbcSource::loadSource(QString sourceFilename)
 void TbcSource::unloadSource()
 {
     sourceVideo.close();
-    sourceReady = false;
+    resetState();
 }
 
 // Method returns true is a TBC source is loaded
@@ -482,6 +470,20 @@ qint32 TbcSource::startOfChapter(qint32 currentFrameNumber)
 
 
 // Private methods ----------------------------------------------------------------------------------------------------
+
+// Re-initialise state for a new source video
+void TbcSource::resetState()
+{
+    // Default frame image options
+    chromaOn = false;
+    dropoutsOn = false;
+    reverseFoOn = false;
+    sourceReady = false;
+
+    // Cache state
+    loadedFrameNumber = -1;
+    frameCacheValid = false;
+}
 
 // Mark the cached frame as invalid
 void TbcSource::invalidateFrameCache()

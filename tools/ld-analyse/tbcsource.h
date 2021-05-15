@@ -163,6 +163,7 @@ private:
     // Chapter map
     QVector<qint32> chapterMap;
 
+    void resetState();
     void invalidateFrameCache();
     QImage generateQImage();
     void generateData();
