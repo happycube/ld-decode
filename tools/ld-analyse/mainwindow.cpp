@@ -873,8 +873,13 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
                                      chromaDecoderConfigDialog->getNtscConfiguration(),
                                      chromaDecoderConfigDialog->getOutputConfiguration());
 
-    // Update the frame viewer;
+    // Update the frame viewer
     updateFrameViewer();
+
+    // If the scope window is open, update it too
+    if (oscilloscopeDialog->isVisible()) {
+        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+    }
 }
 
 // TbcSource class signal handlers ------------------------------------------------------------------------------------
