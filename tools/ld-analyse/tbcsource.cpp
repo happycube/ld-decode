@@ -65,7 +65,11 @@ void TbcSource::loadSource(QString sourceFilename)
     // Set up and fire-off background loading thread
     qDebug() << "TbcSource::loadSource(): Setting up background loader thread";
     connect(&watcher, SIGNAL(finished()), this, SLOT(finishBackgroundLoad()));
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     future = QtConcurrent::run(this, &TbcSource::startBackgroundLoad, sourceFilename);
+#else
+    future = QtConcurrent::run(&TbcSource::startBackgroundLoad, this, sourceFilename);
+#endif
     watcher.setFuture(future);
 }
 
