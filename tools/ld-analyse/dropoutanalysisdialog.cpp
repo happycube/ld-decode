@@ -25,6 +25,8 @@
 #include "dropoutanalysisdialog.h"
 #include "ui_dropoutanalysisdialog.h"
 
+#include <QPen>
+
 DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::DropoutAnalysisDialog)

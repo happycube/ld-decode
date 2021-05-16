@@ -25,6 +25,8 @@
 #include "whitesnranalysisdialog.h"
 #include "ui_whitesnranalysisdialog.h"
 
+#include <QPen>
+
 WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::WhiteSnrAnalysisDialog)
