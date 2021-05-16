@@ -339,7 +339,7 @@ void MainWindow::updateFrameViewer()
         imagePainter.end();
     }
 
-    ui->frameViewerLabel->setPixmap(QPixmap::fromImage(frameImage));
+    QPixmap pixmap = QPixmap::fromImage(frameImage);
 
     // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
     qint32 adjustment = 0;
@@ -349,9 +349,9 @@ void MainWindow::updateFrameViewer()
     }
 
     // Scale and apply the pixmap
-    ui->frameViewerLabel->setPixmap(ui->frameViewerLabel->pixmap()->scaled((scaleFactor * (ui->frameViewerLabel->pixmap()->size().width() - adjustment)),
-                                                                           (scaleFactor * ui->frameViewerLabel->pixmap()->size().height()),
-                                                                           Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    ui->frameViewerLabel->setPixmap(pixmap.scaled((scaleFactor * (pixmap.size().width() - adjustment)),
+                                                  (scaleFactor * pixmap.size().height()),
+                                                  Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
 
     // Update the current frame markers on the graphs
     blackSnrAnalysisDialog->updateFrameMarker(currentFrameNumber);
@@ -828,22 +828,30 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event)
 // Perform mouse based scan line selection
 void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
 {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QPixmap frameViewerPixmap = ui->frameViewerLabel->pixmap();
+#elif QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
+    QPixmap frameViewerPixmap = ui->frameViewerLabel->pixmap(Qt::ReturnByValue);
+#else
+    QPixmap frameViewerPixmap = *(ui->frameViewerLabel->pixmap());
+#endif
+
     // X calc
     qreal offsetX = ((static_cast<qreal>(ui->frameViewerLabel->width()) -
-                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) / 2.0);
+                     static_cast<qreal>(frameViewerPixmap.width())) / 2.0);
 
     qreal unscaledXR = (static_cast<qreal>(tbcSource.getFrameWidth()) /
-                        static_cast<qreal>(ui->frameViewerLabel->pixmap()->width())) * static_cast<qreal>(oX - offsetX);
+                        static_cast<qreal>(frameViewerPixmap.width())) * static_cast<qreal>(oX - offsetX);
     qint32 unscaledX = static_cast<qint32>(unscaledXR);
     if (unscaledX > tbcSource.getFrameWidth() - 1) unscaledX = tbcSource.getFrameWidth() - 1;
     if (unscaledX < 0) unscaledX = 0;
 
     // Y Calc
     qreal offsetY = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
-                     static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) / 2.0);
+                     static_cast<qreal>(frameViewerPixmap.height())) / 2.0);
 
     qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
-                        static_cast<qreal>(ui->frameViewerLabel->pixmap()->height())) * static_cast<qreal>(oY - offsetY);
+                        static_cast<qreal>(frameViewerPixmap.height())) * static_cast<qreal>(oY - offsetY);
     qint32 unscaledY = static_cast<qint32>(unscaledYR);
     if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
     if (unscaledY < 1) unscaledY = 1;
