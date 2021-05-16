@@ -25,6 +25,8 @@
 #include "blacksnranalysisdialog.h"
 #include "ui_blacksnranalysisdialog.h"
 
+#include <QPen>
+
 BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     QDialog(parent),
     ui(new Ui::BlackSnrAnalysisDialog)
