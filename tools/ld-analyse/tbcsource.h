@@ -54,6 +54,7 @@ public:
         QVector<bool> isDropout;
         qint32 blackIre;
         qint32 whiteIre;
+        qint32 fieldWidth;
         qint32 colourBurstStart;
         qint32 colourBurstEnd;
         qint32 activeVideoStart;
