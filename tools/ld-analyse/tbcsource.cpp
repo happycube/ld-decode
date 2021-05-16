@@ -314,20 +314,31 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     scanLineData.activeVideoEnd = videoParameters.activeVideoEnd;
     scanLineData.isSourcePal = videoParameters.isSourcePal;
 
-    // Load SourceFields for the current frame
+    // Is this line part of the active region?
+    scanLineData.isActiveLine = (scanLine - 1) >= videoParameters.firstActiveFrameLine
+                                && (scanLine -1) < videoParameters.lastActiveFrameLine;
+
+    // Load and decode SourceFields for the current frame
     loadInputFields();
+    decodeFrame();
 
     // Get the field video and dropout data
     const SourceVideo::Data &fieldData = isFieldTop ? inputFields[inputStartIndex].data
                                                     : inputFields[inputStartIndex + 1].data;
+    const ComponentFrame &componentFrame = componentFrames[0];
     DropOuts &dropouts = isFieldTop ? firstField.dropOuts
                                     : secondField.dropOuts;
 
-    scanLineData.data.resize(videoParameters.fieldWidth);
+    scanLineData.composite.resize(videoParameters.fieldWidth);
+    scanLineData.luma.resize(videoParameters.fieldWidth);
     scanLineData.isDropout.resize(videoParameters.fieldWidth);
+
     for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
-        // Get the 16-bit YC value for the current pixel (frame data is numbered 0-624 or 0-524)
-        scanLineData.data[xPosition] = fieldData[((fieldLine - 1) * videoParameters.fieldWidth) + xPosition];
+        // Get the 16-bit composite value for the current pixel (frame data is numbered 0-624 or 0-524)
+        scanLineData.composite[xPosition] = fieldData[((fieldLine - 1) * videoParameters.fieldWidth) + xPosition];
+
+        // Get the decoded luma value for the current pixel (only computed in the active region)
+        scanLineData.luma[xPosition] = static_cast<qint32>(componentFrame.y(scanLine - 1)[xPosition]);
 
         scanLineData.isDropout[xPosition] = false;
         for (qint32 doCount = 0; doCount < dropouts.size(); doCount++) {

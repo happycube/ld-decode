@@ -50,7 +50,8 @@ public:
     explicit TbcSource(QObject *parent = nullptr);
 
     struct ScanLineData {
-        QVector<qint32> data;
+        QVector<qint32> composite;
+        QVector<qint32> luma;
         QVector<bool> isDropout;
         qint32 blackIre;
         qint32 whiteIre;
@@ -59,6 +60,7 @@ public:
         qint32 colourBurstEnd;
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
+        bool isActiveLine;
         bool isSourcePal;
     };
 
