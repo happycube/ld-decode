@@ -307,6 +307,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     // Set the video parameters
     scanLineData.blackIre = videoParameters.black16bIre;
     scanLineData.whiteIre = videoParameters.white16bIre;
+    scanLineData.fieldWidth = videoParameters.fieldWidth;
     scanLineData.colourBurstStart = videoParameters.colourBurstStart;
     scanLineData.colourBurstEnd = videoParameters.colourBurstEnd;
     scanLineData.activeVideoStart = videoParameters.activeVideoStart;
