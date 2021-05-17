@@ -10,11 +10,31 @@ from vhsdecode.utils import (
 import numpy as np
 from scipy.signal import argrelextrema
 from os import getpid
+from numba import njit
+
 import lddecode.core as ldd
 
 
 def t_to_samples(samp_rate, value):
     return samp_rate / value
+
+
+@njit(cache=True)
+def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
+    sync, blank = levels
+    mid_sync = (sync + blank) / 2
+    where_all_picture = np.where(sync_ref > mid_sync)[0]
+    locs_len = np.diff(where_all_picture)
+    min_synclen = eq_pulselen * 3 / 4
+    max_synclen = eq_pulselen * 3
+    is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
+    where_all_syncs = np.where(is_sync)[0]
+    clip_from = where_all_picture[where_all_syncs]
+    clip_len = locs_len[where_all_syncs]
+    for ix, begin in enumerate(clip_from):
+        data[begin : begin + clip_len[ix]] = sync
+
+    return data
 
 
 class VsyncSerration:
@@ -87,9 +107,10 @@ class VsyncSerration:
 
     def vsync_envelope_simple(self, data):
         hi_part = np.clip(data, a_max=np.max(data), a_min=0)
-        inv_data = np.multiply(data, -1)
-        lo_part_inv = np.clip(inv_data, a_max=np.max(inv_data), a_min=0)
-        lo_part = np.multiply(lo_part_inv, -1)
+        # inv_data = np.multiply(data, -1)#np.negative(data)
+        # lo_part_inv = np.clip(inv_data, a_max=np.max(inv_data), a_min=0)
+        # lo_part = np.multiply(lo_part_inv, -1)
+        lo_part = np.full_like(hi_part, np.min(data))
         hi_filtered = self.vsyncEnvFilter.filtfilt(hi_part)
         lo_filtered = self.vsyncEnvFilter.filtfilt(lo_part)
         return hi_filtered, lo_filtered
@@ -108,14 +129,12 @@ class VsyncSerration:
         return result
 
     def chainfiltfilt(self, data, filters):
-        for filter in filters:
-            data = filter.filtfilt(data)
+        for filt in filters:
+            data = filt.filtfilt(data)
         return data
 
     def power_ratio_search(self, data):
-        first_harmonic = np.power(
-            self.chainfiltfilt(data, self.serrationFilter_base), 2
-        )
+        first_harmonic = np.square(self.chainfiltfilt(data, self.serrationFilter_base))
         first_harmonic = self.serrationFilter_envelope.filtfilt(first_harmonic)
         return argrelextrema(first_harmonic, np.less)[0]
 
@@ -273,17 +292,5 @@ class VsyncSerration:
     # safe clips the bottom of the sync pulses, but not the picture area
     def safe_sync_clip(self, sync_ref, data):
         if self.has_levels():
-            sync, blank = self.get_levels()
-            mid_sync = (sync + blank) / 2
-            where_all_picture = np.where(sync_ref > mid_sync)[0]
-            locs_len = np.diff(where_all_picture)
-            min_synclen = self.eq_pulselen * 3 / 4
-            max_synclen = self.eq_pulselen * 3
-            is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
-            where_all_syncs = np.where(is_sync)[0]
-            clip_from = where_all_picture[where_all_syncs]
-            clip_len = locs_len[where_all_syncs]
-            for ix, begin in enumerate(clip_from):
-                data[begin : begin + clip_len[ix]] = sync
-
+            data = _safe_sync_clip(sync_ref, data, self.get_levels(), self.eq_pulselen)
         return data
