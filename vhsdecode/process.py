@@ -914,12 +914,16 @@ class FieldShared:
                     break
 
             if next_valid is None:
-                linelocs_filled = (
-                    self.prevfield.linelocs0 - self.prevfield.linelocs0[0] + line0loc
-                )
+                # If we don't find anything valid, guess something to avoid dropping fields
+                prev_line0 = np.int64(self.prevfield.linelocs0[0])
+                ldd.logger.info("prev line0 %s", self.prevfield.linelocs0[0])
+                if prev_line0 > 0:
+                    linelocs_filled = self.prevfield.linelocs0 - prev_line0 + line0loc
+                else:
+                    linelocs_filled[0] = line0loc
                 linelocs = linelocs_filled
                 ldd.logger.warning(
-                    "no valid lines found! Using values for previous field so result will probably be garbled!"
+                    "no valid lines found! Guessing or using values for previous field so result will probably be garbled!"
                 )
                 rv_err[1:] = True
             else:
