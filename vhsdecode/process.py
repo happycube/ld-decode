@@ -993,6 +993,8 @@ class FieldShared:
         firstvsync = vp_vsyncs[0] + start if len(vp_vsyncs) else None
 
         if firstvsync is None or firstvsync < 10:
+            if start == 0:
+                ldd.logger.debug("No vsync found!")
             return None, None
 
         for newstart in range(firstvsync - 10, firstvsync - 4):
@@ -1010,8 +1012,6 @@ class FieldShared:
 
             if (lastblank - firstblank) > vhs_formats.BLANK_LENGTH_THRESHOLD:
                 return firstblank, lastblank
-            # else:
-            #    ldd.logger.info("discarded too short blank: %s", lastblank - firstblank)
 
         # there isn't a valid range to find, or it's impossibly short
         return None, None
@@ -1037,6 +1037,29 @@ class FieldShared:
 
     def dropout_detect(self):
         return detect_dropouts_rf(self)
+
+    def get_timings(self):
+        """Get the expected length and tolerance for sync pulses. Overriden to allow wider tolerance."""
+
+        # Get the defaults - this works somehow because python.
+        LT = super(FieldShared, self).get_timings()
+
+        eq_min = (
+            self.usectoinpx(
+                self.rf.SysParams["eqPulseUS"] - vhs_formats.EQ_PULSE_TOLERANCE
+            )
+            + LT["hsync_offset"]
+        )
+        eq_max = (
+            self.usectoinpx(
+                self.rf.SysParams["eqPulseUS"] + vhs_formats.EQ_PULSE_TOLERANCE
+            )
+            + LT["hsync_offset"]
+        )
+
+        LT["eq"] = (eq_min, eq_max)
+
+        return LT
 
 
 class FieldPALShared(FieldShared, ldd.FieldPAL):
