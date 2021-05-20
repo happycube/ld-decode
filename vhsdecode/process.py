@@ -847,8 +847,7 @@ class FieldShared:
         if line0loc is None:
             if self.initphase is False:
                 ldd.logger.error("Unable to determine start of field - dropping field")
-
-            return None, None, self.inlinelen * 200
+            return None, None, self.inlinelen * 100
 
         meanlinelen = self.computeLineLen(validpulses)
         self.meanlinelen = meanlinelen
@@ -904,7 +903,6 @@ class FieldShared:
 
         self.linelocs0 = linelocs.copy()
 
-
         if linelocs_filled[0] < 0:
             # logger.info("linelocs_filled[0] < 0, %s", linelocs_filled)
             next_valid = None
@@ -915,8 +913,12 @@ class FieldShared:
 
             if next_valid is None:
                 # If we don't find anything valid, guess something to avoid dropping fields
-                prev_line0 = np.int64(self.prevfield.linelocs0[0])
-                ldd.logger.info("prev line0 %s", self.prevfield.linelocs0[0])
+                prev_line0 = (
+                    np.int64(self.prevfield.linelocs0[0])
+                    if self.prevfield is not None
+                    else 0
+                )
+
                 if prev_line0 > 0:
                     linelocs_filled = self.prevfield.linelocs0 - prev_line0 + line0loc
                 else:
@@ -979,6 +981,40 @@ class FieldShared:
             nextfield = self.vblank_next - (self.inlinelen * 8)
 
         return rv_ll, rv_err, nextfield
+
+    def getBlankRange(self, validpulses, start=0):
+        """Look through pulses to fit a group that fit as a blanking area.
+        Overridden to lower the threshold a little as the default
+        discarded some distorted/non-standard ones.
+        """
+        vp_type = np.array([p[0] for p in validpulses])
+
+        vp_vsyncs = np.where(vp_type[start:] == ldd.VSYNC)[0]
+        firstvsync = vp_vsyncs[0] + start if len(vp_vsyncs) else None
+
+        if firstvsync is None or firstvsync < 10:
+            return None, None
+
+        for newstart in range(firstvsync - 10, firstvsync - 4):
+            blank_locs = np.where(vp_type[newstart:] > 0)[0]
+            if len(blank_locs) == 0:
+                continue
+
+            firstblank = blank_locs[0] + newstart
+            hsync_locs = np.where(vp_type[firstblank:] == 0)[0]
+
+            if len(hsync_locs) == 0:
+                continue
+
+            lastblank = hsync_locs[0] + firstblank - 1
+
+            if (lastblank - firstblank) > vhs_formats.BLANK_LENGTH_THRESHOLD:
+                return firstblank, lastblank
+            # else:
+            #    ldd.logger.info("discarded too short blank: %s", lastblank - firstblank)
+
+        # there isn't a valid range to find, or it's impossibly short
+        return None, None
 
     def calc_burstmedian(self):
         # Set this to a constant value for now to avoid the comb filter messing with chroma levels.
@@ -1556,6 +1592,22 @@ class VHSRFDecode(ldd.RFDecode):
         SF = self.Filters
         SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["F05"]
 
+        # SF["NLHighPass"] = sps.butter(
+        #     1,
+        #     [(DP["video_lpf_freq"] * 0.5) / self.freq_hz_half],
+        #     btype="highpass",
+        #     output="sos",
+        # )
+
+        # SF["NLHighPassF"] = lddu.filtfft(
+        #     sps.butter(
+        #         1,
+        #         [(DP["video_lpf_freq"] * 0.66) / self.freq_hz_half],
+        #         btype="highpass",
+        #     ),
+        #     self.blocklen,
+        # )
+
         # Filter to pick out color-under chroma component.
         # filter at about twice the carrier. (This seems to be similar to what VCRs do)
         # TODO: Needs tweaking
@@ -1767,6 +1819,17 @@ class VHSRFDecode(ldd.RFDecode):
             demod_fft * self.Filters["FVideo"][0 : (self.blocklen // 2) + 1]
         ).real
 
+        # out_video_orig = out_video
+
+        # out_video_fft = npfft.rfft(out_video)
+        # hf_part = npfft.irfft(out_video_fft * self.Filters["NLHighPassF"][0 : (self.blocklen // 2) + 1])
+
+        # hf_part = utils.filter_simple(out_video, self.Filters["NLHighPass"])
+        # hf_part = (hf_part * hf_part * hf_part) / 2
+        # hf_part = np.clip(hf_part, -10000, 10000)
+        # hf_part = np.where(abs(hf_part) < 8000, hf_part, 0)
+        # out_video -= hf_part# + self.iretohz(50)
+
         out_video05 = npfft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
         ).real
@@ -1796,7 +1859,7 @@ class VHSRFDecode(ldd.RFDecode):
         if False:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
 
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
@@ -1806,11 +1869,11 @@ class VHSRFDecode(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(demod)
+            ax1.plot(out_video_orig)
             # ax1.plot(demod_b, color="#000000")
-            ax2.plot(out_video)
+            ax2.plot(hf_part)
 
-            # ax3.plot(hilbert)
+            ax3.plot(out_video)
             # ax3.axhline(0)
             # ax4.plot(np.pad(np.diff(hilbert), (0, 1), mode="constant"))
             # ax4.axhline(0)
