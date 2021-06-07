@@ -2,9 +2,11 @@
 This is the GitHub repo for ld-decode.  This is the (hopefully stable) merged development branch.
 
 # Documentation
-Documentation is available via the GitHub wiki.  This includes installation and usage instructions.  Start with the wiki if you have any questions.  The wiki also includes details of the project's IRC channel and Facebook group.  If you are intending on contributing, please join the IRC.  For general questions use the Facebook group.
+Documentation is available via the GitHub wiki.  This includes installation and usage instructions.  Start with the wiki if you have any questions.  The wiki also includes details of the project's IRC channel and Facebook group.  If you are intending on contributing, please join the IRC or Discord.  For general questions use the Facebook group.
 
 https://github.com/happycube/ld-decode/wiki
+
+https://discord.gg/pVVrrxd
 
 ## *If in doubt - Read the Wiki!*
 
