@@ -63,7 +63,7 @@ except ImportError:
 
 # globals
 
-blocklen = 65536
+blocklen = 32768
 drop_begin = 4096-512
 drop_end = 512
 blockskip = drop_begin + drop_end
@@ -161,6 +161,7 @@ class AudioDecoder:
         self.freq = args.freq
         self.freq_hz = self.freq * 1.0e6
         self.efm_filter = efm_pll.computeefmfilter(self.freq_hz, blocklen)
+        print(self.freq_hz, len(self.efm_filter), self.efm_filter, file=sys.stderr)
 
         self.aa_channels = []
 
@@ -189,7 +190,7 @@ class AudioDecoder:
                         outputs.append(channel.process_stage2())
 
                 if len(outputs) == 0:
-                    continue
+                    pass
                 elif (len(outputs) != len(self.aa_channels)):
                     print("ERROR: mismatch in # of processed channels")
                     sys.exit(-1)
@@ -224,6 +225,7 @@ class AudioDecoder:
                 #print(efm_out.shape, max(filtered_efm.imag))
                 
                 if self.efm_fd is not None:
+                    #print(len(buf), len(filtered_efm2), len(efm_out), file=sys.stderr)
                     efm_fd.write(efm_out.tobytes())
 
 # Command line front end code
