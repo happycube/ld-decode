@@ -161,7 +161,7 @@ class AudioDecoder:
         self.freq = args.freq
         self.freq_hz = self.freq * 1.0e6
         self.efm_filter = efm_pll.computeefmfilter(self.freq_hz, blocklen)
-        print(self.freq_hz, len(self.efm_filter), self.efm_filter, file=sys.stderr)
+        #print(self.freq_hz, len(self.efm_filter), self.efm_filter, file=sys.stderr)
 
         self.aa_channels = []
 
