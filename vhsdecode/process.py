@@ -1529,6 +1529,7 @@ class VHSRFDecode(ldd.RFDecode):
             parent_system(system),
             decode_analog_audio=False,
             has_analog_audio=False,
+            extra_options=extra_options
         )
 
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
