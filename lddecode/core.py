@@ -325,7 +325,7 @@ class RFDecode:
 
         deemp = list(self.DecoderParams["video_deemp"])
 
-        deemp_low, deemp_high = extra_options["deemp_coeff"]
+        deemp_low, deemp_high = extra_options.get("deemp_coeff", (0, 0))
         if deemp_low > 0:
             deemp[0] = deemp_low
         if deemp_high > 0:
