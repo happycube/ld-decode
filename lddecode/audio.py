@@ -149,7 +149,6 @@ class AudioDecoder:
     def __init__(self, args):
         global blocklen, blockskip
 
-        self.args = args
         self.efm_fd = None
 
         if args.outfile == '-':
@@ -169,6 +168,8 @@ class AudioDecoder:
             if efm_decode:
                 self.efm_pll_object = efm_pll.EFM_PLL()
                 self.efm_fd = open(args.outfile + '.efm', 'wb')
+
+        self.args = args
 
         # Have input_buffer store 8-bit bytes, then convert afterwards
         self.input_buffer = utils.StridedCollector(blocklen*2, blockskip*2)
@@ -198,7 +199,7 @@ class AudioDecoder:
 
             fft_in = npfft.fft(s16)
 
-            if not args.daa:
+            if not self.args.daa:
 
                 outputs = []
 
@@ -249,10 +250,11 @@ class AudioDecoder:
 def startprocess(inpipe, args):
     ''' Hook for Multiprocessing.Process() 
         procargs is a tuple containing the input pipe and args from ld-decode
-        (The input pipe is expected to be int16 RF data, with provision for odd # of bytes passed)
     '''
     args.vid_standard = "PAL" if args.pal else "NTSC"
-        
+    args.inputfreq = 40 if args.inputfreq is None else args.inputfreq
+    args.outfile = args.outfile + '-new'
+
     ad = AudioDecoder(args)
 
     while True:
@@ -260,7 +262,11 @@ def startprocess(inpipe, args):
         if data is None:
             return
 
-        ad.input_buffer.add(np.frombuffer(data, 'int8', len(data)))
+        # XXX: for now convert to the binary format
+        data_bytes = data.tobytes()
+        data_int8 = np.frombuffer(data_bytes, 'int8', len(data_bytes))
+        ad.input_buffer.add(data_int8)
+
         ad.process_input_buffer()
         
 if __name__ == "__main__":
@@ -327,7 +333,7 @@ if __name__ == "__main__":
             exit(1)
 
         args.vid_standard = "PAL" if args.pal else "NTSC"
-        
+
         return args
 
     args = handle_options(sys.argv)
