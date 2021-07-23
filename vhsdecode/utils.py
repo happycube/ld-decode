@@ -142,11 +142,12 @@ def firdes_bandpass(samp_rate, f0, t0, f1, t1, order_limit=20):
 
 
 # makes a bode plot of an IIR filter
-def filter_plot(iir_b, iir_a, samp_rate, type, title):
+def filter_plot(iir_b, iir_a, samp_rate, type, title, xlim=0):
     import matplotlib.pyplot as plt
     from math import log10
 
-    nyq = samp_rate / 2
+    nyq = samp_rate / 2 if xlim == 0 else xlim
+
     w, h = signal.freqz(
         iir_b, iir_a, worN=np.logspace(0, log10(nyq), 10000), fs=samp_rate
     )
@@ -198,7 +199,7 @@ class StackableMA:
     def pull(self):
         if np.size(self.stack) > 0:
             value, self.stack = moving_average(
-                self.stack, window=self.window_average
+                self.stack, window=int(self.window_average)
             )
             return value
         else:
@@ -207,6 +208,12 @@ class StackableMA:
     def has_values(self):
         return np.size(self.stack) > self.min_watermark
 
+    def current(self):
+        return self.stack[-1:][0] if len(self.stack) > 0 else None
+
     def size(self):
         return np.size(self.stack)
 
+    def work(self, value):
+        self.push(value)
+        return self.pull()

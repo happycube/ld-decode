@@ -77,7 +77,7 @@ parser.add_argument(
     dest="recheck_phase",
     action="store_true",
     default=False,
-    help="Re-check phase on every field.",
+    help="Re-check chroma phase on every field.",
 )
 parser.add_argument(
     "-tf",
@@ -133,6 +133,22 @@ parser.add_argument(
     default=False,
     help="Enable non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
 )
+parser.add_argument(
+    "-cafc",
+    "--chroma_AFC",
+    dest="cafc",
+    action="store_true",
+    default=False,
+    help="Enable downconverted chroma carrier AFC (Automatic freq. control), implies --recheck_phase",
+)
+parser.add_argument(
+    "-sclip",
+    "--sync_clip",
+    dest="sync_clip",
+    action="store_true",
+    default=False,
+    help="Enables sync clipping",
+)
 
 args = parser.parse_args()
 
@@ -162,6 +178,8 @@ rf_options["disable_diff_demod"] = args.disable_diff_demod
 rf_options["disable_dc_offset"] = args.disable_dc_offset
 rf_options["disable_comb"] = args.disable_comb
 rf_options["nldeemp"] = args.nldeemp
+rf_options["cafc"] = args.cafc
+rf_options["sync_clip"] = args.sync_clip
 
 extra_options = get_extra_options(args)
 

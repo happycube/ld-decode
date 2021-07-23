@@ -1,4 +1,6 @@
 import math
+import os
+import time
 import numpy as np
 import scipy.signal as sps
 import copy
@@ -12,9 +14,11 @@ from vhsdecode.utils import get_line
 from vhsdecode.utils import StackableMA
 
 import vhsdecode.formats as vhs_formats
+from vhsdecode.addons.FMdeemph import FMDeEmphasis
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.addons.resync import Resync
+from vhsdecode.addons.chromaAFC import ChromaAFC
 
 from numba import njit
 
@@ -86,7 +90,7 @@ def acc_line(chroma, burst_abs_ref, burststart, burstend):
 
 
 def getpulses_override(field):
-    return field.rf.Resync.getpulses_override(field)
+    return field.rf.resync.getpulses_override(field)
 
 
 @njit(cache=True)
@@ -202,20 +206,67 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
     return chroma
 
 
-def process_chroma(field, track_phase, disable_deemph=False, disable_comb=False):
-    # Run TBC/downscale on chroma.
-    chroma, _, _ = ldd.Field.downscale(field, channel="demod_burst")
+def demod_chroma_filt(data, filter, blocklen, notch, do_notch=None, move=10):
+    out_chroma = utils.filter_simple(
+        data[: blocklen],
+        filter
+    )
+
+    if do_notch is not None and do_notch:
+        out_chroma = sps.filtfilt(
+            notch[0],
+            notch[1],
+            out_chroma,
+        )
+
+    # Move chroma to compensate for Y filter delay.
+    # value needs tweaking, ideally it should be calculated if possible.
+    # TODO: Not sure if we need this after hilbert filter change, needs check.
+    out_chroma = np.roll(out_chroma, move)
+    # crude DC offset removal
+    out_chroma = out_chroma - np.mean(
+        out_chroma
+    )
+    return out_chroma
+
+
+def process_chroma(field, track_phase, disable_deemph=False, disable_comb=False, disable_tracking_cafc=False):
+    # Run TBC/downscale on chroma (if new field, else uses cache)
+    if field.rf.field_number != field.rf.chroma_last_field or field.rf.chroma_last_field == -1:
+        chroma, _, _ = ldd.Field.downscale(field, channel="demod_burst")
+        field.rf.chroma_last_field = field.rf.field_number
+
+        # If chroma AFC is enabled
+        if field.rf.cafc:
+            # it does the chroma filtering AFTER the TBC
+            chroma = demod_chroma_filt(
+                chroma,
+                field.rf.chromaAFC.get_chroma_bandpass(),
+                len(chroma),
+                field.rf.Filters["FVideoNotch"],
+                field.rf.notch,
+                move=0
+            )
+
+            if not disable_tracking_cafc:
+                spec, meas, offset, cphase = field.rf.chromaAFC.freqOffset(chroma)
+                ldd.logger.debug(
+                    "Chroma under AFC: %.02f kHz, Offset (long term): %.02f Hz, Phase: %.02f deg" %
+                    (meas / 1e3, offset, cphase * 360 / (2 * np.pi))
+                )
+
+        field.rf.chroma_tbc_buffer = chroma
+    else:
+        chroma = field.rf.chroma_tbc_buffer
+
+
 
     lineoffset = field.lineoffset + 1
     linesout = field.outlinecount
     outwidth = field.outlinelen
 
-    burstarea = (
-        math.floor(field.usectooutpx(field.rf.SysParams["colorBurstUS"][0]) - 5),
-        math.ceil(field.usectooutpx(field.rf.SysParams["colorBurstUS"][1])) + 10,
-    )
-
-    # utils.plot_scope(npfft.fft(chroma))
+    burst_area_init = get_burst_area(field)
+    burstarea = burst_area_init[0] - 5, burst_area_init[1] + 10
 
     # narrow_filtered = utils.filter_simple(chroma, field.rf.Filters["FBurstNarrow"])
 
@@ -251,7 +302,7 @@ def process_chroma(field, track_phase, disable_deemph=False, disable_comb=False)
         lineoffset,
         linesout,
         outwidth,
-        field.rf.chroma_heterodyne,
+        field.rf.chromaAFC.getChromaHet() if (field.rf.cafc and not disable_tracking_cafc) else field.rf.chroma_heterodyne,
         phase_rotation,
         starting_phase,
     )
@@ -290,9 +341,7 @@ def decode_chroma_vhs(field):
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
     # make sure we re-check the phase occasionally.
-    raw_loc = rf.decoder.readloc / rf.decoder.bytes_per_field
-
-    check_increment_field_no(rf)
+    raw_loc = check_increment_field_no(rf)
 
     # If we moved significantly more than the length of one field, re-check phase
     # as we may have skipped fields.
@@ -305,7 +354,7 @@ def decode_chroma_vhs(field):
         rf.track_phase = field.try_detect_track()
         rf.needs_detect = False
 
-    uphet = process_chroma(field, rf.track_phase, disable_comb=rf.options.disable_comb)
+    uphet = process_chroma(field, rf.track_phase, disable_comb=rf.options.disable_comb, disable_tracking_cafc=False)
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
     rf.last_raw_loc = raw_loc
@@ -317,11 +366,9 @@ def decode_chroma_umatic(field):
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
     # make sure we re-check the phase occasionally.
-    raw_loc = field.rf.decoder.readloc / field.rf.decoder.bytes_per_field
+    raw_loc = check_increment_field_no(field.rf)
 
-    check_increment_field_no(field.rf)
-
-    uphet = process_chroma(field, None, True, field.rf.options.disable_comb)
+    uphet = process_chroma(field, None, True, field.rf.options.disable_comb, disable_tracking_cafc=False)
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
     field.rf.last_raw_loc = raw_loc
@@ -392,6 +439,7 @@ def detect_burst_pal(
     IGNORED_LINES = 16
     line_data = []
     burst_norm = np.full(lines, np.nan)
+
     # Decode the burst vectors on each line and try to get an average of the burst amplitude.
     for linenumber in range(IGNORED_LINES, lines - IGNORED_LINES):
         info = detect_burst_pal_line(
@@ -793,6 +841,22 @@ def check_increment_field_no(rf):
     else:
         ldd.logger.debug("Raw data loc didn't advance.")
 
+    return raw_loc
+
+
+def get_burstarea(field):
+    return (
+        math.floor(field.usectooutpx(field.rf.SysParams["colorBurstUS"][0])),
+        math.ceil(field.usectooutpx(field.rf.SysParams["colorBurstUS"][1])),
+    )
+
+
+def log_track_phase(track_phase, phase0_mean, phase1_mean, assumed_phase):
+    ldd.logger.info("Phase previously set: %i", track_phase)
+    ldd.logger.info("phase0 mean: %.02f", phase0_mean)
+    ldd.logger.info("phase1 mean: %.02f", phase1_mean)
+    ldd.logger.info("assumed_phase: %d", assumed_phase)
+
 
 def try_detect_track_vhs_pal(field):
     """Try to detect what video track we are on.
@@ -803,11 +867,8 @@ def try_detect_track_vhs_pal(field):
     Additionally, most tapes are recorded with a luma half-shift which shifts the fm-encoded
     luma frequencies slightly depending on the track to avoid luma crosstalk.
     """
-    ldd.logger.debug("Trying to detect track phase...")
-    burst_area = (
-        math.floor(field.usectooutpx(field.rf.SysParams["colorBurstUS"][0])),
-        math.ceil(field.usectooutpx(field.rf.SysParams["colorBurstUS"][1])),
-    )
+    ldd.logger.debug("Trying to detect PAL track phase...")
+    burst_area = get_burstarea(field)
 
     # Upconvert chroma twice, once for each possible track phase
     uphet = [process_chroma(field, 0, True, True), process_chroma(field, 1, True, True)]
@@ -816,30 +877,69 @@ def try_detect_track_vhs_pal(field):
     cosine_wave = field.rf.fsc_cos_wave
 
     # Try to decode the color burst from each of the upconverted chroma signals
-    phase0, phase0_mean = detect_burst_pal(
-        uphet[0],
-        sine_wave,
-        cosine_wave,
-        burst_area,
-        field.outlinelen,
-        field.outlinecount,
-    )
-    phase1, phase1_mean = detect_burst_pal(
-        uphet[1],
-        sine_wave,
-        cosine_wave,
-        burst_area,
-        field.outlinelen,
-        field.outlinecount,
-    )
+    phase = list()
+    for ix, uph in enumerate(uphet):
+        phase.append(
+            detect_burst_pal(
+                uph,
+                sine_wave,
+                cosine_wave,
+                burst_area,
+                field.outlinelen,
+                field.outlinecount,
+            )
+        )
 
     # We use the one where the phase of the chroma vectors make the most sense.
+    phase0_mean, phase1_mean = phase[0][1], phase[1][1]
     assumed_phase = int(phase0_mean < phase1_mean)
 
-    ldd.logger.info("Phase previously set: %i", field.rf.track_phase)
-    ldd.logger.info("phase0 mean: %d", phase0_mean)
-    ldd.logger.info("phase1 mean: %d", phase1_mean)
-    ldd.logger.info("assumed_phase: %d", assumed_phase)
+    log_track_phase(
+        field.rf.track_phase,
+        phase0_mean,
+        phase1_mean,
+        assumed_phase
+    )
+
+    return assumed_phase
+
+def try_detect_track_vhs_ntsc(field):
+    """Try to detect which track the current field was read from.
+    returns 0 or 1 depending on detected track phase.
+
+    We use the fact that the color burst in NTSC is inverted on every line, so
+    in a perfect signal, the burst from one line and the previous one should cancel
+    each other out when summed together. When upconverting with the wrong phase rotation,
+    the bursts will have the same phase instead, and thus the mean absolute
+    sum will be much higher. This seem to give a reasonably good guess, but could probably
+    be improved.
+    """
+    ldd.logger.debug("Trying to detect NTSC track phase ...")
+    burst_area = get_burstarea(field)
+
+    # Upconvert chroma twice, once for each possible track phase
+    uphet = [process_chroma(field, 0, True), process_chroma(field, 1, True)]
+
+    # Look at the bursts from each upconversion and see which one looks most
+    # normal.
+    burst_mean_sum = list()
+    for ix, uph in enumerate(uphet):
+        burst_mean_sum.append(
+            mean_of_burst_sums(
+                uph, field.outlinelen, field.outlinecount, burst_area[0], burst_area[1]
+            )
+        )
+
+    burst_mean_sum_0, burst_mean_sum_1 = burst_mean_sum[0], burst_mean_sum[1]
+
+    assumed_phase = int(burst_mean_sum_1 < burst_mean_sum_0)
+
+    log_track_phase(
+        field.rf.track_phase,
+        burst_mean_sum_0,
+        burst_mean_sum_1,
+        assumed_phase
+    )
 
     return assumed_phase
 
@@ -1191,42 +1291,7 @@ class FieldNTSCVHS(FieldNTSCShared):
         super(FieldNTSCVHS, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        """Try to detect which track the current field was read from.
-        returns 0 or 1 depending on detected track phase.
-
-        We use the fact that the color burst in NTSC is inverted on every line, so
-        in a perfect signal, the burst from one line and the previous one should cancel
-        each other out when summed together. When upconverting with the wrong phase rotation,
-        the bursts will have the same phase instead, and thus the mean absolute
-        sum will be much higher. This seem to give a reasonably good guess, but could probably
-        be improved.
-        """
-        ldd.logger.debug("Trying to detect track phase...")
-        burst_area = (
-            math.floor(self.usectooutpx(self.rf.SysParams["colorBurstUS"][0])),
-            math.ceil(self.usectooutpx(self.rf.SysParams["colorBurstUS"][1])),
-        )
-
-        # Upconvert chroma twice, once for each possible track phase
-        uphet = [process_chroma(self, 0, True), process_chroma(self, 1, True)]
-
-        # Look at the bursts from each upconversion and see which one looks most
-        # normal.
-        burst_mean_sum_0 = mean_of_burst_sums(
-            uphet[0], self.outlinelen, self.outlinecount, burst_area[0], burst_area[1]
-        )
-
-        burst_mean_sum_1 = mean_of_burst_sums(
-            uphet[1], self.outlinelen, self.outlinecount, burst_area[0], burst_area[1]
-        )
-
-        assumed_phase = int(burst_mean_sum_1 < burst_mean_sum_0)
-
-        ldd.logger.info("burst mean sum 0: %f", burst_mean_sum_0)
-        ldd.logger.info("burst mean sum 1: %f", burst_mean_sum_1)
-        ldd.logger.info("assumed phase: %i", assumed_phase)
-
-        return assumed_phase
+        return try_detect_track_vhs_ntsc(self)
 
     def downscale(self, linesoffset=0, final=False, *args, **kwargs):
         """Downscale the channels and upconvert chroma to standard color carrier frequency."""
@@ -1314,6 +1379,8 @@ class VHSDecode(ldd.LDdecode):
             rf_options=rf_options,
             extra_options=extra_options,
         )
+        self.rf.chroma_last_field = -1
+        self.rf.chroma_tbc_buffer = np.array([])
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
         self.rf.decoder = self
@@ -1465,12 +1532,8 @@ class VHSDecode(ldd.LDdecode):
                         # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
                         self.rf.AGClevels[1].push((sync_hz - ire0_hz) / vsync_ire)
 
-                        if (
-                            self.rf.AGClevels[0].has_values()
-                            and self.rf.AGClevels[1].has_values()
-                        ):
-                            self.rf.SysParams["ire0"] = self.rf.AGClevels[0].pull()
-                            self.rf.SysParams["hz_ire"] = self.rf.AGClevels[1].pull()
+                        self.rf.SysParams["ire0"] = self.rf.AGClevels[0].pull()
+                        self.rf.SysParams["hz_ire"] = self.rf.AGClevels[1].pull()
 
                 if adjusted == False and redo == True:
                     self.demodcache.flush_demod()
@@ -1570,6 +1633,10 @@ class VHSRFDecode(ldd.RFDecode):
         self.disable_dc_offset = rf_options.get("disable_dc_offset", False)
         self.useAGC = extra_options.get("useAGC", False)
         self.debug = extra_options.get("debug", True)
+        self.cafc = rf_options.get("cafc", False)
+        # cafc requires --recheck_phase
+        self.recheck_phase = True if self.cafc else self.recheck_phase
+        self.sync_clip = rf_options.get("sync_clip", False)
 
         if track_phase is None:
             self.track_phase = 0
@@ -1695,8 +1762,10 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         # Video (luma) main de-emphasis
-        #        db3, da3 = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
         db, da = FMDeEmphasisB(self.freq_hz, DP["deemph_gain"], DP["deemph_mid"]).get()
+        # Sync de-emphasis
+        db05, da05 = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
+
 
         #        da3, db3 = gen_high_shelf(260000 / 1.0e6, 14, 1 / 2, inputfreq)
 
@@ -1803,6 +1872,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
+        self.Filters["Fdeemp_05"] = lddu.filtfft((db05, da05), self.blocklen)
         self.Filters["FVideo"] = self.Filters["Fvideo_lpf"] * self.Filters["Fdeemp"]
         SF = self.Filters
         SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["F05"]
@@ -1835,105 +1905,40 @@ class VHSRFDecode(ldd.RFDecode):
             output="sos",
         )
 
-        # Filter to pick out color-under chroma component.
-        # filter at about twice the carrier. (This seems to be similar to what VCRs do)
-        # TODO: Needs tweaking
-        # Note: order will be doubled since we use filtfilt.
-        chroma_lowpass = sps.butter(
-            2,
-            [50000 / self.freq_hz_half, DP["chroma_bpf_upper"] / self.freq_hz_half],
-            btype="bandpass",
-            output="sos",
+        # Heterodyning / chroma wave related filter part
+
+        self.chromaAFC = ChromaAFC(
+            self.freq_hz,
+            DP["chroma_bpf_upper"] / DP['color_under_carrier'],
+            self.SysParams,
+            self.DecoderParams['color_under_carrier'],
+            tape_format=tape_format
         )
-        self.Filters["FVideoBurst"] = chroma_lowpass
+
+        self.Filters["FVideoBurst"] = self.chromaAFC.get_chroma_bandpass()
 
         if self.notch is not None:
-            self.Filters["FVideoNotch"] = sps.iirnotch(
-                self.notch / self.freq_half, self.notch_q
-            )
+            if not self.cafc:
+                self.Filters["FVideoNotch"] = sps.iirnotch(
+                    self.notch / self.freq_half, self.notch_q
+                )
+            else:
+                self.Filters["FVideoNotch"] = sps.iirnotch(
+                    self.notch / self.chromaAFC.getOutFreqHalf(), self.notch_q
+                )
+
             self.Filters["FVideoNotchF"] = lddu.filtfft(
                 self.Filters["FVideoNotch"], self.blocklen
             )
+        else:
+            self.Filters["FVideoNotch"] = None, None
 
         # The following filters are for post-TBC:
-        # The output sample rate is at approx 4fsc
-        fsc_mhz = self.SysParams["fsc_mhz"]
-        out_sample_rate_mhz = fsc_mhz * 4
-        out_frequency_half = out_sample_rate_mhz / 2
-        het_freq = fsc_mhz + cc
-        fieldlen = self.SysParams["outlinelen"] * max(self.SysParams["field_lines"])
-
-        # Final band-pass filter for chroma output.
-        # Mostly to filter out the higher-frequency wave that results from signal mixing.
-        # Needs tweaking.
-        # Note: order will be doubled since we use filtfilt.
-        chroma_bandpass_final = sps.butter(
-            1,
-            [
-                (fsc_mhz - 0.64) / out_frequency_half,
-                (fsc_mhz + 0.54) / out_frequency_half,
-            ],
-            btype="bandpass",
-            output="sos",
-        )
-        self.Filters["FChromaFinal"] = chroma_bandpass_final
-
-        self.Filters["FBurstNarrow"] = sps.butter(
-            2,
-            [
-                cc - 0.2 / out_frequency_half,
-                cc + 0.2 / out_frequency_half,
-            ],
-            btype="bandpass",
-            output="sos",
-        )
-
-        # Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
-        het_filter = sps.butter(
-            1,
-            [
-                (het_freq - 0.001) / out_frequency_half,
-                (het_freq + 0.001) / out_frequency_half,
-            ],
-            btype="bandpass",
-            output="sos",
-        )
-        samples = np.arange(fieldlen)
-
-        # As this is done on the tbced signal, we need the sampling frequency of that,
-        # which is 4fsc for NTSC and approx. 4 fsc for PAL.
-        # TODO: Correct frequency for pal?
-        cc_wave_scale = cc / out_sample_rate_mhz
-        self.cc_ratio = cc_wave_scale
-        # 0 phase downconverted color under carrier wave
-        self.cc_wave = np.sin(2 * np.pi * cc_wave_scale * samples)
-        # +90 deg and so on phase wave for track2 phase rotation
-        cc_wave_90 = np.sin((2 * np.pi * cc_wave_scale * samples) + (np.pi / 2))  #
-        cc_wave_180 = np.sin((2 * np.pi * cc_wave_scale * samples) + np.pi)
-        cc_wave_270 = np.sin(
-            (2 * np.pi * cc_wave_scale * samples) + np.pi + (np.pi / 2)
-        )
-
-        # Standard frequency color carrier wave.
-        self.fsc_wave = utils.gen_wave_at_frequency(
-            fsc_mhz, out_sample_rate_mhz, fieldlen
-        )
-        self.fsc_cos_wave = utils.gen_wave_at_frequency(
-            fsc_mhz, out_sample_rate_mhz, fieldlen, np.cos
-        )
-
-        # Heterodyne wave
-        # We combine the color carrier with a wave with a frequency of the
-        # subcarrier + the downconverted chroma carrier to get the original
-        # color wave back.
-        self.chroma_heterodyne = np.array(
-            [
-                sps.sosfiltfilt(het_filter, self.cc_wave * self.fsc_wave),
-                sps.sosfiltfilt(het_filter, cc_wave_90 * self.fsc_wave),
-                sps.sosfiltfilt(het_filter, cc_wave_180 * self.fsc_wave),
-                sps.sosfiltfilt(het_filter, cc_wave_270 * self.fsc_wave),
-            ]
-        )
+        # The output sample rate is 4fsc
+        self.Filters["FChromaFinal"] = self.chromaAFC.get_chroma_bandpass_final()
+        self.Filters["FBurstNarrow"] = self.chromaAFC.get_burst_narrow()
+        self.chroma_heterodyne = self.chromaAFC.getChromaHet()
+        self.fsc_wave, self.fsc_cos_wave = self.chromaAFC.getFSCWaves()
 
         # Increase the cutoff at the end of blocks to avoid edge distortion from filters
         # making it through.
@@ -1956,11 +1961,12 @@ class VHSRFDecode(ldd.RFDecode):
 
         self.chromaTrap = (
             ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
-            if self.chroma_trap
-            else None
         )
-        self.AGClevels = StackableMA(window_average=15), StackableMA(window_average=15)
-        self.Resync = Resync(self.freq_hz, self.SysParams, debug=self.debug)
+
+        self.AGClevels = \
+            StackableMA(window_average=self.SysParams["FPS"] / 2), \
+            StackableMA(window_average=self.SysParams["FPS"] / 2)
+        self.resync = Resync(self.freq_hz, self.SysParams, debug=self.debug)
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1988,9 +1994,9 @@ class VHSRFDecode(ldd.RFDecode):
 
         return result
 
-    def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
+    def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False, thread_benchmark=False):
         rv = {}
-
+        demod_start_time = time.time()
         if fftdata is not None:
             indata_fft = fftdata
         elif data is not None:
@@ -2082,25 +2088,15 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         # Filter out the color-under signal from the raw data.
-        out_chroma = utils.filter_simple(
-            data[: self.blocklen], self.Filters["FVideoBurst"]
-        )
+        out_chroma = demod_chroma_filt(
+            data,
+            self.Filters["FVideoBurst"],
+            self.blocklen,
+            self.Filters["FVideoNotch"],
+            self.notch,
+            # if cafc is enabled, this filtering will be done after TBC
+        ) if not self.cafc else data[: self.blocklen]
 
-        if self.notch is not None:
-            out_chroma = sps.filtfilt(
-                self.Filters["FVideoNotch"][0],
-                self.Filters["FVideoNotch"][1],
-                out_chroma,
-            )
-
-        # Move chroma to compensate for Y filter delay.
-        # value needs tweaking, ideally it should be calculated if possible.
-        # TODO: Not sure if we need this after hilbert filter change, needs check.
-        out_chroma = np.roll(out_chroma, 10)
-        # crude DC offset removal
-        out_chroma = out_chroma - np.mean(
-            out_chroma[self.blockcut : -self.blockcut_end]
-        )
 
         if False:
             import matplotlib.pyplot as plt
@@ -2142,5 +2138,14 @@ class VHSRFDecode(ldd.RFDecode):
         rv["video"] = (
             video_out[self.blockcut : -self.blockcut_end] if cut else video_out
         )
+
+        demod_end_time = time.time()
+        if thread_benchmark:
+            ldd.logger.debug(
+                "Demod thread %d, work done in %.02f msec" % (
+                    os.getpid(),
+                    (demod_end_time - demod_start_time) * 1e3
+                )
+            )
 
         return rv
