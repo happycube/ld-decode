@@ -1,10 +1,13 @@
 import copy
 import itertools
+import platform
 import sys
 import threading
 import time
 
 from multiprocessing import Process, Queue, JoinableQueue, Pipe
+if platform.system() == 'Darwin':
+    from multiprocessing import set_start_method
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -1075,6 +1078,9 @@ class DemodCache:
 
         self.lock = threading.Lock()
         self.blocks = {}
+
+        if platform.system() == 'Darwin':
+            set_start_method('fork')
 
         self.q_in = JoinableQueue()
         self.q_in_metadata = []
