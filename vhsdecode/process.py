@@ -1753,7 +1753,6 @@ class VHSRFDecode(ldd.RFDecode):
                 self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_UMATIC)
                 self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_UMATIC)
             elif tape_format == "SVHS":
-                ldd.logger.warning("NTSC SVHS has not been tested yet!")
                 self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_SVHS)
                 self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_SVHS)
             else:
