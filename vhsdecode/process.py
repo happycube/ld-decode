@@ -949,6 +949,63 @@ def try_detect_track_vhs_ntsc(field):
 
 
 class FieldShared:
+    def refinepulses(self):
+        LT = self.get_timings()
+
+        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
+
+        i = 0
+        valid_pulses = []
+        num_vblanks = 0
+
+        Pulse = namedtuple("Pulse", "start len")
+
+        while i < len(self.rawpulses):
+            curpulse = self.rawpulses[i]
+            if inrange(curpulse.len, *LT["hsync"]):
+                good = (
+                    self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse))
+                    if len(valid_pulses)
+                    else False
+                )
+                valid_pulses.append((HSYNC, curpulse, good))
+                i += 1
+            elif inrange(curpulse.len, LT["hsync"][1], LT["hsync"][1] * 3):
+                # If the pulse is longer than expected, we could have ended up detecting the back
+                # porch as sync.
+                # try to move a bit lower to see if we hit a hsync.
+                data = self.data["video"]["demod_05"][curpulse.start:curpulse.start + curpulse.len]
+                threshold = self.rf.iretohz(self.rf.hztoire(data[0]) - 10)
+                pulses = self.rf.resync.findpulses(data, 0, threshold)
+                if len(pulses):
+                    newpulse = Pulse(curpulse.start + pulses[0].start, pulses[0].len)
+                    self.rawpulses[i] = newpulse
+                    curpulse = newpulse
+                else:
+                    spulse = (HSYNC, self.rawpulses[i], False)
+                    i += 1
+            elif (
+                i > 2
+                and inrange(self.rawpulses[i].len, *LT["eq"])
+                and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC)
+            ):
+                # print(i, self.rawpulses[i])
+                done, vblank_pulses = self.run_vblank_state_machine(
+                    self.rawpulses[i - 2 : i + 24], LT
+                )
+                if done:
+                    [valid_pulses.append(p) for p in vblank_pulses[2:]]
+                    i += len(vblank_pulses) - 2
+                    num_vblanks += 1
+                else:
+                    spulse = (HSYNC, self.rawpulses[i], False)
+                    i += 1
+            else:
+                spulse = (HSYNC, self.rawpulses[i], False)
+                i += 1
+
+        return valid_pulses  # , num_vblanks
+
     def compute_linelocs(self):
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
@@ -956,6 +1013,27 @@ class FieldShared:
             return None, None, int(self.rf.freq_hz / 10)
 
         self.validpulses = validpulses = self.refinepulses()
+
+        # if len(validpulses) < 0:
+        #     import matplotlib.pyplot as plt
+        #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+        #     ax1.plot(self.data["video"]["demod_05"])
+        #     #ax1.axhline(self.pulse_hz_min_last, color="#FF0000")
+        #     #ax1.axhline(self.pulse_hz_max_last, color="#00FF00")
+
+        #     for raw_pulse in self.rawpulses:
+        #         ax1.axvline(raw_pulse.start, color="#910000")
+        #         ax1.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
+
+        #     for valid_pulse in validpulses:
+        #         ax1.axvline(valid_pulse[1][0], color="#00FF00")
+        #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+
+        #     ax2.plot(np.diff(self.data["video"]["demod_05"]))
+
+        #     #ax1.axhline(pulse_hz_min, color="#FF0000")
+        #     #ax1.axhline(pulse_hz_max, color="#00FF00")
+        #     plt.show()
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         self.linecount = 263 if self.isFirstField else 262
@@ -1700,8 +1778,6 @@ class VHSRFDecode(ldd.RFDecode):
         # Lastly we re-create the filters with the new parameters.
         self.computevideofilters()
 
-        cc = self.DecoderParams["color_under_carrier"] / 1000000
-
         DP = self.DecoderParams
 
         self.high_boost = high_boost if high_boost is not None else DP["boost_bpf_mult"]
@@ -2111,26 +2187,27 @@ class VHSRFDecode(ldd.RFDecode):
 
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
-            # ax1.plot(data, color="#00FF00")
-            # ax1.axhline(self.iretohz(0))
-            # ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            # print("Vsync IRE", self.SysParams["vsync_ire"])
-            #            ax2 = ax1.twinx()
-            #            ax3 = ax1.twinx()
-            ax1.plot(
-                np.arange(self.blocklen) / self.blocklen * self.freq_hz, indata_fft.real
-            )
-            # ax1.plot(env, color="#00FF00")
-            # ax1.axhline(0)
-            # ax1.plot(demod_b, color="#000000")
-            ax2.plot(
-                np.arange(self.blocklen) / self.blocklen * self.freq_hz,
-                20 * np.log10(abs(self.Filters["RFVideo"])),
-            )
-            ax2.axhline(0)
-            ax3.plot(
-                np.arange(self.blocklen) / self.blocklen * self.freq_hz, indata_fft_filt
-            )
+            ax1.plot(out_video05, color="#00FF00")
+            #ax1.axhline(self.iretohz(0))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
+            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"] - 5))
+            #print("Vsync IRE", self.SysParams["vsync_ire"])
+                       # ax2 = ax1.twinx()
+                       # ax3 = ax1.twinx()
+            # ax1.plot(
+            #     np.arange(self.blocklen) / self.blocklen * self.freq_hz, indata_fft.real
+            # )
+            # # ax1.plot(env, color="#00FF00")
+            # # ax1.axhline(0)
+            # # ax1.plot(demod_b, color="#000000")
+            # ax2.plot(
+            #     np.arange(self.blocklen) / self.blocklen * self.freq_hz,
+            #     20 * np.log10(abs(self.Filters["RFVideo"])),
+            # )
+            # ax2.axhline(0)
+            # ax3.plot(
+            #     np.arange(self.blocklen) / self.blocklen * self.freq_hz, indata_fft_filt
+            # )
             # ax3.plot(np.arange(self.blocklen) / self.blocklen * self.freq_hz, )
             # ax3.axhline(0)
             # ax4.plot(np.pad(np.diff(hilbert), (0, 1), mode="constant"))

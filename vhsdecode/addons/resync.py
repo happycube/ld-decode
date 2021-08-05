@@ -42,7 +42,7 @@ Pulse = namedtuple("Pulse", "start len")
 
 @njit(cache=True)
 def findpulses_numba(sync_ref, low, high, min_synclen, max_synclen):
-    """Locate possible pulses by looking at areas withing some range."""
+    """Locate possible pulses by looking at areas within some range."""
     mid_sync = high
     where_all_picture = np.where(sync_ref > mid_sync)[0]
     locs_len = np.diff(where_all_picture)
