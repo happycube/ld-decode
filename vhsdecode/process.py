@@ -1014,7 +1014,7 @@ class FieldShared:
 
         self.validpulses = validpulses = self.refinepulses()
 
-        # if len(validpulses) < 0:
+        # if len(validpulses) > 300:
         #     import matplotlib.pyplot as plt
         #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
         #     ax1.plot(self.data["video"]["demod_05"])
@@ -1029,7 +1029,13 @@ class FieldShared:
         #         ax1.axvline(valid_pulse[1][0], color="#00FF00")
         #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
 
-        #     ax2.plot(np.diff(self.data["video"]["demod_05"]))
+        #     #ax2.plot(np.diff(self.data["video"]["demod_05"]))
+
+        #     pulselen = np.zeros_like(self.data["video"]["demod_05"])
+        #     for valid_pulse in validpulses:
+        #         pulselen[valid_pulse[1][0]:valid_pulse[1][0] + valid_pulse[1][1]] = valid_pulse[1][1]
+
+        #     ax2.plot(pulselen)
 
         #     #ax1.axhline(pulse_hz_min, color="#FF0000")
         #     #ax1.axhline(pulse_hz_max, color="#00FF00")
