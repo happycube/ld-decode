@@ -2013,11 +2013,15 @@ class Field:
         if self.prevfield is not None and self.prevfield.valid:
             frameoffset = self.data["startloc"] - self.prevfield.data["startloc"]
 
+            #print(self.prevfield.linecount)
+
             line0loc_prev = (
                 self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
             )
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
+
+        #print(line0loc_local, line0loc_next, line0loc_prev)
 
         # Best case - all three line detectors returned something - perform TOOT using median
         if (
@@ -2055,6 +2059,9 @@ class Field:
         pulse_hz_min = self.rf.iretohz(self.rf.SysParams["vsync_ire"] - 10)
         pulse_hz_max = self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
 
+        pulse_hz_min = self.rf.iretohz(self.rf.SysParams["vsync_ire"] - 20)
+        pulse_hz_max = self.rf.iretohz(-20)
+
         pulses = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
         if len(pulses) == 0:
@@ -2078,6 +2085,7 @@ class Field:
                     )
                 )
 
+        #print(len(vsync_means), [self.rf.hztoire(v) for v in vsync_means])
         if len(vsync_means) == 0:
             return None
 
@@ -2267,6 +2275,7 @@ class Field:
 
         rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
 
+        #print(self.vblank_next)
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
         else:
@@ -2572,9 +2581,6 @@ class Field:
         valid_max = np.full_like(
             f.data["video"]["demod"], f.rf.iretohz(150 if isPAL else 160)
         )
-
-        # the minimum valid value during VSYNC is lower for PAL because of the pilot signal
-        minsync = -100 if isPAL else -50
 
         iserr2 = f.data["video"]["demod"] < valid_min
         iserr2 |= f.data["video"]["demod"] > valid_max
@@ -3786,8 +3792,8 @@ class LDdecode:
                 or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1)
             ):
                 logger.warning(
-                    "Field phaseID sequence mismatch ({0}->{1}) (player may be paused)".format(
-                        prevfi["fieldPhaseID"], fi["fieldPhaseID"]
+                    "At field #{0}, Field phaseID sequence mismatch ({1}->{2}) (player may be paused)".format(
+                        len(self.fieldinfo), prevfi["fieldPhaseID"], fi["fieldPhaseID"]
                     )
                 )
                 decodeFaults |= 2

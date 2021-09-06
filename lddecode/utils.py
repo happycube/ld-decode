@@ -926,7 +926,7 @@ def lev_to_db(rlev):
 # moved from core.py
 @njit
 def dsa_rescale(infloat):
-    return int(np.round(infloat * 32767 / 150000))
+    return int(np.round(infloat * 32767 / 150000 * (np.sqrt(2)/2)))
 
 
 # Hotspot subroutines in FieldNTSC's compute_line_bursts function,
