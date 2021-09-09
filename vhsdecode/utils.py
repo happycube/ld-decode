@@ -22,12 +22,13 @@ def filter_simple(data, filter_coeffs):
     return signal.sosfiltfilt(filter_coeffs, data, padlen=150)
 
 
-@njit
+@njit(cache=True)
 def get_line(data, line_length, line):
     return data[line * line_length : (line + 1) * line_length]
 
 
 # returns the indexes where the signal crosses zero
+@njit(cache=True)
 def zero_cross_det(data):
     return np.where(np.diff(np.sign(data)))[0]
 

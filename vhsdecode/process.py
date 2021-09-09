@@ -854,7 +854,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.disable_diff_demod = rf_options.get("disable_diff_demod", False)
         self.disable_dc_offset = rf_options.get("disable_dc_offset", False)
         self.useAGC = extra_options.get("useAGC", False)
-        self.debug = extra_options.get("debug", True)
+        self.debug = extra_options.get("debug", False)
         self.cafc = rf_options.get("cafc", False)
         # cafc requires --recheck_phase
         self.recheck_phase = True if self.cafc else self.recheck_phase
