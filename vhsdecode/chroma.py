@@ -4,6 +4,7 @@ import lddecode.utils as lddu
 import lddecode.core as ldd
 from vhsdecode.utils import get_line
 import vhsdecode.utils as utils
+import scipy.signal as sps
 
 from numba import njit
 
