@@ -2576,7 +2576,7 @@ class Field:
 
         # build sets of min/max valid levels
         valid_min = np.full_like(
-            f.data["video"]["demod"], f.rf.iretohz(-60 if isPAL else -50)
+            f.data["video"]["demod"], f.rf.iretohz(-70 if isPAL else -50)
         )
         valid_max = np.full_like(
             f.data["video"]["demod"], f.rf.iretohz(150 if isPAL else 160)
@@ -2585,14 +2585,14 @@ class Field:
         iserr2 = f.data["video"]["demod"] < valid_min
         iserr2 |= f.data["video"]["demod"] > valid_max
 
-        valid_min05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(-20))
+        valid_min05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(-30))
         valid_max05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(115))
 
         iserr3 = f.data["video"]["demod_05"] < valid_min05
         iserr3 |= f.data["video"]["demod_05"] > valid_max05
 
         iserr = iserr1 | iserr2 | iserr3 | iserr_rf
-
+        
         # Each valid pulse is definitely *not* an error, so exclude it here at the end
         for v in self.validpulses:
             iserr[
@@ -2623,7 +2623,10 @@ class Field:
 
         return errlist
 
-    def dropout_errlist_to_tbc(self, errlist):
+    def dropout_errlist_to_tbc(field, errlist):
+        """Convert data from raw data coordinates to tbc coordinates, and splits up
+        multi-line dropouts.
+        """
         dropouts = []
 
         if len(errlist) == 0:
@@ -2631,38 +2634,53 @@ class Field:
 
         # Now convert the above errlist into TBC locations
         errlistc = errlist.copy()
+        lineoffset = -field.lineoffset
+
+        # Remove dropouts occuring before the start of the frame so they don't
+        # cause the rest to be skipped
         curerr = errlistc.pop(0)
+        while len(errlistc) > 0 and curerr[0] < field.linelocs[field.lineoffset]:
+            curerr = errlistc.pop(0)
 
-        lineoffset = -self.lineoffset
+        # TODO: This could be reworked to be a bit cleaner and more performant.
 
-        for l in range(lineoffset, self.linecount + self.lineoffset):
+        for line in range(field.lineoffset, field.linecount + field.lineoffset):
             while curerr is not None and inrange(
-                curerr[0], self.linelocs[l], self.linelocs[l + 1]
+                curerr[0], field.linelocs[line], field.linelocs[line + 1]
             ):
-                start_rf_linepos = curerr[0] - self.linelocs[l]
+                start_rf_linepos = curerr[0] - field.linelocs[line]
                 start_linepos = start_rf_linepos / (
-                    self.linelocs[l + 1] - self.linelocs[l]
+                    field.linelocs[line + 1] - field.linelocs[line]
                 )
-                start_linepos = int(start_linepos * self.outlinelen)
+                start_linepos = int(start_linepos * field.outlinelen)
 
-                end_rf_linepos = curerr[1] - self.linelocs[l]
-                end_linepos = end_rf_linepos / (self.linelocs[l + 1] - self.linelocs[l])
-                end_linepos = int(np.round(end_linepos * self.outlinelen))
+                end_rf_linepos = curerr[1] - field.linelocs[line]
+                end_linepos = end_rf_linepos / (
+                    field.linelocs[line + 1] - field.linelocs[line]
+                )
+                end_linepos = int(np.round(end_linepos * field.outlinelen))
 
-                if end_linepos > self.outlinelen:
-                    # need to output two dropouts
-                    dropouts.append(
-                        (l + 1 + lineoffset, start_linepos, self.outlinelen)
-                    )
+                first_line = line + 1 + lineoffset
+
+                # If the dropout spans multiple lines, we need to split it up into one for each line.
+                if end_linepos > field.outlinelen:
+                    num_lines = end_linepos // field.outlinelen
+
+                    # First line.
+                    dropouts.append((first_line, start_linepos, field.outlinelen))
+                    # Full lines in the middle.
+                    for n in range(num_lines - 1):
+                        dropouts.append((first_line + n + 1, 0, field.outlinelen))
+                    # leftover on last line.
                     dropouts.append(
                         (
-                            l + 1 + lineoffset + (end_linepos // self.outlinelen),
+                            first_line + (num_lines),
                             0,
-                            np.remainder(end_linepos, self.outlinelen),
+                            np.remainder(end_linepos, field.outlinelen),
                         )
                     )
                 else:
-                    dropouts.append((l + 1 + lineoffset, start_linepos, end_linepos))
+                    dropouts.append((first_line, start_linepos, end_linepos))
 
                 if len(errlistc):
                     curerr = errlistc.pop(0)
