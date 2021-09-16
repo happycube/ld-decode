@@ -59,7 +59,7 @@ void MonoThread::decodeFrame(const SourceField &firstField, const SourceField &s
     const LdDecodeMetaData::VideoParameters &videoParameters = config.videoParameters;
 
     // Initialise and clear the component frame
-    componentFrame.init(videoParameters);
+    componentFrame.init(videoParameters, true);
 
     // Interlace the active lines of the two input fields to produce a component frame
     for (qint32 y = videoParameters.firstActiveFrameLine; y < videoParameters.lastActiveFrameLine; y++) {
