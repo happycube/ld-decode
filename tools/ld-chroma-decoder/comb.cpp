@@ -64,6 +64,21 @@ static constexpr quint32 CANDIDATE_SHADES[] = {
     0xFF80FF, // CAND_NEXT_FRAME - purple
 };
 
+// Since we are at exactly 4fsc, calculating the value of a in-phase sine wave at a specific position
+// is very simple.
+static constexpr std::array<double, 4> sin4fsc_data = {1.0, 0.0, -1.0, 0.0};
+
+// 4fsc sine wave
+constexpr double sin4fsc(const qint32 i) {
+    return sin4fsc_data[i % 4];
+}
+
+// 4fsc cos wave
+constexpr double cos4fsc(const qint32 i) {
+    // cos(rad) is just sin(rad + pi/2) and we are at 4 fsc.
+    return sin4fsc(i + 1);
+}
+
 // Public methods -----------------------------------------------------------------------------------------------------
 
 Comb::Comb()
@@ -107,6 +122,12 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
 
     // Range check the video start
     if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
+
+    if (videoParameters.sampleRate / videoParameters.fsc != 4)
+    {
+        // Decoder assumes 4fsc sample rate at the moment.
+        qCritical() << "Data is not in 4fsc sample rate, color decoding will not work properly!";
+    }
 
     configurationSet = true;
 }
@@ -168,13 +189,16 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         currentFrameBuffer->setComponentFrame(componentFrames[frameIndex]);
 
         // Demodulate chroma giving I/Q
-        currentFrameBuffer->splitIQ();
-
-        // Extract Y from baseband and I/Q
-        currentFrameBuffer->adjustY();
-
-        // Post-filter I/Q
-        if (configuration.colorlpf) currentFrameBuffer->filterIQ();
+        if (configuration.phaseCompensation) {
+            currentFrameBuffer->splitIQlocked();
+            currentFrameBuffer->filterIQFull();
+        } else {
+            currentFrameBuffer->splitIQ();
+            // Extract Y from baseband and I/Q
+            currentFrameBuffer->adjustY();
+            // Post-filter I/Q
+            if (configuration.colorlpf) currentFrameBuffer->filterIQ();
+        }
 
         // Apply noise reduction
         currentFrameBuffer->doCNR();
@@ -503,6 +527,81 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
     return result;
 }
 
+namespace {
+    // Information about a line we're decoding.
+    struct BurstInfo {
+        double bsin, bcos;
+    };
+
+    // Rotate the burst angle to get the correct values.
+    // We do the 33 degree rotation here to avoid computing it for every pixel.
+    // TODO: additionally we need to rotate another ~10 degrees to get the correct hue, find out why.
+    constexpr double ROTATE_SIN = 0.6819983600624985;
+    constexpr double ROTATE_COS = 0.7313537016191705;
+
+    BurstInfo detectBurst(const quint16* lineData,
+                          const LdDecodeMetaData::VideoParameters& videoParameters)
+    {
+        double bsin = 0, bcos = 0;
+
+        // Find absolute burst phase relative to the reference carrier by
+        // product detection.
+        // For now we just use the burst on the current line, but we could possibly do some averaging with
+        // neighbouring lines later if needed.
+        for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.colourBurstEnd; i++) {
+            bsin += lineData[i] * sin4fsc(i);
+            bcos += lineData[i] * cos4fsc(i);
+        }
+
+        // Normalise the sums above
+        const qint32 colourBurstLength = videoParameters.colourBurstEnd - videoParameters.colourBurstStart;
+        bsin /= colourBurstLength;
+        bcos /= colourBurstLength;
+
+        const double burstNorm = qMax(sqrt(bsin * bsin + bcos * bcos), 130000.0 / 128);
+
+        bsin /= burstNorm;
+        bcos /= burstNorm;
+
+        const BurstInfo info{bsin, bcos};
+        return info;
+    }
+}
+
+// Split I and Q, taking burst phase into account.
+void Comb::FrameBuffer::splitIQlocked()
+{
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        // Get a pointer to the line's data
+        const quint16 *line = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+        // Calculate burst phase
+        const auto info = detectBurst(line, videoParameters);
+
+        double *Y = componentFrame->y(lineNumber);
+        double *I = componentFrame->u(lineNumber);
+        double *Q = componentFrame->v(lineNumber);
+
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            const auto val = clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
+
+            // Demodulate the sine and cosine components.
+            const auto lsin = val * sin4fsc(h) * 2;
+            const auto lcos = val * cos4fsc(h) * 2;
+            // Rotate the demodulated vector by the burst phase.
+            const auto ti = (lsin * info.bcos - lcos * info.bsin);
+            const auto tq = (lsin * info.bsin + lcos * info.bcos);
+
+            // Invert Q and rorate to get the correct I/Q vector.
+            // TODO: Needed to shift the chroma 1 sample to the right to get it to line up
+            // may not get the first pixel in each line correct because of this.
+            I[h + 1] = ti * ROTATE_COS - tq * -ROTATE_SIN;
+            Q[h + 1] = -(ti * -ROTATE_SIN + tq * ROTATE_COS);
+            // Subtract the split chroma part from the luma signal.
+            Y[h] = line[h] - val;
+        }
+    }
+}
+
 // Spilt the I and Q
 void Comb::FrameBuffer::splitIQ()
 {
@@ -566,6 +665,34 @@ void Comb::FrameBuffer::filterIQ()
                 case 3: filtq = qFilter.feed(Q[h]); break;
                 default: break;
             }
+
+            I[h - qoffset] = filti;
+            Q[h - qoffset] = filtq;
+        }
+    }
+}
+
+
+// Filter the full set of I and Q values from the input buffer.
+void Comb::FrameBuffer::filterIQFull()
+{
+    auto iFilter(f_colorlpi);
+    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        double *I = componentFrame->u(lineNumber);
+        double *Q = componentFrame->v(lineNumber);
+
+        iFilter.clear();
+        qFilter.clear();
+
+        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
+
+        double filti = 0, filtq = 0;
+
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            filti = iFilter.feed(I[h]);
+            filtq = qFilter.feed(Q[h]);
 
             I[h - qoffset] = filti;
             Q[h - qoffset] = filtq;
@@ -756,6 +883,7 @@ void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const Frame
         double *U = componentFrame->u(lineNumber);        
         double *V = componentFrame->v(lineNumber);        
 
+        // Fill the output frame with the RGB values
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             // Select the best candidate
             qint32 bestIndex;

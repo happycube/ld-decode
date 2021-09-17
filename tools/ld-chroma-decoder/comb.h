@@ -50,9 +50,11 @@ public:
         double chromaPhase = 0.0;
         bool colorlpf = false;
         bool colorlpf_hq = true;
+        bool whitePoint75 = false;
         qint32 dimensions = 2;
         bool adaptive = true;
         bool showMap = false;
+        bool phaseCompensation = false;
 
         double cNRLevel = 0.0;
         double yNRLevel = 1.0;
@@ -97,7 +99,9 @@ private:
         }
 
         void splitIQ();
+        void splitIQlocked();
         void filterIQ();
+        void filterIQFull();
         void adjustY();
         void doCNR();
         void doYNR();
@@ -123,7 +127,7 @@ private:
         qint32 secondFieldPhaseID;
 
         // 1D, 2D and 3D-filtered chroma samples
-        struct {
+        struct Sample {
             double pixel[MAX_HEIGHT][MAX_WIDTH];
         } clpbuffer[3];
 

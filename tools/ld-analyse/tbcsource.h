@@ -81,6 +81,7 @@ public:
     QImage getFrameImage();
     qint32 getNumberOfFrames();
     qint32 getNumberOfFields();
+    bool getIsWidescreen();
     bool getIsSourcePal();
     qint32 getFrameHeight();
     qint32 getFrameWidth();

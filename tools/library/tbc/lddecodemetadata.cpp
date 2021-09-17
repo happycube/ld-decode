@@ -97,7 +97,7 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
     }
 
     // Add in the active field line range psuedo-metadata
-    if (videoParameters.isSourcePal) {
+    if (videoParameters.fieldHeight == 313) {
         // PAL
         videoParameters.firstActiveFieldLine = 22;
         videoParameters.lastActiveFieldLine = 308;
@@ -106,7 +106,7 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         videoParameters.firstActiveFrameLine = 44;
         // Interlaced line 619 is PAL line 623 (the last active half-line)
         videoParameters.lastActiveFrameLine = 620;
-    } else {
+    } else if (videoParameters.fieldHeight == 263) {
         // NTSC
         videoParameters.firstActiveFieldLine = 20;
         videoParameters.lastActiveFieldLine = 259;
@@ -115,6 +115,15 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         videoParameters.firstActiveFrameLine = 40;
         // Interlaced line 524 is NTSC line 263 (the last active half-line).
         videoParameters.lastActiveFrameLine = 525;
+    } else {
+        // Unknown video system, guessing some stuff for now instead of risking going out of bounds.
+        qCritical("Unknown video system! Output may not be correct!");
+
+        videoParameters.firstActiveFieldLine = 20;
+        videoParameters.lastActiveFieldLine = videoParameters.fieldHeight - 5;
+
+        videoParameters.firstActiveFrameLine = videoParameters.firstActiveFieldLine * 2;
+        videoParameters.lastActiveFrameLine = videoParameters.lastActiveFieldLine * 2;
     }
 
     return videoParameters;
@@ -290,7 +299,6 @@ LdDecodeMetaData::Ntsc LdDecodeMetaData::getFieldNtsc(qint32 sequentialFieldNumb
 // This method gets the drop-out metadata for the specified sequential field number
 DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
 {
-    DropOuts dropOuts;
     qint32 fieldNumber = sequentialFieldNumber - 1;
 
     if (fieldNumber >= getNumberOfFields() || fieldNumber < 0) {
@@ -307,11 +315,22 @@ DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
         qCritical("JSON file is invalid: Dropouts object is illegal");
     }
 
+    // Reserve space for the dropouts we have to avoid reallocation.
+    DropOuts dropOuts(startxSize);
+
     if (startxSize > 0) {
+        // Pre-create the lists used for lookup so we don't have to reallocate
+        // them for every line.
+        QVariantList startx = {"fields", fieldNumber, "dropOuts", "startx", 0};
+        QVariantList endx = {"fields", fieldNumber, "dropOuts", "endx", 0};
+        QVariantList fieldLine = {"fields", fieldNumber, "dropOuts", "fieldLine", 0};
         for (qint32 doCounter = 0; doCounter < startxSize; doCounter++) {
-            dropOuts.append(json.value({"fields", fieldNumber, "dropOuts", "startx", doCounter}).toInt(),
-                            json.value({"fields", fieldNumber, "dropOuts", "endx", doCounter}).toInt(),
-                            json.value({"fields", fieldNumber, "dropOuts", "fieldLine", doCounter}).toInt());
+            startx.last().setValue(doCounter);
+            endx.last().setValue(doCounter);
+            fieldLine.last().setValue(doCounter);
+            dropOuts.append(json.value(startx).toInt(),
+                            json.value(endx).toInt(),
+                            json.value(fieldLine).toInt());
         }
     } else {
         dropOuts.clear();

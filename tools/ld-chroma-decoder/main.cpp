@@ -235,6 +235,11 @@ int main(int argc, char *argv[])
                                       QCoreApplication::translate("main", "Transform: Overlay the input and output FFTs"));
     parser.addOption(showFFTsOption);
 
+    // Option to use phase compensating decoder
+    QCommandLineOption ntscPhaseComp(QStringList() << "ntsc-phase-comp",
+                                      QCoreApplication::translate("main", "Use NTSC QADM decoder taking burst phase into account (BETA)"));
+    parser.addOption(ntscPhaseComp);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -388,6 +393,11 @@ int main(int argc, char *argv[])
             qCritical("Transform threshold must be between 0 and 1");
             return -1;
         }
+    }
+
+
+    if (parser.isSet(ntscPhaseComp)) {
+        combConfig.phaseCompensation = true;
     }
 
     // Work out the metadata filename
