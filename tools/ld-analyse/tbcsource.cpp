@@ -217,6 +217,13 @@ qint32 TbcSource::getNumberOfFields()
     return ldDecodeMetaData.getNumberOfFields();
 }
 
+// Method returns true if the TBC source is anamorphic (false for 4:3)
+bool TbcSource::getIsWidescreen()
+{
+    if (!sourceReady) return false;
+    return ldDecodeMetaData.getVideoParameters().isWidescreen;
+}
+
 // Method returns true if the TBC source is PAL (false for NTSC)
 bool TbcSource::getIsSourcePal()
 {
@@ -738,7 +745,19 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     // Open the TBC metadata file
     qDebug() << "TbcSource::startBackgroundLoad(): Processing JSON metadata...";
     emit busyLoading("Processing JSON metadata...");
-    if (!ldDecodeMetaData.read(sourceFilename + ".json")) {
+
+    QString jsonFileName = sourceFilename + ".json";
+
+    const bool chroma_tbc = sourceFilename.endsWith("_chroma.tbc");
+
+    // If we are trying to open a _chroma tbc from vhs-decode.
+    // Try to look for the json for the luma part if the chroma doesn't have it's own.
+    if (!QFileInfo::exists(jsonFileName) && chroma_tbc) {
+        jsonFileName.chop(16);
+        jsonFileName += ".tbc.json";
+    }
+
+    if (!ldDecodeMetaData.read(jsonFileName)) {
         // Open failed
         qWarning() << "Open TBC JSON metadata failed for filename" << sourceFilename;
         currentSourceFilename.clear();
@@ -773,6 +792,10 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     if (getIsSourcePal()) {
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
+        // Enable this option by default if we are loading a vhs-decode chroma only tbc file.
+        if(chroma_tbc) {
+            ntscConfiguration.phaseCompensation = true;
+        }
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
     }
 
