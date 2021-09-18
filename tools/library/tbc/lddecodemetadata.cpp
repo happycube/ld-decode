@@ -74,7 +74,6 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
     if (json.size({"videoParameters"}) > 0) {
         videoParameters.numberOfSequentialFields = json.value({"videoParameters", "numberOfSequentialFields"}).toInt();
         videoParameters.isSourcePal = json.value({"videoParameters", "isSourcePal"}).toBool();
-        videoParameters.isSourcePalM = json.value({"videoParameters", "isSourcePalM"}, false).toBool();
         videoParameters.isSubcarrierLocked = json.value({"videoParameters", "isSubcarrierLocked"}).toBool();
         videoParameters.isWidescreen = json.value({"videoParameters", "isWidescreen"}).toBool();
 
