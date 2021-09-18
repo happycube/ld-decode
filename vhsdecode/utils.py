@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.signal as signal
-import matplotlib.pyplot as plt
 from numba import njit
 
 
@@ -50,6 +49,7 @@ def auto_chop(data):
 
 
 def fft_plot(data, samp_rate, f_limit, title="FFT"):
+    import matplotlib.pyplot as plt
     fft = np.fft.fft(data)
     power = np.abs(fft) ** 2
     sample_freq = np.fft.fftfreq(len(data), d=1.0 / samp_rate)
@@ -61,6 +61,7 @@ def fft_plot(data, samp_rate, f_limit, title="FFT"):
 
 # simple scope plot
 def plot_scope(data, title="plot", ylabel="", xlabel="t (samples)"):
+    import matplotlib.pyplot as plt
     fig, ax1 = plt.subplots()
     plt.title(title)
     plt.xlabel(xlabel)
@@ -75,6 +76,7 @@ def plot_scope(data, title="plot", ylabel="", xlabel="t (samples)"):
 def dualplot_scope(
     ch0, ch1, title="dual plot", xlabel="t (samples)", a_label="ch0", b_label="ch1"
 ):
+    import matplotlib.pyplot as plt
     fig, ax1 = plt.subplots()
     plt.title(title)
     plt.xlabel(xlabel)
@@ -87,6 +89,7 @@ def dualplot_scope(
 
 
 def plot_image(data):
+    import matplotlib.pyplot as plt
     plt.imshow(data, cmap="hot", clim=(0, 1.0))
     plt.show()
 
