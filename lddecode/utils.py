@@ -174,10 +174,6 @@ def load_unpacked_data_u8(infile, sample, readlen):
 
 def load_unpacked_data_s16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
-    
-    
-def load_unpacked_data_u16(infile, sample, readlen):
-    return load_unpacked_data(infile, sample, readlen, 2)
 
 
 def load_unpacked_data_u16(infile, sample, readlen):
@@ -1008,4 +1004,3 @@ class StridedCollector:
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
-    
