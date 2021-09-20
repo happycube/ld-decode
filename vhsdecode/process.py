@@ -152,8 +152,11 @@ class FieldShared:
         #     import matplotlib.pyplot as plt
         #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
         #     ax1.plot(self.data["video"]["demod_05"])
-        #     #ax1.axhline(self.pulse_hz_min_last, color="#FF0000")
-        #     #ax1.axhline(self.pulse_hz_max_last, color="#00FF00")
+
+        #     sync, blank = self.rf.resync.VsyncSerration.getLevels()
+
+        #     ax1.axhline(sync, color="#FF0000")
+        #     ax1.axhline(blank, color="#00FF00")
 
         #     for raw_pulse in self.rawpulses:
         #         ax1.axvline(raw_pulse.start, color="#910000")
@@ -171,8 +174,8 @@ class FieldShared:
 
         #     ax2.plot(pulselen)
 
-        #     #ax1.axhline(pulse_hz_min, color="#FF0000")
-        #     #ax1.axhline(pulse_hz_max, color="#00FF00")
+        #     #ax1.axhline(self.pulse_hz_min, color="#00FFFF")
+        #     ax1.axhline(self.pulse_hz_max, color="#000000")
         #     plt.show()
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
