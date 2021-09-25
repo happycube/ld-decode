@@ -287,6 +287,9 @@ RFParams_NTSC_UMATIC["nonlinear_highpass_limit_l"] = RFParams_PAL_VHS[
     "nonlinear_highpass_limit_l"
 ]
 
+SysParams_NTSC["analog_audio"] = False
+SysParams_PAL["analog_audio"] = False
+
 SysParams_PAL_VHS = {**SysParams_PAL}
 SysParams_NTSC_VHS = {**SysParams_NTSC}
 SysParams_PAL_UMATIC = {**SysParams_PAL}

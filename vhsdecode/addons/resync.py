@@ -366,7 +366,6 @@ class Resync:
                 field.data["video"]["demod_05"] = sync_reference - new_sync + vsync_hz
                 field.data["video"]["demod"] = demod_data - new_sync + vsync_hz
 
-
         # utils.plot_scope(field.data["video"]["demod_05"])
         return self.findpulses(
             field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max

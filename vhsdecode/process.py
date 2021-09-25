@@ -148,36 +148,6 @@ class FieldShared:
 
         self.validpulses = validpulses = self.refinepulses()
 
-        # if len(validpulses) > 300:
-        #     import matplotlib.pyplot as plt
-        #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-        #     ax1.plot(self.data["video"]["demod_05"])
-
-        #     sync, blank = self.rf.resync.VsyncSerration.getLevels()
-
-        #     ax1.axhline(sync, color="#FF0000")
-        #     ax1.axhline(blank, color="#00FF00")
-
-        #     for raw_pulse in self.rawpulses:
-        #         ax1.axvline(raw_pulse.start, color="#910000")
-        #         ax1.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
-
-        #     for valid_pulse in validpulses:
-        #         ax1.axvline(valid_pulse[1][0], color="#00FF00")
-        #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
-
-        #     #ax2.plot(np.diff(self.data["video"]["demod_05"]))
-
-        #     pulselen = np.zeros_like(self.data["video"]["demod_05"])
-        #     for valid_pulse in validpulses:
-        #         pulselen[valid_pulse[1][0]:valid_pulse[1][0] + valid_pulse[1][1]] = valid_pulse[1][1]
-
-        #     ax2.plot(pulselen)
-
-        #     #ax1.axhline(self.pulse_hz_min, color="#00FFFF")
-        #     ax1.axhline(self.pulse_hz_max, color="#000000")
-        #     plt.show()
-
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         self.linecount = 263 if self.isFirstField else 262
 
@@ -328,6 +298,42 @@ class FieldShared:
 
         rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
 
+        # if len(validpulses) > 300:
+        #     import matplotlib.pyplot as plt
+        #     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        #     ax1.plot(self.data["video"]["demod_05"])
+
+        #     sync, blank = self.rf.resync.VsyncSerration.getLevels()
+
+        #     ax1.axhline(sync, color="#FF0000")
+        #     ax1.axhline(blank, color="#00FF00")
+
+        #     for raw_pulse in self.rawpulses:
+        #         ax1.axvline(raw_pulse.start, color="#910000")
+        #         ax1.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
+
+        #     for valid_pulse in validpulses:
+        #         ax1.axvline(valid_pulse[1][0], color="#00FF00")
+        #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+
+        #     #ax2.plot(np.diff(self.data["video"]["demod_05"]))
+
+        #     pulselen = np.zeros_like(self.data["video"]["demod_05"])
+        #     for valid_pulse in validpulses:
+        #         pulselen[valid_pulse[1][0]:valid_pulse[1][0] + valid_pulse[1][1]] = valid_pulse[1][1]
+
+        #     ax2.plot(pulselen)
+
+        #     #for p in linelocs_dict.values():
+        #     #    ax3.axvline(p)
+        #         #ldd.logger.info("p %s", p)
+        #     for ll in rv_ll:
+        #         ax3.axvline(ll)
+
+        #     #ax1.axhline(self.pulse_hz_min, color="#00FFFF")
+        #     # ax1.axhline(self.pulse_hz_max, color="#000000")
+        #     plt.show()
+
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
         else:
@@ -396,6 +402,11 @@ class FieldShared:
 
         # Get the defaults - this works somehow because python.
         LT = super(FieldShared, self).get_timings()
+
+        hsync_min = LT["hsync_median"] + self.usectoinpx(-0.7)
+        hsync_max = LT["hsync_median"] + self.usectoinpx(0.7)
+
+        LT["hsync"] = (hsync_min, hsync_max)
 
         eq_min = (
             self.usectoinpx(
@@ -583,6 +594,7 @@ class VHSDecode(ldd.LDdecode):
         rf_options={},
         extra_options={},
     ):
+
         super(VHSDecode, self).__init__(
             fname_in,
             fname_out,
@@ -918,11 +930,98 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         # Lastly we re-create the filters with the new parameters.
-        self.computevideofilters()
+        self.computevideofilters_b()
 
         DP = self.DecoderParams
 
         self.high_boost = high_boost if high_boost is not None else DP["boost_bpf_mult"]
+
+        # Heterodyning / chroma wave related filter part
+
+        self.chromaAFC = ChromaAFC(
+            self.freq_hz,
+            DP["chroma_bpf_upper"] / DP["color_under_carrier"],
+            self.SysParams,
+            self.DecoderParams["color_under_carrier"],
+            tape_format=tape_format,
+        )
+
+        self.Filters["FVideoBurst"] = self.chromaAFC.get_chroma_bandpass()
+
+        if self.notch is not None:
+            if not self.cafc:
+                self.Filters["FVideoNotch"] = sps.iirnotch(
+                    self.notch / self.freq_half, self.notch_q
+                )
+            else:
+                self.Filters["FVideoNotch"] = sps.iirnotch(
+                    self.notch / self.chromaAFC.getOutFreqHalf(), self.notch_q
+                )
+
+            self.Filters["FVideoNotchF"] = lddu.filtfft(
+                self.Filters["FVideoNotch"], self.blocklen
+            )
+        else:
+            self.Filters["FVideoNotch"] = None, None
+
+        # The following filters are for post-TBC:
+        # The output sample rate is 4fsc
+        self.Filters["FChromaFinal"] = self.chromaAFC.get_chroma_bandpass_final()
+        self.Filters["FBurstNarrow"] = self.chromaAFC.get_burst_narrow()
+        self.chroma_heterodyne = self.chromaAFC.getChromaHet()
+        self.fsc_wave, self.fsc_cos_wave = self.chromaAFC.getFSCWaves()
+
+        # Increase the cutoff at the end of blocks to avoid edge distortion from filters
+        # making it through.
+        self.blockcut_end = 1024
+        self.demods = 0
+
+        if self.sharpness_level != 0:
+            # sharpness filter / video EQ
+            iir_eq_loband = utils.firdes_highpass(
+                self.freq_hz,
+                DP["video_eq"]["loband"]["corner"],
+                DP["video_eq"]["loband"]["transition"],
+                DP["video_eq"]["loband"]["order_limit"],
+            )
+
+            self.videoEQFilter = {
+                0: utils.FiltersClass(iir_eq_loband[0], iir_eq_loband[1], self.freq_hz),
+                # 1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
+            }
+
+        self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+
+        self.AGClevels = StackableMA(
+            window_average=self.SysParams["FPS"] / 2
+        ), StackableMA(window_average=self.SysParams["FPS"] / 2)
+        self.resync = Resync(self.freq_hz, self.SysParams, debug=self.debug)
+
+    def computevideofilters(self):
+        self.Filters = {}
+        # Needs to be defined here as it's referenced in constructor.
+        self.Filters["F05_offset"] = 32
+
+    def computevideofilters_b(self):
+        # Use some shorthand to compact the code.
+        SF = self.Filters
+        DP = self.DecoderParams
+
+        SF["hilbert"] = lddu.build_hilbert(self.blocklen)
+
+        video_lpf = sps.butter(
+            DP["video_lpf_order"], DP["video_lpf_freq"] / self.freq_hz_half, "low"
+        )
+        # SF["Fvideo_lpf"] = lddu.filtfft(video_lpf, self.blocklen)
+        filter_video_lpf = lddu.filtfft(video_lpf, self.blocklen)
+
+        # additional filters:  0.5mhz, used for sync detection.
+        # Using an FIR filter here to get a known delay
+        F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
+        filter_05 = lddu.filtfft((F0_5, [1.0]), self.blocklen)
+        # SF["F05"] = lddu.filtfft((F0_5, [1.0]), self.blocklen)
+        # Defined earlier
+        # SF["F05_offset"] = 32
 
         self.Filters["RFVideoRaw"] = lddu.filtfft(
             sps.butter(
@@ -988,8 +1087,6 @@ class VHSRFDecode(ldd.RFDecode):
         # Sync de-emphasis
         db05, da05 = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
 
-        #        da3, db3 = gen_high_shelf(260000 / 1.0e6, 14, 1 / 2, inputfreq)
-
         if False:
             import matplotlib.pyplot as plt
 
@@ -1052,7 +1149,6 @@ class VHSRFDecode(ldd.RFDecode):
                     ],
                 ]
             )
-            # print(test_arr[0])
             test_arr[0] *= 1000000.0
             test_arr[1] *= -1
             #            test_arr[0::] *= 1e6
@@ -1076,27 +1172,18 @@ class VHSRFDecode(ldd.RFDecode):
             ax1.axvline(corner_freq)
             ax2.axvline(corner_freq)
             ax3.axvline(corner_freq)
-            # print("Vsync IRE", self.SysParams["vsync_ire"])
-            #            ax2 = ax1.twinx()
-            #            ax3 = ax1.twinx()
-            # ax2.plot(data[:2048])
-            #            ax4.plot(env, color="#00FF00")
-            #            ax3.plot(np.angle(hilbert))
-            #            ax4.plot(hilbert.imag)
-            #            crossings = find_crossings(env, 700)
-            #            ax3.plot(crossings, color="#0000FF")
             plt.show()
-            #            exit(0)
 
         self.Filters["FEnvPost"] = sps.butter(
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
-        self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
-        self.Filters["Fdeemp_05"] = lddu.filtfft((db05, da05), self.blocklen)
-        self.Filters["FVideo"] = self.Filters["Fvideo_lpf"] * self.Filters["Fdeemp"]
-        SF = self.Filters
-        SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["F05"]
+        # self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
+        filter_deemp = lddu.filtfft((db, da), self.blocklen)
+        # self.Filters["Fdeemp_05"] = lddu.filtfft((db05, da05), self.blocklen)
+        self.Filters["FVideo"] = filter_video_lpf * filter_deemp
+
+        SF["FVideo05"] = filter_video_lpf * filter_deemp * filter_05
 
         # SF["YNRHighPass"] = sps.butter(
         #     1,
@@ -1116,76 +1203,6 @@ class VHSRFDecode(ldd.RFDecode):
                 ),
                 self.blocklen,
             )
-
-        SF["PreLPF"] = sps.butter(
-            1,
-            [
-                (3e6) / self.freq_hz_half,
-            ],
-            btype="lowpass",
-            output="sos",
-        )
-
-        # Heterodyning / chroma wave related filter part
-
-        self.chromaAFC = ChromaAFC(
-            self.freq_hz,
-            DP["chroma_bpf_upper"] / DP["color_under_carrier"],
-            self.SysParams,
-            self.DecoderParams["color_under_carrier"],
-            tape_format=tape_format,
-        )
-
-        self.Filters["FVideoBurst"] = self.chromaAFC.get_chroma_bandpass()
-
-        if self.notch is not None:
-            if not self.cafc:
-                self.Filters["FVideoNotch"] = sps.iirnotch(
-                    self.notch / self.freq_half, self.notch_q
-                )
-            else:
-                self.Filters["FVideoNotch"] = sps.iirnotch(
-                    self.notch / self.chromaAFC.getOutFreqHalf(), self.notch_q
-                )
-
-            self.Filters["FVideoNotchF"] = lddu.filtfft(
-                self.Filters["FVideoNotch"], self.blocklen
-            )
-        else:
-            self.Filters["FVideoNotch"] = None, None
-
-        # The following filters are for post-TBC:
-        # The output sample rate is 4fsc
-        self.Filters["FChromaFinal"] = self.chromaAFC.get_chroma_bandpass_final()
-        self.Filters["FBurstNarrow"] = self.chromaAFC.get_burst_narrow()
-        self.chroma_heterodyne = self.chromaAFC.getChromaHet()
-        self.fsc_wave, self.fsc_cos_wave = self.chromaAFC.getFSCWaves()
-
-        # Increase the cutoff at the end of blocks to avoid edge distortion from filters
-        # making it through.
-        self.blockcut_end = 1024
-        self.demods = 0
-
-        if self.sharpness_level != 0:
-            # sharpness filter / video EQ
-            iir_eq_loband = utils.firdes_highpass(
-                self.freq_hz,
-                DP["video_eq"]["loband"]["corner"],
-                DP["video_eq"]["loband"]["transition"],
-                DP["video_eq"]["loband"]["order_limit"],
-            )
-
-            self.videoEQFilter = {
-                0: utils.FiltersClass(iir_eq_loband[0], iir_eq_loband[1], self.freq_hz),
-                # 1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
-            }
-
-        self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
-
-        self.AGClevels = StackableMA(
-            window_average=self.SysParams["FPS"] / 2
-        ), StackableMA(window_average=self.SysParams["FPS"] / 2)
-        self.resync = Resync(self.freq_hz, self.SysParams, debug=self.debug)
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -1331,7 +1348,8 @@ class VHSRFDecode(ldd.RFDecode):
             #        ax1.plot(hilbert, color='#FF0000')
             ax1.plot(out_video, color="#00FF00")
             ax2.plot(data, color="#00FF00")
-            ax3.plot(data_filtered)
+            # ax3.plot(data_filtered)
+            ax3.plot(hilbert_t.real)
             ax4.plot(hilbert.real)
             ax1.axhline(self.iretohz(0))
             ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
