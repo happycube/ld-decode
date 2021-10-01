@@ -1,10 +1,12 @@
 import math
+from collections import namedtuple
 import numpy as np
 import lddecode.utils as lddu
 import lddecode.core as ldd
 from vhsdecode.utils import get_line
 import vhsdecode.utils as utils
 import scipy.signal as sps
+
 
 from numba import njit
 
@@ -18,8 +20,7 @@ def chroma_to_u16(chroma):
     return np.uint16(chroma + S16_ABS_MAX)
 
 
-# Using parallel here makes this waaaay slower for some reason.
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
 
@@ -48,7 +49,7 @@ def acc_line(chroma, burst_abs_ref, burststart, burstend):
     return output
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def comb_c_pal(data, line_len):
     """Very basic comb filter, adds the signal together with a signal delayed by 2H,
     and one advanced by 2H
@@ -89,7 +90,7 @@ def comb_c_ntsc(data, line_len):
     return data
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def upconvert_chroma(
     chroma,
     lineoffset,
@@ -346,26 +347,6 @@ def get_burst_area(field):
     )
 
 
-class LineInfo:
-    """Helper class to store line burst info for PAL."""
-
-    def __init__(self, num):
-        self.linenum = num
-        self.bp = 0
-        self.bq = 0
-        self.vsw = -1
-        self.burst_norm = 0
-
-    def __str__(self):
-        return "<num: %s, bp: %s, bq: %s, vsw: %s, burst_norm: %s>" % (
-            self.linenum,
-            self.bp,
-            self.bq,
-            self.vsw,
-            self.burst_norm,
-        )
-
-
 def mean_of_burst_sums(chroma_data, line_length, lines, burst_start, burst_end):
     """Sum the burst areas of two and two lines together, and return the mean of these sums."""
     IGNORED_LINES = 16
@@ -392,6 +373,7 @@ def mean_of_burst_sums(chroma_data, line_length, lines, burst_start, burst_end):
     return mean_burst_sum
 
 
+@njit(cache=True, nogil=True)
 def detect_burst_pal(
     chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
 ):
@@ -417,6 +399,10 @@ def detect_burst_pal(
     return line_data, burst_mean
 
 
+LineInfo = namedtuple("LineInfo", "linenum, bp, bq, vsw, burst_norm")
+
+
+@njit(cache=True, nogil=True)
 def detect_burst_pal_line(
     chroma_data, sine, cosine, burst_area, line_length, line_number
 ):
@@ -479,29 +465,34 @@ def detect_burst_pal_line(
     # vector magnitude /difference/ between the phases of the burst on the
     # present line and previous line to the magnitude of the burst. This
     # may effectively be a dot-product operation...
-    line = LineInfo(line_number)
+
+    line_bp = 0
+    line_bq = 0
+    line_vsw = -1
+    line_burst_norm = 0
+
     if ((bp - bpo) * (bp - bpo) + (bq - bqo) * (bq - bqo)) < (bp * bp + bq * bq) * 2:
-        line.vsw = 1
+        line_vsw = 1
 
     # (Comment from palcolor.cpp)
     # Average the burst phase to get -U (reference) phase out -- burst
     # phase is (-U +/-V). bp and bq will be of the order of 1000.
-    line.bp = (bp - bqo) / 2
-    line.bq = (bq + bpo) / 2
+    line_bp = (bp - bqo) / 2
+    line_bq = (bq + bpo) / 2
 
     # (Comment from palcolor.cpp)
     # Normalise the magnitude of the bp/bq vector to 1.
     # Kill colour if burst too weak.
     # XXX magic number 130000 !!! check!
-    burst_norm = max(math.sqrt(line.bp * line.bp + line.bq * line.bq), 10000.0 / 128)
-    line.burst_norm = burst_norm
-    line.bp /= burst_norm
-    line.bq /= burst_norm
+    burst_norm = max(math.sqrt(line_bp * line_bp + line_bq * line_bq), 10000.0 / 128)
+    line_burst_norm = burst_norm
+    line_bp /= burst_norm
+    line_bq /= burst_norm
 
-    return line
+    return LineInfo(line_number, line_bp, line_bq, line_vsw, line_burst_norm)
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def detect_burst_ntsc(
     chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
 ):

@@ -14,10 +14,10 @@ from vhsdecode.utils import (
 import numpy as np
 from scipy.signal import argrelextrema
 from os import getpid
+from concurrent.futures import ThreadPoolExecutor
 from numba import njit
 
 import lddecode.core as ldd
-
 
 # from frequency to samples
 def f_to_samples(samp_rate, frequency):
@@ -116,6 +116,7 @@ class VsyncSerration:
         self.fieldcount = 0
         self.pid = getpid()
         self.found_serration = False
+        self.executor = ThreadPoolExecutor(max_workers=3)
 
     def getEQpulselen(self):
         return self.eq_pulselen
@@ -150,7 +151,8 @@ class VsyncSerration:
 
     # this may need tweak
     def vsync_envelope_simple(self, data):
-        hi_part = np.clip(data, a_max=np.max(data), a_min=0)
+        # hi_part = np.clip(data, a_max=np.max(data), a_min=0)
+        hi_part = data
         hi_filtered = self.vsyncEnvFilter.filtfilt(hi_part)
         return hi_filtered, np.min(data)
 
@@ -161,14 +163,32 @@ class VsyncSerration:
     def vsync_envelope_double(self, data):
         half = int(len(data) / 2)
 
-        forward = self.vsync_envelope_simple(data)
-        reverse_t = self.vsync_envelope_simple(np.flip(data))
-        reverse = np.flip(reverse_t[0]), reverse_t[1]
+        hi_part = np.clip(data, a_max=None, a_min=0)
+
+        def vsync_env_rev(hp):
+            return np.flip(self.vsyncEnvFilter.filtfilt(np.flip(hp)))
+
+        # Do the two filter operations on separate threads for a speedup.
+        forward_f = self.executor.submit(self.vsync_envelope_simple, hi_part)
+        # reverse_t_f = self.executor.submit(self.vsync_envelope_simple, np.flip(hi_part))
+        reverse_t_f = self.executor.submit(vsync_env_rev, hi_part)
+        forward = forward_f.result()
+        reverse = reverse_t_f.result()
+        # # Non-threaded version:
+        # b_forward = self.vsync_envelope_simple(hi_part)
+        # b_reverse_t = self.vsync_envelope_simple(np.flip(hi_part))
+        # b_reverse = np.flip(b_reverse_t[0]), b_reverse_t[1]
+
         # end of forward + beginning of reverse
-        result = (
-            np.append(reverse[0][:half], forward[0][half:]),
-            forward[1]
-        )
+        # Re-use existing array instead of allocating a new one.
+        # Maybe there's a better way to do this.
+        result_temp = hi_part
+        result_temp[:half] = reverse[:half]
+        result_temp[half:] = forward[0][half:]
+        result = result_temp, forward[1]
+        # # Old version
+        # b_result = (np.append(b_reverse[0][:half], b_forward[0][half:]), b_forward[1])
+
         # dualplot_scope(forward[0], reverse[0])
         # dualplot_scope(result[0], result[1], title="VBI envelope")
         return result
@@ -231,8 +251,9 @@ class VsyncSerration:
             len(data) - 1, pos + self.linelen * linespan
         )
         min_block = data[start:end]
-        level = (np.median(min_block) - np.min(min_block)) / 2
-        level += np.min(min_block)
+        min_block_min = np.min(min_block)
+        level = (np.median(min_block) - min_block_min) / 2
+        level += min_block_min
         zero_block = min_block - level
         sync_pulses = zero_cross_det(zero_block)
         diff_sync = np.diff(sync_pulses)
@@ -291,8 +312,10 @@ class VsyncSerration:
             if len(where_min) > 0:
                 mask_len = self.linelen * 5
                 state = False
+
                 for w_min in where_min:
                     state, serr_loc, serr_len = self.search_eq_pulses(data, w_min)
+
                     if state:
                         serration_locs.append(serr_loc)
                         mask_len = serr_len - serr_loc

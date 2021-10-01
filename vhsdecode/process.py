@@ -695,6 +695,9 @@ class VHSDecode(ldd.LDdecode):
         setattr(self, "outfile_chroma", None)
         super(VHSDecode, self).close()
 
+    def computeMetricsPAL(self, metrics, f, fp=None):
+        return None
+
     def computeMetricsNTSC(self, metrics, f, fp=None):
         return None
 
@@ -745,13 +748,14 @@ class VHSDecode(ldd.LDdecode):
 
                 self.audio_offset = f.audio_next_offset
 
-                metrics = self.computeMetrics(f, None, verbose=True)
-                if "blackToWhiteRFRatio" in metrics and adjusted == False:
-                    keep = 900 if self.isCLV else 30
-                    self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
-                    self.bw_ratios = self.bw_ratios[-keep:]
+                _ = self.computeMetrics(f, None, verbose=True)
+                # if "blackToWhiteRFRatio" in metrics and adjusted == False:
+                #     keep = 900 if self.isCLV else 30
+                #     self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
+                #     self.bw_ratios = self.bw_ratios[-keep:]
 
-                redo = not self.checkMTF(f, self.prevfield)
+                # redo = not self.checkMTF(f, self.prevfield)
+                redo = False
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
                 if self.useAGC and f.isFirstField and f.sync_confidence > 80:
@@ -1346,10 +1350,12 @@ class VHSRFDecode(ldd.RFDecode):
 
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
-            ax1.plot(out_video, color="#00FF00")
-            ax2.plot(data, color="#00FF00")
+            ax1.plot(data, color="#00FF00")
+            ax2.plot(data_filtered, color="#00FF00")
+            ax3.plot(demod)
+            ax4.plot(out_video, color="#00FF00")
             # ax3.plot(data_filtered)
-            ax3.plot(hilbert_t.real)
+            # ax3.plot(hilbert_t.real)
             ax4.plot(hilbert.real)
             ax1.axhline(self.iretohz(0))
             ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
