@@ -138,6 +138,9 @@ def make_loader(filename, inputfreq=None):
     elif filename.endswith("raw.oga") or filename.endswith(".ldf") or filename.endswith(".wav") or filename.endswith(".flac") or filename.endswith(".vhs"):
         try:
             rv = LoadLDF(filename)
+        except FileNotFoundError:
+            print("ld-ldf-reader not found in PATH, using ffmpeg instead.", file=sys.stderr)
+            rv = LoadFFmpeg()
         except Exception:
             # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
             traceback.print_exc()
