@@ -5,6 +5,8 @@ import json
 import math
 import os
 import subprocess
+import sys
+import traceback
 
 from multiprocessing import JoinableQueue
 import threading
@@ -136,8 +138,11 @@ def make_loader(filename, inputfreq=None):
     elif filename.endswith("raw.oga") or filename.endswith(".ldf") or filename.endswith(".wav") or filename.endswith(".flac") or filename.endswith(".vhs"):
         try:
             rv = LoadLDF(filename)
-        except:
+        except Exception:
             # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
+            traceback.print_exc()
+            print("Failed to load with ld-ldf-reader, trying ffmpeg instead.",
+                  file=sys.stderr)
             rv = LoadFFmpeg()
 
         return rv
@@ -232,7 +237,7 @@ def load_packed_data_3_32(infile, sample, readlen):
 # // 4: 3333 3333
 # """
 
-@njit(cache=True, nogil=True)
+# @njit(cache=True, nogil=True)
 def unpack_data_4_40(indata, readlen, offset):
     """Inner unpacking function, split off to allow numba optimisation."""
     unpacked = np.zeros(readlen + 4, dtype=np.uint16)
@@ -440,7 +445,9 @@ class LoadLDF:
                 del self.ldfreader
 
             self.ldfreader = None
-        except:
+        except Exception:
+            print("Failed to close ldf reader", file=sys.stderr)
+            traceback.print_exc()
             pass
 
     def _open(self, sample):
@@ -519,7 +526,7 @@ def ldf_pipe(outname, compression_level=6):
 
 
 def get_git_info():
-    """ Return git branch and commit for current directory, iff available. """
+    """ Return git branch and commit for current directory, if available. """
 
     branch = "UNKNOWN"
     commit = "UNKNOWN"
@@ -534,7 +541,9 @@ def get_git_info():
             "git rev-parse --short HEAD", shell=True, capture_output=True
         )
         commit = sp.stdout.decode("utf-8").strip() if not sp.returncode else "UNKNOWN"
-    except:
+    except Exception:
+        print("Something went wrong when trying to read git info...", file=sys.stderr)
+        traceback.print_exc()
         pass
 
     return branch, commit
@@ -636,22 +645,6 @@ def calczc(data, _start_offset, target, edge=0, count=10, reverse=False):
 
     return calczc_do(data, _start_offset, target, edge, count)
 
-
-def calczc_sets(data, start, end, tgt=0, cliplevel=None):
-    zcsets = {False: [], True: []}
-    bi = start
-
-    while bi < end:
-        if np.abs(data[bi]) > cliplevel:
-            zc = calczc(data, bi, tgt)
-
-            if zc is not None:
-                zcsets[data[bi] > tgt].append(offset)
-                bi = np.int(zc)
-
-        bi += 1
-
-    return {False: np.array(zcsets[False]), True: np.array(zcsets[True])}
 
 # Shamelessly based on https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
 # ... and intended for real FFT, but seems fine with complex as well ;)
@@ -814,7 +807,7 @@ def findpulses(array, low, high):
         if starts[-1] > ends[-1]:
             starts = starts[:-1]
     except IndexError:
-        print("Index error at lddecode/utils.findpulses(). Are we on the end of the file?")
+        print("Index error at lddecode/utils.findpulses(). Are we on the end of the file?", file=sys.stderr)
         return []
 
     return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
@@ -838,7 +831,7 @@ def LRUupdate(l, k):
     """
     try:
         l.remove(k)
-    except:
+    except Exception:
         pass
 
     l.insert(0, k)

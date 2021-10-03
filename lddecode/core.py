@@ -235,11 +235,11 @@ RFParams_PAL_lowband = {
 
 
 class RFDecode:
-    """The core RF decoding code.  
-    
-    This decoder uses FFT overlap-save processing(1) to allow for parallel processing and combination of 
+    """The core RF decoding code.
+
+    This decoder uses FFT overlap-save processing(1) to allow for parallel processing and combination of
     operations.
-    
+
     Video filter signal path:
     - FFT/iFFT stage 1: RF BPF (i.e. 3.5-13.5mhz NTSC) * hilbert filter
     - phase unwrapping
@@ -247,9 +247,9 @@ class RFDecode:
       - Regular video output
       - 0.5mhz LPF (used for HSYNC)
       - For fine-tuning HSYNC: NTSC: 3.5x mhz filtered signal, PAL: 3.75mhz pilot signal
-    
+
     Analogue audio filter signal path:
-    
+
         The audio signal path is actually more complex in some ways, since it reduces a
         multi-msps signal down to <100khz.  A two stage processing system is used which
         reduces the frequency in each stage.
@@ -516,8 +516,8 @@ class RFDecode:
         # Using an FIR filter here to get a known delay
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
         SF["F05_offset"] = 32
-        SF["F05"] = filtfft((F0_5, [1.0]), self.blocklen)
-        SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["F05"]
+        F0_5_fft = filtfft((F0_5, [1.0]), self.blocklen)
+        SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * F0_5_fft
 
         SF["Fburst"] = filtfft(
             sps.butter(
@@ -700,11 +700,11 @@ class RFDecode:
         ]
 
         if self.system == "PAL" and self.PAL_V4300D_NotchFilter:
-            """ This routine works around an 'interesting' issue seen with LD-V4300D players and 
+            """ This routine works around an 'interesting' issue seen with LD-V4300D players and
                 some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
 
                 The idea here is to look for anomolies (3 std deviations) and snip them out of the
-                FFT.  There may be side effects, however, but generally minor compared to the 
+                FFT.  There may be side effects, however, but generally minor compared to the
                 'wibble' itself and only in certain cases.
             """
             sl = slice(
@@ -949,7 +949,7 @@ class RFDecode:
 
     def computedelays(self, mtf_level=0):
         """Generate a fake signal and compute filter delays.
-        
+
         mtf_level -- Specify the amount of MTF compensation needed (default 0.0)
                      WARNING: May not actually work.
         """
@@ -1480,9 +1480,9 @@ class Field:
         # If this is run early, line locations are unknown, so return
         # the general value
         if linelocs is None:
-            try:
+            if hasattr(self, 'linelocs'):
                 linelocs = self.linelocs
-            except:
+            else:
                 return self.rf.linelen
 
         if line is None:
@@ -1805,7 +1805,7 @@ class Field:
         firstblank, lastblank = self.getBlankRange(validpulses, start)
         conf = 100
 
-        """ 
+        """
         First Look at each equalization/vblank pulse section - if the expected # are there and valid,
         it can be used to determine where line 0 is...
         """
@@ -2468,7 +2468,7 @@ class Field:
         return dsout, self.dsaudio, self.efmout
 
     def rf_tbc(self, linelocs=None):
-        """ This outputs a TBC'd version of the input RF data, mostly intended 
+        """ This outputs a TBC'd version of the input RF data, mostly intended
             to assist in audio processing.  Outputs a uint16 array.
         """
 
@@ -2592,7 +2592,7 @@ class Field:
         iserr3 |= f.data["video"]["demod_05"] > valid_max05
 
         iserr = iserr1 | iserr2 | iserr3 | iserr_rf
-        
+
         # Each valid pulse is definitely *not* an error, so exclude it here at the end
         for v in self.validpulses:
             iserr[
@@ -2824,7 +2824,7 @@ class FieldPAL(Field):
 
     def get_burstlevel(self, l, linelocs=None):
         lineslice = self.lineslice(l, 5.5, 2.4, linelocs)
-        
+
         burstarea = self.data["video"]["demod"][lineslice].copy()
         burstarea -= nb_mean(burstarea)
 
@@ -2856,14 +2856,14 @@ class FieldPAL(Field):
 
         """ Background
         PAL has an eight field sequence that can be split into two four field sequences.
-        
+
         Field 1: First field of frame , no colour burst on line 6
         Field 2: Second field of frame, colour burst on line 6 (319)
         Field 3: First field of frame, colour burst on line 6
         Field 4: Second field of frame, no colour burst on line 6 (319)
-        
-        Fields 5-8 can be differentiated using the burst phase on line 7+4x (based off the first 
-        line guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180 
+
+        Fields 5-8 can be differentiated using the burst phase on line 7+4x (based off the first
+        line guaranteed to have colour burst)  Ideally the rising phase would be at 0 or 180
         degrees, but since this is Laserdisc it's often quite off.  So the determination is
         based on which phase is closer to 0 degrees.
         """
@@ -2959,7 +2959,7 @@ class CombNTSC:
         self.cbuffer = self.buildCBuffer()
 
     def getlinephase(self, line):
-        """ determine if a line has positive color burst phase.  
+        """ determine if a line has positive color burst phase.
             This is based on line # and field phase ID """
         fieldID = self.field.fieldPhaseID
 
@@ -2969,10 +2969,10 @@ class CombNTSC:
             return (fieldID == 2) | (fieldID == 3)
 
     def buildCBuffer(self, subset=None):
-        """ 
+        """
         prev_field: Compute values for previous field
-        subset: a slice computed by lineslice_tbc (default: whole field) 
-        
+        subset: a slice computed by lineslice_tbc (default: whole field)
+
         NOTE:  first and last two returned values will be zero, so slice accordingly
         """
 
@@ -2995,10 +2995,10 @@ class CombNTSC:
         return cbuffer
 
     def splitIQ_line(self, cbuffer, line=0):
-        """ 
+        """
         NOTE:  currently? only works on one line
-        
-        This returns normalized I and Q arrays, each one half the length of cbuffer 
+
+        This returns normalized I and Q arrays, each one half the length of cbuffer
         """
         linephase = self.getlinephase(line)
 
@@ -3062,7 +3062,8 @@ class FieldNTSC(Field):
         # Issue #621 - fields w/skips may be complete nonsense, so bail out if so
         try:
             return rms(burstarea) * np.sqrt(2)
-        except:
+        except Exception:
+            # Should we warn here? (Provided this can actually occur.)
             return 0
 
     def compute_burst_offsets(self, linelocs):
@@ -3105,7 +3106,10 @@ class FieldNTSC(Field):
 
                 try:
                     adjs[l] = adjs_new[l] * lfreq * (1 / self.rf.SysParams["fsc_mhz"])
-                except:
+                except Exception:
+                    # Not sure if this is an error or just control flow.
+                    # print("Something went wrong when trying to compute line length adjustments...", file=sys.stderr)
+                    # traceback.print_exc()
                     pass
 
         if len(adjs.keys()):
@@ -3320,10 +3324,11 @@ class LDdecode:
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
 
-        try:
-            self.ffmpeg_rftbc.kill()
-        except:
-            pass
+        if self.ffmpeg_rftbc is not None:
+            try:
+                self.ffmpeg_rftbc.kill()
+            except Exception:
+                pass
 
         # use setattr to force file closure by unlinking the objects
         for outfiles in [
@@ -3387,7 +3392,6 @@ class LDdecode:
 
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
-
         if self.digital_audio == True:
             if self.outfile_pre_efm is not None:
                 self.outfile_pre_efm.write(efm.tobytes())
@@ -3893,8 +3897,9 @@ class LDdecode:
                         if not self.earlyCLV:
                             fi["clvSeconds"] = int(self.clvSeconds)
                             fi["clvFrameNr"] = int(self.clvFrameNum)
-                except:
+                except Exception:
                     logger.warning("file frame %d : VBI decoding error", rawloc)
+                    traceback.print_exc()
 
         return fi, False
 
