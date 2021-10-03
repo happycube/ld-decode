@@ -217,25 +217,82 @@ def load_packed_data_3_32(infile, sample, readlen):
 
 
 # The 10-bit samples from the Duplicator...
+# """
+# From Simon's code:
 
-"""
-From Simon's code:
+# // Original
+# // 0: xxxx xx00 0000 0000
+# // 1: xxxx xx11 1111 1111
+# // 2: xxxx xx22 2222 2222
+# // 3: xxxx xx33 3333 3333
+# //
+# // Packed:
+# // 0: 0000 0000 0011 1111
+# // 2: 1111 2222 2222 2233
+# // 4: 3333 3333
+# """
 
-// Original
-// 0: xxxx xx00 0000 0000
-// 1: xxxx xx11 1111 1111
-// 2: xxxx xx22 2222 2222
-// 3: xxxx xx33 3333 3333
-//
-// Packed:
-// 0: 0000 0000 0011 1111
-// 2: 1111 2222 2222 2233
-// 4: 3333 3333
-"""
+@njit(cache=True, nogil=True)
+def unpack_data_4_40(indata, readlen, offset):
+    """Inner unpacking function, split off to allow numba optimisation."""
+    unpacked = np.zeros(readlen + 4, dtype=np.uint16)
+
+    # Data needs to be in uint16 for the shift to do the right thing
+    # Could've used dtype argument to right_shift but numba didn't like that.
+    #
+    indatai16 = indata.astype(np.uint16)
+    unpacked[0::4] = (indatai16[0::5] << 2) | ((indata[1::5] >> 6) & 0x03)
+    unpacked[1::4] = ((indatai16[1::5] & 0x3F) << 4) | ((indata[2::5] >> 4) & 0x0F)
+    unpacked[2::4] = ((indatai16[2::5] & 0x0F) << 6) | ((indata[3::5] >> 2) & 0x3F)
+    unpacked[3::4] = ((indatai16[3::5] & 0x03) << 8) | indata[4::5]
+
+    # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
+    rv_unsigned = unpacked[offset:offset + readlen]
+    rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
+
+    # # Original implementation.
+    #  unpacked = np.zeros(readlen + 4, dtype=np.uint16)
+    # # we need to load the 8-bit data into the 16-bit unpacked for left_shift to work
+    # # correctly...
+    # unpacked[0::4] = indata[0::5]
+    # np.left_shift(unpacked[0::4], 2, out=unpacked[0::4])
+    # np.bitwise_or(
+    #     unpacked[0::4],
+    #     np.bitwise_and(np.right_shift(indata[1::5], 6), 0x03),
+    #     out=unpacked[0::4],
+    # )
+
+    # unpacked[1::4] = np.bitwise_and(indata[1::5], 0x3F)
+    # np.left_shift(unpacked[1::4], 4, out=unpacked[1::4])
+    # np.bitwise_or(
+    #     unpacked[1::4],
+    #     np.bitwise_and(np.right_shift(indata[2::5], 4), 0x0F),
+    #     out=unpacked[1::4],
+    # )
+
+    # unpacked[2::4] = np.bitwise_and(indata[2::5], 0x0F)
+    # np.left_shift(unpacked[2::4], 6, out=unpacked[2::4])
+    # np.bitwise_or(
+    #     unpacked[2::4],
+    #     np.bitwise_and(np.right_shift(indata[3::5], 2), 0x3F),
+    #     out=unpacked[2::4],
+    # )
+
+    # unpacked[3::4] = np.bitwise_and(indata[3::5], 0x03)
+    # np.left_shift(unpacked[3::4], 8, out=unpacked[3::4])
+    # np.bitwise_or(unpacked[3::4], indata[4::5], out=unpacked[3::4])
+
+    # # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
+    # rv_unsigned = unpacked[offset : offset + readlen].copy()
+    # rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
+
+    return rv_signed
+
 
 # The bit twiddling is a bit more complex than I'd like... but eh.  I think
 # it's debugged now. ;)
 def load_packed_data_4_40(infile, sample, readlen):
+    """Load data from packed DdD format (4 x 10-bits packed in 5 bytes)"""
     start = (sample // 4) * 5
     offset = sample % 4
 
@@ -250,43 +307,7 @@ def load_packed_data_4_40(infile, sample, readlen):
     if len(indata) < needed:
         return None
 
-    unpacked = np.zeros(readlen + 4, dtype=np.uint16)
-
-    # we need to load the 8-bit data into the 16-bit unpacked for left_shift to work
-    # correctly...
-    unpacked[0::4] = indata[0::5]
-    np.left_shift(unpacked[0::4], 2, out=unpacked[0::4])
-    np.bitwise_or(
-        unpacked[0::4],
-        np.bitwise_and(np.right_shift(indata[1::5], 6), 0x03),
-        out=unpacked[0::4],
-    )
-
-    unpacked[1::4] = np.bitwise_and(indata[1::5], 0x3F)
-    np.left_shift(unpacked[1::4], 4, out=unpacked[1::4])
-    np.bitwise_or(
-        unpacked[1::4],
-        np.bitwise_and(np.right_shift(indata[2::5], 4), 0x0F),
-        out=unpacked[1::4],
-    )
-
-    unpacked[2::4] = np.bitwise_and(indata[2::5], 0x0F)
-    np.left_shift(unpacked[2::4], 6, out=unpacked[2::4])
-    np.bitwise_or(
-        unpacked[2::4],
-        np.bitwise_and(np.right_shift(indata[3::5], 2), 0x3F),
-        out=unpacked[2::4],
-    )
-
-    unpacked[3::4] = np.bitwise_and(indata[3::5], 0x03)
-    np.left_shift(unpacked[3::4], 8, out=unpacked[3::4])
-    np.bitwise_or(unpacked[3::4], indata[4::5], out=unpacked[3::4])
-
-    # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
-    rv_unsigned = unpacked[offset : offset + readlen].copy()
-    rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
-
-    return rv_signed
+    return unpack_data_4_40(indata, readlen, offset)
 
 
 class LoadFFmpeg:
@@ -644,9 +665,10 @@ def build_hilbert(fft_size):
 
     return output
 
+
 def unwrap_hilbert(hilbert, freq_hz):
     tangles = np.angle(hilbert)
-    dangles = np.pad(np.diff(tangles), (1, 0), mode="constant")
+    dangles = np.ediff1d(tangles, to_begin=0)
 
     # make sure unwapping goes the right way
     if dangles[0] < -pi:
@@ -659,6 +681,7 @@ def unwrap_hilbert(hilbert, freq_hz):
     while np.max(tdangles2) > tau:
         tdangles2[tdangles2 > tau] -= tau
     return tdangles2 * (freq_hz / tau)
+
 
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
     ''' returns the # of sub-bins needed to get center+/-min_bandwidth.
@@ -682,6 +705,7 @@ def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
     cut_freq = binwidth * nbins
 
     return lowbin, nbins, cut_freq
+
 
 def fft_do_slice(fdomain, lowbin, nbins, blocklen):
     ''' Uses lowbin and nbins as returned from fft_determine_slices to
