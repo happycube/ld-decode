@@ -3,20 +3,11 @@
 # Draft of new-audio code
 
 import argparse
-import copy
-import itertools
 import sys
-import threading
-import time
-
-from functools import partial
-from multiprocessing import Process, Queue, JoinableQueue, Pipe
 
 # standard numeric/scientific libraries
 import numpy as np
-from numpy.lib.function_base import _parse_gufunc_signature
 import scipy.signal as sps
-import scipy.interpolate as spi
 
 # Use PyFFTW's faster FFT implementation if available
 try:
@@ -47,7 +38,7 @@ except ImportError:
     from lddecode import utils
 
 try:
-    import utils_logging 
+    import utils_logging
 except ImportError:
     from lddecode import utils_logging
 
@@ -72,7 +63,7 @@ def audio_bandpass_butter(center, closerange = 125000, longrange = 180000):
     ''' Returns filter coefficients for first stage per-channel filtering '''
     freqs_inner = [(center - closerange) / freq_hz_half, (center + closerange) / freq_hz_half]
     freqs_outer = [(center - longrange) / freq_hz_half, (center + longrange) / freq_hz_half]
-    
+
     N, Wn = sps.buttord(freqs_inner, freqs_outer, 1, 15)
 
     return sps.butter(N, Wn, btype='bandpass')
@@ -103,11 +94,11 @@ class AudioRF:
 
         # Add the demodulated output to this to get actual freq
         self.low_freq = self.freq_hz * (lowbin / blocklen)
-        
+
         self.slicer = lambda x: utils.fft_do_slice(x, lowbin, nbins, blocklen)
         self.filt1 = self.slicer(audio1_fir) * hilbert
         self.filt1f = audio1_fir * utils.build_hilbert(blocklen)
-        
+
         self.audio1_buffer = utils.StridedCollector(blocklen, blockskip)
         self.audio1_clip = blockskip // (blocklen // nbins)
 
@@ -186,7 +177,7 @@ class AudioDecoder:
 
         if True:
             self.aa_channels.append(AudioRF(self.freq, SysParams['audio_lfreq'], args.vid_standard))
-            
+
         if True:
             self.aa_channels.append(AudioRF(self.freq, SysParams['audio_rfreq'], args.vid_standard))
 
@@ -220,16 +211,16 @@ class AudioDecoder:
                         o = output + channel.low_freq - channel.center_freq
                         #print(np.mean(o), np.std(o), channel.low_freq, channel.center_freq)
                         ofloat.append(np.clip((o / 150000), -16, 16).astype(np.float32))
-                    
+
                     if len(outputs) == 2:
                         #print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
-                        
+
                         outdata = np.zeros(len(ofloat[0]) * 2, dtype=np.float32)
                         outdata[0::2] = ofloat[0]
                         outdata[1::2] = ofloat[1]
                     else:
                         outdata = np.array(ofloat[0], dtype=np.float32)
-                        
+
                     if self.out_fd is not None:
                         self.out_fd.write(outdata)
 
@@ -242,13 +233,13 @@ class AudioDecoder:
 
                 efm_out = self.efm_pll_object.process(filtered_efm2)
                 #print(efm_out.shape, max(filtered_efm.imag))
-                
+
                 if self.efm_fd is not None:
                     #print(len(buf), len(filtered_efm2), len(efm_out), file=sys.stderr)
                     self.efm_fd.write(efm_out.tobytes())
 
 def startprocess(inpipe, args):
-    ''' Hook for Multiprocessing.Process() 
+    ''' Hook for Multiprocessing.Process()
         procargs is a tuple containing the input pipe and args from ld-decode
     '''
     args.vid_standard = "PAL" if args.pal else "NTSC"
@@ -268,11 +259,11 @@ def startprocess(inpipe, args):
         ad.input_buffer.add(data_int8)
 
         ad.process_input_buffer()
-        
+
 if __name__ == "__main__":
     # Standalone command line front end code
 
-    # NOTE:  These arguments must be consistent with top-level ld-decode, since 
+    # NOTE:  These arguments must be consistent with top-level ld-decode, since
     # they can be passed from it as well
 
     def handle_options(argstring = sys.argv):
@@ -284,7 +275,7 @@ if __name__ == "__main__":
         parser.add_argument("-i", dest="infile", default='-', type=str, help="source file (must be signed 16-bit)")
 
         parser.add_argument("-o", dest="outfile", default='test', type=str, help="base name for destination files")
-        
+
         parser.add_argument("-f", "--freq", dest='inputfreq', default = "40.0mhz", type=utils.parse_frequency, help="Input frequency")
 
         parser.add_argument(
@@ -325,7 +316,7 @@ if __name__ == "__main__":
             default=False,
             help="Write filtered but otherwise pre-processed EFM data",
         )
-        
+
         args = parser.parse_args(argstring[1:])
 
         if args.pal and args.ntsc:
@@ -356,7 +347,7 @@ if __name__ == "__main__":
 
         if len(inbuf) == 0:
             break
-            
+
         # store the input buffer as a raw 8-bit data, then repack into 16-bit
         # (this allows reading of an odd # of bytes)
         ad.input_buffer.add(np.frombuffer(inbuf, 'int8', len(inbuf)))
