@@ -25,7 +25,14 @@ parser.add_argument(
     dest="dodod",
     action="store_true",
     default=False,
-    help="enable dropout detector (disabled by default until it's working well)",
+    help="enable dropout detector (deprecated as this is no on by default)",
+)
+parser.add_argument(
+    "--noDOD",
+    dest="nodod",
+    action="store_true",
+    default=False,
+    help="Disable dropout detector.",
 )
 parser.add_argument(
     "-D",
@@ -196,6 +203,8 @@ if tape_format not in supported_tape_formats:
 
 if args.noAGC:
     logger.warning("--noAGC is deprecated and does nothing.")
+if args.dodod:
+    logger.warning("--doDOD is deprecated, dod is on by default, use noDOD to turn off.")
 
 # Initialize VHS decoder
 # Note, we pass 40 as sample frequency, as any other will be resampled by the
@@ -207,7 +216,7 @@ vhsd = VHSDecode(
     logger,
     system=system,
     tape_format=tape_format,
-    doDOD=args.dodod,
+    doDOD=not args.nodod,
     threads=args.threads,
     inputfreq=40,
     level_adjust=args.level_adjust,
