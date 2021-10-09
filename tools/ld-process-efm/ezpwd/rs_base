@@ -451,7 +451,6 @@ namespace ezpwd {
 #if not defined( EZPWD_ARRAY_TEST )
                               NN + 1>
 #else
-#  warning "EZPWD_ARRAY_TEST: Erroneously declaring alpha_to size!"
                               NN    >
 #endif
 				alpha_to;
@@ -1323,7 +1322,6 @@ namespace ezpwd {
 #if not defined( EZPWD_ARRAY_TEST )
                                                                           ::NN + 1 >
 #else
-#  warning "EZPWD_ARRAY_TEST: Erroneously defining alpha_to size!"
                                                                           ::NN     >
 #endif
 					reed_solomon_tabs< TYP, SYM, PRM, PLY >::alpha_to;
