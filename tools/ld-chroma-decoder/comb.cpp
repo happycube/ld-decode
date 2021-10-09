@@ -752,8 +752,11 @@ void Comb::FrameBuffer::doCNR()
     const qint32 delay = c_nrc_b.size() / 2;
 
     // High-pass result
-    double hpI[videoParameters.activeVideoEnd + delay];
-    double hpQ[videoParameters.activeVideoEnd + delay];
+    // Windows fix: MSVC does not support VLA, so changed to using vector instead.
+    // TODO: May want to cache arrays instead of reallocating every field.
+    auto hpI = std::vector<double>(videoParameters.activeVideoEnd + delay);
+    auto hpQ = std::vector<double>(videoParameters.activeVideoEnd + delay);
+
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         double *I = componentFrame->u(lineNumber);
@@ -806,7 +809,7 @@ void Comb::FrameBuffer::doYNR()
     const qint32 delay = c_nr_b.size() / 2;
 
     // High-pass result
-    double hpY[videoParameters.activeVideoEnd + delay];
+    auto hpY = std::vector<double>(videoParameters.activeVideoEnd + delay);
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         double *Y = componentFrame->y(lineNumber);
@@ -880,8 +883,8 @@ void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const Frame
 
     // For each sample in the frame...
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        double *U = componentFrame->u(lineNumber);        
-        double *V = componentFrame->v(lineNumber);        
+        double *U = componentFrame->u(lineNumber);
+        double *V = componentFrame->v(lineNumber);
 
         // Fill the output frame with the RGB values
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {

@@ -144,6 +144,9 @@ unix:!macx {
         LIBS += -lqwt-qt6
     }
 }
+win32: {
+    LIBS += qwt.lib
+}
 macx {
 INCLUDEPATH += "/usr/local/lib/qwt.framework/Versions/6/Headers"
 LIBS += -F"/usr/local/lib" -framework qwt

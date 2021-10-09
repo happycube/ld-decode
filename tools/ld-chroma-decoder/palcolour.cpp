@@ -402,7 +402,7 @@ void PalColour::doYNR(double *Yline)
     const qint32 delay = c_nrpal_b.size() / 2;
 
     // High-pass result
-    double hpY[videoParameters.activeVideoEnd + delay];
+    auto hpY = std::vector<double>(videoParameters.activeVideoEnd + delay);
 
     // Feed zeros into the filter outside the active area
     for (qint32 h = videoParameters.activeVideoStart - delay; h < videoParameters.activeVideoStart; h++) {
