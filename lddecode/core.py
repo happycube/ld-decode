@@ -8,6 +8,8 @@ import time
 from multiprocessing import Process, Queue, JoinableQueue, Pipe
 if platform.system() == 'Darwin':
     from multiprocessing import set_start_method
+if platform.system() != 'Windows':
+    from multiprocessing import Process
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -1082,6 +1084,13 @@ class DemodCache:
         if platform.system() == 'Darwin':
             set_start_method('fork')
 
+        # Workaround to make it work on windows.
+        # Using Process gives a "io.BufferedReader can't be pickled error".
+        # Using Thread may be a bit slower due to how python threads work,
+        # so ideally we would want to
+        # find a better way to do this later.
+        thread_type = Process if platform.system() != 'Windows' else threading.Thread
+
         self.q_in = JoinableQueue()
         self.q_in_metadata = []
 
@@ -1094,7 +1103,7 @@ class DemodCache:
 
         for i in range(num_worker_threads):
             self.threadpipes.append(Pipe())
-            t = Process(
+            t = thread_type(
                 target=self.worker, daemon=True, args=(self.threadpipes[-1][1],)
             )
             t.start()
