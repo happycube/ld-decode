@@ -962,7 +962,7 @@ def write_json(ldd, jsondict, outname):
     fp.write("\n")
     fp.close()
 
-    os.rename(outname + ".tbc.json.tmp", outname + ".tbc.json")
+    os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
 
 
 def jsondump_thread(ldd, outname):
@@ -977,7 +977,6 @@ def jsondump_thread(ldd, outname):
     def consume(q):
         while True:
             jsondict = q.get()
-
             if jsondict is None:
                 q.task_done()
                 return
