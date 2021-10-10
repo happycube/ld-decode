@@ -21,6 +21,10 @@ Other dependencies include Python 3.5+, Qt5, Qmake, and FFmpeg.
 Hardware dependencies revolve mainly around hardware used to perform RF captures, as Python is largely platform-agnostic.
 For capturing, VHS-Decode supports both the [Domesday Duplicator](https://github.com/happycube/ld-decode/wiki/Domesday-Duplicator) and PCI-socketed capture cards based on Conexant CX23880/1/2/3 chipset using the [CXADC](https://github.com/happycube/cxadc-linux3) kernel module (including variants with PCI-Express x1 bridge).
 
+## CVBS-Decode
+
+The repository also contains an experimental CVBS decoder, ```cvbs-decode```, which shares code with ld-decode and vhs-decode. Capable of decoding basic raw digitized NTSC and PAL composite video, including color if the source is somwhat stable. Samples can be captured using cxadc, however this is somewhat buggy as the cx chip can decide resample or do other things if it detects a valid video signal. Test samples can also be generated using [HackTV](https://github.com/fsphil/hacktv).
+
 # Installation and running the software
 
 Install all dependencies required by LD-Decode and VHS-Decode:
@@ -30,7 +34,7 @@ Install all dependencies required by LD-Decode and VHS-Decode:
 
 Download VHS-Decode:
 
-    git clone https://github.com/oyvindln/ld-decode.git vhs-decode
+    git clone https://github.com/oyvindln/vhs-decode.git vhs-decode
 
 Compile and install Domesday tools:
 
