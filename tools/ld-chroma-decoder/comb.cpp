@@ -752,10 +752,9 @@ void Comb::FrameBuffer::doCNR()
     const qint32 delay = c_nrc_b.size() / 2;
 
     // High-pass result
-    // Windows fix: MSVC does not support VLA, so changed to using vector instead.
-    // TODO: May want to cache arrays instead of reallocating every field.
-    auto hpI = std::vector<double>(videoParameters.activeVideoEnd + delay);
-    auto hpQ = std::vector<double>(videoParameters.activeVideoEnd + delay);
+    // TODO: Cache arrays instead of reallocating every field.
+    std::vector<double> hpI(videoParameters.activeVideoEnd + delay);
+    std::vector<double> hpQ(videoParameters.activeVideoEnd + delay);
 
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
@@ -809,7 +808,7 @@ void Comb::FrameBuffer::doYNR()
     const qint32 delay = c_nr_b.size() / 2;
 
     // High-pass result
-    auto hpY = std::vector<double>(videoParameters.activeVideoEnd + delay);
+    std::vector<double> hpY(videoParameters.activeVideoEnd + delay);
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         double *Y = componentFrame->y(lineNumber);
