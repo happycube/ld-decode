@@ -2495,13 +2495,12 @@ class Field:
         # Adjust for the demodulation/filtering delays
         delay = self.rf.delays["video_white"]
 
-        # For output consistency reasons, linecount is set to 313 (i.e. 626 lines)
-        # in PAL mode.  This needs to be corrected for RF TBC.
         startline = self.lineoffset
         lc = self.linecount
         endline = startline + lc
 
         if self.rf.system == 'PAL' and lc == 312:
+            # Adjust the first and last lines for PAL so the RF TBC lines up
             startline += 1
             endline += 1
 
