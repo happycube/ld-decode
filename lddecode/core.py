@@ -2495,14 +2495,9 @@ class Field:
         # Adjust for the demodulation/filtering delays
         delay = self.rf.delays["video_white"]
 
-        startline = self.lineoffset
-        lc = self.linecount
-        endline = startline + lc
-
-        if self.rf.system == 'PAL' and lc == 312:
-            # Adjust the first and last lines for PAL so the RF TBC lines up
-            startline += 1
-            endline += 1
+        # On PAL, always ignore self.lineoffset
+        startline = self.lineoffset if self.rf.system == 'NTSC' else 1
+        endline = startline + self.linecount
 
         output = []
 
