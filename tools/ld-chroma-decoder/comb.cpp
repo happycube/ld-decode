@@ -66,7 +66,7 @@ static constexpr quint32 CANDIDATE_SHADES[] = {
 
 // Since we are at exactly 4fsc, calculating the value of a in-phase sine wave at a specific position
 // is very simple.
-static constexpr std::array<double, 4> sin4fsc_data = {1.0, 0.0, -1.0, 0.0};
+static constexpr double sin4fsc_data[] = {1.0, 0.0, -1.0, 0.0};
 
 // 4fsc sine wave
 constexpr double sin4fsc(const qint32 i) {
