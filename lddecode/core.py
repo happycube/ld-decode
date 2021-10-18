@@ -379,16 +379,17 @@ class RFDecode:
 
         This improved EFM filter was devised by Adam Sampson (@atsampson)
         """
+
         # Frequency bands
-        freqs = np.linspace(0.0e6, 2.0e6, num=11)
+        freqs = np.linspace(0.0e6, 1.9e6, num=11)
         freq_per_bin = self.freq_hz / self.blocklen
         # Amplitude and phase adjustments for each band.
         # These values were adjusted empirically based on a selection of NTSC and PAL samples.
-        amp = np.array([0.0, 0.2, 0.41, 0.73, 0.98, 1.03, 0.99, 0.81, 0.59, 0.42, 0.0])
+        amp = np.array([0.0, 0.215, 0.41, 0.73, 0.98, 1.03, 0.99, 0.81, 0.59, 0.42, 0.0])
         phase = np.array(
-            [0.0, -0.95, -1.05, -1.05, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2, -1.2]
+            [0.0, -0.92, -1.03, -1.11, -1.2, -1.2, -1.2, -1.2, -1.05, -0.95, -0.8]
         )
-        coeffs = None
+        phase = [p * 1.25 for p in phase]
 
         """Compute filter coefficients for the given FFTFilter."""
         # Anything above the highest frequency is left as zero.
@@ -1432,11 +1433,12 @@ def downscale_audio(
 # The Field class contains common features used by NTSC and PAL
 class Field:
     def __init__(
-        self, rf, decode, audio_offset=0, keepraw=True, prevfield=None, initphase=False
+        self, rf, decode, audio_offset=0, keepraw=True, prevfield=None, initphase=False, readloc = 0
     ):
         self.rawdata = decode["input"]
         self.data = decode
         self.initphase = initphase  # used for seeking or first field
+        self.readloc = readloc
 
         self.prevfield = prevfield
 
@@ -2494,15 +2496,13 @@ class Field:
         # Adjust for the demodulation/filtering delays
         delay = self.rf.delays["video_white"]
 
-        # For output consistency reasons, linecount is set to 313 (i.e. 626 lines)
-        # in PAL mode.  This needs to be corrected for RF TBC.
-        lc = self.linecount
-        if self.rf.system == "PAL" and not self.isFirstField:
-            lc = 312
+        # On PAL, always ignore self.lineoffset
+        startline = self.lineoffset if self.rf.system == 'NTSC' else 1
+        endline = startline + self.linecount
 
         output = []
 
-        for l in range(self.lineoffset, self.lineoffset + lc):
+        for l in range(startline, endline):
             scaled = scale(fdata, linelocs[l] - delay, linelocs[l + 1] - delay, linelen)
             output.append(np.round(scaled).astype(np.int16))
 
@@ -3455,6 +3455,7 @@ class LDdecode:
             audio_offset=self.audio_offset,
             prevfield=self.curfield,
             initphase=initphase,
+            readloc = self.rawdecode['startloc']
         )
 
         try:
