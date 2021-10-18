@@ -2753,8 +2753,11 @@ class Field:
         phase_adjust = 0
 
         # The first pass computes phase_offset, the second uses it to determine
-        # the colo(u)r burst phase of the line.
-        for passcount in range(2):
+        # the colo(u)r burst phase of the line.  (This is bumped up if close to a
+        # 180 degree phase)
+        forceadjust = False
+        passcount = 0
+        while passcount < 2 + (1 if forceadjust else 0):
             rising_count = 0
             count = 0
             phase_offset = []
@@ -2785,6 +2788,12 @@ class Field:
                 phase_adjust += nb_median(np.array(phase_offset))
             else:
                 return None, None
+
+            if not forceadjust and np.abs(phase_adjust) > .4:
+                phase_adjust = -0.5
+                forceadjust = True
+
+            passcount += 1
 
         return (rising_count / count) > 0.5, -phase_adjust
 
@@ -2902,15 +2911,22 @@ class FieldPAL(Field):
 
         # Now compute if it's field 1-4 or 5-8.
 
-        for l in range(7, 20, 4):
-            # Usually line 7 is used to determine burst phase, but
-            # if that's corrupt every fourth line has the same phase
-            rising, phase_adjust = self.compute_line_bursts(self.linelocs, l)
-            if rising is not None:
-                break
+        rcount = 0
+        count = 0
 
-        if rising == None:
+        for l in range(7, 22, 4):
+            # Usually line 7 is used to determine burst phase, but
+            # take the best of 5 if it's unstable
+            rising, phase_adjust = self.compute_line_bursts(self.linelocs, l)
+            
+            if rising is not None:
+                rcount += (rising == True)
+                count += 1
+            
+        if count == 0 or (rcount * 2) == count:
             return self.get_following_field_number()
+
+        rising = (rcount * 2) > count
 
         is_firstfour = rising
         if m4 == 2:
