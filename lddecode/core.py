@@ -2718,7 +2718,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    def compute_line_bursts(self, linelocs, _line):
+    def compute_line_bursts(self, linelocs, _line, prev_phaseadjust = 0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
         s = int(linelocs[line])
@@ -2750,7 +2750,7 @@ class Field:
 
         zcburstdiv = (lfreq * fsc_mhz_inv) / 2
 
-        phase_adjust = 0
+        phase_adjust = -prev_phaseadjust
 
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.  (This is bumped up if close to a
@@ -2789,13 +2789,18 @@ class Field:
             else:
                 return None, None
 
-            if not forceadjust and np.abs(phase_adjust) > .4:
-                phase_adjust = -0.5
-                forceadjust = True
+#            if doadj and not forceadjust and np.abs(phase_adjust) > .4:
+#                #phase_adjust = 0.5 if phase_adjust > 0 else -0.5
+#                phase_adjust = -.5
+#                forceadjust = True
 
             passcount += 1
 
-        return (rising_count / count) > 0.5, -phase_adjust
+        rising = (rising_count / count) > 0.5
+#        if forceadjust:
+#            rising = not rising
+
+        return rising, -phase_adjust# , forceadjust
 
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
@@ -2914,10 +2919,16 @@ class FieldPAL(Field):
         rcount = 0
         count = 0
 
+        self.phase_adjust = {}
+
         for l in range(7, 22, 4):
             # Usually line 7 is used to determine burst phase, but
             # take the best of 5 if it's unstable
-            rising, phase_adjust = self.compute_line_bursts(self.linelocs, l)
+            prev_phaseadjust = 0
+            if self.prevfield and l in self.prevfield.phase_adjust:
+                prev_phaseadjust = self.prevfield.phase_adjust[l]
+
+            rising, self.phase_adjust[l] = self.compute_line_bursts(self.linelocs, l, prev_phaseadjust)
             
             if rising is not None:
                 rcount += (rising == True)
