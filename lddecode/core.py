@@ -2925,8 +2925,11 @@ class FieldPAL(Field):
             # Usually line 7 is used to determine burst phase, but
             # take the best of 5 if it's unstable
             prev_phaseadjust = 0
-            if self.prevfield and l in self.prevfield.phase_adjust:
-                prev_phaseadjust = self.prevfield.phase_adjust[l]
+            try:
+                if self.prevfield.phase_adjust[l] is not None:
+                    prev_phaseadjust = self.prevfield.phase_adjust[l]
+            except:
+                pass
 
             rising, self.phase_adjust[l] = self.compute_line_bursts(self.linelocs, l, prev_phaseadjust)
             
