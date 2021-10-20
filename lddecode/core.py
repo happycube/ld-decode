@@ -2750,14 +2750,13 @@ class Field:
 
         zcburstdiv = (lfreq * fsc_mhz_inv) / 2
 
+        # Apply phase adjustment from previous frame/line if available.
         phase_adjust = -prev_phaseadjust
 
         # The first pass computes phase_offset, the second uses it to determine
-        # the colo(u)r burst phase of the line.  (This is bumped up if close to a
-        # 180 degree phase)
-        forceadjust = False
+        # the colo(u)r burst phase of the line.
         passcount = 0
-        while passcount < 2 + (1 if forceadjust else 0):
+        while passcount < 2:
             rising_count = 0
             count = 0
             phase_offset = []
@@ -2789,18 +2788,11 @@ class Field:
             else:
                 return None, None
 
-#            if doadj and not forceadjust and np.abs(phase_adjust) > .4:
-#                #phase_adjust = 0.5 if phase_adjust > 0 else -0.5
-#                phase_adjust = -.5
-#                forceadjust = True
-
             passcount += 1
 
         rising = (rising_count / count) > 0.5
-#        if forceadjust:
-#            rising = not rising
 
-        return rising, -phase_adjust# , forceadjust
+        return rising, -phase_adjust
 
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
@@ -2926,6 +2918,8 @@ class FieldPAL(Field):
             # take the best of 5 if it's unstable
             prev_phaseadjust = 0
             try:
+                # For this first field, this doesn't exist (so use a try/except/pass pattern)
+                # and on a bad disk, this value could be None...
                 if self.prevfield.phase_adjust[l] is not None:
                     prev_phaseadjust = self.prevfield.phase_adjust[l]
             except:
