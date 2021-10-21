@@ -149,6 +149,7 @@ class FieldShared:
         self.validpulses = validpulses = self.refinepulses()
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        # Not sure if this is used for video.
         self.linecount = 263 if self.isFirstField else 262
 
         # Number of lines to actually process.  This is set so that the entire following
@@ -178,7 +179,9 @@ class FieldShared:
         # If we don't have enough data at the end, move onto the next field
         lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
         if lastline < proclines:
-            return None, None, line0loc - (meanlinelen * 20)
+            if self.prevfield is not None:
+                ldd.logger.info("lastline < proclines , skipping a tiny bit")
+            return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
         for p in validpulses:
             lineloc = (p[1].start - line0loc) / meanlinelen
@@ -298,41 +301,53 @@ class FieldShared:
 
         rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
 
-        # if len(validpulses) > 300:
-        #     import matplotlib.pyplot as plt
-        #     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-        #     ax1.plot(self.data["video"]["demod_05"])
+        # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
 
-        #     sync, blank = self.rf.resync.VsyncSerration.getLevels()
+        self.data["video"]["demod"][
+            int(line0loc) : int(line0loc + (self.meanlinelen) * 4)
+        ] = 5e6
 
-        #     ax1.axhline(sync, color="#FF0000")
-        #     ax1.axhline(blank, color="#00FF00")
+        if False:
+            # len(validpulses) > 300:
+            import matplotlib.pyplot as plt
 
-        #     for raw_pulse in self.rawpulses:
-        #         ax1.axvline(raw_pulse.start, color="#910000")
-        #         ax1.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
+            fig, (ax1) = plt.subplots(1, 1, sharex=True)
+            ax1.plot(self.data["video"]["demod"])
 
-        #     for valid_pulse in validpulses:
-        #         ax1.axvline(valid_pulse[1][0], color="#00FF00")
-        #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+            sync, blank = self.rf.resync.VsyncSerration.getLevels()
 
-        #     #ax2.plot(np.diff(self.data["video"]["demod_05"]))
+            ax1.axhline(sync, color="#FF0000")
+            ax1.axhline(blank, color="#00FF00")
 
-        #     pulselen = np.zeros_like(self.data["video"]["demod_05"])
-        #     for valid_pulse in validpulses:
-        #         pulselen[valid_pulse[1][0]:valid_pulse[1][0] + valid_pulse[1][1]] = valid_pulse[1][1]
+            # for raw_pulse in self.rawpulses:
+            #     ax1.axvline(raw_pulse.start, color="#910000")
+            #     ax1.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
 
-        #     ax2.plot(pulselen)
+            for valid_pulse in validpulses:
+                if valid_pulse[0] != 0:
+                    color = "#FF0000" if valid_pulse[0] == 2 else "#00FF00"
+                    ax1.axvline(valid_pulse[1][0], color=color)
+                    ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
 
-        #     #for p in linelocs_dict.values():
-        #     #    ax3.axvline(p)
-        #         #ldd.logger.info("p %s", p)
-        #     for ll in rv_ll:
-        #         ax3.axvline(ll)
+            ax1.axvline(line0loc, color="000000")
 
-        #     #ax1.axhline(self.pulse_hz_min, color="#00FFFF")
-        #     # ax1.axhline(self.pulse_hz_max, color="#000000")
-        #     plt.show()
+            # ax2.plot(np.diff(self.data["video"]["demod_05"]))
+
+            # pulselen = np.zeros_like(self.data["video"]["demod_05"])
+            # for valid_pulse in validpulses:
+            #     pulselen[valid_pulse[1][0]:valid_pulse[1][0] + valid_pulse[1][1]] = valid_pulse[1][1]
+
+            # ax2.plot(pulselen)
+
+            # for p in linelocs_dict.values():
+            #    ax3.axvline(p)
+            # ldd.logger.info("p %s", p)
+            # for ll in rv_ll:
+            #     ax3.axvline(ll)
+
+            # ax1.axhline(self.pulse_hz_min, color="#00FFFF")
+            # ax1.axhline(self.pulse_hz_max, color="#000000")
+            plt.show()
 
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
