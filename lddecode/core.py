@@ -2719,7 +2719,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    def compute_line_bursts(self, linelocs, _line):
+    def compute_line_bursts(self, linelocs, _line, prev_phaseadjust = 0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
         s = int(linelocs[line])
@@ -2751,11 +2751,13 @@ class Field:
 
         zcburstdiv = (lfreq * fsc_mhz_inv) / 2
 
-        phase_adjust = 0
+        # Apply phase adjustment from previous frame/line if available.
+        phase_adjust = -prev_phaseadjust
 
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
-        for passcount in range(2):
+        passcount = 0
+        while passcount < 2:
             rising_count = 0
             count = 0
             phase_offset = []
@@ -2787,7 +2789,11 @@ class Field:
             else:
                 return None, None
 
-        return (rising_count / count) > 0.5, -phase_adjust
+            passcount += 1
+
+        rising = (rising_count / count) > 0.5
+
+        return rising, -phase_adjust
 
 
 # These classes extend Field to do PAL/NTSC specific TBC features.
@@ -2903,15 +2909,33 @@ class FieldPAL(Field):
 
         # Now compute if it's field 1-4 or 5-8.
 
-        for l in range(7, 20, 4):
-            # Usually line 7 is used to determine burst phase, but
-            # if that's corrupt every fourth line has the same phase
-            rising, phase_adjust = self.compute_line_bursts(self.linelocs, l)
-            if rising is not None:
-                break
+        rcount = 0
+        count = 0
 
-        if rising == None:
+        self.phase_adjust = {}
+
+        for l in range(7, 22, 4):
+            # Usually line 7 is used to determine burst phase, but
+            # take the best of 5 if it's unstable
+            prev_phaseadjust = 0
+            try:
+                # For this first field, this doesn't exist (so use a try/except/pass pattern)
+                # and on a bad disk, this value could be None...
+                if self.prevfield.phase_adjust[l] is not None:
+                    prev_phaseadjust = self.prevfield.phase_adjust[l]
+            except:
+                pass
+
+            rising, self.phase_adjust[l] = self.compute_line_bursts(self.linelocs, l, prev_phaseadjust)
+            
+            if rising is not None:
+                rcount += (rising == True)
+                count += 1
+            
+        if count == 0 or (rcount * 2) == count:
             return self.get_following_field_number()
+
+        rising = (rcount * 2) > count
 
         is_firstfour = rising
         if m4 == 2:
