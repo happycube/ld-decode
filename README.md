@@ -9,23 +9,30 @@ This version has been modified to work with the differences found in RF drum hea
 ![vhs-decode thumbnail](https://cdn.lbryplayer.xyz/api/v4/streams/free/vhs-decode-thumbnail/0cfb657312d9a725c20ecce33f1a06bd4895fe40/4b3544)
 
 Currently, only (S-)VHS and U-Matic format tapes are supported;
-of those, only NTSC and PAL variants are supported, with plans and/or ongoing work to support more formats and systems.
+of those, only NTSC, PAL and PAL-M variants are supported, with plans and/or ongoing work to support more formats and systems.
+
+# Hardware used
+
+The current main options for capturing the rf signal that are supported are the [Domesday Duplicator](https://github.com/happycube/ld-decode/wiki/Domesday-Duplicator) and video capture cards based on Conexant CX23880/1/2/3 chipset using the [CXADC](https://github.com/happycube/cxadc-linux3) kernel module (including variants with PCI-Express x1 bridge). A limitation currently is that both these methods can only capture one signal at a time, so there is no straight forward way of capturing both video and audio at the same time.
+
+## Domesday Duplicator
+The domesday duplicator is a custom made solution, originally geared towards capturing RF from laserdiscs players, it does however also work well for digitizing VHS RF data. It consists of a custom analog to digital board, a DE0-NANO FPGA development board, and a Cypress SuperSpeed Explorer development board. More in-depth information about it can be found in the [Domesday86](https://www.domesday86.com/?page_id=2233) project wiki. A major downside of this approach is that the custom board requires prining the PCB and assembling the components yourself (unless you can find someone that have ready-made ones for sale.), and the cost can be a bit high.
+
+## CX Card
+The budget approach is using a video capture card based on a Conexant CX23880/1/2/3 chipset. With a modded driver, these cards can be made to capture raw data instead of decoding video normally as they otherwise would. The original cards with this chipset were cards that plugged into the PCI slot (the chip is an all-in-one chip that handles both video decoding and pci interface.) However, there are also newly-made chinese variants that can be found on aliexpress and similar that are made to work in pci-express slots. An advandage of this approach is that the cards (both old PCI ones and new PCIE ones) can be very cheap. The cards may however be a bit more subject to noise compared to the domesday duplicator, though we have not done extensive testing on how they stack up. Capture is done using the custom ```cxadc``` driver (currently linux only). See the [CXADC](https://github.com/happycube/cxadc-linux3) website/repository for more details.
 
 # Dependencies
 
 VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest version of Ubuntu and Linux Mint.
-Other distributions might have outdated (or even newer) versions of certain Python libraries or other dependencies, breaking compatibility. It has been confirmed to work via WSL2.
+Other distributions might have outdated (or even newer) versions of certain Python libraries or other dependencies, breaking compatibility. It has been confirmed to work via WSL2. It also partially runs on Windows natively.
 
 Other dependencies include Python 3.5+, Qt5, Qmake, and FFmpeg.
-
-Hardware dependencies revolve mainly around hardware used to perform RF captures, as Python is largely platform-agnostic.
-For capturing, VHS-Decode supports both the [Domesday Duplicator](https://github.com/happycube/ld-decode/wiki/Domesday-Duplicator) and PCI-socketed capture cards based on Conexant CX23880/1/2/3 chipset using the [CXADC](https://github.com/happycube/cxadc-linux3) kernel module (including variants with PCI-Express x1 bridge).
 
 ## CVBS-Decode
 
 The repository also contains an experimental CVBS decoder, ```cvbs-decode```, which shares code with ld-decode and vhs-decode. Capable of decoding basic raw digitized NTSC and PAL composite video, including color if the source is somwhat stable. Samples can be captured using cxadc, however this is somewhat buggy as the cx chip can decide resample or do other things if it detects a valid video signal. Test samples can also be generated using [HackTV](https://github.com/fsphil/hacktv).
 
-# Installation and running the software
+# Installation and running the software on Ubuntu/Debian
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
@@ -42,6 +49,9 @@ Compile and install Domesday tools:
 
     cd vhs-decode && make -j8 && sudo make install && make clean
     
+# Usage
+
+## Cx card capture
 See live preview of tape signal being received by CXADC card from video heads (PAL framing for 35.8 MHz/8-bit mode):
 
     ffplay -hide_banner -async 1 -f rawvideo -pix_fmt gray8 -video_size 2291x625 -i /dev/cxadc0 -vf scale=1135x625,eq=gamma=0.5:contrast=1.5
@@ -55,30 +65,35 @@ It is recommended to use fast storage:
 
     timeout 30s cat /dev/cxadc0 > <capture>.r8 | ffmpeg -f alsa -i default -compression_level 12 -y <capture>.flac
 
+## Decoding 
+
 Decode your captured tape by using:
 
-    vhs-decode [arguments] <capture>.tbc <capture>
+    vhs-decode [arguments] <capture file> <>
     
 Use analyse tool to inspect decoded tape:
 
-    ld-analyse <capture>.tbc
+    ld-analyse <output name>.tbc
     
 Reduce size of captured CXADC 8-bit data (by 50-60%):
 
     flac --best --sample-rate=48000 --sign=unsigned --channels=1 --endian=little --bps=8 -f <capture>.r8 -o <capture>.vhs
 
-# Generating video files
+## Generating video files
 
 VHS-Decode produces timebase corrected 16-bit headerless video signal in .tbc format plus .json and .log files, usable with the LD-Decode family of tools (ld-analyse, ld-process-vbi, and ld-process-vits), VBI data recovery software like [VHS-Teletext](https://github.com/ali1234/vhs-teletext/) or other utilities allowing to recover closed captions and tape-based [arcade games](https://vhs.thenvm.org/resources-research/).
 To generate .mkv files viewable in most media players, simply use the scripts installed:
 
-    gen_chroma_vid.sh -v <pal/ntsc> -s <skip n frames> -l <n frames long> -a <capture>.flac -i <capture>
+    gen_chroma_vid.sh -v <pal/ntsc> -s <skip n frames> -l <n frames long> -i <.tbc filename without .tbc extension>
+    
+    # the -a option can embed an audio file.
+    gen_chroma_vid.sh -v <pal/ntsc> -s <skip n frames> -l <n frames long> -a <capture>.flac -i <.tbc filename without .tbc extension>
 
 This will use decoded .tbc files, generate a lossless, interlaced and high-bitrate (roughly 100-150 Mb/s) video which,
 although ideal for archival and reducing further loss in quality, may be unsuitable for sharing online.
 An additional processing mode is included in the script files, but commented out.
 
-# Terminal arguments
+## Terminal arguments
 
 VHS-Decode supports various arguments to process differently captured tape recordings and different tape formats/systems.
 These tend to change frequently as new features are added or superseded.
@@ -94,7 +109,7 @@ See the readme file for [CXADC](https://github.com/happycube/cxadc-linux3#readme
 ```-n, -p, -pm, --NTSCJ```: 
 
 Changes the color system to NTSC, PAL, PAL-M, or NTSC-J, respectively.
-Please note that, as of writing, support for PAL-M is **experimental** and NTSC-J is **untested**.
+Please note that, as of writing, support for PAL-M is **experimental**.
 
 ```-s, --start_fileloc, -l```: 
 
@@ -110,7 +125,7 @@ By default, the main VHS-Decode script allocates only one thread, though the gen
 The ```make``` rule of thumb of "number of logical processors, plus one" generally applies here,
 though it mainly depends on the amount of memory available to the decoder.
 
-# Debug features
+## Debug features
 
 See [Advanced Flags](advanced_flags.md) for more information.
 
@@ -118,7 +133,7 @@ See [Advanced Flags](advanced_flags.md) for more information.
 
 Tapes:
 
-(S-)VHS 625-line and 525-line, PAL and NTSC.
+(S-)VHS 625-line and 525-line, PAL, PAL-M and NTSC.
 U-Matic 625-line and 525-line Low Band, PAL and NTSC.
 
 Input file formats:
@@ -146,8 +161,8 @@ Additionaly useful for troubleshooting .log and .json frame descriptor table fil
 [Facebook](https://www.facebook.com/groups/2070493199906024)
 
 # Documentation
-Documentation is available via the GitHub wiki. This includes installation and usage instructions. Start with the wiki if you have any questions.
+Some documentation is available via the GitHub wiki. This includes installation and usage instructions. Start with the wiki if you have any questions.
 
-[Wiki](https://github.com/happycube/ld-decode/wiki)
+[LD-decode Wiki](https://github.com/happycube/ld-decode/wiki)
 
-## *If in doubt - Read the Wiki!*
+## *If in doubt - Feel free to ask!*
