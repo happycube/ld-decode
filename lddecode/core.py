@@ -28,16 +28,8 @@ except ImportError:
 
 # internal libraries
 
-# XXX: figure out how to handle these module imports better for vscode imports
-try:
-    import efm_pll
-except ImportError:
-    from lddecode import efm_pll
-
-try:
-    from utils import *
-except ImportError:
-    from lddecode.utils import *
+from . import efm_pll
+from .utils import *
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
