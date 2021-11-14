@@ -69,7 +69,7 @@ It is recommended to use fast storage:
 
 Decode your captured tape by using:
 
-    vhs-decode [arguments] <capture file> <>
+    vhs-decode [arguments] <capture file> <output name>
     
 Use analyse tool to inspect decoded tape:
 
