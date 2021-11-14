@@ -32,6 +32,7 @@
 #include <unistd.h>
 #include <libavutil/samplefmt.h>
 #include <libavutil/timestamp.h>
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 
 static AVFormatContext *fmt_ctx = NULL;
