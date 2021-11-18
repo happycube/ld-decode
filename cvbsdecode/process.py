@@ -36,6 +36,14 @@ def chroma_to_u16(chroma):
     return np.uint16(chroma + S16_ABS_MAX)
 
 
+def generate_f05_filter(filters, freq_half, blocklen):
+    F0_5 = sps.firwin(65, [0.5 / freq_half], pass_zero=True)
+    F0_5_fft = lddu.filtfft((F0_5, [1.0]), blocklen)
+    filters["F05_offset"] = 32
+    filters["F05"] = F0_5_fft
+    # filters["FVideo05"] = filters["Fvideo_lpf"] * filters["F05"]
+
+
 def find_sync_levels(field):
     """Very crude sync level detection"""
     # Skip a few samples to avoid any possible edge distortion.
@@ -224,180 +232,6 @@ def getpulses_override(field):
     pulse_hz_max = (blacklevel + synclevel) / 2
 
     return lddu.findpulses(field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
-
-
-def get_burst_area(field):
-    return (
-        math.floor(field.usectooutpx(field.rf.SysParams["colorBurstUS"][0])),
-        math.ceil(field.usectooutpx(field.rf.SysParams["colorBurstUS"][1])),
-    )
-
-
-class LineInfo:
-    """Helper class to store line burst info for PAL."""
-
-    def __init__(self, num):
-        self.linenum = num
-        self.bp = 0
-        self.bq = 0
-        self.vsw = -1
-        self.burst_norm = 0
-
-    def __str__(self):
-        return "<num: %s, bp: %s, bq: %s, vsw: %s, burst_norm: %s>" % (
-            self.linenum,
-            self.bp,
-            self.bq,
-            self.vsw,
-            self.burst_norm,
-        )
-
-
-def mean_of_burst_sums(chroma_data, line_length, lines, burst_start, burst_end):
-    """Sum the burst areas of two and two lines together, and return the mean of these sums."""
-    IGNORED_LINES = 16
-
-    burst_sums = []
-
-    # We ignore the top and bottom 16 lines. The top will typically not have a color burst, and
-    # the bottom 16 may be after or at the head switch where the phase rotation will be different.
-    start_line = IGNORED_LINES
-    end_line = lines - IGNORED_LINES
-
-    for line_number in range(start_line, end_line, 2):
-        burst_a = get_line(chroma_data, line_length, line_number)[burst_start:burst_end]
-        burst_b = get_line(chroma_data, line_length, line_number + 1)[
-            burst_start:burst_end
-        ]
-
-        # Use the absolute of the sums to differences cancelling out.
-        mean_dev = np.mean(abs(burst_a + burst_b))
-
-        burst_sums.append(mean_dev)
-
-    mean_burst_sum = np.nanmean(burst_sums)
-    return mean_burst_sum
-
-
-def detect_burst_pal(
-    chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
-):
-    """Decode the burst of most lines to see if we have a valid PAL color burst."""
-
-    # Ignore the first and last 16 lines of the field.
-    # first ones contain sync and often doesn't have color burst,
-    # while the last lines of the field will contain the head switch and may be distorted.
-    IGNORED_LINES = 16
-    line_data = []
-    burst_norm = np.full(lines, np.nan)
-    # Decode the burst vectors on each line and try to get an average of the burst amplitude.
-    for linenumber in range(IGNORED_LINES, lines - IGNORED_LINES):
-        info = detect_burst_pal_line(
-            chroma_data, sine_wave, cosine_wave, burst_area, line_length, linenumber
-        )
-        line_data.append(info)
-        burst_norm[linenumber] = info.burst_norm
-
-    burst_mean = np.nanmean(burst_norm[IGNORED_LINES : lines - IGNORED_LINES])
-
-    return line_data, burst_mean
-
-
-def detect_burst_pal_line(
-    chroma_data, sine, cosine, burst_area, line_length, line_number
-):
-    """Detect burst function ported from the C++ chroma decoder (palcolour.cpp)
-
-    Tries to decode the PAL chroma vectors from the line's color burst
-    """
-    empty_line = np.zeros_like(chroma_data[0:line_length])
-    num_lines = chroma_data.size / line_length
-
-    # Use an empty line if we try to access outside the field.
-    def line_or_empty(line):
-        return (
-            get_line(chroma_data, line_length, line)
-            if line >= 0 and line < num_lines
-            else empty_line
-        )
-
-    in0 = line_or_empty(line_number)
-    in1 = line_or_empty(line_number - 1)
-    in2 = line_or_empty(line_number + 1)
-    in3 = line_or_empty(line_number - 2)
-    in4 = line_or_empty(line_number + 2)
-    bp = 0
-    bq = 0
-    bpo = 0
-    bqo = 0
-
-    # (Comment from palcolor.cpp)
-    # Find absolute burst phase relative to the reference carrier by
-    # product detection.
-    #
-    # To avoid hue-shifts on alternate lines, the phase is determined by
-    # averaging the phase on the current-line with the average of two
-    # other lines, one above and one below the current line.
-    #
-    # For PAL we use the next-but-one line above and below (in the field),
-    # which will have the same V-switch phase as the current-line (and 180
-    # degree change of phase), and we also analyse the average (bpo/bqo
-    # 'old') of the line immediately above and below, which have the
-    # opposite V-switch phase (and a 90 degree subcarrier phase shift).
-    for i in range(burst_area[0], burst_area[1]):
-        bp += ((in0[i] - ((in3[i] + in4[i]) / 2.0)) / 2.0) * sine[i]
-        bq += ((in0[i] - ((in3[i] + in4[i]) / 2.0)) / 2.0) * cosine[i]
-        bpo += ((in2[i] - in1[i]) / 2.0) * sine[i]
-        bqo += ((in2[i] - in1[i]) / 2.0) * cosine[i]
-
-    # (Comment from palcolor.cpp)
-    # Normalise the sums above
-    burst_length = burst_area[1] - burst_area[0]
-
-    bp /= burst_length
-    bq /= burst_length
-    bpo /= burst_length
-    bqo /= burst_length
-
-    # (Comment from palcolor.cpp)
-    # Detect the V-switch state on this line.
-    # I forget exactly why this works, but it's essentially comparing the
-    # vector magnitude /difference/ between the phases of the burst on the
-    # present line and previous line to the magnitude of the burst. This
-    # may effectively be a dot-product operation...
-    line = LineInfo(line_number)
-    if ((bp - bpo) * (bp - bpo) + (bq - bqo) * (bq - bqo)) < (bp * bp + bq * bq) * 2:
-        line.vsw = 1
-
-    # (Comment from palcolor.cpp)
-    # Average the burst phase to get -U (reference) phase out -- burst
-    # phase is (-U +/-V). bp and bq will be of the order of 1000.
-    line.bp = (bp - bqo) / 2
-    line.bq = (bq + bpo) / 2
-
-    # (Comment from palcolor.cpp)
-    # Normalise the magnitude of the bp/bq vector to 1.
-    # Kill colour if burst too weak.
-    # XXX magic number 130000 !!! check!
-    burst_norm = max(math.sqrt(line.bp * line.bp + line.bq * line.bq), 130000.0 / 128)
-    line.burst_norm = burst_norm
-    line.bp /= burst_norm
-    line.bq /= burst_norm
-
-    return line
-
-
-def check_increment_field_no(rf):
-    """Increment field number if the raw data location moved significantly since the last call"""
-    raw_loc = rf.decoder.readloc / rf.decoder.bytes_per_field
-
-    if rf.last_raw_loc is None:
-        rf.last_raw_loc = raw_loc
-
-    if raw_loc > rf.last_raw_loc:
-        rf.field_number += 1
-    else:
-        ldd.logger.info("Raw data loc didn't advance.")
 
 
 class FieldPALCVBS(ldd.FieldPAL):
@@ -600,8 +434,7 @@ class VHSDecodeInner(ldd.RFDecode):
         self.computevideofilters()
 
         self.Filters["FVideo"] = self.Filters["Fvideo_lpf"]
-        SF = self.Filters
-        SF["FVideo05"] = SF["Fvideo_lpf"] * SF["F05"]
+        generate_f05_filter(self.Filters, self.freq_half, self.blocklen)
 
         # Filter to pick out color-under chroma component.
         # filter at about twice the carrier. (This seems to be similar to what VCRs do)
