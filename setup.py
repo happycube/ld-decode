@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from setuptools import setup
+from distutils.core import setup
 
 setup(
     name='ld-decode',
