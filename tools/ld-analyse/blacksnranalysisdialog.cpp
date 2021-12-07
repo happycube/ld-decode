@@ -68,7 +68,7 @@ void BlackSnrAnalysisDialog::startUpdate(qint32 _numberOfFrames)
 {
     removeChartContents();
     numberOfFrames = _numberOfFrames;
-    tlPoint.resize(numberOfFrames);
+    tlPoint.resize(numberOfFrames + 1);
     blackPoints->reserve(numberOfFrames);
 }
 

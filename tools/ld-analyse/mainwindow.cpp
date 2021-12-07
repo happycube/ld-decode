@@ -377,10 +377,12 @@ void MainWindow::updateFrameViewer()
         else adjustment = Aspect::DAR_169_ADJ_525; // NTSC 16:9
     }
 
-    // Scale and apply the pixmap
-    ui->frameViewerLabel->setPixmap(pixmap.scaled((scaleFactor * (pixmap.size().width() + adjustment)),
-                                                  (scaleFactor * pixmap.size().height()),
-                                                  Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    // Scale and apply the pixmap (only if it's valid)
+    if (!pixmap.isNull()) {
+        ui->frameViewerLabel->setPixmap(pixmap.scaled((scaleFactor * (pixmap.size().width() + adjustment)),
+                                                      (scaleFactor * pixmap.size().height()),
+                                                      Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    }
 
     // Update the current frame markers on the graphs
     blackSnrAnalysisDialog->updateFrameMarker(currentFrameNumber);
