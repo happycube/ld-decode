@@ -156,6 +156,13 @@ parser.add_argument(
     default=False,
     help="Enables sync clipping",
 )
+plot_options = "demodblock"
+parser.add_argument(
+    "-dp"
+    "--debug_plot",
+    dest="debug_plot",
+    help="Do a plot for the requested data, separated by whitespace. Current options are: " + plot_options + "."
+)
 
 args = parser.parse_args()
 
@@ -206,6 +213,11 @@ if args.noAGC:
 if args.dodod:
     logger.warning("--doDOD is deprecated, dod is on by default, use noDOD to turn off.")
 
+debug_plot = None
+if args.debug_plot:
+    from vhsdecode.debug_plot import DebugPlot
+    debug_plot = DebugPlot(args.debug_plot)
+
 # Initialize VHS decoder
 # Note, we pass 40 as sample frequency, as any other will be resampled by the
 # loader function.
@@ -222,6 +234,7 @@ vhsd = VHSDecode(
     level_adjust=args.level_adjust,
     rf_options=rf_options,
     extra_options=extra_options,
+    debug_plot=debug_plot,
 )
 
 signal.signal(signal.SIGINT, original_sigint_handler)

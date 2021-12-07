@@ -608,6 +608,7 @@ class VHSDecode(ldd.LDdecode):
         level_adjust=0,
         rf_options={},
         extra_options={},
+        debug_plot=None
     ):
 
         super(VHSDecode, self).__init__(
@@ -630,6 +631,7 @@ class VHSDecode(ldd.LDdecode):
             inputfreq=inputfreq,
             rf_options=rf_options,
             extra_options=extra_options,
+            debug_plot=debug_plot
         )
         self.rf.chroma_last_field = -1
         self.rf.chroma_tbc_buffer = np.array([])
@@ -664,6 +666,8 @@ class VHSDecode(ldd.LDdecode):
             self.outfile_chroma = open(fname_out + "_chroma.tbc", "wb")
         else:
             self.outfile_chroma = None
+
+        self.debug_plot = debug_plot
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice, psnr=False):
@@ -840,6 +844,7 @@ class VHSRFDecode(ldd.RFDecode):
         tape_format="VHS",
         rf_options={},
         extra_options={},
+        debug_plot=None,
     ):
 
         # First init the rf decoder normally.
@@ -1015,6 +1020,7 @@ class VHSRFDecode(ldd.RFDecode):
             window_average=self.SysParams["FPS"] / 2
         ), StackableMA(window_average=self.SysParams["FPS"] / 2)
         self.resync = Resync(self.freq_hz, self.SysParams, debug=self.debug)
+        self.debug_plot = debug_plot
 
     def computevideofilters(self):
         self.Filters = {}
@@ -1358,50 +1364,10 @@ class VHSRFDecode(ldd.RFDecode):
             else data[: self.blocklen]
         )
 
-        if False:
-            import matplotlib.pyplot as plt
+        if self.debug_plot and self.debug_plot.is_plot_requested("demodblock"):
+            from vhsdecode.debug_plot import plot_input_data
+            plot_input_data(raw_data=data, raw_fft=indata_fft, demod_video=demod, filtered_video=out_video, rfdecode=self)
 
-            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
-
-            # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
-            #        ax1.plot(hilbert, color='#FF0000')
-            ax1.plot(data, color="#00FF00")
-            ax2.plot(data_filtered, color="#00FF00")
-            ax3.plot(demod)
-            ax4.plot(out_video, color="#00FF00")
-            # ax3.plot(data_filtered)
-            # ax3.plot(hilbert_t.real)
-            ax4.plot(hilbert.real)
-            ax1.axhline(self.iretohz(0))
-            ax1.axhline(self.iretohz(self.SysParams["vsync_ire"]))
-            # ax1.axhline(self.iretohz(self.SysParams["vsync_ire"] - 5))
-            # print("Vsync IRE", self.SysParams["vsync_ire"])
-            # ax2 = ax1.twinx()
-            # ax3 = ax1.twinx()
-            # ax1.plot(
-            #     np.arange(self.blocklen) / self.blocklen * self.freq_hz, indata_fft.real
-            # )
-            # # ax1.plot(env, color="#00FF00")
-            # # ax1.axhline(0)
-            # # ax1.plot(demod_b, color="#000000")
-            # ax2.plot(
-            #     np.arange(self.blocklen) / self.blocklen * self.freq_hz,
-            #     20 * np.log10(abs(self.Filters["RFVideo"])),
-            # )
-            # ax2.axhline(0)
-            # ax3.plot(
-            #     np.arange(self.blocklen) / self.blocklen * self.freq_hz, indata_fft_filt
-            # )
-            # ax3.plot(np.arange(self.blocklen) / self.blocklen * self.freq_hz, )
-            # ax3.axhline(0)
-            # ax4.plot(np.pad(np.diff(hilbert), (0, 1), mode="constant"))
-            # ax4.axhline(0)
-            #            ax3.plot(np.angle(hilbert))
-            #            ax4.plot(hilbert.imag)
-            #            crossings = find_crossings(env, 700)
-            #            ax3.plot(crossings, color="#0000FF")
-            plt.show()
-            # exit(0)
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(
