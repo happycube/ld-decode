@@ -303,10 +303,6 @@ class FieldShared:
 
         # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
 
-        self.data["video"]["demod"][
-            int(line0loc) : int(line0loc + (self.meanlinelen) * 4)
-        ] = 5e6
-
         if False:
             # len(validpulses) > 300:
             import matplotlib.pyplot as plt
