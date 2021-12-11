@@ -1,7 +1,6 @@
 import argparse
 import lddecode.utils as lddu
 
-from gooey import Gooey
 
 CXADC_FREQ = (8 * 315.0) / 88.0  # 28.636363636
 CXADC_FREQ_HIGH = 3150.0 / 88.0  # 35.795454545
@@ -11,19 +10,45 @@ CXADC_TENBIT_FREQ_HIGH = 3150.0 / 88.0 / 2.0  # 17.897727272
 
 def common_parser(meta_title, use_gui=False):
     if not use_gui:
-        return common_parser_inner(meta_title)
+        return common_parser_cli(meta_title)
     else:
         return common_parser_gui(meta_title)
 
-
-@Gooey
 def common_parser_gui(meta_title):
-    return common_parser_inner(meta_title)
+    from gooey import Gooey, GooeyParser
+
+    @Gooey
+    def common_parser_gui_inner(meta_title):
+        parser = GooeyParser(description=meta_title)
+        parser.add_argument("infile", metavar="infile", type=str, help="source file", widget="FileChooser")
+        return common_parser_inner(parser)
+
+    return common_parser_gui_inner(meta_title)
 
 
-def common_parser_inner(meta_title):
+def common_parser_cli(meta_title):
     parser = argparse.ArgumentParser(description=meta_title)
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
+    # help="Disable AGC (deprecated, already disabled by default)
+    parser.add_argument(
+        "--noAGC",
+        dest="noAGC",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    # help="Enable AGC"
+    parser.add_argument(
+        "--AGC", dest="AGC", action="store_true", default=False, help=argparse.SUPPRESS
+    )
+    return common_parser_inner(parser)
+
+
+def common_parser_inner(parser):
+    parser.add_argument(
+        "--system", metavar="system", type=str.upper,
+        help="video system (overriden by individual options)", default="NTSC", choices=["PAL", "PALM", "NTSC"]
+    )
     parser.add_argument(
         "outfile", metavar="outfile", type=str, help="base name for destination files"
     )
@@ -50,22 +75,43 @@ def common_parser_inner(meta_title):
         default=99999999,
         help="limit length to n frames",
     )
-    parser.add_argument(
-        "-p", "--pal", dest="pal", action="store_true", help="source is in PAL format"
+    input_format_group = parser.add_argument_group("Input format")
+    input_format_group.add_argument(
+        "-f",
+        "--frequency",
+        dest="inputfreq",
+        metavar="FREQ",
+        type=lddu.parse_frequency,
+        default=None,
+        help="RF sampling frequency in source file (default is 40MHz)",
     )
-    parser.add_argument(
-        "-n",
-        "--ntsc",
-        dest="ntsc",
+    input_format_group.add_argument(
+        "--cxadc",
+        dest="cxadc",
         action="store_true",
-        help="source is in NTSC format",
+        default=False,
+        help="Use cxadc input frequency (~28,63 Mhz)",
     )
-    parser.add_argument(
-        "-pm",
-        "--palm",
-        dest="palm",
+    input_format_group.add_argument(
+        "--cxadc3",
+        dest="cxadc3",
         action="store_true",
-        help="source is in PAL-M format",
+        default=False,
+        help="Use cxadc ten fsc input frequency (~35,79 Mhz)",
+    )
+    input_format_group.add_argument(
+        "--10cxadc",
+        dest="cxadc_tenbit",
+        action="store_true",
+        default=False,
+        help="Use cxadc input frequency in ten bit mode (~14,31 Mhz)",
+    )
+    input_format_group.add_argument(
+        "--10cxadc3",
+        dest="cxadc3_tenbit",
+        action="store_true",
+        default=False,
+        help="Use cxadc ten fsc input frequency in ten bit mode (~17,89 Mhz)",
     )
     parser.add_argument(
         "-t",
@@ -75,62 +121,9 @@ def common_parser_inner(meta_title):
         default=1,
         help="number of CPU threads to use",
     )
-    parser.add_argument(
-        "-f",
-        "--frequency",
-        dest="inputfreq",
-        metavar="FREQ",
-        type=lddu.parse_frequency,
-        default=None,
-        help="RF sampling frequency in source file (default is 40MHz)",
-    )
-    parser.add_argument(
-        "--NTSCJ",
-        dest="ntscj",
-        action="store_true",
-        help="source is in NTSC-J (IRE 0 black) format (untested)",
-    )
-    parser.add_argument(
-        "--cxadc",
-        dest="cxadc",
-        action="store_true",
-        default=False,
-        help="Use cxadc input frequency (~28,63 Mhz)",
-    )
-    parser.add_argument(
-        "--cxadc3",
-        dest="cxadc3",
-        action="store_true",
-        default=False,
-        help="Use cxadc ten fsc input frequency (~35,79 Mhz)",
-    )
-    parser.add_argument(
-        "--10cxadc",
-        dest="cxadc_tenbit",
-        action="store_true",
-        default=False,
-        help="Use cxadc input frequency in ten bit mode (~14,31 Mhz)",
-    )
-    parser.add_argument(
-        "--10cxadc3",
-        dest="cxadc3_tenbit",
-        action="store_true",
-        default=False,
-        help="Use cxadc ten fsc input frequency in ten bit mode (~17,89 Mhz)",
-    )
-    # help="Disable AGC (deprecated, already disabled by default)
-    parser.add_argument(
-        "--noAGC",
-        dest="noAGC",
-        action="store_true",
-        default=None,
-        help=argparse.SUPPRESS,
-    )
-    # help="Enable AGC"
-    parser.add_argument(
-        "--AGC", dest="AGC", action="store_true", default=False, help=argparse.SUPPRESS
-    )
-    parser.add_argument(
+
+    extra_filtering_group = parser.add_argument_group("Extra filtering")
+    extra_filtering_group.add_argument(
         "-ct",
         "--chroma_trap",
         dest="chroma_trap",
@@ -138,7 +131,7 @@ def common_parser_inner(meta_title):
         default=False,
         help="Enable filter to reduce chroma interference on luma.",
     )
-    parser.add_argument(
+    extra_filtering_group.add_argument(
         "-sl",
         "--sharpness",
         metavar="sharpness",
@@ -146,7 +139,7 @@ def common_parser_inner(meta_title):
         default=0,
         help="Sharpness level (0~100)",
     )
-    parser.add_argument(
+    extra_filtering_group.add_argument(
         "--notch",
         dest="notch",
         metavar="notch",
@@ -154,7 +147,7 @@ def common_parser_inner(meta_title):
         default=None,
         help="Center frequency of optional notch filter on rf and chroma.",
     )
-    parser.add_argument(
+    extra_filtering_group.add_argument(
         "--notch_q",
         dest="notch_q",
         metavar="notch_q",
@@ -162,14 +155,40 @@ def common_parser_inner(meta_title):
         default=10.0,
         help="Q factor for notch filter",
     )
-    parser.add_argument(
+
+    system_group = parser.add_argument_group('Video system options')
+    system_group.add_argument(
+        "-p", "--pal", dest="pal", action="store_true", help="source is in PAL format"
+    )
+    system_group.add_argument(
+        "-n",
+        "--ntsc",
+        dest="ntsc",
+        action="store_true",
+        help="source is in NTSC format",
+    )
+    system_group.add_argument(
+        "-pm",
+        "--palm",
+        dest="palm",
+        action="store_true",
+        help="source is in PAL-M format",
+    )
+    system_group.add_argument(
+        "--NTSCJ",
+        dest="ntscj",
+        action="store_true",
+        help="source is in NTSC-J (IRE 0 black) format",
+    )
+    debug_group = parser.add_argument_group("Debug options")
+    debug_group.add_argument(
         "--debug",
         dest="debug",
         action="store_true",
         default=False,
         help="Set log legel to DEBUG.",
     )
-    return parser
+    return parser, debug_group
 
 
 def select_sample_freq(args):
@@ -188,10 +207,15 @@ def select_sample_freq(args):
 
 
 def select_system(args):
+
     if args.pal:
         system = "PAL"
     elif args.palm:
         system = "MPAL"
+    elif args.ntsc:
+        system = "NTSC"
+    elif args.system:
+        system = args.system
     else:
         system = "NTSC"
 
@@ -224,10 +248,12 @@ def get_rf_options(args):
     return rf_options
 
 
-def get_extra_options(args):
+def get_extra_options(args, checkagc=False):
     extra_options = {
-        "useAGC": args.AGC and not args.noAGC,
+        "useAGC": False,
         # Only used for ld, but could maybe be used for vhs too.
         "deemp_coeff": (0, 0),
     }
+    if checkagc:
+        extra_options["useAGC"]: args.AGC and not args.noAGC
     return extra_options

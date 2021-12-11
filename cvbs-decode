@@ -17,7 +17,7 @@ from vhsdecode.cmdcommons import (
     get_extra_options,
 )
 
-parser = common_parser("Extracts video from raw cvbs captures")
+parser, _ = common_parser("Extracts video from raw cvbs captures")
 parser.add_argument(
     "-S",
     "--seek",

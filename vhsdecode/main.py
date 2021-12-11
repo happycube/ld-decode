@@ -1,6 +1,7 @@
 import sys
 import signal
 import traceback
+import argparse
 import lddecode.utils as lddu
 from lddecode.utils_logging import init_logging
 from vhsdecode.process import VHSDecode
@@ -18,22 +19,32 @@ supported_tape_formats = {"VHS", "SVHS", "UMATIC"}
 
 def main(use_gui=False):
     import vhsdecode.formats as f
-    parser = common_parser("Extracts video from raw VHS rf captures", use_gui=use_gui)
-    parser.add_argument(
-        "--doDOD",
-        dest="dodod",
-        action="store_true",
-        default=False,
-        help="enable dropout detector (deprecated as this is no on by default)",
-    )
-    parser.add_argument(
+    parser, debug_group = common_parser("Extracts video from raw VHS rf captures", use_gui=use_gui)
+    if not use_gui:
+        parser.add_argument(
+            "--doDOD",
+            dest="dodod",
+            action="store_true",
+            default=False,
+            help=argparse.SUPPRESS,
+        )
+        parser.add_argument(
+            "-U",
+            "--u-matic",
+            dest="umatic",
+            action="store_true",
+            default=False,
+            help=argparse.SUPPRESS,
+        )
+    dodgroup = parser.add_argument_group("Dropout detection options")
+    dodgroup.add_argument(
         "--noDOD",
         dest="nodod",
         action="store_true",
         default=False,
         help="Disable dropout detector.",
     )
-    parser.add_argument(
+    dodgroup.add_argument(
         "-D",
         "--dod_t",
         "--dod_threshold_p",
@@ -43,7 +54,7 @@ def main(use_gui=False):
         default=None,
         help="RF level fraction threshold for dropouts as percentage of average (in decimal).",
     )
-    parser.add_argument(
+    dodgroup.add_argument(
         "--dod_t_abs",
         "--dod_threshold_abs",
         dest="dod_threshold_a",
@@ -52,7 +63,7 @@ def main(use_gui=False):
         default=None,
         help="RF level threshold absolute value. Note that RF levels vary greatly between tapes and recording setups.",
     )
-    parser.add_argument(
+    dodgroup.add_argument(
         "--dod_h",
         "--dod_hysteresis",
         dest="dod_hysteresis",
@@ -71,34 +82,13 @@ def main(use_gui=False):
         help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
     )
     parser.add_argument(
-        "-T",
-        "--track_phase",
-        metavar="track_phase",
-        type=int,
-        default=None,
-        help="If set to 0 or 1, force use of video track phase.",
-    )
-    parser.add_argument(
-        "--recheck_phase",
-        dest="recheck_phase",
-        action="store_true",
-        default=False,
-        help="Re-check chroma phase on every field.",
-    )
-    parser.add_argument(
         "-tf",
         "--tape_format",
+        type=str.upper,
         metavar="tape_format",
         default="VHS",
+        choices=supported_tape_formats,
         help="Tape format, currently VHS (Default), SVHS or UMATIC are supported.",
-    )
-    parser.add_argument(
-        "-U",
-        "--u-matic",
-        dest="umatic",
-        action="store_true",
-        default=False,
-        help="Decode u-matic",
     )
     parser.add_argument(
         "--high_boost",
@@ -124,14 +114,6 @@ def main(use_gui=False):
         help="Disable blanking DC offset clamping/compensation",
     )
     parser.add_argument(
-        "-nocomb",
-        "--no_comb",
-        dest="disable_comb",
-        action="store_true",
-        default=False,
-        help="Disable internal chroma comb filter.",
-    )
-    parser.add_argument(
         "-nld",
         "--non_linear_deemphasis",
         dest="nldeemp",
@@ -139,13 +121,37 @@ def main(use_gui=False):
         default=False,
         help="Enable non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
     )
-    parser.add_argument(
+    chroma_group = parser.add_argument_group("Chroma options")
+    chroma_group.add_argument(
+        "-nocomb",
+        "--no_comb",
+        dest="disable_comb",
+        action="store_true",
+        default=False,
+        help="Disable internal chroma comb filter.",
+    )
+    chroma_group.add_argument(
         "-cafc",
         "--chroma_AFC",
         dest="cafc",
         action="store_true",
         default=False,
         help="Enable downconverted chroma carrier AFC (Automatic freq. control), implies --recheck_phase",
+    )
+    chroma_group.add_argument(
+        "-T",
+        "--track_phase",
+        metavar="track_phase",
+        type=int,
+        default=None,
+        help="If set to 0 or 1, force use of video track phase. (No effect on U-matic)",
+    )
+    chroma_group.add_argument(
+        "--recheck_phase",
+        dest="recheck_phase",
+        action="store_true",
+        default=False,
+        help="Re-check chroma phase on every field. (No effect on U-matic)",
     )
     parser.add_argument(
         "-sclip",
@@ -156,8 +162,8 @@ def main(use_gui=False):
         help="Enables sync clipping",
     )
     plot_options = "demodblock"
-    parser.add_argument(
-        "-dp"
+    debug_group.add_argument(
+        "-dp",
         "--debug_plot",
         dest="debug_plot",
         help="Do a plot for the requested data, separated by whitespace. Current options are: " + plot_options + "."
@@ -194,7 +200,7 @@ def main(use_gui=False):
     rf_options["cafc"] = args.cafc
     rf_options["sync_clip"] = args.sync_clip
 
-    extra_options = get_extra_options(args)
+    extra_options = get_extra_options(args, not use_gui)
 
     # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
     # allowing SIGINT/control-C's to be handled cleanly
@@ -202,14 +208,14 @@ def main(use_gui=False):
 
     logger = init_logging(outname + ".log")
 
-    tape_format = "UMATIC" if args.umatic else args.tape_format.upper()
+    if not use_gui and args.umatic:
+        tape_format = "UMATIC"
+    else:
+        tape_format = args.tape_format.upper()
     if tape_format not in supported_tape_formats:
         logger.warning("Tape format %s not supported! Defaulting to VHS", tape_format)
-    tape_format = "VHS"
 
-    if args.noAGC:
-        logger.warning("--noAGC is deprecated and does nothing.")
-    if args.dodod:
+    if not use_gui and args.dodod:
         logger.warning("--doDOD is deprecated, dod is on by default, use noDOD to turn off.")
 
     debug_plot = None
