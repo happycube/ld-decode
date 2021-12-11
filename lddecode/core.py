@@ -1587,7 +1587,10 @@ class Field:
 
         LT = {}
 
-        LT["hsync_median"] = np.median(hlens)
+        if len(hlens) > 0:
+            LT["hsync_median"] = np.median(hlens)
+        else:
+            LT["hsync_median"] = self.rf.SysParams["hsyncPulseUS"]
 
         hsync_min = LT["hsync_median"] + self.usectoinpx(-0.5)
         hsync_max = LT["hsync_median"] + self.usectoinpx(0.5)
@@ -1938,7 +1941,10 @@ class Field:
                     self.validpulses[i][1].start - self.validpulses[i - 1][1].start
                 )
 
-        return np.mean(linelens)
+        if len(linelens) > 0:
+            return np.mean(linelens)
+        else:
+            return self.inlinelen
 
     def skip_check(self):
         ''' This routine checks to see if there's a (probable) VSYNC at the end.
@@ -2919,11 +2925,11 @@ class FieldPAL(Field):
                 pass
 
             rising, self.phase_adjust[l] = self.compute_line_bursts(self.linelocs, l, prev_phaseadjust)
-            
+
             if rising is not None:
                 rcount += (rising == True)
                 count += 1
-            
+
         if count == 0 or (rcount * 2) == count:
             return self.get_following_field_number()
 

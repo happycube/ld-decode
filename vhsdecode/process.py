@@ -607,6 +607,7 @@ class VHSDecode(ldd.LDdecode):
         debug_plot=None
     ):
 
+
         super(VHSDecode, self).__init__(
             fname_in,
             fname_out,

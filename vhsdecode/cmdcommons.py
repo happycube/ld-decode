@@ -1,13 +1,27 @@
 import argparse
 import lddecode.utils as lddu
 
+from gooey import Gooey
+
 CXADC_FREQ = (8 * 315.0) / 88.0  # 28.636363636
 CXADC_FREQ_HIGH = 3150.0 / 88.0  # 35.795454545
 CXADC_TENBIT_FREQ = (8 * 315.0) / 88.0 / 2.0  # 14.318181818
 CXADC_TENBIT_FREQ_HIGH = 3150.0 / 88.0 / 2.0  # 17.897727272
 
 
-def common_parser(meta_title):
+def common_parser(meta_title, use_gui=False):
+    if not use_gui:
+        return common_parser_inner(meta_title)
+    else:
+        return common_parser_gui(meta_title)
+
+
+@Gooey
+def common_parser_gui(meta_title):
+    return common_parser_inner(meta_title)
+
+
+def common_parser_inner(meta_title):
     parser = argparse.ArgumentParser(description=meta_title)
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
     parser.add_argument(
