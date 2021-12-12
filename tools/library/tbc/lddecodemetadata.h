@@ -69,6 +69,9 @@ public:
 
         bool isMapped;
 
+        QString gitBranch;
+        QString gitCommit;
+
         // Note: These are psuedo metadata items - The values are populated by the library
         // These are half-open ranges, where lines are numbered sequentially from 0 within
         // each field or interlaced frame
@@ -126,6 +129,11 @@ public:
         Ntsc ntsc;
         DropOuts dropOuts;
         bool pad;
+
+        qint32 diskLoc;
+        qint32 fileLoc;
+        qint32 decodeFaults;
+        qint32 efmTValues;
     };
 
     // Overall metadata definition

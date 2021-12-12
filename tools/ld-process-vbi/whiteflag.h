@@ -3,7 +3,7 @@
     whiteflag.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2018-2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -31,7 +31,7 @@
 class WhiteFlag
 {
 public:
-    bool getWhiteFlag(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    bool getWhiteFlag(const SourceVideo::Data &activeLineData, LdDecodeMetaData::VideoParameters videoParameters);
 };
 
 #endif // WHITEFLAG_H
