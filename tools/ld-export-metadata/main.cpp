@@ -4,6 +4,7 @@
 
     ld-export-metadata - Export JSON metadata into other formats
     Copyright (C) 2020 Adam Sampson
+    Copyright (C) 2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -29,6 +30,7 @@
 
 #include "csv.h"
 #include "ffmetadata.h"
+#include "closedcaptions.h"
 
 #include "logging.h"
 #include "lddecodemetadata.h"
@@ -52,6 +54,7 @@ int main(int argc, char *argv[])
                 "ld-export-metadata - Export JSON metadata into other formats\n"
                 "\n"
                 "(c)2020 Adam Sampson\n"
+                "(c)2021 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -77,6 +80,11 @@ int main(int argc, char *argv[])
                                              QCoreApplication::translate("main", "Write navigation information as FFMETADATA1"),
                                              QCoreApplication::translate("main", "file"));
     parser.addOption(writeFfmetadataOption);
+
+    QCommandLineOption writeClosedCaptionsOption("closed-captions",
+                                             QCoreApplication::translate("main", "Write closed captions as text"),
+                                             QCoreApplication::translate("main", "file"));
+    parser.addOption(writeClosedCaptionsOption);
 
     // -- Positional arguments --
 
@@ -124,6 +132,13 @@ int main(int argc, char *argv[])
     if (parser.isSet(writeFfmetadataOption)) {
         const QString &fileName = parser.value(writeFfmetadataOption);
         if (!writeFfmetadata(metaData, fileName)) {
+            qCritical() << "Failed to write output file:" << fileName;
+            return 1;
+        }
+    }
+    if (parser.isSet(writeClosedCaptionsOption)) {
+        const QString &fileName = parser.value(writeClosedCaptionsOption);
+        if (!writeClosedCaptions(metaData, fileName)) {
             qCritical() << "Failed to write output file:" << fileName;
             return 1;
         }
