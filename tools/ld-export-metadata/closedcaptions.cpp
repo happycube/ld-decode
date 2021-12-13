@@ -93,6 +93,9 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
                     qint32 ss = (fieldIndex % static_cast<qint32>(fieldsPerMinute)) / fieldsPerSecond;
                     qint32 ff = fieldIndex % static_cast<qint32>(fieldsPerMinute) % static_cast<qint32>(fieldsPerSecond);
 
+                    // Output is expecting fields, not frames, so approximate it
+                    ff = ff / 2;
+
                     stream << "\n\n";
                     stream << QString("%1").arg(hh, 2, 10, QLatin1Char('0')) << ":" <<
                               QString("%1").arg(mm, 2, 10, QLatin1Char('0')) << ":" <<
