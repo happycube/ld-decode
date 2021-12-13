@@ -79,7 +79,7 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
             // Invalid
         } else {
             // Valid
-            if (data0 > 0 && data1 > 0) {
+            if (data0 > 0 || data1 > 0) {
                 // Caption data is present, do we need to output a timecode?
                 if (captionInProgress == false) {
                     // Output a timecode followed by a tab character
@@ -88,6 +88,12 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
                     // can simply calculate the timecode from the sequential
                     // field number (which should work even in the input
                     // is a snippet from a LaserDisc sample
+                    //
+                    // Note: There should probably be the option to choose if the
+                    // subtitle timecodes are relative to the video or the VBI
+                    // frame-number/CLV timecode; as both are useful depending on
+                    // the use-case?
+                    //
                     qint32 hh = static_cast<qint32>((fieldIndex / fieldsPerHour));
                     qint32 mm = static_cast<qint32>((fieldIndex / fieldsPerMinute)) % 60;
                     qint32 ss = (fieldIndex % static_cast<qint32>(fieldsPerMinute)) / fieldsPerSecond;
