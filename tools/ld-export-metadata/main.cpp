@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
     parser.addOption(writeFfmetadataOption);
 
     QCommandLineOption writeClosedCaptionsOption("closed-captions",
-                                             QCoreApplication::translate("main", "Write closed captions as text"),
+                                             QCoreApplication::translate("main", "Write closed captions as Scenarist SCC V1.0 format"),
                                              QCoreApplication::translate("main", "file"));
     parser.addOption(writeClosedCaptionsOption);
 

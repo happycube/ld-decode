@@ -36,144 +36,11 @@
 using std::set;
 using std::vector;
 
-// The closed caption protocol is a stream of both text and control
-// commands that instruct the player how to present the text including
-// rolling it up, moving the cursor around, etc.
-//
-// This cannot be represented as a text file so, instead, spaces and
-// new lines are used in the output to attempt to create as readable
-// text in the output as possible.
-//
-// This function decodes the CC command and outputs a space, new-line
-// or nothing.
-QString processCCCommand(qint32 data0, qint32 data1)
-{
-    QString outputText;
-
-    // Verify display control code
-    if (data1 >= 0x20 && data1 <= 0x7F) {
-
-        // Check for miscellaneous control codes (indicated by data0 & 01110110 == 00010100)
-        if ((data0 & 0x76) == 0x14) {
-            // Miscellaneous
-            qint32 commandGroup = (data0 & 0x02) >> 1; // 0b00000010 >> 1
-            qint32 commandType = (data1 & 0x0F); // 0b00001111
-
-            if (commandGroup == 0) {
-                // Normal command
-                switch (commandType) {
-                case 0:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Resume caption loading";
-                    //outputText = "<C0>";
-                    outputText = " ";
-                    break;
-                case 1:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Backspace";
-                    //outputText = "<C1>";
-                    break;
-                case 2:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Reserved 1";
-                    //outputText = "<C2>";
-                    outputText = " ";
-                    break;
-                case 3:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Reserved 2";
-                    //outputText = "<C3>";
-                    break;
-                case 4:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Delete to end of row";
-                    //outputText = "<C4>";
-                    outputText = " ";
-                    break;
-                case 5:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Roll-up captions, 2 rows";
-                    //outputText = "<C5>";
-                    break;
-                case 6:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Roll-up captions, 3 rows";
-                    //outputText = "<C6>";
-                    break;
-                case 7:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Roll-up captions, 4 rows";
-                    //outputText = "<C7>";
-                    break;
-                case 8:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Flash on";
-                    //outputText = "<C8>";
-                    break;
-                case 9:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Resume direct captioning";
-                    //outputText = "<C9>";
-                    break;
-                case 10:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Text restart";
-                    //outputText = "<C10>";
-                    break;
-                case 11:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Resume text display";
-                    //outputText = "<C11>";
-                    break;
-                case 12:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Erase displayed memory";
-                    //outputText = "<C12>";
-                    break;
-                case 13:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Carriage return";
-                    //outputText = "<C13>";
-                    break;
-                case 14:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Erase non-displayed memory";
-                    //outputText = "<C14>";
-                    break;
-                case 15:
-                    qDebug() << "processCCCommand(): Miscellaneous command - End of caption (flip memories)";
-                    //outputText = "<C15>";
-                    outputText = "\n";
-                    break;
-                }
-            } else {
-                // Tab offset command
-                switch (commandType) {
-                case 1:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Tab offset (1 column)";
-                    //outputText = "<T1>";
-                    break;
-                case 2:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Tab offset (2 columns)";
-                    //outputText = "<T2>";
-                    break;
-                case 3:
-                    qDebug() << "processCCCommand(): Miscellaneous command - Tab offset (3 columns)";
-                    //outputText = "<T3>";
-                    break;
-                }
-            }
-
-            // Done
-            return outputText;
-        }
-
-        // Check for midrow command code (indicated by data0 & 01110111 == 00010001)
-        if ((data0 & 0x77) == 0x11) {
-            qDebug() << "processCCCommand(): Midrow command";
-            //outputText = "<MRC>";
-        }
-    } else {
-        qDebug() << "processCCCommand(): Display control code invalid!" << data1;
-    }
-
-    return outputText;
-}
-
-// This function scans through the available metadata and extracts the CC
-// data (present only on NTSC format discs) - the text is streamed out
-// to a text file.
+// Extract any available CC data and output it in Scenarist Closed Caption format (SCC) V1.0
+// Protocol description:  http://www.theneitherworld.com/mcpoodle/SCC_TOOLS/DOCS/SCC_FORMAT.HTML
 bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
 {
     const auto videoParameters = metaData.getVideoParameters();
-
-    qint32 lastNonDisplayCommand = -1;
-    qint32 lastDisplayCommand = -1;
 
     // Only NTSC discs can contain closed captions; so perform a basic sanity check
     if (videoParameters.isSourcePal) {
@@ -192,42 +59,66 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
     stream.setCodec("UTF-8");
 #endif
 
-    // Extract the closed captions data and stream to the text file
-    for (qint32 fieldIndex = 1; fieldIndex <= videoParameters.numberOfSequentialFields; fieldIndex++) {
-        QString decodedText;
+    // Output the SCC V1.0 header
+    stream << "Scenarist_SCC V1.0";
 
-        // Get the CC data from the metadata
+    // Set some constants for the timecode calculations
+    double fieldsPerSecond = 29.97 * 2.0;
+    double fieldsPerMinute = fieldsPerSecond * 60;
+    double fieldsPerHour = fieldsPerMinute * 60;
+
+    // Extract the closed captions data and stream to the text file
+    bool captionInProgress = false;
+    for (qint32 fieldIndex = 1; fieldIndex <= videoParameters.numberOfSequentialFields; fieldIndex++) {
+        // Get the CC data bytes from the field
         qint32 data0 = metaData.getFieldNtsc(fieldIndex).ccData0;
         qint32 data1 = metaData.getFieldNtsc(fieldIndex).ccData1;
 
         // Check incoming data is valid
-        if (data0 != -1 && data1 != -1) {
-            // Check for a non-display control code
-            if (data0 >= 0x10 && data0 <= 0x1F) {
-                if (data0 == lastNonDisplayCommand && data1 == lastDisplayCommand) {
-                    // This is a command repeat; ignore
-                } else {
-                    // Non-display control code
-                    qDebug() << "writeClosedCaptions(): Got non-display control code of" << data0 << "- ignoring";
-                    decodedText = processCCCommand(data0, data1);
-                    lastNonDisplayCommand = data0;
-                    lastDisplayCommand = data1;
-                }
-            } else {
-                // Normal text (2 characters)
-                char string[3];
-                string[0] = static_cast<char>(data0);
-                string[1] = static_cast<char>(data1);
-                string[2] = static_cast<char>(0);
+        if (data0 == -1 || data1 == -1) {
+            // Invalid
+        } else {
+            // Valid
+            if (data0 > 0 && data1 > 0) {
+                // Caption data is present, do we need to output a timecode?
+                if (captionInProgress == false) {
+                    // Output a timecode followed by a tab character
 
-                // Convert to QString and return
-                decodedText = QString::fromLocal8Bit(string);
+                    // Since the subtitle is relative to the video we
+                    // can simply calculate the timecode from the sequential
+                    // field number (which should work even in the input
+                    // is a snippet from a LaserDisc sample
+                    qint32 hh = static_cast<qint32>((fieldIndex / fieldsPerHour));
+                    qint32 mm = static_cast<qint32>((fieldIndex / fieldsPerMinute)) % 60;
+                    qint32 ss = (fieldIndex % static_cast<qint32>(fieldsPerMinute)) / fieldsPerSecond;
+                    qint32 ff = fieldIndex % static_cast<qint32>(fieldsPerMinute) % static_cast<qint32>(fieldsPerSecond);
+
+                    stream << "\n\n";
+                    stream << QString("%1").arg(hh, 2, 10, QLatin1Char('0')) << ":" <<
+                              QString("%1").arg(mm, 2, 10, QLatin1Char('0')) << ":" <<
+                              QString("%1").arg(ss, 2, 10, QLatin1Char('0')) << ";" <<
+                              QString("%1").arg(ff, 2, 10, QLatin1Char('0'));
+                    stream << "\t";
+
+                    // Set the caption in progress flag
+                    captionInProgress = true;
+                }
+
+                // Output the 2 bytes of data as 2 hexadecimal values
+                // i.e. 0x12 and 0x41 would be 1241 followed by a space
+                // Hex output is padded with leading zeros
+                stream << QString("%1").arg(data0, 2, 16, QLatin1Char('0'));
+                stream << QString("%1").arg(data1, 2, 16, QLatin1Char('0'));
+                stream << " ";
+            } else {
+                // No CC data for this frame
+                captionInProgress = false;
             }
         }
-
-        // Send the text to the file
-        stream << decodedText;
     }
+
+    // Add some trailing white space
+    stream << "\n\n";
 
     // Done!
     file.close();
