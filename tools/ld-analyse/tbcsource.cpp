@@ -273,6 +273,12 @@ QVector<qreal> TbcSource::getDropOutGraphData()
     return dropoutGraphData;
 }
 
+// Get visible dropout data for graphing
+QVector<qreal> TbcSource::getVisibleDropOutGraphData()
+{
+    return visibleDropoutGraphData;
+}
+
 // Method to get the size of the graphing data
 qint32 TbcSource::getGraphDataSize()
 {
@@ -646,10 +652,12 @@ QImage TbcSource::generateQImage()
 void TbcSource::generateData()
 {
     dropoutGraphData.clear();
+    visibleDropoutGraphData.clear();
     blackSnrGraphData.clear();
     whiteSnrGraphData.clear();
 
     dropoutGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
+    visibleDropoutGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
     blackSnrGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
     whiteSnrGraphData.resize(ldDecodeMetaData.getNumberOfFrames());
 
@@ -661,6 +669,7 @@ void TbcSource::generateData()
     const qint32 numFrames = ldDecodeMetaData.getNumberOfFrames();
     for (qint32 frameNumber = 0; frameNumber < numFrames; frameNumber++) {
         qreal doLength = 0;
+        qreal visibleDoLength = 0;
         qreal blackSnrTotal = 0;
         qreal whiteSnrTotal = 0;
 
@@ -685,6 +694,39 @@ void TbcSource::generateData()
             // Calculate the total length of the dropouts
             for (qint32 i = 0; i < secondField.dropOuts.size(); i++) {
                 doLength += secondField.dropOuts.endx(i) - secondField.dropOuts.startx(i);
+            }
+        }
+
+        // Get the first field visible DOs
+        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+        if (firstField.dropOuts.size() > 0) {
+            // Calculate the total length of the visible dropouts
+            for (qint32 i = 0; i < firstField.dropOuts.size(); i++) {
+                // Does the drop out start in the visible area?
+                if (firstField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
+                    qint32 startx = firstField.dropOuts.startx(i);
+                    qint32 endx;
+                    if (firstField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = firstField.dropOuts.endx(i);
+                    else endx = videoParameters.activeVideoEnd;
+
+                    visibleDoLength += endx - startx;
+                }
+            }
+        }
+
+        // Get the second field visible DOs
+        if (secondField.dropOuts.size() > 0) {
+            // Calculate the total length of the visible dropouts
+            for (qint32 i = 0; i < secondField.dropOuts.size(); i++) {
+                // Does the drop out start in the visible area?
+                if (secondField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
+                    qint32 startx = secondField.dropOuts.startx(i);
+                    qint32 endx;
+                    if (secondField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = secondField.dropOuts.endx(i);
+                    else endx = videoParameters.activeVideoEnd;
+
+                    visibleDoLength += endx - startx;
+                }
             }
         }
 
@@ -714,6 +756,7 @@ void TbcSource::generateData()
 
         // Add the result to the vectors
         dropoutGraphData[frameNumber] = doLength;
+        visibleDropoutGraphData[frameNumber] = visibleDoLength;
         blackSnrGraphData[frameNumber] = blackSnrTotal / blackSnrPoints; // Calc average for frame
         whiteSnrGraphData[frameNumber] = whiteSnrTotal / whiteSnrPoints; // Calc average for frame
 

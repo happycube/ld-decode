@@ -1,6 +1,6 @@
 /************************************************************************
 
-    dropoutanalysisdialog.cpp
+    visibledropoutanalysisdialog.cpp
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2021 Simon Inns
@@ -22,14 +22,14 @@
 
 ************************************************************************/
 
-#include "dropoutanalysisdialog.h"
-#include "ui_dropoutanalysisdialog.h"
+#include "visibledropoutanalysisdialog.h"
+#include "ui_visibledropoutanalysisdialog.h"
 
 #include <QPen>
 
-DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
+VisibleDropOutAnalysisDialog::VisibleDropOutAnalysisDialog(QWidget *parent) :
     QDialog(parent),
-    ui(new Ui::DropoutAnalysisDialog)
+    ui(new Ui::VisibleDropOutAnalysisDialog)
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
@@ -55,14 +55,14 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     connect(((QObject*)plot->axisWidget(QwtPlot::xBottom)) , SIGNAL(scaleDivChanged() ), this, SLOT(scaleDivChangedSlot() ));
 }
 
-DropoutAnalysisDialog::~DropoutAnalysisDialog()
+VisibleDropOutAnalysisDialog::~VisibleDropOutAnalysisDialog()
 {
     removeChartContents();
     delete ui;
 }
 
 // Get ready for an update
-void DropoutAnalysisDialog::startUpdate(qint32 _numberOfFrames)
+void VisibleDropOutAnalysisDialog::startUpdate(qint32 _numberOfFrames)
 {
     removeChartContents();
     numberOfFrames = _numberOfFrames;
@@ -70,7 +70,7 @@ void DropoutAnalysisDialog::startUpdate(qint32 _numberOfFrames)
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
-void DropoutAnalysisDialog::removeChartContents()
+void VisibleDropOutAnalysisDialog::removeChartContents()
 {
     maxY = 0;
     points->clear();
@@ -78,7 +78,7 @@ void DropoutAnalysisDialog::removeChartContents()
 }
 
 // Add a data point to the chart
-void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
+void VisibleDropOutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
 {
     points->append(QPointF(frameNumber, doLength));
 
@@ -87,10 +87,10 @@ void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
 }
 
 // Finish the update and render the graph
-void DropoutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
+void VisibleDropOutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 {
     // Set the chart title
-    plot->setTitle("Dropout Loss Analysis");
+    plot->setTitle("Visible Dropout Loss Analysis");
 
     // Set the background and grid
     plot->setCanvasBackground(Qt::white);
@@ -142,13 +142,13 @@ void DropoutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 }
 
 // Method to update the frame marker
-void DropoutAnalysisDialog::updateFrameMarker(qint32 _currentFrameNumber)
+void VisibleDropOutAnalysisDialog::updateFrameMarker(qint32 _currentFrameNumber)
 {
     plotMarker->setXValue(static_cast<double>(_currentFrameNumber));
     plot->replot();
 }
 
-void DropoutAnalysisDialog::scaleDivChangedSlot()
+void VisibleDropOutAnalysisDialog::scaleDivChangedSlot()
 {
     // If user zooms all the way out, reapply axis scale defaults
     if (zoomer->zoomRectIndex() == 0) {
