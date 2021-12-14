@@ -699,17 +699,21 @@ void TbcSource::generateData()
 
         // Get the first field visible DOs
         LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
         if (firstField.dropOuts.size() > 0) {
             // Calculate the total length of the visible dropouts
             for (qint32 i = 0; i < firstField.dropOuts.size(); i++) {
                 // Does the drop out start in the visible area?
-                if (firstField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
-                    qint32 startx = firstField.dropOuts.startx(i);
-                    qint32 endx;
-                    if (firstField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = firstField.dropOuts.endx(i);
-                    else endx = videoParameters.activeVideoEnd;
+                if ((firstField.dropOuts.fieldLine(i) >= videoParameters.firstActiveFieldLine) &&
+                    (firstField.dropOuts.fieldLine(i) <= videoParameters.lastActiveFieldLine)) {
+                    if (firstField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
+                        qint32 startx = firstField.dropOuts.startx(i);
+                        qint32 endx;
+                        if (firstField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = firstField.dropOuts.endx(i);
+                        else endx = videoParameters.activeVideoEnd;
 
-                    visibleDoLength += endx - startx;
+                        visibleDoLength += endx - startx;
+                    }
                 }
             }
         }
@@ -719,13 +723,16 @@ void TbcSource::generateData()
             // Calculate the total length of the visible dropouts
             for (qint32 i = 0; i < secondField.dropOuts.size(); i++) {
                 // Does the drop out start in the visible area?
-                if (secondField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
-                    qint32 startx = secondField.dropOuts.startx(i);
-                    qint32 endx;
-                    if (secondField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = secondField.dropOuts.endx(i);
-                    else endx = videoParameters.activeVideoEnd;
+                if ((secondField.dropOuts.fieldLine(i) >= videoParameters.firstActiveFieldLine) &&
+                    (secondField.dropOuts.fieldLine(i) <= videoParameters.lastActiveFieldLine)) {
+                    if (secondField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
+                        qint32 startx = secondField.dropOuts.startx(i);
+                        qint32 endx;
+                        if (secondField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = secondField.dropOuts.endx(i);
+                        else endx = videoParameters.activeVideoEnd;
 
-                    visibleDoLength += endx - startx;
+                        visibleDoLength += endx - startx;
+                    }
                 }
             }
         }
