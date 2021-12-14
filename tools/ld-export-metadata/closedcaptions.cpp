@@ -69,6 +69,28 @@ QString generateTimeStamp(qint32 fieldIndex)
                               QString("%1").arg(ff, 2, 10, QLatin1Char('0'));
 }
 
+// Sanity check the CC data byte and set to -1 if it probably is invalid
+qint32 sanityCheckData(qint32 dataByte)
+{
+    // Already marked as invalid?
+    if (dataByte == -1) return -1;
+
+    // Is it in the valid command byte range?
+    if (dataByte >= 0x10 && dataByte <= 0x1F) {
+        // Valid command byte
+        return dataByte;
+    }
+
+    // Valid 7-bit ASCII range?
+    if (dataByte >= 0x20 && dataByte <= 0x7E) {
+        // Valid character byte
+        return dataByte;
+    }
+
+    // Invalid byte
+    return 0;
+}
+
 // Extract any available CC data and output it in Scenarist Closed Caption format (SCC) V1.0
 // Protocol description:  http://www.theneitherworld.com/mcpoodle/SCC_TOOLS/DOCS/SCC_FORMAT.HTML
 bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
@@ -100,8 +122,18 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
     QString debugCaption;
     for (qint32 fieldIndex = 1; fieldIndex <= videoParameters.numberOfSequentialFields; fieldIndex++) {
         // Get the CC data bytes from the field
-        qint32 data0 = metaData.getFieldNtsc(fieldIndex).ccData0;
-        qint32 data1 = metaData.getFieldNtsc(fieldIndex).ccData1;
+        qint32 data0 = sanityCheckData(metaData.getFieldNtsc(fieldIndex).ccData0);
+        qint32 data1 = sanityCheckData(metaData.getFieldNtsc(fieldIndex).ccData1);
+
+        // Sometimes random data is passed through; so this sanity check makes sure
+        // each new caption starts with data0 = 0x14 which (according to wikipedia)
+        // should always be the case
+        if (!captionInProgress && data0 > 0) {
+            if (data0 != 0x14) {
+                data0 = 0;
+                data1 = 0;
+            }
+        }
 
         // Check incoming data is valid
         if (data0 == -1 || data1 == -1) {

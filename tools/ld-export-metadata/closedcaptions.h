@@ -31,6 +31,7 @@
 #include "lddecodemetadata.h"
 
 QString generateTimeStamp(qint32 fieldIndex);
+qint32 sanityCheckData(qint32 dataByte);
 bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName);
 
 #endif // CLOSEDCAPTIONS_H
