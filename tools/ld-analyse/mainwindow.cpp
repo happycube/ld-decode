@@ -174,7 +174,8 @@ void MainWindow::updateGuiLoaded()
     ui->actionZoom_2x->setEnabled(true);
     ui->actionZoom_3x->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
-    ui->actionSNR_analysis->setEnabled(true);
+    ui->actionSNR_analysis->setEnabled(true); // Black SNR
+    ui->actionWhite_SNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
     ui->actionChroma_decoder_configuration->setEnabled(true);
@@ -263,7 +264,8 @@ void MainWindow::updateGuiUnloaded()
     ui->actionZoom_2x->setEnabled(false);
     ui->actionZoom_3x->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
-    ui->actionSNR_analysis->setEnabled(false);
+    ui->actionSNR_analysis->setEnabled(false); // Black SNR
+    ui->actionWhite_SNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
     ui->actionChroma_decoder_configuration->setEnabled(false);
