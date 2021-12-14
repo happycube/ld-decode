@@ -51,6 +51,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     aboutDialog = new AboutDialog(this);
     vbiDialog = new VbiDialog(this);
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
+    visibleDropoutAnalysisDialog = new VisibleDropOutAnalysisDialog(this);
     blackSnrAnalysisDialog = new BlackSnrAnalysisDialog(this);
     whiteSnrAnalysisDialog = new WhiteSnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
@@ -88,6 +89,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
+    visibleDropoutAnalysisDialog->restoreGeometry(configuration.getVisibleDropoutAnalysisDialogGeometry());
     blackSnrAnalysisDialog->restoreGeometry(configuration.getBlackSnrAnalysisDialogGeometry());
     whiteSnrAnalysisDialog->restoreGeometry(configuration.getWhiteSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
@@ -116,6 +118,7 @@ MainWindow::~MainWindow()
     configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
+    configuration.setVisibleDropoutAnalysisDialogGeometry(visibleDropoutAnalysisDialog->saveGeometry());
     configuration.setBlackSnrAnalysisDialogGeometry(blackSnrAnalysisDialog->saveGeometry());
     configuration.setWhiteSnrAnalysisDialogGeometry(whiteSnrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
@@ -174,7 +177,9 @@ void MainWindow::updateGuiLoaded()
     ui->actionZoom_2x->setEnabled(true);
     ui->actionZoom_3x->setEnabled(true);
     ui->actionDropout_analysis->setEnabled(true);
-    ui->actionSNR_analysis->setEnabled(true);
+    ui->actionVisible_Dropout_analysis->setEnabled(true);
+    ui->actionSNR_analysis->setEnabled(true); // Black SNR
+    ui->actionWhite_SNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
     ui->actionChroma_decoder_configuration->setEnabled(true);
@@ -263,7 +268,9 @@ void MainWindow::updateGuiUnloaded()
     ui->actionZoom_2x->setEnabled(false);
     ui->actionZoom_3x->setEnabled(false);
     ui->actionDropout_analysis->setEnabled(false);
-    ui->actionSNR_analysis->setEnabled(false);
+    ui->actionVisible_Dropout_analysis->setEnabled(false);
+    ui->actionSNR_analysis->setEnabled(false); // Black SNR
+    ui->actionWhite_SNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
     ui->actionChroma_decoder_configuration->setEnabled(false);
@@ -491,6 +498,13 @@ void MainWindow::on_actionDropout_analysis_triggered()
 {
     // Show the dropout analysis dialogue
     dropoutAnalysisDialog->show();
+}
+
+// Show the visible drop out analysis graph
+void MainWindow::on_actionVisible_Dropout_analysis_triggered()
+{
+    // Show the visible dropout analysis dialogue
+    visibleDropoutAnalysisDialog->show();
 }
 
 // Show the Black SNR analysis graph
@@ -961,20 +975,24 @@ void MainWindow::on_finishedLoading()
     if (tbcSource.getIsSourceLoaded()) {
         // Generate the graph data
         dropoutAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
+        visibleDropoutAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
         blackSnrAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
         whiteSnrAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
 
         QVector<qreal> doGraphData = tbcSource.getDropOutGraphData();
+        QVector<qreal> visibleDoGraphData = tbcSource.getVisibleDropOutGraphData();
         QVector<qreal> blackSnrGraphData = tbcSource.getBlackSnrGraphData();
         QVector<qreal> whiteSnrGraphData = tbcSource.getWhiteSnrGraphData();
 
         for (qint32 frameNumber = 0; frameNumber < tbcSource.getNumberOfFrames(); frameNumber++) {
             dropoutAnalysisDialog->addDataPoint(frameNumber + 1, doGraphData[frameNumber]);
+            visibleDropoutAnalysisDialog->addDataPoint(frameNumber + 1, visibleDoGraphData[frameNumber]);
             blackSnrAnalysisDialog->addDataPoint(frameNumber + 1, blackSnrGraphData[frameNumber]);
             whiteSnrAnalysisDialog->addDataPoint(frameNumber + 1, whiteSnrGraphData[frameNumber]);
         }
 
         dropoutAnalysisDialog->finishUpdate(currentFrameNumber);
+        visibleDropoutAnalysisDialog->finishUpdate(currentFrameNumber);
         blackSnrAnalysisDialog->finishUpdate(currentFrameNumber);
         whiteSnrAnalysisDialog->finishUpdate(currentFrameNumber);
 
@@ -1003,4 +1021,7 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
     this->setEnabled(true);
 }
+
+
+
 

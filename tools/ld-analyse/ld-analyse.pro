@@ -52,6 +52,7 @@ SOURCES += \
     ../library/tbc/filters.cpp \
     ../library/tbc/logging.cpp \
     ../library/tbc/dropouts.cpp \
+    visibledropoutanalysisdialog.cpp \
     whitesnranalysisdialog.cpp
 
 HEADERS += \
@@ -82,6 +83,7 @@ HEADERS += \
     ../library/tbc/filters.h \
     ../library/tbc/logging.h \
     ../library/tbc/dropouts.h \
+    visibledropoutanalysisdialog.h \
     whitesnranalysisdialog.h
 
 FORMS += \
@@ -94,6 +96,7 @@ FORMS += \
     chromadecoderconfigdialog.ui \
     vbidialog.ui \
     dropoutanalysisdialog.ui \
+    visibledropoutanalysisdialog.ui \
     whitesnranalysisdialog.ui
 
 # Add external includes to the include path

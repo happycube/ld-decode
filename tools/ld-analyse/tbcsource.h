@@ -92,6 +92,7 @@ public:
     QVector<qreal> getBlackSnrGraphData();
     QVector<qreal> getWhiteSnrGraphData();
     QVector<qreal> getDropOutGraphData();
+    QVector<qreal> getVisibleDropOutGraphData();
     qint32 getGraphDataSize();
 
     bool getIsDropoutPresent();
@@ -126,6 +127,7 @@ private:
     QVector<qreal> blackSnrGraphData;
     QVector<qreal> whiteSnrGraphData;
     QVector<qreal> dropoutGraphData;
+    QVector<qreal> visibleDropoutGraphData;
 
     // Frame image options
     bool chromaOn;

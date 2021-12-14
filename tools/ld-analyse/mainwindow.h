@@ -38,6 +38,7 @@
 #include "aboutdialog.h"
 #include "vbidialog.h"
 #include "dropoutanalysisdialog.h"
+#include "visibledropoutanalysisdialog.h"
 #include "blacksnranalysisdialog.h"
 #include "whitesnranalysisdialog.h"
 #include "busydialog.h"
@@ -67,7 +68,9 @@ private slots:
     void on_actionAbout_ld_analyse_triggered();
     void on_actionVBI_triggered();
     void on_actionDropout_analysis_triggered();
+    void on_actionVisible_Dropout_analysis_triggered();
     void on_actionSNR_analysis_triggered();
+    void on_actionWhite_SNR_analysis_triggered();
     void on_actionSave_frame_as_PNG_triggered();
     void on_actionZoom_In_triggered();
     void on_actionZoom_Out_triggered();
@@ -103,8 +106,6 @@ private slots:
     void on_busyLoading(QString infoMessage);
     void on_finishedLoading();    
 
-    void on_actionWhite_SNR_analysis_triggered();
-
 private:
     Ui::MainWindow *ui;
 
@@ -113,6 +114,7 @@ private:
     AboutDialog* aboutDialog;
     VbiDialog* vbiDialog;
     DropoutAnalysisDialog* dropoutAnalysisDialog;
+    VisibleDropOutAnalysisDialog* visibleDropoutAnalysisDialog;
     BlackSnrAnalysisDialog* blackSnrAnalysisDialog;
     WhiteSnrAnalysisDialog* whiteSnrAnalysisDialog;
     BusyDialog* busyDialog;
