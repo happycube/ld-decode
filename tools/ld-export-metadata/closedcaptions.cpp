@@ -36,6 +36,39 @@
 using std::set;
 using std::vector;
 
+// Generate an SCC format timestamp based on the field index
+QString generateTimeStamp(qint32 fieldIndex)
+{
+    // Set some constants for the timecode calculations
+    double fieldsPerSecond = 29.97 * 2.0;
+    double fieldsPerMinute = fieldsPerSecond * 60;
+    double fieldsPerHour = fieldsPerMinute * 60;
+
+    // Since the subtitle is relative to the video we
+    // can simply calculate the timecode from the sequential
+    // field number (which should work even in the input
+    // is a snippet from a LaserDisc sample
+    //
+    // Note: There should probably be the option to choose if the
+    // subtitle timecodes are relative to the video or the VBI
+    // frame-number/CLV timecode; as both are useful depending on
+    // the use-case?
+    //
+    qint32 hh = static_cast<qint32>((fieldIndex / fieldsPerHour));
+    qint32 mm = static_cast<qint32>((fieldIndex / fieldsPerMinute)) % 60;
+    qint32 ss = (fieldIndex % static_cast<qint32>(fieldsPerMinute)) / fieldsPerSecond;
+    qint32 ff = fieldIndex % static_cast<qint32>(fieldsPerMinute) % static_cast<qint32>(fieldsPerSecond);
+
+    // Output is expecting fields, not frames, so approximate it
+    ff = ff / 2;
+
+    // Create the timestamp
+    return QString("%1").arg(hh, 2, 10, QLatin1Char('0')) + ":" +
+                              QString("%1").arg(mm, 2, 10, QLatin1Char('0')) + ":" +
+                              QString("%1").arg(ss, 2, 10, QLatin1Char('0')) + ";" +
+                              QString("%1").arg(ff, 2, 10, QLatin1Char('0'));
+}
+
 // Extract any available CC data and output it in Scenarist Closed Caption format (SCC) V1.0
 // Protocol description:  http://www.theneitherworld.com/mcpoodle/SCC_TOOLS/DOCS/SCC_FORMAT.HTML
 bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
@@ -62,13 +95,9 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
     // Output the SCC V1.0 header
     stream << "Scenarist_SCC V1.0";
 
-    // Set some constants for the timecode calculations
-    double fieldsPerSecond = 29.97 * 2.0;
-    double fieldsPerMinute = fieldsPerSecond * 60;
-    double fieldsPerHour = fieldsPerMinute * 60;
-
     // Extract the closed captions data and stream to the text file
     bool captionInProgress = false;
+    QString debugCaption;
     for (qint32 fieldIndex = 1; fieldIndex <= videoParameters.numberOfSequentialFields; fieldIndex++) {
         // Get the CC data bytes from the field
         qint32 data0 = metaData.getFieldNtsc(fieldIndex).ccData0;
@@ -80,34 +109,13 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
         } else {
             // Valid
             if (data0 > 0 || data1 > 0) {
-                // Caption data is present, do we need to output a timecode?
                 if (captionInProgress == false) {
-                    // Output a timecode followed by a tab character
+                    // Start of new caption
 
-                    // Since the subtitle is relative to the video we
-                    // can simply calculate the timecode from the sequential
-                    // field number (which should work even in the input
-                    // is a snippet from a LaserDisc sample
-                    //
-                    // Note: There should probably be the option to choose if the
-                    // subtitle timecodes are relative to the video or the VBI
-                    // frame-number/CLV timecode; as both are useful depending on
-                    // the use-case?
-                    //
-                    qint32 hh = static_cast<qint32>((fieldIndex / fieldsPerHour));
-                    qint32 mm = static_cast<qint32>((fieldIndex / fieldsPerMinute)) % 60;
-                    qint32 ss = (fieldIndex % static_cast<qint32>(fieldsPerMinute)) / fieldsPerSecond;
-                    qint32 ff = fieldIndex % static_cast<qint32>(fieldsPerMinute) % static_cast<qint32>(fieldsPerSecond);
-
-                    // Output is expecting fields, not frames, so approximate it
-                    ff = ff / 2;
-
-                    stream << "\n\n";
-                    stream << QString("%1").arg(hh, 2, 10, QLatin1Char('0')) << ":" <<
-                              QString("%1").arg(mm, 2, 10, QLatin1Char('0')) << ":" <<
-                              QString("%1").arg(ss, 2, 10, QLatin1Char('0')) << ";" <<
-                              QString("%1").arg(ff, 2, 10, QLatin1Char('0'));
-                    stream << "\t";
+                    // Output a timecode followed by a tab character (in SCC format)
+                    QString timeStamp = generateTimeStamp(fieldIndex);
+                    stream << "\n\n" << timeStamp << "\t";
+                    debugCaption = "writeClosedCaptions(): Caption data at " + timeStamp + " : [";
 
                     // Set the caption in progress flag
                     captionInProgress = true;
@@ -119,8 +127,30 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
                 stream << QString("%1").arg(data0, 2, 16, QLatin1Char('0'));
                 stream << QString("%1").arg(data1, 2, 16, QLatin1Char('0'));
                 stream << " ";
+
+                // Add the 2 bytes of the data output to the debug caption too
+                if (data0 >= 0x10 && data0 <= 0x1F) {
+                    // This is a command byte, so output a space
+                    debugCaption = debugCaption + " ";
+                } else {
+                    // Normal text - display
+
+                    // Create a string from the two characters
+                    char string[3];
+                    string[0] = static_cast<char>(data0);
+                    string[1] = static_cast<char>(data1);
+                    string[2] = static_cast<char>(0);
+
+                    // Add it to the debug output
+                    debugCaption = debugCaption + QString::fromLocal8Bit(string);
+                }
             } else {
                 // No CC data for this frame
+                if (captionInProgress) {
+                    // End of current caption
+                    debugCaption = debugCaption + "]";
+                    qDebug() << debugCaption;
+                }
                 captionInProgress = false;
             }
         }
