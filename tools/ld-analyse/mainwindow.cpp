@@ -395,6 +395,7 @@ void MainWindow::updateFrameViewer()
     blackSnrAnalysisDialog->updateFrameMarker(currentFrameNumber);
     whiteSnrAnalysisDialog->updateFrameMarker(currentFrameNumber);
     dropoutAnalysisDialog->updateFrameMarker(currentFrameNumber);
+    visibleDropoutAnalysisDialog->updateFrameMarker(currentFrameNumber);
 
     // QT Bug workaround for some macOS versions
     #if defined(Q_OS_MACOS)
