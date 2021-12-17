@@ -284,8 +284,8 @@ def main(use_gui=False):
             # or (args.ignoreleadout == False and vhsd.leadOut == True):
             done = True
 
-    if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
-        jsondumper.put(vhsd.build_json(vhsd.curfield))
+        if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
+            jsondumper.put(vhsd.build_json(vhsd.curfield))
 
     print("saving JSON and exiting")
     cleanup()
