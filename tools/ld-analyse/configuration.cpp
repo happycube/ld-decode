@@ -73,6 +73,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("vbiDialogGeometry", settings.windows.vbiDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
+    configuration->setValue("visibleDropoutAnalysisDialogGeometry", settings.windows.visibleDropoutAnalysisDialogGeometry);
     configuration->setValue("blackSnrAnalysisDialogGeometry", settings.windows.blackSnrAnalysisDialogGeometry);
     configuration->setValue("whiteSnrAnalysisDialogGeometry", settings.windows.whiteSnrAnalysisDialogGeometry);
     configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
@@ -104,6 +105,7 @@ void Configuration::readConfiguration(void)
     settings.windows.vbiDialogGeometry = configuration->value("vbiDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
+    settings.windows.visibleDropoutAnalysisDialogGeometry = configuration->value("visibleDropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.blackSnrAnalysisDialogGeometry = configuration->value("blackSnrAnalysisDialogGeometry").toByteArray();
     settings.windows.whiteSnrAnalysisDialogGeometry = configuration->value("whiteSnrAnalysisDialogGeometry").toByteArray();
     settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
@@ -126,6 +128,7 @@ void Configuration::setDefault(void)
     settings.windows.vbiDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
+    settings.windows.visibleDropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.blackSnrAnalysisDialogGeometry = QByteArray();
     settings.windows.whiteSnrAnalysisDialogGeometry = QByteArray();
     settings.windows.closedCaptionDialogGeometry = QByteArray();
@@ -207,6 +210,16 @@ void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisD
 QByteArray Configuration::getDropoutAnalysisDialogGeometry(void)
 {
     return settings.windows.dropoutAnalysisDialogGeometry;
+}
+
+void Configuration::setVisibleDropoutAnalysisDialogGeometry(QByteArray visibleDropoutAnalysisDialogGeometry)
+{
+    settings.windows.visibleDropoutAnalysisDialogGeometry = visibleDropoutAnalysisDialogGeometry;
+}
+
+QByteArray Configuration::getVisibleDropoutAnalysisDialogGeometry(void)
+{
+    return settings.windows.visibleDropoutAnalysisDialogGeometry;
 }
 
 void Configuration::setBlackSnrAnalysisDialogGeometry(QByteArray blackSnrAnalysisDialogGeometry)

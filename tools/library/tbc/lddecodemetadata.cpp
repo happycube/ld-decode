@@ -91,6 +91,9 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         videoParameters.fsc = json.value({"videoParameters", "fsc"}).toInt();
 
         videoParameters.isMapped = json.value({"videoParameters", "isMapped"}).toBool();
+
+        videoParameters.gitBranch = json.value({"videoParameters", "gitBranch"}).toString();
+        videoParameters.gitCommit = json.value({"videoParameters", "gitCommit"}).toString();
     } else {
         qCritical("JSON file invalid: videoParameters object is not defined");
         return videoParameters;
@@ -152,6 +155,9 @@ void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _vi
     json.setValue({"videoParameters", "fsc"}, _videoParameters.fsc);
 
     json.setValue({"videoParameters", "isMapped"}, _videoParameters.isMapped);
+
+    json.setValue({"videoParameters", "gitBranch"}, _videoParameters.gitBranch);
+    json.setValue({"videoParameters", "gitCommit"}, _videoParameters.gitCommit);
 }
 
 // This method returns the pcmAudioParameters metadata
@@ -199,6 +205,11 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
     field.medianBurstIRE = json.value({"fields", fieldNumber, "medianBurstIRE"}).toDouble();
     field.fieldPhaseID = json.value({"fields", fieldNumber, "fieldPhaseID"}).toInt();
     field.audioSamples = json.value({"fields", fieldNumber, "audioSamples"}).toInt();
+
+    field.diskLoc = json.value({"fields", fieldNumber, "diskLoc"}).toInt();
+    field.fileLoc = json.value({"fields", fieldNumber, "fileLoc"}).toInt();
+    field.decodeFaults = json.value({"fields", fieldNumber, "decodeFaults"}).toInt();
+    field.efmTValues = json.value({"fields", fieldNumber, "efmTValues"}).toInt();
 
     // VITS metrics values
     field.vitsMetrics = getFieldVitsMetrics(sequentialFieldNumber);
@@ -355,6 +366,11 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
     json.setValue({"fields", fieldNumber, "medianBurstIRE"}, _field.medianBurstIRE);
     json.setValue({"fields", fieldNumber, "fieldPhaseID"}, _field.fieldPhaseID);
     json.setValue({"fields", fieldNumber, "audioSamples"}, _field.audioSamples);
+
+    json.setValue({"fields", fieldNumber, "diskLoc"}, _field.diskLoc);
+    json.setValue({"fields", fieldNumber, "fileLoc"}, _field.fileLoc);
+    json.setValue({"fields", fieldNumber, "decodeFaults"}, _field.decodeFaults);
+    json.setValue({"fields", fieldNumber, "efmTValues"}, _field.efmTValues);
 
     // Write the VITS metrics data if in use
     updateFieldVitsMetrics(_field.vitsMetrics, sequentialFieldNumber);

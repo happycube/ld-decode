@@ -15,6 +15,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    closedcaptions.cpp \
     csv.cpp \
     ffmetadata.cpp \
     main.cpp \
@@ -24,6 +25,7 @@ SOURCES += \
     ../library/tbc/dropouts.cpp
 
 HEADERS += \
+    closedcaptions.h \
     csv.h \
     ffmetadata.h \
     ../library/tbc/lddecodemetadata.h \

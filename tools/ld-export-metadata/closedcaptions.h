@@ -1,13 +1,14 @@
 /************************************************************************
 
-    whiteflag.h
+    closedcaptions.cpp
 
-    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018-2021 Simon Inns
+    ld-export-metadata - Export JSON metadata into other formats
+    Copyright (C) 2019-2020 Adam Sampson
+    Copyright (C) 2021 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-process-vbi is free software: you can redistribute it and/or
+    ld-export-metadata is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,16 +23,15 @@
 
 ************************************************************************/
 
-#ifndef WHITEFLAG_H
-#define WHITEFLAG_H
+#ifndef CLOSEDCAPTIONS_H
+#define CLOSEDCAPTIONS_H
 
-#include "sourcevideo.h"
+#include <QString>
+
 #include "lddecodemetadata.h"
 
-class WhiteFlag
-{
-public:
-    bool getWhiteFlag(const SourceVideo::Data &activeLineData, LdDecodeMetaData::VideoParameters videoParameters);
-};
+QString generateTimeStamp(qint32 fieldIndex);
+qint32 sanityCheckData(qint32 dataByte);
+bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName);
 
-#endif // WHITEFLAG_H
+#endif // CLOSEDCAPTIONS_H

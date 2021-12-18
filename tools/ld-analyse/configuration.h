@@ -58,8 +58,10 @@ public:
     QByteArray getVbiDialogGeometry(void);
     void setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry);
     QByteArray getOscilloscopeDialogGeometry(void);
-    void setDropoutAnalysisDialogGeometry(QByteArray videoMetadataDialogGeometry);
+    void setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisDialogGeometry);
     QByteArray getDropoutAnalysisDialogGeometry(void);
+    void setVisibleDropoutAnalysisDialogGeometry(QByteArray visibleDropoutDialogGeometry);
+    QByteArray getVisibleDropoutAnalysisDialogGeometry(void);
     void setBlackSnrAnalysisDialogGeometry(QByteArray blackSnrAnalysisDialogGeometry);
     QByteArray getBlackSnrAnalysisDialogGeometry(void);
     void setWhiteSnrAnalysisDialogGeometry(QByteArray whiteSnrAnalysisDialogGeometry);
@@ -89,6 +91,7 @@ private:
         QByteArray vbiDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
+        QByteArray visibleDropoutAnalysisDialogGeometry;
         QByteArray blackSnrAnalysisDialogGeometry;
         QByteArray whiteSnrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
