@@ -8,20 +8,29 @@ CXADC_TENBIT_FREQ = (8 * 315.0) / 88.0 / 2.0  # 14.318181818
 CXADC_TENBIT_FREQ_HIGH = 3150.0 / 88.0 / 2.0  # 17.897727272
 
 
+def add_argument_hidden_in_gui(parser, use_gui, *args, **kwargs):
+    if use_gui:
+        parser.add_argument(*args, **kwargs, gooey_options={'visible': False})
+    else:
+        parser.add_argument(*args, **kwargs)
+
+
 def common_parser(meta_title, use_gui=False):
     if not use_gui:
         return common_parser_cli(meta_title)
     else:
         return common_parser_gui(meta_title)
 
+
 def common_parser_gui(meta_title):
     from gooey import Gooey, GooeyParser
 
-    @Gooey
+    @Gooey(program_name='VHS decode')
     def common_parser_gui_inner(meta_title):
         parser = GooeyParser(description=meta_title)
         parser.add_argument("infile", metavar="infile", type=str, help="source file", widget="FileChooser")
-        return common_parser_inner(parser)
+        parser.add_argument("outfile", metavar="outfile", type=str, help="source file", widget="FileSaver")
+        return common_parser_inner(parser, True)
 
     return common_parser_gui_inner(meta_title)
 
@@ -29,6 +38,9 @@ def common_parser_gui(meta_title):
 def common_parser_cli(meta_title):
     parser = argparse.ArgumentParser(description=meta_title)
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
+    parser.add_argument(
+        "outfile", metavar="outfile", type=str, help="base name for destination files"
+    )
     # help="Disable AGC (deprecated, already disabled by default)
     parser.add_argument(
         "--noAGC",
@@ -44,15 +56,13 @@ def common_parser_cli(meta_title):
     return common_parser_inner(parser)
 
 
-def common_parser_inner(parser):
+def common_parser_inner(parser, use_gui=False):
     parser.add_argument(
         "--system", metavar="system", type=str.upper,
         help="video system (overriden by individual options)", default="NTSC", choices=["PAL", "PALM", "NTSC"]
     )
-    parser.add_argument(
-        "outfile", metavar="outfile", type=str, help="base name for destination files"
-    )
-    parser.add_argument(
+    file_options_group = parser.add_argument_group("File options")
+    file_options_group.add_argument(
         "-s",
         "--start",
         metavar="start",
@@ -60,14 +70,14 @@ def common_parser_inner(parser):
         default=0,
         help="rough jump to frame n of capture (default is 0)",
     )
-    parser.add_argument(
+    file_options_group.add_argument(
         "--start_fileloc",
         metavar="start_fileloc",
         type=float,
         default=-1,
         help="jump to precise sample # in the file",
     )
-    parser.add_argument(
+    file_options_group.add_argument(
         "-l",
         "--length",
         metavar="length",
@@ -157,17 +167,23 @@ def common_parser_inner(parser):
     )
 
     system_group = parser.add_argument_group('Video system options')
-    system_group.add_argument(
+    add_argument_hidden_in_gui(
+        system_group,
+        use_gui,
         "-p", "--pal", dest="pal", action="store_true", help="source is in PAL format"
     )
-    system_group.add_argument(
+    add_argument_hidden_in_gui(
+        system_group,
+        use_gui,
         "-n",
         "--ntsc",
         dest="ntsc",
         action="store_true",
         help="source is in NTSC format",
     )
-    system_group.add_argument(
+    add_argument_hidden_in_gui(
+        system_group,
+        use_gui,
         "-pm",
         "--palm",
         dest="palm",

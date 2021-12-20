@@ -36,6 +36,103 @@ def main(use_gui=False):
             default=False,
             help=argparse.SUPPRESS,
         )
+    parser.add_argument(
+        "-tf",
+        "--tape_format",
+        type=str.upper,
+        metavar="tape_format",
+        default="VHS",
+        choices=supported_tape_formats,
+        help="Tape format, currently VHS (Default), SVHS or UMATIC are supported.",
+    )
+    luma_group = parser.add_argument_group("Luma decoding options")
+    luma_group.add_argument(
+        "-L",
+        "--level_adjust",
+        dest="level_adjust",
+        metavar="IRE Multiplier",
+        type=float,
+        default=0.1,
+        help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
+    )
+    luma_group.add_argument(
+        "--high_boost",
+        metavar="High frequency boost multiplier",
+        type=float,
+        default=None,
+        help="Multiplier for boost to high rf frequencies, uses default if not specified. Subject to change.",
+    )
+    luma_group.add_argument(
+        "-nodd",
+        "--no_diff_demod",
+        dest="disable_diff_demod",
+        action="store_true",
+        default=False,
+        help="Disable diff demod",
+    )
+    luma_group.add_argument(
+        "-noclamp",
+        "--no_clamping",
+        dest="disable_dc_offset",
+        action="store_true",
+        default=False,
+        help="Disable blanking DC offset clamping/compensation",
+    )
+    luma_group.add_argument(
+        "-nld",
+        "--non_linear_deemphasis",
+        dest="nldeemp",
+        action="store_true",
+        default=False,
+        help="Enable non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
+    )
+    chroma_group = parser.add_argument_group("Chroma decoding options")
+    chroma_group.add_argument(
+        "-cafc",
+        "--chroma_AFC",
+        dest="cafc",
+        action="store_true",
+        default=False,
+        help="Enable downconverted chroma carrier AFC (Automatic freq. control), implies --recheck_phase",
+    )
+    chroma_group.add_argument(
+        "-T",
+        "--track_phase",
+        metavar="Track phase",
+        type=int,
+        default=None,
+        help="If set to 0 or 1, force use of video track phase. (No effect on U-matic)",
+    )
+    chroma_group.add_argument(
+        "--recheck_phase",
+        dest="recheck_phase",
+        action="store_true",
+        default=False,
+        help="Re-check chroma phase on every field. (No effect on U-matic)",
+    )
+    chroma_group.add_argument(
+        "-nocomb",
+        "--no_comb",
+        dest="disable_comb",
+        action="store_true",
+        default=False,
+        help="Disable internal chroma comb filter.",
+    )
+    plot_options = "demodblock"
+    debug_group.add_argument(
+        "-dp",
+        "--debug_plot",
+        dest="debug_plot",
+        help="Do a plot for the requested data, separated by whitespace. Current options are: " + plot_options + "."
+    )
+    debug_group.add_argument(
+        "-sclip",
+        "--sync_clip",
+        dest="sync_clip",
+        action="store_true",
+        default=False,
+        help="Enables sync clipping",
+    )
     dodgroup = parser.add_argument_group("Dropout detection options")
     dodgroup.add_argument(
         "--noDOD",
@@ -71,102 +168,6 @@ def main(use_gui=False):
         type=float,
         default=f.DEFAULT_HYSTERESIS,
         help="Dropout detection hysteresis, the rf level needs to go above the dropout threshold multiplied by this for a dropout to end.",
-    )
-    parser.add_argument(
-        "-L",
-        "--level_adjust",
-        dest="level_adjust",
-        metavar="value",
-        type=float,
-        default=0.1,
-        help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
-    )
-    parser.add_argument(
-        "-tf",
-        "--tape_format",
-        type=str.upper,
-        metavar="tape_format",
-        default="VHS",
-        choices=supported_tape_formats,
-        help="Tape format, currently VHS (Default), SVHS or UMATIC are supported.",
-    )
-    parser.add_argument(
-        "--high_boost",
-        metavar="high_boost",
-        type=float,
-        default=None,
-        help="Multiplier for boost to high rf frequencies, uses default if not specified. Subject to change.",
-    )
-    parser.add_argument(
-        "-nodd",
-        "--no_diff_demod",
-        dest="disable_diff_demod",
-        action="store_true",
-        default=False,
-        help="Disable diff demod",
-    )
-    parser.add_argument(
-        "-noclamp",
-        "--no_clamping",
-        dest="disable_dc_offset",
-        action="store_true",
-        default=False,
-        help="Disable blanking DC offset clamping/compensation",
-    )
-    parser.add_argument(
-        "-nld",
-        "--non_linear_deemphasis",
-        dest="nldeemp",
-        action="store_true",
-        default=False,
-        help="Enable non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
-    )
-    chroma_group = parser.add_argument_group("Chroma options")
-    chroma_group.add_argument(
-        "-nocomb",
-        "--no_comb",
-        dest="disable_comb",
-        action="store_true",
-        default=False,
-        help="Disable internal chroma comb filter.",
-    )
-    chroma_group.add_argument(
-        "-cafc",
-        "--chroma_AFC",
-        dest="cafc",
-        action="store_true",
-        default=False,
-        help="Enable downconverted chroma carrier AFC (Automatic freq. control), implies --recheck_phase",
-    )
-    chroma_group.add_argument(
-        "-T",
-        "--track_phase",
-        metavar="track_phase",
-        type=int,
-        default=None,
-        help="If set to 0 or 1, force use of video track phase. (No effect on U-matic)",
-    )
-    chroma_group.add_argument(
-        "--recheck_phase",
-        dest="recheck_phase",
-        action="store_true",
-        default=False,
-        help="Re-check chroma phase on every field. (No effect on U-matic)",
-    )
-    parser.add_argument(
-        "-sclip",
-        "--sync_clip",
-        dest="sync_clip",
-        action="store_true",
-        default=False,
-        help="Enables sync clipping",
-    )
-    plot_options = "demodblock"
-    debug_group.add_argument(
-        "-dp",
-        "--debug_plot",
-        dest="debug_plot",
-        help="Do a plot for the requested data, separated by whitespace. Current options are: " + plot_options + "."
     )
 
     args = parser.parse_args()
