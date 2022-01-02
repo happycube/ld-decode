@@ -3915,12 +3915,14 @@ class LDdecode:
                     self.logger.status(outstr)
 
                     # Prepare JSON fields
-                    if self.frameNumber is not None:
-                        fi["frameNumber"] = int(self.frameNumber)
+                    if self.verboseVITS:
+                        if self.frameNumber is not None:
+                            fi["cavFrameNr"] = int(self.frameNumber)
 
-                    if self.verboseVITS and self.isCLV and self.clvMinutes is not None:
-                        fi["clvMinutes"] = int(self.clvMinutes)
-                        if not self.earlyCLV:
+                        if self.isCLV and self.clvMinutes is not None:
+                            fi["clvMinutes"] = int(self.clvMinutes)
+                        
+                        if self.isCLV and not self.earlyCLV:
                             fi["clvSeconds"] = int(self.clvSeconds)
                             fi["clvFrameNr"] = int(self.clvFrameNum)
                 except Exception:
