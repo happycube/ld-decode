@@ -126,15 +126,15 @@ class CXExpander:
         for i in range(len(fleft)):
             highest = max(np.abs(fleft[i]), np.abs(fright[i]))
 
-            # The filter itself
-            # XXX: NOT CORRECT YET!
+            # The filter itself - still needs tuning!
             #self.fast = (self.fast * .999375) + (highest * .000625)
             #self.fast = (self.fast * .998) + (highest * .00165)
-            self.fast = (self.fast * .9994) + (highest * .004)
+            #self.fast = (self.fast * .9994) + (highest * .004)
+            #self.fast = (self.fast * .994) + (highest * .00625)
+            self.fast = (self.fast * .999) + (highest * .001)
             self.slow = (self.slow * .9998) + (highest * .000212)
 
-            lev = max(((self.fast - 1) / 6.4) + 1, self.slow)
-            #lev = self.slow
+            lev = max(self.fast, self.slow)
 
             mdb = lev_to_db(lev / self.zerodb)
             mfactor = max(m6db, (db_to_lev(mdb - self.knee) / 2))
@@ -181,7 +181,7 @@ while True:
     
     output, output_level = cxe.process(indata[::2], indata[1::2])
     fd_out.write(output)
-#    dbg_out.write(output_level)
+    #dbg_out.write(output_level)
 
     indata_raw = indata_raw[-(cxe.margin * 2)*4:]
     
