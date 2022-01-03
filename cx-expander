@@ -107,6 +107,7 @@ class CXExpander:
 
         output_len = (len(left) - (self.margin * 2)) * 2
         output = np.zeros(output_len, dtype=np.float32)
+        output_level = np.zeros(output_len // 2, dtype=np.float32)
         output16 = np.zeros(output_len, dtype=np.int16)
 
         # note at least right now margins don't need to be done beginning/end, but 
@@ -118,7 +119,8 @@ class CXExpander:
         lfright = sps.lfilter(a500l_44k[0], a500l_44k[1], right)[self.margin:-self.margin]
         
         m6db = db_to_lev(-6)
-        
+        adj = 1/(np.sqrt(2)*2) 
+
         #print(rms(fleft), rms(fright), file=sys.stderr)
 
         for i in range(len(fleft)):
@@ -132,22 +134,26 @@ class CXExpander:
             self.slow = (self.slow * .9998) + (highest * .000212)
 
             lev = max(((self.fast - 1) / 6.4) + 1, self.slow)
-            lev = self.slow
+            #lev = self.slow
 
             mdb = lev_to_db(lev / self.zerodb)
             mfactor = max(m6db, (db_to_lev(mdb - self.knee) / 2))
-            
-            output[(i * 2)] = m6db * (fleft[i] * mfactor)
-            output[(i * 2) + 1] = m6db * (fright[i] * mfactor)
+
+            output_level[i] = mfactor
+
+            output[(i * 2)] = adj * (left[i] * mfactor)
+            output[(i * 2) + 1] = adj * (right[i] * mfactor)
 
         np.clip(output, -32766, 32766, out=output16)
-        return output16
+        return output16, output_level
     
 cxe = CXExpander()
 
 # For now just pipe
 fd_in = sys.stdin.buffer # open('soundtest.pcm', 'rb')
 fd_out = sys.stdout.buffer # open('soundtest.cx.pcm', 'wb')
+
+#dbg_out = open('cx.levelout', 'wb')
 
 i = 0
 
@@ -173,8 +179,9 @@ while True:
         
     indata = np.frombuffer(indata_raw, 'int16', len(indata_raw) // 2)
     
-    output = cxe.process(indata[::2], indata[1::2])
+    output, output_level = cxe.process(indata[::2], indata[1::2])
     fd_out.write(output)
+#    dbg_out.write(output_level)
 
     indata_raw = indata_raw[-(cxe.margin * 2)*4:]
     
