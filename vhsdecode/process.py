@@ -19,6 +19,7 @@ from vhsdecode.chroma import (
     try_detect_track_vhs_ntsc,
     get_field_phase_id,
 )
+from vhsdecode.linelocs import valid_pulses_to_linelocs
 from vhsdecode.doc import detect_dropouts_rf
 
 import vhsdecode.formats as vhs_formats
@@ -82,12 +83,14 @@ def getpulses_override(field):
 
 class FieldShared:
     def refinepulses(self):
+        from numba.typed import List
+
         LT = self.get_timings()
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
         i = 0
-        valid_pulses = []
+        valid_pulses = List()
         num_vblanks = 0
 
         Pulse = namedtuple("Pulse", "start len")
@@ -158,15 +161,17 @@ class FieldShared:
         if self.rf.system == "PAL":
             proclines += 3
 
+        lastlineloc_or_0 = lastlineloc
+
         # It's possible for getLine0 to return None for lastlineloc
         if lastlineloc is not None:
             numlines = (lastlineloc - line0loc) / self.inlinelen
             self.skipdetected = numlines < (self.linecount - 5)
         else:
+            # Make sure we set this to 0 and not None for numba
+            # to be able to compile valid_pulses_to_linelocs correctly.
+            lastlineloc_or_0 = 0.0
             self.skipdetected = False
-
-        linelocs_dict = {}
-        linelocs_dist = {}
 
         if line0loc is None:
             if self.initphase is False:
@@ -183,41 +188,15 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        for p in validpulses:
-            lineloc = (p[1].start - line0loc) / meanlinelen
-            rlineloc = ldd.nb_round(lineloc)
-            lineloc_distance = np.abs(lineloc - rlineloc)
-
-            if self.skipdetected:
-                lineloc_end = self.linecount - (
-                    (lastlineloc - p[1].start) / meanlinelen
-                )
-                rlineloc_end = ldd.nb_round(lineloc_end)
-                lineloc_end_distance = np.abs(lineloc_end - rlineloc_end)
-
-                if (
-                    p[0] == 0
-                    and rlineloc > 23
-                    and lineloc_end_distance < lineloc_distance
-                ):
-                    lineloc = lineloc_end
-                    rlineloc = rlineloc_end
-                    lineloc_distance = lineloc_end_distance
-
-            # only record if it's closer to the (probable) beginning of the line
-            if lineloc_distance > self.rf.hsync_tolerance or (
-                rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]
-            ):
-                continue
-
-            # also skip non-regular lines (non-hsync) that don't seem to be in valid order (p[2])
-            # (or hsync lines in the vblank area)
-            if rlineloc > 0 and not p[2]:
-                if p[0] > 0 or (p[0] == 0 and rlineloc < 10):
-                    continue
-
-            linelocs_dict[rlineloc] = p[1].start
-            linelocs_dist[rlineloc] = lineloc_distance
+        linelocs_dict, linelocs_dist = valid_pulses_to_linelocs(
+            validpulses,
+            line0loc,
+            self.skipdetected,
+            meanlinelen,
+            self.linecount,
+            self.rf.hsync_tolerance,
+            lastlineloc_or_0,
+        )
 
         rv_err = np.full(proclines, False)
 
@@ -319,11 +298,11 @@ class FieldShared:
             #     ax1.axvline(raw_pulse.start, color="#910000")
             #     ax1.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
 
-            for valid_pulse in validpulses:
-                if valid_pulse[0] != 0:
-                    color = "#FF0000" if valid_pulse[0] == 2 else "#00FF00"
-                    ax1.axvline(valid_pulse[1][0], color=color)
-                    ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+            # for valid_pulse in validpulses:
+            #     if valid_pulse[0] != 0:
+            #         color = "#FF0000" if valid_pulse[0] == 2 else "#00FF00"
+            #         ax1.axvline(valid_pulse[1][0], color=color)
+            #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
 
             ax1.axvline(line0loc, color="000000")
 
@@ -351,6 +330,168 @@ class FieldShared:
             nextfield = self.vblank_next - (self.inlinelen * 8)
 
         return rv_ll, rv_err, nextfield
+
+    def refine_linelocs_hsync(self):
+        """Refine the line start locations using horizontal sync data."""
+        linelocs2 = self.linelocs1.copy()
+        normal_hsync_length = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
+        # right_locs = np.array(linelocs2) + normal_hsync_length
+        # hsync_from_right = np.array(linelocs2.copy())
+        demod_05 = self.data["video"]["demod_05"]
+        one_msec = self.rf.freq
+
+        for i in range(len(self.linelocs1)):
+            # skip VSYNC lines, since they handle the pulses differently
+            if inrange(i, 3, 6) or (self.rf.system == "PAL" and inrange(i, 1, 2)):
+                self.linebad[i] = True
+                continue
+
+            # refine beginning of hsync
+
+            # start looking 1 msec back
+            ll1 = self.linelocs1[i] - one_msec
+            # and locate the next time the half point between hsync and 0 is crossed.
+            zc = lddu.calczc(
+                demod_05,
+                ll1,
+                self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2),
+                reverse=False,
+                count=one_msec * 2,
+            )
+
+            right_cross = None
+
+            if not self.rf.options.disable_right_hsync:
+                right_cross = lddu.calczc(
+                    demod_05,
+                    ll1 + (normal_hsync_length) - one_msec,
+                    self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2),
+                    reverse=False,
+                    count=one_msec * 3,
+                )
+            right_cross_refined = False
+
+            # If the crossing exists, we can check if the hsync pulse looks normal and
+            # refine it.
+            if zc is not None and not self.linebad[i]:
+                linelocs2[i] = zc
+
+                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                hsync_area = demod_05[
+                    int(zc - (one_msec * 0.75)) : int(zc + (one_msec * 8))
+                ]
+                if lddu.nb_min(hsync_area) < self.rf.iretohz(-55) or lddu.nb_max(
+                    hsync_area
+                ) > self.rf.iretohz(30):
+                    # don't use the computed value here if it's bad
+                    self.linebad[i] = True
+                    linelocs2[i] = self.linelocs1[i]
+                else:
+                    porch_level = lddu.nb_median(
+                        demod_05[int(zc + (one_msec * 8)) : int(zc + (one_msec * 9))]
+                    )
+                    sync_level = lddu.nb_median(
+                        demod_05[int(zc + (one_msec * 1)) : int(zc + (one_msec * 2.5))]
+                    )
+
+                    # Re-calculate the crossing point using the mid point between the measured sync
+                    # and porch levels
+                    zc2 = lddu.calczc(
+                        demod_05,
+                        ll1,
+                        (porch_level + sync_level) / 2,
+                        reverse=False,
+                        count=400,
+                    )
+
+                    # any wild variation here indicates a failure
+                    if zc2 is not None and np.abs(zc2 - zc) < (one_msec / 2):
+                        linelocs2[i] = zc2
+                    else:
+                        self.linebad[i] = True
+            else:
+                self.linebad[i] = True
+
+            # Check right cross
+            if right_cross is not None:
+                zc2 = None
+
+                zc_fr = right_cross - normal_hsync_length
+
+                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                hsync_area = demod_05[
+                    int(zc_fr - (one_msec * 0.75)) : int(zc_fr + (one_msec * 8))
+                ]
+                if lddu.nb_min(hsync_area) > self.rf.iretohz(-55) and lddu.nb_max(
+                    hsync_area
+                ) < self.rf.iretohz(30):
+                    porch_level = lddu.nb_median(
+                        demod_05[
+                            int(zc_fr + (one_msec * 8)) : int(zc_fr + (one_msec * 9))
+                        ]
+                    )
+                    sync_level = lddu.nb_median(
+                        demod_05[
+                            int(zc_fr + (one_msec * 1)) : int(zc_fr + (one_msec * 2.5))
+                        ]
+                    )
+
+                    # Re-calculate the crossing point using the mid point between the measured sync
+                    # and porch levels
+                    zc2 = lddu.calczc(
+                        demod_05,
+                        ll1 + normal_hsync_length - one_msec,
+                        (porch_level + sync_level) / 2,
+                        reverse=False,
+                        count=400,
+                    )
+
+                    # any wild variation here indicates a failure
+                    if zc2 is not None and np.abs(zc2 - right_cross) < (one_msec / 2):
+                        right_cross = zc2
+                        right_cross_refined = True
+
+            if self.linebad[i]:
+                linelocs2[i] = self.linelocs1[
+                    i
+                ]  # don't use the computed value here if it's bad
+
+            if right_cross is not None:
+                # right_locs[i] = right_cross
+                # hsync_from_right[i] = right_cross - normal_hsync_length + 2.25
+
+                # If we get a good result from calculating hsync start from the
+                # right side of the hsync pulse, we use that as it's less likely
+                # to be messed up by overshoot.
+                if right_cross_refined:
+                    self.linebad[i] = False
+                    linelocs2[i] = right_cross - normal_hsync_length + 2.25
+
+        if False:
+            import matplotlib.pyplot as plt
+
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+            ax1.plot(self.data["video"]["demod_05"])
+
+            sync, blank = self.rf.resync.VsyncSerration.getLevels()
+
+            ax1.axhline(sync, color="#FF0000")
+            ax1.axhline(blank, color="#00FF00")
+
+            for raw_pulse in linelocs2:
+                ax1.axvline(raw_pulse, color="#910000")
+
+            for raw_pulse in right_locs:
+                ax1.axvline(raw_pulse, color="#000000")
+
+            for raw_pulse in hsync_from_right:
+                ax1.axvline(raw_pulse, color="#00FF00")
+
+            ax2.plot(linelocs2, hsync_from_right - linelocs2)
+
+            plt.show()
+
+        return linelocs2
 
     def getBlankRange(self, validpulses, start=0):
         """Look through pulses to fit a group that fit as a blanking area.
@@ -604,9 +745,8 @@ class VHSDecode(ldd.LDdecode):
         level_adjust=0,
         rf_options={},
         extra_options={},
-        debug_plot=None
+        debug_plot=None,
     ):
-
 
         super(VHSDecode, self).__init__(
             fname_in,
@@ -628,7 +768,7 @@ class VHSDecode(ldd.LDdecode):
             inputfreq=inputfreq,
             rf_options=rf_options,
             extra_options=extra_options,
-            debug_plot=debug_plot
+            debug_plot=debug_plot,
         )
         self.rf.chroma_last_field = -1
         self.rf.chroma_tbc_buffer = np.array([])
@@ -856,12 +996,14 @@ class VHSRFDecode(ldd.RFDecode):
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
         # can't be changed later.
         self.options = namedtuple(
-            "Options", "diff_demod_check_value tape_format disable_comb nldeemp"
+            "Options",
+            "diff_demod_check_value tape_format disable_comb nldeemp disable_right_hsync",
         )(
             self.iretohz(100) * 2,
             tape_format,
             rf_options.get("disable_comb", False),
             rf_options.get("nldeemp", False),
+            rf_options.get("disable_right_hsync", False),
         )
 
         # Store a separate setting for *color* system as opposed to 525/625 line here.
@@ -1363,8 +1505,14 @@ class VHSRFDecode(ldd.RFDecode):
 
         if self.debug_plot and self.debug_plot.is_plot_requested("demodblock"):
             from vhsdecode.debug_plot import plot_input_data
-            plot_input_data(raw_data=data, raw_fft=indata_fft, demod_video=demod, filtered_video=out_video, rfdecode=self)
 
+            plot_input_data(
+                raw_data=data,
+                raw_fft=indata_fft,
+                demod_video=demod,
+                filtered_video=out_video,
+                rfdecode=self,
+            )
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(

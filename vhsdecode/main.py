@@ -19,7 +19,10 @@ supported_tape_formats = {"VHS", "SVHS", "UMATIC"}
 
 def main(use_gui=False):
     import vhsdecode.formats as f
-    parser, debug_group = common_parser("Extracts video from raw VHS rf captures", use_gui=use_gui)
+
+    parser, debug_group = common_parser(
+        "Extracts video from raw VHS rf captures", use_gui=use_gui
+    )
     if not use_gui:
         parser.add_argument(
             "--doDOD",
@@ -123,7 +126,9 @@ def main(use_gui=False):
         "-dp",
         "--debug_plot",
         dest="debug_plot",
-        help="Do a plot for the requested data, separated by whitespace. Current options are: " + plot_options + "."
+        help="Do a plot for the requested data, separated by whitespace. Current options are: "
+        + plot_options
+        + ".",
     )
     debug_group.add_argument(
         "-sclip",
@@ -132,6 +137,14 @@ def main(use_gui=False):
         action="store_true",
         default=False,
         help="Enables sync clipping",
+    )
+    debug_group.add_argument(
+        "-drh",
+        "--disable_right_hsync",
+        dest="disable_right_hsync",
+        action="store_true",
+        default=False,
+        help="Disable use of right side of hsync for lineloc detection (old behaviour)",
     )
     dodgroup = parser.add_argument_group("Dropout detection options")
     dodgroup.add_argument(
@@ -200,6 +213,7 @@ def main(use_gui=False):
     rf_options["nldeemp"] = args.nldeemp
     rf_options["cafc"] = args.cafc
     rf_options["sync_clip"] = args.sync_clip
+    rf_options["disable_right_hsync"] = args.disable_right_hsync
 
     extra_options = get_extra_options(args, not use_gui)
 
@@ -217,11 +231,14 @@ def main(use_gui=False):
         logger.warning("Tape format %s not supported! Defaulting to VHS", tape_format)
 
     if not use_gui and args.dodod:
-        logger.warning("--doDOD is deprecated, dod is on by default, use noDOD to turn off.")
+        logger.warning(
+            "--doDOD is deprecated, dod is on by default, use noDOD to turn off."
+        )
 
     debug_plot = None
     if args.debug_plot:
         from vhsdecode.debug_plot import DebugPlot
+
         debug_plot = DebugPlot(args.debug_plot)
 
     # Initialize VHS decoder
@@ -250,7 +267,6 @@ def main(use_gui=False):
     else:
         vhsd.roughseek(firstframe * 2)
 
-
     if system == "NTSC" and not args.ntscj:
         vhsd.blackIRE = 7.5
 
@@ -272,7 +288,8 @@ def main(use_gui=False):
             exit(1)
         except Exception as err:
             print(
-                "\nERROR - please paste the following into a bug report:", file=sys.stderr
+                "\nERROR - please paste the following into a bug report:",
+                file=sys.stderr,
             )
             print("current sample:", vhsd.fdoffset, file=sys.stderr)
             print("arguments:", args, file=sys.stderr)
