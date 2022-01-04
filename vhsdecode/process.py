@@ -30,6 +30,7 @@ from vhsdecode.addons.resync import Resync
 from vhsdecode.addons.chromaAFC import ChromaAFC
 
 from numba import njit
+from numba.typed import List as TypedList
 
 # Use PyFFTW's faster FFT implementation if available
 try:
@@ -83,17 +84,14 @@ def getpulses_override(field):
 
 class FieldShared:
     def refinepulses(self):
-        from numba.typed import List
-
         LT = self.get_timings()
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
         i = 0
-        valid_pulses = List()
-        num_vblanks = 0
-
         Pulse = namedtuple("Pulse", "start len")
+        valid_pulses = []
+        num_vblanks = 0
 
         while i < len(self.rawpulses):
             curpulse = self.rawpulses[i]
@@ -189,7 +187,7 @@ class FieldShared:
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
         linelocs_dict, linelocs_dist = valid_pulses_to_linelocs(
-            validpulses,
+            TypedList(validpulses),
             line0loc,
             self.skipdetected,
             meanlinelen,
