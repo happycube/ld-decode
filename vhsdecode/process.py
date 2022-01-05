@@ -186,8 +186,15 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
+        # Numba prefers we use a numba typed list, or we will get
+        # deprection warnings.
+        validpulses_typed = TypedList()
+        # Need to initialize this manually as constructor didn't take
+        # arguments in older versions of numba.
+        [validpulses_typed.append(p) for p in validpulses]
+
         linelocs_dict, linelocs_dist = valid_pulses_to_linelocs(
-            TypedList(validpulses),
+            validpulses_typed,
             line0loc,
             self.skipdetected,
             meanlinelen,
@@ -336,7 +343,7 @@ class FieldShared:
         # right_locs = np.array(linelocs2) + normal_hsync_length
         # hsync_from_right = np.array(linelocs2.copy())
         demod_05 = self.data["video"]["demod_05"]
-        one_msec = self.rf.freq
+        one_usec = self.rf.freq
 
         for i in range(len(self.linelocs1)):
             # skip VSYNC lines, since they handle the pulses differently
@@ -347,14 +354,14 @@ class FieldShared:
             # refine beginning of hsync
 
             # start looking 1 msec back
-            ll1 = self.linelocs1[i] - one_msec
+            ll1 = self.linelocs1[i] - one_usec
             # and locate the next time the half point between hsync and 0 is crossed.
             zc = lddu.calczc(
                 demod_05,
                 ll1,
                 self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2),
                 reverse=False,
-                count=one_msec * 2,
+                count=one_usec * 2,
             )
 
             right_cross = None
@@ -362,10 +369,10 @@ class FieldShared:
             if not self.rf.options.disable_right_hsync:
                 right_cross = lddu.calczc(
                     demod_05,
-                    ll1 + (normal_hsync_length) - one_msec,
+                    ll1 + (normal_hsync_length) - one_usec,
                     self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2),
                     reverse=False,
-                    count=one_msec * 3,
+                    count=one_usec * 3,
                 )
             right_cross_refined = False
 
@@ -376,7 +383,7 @@ class FieldShared:
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
                 hsync_area = demod_05[
-                    int(zc - (one_msec * 0.75)) : int(zc + (one_msec * 8))
+                    int(zc - (one_usec * 0.75)) : int(zc + (one_usec * 8))
                 ]
                 if lddu.nb_min(hsync_area) < self.rf.iretohz(-55) or lddu.nb_max(
                     hsync_area
@@ -386,10 +393,10 @@ class FieldShared:
                     linelocs2[i] = self.linelocs1[i]
                 else:
                     porch_level = lddu.nb_median(
-                        demod_05[int(zc + (one_msec * 8)) : int(zc + (one_msec * 9))]
+                        demod_05[int(zc + (one_usec * 8)) : int(zc + (one_usec * 9))]
                     )
                     sync_level = lddu.nb_median(
-                        demod_05[int(zc + (one_msec * 1)) : int(zc + (one_msec * 2.5))]
+                        demod_05[int(zc + (one_usec * 1)) : int(zc + (one_usec * 2.5))]
                     )
 
                     # Re-calculate the crossing point using the mid point between the measured sync
@@ -403,7 +410,7 @@ class FieldShared:
                     )
 
                     # any wild variation here indicates a failure
-                    if zc2 is not None and np.abs(zc2 - zc) < (one_msec / 2):
+                    if zc2 is not None and np.abs(zc2 - zc) < (one_usec / 2):
                         linelocs2[i] = zc2
                     else:
                         self.linebad[i] = True
@@ -418,19 +425,19 @@ class FieldShared:
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
                 hsync_area = demod_05[
-                    int(zc_fr - (one_msec * 0.75)) : int(zc_fr + (one_msec * 8))
+                    int(zc_fr - (one_usec * 0.75)) : int(zc_fr + (one_usec * 8))
                 ]
                 if lddu.nb_min(hsync_area) > self.rf.iretohz(-55) and lddu.nb_max(
                     hsync_area
                 ) < self.rf.iretohz(30):
                     porch_level = lddu.nb_median(
                         demod_05[
-                            int(zc_fr + (one_msec * 8)) : int(zc_fr + (one_msec * 9))
+                            int(zc_fr + (one_usec * 8)) : int(zc_fr + (one_usec * 9))
                         ]
                     )
                     sync_level = lddu.nb_median(
                         demod_05[
-                            int(zc_fr + (one_msec * 1)) : int(zc_fr + (one_msec * 2.5))
+                            int(zc_fr + (one_usec * 1)) : int(zc_fr + (one_usec * 2.5))
                         ]
                     )
 
@@ -438,14 +445,14 @@ class FieldShared:
                     # and porch levels
                     zc2 = lddu.calczc(
                         demod_05,
-                        ll1 + normal_hsync_length - one_msec,
+                        ll1 + normal_hsync_length - one_usec,
                         (porch_level + sync_level) / 2,
                         reverse=False,
                         count=400,
                     )
 
                     # any wild variation here indicates a failure
-                    if zc2 is not None and np.abs(zc2 - right_cross) < (one_msec / 2):
+                    if zc2 is not None and np.abs(zc2 - right_cross) < (one_usec / 2):
                         right_cross = zc2
                         right_cross_refined = True
 
