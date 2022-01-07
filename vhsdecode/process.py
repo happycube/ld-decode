@@ -30,7 +30,6 @@ from vhsdecode.addons.resync import Resync
 from vhsdecode.addons.chromaAFC import ChromaAFC
 
 from numba import njit
-from numba.typed import List as TypedList
 
 # Use PyFFTW's faster FFT implementation if available
 try:
@@ -188,13 +187,14 @@ class FieldShared:
 
         # Numba prefers we use a numba typed list, or we will get
         # deprection warnings.
-        validpulses_typed = TypedList()
+        # validpulses_typed = TypedList()
         # Need to initialize this manually as constructor didn't take
         # arguments in older versions of numba.
-        [validpulses_typed.append(p) for p in validpulses]
+        # [validpulses_typed.append(p) for p in validpulses]
+        # TODO: Seems lists in numba are a bit wonky still so disabling for now.
 
         linelocs_dict, linelocs_dist = valid_pulses_to_linelocs(
-            validpulses_typed,
+            validpulses,
             line0loc,
             self.skipdetected,
             meanlinelen,

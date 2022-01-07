@@ -2,10 +2,7 @@ import numpy as np
 
 import lddecode.core as ldd
 
-from numba import njit
 
-
-@njit(cache=True, nogil=True)
 def valid_pulses_to_linelocs(
     validpulses,
     line0loc: float,
@@ -30,6 +27,9 @@ def valid_pulses_to_linelocs(
     Returns:
         [type]: Two dicts, one containing a list of linelocs mapped to line numbers, and one containing the distance between the line start and expected line start.
     """
+
+    # TODO: Was initially usng njit this function but TypedList seems to be causing issues so
+    # not using numba on it for now.
 
     # Lists to fill
     # TODO: Could probably use arrays here instead of converting to arrays later.
