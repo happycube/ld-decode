@@ -60,6 +60,20 @@ def replace_spikes(demod, demod_diffed, max_value, replace_start=8, replace_end=
     return demod
 
 
+@njit(cache=True)
+def smooth_spikes(demod, max_value):
+    """Go through spikes above max value and replace with the average of the neighbours."""
+    too_high = max_value
+    # Note - optimization, avoid first/last value so we don't have to check
+    # array bounds later.
+    to_fix = np.where(demod[1:-1] > too_high)[0]
+
+    for i in to_fix:
+        demod[i + 1] = (demod[i] + demod[i + 2]) / 2
+
+    return demod
+
+
 def getpulses_override(field):
     return field.rf.resync.getpulses_override(field)
 
@@ -1467,6 +1481,11 @@ class VHSRFDecode(ldd.RFDecode):
                     np.pad(np.diff(hilbert), (1, 0), mode="constant"), self.freq_hz
                 ).real
                 demod = replace_spikes(demod, demod_b, check_value)
+                # Not used yet, needs more testing.
+                # 2.2 seems to be a sweet spot between reducing spikes and not causing
+                # more
+                # demod = smooth_spikes(demod, check_value * 2.2)
+
 
         # applies main deemphasis filter
         demod_fft = npfft.rfft(demod)
