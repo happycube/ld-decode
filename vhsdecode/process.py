@@ -487,28 +487,28 @@ class FieldShared:
                     linelocs2[i] = right_cross - normal_hsync_length + 2.25
 
         # if False:
-            # import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
 
-            # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-            # ax1.plot(self.data["video"]["demod_05"])
+        # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+        # ax1.plot(self.data["video"]["demod_05"])
 
-            # sync, blank = self.rf.resync.VsyncSerration.getLevels()
+        # sync, blank = self.rf.resync.VsyncSerration.getLevels()
 
-            # ax1.axhline(sync, color="#FF0000")
-            # ax1.axhline(blank, color="#00FF00")
+        # ax1.axhline(sync, color="#FF0000")
+        # ax1.axhline(blank, color="#00FF00")
 
-            # for raw_pulse in linelocs2:
-            #     ax1.axvline(raw_pulse, color="#910000")
+        # for raw_pulse in linelocs2:
+        #     ax1.axvline(raw_pulse, color="#910000")
 
-            # for raw_pulse in right_locs:
-            #     ax1.axvline(raw_pulse, color="#000000")
+        # for raw_pulse in right_locs:
+        #     ax1.axvline(raw_pulse, color="#000000")
 
-            # for raw_pulse in hsync_from_right:
-            #     ax1.axvline(raw_pulse, color="#00FF00")
+        # for raw_pulse in hsync_from_right:
+        #     ax1.axvline(raw_pulse, color="#00FF00")
 
-            # ax2.plot(linelocs2, hsync_from_right - linelocs2)
+        # ax2.plot(linelocs2, hsync_from_right - linelocs2)
 
-            # plt.show()
+        # plt.show()
 
         return linelocs2
 
@@ -1072,38 +1072,9 @@ class VHSRFDecode(ldd.RFDecode):
         self.field_number = 0
         self.last_raw_loc = None
 
-        # Then we override the laserdisc parameters with VHS ones.
-        if system == "PAL":
-            if tape_format == "UMATIC":
-                self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_UMATIC)
-                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_UMATIC)
-            elif tape_format == "SVHS":
-                # Give the decoder it's separate own full copy to be on the safe side.
-                self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_SVHS)
-                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_SVHS)
-            else:
-                # Give the decoder it's separate own full copy to be on the safe side.
-                self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_VHS)
-                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_VHS)
-        elif system == "NTSC":
-            if tape_format == "UMATIC":
-                self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_UMATIC)
-                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_UMATIC)
-            elif tape_format == "SVHS":
-                self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_SVHS)
-                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_SVHS)
-            else:
-                self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_VHS)
-                self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_VHS)
-        elif system == "MPAL":
-            if tape_format != "VHS":
-                ldd.logger.warning(
-                    'Tape format "%s" not supported for MPAL yet', tape_format
-                )
-            self.SysParams = copy.deepcopy(vhs_formats.SysParams_MPAL_VHS)
-            self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_MPAL_VHS)
-        else:
-            raise Exception("Unknown video system! ", system)
+        self.SysParams, self.DecoderParams = vhs_formats.get_format_params(
+            system, tape_format, ldd.logger
+        )
 
         # As agc can alter these sysParams values, store a copy to then
         # initial value for reference.
@@ -1485,7 +1456,6 @@ class VHSRFDecode(ldd.RFDecode):
                 # 2.2 seems to be a sweet spot between reducing spikes and not causing
                 # more
                 # demod = smooth_spikes(demod, check_value * 2.2)
-
 
         # applies main deemphasis filter
         demod_fft = npfft.rfft(demod)
