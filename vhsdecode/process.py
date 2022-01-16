@@ -130,7 +130,7 @@ class FieldShared:
                     self.rawpulses[i] = newpulse
                     curpulse = newpulse
                 else:
-                    spulse = (HSYNC, self.rawpulses[i], False)
+                    # spulse = (HSYNC, self.rawpulses[i], False)
                     i += 1
             elif (
                 i > 2
@@ -146,10 +146,10 @@ class FieldShared:
                     i += len(vblank_pulses) - 2
                     num_vblanks += 1
                 else:
-                    spulse = (HSYNC, self.rawpulses[i], False)
+                    # spulse = (HSYNC, self.rawpulses[i], False)
                     i += 1
             else:
-                spulse = (HSYNC, self.rawpulses[i], False)
+                # spulse = (HSYNC, self.rawpulses[i], False)
                 i += 1
 
         return valid_pulses  # , num_vblanks
@@ -486,29 +486,29 @@ class FieldShared:
                     self.linebad[i] = False
                     linelocs2[i] = right_cross - normal_hsync_length + 2.25
 
-        if False:
-            import matplotlib.pyplot as plt
+        # if False:
+            # import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-            ax1.plot(self.data["video"]["demod_05"])
+            # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+            # ax1.plot(self.data["video"]["demod_05"])
 
-            sync, blank = self.rf.resync.VsyncSerration.getLevels()
+            # sync, blank = self.rf.resync.VsyncSerration.getLevels()
 
-            ax1.axhline(sync, color="#FF0000")
-            ax1.axhline(blank, color="#00FF00")
+            # ax1.axhline(sync, color="#FF0000")
+            # ax1.axhline(blank, color="#00FF00")
 
-            for raw_pulse in linelocs2:
-                ax1.axvline(raw_pulse, color="#910000")
+            # for raw_pulse in linelocs2:
+            #     ax1.axvline(raw_pulse, color="#910000")
 
-            for raw_pulse in right_locs:
-                ax1.axvline(raw_pulse, color="#000000")
+            # for raw_pulse in right_locs:
+            #     ax1.axvline(raw_pulse, color="#000000")
 
-            for raw_pulse in hsync_from_right:
-                ax1.axvline(raw_pulse, color="#00FF00")
+            # for raw_pulse in hsync_from_right:
+            #     ax1.axvline(raw_pulse, color="#00FF00")
 
-            ax2.plot(linelocs2, hsync_from_right - linelocs2)
+            # ax2.plot(linelocs2, hsync_from_right - linelocs2)
 
-            plt.show()
+            # plt.show()
 
         return linelocs2
 
