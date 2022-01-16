@@ -135,17 +135,28 @@ def make_loader(filename, inputfreq=None):
         return load_unpacked_data_u16
     elif filename.endswith(".r8") or filename.endswith(".u8"):
         return load_unpacked_data_u8
-    elif filename.endswith("raw.oga") or filename.endswith(".ldf") or filename.endswith(".wav") or filename.endswith(".flac") or filename.endswith(".vhs"):
+    elif (
+        filename.endswith("raw.oga")
+        or filename.endswith(".ldf")
+        or filename.endswith(".wav")
+        or filename.endswith(".flac")
+        or filename.endswith(".vhs")
+    ):
         try:
             rv = LoadLDF(filename)
         except FileNotFoundError:
-            print("ld-ldf-reader not found in PATH, using ffmpeg instead.", file=sys.stderr)
+            print(
+                "ld-ldf-reader not found in PATH, using ffmpeg instead.",
+                file=sys.stderr,
+            )
             rv = LoadFFmpeg()
         except Exception:
             # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
             traceback.print_exc()
-            print("Failed to load with ld-ldf-reader, trying ffmpeg instead.",
-                  file=sys.stderr)
+            print(
+                "Failed to load with ld-ldf-reader, trying ffmpeg instead.",
+                file=sys.stderr,
+            )
             rv = LoadFFmpeg()
 
         return rv
@@ -180,6 +191,7 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
 def load_unpacked_data_u8(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 1)
 
+
 def load_unpacked_data_s16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
 
@@ -187,8 +199,10 @@ def load_unpacked_data_s16(infile, sample, readlen):
 def load_unpacked_data_u16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
 
+
 def load_unpacked_data_u16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 3)
+
 
 def load_unpacked_data_float32(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 4)
@@ -255,7 +269,7 @@ def unpack_data_4_40(indata, readlen, offset):
     unpacked[3::4] = ((indatai16[3::5] & 0x03) << 8) | indata[4::5]
 
     # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
-    rv_unsigned = unpacked[offset:offset + readlen]
+    rv_unsigned = unpacked[offset : offset + readlen]
     rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
 
     # # Original implementation.
@@ -630,7 +644,9 @@ def calczc_do(data, _start_offset, target, edge=0, count=10):
     if b - a != 0:
         y = -a / (-a + b)
     else:
-        print('RuntimeWarning: Div by zero prevented at lddecode/utils.calczc_do()', a, b)
+        print(
+            "RuntimeWarning: Div by zero prevented at lddecode/utils.calczc_do()", a, b
+        )
         y = 0
 
     return x - 1 + y
@@ -657,7 +673,7 @@ def build_hilbert(fft_size):
 
     output = np.zeros(fft_size)
     output[0] = output[fft_size // 2] = 1
-    output[1:fft_size // 2] = 2
+    output[1 : fft_size // 2] = 2
 
     return output
 
@@ -680,11 +696,11 @@ def unwrap_hilbert(hilbert, freq_hz):
 
 
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
-    ''' returns the # of sub-bins needed to get center+/-min_bandwidth.
+    """ returns the # of sub-bins needed to get center+/-min_bandwidth.
         The returned lowbin is the first bin (symmetrically) needed to be saved.
 
         This will need to be 'flipped' using fft_slice to get the trimmed set
-    '''
+    """
 
     # compute the width of each bin
     binwidth = freq_hz / bins_in
@@ -704,10 +720,15 @@ def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
 
 
 def fft_do_slice(fdomain, lowbin, nbins, blocklen):
-    ''' Uses lowbin and nbins as returned from fft_determine_slices to
-        cut the fft '''
-    nbins_half = nbins//2
-    return np.concatenate([fdomain[lowbin:lowbin+nbins_half], fdomain[blocklen-lowbin-nbins_half:blocklen-lowbin]])
+    """ Uses lowbin and nbins as returned from fft_determine_slices to
+        cut the fft """
+    nbins_half = nbins // 2
+    return np.concatenate(
+        [
+            fdomain[lowbin : lowbin + nbins_half],
+            fdomain[blocklen - lowbin - nbins_half : blocklen - lowbin],
+        ]
+    )
 
 
 @njit(cache=True)
@@ -810,7 +831,10 @@ def findpulses(array, low, high):
         if starts[-1] > ends[-1]:
             starts = starts[:-1]
     except IndexError:
-        print("Index error at lddecode/utils.findpulses(). Are we on the end of the file?", file=sys.stderr)
+        print(
+            "Index error at lddecode/utils.findpulses(). Are we on the end of the file?",
+            file=sys.stderr,
+        )
         return []
 
     return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
@@ -931,7 +955,7 @@ def lev_to_db(rlev):
 # moved from core.py
 @njit(cache=True)
 def dsa_rescale(infloat):
-    return int(np.round(infloat * 32767 / 150000 * (np.sqrt(2)/2)))
+    return int(np.round(infloat * 32767 / 150000 * (np.sqrt(2) / 2)))
 
 
 # Hotspot subroutines in FieldNTSC's compute_line_bursts function,
@@ -957,8 +981,12 @@ def distance_from_round(x):
 def write_json(ldd, jsondict, outname):
 
     fp = open(outname + ".tbc.json.tmp", "w")
-    json.dump(jsondict, fp, indent=4 if ldd.verboseVITS else None,
-              separators=(',', ':') if not ldd.verboseVITS else None)
+    json.dump(
+        jsondict,
+        fp,
+        indent=4 if ldd.verboseVITS else None,
+        separators=(",", ":") if not ldd.verboseVITS else None,
+    )
     fp.write("\n")
     fp.close()
 
@@ -993,10 +1021,11 @@ def jsondump_thread(ldd, outname):
 
     return q
 
+
 class StridedCollector:
     # This keeps a numpy buffer and outputs an fft block and keeps the overlap
     # for the next fft.
-    def __init__(self, blocklen = 65536, stride = 2048):
+    def __init__(self, blocklen=65536, stride=2048):
         self.buffer = None
         self.blocklen = blocklen
         self.stride = stride
@@ -1014,12 +1043,13 @@ class StridedCollector:
 
     def get_block(self):
         if self.have_block():
-            rv = self.buffer[0:self.blocklen]
-            self.buffer = self.buffer[self.blocklen-self.stride:]
+            rv = self.buffer[0 : self.blocklen]
+            self.buffer = self.buffer[self.blocklen - self.stride :]
 
             return rv
 
         return None
+
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

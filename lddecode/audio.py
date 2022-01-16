@@ -39,39 +39,62 @@ except ImportError:
 # globals
 
 blocklen = 32768
-drop_begin = 4096-512
+drop_begin = 4096 - 512
 drop_end = 512
 blockskip = drop_begin + drop_end
 
-def audio_bandpass_butter(center, closerange = 125000, longrange = 180000):
-    ''' Returns filter coefficients for first stage per-channel filtering '''
-    freqs_inner = [(center - closerange) / freq_hz_half, (center + closerange) / freq_hz_half]
-    freqs_outer = [(center - longrange) / freq_hz_half, (center + longrange) / freq_hz_half]
+
+def audio_bandpass_butter(center, closerange=125000, longrange=180000):
+    """ Returns filter coefficients for first stage per-channel filtering """
+    freqs_inner = [
+        (center - closerange) / freq_hz_half,
+        (center + closerange) / freq_hz_half,
+    ]
+    freqs_outer = [
+        (center - longrange) / freq_hz_half,
+        (center + longrange) / freq_hz_half,
+    ]
 
     N, Wn = sps.buttord(freqs_inner, freqs_outer, 1, 15)
 
-    return sps.butter(N, Wn, btype='bandpass')
+    return sps.butter(N, Wn, btype="bandpass")
+
 
 class AudioRF:
     def __init__(self, freq, center_freq, vid_standard):
         self.center_freq = center_freq
 
         # Set up SysParams to hand off to needed sub-tasks
-        SysParams = core.SysParams_PAL if vid_standard == 'PAL' else core.SysParams_NTSC
+        SysParams = core.SysParams_PAL if vid_standard == "PAL" else core.SysParams_NTSC
 
         self.freq = freq
         self.freq_hz = self.freq * 1.0e6
         self.freq_hz_half = self.freq_hz / 2
 
-        SysParams['audio_filterwidth'] = 150000
+        SysParams["audio_filterwidth"] = 150000
 
-        apass = SysParams['audio_filterwidth']
+        apass = SysParams["audio_filterwidth"]
         afilt_len = 512
 
         # Compute stage 1 filters
 
-        audio1_fir = utils.filtfft([sps.firwin(afilt_len, [(self.center_freq-apass)/self.freq_hz_half, (self.center_freq+apass)/self.freq_hz_half], pass_zero=False), 1.0], blocklen)
-        lowbin, nbins, a1_freq = utils.fft_determine_slices(self.center_freq, 200000, self.freq_hz, blocklen)
+        audio1_fir = utils.filtfft(
+            [
+                sps.firwin(
+                    afilt_len,
+                    [
+                        (self.center_freq - apass) / self.freq_hz_half,
+                        (self.center_freq + apass) / self.freq_hz_half,
+                    ],
+                    pass_zero=False,
+                ),
+                1.0,
+            ],
+            blocklen,
+        )
+        lowbin, nbins, a1_freq = utils.fft_determine_slices(
+            self.center_freq, 200000, self.freq_hz, blocklen
+        )
         hilbert = utils.build_hilbert(nbins)
 
         self.a1_freq = a1_freq
@@ -92,21 +115,23 @@ class AudioRF:
         audio2_lpf = utils.filtfft(sps.butter(N, Wn), blocklen)
         # 75e-6 is 75usec/2133khz (matching American FM emphasis) and 5.3e-6 is approx
         # a 30khz break frequency
-        audio2_deemp = utils.filtfft(utils.emphasis_iir(5.3e-6, 75e-6, a1_freq), blocklen)
+        audio2_deemp = utils.filtfft(
+            utils.emphasis_iir(5.3e-6, 75e-6, a1_freq), blocklen
+        )
 
         self.audio2_decimation = 4
         self.audio2_filter = audio2_lpf * audio2_deemp
 
     def process_stage1(self, fft_in):
-        ''' Apply first state audio filters '''
+        """ Apply first state audio filters """
         a1 = npfft.ifft(self.slicer(fft_in) * self.filt1)
         a1u = utils.unwrap_hilbert(a1, self.a1_freq)
-        a1u = a1u[self.audio1_clip:]
+        a1u = a1u[self.audio1_clip :]
 
         return self.audio1_buffer.add(a1u)
 
     def process_stage2(self):
-        ''' Applies second stage audio filters '''
+        """ Applies second stage audio filters """
 
         if not self.audio1_buffer.have_block():
             return None
@@ -117,60 +142,65 @@ class AudioRF:
 
         filtered = utils.sqsum(a2[drop_begin:-drop_end])
 
-        return filtered[::self.audio2_decimation]
+        return filtered[:: self.audio2_decimation]
+
 
 class AudioDecoder:
-
     def __init__(self, args):
         global blocklen, blockskip
 
         self.efm_fd = None
 
-        if args.outfile == '-':
+        if args.outfile == "-":
             self.out_fd = sys.stdout
             args.prefm = False
             efm_decode = False
         else:
             if not args.daa:
-                self.out_fd = open(args.outfile + '.pcmf32', 'wb')
+                self.out_fd = open(args.outfile + ".pcmf32", "wb")
 
             if args.prefm:
-                self.rawefm_fd = open(args.outfile + '.prefm', 'wb')
+                self.rawefm_fd = open(args.outfile + ".prefm", "wb")
             else:
                 args.prefm = False
 
             efm_decode = not args.noefm
             if efm_decode:
                 self.efm_pll_object = efm_pll.EFM_PLL()
-                self.efm_fd = open(args.outfile + '.efm', 'wb')
+                self.efm_fd = open(args.outfile + ".efm", "wb")
 
         self.args = args
 
         # Have input_buffer store 8-bit bytes, then convert afterwards
-        self.input_buffer = utils.StridedCollector(blocklen*2, blockskip*2)
+        self.input_buffer = utils.StridedCollector(blocklen * 2, blockskip * 2)
 
         # Set up SysParams to hand off to needed sub-tasks
-        SysParams = core.SysParams_PAL if args.vid_standard == 'PAL' else core.SysParams_NTSC
+        SysParams = (
+            core.SysParams_PAL if args.vid_standard == "PAL" else core.SysParams_NTSC
+        )
 
         self.freq = args.inputfreq
         self.freq_hz = self.freq * 1.0e6
         self.efm_filter = efm_pll.computeefmfilter(self.freq_hz, blocklen)
-        #print(self.freq_hz, len(self.efm_filter), self.efm_filter, file=sys.stderr)
+        # print(self.freq_hz, len(self.efm_filter), self.efm_filter, file=sys.stderr)
 
         self.aa_channels = []
 
         if True:
-            self.aa_channels.append(AudioRF(self.freq, SysParams['audio_lfreq'], args.vid_standard))
+            self.aa_channels.append(
+                AudioRF(self.freq, SysParams["audio_lfreq"], args.vid_standard)
+            )
 
         if True:
-            self.aa_channels.append(AudioRF(self.freq, SysParams['audio_rfreq'], args.vid_standard))
-
+            self.aa_channels.append(
+                AudioRF(self.freq, SysParams["audio_rfreq"], args.vid_standard)
+            )
 
     def process_input_buffer(self):
         while self.input_buffer.have_block():
             buf = self.input_buffer.get_block()
             b = buf.tobytes()
-            s16 = np.frombuffer(b, 'int16', len(b)//2)
+            s16 = np.frombuffer(b, "int16", len(b) // 2)
 
             fft_in = npfft.fft(s16)
 
@@ -185,7 +215,7 @@ class AudioDecoder:
 
                 if len(outputs) == 0:
                     pass
-                elif (len(outputs) != len(self.aa_channels)):
+                elif len(outputs) != len(self.aa_channels):
                     print("ERROR: mismatch in # of processed channels")
                     sys.exit(-1)
                 else:
@@ -193,11 +223,11 @@ class AudioDecoder:
 
                     for output, channel in zip(outputs, self.aa_channels):
                         o = output + channel.low_freq - channel.center_freq
-                        #print(np.mean(o), np.std(o), channel.low_freq, channel.center_freq)
+                        # print(np.mean(o), np.std(o), channel.low_freq, channel.center_freq)
                         ofloat.append(np.clip((o / 150000), -16, 16).astype(np.float32))
 
                     if len(outputs) == 2:
-                        #print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
+                        # print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
 
                         outdata = np.zeros(len(ofloat[0]) * 2, dtype=np.float32)
                         outdata[0::2] = ofloat[0]
@@ -209,26 +239,29 @@ class AudioDecoder:
                         self.out_fd.write(outdata)
 
             if self.args.prefm or self.efm_fd:
-                filtered_efm = npfft.ifft(fft_in * self.efm_filter)[drop_begin:-drop_end]
+                filtered_efm = npfft.ifft(fft_in * self.efm_filter)[
+                    drop_begin:-drop_end
+                ]
                 filtered_efm2 = np.int16(np.clip(filtered_efm.real, -32768, 32767))
 
                 if self.args.prefm:
                     self.rawefm_fd.write(filtered_efm2.tobytes())
 
                 efm_out = self.efm_pll_object.process(filtered_efm2)
-                #print(efm_out.shape, max(filtered_efm.imag))
+                # print(efm_out.shape, max(filtered_efm.imag))
 
                 if self.efm_fd is not None:
-                    #print(len(buf), len(filtered_efm2), len(efm_out), file=sys.stderr)
+                    # print(len(buf), len(filtered_efm2), len(efm_out), file=sys.stderr)
                     self.efm_fd.write(efm_out.tobytes())
 
+
 def startprocess(inpipe, args):
-    ''' Hook for Multiprocessing.Process()
+    """ Hook for Multiprocessing.Process()
         procargs is a tuple containing the input pipe and args from ld-decode
-    '''
+    """
     args.vid_standard = "PAL" if args.pal else "NTSC"
     args.inputfreq = 40 if args.inputfreq is None else args.inputfreq
-    args.outfile = args.outfile + '-new'
+    args.outfile = args.outfile + "-new"
 
     ad = AudioDecoder(args)
 
@@ -239,10 +272,11 @@ def startprocess(inpipe, args):
 
         # XXX: for now convert to the binary format
         data_bytes = data.tobytes()
-        data_int8 = np.frombuffer(data_bytes, 'int8', len(data_bytes))
+        data_int8 = np.frombuffer(data_bytes, "int8", len(data_bytes))
         ad.input_buffer.add(data_int8)
 
         ad.process_input_buffer()
+
 
 if __name__ == "__main__":
     # Standalone command line front end code
@@ -250,17 +284,36 @@ if __name__ == "__main__":
     # NOTE:  These arguments must be consistent with top-level ld-decode, since
     # they can be passed from it as well
 
-    def handle_options(argstring = sys.argv):
+    def handle_options(argstring=sys.argv):
         parser = argparse.ArgumentParser(
-            description="Extracts audio from raw/TBC'd RF laserdisc captures",
+            description="Extracts audio from raw/TBC'd RF laserdisc captures"
         )
 
         # This is -i instead of a positional, since the first pos can't be overridden
-        parser.add_argument("-i", dest="infile", default='-', type=str, help="source file (must be signed 16-bit)")
+        parser.add_argument(
+            "-i",
+            dest="infile",
+            default="-",
+            type=str,
+            help="source file (must be signed 16-bit)",
+        )
 
-        parser.add_argument("-o", dest="outfile", default='test', type=str, help="base name for destination files")
+        parser.add_argument(
+            "-o",
+            dest="outfile",
+            default="test",
+            type=str,
+            help="base name for destination files",
+        )
 
-        parser.add_argument("-f", "--freq", dest='inputfreq', default = "40.0mhz", type=utils.parse_frequency, help="Input frequency")
+        parser.add_argument(
+            "-f",
+            "--freq",
+            dest="inputfreq",
+            default="40.0mhz",
+            type=utils.parse_frequency,
+            help="Input frequency",
+        )
 
         parser.add_argument(
             "--disable_analog_audio",
@@ -282,7 +335,12 @@ if __name__ == "__main__":
         )
 
         parser.add_argument(
-            "--NTSC", "-n", "--ntsc", dest="ntsc", action="store_true", help="source is in NTSC format"
+            "--NTSC",
+            "-n",
+            "--ntsc",
+            dest="ntsc",
+            action="store_true",
+            help="source is in NTSC format",
         )
 
         parser.add_argument(
@@ -313,10 +371,10 @@ if __name__ == "__main__":
 
     args = handle_options(sys.argv)
 
-    if args.infile == '-':
+    if args.infile == "-":
         in_fd = None
     else:
-        in_fd = open(args.infile, 'rb')
+        in_fd = open(args.infile, "rb")
 
     ad = AudioDecoder(args)
 
@@ -324,7 +382,7 @@ if __name__ == "__main__":
     logger = utils_logging.init_logging(None)
 
     while True:
-        if args.infile == '-':
+        if args.infile == "-":
             inbuf = sys.stdin.buffer.read(65536)
         else:
             inbuf = in_fd.read(65536)
@@ -334,5 +392,5 @@ if __name__ == "__main__":
 
         # store the input buffer as a raw 8-bit data, then repack into 16-bit
         # (this allows reading of an odd # of bytes)
-        ad.input_buffer.add(np.frombuffer(inbuf, 'int8', len(inbuf)))
+        ad.input_buffer.add(np.frombuffer(inbuf, "int8", len(inbuf)))
         ad.process_input_buffer()
