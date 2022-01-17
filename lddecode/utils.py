@@ -555,19 +555,22 @@ def ldf_pipe(outname, compression_level=6):
 def get_git_info():
     """ Return git branch and commit for current directory, if available. """
 
-    branch = "UNKNOWN"
-    commit = "UNKNOWN"
+    version = get_version()
+    if ':' in version:
+        branch, commit = version.split(':')[0:2]
 
     try:
         sp = subprocess.run(
             "git rev-parse --abbrev-ref HEAD", shell=True, capture_output=True
         )
-        branch = sp.stdout.decode("utf-8").strip() if not sp.returncode else "UNKNOWN"
+        if not sp.returncode:
+            branch = sp.stdout.decode("utf-8").strip()
 
         sp = subprocess.run(
             "git rev-parse --short HEAD", shell=True, capture_output=True
         )
-        commit = sp.stdout.decode("utf-8").strip() if not sp.returncode else "UNKNOWN"
+        if not sp.returncode:
+            commit = sp.stdout.decode("utf-8").strip()
     except Exception:
         print("Something went wrong when trying to read git info...", file=sys.stderr)
         traceback.print_exc()
