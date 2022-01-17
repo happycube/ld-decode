@@ -238,5 +238,8 @@ end:
     av_packet_free(&pkt);
     av_frame_free(&frame);
 
+    // Send an EOF on stdout
+    close(1);
+
     return ret < 0;
 }
