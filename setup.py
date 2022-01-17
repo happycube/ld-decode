@@ -18,7 +18,7 @@ setup(
         'Topic :: Multimedia :: Video :: Capture',
     ],
 
-    packages=['lddecode', 'vhsdecode', 'vhsdecode/addons', 'cvbsdecode'],
+    packages=['lddecode', 'vhsdecode', 'vhsdecode/addons', 'vhsdecode/format_defs', 'cvbsdecode'],
     scripts=[
         'cx-expander',
         'ld-cut',
