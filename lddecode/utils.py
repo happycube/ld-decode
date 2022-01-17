@@ -17,6 +17,16 @@ from numba import jit, njit
 import numpy as np
 import scipy.signal as sps
 
+def get_version():
+    try:
+        # get the directory this file was pulled from, then add /version
+        scriptdir = os.path.dirname(os.path.realpath(__file__))
+        fd = open(os.path.join(scriptdir, 'version'), 'r')
+
+        fdata = fd.read()
+        return fdata.strip() # remove trailing \n etc
+    except: # usually FileNotFoundError
+        return "unknown"
 
 # This runs a cubic scaler on a line.
 # originally from https://www.paulinternet.nl/?page=bicubic
