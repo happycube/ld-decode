@@ -300,7 +300,10 @@ system = "PAL" if args.pal else "NTSC"
 original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 logger = init_logging(outname + ".log")
-logger.debug("LD-DECode build " + get_version())
+
+version = get_git_info()
+logger.debug("ld-decode branch " + version[0] + " build " + version[1])
+
 ldd = LDdecode(
     filename,
     outname,
