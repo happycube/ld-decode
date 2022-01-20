@@ -48,7 +48,7 @@ jobs:
           --cut-seek 30255 \
           --cut-length 4 \
           --expect-frames 4 \
-          --expect-vbi 9151563, 15925845, 15925845 \
+          --expect-vbi 9151563,15925845,15925845 \
           testdata/ve-snw-cut.lds
     
     - name: Test ld-cut (PAL)
@@ -59,7 +59,7 @@ jobs:
           --cut-seek 30255 \
           --cut-length 4 \
           --expect-frames 4 \
-          --expect-vbi 9152512, 15730528, 15730528 \
+          --expect-vbi 9152512,15730528,15730528 \
           testdata/ve-snw-cut.lds
 
     - name: Decode NTSC CAV
