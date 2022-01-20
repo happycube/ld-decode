@@ -56,7 +56,7 @@ jobs:
       run: |
         scripts/test-decode \
           --pal \
-          --cut-seek 30255 \
+          --cut-seek 760 \
           --cut-length 4 \
           --expect-frames 4 \
           --expect-vbi 9152512,15730528,15730528 \
