@@ -60,7 +60,7 @@ jobs:
           --cut-length 4 \
           --expect-frames 4 \
           --expect-vbi 9152512,15730528,15730528 \
-          testdata/ve-snw-cut.lds
+          testdata/pal/ggv-mb-1khz.ldf
 
     - name: Decode NTSC CAV
       timeout-minutes: 10
