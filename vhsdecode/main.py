@@ -14,7 +14,7 @@ from vhsdecode.cmdcommons import (
     get_extra_options,
 )
 
-supported_tape_formats = {"VHS", "SVHS", "UMATIC"}
+supported_tape_formats = {"VHS", "SVHS", "UMATIC", "BETAMAX"}
 
 
 def main(use_gui=False):

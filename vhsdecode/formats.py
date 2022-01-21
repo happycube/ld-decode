@@ -38,6 +38,15 @@ def get_format_params(system: str, tape_format: str, logger):
             return get_sysparams_pal_umatic(SysParams_PAL), get_rfparams_pal_umatic(
                 RFParams_PAL
             )
+        elif tape_format == "BETAMAX":
+            from vhsdecode.format_defs.betamax import (
+                get_rfparams_pal_betamax,
+                get_sysparams_pal_betamax,
+            )
+
+            return get_sysparams_pal_betamax(SysParams_PAL), get_rfparams_pal_betamax(
+                RFParams_PAL
+            )
         elif tape_format == "SVHS":
             from vhsdecode.format_defs.vhs import (
                 get_rfparams_pal_svhs,

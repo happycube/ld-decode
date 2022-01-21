@@ -12,6 +12,7 @@ from lddecode.utils import unwrap_hilbert, inrange
 import vhsdecode.utils as utils
 from vhsdecode.utils import StackableMA
 from vhsdecode.chroma import (
+    decode_chroma_betamax,
     decode_chroma_vhs,
     decode_chroma_umatic,
     demod_chroma_filt,
@@ -675,6 +676,24 @@ class FieldPALUMatic(FieldPALShared):
         return (dsout, dschroma), dsaudio, dsefm
 
 
+class FieldPALBetamax(FieldPALShared):
+    def __init__(self, *args, **kwargs):
+        super(FieldPALBetamax, self).__init__(*args, **kwargs)
+
+    def try_detect_track(self):
+        ldd.logger.info("try_detect_track not implemented for beta yet!")
+        return 0
+
+    def downscale(self, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldPALBetamax, self).downscale(
+            final, *args, **kwargs
+        )
+
+        dschroma = decode_chroma_betamax(self)
+
+        return (dsout, dschroma), dsaudio, dsefm
+
+
 class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCShared, self).__init__(*args, **kwargs)
@@ -799,12 +818,22 @@ class VHSDecode(ldd.LDdecode):
                 self.FieldClass = FieldPALUMatic
             elif tape_format == "SVHS":
                 self.FieldClass = FieldPALSVHS
+            elif tape_format == "BETAMAX":
+                self.FieldClass = FieldPALBetamax
             else:
+                if tape_format != "VHS":
+                    ldd.logger.info(
+                        "Tape format unimplemented for PAL, using VHS settings."
+                    )
                 self.FieldClass = FieldPALVHS
         elif system == "NTSC":
             if tape_format == "UMATIC":
                 self.FieldClass = FieldNTSCUMatic
             else:
+                if tape_format != "VHS":
+                    ldd.logger.info(
+                        "Tape format unimplemented for NTSC, using VHS settings."
+                    )
                 self.FieldClass = FieldNTSCVHS
         elif system == "MPAL" and tape_format == "VHS":
             self.FieldClass = FieldMPALVHS

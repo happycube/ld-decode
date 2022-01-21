@@ -57,6 +57,7 @@ def comb_c_pal(data, line_len):
     Helps chroma stability on LP tapes in particular.
     """
 
+    # TODO: Compensate for PAL quarter cycle offset
     data2 = data.copy()
     numlines = len(data) // line_len
     for line_num in range(16, numlines - 2):
@@ -337,6 +338,38 @@ def decode_chroma_umatic(field):
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
     field.rf.last_raw_loc = raw_loc
+    return chroma_to_u16(uphet)
+
+
+def decode_chroma_betamax(field):
+    """Do track detection if needed and upconvert the chroma signal"""
+    rf = field.rf
+
+    # Use field number based on raw data position
+    # This may not be 100% accurate, so we may want to add some more logic to
+    # make sure we re-check the phase occasionally.
+    raw_loc = check_increment_field_no(rf)
+
+    # If we moved significantly more than the length of one field, re-check phase
+    # as we may have skipped fields.
+    if raw_loc - rf.last_raw_loc > 1.3:
+        if rf.detect_track:
+            ldd.logger.info("Possibly skipped a track, re-checking phase..")
+            rf.needs_detect = True
+
+    if rf.detect_track and rf.needs_detect or rf.recheck_phase:
+        rf.track_phase = field.try_detect_track()
+        rf.needs_detect = False
+
+    uphet = process_chroma(
+        field,
+        None,
+        disable_comb=rf.options.disable_comb,
+        disable_tracking_cafc=False,
+    )
+    field.uphet_temp = uphet
+    # Store previous raw location so we can detect if we moved in the next call.
+    rf.last_raw_loc = raw_loc
     return chroma_to_u16(uphet)
 
 
