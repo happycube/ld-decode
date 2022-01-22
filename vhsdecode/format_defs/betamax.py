@@ -93,6 +93,7 @@ def get_sysparams_pal_betamax(sysparams_pal):
     sysparams["ire0"] = 5.2e6 - (sysparams["hz_ire"] * 100)
 
     # Beta black level 3.8, tip 5.2 acc to telev. mag 1983 09
+    # Also half-shift (fl/2) between a/b track
 
     # Mean absolute value of color burst for Automatic Chroma Control.
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.

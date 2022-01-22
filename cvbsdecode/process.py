@@ -418,14 +418,8 @@ class VHSDecodeInner(ldd.RFDecode):
         self.last_raw_loc = None
 
         # Then we override the laserdisc parameters with VHS ones.
-        if system == "PAL":
-            self.SysParams = copy.deepcopy(vhs_formats.SysParams_PAL_UMATIC)
-            self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_PAL_UMATIC)
-        elif system == "NTSC":
-            self.SysParams = copy.deepcopy(vhs_formats.SysParams_NTSC_UMATIC)
-            self.DecoderParams = copy.deepcopy(vhs_formats.RFParams_NTSC_UMATIC)
-        else:
-            raise Exception("Unknown video system! ", system)
+
+        self.SysParams, self.DecoderParams = vhs_formats.get_format_params(system, "UMATIC", ldd.logger)
 
         # TEMP just set this high so it doesn't mess with anything.
         self.DecoderParams["video_lpf_freq"] = 6800000
