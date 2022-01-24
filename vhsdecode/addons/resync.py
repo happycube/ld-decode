@@ -41,7 +41,7 @@ Pulse = namedtuple("Pulse", "start len")
 
 
 @njit(cache=True, parallel=True, nogil=True)
-def findpulses_numba(sync_ref, low, high, min_synclen, max_synclen):
+def findpulses_numba(sync_ref, high, min_synclen, max_synclen):
     """Locate possible pulses by looking at areas within some range."""
     mid_sync = high
     where_all_picture = np.where(sync_ref > mid_sync)[0]
@@ -52,6 +52,7 @@ def findpulses_numba(sync_ref, low, high, min_synclen, max_synclen):
     where_all_syncs = np.where(is_sync)[0]
     pulses_starts = where_all_picture[where_all_syncs]
     pulses_lengths = locs_len[where_all_syncs]
+    # return list(map(Pulse, pulses_starts, pulses_lengths))
     return [Pulse(z[0], z[1]) for z in zip(pulses_starts, pulses_lengths)]
 
 
@@ -107,6 +108,7 @@ class Resync:
         self.FieldState = FieldState(sysparams)
         self.eq_pulselen = self.VsyncSerration.getEQpulselen()
         self.linelen = self.VsyncSerration.getLinelen()
+        self.use_serration = True
 
     def debug_field(self, sync_reference):
         ldd.logger.debug(
@@ -229,9 +231,9 @@ class Resync:
 
         # lddu.findpulses() equivalent
 
-    def findpulses(self, sync_ref, low, high):
+    def findpulses(self, sync_ref, high):
         return findpulses_numba(
-            sync_ref, low, high, self.eq_pulselen * 1 / 8, self.linelen * 5 / 8
+            sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 5 / 8
         )
 
     def add_pulselevels_to_serration_measures(self, field):
@@ -244,9 +246,7 @@ class Resync:
             retries = 30
             while retries > 0:
                 pulse_hz_min, pulse_hz_max = self.findpulses_range(field, min_sync)
-                pulses = self.findpulses(
-                    field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
-                )
+                pulses = self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)
                 # this number might need calculation
                 if len(pulses) > 100:
                     break
@@ -260,9 +260,7 @@ class Resync:
 
         # the tape chewing test passed, then it should find sync
         pulse_hz_min, pulse_hz_max = self.findpulses_range(field, sync)
-        pulses = self.findpulses(
-            field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
-        )
+        pulses = self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)
 
         f_sync, f_blank = self.pulses_levels(field, pulses)
         if f_sync is not None and f_blank is not None:
@@ -281,6 +279,34 @@ class Resync:
         )
 
     def getpulses_override(self, field):
+        if self.use_serration:
+            return self.getpulses_serration(field)
+        else:
+            import vhsdecode.leveldetect
+
+            sync, blank = None, None
+            if self.FieldState.hasLevels():
+                sync, blank = self.FieldState.getLevels()
+                pulses = self.findpulses(
+                    field.data["video"]["demod_05"], (blank + sync) / 2
+                )
+                if len(pulses) > 200 and len(pulses) < 800:
+                    return pulses
+                ldd.logger.info("Re-checking levels..")
+
+            def_sync = field.rf.iretohz(field.rf.SysParams["vsync_ire"])
+            def_blank = field.rf.iretohz(field.rf.SysParams["ire0"])
+            sync, blank = vhsdecode.leveldetect.find_sync_levels(
+                field.data["video"]["demod_05"],
+                def_sync,
+                def_blank,
+                field.get_linefreq(),
+            )
+            self.FieldState.setLevels(sync, blank)
+
+            return self.findpulses(field.data["video"]["demod_05"], (blank + sync) / 2)
+
+    def getpulses_serration(self, field):
         """Find sync pulses in the demodulated video signal
 
         NOTE: TEMPORARY override until an override for the value itself is added upstream.
@@ -367,6 +393,4 @@ class Resync:
                 field.data["video"]["demod"] = demod_data - new_sync + vsync_hz
 
         # utils.plot_scope(field.data["video"]["demod_05"])
-        return self.findpulses(
-            field.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max
-        )
+        return self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)

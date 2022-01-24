@@ -3,7 +3,6 @@ import os
 import time
 import numpy as np
 import scipy.signal as sps
-import copy
 from collections import namedtuple
 
 import lddecode.core as ldd
@@ -96,6 +95,21 @@ def getpulses_override(field):
 #     return data
 
 
+@njit(cache=True)
+def y_comb(data, line_len, limit):
+    """Basic Y comb filter, essentially just blending a line with it's neighbours, limited to some maximum
+    Utilized for Betamax, VHS LP etc as the half-shift in those formats helps put crosstalk on opposite phase on
+    adjecent lines
+    """
+
+    diffb = np.clip(data - np.roll(data, -line_len), -limit, limit)
+    difff = np.clip(data - np.roll(data, line_len), -limit, limit)
+
+    data -= (diffb + difff) / 2
+
+    return data
+
+
 class FieldShared:
     def refinepulses(self):
         LT = self.get_timings()
@@ -125,7 +139,7 @@ class FieldShared:
                     curpulse.start : curpulse.start + curpulse.len
                 ]
                 threshold = self.rf.iretohz(self.rf.hztoire(data[0]) - 10)
-                pulses = self.rf.resync.findpulses(data, 0, threshold)
+                pulses = self.rf.resync.findpulses(data, threshold)
                 if len(pulses):
                     newpulse = Pulse(curpulse.start + pulses[0].start, pulses[0].len)
                     self.rawpulses[i] = newpulse
@@ -306,13 +320,18 @@ class FieldShared:
             # len(validpulses) > 300:
             import matplotlib.pyplot as plt
 
-            fig, (ax1) = plt.subplots(1, 1, sharex=True)
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
             ax1.plot(self.data["video"]["demod"])
 
-            sync, blank = self.rf.resync.VsyncSerration.getLevels()
+            # (
+            #     sync,
+            #     blank,
+            # ) = (
+            #     self.rf.resync.FieldState.getLevels()
+            # )  # self.rf.resync.VsyncSerration.getLevels()
 
-            ax1.axhline(sync, color="#FF0000")
-            ax1.axhline(blank, color="#00FF00")
+            # ax1.axhline(sync, color="#FF0000")
+            # ax1.axhline(blank, color="#00FF00")
 
             # for raw_pulse in self.rawpulses:
             #     ax1.axvline(raw_pulse.start, color="#910000")
@@ -324,13 +343,15 @@ class FieldShared:
             #         ax1.axvline(valid_pulse[1][0], color=color)
             #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
 
-            ax1.axvline(line0loc, color="000000")
+            # ax1.axvline(line0loc, color="000000")
 
             # ax2.plot(np.diff(self.data["video"]["demod_05"]))
 
-            # pulselen = np.zeros_like(self.data["video"]["demod_05"])
-            # for valid_pulse in validpulses:
-            #     pulselen[valid_pulse[1][0]:valid_pulse[1][0] + valid_pulse[1][1]] = valid_pulse[1][1]
+            pulselen = np.zeros_like(self.data["video"]["demod_05"])
+            for valid_pulse in validpulses:
+                pulselen[
+                    valid_pulse[1][0] : valid_pulse[1][0] + valid_pulse[1][1]
+                ] = valid_pulse[1][1]
 
             # ax2.plot(pulselen)
 
@@ -640,15 +661,16 @@ class FieldPALVHS(FieldPALShared):
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(
-            False, *args, **kwargs
+            final, *args, **kwargs
         )
         dschroma = decode_chroma_vhs(self)
         # hpf = utils.filter_simple(dsout, self.rf.Filters["NLHighPass"])
         # dsout = ynr(dsout, hpf, self.outlinelen)
+        # dsout = y_comb(dsout, self.outlinelen, 20000)
 
-        if final:
-            dsout = self.hz_to_output(dsout)
-            self.dspicture = dsout
+        # if final:
+        #     dsout = self.hz_to_output(dsout)
+        #     self.dspicture = dsout
 
         return (dsout, dschroma), dsaudio, dsefm
 

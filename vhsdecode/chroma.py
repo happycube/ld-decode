@@ -11,13 +11,15 @@ import scipy.signal as sps
 from numba import njit
 
 
+@njit(cache=True)
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
     S16_ABS_MAX = 32767
 
-    if np.max(chroma) > S16_ABS_MAX:
-        ldd.logger.warning("Chroma signal clipping.")
-    return np.uint16(chroma + S16_ABS_MAX)
+    # Disabled for now as it's misleading.
+    # if np.max(chroma) > S16_ABS_MAX:
+    #     ldd.logger.warning("Chroma signal clipping.")
+    return (chroma + S16_ABS_MAX).astype(np.uint16)
 
 
 @njit(cache=True, nogil=True)
