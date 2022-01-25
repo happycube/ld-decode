@@ -661,16 +661,16 @@ class FieldPALVHS(FieldPALShared):
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(
-            final, *args, **kwargs
+            False, *args, **kwargs
         )
         dschroma = decode_chroma_vhs(self)
         # hpf = utils.filter_simple(dsout, self.rf.Filters["NLHighPass"])
         # dsout = ynr(dsout, hpf, self.outlinelen)
         # dsout = y_comb(dsout, self.outlinelen, 20000)
 
-        # if final:
-        #     dsout = self.hz_to_output(dsout)
-        #     self.dspicture = dsout
+        if final:
+            dsout = self.hz_to_output(dsout)
+            self.dspicture = dsout
 
         return (dsout, dschroma), dsaudio, dsefm
 

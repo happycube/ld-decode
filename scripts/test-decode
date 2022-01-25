@@ -36,13 +36,17 @@ def die(*args):
     print(*args, file=sys.stderr)
     sys.exit(1)
 
+def safe_unlink(filename):
+    try:
+        os.unlink(filename)
+    except FileNotFoundError:
+        pass
+
 def clean(args, suffixes):
     """Remove output files, if they exist."""
+
     for suffix in suffixes:
-        try:
-            os.unlink(args.output + suffix)
-        except FileNotFoundError:
-            pass
+        safe_unlink(args.output + suffix)
 
 def run_command(cmd, **kwopts):
     """Run a command, as with subprocess.call.
@@ -60,6 +64,29 @@ def run_command(cmd, **kwopts):
     if rc != 0:
         die(cmd[0], 'failed with exit code', rc)
 
+def run_ld_cut(args):
+    """Run ld-decode."""
+
+    safe_unlink(args.infile + '.cut.ldf')
+
+    cmd = [src_dir + '/ld-cut']
+    if args.pal:
+        cmd += ['--pal']
+    if args.cutseek is not None:
+        cmd += ['-S', str(args.cutseek)]
+    elif args.cutstart is not None:
+        cmd += ['-s', str(args.cutstart)]
+    else:
+        die(cmd[0], 'internal error: run_ld_cut() run without seek or start points')
+    
+    cmd += ['-l', str(args.cutlength)]
+    cmd += [args.infile, args.infile + '.cut.ldf']
+
+    # Set PATH so it can invoke helper programs
+    env = os.environ.copy()
+    env['PATH'] = src_dir + ':' + env['PATH']
+    run_command(cmd, env=env)
+
 def run_ld_decode(args):
     """Run ld-decode."""
 
@@ -69,7 +96,11 @@ def run_ld_decode(args):
     cmd += ['--ignoreleadout']
     if args.pal:
         cmd += ['--pal']
-    cmd += [args.infile, args.output]
+
+    cutfile = args.infile + '.cut.ldf'
+    infile = cutfile if os.path.isfile(cutfile) else args.infile
+
+    cmd += [infile, args.output]
 
     # Set PATH so it can invoke helper programs
     env = os.environ.copy()
@@ -106,6 +137,11 @@ def run_ld_process_vbi(args):
         if args.expect_bpsnr > bpsnr:
             die(json_file, 'has median bPSNR', bpsnr, 'dB, expected',
                 args.expect_bpsnr, 'dB')
+           
+    # Print VBI data (useful for finding --expect_vbi values)
+    if args.print_vbi:
+        for field in data["fields"]:
+            print("VBI data:", field["vbi"]["vbiData"])
 
     # Check for a field with the expected VBI values
     if args.expect_vbi is not None:
@@ -217,6 +253,12 @@ def main():
                        help='source is PAL (default NTSC)')
     group.add_argument('--no-efm', action='store_true', dest='no_efm',
                        help='source has no EFM')
+    group.add_argument('--cut-seek', dest='cutseek', type=int,
+                       help='start ld-cut by seeking to frame #')
+    group.add_argument('--cut-start', dest='cutstart', type=int,
+                       help='start ld-cut by seeking to frame #')
+    group.add_argument('--cut-length', dest='cutlength', type=int, default = 2,
+                       help='get N frames from ld-cut')
     group.add_argument('--decoder', metavar='decoder', action='append',
                        dest='decoders', default=[],
                        help='use specific ld-chroma-decoder decoder (use more than once to test multiple decoders)')
@@ -227,6 +269,8 @@ def main():
                        help='expect median bPSNR of at least DB')
     group.add_argument('--expect-vbi', metavar='N,N,N', type=parse_vbi_arg,
                        help='expect at least one field with VBI values N,N,N')
+    group.add_argument('--print-vbi', action='store_true',
+                       help='Print VBI values (to find out what to pass into expect-vbi)')
     group.add_argument('--expect-efm-samples', metavar='N', type=int,
                        help='expect at least N stereo pairs of samples in EFM output')
     args = parser.parse_args()
@@ -253,6 +297,10 @@ def main():
     if output_dir != '':
         os.makedirs(output_dir, exist_ok=True)
 
+    safe_unlink(args.infile + '.cut.ldf')
+    if args.cutseek is not None or args.cutstart is not None:
+        run_ld_cut(args)
+
     # Run the stages of the decoding toolchain
     run_ld_decode(args)
     run_ld_process_vbi(args)
@@ -264,3 +312,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

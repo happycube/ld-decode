@@ -40,6 +40,27 @@ jobs:
     - name: Run testvbidecoder
       timeout-minutes: 5
       run: tools/library/tbc/testvbidecoder/testvbidecoder
+    
+    - name: Test ld-cut (NTSC)
+      timeout-minutes: 10
+      run: |
+        scripts/test-decode \
+          --cut-seek 30255 \
+          --cut-length 4 \
+          --expect-frames 4 \
+          --expect-vbi 9151563,15925845,15925845 \
+          testdata/ve-snw-cut.lds
+    
+    - name: Test ld-cut (PAL)
+      timeout-minutes: 10
+      run: |
+        scripts/test-decode \
+          --pal \
+          --cut-seek 760 \
+          --cut-length 4 \
+          --expect-frames 4 \
+          --expect-vbi 9152512,15730528,15730528 \
+          testdata/pal/ggv-mb-1khz.ldf
 
     - name: Decode NTSC CAV
       timeout-minutes: 10
