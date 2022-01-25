@@ -1593,8 +1593,10 @@ class Field:
                 hlens.append(p.len)
 
         LT = {}
-
-        LT["hsync_median"] = np.median(hlens)
+        if len(hlens) > 0:
+            LT["hsync_median"] = np.median(hlens)
+        else:
+            LT["hsync_median"] = self.rf.SysParams["hsyncPulseUS"]
 
         hsync_min = LT["hsync_median"] + self.usectoinpx(-0.5)
         hsync_max = LT["hsync_median"] + self.usectoinpx(0.5)
@@ -1940,7 +1942,10 @@ class Field:
                     self.validpulses[i][1].start - self.validpulses[i - 1][1].start
                 )
 
-        return np.mean(linelens)
+        if len(linelens) > 0:
+            return np.mean(linelens)
+        else:
+            return self.inlinelen
 
     def skip_check(self):
         """ This routine checks to see if there's a (probable) VSYNC at the end.
@@ -2143,8 +2148,8 @@ class Field:
 
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
-            logger.error("Unable to find any sync pulses, jumping one second")
-            return None, None, int(self.rf.freq_hz)
+            logger.error("Unable to find any sync pulses, jumping 100 ms")
+            return None, None, int(self.rf.freq_hz / 10)
 
         self.validpulses = validpulses = self.refinepulses()
 
