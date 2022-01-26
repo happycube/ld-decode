@@ -9,12 +9,12 @@ def fill_rfparams_vhs_shared(rfparams):
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
     rfparams["deemph_mid"] = 260000
-    rfparams["deemph_gain"] = 15
+    rfparams["deemph_gain"] = 14
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
     rfparams["nonlinear_highpass_freq"] = 600000
-    rfparams["nonlinear_highpass_limit_h"] = 20000
+    rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
 
 
@@ -54,8 +54,8 @@ def get_rfparams_pal_vhs(rfparams_pal):
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
-    RFParams_PAL_VHS["video_bpf_low"] = 1500000
-    RFParams_PAL_VHS["video_bpf_high"] = 5380000
+    RFParams_PAL_VHS["video_bpf_low"] = 2500000
+    RFParams_PAL_VHS["video_bpf_high"] = 5680000
     # Band-pass filter order.
     # Order may be fine as is.
     RFParams_PAL_VHS["video_bpf_order"] = 1
@@ -63,11 +63,11 @@ def get_rfparams_pal_vhs(rfparams_pal):
     RFParams_PAL_VHS["video_lpf_extra"] = 6010000
     RFParams_PAL_VHS["video_lpf_extra_order"] = 3
 
-    RFParams_PAL_VHS["video_hpf_extra"] = 1220000
+    RFParams_PAL_VHS["video_hpf_extra"] = 1520000
     RFParams_PAL_VHS["video_hpf_extra_order"] = 1
 
     # Low-pass filter on Y after demodulation
-    RFParams_PAL_VHS["video_lpf_freq"] = 2500000
+    RFParams_PAL_VHS["video_lpf_freq"] = 3500000
     RFParams_PAL_VHS["video_lpf_order"] = 1
 
     # PAL color under carrier is 40H + 1953
