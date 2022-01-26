@@ -121,7 +121,7 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
     if (((videoParameters.fieldHeight * 2) - 1) > MAX_HEIGHT) qCritical() << "Comb::Comb(): Frame height exceeds allowed maximum!";
 
     // Range check the video start
-    if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
+    if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16! (currently " << videoParameters.activeVideoStart << ")";
 
     if (videoParameters.sampleRate / videoParameters.fsc != 4)
     {

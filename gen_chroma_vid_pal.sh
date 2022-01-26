@@ -20,7 +20,7 @@ if [ -f "$1.wav" ] ; then
   -filter_complex $FILTER_COMPLEX \
   -map "[output]":v -c:v ffv1 -coder 1 -context 1 -g 25 -level 3 -slices 16 -slicecrc 1 -top 1 \
   -pixel_format yuv422p10le -color_range tv -color_primaries bt470bg -color_trc gamma28 \
-  -colorspace bt470bg -aspect 4:3 -c:a flac -compression_level 12 -map 2:a? -shortest -y $1.mkv
+  -colorspace bt470bg -c:a flac -compression_level 12 -map 2:a? -shortest -y $1.mkv
 else
   ffmpeg -hide_banner -thread_queue_size 4096\
   -color_range tv \
@@ -35,7 +35,7 @@ else
   -filter_complex $FILTER_COMPLEX \
   -map "[output]":v -c:v ffv1 -coder 1 -context 1 -g 25 -level 3 -slices 16 -slicecrc 1 -top 1 \
   -pixel_format yuv422p10le -color_range tv -color_primaries bt470bg -color_trc gamma28 \
-  -colorspace bt470bg -aspect 4:3 -shortest -y $1.mkv
+  -colorspace bt470bg -shortest -y $1.mkv
 fi
 
 # Encode internet-friendly clip of previous lossless result:

@@ -315,7 +315,7 @@ void PalColour::decodeField(const SourceField &inputField, const double *chromaD
 }
 
 PalColour::LineInfo::LineInfo(qint32 _number)
-    : number(_number)
+    : number(_number), bp(0), bq(0), Vsw(0)
 {
 }
 
