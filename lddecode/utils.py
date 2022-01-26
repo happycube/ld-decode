@@ -557,6 +557,9 @@ def get_version():
 def get_git_info():
     """ Return git branch and commit for current directory, if available. """
 
+    branch = "UNKNOWN"
+    commit = "UNKNOWN"
+
     version = get_version()
     if ':' in version:
         branch, commit = version.split(':')[0:2]
