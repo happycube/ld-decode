@@ -53,7 +53,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
         return;
     }
 
-    if (m_numberOfFrames > 100000) {
+    if (m_numberOfFrames > 110000) {
         qDebug() << "JSON metadata contains" << m_numberOfFrames << "frames - too big";
         m_tbcValid = false;
         return;
