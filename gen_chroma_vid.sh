@@ -16,7 +16,7 @@ usage() {
 	echo "-a, --audio          Optional Audiotrack (*.wav, mp3, aac et. al.) to mux with generated video"
 	echo "-s, --start          Specify the start frame number"
 	echo "-l, --length         Specify the length (number of frames to process)"
-	echo "-f, --full         Specify the length (number of frames to process)"
+	echo "-f, --full           Sets output to full-frame of video signal e.g 1135x625 PAL & 910x525 NTSC (experimental)
 	echo
 	echo "Example: $(basename "$0") -i /media/decoded/tape19 -v pal -a /media/decoded/tape19.wav"
 }
