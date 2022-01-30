@@ -2627,22 +2627,23 @@ class Field:
         valid_min05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(-30))
         valid_max05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(115))
 
-        # these are especially low because burst/pilot can occur during sync pulses
-        vsync_ire = f.rf.SysParams['vsync_ire']
-        sync_min_vsync = f.rf.iretohz(vsync_ire - 80 if isPAL else vsync_ire - 25)
-        sync_min_hz = f.rf.iretohz(-70 if isPAL else -50)
-        
-        vsync_lines = self.get_vsync_lines()
+        # Account for sync pulses when checking demod
 
         hsync_len = int(f.get_timings()['hsync_median'])
+        vsync_ire = f.rf.SysParams['vsync_ire']
+        vsync_lines = self.get_vsync_lines()
+
+        # In sync areas the minimum IRE is vsync - pilot/burst
+        sync_min = f.rf.iretohz(vsync_ire - 60 if isPAL else vsync_ire - 25)
+        sync_min_05 = f.rf.iretohz(vsync_ire - 10)
+
         for l in range(1, len(f.linelocs)):
             if l in vsync_lines:
-                valid_min[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min_vsync
-                valid_min05[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min_vsync
+                valid_min[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min
+                valid_min05[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min_05
             else:
-                valid_min[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_hz
-                valid_min05[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_hz
-
+                valid_min[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min
+                valid_min05[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_05
 
         iserr2 = f.data["video"]["demod"] < valid_min
         iserr2 |= f.data["video"]["demod"] > valid_max
@@ -2651,14 +2652,6 @@ class Field:
         iserr3 |= f.data["video"]["demod_05"] > valid_max05
 
         iserr = iserr1 | iserr2 | iserr3 | iserr_rf
-
-        # Each valid pulse is definitely *not* an error, so exclude it here at the end
-        for v in self.validpulses:
-            iserr[
-                int(v[1].start - self.rf.freq) : int(
-                    v[1].start + v[1].len + self.rf.freq
-                )
-            ] = False
 
         #print(iserr1.sum(), iserr2.sum(), iserr3.sum(), iserr_rf.sum(), iserr.sum())
 
