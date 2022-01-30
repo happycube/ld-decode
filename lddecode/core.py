@@ -2572,6 +2572,27 @@ class Field:
         self.sync_confidence = min(self.sync_confidence, newconf)
         return int(self.sync_confidence)
 
+    def get_vsync_area(self):
+        """ return beginning, length in lines, and end of vsync area """
+        vsync_begin = int(self.linelocs[0])
+        vsync_end_line = int(self.getBlankLength(self.isFirstField) + 0.6)
+        vsync_end = int(self.linelocs[vsync_end_line]) + 1
+
+        return vsync_begin, vsync_end_line, vsync_end
+
+    def get_vsync_lines(self):
+        rv = []
+        end = 10 if self.isFirstField else 9
+        for i in range(1, end):
+            rv.append(i)
+
+        if self.rf.system == 'PAL':
+            start2 = 311 if self.isFirstField else 310
+            for i in range(start2, 318):
+                rv.append(i)
+
+        return rv
+
     def dropout_detect_demod(self):
         # current field
         f = self
@@ -2602,11 +2623,29 @@ class Field:
             f.data["video"]["demod"], f.rf.iretohz(150 if isPAL else 160)
         )
 
-        iserr2 = f.data["video"]["demod"] < valid_min
-        iserr2 |= f.data["video"]["demod"] > valid_max
-
+        # Look for slightly longer dropouts...
         valid_min05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(-30))
         valid_max05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(115))
+
+        # these are especially low because burst/pilot can occur during sync pulses
+        vsync_ire = f.rf.SysParams['vsync_ire']
+        sync_min_vsync = f.rf.iretohz(vsync_ire - 80 if isPAL else vsync_ire - 25)
+        sync_min_hz = f.rf.iretohz(-70 if isPAL else -50)
+        
+        vsync_lines = self.get_vsync_lines()
+
+        hsync_len = int(f.get_timings()['hsync_median'])
+        for l in range(1, len(f.linelocs)):
+            if l in vsync_lines:
+                valid_min[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min_vsync
+                valid_min05[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min_vsync
+            else:
+                valid_min[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_hz
+                valid_min05[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_hz
+
+
+        iserr2 = f.data["video"]["demod"] < valid_min
+        iserr2 |= f.data["video"]["demod"] > valid_max
 
         iserr3 = f.data["video"]["demod_05"] < valid_min05
         iserr3 |= f.data["video"]["demod_05"] > valid_max05
@@ -2620,6 +2659,8 @@ class Field:
                     v[1].start + v[1].len + self.rf.freq
                 )
             ] = False
+
+        #print(iserr1.sum(), iserr2.sum(), iserr3.sum(), iserr_rf.sum(), iserr.sum())
 
         return iserr
 
