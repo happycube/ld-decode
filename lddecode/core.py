@@ -325,7 +325,9 @@ class RFDecode:
 
         self.SysParams["analog_audio"] = has_analog_audio
 
-        self.DecoderParams['audio_filterwidth'] = extra_options.get("audio_filterwidth", self.DecoderParams['audio_filterwidth'])
+        fw = extra_options.get("audio_filterwidth", 0)
+        if fw is not None and fw > 0:
+            self.DecoderParams['audio_filterwidth'] = fw
 
         self.deemp_mult = extra_options.get("deemp_mult", (1.0, 1.0))
 
