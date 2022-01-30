@@ -234,6 +234,14 @@ parser.add_argument(
     help="Video low-pass filter order",
 )
 parser.add_argument(
+    "--audio_filterwidth",
+    dest="audio_filterwidth",
+    metavar="FREQ",
+    type=parse_frequency,
+    default=None,
+    help="Analog audio filter width",
+)
+parser.add_argument(
     "--new-audio",
     dest="newaudio",
     action="store_true",
@@ -276,6 +284,7 @@ extra_options = {
     "write_pre_efm": args.prefm,
     "deemp_mult": (args.deemp_adjust, args.deemp_adjust),
     "deemp_coeff": (args.deemp_low, args.deemp_high),
+    "audio_filterwidth": args.audio_filterwidth,
 }
 
 if vid_standard == "NTSC" and args.NTSC_color_notch_filter:

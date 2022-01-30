@@ -163,8 +163,9 @@ RFParams_NTSC = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    # audio filter parameters
+    "audio_filterwidth": 130000,
+    "audio_filterorder": 900,
 }
 
 # Settings for use with noisier disks
@@ -185,8 +186,8 @@ RFParams_NTSC_lowband = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    "audio_filterwidth": 100000,
+    "audio_filterorder": 900,
 }
 
 RFParams_PAL = {
@@ -207,8 +208,8 @@ RFParams_PAL = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    "audio_filterwidth": 100000,
+    "audio_filterorder": 900,
 }
 
 RFParams_PAL_lowband = {
@@ -229,8 +230,8 @@ RFParams_PAL_lowband = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    "audio_filterwidth": 100000,
+    "audio_filterorder": 900,
 }
 
 
@@ -323,6 +324,8 @@ class RFDecode:
                 self.DecoderParams = copy.deepcopy(RFParams_PAL)
 
         self.SysParams["analog_audio"] = has_analog_audio
+
+        self.DecoderParams['audio_filterwidth'] = extra_options.get("audio_filterwidth", self.DecoderParams['audio_filterwidth'])
 
         self.deemp_mult = extra_options.get("deemp_mult", (1.0, 1.0))
 
@@ -1416,6 +1419,8 @@ def downscale_audio(
                 logger.warning("Analog audio processing error, muting samples")
 
             failed = True
+
+    #print(rms(output[::2]), rms(output[1::2]))
 
     np.clip(output, -32766, 32766, out=output16)
 
