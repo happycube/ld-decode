@@ -2629,7 +2629,7 @@ class Field:
 
         # Account for sync pulses when checking demod
 
-        hsync_len = int(f.get_timings()['hsync_median'])
+        hsync_len = int(f.get_timings()['hsync'][1])
         vsync_ire = f.rf.SysParams['vsync_ire']
         vsync_lines = self.get_vsync_lines()
 
