@@ -163,8 +163,9 @@ RFParams_NTSC = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    # audio filter parameters
+    "audio_filterwidth": 130000,
+    "audio_filterorder": 900,
 }
 
 # Settings for use with noisier disks
@@ -185,8 +186,8 @@ RFParams_NTSC_lowband = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    "audio_filterwidth": 100000,
+    "audio_filterorder": 900,
 }
 
 RFParams_PAL = {
@@ -207,8 +208,8 @@ RFParams_PAL = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    "audio_filterwidth": 100000,
+    "audio_filterorder": 900,
 }
 
 RFParams_PAL_lowband = {
@@ -229,8 +230,8 @@ RFParams_PAL_lowband = {
     # used to detect rot
     "video_hpf_freq": 10000000,
     "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 800,
+    "audio_filterwidth": 100000,
+    "audio_filterorder": 900,
 }
 
 
@@ -323,6 +324,10 @@ class RFDecode:
                 self.DecoderParams = copy.deepcopy(RFParams_PAL)
 
         self.SysParams["analog_audio"] = has_analog_audio
+
+        fw = extra_options.get("audio_filterwidth", 0)
+        if fw is not None and fw > 0:
+            self.DecoderParams['audio_filterwidth'] = fw
 
         self.deemp_mult = extra_options.get("deemp_mult", (1.0, 1.0))
 
@@ -1416,6 +1421,8 @@ def downscale_audio(
                 logger.warning("Analog audio processing error, muting samples")
 
             failed = True
+
+    #print(rms(output[::2]), rms(output[1::2]))
 
     np.clip(output, -32766, 32766, out=output16)
 
@@ -2565,6 +2572,27 @@ class Field:
         self.sync_confidence = min(self.sync_confidence, newconf)
         return int(self.sync_confidence)
 
+    def get_vsync_area(self):
+        """ return beginning, length in lines, and end of vsync area """
+        vsync_begin = int(self.linelocs[0])
+        vsync_end_line = int(self.getBlankLength(self.isFirstField) + 0.6)
+        vsync_end = int(self.linelocs[vsync_end_line]) + 1
+
+        return vsync_begin, vsync_end_line, vsync_end
+
+    def get_vsync_lines(self):
+        rv = []
+        end = 10 if self.isFirstField else 9
+        for i in range(1, end):
+            rv.append(i)
+
+        if self.rf.system == 'PAL':
+            start2 = 311 if self.isFirstField else 310
+            for i in range(start2, 318):
+                rv.append(i)
+
+        return rv
+
     def dropout_detect_demod(self):
         # current field
         f = self
@@ -2595,24 +2623,37 @@ class Field:
             f.data["video"]["demod"], f.rf.iretohz(150 if isPAL else 160)
         )
 
-        iserr2 = f.data["video"]["demod"] < valid_min
-        iserr2 |= f.data["video"]["demod"] > valid_max
-
+        # Look for slightly longer dropouts...
         valid_min05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(-30))
         valid_max05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(115))
+
+        # Account for sync pulses when checking demod
+
+        hsync_len = int(f.get_timings()['hsync'][1])
+        vsync_ire = f.rf.SysParams['vsync_ire']
+        vsync_lines = self.get_vsync_lines()
+
+        # In sync areas the minimum IRE is vsync - pilot/burst
+        sync_min = f.rf.iretohz(vsync_ire - 60 if isPAL else vsync_ire - 25)
+        sync_min_05 = f.rf.iretohz(vsync_ire - 10)
+
+        for l in range(1, len(f.linelocs)):
+            if l in vsync_lines:
+                valid_min[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min
+                valid_min05[int(f.linelocs[l]):int(f.linelocs[l+1])] = sync_min_05
+            else:
+                valid_min[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min
+                valid_min05[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_05
+
+        iserr2 = f.data["video"]["demod"] < valid_min
+        iserr2 |= f.data["video"]["demod"] > valid_max
 
         iserr3 = f.data["video"]["demod_05"] < valid_min05
         iserr3 |= f.data["video"]["demod_05"] > valid_max05
 
         iserr = iserr1 | iserr2 | iserr3 | iserr_rf
 
-        # Each valid pulse is definitely *not* an error, so exclude it here at the end
-        for v in self.validpulses:
-            iserr[
-                int(v[1].start - self.rf.freq) : int(
-                    v[1].start + v[1].len + self.rf.freq
-                )
-            ] = False
+        #print(iserr1.sum(), iserr2.sum(), iserr3.sum(), iserr_rf.sum(), iserr.sum())
 
         return iserr
 
