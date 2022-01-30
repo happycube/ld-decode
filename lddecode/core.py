@@ -2653,6 +2653,10 @@ class Field:
 
         iserr = iserr1 | iserr2 | iserr3 | iserr_rf
 
+        # filter out dropouts outside actual field
+        iserr[:int(f.linelocs[f.lineoffset + 1])] = False
+        iserr[int(f.linelocs[f.lineoffset + f.linecount + 1]):] = False
+
         #print(iserr1.sum(), iserr2.sum(), iserr3.sum(), iserr_rf.sum(), iserr.sum())
 
         return iserr
