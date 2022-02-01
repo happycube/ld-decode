@@ -11,25 +11,29 @@ from numba import njit
 
 
 @njit(cache=True, parallel=True, nogil=True)
-def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire):
+def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full=True):
     """Check if adjusted levels give are somewhat sane."""
     # ldd.logger.info("am below new blank %s , amount below half_sync %s", amount_below, amount_below_half_sync)
     # ldd.logger.info("change %s _ %s", old_sync - new_sync, (hz_ire * 15))
 
-    if (vsync_hz_ref - new_sync) > (hz_ire * 15):
-        # Too far below format's standard sync to make sense
+    blank_sync_ire_diff = (new_blank - new_sync) / hz_ire
+
+    # Check if too far below format's standard sync, or the difference between sync and blank is too large
+    # to make sense
+    if (vsync_hz_ref - new_sync) > (hz_ire * 15) or blank_sync_ire_diff > 45 or blank_sync_ire_diff < 38:
         return False
     if new_sync - old_sync < (hz_ire * 5):
         # Small change - probably ok
         return True
 
-    amount_below = len(np.argwhere(data < new_sync)) / len(data)
-    amount_below_half_sync = len(np.argwhere(data < new_blank)) / len(data)
+    if full:
+        amount_below = len(np.argwhere(data < new_sync)) / len(data)
+        amount_below_half_sync = len(np.argwhere(data < new_blank)) / len(data)
 
-    # If there is a lot of data below the detected vsync level, or almost no data below the detected
-    # 50% of hsync level it's likely the levels are not correct, so avoid adjusting.
-    if amount_below > 0.07 or amount_below_half_sync < 0.005:
-        return False
+        # If there is a lot of data below the detected vsync level, or almost no data below the detected
+        # 50% of hsync level it's likely the levels are not correct, so avoid adjusting.
+        if amount_below > 0.07 or amount_below_half_sync < 0.005:
+            return False
 
     return True
 
@@ -60,43 +64,42 @@ def findpulses_numba(sync_ref, high, min_synclen, max_synclen):
 # preliminary solution to fix spurious decoding halts (numpy error case)
 class FieldState:
     def __init__(self, sysparams):
-        self.SysParams = sysparams
-        self.fv = self.SysParams["FPS"] * 2
-        ma_depth = round(self.fv / 5) if self.fv < 60 else round(self.fv / 6)
+        fv = sysparams["FPS"] * 2
+        ma_depth = round(fv / 5) if fv < 60 else round(fv / 6)
         ma_min_watermark = int(ma_depth / 2)
-        self.blanklevels = utils.StackableMA(
+        self._blanklevels = utils.StackableMA(
             window_average=ma_depth, min_watermark=ma_min_watermark
         )
-        self.synclevels = utils.StackableMA(
+        self._synclevels = utils.StackableMA(
             window_average=ma_depth, min_watermark=ma_min_watermark
         )
-        self.locs = None
+        self._locs = None
 
     def setSyncLevel(self, level):
-        self.synclevels.push(level)
+        self._synclevels.push(level)
 
     def setLevels(self, sync, blank):
-        self.blanklevels.push(blank)
+        self._blanklevels.push(blank)
         self.setSyncLevel(sync)
 
     def getSyncLevel(self):
-        return self.synclevels.pull()
+        return self._synclevels.pull()
 
     def getLevels(self):
-        blevels = self.blanklevels.pull()
+        blevels = self._blanklevels.pull()
         if blevels is not None:
             return self.getSyncLevel(), blevels
         else:
             return None, None
 
     def setLocs(self, locs):
-        self.locs = locs
+        self._locs = locs
 
     def getLocs(self):
-        return self.locs
+        return self._locs
 
     def hasLevels(self):
-        return self.blanklevels.has_values() and self.synclevels.has_values()
+        return self._blanklevels.has_values() and self._synclevels.has_values()
 
 
 class Resync:
@@ -219,7 +222,11 @@ class Resync:
             else:
                 return None, None
         else:
-            self.FieldState.setLevels(synclevel, blacklevel)
+            # Make sure these levels are sane before using them.
+            if self.level_check(field, synclevel, blacklevel, field.data["video"]["demod_05"], False):
+                self.FieldState.setLevels(synclevel, blacklevel)
+            else:
+                return None, None
 
         return synclevel, blacklevel
 
@@ -267,7 +274,7 @@ class Resync:
             self.VsyncSerration.push_levels((f_sync, f_blank))
 
     # Do a level check
-    def level_check(self, field, sync, blank, sync_reference):
+    def level_check(self, field, sync, blank, sync_reference, full=True):
         vsync_hz = field.rf.iretohz(field.rf.SysParams["vsync_ire"])
         return check_levels(
             sync_reference,
@@ -276,6 +283,7 @@ class Resync:
             blank,
             field.rf.sysparams_const.vsync_hz,
             field.rf.sysparams_const.hz_ire,
+            full
         )
 
     def getpulses_override(self, field):
@@ -316,7 +324,7 @@ class Resync:
         if self.debug:
             self.debug_field(sync_reference)
 
-        # measures the serration levels if possible
+        # measures the serration levels if possible88
         self.VsyncSerration.work(sync_reference)
         # adds the sync and blanking levels from the back porch
         self.add_pulselevels_to_serration_measures(field)
