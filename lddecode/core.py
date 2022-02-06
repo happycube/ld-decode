@@ -1439,6 +1439,7 @@ class Field:
         keepraw=True,
         prevfield=None,
         initphase=False,
+        fields_written=0,
         readloc=0,
     ):
         self.rawdata = decode["input"]
@@ -1447,6 +1448,7 @@ class Field:
         self.readloc = readloc
 
         self.prevfield = prevfield
+        self.fields_written = fields_written
 
         # XXX: need a better way to prevent memory leaks than this
         # For now don't let a previous frame keep it's prev frame
@@ -2156,8 +2158,13 @@ class Field:
 
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
-            logger.error("Unable to find any sync pulses, jumping one second")
-            return None, None, int(self.rf.freq_hz)
+            if self.fields_written:
+                logger.error("Unable to find any sync pulses, skipping one field")
+                return None, None, None
+            else:
+                logger.error("Unable to find any sync pulses, skipping one second")
+                return None, None, int(self.rf.freq_hz)
+
 
         self.validpulses = validpulses = self.refinepulses()
 
@@ -3529,6 +3536,7 @@ class LDdecode:
             audio_offset=self.audio_offset,
             prevfield=self.curfield,
             initphase=initphase,
+            fields_written=self.fields_written,
             readloc=self.rawdecode["startloc"],
         )
 
