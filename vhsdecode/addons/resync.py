@@ -20,7 +20,7 @@ def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full
 
     # Check if too far below format's standard sync, or the difference between sync and blank is too large
     # to make sense
-    if (vsync_hz_ref - new_sync) > (hz_ire * 15) or blank_sync_ire_diff > 45 or blank_sync_ire_diff < 38:
+    if (vsync_hz_ref - new_sync) > (hz_ire * 15) or blank_sync_ire_diff > 45:
         return False
     if new_sync - old_sync < (hz_ire * 5):
         # Small change - probably ok
