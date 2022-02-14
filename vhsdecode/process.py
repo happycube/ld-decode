@@ -910,7 +910,18 @@ class VHSDecode(ldd.LDdecode):
     def writeout(self, dataset):
         f, fi, (picturey, picturec), audio, efm = dataset
 
-        fi["audioSamples"] = 0
+        # Remove fields that are currently not used to cut down on space usage.
+        # the qt tools will load them as 0 with the current code
+        # if they don't exist.
+        if "audioSamples" in fi:
+            del fi["audioSamples"]
+
+        if "vbi" in fi:
+            del fi["vbi"]
+
+        if "medianBurstIRE" in fi:
+            del fi["medianBurstIRE"]
+
         self.fieldinfo.append(fi)
 
         self.outfile_video.write(picturey)
@@ -1065,15 +1076,17 @@ class VHSRFDecode(ldd.RFDecode):
 
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
         # can't be changed later.
-        self.options = namedtuple(
+        self._options = namedtuple(
             "Options",
-            "diff_demod_check_value tape_format disable_comb nldeemp disable_right_hsync",
+            "diff_demod_check_value tape_format disable_comb nldeemp disable_right_hsync sync_clip disable_dc_offset",
         )(
             self.iretohz(100) * 2,
             tape_format,
             rf_options.get("disable_comb", False),
             rf_options.get("nldeemp", False),
             rf_options.get("disable_right_hsync", False),
+            rf_options.get("sync_clip", False),
+            rf_options.get("disable_dc_offset", False),
         )
 
         # Store a separate setting for *color* system as opposed to 525/625 line here.
@@ -1100,13 +1113,11 @@ class VHSRFDecode(ldd.RFDecode):
         self.notch = rf_options.get("notch", None)
         self.notch_q = rf_options.get("notch_q", 10.0)
         self.disable_diff_demod = rf_options.get("disable_diff_demod", False)
-        self.disable_dc_offset = rf_options.get("disable_dc_offset", False)
         self.useAGC = extra_options.get("useAGC", False)
         self.debug = extra_options.get("debug", False)
         self.cafc = rf_options.get("cafc", False)
         # cafc requires --recheck_phase
         self.recheck_phase = True if self.cafc else self.recheck_phase
-        self.sync_clip = rf_options.get("sync_clip", False)
 
         if track_phase is None:
             self.track_phase = 0
@@ -1129,12 +1140,12 @@ class VHSRFDecode(ldd.RFDecode):
 
         # As agc can alter these sysParams values, store a copy to then
         # initial value for reference.
-        self.sysparams_const = namedtuple("Starting_values", "hz_ire vsync_hz")(
-            self.SysParams["hz_ire"], self.iretohz(self.SysParams["vsync_ire"])
+        self._sysparams_const = namedtuple("SysparamsConst", "hz_ire vsync_hz ire0")(
+            self.SysParams["hz_ire"], self.iretohz(self.SysParams["vsync_ire"]), self.SysParams["ire0"]
         )
 
         # Lastly we re-create the filters with the new parameters.
-        self.computevideofilters_b()
+        self._computevideofilters_b()
 
         DP = self.DecoderParams
 
@@ -1202,12 +1213,20 @@ class VHSRFDecode(ldd.RFDecode):
         self.resync = Resync(self.freq_hz, self.SysParams, debug=self.debug)
         self.debug_plot = debug_plot
 
+    @property
+    def sysparams_const(self):
+        return self._sysparams_const
+
+    @property
+    def options(self):
+        return self._options
+
     def computevideofilters(self):
         self.Filters = {}
         # Needs to be defined here as it's referenced in constructor.
         self.Filters["F05_offset"] = 32
 
-    def computevideofilters_b(self):
+    def _computevideofilters_b(self):
         # Use some shorthand to compact the code.
         SF = self.Filters
         DP = self.DecoderParams

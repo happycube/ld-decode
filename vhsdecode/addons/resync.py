@@ -10,6 +10,14 @@ import hashlib
 from numba import njit
 
 
+def iretohz(sysparams, ire):
+    return sysparams.ire0 + (sysparams.hz_ire * ire)
+
+
+def hztoire(sysparams, hz):
+    return (hz - sysparams.ire0) / sysparams.hz_ire
+
+
 @njit(cache=True, parallel=True, nogil=True)
 def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full=True):
     """Check if adjusted levels give are somewhat sane."""
@@ -58,6 +66,37 @@ def findpulses_numba(sync_ref, high, min_synclen, max_synclen):
     pulses_lengths = locs_len[where_all_syncs]
     # return list(map(Pulse, pulses_starts, pulses_lengths))
     return [Pulse(z[0], z[1]) for z in zip(pulses_starts, pulses_lengths)]
+
+
+def _fallback_vsync_loc_means(demod_05, pulses, sample_freq_mhz: float, min_len: int):
+    """Get the mean value of the video level inside pulses above a set threshold.
+
+    Args:
+        demod_05 ([type]): Video data to get levels from.
+        pulses ([type]): List of detected pulses
+        sample_freq_mhz (float): Sample frequency of the data in mhz
+        len_threshold (int): only use pulses longer than this threshold.
+
+    Returns:
+        [type]: a list of vsync locations and a list of mean values
+    """
+    vsync_locs = []
+    vsync_means = []
+
+    for i, p in enumerate(pulses):
+        if p.len > min_len:
+            vsync_locs.append(i)
+            vsync_means.append(
+                np.mean(
+                    demod_05[
+                        int(p.start + sample_freq_mhz) : int(
+                            p.start + p.len - sample_freq_mhz
+                        )
+                    ]
+                )
+            )
+
+    return vsync_locs, vsync_means
 
 
 # stores the last valid blacklevel, synclevel and vsynclocs state
@@ -113,14 +152,14 @@ class Resync:
         self.linelen = self.VsyncSerration.getLinelen()
         self.use_serration = True
 
-    def debug_field(self, sync_reference):
+    def _debug_field(self, sync_reference):
         ldd.logger.debug(
             "Hashed field sync reference %s"
             % hashlib.md5(sync_reference.tobytes("C")).hexdigest()
         )
 
     # checks for SysParams consistency
-    def sysparams_consistency_checks(self, field):
+    def _sysparams_consistency_checks(self, field):
         reclamp_ire0 = False
         # AGC is allowed to change two sysparams
         if field.rf.useAGC:
@@ -138,31 +177,17 @@ class Resync:
                 )
                 self.SysParams["hz_ire"] = field.rf.SysParams["hz_ire"].copy()
 
-        if self.SysParams != field.rf.SysParams:
-            ldd.logger.error("SysParams changed during runtime!")
-            ldd.logger.debug("Original: %s" % self.SysParams)
-            ldd.logger.debug("Altered : %s" % field.rf.SysParams)
-            assert False, "SysParams changed during runtime!"
+        # if self.SysParams != field.rf.SysParams:
+        #     ldd.logger.error("SysParams changed during runtime!")
+        #     ldd.logger.debug("Original: %s" % self.SysParams)
+        #     ldd.logger.debug("Altered : %s" % field.rf.SysParams)
+        #     assert False, "SysParams changed during runtime!"
 
         return reclamp_ire0
 
     def fallback_vsync_loc_means(self, field, pulses):
-        # determine sync pulses from vsync
-        vsync_locs = []
-        vsync_means = []
-
-        for i, p in enumerate(pulses):
-            if p.len > field.usectoinpx(10):
-                vsync_locs.append(i)
-                vsync_means.append(
-                    np.mean(
-                        field.data["video"]["demod_05"][
-                            int(p.start + field.rf.freq) : int(
-                                p.start + p.len - field.rf.freq
-                            )
-                        ]
-                    )
-                )
+        # TODO: Fix this so it looks for the right pulse lens.
+        vsync_locs, vsync_means = _fallback_vsync_loc_means(field.data["video"]["demod_05"], pulses, field.rf.freq, field.usectoinpx(10))
 
         return vsync_locs, vsync_means
 
@@ -174,17 +199,19 @@ class Resync:
 
         black_means = []
 
+        freq_mhz = field.rf.freq
+
         for i in itertools.chain(r1, r2):
             if i < 0 or i >= len(pulses):
                 continue
 
             p = pulses[i]
-            if inrange(p.len, field.rf.freq * 0.75, field.rf.freq * 3):
+            if inrange(p.len, freq_mhz * 0.75, freq_mhz * 3):
                 black_means.append(
                     np.mean(
                         field.data["video"]["demod_05"][
-                            int(p.start + (field.rf.freq * 5)) : int(
-                                p.start + (field.rf.freq * 20)
+                            int(p.start + (freq_mhz * 5)) : int(
+                                p.start + (freq_mhz * 20)
                             )
                         ]
                     )
@@ -230,10 +257,10 @@ class Resync:
 
         return synclevel, blacklevel
 
-    def findpulses_range(self, field, vsync_hz):
-        sync_ire = field.rf.hztoire(vsync_hz)
-        pulse_hz_min = field.rf.iretohz(sync_ire - 10)
-        pulse_hz_max = (field.rf.iretohz(sync_ire) + field.rf.iretohz(0)) / 2
+    def findpulses_range(self, sp, vsync_hz):
+        sync_ire = hztoire(sp, vsync_hz)
+        pulse_hz_min = iretohz(sp, sync_ire - 10)
+        pulse_hz_max = (iretohz(sp, sync_ire) + iretohz(sp, 0)) / 2
         return pulse_hz_min, pulse_hz_max
 
         # lddu.findpulses() equivalent
@@ -252,7 +279,7 @@ class Resync:
             min_sync = np.min(field.data["video"]["demod_05"])
             retries = 30
             while retries > 0:
-                pulse_hz_min, pulse_hz_max = self.findpulses_range(field, min_sync)
+                pulse_hz_min, pulse_hz_max = self.findpulses_range(field.rf.sysparams_const, min_sync)
                 pulses = self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)
                 # this number might need calculation
                 if len(pulses) > 100:
@@ -266,7 +293,7 @@ class Resync:
                 return
 
         # the tape chewing test passed, then it should find sync
-        pulse_hz_min, pulse_hz_max = self.findpulses_range(field, sync)
+        pulse_hz_min, pulse_hz_max = self.findpulses_range(field.rf.sysparams_const, sync)
         pulses = self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)
 
         f_sync, f_blank = self.pulses_levels(field, pulses)
@@ -320,11 +347,13 @@ class Resync:
         NOTE: TEMPORARY override until an override for the value itself is added upstream.
         """
 
+        sp = field.rf.sysparams_const
+
         sync_reference = field.data["video"]["demod_05"]
         if self.debug:
-            self.debug_field(sync_reference)
+            self._debug_field(sync_reference)
 
-        # measures the serration levels if possible88
+        # measures the serration levels if possible
         self.VsyncSerration.work(sync_reference)
         # adds the sync and blanking levels from the back porch
         self.add_pulselevels_to_serration_measures(field)
@@ -334,7 +363,7 @@ class Resync:
         # cause weird artifacts on the output.
         demod_data = (
             field.data["video"]["demod"]
-            if not field.rf.sync_clip
+            if not field.rf.options.sync_clip
             else self.VsyncSerration.safe_sync_clip(
                 sync_reference, field.data["video"]["demod"]
             )
@@ -361,39 +390,39 @@ class Resync:
                     ldd.logger.debug(
                         "Level check failed on serration measured levels, using defaults."
                     )
-                    sync, blank = field.rf.SysParams["ire0"], field.rf.iretohz(
-                        field.rf.SysParams["vsync_ire"]
-                    )
+
+                    sync = sp.ire0
+                    blank = sp.vsync_hz
             else:
                 sync, blank = self.FieldState.getLevels()
 
-            if self.sysparams_consistency_checks(field):
+            if self._sysparams_consistency_checks(field):
                 field.rf.SysParams["ire0"] = blank
 
-            dc_offset = field.rf.SysParams["ire0"] - blank
+            dc_offset = sp.ire0 - blank
             sync_reference += dc_offset
-            if not field.rf.disable_dc_offset:
+            if not field.rf.options.disable_dc_offset:
                 demod_data += dc_offset
             sync, blank = sync + dc_offset, blank + dc_offset
 
             field.data["video"]["demod"] = demod_data
             field.data["video"]["demod_05"] = sync_reference
-            pulse_hz_min, pulse_hz_max = self.findpulses_range(field, sync)
+            pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sync)
         else:
             # pass one using standard levels (fallback sync logic)
             # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
             pulse_hz_min, pulse_hz_max = self.findpulses_range(
-                field, field.rf.iretohz(field.rf.SysParams["vsync_ire"])
+                sp, sp.vsync_hz
             )
 
             # checks if the DC offset is abnormal before correcting it
             new_sync = self.VsyncSerration.mean_bias()
-            vsync_hz = field.rf.iretohz(field.rf.SysParams["vsync_ire"])
-            new_blank = field.rf.iretohz(field.rf.hztoire(new_sync) / 2)
+            vsync_hz = sp.vsync_hz
+            new_blank = iretohz(sp, hztoire(sp, new_sync) / 2)
 
             check = self.level_check(field, new_sync, new_blank, sync_reference)
             if (
-                not field.rf.disable_dc_offset
+                not field.rf.options.disable_dc_offset
                 and not pulse_hz_min < new_sync < vsync_hz
                 and check
             ):
