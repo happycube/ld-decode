@@ -277,7 +277,7 @@ int main(int argc, char *argv[])
 
     // Positional argument to specify output video file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output file (omit or - for piped output)"));
-    
+
     // Process the command line options and arguments given by the user
     parser.process(a);
 
@@ -347,7 +347,7 @@ int main(int argc, char *argv[])
             return -1;
         }
     }
-    
+
     if (parser.isSet(chromaGainOption)) {
         const double value = parser.value(chromaGainOption).toDouble();
         palConfig.chromaGain = value;
@@ -488,7 +488,7 @@ int main(int argc, char *argv[])
         qCritical() << "Can only show FFTs with the transform2d/transform3d decoders";
         return -1;
     }
-    
+
     // Select the decoder
     QScopedPointer<Decoder> decoder;
     if (decoderName == "pal2d") {

@@ -28,7 +28,9 @@
 const qint32 LdDecodeMetaData::LineParameters::sMinPALFirstActiveFrameLine = 2;
 const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFirstActiveFieldLine = 22;
 const qint32 LdDecodeMetaData::LineParameters::sDefaultPALLastActiveFieldLine = 308;
+// Interlaced line 44 is PAL line 23 (the first active half-line)
 const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFirstActiveFrameLine = 44;
+// Interlaced line 619 is PAL line 623 (the last active half-line)
 const qint32 LdDecodeMetaData::LineParameters::sDefaultPALLastActiveFrameLine = 620;
 const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFieldHeightCheck = 313;
 
@@ -36,7 +38,9 @@ const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFieldHeightCheck = 313
 const qint32 LdDecodeMetaData::LineParameters::sMinNTSCFirstActiveFrameLine = 1;
 const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFirstActiveFieldLine = 20;
 const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCLastActiveFieldLine = 259;
+// Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
 const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFirstActiveFrameLine = 40;
+// Interlaced line 524 is NTSC line 263 (the last active half-line).
 const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCLastActiveFrameLine = 525;
 const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFieldHeightCheck = 263;
 
@@ -578,7 +582,6 @@ void LdDecodeMetaData::clearFieldDropOuts(qint32 sequentialFieldNumber)
     json.remove({"fields", fieldNumber, "dropOuts", "endx"});
     json.remove({"fields", fieldNumber, "dropOuts", "fieldLine"});
 }
-
 
 // This method appends a new field to the existing metadata
 void LdDecodeMetaData::appendField(LdDecodeMetaData::Field _field)
