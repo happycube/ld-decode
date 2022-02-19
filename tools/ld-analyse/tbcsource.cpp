@@ -36,7 +36,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     palConfiguration.chromaFilter = PalColour::transform2DFilter;
     ntscConfiguration = ntscColour.getConfiguration();
     outputConfiguration.pixelFormat = OutputWriter::PixelFormat::RGB48;
-    outputConfiguration.usePadding = false;
+    outputConfiguration.paddingAmount = 1;
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
