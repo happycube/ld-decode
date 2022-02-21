@@ -557,7 +557,6 @@ class RFDecode:
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
 
     def computeaudiofilters(self):
-        SF = self.Filters
         SP = self.SysParams
         DP = self.DecoderParams
 
@@ -591,10 +590,9 @@ class RFDecode:
             # Add the demodulated output to this to get actual freq
             self.audio[channel].low_freq = self.freq_hz * (self.audio[channel].lowbin / self.blocklen)
 
+            # note, "ch=channel" is necessary to bind the channel ID to the lambda
             self.audio[channel].slicer = lambda x, ch=channel: fft_do_slice(x, self.audio[ch].lowbin, self.audio[ch].nbins, self.blocklen)
-            self.audio[channel].filt1 = self.audio['left'].slicer(audio1_fir) * hilbert
             self.audio[channel].filt1 = self.audio[channel].slicer(audio1_fir) * hilbert
-            self.audio[channel].filt1f = audio1_fir * build_hilbert(self.blocklen)
 
             self.audio[channel].audio1_buffer = StridedCollector(self.blocklen, self.blockcut + self.blockcut_end)
 
@@ -611,9 +609,7 @@ class RFDecode:
             self.audio[channel].audio2_decimation = 1
             self.audio[channel].audio2_filter = audio2_lpf * audio2_deemp
 
-            self.Filters['audio_fdiv1'] = self.blocklen // self.audio[channel].nbins
-            self.Filters['audio_fdiv2'] = self.audio[channel].audio2_decimation #* (self.blocklen // nbins)
-            self.Filters['audio_fdiv'] = self.Filters['audio_fdiv1'] * self.Filters['audio_fdiv2']
+            self.Filters['audio_fdiv'] = self.blocklen // self.audio[channel].nbins
 
     def iretohz(self, ire):
         return self.SysParams["ire0"] + (self.SysParams["hz_ire"] * ire)
@@ -730,10 +726,7 @@ class RFDecode:
                 afilter = self.audio[channel]
                 """ Apply first state audio filters """
                 a1 = npfft.ifft(afilter.slicer(indata_fft) * afilter.filt1)
-                #fft_slice = fft_do_slice(indata_fft, afilter.lowbin, afilter.nbins, self.blocklen)
-                #a1 = fft_slice * afilter.filt1
                 a1u = unwrap_hilbert(a1, afilter.a1_freq)
-                #print(channel, np.std(a1u), np.min(a1u), np.max(a1u))
                 a1u += afilter.low_freq
                 stage1_out.append(a1u)
 
@@ -762,9 +755,9 @@ class RFDecode:
             aabs = np.abs(achannel - cmed[channel])
 
             if rejects is None:
-                rejects = aabs > 175000
+                rejects = aabs > 300000
             else:
-                rejects |= aabs > 175000
+                rejects |= aabs > 300000
 
         if np.sum(rejects) == 0:
             # If no spikes, return original
@@ -809,7 +802,7 @@ class RFDecode:
                         abeg, aend, (aend - abeg) / (1 + ra[1] - ra[0])
                     )[: ra[1] - ra[0]]
 
-        return field_audio
+        return field_audio_dod
 
     # Second phase audio filtering.  This works on a whole field's samples, since
     # the frequency has already been reduced.
@@ -826,11 +819,13 @@ class RFDecode:
             raw -= center_freq
 
             if acname == "audio_left":
-                clips = findpeaks(raw, 300000)
+                clips = findpeaks(raw, 500000)
+#                if len(clips):
+#                    print(len(clips)) 
 
-            #for l in clips:
-                #replacelen = 16 * self.Filters["audio_fdiv2"]
-                #raw[max(0, l - replacelen) : min(l + replacelen, len(raw))] = 0
+            for l in clips:
+                replacelen = 8
+                raw[max(0, l - replacelen) : min(l + replacelen, len(raw))] = 0
 
             a2_in_real = raw
             if len(a2_in_real) < len(self.audio[channel].audio2_filter):
@@ -845,7 +840,6 @@ class RFDecode:
             outputs.append(
                 (
                     npfft.ifft(fft_out).real[: len(a2_in_real)]
-                    / self.Filters["audio_fdiv2"]
                 )
                 + center_freq
             )
@@ -855,11 +849,11 @@ class RFDecode:
     def audio_phase2(self, field_audio):
         # this creates an output array with left/right channels.
         output_audio2 = np.zeros(
-            len(field_audio["audio_left"]) // self.Filters["audio_fdiv2"],
+            len(field_audio["audio_left"]),
             dtype=field_audio.dtype,
         )
 
-        field_audio = self.audio_dropout_detector(field_audio)
+        # field_audio = self.audio_dropout_detector(field_audio)
 
         # copy the first block in it's entirety, to keep audio and video samples aligned
         tmp = self.runfilter_audio_phase2(field_audio, 0)
@@ -874,7 +868,7 @@ class RFDecode:
         end = field_audio.shape[0]
 
         askip = 512  # length of filters that needs to be chopped out of the ifft
-        sjump = self.blocklen - (askip * self.Filters["audio_fdiv2"])
+        sjump = self.blocklen - askip
 
         ostart = tmp.shape[0]
         for sample in range(sjump, field_audio.shape[0] - sjump, sjump):
