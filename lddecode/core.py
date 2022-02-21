@@ -1293,7 +1293,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=48000.0, 
 
             failed = True
 
-    print(rms(output[::2]), rms(output[1::2]))
+    #print(rms(output[::2]), rms(output[1::2]))
 
     np.clip(output, -32766, 32766, out=output16)
 
