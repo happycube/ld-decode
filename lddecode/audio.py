@@ -43,23 +43,6 @@ drop_begin = 4096 - 512
 drop_end = 512
 blockskip = drop_begin + drop_end
 
-
-def audio_bandpass_butter(center, closerange=125000, longrange=180000):
-    """ Returns filter coefficients for first stage per-channel filtering """
-    freqs_inner = [
-        (center - closerange) / freq_hz_half,
-        (center + closerange) / freq_hz_half,
-    ]
-    freqs_outer = [
-        (center - longrange) / freq_hz_half,
-        (center + longrange) / freq_hz_half,
-    ]
-
-    N, Wn = sps.buttord(freqs_inner, freqs_outer, 1, 15)
-
-    return sps.butter(N, Wn, btype="bandpass")
-
-
 class AudioRF:
     def __init__(self, freq, center_freq, vid_standard):
         self.center_freq = center_freq
@@ -224,7 +207,7 @@ class AudioDecoder:
                     for output, channel in zip(outputs, self.aa_channels):
                         o = output + channel.low_freq - channel.center_freq
                         # print(np.mean(o), np.std(o), channel.low_freq, channel.center_freq)
-                        ofloat.append(np.clip((o / 150000), -16, 16).astype(np.float32))
+                        ofloat.append(np.clip((o / 180000), -16, 16).astype(np.float32))
 
                     if len(outputs) == 2:
                         # print(len(outputs), np.mean(o32[0]), np.std(o32[0]), np.std(o32[1]))
