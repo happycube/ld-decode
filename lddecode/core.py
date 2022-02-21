@@ -568,6 +568,7 @@ class RFDecode:
         for channel, center_freq in zip(['left', 'right'], [SP['audio_lfreq'], SP['audio_rfreq']]):
             self.audio[channel] = types.SimpleNamespace()
 
+            # Build an FIR filter for each channel's RF
             audio1_fir = filtfft(
                 [
                     sps.firwin(
@@ -582,33 +583,38 @@ class RFDecode:
                 ],
                 self.blocklen,
             )
+
+            # Determine the frequency offset (a1_freq) and bins (lowbin+nbin) that cover the audio RF 
+            # frequencies for this channel
             self.audio[channel].lowbin, self.audio[channel].nbins, self.audio[channel].a1_freq = fft_determine_slices(
                 center_freq, 200000, self.freq_hz, self.blocklen
             )
-            hilbert = build_hilbert(self.audio[channel].nbins)
-
-            # Add the demodulated output to this to get actual freq
-            self.audio[channel].low_freq = self.freq_hz * (self.audio[channel].lowbin / self.blocklen)
-
+            # Make a lambda to slice the regular block FFT into what we're demodulating
             # note, "ch=channel" is necessary to bind the channel ID to the lambda
             self.audio[channel].slicer = lambda x, ch=channel: fft_do_slice(x, self.audio[ch].lowbin, self.audio[ch].nbins, self.blocklen)
-            self.audio[channel].filt1 = self.audio[channel].slicer(audio1_fir) * hilbert
 
-            self.audio[channel].audio1_buffer = StridedCollector(self.blocklen, self.blockcut + self.blockcut_end)
+            # Build a 'short' hilbert transform around the sliced FFT
+            sliced_hilbert = build_hilbert(self.audio[channel].nbins)
 
-            # Compute stage 2 audio filters: 20k-ish LPF and deemp (center_freq independent)
+            # Add the demodulated output to this to get the actual audio wave frequency
+            self.audio[channel].low_freq = self.freq_hz * (self.audio[channel].lowbin / self.blocklen)
+            # Finally create the stage 1 demodulation filter (including hilbert transform)
+            self.audio[channel].filt1 = self.audio[channel].slicer(audio1_fir) * sliced_hilbert
 
+            # XXX: look into revisiting/using this for stage 2 audio?
+            #self.audio[channel].audio1_buffer = StridedCollector(self.blocklen, self.blockcut + self.blockcut_end)
+
+            # Compute stage 2 audio filters: 20k-ish LPF and deemphasis.
             N, Wn = sps.buttord(20000 / (self.audio[channel].a1_freq / 2), 24000 / (self.audio[channel].a1_freq / 2), 1, 9)
             audio2_lpf = filtfft(sps.butter(N, Wn), self.blocklen)
-            # 75e-6 is 75usec/2133khz (matching American FM emphasis) and 5.3e-6 is approx
+            # 75e-6 is 75usec/2133khz (matching American FM emphasis) and 5.3e-6 is approx.
             # a 30khz break frequency
             audio2_deemp = filtfft(
                 emphasis_iir(5.3e-6, 75e-6, self.audio[channel].a1_freq), self.blocklen
             )
-
-            self.audio[channel].audio2_decimation = 1
             self.audio[channel].audio2_filter = audio2_lpf * audio2_deemp
 
+            # Compute the sample rate decimation caused by stage 1 binning
             self.Filters['audio_fdiv'] = self.blocklen // self.audio[channel].nbins
 
     def iretohz(self, ire):
@@ -724,10 +730,12 @@ class RFDecode:
             stage1_out = []
             for channel in ['left', 'right']:
                 afilter = self.audio[channel]
-                """ Apply first state audio filters """
+
+                # Apply first stage audio filter
                 a1 = npfft.ifft(afilter.slicer(indata_fft) * afilter.filt1)
-                a1u = unwrap_hilbert(a1, afilter.a1_freq)
-                a1u += afilter.low_freq
+                # Demodulate and restore frequency after bin slicing
+                a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
+
                 stage1_out.append(a1u)
 
             audio_out = np.rec.array(
@@ -742,67 +750,6 @@ class RFDecode:
             )
 
         return rv
-
-    # detect clicks that are impossibly large and snip them out
-    def audio_dropout_detector(self, field_audio, padding=48):
-        rejects = None
-        cmed = {}
-
-        # Check left and right channels separately.
-        for channel in ["audio_left", "audio_right"]:
-            achannel = field_audio[channel]
-            cmed[channel] = np.median(achannel)
-            aabs = np.abs(achannel - cmed[channel])
-
-            if rejects is None:
-                rejects = aabs > 300000
-            else:
-                rejects |= aabs > 300000
-
-        if np.sum(rejects) == 0:
-            # If no spikes, return original
-            return field_audio
-
-        # Locate areas with impossible signals and perform interpolation
-
-        reject_locs = np.where(rejects)[0]
-        reject_areas = []
-        cur_area = [reject_locs[0] - padding, reject_locs[0] + padding]
-
-        for r in np.where(rejects)[0][1:]:
-            if (r - padding) > cur_area[1]:
-                reject_areas.append(tuple(cur_area))
-                cur_area = [r - padding, r + padding]
-            else:
-                cur_area[1] = r + padding
-
-        reject_areas.append(cur_area)
-
-        field_audio_dod = field_audio.copy()
-
-        for channel in ["audio_left", "audio_right"]:
-            for ra in reject_areas:
-                if ra[0] <= 1 and ra[1] >= len(field_audio_dod) - 1:
-                    # The entire thing can be bad during spinup
-                    pass
-                elif ra[0] <= 1:
-                    field_audio_dod[channel][0 : ra[1]] = field_audio_dod[channel][
-                        ra[1] + 1
-                    ]
-                elif ra[1] >= len(field_audio_dod) - 1:
-                    field_audio_dod[channel][ra[0] :] = field_audio_dod[channel][
-                        ra[0] - 1
-                    ]
-                else:
-                    abeg = field_audio_dod[channel][ra[0]]
-                    aend = field_audio_dod[channel][ra[1]]
-                    # pad np.arange run by 1 and crop it so there's always enough data to fill in
-                    # XXX: clean up
-                    field_audio_dod[channel][ra[0] : ra[1]] = np.arange(
-                        abeg, aend, (aend - abeg) / (1 + ra[1] - ra[0])
-                    )[: ra[1] - ra[0]]
-
-        return field_audio_dod
 
     # Second phase audio filtering.  This works on a whole field's samples, since
     # the frequency has already been reduced.
@@ -820,8 +767,6 @@ class RFDecode:
 
             if acname == "audio_left":
                 clips = findpeaks(raw, 500000)
-#                if len(clips):
-#                    print(len(clips)) 
 
             for l in clips:
                 replacelen = 8
@@ -852,8 +797,6 @@ class RFDecode:
             len(field_audio["audio_left"]),
             dtype=field_audio.dtype,
         )
-
-        # field_audio = self.audio_dropout_detector(field_audio)
 
         # copy the first block in it's entirety, to keep audio and video samples aligned
         tmp = self.runfilter_audio_phase2(field_audio, 0)
