@@ -24,6 +24,29 @@
 
 #include "lddecodemetadata.h"
 
+// Default line parameters for PAL decoding
+const qint32 LdDecodeMetaData::LineParameters::sMinPALFirstActiveFrameLine = 2;
+const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFirstActiveFieldLine = 22;
+const qint32 LdDecodeMetaData::LineParameters::sDefaultPALLastActiveFieldLine = 308;
+// Interlaced line 44 is PAL line 23 (the first active half-line)
+const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFirstActiveFrameLine = 44;
+// Interlaced line 619 is PAL line 623 (the last active half-line)
+const qint32 LdDecodeMetaData::LineParameters::sDefaultPALLastActiveFrameLine = 620;
+const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFieldHeightCheck = 313;
+
+// Default line parameters for NTSC decoding
+const qint32 LdDecodeMetaData::LineParameters::sMinNTSCFirstActiveFrameLine = 1;
+const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFirstActiveFieldLine = 20;
+const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCLastActiveFieldLine = 259;
+// Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
+const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFirstActiveFrameLine = 40;
+// Interlaced line 524 is NTSC line 263 (the last active half-line).
+const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCLastActiveFrameLine = 525;
+const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFieldHeightCheck = 263;
+
+// Default line parameters for Auto/Unknown decoding
+const qint32 LdDecodeMetaData::LineParameters::sDefaultAutoFirstActiveFieldLine = 20;
+
 LdDecodeMetaData::LdDecodeMetaData()
 {
     // Set defaults
@@ -68,10 +91,11 @@ bool LdDecodeMetaData::write(QString fileName)
 // This method returns the videoParameters metadata
 LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
 {
-    VideoParameters videoParameters;
-
-    // Read the video paramters
-    if (json.size({"videoParameters"}) > 0) {
+    if (videoParameters.isValid) {
+        // Return our existing video parameters
+        return videoParameters;
+    } else if (json.size({"videoParameters"}) > 0) {
+        // Read the video paramters
         videoParameters.numberOfSequentialFields = json.value({"videoParameters", "numberOfSequentialFields"}).toInt();
         videoParameters.isSourcePal = json.value({"videoParameters", "isSourcePal"}).toBool();
         videoParameters.isSubcarrierLocked = json.value({"videoParameters", "isSubcarrierLocked"}).toBool();
@@ -94,47 +118,21 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
 
         videoParameters.gitBranch = json.value({"videoParameters", "gitBranch"}).toString();
         videoParameters.gitCommit = json.value({"videoParameters", "gitCommit"}).toString();
+        
+        videoParameters.isValid = true;
     } else {
         qCritical("JSON file invalid: videoParameters object is not defined");
         return videoParameters;
-    }
-
-    // Add in the active field line range psuedo-metadata
-    if (videoParameters.fieldHeight == 313) {
-        // PAL
-        videoParameters.firstActiveFieldLine = 22;
-        videoParameters.lastActiveFieldLine = 308;
-
-        // Interlaced line 44 is PAL line 23 (the first active half-line)
-        videoParameters.firstActiveFrameLine = 44;
-        // Interlaced line 619 is PAL line 623 (the last active half-line)
-        videoParameters.lastActiveFrameLine = 620;
-    } else if (videoParameters.fieldHeight == 263) {
-        // NTSC
-        videoParameters.firstActiveFieldLine = 20;
-        videoParameters.lastActiveFieldLine = 259;
-
-        // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
-        videoParameters.firstActiveFrameLine = 40;
-        // Interlaced line 524 is NTSC line 263 (the last active half-line).
-        videoParameters.lastActiveFrameLine = 525;
-    } else {
-        // Unknown video system, guessing some stuff for now instead of risking going out of bounds.
-        qCritical("Unknown video system! Output may not be correct!");
-
-        videoParameters.firstActiveFieldLine = 20;
-        videoParameters.lastActiveFieldLine = videoParameters.fieldHeight - 5;
-
-        videoParameters.firstActiveFrameLine = videoParameters.firstActiveFieldLine * 2;
-        videoParameters.lastActiveFrameLine = videoParameters.lastActiveFieldLine * 2;
     }
 
     return videoParameters;
 }
 
 // This method sets the videoParameters metadata
-void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _videoParameters)
+void LdDecodeMetaData::setVideoParameters(LdDecodeMetaData::VideoParameters _videoParameters)
 {
+    videoParameters = _videoParameters;
+    
     // Write the video parameters
     json.setValue({"videoParameters", "numberOfSequentialFields"}, getNumberOfFields());
     json.setValue({"videoParameters", "isSourcePal"}, _videoParameters.isSourcePal);
@@ -158,19 +156,23 @@ void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _vi
 
     json.setValue({"videoParameters", "gitBranch"}, _videoParameters.gitBranch);
     json.setValue({"videoParameters", "gitCommit"}, _videoParameters.gitCommit);
+    
+    videoParameters.isValid = true;
 }
 
 // This method returns the pcmAudioParameters metadata
 LdDecodeMetaData::PcmAudioParameters LdDecodeMetaData::getPcmAudioParameters()
 {
-    PcmAudioParameters pcmAudioParameters;
-
-    if (json.size({"pcmAudioParameters"}) > 0) {
+    if (pcmAudioParameters.isValid) {
+        return pcmAudioParameters;
+    } else if (json.size({"pcmAudioParameters"}) > 0) {
         // Read the PCM audio data
         pcmAudioParameters.sampleRate = json.value({"pcmAudioParameters", "sampleRate"}).toInt();
         pcmAudioParameters.isLittleEndian = json.value({"pcmAudioParameters", "isLittleEndian"}).toBool();
         pcmAudioParameters.isSigned = json.value({"pcmAudioParameters", "isSigned"}).toBool();
         pcmAudioParameters.bits = json.value({"pcmAudioParameters", "bits"}).toInt();
+        
+        pcmAudioParameters.isValid = true;
     } else {
         qCritical("JSON file invalid: pcmAudioParameters is not defined");
         return pcmAudioParameters;
@@ -182,10 +184,106 @@ LdDecodeMetaData::PcmAudioParameters LdDecodeMetaData::getPcmAudioParameters()
 // This method sets the pcmAudioParameters metadata
 void LdDecodeMetaData::setPcmAudioParameters(LdDecodeMetaData::PcmAudioParameters _pcmAudioParam)
 {
+    pcmAudioParameters = _pcmAudioParam;
+    
     json.setValue({"pcmAudioParameters", "sampleRate"}, _pcmAudioParam.sampleRate);
     json.setValue({"pcmAudioParameters", "isLittleEndian"}, _pcmAudioParam.isLittleEndian);
     json.setValue({"pcmAudioParameters", "isSigned"}, _pcmAudioParam.isSigned);
     json.setValue({"pcmAudioParameters", "bits"}, _pcmAudioParam.bits);
+    
+    pcmAudioParameters.isValid = true;
+}
+
+// Validate any user-specified line parameters and set them to reasonable defaults + warn if invalid.
+void LdDecodeMetaData::processLineParameters(LdDecodeMetaData::LineParameters &_lineParameters)
+{
+    _lineParameters.process(videoParameters.fieldHeight);
+    lineParameters = _lineParameters;
+    
+    videoParameters.firstActiveFieldLine = lineParameters.firstActiveFieldLine;
+    videoParameters.lastActiveFieldLine = lineParameters.lastActiveFieldLine;
+    videoParameters.firstActiveFrameLine = lineParameters.firstActiveFrameLine;
+    videoParameters.lastActiveFrameLine = lineParameters.lastActiveFrameLine;
+}
+
+// Validate and process line parameters, setting defaults if not overridden by the user.
+void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
+{
+    const bool firstFieldLineExists = firstActiveFieldLine != -1;
+    const bool lastFieldLineExists = lastActiveFieldLine != -1;
+    const bool firstFrameLineExists = firstActiveFrameLine != -1;
+    const bool lastFrameLineExists = lastActiveFrameLine != -1;
+    
+    const bool isPal = fieldHeight == sDefaultPALFieldHeightCheck;
+    const bool isNtsc = fieldHeight == sDefaultNTSCFieldHeightCheck;
+    
+    const qint32 defaultFirstFieldLine = isNtsc ? sDefaultNTSCFirstActiveFieldLine : (isPal ? sDefaultPALFirstActiveFieldLine : sDefaultAutoFirstActiveFieldLine);
+    const qint32 defaultLastFieldLine = isNtsc ? sDefaultNTSCLastActiveFieldLine : (isPal ? sDefaultPALLastActiveFieldLine : -1);
+    const qint32 minFirstFrameLine = isNtsc ? sMinNTSCFirstActiveFrameLine : (isPal ? sMinPALFirstActiveFrameLine : 1);
+    const qint32 defaultFirstFrameLine = isNtsc ? sDefaultNTSCFirstActiveFrameLine : (isPal ? sDefaultPALFirstActiveFrameLine : -1);
+    const qint32 defaultLastFrameLine = isNtsc ? sDefaultNTSCLastActiveFrameLine : (isPal ? sDefaultPALLastActiveFrameLine : -1);
+
+    // Validate and potentially fix the first active field line (needs to be valid in case we're not in PAL or NTSC mode).    
+    if (firstActiveFieldLine < 1 || firstActiveFieldLine > defaultLastFieldLine) {
+        if (firstFieldLineExists) {
+            qInfo().nospace() << "Specified first active field line " << firstActiveFieldLine << " out of bounds (1 to "
+                              << defaultLastFieldLine << "), restting to default (" << defaultFirstFieldLine << ").";
+        }
+        firstActiveFieldLine = defaultFirstFieldLine;
+    }
+
+    // Unknown video system, guessing some stuff for now instead of risking going out of bounds.
+    if (!isPal && !isNtsc) {
+        qCritical("Unknown video system! Output may not be correct!");
+
+        lastActiveFieldLine = lastFieldLineExists ? lastActiveFieldLine : (fieldHeight - 5);
+        firstActiveFrameLine = firstFrameLineExists ? firstActiveFrameLine : (firstActiveFieldLine * 2);
+        lastActiveFrameLine = lastFrameLineExists ? lastActiveFrameLine : (lastActiveFieldLine * 2);
+        return;
+    }
+    
+    // Validate and potentially fix the last active field line.
+    if (lastActiveFieldLine < 1 || lastActiveFieldLine > defaultLastFieldLine) {
+        if (lastFieldLineExists) {
+            qInfo().nospace() << "Specified last active field line " << lastActiveFieldLine << " out of bounds (1 to "
+                              << defaultLastFieldLine << "), restting to default (" << defaultLastFieldLine << ").";
+        }
+        lastActiveFieldLine = defaultLastFieldLine;
+    }
+    
+    // Range-check the first and last active field lines.
+    if (firstActiveFieldLine > lastActiveFieldLine) {
+       qInfo().nospace() << "Specified last active field line " << lastActiveFieldLine << " is before specified first active field line"
+                         << firstActiveFieldLine << ", resetting to defaults (" << defaultFirstFieldLine << "-" << defaultLastFieldLine << ").";
+        firstActiveFieldLine = defaultFirstFieldLine;
+        lastActiveFieldLine = defaultLastFieldLine;
+    }
+
+    // Validate and potentially fix the first active frame line.
+    if (firstActiveFrameLine < minFirstFrameLine || firstActiveFrameLine > defaultLastFrameLine) {
+        if (firstFrameLineExists) {
+            qInfo().nospace() << "Specified first active frame line " << firstActiveFrameLine << " out of bounds (" << minFirstFrameLine << " to "
+                              << defaultLastFrameLine << "), restting to default (" << defaultFirstFrameLine << ").";
+        }
+        firstActiveFrameLine = defaultFirstFrameLine;
+    }
+
+    // Validate and potentially fix the last active frame line.
+    if (lastActiveFrameLine < minFirstFrameLine || lastActiveFrameLine > defaultLastFrameLine) {
+        if (lastFrameLineExists) {
+            qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " out of bounds (" << minFirstFrameLine << " to "
+                              << defaultLastFrameLine << "), restting to default (" << defaultLastFrameLine << ").";
+        }
+        lastActiveFrameLine = defaultLastFrameLine;
+    }
+
+    // Range-check the first and last active frame lines.
+    if (firstActiveFrameLine > lastActiveFrameLine) {
+       qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " is before specified first active frame line"
+                         << firstActiveFrameLine << ", resetting to defaults (" << defaultFirstFrameLine << "-" << defaultLastFrameLine << ").";
+        firstActiveFrameLine = defaultFirstFrameLine;
+        lastActiveFrameLine = defaultLastFrameLine;
+    }
 }
 
 // This method gets the metadata for the specified sequential field number (indexed from 1 (not 0!))
