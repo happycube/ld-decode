@@ -818,6 +818,10 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         // Get the video parameters from the metadata
         LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
+        // Use default line parameters, as the user will not override it
+        LdDecodeMetaData::LineParameters lineParameters;
+        ldDecodeMetaData.processLineParameters(lineParameters);
+
         // Open the new source video
         qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
         emit busyLoading("Loading TBC file...");
