@@ -36,7 +36,7 @@ TbcSource::TbcSource(QObject *parent) : QObject(parent)
     palConfiguration.chromaFilter = PalColour::transform2DFilter;
     ntscConfiguration = ntscColour.getConfiguration();
     outputConfiguration.pixelFormat = OutputWriter::PixelFormat::RGB48;
-    outputConfiguration.usePadding = false;
+    outputConfiguration.paddingAmount = 1;
 }
 
 // Public methods -----------------------------------------------------------------------------------------------------
@@ -817,6 +817,10 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     } else {
         // Get the video parameters from the metadata
         LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+        // Use default line parameters, as the user will not override it
+        LdDecodeMetaData::LineParameters lineParameters;
+        ldDecodeMetaData.processLineParameters(lineParameters);
 
         // Open the new source video
         qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";

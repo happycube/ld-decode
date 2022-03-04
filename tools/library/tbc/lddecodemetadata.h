@@ -46,8 +46,40 @@ public:
         QVector<qint32> vbiData;
     };
 
+    // Pseudo metadata items - these values are populated automatically by the library
+    // if not otherwise specified by the user. These are half-open ranges, where lines are
+    // numbered sequentially from 1 within each field or interlaced frame.
+    struct LineParameters {
+        LineParameters() : firstActiveFieldLine(-1), lastActiveFieldLine(-1), firstActiveFrameLine(-1), lastActiveFrameLine(-1) {}
+
+        void process(qint32 fieldHeight);
+                
+        qint32 firstActiveFieldLine;
+        qint32 lastActiveFieldLine;
+        qint32 firstActiveFrameLine;
+        qint32 lastActiveFrameLine;
+
+        static const qint32 sMinPALFirstActiveFrameLine;
+        static const qint32 sDefaultPALFirstActiveFieldLine;
+        static const qint32 sDefaultPALLastActiveFieldLine;
+        static const qint32 sDefaultPALFirstActiveFrameLine;
+        static const qint32 sDefaultPALLastActiveFrameLine;
+        static const qint32 sDefaultPALFieldHeightCheck;
+
+        static const qint32 sMinNTSCFirstActiveFrameLine;
+        static const qint32 sDefaultNTSCFirstActiveFieldLine;
+        static const qint32 sDefaultNTSCLastActiveFieldLine;
+        static const qint32 sDefaultNTSCFirstActiveFrameLine;
+        static const qint32 sDefaultNTSCLastActiveFrameLine;
+        static const qint32 sDefaultNTSCFieldHeightCheck;
+
+        static const qint32 sDefaultAutoFirstActiveFieldLine;
+    };
+    
     // Video metadata definition
     struct VideoParameters {
+        VideoParameters() : isValid(false) {}
+        
         qint32 numberOfSequentialFields;
 
         bool isSourcePal;
@@ -72,15 +104,16 @@ public:
         QString gitBranch;
         QString gitCommit;
 
-        // Note: These are psuedo metadata items - The values are populated by the library
-        // These are half-open ranges, where lines are numbered sequentially from 0 within
-        // each field or interlaced frame
+        // Copy of the members in LineParameters; filled in based on our LineParameters when retrieving VideoParameters        
         qint32 firstActiveFieldLine;
         qint32 lastActiveFieldLine;
         qint32 firstActiveFrameLine;
         qint32 lastActiveFrameLine;
+        
+        // Flags if our data has been initialized yet
+        bool isValid;
     };
-
+    
     // VITS metrics metadata definition
     struct VitsMetrics {
         VitsMetrics() : inUse(false), wSNR(0), bPSNR(0) {}
@@ -106,10 +139,15 @@ public:
 
     // PCM sound metadata definition
     struct PcmAudioParameters {
+        PcmAudioParameters() : isValid(false) {}
+        
         qint32 sampleRate;
         bool isLittleEndian;
         bool isSigned;
         qint32 bits;
+
+        // Flags if our data has been initialized yet
+        bool isValid;
     };
 
     // Field metadata definition
@@ -161,10 +199,13 @@ public:
     bool write(QString fileName);
 
     VideoParameters getVideoParameters();
-    void setVideoParameters (VideoParameters _videoParameters);
+    void setVideoParameters(VideoParameters _videoParameters);
 
     PcmAudioParameters getPcmAudioParameters();
     void setPcmAudioParameters(PcmAudioParameters _pcmAudioParam);
+
+    // Handle line parameters
+    void processLineParameters(LdDecodeMetaData::LineParameters &_lineParameters);
 
     // Get field metadata
     Field getField(qint32 sequentialFieldNumber);
@@ -182,7 +223,7 @@ public:
     void clearFieldDropOuts(qint32 sequentialFieldNumber);
 
     void appendField(Field _field);
-
+    
     void setNumberOfFields(qint32 numberOfFields);
     qint32 getNumberOfFields();
     qint32 getNumberOfFrames();
@@ -202,6 +243,9 @@ public:
 private:
     JsonWax json;
     bool isFirstFieldFirst;
+    VideoParameters videoParameters;
+    LineParameters lineParameters;
+    PcmAudioParameters pcmAudioParameters;
     QVector<qint32> pcmAudioFieldStartSampleMap;
     QVector<qint32> pcmAudioFieldLengthMap;
 

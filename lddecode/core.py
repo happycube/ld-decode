@@ -2641,7 +2641,7 @@ class Field:
         vsync_lines = self.get_vsync_lines()
 
         # In sync areas the minimum IRE is vsync - pilot/burst
-        sync_min = f.rf.iretohz(vsync_ire - 60 if isPAL else vsync_ire - 25)
+        sync_min = f.rf.iretohz(vsync_ire - 60 if isPAL else vsync_ire - 35)
         sync_min_05 = f.rf.iretohz(vsync_ire - 10)
 
         for l in range(1, len(f.linelocs)):

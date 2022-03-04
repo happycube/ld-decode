@@ -174,6 +174,12 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Output in black and white"));
     parser.addOption(setBwModeOption);
 
+    // Option to select output padding (-pad)
+    QCommandLineOption outputPaddingOption(QStringList() << "pad" << "output-padding",
+                                       QCoreApplication::translate("main", "Pad the output frame to a multiple of this many pixels on both axes (1 means no padding, maximum is 32)"),
+                                       QCoreApplication::translate("main", "number"));
+    parser.addOption(outputPaddingOption);
+
     // Option to select which decoder to use (-f)
     QCommandLineOption decoderOption(QStringList() << "f" << "decoder",
                                      QCoreApplication::translate("main", "Decoder to use (pal2d, transform2d, transform3d, ntsc1d, ntsc2d, ntsc3d, ntsc3dnoadapt, mono; default automatic)"),
@@ -182,9 +188,33 @@ int main(int argc, char *argv[])
 
     // Option to select the number of threads (-t)
     QCommandLineOption threadsOption(QStringList() << "t" << "threads",
-                                        QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs)"),
-                                        QCoreApplication::translate("main", "number"));
+                                     QCoreApplication::translate("main", "Specify the number of concurrent threads (default number of logical CPUs)"),
+                                     QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
+
+    // Option to override calculated firstActiveFieldLine in our video parameters (-ffll)
+    QCommandLineOption firstFieldLineOption(QStringList() << "ffll" << "first_active_field_line",
+                                            QCoreApplication::translate("main", "The first visible line of a field. Range 1-259 for NTSC (default: 20), 2-308 for PAL (default: 22)"),
+                                            QCoreApplication::translate("main", "number"));
+    parser.addOption(firstFieldLineOption);
+
+    // Option to override calculated lastActiveFieldLine in our video parameters (-lfll)
+    QCommandLineOption lastFieldLineOption(QStringList() << "lfll" << "last_active_field_line",
+                                           QCoreApplication::translate("main", "The last visible line of a field. Range 1-259 for NTSC (default: 259), 2-308 for PAL (default: 308)"),
+                                           QCoreApplication::translate("main", "number"));
+    parser.addOption(lastFieldLineOption);
+
+    // Option to override calculated firstActiveFrameLine in our video parameters (-ffrl)
+    QCommandLineOption firstFrameLineOption(QStringList() << "ffrl" << "first_active_frame_line",
+                                            QCoreApplication::translate("main", "The first visible line of a frame. Range 1-525 for NTSC (default: 40), 1-620 for PAL (default: 44)"),
+                                            QCoreApplication::translate("main", "number"));
+    parser.addOption(firstFrameLineOption);
+
+    // Option to override calculated lastActiveFieldLine in our video parameters (-lfll)
+    QCommandLineOption lastFrameLineOption(QStringList() << "lfrl" << "last_active_frame_line",
+                                           QCoreApplication::translate("main", "The last visible line of a frame. Range 1-525 for NTSC (default: 525), 1-620 for PAL (default: 620)"),
+                                           QCoreApplication::translate("main", "number"));
+    parser.addOption(lastFrameLineOption);
 
     // -- NTSC decoder options --
 
@@ -395,9 +425,25 @@ int main(int argc, char *argv[])
         }
     }
 
-
     if (parser.isSet(ntscPhaseComp)) {
         combConfig.phaseCompensation = true;
+    }
+    
+    LdDecodeMetaData::LineParameters lineParameters;
+    if (parser.isSet(firstFieldLineOption)) {
+        lineParameters.firstActiveFieldLine = parser.value(firstFieldLineOption).toInt();
+    }
+    
+    if (parser.isSet(lastFieldLineOption)) {
+        lineParameters.lastActiveFieldLine = parser.value(lastFieldLineOption).toInt();
+    }
+    
+    if (parser.isSet(firstFrameLineOption)) {
+        lineParameters.firstActiveFrameLine = parser.value(firstFrameLineOption).toInt();
+    }
+    
+    if (parser.isSet(lastFrameLineOption)) {
+        lineParameters.lastActiveFrameLine = parser.value(lastFrameLineOption).toInt();
     }
 
     // Work out the metadata filename
@@ -412,7 +458,9 @@ int main(int argc, char *argv[])
         qInfo() << "Unable to open ld-decode metadata file";
         return -1;
     }
-
+    
+    metaData.processLineParameters(lineParameters);
+    
     // Reverse field order if required
     if (parser.isSet(setReverseOption)) {
         qInfo() << "Expected field order is reversed to second field/first field";
@@ -500,6 +548,14 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    if (parser.isSet(outputPaddingOption)) {
+        outputConfig.paddingAmount = parser.value(outputPaddingOption).toInt();
+        if (outputConfig.paddingAmount < 1 || outputConfig.paddingAmount > 32) {
+            qInfo() << "Invalid value" << outputConfig.paddingAmount << "specified for padding amount, defaulting to 8.";
+            outputConfig.paddingAmount = 8;
+        }
+    }
+    
     // Perform the processing
     DecoderPool decoderPool(*decoder, inputFileName, metaData, outputConfig, outputFileName, startFrame, length, maxThreads);
     if (!decoderPool.process()) {
