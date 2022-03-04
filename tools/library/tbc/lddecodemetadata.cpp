@@ -25,8 +25,9 @@
 #include "lddecodemetadata.h"
 
 LdDecodeMetaData::LdDecodeMetaData()
-    : isFirstFieldFirst(false), outputFullFrame(false)
 {
+    // Set defaults
+    isFirstFieldFirst = false;
 }
 
 // This method opens the JSON metadata file and reads the content into the
@@ -98,6 +99,7 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         return videoParameters;
     }
 
+    // Add in the active field line range psuedo-metadata
 
     if (videoParameters.fieldHeight == 313) {
         // PAL
@@ -126,19 +128,6 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
 
         videoParameters.firstActiveFrameLine = videoParameters.firstActiveFieldLine * 2;
         videoParameters.lastActiveFrameLine = videoParameters.lastActiveFieldLine * 2;
-    }
-
-    if (outputFullFrame) {
-        // Start at 16 for now to avoid crashing/segfault.
-        // need to figure out what depends on start being 16 or later.
-        videoParameters.activeVideoStart = 15;
-        // PAL decoder crashes if the width is wider than 1135 - 8,
-        // needs checking.
-        videoParameters.activeVideoEnd = std::min(videoParameters.fieldWidth, 1135 - 8);
-        videoParameters.firstActiveFieldLine = 0;
-        videoParameters.lastActiveFieldLine = videoParameters.fieldHeight;
-        videoParameters.firstActiveFrameLine = 2;
-        videoParameters.lastActiveFrameLine = (videoParameters.fieldHeight * 2) - 2;
     }
 
     return videoParameters;
@@ -170,7 +159,6 @@ void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _vi
 
     json.setValue({"videoParameters", "gitBranch"}, _videoParameters.gitBranch);
     json.setValue({"videoParameters", "gitCommit"}, _videoParameters.gitCommit);
-
 }
 
 // This method returns the pcmAudioParameters metadata

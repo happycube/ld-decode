@@ -192,13 +192,6 @@ public:
     void setIsFirstFieldFirst(bool flag);
     bool getIsFirstFieldFirst();
 
-    void setOutputWholeFrame(bool flag) {
-        outputFullFrame = flag;
-    }
-    bool getOutputWholeFrame() {
-        return outputFullFrame;
-    }
-
     qint32 convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTimecode clvTimeCode);
     LdDecodeMetaData::ClvTimecode convertFrameNumberToClvTimecode(qint32 clvFrameNumber);
 
@@ -209,7 +202,6 @@ public:
 private:
     JsonWax json;
     bool isFirstFieldFirst;
-    bool outputFullFrame;
     QVector<qint32> pcmAudioFieldStartSampleMap;
     QVector<qint32> pcmAudioFieldLengthMap;
 

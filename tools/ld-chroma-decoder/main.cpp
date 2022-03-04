@@ -240,12 +240,6 @@ int main(int argc, char *argv[])
                                       QCoreApplication::translate("main", "Use NTSC QADM decoder taking burst phase into account (BETA)"));
     parser.addOption(ntscPhaseComp);
 
-    // Option to output the full frame.
-    QCommandLineOption fullFrameOption(QStringList() << "full-frame",
-                                    QCoreApplication::translate("main", "Output the (almost) full frame rather than cropping off the non-visible areas"
-                                                                        "(currently starting 16 pixels from the left and 2 from the top)"));
-    parser.addOption(fullFrameOption);
-
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -423,10 +417,6 @@ int main(int argc, char *argv[])
     if (parser.isSet(setReverseOption)) {
         qInfo() << "Expected field order is reversed to second field/first field";
         metaData.setIsFirstFieldFirst(false);
-    }
-
-    if (parser.isSet(fullFrameOption)) {
-        metaData.setOutputWholeFrame(true);
     }
 
     // Work out which decoder to use
