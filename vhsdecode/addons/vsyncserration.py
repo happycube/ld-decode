@@ -206,7 +206,7 @@ class VsyncSerration:
         return argrelextrema(first_harmonic, np.less)[0]
 
     def select_serration(self, where_min, serrations):
-        selected = np.array([], np.int)
+        selected = np.array([], np.int64)
         for id, edge in enumerate(serrations):
             for s_min in where_min:
                 next_serration_id = min(id + 1, len(serrations) - 1)
@@ -216,7 +216,7 @@ class VsyncSerration:
 
     # fills in missing VBI positions when possible
     def vsync_arbitrage(self, where_allmin, serrations, datalen):
-        result = np.array([], np.int)
+        result = np.array([], np.int64)
         if len(where_allmin) > 1:
             valid_serrations = self.select_serration(where_allmin, serrations)
             for serration in valid_serrations:

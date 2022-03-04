@@ -1409,6 +1409,15 @@ class VHSRFDecode(ldd.RFDecode):
 
         SF["FVideo05"] = filter_video_lpf * filter_deemp * filter_05
 
+        # if True:
+        #     import matplotlib.pyplot as plt
+
+        #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+        #     ax1.plot(self.Filters["FVideo"])
+        #     ax2.plot(self.Filters["FVideo05"])
+        #     plt.show()
+
+
         # SF["YNRHighPass"] = sps.butter(
         #     1,
         #     [

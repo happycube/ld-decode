@@ -152,6 +152,8 @@ class Resync:
         self.linelen = self.VsyncSerration.getLinelen()
         self.use_serration = True
 
+        # self._temp_c = 0
+
     def _debug_field(self, sync_reference):
         ldd.logger.debug(
             "Hashed field sync reference %s"
@@ -220,8 +222,8 @@ class Resync:
         return black_means
 
     # search for sync and blanking levels from back porch
-    def pulses_levels(self, field, pulses):
-        vsync_locs, vsync_means = self.fallback_vsync_loc_means(field, pulses)
+    def pulses_levels(self, field, sp, pulses):
+        vsync_locs, vsync_means = _fallback_vsync_loc_means(field.data["video"]["demod_05"], pulses, field.rf.freq, field.usectoinpx(10))
 
         if len(vsync_means) == 0:
             synclevel = self.FieldState.getSyncLevel()
@@ -250,7 +252,7 @@ class Resync:
                 return None, None
         else:
             # Make sure these levels are sane before using them.
-            if self.level_check(field, synclevel, blacklevel, field.data["video"]["demod_05"], False):
+            if self.level_check(field.rf.sysparams_const, synclevel, blacklevel, field.data["video"]["demod_05"], False):
                 self.FieldState.setLevels(synclevel, blacklevel)
             else:
                 return None, None
@@ -270,46 +272,47 @@ class Resync:
             sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 5 / 8
         )
 
-    def add_pulselevels_to_serration_measures(self, field):
+    def add_pulselevels_to_serration_measures(self, field, demod_05, sp):
         if self.VsyncSerration.hasSerration():
             sync, blank = self.VsyncSerration.getLevels()
         else:
             # it starts finding the sync from the minima in 5 ire steps
             ire_step = 5
-            min_sync = np.min(field.data["video"]["demod_05"])
+            min_sync = np.min(demod_05)
             retries = 30
             while retries > 0:
-                pulse_hz_min, pulse_hz_max = self.findpulses_range(field.rf.sysparams_const, min_sync)
-                pulses = self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)
+                pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, min_sync)
+                pulses = self.findpulses(demod_05, pulse_hz_max)
                 # this number might need calculation
                 if len(pulses) > 100:
                     break
-                min_sync = field.rf.iretohz(field.rf.hztoire(min_sync) + ire_step)
+                min_sync = iretohz(sp, hztoire(sp, min_sync) + ire_step)
                 retries -= 1
 
-            sync, blank = self.pulses_levels(field, pulses)
+            sync, blank = self.pulses_levels(field, sp, pulses)
             # chewed tape case
             if sync is None or blank is None:
                 return
 
         # the tape chewing test passed, then it should find sync
-        pulse_hz_min, pulse_hz_max = self.findpulses_range(field.rf.sysparams_const, sync)
-        pulses = self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)
+        pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sync)
+        pulses = self.findpulses(demod_05, pulse_hz_max)
 
-        f_sync, f_blank = self.pulses_levels(field, pulses)
+        f_sync, f_blank = self.pulses_levels(field, sp, pulses)
         if f_sync is not None and f_blank is not None:
             self.VsyncSerration.push_levels((f_sync, f_blank))
 
     # Do a level check
-    def level_check(self, field, sync, blank, sync_reference, full=True):
-        vsync_hz = field.rf.iretohz(field.rf.SysParams["vsync_ire"])
+    def level_check(self, sysparams_const, sync, blank, sync_reference, full=True):
+        vsync_hz = sysparams_const.vsync_hz  # field.rf.iretohz(field.rf.SysParams["vsync_ire"])
+        # TODO: See if we need to read vsync_ire from sysparams here
         return check_levels(
             sync_reference,
             vsync_hz,
             sync,
             blank,
-            field.rf.sysparams_const.vsync_hz,
-            field.rf.sysparams_const.hz_ire,
+            sysparams_const.vsync_hz,
+            sysparams_const.hz_ire,
             full
         )
 
@@ -356,7 +359,7 @@ class Resync:
         # measures the serration levels if possible
         self.VsyncSerration.work(sync_reference)
         # adds the sync and blanking levels from the back porch
-        self.add_pulselevels_to_serration_measures(field)
+        self.add_pulselevels_to_serration_measures(field, sync_reference, sp)
 
         # safe clips the bottom of the sync pulses but leaves picture area unchanged
         # NOTE: Disabled for now as it doesn't seem to have much purpose at the moment and can
@@ -369,11 +372,15 @@ class Resync:
             )
         )
 
+        # if self._temp_c == 1:
+        #     np.savetxt("PAL_GOOD.txt.gz", sync_reference)
+        # self._temp_c += 1
+
         # if it has levels, then compensate blanking bias
         if self.VsyncSerration.hasLevels() or self.FieldState.hasLevels():
             if self.VsyncSerration.hasLevels():
                 new_sync, new_blank = self.VsyncSerration.getLevels()
-                if self.level_check(field, new_sync, new_blank, sync_reference):
+                if self.level_check(sp, new_sync, new_blank, sync_reference):
                     sync, blank = new_sync, new_blank
                 elif self.FieldState.hasLevels():
                     sync, blank = self.FieldState.getLevels()
@@ -403,9 +410,9 @@ class Resync:
             sync_reference += dc_offset
             if not field.rf.options.disable_dc_offset:
                 demod_data += dc_offset
+                field.data["video"]["demod"] = demod_data
             sync, blank = sync + dc_offset, blank + dc_offset
 
-            field.data["video"]["demod"] = demod_data
             field.data["video"]["demod_05"] = sync_reference
             pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sync)
         else:
@@ -420,7 +427,7 @@ class Resync:
             vsync_hz = sp.vsync_hz
             new_blank = iretohz(sp, hztoire(sp, new_sync) / 2)
 
-            check = self.level_check(field, new_sync, new_blank, sync_reference)
+            check = self.level_check(sp, new_sync, new_blank, sync_reference)
             if (
                 not field.rf.options.disable_dc_offset
                 and not pulse_hz_min < new_sync < vsync_hz

@@ -116,7 +116,7 @@ def get_sysparams_pal_vhs(sysparams_pal):
 
     SysParams_PAL_VHS = {**sysparams_pal}
     # frequency/ire IRE change pr frequency (Is this labeled correctly?)
-    SysParams_PAL_VHS["hz_ire"] = 1e6 / 143
+    SysParams_PAL_VHS["hz_ire"] = 1e6 / (100 + (-SysParams_PAL_VHS["vsync_ire"]))
 
     # 0 IRE level after demodulation
     SysParams_PAL_VHS["ire0"] = 4.8e6 - (SysParams_PAL_VHS["hz_ire"] * 100)
@@ -154,7 +154,7 @@ def get_sysparams_pal_svhs(sysparams_pal):
     SysParams_PAL_SVHS = get_sysparams_pal_vhs(sysparams_pal)
 
     # frequency/ire IRE change pr frequency (Is this labeled correctly?)
-    SysParams_PAL_SVHS["hz_ire"] = 1.6e6 / 143
+    SysParams_PAL_SVHS["hz_ire"] = 1.6e6 / (100 + (-SysParams_PAL_SVHS["vsync_ire"]))
 
     # 0 IRE level after demodulation
     SysParams_PAL_SVHS["ire0"] = 7e6 - (SysParams_PAL_SVHS["hz_ire"] * 100)

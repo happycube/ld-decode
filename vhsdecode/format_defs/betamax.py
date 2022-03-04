@@ -87,7 +87,7 @@ def get_sysparams_pal_betamax(sysparams_pal):
 
     sysparams = {**sysparams_pal}
     # frequency/ire IRE change pr frequency (Is this labeled correctly?)
-    sysparams["hz_ire"] = 1.4e6 / 143
+    sysparams["hz_ire"] = 1.4e6 / (100 + (-sysparams["vsync_ire"]))
 
     # 0 IRE level after demodulation
     sysparams["ire0"] = 5.2e6 - (sysparams["hz_ire"] * 100)
