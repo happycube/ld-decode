@@ -6,7 +6,6 @@ import traceback
 
 from multiprocessing import Process, Pipe
 
-import lddecode.audio as audio
 from lddecode.core import *
 from lddecode.utils import *
 from lddecode.utils_logging import init_logging
