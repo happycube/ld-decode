@@ -96,7 +96,7 @@ class CXExpander:
         self.fast = 0
         self.slow = 0
         
-        self.zerodb = 14450 # approx rms of 0dB output from ld-decode (rev7), measured from GGV
+        self.zerodb = 14600 # approx rms of 0dB output from ld-decode (rev7), measured from GGV
         self.knee = -22     # beginning of 2:1 expansion in dB
         self.knee_level = db_to_lev(self.knee)
         

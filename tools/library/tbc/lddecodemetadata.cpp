@@ -120,6 +120,10 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
         videoParameters.gitCommit = json.value({"videoParameters", "gitCommit"}).toString();
         
         videoParameters.isValid = true;
+
+	// process default lineParameters 
+	LdDecodeMetaData::LineParameters lineParameters;
+	processLineParameters(lineParameters);
     } else {
         qCritical("JSON file invalid: videoParameters object is not defined");
         return videoParameters;
