@@ -259,10 +259,6 @@ int main(int argc, char *argv[])
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
         LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData[i]->getVideoParameters();
 
-        // Use default line parameters, as the user will not override it
-	LdDecodeMetaData::LineParameters lineParameters;
-	ldDecodeMetaData[i]->processLineParameters(lineParameters);
-
         qInfo().nospace() << "Opening input #" << i << ": " << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight <<
                     " - input filename is " << inputFilenames[i];
 
