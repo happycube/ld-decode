@@ -58,8 +58,8 @@ def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
 
 # encapsulates the serration search logic
 class VsyncSerration:
-    def __init__(self, fs, sysparams, show_decoded_serration=False):
-        self._divisor = 1
+    def __init__(self, fs, sysparams, divisor=1, show_decoded_serration=False):
+        self._divisor = divisor
         self.show_decoded = show_decoded_serration
         self.samp_rate = fs / self._divisor
         fv = sysparams["FPS"] * 2

@@ -1210,7 +1210,13 @@ class VHSRFDecode(ldd.RFDecode):
         self.AGClevels = StackableMA(
             window_average=self.SysParams["FPS"] / 2
         ), StackableMA(window_average=self.SysParams["FPS"] / 2)
-        self.resync = Resync(self.freq_hz, self.SysParams, debug=self.debug)
+
+        level_detect_divisor = rf_options.get("level_detect_divisor", 1)
+        if level_detect_divisor < 1 or level_detect_divisor > 6:
+            ldd.logger.warning("Invalid level detect divisor value, using default.")
+            level_detect_divisor = 1
+
+        self.resync = Resync(self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug)
         self.debug_plot = debug_plot
 
     @property

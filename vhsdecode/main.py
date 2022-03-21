@@ -146,6 +146,14 @@ def main(use_gui=False):
         default=False,
         help="Disable use of right side of hsync for lineloc detection (old behaviour)",
     )
+    debug_group.add_argument(
+        "--level_detect_divisor",
+        dest="level_detect_divisor",
+        metavar="value",
+        type=int,
+        default=1,
+        help="Use only every nth sample for vsync serration code - may improve speed at cost of minor accuracy. Limited to max 6.",
+    )
     dodgroup = parser.add_argument_group("Dropout detection options")
     dodgroup.add_argument(
         "--noDOD",
@@ -214,6 +222,7 @@ def main(use_gui=False):
     rf_options["cafc"] = args.cafc
     rf_options["sync_clip"] = args.sync_clip
     rf_options["disable_right_hsync"] = args.disable_right_hsync
+    rf_options["level_detect_divisor"] = args.level_detect_divisor
 
     extra_options = get_extra_options(args, not use_gui)
 
