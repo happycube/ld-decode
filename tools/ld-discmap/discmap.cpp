@@ -735,7 +735,7 @@ qint32 DiscMap::getSecondFieldAudioDataLength(qint32 frameNumber) const
         qDebug() << "getSecondFieldAudioDataLength out of frameNumber range";
         return false;
     }
-    return ldDecodeMetaData->getFieldPcmAudioLength(m_frames[frameNumber].firstField());
+    return ldDecodeMetaData->getFieldPcmAudioLength(m_frames[frameNumber].secondField());
 }
 
 // Save the target metadata from the disc map
