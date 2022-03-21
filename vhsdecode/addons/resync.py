@@ -20,15 +20,17 @@ def hztoire(sysparams, hz):
 
 @njit(cache=True, parallel=True, nogil=True)
 def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full=True):
-    """Check if adjusted levels give are somewhat sane."""
+    """Check if adjusted levels are somewhat sane."""
     # ldd.logger.info("am below new blank %s , amount below half_sync %s", amount_below, amount_below_half_sync)
     # ldd.logger.info("change %s _ %s", old_sync - new_sync, (hz_ire * 15))
 
     blank_sync_ire_diff = (new_blank - new_sync) / hz_ire
 
+    # ldd.logger.info("ire diff: %s", blank_sync_ire_diff)
+
     # Check if too far below format's standard sync, or the difference between sync and blank is too large
     # to make sense
-    if (vsync_hz_ref - new_sync) > (hz_ire * 15) or blank_sync_ire_diff > 45:
+    if (vsync_hz_ref - new_sync) > (hz_ire * 15) or blank_sync_ire_diff > 47:
         return False
     if new_sync - old_sync < (hz_ire * 5):
         # Small change - probably ok
@@ -52,9 +54,11 @@ Make sure to refresh numba cache if modified.
 Pulse = namedtuple("Pulse", "start len")
 
 
-@njit(cache=True, parallel=True, nogil=True)
-def findpulses_numba(sync_ref, high, min_synclen, max_synclen):
-    """Locate possible pulses by looking at areas within some range."""
+@njit(cache=True, parallel=True)
+def _findpulses_numba_raw(sync_ref, high, min_synclen, max_synclen):
+    """Locate possible pulses by looking at areas within some range.
+    Outputs arrays of starts and lengths
+    """
     mid_sync = high
     where_all_picture = np.where(sync_ref > mid_sync)[0]
     locs_len = np.diff(where_all_picture)
@@ -64,11 +68,25 @@ def findpulses_numba(sync_ref, high, min_synclen, max_synclen):
     where_all_syncs = np.where(is_sync)[0]
     pulses_starts = where_all_picture[where_all_syncs]
     pulses_lengths = locs_len[where_all_syncs]
-    # return list(map(Pulse, pulses_starts, pulses_lengths))
+    return pulses_starts, pulses_lengths
+
+
+def _to_pulses_list(pulses_starts, pulses_lengths):
+    """Make list of Pulse objects from arrays of pulses starts and lengths"""
+    # Not using numba for this right now as it seemed to cause random segfault in tests.
+    # list(map(Pulse, pulses_starts, pulses_lengths))
     return [Pulse(z[0], z[1]) for z in zip(pulses_starts, pulses_lengths)]
 
 
-def _fallback_vsync_loc_means(demod_05, pulses, sample_freq_mhz: float, min_len: int):
+def _findpulses_numba(sync_ref, high, min_synclen, max_synclen):
+    """Locate possible pulses by looking at areas within some range.
+    .outputs a list of Pulse tuples
+    """
+    pulses_starts, pulses_lengths = _findpulses_numba_raw(sync_ref, high, min_synclen, max_synclen)
+    return _to_pulses_list(pulses_starts, pulses_lengths)
+
+
+def _fallback_vsync_loc_means(demod_05, pulses, sample_freq_mhz: float, min_len: int, max_len: int):
     """Get the mean value of the video level inside pulses above a set threshold.
 
     Args:
@@ -78,19 +96,21 @@ def _fallback_vsync_loc_means(demod_05, pulses, sample_freq_mhz: float, min_len:
         len_threshold (int): only use pulses longer than this threshold.
 
     Returns:
-        [type]: a list of vsync locations and a list of mean values
+        [type]: a list of vsync locations in the list of pulses and a list of mean values
     """
     vsync_locs = []
     vsync_means = []
 
+    mean_pos_offset = sample_freq_mhz
+
     for i, p in enumerate(pulses):
-        if p.len > min_len:
+        if p.len > min_len and p.len < max_len:
             vsync_locs.append(i)
             vsync_means.append(
                 np.mean(
                     demod_05[
-                        int(p.start + sample_freq_mhz) : int(
-                            p.start + p.len - sample_freq_mhz
+                        int(p.start + mean_pos_offset) : int(
+                            p.start + p.len - mean_pos_offset
                         )
                     ]
                 )
@@ -145,7 +165,8 @@ class Resync:
     def __init__(self, fs, sysparams, debug=False):
         self.debug = debug
         self.samp_rate = fs
-        self.SysParams = sysparams.copy()
+        if debug:
+            self.SysParams = sysparams.copy()
         self.VsyncSerration = VsyncSerration(fs, sysparams)
         self.FieldState = FieldState(sysparams)
         self.eq_pulselen = self.VsyncSerration.getEQpulselen()
@@ -165,6 +186,9 @@ class Resync:
         reclamp_ire0 = False
         # AGC is allowed to change two sysparams
         if field.rf.useAGC:
+            if not self.debug:
+                ldd.logger.warning("Not doing consistency checks with debug disabled!")
+                return False
             if field.rf.SysParams["ire0"] != self.SysParams["ire0"]:
                 ldd.logger.debug(
                     "AGC changed SysParams[ire0]: %.02f Hz", field.rf.SysParams["ire0"]
@@ -187,15 +211,10 @@ class Resync:
 
         return reclamp_ire0
 
-    def fallback_vsync_loc_means(self, field, pulses):
-        # TODO: Fix this so it looks for the right pulse lens.
-        vsync_locs, vsync_means = _fallback_vsync_loc_means(field.data["video"]["demod_05"], pulses, field.rf.freq, field.usectoinpx(10))
-
-        return vsync_locs, vsync_means
-
     # search for black level on back porch
     def pulses_blacklevel(self, field, pulses, vsync_locs):
         # take the eq pulses before and after vsync
+        # TODO: This needs to be reworked for samples where the levels vary throughout the field
         r1 = range(vsync_locs[0] - 5, vsync_locs[0])
         r2 = range(vsync_locs[-1] + 1, vsync_locs[-1] + 6)
 
@@ -222,8 +241,27 @@ class Resync:
         return black_means
 
     # search for sync and blanking levels from back porch
-    def pulses_levels(self, field, sp, pulses):
-        vsync_locs, vsync_means = _fallback_vsync_loc_means(field.data["video"]["demod_05"], pulses, field.rf.freq, field.usectoinpx(10))
+    def pulses_levels(self, field, sp, pulses, pulse_level=0):
+
+        vsync_len_px = field.usectoinpx(sp.vsync_pulse_us)
+        min_len = vsync_len_px * 0.8
+        max_len = vsync_len_px * 1.2
+
+        vsync_locs, vsync_means = _fallback_vsync_loc_means(field.data["video"]["demod_05"], pulses, field.rf.freq, min_len, max_len)
+
+        if False:
+            import matplotlib.pyplot as plt
+
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+            ax1.plot(field.data["video"]["demod_05"])
+            ax1.axhline(np.median(vsync_means))
+            for p in pulses:
+                ax2.axvline(p.start, color="#00FF00")
+                ax2.axvline(p.start + p.len, color="#0000FF")
+            for loc in vsync_locs:
+                ax2.axvline(pulses[loc].start, color="#FF0000")
+            # ax2.plot(self.Filters["FVideo05"])
+            plt.show()
 
         if len(vsync_means) == 0:
             synclevel = self.FieldState.getSyncLevel()
@@ -268,7 +306,12 @@ class Resync:
         # lddu.findpulses() equivalent
 
     def findpulses(self, sync_ref, high):
-        return findpulses_numba(
+        return _findpulses_numba(
+            sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 5 / 8
+        )
+
+    def _findpulses_arr(self, sync_ref, high):
+        return _findpulses_numba_raw(
             sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 5 / 8
         )
 
@@ -280,16 +323,22 @@ class Resync:
             ire_step = 5
             min_sync = np.min(demod_05)
             retries = 30
+            min_vsync_check = field.usectoinpx(sp.vsync_pulse_us) * 0.8
             while retries > 0:
                 pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, min_sync)
-                pulses = self.findpulses(demod_05, pulse_hz_max)
+                pulses_starts, pulses_lengths = self._findpulses_arr(demod_05, pulse_hz_max)
                 # this number might need calculation
-                if len(pulses) > 100:
-                    break
+                if len(pulses_lengths) > 200:
+                    # Check that at least 2 pulses are long enough to be vsync to avoid noise
+                    # being counted as pulses
+                    if len(pulses_lengths[pulses_lengths > min_vsync_check]) > 4:
+                        break
                 min_sync = iretohz(sp, hztoire(sp, min_sync) + ire_step)
                 retries -= 1
 
-            sync, blank = self.pulses_levels(field, sp, pulses)
+            pulses = _to_pulses_list(pulses_starts, pulses_lengths)
+
+            sync, blank = self.pulses_levels(field, sp, pulses, pulse_hz_max)
             # chewed tape case
             if sync is None or blank is None:
                 return
@@ -298,7 +347,7 @@ class Resync:
         pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sync)
         pulses = self.findpulses(demod_05, pulse_hz_max)
 
-        f_sync, f_blank = self.pulses_levels(field, sp, pulses)
+        f_sync, f_blank = self.pulses_levels(field, sp, pulses, pulse_hz_max)
         if f_sync is not None and f_blank is not None:
             self.VsyncSerration.push_levels((f_sync, f_blank))
 
@@ -393,7 +442,7 @@ class Resync:
                     )
                 else:
                     # Check failed on serration levels and field state does not contain levels
-                    # Not sure if this can happen, use defaults if so.
+                    # TODO: Handle properly if this occurs
                     ldd.logger.debug(
                         "Level check failed on serration measured levels, using defaults."
                     )

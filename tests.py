@@ -69,34 +69,57 @@ class DemodTest(unittest.TestCase):
         np.testing.assert_allclose(min_demod, np.full(len(min_demod), min_hz), rtol=1e-04, atol=50)
 
 
+def test_sync(filename, num_pulses=None, blank_approx=None, sync_approx=None):
+    import lddecode.core as ldd
+    import logging
+    import math
+
+    samplerate_mhz = 40
+
+    ldd.logger = logging.getLogger("test")
+    ldd.logger.setLevel(5)
+    ldd.logger.info("test")
+
+    # process.VHSDecode("infile", "outfile", ,inputfreq=samplerate_mhz, system="PAL", tape_format="VHS")
+    rfdecoder = process.VHSRFDecode(inputfreq=samplerate_mhz, system="PAL", tape_format="VHS")
+
+    demod_05_data = np.loadtxt(filename)
+
+    data_stub = {}
+    data_stub["input"] = np.zeros(5)
+    data_stub["video"] = {}
+    data_stub["video"]["demod"] = np.zeros_like(demod_05_data)
+    data_stub["video"]["demod_05"] = demod_05_data
+
+    field = process.FieldPALVHS(rfdecoder, data_stub)
+
+    pulses = rfdecoder.resync.getpulses_override(field)
+
+    if num_pulses:
+        assert(len(pulses) == num_pulses)
+
+    measured_sync, measured_blank = rfdecoder.resync.FieldState.getLevels()
+
+    if blank_approx:
+        math.isclose(measured_blank, blank_approx)
+    if sync_approx:
+        math.isclose(measured_sync, sync_approx)
+
+    return True
+
+
 class SyncTest(unittest.TestCase):
-    def test_sync(self):
-        import lddecode.core as ldd
-        import logging
+    def test_sync_pal_good(self):
+        blank = 4130000
+        sync = 3840000
+        print("pal good")
+        test_sync("PAL_GOOD.txt.gz", num_pulses=458, blank_approx=blank, sync_approx=sync)
 
-        samplerate_mhz = 40
-
-        ldd.logger = logging.getLogger("test")#LogStub()
-        ldd.logger.info("test")
-
-        ### process.VHSDecode("infile", "outfile", ,inputfreq=samplerate_mhz, system="PAL", tape_format="VHS")
-        rfdecoder = process.VHSRFDecode(inputfreq=samplerate_mhz, system="PAL", tape_format="VHS")
-
-        demod_05_data = np.loadtxt("PAL_GOOD.txt.gz")
-
-        data_stub = {}
-        data_stub["input"] = np.zeros(5)
-        data_stub["video"] = {}
-        data_stub["video"]["demod"] = np.zeros_like(demod_05_data)
-        data_stub["video"]["demod_05"] = demod_05_data
-
-        field = process.FieldPALVHS(rfdecoder, data_stub)
-
-        pulses = rfdecoder.resync.getpulses_override(field)
-
-        assert(len(pulses) == 458)
-
-        return False
+    def test_sync_pal_noisy(self):
+        blank = 4121000
+        sync = 3800000
+        print("pal noisy")
+        test_sync("PAL_NOISY.txt.gz", blank_approx=blank, sync_approx=sync)
 
 
 if __name__ == "__main__":

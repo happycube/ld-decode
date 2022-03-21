@@ -1140,8 +1140,8 @@ class VHSRFDecode(ldd.RFDecode):
 
         # As agc can alter these sysParams values, store a copy to then
         # initial value for reference.
-        self._sysparams_const = namedtuple("SysparamsConst", "hz_ire vsync_hz ire0")(
-            self.SysParams["hz_ire"], self.iretohz(self.SysParams["vsync_ire"]), self.SysParams["ire0"]
+        self._sysparams_const = namedtuple("SysparamsConst", "hz_ire vsync_hz ire0 vsync_pulse_us")(
+            self.SysParams["hz_ire"], self.iretohz(self.SysParams["vsync_ire"]), self.SysParams["ire0"], self.SysParams["vsyncPulseUS"]
         )
 
         # Lastly we re-create the filters with the new parameters.
