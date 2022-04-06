@@ -621,7 +621,7 @@
   </action>
   <action name="actionReload_TBC">
    <property name="text">
-    <string>Reload TBC...</string>
+    <string>Reload TBC</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+A</string>
