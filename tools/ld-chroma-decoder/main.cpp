@@ -506,16 +506,16 @@ int main(int argc, char *argv[])
         }
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "ntsc1d") {
-        combConfig.dimensions = 1;
+        combConfig.chromaFilter = Comb::ntsc1DFilter;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc2d") {
-        combConfig.dimensions = 2;
+        combConfig.chromaFilter = Comb::ntsc2DCombFilter;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc3d") {
-        combConfig.dimensions = 3;
+        combConfig.chromaFilter = Comb::ntsc3DCombFilter;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "ntsc3dnoadapt") {
-        combConfig.dimensions = 3;
+        combConfig.chromaFilter = Comb::ntsc3DCombFilter;
         combConfig.adaptive = false;
         decoder.reset(new NtscDecoder(combConfig));
     } else if (decoderName == "mono") {

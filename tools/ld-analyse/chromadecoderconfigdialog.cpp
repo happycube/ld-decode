@@ -72,6 +72,9 @@ ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     ui->thresholdHorizontalSlider->setMinimum(0);
     ui->thresholdHorizontalSlider->setMaximum(100);
 
+    ui->NTSCthresholdHorizontalSlider->setMinimum(0);
+    ui->NTSCthresholdHorizontalSlider->setMaximum(100);
+
     ui->cNRHorizontalSlider->setMinimum(0);
     ui->cNRHorizontalSlider->setMaximum(100);
 
@@ -103,6 +106,7 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
     palConfiguration.yNRLevel = qBound(0.0, yNRLevel, 10.0);
     ntscConfiguration.cNRLevel = qBound(0.0, ntscConfiguration.cNRLevel, 10.0);
     ntscConfiguration.yNRLevel = qBound(0.0, yNRLevel, 10.0);
+    ntscConfiguration.transformThreshold = qBound(0.0, ntscConfiguration.transformThreshold, 1.0);
 
     // For settings that both decoders share, the PAL default takes precedence
     ntscConfiguration.chromaGain = palConfiguration.chromaGain;
@@ -202,23 +206,42 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->ntscFilter2DRadioButton->setEnabled(isSourceNtsc);
     ui->ntscFilter3DRadioButton->setEnabled(isSourceNtsc);
 
-    switch (ntscConfiguration.dimensions) {
-    case 1:
+    switch (ntscConfiguration.chromaFilter) {
+    case Comb::ntsc1DFilter:
         ui->ntscFilter1DRadioButton->setChecked(true);
         break;
-    case 2:
+    case Comb::ntsc2DCombFilter:
         ui->ntscFilter2DRadioButton->setChecked(true);
         break;
-    case 3:
+    case Comb::ntsc3DCombFilter:
         ui->ntscFilter3DRadioButton->setChecked(true);
+        break;
+    case Comb::transform3DFilter:
+        ui->ntscFilterTransform3DRadioButton->setChecked(true);
         break;
     }
 
-    ui->adaptiveCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->adaptiveCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.chromaFilter == Comb::ntsc3DCombFilter);
     ui->adaptiveCheckBox->setChecked(ntscConfiguration.adaptive);
 
-    ui->showMapCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    const bool NTSCisTransform = (ntscConfiguration.chromaFilter == Comb::transform3DFilter);
+    const bool NTSCisThresholdMode = (ntscConfiguration.transformMode == TransformPal::thresholdMode);
+    ui->NTSCthresholdModeCheckBox->setEnabled(isSourceNtsc && NTSCisTransform);
+    ui->NTSCthresholdModeCheckBox->setChecked(NTSCisThresholdMode);
+
+    ui->NTSCthresholdLabel->setEnabled(isSourceNtsc && NTSCisTransform && NTSCisThresholdMode);
+
+    ui->NTSCthresholdHorizontalSlider->setEnabled(isSourceNtsc && NTSCisTransform && NTSCisThresholdMode);
+    ui->NTSCthresholdHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.transformThreshold * 100));
+
+    ui->NTSCthresholdValueLabel->setEnabled(isSourceNtsc && NTSCisTransform && NTSCisThresholdMode);
+    ui->NTSCthresholdValueLabel->setText(QString::number(ntscConfiguration.transformThreshold, 'f', 2));
+
+    ui->showMapCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.chromaFilter == Comb::ntsc3DCombFilter);
     ui->showMapCheckBox->setChecked(ntscConfiguration.showMap);
+
+    ui->showNTSCFFTsCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.chromaFilter == Comb::transform3DFilter);
+    ui->showNTSCFFTsCheckBox->setChecked(ntscConfiguration.showFFTs);
 
     ui->colorLpfCheckBox->setEnabled(isSourceNtsc);
     ui->colorLpfCheckBox->setChecked(ntscConfiguration.colorlpf);
@@ -299,11 +322,13 @@ void ChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
 void ChromaDecoderConfigDialog::on_ntscFilterButtonGroup_buttonClicked(QAbstractButton *button)
 {
     if (button == ui->ntscFilter1DRadioButton) {
-        ntscConfiguration.dimensions = 1;
+        ntscConfiguration.chromaFilter = Comb::ntsc1DFilter;
     } else if (button == ui->ntscFilter2DRadioButton) {
-        ntscConfiguration.dimensions = 2;
+        ntscConfiguration.chromaFilter = Comb::ntsc2DCombFilter;
+    } else if (button == ui->ntscFilter3DRadioButton) {
+        ntscConfiguration.chromaFilter = Comb::ntsc3DCombFilter;
     } else {
-        ntscConfiguration.dimensions = 3;
+        ntscConfiguration.chromaFilter = Comb::transform3DFilter;
     }
     updateDialog();
     emit chromaDecoderConfigChanged();
@@ -321,9 +346,33 @@ void ChromaDecoderConfigDialog::on_adaptiveCheckBox_clicked()
     emit chromaDecoderConfigChanged();
 }
 
+void ChromaDecoderConfigDialog::on_NTSCthresholdModeCheckBox_clicked()
+{
+    if (ui->NTSCthresholdModeCheckBox->isChecked()) {
+        ntscConfiguration.transformMode = TransformPal::thresholdMode;
+    } else {
+        ntscConfiguration.transformMode = TransformPal::levelMode;
+    }
+    updateDialog();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_NTSCthresholdHorizontalSlider_valueChanged(int value)
+{
+    ntscConfiguration.transformThreshold = static_cast<double>(value) / 100;
+    ui->NTSCthresholdValueLabel->setText(QString::number(ntscConfiguration.transformThreshold, 'f', 2));
+    emit chromaDecoderConfigChanged();
+}
+
 void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
 {
     ntscConfiguration.showMap = ui->showMapCheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_showNTSCFFTsCheckBox_clicked()
+{
+    ntscConfiguration.showFFTs = ui->showNTSCFFTsCheckBox->isChecked();
     emit chromaDecoderConfigChanged();
 }
 

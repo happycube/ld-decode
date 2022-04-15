@@ -29,6 +29,8 @@
 
 #include "framecanvas.h"
 
+#include "firfilter.h"
+
 #include "deemp.h"
 
 #include <QScopedPointer>
@@ -87,21 +89,27 @@ Comb::Comb()
 }
 
 qint32 Comb::Configuration::getLookBehind() const {
-    if (dimensions == 3) {
+    switch (chromaFilter) {
+    case ntsc3DCombFilter:
         // In 3D mode, we need to see the previous frame
         return 1;
+    case transform3DFilter:
+        return TransformNtsc3D::getLookBehind();
+    default:
+        return 0;
     }
-
-    return 0;
 }
 
 qint32 Comb::Configuration::getLookAhead() const {
-    if (dimensions == 3) {
+    switch (chromaFilter) {
+    case ntsc3DCombFilter:
         // ... and also the next frame
         return 1;
+    case transform3DFilter:
+        return TransformNtsc3D::getLookAhead();
+    default:
+        return 0;
     }
-
-    return 0;
 }
 
 // Return the current configuration
@@ -129,6 +137,15 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
         qCritical() << "Data is not in 4fsc sample rate, color decoding will not work properly!";
     }
 
+    if (configuration.chromaFilter == transform3DFilter) {
+        // Create the Transform NTSC filter
+        transformNtsc.reset(new TransformNtsc3D);
+
+        // Configure the filter
+        transformNtsc->updateConfiguration(videoParameters, configuration.transformMode, configuration.transformThreshold,
+                                           configuration.transformThresholds);
+    }
+
     configurationSet = true;
 }
 
@@ -137,6 +154,40 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
 {
     assert(configurationSet);
     assert((componentFrames.size() * 2) == (endIndex - startIndex));
+
+    if (configuration.chromaFilter == transform3DFilter) {
+        QScopedPointer<FrameBuffer> currentFrameBuffer;
+        currentFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
+        //FrameBuffer currentFrameBuffer(videoParameters, configuration);
+        // from PalColour
+        QVector<const double *> chromaData(endIndex - startIndex);
+        transformNtsc->filterFields(inputFields, startIndex, endIndex, chromaData);
+
+        for (qint32 i = startIndex, j = 0, k = 0; i < endIndex; i += 2, j += 2, k++) {
+            // Initialise and clear the component frame
+            componentFrames[k].init(videoParameters);
+            currentFrameBuffer->setComponentFrame(componentFrames[k]);
+
+            decodeField(inputFields[i], chromaData[j], componentFrames[k]);
+            decodeField(inputFields[i + 1], chromaData[j + 1], componentFrames[k]);
+
+            currentFrameBuffer->filterIQFull();
+            // Apply noise reduction
+            currentFrameBuffer->doCNR();
+            currentFrameBuffer->doYNR();
+
+            // Transform I/Q to U/V
+            currentFrameBuffer->transformIQ(configuration.chromaGain, configuration.chromaPhase);
+
+        }
+
+        if (configuration.showFFTs) {
+            // Overlay the FFT visualisation
+          transformNtsc->overlayFFT(configuration.showPositionX, configuration.showPositionY,
+                                    inputFields, startIndex, endIndex, componentFrames);
+        }
+        return;
+    }
 
     // Buffers for the next, current and previous frame.
     // Because we only need three of these, we allocate them upfront then
@@ -150,7 +201,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
     // To support 3D operation, where we need to see three input frames at a time,
     // each iteration of the loop loads and 1D/2D-filters frame N + 1, then
     // 3D-filters and outputs frame N.
-    const qint32 preStartIndex = (configuration.dimensions == 3) ? startIndex - 4 : startIndex - 2;
+    const qint32 preStartIndex = (configuration.chromaFilter == ntsc3DCombFilter) ? startIndex - 4 : startIndex - 2;
     for (qint32 fieldIndex = preStartIndex; fieldIndex < endIndex; fieldIndex += 2) {
         const qint32 frameIndex = (fieldIndex - startIndex) / 2;
 
@@ -179,7 +230,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
             continue;
         }
 
-        if (configuration.dimensions == 3) {
+        if (configuration.chromaFilter == ntsc3DCombFilter) {
             // Extract chroma using 3D filter
             currentFrameBuffer->split3D(*previousFrameBuffer, *nextFrameBuffer);
         }
@@ -208,13 +259,155 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         currentFrameBuffer->transformIQ(configuration.chromaGain, configuration.chromaPhase);
 
         // Overlay the map if required
-        if (configuration.dimensions == 3 && configuration.showMap) {
+        if (configuration.chromaFilter == ntsc3DCombFilter && configuration.showMap) {
             currentFrameBuffer->overlayMap(*previousFrameBuffer, *nextFrameBuffer);
         }
     }
 }
 
 // Private methods ----------------------------------------------------------------------------------------------------
+
+// Decode one field into componentFrame
+void Comb::decodeField(const SourceField &inputField, const double *chromaData, ComponentFrame &componentFrame)
+{
+    // Pointer to the composite signal data
+    const quint16 *compPtr = inputField.data.data();
+
+    const qint32 firstLine = inputField.getFirstActiveLine(videoParameters);
+    const qint32 lastLine = inputField.getLastActiveLine(videoParameters);
+    for (qint32 fieldLine = firstLine; fieldLine < lastLine; fieldLine++) {
+        LineInfo line(fieldLine);
+
+        // Detect the colourburst from the composite signal
+        detectBurst(line, compPtr);
+
+        // Rotate and scale line.bp/line.bq to apply gain and phase adjustment
+        const double oldBp = line.bp, oldBq = line.bq;
+        const double theta = (configuration.chromaPhase * M_PI) / 180;
+        line.bp = (oldBp * cos(theta) - oldBq * sin(theta)) * configuration.chromaGain;
+        line.bq = (oldBp * sin(theta) + oldBq * cos(theta)) * configuration.chromaGain;
+
+        // Decode chroma and luma from the TransformNTSC output
+        decodeLine(inputField, chromaData, line, componentFrame);
+    }
+}
+
+// Decode one line into componentFrame.
+// chromaData (templated, so it can be any numeric type) is the input to
+// the chroma demodulator; this may be the composite signal from
+// inputField, or it may be pre-filtered down to chroma.
+void Comb::decodeLine(const SourceField &inputField, const double *chromaData, const LineInfo &line,
+                      ComponentFrame &componentFrame)
+{
+    // based on splitIQlocked
+    // Pointer to composite signal data
+    const quint16 *comp = inputField.data.data() + (line.number * videoParameters.fieldWidth);
+    const double *in = chromaData +  (line.number      * videoParameters.fieldWidth);
+
+    const qint32 lineNumber = (line.number * 2) + inputField.getOffset();
+    double *Y = componentFrame.y(lineNumber);
+    double *I = componentFrame.u(lineNumber);
+    double *Q = componentFrame.v(lineNumber);
+
+    for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+        const auto val = in[h];
+
+        // Demodulate the sine and cosine components.
+        const auto lsin = val * sin4fsc(h) * 2;
+        const auto lcos = val * cos4fsc(h) * 2;
+        // Rotate the demodulated vector by the burst phase.
+        const auto ti = (lsin * line.bq - lcos * line.bp);
+        const auto tq = (lsin * line.bp + lcos * line.bq);
+
+        // Rotate the burst angle to get the correct values.
+        // We do the 33 degree rotation here to avoid computing it for every pixel.
+        // TODO: additionally we need to rotate another ~10 degrees to get the correct hue, find out why.
+        constexpr double ROTATE_SIN = 0.6819983600624985;
+        constexpr double ROTATE_COS = 0.7313537016191705;
+
+        // Invert Q and rorate to get the correct I/Q vector.
+        // TODO: Needed to shift the chroma 1 sample to the right to get it to line up
+        // may not get the first pixel in each line correct because of this.
+        I[h + 1] = ti * ROTATE_COS - tq * -ROTATE_SIN;
+        Q[h + 1] = -(ti * -ROTATE_SIN + tq * ROTATE_COS);
+        // Subtract the split chroma part from the luma signal.
+        Y[h] = comp[h] - val;
+    }
+}
+Comb::LineInfo::LineInfo(qint32 _number)
+    : number(_number)
+{
+}
+
+// Detect the colourburst on a line.
+// Stores the burst details into line.
+void Comb::detectBurst(LineInfo &line, const quint16 *inputData)
+{
+    const quint16 *in0;
+    in0 = inputData +  (line.number * videoParameters.fieldWidth);
+
+    // Find absolute burst phase relative to the reference carrier by
+    // product detection.
+    // For now we just use the burst on the current line, but we could possibly do some averaging with
+    // neighbouring lines later if needed.
+    double bp = 0, bq = 0;
+    for (qint32 i = videoParameters.colourBurstStart; i < videoParameters.colourBurstEnd; i++) {
+        bp += in0[i] * sin4fsc(i);
+        bq += in0[i] * cos4fsc(i);
+    }
+
+    // Normalise the sums above
+    const qint32 colourBurstLength = videoParameters.colourBurstEnd - videoParameters.colourBurstStart;
+    bp /= colourBurstLength;
+    bq /= colourBurstLength;
+
+    // Normalise the magnitude of the bp/bq vector to 1.
+    // Kill colour if burst too weak.
+    // XXX magic number 130000 !!! check!
+    const double burstNorm = qMax(sqrt(bp * bp + bq * bq), 130000.0 / 128);
+    line.bp = bp / burstNorm;
+    line.bq = bq / burstNorm;
+}
+
+// Perform analog-style noise coring.
+void Comb::doYNR(double *Yline)
+{
+    // nr_y is the coring level
+    const double irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
+    double nr_y = configuration.yNRLevel * irescale;
+
+    // High-pass filter for Y
+    auto yFilter(f_nrpal);
+
+    // Filter delay (since it's a symmetric FIR filter)
+    const qint32 delay = c_nrpal_b.size() / 2;
+
+    // High-pass result
+    std::vector<double> hpY(videoParameters.activeVideoEnd + delay);
+
+    // Feed zeros into the filter outside the active area
+    for (qint32 h = videoParameters.activeVideoStart - delay; h < videoParameters.activeVideoStart; h++) {
+        yFilter.feed(0.0);
+    }
+    for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+        hpY[h] = yFilter.feed(Yline[h]);
+    }
+    for (qint32 h = videoParameters.activeVideoEnd; h < videoParameters.activeVideoEnd + delay; h++) {
+        hpY[h] = yFilter.feed(0.0);
+    }
+
+    for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+        // Offset to cover the filter delay
+        double a = hpY[h + delay];
+
+        // Clip the filter strength
+        if (fabs(a) > nr_y) {
+            a = (a > 0) ? nr_y : -nr_y;
+        }
+
+        Yline[h] -= a;
+    }
+}
 
 Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoParameters_,
                                const Configuration &configuration_)
@@ -364,7 +557,6 @@ void Comb::FrameBuffer::split2D()
 
             if ((kn > 0) || (kp > 0)) {
                 // At least one of the next/previous lines has a good phase relationship.
-
                 // If one of them is much better than the other, only use that one
                 if (kn > (3 * kp)) kp = 0;
                 else if (kp > (3 * kn)) kn = 0;
@@ -575,14 +767,14 @@ void Comb::FrameBuffer::splitIQlocked()
         // Get a pointer to the line's data
         const quint16 *line = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
         // Calculate burst phase
-        const auto info = detectBurst(line, videoParameters);
+        const auto info = ::detectBurst(line, videoParameters);
 
         double *Y = componentFrame->y(lineNumber);
         double *I = componentFrame->u(lineNumber);
         double *Q = componentFrame->v(lineNumber);
 
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            const auto val = clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
+            const auto val = clpbuffer[static_cast<int>(configuration.chromaFilter) - 1].pixel[lineNumber][h];
 
             // Demodulate the sine and cosine components.
             const auto lsin = val * sin4fsc(h) * 2;
@@ -619,7 +811,7 @@ void Comb::FrameBuffer::splitIQ()
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
             qint32 phase = h % 4;
 
-            double cavg = clpbuffer[configuration.dimensions - 1].pixel[lineNumber][h];
+            double cavg = clpbuffer[static_cast<int>(configuration.chromaFilter) - 1].pixel[lineNumber][h];
 
             if (linePhase) cavg = -cavg;
 

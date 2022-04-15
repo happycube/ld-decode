@@ -30,6 +30,7 @@ SOURCES += \
     transformpal.cpp \
     transformpal2d.cpp \
     transformpal3d.cpp \
+    transformntsc3d.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
@@ -51,6 +52,7 @@ HEADERS += \
     transformpal.h \
     transformpal2d.h \
     transformpal3d.h \
+    transformntsc3d.h \
     ../library/filter/deemp.h \
     ../library/filter/firfilter.h \
     ../library/filter/iirfilter.h \

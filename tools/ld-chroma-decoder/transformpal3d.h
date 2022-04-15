@@ -49,7 +49,7 @@ public:
     static qint32 getLookBehind();
     static qint32 getLookAhead();
 
-    void filterFields(const QVector<SourceField> &inputFields, qint32 startFieldIndex, qint32 endFieldIndex,
+    virtual void filterFields(const QVector<SourceField> &inputFields, qint32 startFieldIndex, qint32 endFieldIndex,
                       QVector<const double *> &outputFields) override;
 
 protected:
@@ -57,7 +57,7 @@ protected:
     void inverseFFTTile(qint32 tileX, qint32 tileY, qint32 tileZ, qint32 startFieldIndex, qint32 endFieldIndex);
     template <TransformMode MODE>
     void applyFilter();
-    void overlayFFTFrame(qint32 positionX, qint32 positionY,
+    virtual void overlayFFTFrame(qint32 positionX, qint32 positionY,
                          const QVector<SourceField> &inputFields, qint32 fieldIndex,
                          ComponentFrame &componentFrame) override;
 

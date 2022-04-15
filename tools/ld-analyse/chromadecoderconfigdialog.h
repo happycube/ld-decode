@@ -67,7 +67,10 @@ private slots:
     void on_ntscFilterButtonGroup_buttonClicked(QAbstractButton *button);
     void on_phaseCompCheckBox_clicked();
     void on_adaptiveCheckBox_clicked();
+    void on_NTSCthresholdModeCheckBox_clicked();
+    void on_NTSCthresholdHorizontalSlider_valueChanged(int value);
     void on_showMapCheckBox_clicked();
+    void on_showNTSCFFTsCheckBox_clicked();
     void on_colorLpfCheckBox_clicked();
     void on_colorLpfHqCheckBox_clicked();
     void on_cNRHorizontalSlider_valueChanged(int value);

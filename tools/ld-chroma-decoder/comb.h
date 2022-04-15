@@ -38,11 +38,22 @@
 #include "componentframe.h"
 #include "decoder.h"
 #include "sourcefield.h"
+#include "transformntsc3d.h"
 
 class Comb
 {
 public:
     Comb();
+
+    // Specify which filter to use to separate luma and chroma information.
+    enum ChromaFilterMode {
+        // "dimensions" options of Comb
+        ntsc1DFilter = 1,
+        ntsc2DCombFilter,
+        ntsc3DCombFilter,
+        // frequency-domain filter
+        transform3DFilter
+    };
 
     // Comb filter configuration parameters
     struct Configuration {
@@ -51,7 +62,15 @@ public:
         bool colorlpf = false;
         bool colorlpf_hq = true;
         bool whitePoint75 = false;
-        qint32 dimensions = 2;
+      //qint32 dimensions;
+        bool simplePAL = false;
+        ChromaFilterMode chromaFilter = ntsc2DCombFilter;
+        TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
+        double transformThreshold = 0.4;
+        QVector<double> transformThresholds;
+        bool showFFTs = false;
+        qint32 showPositionX = 200;
+        qint32 showPositionY = 200;
         bool adaptive = true;
         bool showMap = false;
         bool phaseCompensation = false;
@@ -82,6 +101,36 @@ private:
     bool configurationSet;
     Configuration configuration;
     LdDecodeMetaData::VideoParameters videoParameters;
+
+    // Transform NTSC filter
+    QScopedPointer<TransformNtsc3D> transformNtsc;
+    // used for Transform NTSC
+    // Information about a line we're decoding.
+    struct LineInfo {
+        explicit LineInfo(qint32 number);
+
+        qint32 number;
+        // detectBurst computes bp, bq = cos(t), sin(t), where t is the burst phase.
+        // They're used to build a rotation matrix for the chroma signals in decodeLine.
+        double bp, bq;
+        double Vsw;
+    };
+    void detectBurst(LineInfo &line, const quint16 *inputData);
+    void decodeField(const SourceField &inputField, const double *chromaData, ComponentFrame &componentFrame);
+    void decodeLine(const SourceField &inputField, const double *chromaData, const LineInfo &line,
+                    ComponentFrame &componentFrame);
+    void doYNR(double *Yline);
+    // Coefficients for the three 2D chroma low-pass filters. There are
+    // separate filters for U and V, but only the signs differ, so they can
+    // share a set of coefficients.
+    //
+    // The filters are horizontally and vertically symmetrical, so each 2D
+    // array represents one quarter of a filter. The zeroth horizontal element
+    // is included in the sum twice, so the coefficient is halved to
+    // compensate. Each filter is (2 * FILTER_SIZE) + 1 elements wide.
+    static constexpr qint32 FILTER_SIZE = 7;
+    double cfilt[FILTER_SIZE + 1][4];
+    double yfilt[FILTER_SIZE + 1][2];
 
     // An input frame in the process of being decoded
     class FrameBuffer {

@@ -44,6 +44,7 @@ SOURCES += \
     ../ld-chroma-decoder/transformpal.cpp \
     ../ld-chroma-decoder/transformpal2d.cpp \
     ../ld-chroma-decoder/transformpal3d.cpp \
+    ../ld-chroma-decoder/transformntsc3d.cpp \
     ../ld-chroma-decoder/framecanvas.cpp \
     ../ld-chroma-decoder/sourcefield.cpp \
     ../library/tbc/lddecodemetadata.cpp \
@@ -74,6 +75,7 @@ HEADERS += \
     ../ld-chroma-decoder/transformpal.h \
     ../ld-chroma-decoder/transformpal2d.h \
     ../ld-chroma-decoder/transformpal3d.h \
+    ../ld-chroma-decoder/transformntsc3d.h \
     ../ld-chroma-decoder/framecanvas.h \
     ../ld-chroma-decoder/sourcefield.h \
     ../library/filter/firfilter.h \

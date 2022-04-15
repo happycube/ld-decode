@@ -284,6 +284,16 @@
         </widget>
        </item>
        <item>
+        <widget class="QRadioButton" name="ntscFilterTransform3DRadioButton">
+         <property name="text">
+          <string>Transform 3D</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">ntscFilterButtonGroup</string>
+         </attribute>
+        </widget>
+       </item>
+       <item>
         <spacer name="verticalSpacer_9">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -314,6 +324,47 @@
         <widget class="QCheckBox" name="showMapCheckBox">
          <property name="text">
           <string>Overlay adaptive filter visualisation</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="NTSCthresholdModeCheckBox">
+         <property name="text">
+          <string>Use threshold comparison mode</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="NTSCthresholdLabel">
+         <property name="text">
+          <string>Transform threshold:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="NTSCthresholdHorizontalSlider">
+         <property name="maximum">
+          <number>100</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="NTSCthresholdValueLabel">
+         <property name="text">
+          <string>0.4</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="showNTSCFFTsCheckBox">
+         <property name="text">
+          <string>Overlay FFT visualisation</string>
          </property>
         </widget>
        </item>
