@@ -100,6 +100,11 @@ static inline double fftwAbsSq(const fftw_complex &value)
     return (value[0] * value[0]) + (value[1] * value[1]);
 }
 
+static inline double dist_sq(const double x, const double y, const double z)
+{
+    return x*x + y*y + z*z;
+}
+
 // Apply the frequency-domain filter.
 // (Templated so that the inner loop gets specialised for each mode.)
 template <TransformPal::TransformMode MODE>
@@ -157,6 +162,7 @@ void TransformNtsc3D::applyFilter()
         // subtract 15 Hz
         const qint32 z_lumaref = (z - ZTILE / 4 + ZTILE) % ZTILE;
         const qint32 z_lumaref_neg = (ZTILE - z_lumaref) % ZTILE;
+        const double kz0 = static_cast<double>(z) / static_cast<double>(ZTILE);
 
         for (qint32 y = 0; y < YTILE; y++) {
             // Reflect around 120 c/aph vertically.
@@ -164,6 +170,30 @@ void TransformNtsc3D::applyFilter()
             // subtract 120 c/aph
             const qint32 y_lumaref = (y - YTILE / 4 + YTILE) % YTILE;
             const qint32 y_lumaref_neg = (YTILE - y_lumaref) % YTILE;
+            const double ky0 = static_cast<double>(y) / static_cast<double>(YTILE);
+            double ky,kz;
+            // map to central "diamond"
+            if (kz0 + ky0 < 0.5) {
+                kz = kz0 + 0.5;
+                ky = ky0 + 0.5;
+            } else if (kz0 + ky0 > 1.5) {
+                kz = kz0 - 0.5;
+                ky = ky0 - 0.5;
+            } else if (kz0 - ky0 > 0.5) {
+                kz = kz0 - 0.5;
+                ky = ky0 + 0.5;
+            } else if (ky0 - kz0 > 0.5) {
+                kz = kz0 + 0.5;
+                ky = ky0 - 0.5;
+            } else {
+                kz = kz0;
+                ky = ky0;
+            }
+            // bring to lower-left half of diamond
+            if (kz + ky > 1.0) {
+                kz = 1.0 - kz;
+                ky = 1.0 - ky;
+            }
 
             // Input data for this line and its reflection
             const fftw_complex *bi = fftComplexIn + (((z * YCOMPLEX) + y) * XCOMPLEX);
@@ -181,6 +211,7 @@ void TransformNtsc3D::applyFilter()
                 const qint32 x_ref = (XTILE / 2) - x;
                 // subtract fSC
                 qint32 x_lumaref = x - XTILE / 4;
+                const double kx = static_cast<double>(x) / static_cast<double>(XTILE);
                 // if x < 0 then we have to negate (x,y,z)_lumaref
                 const fftw_complex *lumaref_val;
                 if (x_lumaref >= 0)
@@ -189,17 +220,34 @@ void TransformNtsc3D::applyFilter()
                   lumaref_val = &bi_lumaref_neg[-x_lumaref];
 
                 // Get the threshold for this bin
-                const double threshold_sq = *thresholdsPtr++;
+                const double threshold0_sq = *thresholdsPtr++;
 
                 const fftw_complex &in_val = bi[x];
                 const fftw_complex &ref_val = bi_ref[x_ref];
 
-                if (x == x_ref && y == y_ref && z == z_ref) {
+                if (x == x_ref &&
+                    ( (y == YTILE/4 && z == ZTILE/4)
+                   || (y == 3*YTILE/4 && z == 3*ZTILE/4)
+                    ) ) {
                     // This bin is its own reflection (i.e. it's a carrier). Keep it!
                     bo[x][0] = in_val[0];
                     bo[x][1] = in_val[1];
                     continue;
                 }
+                if (x == x_ref &&
+                    ( ( (y == 0 || y == YTILE/2) && (z == 0 || z == ZTILE/2) )
+                   || (y == YTILE/4 && z == 3*ZTILE/4)
+                   || (y == 3*YTILE/4 && z == ZTILE/4)
+                    ) ){
+                    // This bin is its own reflection (but not a carrier). Discard it!
+                    continue;
+                }
+
+                // Adjust the threshold based on distance to uniform luma vs uniform chroma.
+                // This breaks functionality based on reading in frequency-dependent thresholds.
+                const double k_sq_luma = dist_sq(kz-0.5, ky-0.5, kx);
+                const double k_sq_chroma = dist_sq(kz-0.25, ky-0.25, kx-0.25);
+                const double threshold_sq = pow(k_sq_chroma / ( k_sq_luma + k_sq_chroma ), 10.0*threshold0_sq);
 
                 // Get the squares of the magnitudes (to minimise the number of sqrts)
                 const double m_in_sq = fftwAbsSq(in_val);
@@ -237,9 +285,12 @@ void TransformNtsc3D::applyFilter()
                     // Compare the magnitudes of the two values, and discard
                     // both if they are more different than the threshold for
                     // this bin.
+                    double threshold2_sq = threshold_sq;
                     if (m_lumaref_sq < std::max(m_in_sq,m_ref_sq) * threshold_sq) {
-                        // no corresponding luma signal -> discard bin
-                    } else if (m_in_sq < m_ref_sq * threshold_sq || m_ref_sq < m_in_sq * threshold_sq) {
+                        // no corresponding luma signal -> tighten threshold
+                        threshold2_sq = 0.5 * ( 1.0 + threshold2_sq );
+                    }
+                    if (m_in_sq < m_ref_sq * threshold2_sq || m_ref_sq < m_in_sq * threshold2_sq) {
                         // Probably not a chroma signal; throw it away.
                     } else {
                         // They're similar. Keep it!
