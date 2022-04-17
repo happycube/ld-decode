@@ -140,17 +140,24 @@ void TransformNtsc3D::applyFilter()
     //  0----------0  Here we can illustrate the effect of interlacing
     //  |    /\    |  in yz frequency space:
     //-z|   /  \   |   (y,z) and (y+YTILE/2,z+ZTILE/2) are equivalent.
-    //  |  /    c  |  Thus, every point inside the diamond is
+    //  |  a    c  |  Thus, every point inside the diamond is
     //  | /      \ |  equivalent to a point outside the diamond.
     //  |/    0   \|  - The origin is at the corners+center.
     //  |\        /|  - The subcarrier is at the two 'c' points.
     //  | \      / |  - The origin is symmetric around the subcarrier,
-    //  |  c    /  |    so if x=fSC then the reflection comparison
+    //  |  c    a  |    so if x=fSC then the reflection comparison
     //  |   \  /   |    tells us nothing.
     //+z|    \/    |  - The midpoints of the sides are also equivalent
     //  0----------0    and symmetric around the subcarrier. (This
     //    +y   -y       corresponds to fine details appearing in
     //                  different fields.)
+    //                - The same is also true of the 'a' points.
+    //
+    // For a given frequency k, there are two possible luma
+    // frequencies that correspond to k (or -k) as chroma:
+    // 1. The obvious one, k-c (or -k+c: we'll only see one of them).
+    // 2. Also k+c = (k-c)+2c (or -k-c); note that 2c=(0.5,0.5,0.5)
+    //    is equivalent to (0.5,0,0).
     //
     // The Z axis covers 0 to 60 Hz;      15 Hz     is 1/4 * ZTILE.
     // The Y axis covers 0 to 480 c/aph;  120 c/aph is 1/4 * YTILE.
@@ -213,11 +220,14 @@ void TransformNtsc3D::applyFilter()
                 qint32 x_lumaref = x - XTILE / 4;
                 const double kx = static_cast<double>(x) / static_cast<double>(XTILE);
                 // if x < 0 then we have to negate (x,y,z)_lumaref
-                const fftw_complex *lumaref_val;
-                if (x_lumaref >= 0)
-                  lumaref_val = &bi_lumaref[x_lumaref];
-                else
-                  lumaref_val = &bi_lumaref_neg[-x_lumaref];
+                const fftw_complex *lumaref1_val, *lumaref2_val;
+                if (x_lumaref >= 0) {
+                    lumaref1_val = &bi_lumaref[x_lumaref];
+                    lumaref2_val = &bi_lumaref_neg[XTILE/2 - x_lumaref];
+                } else {
+                    lumaref1_val = &bi_lumaref_neg[-x_lumaref];
+                    lumaref2_val = &bi_lumaref[XTILE/2 + x_lumaref];
+                }
 
                 // Get the threshold for this bin
                 const double threshold0_sq = *thresholdsPtr++;
@@ -252,7 +262,7 @@ void TransformNtsc3D::applyFilter()
                 // Get the squares of the magnitudes (to minimise the number of sqrts)
                 const double m_in_sq = fftwAbsSq(in_val);
                 const double m_ref_sq = fftwAbsSq(ref_val);
-                const double m_lumaref_sq = fftwAbsSq(*lumaref_val);
+                const double m_lumaref_sq = std::max(fftwAbsSq(*lumaref1_val),fftwAbsSq(*lumaref2_val));
 
                 if (MODE == levelMode) {
                     // Compare the magnitudes of the two values, and scale the
