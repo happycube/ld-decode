@@ -188,7 +188,7 @@ void TransformPal3D::forwardFFTTile(qint32 tileX, qint32 tileY, qint32 tileZ, co
             // field), fill it with black instead.
             if (y < startY || y >= endY || ((tileY + y) % 2) != (fieldIndex % 2)) {
                 for (qint32 x = 0; x < XTILE; x++) {
-                    fftReal[(((z * YTILE) + y) * XTILE) + x] = videoParameters.black16bIre * windowFunction[z][y][x];
+                    fftReal[(((z * YTILE) + y) * XTILE) + x] = 0.0;
                 }
                 continue;
             }
