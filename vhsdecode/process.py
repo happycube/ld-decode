@@ -111,6 +111,9 @@ def y_comb(data, line_len, limit):
 
 
 class FieldShared:
+    def getLine0_fallback(self):
+        return None, None, None
+
     def refinepulses(self):
         LT = self.get_timings()
 
@@ -152,7 +155,6 @@ class FieldShared:
                 and inrange(self.rawpulses[i].len, *LT["eq"])
                 and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC)
             ):
-                # print(i, self.rawpulses[i])
                 done, vblank_pulses = self.run_vblank_state_machine(
                     self.rawpulses[i - 2 : i + 24], LT
                 )
@@ -178,6 +180,8 @@ class FieldShared:
         self.validpulses = validpulses = self.refinepulses()
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        if not line0loc:
+            line0loc, lastlimeloc, self.isFirstField = self.getLine0_fallback()
         # Not sure if this is used for video.
         self.linecount = 263 if self.isFirstField else 262
 
@@ -198,6 +202,30 @@ class FieldShared:
             # to be able to compile valid_pulses_to_linelocs correctly.
             lastlineloc_or_0 = 0.0
             self.skipdetected = False
+
+        if False:
+            # len(validpulses) > 300:
+            import matplotlib.pyplot as plt
+
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+            ax1.plot(self.data["video"]["demod"])
+
+            for raw_pulse in self.rawpulses:
+                ax2.axvline(raw_pulse.start, color="#910000")
+                ax2.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
+
+            for valid_pulse in validpulses:
+                color = (
+                    "#FF0000"
+                    if valid_pulse[0] == 2
+                    else "#00FF00"
+                    if valid_pulse[0] == 1
+                    else "#0F0F0F"
+                )
+                ax3.axvline(valid_pulse[1][0], color=color)
+                ax3.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+
+            plt.show()
 
         if line0loc is None:
             if self.initphase is False:
@@ -1140,8 +1168,14 @@ class VHSRFDecode(ldd.RFDecode):
 
         # As agc can alter these sysParams values, store a copy to then
         # initial value for reference.
-        self._sysparams_const = namedtuple("SysparamsConst", "hz_ire vsync_hz ire0 vsync_pulse_us")(
-            self.SysParams["hz_ire"], self.iretohz(self.SysParams["vsync_ire"]), self.SysParams["ire0"], self.SysParams["vsyncPulseUS"]
+        self._sysparams_const = namedtuple(
+            "SysparamsConst", "hz_ire vsync_hz vsync_ire ire0 vsync_pulse_us"
+        )(
+            self.SysParams["hz_ire"],
+            self.iretohz(self.SysParams["vsync_ire"]),
+            self.SysParams["vsync_ire"],
+            self.SysParams["ire0"],
+            self.SysParams["vsyncPulseUS"],
         )
 
         # Lastly we re-create the filters with the new parameters.
@@ -1216,7 +1250,9 @@ class VHSRFDecode(ldd.RFDecode):
             ldd.logger.warning("Invalid level detect divisor value, using default.")
             level_detect_divisor = 1
 
-        self.resync = Resync(self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug)
+        self.resync = Resync(
+            self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
+        )
         self.debug_plot = debug_plot
 
     @property
@@ -1422,7 +1458,6 @@ class VHSRFDecode(ldd.RFDecode):
         #     ax1.plot(self.Filters["FVideo"])
         #     ax2.plot(self.Filters["FVideo05"])
         #     plt.show()
-
 
         # SF["YNRHighPass"] = sps.butter(
         #     1,
