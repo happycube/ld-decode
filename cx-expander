@@ -61,7 +61,7 @@ Reference audio tests:
 
 GGV1069 CX test signal blocks 
     - NTSC ONLY, PAL GGV1011 was recorded w/o CX enabled.  Oops.
-    - 7.5 seconds of -8dB -> 0dB audio alternating with 7.5 secs of -18dB->20dB
+    - 7.5 seconds of -8dB -> XdB audio alternating with 7.5 secs of -18dB->20dB
 
 Tune-Up AV II audio test tones
     - Several seconds of 0dB in both CX-analog and digital between 50hz and 10khz.
@@ -69,11 +69,13 @@ Tune-Up AV II audio test tones
 
 approx level targets for ld-decode rev7:
 
-0dB = ~14762 
-max = 0dB (rms ~14762) to +16db (6.3x) - currently capped about +6dB
-high = -8dB (rms 5877) to 0dB (2.5118x)
-low = -18dB (rms 1865) to -20dB
-min = -22dB (rms 1172?) to -28dB (.50118x)
+0dB = rms ~2183-2288 (ggv 40%, he010 test signal)
+max = 0dB to +20db (10x, rms ~23000)
+
+ggv high = -0dB (rms 2xxx) to 0dB (1x)
+low = -20dB (rms ~220) to ~-26dB (rms ~110)
+
+min = -22dB (rms 174) to -28dB (.50118x)
 '''
 
 # A FIR filter is used here so that phase is (mostly) maintained
@@ -96,8 +98,8 @@ class CXExpander:
         self.fast = 0
         self.slow = 0
         
-        self.zerodb = 14600 # approx rms of 0dB output from ld-decode (rev7), measured from GGV
-        self.knee = -22     # beginning of 2:1 expansion in dB
+        self.zerodb = 2288 # approx rms of 0dB output from ld-decode (rev7), measured from GGV
+        self.knee = -22     # beginning of 2:1 expansion
         self.knee_level = db_to_lev(self.knee)
         
     def process(self, left, right):
@@ -127,22 +129,17 @@ class CXExpander:
             highest = max(np.abs(fleft[i]), np.abs(fright[i]))
 
             # The filter itself - still needs tuning!
-            #self.fast = (self.fast * .999375) + (highest * .000625)
-            #self.fast = (self.fast * .998) + (highest * .00165)
-            #self.fast = (self.fast * .9994) + (highest * .004)
-            #self.fast = (self.fast * .994) + (highest * .00625)
-            self.fast = (self.fast * .999) + (highest * .001)
-            self.slow = (self.slow * .9998) + (highest * .000212)
+            self.fast = (self.fast * .999) + (highest * .00102)
+            self.slow = (self.slow * .9998) + (highest * .00022)
 
             lev = max(self.fast, self.slow)
-
-            mdb = lev_to_db(lev / self.zerodb)
-            mfactor = max(m6db, (db_to_lev(mdb - self.knee) / 2))
+            mfactor = (lev / self.knee_level) - 1
+            mfactor = (np.clip(mfactor, 0, 1) + 1)
 
             output_level[i] = mfactor
 
-            output[(i * 2)] = adj * (left[i] * mfactor)
-            output[(i * 2) + 1] = adj * (right[i] * mfactor)
+            output[(i * 2)] = ((left[i] - self.knee_level) * mfactor) + self.knee_level
+            output[(i * 2) + 1] = ((right[i] - self.knee_level) * mfactor) + self.knee_level
 
         np.clip(output, -32766, 32766, out=output16)
         return output16, output_level
