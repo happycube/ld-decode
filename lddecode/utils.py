@@ -970,10 +970,10 @@ def lev_to_db(rlev):
     return 20 * np.log10(rlev)
 
 
-# moved from core.py
+# moved from core.py - this rescales analog audio output levels
 @njit(cache=True)
 def dsa_rescale(infloat):
-    return int(np.round(infloat * 32767 / 100000 * (np.sqrt(2) / 2)))
+    return int(np.round(infloat * 32767.0 / 371081.0))
 
 
 # Hotspot subroutines in FieldNTSC's compute_line_bursts function,
