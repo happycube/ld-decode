@@ -154,6 +154,7 @@ parser.add_argument(
 
 parser.add_argument(
     "--NTSC_color_notch_filter",
+    "-N",
     dest="NTSC_color_notch_filter",
     action="store_true",
     default=False,
@@ -161,6 +162,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--V4300D_notch_filter",
+    "-V",
     dest="V4300D_notch_filter",
     action="store_true",
     default=False,
