@@ -26,7 +26,7 @@ import vhsdecode.formats as vhs_formats
 from vhsdecode.addons.FMdeemph import FMDeEmphasis
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
-from vhsdecode.addons.resync import Resync
+from vhsdecode.addons.resync import Resync, Pulse
 from vhsdecode.addons.chromaAFC import ChromaAFC
 
 from numba import njit
@@ -110,31 +110,75 @@ def y_comb(data, line_len, limit):
     return data
 
 
+def _get_line0_fallback(valid_pulses, raw_pulses, demod_05, sp):
+    if False:
+        # len(validpulses) > 300:
+        import matplotlib.pyplot as plt
+
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        ax1.plot(demod_05)
+
+        for raw_pulse in raw_pulses:
+            ax2.axvline(raw_pulse.start, color="#910000")
+            ax2.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
+
+        for valid_pulse in valid_pulses:
+            color = (
+                "#FF0000"
+                if valid_pulse[0] == 2
+                else "#00FF00"
+                if valid_pulse[0] == 1
+                else "#0F0F0F"
+            )
+            ax3.axvline(valid_pulse[1][0], color=color)
+            ax3.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+
+        plt.show()
+    return None, None, None
+
+
+@njit(cache=True, nogil=True)
+def _pulse_qualitycheck(prev_pulse, pulse, in_line_len):
+    if prev_pulse[0] > 0 and pulse[0] > 0:
+        exprange = (0.4, 0.6)
+    elif prev_pulse[0] == 0 and pulse[0] == 0:
+        exprange = (0.9, 1.1)
+    else:  # transition to/from regular hsyncs can be .5 or 1H
+        exprange = (0.4, 1.1)
+
+    linelen = (pulse[1].start - prev_pulse[1].start) / in_line_len
+    inorder = inrange(linelen, *exprange)
+
+    return inorder
+
+
 class FieldShared:
-    def getLine0_fallback(self):
-        return None, None, None
+    def _get_line0_fallback(self, valid_pulses):
+        return _get_line0_fallback(valid_pulses, self.rawpulses, self.data["video"]["demod_05"], self.rf.sysparams_const)
 
     def refinepulses(self):
         LT = self.get_timings()
+        lt_hsync = LT["hsync"]
+        lt_eq = LT["eq"]
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
         i = 0
-        Pulse = namedtuple("Pulse", "start len")
+        # Pulse = namedtuple("Pulse", "start len")
         valid_pulses = []
         num_vblanks = 0
 
         while i < len(self.rawpulses):
             curpulse = self.rawpulses[i]
-            if inrange(curpulse.len, *LT["hsync"]):
+            if inrange(curpulse.len, *lt_hsync):
                 good = (
-                    self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse))
+                    _pulse_qualitycheck(valid_pulses[-1], (0, curpulse), self.inlinelen)
                     if len(valid_pulses)
                     else False
                 )
                 valid_pulses.append((HSYNC, curpulse, good))
                 i += 1
-            elif inrange(curpulse.len, LT["hsync"][1], LT["hsync"][1] * 3):
+            elif inrange(curpulse.len, lt_hsync[1], lt_hsync[1] * 3):
                 # If the pulse is longer than expected, we could have ended up detecting the back
                 # porch as sync.
                 # try to move a bit lower to see if we hit a hsync.
@@ -152,7 +196,7 @@ class FieldShared:
                     i += 1
             elif (
                 i > 2
-                and inrange(self.rawpulses[i].len, *LT["eq"])
+                and inrange(self.rawpulses[i].len, *lt_eq)
                 and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC)
             ):
                 done, vblank_pulses = self.run_vblank_state_machine(
@@ -181,7 +225,7 @@ class FieldShared:
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         if not line0loc:
-            line0loc, lastlimeloc, self.isFirstField = self.getLine0_fallback()
+            line0loc, lastlimeloc, self.isFirstField = self._get_line0_fallback(validpulses)
         # Not sure if this is used for video.
         self.linecount = 263 if self.isFirstField else 262
 
@@ -202,30 +246,6 @@ class FieldShared:
             # to be able to compile valid_pulses_to_linelocs correctly.
             lastlineloc_or_0 = 0.0
             self.skipdetected = False
-
-        if False:
-            # len(validpulses) > 300:
-            import matplotlib.pyplot as plt
-
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-            ax1.plot(self.data["video"]["demod"])
-
-            for raw_pulse in self.rawpulses:
-                ax2.axvline(raw_pulse.start, color="#910000")
-                ax2.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
-
-            for valid_pulse in validpulses:
-                color = (
-                    "#FF0000"
-                    if valid_pulse[0] == 2
-                    else "#00FF00"
-                    if valid_pulse[0] == 1
-                    else "#0F0F0F"
-                )
-                ax3.axvline(valid_pulse[1][0], color=color)
-                ax3.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
-
-            plt.show()
 
         if line0loc is None:
             if self.initphase is False:

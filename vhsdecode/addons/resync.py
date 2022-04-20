@@ -52,6 +52,10 @@ def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full
 
 # search for black level on back porch
 def _pulses_blacklevel(demod_05, freq_mhz: float, pulses, vsync_locs, synclevel):
+
+    if not vsync_locs or len(vsync_locs) == 0:
+        return None
+
     # take the eq pulses before and after vsync
 
     # We skip shorter pulses in case
@@ -301,15 +305,18 @@ class Resync:
             self.FieldState.setSyncLevel(synclevel)
             self.FieldState.setLocs(vsync_locs)
 
-        if vsync_locs is None or not len(vsync_locs):
-            vsync_locs = self.FieldState.getLocs()
+        # TODO: Think this was a bug - need to use absolute locs here,
+        # not position in pulse list
+        # if vsync_locs is None or not len(vsync_locs):
+        #     vsync_locs = self.FieldState.getLocs()
+
 
         # Now compute black level and try again
         black_means = self._pulses_blacklevel(field, pulses, vsync_locs, synclevel)
         # print("black_means", black_means)
 
         # Set to nan if empty to avoid warning.
-        blacklevel = math.nan if len(black_means) == 0 else np.median(black_means)
+        blacklevel = math.nan if not black_means or len(black_means) == 0 else np.median(black_means)
         # If black level is below sync level, something has gone very wrong.
         if blacklevel < synclevel:
             blacklevel = math.nan
@@ -445,11 +452,9 @@ class Resync:
         pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sync, blank_hz=blank)
         pulses = self.findpulses(demod_05, pulse_hz_max)
 
-        ldd.logger.info("hz to ire %s", hztoire(sp, blank))
-
         if False:
             import matplotlib.pyplot as plt
-
+            # ldd.logger.info("hz to ire %s", hztoire(sp, blank))
             fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
             ax1.plot(field.data["video"]["demod_05"])
             ax1.axhline(sync)
