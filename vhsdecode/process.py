@@ -782,6 +782,13 @@ class FieldNTSCVHS(FieldNTSCShared):
         return (dsout, dschroma), dsaudio, dsefm
 
 
+class FieldNTSCSVHS(FieldNTSCVHS):
+    """Add NTSC SVHS-specific stuff (deemp etc here)"""
+
+    def __init__(self, *args, **kwargs):
+        super(FieldNTSCSVHS, self).__init__(*args, **kwargs)
+
+
 class FieldMPALVHS(FieldNTSCVHS):
     def __init__(self, *args, **kwargs):
         super(FieldMPALVHS, self).__init__(*args, **kwargs)
@@ -879,12 +886,13 @@ class VHSDecode(ldd.LDdecode):
         elif system == "NTSC":
             if tape_format == "UMATIC":
                 self.FieldClass = FieldNTSCUMatic
-            else:
-                if tape_format != "VHS":
-                    ldd.logger.info(
-                        "Tape format unimplemented for NTSC, using VHS settings."
-                    )
-                self.FieldClass = FieldNTSCVHS
+            elif tape_format == "SVHS":
+                self.FieldClass = FieldNTSCSVHS
+            elif tape_format != "VHS":
+                ldd.logger.info(
+                    "Tape format unimplemented for NTSC, using VHS settings."
+                )
+            self.FieldClass = FieldNTSCVHS
         elif system == "MPAL" and tape_format == "VHS":
             self.FieldClass = FieldMPALVHS
         else:
