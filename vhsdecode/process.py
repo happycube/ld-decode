@@ -921,6 +921,7 @@ class VHSDecode(ldd.LDdecode):
             threads=threads,
             extra_options=extra_options,
         )
+
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
         # Overwrite the rf decoder with the VHS-altered one

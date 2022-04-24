@@ -154,6 +154,13 @@ def main(use_gui=False):
         default=1,
         help="Use only every nth sample for vsync serration code - may improve speed at cost of minor accuracy. Limited to max 6.",
     )
+    debug_group.add_argument(
+        "--no_resample",
+        dest="no_resample",
+        action="store_true",
+        default=False,
+        help="Skip resampling input to 40 mhz (needs testing).",
+    )
     dodgroup = parser.add_argument_group("Dropout detection options")
     dodgroup.add_argument(
         "--noDOD",
@@ -198,8 +205,13 @@ def main(use_gui=False):
     system = select_system(args)
     sample_freq = select_sample_freq(args)
 
+    loader_input_freq = sample_freq if not args.no_resample else None
+
+    if not args.no_resample:
+        sample_freq = 40
+
     try:
-        loader = lddu.make_loader(filename, sample_freq)
+        loader = lddu.make_loader(filename, loader_input_freq)
     except ValueError as e:
         print(e)
         exit(1)
@@ -262,7 +274,7 @@ def main(use_gui=False):
         tape_format=tape_format,
         doDOD=not args.nodod,
         threads=args.threads,
-        inputfreq=40,
+        inputfreq=sample_freq,
         level_adjust=args.level_adjust,
         rf_options=rf_options,
         extra_options=extra_options,

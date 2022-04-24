@@ -448,7 +448,7 @@ class Resync:
             sync, blank = self.pulses_levels(field, sp, pulses, pulse_hz_max)
             # chewed tape case
             if sync is None or blank is None:
-                ldd.logger.info("sync or blank is None")
+                ldd.logger.info("Level detection failed - sync or blank is None")
                 return
 
         # the tape chewing test passed, then it should find sync
