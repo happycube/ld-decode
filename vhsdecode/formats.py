@@ -56,6 +56,24 @@ def get_format_params(system: str, tape_format: str, logger):
             return get_sysparams_pal_svhs(SysParams_PAL), get_rfparams_pal_svhs(
                 RFParams_PAL
             )
+        elif tape_format == "VIDEO8":
+            from vhsdecode.format_defs.video8 import (
+                get_rfparams_pal_video8,
+                get_sysparams_pal_video8,
+            )
+
+            return get_sysparams_pal_video8(SysParams_PAL), get_rfparams_pal_video8(
+                RFParams_PAL
+            )
+        elif tape_format == "HI8":
+            from vhsdecode.format_defs.video8 import (
+                get_rfparams_pal_hi8,
+                get_sysparams_pal_hi8,
+            )
+
+            return get_sysparams_pal_hi8(SysParams_PAL), get_rfparams_pal_hi8(
+                RFParams_PAL
+            )
         else:
             from vhsdecode.format_defs.vhs import (
                 get_rfparams_pal_vhs,
@@ -83,6 +101,24 @@ def get_format_params(system: str, tape_format: str, logger):
             )
 
             return get_sysparams_ntsc_svhs(SysParams_NTSC), get_rfparams_ntsc_svhs(
+                RFParams_NTSC
+            )
+        elif tape_format == "VIDEO8":
+            from vhsdecode.format_defs.video8 import (
+                get_rfparams_ntsc_video8,
+                get_sysparams_ntsc_video8,
+            )
+
+            return get_sysparams_ntsc_video8(SysParams_NTSC), get_rfparams_ntsc_video8(
+                RFParams_NTSC
+            )
+        elif tape_format == "HI8":
+            from vhsdecode.format_defs.video8 import (
+                get_rfparams_ntsc_hi8,
+                get_sysparams_ntsc_hi8,
+            )
+
+            return get_sysparams_ntsc_hi8(SysParams_NTSC), get_rfparams_ntsc_hi8(
                 RFParams_NTSC
             )
         else:

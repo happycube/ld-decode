@@ -310,13 +310,16 @@ class Resync:
         # if vsync_locs is None or not len(vsync_locs):
         #     vsync_locs = self.FieldState.getLocs()
 
-
         # Now compute black level and try again
         black_means = self._pulses_blacklevel(field, pulses, vsync_locs, synclevel)
         # print("black_means", black_means)
 
         # Set to nan if empty to avoid warning.
-        blacklevel = math.nan if not black_means or len(black_means) == 0 else np.median(black_means)
+        blacklevel = (
+            math.nan
+            if not black_means or len(black_means) == 0
+            else np.median(black_means)
+        )
         # If black level is below sync level, something has gone very wrong.
         if blacklevel < synclevel:
             blacklevel = math.nan
@@ -454,6 +457,7 @@ class Resync:
 
         if False:
             import matplotlib.pyplot as plt
+
             # ldd.logger.info("hz to ire %s", hztoire(sp, blank))
             fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
             ax1.plot(field.data["video"]["demod_05"])

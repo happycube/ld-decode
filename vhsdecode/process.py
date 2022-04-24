@@ -13,6 +13,7 @@ from vhsdecode.utils import StackableMA
 from vhsdecode.chroma import (
     decode_chroma_betamax,
     decode_chroma_vhs,
+    decode_chroma_video8,
     decode_chroma_umatic,
     demod_chroma_filt,
     try_detect_track_vhs_pal,
@@ -154,7 +155,12 @@ def _pulse_qualitycheck(prev_pulse, pulse, in_line_len):
 
 class FieldShared:
     def _get_line0_fallback(self, valid_pulses):
-        return _get_line0_fallback(valid_pulses, self.rawpulses, self.data["video"]["demod_05"], self.rf.sysparams_const)
+        return _get_line0_fallback(
+            valid_pulses,
+            self.rawpulses,
+            self.data["video"]["demod_05"],
+            self.rf.sysparams_const,
+        )
 
     def refinepulses(self):
         LT = self.get_timings()
@@ -225,7 +231,9 @@ class FieldShared:
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         if not line0loc:
-            line0loc, lastlimeloc, self.isFirstField = self._get_line0_fallback(validpulses)
+            line0loc, lastlimeloc, self.isFirstField = self._get_line0_fallback(
+                validpulses
+            )
         # Not sure if this is used for video.
         self.linecount = 263 if self.isFirstField else 262
 
@@ -764,6 +772,24 @@ class FieldPALBetamax(FieldPALShared):
         return (dsout, dschroma), dsaudio, dsefm
 
 
+class FieldPALVideo8(FieldPALShared):
+    def __init__(self, *args, **kwargs):
+        super(FieldPALVideo8, self).__init__(*args, **kwargs)
+
+    def try_detect_track(self):
+        ldd.logger.info("try_detect_track not implemented for video8 yet!")
+        return 0
+
+    def downscale(self, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldPALVideo8, self).downscale(
+            final, *args, **kwargs
+        )
+
+        dschroma = decode_chroma_video8(self)
+
+        return (dsout, dschroma), dsaudio, dsefm
+
+
 class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCShared, self).__init__(*args, **kwargs)
@@ -826,6 +852,27 @@ class FieldNTSCUMatic(FieldNTSCShared):
             linesoffset, final, *args, **kwargs
         )
         dschroma = decode_chroma_umatic(self)
+
+        self.fieldPhaseID = get_field_phase_id(self)
+
+        return (dsout, dschroma), dsaudio, dsefm
+
+
+class FieldNTSCVideo8(FieldNTSCShared):
+    def __init__(self, *args, **kwargs):
+        super(FieldNTSCVideo8, self).__init__(*args, **kwargs)
+
+    def try_detect_track(self):
+        ldd.logger.info("track detection not implemented for 8mm!")
+        return 0
+
+    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+        """Downscale the channels and upconvert chroma to standard color carrier frequency."""
+        dsout, dsaudio, dsefm = super(FieldNTSCVideo8, self).downscale(
+            linesoffset, final, *args, **kwargs
+        )
+
+        dschroma = decode_chroma_video8(self)
 
         self.fieldPhaseID = get_field_phase_id(self)
 
@@ -897,6 +944,8 @@ class VHSDecode(ldd.LDdecode):
                 self.FieldClass = FieldPALSVHS
             elif tape_format == "BETAMAX":
                 self.FieldClass = FieldPALBetamax
+            elif tape_format == "VIDEO8" or tape_format == "HI8":
+                self.FieldClass = FieldNTSCVideo8
             else:
                 if tape_format != "VHS":
                     ldd.logger.info(
@@ -908,6 +957,8 @@ class VHSDecode(ldd.LDdecode):
                 self.FieldClass = FieldNTSCUMatic
             elif tape_format == "SVHS":
                 self.FieldClass = FieldNTSCSVHS
+            elif tape_format == "VIDEO8" or tape_format == "HI8":
+                self.FieldClass = FieldNTSCVideo8
             elif tape_format != "VHS":
                 ldd.logger.info(
                     "Tape format unimplemented for NTSC, using VHS settings."
