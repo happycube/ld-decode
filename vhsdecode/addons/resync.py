@@ -448,7 +448,7 @@ class Resync:
             sync, blank = self.pulses_levels(field, sp, pulses, pulse_hz_max)
             # chewed tape case
             if sync is None or blank is None:
-                ldd.logger.info("Level detection failed - sync or blank is None")
+                ldd.logger.debug("Level detection failed - sync or blank is None")
                 return
 
         # the tape chewing test passed, then it should find sync
@@ -477,7 +477,9 @@ class Resync:
         if f_sync is not None and f_blank is not None:
             self.VsyncSerration.push_levels((f_sync, f_blank))
         else:
-            ldd.logger.info("sync or blank is None final")
+            ldd.logger.debug(
+                "Level detection had issues, so don't store anything in VsyncSerration."
+            )
 
     # Do a level check
     def level_check(self, sysparams_const, sync, blank, sync_reference, full=True):

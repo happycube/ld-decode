@@ -12,6 +12,16 @@ from numba import njit
 
 
 @njit(cache=True)
+def needs_recheck(sum_0: float, sum_1: float):
+    """Check if the magnitude difference between the sums is larger than the set threshold
+    If it's small, we want to make sure we re-check on the next field.
+    """
+    # Trigger a re-check on next field if the magnitude difference is smaller than this value.
+    RECHECK_THRESHOLD = 1.2
+    return True if max(sum_0, sum_1) / min(sum_0, sum_1) < RECHECK_THRESHOLD else False
+
+
+@njit(cache=True)
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
     S16_ABS_MAX = 32767
@@ -312,8 +322,7 @@ def decode_chroma_vhs(field):
             rf.needs_detect = True
 
     if rf.detect_track and rf.needs_detect or rf.recheck_phase:
-        rf.track_phase = field.try_detect_track()
-        rf.needs_detect = False
+        rf.track_phase, rf.needs_detect = field.try_detect_track()
 
     uphet = process_chroma(
         field,
@@ -360,8 +369,7 @@ def decode_chroma_betamax(field):
             rf.needs_detect = True
 
     if rf.detect_track and rf.needs_detect or rf.recheck_phase:
-        rf.track_phase = field.try_detect_track()
-        rf.needs_detect = False
+        rf.track_phase, rf.needs_detect = field.try_detect_track()
 
     uphet = process_chroma(
         field,
@@ -379,7 +387,9 @@ def decode_chroma_video8(field):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
 
-    ldd.logger.info("Track detection and phase inversion not implemented for video8 yet!")
+    ldd.logger.info(
+        "Track detection and phase inversion not implemented for video8 yet!"
+    )
 
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
@@ -394,8 +404,7 @@ def decode_chroma_video8(field):
             rf.needs_detect = True
 
     if rf.detect_track and rf.needs_detect or rf.recheck_phase:
-        rf.track_phase = field.try_detect_track()
-        rf.needs_detect = False
+        rf.track_phase, rf.needs_detect = field.try_detect_track()
 
     uphet = process_chroma(
         field,
@@ -711,7 +720,7 @@ def try_detect_track_vhs_pal(field):
 
     log_track_phase(field.rf.track_phase, phase0_mean, phase1_mean, assumed_phase)
 
-    return assumed_phase
+    return assumed_phase, needs_recheck(phase0_mean, phase1_mean)
 
 
 def try_detect_track_vhs_ntsc(field):
@@ -749,4 +758,4 @@ def try_detect_track_vhs_ntsc(field):
         field.rf.track_phase, burst_mean_sum_0, burst_mean_sum_1, assumed_phase
     )
 
-    return assumed_phase
+    return assumed_phase, needs_recheck(burst_mean_sum_0, burst_mean_sum_1)

@@ -760,7 +760,7 @@ class FieldPALBetamax(FieldPALShared):
 
     def try_detect_track(self):
         ldd.logger.info("try_detect_track not implemented for beta yet!")
-        return 0
+        return 0, False
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALBetamax, self).downscale(
@@ -778,7 +778,7 @@ class FieldPALVideo8(FieldPALShared):
 
     def try_detect_track(self):
         ldd.logger.info("try_detect_track not implemented for video8 yet!")
-        return 0
+        return 0, False
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVideo8, self).downscale(
@@ -864,7 +864,7 @@ class FieldNTSCVideo8(FieldNTSCShared):
 
     def try_detect_track(self):
         ldd.logger.info("track detection not implemented for 8mm!")
-        return 0
+        return 0, False
 
     def downscale(self, linesoffset=0, final=False, *args, **kwargs):
         """Downscale the channels and upconvert chroma to standard color carrier frequency."""
