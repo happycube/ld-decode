@@ -110,7 +110,7 @@ Make sure to refresh numba cache if modified.
 Pulse = namedtuple("Pulse", "start len")
 
 
-@njit(cache=True, parallel=True)
+@njit(cache=True, nogil=True, parallel=True)
 def _findpulses_numba_raw(sync_ref, high, min_synclen, max_synclen):
     """Locate possible pulses by looking at areas within some range.
     Outputs arrays of starts and lengths
@@ -122,8 +122,8 @@ def _findpulses_numba_raw(sync_ref, high, min_synclen, max_synclen):
     # max_synclen = self.linelen * 5 / 8
     is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
     where_all_syncs = np.where(is_sync)[0]
-    pulses_starts = where_all_picture[where_all_syncs]
     pulses_lengths = locs_len[where_all_syncs]
+    pulses_starts = where_all_picture[where_all_syncs]
     return pulses_starts, pulses_lengths
 
 
@@ -226,6 +226,8 @@ class FieldState:
 
 class Resync:
     def __init__(self, fs, sysparams, divisor=1, debug=False):
+
+        self.divisor = divisor
         self.debug = debug
         self.samp_rate = fs
         if debug:
@@ -388,6 +390,17 @@ class Resync:
             sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 5 / 8
         )
 
+    def _findpulses_arr_reduced(self, sync_ref, high, divisor):
+        """Run findpulses using only every divisor samples"""
+        min_len = (self.eq_pulselen * 1 / 8) / divisor
+        max_len = (self.linelen * 5 / 8) / divisor
+
+        pulses_starts, pulses_lengths = _findpulses_numba_raw(
+            sync_ref[::divisor], high, min_len, max_len
+        )
+
+        return pulses_starts * divisor, pulses_lengths * divisor
+
     def add_pulselevels_to_serration_measures(self, field, demod_05, sp):
         if self.VsyncSerration.hasSerration():
             sync, blank = self.VsyncSerration.getLevels()
@@ -403,8 +416,8 @@ class Resync:
             check_next = True
             while retries > 0:
                 pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, min_sync)
-                pulses_starts, pulses_lengths = self._findpulses_arr(
-                    demod_05, pulse_hz_max
+                pulses_starts, pulses_lengths = self._findpulses_arr_reduced(
+                    demod_05, pulse_hz_max, self.divisor
                 )
                 # this number might need calculation
                 if len(pulses_lengths) > 200:
@@ -615,5 +628,4 @@ class Resync:
                 field.data["video"]["demod_05"] = sync_reference - new_sync + vsync_hz
                 field.data["video"]["demod"] = demod_data - new_sync + vsync_hz
 
-        # utils.plot_scope(field.data["video"]["demod_05"])
         return self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)

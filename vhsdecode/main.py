@@ -151,7 +151,7 @@ def main(use_gui=False):
         dest="level_detect_divisor",
         metavar="value",
         type=int,
-        default=1,
+        default=2,
         help="Use only every nth sample for vsync serration code - may improve speed at cost of minor accuracy. Limited to max 6.",
     )
     debug_group.add_argument(

@@ -81,7 +81,9 @@ def test_sync(filename, num_pulses=None, blank_approx=None, sync_approx=None):
     ldd.logger.info("test")
 
     # process.VHSDecode("infile", "outfile", ,inputfreq=samplerate_mhz, system="PAL", tape_format="VHS")
-    rfdecoder = process.VHSRFDecode(inputfreq=samplerate_mhz, system="PAL", tape_format="VHS")
+    rf_options = {}
+    rf_options["level_detect_divisor"] = 2
+    rfdecoder = process.VHSRFDecode(inputfreq=samplerate_mhz, system="PAL", tape_format="VHS", rf_options=rf_options)
 
     demod_05_data = np.loadtxt(filename)
 
