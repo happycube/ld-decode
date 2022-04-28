@@ -50,7 +50,10 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename, QWidget *parent = nullptr);
+    explicit MainWindow(bool debugOn, bool _nonInteractive,
+            QString _outputAudioFilename, QString _outputDataFilename,
+            bool pad,
+            QWidget *parent = nullptr);
     ~MainWindow();
 
     bool loadInputEfmFile(QString filename);
@@ -89,6 +92,8 @@ private:
     QTimer statisticsUpdateTimer;
     bool nonInteractive;
     QString outputAudioFilename;
+    QString outputDataFilename;
+    bool pad;
 
     // Method prototypes
     void guiNoEfmFileLoaded();

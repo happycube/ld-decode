@@ -25,12 +25,15 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename, QWidget *parent) :
+MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename,
+        QString _outputDataFilename, bool _pad, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
     nonInteractive = _nonInteractive;
     outputAudioFilename = _outputAudioFilename;
+    outputDataFilename = _outputDataFilename;
+    pad = _pad;
 
     // Initialise the GUI
     ui->setupUi(this);
@@ -62,6 +65,13 @@ MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioF
         ui->debug_f2ToF1Frame_checkBox->setEnabled(true);
         ui->debug_f1ToAudio_checkBox->setEnabled(true);
         ui->debug_f1ToData_checkBox->setEnabled(true);
+    }
+
+    ui->audio_padSampleStart_checkBox->setChecked(pad);
+
+    if (outputDataFilename!=NULL) {
+        ui->options_decodeAsData_checkbox->setChecked(true);
+        ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), true);
     }
 
     // Select the Audio tab by default
@@ -668,6 +678,19 @@ void MainWindow::processingCompleteSignalHandler(bool audioAvailable, bool dataA
     if (dataAvailable) {
         qDebug() << "MainWindow::processingCompleteSignalHandler(): Processing complete - data available";
         ui->actionSave_Sector_Data->setEnabled(true);
+        // If in non-Interactive mode, autosave
+        if (nonInteractive) {
+            // Save the data
+            qInfo() << "Saving data as" << outputDataFilename;
+
+            // Check if filename exists (and remove the file if it does)
+            if (QFile::exists(outputDataFilename)) QFile::remove(outputDataFilename);
+
+            // Copy the data data from the temporary file to the destination
+            if (!dataOutputTemporaryFileHandle.copy(outputDataFilename)) {
+                qWarning() << "MainWindow::processingCompleteSignalHandler(): Failed to save file as" << outputDataFilename;
+            }
+        }
     }
 
     // Report the decode statistics to qInfo
