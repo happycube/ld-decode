@@ -14,7 +14,7 @@ DESTDIR =
 
 # Tools you might want to override
 PYTHON3 ?= python3
-QMAKE ?= qmake
+QMAKE ?= qmake -qt5
 
 ### Get the current git commit information ###
 BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
