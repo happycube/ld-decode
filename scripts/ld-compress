@@ -4,20 +4,24 @@ modeselection=0
 comp=true
 uncomp=false
 verify=false
+gpu=false
+setup=false
 fileinput_method=cat
 level=11
 ext=ldf
 
 help_msg () {
-  echo "Usage: $0 [-c] [-u] [-v] [-p] [-h] [-l <1-12>] [-g] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .ldf files in the current directory.\n-u Uncompress: Takes one or more .ldf/.raw.oga files and uncompresses them to .lds files in the current directory.\n-v Verify: Returns md5 checksums of the given .ldf/.raw.oga files and their contained .lds files for verification purposes.\n\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n-l Compression level 1 - 12. Default is 11. 6 is recommended for faster but fair compression.\n-g Use .raw.oga extension instead of .ldf when compressing.\n\n"
+  echo "Usage: $0 [-c] [-a] [-u] [-v] [-s] [-p] [-h] [-l <1-12>] [-g] file(s)"; printf -- "\nModes:\n-c Compress (default): Takes one or more .lds files and compresses them to .ldf files in the current directory.\n-u Uncompress: Takes one or more .ldf/.raw.oga files and uncompresses them to .lds files in the current directory.\n-a GPU Acceleration.  Uses OpenCL or CUDA to accelerate encoding.\n-v Verify: Returns md5 checksums of the given .ldf/.raw.oga files and their contained .lds files for verification purposes.\n-s Setup: Set up GPU acceleration requirements.  Modifies mono for OpenCL support and installs FLACCL.\nOptions\n-p Progress: displays progress bars - requires pv to be installed.\n-h Help: This dialog.\n-l Compression level 1 - 12. Default is 11. 6 is recommended for faster but fair compression.\n-g Use .raw.oga extension instead of .ldf when compressing.\n\n"
 }
 
-while getopts ":hcuvpl:g" option; do
+while getopts ":hcauvspl:g" option; do
   case $option in
     h) help_msg ; exit ;;
     c) comp=true ; modeselection=$((modeselection+1)) ;;
     u) uncomp=true ; comp=false ; modeselection=$((modeselection+1)) ;;
+    a) gpu=true ; comp=false ; modeselection=$((modeselection+1)) ;;
     v) verify=true ; comp=false ; modeselection=$((modeselection+1)) ;;
+    s) setup=true ; comp=false ; modeselection=$((modeselection+1)) ;;
     p) fileinput_method="pv" ;;
     l)
       level=${OPTARG}
@@ -40,7 +44,7 @@ done
 shift $(( OPTIND - 1 ))
 
 # Check if input files have been entered, and if so, process according to the selected mode.
-if [[ $# < 1 ]]
+if [[ $# < 1 ]] && [[ "$setup" == false ]]
 then
   help_msg ; exit
 else
@@ -56,6 +60,20 @@ else
         if [[ "$f" == *.lds ]]
         then
           >&2 echo Compressing \'"$f"\' to \'"$(basename "$f" .lds).$ext"\' && ${fileinput_method} "$f" | ld-lds-converter -u |  ffmpeg -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -compression_level "$level" -f ogg "$(basename "$f" .lds).$ext" && >&2 echo \'"$(basename "$f" .lds).$ext"\' written.
+        else
+          >&2 echo Error: \'"$f"\' does not appear to be a .lds file. Skipping.
+        fi
+      done
+    fi
+    if [[ "$gpu" == true ]] # Perform GPU accelerated compression
+    then
+      # Increment compression level down by one to compensate for FLACCL's 0-11 compression levels, vs ffmpeg's 1-12
+      ((level=level-1))
+      for f in "$@" ; do
+        if [[ "$f" == *.lds ]]
+        then
+          echo $level
+          >&2 echo Compressing \'"$f"\' to \'"$(basename "$f" .lds).$ext"\' && ${fileinput_method} "$f" | ld-lds-converter -r -u |  mono /opt/flaccl/CUETools.FLACCL.cmd.exe - --ignore-chunk-sizes -q -"$level" --lax -o "$(basename "$f" .lds).$ext" && >&2 echo \'"$(basename "$f" .lds).$ext"\' written.
         else
           >&2 echo Error: \'"$f"\' does not appear to be a .lds file. Skipping.
         fi
@@ -85,6 +103,24 @@ else
         >&2 echo Error: \'"$f"\' does not appear to be a .raw.oga/.ldf file. Skipping.
       fi
     done
+  fi
+  if [[ "$setup" == true ]] # Setup GPU acceleration support
+  then
+    # Check if /opt/flaccl is present
+    FLADIR=/opt/flaccl
+    if [ ! -d "$FLADIR" ]
+    then
+      mkdir /opt/flaccl
+    fi
+    # Download FLACCL 2.2.1 and install
+    wget -q https://github.com/gchudov/cuetools.net/releases/download/v2.2.1/CUETools_2.2.1.zip -P /tmp/
+    unzip -qq -o /tmp/CUETools_2.2.1.zip -d /opt/flaccl
+    rm /tmp/CUETools_2.2.1.zip
+    # Check if mono is configured for OpenCL
+    if ! grep -e '<dllmap dll="opencl.dll" target="libOpenCL.so" />' /etc/mono/config > /dev/null
+    then
+      sudo sed -i '$i\        <dllmap dll="opencl.dll" target="libOpenCL.so" />' /etc/mono/config
+    fi
   fi
   sleep 1
   >&2 echo "Task complete."
