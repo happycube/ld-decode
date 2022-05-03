@@ -5,9 +5,12 @@ import numpy as np
 import scipy.signal as sps
 from collections import namedtuple
 
+import pyximport; pyximport.install()
+
 import lddecode.core as ldd
 import lddecode.utils as lddu
-from lddecode.utils import unwrap_hilbert, inrange
+# from lddecode.utils import unwrap_hilbert, inrange
+from lddecode.utils import inrange
 import vhsdecode.utils as utils
 from vhsdecode.utils import StackableMA
 from vhsdecode.chroma import (
@@ -30,6 +33,8 @@ from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.addons.resync import Resync, Pulse
 from vhsdecode.addons.chromaAFC import ChromaAFC
 
+import vhsdecode.hilbert as hilbert_test
+
 from numba import njit
 
 # Use PyFFTW's faster FFT implementation if available
@@ -41,6 +46,10 @@ try:
     pyfftw.interfaces.cache.set_keepalive_time(10)
 except ImportError:
     import numpy.fft as npfft
+
+
+def unwrap_hilbert_t(hilbert, freq_hz):
+    return hilbert_test.unwrap_hilbert(hilbert, freq_hz)
 
 
 @njit(cache=True)
@@ -231,7 +240,7 @@ class FieldShared:
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         if not line0loc:
-            line0loc, lastlimeloc, self.isFirstField = self._get_line0_fallback(
+            line0loc, lastlineloc, self.isFirstField = self._get_line0_fallback(
                 validpulses
             )
         # Not sure if this is used for video.
@@ -1631,7 +1640,7 @@ class VHSRFDecode(ldd.RFDecode):
         hilbert = npfft.ifft(indata_fft_filt * self.Filters["hilbert"])
 
         # FM demodulator
-        demod = unwrap_hilbert(hilbert, self.freq_hz).real
+        demod = unwrap_hilbert_t(hilbert, self.freq_hz).real
 
         if self.chroma_trap:
             # applies the Subcarrier trap
