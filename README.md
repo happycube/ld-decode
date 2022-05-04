@@ -37,8 +37,6 @@ The repository also contains an experimental CVBS decoder, ```cvbs-decode```, wh
 Install all dependencies required by LD-Decode and VHS-Decode:
 
     sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make ocl-icd-opencl-dev mono-runtime cython3
-    
-(An older numpy version is needed currently due to some compatability [issues](https://github.com/numba/numba/issues/7176) with numba)
 
 Download VHS-Decode:
 
