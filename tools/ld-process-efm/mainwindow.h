@@ -76,6 +76,8 @@ private slots:
     void on_actionSave_Sector_Data_triggered();
 
 private:
+    void showError(QString message, bool is_critical);
+
     Ui::MainWindow *ui;
 
     // Dialogues

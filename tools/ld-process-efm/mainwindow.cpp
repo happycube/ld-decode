@@ -467,9 +467,8 @@ void MainWindow::on_actionSave_PCM_Audio_triggered()
         if (!audioOutputTemporaryFileHandle.copy(audioFilename)) {
             qDebug() << "MainWindow::on_actionSave_PCM_Audio_triggered(): Failed to save file as" << audioFilename;
 
-            QMessageBox messageBox;
-            messageBox.warning(this, "Warning", "Could not save PCM audio using the specified filename!");
-            messageBox.setFixedSize(500, 200);
+            this->showError("Could not save PCM audio using the specified filename!",
+                    false);
         }
 
         // Update the configuration for the PNG directory
@@ -509,9 +508,8 @@ void MainWindow::on_actionSave_Sector_Data_triggered()
         if (!dataOutputTemporaryFileHandle.copy(dataFilename)) {
             qDebug() << "MainWindow::on_actionSave_Sector_Data_triggered(): Failed to save file as" << dataFilename;
 
-            QMessageBox messageBox;
-            messageBox.warning(this, "Warning", "Could not save sector data using the specified filename!");
-            messageBox.setFixedSize(500, 200);
+            this->showError("Could not save sector data using the specified filename!",
+                    false);
         }
 
         // Update the configuration for the PNG directory
@@ -715,6 +713,26 @@ void MainWindow::percentProcessedSignalHandler(qint32 percent)
 
 // Miscellaneous methods ----------------------------------------------------------------------------------------------
 
+// Show an error to the user
+void MainWindow::showError(QString message, bool is_critical)
+{
+    if (!nonInteractive) {
+        QMessageBox messageBox;
+        if (is_critical) {
+            messageBox.critical(this, "Error", message);
+        } else {
+            messageBox.warning(this, "Warning", message);
+        }
+        messageBox.setFixedSize(500, 200);
+    }
+
+    if (is_critical) {
+        qCritical() << message;
+    } else {
+        qWarning() << message;
+    }
+}
+
 // Load an EFM file
 bool MainWindow::loadInputEfmFile(QString filename)
 {
@@ -723,11 +741,7 @@ bool MainWindow::loadInputEfmFile(QString filename)
     // Open input file for reading
     QFile inputFileHandle((filename));
     if (!inputFileHandle.open(QIODevice::ReadOnly)) {
-        // Show an error to the user
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Could not open the EFM input file!");
-        messageBox.setFixedSize(500, 200);
-        qWarning() << "Could not load input EFM file!";
+        this->showError("Could not open the EFM input file!", true);
 
         guiNoEfmFileLoaded();
         inputFileHandle.close();
@@ -735,11 +749,7 @@ bool MainWindow::loadInputEfmFile(QString filename)
     }
 
     if (inputFileHandle.bytesAvailable() == 0) {
-        // Show an error to the user
-        QMessageBox messageBox;
-        messageBox.critical(this, "Error", "Input EFM file is empty!");
-        messageBox.setFixedSize(500, 200);
-        qWarning() << "EFM input file is empty!";
+        this->showError("Input EFM file is empty!", true);
 
         guiNoEfmFileLoaded();
         inputFileHandle.close();
