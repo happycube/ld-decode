@@ -5,7 +5,7 @@ import numpy as np
 import scipy.signal as sps
 from collections import namedtuple
 
-import pyximport; pyximport.install()
+import pyximport; pyximport.install(language_level=3)
 
 import lddecode.core as ldd
 import lddecode.utils as lddu
@@ -23,7 +23,6 @@ from vhsdecode.chroma import (
     try_detect_track_vhs_ntsc,
     get_field_phase_id,
 )
-from vhsdecode.linelocs import valid_pulses_to_linelocs
 from vhsdecode.doc import detect_dropouts_rf
 
 import vhsdecode.formats as vhs_formats
@@ -34,6 +33,7 @@ from vhsdecode.addons.resync import Resync, Pulse
 from vhsdecode.addons.chromaAFC import ChromaAFC
 
 import vhsdecode.hilbert as hilbert_test
+import vhsdecode.sync as sync
 
 from numba import njit
 
@@ -147,21 +147,6 @@ def _get_line0_fallback(valid_pulses, raw_pulses, demod_05, sp):
     return None, None, None
 
 
-@njit(cache=True, nogil=True)
-def _pulse_qualitycheck(prev_pulse, pulse, in_line_len):
-    if prev_pulse[0] > 0 and pulse[0] > 0:
-        exprange = (0.4, 0.6)
-    elif prev_pulse[0] == 0 and pulse[0] == 0:
-        exprange = (0.9, 1.1)
-    else:  # transition to/from regular hsyncs can be .5 or 1H
-        exprange = (0.4, 1.1)
-
-    linelen = (pulse[1].start - prev_pulse[1].start) / in_line_len
-    inorder = inrange(linelen, *exprange)
-
-    return inorder
-
-
 class FieldShared:
     def _get_line0_fallback(self, valid_pulses):
         return _get_line0_fallback(
@@ -170,6 +155,9 @@ class FieldShared:
             self.data["video"]["demod_05"],
             self.rf.sysparams_const,
         )
+
+    def pulse_qualitycheck(self, prev_pulse, pulse):
+        return sync.pulse_qualitycheck(prev_pulse, pulse, self.inlinelen)
 
     def refinepulses(self):
         LT = self.get_timings()
@@ -187,7 +175,7 @@ class FieldShared:
             curpulse = self.rawpulses[i]
             if inrange(curpulse.len, *lt_hsync):
                 good = (
-                    _pulse_qualitycheck(valid_pulses[-1], (0, curpulse), self.inlinelen)
+                    self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse))
                     if len(valid_pulses)
                     else False
                 )
@@ -287,7 +275,7 @@ class FieldShared:
         # [validpulses_typed.append(p) for p in validpulses]
         # TODO: Seems lists in numba are a bit wonky still so disabling for now.
 
-        linelocs_dict, linelocs_dist = valid_pulses_to_linelocs(
+        linelocs_dict, linelocs_dist = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
             self.skipdetected,
@@ -1657,7 +1645,7 @@ class VHSRFDecode(ldd.RFDecode):
             check_value = self.options.diff_demod_check_value
 
             if np.max(demod[20:-20]) > check_value:
-                demod_b = unwrap_hilbert(
+                demod_b = unwrap_hilbert_t(
                     np.pad(np.diff(hilbert), (1, 0), mode="constant"), self.freq_hz
                 ).real
                 demod = replace_spikes(demod, demod_b, check_value)

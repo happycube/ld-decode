@@ -399,7 +399,10 @@ class Resync:
             sync_ref[::divisor], high, min_len, max_len
         )
 
-        return pulses_starts * divisor, pulses_lengths * divisor
+        pulses_starts *= divisor
+        pulses_lengths *= divisor
+
+        return pulses_starts, pulses_lengths
 
     def add_pulselevels_to_serration_measures(self, field, demod_05, sp):
         if self.VsyncSerration.hasSerration():

@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 from distutils.core import setup
+from Cython.Build import cythonize
 
 setup(
     name='ld-decode',
@@ -31,6 +32,8 @@ setup(
         'gen_chroma_vid_palm.sh',
         'gen_chroma_vid_ntsc.sh'
     ],
+
+    ext_module=cythonize(['vhsdecode/*.pyx'], language_level=3),
 
     # These are just the minimal runtime dependencies for the Python scripts --
     # see the documentation for the full list of dependencies.
