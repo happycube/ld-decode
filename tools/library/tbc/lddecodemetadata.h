@@ -176,13 +176,6 @@ public:
         qint32 efmTValues;
     };
 
-    // Overall metadata definition
-    struct MetaData {
-        VideoParameters videoParameters;
-        PcmAudioParameters pcmAudioParameters;
-        QVector<Field> fields;
-    };
-
     // CLV timecode (used by frame number conversion methods)
     struct ClvTimecode {
         qint32 hours;
