@@ -203,7 +203,7 @@ void LdDecodeMetaData::processLineParameters(LdDecodeMetaData::LineParameters &_
 {
     _lineParameters.process(videoParameters.fieldHeight);
     lineParameters = _lineParameters;
-    
+
     videoParameters.firstActiveFieldLine = lineParameters.firstActiveFieldLine;
     videoParameters.lastActiveFieldLine = lineParameters.lastActiveFieldLine;
     videoParameters.firstActiveFrameLine = lineParameters.firstActiveFrameLine;
@@ -217,17 +217,17 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
     const bool lastFieldLineExists = lastActiveFieldLine != -1;
     const bool firstFrameLineExists = firstActiveFrameLine != -1;
     const bool lastFrameLineExists = lastActiveFrameLine != -1;
-    
+
     const bool isPal = fieldHeight == sDefaultPALFieldHeightCheck;
     const bool isNtsc = fieldHeight == sDefaultNTSCFieldHeightCheck;
-    
+
     const qint32 defaultFirstFieldLine = isNtsc ? sDefaultNTSCFirstActiveFieldLine : (isPal ? sDefaultPALFirstActiveFieldLine : sDefaultAutoFirstActiveFieldLine);
     const qint32 defaultLastFieldLine = isNtsc ? sDefaultNTSCLastActiveFieldLine : (isPal ? sDefaultPALLastActiveFieldLine : -1);
     const qint32 minFirstFrameLine = isNtsc ? sMinNTSCFirstActiveFrameLine : (isPal ? sMinPALFirstActiveFrameLine : 1);
     const qint32 defaultFirstFrameLine = isNtsc ? sDefaultNTSCFirstActiveFrameLine : (isPal ? sDefaultPALFirstActiveFrameLine : -1);
     const qint32 defaultLastFrameLine = isNtsc ? sDefaultNTSCLastActiveFrameLine : (isPal ? sDefaultPALLastActiveFrameLine : -1);
 
-    // Validate and potentially fix the first active field line (needs to be valid in case we're not in PAL or NTSC mode).    
+    // Validate and potentially fix the first active field line (needs to be valid in case we're not in PAL or NTSC mode).
     if (firstActiveFieldLine < 1 || firstActiveFieldLine > defaultLastFieldLine) {
         if (firstFieldLineExists) {
             qInfo().nospace() << "Specified first active field line " << firstActiveFieldLine << " out of bounds (1 to "
@@ -245,7 +245,7 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
         lastActiveFrameLine = lastFrameLineExists ? lastActiveFrameLine : (lastActiveFieldLine * 2);
         return;
     }
-    
+
     // Validate and potentially fix the last active field line.
     if (lastActiveFieldLine < 1 || lastActiveFieldLine > defaultLastFieldLine) {
         if (lastFieldLineExists) {
@@ -254,7 +254,7 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
         }
         lastActiveFieldLine = defaultLastFieldLine;
     }
-    
+
     // Range-check the first and last active field lines.
     if (firstActiveFieldLine > lastActiveFieldLine) {
        qInfo().nospace() << "Specified last active field line " << lastActiveFieldLine << " is before specified first active field line"

@@ -53,7 +53,7 @@ public:
         LineParameters() : firstActiveFieldLine(-1), lastActiveFieldLine(-1), firstActiveFrameLine(-1), lastActiveFrameLine(-1) {}
 
         void process(qint32 fieldHeight);
-                
+
         qint32 firstActiveFieldLine;
         qint32 lastActiveFieldLine;
         qint32 firstActiveFrameLine;
@@ -75,11 +75,11 @@ public:
 
         static const qint32 sDefaultAutoFirstActiveFieldLine;
     };
-    
+
     // Video metadata definition
     struct VideoParameters {
         VideoParameters() : isValid(false) {}
-        
+
         qint32 numberOfSequentialFields;
 
         bool isSourcePal;
@@ -104,16 +104,16 @@ public:
         QString gitBranch;
         QString gitCommit;
 
-        // Copy of the members in LineParameters; filled in based on our LineParameters when retrieving VideoParameters        
+        // Copy of the members in LineParameters; filled in based on our LineParameters when retrieving VideoParameters
         qint32 firstActiveFieldLine;
         qint32 lastActiveFieldLine;
         qint32 firstActiveFrameLine;
         qint32 lastActiveFrameLine;
-        
+
         // Flags if our data has been initialized yet
         bool isValid;
     };
-    
+
     // VITS metrics metadata definition
     struct VitsMetrics {
         VitsMetrics() : inUse(false), wSNR(0), bPSNR(0) {}
@@ -140,7 +140,7 @@ public:
     // PCM sound metadata definition
     struct PcmAudioParameters {
         PcmAudioParameters() : isValid(false) {}
-        
+
         qint32 sampleRate;
         bool isLittleEndian;
         bool isSigned;
@@ -223,7 +223,7 @@ public:
     void clearFieldDropOuts(qint32 sequentialFieldNumber);
 
     void appendField(Field _field);
-    
+
     void setNumberOfFields(qint32 numberOfFields);
     qint32 getNumberOfFields();
     qint32 getNumberOfFrames();
