@@ -4,6 +4,7 @@
 
     ld-decode-tools TBC library
     Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2022 Ryan Holtz
 
     This file is part of ld-decode-tools.
 
