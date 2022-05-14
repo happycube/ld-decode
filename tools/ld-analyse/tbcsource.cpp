@@ -678,8 +678,8 @@ void TbcSource::generateData()
         qreal blackSnrPoints = 0;
         qreal whiteSnrPoints = 0;
 
-        LdDecodeMetaData::Field firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber + 1));
-        LdDecodeMetaData::Field secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber + 1));
+        const LdDecodeMetaData::Field &firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber + 1));
+        const LdDecodeMetaData::Field &secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber + 1));
 
         // Get the first field DOs
         if (firstField.dropOuts.size() > 0) {
@@ -698,7 +698,7 @@ void TbcSource::generateData()
         }
 
         // Get the first field visible DOs
-        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+        const LdDecodeMetaData::VideoParameters &videoParameters = ldDecodeMetaData.getVideoParameters();
 
         if (firstField.dropOuts.size() > 0) {
             // Calculate the total length of the visible dropouts

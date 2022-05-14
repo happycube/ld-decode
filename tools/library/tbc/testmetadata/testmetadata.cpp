@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
         qint32 numDropOuts = 0;
 
         for (qint32 i = 1; i <= numFields; i++) {
-            LdDecodeMetaData::Field field = metaData.getField(i);
+            const LdDecodeMetaData::Field &field = metaData.getField(i);
 
             if (field.vitsMetrics.inUse) {
                 ++numMetrics;
