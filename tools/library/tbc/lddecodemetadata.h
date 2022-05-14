@@ -76,35 +76,35 @@ public:
 
     // Video metadata definition
     struct VideoParameters {
-        qint32 numberOfSequentialFields;
+        qint32 numberOfSequentialFields = -1;
 
-        bool isSourcePal;
-        bool isSubcarrierLocked;
-        bool isWidescreen;
+        bool isSourcePal = false;
+        bool isSubcarrierLocked = false;
+        bool isWidescreen = false;
 
-        qint32 colourBurstStart;
-        qint32 colourBurstEnd;
-        qint32 activeVideoStart;
-        qint32 activeVideoEnd;
+        qint32 colourBurstStart = -1;
+        qint32 colourBurstEnd = -1;
+        qint32 activeVideoStart = -1;
+        qint32 activeVideoEnd = -1;
 
-        qint32 white16bIre;
-        qint32 black16bIre;
+        qint32 white16bIre = -1;
+        qint32 black16bIre = -1;
 
-        qint32 fieldWidth;
-        qint32 fieldHeight;
-        qint32 sampleRate;
-        qint32 fsc;
+        qint32 fieldWidth = -1;
+        qint32 fieldHeight = -1;
+        qint32 sampleRate = -1;
+        qint32 fsc = -1;
 
-        bool isMapped;
+        bool isMapped = false;
 
         QString gitBranch;
         QString gitCommit;
 
         // Copy of the members in LineParameters; filled in based on our LineParameters when retrieving VideoParameters
-        qint32 firstActiveFieldLine;
-        qint32 lastActiveFieldLine;
-        qint32 firstActiveFrameLine;
-        qint32 lastActiveFrameLine;
+        qint32 firstActiveFieldLine = -1;
+        qint32 lastActiveFieldLine = -1;
+        qint32 firstActiveFrameLine = -1;
+        qint32 lastActiveFrameLine = -1;
 
         // Flags if our data has been initialized yet
         bool isValid = false;
@@ -131,10 +131,10 @@ public:
 
     // PCM sound metadata definition
     struct PcmAudioParameters {
-        qint32 sampleRate;
-        bool isLittleEndian;
-        bool isSigned;
-        qint32 bits;
+        qint32 sampleRate = -1;
+        bool isLittleEndian = false;
+        bool isSigned = false;
+        qint32 bits = -1;
 
         // Flags if our data has been initialized yet
         bool isValid = false;
@@ -155,10 +155,10 @@ public:
         DropOuts dropOuts;
         bool pad = false;
 
-        qint32 diskLoc;
-        qint32 fileLoc;
-        qint32 decodeFaults;
-        qint32 efmTValues;
+        qint32 diskLoc = -1;
+        qint32 fileLoc = -1;
+        qint32 decodeFaults = -1;
+        qint32 efmTValues = -1;
     };
 
     // CLV timecode (used by frame number conversion methods)
