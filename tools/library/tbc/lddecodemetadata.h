@@ -42,9 +42,7 @@ public:
 
     // VBI Metadata definition
     struct Vbi {
-        Vbi() : inUse(false) {}
-
-        bool inUse;
+        bool inUse = false;
         std::array<qint32, 3> vbiData { 0, 0, 0 };
     };
 
@@ -52,14 +50,12 @@ public:
     // if not otherwise specified by the user. These are half-open ranges, where lines are
     // numbered sequentially from 1 within each field or interlaced frame.
     struct LineParameters {
-        LineParameters() : firstActiveFieldLine(-1), lastActiveFieldLine(-1), firstActiveFrameLine(-1), lastActiveFrameLine(-1) {}
-
         void process(qint32 fieldHeight);
 
-        qint32 firstActiveFieldLine;
-        qint32 lastActiveFieldLine;
-        qint32 firstActiveFrameLine;
-        qint32 lastActiveFrameLine;
+        qint32 firstActiveFieldLine = -1;
+        qint32 lastActiveFieldLine = -1;
+        qint32 firstActiveFrameLine = -1;
+        qint32 lastActiveFrameLine = -1;
 
         static const qint32 sMinPALFirstActiveFrameLine;
         static const qint32 sDefaultPALFirstActiveFieldLine;
@@ -80,8 +76,6 @@ public:
 
     // Video metadata definition
     struct VideoParameters {
-        VideoParameters() : isValid(false) {}
-
         qint32 numberOfSequentialFields;
 
         bool isSourcePal;
@@ -113,62 +107,53 @@ public:
         qint32 lastActiveFrameLine;
 
         // Flags if our data has been initialized yet
-        bool isValid;
+        bool isValid = false;
     };
 
     // VITS metrics metadata definition
     struct VitsMetrics {
-        VitsMetrics() : inUse(false), wSNR(0), bPSNR(0) {}
+        bool inUse = false;
+        qreal wSNR = 0.0;
+        qreal bPSNR = 0.0;
 
-        bool inUse;
-        qreal wSNR;
-        qreal bPSNR;
     };
 
     // NTSC Specific metadata definition
     struct Ntsc {
-        Ntsc() : inUse(false), isFmCodeDataValid(false), fmCodeData(0), fieldFlag(false),
-            whiteFlag(false), ccData0(0), ccData1(0) {}
-
-        bool inUse;
-        bool isFmCodeDataValid;
-        qint32 fmCodeData;
-        bool fieldFlag;
-        bool whiteFlag;
-        qint32 ccData0;
-        qint32 ccData1;
+        bool inUse = false;
+        bool isFmCodeDataValid = false;
+        qint32 fmCodeData = 0;
+        bool fieldFlag = false;
+        bool whiteFlag = false;
+        qint32 ccData0 = 0;
+        qint32 ccData1 = 0;
     };
 
     // PCM sound metadata definition
     struct PcmAudioParameters {
-        PcmAudioParameters() : isValid(false) {}
-
         qint32 sampleRate;
         bool isLittleEndian;
         bool isSigned;
         qint32 bits;
 
         // Flags if our data has been initialized yet
-        bool isValid;
+        bool isValid = false;
     };
 
     // Field metadata definition
     struct Field {
-        Field() : seqNo(0), isFirstField(false), syncConf(0), medianBurstIRE(0),
-            fieldPhaseID(0), audioSamples(0), pad(false) {}
-
-        qint32 seqNo;       // Note: This is the unique primary-key
-        bool isFirstField;
-        qint32 syncConf;
-        qreal medianBurstIRE;
-        qint32 fieldPhaseID;
-        qint32 audioSamples;
+        qint32 seqNo = 0;   // Note: This is the unique primary-key
+        bool isFirstField = false;
+        qint32 syncConf = 0;
+        qreal medianBurstIRE = 0.0;
+        qint32 fieldPhaseID = 0;
+        qint32 audioSamples = 0;
 
         VitsMetrics vitsMetrics;
         Vbi vbi;
         Ntsc ntsc;
         DropOuts dropOuts;
-        bool pad;
+        bool pad = false;
 
         qint32 diskLoc;
         qint32 fileLoc;
