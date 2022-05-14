@@ -8,21 +8,23 @@ CONFIG -= app_bundle
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    ../library/tbc/dropouts.cpp \
+    ../library/tbc/jsonio.cpp \
     ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/logging.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/logging.cpp \
-    ../library/tbc/dropouts.cpp \
     main.cpp \
     processingpool.cpp \
     vitsanalyser.cpp
 
 HEADERS += \
+    ../library/tbc/dropouts.h \
+    ../library/tbc/jsonio.h \
     ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/logging.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
-    ../library/tbc/logging.h \
-    ../library/tbc/dropouts.h \
     processingpool.h \
     vitsanalyser.h
 

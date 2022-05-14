@@ -21,11 +21,12 @@ SOURCES += \
     fmcode.cpp \
     vbilinedecoder.cpp \
     whiteflag.cpp \
+    ../library/tbc/dropouts.cpp \
+    ../library/tbc/jsonio.cpp \
     ../library/tbc/lddecodemetadata.cpp \
-    ../library/tbc/sourcevideo.cpp \
-    ../library/tbc/vbidecoder.cpp \
     ../library/tbc/logging.cpp \
-    ../library/tbc/dropouts.cpp
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     closedcaption.h \
@@ -33,11 +34,12 @@ HEADERS += \
     fmcode.h \
     vbilinedecoder.h \
     whiteflag.h \
+    ../library/tbc/dropouts.h \
+    ../library/tbc/jsonio.h \
     ../library/tbc/lddecodemetadata.h \
-    ../library/tbc/sourcevideo.h \
-    ../library/tbc/vbidecoder.h \
     ../library/tbc/logging.h \
-    ../library/tbc/dropouts.h
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.h
 
 # Add external includes to the include path
 INCLUDEPATH += ../library/tbc

@@ -59,7 +59,7 @@ bool writeFfmetadata(LdDecodeMetaData &metaData, const QString &fileName)
 
     for (qint32 fieldIndex = 0; fieldIndex < videoParameters.numberOfSequentialFields; fieldIndex++) {
         // Get the (1-based) field
-        const auto field = metaData.getField(fieldIndex + 1);
+        const auto& field = metaData.getField(fieldIndex + 1);
 
         // Codes may be in either field; we want the index of the first
         if (field.isFirstField) {
