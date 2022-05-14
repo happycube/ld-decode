@@ -57,12 +57,6 @@ void DropOuts::append(const qint32 startx, const qint32 endx, const qint32 field
     m_fieldLine.append(fieldLine);
 }
 
-// Return the size of the DropOuts record
-qint32 DropOuts::size() const
-{
-    return m_startx.size();
-}
-
 void DropOuts::reserve(int size)
 {
     m_startx.reserve(size);
@@ -84,28 +78,6 @@ void DropOuts::clear()
     m_startx.clear();
     m_endx.clear();
     m_fieldLine.clear();
-}
-
-// Return true if the dropouts object is empty
-bool DropOuts::empty() const
-{
-    return m_startx.empty();
-}
-
-// Get methods
-qint32 DropOuts::startx(qint32 index)
-{
-    return m_startx[index];
-}
-
-qint32 DropOuts::endx(qint32 index)
-{
-    return m_endx[index];
-}
-
-qint32 DropOuts::fieldLine(qint32 index)
-{
-    return m_fieldLine[index];
 }
 
 // Method to concatenate dropouts on the same line that are close together
