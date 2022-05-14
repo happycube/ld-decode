@@ -29,6 +29,7 @@
 #include <QVector>
 #include <QTemporaryFile>
 #include <QDebug>
+#include <array>
 
 #include "../JsonWax/JsonWax.h"
 #include "vbidecoder.h"
@@ -44,7 +45,7 @@ public:
         Vbi() : inUse(false) {}
 
         bool inUse;
-        QVector<qint32> vbiData;
+        std::array<qint32, 3> vbiData { 0, 0, 0 };
     };
 
     // Pseudo metadata items - these values are populated automatically by the library

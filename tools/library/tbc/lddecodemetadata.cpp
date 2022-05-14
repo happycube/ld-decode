@@ -368,15 +368,12 @@ LdDecodeMetaData::Vbi LdDecodeMetaData::getFieldVbi(qint32 sequentialFieldNumber
         // Mark VBI as in use
         vbi.inUse = true;
 
-        vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 0}).toInt()); // Line 16
-        vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 1}).toInt()); // Line 17
-        vbi.vbiData.append(json.value({"fields", fieldNumber, "vbi", "vbiData", 2}).toInt()); // Line 18
+        vbi.vbiData[0] = json.value({"fields", fieldNumber, "vbi", "vbiData", 0}).toInt(); // Line 16
+        vbi.vbiData[1] = json.value({"fields", fieldNumber, "vbi", "vbiData", 1}).toInt(); // Line 17
+        vbi.vbiData[2] = json.value({"fields", fieldNumber, "vbi", "vbiData", 2}).toInt(); // Line 18
     } else {
         // Mark VBI as undefined
         vbi.inUse = false;
-
-        // Resize the VBI data fields to prevent assert issues downstream
-        vbi.vbiData.resize(3);
     }
 
     return vbi;
@@ -516,15 +513,6 @@ void LdDecodeMetaData::updateFieldVbi(LdDecodeMetaData::Vbi _vbi, qint32 sequent
     }
 
     if (_vbi.inUse) {
-        // Validate the VBI data array
-        if (_vbi.vbiData.size() != 3) {
-            qDebug() << "LdDecodeMetaData::write(): Invalid vbiData array!  Setting to -1";
-            _vbi.vbiData.resize(3);
-            _vbi.vbiData[0] = -1;
-            _vbi.vbiData[1] = -1;
-            _vbi.vbiData[2] = -1;
-        }
-
         json.setValue({"fields", fieldNumber, "vbi", "vbiData", 0}, _vbi.vbiData[0]);
         json.setValue({"fields", fieldNumber, "vbi", "vbiData", 1}, _vbi.vbiData[1]);
         json.setValue({"fields", fieldNumber, "vbi", "vbiData", 2}, _vbi.vbiData[2]);
