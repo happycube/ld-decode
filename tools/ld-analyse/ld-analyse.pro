@@ -46,12 +46,12 @@ SOURCES += \
     ../ld-chroma-decoder/transformpal3d.cpp \
     ../ld-chroma-decoder/framecanvas.cpp \
     ../ld-chroma-decoder/sourcefield.cpp \
+    ../library/tbc/dropouts.cpp \
+    ../library/tbc/filters.cpp \
     ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/logging.cpp \
     ../library/tbc/sourcevideo.cpp \
     ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/filters.cpp \
-    ../library/tbc/logging.cpp \
-    ../library/tbc/dropouts.cpp \
     visibledropoutanalysisdialog.cpp \
     whitesnranalysisdialog.cpp
 
@@ -77,12 +77,12 @@ HEADERS += \
     ../ld-chroma-decoder/framecanvas.h \
     ../ld-chroma-decoder/sourcefield.h \
     ../library/filter/firfilter.h \
+    ../library/tbc/dropouts.h \
+    ../library/tbc/filters.h \
     ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/logging.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
-    ../library/tbc/filters.h \
-    ../library/tbc/logging.h \
-    ../library/tbc/dropouts.h \
     visibledropoutanalysisdialog.h \
     whitesnranalysisdialog.h
 
