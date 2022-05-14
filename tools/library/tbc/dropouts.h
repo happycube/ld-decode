@@ -29,6 +29,9 @@
 #include <QtGlobal>
 #include <QMetaType>
 
+class JsonReader;
+class JsonWriter;
+
 class DropOuts
 {
 public:
@@ -67,10 +70,16 @@ public:
         return m_fieldLine[index];
     }
 
+    void read(JsonReader &reader);
+    void write(JsonWriter &writer) const;
+
 private:
     QVector<qint32> m_startx;
     QVector<qint32> m_endx;
     QVector<qint32> m_fieldLine;
+
+    void readArray(JsonReader &reader, QVector<qint32> &array);
+    void writeArray(JsonWriter &writer, const QVector<qint32> &array) const;
 };
 
 #endif // DROPOUTS_H

@@ -4,11 +4,13 @@ CONFIG -= app_bundle
 SOURCES += \
     testmetadata.cpp \
     ../dropouts.cpp \
+    ../jsonio.cpp \
     ../lddecodemetadata.cpp \
     ../vbidecoder.cpp
 
 HEADERS += \
     ../dropouts.h \
+    ../jsonio.h \
     ../lddecodemetadata.h \
     ../vbidecoder.h
 

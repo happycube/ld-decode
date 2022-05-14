@@ -48,6 +48,7 @@ SOURCES += \
     ../ld-chroma-decoder/sourcefield.cpp \
     ../library/tbc/dropouts.cpp \
     ../library/tbc/filters.cpp \
+    ../library/tbc/jsonio.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/logging.cpp \
     ../library/tbc/sourcevideo.cpp \
@@ -79,6 +80,7 @@ HEADERS += \
     ../library/filter/firfilter.h \
     ../library/tbc/dropouts.h \
     ../library/tbc/filters.h \
+    ../library/tbc/jsonio.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/logging.h \
     ../library/tbc/sourcevideo.h \

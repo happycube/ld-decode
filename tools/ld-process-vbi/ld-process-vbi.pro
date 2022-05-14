@@ -22,6 +22,7 @@ SOURCES += \
     vbilinedecoder.cpp \
     whiteflag.cpp \
     ../library/tbc/dropouts.cpp \
+    ../library/tbc/jsonio.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/logging.cpp \
     ../library/tbc/sourcevideo.cpp \
@@ -34,6 +35,7 @@ HEADERS += \
     vbilinedecoder.h \
     whiteflag.h \
     ../library/tbc/dropouts.h \
+    ../library/tbc/jsonio.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/logging.h \
     ../library/tbc/sourcevideo.h \

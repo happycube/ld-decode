@@ -5,6 +5,7 @@
     ld-decode-tools TBC library
     Copyright (C) 2018-2020 Simon Inns
     Copyright (C) 2022 Ryan Holtz
+    Copyright (C) 2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -31,19 +32,23 @@
 #include <QDebug>
 #include <array>
 
-#include "../JsonWax/JsonWax.h"
 #include "vbidecoder.h"
 #include "dropouts.h"
+
+class JsonReader;
+class JsonWriter;
 
 class LdDecodeMetaData
 {
 
 public:
-
     // VBI Metadata definition
     struct Vbi {
         bool inUse = false;
         std::array<qint32, 3> vbiData { 0, 0, 0 };
+
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // Pseudo metadata items - these values are populated automatically by the library
@@ -108,6 +113,9 @@ public:
 
         // Flags if our data has been initialized yet
         bool isValid = false;
+
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // VITS metrics metadata definition
@@ -116,6 +124,8 @@ public:
         qreal wSNR = 0.0;
         qreal bPSNR = 0.0;
 
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // NTSC Specific metadata definition
@@ -127,6 +137,9 @@ public:
         bool whiteFlag = false;
         qint32 ccData0 = 0;
         qint32 ccData1 = 0;
+
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // PCM sound metadata definition
@@ -138,6 +151,9 @@ public:
 
         // Flags if our data has been initialized yet
         bool isValid = false;
+
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // Field metadata definition
@@ -146,8 +162,8 @@ public:
         bool isFirstField = false;
         qint32 syncConf = 0;
         qreal medianBurstIRE = 0.0;
-        qint32 fieldPhaseID = 0;
-        qint32 audioSamples = 0;
+        qint32 fieldPhaseID = -1;
+        qint32 audioSamples = -1;
 
         VitsMetrics vitsMetrics;
         Vbi vbi;
@@ -159,6 +175,9 @@ public:
         qint32 fileLoc = -1;
         qint32 decodeFaults = -1;
         qint32 efmTValues = -1;
+
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // CLV timecode (used by frame number conversion methods)
@@ -176,33 +195,35 @@ public:
     LdDecodeMetaData& operator=(const LdDecodeMetaData &) = delete;
 
     bool read(QString fileName);
-    bool write(QString fileName);
+    bool write(QString fileName) const;
+    void readFields(JsonReader &reader);
+    void writeFields(JsonWriter &writer) const;
 
-    VideoParameters getVideoParameters();
-    void setVideoParameters(VideoParameters _videoParameters);
+    const VideoParameters &getVideoParameters();
+    void setVideoParameters(const VideoParameters &videoParameters);
 
-    PcmAudioParameters getPcmAudioParameters();
-    void setPcmAudioParameters(PcmAudioParameters _pcmAudioParam);
+    const PcmAudioParameters &getPcmAudioParameters();
+    void setPcmAudioParameters(const PcmAudioParameters &pcmAudioParam);
 
     // Handle line parameters
     void processLineParameters(LdDecodeMetaData::LineParameters &_lineParameters);
 
     // Get field metadata
-    Field getField(qint32 sequentialFieldNumber);
-    VitsMetrics getFieldVitsMetrics(qint32 sequentialFieldNumber);
-    Vbi getFieldVbi(qint32 sequentialFieldNumber);
-    Ntsc getFieldNtsc(qint32 sequentialFieldNumber);
-    DropOuts getFieldDropOuts(qint32 sequentialFieldNumber);
+    const Field &getField(qint32 sequentialFieldNumber);
+    const VitsMetrics &getFieldVitsMetrics(qint32 sequentialFieldNumber);
+    const Vbi &getFieldVbi(qint32 sequentialFieldNumber);
+    const Ntsc &getFieldNtsc(qint32 sequentialFieldNumber);
+    const DropOuts &getFieldDropOuts(qint32 sequentialFieldNumber);
 
     // Set field metadata
-    void updateField(Field _field, qint32 sequentialFieldNumber);
-    void updateFieldVitsMetrics(LdDecodeMetaData::VitsMetrics _vitsMetrics, qint32 sequentialFieldNumber);
-    void updateFieldVbi(LdDecodeMetaData::Vbi _vbi, qint32 sequentialFieldNumber);
-    void updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequentialFieldNumber);
-    void updateFieldDropOuts(DropOuts _dropOuts, qint32 sequentialFieldNumber);
+    void updateField(const Field &field, qint32 sequentialFieldNumber);
+    void updateFieldVitsMetrics(const LdDecodeMetaData::VitsMetrics &vitsMetrics, qint32 sequentialFieldNumber);
+    void updateFieldVbi(const LdDecodeMetaData::Vbi &vbi, qint32 sequentialFieldNumber);
+    void updateFieldNtsc(const LdDecodeMetaData::Ntsc &ntsc, qint32 sequentialFieldNumber);
+    void updateFieldDropOuts(const DropOuts &dropOuts, qint32 sequentialFieldNumber);
     void clearFieldDropOuts(qint32 sequentialFieldNumber);
 
-    void appendField(Field _field);
+    void appendField(const Field &field);
 
     void setNumberOfFields(qint32 numberOfFields);
     qint32 getNumberOfFields();
@@ -221,11 +242,11 @@ public:
     qint32 getFieldPcmAudioLength(qint32 sequentialFieldNumber);
 
 private:
-    JsonWax json;
     bool isFirstFieldFirst;
     VideoParameters videoParameters;
     LineParameters lineParameters;
     PcmAudioParameters pcmAudioParameters;
+    QVector<Field> fields;
     QVector<qint32> pcmAudioFieldStartSampleMap;
     QVector<qint32> pcmAudioFieldLengthMap;
 

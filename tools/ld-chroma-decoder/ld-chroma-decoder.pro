@@ -31,6 +31,7 @@ SOURCES += \
     transformpal2d.cpp \
     transformpal3d.cpp \
     ../library/tbc/dropouts.cpp \
+    ../library/tbc/jsonio.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/logging.cpp \
     ../library/tbc/sourcevideo.cpp \
@@ -55,6 +56,7 @@ HEADERS += \
     ../library/filter/firfilter.h \
     ../library/filter/iirfilter.h \
     ../library/tbc/dropouts.h \
+    ../library/tbc/jsonio.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/logging.h \
     ../library/tbc/sourcevideo.h \
