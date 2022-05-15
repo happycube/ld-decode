@@ -784,7 +784,7 @@ class FieldPALBetamax(FieldPALShared):
         super(FieldPALBetamax, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        ldd.logger.info("try_detect_track not implemented for beta yet!")
+        # ldd.logger.info("try_detect_track not implemented for beta yet!")
         return 0, False
 
     def downscale(self, final=False, *args, **kwargs):
@@ -1248,7 +1248,8 @@ class VHSRFDecode(ldd.RFDecode):
         self.disable_diff_demod = rf_options.get("disable_diff_demod", False)
         self.useAGC = extra_options.get("useAGC", False)
         self.debug = extra_options.get("debug", False)
-        self.cafc = rf_options.get("cafc", False)
+        # Enable cafc for betamax until proper track detection for it is implemented.
+        self.cafc = True if tape_format == "BETAMAX" else rf_options.get("cafc", False)
         # cafc requires --recheck_phase
         self.recheck_phase = True if self.cafc else self.recheck_phase
 
