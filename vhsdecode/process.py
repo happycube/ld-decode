@@ -5,11 +5,13 @@ import numpy as np
 import scipy.signal as sps
 from collections import namedtuple
 
-import pyximport; pyximport.install(language_level=3)
+# Black will separate this statement and cause warnings so ignore it.
+# fmt: off
+import pyximport; pyximport.install(language_level=3)  # noqa: E702
+# fmt: on
 
 import lddecode.core as ldd
 import lddecode.utils as lddu
-# from lddecode.utils import unwrap_hilbert, inrange
 from lddecode.utils import inrange
 import vhsdecode.utils as utils
 from vhsdecode.utils import StackableMA
@@ -426,18 +428,68 @@ class FieldShared:
         return rv_ll, rv_err, nextfield
 
     def refine_linelocs_hsync(self):
+        return sync.refine_linelocs_hsync(self, self.linebad)
+
+        if False:
+            import timeit
+
+            linebad = self.linebad.copy()
+            linebad_b = self.linebad.copy()
+            time = timeit.timeit(
+                lambda: sync.refine_linelocs_hsync(self, linebad), number=100
+            )
+            time2 = timeit.timeit(
+                lambda: self._refine_linelocs_hsync(linebad_b), number=100
+            )
+            print("time", time)
+            print("time2", time2)
+            linebad1 = self.linebad.copy()
+            linebad2 = self.linebad.copy()
+            # print(np.asanyarray(self._refine_linelocs_hsync(linebad1)) - np.asanyarray(refine_linelocs_hsync_t(self, linebad2)))
+            assert np.all(
+                np.asanyarray(self._refine_linelocs_hsync(linebad1))
+                == np.asanyarray(sync.refine_linelocs_hsync(self, linebad2))
+            )
+        # return sync.refine_linelocs_hsync(self, self.linebad)
+
+        # if False:
+        # import matplotlib.pyplot as plt
+
+        # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+        # ax1.plot(self.data["video"]["demod_05"])
+
+        # sync, blank = self.rf.resync.VsyncSerration.getLevels()
+
+        # ax1.axhline(sync, color="#FF0000")
+        # ax1.axhline(blank, color="#00FF00")
+
+        # for raw_pulse in linelocs2:
+        #     ax1.axvline(raw_pulse, color="#910000")
+
+        # for raw_pulse in right_locs:
+        #     ax1.axvline(raw_pulse, color="#000000")
+
+        # for raw_pulse in hsync_from_right:
+        #     ax1.axvline(raw_pulse, color="#00FF00")
+
+        # ax2.plot(linelocs2, hsync_from_right - linelocs2)
+
+        # plt.show()
+
+    def _refine_linelocs_hsync(self, linebad):
         """Refine the line start locations using horizontal sync data."""
+        # Old python variant for dev comparisons, not used - will be removed later.
+        # linelocs2 = np.asarray(self.linelocs1, dtype=np.float64)
         linelocs2 = self.linelocs1.copy()
         normal_hsync_length = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
-        # right_locs = np.array(linelocs2) + normal_hsync_length
-        # hsync_from_right = np.array(linelocs2.copy())
+
         demod_05 = self.data["video"]["demod_05"]
         one_usec = self.rf.freq
 
         for i in range(len(self.linelocs1)):
             # skip VSYNC lines, since they handle the pulses differently
             if inrange(i, 3, 6) or (self.rf.system == "PAL" and inrange(i, 1, 2)):
-                self.linebad[i] = True
+                linebad[i] = True
                 continue
 
             # refine beginning of hsync
@@ -467,7 +519,7 @@ class FieldShared:
 
             # If the crossing exists, we can check if the hsync pulse looks normal and
             # refine it.
-            if zc is not None and not self.linebad[i]:
+            if zc is not None and not linebad[i]:
                 linelocs2[i] = zc
 
                 # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
@@ -478,7 +530,7 @@ class FieldShared:
                     hsync_area
                 ) > self.rf.iretohz(30):
                     # don't use the computed value here if it's bad
-                    self.linebad[i] = True
+                    linebad[i] = True
                     linelocs2[i] = self.linelocs1[i]
                 else:
                     porch_level = lddu.nb_median(
@@ -502,9 +554,9 @@ class FieldShared:
                     if zc2 is not None and np.abs(zc2 - zc) < (one_usec / 2):
                         linelocs2[i] = zc2
                     else:
-                        self.linebad[i] = True
+                        linebad[i] = True
             else:
-                self.linebad[i] = True
+                linebad[i] = True
 
             # Check right cross
             if right_cross is not None:
@@ -545,7 +597,7 @@ class FieldShared:
                         right_cross = zc2
                         right_cross_refined = True
 
-            if self.linebad[i]:
+            if linebad[i]:
                 linelocs2[i] = self.linelocs1[
                     i
                 ]  # don't use the computed value here if it's bad
@@ -558,32 +610,8 @@ class FieldShared:
                 # right side of the hsync pulse, we use that as it's less likely
                 # to be messed up by overshoot.
                 if right_cross_refined:
-                    self.linebad[i] = False
+                    linebad[i] = False
                     linelocs2[i] = right_cross - normal_hsync_length + 2.25
-
-        # if False:
-        # import matplotlib.pyplot as plt
-
-        # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-        # ax1.plot(self.data["video"]["demod_05"])
-
-        # sync, blank = self.rf.resync.VsyncSerration.getLevels()
-
-        # ax1.axhline(sync, color="#FF0000")
-        # ax1.axhline(blank, color="#00FF00")
-
-        # for raw_pulse in linelocs2:
-        #     ax1.axvline(raw_pulse, color="#910000")
-
-        # for raw_pulse in right_locs:
-        #     ax1.axvline(raw_pulse, color="#000000")
-
-        # for raw_pulse in hsync_from_right:
-        #     ax1.axvline(raw_pulse, color="#00FF00")
-
-        # ax2.plot(linelocs2, hsync_from_right - linelocs2)
-
-        # plt.show()
 
         return linelocs2
 
