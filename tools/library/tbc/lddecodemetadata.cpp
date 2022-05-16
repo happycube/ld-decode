@@ -355,21 +355,33 @@ void LdDecodeMetaData::Field::write(JsonWriter &writer) const
 
 LdDecodeMetaData::LdDecodeMetaData()
 {
-    // Set defaults
-    isFirstFieldFirst = false;
+    clear();
+}
+
+// Reset the metadata to the defaults
+void LdDecodeMetaData::clear()
+{
+    // Default to the standard still-frame field order (of first field first)
+    isFirstFieldFirst = true;
+
+    // Reset the parameters to their defaults
+    videoParameters = VideoParameters();
+    lineParameters = LineParameters();
+    pcmAudioParameters = PcmAudioParameters();
+
+    fields.clear();
 }
 
 // Read all metadata from a JSON file
 bool LdDecodeMetaData::read(QString fileName)
 {
-    // Default to the standard still-frame field order (of first field first)
-    isFirstFieldFirst = true;
-
     std::ifstream jsonFile(fileName.toStdString());
     if (jsonFile.fail()) {
         qCritical("Opening JSON input file failed: JSON file cannot be opened/does not exist");
         return false;
     }
+
+    clear();
 
     JsonReader reader(jsonFile);
 
