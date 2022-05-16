@@ -83,6 +83,14 @@ QString TbcSource::getCurrentSourceFilename()
     return currentSourceFilename;
 }
 
+// If loadSource failed, return a description of the last error
+QString TbcSource::getLastLoadError()
+{
+    if (sourceReady) return QString();
+
+    return lastLoadError;
+}
+
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
 void TbcSource::setHighlightDropouts(bool _state)
 {

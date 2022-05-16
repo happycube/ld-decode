@@ -1015,9 +1015,9 @@ void MainWindow::on_finishedLoading()
         // Load failed
         updateGuiUnloaded();
 
-        // Show an error to the user
+        // Show the error to the user
         QMessageBox messageBox;
-        messageBox.warning(this, "Error", "Could not load source TBC file");
+        messageBox.warning(this, "Error", tbcSource.getLastLoadError());
         messageBox.setFixedSize(500, 200);
     }
 
