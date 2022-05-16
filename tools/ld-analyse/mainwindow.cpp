@@ -972,6 +972,9 @@ void MainWindow::on_finishedLoading()
 {
     qDebug() << "MainWindow::on_finishedLoading(): Called";
 
+    // Hide the busy dialogue
+    busyDialog->hide();
+
     // Ensure source loaded ok
     if (tbcSource.getIsSourceLoaded()) {
         // Generate the graph data
@@ -1018,8 +1021,7 @@ void MainWindow::on_finishedLoading()
         messageBox.setFixedSize(500, 200);
     }
 
-    // Hide the busy dialogue and enable the main window
-    busyDialog->hide();
+    // Enable the main window
     this->setEnabled(true);
 }
 
