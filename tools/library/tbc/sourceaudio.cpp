@@ -24,6 +24,8 @@
 
 #include "sourceaudio.h"
 
+#include <QDataStream>
+
 SourceAudio::SourceAudio()
 {
     audioFileByteLength = 0;

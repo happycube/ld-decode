@@ -358,8 +358,8 @@ bool CorrectorPool::setMinAndMaxVbiFrames()
         // Using sequential frame numbering starting from 1
         for (qint32 seqFrame = 1; seqFrame <= ldDecodeMetaData[sourceNumber]->getNumberOfFrames(); seqFrame++) {
             // Get the VBI data and then decode
-            QVector<qint32> vbi1 = ldDecodeMetaData[sourceNumber]->getFieldVbi(ldDecodeMetaData[sourceNumber]->getFirstFieldNumber(seqFrame)).vbiData;
-            QVector<qint32> vbi2 = ldDecodeMetaData[sourceNumber]->getFieldVbi(ldDecodeMetaData[sourceNumber]->getSecondFieldNumber(seqFrame)).vbiData;
+            auto vbi1 = ldDecodeMetaData[sourceNumber]->getFieldVbi(ldDecodeMetaData[sourceNumber]->getFirstFieldNumber(seqFrame)).vbiData;
+            auto vbi2 = ldDecodeMetaData[sourceNumber]->getFieldVbi(ldDecodeMetaData[sourceNumber]->getSecondFieldNumber(seqFrame)).vbiData;
             VbiDecoder::Vbi vbi = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
 
             // Look for a complete, valid CAV picture number or CLV time-code

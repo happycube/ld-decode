@@ -27,6 +27,7 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QFileInfo>
 #include <QThread>
 
 #include "logging.h"

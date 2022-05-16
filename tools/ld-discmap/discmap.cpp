@@ -76,8 +76,8 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
         m_frames[frameNumber].secondField(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1));
 
         // Get the VBI data and then decode (frames are indexed from 1)
-        QVector<qint32> vbi1 = ldDecodeMetaData->getFieldVbi(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).vbiData;
-        QVector<qint32> vbi2 = ldDecodeMetaData->getFieldVbi(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).vbiData;
+        auto vbi1 = ldDecodeMetaData->getFieldVbi(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).vbiData;
+        auto vbi2 = ldDecodeMetaData->getFieldVbi(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).vbiData;
         vbiData[frameNumber] = vbiDecoder.decodeFrame(vbi1[0], vbi1[1], vbi1[2], vbi2[0], vbi2[1], vbi2[2]);
 
         if (vbiData[frameNumber].leadIn || vbiData[frameNumber].leadOut) m_frames[frameNumber].isLeadInOrOut(true);
@@ -779,7 +779,6 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
                 // inserted into VBI lines 17 and 18 of the first field
                 if (!firstSourceMetadata.vbi.inUse) {
                     firstSourceMetadata.vbi.inUse = true;
-                    firstSourceMetadata.vbi.vbiData.resize(3);
                     firstSourceMetadata.vbi.vbiData[0] = 0;
                 }
 
@@ -801,7 +800,6 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
                 // Disc is CLV - add a timecode
                 if (!firstSourceMetadata.vbi.inUse) {
                     firstSourceMetadata.vbi.inUse = true;
-                    firstSourceMetadata.vbi.vbiData.resize(3);
                 }
                 firstSourceMetadata.vbi.vbiData[0] = convertFrameToClvPicNo(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
@@ -827,14 +825,12 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
             if (m_isDiscCav) {
                 // CAV
                 firstSourceMetadata.vbi.inUse = true;
-                firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = 0;
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToVbi(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.audioSamples = m_audioFieldSampleLength;
 
                 secondSourceMetadata.vbi.inUse = true;
-                secondSourceMetadata.vbi.vbiData.resize(3);
                 secondSourceMetadata.vbi.vbiData[0] = 0;
                 secondSourceMetadata.vbi.vbiData[1] = 0;
                 secondSourceMetadata.vbi.vbiData[2] = 0;
@@ -842,14 +838,12 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
             } else {
                 // CLV
                 firstSourceMetadata.vbi.inUse = true;
-                firstSourceMetadata.vbi.vbiData.resize(3);
                 firstSourceMetadata.vbi.vbiData[0] = convertFrameToClvPicNo(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[1] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.vbi.vbiData[2] = convertFrameToClvTimeCode(m_frames[frameNumber].vbiFrameNumber());
                 firstSourceMetadata.audioSamples = m_audioFieldSampleLength;
 
                 secondSourceMetadata.vbi.inUse = true;
-                secondSourceMetadata.vbi.vbiData.resize(3);
                 secondSourceMetadata.vbi.vbiData[0] = 0;
                 secondSourceMetadata.vbi.vbiData[1] = 0;
                 secondSourceMetadata.vbi.vbiData[2] = 0;

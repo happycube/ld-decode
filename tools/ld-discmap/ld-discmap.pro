@@ -15,24 +15,26 @@ DEFINES += QT_DEPRECATED_WARNINGS
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
-    ../library/tbc/lddecodemetadata.cpp \
-    ../library/tbc/sourcevideo.cpp \
-    ../library/tbc/sourceaudio.cpp \
-    ../library/tbc/vbidecoder.cpp \
-    ../library/tbc/logging.cpp \
     ../library/tbc/dropouts.cpp \
+    ../library/tbc/jsonio.cpp \
+    ../library/tbc/lddecodemetadata.cpp \
+    ../library/tbc/logging.cpp \
+    ../library/tbc/sourceaudio.cpp \
+    ../library/tbc/sourcevideo.cpp \
+    ../library/tbc/vbidecoder.cpp \
     discmap.cpp \
     discmapper.cpp \
     frame.cpp \
     main.cpp
 
 HEADERS += \
-    ../library/tbc/lddecodemetadata.h \
-    ../library/tbc/sourcevideo.h \
-    ../library/tbc/sourceaudio.h \
-    ../library/tbc/vbidecoder.h \
-    ../library/tbc/logging.h \
     ../library/tbc/dropouts.h \
+    ../library/tbc/jsonio.h \
+    ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/logging.h \
+    ../library/tbc/sourceaudio.h \
+    ../library/tbc/sourcevideo.h \
+    ../library/tbc/vbidecoder.h \
     discmap.h \
     discmapper.h \
     frame.h
