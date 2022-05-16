@@ -194,6 +194,7 @@ public:
     LdDecodeMetaData(const LdDecodeMetaData &) = delete;
     LdDecodeMetaData& operator=(const LdDecodeMetaData &) = delete;
 
+    void clear();
     bool read(QString fileName);
     bool write(QString fileName) const;
     void readFields(JsonReader &reader);
