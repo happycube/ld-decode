@@ -847,7 +847,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
         // Enable this option by default if we are loading a vhs-decode chroma only tbc file.
-        if(chroma_tbc) {
+        if (chroma_tbc) {
             ntscConfiguration.phaseCompensation = true;
         }
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
