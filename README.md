@@ -26,7 +26,7 @@ The budget approach is using a video capture card based on a Conexant CX23880/1/
 VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest version of Ubuntu and Linux Mint.
 Other distributions might have outdated (or even newer) versions of certain Python libraries or other dependencies, breaking compatibility. It has been confirmed to work via WSL2. It also partially runs on Windows natively.
 
-Other dependencies include Python 3.5+, Qt5, Qmake, and FFmpeg.
+Other dependencies include Python 3.5+,numpy, scipy, cython, numba, pandas, Qt5, Qmake, and FFmpeg.
 
 ## CVBS-Decode
 
@@ -36,10 +36,7 @@ The repository also contains an experimental CVBS decoder, ```cvbs-decode```, wh
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
-    sudo apt install build-essential git ffmpeg flac libavcodec-dev libavformat-dev libqwt-qt5-dev qt5-qmake qtbase5-dev python3 python3-pip python3-distutils libfftw3-dev openssl
-    sudo pip3 install numba pandas matplotlib scipy numpy==1.20.3 samplerate pyhht
-    
-(An older numpy version is needed currently due to some compatability [issues](https://github.com/numba/numba/issues/7176) with numba)
+    sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make ocl-icd-opencl-dev mono-runtime cython3
 
 Download VHS-Decode:
 
