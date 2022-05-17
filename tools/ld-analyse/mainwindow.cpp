@@ -972,6 +972,9 @@ void MainWindow::on_finishedLoading()
 {
     qDebug() << "MainWindow::on_finishedLoading(): Called";
 
+    // Hide the busy dialogue
+    busyDialog->hide();
+
     // Ensure source loaded ok
     if (tbcSource.getIsSourceLoaded()) {
         // Generate the graph data
@@ -1012,14 +1015,13 @@ void MainWindow::on_finishedLoading()
         // Load failed
         updateGuiUnloaded();
 
-        // Show an error to the user
+        // Show the error to the user
         QMessageBox messageBox;
-        messageBox.warning(this, "Error", "Could not load source TBC file");
+        messageBox.warning(this, "Error", tbcSource.getLastLoadError());
         messageBox.setFixedSize(500, 200);
     }
 
-    // Hide the busy dialogue and enable the main window
-    busyDialog->hide();
+    // Enable the main window
     this->setEnabled(true);
 }
 

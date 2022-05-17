@@ -4,7 +4,7 @@
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2021 Simon Inns
-    Copyright (C) 2021 Adam Sampson
+    Copyright (C) 2021-2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -81,6 +81,14 @@ QString TbcSource::getCurrentSourceFilename()
     if (!sourceReady) return QString();
 
     return currentSourceFilename;
+}
+
+// If loadSource failed, return a description of the last error
+QString TbcSource::getLastLoadError()
+{
+    if (sourceReady) return QString();
+
+    return lastLoadError;
 }
 
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
@@ -812,42 +820,41 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         qWarning() << "Open TBC JSON metadata failed for filename" << sourceFilename;
         currentSourceFilename.clear();
 
-        // Show an error to the user
-        lastLoadError = "Could not open TBC JSON metadata file for the TBC input file!";
-    } else {
-        // Get the video parameters from the metadata
-        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-        // Use default line parameters, as the user will not override it
-        LdDecodeMetaData::LineParameters lineParameters;
-        ldDecodeMetaData.processLineParameters(lineParameters);
-
-        // Open the new source video
-        qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
-        emit busyLoading("Loading TBC file...");
-        if (!sourceVideo.open(sourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
-            // Open failed
-            qWarning() << "Open TBC file failed for filename" << sourceFilename;
-            currentSourceFilename.clear();
-
-            // Show an error to the user
-            lastLoadError = "Could not open TBC data file!";
-        } else {
-            // Both the video and metadata files are now open
-            sourceReady = true;
-            currentSourceFilename = sourceFilename;
-        }
+        // Show an error to the user and give up
+        lastLoadError = "Could not load source TBC JSON metadata file";
+        return;
     }
 
-    // Get the video parameters
+    // Get the video parameters from the metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+
+    // Use default line parameters, as the user will not override it
+    LdDecodeMetaData::LineParameters lineParameters;
+    ldDecodeMetaData.processLineParameters(lineParameters);
+
+    // Open the new source video
+    qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
+    emit busyLoading("Loading TBC file...");
+    if (!sourceVideo.open(sourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+        // Open failed
+        qWarning() << "Open TBC file failed for filename" << sourceFilename;
+        currentSourceFilename.clear();
+
+        // Show an error to the user and give up
+        lastLoadError = "Could not open source TBC data file";
+        return;
+    }
+
+    // Both the video and metadata files are now open
+    sourceReady = true;
+    currentSourceFilename = sourceFilename;
 
     // Configure the chroma decoder
     if (getIsSourcePal()) {
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
         // Enable this option by default if we are loading a vhs-decode chroma only tbc file.
-        if(chroma_tbc) {
+        if (chroma_tbc) {
             ntscConfiguration.phaseCompensation = true;
         }
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);

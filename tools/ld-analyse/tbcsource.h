@@ -68,6 +68,7 @@ public:
     void unloadSource();
     bool getIsSourceLoaded();
     QString getCurrentSourceFilename();
+    QString getLastLoadError();
 
     void setHighlightDropouts(bool _state);
     void setChromaDecoder(bool _state);
