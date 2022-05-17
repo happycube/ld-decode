@@ -61,6 +61,10 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Run in non-interactive mode"));
     parser.addOption(nonInteractiveOption);
 
+    QCommandLineOption padOption(QStringList() << "p" << "pad",
+                                       QCoreApplication::translate("main", "Pad audio to initial disc time"));
+    parser.addOption(padOption);
+
     // -- Positional arguments --
 
     // Positional argument to specify input EFM file
@@ -68,6 +72,9 @@ int main(int argc, char *argv[])
 
     // Positional argument to specify output audio file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output audio file"));
+
+    // Positional argument to specify output data file
+    parser.addPositionalArgument("data", QCoreApplication::translate("main", "Specify output data file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -77,12 +84,18 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool isNonInteractiveOn = parser.isSet(nonInteractiveOption);
+    bool pad = parser.isSet(padOption);
 
     // Get the arguments from the parser
     QString inputEfmFilename;
     QString outputAudioFilename;
+    QString outputDataFilename;
     QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 2) {
+    if (positionalArguments.count() == 3) {
+        inputEfmFilename = positionalArguments.at(0);
+        outputAudioFilename = positionalArguments.at(1);
+        outputDataFilename = positionalArguments.at(2);
+    } else if (positionalArguments.count() == 2) {
         inputEfmFilename = positionalArguments.at(0);
         outputAudioFilename = positionalArguments.at(1);
     } else if (positionalArguments.count() == 1) {
@@ -97,7 +110,8 @@ int main(int argc, char *argv[])
     }
 
     // Start the GUI application
-    MainWindow w(getDebugState(), isNonInteractiveOn, outputAudioFilename);
+    MainWindow w(getDebugState(), isNonInteractiveOn, outputAudioFilename,
+            outputDataFilename, pad);
     if (!inputEfmFilename.isEmpty()) {
         // Load the file to decode
         if (!w.loadInputEfmFile(inputEfmFilename)) {
