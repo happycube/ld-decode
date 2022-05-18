@@ -50,7 +50,10 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioFilename, QWidget *parent = nullptr);
+    explicit MainWindow(bool debugOn, bool _nonInteractive,
+            QString _outputAudioFilename, QString _outputDataFilename,
+            bool pad,
+            QWidget *parent = nullptr);
     ~MainWindow();
 
     bool loadInputEfmFile(QString filename);
@@ -73,6 +76,8 @@ private slots:
     void on_actionSave_Sector_Data_triggered();
 
 private:
+    void showError(QString message, bool is_critical);
+
     Ui::MainWindow *ui;
 
     // Dialogues
@@ -89,6 +94,8 @@ private:
     QTimer statisticsUpdateTimer;
     bool nonInteractive;
     QString outputAudioFilename;
+    QString outputDataFilename;
+    bool pad;
 
     // Method prototypes
     void guiNoEfmFileLoaded();
