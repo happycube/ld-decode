@@ -542,7 +542,7 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
     if (firstActiveFieldLine < 1 || firstActiveFieldLine > defaultLastFieldLine) {
         if (firstFieldLineExists) {
             qInfo().nospace() << "Specified first active field line " << firstActiveFieldLine << " out of bounds (1 to "
-                              << defaultLastFieldLine << "), restting to default (" << defaultFirstFieldLine << ").";
+                              << defaultLastFieldLine << "), resetting to default (" << defaultFirstFieldLine << ").";
         }
         firstActiveFieldLine = defaultFirstFieldLine;
     }
@@ -561,7 +561,7 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
     if (lastActiveFieldLine < 1 || lastActiveFieldLine > defaultLastFieldLine) {
         if (lastFieldLineExists) {
             qInfo().nospace() << "Specified last active field line " << lastActiveFieldLine << " out of bounds (1 to "
-                              << defaultLastFieldLine << "), restting to default (" << defaultLastFieldLine << ").";
+                              << defaultLastFieldLine << "), resetting to default (" << defaultLastFieldLine << ").";
         }
         lastActiveFieldLine = defaultLastFieldLine;
     }
@@ -578,7 +578,7 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
     if (firstActiveFrameLine < minFirstFrameLine || firstActiveFrameLine > defaultLastFrameLine) {
         if (firstFrameLineExists) {
             qInfo().nospace() << "Specified first active frame line " << firstActiveFrameLine << " out of bounds (" << minFirstFrameLine << " to "
-                              << defaultLastFrameLine << "), restting to default (" << defaultFirstFrameLine << ").";
+                              << defaultLastFrameLine << "), resetting to default (" << defaultFirstFrameLine << ").";
         }
         firstActiveFrameLine = defaultFirstFrameLine;
     }
@@ -587,15 +587,15 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
     if (lastActiveFrameLine < minFirstFrameLine || lastActiveFrameLine > defaultLastFrameLine) {
         if (lastFrameLineExists) {
             qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " out of bounds (" << minFirstFrameLine << " to "
-                              << defaultLastFrameLine << "), restting to default (" << defaultLastFrameLine << ").";
+                              << defaultLastFrameLine << "), resetting to default (" << defaultLastFrameLine << ").";
         }
         lastActiveFrameLine = defaultLastFrameLine;
     }
 
     // Range-check the first and last active frame lines.
     if (firstActiveFrameLine > lastActiveFrameLine) {
-       qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " is before specified first active frame line"
-                         << firstActiveFrameLine << ", resetting to defaults (" << defaultFirstFrameLine << "-" << defaultLastFrameLine << ").";
+        qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " is before specified first active frame line"
+                          << firstActiveFrameLine << ", resetting to defaults (" << defaultFirstFrameLine << "-" << defaultLastFrameLine << ").";
         firstActiveFrameLine = defaultFirstFrameLine;
         lastActiveFrameLine = defaultLastFrameLine;
     }
