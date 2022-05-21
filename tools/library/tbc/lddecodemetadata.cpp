@@ -34,6 +34,7 @@
 // Default values used when configuring VideoParameters for a particular video system.
 // See the comments in VideoParameters for the meanings of these values.
 struct VideoSystemDefaults {
+    double fSC;
     qint32 minActiveFrameLine;
     qint32 firstActiveFieldLine;
     qint32 lastActiveFieldLine;
@@ -43,6 +44,7 @@ struct VideoSystemDefaults {
 
 // PAL
 static constexpr VideoSystemDefaults palDefaults {
+    (283.75 * 15625) + 25,
     2,
     22, 308,
     // Interlaced line 44 is PAL line 23 (the first active half-line)
@@ -52,6 +54,7 @@ static constexpr VideoSystemDefaults palDefaults {
 
 // NTSC
 static constexpr VideoSystemDefaults ntscDefaults {
+    315.0e6 / 88.0,
     1,
     20, 259,
     // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
@@ -129,7 +132,6 @@ void LdDecodeMetaData::VideoParameters::read(JsonReader &reader)
         else if (member == "colourBurstStart") reader.read(colourBurstStart);
         else if (member == "fieldHeight") reader.read(fieldHeight);
         else if (member == "fieldWidth") reader.read(fieldWidth);
-        else if (member == "fsc") reader.read(fsc);
         else if (member == "gitBranch") reader.read(gitBranch);
         else if (member == "gitCommit") reader.read(gitCommit);
         else if (member == "isMapped") reader.read(isMapped);
@@ -162,7 +164,6 @@ void LdDecodeMetaData::VideoParameters::write(JsonWriter &writer) const
     writer.writeMember("colourBurstStart", colourBurstStart);
     writer.writeMember("fieldHeight", fieldHeight);
     writer.writeMember("fieldWidth", fieldWidth);
-    writer.writeMember("fsc", fsc);
     if (gitBranch != "") {
         writer.writeMember("gitBranch", gitBranch);
     }
@@ -525,7 +526,7 @@ void LdDecodeMetaData::setPcmAudioParameters(const LdDecodeMetaData::PcmAudioPar
 void LdDecodeMetaData::initialiseVideoSystemParameters()
 {
     const VideoSystemDefaults &defaults = getSystemDefaults(videoParameters);
-    videoParameters.fsc = defaults.fsc;
+    videoParameters.fSC = defaults.fSC;
 
     // Set default LineParameters
     LdDecodeMetaData::LineParameters lineParameters;

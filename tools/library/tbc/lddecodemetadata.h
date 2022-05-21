@@ -71,8 +71,7 @@ public:
 
         qint32 fieldWidth = -1;
         qint32 fieldHeight = -1;
-        qint32 sampleRate = -1;
-        qint32 fsc = -1;
+        double sampleRate = -1.0;
 
         bool isMapped = false;
 
@@ -80,6 +79,9 @@ public:
         QString gitCommit;
 
         // -- Members set by the library --
+
+        // Colour subcarrier frequency in Hz
+        double fSC = -1.0;
 
         // The range of active lines within a frame.
         // This is the same information represented in two different ways, for
@@ -136,7 +138,7 @@ public:
 
     // PCM sound metadata definition
     struct PcmAudioParameters {
-        qint32 sampleRate = -1;
+        double sampleRate = -1.0;
         bool isLittleEndian = false;
         bool isSigned = false;
         qint32 bits = -1;
