@@ -87,12 +87,12 @@ ChromaDecoderConfigDialog::~ChromaDecoderConfigDialog()
     delete ui;
 }
 
-void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalColour::Configuration &_palConfiguration,
+void ChromaDecoderConfigDialog::setConfiguration(VideoSystem _system, const PalColour::Configuration &_palConfiguration,
                                                  const Comb::Configuration &_ntscConfiguration,
                                                  const OutputWriter::Configuration &_outputConfiguration)
 {
-    double yNRLevel = _isSourcePal ? palConfiguration.yNRLevel : ntscConfiguration.yNRLevel;
-    isSourcePal = _isSourcePal;
+    double yNRLevel = _system == NTSC ? ntscConfiguration.yNRLevel : palConfiguration.yNRLevel;
+    system = _system;
     palConfiguration = _palConfiguration;
     ntscConfiguration = _ntscConfiguration;
     outputConfiguration = _outputConfiguration;
@@ -109,10 +109,10 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
     ntscConfiguration.chromaPhase = palConfiguration.chromaPhase;
 
     // Select the tab corresponding to the current standard automatically
-    if (isSourcePal) {
-        ui->standardTabs->setCurrentWidget(ui->palTab);
-    } else {
+    if (system == NTSC) {
         ui->standardTabs->setCurrentWidget(ui->ntscTab);
+    } else {
+        ui->standardTabs->setCurrentWidget(ui->palTab);
     }
 
     updateDialog();
@@ -136,6 +136,9 @@ const OutputWriter::Configuration &ChromaDecoderConfigDialog::getOutputConfigura
 
 void ChromaDecoderConfigDialog::updateDialog()
 {
+    const bool isSourcePal = system == PAL || system == PAL_M;
+    const bool isSourceNtsc = system == NTSC;
+
     // Shared settings
 
     ui->chromaGainHorizontalSlider->setEnabled(true);
@@ -193,8 +196,6 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->simplePALCheckBox->setChecked(palConfiguration.simplePAL);
 
     // NTSC settings
-
-    const bool isSourceNtsc = !isSourcePal;
 
     ui->phaseCompCheckBox->setEnabled(isSourceNtsc);
     ui->phaseCompCheckBox->setChecked(ntscConfiguration.phaseCompensation);

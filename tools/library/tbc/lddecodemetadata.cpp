@@ -33,6 +33,7 @@
 
 // Default values used when configuring VideoParameters for a particular video system.
 // See the comments in VideoParameters for the meanings of these values.
+// For descriptions of the systems, see ITU BT.1700.
 struct VideoSystemDefaults {
     double fSC;
     qint32 minActiveFrameLine;
@@ -62,10 +63,20 @@ static constexpr VideoSystemDefaults ntscDefaults {
     40, 525,
 };
 
+// PAL-M
+static constexpr VideoSystemDefaults palMDefaults {
+    5.0e6 * (63.0 / 88.0) * (909.0 / 910.0),
+    ntscDefaults.minActiveFrameLine,
+    ntscDefaults.firstActiveFieldLine, ntscDefaults.lastActiveFieldLine,
+    ntscDefaults.firstActiveFrameLine, ntscDefaults.lastActiveFrameLine,
+};
+
 // Return appropriate defaults for the selected video system
 static const VideoSystemDefaults &getSystemDefaults(const LdDecodeMetaData::VideoParameters &videoParameters)
 {
-    return videoParameters.isSourcePal ? palDefaults : ntscDefaults;
+    if (videoParameters.system == PAL) return palDefaults;
+    else if (videoParameters.system == NTSC) return ntscDefaults;
+    else return palMDefaults;
 }
 
 // Read Vbi from JSON
@@ -121,6 +132,9 @@ void LdDecodeMetaData::Vbi::write(JsonWriter &writer) const
 // Read VideoParameters from JSON
 void LdDecodeMetaData::VideoParameters::read(JsonReader &reader)
 {
+    bool isSourcePal = false;
+    std::string systemString = "";
+
     reader.beginObject();
 
     std::string member;
@@ -135,16 +149,29 @@ void LdDecodeMetaData::VideoParameters::read(JsonReader &reader)
         else if (member == "gitBranch") reader.read(gitBranch);
         else if (member == "gitCommit") reader.read(gitCommit);
         else if (member == "isMapped") reader.read(isMapped);
-        else if (member == "isSourcePal") reader.read(isSourcePal);
+        else if (member == "isSourcePal") reader.read(isSourcePal); // obsolete
         else if (member == "isSubcarrierLocked") reader.read(isSubcarrierLocked);
         else if (member == "isWidescreen") reader.read(isWidescreen);
         else if (member == "numberOfSequentialFields") reader.read(numberOfSequentialFields);
         else if (member == "sampleRate") reader.read(sampleRate);
+        else if (member == "system") reader.read(systemString);
         else if (member == "white16bIre") reader.read(white16bIre);
         else reader.discard();
     }
 
     reader.endObject();
+
+    // Work out which video system is being used
+    if (systemString == "") {
+        // Not specified -- detect based on isSourcePal and fieldHeight
+        if (isSourcePal) {
+            if (fieldHeight < 300) system = PAL_M;
+            else system = PAL;
+        } else system = NTSC;
+    } else if (systemString == "PAL") system = PAL;
+    else if (systemString == "NTSC") system = NTSC;
+    else if (systemString == "PAL-M") system = PAL_M;
+    else reader.throwError("unknown value for videoParameters.system");
 
     isValid = true;
 }
@@ -171,11 +198,17 @@ void LdDecodeMetaData::VideoParameters::write(JsonWriter &writer) const
         writer.writeMember("gitCommit", gitCommit);
     }
     writer.writeMember("isMapped", isMapped);
-    writer.writeMember("isSourcePal", isSourcePal);
     writer.writeMember("isSubcarrierLocked", isSubcarrierLocked);
     writer.writeMember("isWidescreen", isWidescreen);
     writer.writeMember("numberOfSequentialFields", numberOfSequentialFields);
     writer.writeMember("sampleRate", sampleRate);
+    if (system == PAL) {
+        writer.writeMember("system", "PAL");
+    } else if (system == NTSC) {
+        writer.writeMember("system", "NTSC");
+    } else {
+        writer.writeMember("system", "PAL-M");
+    }
     writer.writeMember("white16bIre", white16bIre);
 
     writer.endObject();
@@ -933,17 +966,17 @@ qint32 LdDecodeMetaData::convertClvTimecodeToFrameNumber(LdDecodeMetaData::ClvTi
     }
 
     if (clvTimeCode.hours != -1) {
-        if (videoParameters.isSourcePal) frameNumber += clvTimeCode.hours * 3600 * 25;
+        if (videoParameters.system == PAL) frameNumber += clvTimeCode.hours * 3600 * 25;
         else frameNumber += clvTimeCode.hours * 3600 * 30;
     }
 
     if (clvTimeCode.minutes != -1) {
-        if (videoParameters.isSourcePal) frameNumber += clvTimeCode.minutes * 60 * 25;
+        if (videoParameters.system == PAL) frameNumber += clvTimeCode.minutes * 60 * 25;
         else frameNumber += clvTimeCode.minutes * 60 * 30;
     }
 
     if (clvTimeCode.seconds != -1) {
-        if (videoParameters.isSourcePal) frameNumber += clvTimeCode.seconds * 25;
+        if (videoParameters.system == PAL) frameNumber += clvTimeCode.seconds * 25;
         else frameNumber += clvTimeCode.seconds * 30;
     }
 
@@ -964,7 +997,7 @@ LdDecodeMetaData::ClvTimecode LdDecodeMetaData::convertFrameNumberToClvTimecode(
     clvTimecode.seconds = 0;
     clvTimecode.pictureNumber = 0;
 
-    if (getVideoParameters().isSourcePal) {
+    if (getVideoParameters().system == PAL) {
         clvTimecode.hours = frameNumber / (3600 * 25);
         frameNumber -= clvTimecode.hours * (3600 * 25);
 

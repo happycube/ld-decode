@@ -98,8 +98,8 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
     const auto videoParameters = metaData.getVideoParameters();
 
     // Only NTSC discs can contain closed captions; so perform a basic sanity check
-    if (videoParameters.isSourcePal) {
-        qInfo() << "Video source is PAL which cannot contain closed captions";
+    if (videoParameters.system != NTSC) {
+        qInfo() << "Only NTSC video sources can contain closed captions";
         return false;
     }
 

@@ -56,12 +56,12 @@ void VitsAnalyser::run()
         QVector<QVector<double>> wlSlice;
         QVector<QVector<double>> blSlice;
 
-        if (videoParameters.isSourcePal) {
-            // PAL (taken from ld-decode core.py)
+        if (videoParameters.system == PAL) {
+            // 625 lines (taken from ld-decode core.py)
             wlSlice.append(getFieldLineSlice(sourceFieldData, 19, 12, 8));
             blSlice.append(getFieldLineSlice(sourceFieldData, 22, 12, 50));
         } else {
-            // NTSC (taken from ld-decode core.py)
+            // 525 lines (taken from ld-decode core.py)
             wlSlice.append(getFieldLineSlice(sourceFieldData, 20, 14, 12));
             wlSlice.append(getFieldLineSlice(sourceFieldData, 20, 52, 8));
             wlSlice.append(getFieldLineSlice(sourceFieldData, 13, 13, 15));
@@ -122,7 +122,7 @@ QVector<double> VitsAnalyser::getFieldLineSlice(const SourceVideo::Data &sourceF
 
     // Calculate the number of samples per uS for the field
     double samplesPerUs = 0;
-    if (videoParameters.isSourcePal) samplesPerUs = static_cast<double>(videoParameters.fieldWidth) / 64.0;
+    if (videoParameters.system == PAL) samplesPerUs = static_cast<double>(videoParameters.fieldWidth) / 64.0;
     else samplesPerUs = static_cast<double>(videoParameters.fieldWidth) / 63.5;
 
     // Get the start and end sample positions

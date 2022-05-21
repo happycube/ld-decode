@@ -61,7 +61,6 @@ public:
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
         bool isActiveLine;
-        bool isSourcePal;
     };
 
     void loadSource(QString inputFileName);
@@ -92,7 +91,7 @@ public:
     qint32 getNumberOfFrames();
     qint32 getNumberOfFields();
     bool getIsWidescreen();
-    bool getIsSourcePal();
+    VideoSystem getSystem();
     qint32 getFrameHeight();
     qint32 getFrameWidth();
 

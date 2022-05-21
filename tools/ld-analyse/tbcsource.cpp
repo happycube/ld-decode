@@ -248,11 +248,11 @@ bool TbcSource::getIsWidescreen()
     return ldDecodeMetaData.getVideoParameters().isWidescreen;
 }
 
-// Method returns true if the TBC source is PAL (false for NTSC)
-bool TbcSource::getIsSourcePal()
+// Return the source's VideoSystem
+VideoSystem TbcSource::getSystem()
 {
-    if (!sourceReady) return false;
-    return ldDecodeMetaData.getVideoParameters().isSourcePal;
+    if (!sourceReady) return NTSC;
+    return ldDecodeMetaData.getVideoParameters().system;
 }
 
 // Method to get the frame height in scanlines
@@ -349,7 +349,6 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     scanLineData.colourBurstEnd = videoParameters.colourBurstEnd;
     scanLineData.activeVideoStart = videoParameters.activeVideoStart;
     scanLineData.activeVideoEnd = videoParameters.activeVideoEnd;
-    scanLineData.isSourcePal = videoParameters.isSourcePal;
 
     // Is this line part of the active region?
     scanLineData.isActiveLine = (scanLine - 1) >= videoParameters.firstActiveFrameLine
@@ -450,7 +449,7 @@ void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfi
 
     // Configure the chroma decoder
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-    if (videoParameters.isSourcePal) {
+    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
@@ -557,7 +556,7 @@ void TbcSource::loadInputFields()
 
     // Work out how many frames ahead/behind we need to fetch
     qint32 lookBehind, lookAhead;
-    if (getIsSourcePal()) {
+    if (getSystem() == PAL || getSystem() == PAL_M) {
         lookBehind = palConfiguration.getLookBehind();
         lookAhead = palConfiguration.getLookAhead();
     } else {
@@ -610,7 +609,7 @@ void TbcSource::decodeFrame()
 
     // Decode the current frame to components
     componentFrames.resize(1);
-    if (getIsSourcePal()) {
+    if (getSystem() == PAL || getSystem() == PAL_M) {
         // PAL source
         palColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
     } else {
@@ -921,7 +920,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     currentSourceFilename = sourceFilename;
 
     // Configure the chroma decoder
-    if (getIsSourcePal()) {
+    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
         if (isChromaTbc || sourceMode != ONE_SOURCE) {

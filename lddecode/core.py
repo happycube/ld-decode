@@ -3964,7 +3964,7 @@ class LDdecode:
         vp["gitBranch"] = self.branch
         vp["gitCommit"] = self.commit
 
-        vp["isSourcePal"] = True if f.rf.system == "PAL" else False
+        vp["system"] = f.rf.system
 
         vp["fieldWidth"] = f.rf.SysParams["outlinelen"]
         vp["sampleRate"] = f.rf.SysParams["outfreq"] * 1000000
