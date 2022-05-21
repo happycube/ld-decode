@@ -189,6 +189,7 @@ void MainWindow::updateGuiLoaded()
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
     ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));
+    updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -281,6 +282,7 @@ void MainWindow::updateGuiUnloaded()
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
     aspectRatio = Aspect::SAR_11;
     ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));;
+    updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -298,6 +300,27 @@ void MainWindow::updateGuiUnloaded()
 
     // Hide configuration dialogues
     chromaDecoderConfigDialog->hide();
+}
+
+// Update the source selection button
+void MainWindow::updateSourcesPushButton()
+{
+    ui->sourcesPushButton->setEnabled(tbcSource.getSourceMode() != TbcSource::ONE_SOURCE);
+
+    switch (tbcSource.getSourceMode()) {
+    case TbcSource::ONE_SOURCE:
+        ui->sourcesPushButton->setText(tr("One Source"));
+        break;
+    case TbcSource::LUMA_SOURCE:
+        ui->sourcesPushButton->setText(tr("Y Source"));
+        break;
+    case TbcSource::CHROMA_SOURCE:
+        ui->sourcesPushButton->setText(tr("C Source"));
+        break;
+    case TbcSource::BOTH_SOURCES:
+        ui->sourcesPushButton->setText(tr("Y+C Sources"));
+        break;
+    }
 }
 
 // Frame display methods ----------------------------------------------------------------------------------------------
@@ -738,6 +761,31 @@ void MainWindow::on_dropoutsPushButton_clicked()
     }
 
     // Show the current frame (why isn't this option passed?)
+    showFrame();
+}
+
+// Source selection button clicked
+void MainWindow::on_sourcesPushButton_clicked()
+{
+    switch (tbcSource.getSourceMode()) {
+    case TbcSource::ONE_SOURCE:
+        // Do nothing - the button's disabled anyway
+        break;
+    case TbcSource::LUMA_SOURCE:
+        tbcSource.setSourceMode(TbcSource::CHROMA_SOURCE);
+        break;
+    case TbcSource::CHROMA_SOURCE:
+        tbcSource.setSourceMode(TbcSource::BOTH_SOURCES);
+        break;
+    case TbcSource::BOTH_SOURCES:
+        tbcSource.setSourceMode(TbcSource::LUMA_SOURCE);
+        break;
+    }
+
+    // Update the button
+    updateSourcesPushButton();
+
+    // Show the current frame
     showFrame();
 }
 

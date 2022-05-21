@@ -404,6 +404,22 @@
             </widget>
            </item>
            <item>
+            <widget class="QPushButton" name="sourcesPushButton">
+             <property name="minimumSize">
+              <size>
+               <width>110</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="toolTip">
+              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select between multiple sources&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             </property>
+             <property name="text">
+              <string>Y+C Sources</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="fieldOrderPushButton">
              <property name="minimumSize">
               <size>

@@ -89,6 +89,7 @@ private slots:
     void on_frameHorizontalSlider_valueChanged(int value);
     void on_videoPushButton_clicked();
     void on_dropoutsPushButton_clicked();
+    void on_sourcesPushButton_clicked();
     void on_fieldOrderPushButton_clicked();
     void on_zoomInPushButton_clicked();
     void on_zoomOutPushButton_clicked();
@@ -137,6 +138,7 @@ private:
     // Update GUI methods
     void updateGuiLoaded();
     void updateGuiUnloaded();
+    void updateSourcesPushButton();
 
     // Frame display methods
     void showFrame();
