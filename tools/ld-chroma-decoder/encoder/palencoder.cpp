@@ -102,6 +102,7 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     }
 
     // Parameters that are common for subcarrier- and line-locked output:
+    videoParameters.numberOfSequentialFields = 0;
     videoParameters.isSourcePal = true;
     videoParameters.isSubcarrierLocked = scLocked;
     // White level and blanking level, extended to 16 bits [EBU p6]
@@ -114,7 +115,6 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     videoParameters.sampleRate = static_cast<qint32>(lrint(sampleRate));
     videoParameters.fsc = static_cast<qint32>(lrint(fSC));
     videoParameters.isMapped = false;
-    // numberOfSequentialFields will be computed automatically.
 
     // Compute the location of the input image within the PAL frame, based on
     // the parameters above. For a 4:3 picture, there should really be 922
@@ -138,6 +138,9 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
 
 bool PALEncoder::encode()
 {
+    // Store video parameters
+    metaData.setVideoParameters(videoParameters);
+
     // Process frames until EOF
     qint32 numFrames = 0;
     while (true) {
@@ -149,9 +152,6 @@ bool PALEncoder::encode()
         }
         numFrames++;
     }
-
-    // Store video parameters, now we've generated all the fields
-    metaData.setVideoParameters(videoParameters);
 
     return true;
 }
@@ -231,6 +231,7 @@ bool PALEncoder::encodeField(qint32 fieldNo)
 
     // Generate field metadata
     LdDecodeMetaData::Field fieldData;
+    fieldData.seqNo = fieldNo;
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
     // Burst peak-to-peak amplitude is 3/7 of black-white range
