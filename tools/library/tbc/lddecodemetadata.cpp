@@ -366,7 +366,6 @@ void LdDecodeMetaData::clear()
 
     // Reset the parameters to their defaults
     videoParameters = VideoParameters();
-    lineParameters = LineParameters();
     pcmAudioParameters = PcmAudioParameters();
 
     fields.clear();
@@ -512,10 +511,9 @@ void LdDecodeMetaData::setPcmAudioParameters(const LdDecodeMetaData::PcmAudioPar
 }
 
 // Validate any user-specified line parameters and set them to reasonable defaults + warn if invalid.
-void LdDecodeMetaData::processLineParameters(LdDecodeMetaData::LineParameters &_lineParameters)
+void LdDecodeMetaData::processLineParameters(LdDecodeMetaData::LineParameters &lineParameters)
 {
-    _lineParameters.process(videoParameters.fieldHeight);
-    lineParameters = _lineParameters;
+    lineParameters.process(videoParameters.fieldHeight);
 
     videoParameters.firstActiveFieldLine = lineParameters.firstActiveFieldLine;
     videoParameters.lastActiveFieldLine = lineParameters.lastActiveFieldLine;

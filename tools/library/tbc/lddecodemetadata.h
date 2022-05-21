@@ -245,7 +245,6 @@ public:
 private:
     bool isFirstFieldFirst;
     VideoParameters videoParameters;
-    LineParameters lineParameters;
     PcmAudioParameters pcmAudioParameters;
     QVector<Field> fields;
     QVector<qint32> pcmAudioFieldStartSampleMap;
