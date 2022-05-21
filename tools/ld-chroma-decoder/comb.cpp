@@ -123,9 +123,11 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
     // Range check the video start
     if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
 
-    if (videoParameters.sampleRate / videoParameters.fsc != 4)
+    // Check the sample rate is close to 4 * fSC.
+    // Older versions of ld-decode used integer approximations, so this needs
+    // to be an approximate comparison.
+    if (fabs((videoParameters.sampleRate / videoParameters.fSC) - 4.0) > 1.0e-6)
     {
-        // Decoder assumes 4fsc sample rate at the moment.
         qCritical() << "Data is not in 4fsc sample rate, color decoding will not work properly!";
     }
 

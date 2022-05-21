@@ -31,28 +31,42 @@
 #include <cassert>
 #include <fstream>
 
-// Default line parameters for PAL decoding
-const qint32 LdDecodeMetaData::LineParameters::sMinPALFirstActiveFrameLine = 2;
-const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFirstActiveFieldLine = 22;
-const qint32 LdDecodeMetaData::LineParameters::sDefaultPALLastActiveFieldLine = 308;
-// Interlaced line 44 is PAL line 23 (the first active half-line)
-const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFirstActiveFrameLine = 44;
-// Interlaced line 619 is PAL line 623 (the last active half-line)
-const qint32 LdDecodeMetaData::LineParameters::sDefaultPALLastActiveFrameLine = 620;
-const qint32 LdDecodeMetaData::LineParameters::sDefaultPALFieldHeightCheck = 313;
+// Default values used when configuring VideoParameters for a particular video system.
+// See the comments in VideoParameters for the meanings of these values.
+struct VideoSystemDefaults {
+    double fSC;
+    qint32 minActiveFrameLine;
+    qint32 firstActiveFieldLine;
+    qint32 lastActiveFieldLine;
+    qint32 firstActiveFrameLine;
+    qint32 lastActiveFrameLine;
+};
 
-// Default line parameters for NTSC decoding
-const qint32 LdDecodeMetaData::LineParameters::sMinNTSCFirstActiveFrameLine = 1;
-const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFirstActiveFieldLine = 20;
-const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCLastActiveFieldLine = 259;
-// Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
-const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFirstActiveFrameLine = 40;
-// Interlaced line 524 is NTSC line 263 (the last active half-line).
-const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCLastActiveFrameLine = 525;
-const qint32 LdDecodeMetaData::LineParameters::sDefaultNTSCFieldHeightCheck = 263;
+// PAL
+static constexpr VideoSystemDefaults palDefaults {
+    (283.75 * 15625) + 25,
+    2,
+    22, 308,
+    // Interlaced line 44 is PAL line 23 (the first active half-line)
+    // Interlaced line 619 is PAL line 623 (the last active half-line)
+    44, 620,
+};
 
-// Default line parameters for Auto/Unknown decoding
-const qint32 LdDecodeMetaData::LineParameters::sDefaultAutoFirstActiveFieldLine = 20;
+// NTSC
+static constexpr VideoSystemDefaults ntscDefaults {
+    315.0e6 / 88.0,
+    1,
+    20, 259,
+    // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
+    // Interlaced line 524 is NTSC line 263 (the last active half-line)
+    40, 525,
+};
+
+// Return appropriate defaults for the selected video system
+static const VideoSystemDefaults &getSystemDefaults(const LdDecodeMetaData::VideoParameters &videoParameters)
+{
+    return videoParameters.isSourcePal ? palDefaults : ntscDefaults;
+}
 
 // Read Vbi from JSON
 void LdDecodeMetaData::Vbi::read(JsonReader &reader)
@@ -118,7 +132,6 @@ void LdDecodeMetaData::VideoParameters::read(JsonReader &reader)
         else if (member == "colourBurstStart") reader.read(colourBurstStart);
         else if (member == "fieldHeight") reader.read(fieldHeight);
         else if (member == "fieldWidth") reader.read(fieldWidth);
-        else if (member == "fsc") reader.read(fsc);
         else if (member == "gitBranch") reader.read(gitBranch);
         else if (member == "gitCommit") reader.read(gitCommit);
         else if (member == "isMapped") reader.read(isMapped);
@@ -151,7 +164,6 @@ void LdDecodeMetaData::VideoParameters::write(JsonWriter &writer) const
     writer.writeMember("colourBurstStart", colourBurstStart);
     writer.writeMember("fieldHeight", fieldHeight);
     writer.writeMember("fieldWidth", fieldWidth);
-    writer.writeMember("fsc", fsc);
     if (gitBranch != "") {
         writer.writeMember("gitBranch", gitBranch);
     }
@@ -366,7 +378,6 @@ void LdDecodeMetaData::clear()
 
     // Reset the parameters to their defaults
     videoParameters = VideoParameters();
-    lineParameters = LineParameters();
     pcmAudioParameters = PcmAudioParameters();
 
     fields.clear();
@@ -416,9 +427,8 @@ bool LdDecodeMetaData::read(QString fileName)
         return false;
     }
 
-    // Compute LineParameters now we know the VideoParameters
-    LdDecodeMetaData::LineParameters lineParameters;
-    processLineParameters(lineParameters);
+    // Now we know the video system, initialise the rest of VideoParameters
+    initialiseVideoSystemParameters();
 
     // Generate the PCM audio map based on the field metadata
     generatePcmAudioMap();
@@ -511,59 +521,53 @@ void LdDecodeMetaData::setPcmAudioParameters(const LdDecodeMetaData::PcmAudioPar
     pcmAudioParameters.isValid = true;
 }
 
-// Validate any user-specified line parameters and set them to reasonable defaults + warn if invalid.
-void LdDecodeMetaData::processLineParameters(LdDecodeMetaData::LineParameters &_lineParameters)
+// Based on the video system selected, set default values for the members of
+// VideoParameters that aren't obtained from the JSON.
+void LdDecodeMetaData::initialiseVideoSystemParameters()
 {
-    _lineParameters.process(videoParameters.fieldHeight);
-    lineParameters = _lineParameters;
+    const VideoSystemDefaults &defaults = getSystemDefaults(videoParameters);
+    videoParameters.fSC = defaults.fSC;
 
-    videoParameters.firstActiveFieldLine = lineParameters.firstActiveFieldLine;
-    videoParameters.lastActiveFieldLine = lineParameters.lastActiveFieldLine;
-    videoParameters.firstActiveFrameLine = lineParameters.firstActiveFrameLine;
-    videoParameters.lastActiveFrameLine = lineParameters.lastActiveFrameLine;
+    // Set default LineParameters
+    LdDecodeMetaData::LineParameters lineParameters;
+    processLineParameters(lineParameters);
 }
 
-// Validate and process line parameters, setting defaults if not overridden by the user.
-void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
+// Validate LineParameters and apply them to the VideoParameters
+void LdDecodeMetaData::processLineParameters(LdDecodeMetaData::LineParameters &lineParameters)
+{
+    lineParameters.applyTo(videoParameters);
+}
+
+// Validate and apply to a set of VideoParameters
+void LdDecodeMetaData::LineParameters::applyTo(LdDecodeMetaData::VideoParameters &videoParameters)
 {
     const bool firstFieldLineExists = firstActiveFieldLine != -1;
     const bool lastFieldLineExists = lastActiveFieldLine != -1;
     const bool firstFrameLineExists = firstActiveFrameLine != -1;
     const bool lastFrameLineExists = lastActiveFrameLine != -1;
 
-    const bool isPal = fieldHeight == sDefaultPALFieldHeightCheck;
-    const bool isNtsc = fieldHeight == sDefaultNTSCFieldHeightCheck;
+    const VideoSystemDefaults &defaults = getSystemDefaults(videoParameters);
+    const qint32 minFirstFrameLine = defaults.minActiveFrameLine;
+    const qint32 defaultFirstFieldLine = defaults.firstActiveFieldLine;
+    const qint32 defaultLastFieldLine = defaults.lastActiveFieldLine;
+    const qint32 defaultFirstFrameLine = defaults.firstActiveFrameLine;
+    const qint32 defaultLastFrameLine = defaults.lastActiveFrameLine;
 
-    const qint32 defaultFirstFieldLine = isNtsc ? sDefaultNTSCFirstActiveFieldLine : (isPal ? sDefaultPALFirstActiveFieldLine : sDefaultAutoFirstActiveFieldLine);
-    const qint32 defaultLastFieldLine = isNtsc ? sDefaultNTSCLastActiveFieldLine : (isPal ? sDefaultPALLastActiveFieldLine : -1);
-    const qint32 minFirstFrameLine = isNtsc ? sMinNTSCFirstActiveFrameLine : (isPal ? sMinPALFirstActiveFrameLine : 1);
-    const qint32 defaultFirstFrameLine = isNtsc ? sDefaultNTSCFirstActiveFrameLine : (isPal ? sDefaultPALFirstActiveFrameLine : -1);
-    const qint32 defaultLastFrameLine = isNtsc ? sDefaultNTSCLastActiveFrameLine : (isPal ? sDefaultPALLastActiveFrameLine : -1);
-
-    // Validate and potentially fix the first active field line (needs to be valid in case we're not in PAL or NTSC mode).
+    // Validate and potentially fix the first active field line.
     if (firstActiveFieldLine < 1 || firstActiveFieldLine > defaultLastFieldLine) {
         if (firstFieldLineExists) {
             qInfo().nospace() << "Specified first active field line " << firstActiveFieldLine << " out of bounds (1 to "
-                              << defaultLastFieldLine << "), restting to default (" << defaultFirstFieldLine << ").";
+                              << defaultLastFieldLine << "), resetting to default (" << defaultFirstFieldLine << ").";
         }
         firstActiveFieldLine = defaultFirstFieldLine;
-    }
-
-    // Unknown video system, guessing some stuff for now instead of risking going out of bounds.
-    if (!isPal && !isNtsc) {
-        qCritical("Unknown video system! Output may not be correct!");
-
-        lastActiveFieldLine = lastFieldLineExists ? lastActiveFieldLine : (fieldHeight - 5);
-        firstActiveFrameLine = firstFrameLineExists ? firstActiveFrameLine : (firstActiveFieldLine * 2);
-        lastActiveFrameLine = lastFrameLineExists ? lastActiveFrameLine : (lastActiveFieldLine * 2);
-        return;
     }
 
     // Validate and potentially fix the last active field line.
     if (lastActiveFieldLine < 1 || lastActiveFieldLine > defaultLastFieldLine) {
         if (lastFieldLineExists) {
             qInfo().nospace() << "Specified last active field line " << lastActiveFieldLine << " out of bounds (1 to "
-                              << defaultLastFieldLine << "), restting to default (" << defaultLastFieldLine << ").";
+                              << defaultLastFieldLine << "), resetting to default (" << defaultLastFieldLine << ").";
         }
         lastActiveFieldLine = defaultLastFieldLine;
     }
@@ -580,7 +584,7 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
     if (firstActiveFrameLine < minFirstFrameLine || firstActiveFrameLine > defaultLastFrameLine) {
         if (firstFrameLineExists) {
             qInfo().nospace() << "Specified first active frame line " << firstActiveFrameLine << " out of bounds (" << minFirstFrameLine << " to "
-                              << defaultLastFrameLine << "), restting to default (" << defaultFirstFrameLine << ").";
+                              << defaultLastFrameLine << "), resetting to default (" << defaultFirstFrameLine << ").";
         }
         firstActiveFrameLine = defaultFirstFrameLine;
     }
@@ -589,18 +593,24 @@ void LdDecodeMetaData::LineParameters::process(qint32 fieldHeight)
     if (lastActiveFrameLine < minFirstFrameLine || lastActiveFrameLine > defaultLastFrameLine) {
         if (lastFrameLineExists) {
             qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " out of bounds (" << minFirstFrameLine << " to "
-                              << defaultLastFrameLine << "), restting to default (" << defaultLastFrameLine << ").";
+                              << defaultLastFrameLine << "), resetting to default (" << defaultLastFrameLine << ").";
         }
         lastActiveFrameLine = defaultLastFrameLine;
     }
 
     // Range-check the first and last active frame lines.
     if (firstActiveFrameLine > lastActiveFrameLine) {
-       qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " is before specified first active frame line"
-                         << firstActiveFrameLine << ", resetting to defaults (" << defaultFirstFrameLine << "-" << defaultLastFrameLine << ").";
+        qInfo().nospace() << "Specified last active frame line " << lastActiveFrameLine << " is before specified first active frame line"
+                          << firstActiveFrameLine << ", resetting to defaults (" << defaultFirstFrameLine << "-" << defaultLastFrameLine << ").";
         firstActiveFrameLine = defaultFirstFrameLine;
         lastActiveFrameLine = defaultLastFrameLine;
     }
+
+    // Store the new values back into videoParameters
+    videoParameters.firstActiveFieldLine = firstActiveFieldLine;
+    videoParameters.lastActiveFieldLine = lastActiveFieldLine;
+    videoParameters.firstActiveFrameLine = firstActiveFrameLine;
+    videoParameters.lastActiveFrameLine = lastActiveFrameLine;
 }
 
 // This method gets the metadata for the specified sequential field number (indexed from 1 (not 0!))
