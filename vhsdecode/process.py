@@ -707,7 +707,7 @@ class FieldShared:
         wow = np.ones(len(lineinfo))
 
         for l in range(0, len(wow) - 1):
-            wow[l] = min(self.get_linelen(l) / self.inlinelen, 1.06)
+            wow[l] = max(min(self.get_linelen(l) / self.inlinelen, 1.02), 0.9)
 
         for l in range(self.lineoffset, self.lineoffset + 10):
             wow[l] = np.median(wow[l : l + 4])
@@ -1459,25 +1459,33 @@ class VHSRFDecode(ldd.RFDecode):
         # Sync de-emphasis
         db05, da05 = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
 
+        # db2, da2 = FMDeEmphasisB(
+        #     self.freq_hz, 1.5, 1e6, 3 / 4
+        # ).get()
+
+        # nlde_lower = (
+        #     lddu.filtfft((db2, da2), self.blocklen)
+        # )
+
         if False:
             import matplotlib.pyplot as plt
 
             corner_freq = 1 / (math.pi * 2 * DP["deemph_tau"])
 
             db2, da2 = FMDeEmphasisB(
-                self.freq_hz, DP["deemph_gain"], DP["deemph_mid"] + 50000
+                self.freq_hz, 1.5, 1e6, 3 / 4
             ).get()
             db3, da3 = FMDeEmphasisB(
-                self.freq_hz, DP["deemph_gain"], DP["deemph_mid"] - 50000
+                self.freq_hz, 1.5, 1e6, 4 / 4
             ).get()
             self.Filters["FVideo2"] = (
-                lddu.filtfft((db2, da2), self.blocklen) * self.Filters["Fvideo_lpf"]
+                lddu.filtfft((db2, da2), self.blocklen) * filter_video_lpf
             )
             self.Filters["FVideo3"] = (
-                lddu.filtfft((db3, da3), self.blocklen) * self.Filters["Fvideo_lpf"]
+                lddu.filtfft((db3, da3), self.blocklen) * filter_video_lpf
             )
 
-            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
             w1, h1 = sps.freqz(db, da, fs=self.freq_hz)
             w2, h2 = sps.freqz(db2, da2, fs=self.freq_hz)
@@ -1522,37 +1530,35 @@ class VHSRFDecode(ldd.RFDecode):
                 ]
             )
             test_arr[0] *= 1000000.0
-            test_arr[1] *= -1
+            # test_arr[1] *= -1
             #            test_arr[0::] *= 1e6
 
             # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
             #        ax1.plot(hilbert, color='#FF0000')
             # ax1.plot(data, color="#00FF00")
             ax1.plot(test_arr[0], test_arr[1], color="#000000")
-            ax1.plot(w1, 20 * np.log10(h1))
+            ax1.plot(w1, -20 * np.log10(h1))
             ax2.plot(test_arr[0], test_arr[1], color="#000000")
-            ax2.plot(w2, 20 * np.log10(h2))
-            ax3.plot(test_arr[0], test_arr[1], color="#000000")
-            ax3.plot(w3, 20 * np.log10(h3))
-            ax4.plot(test_arr[0], test_arr[1])
+            ax2.plot(w2, -20 * np.log10(h2))
+            ax2.plot(test_arr[0], test_arr[1], color="#000000")
+            ax2.plot(w3, -20 * np.log10(h3))
+            # ax4.plot(test_arr[0], test_arr[1])
             ax1.axhline(-3)
             ax2.axhline(-3)
-            ax3.axhline(-3)
             ax1.axhline(-7)
             ax2.axhline(-7)
-            ax3.axhline(-7)
             ax1.axvline(corner_freq)
             ax2.axvline(corner_freq)
-            ax3.axvline(corner_freq)
+            ax2.axvline(0.5e6)
+            ax2.axvline(1e6)
             plt.show()
+            exit()
 
         self.Filters["FEnvPost"] = sps.butter(
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
-        # self.Filters["Fdeemp"] = lddu.filtfft((db, da), self.blocklen)
         filter_deemp = lddu.filtfft((db, da), self.blocklen)
-        # self.Filters["Fdeemp_05"] = lddu.filtfft((db05, da05), self.blocklen)
         self.Filters["FVideo"] = filter_video_lpf * filter_deemp
 
         SF["FVideo05"] = filter_video_lpf * filter_deemp * filter_05

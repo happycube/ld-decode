@@ -67,7 +67,7 @@ def get_rfparams_pal_vhs(rfparams_pal):
     RFParams_PAL_VHS["video_hpf_extra_order"] = 1
 
     # Low-pass filter on Y after demodulation
-    RFParams_PAL_VHS["video_lpf_freq"] = 3500000
+    RFParams_PAL_VHS["video_lpf_freq"] = 3200000
     RFParams_PAL_VHS["video_lpf_order"] = 1
 
     # PAL color under carrier is 40H + 1953
