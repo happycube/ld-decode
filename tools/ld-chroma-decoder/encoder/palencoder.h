@@ -51,8 +51,6 @@ private:
     bool scLocked;
 
     LdDecodeMetaData::VideoParameters videoParameters;
-    double fSC;
-    double sampleRate;
     qint32 activeWidth;
     qint32 activeHeight;
     qint32 activeLeft;

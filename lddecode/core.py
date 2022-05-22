@@ -3966,10 +3966,8 @@ class LDdecode:
 
         vp["isSourcePal"] = True if f.rf.system == "PAL" else False
 
-        vp["fsc"] = int(f.rf.SysParams["fsc_mhz"] * 1000000)
         vp["fieldWidth"] = f.rf.SysParams["outlinelen"]
-        vp["sampleRate"] = vp["fsc"] * 4
-        spu = vp["sampleRate"] / 1000000
+        vp["sampleRate"] = f.rf.SysParams["outfreq"] * 1000000
 
         vp["black16bIre"] = np.float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
         vp["white16bIre"] = np.float(f.hz_to_output(f.rf.iretohz(100)))
@@ -3978,6 +3976,7 @@ class LDdecode:
 
         # current burst adjustment as of 2/27/19, update when #158 is fixed!
         badj = -1.4
+        spu = f.rf.SysParams["outfreq"]
         vp["colourBurstStart"] = np.round(
             (f.rf.SysParams["colorBurstUS"][0] * spu) + badj
         )

@@ -147,7 +147,7 @@ void PalColour::buildLookUpTables()
     //   so we can rotate the chroma samples to put U/V on the right axes
     if(videoParameters.fieldHeight != 263) {
         for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
-            const double rad = 2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate;
+            const double rad = 2 * M_PI * i * videoParameters.fSC / videoParameters.sampleRate;
             sine[i] = sin(rad);
             cosine[i] = cos(rad);
         }
@@ -157,7 +157,7 @@ void PalColour::buildLookUpTables()
         // swapping the cos and sin references seem to work around that.
         // TODO: Find a proper solution to this.
         for (qint32 i = 0; i < videoParameters.fieldWidth; i++) {
-            const double rad = 2 * M_PI * i * videoParameters.fsc / videoParameters.sampleRate;
+            const double rad = 2 * M_PI * i * videoParameters.fSC / videoParameters.sampleRate;
             sine[i] = cos(rad);
             cosine[i] = sin(rad);
         }
