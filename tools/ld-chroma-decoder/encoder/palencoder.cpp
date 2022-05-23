@@ -101,7 +101,7 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
 
     // Parameters that are common for subcarrier- and line-locked output:
     videoParameters.numberOfSequentialFields = 0;
-    videoParameters.isSourcePal = true;
+    videoParameters.system = PAL;
     videoParameters.isSubcarrierLocked = scLocked;
     // White level and blanking level, extended to 16 bits [EBU p6]
     videoParameters.white16bIre = 0xD300;

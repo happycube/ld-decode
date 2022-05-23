@@ -189,6 +189,7 @@ void MainWindow::updateGuiLoaded()
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
     ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));
+    updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -205,8 +206,17 @@ void MainWindow::updateGuiLoaded()
 
     // Update the status bar
     QString statusText;
-    if (tbcSource.getIsSourcePal()) statusText += "PAL";
-    else statusText += "NTSC";
+    switch (tbcSource.getSystem()) {
+    case NTSC:
+        statusText += "NTSC";
+        break;
+    case PAL:
+        statusText += "PAL";
+        break;
+    case PAL_M:
+        statusText += "PAL-M";
+        break;
+    }
     statusText += " source loaded with ";
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
@@ -220,7 +230,7 @@ void MainWindow::updateGuiLoaded()
     }
 
     // Update the chroma decoder configuration dialogue
-    chromaDecoderConfigDialog->setConfiguration(tbcSource.getIsSourcePal(), tbcSource.getPalConfiguration(),
+    chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
                                                 tbcSource.getNtscConfiguration(), tbcSource.getOutputConfiguration());
 
     // Show the current frame
@@ -281,6 +291,7 @@ void MainWindow::updateGuiUnloaded()
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
     aspectRatio = Aspect::SAR_11;
     ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));;
+    updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
     // Set zoom button states
@@ -298,6 +309,27 @@ void MainWindow::updateGuiUnloaded()
 
     // Hide configuration dialogues
     chromaDecoderConfigDialog->hide();
+}
+
+// Update the source selection button
+void MainWindow::updateSourcesPushButton()
+{
+    ui->sourcesPushButton->setEnabled(tbcSource.getSourceMode() != TbcSource::ONE_SOURCE);
+
+    switch (tbcSource.getSourceMode()) {
+    case TbcSource::ONE_SOURCE:
+        ui->sourcesPushButton->setText(tr("One Source"));
+        break;
+    case TbcSource::LUMA_SOURCE:
+        ui->sourcesPushButton->setText(tr("Y Source"));
+        break;
+    case TbcSource::CHROMA_SOURCE:
+        ui->sourcesPushButton->setText(tr("C Source"));
+        break;
+    case TbcSource::BOTH_SOURCES:
+        ui->sourcesPushButton->setText(tr("Y+C Sources"));
+        break;
+    }
 }
 
 // Frame display methods ----------------------------------------------------------------------------------------------
@@ -342,7 +374,7 @@ void MainWindow::showFrame()
     }
 
     // Update the closed caption dialog
-    if (!tbcSource.getIsSourcePal()) {
+    if (tbcSource.getSystem() == NTSC) {
         closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(), tbcSource.getCcData1());
     }
     // QT Bug workaround for some macOS versions
@@ -375,13 +407,13 @@ void MainWindow::updateFrameViewer()
     // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
     qint32 adjustment = 0;
     if (aspectRatio == Aspect::DAR_43) {
-        if (tbcSource.getIsSourcePal()) adjustment = Aspect::DAR_43_ADJ_625; // PAL 4:3
-        else adjustment = Aspect::DAR_43_ADJ_525; // NTSC 4:3
+        if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_43_ADJ_625; // 625-line 4:3
+        else adjustment = Aspect::DAR_43_ADJ_525; // 525-line 4:3
     }
     
     if (aspectRatio == Aspect::DAR_169) {
-        if (tbcSource.getIsSourcePal()) adjustment = Aspect::DAR_169_ADJ_625; // PAL 16:9
-        else adjustment = Aspect::DAR_169_ADJ_525; // NTSC 16:9
+        if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_169_ADJ_625; // 625-line 16:9
+        else adjustment = Aspect::DAR_169_ADJ_525; // 525-line 16:9
     }
 
     // Scale and apply the pixmap (only if it's valid)
@@ -530,7 +562,8 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getPngDirectory();
 
-    if (tbcSource.getIsSourcePal()) filenameSuggestion += tr("/frame_pal_");
+    if (tbcSource.getSystem() == PAL) filenameSuggestion += tr("/frame_pal_");
+    else if (tbcSource.getSystem() == PAL_M) filenameSuggestion += tr("/frame_palm_");
     else filenameSuggestion += tr("/frame_ntsc_");
 
     if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
@@ -558,8 +591,8 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         if (aspectRatio == Aspect::DAR_43) {
             // Scale to 4:3 aspect
             qint32 adjustment = 0;
-            if (tbcSource.getIsSourcePal()) adjustment = Aspect::DAR_43_ADJ_625; // PAL 4:3
-            else adjustment = Aspect::DAR_43_ADJ_525; // NTSC 4:3
+            if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_43_ADJ_625; // 625-line 4:3
+            else adjustment = Aspect::DAR_43_ADJ_525; // 525-line 4:3
 
             imageToSave = imageToSave.scaled((imageToSave.size().width() + adjustment),
                                              (imageToSave.size().height()),
@@ -570,8 +603,8 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         if (aspectRatio == Aspect::DAR_169) {
             // Scale to 16:9 aspect
             qint32 adjustment = 0;
-            if (tbcSource.getIsSourcePal()) adjustment = Aspect::DAR_169_ADJ_625; // PAL 16:9
-            else adjustment = Aspect::DAR_169_ADJ_525; // NTSC 16:9
+            if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_169_ADJ_625; // 625-line 16:9
+            else adjustment = Aspect::DAR_169_ADJ_525; // 525-line 16:9
 
             imageToSave = imageToSave.scaled((imageToSave.size().width() + adjustment),
                                              (imageToSave.size().height()),
@@ -738,6 +771,31 @@ void MainWindow::on_dropoutsPushButton_clicked()
     }
 
     // Show the current frame (why isn't this option passed?)
+    showFrame();
+}
+
+// Source selection button clicked
+void MainWindow::on_sourcesPushButton_clicked()
+{
+    switch (tbcSource.getSourceMode()) {
+    case TbcSource::ONE_SOURCE:
+        // Do nothing - the button's disabled anyway
+        break;
+    case TbcSource::LUMA_SOURCE:
+        tbcSource.setSourceMode(TbcSource::CHROMA_SOURCE);
+        break;
+    case TbcSource::CHROMA_SOURCE:
+        tbcSource.setSourceMode(TbcSource::BOTH_SOURCES);
+        break;
+    case TbcSource::BOTH_SOURCES:
+        tbcSource.setSourceMode(TbcSource::LUMA_SOURCE);
+        break;
+    }
+
+    // Update the button
+    updateSourcesPushButton();
+
+    // Show the current frame
     showFrame();
 }
 

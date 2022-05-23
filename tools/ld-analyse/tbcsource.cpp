@@ -66,6 +66,7 @@ void TbcSource::loadSource(QString sourceFilename)
 void TbcSource::unloadSource()
 {
     sourceVideo.close();
+    if (sourceMode != ONE_SOURCE) chromaSourceVideo.close();
     resetState();
 }
 
@@ -131,6 +132,21 @@ bool TbcSource::getChromaDecoder()
 bool TbcSource::getFieldOrder()
 {
     return reverseFoOn;
+}
+
+// Return the source mode
+TbcSource::SourceMode TbcSource::getSourceMode()
+{
+    return sourceMode;
+}
+
+// Set the source mode
+void TbcSource::setSourceMode(TbcSource::SourceMode _sourceMode)
+{
+    if (sourceMode == ONE_SOURCE) return;
+
+    invalidateFrameCache();
+    sourceMode = _sourceMode;
 }
 
 // Load the metadata for a frame
@@ -232,11 +248,11 @@ bool TbcSource::getIsWidescreen()
     return ldDecodeMetaData.getVideoParameters().isWidescreen;
 }
 
-// Method returns true if the TBC source is PAL (false for NTSC)
-bool TbcSource::getIsSourcePal()
+// Return the source's VideoSystem
+VideoSystem TbcSource::getSystem()
 {
-    if (!sourceReady) return false;
-    return ldDecodeMetaData.getVideoParameters().isSourcePal;
+    if (!sourceReady) return NTSC;
+    return ldDecodeMetaData.getVideoParameters().system;
 }
 
 // Method to get the frame height in scanlines
@@ -333,7 +349,6 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     scanLineData.colourBurstEnd = videoParameters.colourBurstEnd;
     scanLineData.activeVideoStart = videoParameters.activeVideoStart;
     scanLineData.activeVideoEnd = videoParameters.activeVideoEnd;
-    scanLineData.isSourcePal = videoParameters.isSourcePal;
 
     // Is this line part of the active region?
     scanLineData.isActiveLine = (scanLine - 1) >= videoParameters.firstActiveFrameLine
@@ -434,7 +449,7 @@ void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfi
 
     // Configure the chroma decoder
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-    if (videoParameters.isSourcePal) {
+    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
@@ -515,6 +530,7 @@ void TbcSource::resetState()
     dropoutsOn = false;
     reverseFoOn = false;
     sourceReady = false;
+    sourceMode = ONE_SOURCE;
 
     // Cache state
     loadedFrameNumber = -1;
@@ -540,7 +556,7 @@ void TbcSource::loadInputFields()
 
     // Work out how many frames ahead/behind we need to fetch
     qint32 lookBehind, lookAhead;
-    if (getIsSourcePal()) {
+    if (getSystem() == PAL || getSystem() == PAL_M) {
         lookBehind = palConfiguration.getLookBehind();
         lookAhead = palConfiguration.getLookAhead();
     } else {
@@ -548,10 +564,38 @@ void TbcSource::loadInputFields()
         lookAhead = ntscConfiguration.getLookAhead();
     }
 
-    // Fetch the input fields and metadata
-    SourceField::loadFields(sourceVideo, ldDecodeMetaData,
-                            loadedFrameNumber, 1, lookBehind, lookAhead,
-                            inputFields, inputStartIndex, inputEndIndex);
+    if (sourceMode == CHROMA_SOURCE) {
+        // Load chroma directly into inputFields
+        SourceField::loadFields(chromaSourceVideo, ldDecodeMetaData,
+                                loadedFrameNumber, 1, lookBehind, lookAhead,
+                                inputFields, inputStartIndex, inputEndIndex);
+    } else {
+        // Load the only source, or luma, into inputFields
+        SourceField::loadFields(sourceVideo, ldDecodeMetaData,
+                                loadedFrameNumber, 1, lookBehind, lookAhead,
+                                inputFields, inputStartIndex, inputEndIndex);
+    }
+
+    if (sourceMode == BOTH_SOURCES) {
+        // Load chroma into chromaInputFields
+        SourceField::loadFields(chromaSourceVideo, ldDecodeMetaData,
+                                loadedFrameNumber, 1, lookBehind, lookAhead,
+                                chromaInputFields, inputStartIndex, inputEndIndex);
+
+        // Separate chroma is offset (see chroma_to_u16 in vhsdecode/chroma.py)
+        static constexpr qint32 CHROMA_OFFSET = 32767;
+
+        // Add chroma to luma, removing the offset
+        for (qint32 fieldIndex = inputStartIndex; fieldIndex < inputEndIndex; fieldIndex++) {
+            auto &sourceData = inputFields[fieldIndex].data;
+            const auto &chromaData = chromaInputFields[fieldIndex].data;
+
+            for (qint32 i = 0; i < sourceData.size(); i++) {
+                qint32 sum = static_cast<qint32>(sourceData[i]) + static_cast<qint32>(chromaData[i]) - CHROMA_OFFSET;
+                sourceData[i] = static_cast<quint16>(qBound(0, sum, 65535));
+            }
+        }
+    }
 
     inputFieldsValid = true;
 }
@@ -565,7 +609,7 @@ void TbcSource::decodeFrame()
 
     // Decode the current frame to components
     componentFrames.resize(1);
-    if (getIsSourcePal()) {
+    if (getSystem() == PAL || getSystem() == PAL_M) {
         // PAL source
         palColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
     } else {
@@ -806,13 +850,21 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     QString jsonFileName = sourceFilename + ".json";
 
-    const bool chroma_tbc = sourceFilename.endsWith("_chroma.tbc");
+    const bool isChromaTbc = sourceFilename.endsWith("_chroma.tbc");
+    if (isChromaTbc && !QFileInfo::exists(jsonFileName)) {
+        // The user specified a _chroma.tbc file, and it doesn't have a .json.
 
-    // If we are trying to open a _chroma tbc from vhs-decode.
-    // Try to look for the json for the luma part if the chroma doesn't have it's own.
-    if (!QFileInfo::exists(jsonFileName) && chroma_tbc) {
-        jsonFileName.chop(16);
-        jsonFileName += ".tbc.json";
+        // The corresponding luma file should have a .json, so use that.
+        QString baseFilename = sourceFilename;
+        baseFilename.chop(11);
+        jsonFileName = baseFilename + ".tbc.json";
+
+        // But does the luma file itself exist?
+        QString lumaFilename = baseFilename + ".tbc";
+        if (QFileInfo::exists(lumaFilename)) {
+            // Yes. Open both of them, defaulting to the chroma view.
+            sourceFilename = lumaFilename;
+        }
     }
 
     if (!ldDecodeMetaData.read(jsonFileName)) {
@@ -841,16 +893,38 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         return;
     }
 
+    // Is there a separate _chroma.tbc file?
+    QString chromaSourceFilename = sourceFilename;
+    chromaSourceFilename.chop(4);
+    chromaSourceFilename += "_chroma.tbc";
+    if (QFileInfo::exists(chromaSourceFilename)) {
+        // Yes! Open it.
+        qDebug() << "TbcSource::startBackgroundLoad(): Loading chroma TBC file...";
+        emit busyLoading("Loading chroma TBC file...");
+        if (!chromaSourceVideo.open(chromaSourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
+            // Open failed
+            qWarning() << "Open chroma TBC file failed for filename" << chromaSourceFilename;
+            currentSourceFilename.clear();
+            sourceVideo.close();
+
+            // Show an error to the user and give up
+            lastLoadError = "Could not open source chroma TBC data file";
+            return;
+        }
+
+        sourceMode = isChromaTbc ? CHROMA_SOURCE : BOTH_SOURCES;
+    }
+
     // Both the video and metadata files are now open
     sourceReady = true;
     currentSourceFilename = sourceFilename;
 
     // Configure the chroma decoder
-    if (getIsSourcePal()) {
+    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
-        // Enable this option by default if we are loading a vhs-decode chroma only tbc file.
-        if (chroma_tbc) {
+        if (isChromaTbc || sourceMode != ONE_SOURCE) {
+            // Enable phase compensation by default, since this is probably a videotape source
             ntscConfiguration.phaseCompensation = true;
         }
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);

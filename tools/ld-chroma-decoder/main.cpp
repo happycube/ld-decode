@@ -471,10 +471,10 @@ int main(int argc, char *argv[])
     QString decoderName;
     if (parser.isSet(decoderOption)) {
         decoderName = parser.value(decoderOption);
-    } else if (metaData.getVideoParameters().isSourcePal) {
-        decoderName = "pal2d";
-    } else {
+    } else if (metaData.getVideoParameters().system == NTSC) {
         decoderName = "ntsc2d";
+    } else {
+        decoderName = "pal2d";
     }
 
     // Require ntsc3d if the map overlay is selected

@@ -38,6 +38,13 @@
 class JsonReader;
 class JsonWriter;
 
+// The video system (combination of a line standard and a colour standard)
+enum VideoSystem {
+    PAL = 0,    // 625-line PAL
+    NTSC,       // 525-line NTSC
+    PAL_M,      // 525-line PAL
+};
+
 class LdDecodeMetaData
 {
 
@@ -57,7 +64,7 @@ public:
 
         qint32 numberOfSequentialFields = -1;
 
-        bool isSourcePal = false;
+        VideoSystem system = NTSC;
         bool isSubcarrierLocked = false;
         bool isWidescreen = false;
 

@@ -4,7 +4,7 @@
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2021 Simon Inns
-    Copyright (C) 2021 Adam Sampson
+    Copyright (C) 2021-2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -61,7 +61,6 @@ public:
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
         bool isActiveLine;
-        bool isSourcePal;
     };
 
     void loadSource(QString inputFileName);
@@ -77,13 +76,22 @@ public:
     bool getChromaDecoder();
     bool getFieldOrder();
 
+    enum SourceMode {
+        ONE_SOURCE,
+        LUMA_SOURCE,
+        CHROMA_SOURCE,
+        BOTH_SOURCES,
+    };
+    SourceMode getSourceMode();
+    void setSourceMode(SourceMode sourceMode);
+
     void loadFrame(qint32 frameNumber);
 
     QImage getFrameImage();
     qint32 getNumberOfFrames();
     qint32 getNumberOfFields();
     bool getIsWidescreen();
-    bool getIsSourcePal();
+    VideoSystem getSystem();
     qint32 getFrameHeight();
     qint32 getFrameWidth();
 
@@ -137,6 +145,8 @@ private:
 
     // Source globals
     SourceVideo sourceVideo;
+    SourceVideo chromaSourceVideo;
+    SourceMode sourceMode;
     LdDecodeMetaData ldDecodeMetaData;
     QString currentSourceFilename;
     QString lastLoadError;
@@ -160,6 +170,7 @@ private:
 
     // Source fields needed to decode the loaded frame
     QVector<SourceField> inputFields;
+    QVector<SourceField> chromaInputFields;
     qint32 inputStartIndex, inputEndIndex;
     bool inputFieldsValid;
 
