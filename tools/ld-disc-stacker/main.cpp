@@ -295,8 +295,8 @@ int main(int argc, char *argv[])
         }
 
         // Ensure that the video source standard matches the primary source
-        if (ldDecodeMetaData[0]->getVideoParameters().isSourcePal != videoParameters.isSourcePal) {
-            qInfo() << "All additional input sources must have the same video format (PAL/NTSC) as the initial source!";
+        if (ldDecodeMetaData[0]->getVideoParameters().system != videoParameters.system) {
+            qInfo() << "All additional input sources must have the same video system as the initial source!";
             return 1;
         }
 

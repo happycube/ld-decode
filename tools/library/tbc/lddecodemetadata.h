@@ -38,6 +38,13 @@
 class JsonReader;
 class JsonWriter;
 
+// The video system (combination of a line standard and a colour standard)
+enum VideoSystem {
+    PAL = 0,    // 625-line PAL
+    NTSC,       // 525-line NTSC
+    PAL_M,      // 525-line PAL
+};
+
 class LdDecodeMetaData
 {
 
@@ -51,39 +58,13 @@ public:
         void write(JsonWriter &writer) const;
     };
 
-    // Pseudo metadata items - these values are populated automatically by the library
-    // if not otherwise specified by the user. These are half-open ranges, where lines are
-    // numbered sequentially from 1 within each field or interlaced frame.
-    struct LineParameters {
-        void process(qint32 fieldHeight);
-
-        qint32 firstActiveFieldLine = -1;
-        qint32 lastActiveFieldLine = -1;
-        qint32 firstActiveFrameLine = -1;
-        qint32 lastActiveFrameLine = -1;
-
-        static const qint32 sMinPALFirstActiveFrameLine;
-        static const qint32 sDefaultPALFirstActiveFieldLine;
-        static const qint32 sDefaultPALLastActiveFieldLine;
-        static const qint32 sDefaultPALFirstActiveFrameLine;
-        static const qint32 sDefaultPALLastActiveFrameLine;
-        static const qint32 sDefaultPALFieldHeightCheck;
-
-        static const qint32 sMinNTSCFirstActiveFrameLine;
-        static const qint32 sDefaultNTSCFirstActiveFieldLine;
-        static const qint32 sDefaultNTSCLastActiveFieldLine;
-        static const qint32 sDefaultNTSCFirstActiveFrameLine;
-        static const qint32 sDefaultNTSCLastActiveFrameLine;
-        static const qint32 sDefaultNTSCFieldHeightCheck;
-
-        static const qint32 sDefaultAutoFirstActiveFieldLine;
-    };
-
     // Video metadata definition
     struct VideoParameters {
+        // -- Members stored in the JSON metadata --
+
         qint32 numberOfSequentialFields = -1;
 
-        bool isSourcePal = false;
+        VideoSystem system = NTSC;
         bool isSubcarrierLocked = false;
         bool isWidescreen = false;
 
@@ -97,15 +78,24 @@ public:
 
         qint32 fieldWidth = -1;
         qint32 fieldHeight = -1;
-        qint32 sampleRate = -1;
-        qint32 fsc = -1;
+        double sampleRate = -1.0;
 
         bool isMapped = false;
 
         QString gitBranch;
         QString gitCommit;
 
-        // Copy of the members in LineParameters; filled in based on our LineParameters when retrieving VideoParameters
+        // -- Members set by the library --
+
+        // Colour subcarrier frequency in Hz
+        double fSC = -1.0;
+
+        // The range of active lines within a frame.
+        // This is the same information represented in two different ways, for
+        // field- and frame-based processing respectively; the field range
+        // should cover the active lines in both fields of a frame.
+        // These are half-open ranges, where lines are numbered sequentially
+        // from 1 within each field or interlaced frame.
         qint32 firstActiveFieldLine = -1;
         qint32 lastActiveFieldLine = -1;
         qint32 firstActiveFrameLine = -1;
@@ -116,6 +106,17 @@ public:
 
         void read(JsonReader &reader);
         void write(JsonWriter &writer) const;
+    };
+
+    // Specification for customising the range of active lines in VideoParameters.
+    // -1 for any of these means to use the default for the standard.
+    struct LineParameters {
+        qint32 firstActiveFieldLine = -1;
+        qint32 lastActiveFieldLine = -1;
+        qint32 firstActiveFrameLine = -1;
+        qint32 lastActiveFrameLine = -1;
+
+        void applyTo(VideoParameters &videoParameters);
     };
 
     // VITS metrics metadata definition
@@ -144,7 +145,7 @@ public:
 
     // PCM sound metadata definition
     struct PcmAudioParameters {
-        qint32 sampleRate = -1;
+        double sampleRate = -1.0;
         bool isLittleEndian = false;
         bool isSigned = false;
         qint32 bits = -1;
@@ -245,12 +246,12 @@ public:
 private:
     bool isFirstFieldFirst;
     VideoParameters videoParameters;
-    LineParameters lineParameters;
     PcmAudioParameters pcmAudioParameters;
     QVector<Field> fields;
     QVector<qint32> pcmAudioFieldStartSampleMap;
     QVector<qint32> pcmAudioFieldLengthMap;
 
+    void initialiseVideoSystemParameters();
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);
     void generatePcmAudioMap();
 };

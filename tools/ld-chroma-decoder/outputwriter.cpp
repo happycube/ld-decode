@@ -141,7 +141,7 @@ QByteArray OutputWriter::getStreamHeader() const
     str << " H" << outputHeight;
 
     // Frame rate
-    if (videoParameters.isSourcePal) {
+    if (videoParameters.system == PAL) {
         str << " F25:1";
     } else {
         str << " F30000:1001";
@@ -152,7 +152,7 @@ QByteArray OutputWriter::getStreamHeader() const
 
     // Pixel aspect ratio
     // XXX Can this be computed, in case the width has been adjusted?
-    if (videoParameters.isSourcePal) {
+    if (videoParameters.system == PAL) {
         if (videoParameters.isWidescreen) {
             str << " A512:461"; // (16 / 9) * (576 / 922)
         } else {

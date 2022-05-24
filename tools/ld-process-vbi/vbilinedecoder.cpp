@@ -82,7 +82,7 @@ void VbiLineDecoder::run()
         }
 
         // Process NTSC specific data if source type is NTSC
-        if (!videoParameters.isSourcePal) {
+        if (videoParameters.system == NTSC) {
             // Get the 40-bit FM coded data from field line 10
             fmDecode = fmCode.fmDecoder(getActiveVideoLine(sourceFieldData, 10 - startFieldLine, videoParameters), videoParameters);
 

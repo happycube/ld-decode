@@ -48,7 +48,7 @@ bool writeFfmetadata(LdDecodeMetaData &metaData, const QString &fileName)
     // using the times encoded in the VBI, because we might be working with a
     // capture of only part of a disc. Select the appropriate timebase to make
     // this work.
-    const QString timeBase = videoParameters.isSourcePal ? "1/50" : "1001/60000";
+    const QString timeBase = videoParameters.system == PAL ? "1/50" : "1001/60000";
 
     // Scan through the fields in the input, collecting VBI information
     vector<ChapterChange> chapterChanges;

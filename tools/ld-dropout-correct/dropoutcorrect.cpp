@@ -267,7 +267,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
         // We're not trying to match the chroma phase, so any line will do.
         stepAmount = 1;
         otherFieldOffset = -1;
-    } else if (videoParameters[0].isSourcePal) {
+    } else if (videoParameters[0].system == PAL || videoParameters[0].system == PAL_M) {
         // For PAL: [Poynton ch44 p529]
         //
         // - Subcarrier has 283.7516 cycles per line, so there's a (nearly) 90
@@ -488,10 +488,12 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
         Filters filters;
         QVector<quint16> lineBuf(videoParameters[0].fieldWidth);
         auto filterLineBuf = [&] {
-            if (videoParameters[0].isSourcePal) {
+            if (videoParameters[0].system == PAL) {
                 filters.palLumaFirFilter(lineBuf.data(), lineBuf.size());
-            } else {
+            } else if (videoParameters[0].system == NTSC) {
                 filters.ntscLumaFirFilter(lineBuf.data(), lineBuf.size());
+            } else {
+                filters.palMLumaFirFilter(lineBuf.data(), lineBuf.size());
             }
         };
 

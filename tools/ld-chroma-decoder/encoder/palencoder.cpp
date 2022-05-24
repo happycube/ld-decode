@@ -53,7 +53,9 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData), scLocked(_scLocked)
 {
     // PAL subcarrier frequency [Poynton p529] [EBU p5]
-    fSC = 4433618.75;
+    videoParameters.fSC = 4433618.75;
+
+    videoParameters.sampleRate = 4 * videoParameters.fSC;
 
     if (scLocked) {
         // Parameters for 4fSC subcarrier-locked sampling:
@@ -74,11 +76,9 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
         // 957 and 958. [EBU p7]
         const double zeroH = 957.5 - 948;
 
-        sampleRate = 4 * fSC;
-
         // Burst gate opens 5.6 usec after 0H, and closes 10 cycles later.
         // [Poynton p530]
-        const double burstStartPos = zeroH + (5.6e-6 * sampleRate);
+        const double burstStartPos = zeroH + (5.6e-6 * videoParameters.sampleRate);
         const double burstEndPos = burstStartPos + (10 * 4);
         videoParameters.colourBurstStart = static_cast<qint32>(lrint(burstStartPos));
         videoParameters.colourBurstEnd = static_cast<qint32>(lrint(burstEndPos));
@@ -92,8 +92,6 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     } else {
         // Parameters for line-locked sampling, based on ld-decode's usual output:
 
-        sampleRate = 1135 / 64.0e-6;
-
         videoParameters.colourBurstStart = 98;
         videoParameters.colourBurstEnd = 138;
 
@@ -102,19 +100,15 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     }
 
     // Parameters that are common for subcarrier- and line-locked output:
-    videoParameters.isSourcePal = true;
+    videoParameters.numberOfSequentialFields = 0;
+    videoParameters.system = PAL;
     videoParameters.isSubcarrierLocked = scLocked;
     // White level and blanking level, extended to 16 bits [EBU p6]
     videoParameters.white16bIre = 0xD300;
     videoParameters.black16bIre = 0x4000;
     videoParameters.fieldWidth = 1135;
     videoParameters.fieldHeight = 313;
-    // sampleRate and fsc are integers in this struct, so they're not precise;
-    // the code below uses fSC and sampleRate instead
-    videoParameters.sampleRate = static_cast<qint32>(lrint(sampleRate));
-    videoParameters.fsc = static_cast<qint32>(lrint(fSC));
     videoParameters.isMapped = false;
-    // numberOfSequentialFields will be computed automatically.
 
     // Compute the location of the input image within the PAL frame, based on
     // the parameters above. For a 4:3 picture, there should really be 922
@@ -138,6 +132,9 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
 
 bool PALEncoder::encode()
 {
+    // Store video parameters
+    metaData.setVideoParameters(videoParameters);
+
     // Process frames until EOF
     qint32 numFrames = 0;
     while (true) {
@@ -149,9 +146,6 @@ bool PALEncoder::encode()
         }
         numFrames++;
     }
-
-    // Store video parameters, now we've generated all the fields
-    metaData.setVideoParameters(videoParameters);
 
     return true;
 }
@@ -231,6 +225,7 @@ bool PALEncoder::encodeField(qint32 fieldNo)
 
     // Generate field metadata
     LdDecodeMetaData::Field fieldData;
+    fieldData.seqNo = fieldNo;
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
     // Burst peak-to-peak amplitude is 3/7 of black-white range
@@ -325,7 +320,7 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
     // Compute the time at which 0H occurs within the line (see above)
     double zeroH;
     if (videoParameters.isSubcarrierLocked) {
-        zeroH = ((957.5 - 948) + ((prevLines % 625) * (4.0 / 625))) / sampleRate;
+        zeroH = ((957.5 - 948) + ((prevLines % 625) * (4.0 / 625))) / videoParameters.sampleRate;
     } else {
         zeroH = 0.0;
     }
@@ -343,16 +338,16 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
     // Compute colourburst gating times, relative to 0H [Poynton p530]
     const double halfBurstRiseTime = 300.0e-9 / 2.0;
     const double burstStartTime = 5.6e-6;
-    const double burstEndTime = burstStartTime + (10.0 / fSC);
+    const double burstEndTime = burstStartTime + (10.0 / videoParameters.fSC);
 
     // Compute luma/chroma gating times, relative to 0H, to avoid sharp
     // transitions at the edge of the active region. The rise times are as
     // suggested in [Poynton p323], timed so that the video reaches full
     // amplitude at the start/end of the active region.
-    const double halfLumaRiseTime = 2.0 / (4.0 * fSC);
-    const double halfChromaRiseTime = 3.0 / (4.0 * fSC);
-    double activeStartTime = (videoParameters.activeVideoStart / sampleRate) - zeroH - (2.0 * halfChromaRiseTime);
-    double activeEndTime = (videoParameters.activeVideoEnd / sampleRate) - zeroH + (2.0 * halfChromaRiseTime);
+    const double halfLumaRiseTime = 2.0 / (4.0 * videoParameters.fSC);
+    const double halfChromaRiseTime = 3.0 / (4.0 * videoParameters.fSC);
+    double activeStartTime = (videoParameters.activeVideoStart / videoParameters.sampleRate) - zeroH - (2.0 * halfChromaRiseTime);
+    double activeEndTime = (videoParameters.activeVideoEnd / videoParameters.sampleRate) - zeroH + (2.0 * halfChromaRiseTime);
 
     // Adjust gating for half-lines [Poynton p525]
     if (frameLine == 44) {
@@ -424,8 +419,8 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
 
     for (qint32 x = 0; x < outputLine.size(); x++) {
         // For this sample, compute time relative to 0H, and subcarrier phase
-        const double t = (x / sampleRate) - zeroH;
-        const double a = 2.0 * M_PI * ((fSC * t) + prevCycles);
+        const double t = (x / videoParameters.sampleRate) - zeroH;
+        const double a = 2.0 * M_PI * ((videoParameters.fSC * t) + prevCycles);
 
         // Generate colourburst
         const double burst = sin(a + burstOffset) * burstAmplitude / 2.0;

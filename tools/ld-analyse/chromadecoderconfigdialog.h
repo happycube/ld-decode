@@ -44,7 +44,7 @@ public:
     explicit ChromaDecoderConfigDialog(QWidget *parent = nullptr);
     ~ChromaDecoderConfigDialog();
 
-    void setConfiguration(bool isSourcePal, const PalColour::Configuration &palConfiguration,
+    void setConfiguration(VideoSystem system, const PalColour::Configuration &palConfiguration,
                           const Comb::Configuration &ntscConfiguration,
                           const OutputWriter::Configuration &outputConfiguration);
     const PalColour::Configuration &getPalConfiguration();
@@ -75,7 +75,7 @@ private slots:
 
 private:
     Ui::ChromaDecoderConfigDialog *ui;
-    bool isSourcePal;
+    VideoSystem system;
     PalColour::Configuration palConfiguration;
     Comb::Configuration ntscConfiguration;
     OutputWriter::Configuration outputConfiguration;

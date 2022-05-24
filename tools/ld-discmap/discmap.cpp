@@ -85,8 +85,9 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
     }
 
     // Get the source format (PAL/NTSC)
-    if (ldDecodeMetaData->getVideoParameters().isSourcePal) m_isDiscPal = true;
-    else m_isDiscPal = false;
+    if (ldDecodeMetaData->getVideoParameters().system == PAL) m_isDiscPal = true;
+    else if (ldDecodeMetaData->getVideoParameters().system == NTSC) m_isDiscPal = true;
+    else qCritical("Video system must be PAL or NTSC");
 
     // Set the audio field length
     if (m_isDiscPal) {
