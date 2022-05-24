@@ -91,7 +91,7 @@ input_tbc_json=$input_tbc.json
 if [ "$videosystem" = "" ]; then
 	# Very dumb way of checking if the source is PAL
 	# There is probably a better way of doing this...
-	pal_found="$(head "$input_tbc_json" | grep -c \\\"isSourcePal\\\":true)"
+	pal_found="$(head "$input_tbc_json" | grep -c -e \\\"PAL\\\" -e \\\"isSourcePal\\\":true)"
 	if [ "$pal_found" = 1 ]; then
 		videosystem="pal"
 	else
