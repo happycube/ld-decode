@@ -2,6 +2,7 @@
 
 from distutils.core import setup
 from Cython.Build import cythonize
+import numpy
 
 setup(
     name='ld-decode',
@@ -34,6 +35,8 @@ setup(
     ],
 
     ext_modules=cythonize(['vhsdecode/*.pyx'], language_level=3),
+    # Needed for using numpy in cython.
+    include_dirs=[numpy.get_include()],
 
     # These are just the minimal runtime dependencies for the Python scripts --
     # see the documentation for the full list of dependencies.
@@ -43,5 +46,6 @@ setup(
         'numba',
         'numpy',
         'scipy',
+        'cython'
     ],
 )
