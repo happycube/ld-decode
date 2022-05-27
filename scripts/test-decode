@@ -70,7 +70,8 @@ def run_command(cmd, **kwopts):
 def run_ld_cut(args):
     """Run ld-cut."""
 
-    safe_unlink(args.infile + '.cut.ldf')
+    cutfile = args.output + '.cut.ldf'
+    safe_unlink(cutfile)
 
     cmd = [src_dir + '/ld-cut']
     if args.pal:
@@ -83,12 +84,15 @@ def run_ld_cut(args):
         die(cmd[0], 'internal error: run_ld_cut() run without seek or start points')
 
     cmd += ['-l', str(args.cutlength)]
-    cmd += [args.infile, args.infile + '.cut.ldf']
+    cmd += [args.infile, cutfile]
 
     # Set PATH so it can invoke helper programs
     env = os.environ.copy()
     env['PATH'] = src_dir + ':' + env['PATH']
     run_command(cmd, env=env)
+
+    # Use the output as the input for the rest of the decoding process
+    args.infile = cutfile
 
 def run_ld_decode(args):
     """Run ld-decode."""
@@ -100,10 +104,7 @@ def run_ld_decode(args):
     if args.pal:
         cmd += ['--pal']
 
-    cutfile = args.infile + '.cut.ldf'
-    infile = cutfile if os.path.isfile(cutfile) else args.infile
-
-    cmd += [infile, args.output]
+    cmd += [args.infile, args.output]
 
     # Set PATH so it can invoke helper programs
     env = os.environ.copy()
@@ -305,7 +306,8 @@ def main():
     if output_dir != '':
         os.makedirs(output_dir, exist_ok=True)
 
-    safe_unlink(args.infile + '.cut.ldf')
+    # Produce a trimmed input file using ld-cut, if requested
+    orig_infile = args.infile
     if args.cutseek is not None or args.cutstart is not None:
         run_ld_cut(args)
 
@@ -318,7 +320,7 @@ def main():
     for decoder in args.decoders:
         run_ld_chroma_decoder(args, decoder)
 
-    print('\nDecoding', args.infile, 'completed successfully')
+    print('\nDecoding', orig_infile, 'completed successfully')
 
 if __name__ == '__main__':
     main()
