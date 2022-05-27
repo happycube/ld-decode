@@ -284,6 +284,10 @@ def main():
     if args.decoders == []:
         args.decoders = [None]
 
+    if args.infile.startswith("testdata/") and not os.path.exists(args.infile):
+        print('Input file', args.infile, 'not present, skipping test')
+        return
+
     # Find the top-level source directory
     prog_path = os.path.realpath(sys.argv[0])
     global src_dir
