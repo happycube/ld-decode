@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 #
 # test-decode - run the decoding toolchain against an RF sample
-# Copyright (C) 2019 Adam Sampson
+# Copyright (C) 2019-2022 Adam Sampson
+# Copyright (C) 2022 Chad Page
 #
 # This file is part of ld-decode.
 #
@@ -37,6 +38,8 @@ def die(*args):
     sys.exit(1)
 
 def safe_unlink(filename):
+    """Remove a file if it exists; if not, do nothing."""
+
     try:
         os.unlink(filename)
     except FileNotFoundError:
@@ -65,7 +68,7 @@ def run_command(cmd, **kwopts):
         die(cmd[0], 'failed with exit code', rc)
 
 def run_ld_cut(args):
-    """Run ld-decode."""
+    """Run ld-cut."""
 
     safe_unlink(args.infile + '.cut.ldf')
 
@@ -78,7 +81,7 @@ def run_ld_cut(args):
         cmd += ['-s', str(args.cutstart)]
     else:
         die(cmd[0], 'internal error: run_ld_cut() run without seek or start points')
-    
+
     cmd += ['-l', str(args.cutlength)]
     cmd += [args.infile, args.infile + '.cut.ldf']
 
@@ -137,7 +140,7 @@ def run_ld_process_vbi(args):
         if args.expect_bpsnr > bpsnr:
             die(json_file, 'has median bPSNR', bpsnr, 'dB, expected',
                 args.expect_bpsnr, 'dB')
-           
+
     # Print VBI data (useful for finding --expect_vbi values)
     if args.print_vbi:
         for field in data["fields"]:
@@ -261,7 +264,8 @@ def main():
                        help='get N frames from ld-cut')
     group.add_argument('--decoder', metavar='decoder', action='append',
                        dest='decoders', default=[],
-                       help='use specific ld-chroma-decoder decoder (use more than once to test multiple decoders)')
+                       help='use specific ld-chroma-decoder decoder '
+                            '(use more than once to test multiple decoders)')
     group = parser.add_argument_group("Sanity checks")
     group.add_argument('--expect-frames', metavar='N', type=int,
                        help='expect at least N frames of video output')
