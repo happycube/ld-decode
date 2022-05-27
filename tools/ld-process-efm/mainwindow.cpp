@@ -69,7 +69,7 @@ MainWindow::MainWindow(bool debugOn, bool _nonInteractive, QString _outputAudioF
 
     ui->audio_padSampleStart_checkBox->setChecked(pad);
 
-    if (outputDataFilename!=NULL) {
+    if (outputDataFilename != "") {
         ui->options_decodeAsData_checkbox->setChecked(true);
         ui->tabWidget->setTabEnabled(ui->tabWidget->indexOf(ui->dataTab), true);
     }
