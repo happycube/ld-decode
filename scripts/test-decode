@@ -318,6 +318,7 @@ def main():
     for decoder in args.decoders:
         run_ld_chroma_decoder(args, decoder)
 
+    print('\nDecoding', args.infile, 'completed successfully')
+
 if __name__ == '__main__':
     main()
-
