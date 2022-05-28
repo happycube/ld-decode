@@ -189,9 +189,7 @@ def run_ld_process_efm(args):
             die(efm_file, 'is empty')
 
     cmd = [src_dir + '/tools/ld-process-efm/ld-process-efm']
-    # XXX Work around Qt needing a display for this tool
-    cmd += ['-platform', 'offscreen']
-    cmd += ['--noninteractive', efm_file, pcm_file]
+    cmd += [efm_file, pcm_file]
     run_command(cmd)
 
     # Check there are enough output samples
