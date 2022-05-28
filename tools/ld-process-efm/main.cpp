@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
     parser.addOption(decodeAsDataOption);
 
     QCommandLineOption noTimeStampOption(QStringList() << "t" << "time",
-                                       QCoreApplication::translate("main", "Non-standard audio decode (no time-stamp information"));
+                                       QCoreApplication::translate("main", "Non-standard audio decode (no time-stamp information)"));
     parser.addOption(noTimeStampOption);
 
     // Detailed debuging options
