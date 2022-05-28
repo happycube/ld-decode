@@ -82,6 +82,7 @@ TESTCASES = \
 	check-library-filter \
 	check-library-metadata \
 	check-library-vbidecoder \
+	check-chroma-ntsc \
 	check-chroma-pal \
 	check-ld-cut-ntsc \
 	check-ld-cut-pal \
@@ -107,9 +108,17 @@ check-library-vbidecoder:
 	@$(TESTING) "library: vbidecoder"
 	@tools/library/tbc/testvbidecoder/testvbidecoder
 
+check-chroma-ntsc:
+	@$(TESTING) "ld-chroma-decoder (NTSC)"
+	@scripts/test-chroma \
+		--system ntsc \
+		--expect-psnr 25 \
+		--expect-psnr-range 0.5
+
 check-chroma-pal:
 	@$(TESTING) "ld-chroma-decoder (PAL)"
 	@scripts/test-chroma \
+		--system pal \
 		--expect-psnr 25 \
 		--expect-psnr-range 0.5
 

@@ -29,7 +29,6 @@
 #
 # If this test fails, rerun it with --png and look at the images.
 
-# XXX This only supports PAL -- add NTSC support, once ld-chroma-encoder supports it
 # XXX Add options to specify which decoders etc. to test
 
 import argparse
@@ -55,27 +54,36 @@ def clean(args, suffixes):
         safe_unlink(args.output + suffix)
 
 FFMPEG_CMD = ['ffmpeg', '-loglevel', 'error']
-RGB_FORMAT = ['-f', 'rawvideo', '-pix_fmt', 'rgb48', '-s', '928x576', '-r', '25']
+RGB_FORMAT = ['-f', 'rawvideo', '-pix_fmt', 'rgb48']
 
 def test_encode(args, source, sc_locked, png_suffix):
     """Generate a test video in .rgb form, and encode it to .tbc."""
 
     clean(args, ['.rgb', png_suffix, '.tbc'])
 
+    if args.system == 'ntsc':
+        FILTER_ARGS = ['-filter:v', 'pad=758:486:-1:-1']
+        SIZE_ARGS =   ['-s', '758x486', '-r', 'ntsc']
+    else:
+        FILTER_ARGS = ['-filter:v', 'pad=928:576:-1:-1']
+        SIZE_ARGS   = ['-s', '928x576', '-r', 'pal']
+
     # Convert the source video to .rgb using ffmpeg
     rgb_file = args.output + '.rgb'
     subprocess.check_call(
         FFMPEG_CMD
         + source
-        + ['-filter:v', 'pad=928:576:-1:-1']
+        + FILTER_ARGS
+        + SIZE_ARGS
         + RGB_FORMAT + [rgb_file]
         )
-
     if args.png:
         # Convert .rgb to PNG
         subprocess.check_call(
             FFMPEG_CMD
-            + RGB_FORMAT + ['-i', rgb_file]
+            + RGB_FORMAT
+            + SIZE_ARGS
+            + ['-i', rgb_file]
             + ['-frames:v', '1', args.output + png_suffix]
             )
 
@@ -84,10 +92,12 @@ def test_encode(args, source, sc_locked, png_suffix):
     cmd = [src_dir + '/tools/ld-chroma-decoder/encoder/ld-chroma-encoder']
     if sc_locked:
         cmd += ['--sc-locked']
+    if args.system == 'ntsc':
+        cmd += ['--system', 'ntsc']
     cmd += [rgb_file, tbc_file]
     subprocess.check_call(cmd)
 
-def test_decode(args, decoder, output_format, png_suffix):
+def test_decode(args, decoder, phase_locked, output_format, png_suffix):
     """Decode a .tbc file, compare it with the original .rgb, and return the
     median pSNR."""
 
@@ -96,25 +106,35 @@ def test_decode(args, decoder, output_format, png_suffix):
     # Work out ffmpeg input format corresponding to ld-chroma-decoder output format
     if output_format == 'rgb':
         decoded_format = RGB_FORMAT
+        if args.system == 'ntsc':
+            decoded_format += ['-s', '758x486']
+        else:
+            decoded_format += ['-s', '928x576']
     elif output_format == 'yuv':
-        decoded_format = ['-f', 'rawvideo', '-pix_fmt', 'yuv444p16', '-s', '928x576']
+        if args.system == 'ntsc':
+            decoded_format = ['-f', 'rawvideo', '-pix_fmt', 'yuv444p16', '-s', '758x486']
+        else:
+            decoded_format = ['-f', 'rawvideo', '-pix_fmt', 'yuv444p16', '-s', '928x576']
     else:
-        # ffmpeg can read the Y4M header itself
-        decoded_format = []
+        # ffmpeg can read the Y4M header, but psnr fails if framerates mismatch
+        decoded_format = ['-r', 'pal']
 
     # Decode the .tbc using ld-chroma-decoder
     tbc_file = args.output + '.tbc'
     decoded_file = args.output + '.decoded'
-    subprocess.check_call([
-        src_dir + '/tools/ld-chroma-decoder/ld-chroma-decoder',
+    cmd = [src_dir + '/tools/ld-chroma-decoder/ld-chroma-decoder',
         '--quiet',
         '-f', decoder,
         '--chroma-nr', '0',
         '--luma-nr', '0',
         '--simple-pal',
         '--output-format', output_format,
-        tbc_file, decoded_file,
-        ])
+        tbc_file, decoded_file,]
+    if args.system == 'ntsc':
+        cmd += ['--ffrl', '39', '--pad', '2']
+        if phase_locked:
+            cmd += ['--ntsc-phase-comp']
+    subprocess.check_call(cmd)
 
     if args.png:
         # Convert decoded to PNG
@@ -153,6 +173,8 @@ def main():
                        help='input video file (default colour bars)')
     group.add_argument('output', metavar='output', nargs='?', default='testout/test',
                        help='base name for output files (default testout/test)')
+    group.add_argument('--system', choices=['pal', 'ntsc'], default='pal',
+                       help='select color system (default pal)')
     group.add_argument('--png', action='store_true',
                        help='output PNG files for first frame of input and output videos')
     group = parser.add_argument_group("Sanity checks")
@@ -182,12 +204,21 @@ def main():
     if args.input:
         source = ['-i', args.input]
     else:
-        # Generate PAL colour bars
-        source = ['-f', 'lavfi', '-i', 'pal75bars=duration=1:size=922x576:rate=25']
+        # Generate colour bars
+        if args.system == 'ntsc':
+            source = ['-f', 'lavfi', '-i', 'smptebars=duration=0.5:size=758x486:rate=ntsc']
+        else:
+            source = ['-f', 'lavfi', '-i', 'pal75bars=duration=0.5:size=922x576:rate=pal']
 
     print('Running encode-decode tests with source', source[-1])
-    columns = '%-11s %-15s %-8s %8s'
-    print('\n' + columns % ('SC-locked', 'Decoder', 'Format', 'PSNR (dB)'))
+    columns = '%-18s %-15s %-8s %8s'
+
+    if args.system == 'ntsc':
+        decoder_modes = ('ntsc1d', 'ntsc2d', 'ntsc3d')
+        print('\n' + columns % ('Phase-Comp (Dec)', 'Decoder', 'Format', 'PSNR (dB)'))
+    else:
+        decoder_modes = ('pal2d', 'transform2d', 'transform3d')
+        print('\n' + columns % ('SC-locked (Enc)', 'Decoder', 'Format', 'PSNR (dB)'))
 
     failed = False
 
@@ -201,15 +232,17 @@ def main():
             failed = True
             continue
 
-        for decoder in ('pal2d', 'transform2d', 'transform3d'):
+        for decoder in decoder_modes:
             format_psnrs = []
             for output_format in ('rgb', 'yuv', 'y4m'):
-                sc_locked_str = 'sc' if sc_locked else 'll'
+                if args.system == 'ntsc':
+                    sc_locked_str = 'pc' if sc_locked else 'll'
+                else:
+                    sc_locked_str = 'sc' if sc_locked else 'll'
                 png_suffix = '.output-%s-%s-%s.png' % (sc_locked_str, decoder, output_format)
-
                 # Decode and compare
                 try:
-                    psnr = test_decode(args, decoder, output_format, png_suffix)
+                    psnr = test_decode(args, decoder, sc_locked, output_format, png_suffix)
                 except subprocess.CalledProcessError as e:
                     print('Decoding failed:', e)
                     failed = True
