@@ -80,6 +80,7 @@ clean-tools:
 
 TESTCASES = \
 	check-library-filter \
+	check-library-metadata \
 	check-library-vbidecoder \
 	check-ld-cut-ntsc \
 	check-ld-cut-pal \
@@ -96,6 +97,10 @@ TESTING = printf '\n\#\# Testing %s\n\n'
 check-library-filter:
 	@$(TESTING) "library: filter"
 	@tools/library/filter/testfilter/testfilter
+
+check-library-metadata:
+	@$(TESTING) "library: metadata"
+	@tools/library/tbc/testmetadata/testmetadata
 
 check-library-vbidecoder:
 	@$(TESTING) "library: vbidecoder"
