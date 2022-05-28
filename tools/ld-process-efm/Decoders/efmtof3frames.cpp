@@ -3,7 +3,7 @@
     efmtof3frames.cpp
 
     ld-process-efm - EFM data decoder
-    Copyright (C) 2019 Simon Inns
+    Copyright (C) 2019-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
