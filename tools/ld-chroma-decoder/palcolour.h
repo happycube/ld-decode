@@ -28,9 +28,9 @@
 
 #include <QtGlobal>
 #include <QDebug>
-#include <QScopedPointer>
 #include <QVector>
 #include <QtMath>
+#include <memory>
 
 #include "lddecodemetadata.h"
 
@@ -109,7 +109,7 @@ private:
     LdDecodeMetaData::VideoParameters videoParameters;
 
     // Transform PAL filter
-    QScopedPointer<TransformPal> transformPal;
+    std::unique_ptr<TransformPal> transformPal;
 
     // The subcarrier reference signal
     double sine[MAX_WIDTH], cosine[MAX_WIDTH];
