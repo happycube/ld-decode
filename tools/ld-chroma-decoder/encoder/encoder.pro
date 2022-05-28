@@ -19,6 +19,7 @@ win32:DEFINES += _USE_MATH_DEFINES
 
 SOURCES += \
     main.cpp \
+    ntscencoder.cpp \
     palencoder.cpp \
     ../../library/tbc/dropouts.cpp \
     ../../library/tbc/jsonio.cpp \
@@ -27,6 +28,7 @@ SOURCES += \
     ../../library/tbc/vbidecoder.cpp
 
 HEADERS += \
+    ntscencoder.h \
     palencoder.h \
     ../../library/filter/firfilter.h \
     ../../library/tbc/dropouts.h \

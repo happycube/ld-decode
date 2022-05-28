@@ -32,6 +32,7 @@
 #include "lddecodemetadata.h"
 #include "logging.h"
 
+#include "ntscencoder.h"
 #include "palencoder.h"
 
 int main(int argc, char *argv[])
@@ -50,9 +51,10 @@ int main(int argc, char *argv[])
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-chroma-encoder - PAL encoder for testing\n"
+                "ld-chroma-encoder - PAL/NTSC encoder for testing\n"
                 "\n"
                 "(c)2019-2020 Adam Sampson\n"
+                "(c)2022 Phillip Blucas\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -64,8 +66,14 @@ int main(int argc, char *argv[])
 
     // Option to produce subcarrier-locked output (-c)
     QCommandLineOption scLockedOption(QStringList() << "c" << "sc-locked",
-                                      QCoreApplication::translate("main", "Output samples are subcarrier-locked (default: line-locked)"));
+                                      QCoreApplication::translate("main", "Output samples are subcarrier-locked. PAL only. (default: line-locked)"));
     parser.addOption(scLockedOption);
+
+    // Option to select color system (-f)
+    QCommandLineOption systemOption(QStringList() << "f" << "system",
+                                     QCoreApplication::translate("main", "Select color system, PAL or NTSC. (default PAL)"),
+                                     QCoreApplication::translate("main", "system"));
+    parser.addOption(systemOption);
 
     // -- Positional arguments --
 
@@ -103,6 +111,21 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    VideoSystem system = PAL;
+    QString systemName;
+    if (parser.isSet(systemOption)) {
+        systemName = parser.value(systemOption);
+        if (systemName == "ntsc" || systemName == "NTSC") {
+            system = NTSC;
+        } else if (systemName == "pal" || systemName == "PAL") {
+            system = PAL;
+        } else {
+            // Quit with error
+            qCritical("Unsupported color system");
+            return -1;
+        }
+    }
+
     // Open the input file
     QFile rgbFile(inputFileName);
     if (inputFileName == "-") {
@@ -126,9 +149,16 @@ int main(int argc, char *argv[])
 
     // Encode the data
     LdDecodeMetaData metaData;
-    PALEncoder encoder(rgbFile, tbcFile, metaData, scLocked);
-    if (!encoder.encode()) {
-        return -1;
+    if( system == NTSC ) {
+        NTSCEncoder encoder(rgbFile, tbcFile, metaData);
+        if (!encoder.encode()) {
+            return -1;
+        }
+    } else {
+        PALEncoder encoder(rgbFile, tbcFile, metaData, scLocked);
+        if (!encoder.encode()) {
+            return -1;
+        }
     }
 
     // Write the metadata
