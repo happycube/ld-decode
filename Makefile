@@ -73,6 +73,94 @@ install-tools:
 clean-tools:
 	$(MAKE) -C tools clean
 
+### Tests ###
+
+# To run the test suite, clone the ld-decode-testdata repo as "testdata",
+# and do "make check".
+
+TESTCASES = \
+	check-library-filter \
+	check-library-metadata \
+	check-library-vbidecoder \
+	check-ld-cut-ntsc \
+	check-ld-cut-pal \
+	check-decode-ntsc-cav \
+	check-decode-ntsc-clv \
+	check-decode-pal-cav \
+	check-decode-pal-clv
+
+check: $(TESTCASES)
+.PHONY: check $(TESTCASES)
+
+TESTING = printf '\n\#\# Testing %s\n\n'
+
+check-library-filter:
+	@$(TESTING) "library: filter"
+	@tools/library/filter/testfilter/testfilter
+
+check-library-metadata:
+	@$(TESTING) "library: metadata"
+	@tools/library/tbc/testmetadata/testmetadata
+
+check-library-vbidecoder:
+	@$(TESTING) "library: vbidecoder"
+	@tools/library/tbc/testvbidecoder/testvbidecoder
+
+check-ld-cut-ntsc:
+	@$(TESTING) "ld-cut (NTSC)"
+	@scripts/test-decode \
+		--cut-seek 30255 \
+		--cut-length 4 \
+		--expect-frames 4 \
+		--expect-vbi 9151563,15925845,15925845 \
+		testdata/ve-snw-cut.lds
+
+check-ld-cut-pal:
+	@$(TESTING) "ld-cut (PAL)"
+	@scripts/test-decode \
+		--pal \
+		--cut-seek 760 \
+		--cut-length 4 \
+		--expect-frames 4 \
+		--expect-vbi 9152512,15730528,15730528 \
+		testdata/pal/ggv-mb-1khz.ldf
+
+check-decode-ntsc-cav:
+	@$(TESTING) "full decode (NTSC CAV)"
+	@scripts/test-decode \
+		--decoder mono --decoder ntsc2d --decoder ntsc3d \
+		--expect-frames 29 \
+		--expect-bpsnr 43.3 \
+		--expect-vbi 9151563,15925840,15925840 \
+		--expect-efm-samples 40572 \
+		testdata/ve-snw-cut.lds
+
+check-decode-ntsc-clv:
+	@$(TESTING) "full decode (NTSC CLV)"
+	@scripts/test-decode \
+		--expect-frames 4 \
+		--expect-bpsnr 37.6 \
+		--expect-vbi 9167913,15785241,15785241 \
+		testdata/issues/176/issue176.lds
+
+check-decode-pal-cav:
+	@$(TESTING) "full decode (PAL CAV)"
+	@scripts/test-decode --pal \
+		--decoder mono --decoder pal2d --decoder transform2d --decoder transform3d \
+		--expect-frames 4 \
+		--expect-bpsnr 38.4 \
+		--expect-vbi 9151527,16065688,16065688 \
+		--expect-efm-samples 5292 \
+		testdata/pal/jason-testpattern.lds
+
+check-decode-pal-clv:
+	@$(TESTING) "full decode (PAL CLV)"
+	@scripts/test-decode --pal --no-efm \
+		--expect-frames 9 \
+		--expect-bpsnr 30.3 \
+		--expect-vbi 0,8449774,8449774 \
+		testdata/pal/kagemusha-leadout-cbar.ldf
+
 ### Generated files, not updated automatically ###
 
 tools/library/filter/deemp.h: scripts/filtermaker
