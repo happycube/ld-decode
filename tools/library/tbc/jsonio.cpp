@@ -242,6 +242,7 @@ void JsonReader::readString(std::string &value)
             c = get();
             switch (c) {
             case '"':
+            case '/':
             case '\\':
                 value.push_back(c);
                 break;
