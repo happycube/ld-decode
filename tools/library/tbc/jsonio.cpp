@@ -192,12 +192,12 @@ void JsonReader::discard()
     }
 }
 
-// Get the next input character
+// Get the next input character, returning 0 on EOF or error
 char JsonReader::get()
 {
     char c;
     input.get(c);
-    // XXX check EOF
+    if (!input.good()) return 0;
     ++position;
     return c;
 }
@@ -232,6 +232,9 @@ void JsonReader::readString(std::string &value)
     while (true) {
         c = get();
         switch (c) {
+        case 0:
+            // End of input
+            throwError("end of input in string");
         case '"':
             // End of string
             return;
