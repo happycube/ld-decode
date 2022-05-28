@@ -3,7 +3,7 @@
     efmprocess.cpp
 
     ld-process-efm - EFM data decoder
-    Copyright (C) 2019 Simon Inns
+    Copyright (C) 2019-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -100,15 +100,21 @@ void EfmProcess::setAudioErrorTreatment(F1ToAudio::ErrorTreatment _errorTreatmen
 }
 
 // Set the decoder options
-void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsAudio, bool _decodeAsData, bool _noTimeStamp)
+void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData, bool _noTimeStamp)
 {
     qDebug() << "EfmProcess::setDecoderOptions(): Pad initial disc time is" << _padInitialDiscTime;
-    qDebug() << "EfmProcess::setDecoderOptions(): Decode as audio is" << _decodeAsAudio;
     qDebug() << "EfmProcess::setDecoderOptions(): Decode as data is" << _decodeAsData;
     qDebug() << "EfmProcess::setDecoderOptions(): No time-stamp is" << _noTimeStamp;
     padInitialDiscTime = _padInitialDiscTime;
-    decodeAsAudio = _decodeAsAudio;
-    decodeAsData = _decodeAsData;
+
+    if (_decodeAsData) {
+        decodeAsAudio = false;
+        decodeAsData = true;
+    } else {
+        decodeAsAudio = true;
+        decodeAsData = false;
+    }
+
     noTimeStamp = _noTimeStamp;
 }
 
@@ -126,14 +132,14 @@ void EfmProcess::reportStatistics()
 // Thread handling methods --------------------------------------------------------------------------------------------
 
 // Start processing the input EFM file
-void EfmProcess::startProcessing(QFile* _inputFileHandle, QFile* _audioOutputFileHandle, QFile* _dataOutputFileHandle)
+void EfmProcess::startProcessing(QFile* _inputFileHandle, QFile* _outputFileHandle)
 {
     QMutexLocker locker(&mutex);
 
     // Move all the parameters to be local
     efmInputFileHandle = _inputFileHandle;
-    audioOutputFileHandle = _audioOutputFileHandle;
-    dataOutputFileHandle = _dataOutputFileHandle;
+    audioOutputFileHandle = _outputFileHandle; // Only one will be used
+    dataOutputFileHandle = _outputFileHandle;  // Only one will be used
 
     // Is the run process already running?
     if (!isRunning()) {

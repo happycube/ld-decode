@@ -3,7 +3,7 @@
     main.cpp
 
     ld-process-efm - EFM data decoder
-    Copyright (C) 2019-2020 Simon Inns
+    Copyright (C) 2019-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -22,13 +22,14 @@
 
 ************************************************************************/
 
-#include "mainwindow.h"
-#include <QApplication>
+#include <QCoreApplication>
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QThread>
 
 #include "logging.h"
+#include "efmdecoder.h"
 
 int main(int argc, char *argv[])
 {
@@ -36,7 +37,7 @@ int main(int argc, char *argv[])
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
 
-    QApplication a(argc, argv);
+    QCoreApplication a(argc, argv);
 
     // Set application name and version
     QCoreApplication::setApplicationName("ld-process-efm");
@@ -48,7 +49,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-process-efm - EFM data decoder\n"
                 "\n"
-                "(c)2019-2020 Simon Inns\n"
+                "(c)2019-2022 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -56,14 +57,32 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Option to run in non-interactive mode (-n / --noninteractive)
-    QCommandLineOption nonInteractiveOption(QStringList() << "n" << "noninteractive",
-                                       QCoreApplication::translate("main", "Run in non-interactive mode"));
-    parser.addOption(nonInteractiveOption);
+    // Audio processing options
+    QCommandLineOption concealAudioOption(QStringList() << "c" << "conceal",
+                                       QCoreApplication::translate("main", "Conceal corrupt audio data (default)"));
+    parser.addOption(concealAudioOption);
 
+    QCommandLineOption silenceAudioOption(QStringList() << "s" << "silence",
+                                       QCoreApplication::translate("main", "Silence corrupt audio data"));
+    parser.addOption(silenceAudioOption);
+
+    QCommandLineOption passThroughAudioOption(QStringList() << "g" << "pass-through",
+                                       QCoreApplication::translate("main", "Pass-through corrupt audio data"));
+    parser.addOption(passThroughAudioOption);
+
+    // General decoder options
     QCommandLineOption padOption(QStringList() << "p" << "pad",
-                                       QCoreApplication::translate("main", "Pad audio to initial disc time"));
+                                       QCoreApplication::translate("main", "Pad start of audio from OO:00 to match initial disc time"));
     parser.addOption(padOption);
+
+    QCommandLineOption decodeAsDataOption(QStringList() << "b" << "data",
+                                       QCoreApplication::translate("main", "Decode F1 frames as data instead of audio"));
+    parser.addOption(decodeAsDataOption);
+
+    QCommandLineOption noTimeStampOption(QStringList() << "t" << "time",
+                                       QCoreApplication::translate("main", "Non-standard audio decode (no time-stamp information"));
+    parser.addOption(noTimeStampOption);
+
 
     // -- Positional arguments --
 
@@ -71,10 +90,7 @@ int main(int argc, char *argv[])
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input EFM file"));
 
     // Positional argument to specify output audio file
-    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output audio file"));
-
-    // Positional argument to specify output data file
-    parser.addPositionalArgument("data", QCoreApplication::translate("main", "Specify output data file"));
+    parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -82,51 +98,34 @@ int main(int argc, char *argv[])
     // Standard logging options
     processStandardDebugOptions(parser);
 
-    // Get the options from the parser
-    bool isNonInteractiveOn = parser.isSet(nonInteractiveOption);
+    // Get the padding options from the parser
+    bool concealAudio = parser.isSet(concealAudioOption);
+    bool silenceAudio = parser.isSet(silenceAudioOption);
+    bool passThroughAudio = parser.isSet(passThroughAudioOption);
+
     bool pad = parser.isSet(padOption);
+    bool decodeAsData = parser.isSet(decodeAsDataOption);
+    bool noTimeStamp = parser.isSet(noTimeStampOption);
 
-    // Get the arguments from the parser
-    QString inputEfmFilename;
-    QString outputAudioFilename;
-    QString outputDataFilename;
+    // Get the filename arguments from the parser
+    QString inputFilename;
+    QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 3) {
-        inputEfmFilename = positionalArguments.at(0);
-        outputAudioFilename = positionalArguments.at(1);
-        outputDataFilename = positionalArguments.at(2);
-    } else if (positionalArguments.count() == 2) {
-        inputEfmFilename = positionalArguments.at(0);
-        outputAudioFilename = positionalArguments.at(1);
-    } else if (positionalArguments.count() == 1) {
-        inputEfmFilename = positionalArguments.at(0);
+    if (positionalArguments.count() == 2) {
+        inputFilename = positionalArguments.at(0);
+        outputFilename = positionalArguments.at(1);
+    } else {
+        qWarning() << "You must specify the input EFM filename and the output filename";
+        return 1;
     }
 
-    if (isNonInteractiveOn) {
-        if (inputEfmFilename.isEmpty() || outputAudioFilename.isEmpty()) {
-            qWarning() << "You must specify the input EFM filename and the output audio filename in non-interactive mode";
-            return 1;
-        }
-    }
+    // Perform the processing
+    qInfo() << "Beginning EFM processing...";
+    EfmDecoder efmDecoder;
+    if (!efmDecoder.startDecoding(inputFilename, outputFilename,
+                                  concealAudio, silenceAudio, passThroughAudio,
+                                  pad, decodeAsData, noTimeStamp)) return 1;
 
-    // Start the GUI application
-    MainWindow w(getDebugState(), isNonInteractiveOn, outputAudioFilename,
-            outputDataFilename, pad);
-    if (!inputEfmFilename.isEmpty()) {
-        // Load the file to decode
-        if (!w.loadInputEfmFile(inputEfmFilename)) {
-            if (isNonInteractiveOn) {
-                return 1;
-            }
-        } else {
-            if (isNonInteractiveOn) {
-                // Start the decode
-                w.startDecodeNonInteractive();
-            }
-        }
-    }
-
-    if (!isNonInteractiveOn) w.show();
-
-    return a.exec();
+    // Quit with success
+    return 0;
 }
