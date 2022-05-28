@@ -31,7 +31,6 @@ SOURCES += \
         Decoders/f2tof1frames.cpp \
         Decoders/f3tof2frames.cpp \
         Decoders/syncf3frames.cpp \
-        efmdecoder.cpp \
         efmprocess.cpp \
         main.cpp \
         ../library/tbc/logging.cpp
@@ -53,7 +52,6 @@ HEADERS += \
         Decoders/f2tof1frames.h \
         Decoders/f3tof2frames.h \
         Decoders/syncf3frames.h \
-        efmdecoder.h \
         efmprocess.h \
         ezpwd/asserter \
         ezpwd/bch \
