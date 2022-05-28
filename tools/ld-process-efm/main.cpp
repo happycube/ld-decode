@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
 
     // General decoder options
     QCommandLineOption padOption(QStringList() << "p" << "pad",
-                                       QCoreApplication::translate("main", "Pad start of audio from OO:00 to match initial disc time"));
+                                       QCoreApplication::translate("main", "Pad start of audio from 00:00 to match initial disc time"));
     parser.addOption(padOption);
 
     QCommandLineOption decodeAsDataOption(QStringList() << "b" << "data",

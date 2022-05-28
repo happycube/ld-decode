@@ -54,4 +54,5 @@ CMakeLists.txt.user*
 /ld-process-vits/ld-process-vits
 /library/filter/testfilter/testfilter
 /library/tbc/testvbidecoder/testvbidecoder
+/library/tbc/testmetadata/testmetadata
 
