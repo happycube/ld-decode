@@ -61,7 +61,7 @@ public:
     qint32 numberOfPulldowns() const;
     bool isPictureStop(qint32 frameNumber) const;
     bool isLeadInOut(qint32 frameNumber) const;
-    qreal frameQuality(qint32 frameNumber) const;
+    double frameQuality(qint32 frameNumber) const;
     bool isPadded(qint32 frameNumber) const;
     bool isClvOffset(qint32 frameNumber) const;
     bool isPhaseCorrect(qint32 frameNumber) const;

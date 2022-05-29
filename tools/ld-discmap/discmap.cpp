@@ -284,7 +284,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
     for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
         // If the frame following the current one has a lower VBI number, give the current
         // frame a quality penalty as the likelyhood the player skipped is higher
-        qreal penaltyPercent = 0;
+        double penaltyPercent = 0;
         if (frameNumber < m_numberOfFrames - 1) {
             if (vbiData[frameNumber + 1].picNo < vbiData[frameNumber].picNo) penaltyPercent = 80.0;
             else penaltyPercent = 100.0;
@@ -292,13 +292,13 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
 
         // Add the Black SNR to the quality value
         // Get the average bPSNR for both fields
-        qreal bsnr = (ldDecodeMetaData->getFieldVitsMetrics(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).bPSNR +
+        double bsnr = (ldDecodeMetaData->getFieldVitsMetrics(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).bPSNR +
                 ldDecodeMetaData->getFieldVitsMetrics(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).bPSNR) / 2.0;
 
         // Convert logarithmic to linear and then into percentage
-        qreal blackSnrLinear = pow(bsnr / 20, 10);
-        qreal snrReferenceLinear = pow(43.0 / 20, 10); // Note: 43 dB is the expected maximum
-        qreal bsnrPercent = (100.0 / snrReferenceLinear) * blackSnrLinear;
+        double blackSnrLinear = pow(bsnr / 20, 10);
+        double snrReferenceLinear = pow(43.0 / 20, 10); // Note: 43 dB is the expected maximum
+        double bsnrPercent = (100.0 / snrReferenceLinear) * blackSnrLinear;
         if (bsnrPercent > 100.0) bsnrPercent = 100.0;
 
         // Calculate the cumulative length of all the dropouts in the frame (by summing both fields)
@@ -315,13 +315,13 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrde
             frameDoLength += dropOuts2.endx(i) - dropOuts2.startx(i);
         }
 
-        qreal frameDoPercent = 100.0 - (static_cast<qreal>(frameDoLength) / static_cast<qreal>(totalDotsInFrame));
+        double frameDoPercent = 100.0 - (static_cast<double>(frameDoLength) / static_cast<double>(totalDotsInFrame));
 
         // Include the sync confidence in the quality value (this is 100% where each measurement is 50% of the total)
         qint32 syncConfPercent = (ldDecodeMetaData->getField(ldDecodeMetaData->getFirstFieldNumber(frameNumber + 1)).syncConf +
                                   ldDecodeMetaData->getField(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).syncConf) / 2;
 
-        m_frames[frameNumber].frameQuality((bsnrPercent + penaltyPercent + static_cast<qreal>(syncConfPercent) + (frameDoPercent * 1000.0)) / 1004.0);
+        m_frames[frameNumber].frameQuality((bsnrPercent + penaltyPercent + static_cast<double>(syncConfPercent) + (frameDoPercent * 1000.0)) / 1004.0);
         //qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
     }
 
@@ -468,7 +468,7 @@ bool DiscMap::isLeadInOut(qint32 frameNumber) const
 }
 
 // Get the frame quality
-qreal DiscMap::frameQuality(qint32 frameNumber) const
+double DiscMap::frameQuality(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
         qDebug() << "frameQuality out of frameNumber range";
