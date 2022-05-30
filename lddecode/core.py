@@ -1226,17 +1226,37 @@ class DemodCache:
 
 # Downscales to 16bit/44.1khz.  It might be nice when analog audio is better to support 24/96,
 # but if we only support one output type, matching CD audio/digital sound is greatly preferable.
-def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=48000.0, scale = 32):
+def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100):
+    ''' downscale audio for output.
+
+        Parameters:
+            audio (float): Raw audio samples from RF demodulator
+            lineinfo (list(float)): line locations
+            rf (RFDecode): rf class
+            linecount (int): # of lines in field
+            timeoffset (float): time of first audio sample (ignored w/- frequency)
+            freq (int): Output frequency (negative values are multiple of HSYNC frequency)
+        Returns: (tuple)
+            output16 (np.array(int)):  Array of 16-bit integers, ready for output
+            next_timeoffset (float): Time to start pulling samples in the next frame (ignore if sync4x)
+    '''
     failed = False
+    scale = rf.Filters['audio_fdiv']
+
+    if freq < 0:
+        # Override timeoffset value and set frequency to a multiple horizontal line clock
+        timeoffset = 0
+        freq = (1000000 / rf.SysParams["line_period"]) * -freq
 
     frametime = linecount / (1000000 / rf.SysParams["line_period"])
     soundgap = 1 / freq
-
+    
     # include one extra 'tick' to interpolate the last one and use as a return value
     # for the next frame
     arange = np.arange(
         timeoffset, frametime + (soundgap / 2), soundgap, dtype=np.double
     )
+
     locs = np.zeros(len(arange), dtype=np.float)
     swow = np.zeros(len(arange), dtype=np.float)
 
@@ -1307,7 +1327,6 @@ class Field:
         rf,
         decode,
         audio_offset=0,
-        keepraw=True,
         prevfield=None,
         initphase=False,
         fields_written=0,
@@ -2344,15 +2363,14 @@ class Field:
                     (l - lineoffset) * outwidth : (l + 1 - lineoffset) * outwidth
                 ] = self.rf.SysParams["ire0"]
 
-        if audio > 0 and self.rf.decode_analog_audio:
+        if audio != 0 and self.rf.decode_analog_audio:
             self.dsaudio, self.audio_next_offset = downscale_audio(
                 self.data["audio"],
                 lineinfo,
                 self.rf,
                 self.linecount,
                 self.audio_offset,
-                freq=audio,
-                scale = self.rf.Filters['audio_fdiv']
+                freq=audio
             )
 
         if self.rf.decode_digital_audio:
@@ -3187,7 +3205,7 @@ class LDdecode:
 
         self.blackIRE = 0
 
-        self.analog_audio = int(analog_audio * 1000)
+        self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
         self.write_rf_tbc = extra_options.get("write_RF_TBC", False)
 
