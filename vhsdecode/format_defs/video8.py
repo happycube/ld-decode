@@ -11,8 +11,8 @@ def fill_rfparams_video8_shared(rfparams):
 
     # PAL and NTSC uses the same main de-emphasis
     # Temporary video emphasis filter constants
-    # Ideally we would calculate this based on tau and 'x' value, for now
-    # it's eyeballed based on graph and output.
+    # Ideally we would calculate this based on tau and 'x' value
+    # video8 uses same time constant as vhs, but lower 'x' value
     rfparams["deemph_mid"] = 260000
     rfparams["deemph_gain"] = 14
 

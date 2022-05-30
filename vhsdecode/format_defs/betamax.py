@@ -70,8 +70,8 @@ def get_rfparams_pal_betamax(rfparams_pal):
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
-    rfparams["deemph_mid"] = 260000
-    rfparams["deemph_gain"] = 12
+    rfparams["deemph_mid"] = 300000
+    rfparams["deemph_gain"] = 12.5
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
