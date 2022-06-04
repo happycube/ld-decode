@@ -24,11 +24,11 @@
 
 #include "frame.h"
 
-Frame::Frame(const qint32 &seqFrameNumber, const qint32 &vbiFrameNumber, const bool &isPictureStop,
-             const bool &isPullDown, const bool &isLeadInOrOut, const bool &isMarkedForDeletion,
-             const double &frameQuality, const bool &isPadded, const bool &isClvOffset,
-             const qint32 &firstField, const qint32 &secondField,
-             const qint32 &firstFieldPhase, const qint32 &secondFieldPhase)
+Frame::Frame(const qint32 seqFrameNumber, const qint32 vbiFrameNumber, const bool isPictureStop,
+             const bool isPullDown, const bool isLeadInOrOut, const bool isMarkedForDeletion,
+             const double frameQuality, const bool isPadded, const bool isClvOffset,
+             const qint32 firstField, const qint32 secondField,
+             const qint32 firstFieldPhase, const qint32 secondFieldPhase)
            : m_seqFrameNumber(seqFrameNumber),  m_vbiFrameNumber(vbiFrameNumber), m_isPictureStop(isPictureStop),
              m_isPullDown(isPullDown), m_isLeadInOrOut(isLeadInOrOut), m_isMarkedForDeletion(isMarkedForDeletion),
              m_frameQuality(frameQuality), m_isPadded(isPadded), m_isClvOffset(isClvOffset),

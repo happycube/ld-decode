@@ -24,8 +24,8 @@
 
 #include "discmap.h"
 
-DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrder,
-                 const bool &noStrict)
+DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder,
+                 const bool noStrict)
             : m_metadataFileInfo(metadataFileInfo), m_reverseFieldOrder(reverseFieldOrder),
               m_noStrict(noStrict)
 {
@@ -632,6 +632,7 @@ bool DiscMap::isNtscAmendment2ClvFrameNumber(qint32 frameNumber)
 // disc map must be sorted afterwards.
 void DiscMap::addPadding(qint32 startFrame, qint32 numberOfFrames)
 {
+    m_frames.reserve(m_frames.size() + numberOfFrames);
     qint32 currentVbi = m_frames[startFrame].vbiFrameNumber() + 1;
     for (qint32 i = 0; i < numberOfFrames; i++) {
         Frame paddingFrame;
@@ -639,7 +640,7 @@ void DiscMap::addPadding(qint32 startFrame, qint32 numberOfFrames)
         paddingFrame.seqFrameNumber(-1);
         paddingFrame.isPadded(true);
 
-        m_frames.append(paddingFrame);
+        m_frames.push_back(paddingFrame);
     }
 
     m_numberOfFrames = m_frames.size();
