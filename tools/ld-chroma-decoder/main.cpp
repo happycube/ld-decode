@@ -29,9 +29,9 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
-#include <QScopedPointer>
 #include <QThread>
 #include <fstream>
+#include <memory>
 
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
@@ -490,7 +490,7 @@ int main(int argc, char *argv[])
     }
 
     // Select the decoder
-    QScopedPointer<Decoder> decoder;
+    std::unique_ptr<Decoder> decoder;
     if (decoderName == "pal2d") {
         decoder.reset(new PalDecoder(palConfig));
     } else if (decoderName == "transform2d") {

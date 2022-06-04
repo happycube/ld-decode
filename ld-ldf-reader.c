@@ -2,7 +2,7 @@
  * Decode 16-bit samples from a compressed file using ffmpeg's libraries.
  *
  * Copyright (c) 2019-2021 Chad Page
- * Copyright (c) 2020-2021 Adam Sampson
+ * Copyright (c) 2020-2022 Adam Sampson
  *
  * Adapted from ffmpeg's doc/examples/demuxing_decoding.c, which is:
  * Copyright (c) 2012 Stefano Sabatini
@@ -44,7 +44,7 @@ static int audio_stream_idx = -1;
 static AVFrame *frame = NULL;
 static AVPacket *pkt = NULL;
 
-static uint64_t seekto = 0;
+static int64_t seekto = 0;
 
 static int decode_packet(AVCodecContext *dec, const AVPacket *pkt)
 {
@@ -70,18 +70,25 @@ static int decode_packet(AVCodecContext *dec, const AVPacket *pkt)
             return ret;
         }
 
-        // If we haven't reached the start position, don't output anything
-        if ((frame->pts + frame->nb_samples) < seekto) {
+        // If we won't reach the start position during this frame, don't output anything
+        if ((frame->pts + frame->nb_samples) <= seekto) {
             av_frame_unref(frame);
             continue;
         }
 
-        // Write the raw audio data samples to stdout, skipping any data that's
-        // before the start position
-        int64_t offset = FFMIN((seekto - frame->pts), 0);
-        size_t unpadded_linesize = frame->nb_samples * av_get_bytes_per_sample(frame->format);
-        size_t rv = write(1, frame->extended_data[0] + (offset * av_get_bytes_per_sample(frame->format)), unpadded_linesize);
-        if (rv != unpadded_linesize) {
+        // The start position may be in the middle of a frame -- work out how
+        // much data to skip at the start
+        size_t bytes_per_sample = av_get_bytes_per_sample(frame->format);
+        int64_t offset = (seekto - frame->pts) * bytes_per_sample;
+        if (offset < 0) {
+            // None -- output the whole frame
+            offset = 0;
+        }
+        size_t length = (frame->nb_samples * bytes_per_sample) - offset;
+
+        // Write the raw audio data samples to stdout
+        size_t rv = write(1, frame->extended_data[0] + offset, length);
+        if (rv != length) {
             fprintf(stderr, "write error %ld", offset);
             return -1;
         }
@@ -215,7 +222,7 @@ int main (int argc, char **argv)
     }
 
     if (seekto) {
-        uint64_t seeksec = seekto / audio_dec_ctx->sample_rate;
+        int64_t seeksec = seekto / audio_dec_ctx->sample_rate;
 
         avformat_seek_file(fmt_ctx, -1, (seeksec - 1) * 1000000, seeksec * 1000000, seeksec * 1000000, AVSEEK_FLAG_ANY);
     }

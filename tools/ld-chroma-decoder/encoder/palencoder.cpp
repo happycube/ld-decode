@@ -298,14 +298,6 @@ static constexpr auto uvFilter = makeFIRFilter(uvFilterCoeffs);
 void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine)
 {
     // Resize the output line and fill with black
-    qint32 lineLen = videoParameters.fieldWidth;
-    if (!videoParameters.isSubcarrierLocked) {
-        // Line-locked -- all lines are the same length
-    } else if (frameLine == 625) {
-        lineLen -= 4;
-    } else if (frameLine == 623 || frameLine == 624) {
-        lineLen += 2;
-    }
     outputLine.resize(videoParameters.fieldWidth);
     outputLine.fill(videoParameters.black16bIre);
     if (frameLine == 625) {
