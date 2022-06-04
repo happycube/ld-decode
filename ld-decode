@@ -212,6 +212,15 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--analog_audio_frequency",
+    dest="analog_audio_freq",
+    metavar="AFREQ",
+    type=int,
+    default=44100,
+    help="RF sampling frequency in source file (default is 44100hz)",
+)
+
+parser.add_argument(
     "--video_bpf_high",
     dest="vbpf_high",
     metavar="FREQ",
@@ -299,7 +308,7 @@ ldd = LDdecode(
     loader,
     logger,
     est_frames=req_frames,
-    analog_audio=0 if args.daa else 44.100,
+    analog_audio=0 if args.daa else args.analog_audio_freq,
     digital_audio=not args.noefm,
     system=system,
     doDOD=not args.nodod,

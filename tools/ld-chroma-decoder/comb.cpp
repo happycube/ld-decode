@@ -31,8 +31,9 @@
 
 #include "deemp.h"
 
-#include <QScopedPointer>
 #include <cmath>
+#include <memory>
+#include <utility>
 
 // Definitions of static constexpr data members, for compatibility with
 // pre-C++17 compilers
@@ -143,7 +144,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
     // Buffers for the next, current and previous frame.
     // Because we only need three of these, we allocate them upfront then
     // rotate the pointers below.
-    QScopedPointer<FrameBuffer> nextFrameBuffer, currentFrameBuffer, previousFrameBuffer;
+    std::unique_ptr<FrameBuffer> nextFrameBuffer, currentFrameBuffer, previousFrameBuffer;
     nextFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
     currentFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
     previousFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
@@ -158,10 +159,10 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
 
         // Rotate the buffers
         {
-            QScopedPointer<FrameBuffer> recycle(previousFrameBuffer.take());
-            previousFrameBuffer.reset(currentFrameBuffer.take());
-            currentFrameBuffer.reset(nextFrameBuffer.take());
-            nextFrameBuffer.reset(recycle.take());
+            auto recycle = std::move(previousFrameBuffer);
+            previousFrameBuffer = std::move(currentFrameBuffer);
+            currentFrameBuffer = std::move(nextFrameBuffer);
+            nextFrameBuffer = std::move(recycle);
         }
 
         // If there's another input field, bring it into nextFrameBuffer
