@@ -19,13 +19,18 @@ import scipy.signal as sps
 import scipy.interpolate as spi
 
 # Use PyFFTW's faster FFT implementation if available
-try:
-    import pyfftw.interfaces.numpy_fft as npfft
-    import pyfftw.interfaces
+if platform.system != "Windows":
+    try:
+        import pyfftw.interfaces.numpy_fft as npfft
+        import pyfftw.interfaces
 
-    pyfftw.interfaces.cache.enable()
-    pyfftw.interfaces.cache.set_keepalive_time(10)
-except ImportError:
+        pyfftw.interfaces.cache.enable()
+        pyfftw.interfaces.cache.set_keepalive_time(10)
+    except ImportError:
+        import numpy.fft as npfft
+else:
+    # Don't use pyfftw on windows as we have to use Thread and that causes
+    # issues if also using pyfftw.
     import numpy.fft as npfft
 
 # internal libraries
@@ -33,11 +38,11 @@ except ImportError:
 from . import efm_pll
 from .utils import get_git_info, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
-from .utils import polar2z, pi, sqsum, genwave, dsa_rescale, scale, rms
+from .utils import polar2z, sqsum, genwave, dsa_rescale, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findnextburst, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
-from .utils import fft_do_slice, fft_determine_slices, StridedCollector
+from .utils import fft_do_slice, fft_determine_slices
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -584,7 +589,7 @@ class RFDecode:
                 self.blocklen,
             )
 
-            # Determine the frequency offset (a1_freq) and bins (lowbin+nbin) that cover the audio RF 
+            # Determine the frequency offset (a1_freq) and bins (lowbin+nbin) that cover the audio RF
             # frequencies for this channel
             self.audio[channel].lowbin, self.audio[channel].nbins, self.audio[channel].a1_freq = fft_determine_slices(
                 center_freq, 200000, self.freq_hz, self.blocklen
@@ -1250,7 +1255,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100):
 
     frametime = linecount / (1000000 / rf.SysParams["line_period"])
     soundgap = 1 / freq
-    
+
     # include one extra 'tick' to interpolate the last one and use as a return value
     # for the next frame
     arange = np.arange(
@@ -3760,7 +3765,7 @@ class LDdecode:
 
         return metrics_rounded
 
-    def buildmetadata(self, f):
+    def buildmetadata(self, f, check_phase=True):
         """ returns field information JSON and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
@@ -3788,12 +3793,12 @@ class LDdecode:
         fi["fieldPhaseID"] = f.fieldPhaseID
 
         if prevfi is not None:
-            if not (
+            if check_phase and (not (
                 (
                     fi["fieldPhaseID"] == 1
                     and prevfi["fieldPhaseID"] == f.rf.SysParams["fieldPhases"]
                 )
-                or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1)
+                or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1))
             ):
                 logger.warning(
                     "At field #{0}, Field phaseID sequence mismatch ({1}->{2}) (player may be paused)".format(

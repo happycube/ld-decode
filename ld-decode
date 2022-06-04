@@ -4,8 +4,6 @@ import sys
 import argparse
 import traceback
 
-from multiprocessing import Process, Pipe
-
 from lddecode.core import *
 from lddecode.utils import *
 from lddecode.utils_logging import init_logging
