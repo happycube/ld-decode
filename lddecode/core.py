@@ -3765,7 +3765,7 @@ class LDdecode:
 
         return metrics_rounded
 
-    def buildmetadata(self, f):
+    def buildmetadata(self, f, check_phase=True):
         """ returns field information JSON and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
@@ -3793,12 +3793,12 @@ class LDdecode:
         fi["fieldPhaseID"] = f.fieldPhaseID
 
         if prevfi is not None:
-            if not (
+            if check_phase and (not (
                 (
                     fi["fieldPhaseID"] == 1
                     and prevfi["fieldPhaseID"] == f.rf.SysParams["fieldPhases"]
                 )
-                or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1)
+                or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1))
             ):
                 logger.warning(
                     "At field #{0}, Field phaseID sequence mismatch ({1}->{2}) (player may be paused)".format(
