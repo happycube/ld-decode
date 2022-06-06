@@ -174,8 +174,14 @@ void DiscMapper::removeInvalidFramesByPhase(DiscMap &discMap)
         if (discMap.isDiscPal() && expectedNextPhase == 9) expectedNextPhase = 1;
         if (!discMap.isDiscPal() && expectedNextPhase == 5) expectedNextPhase = 1;
         if (discMap.getSecondFieldPhase(frameNumber) != expectedNextPhase) {
-            qDebug() << "VBI Frame number" << discMap.vbiFrameNumber(frameNumber) << "(" << frameNumber << ") first and second field phases are not in sequence! -"
-            << expectedNextPhase << "expected but got" << discMap.getSecondFieldPhase(frameNumber);
+            if (discMap.vbiFrameNumber(frameNumber) != -1) {
+                qDebug() << "Marking frame" << frameNumber << "for deletion (VBI Frame#" << discMap.vbiFrameNumber(frameNumber) << ") as first and second field phases are not in sequence! -"
+                << expectedNextPhase << "expected but got" << discMap.getSecondFieldPhase(frameNumber);
+            } else {
+                qDebug() << "Marking frame" << frameNumber << "for deletion (VBI Frame# invalid) as first and second field phases are not in sequence! -"
+                << expectedNextPhase << "expected but got" << discMap.getSecondFieldPhase(frameNumber);
+            }
+
             discMap.setMarkedForDeletion(frameNumber);
             removals++;
         }
@@ -461,6 +467,23 @@ void DiscMapper::reorderFrames(DiscMap &discMap)
     // Perform the sort
     discMap.sort();
     qInfo() << "Sorting complete";
+
+    if (discMap.numberOfFrames() > 2) {
+        // There is an edge case where the first VBI frame number can be corrupt and cause
+        // a large gap between the first and second frames; we catch that edge case here
+        qint32 frameNumber = 0;
+        qint32 initialGap = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber);
+
+        if (initialGap > 1000) {
+            qInfo() << "Warning: The gap between the first and second VBI number is" << initialGap;
+            qInfo() << "this is over the 1000 frame threshold, so the first frame will be deleted to";
+            qInfo() << "avoid generating a big gap.";
+
+            discMap.setMarkedForDeletion(frameNumber);
+            discMap.flush();
+            qInfo() << "Removed first frame - disc map size now" << discMap.numberOfFrames() << "frames";
+        }
+    }
 }
 
 // Pad the disc map if there are missing frames in the disc map sequence
@@ -512,9 +535,19 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                     // Check if this is a CLV IEC ammendment 2 timecode gap
                     if (!discMap.isClvOffset(frameNumber)) {
                         // Not a CLV offset frame
+                        qint32 gapLength = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
                         qDebug() << "Sequence break: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
                                     "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
-                                    discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1 << "frames";
+                                    gapLength << "frames";
+
+                        // If the gap is long, use Info to warn the user than discmapping might have failed...
+                        if (gapLength > 1000) {
+                            qInfo() << "Warning: Detected a sequence break between VBI frame"  << discMap.vbiFrameNumber(frameNumber) << "and" <<
+                                       "VBI frame" << discMap.vbiFrameNumber(frameNumber + 1) << "representing";
+                            qInfo() << "a gap of" << gapLength << "frames.  This is over the threshold of 1000 frames and could indicate that mapping";
+                            qInfo() << "has failed due to badly corrupted VBI frame number data in the source TBC file.";
+                        }
+
                         numberOfGaps++;
                         qint32 missingFrames = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
                         totalMissingFrames += missingFrames;
@@ -595,6 +628,7 @@ void DiscMapper::deleteUnmappableFrames(DiscMap &discMap)
         // For CLV discs a timecode of 00:00:00.00 is valid, so technically a frame number of 0 is legal
         // (only for CLV discs, but it probably doesn't matter if we apply that to CAV too here)
         if (discMap.vbiFrameNumber(frameNumber) < 0 && !discMap.isPulldown(frameNumber)) {
+            qDebug() << "Marking frame" << frameNumber << "for deletion (unmappable)";
             discMap.setMarkedForDeletion(frameNumber);
         }
     }
