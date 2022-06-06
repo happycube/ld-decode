@@ -11,6 +11,7 @@ import pyximport; pyximport.install(language_level=3)  # noqa: E702
 # fmt: on
 
 import lddecode.core as ldd
+from lddecode.core import npfft
 import lddecode.utils as lddu
 from lddecode.utils import inrange
 import vhsdecode.utils as utils
@@ -38,16 +39,6 @@ import vhsdecode.hilbert as hilbert_test
 import vhsdecode.sync as sync
 
 from numba import njit
-
-# Use PyFFTW's faster FFT implementation if available
-try:
-    import pyfftw.interfaces.numpy_fft as npfft
-    import pyfftw.interfaces
-
-    pyfftw.interfaces.cache.enable()
-    pyfftw.interfaces.cache.set_keepalive_time(10)
-except ImportError:
-    import numpy.fft as npfft
 
 
 def unwrap_hilbert_t(hilbert, freq_hz):
@@ -1096,7 +1087,7 @@ class VHSDecode(ldd.LDdecode):
         adjusted = False
         redo = False
 
-        while done == False:
+        while done is False:
             if redo:
                 # Only allow one redo, no matter what
                 done = True
@@ -1146,7 +1137,7 @@ class VHSDecode(ldd.LDdecode):
                         self.rf.SysParams["ire0"] = self.rf.AGClevels[0].pull()
                         self.rf.SysParams["hz_ire"] = self.rf.AGClevels[1].pull()
 
-                if adjusted == False and redo == True:
+                if adjusted is False and redo is True:
                     self.demodcache.flush_demod()
                     adjusted = True
                     self.fdoffset -= offset
@@ -1159,7 +1150,7 @@ class VHSDecode(ldd.LDdecode):
                     self.badfields = (self.curfield, f)
                 self.curfield = None
 
-        if f is None or f.valid == False:
+        if f is None or f.valid is False:
             return None
 
         self.curfield = f
@@ -1381,20 +1372,6 @@ class VHSRFDecode(ldd.RFDecode):
 
         SF["hilbert"] = lddu.build_hilbert(self.blocklen)
 
-        video_lpf = sps.butter(
-            DP["video_lpf_order"], DP["video_lpf_freq"] / self.freq_hz_half, "low"
-        )
-        # SF["Fvideo_lpf"] = lddu.filtfft(video_lpf, self.blocklen)
-        filter_video_lpf = lddu.filtfft(video_lpf, self.blocklen)
-
-        # additional filters:  0.5mhz, used for sync detection.
-        # Using an FIR filter here to get a known delay
-        F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
-        filter_05 = lddu.filtfft((F0_5, [1.0]), self.blocklen)
-        # SF["F05"] = lddu.filtfft((F0_5, [1.0]), self.blocklen)
-        # Defined earlier
-        # SF["F05_offset"] = 32
-
         self.Filters["RFVideoRaw"] = lddu.filtfft(
             sps.butter(
                 DP["video_bpf_order"],
@@ -1457,7 +1434,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Video (luma) main de-emphasis
         db, da = FMDeEmphasisB(self.freq_hz, DP["deemph_gain"], DP["deemph_mid"]).get()
         # Sync de-emphasis
-        db05, da05 = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
+        # db05, da05 = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
 
         # db2, da2 = FMDeEmphasisB(
         #     self.freq_hz, 1.5, 1e6, 3 / 4
@@ -1467,17 +1444,29 @@ class VHSRFDecode(ldd.RFDecode):
         #     lddu.filtfft((db2, da2), self.blocklen)
         # )
 
+        half_blocklen = (self.blocklen // 2) + 1
+
+        video_lpf = sps.butter(
+            DP["video_lpf_order"], DP["video_lpf_freq"] / self.freq_hz_half, "low"
+        )
+        # SF["Fvideo_lpf"] = lddu.filtfft(video_lpf, self.blocklen)
+        filter_video_lpf = lddu.filtfft(video_lpf, self.blocklen)[:half_blocklen]
+
+        # additional filters:  0.5mhz, used for sync detection.
+        # Using an FIR filter here to get a known delay
+        F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
+        filter_05 = lddu.filtfft((F0_5, [1.0]), self.blocklen)[:half_blocklen]
+        # SF["F05"] = lddu.filtfft((F0_5, [1.0]), self.blocklen)
+        # Defined earlier
+        # SF["F05_offset"] = 32
+
         if False:
             import matplotlib.pyplot as plt
 
             corner_freq = 1 / (math.pi * 2 * DP["deemph_tau"])
 
-            db2, da2 = FMDeEmphasisB(
-                self.freq_hz, 1.5, 1e6, 3 / 4
-            ).get()
-            db3, da3 = FMDeEmphasisB(
-                self.freq_hz, 1.5, 1e6, 4 / 4
-            ).get()
+            db2, da2 = FMDeEmphasisB(self.freq_hz, 1.5, 1e6, 3 / 4).get()
+            db3, da3 = FMDeEmphasisB(self.freq_hz, 1.5, 1e6, 4 / 4).get()
             self.Filters["FVideo2"] = (
                 lddu.filtfft((db2, da2), self.blocklen) * filter_video_lpf
             )
@@ -1558,17 +1547,25 @@ class VHSRFDecode(ldd.RFDecode):
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
-        filter_deemp = lddu.filtfft((db, da), self.blocklen)
+        filter_deemp = lddu.filtfft((db, da), self.blocklen)[:half_blocklen]
         self.Filters["FVideo"] = filter_video_lpf * filter_deemp
+        if self.options.tape_format == "VHS":
+            # Double up the lpf to possibly closer emulate
+            # lpf in vcr. May add to other formats too later or
+            # make more configurable.
+            self.Filters["FVideo"] *= filter_video_lpf
 
         SF["FVideo05"] = filter_video_lpf * filter_deemp * filter_05
 
         # if True:
         #     import matplotlib.pyplot as plt
 
-        #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-        #     ax1.plot(self.Filters["FVideo"])
-        #     ax2.plot(self.Filters["FVideo05"])
+        #     freqs = np.linspace(0, self.freq_hz_half, self.blocklen // 2)
+
+        #     fig, (ax1) = plt.subplots(1, 1, sharex=True)
+        #     ax1.plot(freqs, 20 * np.log10(filter_deemp[:self.blocklen // 2]))
+        #     ax1.plot(freqs, 20 * np.log10(self.Filters["FVideo"][:self.blocklen // 2]))
+        #     ax1.plot(freqs, (20 * np.log10(self.Filters["FVideo"] * filter_video_lpf)[:self.blocklen // 2]), color="#FF0000")
         #     plt.show()
 
         # SF["YNRHighPass"] = sps.butter(

@@ -128,7 +128,7 @@ def common_parser_inner(parser, use_gui=False):
         "--threads",
         metavar="threads",
         type=int,
-        default=1,
+        default=4,
         help="number of CPU threads to use",
     )
 

@@ -73,13 +73,22 @@ def main(use_gui=False):
         default=False,
         help="Disable diff demod",
     )
+    if not use_gui:
+        luma_group.add_argument(
+            "-noclamp",
+            "--no_clamping",
+            dest="disable_dc_offset",
+            action="store_true",
+            default=True,
+            help=argparse.SUPPRESS,
+            # help="Disable blanking DC offset clamping/compensation (no effect as this is the default currently)",
+        )
     luma_group.add_argument(
-        "-noclamp",
-        "--no_clamping",
-        dest="disable_dc_offset",
+        "--clamp",
+        dest="enable_dc_offset",
         action="store_true",
         default=False,
-        help="Disable blanking DC offset clamping/compensation",
+        help="Enable blanking DC offset clamping/compensation",
     )
     luma_group.add_argument(
         "-nld",
@@ -228,7 +237,7 @@ def main(use_gui=False):
     rf_options["recheck_phase"] = args.recheck_phase
     rf_options["high_boost"] = args.high_boost
     rf_options["disable_diff_demod"] = args.disable_diff_demod
-    rf_options["disable_dc_offset"] = args.disable_dc_offset
+    rf_options["disable_dc_offset"] = not args.enable_dc_offset
     rf_options["disable_comb"] = args.disable_comb
     rf_options["nldeemp"] = args.nldeemp
     rf_options["cafc"] = args.cafc

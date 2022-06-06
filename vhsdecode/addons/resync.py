@@ -330,6 +330,8 @@ class Resync:
         #     import matplotlib.pyplot as plt
 
         #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+        #     fig.set_size_inches(40, 10)
+        #     plt.text(1, 1, "black: %s sync: %s" % (blacklevel, synclevel))
         #     ax1.plot(field.data["video"]["demod_05"])
         #     ax1.axhline(synclevel)
         #     ax1.axhline(pulse_level, color="#00FF00")
@@ -374,7 +376,7 @@ class Resync:
             blank_hz = iretohz(sp, 0)
         sync_ire = hztoire(sp, vsync_hz)
         pulse_hz_min = iretohz(sp, sync_ire - 10)
-        ## Look for pulses at the halfway between vsync tip and blanking.
+        # Look for pulses at the halfway between vsync tip and blanking.
         pulse_hz_max = (iretohz(sp, sync_ire) + blank_hz) / 2
         return pulse_hz_min, pulse_hz_max
 
