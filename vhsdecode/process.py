@@ -29,7 +29,7 @@ from vhsdecode.chroma import (
 from vhsdecode.doc import detect_dropouts_rf
 
 import vhsdecode.formats as vhs_formats
-from vhsdecode.addons.FMdeemph import FMDeEmphasis
+# from vhsdecode.addons.FMdeemph import FMDeEmphasis
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.addons.resync import Resync, Pulse
@@ -1020,7 +1020,7 @@ class VHSDecode(ldd.LDdecode):
     def buildmetadata(self, f):
         if math.isnan(f.burstmedian):
             f.burstmedian = 0.0
-        return super(VHSDecode, self).buildmetadata(f)
+        return super(VHSDecode, self).buildmetadata(f, False)
 
     # For laserdisc this decodes frame numbers from VBI metadata, but there won't be such a thing on
     # VHS, so just skip it.
@@ -1202,7 +1202,7 @@ class VHSRFDecode(ldd.RFDecode):
         # can't be changed later.
         self._options = namedtuple(
             "Options",
-            "diff_demod_check_value tape_format disable_comb nldeemp disable_right_hsync sync_clip disable_dc_offset",
+            "diff_demod_check_value tape_format disable_comb nldeemp disable_right_hsync sync_clip disable_dc_offset double_lpf",
         )(
             self.iretohz(100) * 2,
             tape_format,
@@ -1211,6 +1211,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("disable_right_hsync", False),
             rf_options.get("sync_clip", False),
             rf_options.get("disable_dc_offset", False),
+            tape_format == "VHS",
         )
 
         # Store a separate setting for *color* system as opposed to 525/625 line here.
@@ -1451,6 +1452,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
         # SF["Fvideo_lpf"] = lddu.filtfft(video_lpf, self.blocklen)
         filter_video_lpf = lddu.filtfft(video_lpf, self.blocklen)[:half_blocklen]
+        SF["Fvideo_lpf"] = video_lpf
 
         # additional filters:  0.5mhz, used for sync detection.
         # Using an FIR filter here to get a known delay
@@ -1548,11 +1550,11 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         filter_deemp = lddu.filtfft((db, da), self.blocklen)[:half_blocklen]
-        self.Filters["FVideo"] = filter_video_lpf * filter_deemp
-        if self.options.tape_format == "VHS":
-            # Double up the lpf to possibly closer emulate
-            # lpf in vcr. May add to other formats too later or
-            # make more configurable.
+        self.Filters["FVideo"] = filter_deemp * filter_video_lpf
+        if self.options.double_lpf:
+            #Double up the lpf to possibly closer emulate
+            #lpf in vcr. May add to other formats too later or
+            #make more configurable.
             self.Filters["FVideo"] *= filter_video_lpf
 
         SF["FVideo05"] = filter_video_lpf * filter_deemp * filter_05
@@ -1690,6 +1692,9 @@ class VHSRFDecode(ldd.RFDecode):
         demod_fft = npfft.rfft(demod)
         out_video_fft = demod_fft * self.Filters["FVideo"][0 : (self.blocklen // 2) + 1]
         out_video = npfft.irfft(out_video_fft).real
+        if self.options.double_lpf:
+            # Compensate for phase shift of the extra lpf
+            out_video = np.roll(out_video, 0)
 
         if self.options.nldeemp:
             # Extract the high frequency part of the signal
