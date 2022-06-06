@@ -3,7 +3,7 @@
     stackingpool.cpp
 
     ld-disc-stacker - Disc stacking for ld-decode
-    Copyright (C) 2020 Simon Inns
+    Copyright (C) 2020-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -140,7 +140,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     frameNumber = inputFrameNumber;
     inputFrameNumber++;
 
-    // Determine the number of sources available
+    // Determine the number of sources available (included padded sources)
     qint32 numberOfSources = sourceVideos.size();
 
     qDebug().nospace() << "Processing sequential frame number #" <<
@@ -158,6 +158,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     // Get the current VBI frame number based on the first source
     qint32 currentVbiFrame = -1;
     if (numberOfSources > 1) currentVbiFrame = convertSequentialFrameNumberToVbi(frameNumber, 0);
+
     for (qint32 sourceNo = 0; sourceNo < numberOfSources; sourceNo++) {
         // Determine the fields for the input frame
         firstFieldNumber[sourceNo] = -1;
@@ -401,10 +402,20 @@ QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
             qint32 secondFieldNumber = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo));
 
             // Ensure the frame is not a padded field (i.e. missing)
-            if (!(ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad &&
-                  ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad)) {
+            if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == false && ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == false) {
                 availableSourcesForFrame.append(sourceNo);
+            } else {
+                if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == true) qDebug() << "First field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
+                if (ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == true) qDebug() << "Second field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
             }
+        }
+    }
+
+    if (availableSourcesForFrame.size() != sourceVideos.size()) {
+        if (availableSourcesForFrame.size() > 0) {
+            qDebug() << "VBI Frame number" << vbiFrameNumber << "has only" << availableSourcesForFrame.size() << "available sources";
+        } else {
+            qInfo() << "Warning: VBI Frame number" << vbiFrameNumber << "has ZERO available sources (all sources padded?)";
         }
     }
 
