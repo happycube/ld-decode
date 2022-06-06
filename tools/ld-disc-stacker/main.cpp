@@ -3,7 +3,7 @@
     main.cpp
 
     ld-disc-stacker - Disc stacking for ld-decode
-    Copyright (C) 2020 Simon Inns
+    Copyright (C) 2020-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-disc-stacker - Disc stacking for ld-decode\n"
                 "\n"
-                "(c)2020 Simon Inns\n"
+                "(c)2020-2022 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
