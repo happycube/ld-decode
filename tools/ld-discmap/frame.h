@@ -31,11 +31,11 @@
 class Frame
 {
 public:
-    Frame(const qint32 &seqFrameNumber = -1, const qint32 &vbiFrameNumber = -1, const bool &isPictureStop = false,
-          const bool &isPullDown = false, const bool &isLeadInOrOut = false, const bool &isMarkedForDeletion = false,
-          const double &frameQuality = 0, const bool &isPadded = false, const bool &isClvOffset = false,
-          const qint32 &firstField = -1, const qint32 &secondField = -1,
-          const qint32 &firstFieldPhase = -1, const qint32 &secondFieldPhase = -1);
+    Frame(const qint32 seqFrameNumber = -1, const qint32 vbiFrameNumber = -1, const bool isPictureStop = false,
+          const bool isPullDown = false, const bool isLeadInOrOut = false, const bool isMarkedForDeletion = false,
+          const double frameQuality = 0, const bool isPadded = false, const bool isClvOffset = false,
+          const qint32 firstField = -1, const qint32 secondField = -1,
+          const qint32 firstFieldPhase = -1, const qint32 secondFieldPhase = -1);
     ~Frame() = default;
     Frame(const Frame &) = default;
     Frame &operator=(const Frame &) = default;

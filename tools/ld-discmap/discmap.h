@@ -44,7 +44,7 @@ public:
     DiscMap(const DiscMap &) = default;
     DiscMap &operator=(const DiscMap &) = default;
 
-    DiscMap(const QFileInfo &metadataFileInfo, const bool &reverseFieldOrder, const bool &noStrict);
+    DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder, const bool noStrict);
 
     QString filename() const;
     bool valid() const;
@@ -101,7 +101,7 @@ private:
     qint32 m_audioFieldByteLength;
     qint32 m_audioFieldSampleLength;
 
-    QVector<Frame> m_frames;
+    std::vector<Frame> m_frames;
     LdDecodeMetaData *ldDecodeMetaData;
 
     bool isNtscAmendment2ClvFrameNumber(qint32 frameNumber);
