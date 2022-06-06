@@ -229,12 +229,12 @@ void MainWindow::updateGuiLoaded()
         ui->aspectPushButton->setText(tr(Aspect::DAR_169_S));
     }
 
+    // Load and show the current frame
+    showFrame();
+
     // Update the chroma decoder configuration dialogue
     chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
                                                 tbcSource.getNtscConfiguration(), tbcSource.getOutputConfiguration());
-
-    // Show the current frame
-    showFrame();
 
     // Ensure the busy dialogue is hidden
     busyDialog->hide();
