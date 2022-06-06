@@ -385,13 +385,22 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
                 }
             }
         } else {
-            // Having frames without numbering (that are not pulldown) is a bad thing...
-            qInfo() << "";
-            qInfo() << "Warning:";
-            qInfo() << "There are frames without a frame number (that are not flagged as pulldown) in the duplicate frame list";
-            qInfo() << "This probably means that the disc map contains pulldown frames that do not follow the normal 1 in 5";
-            qInfo() << "pulldown pattern - and disc mapping will likely fail!";
-            qInfo() << "";
+            if (!discMap.isDiscPal()) {
+                // Having NTSC frames without numbering (that are not pulldown) is a bad thing...
+                qInfo() << "";
+                qInfo() << "Warning:";
+                qInfo() << "There are frames without a frame number (that are not flagged as pulldown) in the duplicate frame list";
+                qInfo() << "This probably means that the disc map contains pulldown frames that do not follow the normal 1 in 5";
+                qInfo() << "pulldown pattern - and disc mapping will likely fail!";
+                qInfo() << "";
+            } else {
+                qInfo() << "";
+                qInfo() << "Warning:";
+                qInfo() << "There are frames without a frame number in the duplicate frame list.  Since numberless frames are";
+                qInfo() << "usually unmappable, disc mapping will likely fail unless the --delete-unmappable-frames option is";
+                qInfo() << "used.";
+                qInfo() << "";
+            }
         }
     }
 
