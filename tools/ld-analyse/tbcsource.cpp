@@ -255,6 +255,13 @@ VideoSystem TbcSource::getSystem()
     return ldDecodeMetaData.getVideoParameters().system;
 }
 
+// Return the source's VideoSystem description
+QString TbcSource::getSystemDescription()
+{
+    if (!sourceReady) return "None";
+    return ldDecodeMetaData.getVideoSystemDescription();
+}
+
 // Method to get the frame height in scanlines
 qint32 TbcSource::getFrameHeight()
 {

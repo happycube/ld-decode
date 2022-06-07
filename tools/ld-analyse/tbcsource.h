@@ -92,6 +92,7 @@ public:
     qint32 getNumberOfFields();
     bool getIsWidescreen();
     VideoSystem getSystem();
+    QString getSystemDescription();
     qint32 getFrameHeight();
     qint32 getFrameWidth();
 
