@@ -39,6 +39,7 @@ class JsonReader;
 class JsonWriter;
 
 // The video system (combination of a line standard and a colour standard)
+// Note: If you update this, be sure to update the getVideoSystemDescription method also
 enum VideoSystem {
     PAL = 0,    // 625-line PAL
     NTSC,       // 525-line NTSC
@@ -242,6 +243,9 @@ public:
     // PCM Analogue audio helper methods
     qint32 getFieldPcmAudioStart(qint32 sequentialFieldNumber);
     qint32 getFieldPcmAudioLength(qint32 sequentialFieldNumber);
+
+    // Video system helper methods
+    QString getVideoSystemDescription();
 
 private:
     bool isFirstFieldFirst;
