@@ -32,10 +32,15 @@
 
 #include "lddecodemetadata.h"
 
+enum ChromaMode {
+    WIDEBAND_YUV = 0,   // Y'UV
+    WIDEBAND_YIQ,       // Y'IQ
+};
+
 class NTSCEncoder
 {
 public:
-    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData);
+    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, ChromaMode &chromaMode);
 
     // Encode RGB stream to NTSC.
     // Returns true on success; on failure, prints an error and returns false.
@@ -49,6 +54,7 @@ private:
     QFile &rgbFile;
     QFile &tbcFile;
     LdDecodeMetaData &metaData;
+    ChromaMode chromaMode;
 
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 activeWidth;
@@ -58,8 +64,8 @@ private:
 
     QByteArray rgbFrame;
     QVector<double> Y;
-    QVector<double> I;
-    QVector<double> Q;
+    QVector<double> C1;
+    QVector<double> C2;
 };
 
 #endif

@@ -75,6 +75,12 @@ int main(int argc, char *argv[])
                                      QCoreApplication::translate("main", "system"));
     parser.addOption(systemOption);
 
+    // Option to select chroma mode (--chroma-mode)
+    QCommandLineOption chromaOption(QStringList() << "chroma-mode",
+                                     QCoreApplication::translate("main", "NTSC only. Chroma encoder mode to use (wideband-yuv, wideband-yiq; default: wideband-yuv)"),
+                                     QCoreApplication::translate("main", "chroma-mode"));
+    parser.addOption(chromaOption);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -126,6 +132,21 @@ int main(int argc, char *argv[])
         }
     }
 
+    ChromaMode chromaMode = WIDEBAND_YUV;
+    QString chromaName;
+    if (parser.isSet(chromaOption)) {
+        chromaName = parser.value(chromaOption);
+        if (chromaName == "wideband-yiq") {
+            chromaMode = WIDEBAND_YIQ;
+        } else if (chromaName == "wideband-yuv") {
+            chromaMode = WIDEBAND_YUV;
+        } else {
+            // Quit with error
+            qCritical("Unsupported chroma encoder mode");
+            return -1;
+        }
+
+    }
     // Open the input file
     QFile rgbFile(inputFileName);
     if (inputFileName == "-") {
@@ -150,7 +171,7 @@ int main(int argc, char *argv[])
     // Encode the data
     LdDecodeMetaData metaData;
     if( system == NTSC ) {
-        NTSCEncoder encoder(rgbFile, tbcFile, metaData);
+        NTSCEncoder encoder(rgbFile, tbcFile, metaData, chromaMode);
         if (!encoder.encode()) {
             return -1;
         }
