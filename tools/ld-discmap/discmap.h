@@ -100,6 +100,8 @@ private:
     qint32 m_videoFieldLength;
     qint32 m_audioFieldByteLength;
     qint32 m_audioFieldSampleLength;
+    QString m_discType;
+    QString m_videoSystemDescription;
 
     std::vector<Frame> m_frames;
     LdDecodeMetaData *ldDecodeMetaData;

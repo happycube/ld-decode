@@ -1024,6 +1024,26 @@ LdDecodeMetaData::ClvTimecode LdDecodeMetaData::convertFrameNumberToClvTimecode(
     return clvTimecode;
 }
 
+// Method to return a description string for the current video format
+QString LdDecodeMetaData::getVideoSystemDescription()
+{
+    QString videoSystemDescription;
+
+    switch (getVideoParameters().system) {
+    case PAL:
+        videoSystemDescription = "PAL";
+        break;
+    case PAL_M:
+        videoSystemDescription = "PAL-M";
+        break;
+    case NTSC:
+        videoSystemDescription = "NTSC";
+        break;
+    }
+
+    return videoSystemDescription;
+}
+
 // Private method to generate a map of the PCM audio data (used by the sourceAudio library)
 // Note: That the map unit is "stereo sample pairs"; so each unit represents 2 16-bit samples
 // for a total of 4 bytes per unit.

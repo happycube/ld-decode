@@ -72,10 +72,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     qDebug() << discMap;
 
     // Show the disc type and video format:
-    if (discMap.isDiscCav() && discMap.isDiscPal()) qInfo() << "Input TBC is CAV PAL";
-    if (!discMap.isDiscCav() && discMap.isDiscPal()) qInfo() << "Input TBC is CLV PAL";
-    if (discMap.isDiscCav() && !discMap.isDiscPal()) qInfo() << "Input TBC is CAV NTSC";
-    if (!discMap.isDiscCav() && !discMap.isDiscPal()) qInfo() << "Input TBC is CLV NTSC";
+    qInfo().noquote() << "Input TBC is a" << discMap.discType() << "disc using" << discMap.discFormat();
 
     // Remove lead-in and lead-out frames from the map
     removeLeadInOut(discMap);
