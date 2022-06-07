@@ -297,6 +297,8 @@ int main(int argc, char *argv[])
         // Ensure that the video source standard matches the primary source
         if (ldDecodeMetaData[0]->getVideoParameters().system != videoParameters.system) {
             qInfo() << "All additional input sources must have the same video system as the initial source!";
+            qInfo() << "Initial source is" << ldDecodeMetaData[0]->getVideoSystemDescription() << " and current source is" <<
+                       ldDecodeMetaData[i]->getVideoSystemDescription();
             return 1;
         }
 
