@@ -50,8 +50,8 @@
 #include <array>
 #include <cmath>
 
-NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData)
+NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData, ChromaMode &_chromaMode)
+    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData), chromaMode(_chromaMode)
 {
     // NTSC subcarrier frequency [Poynton p511]
     videoParameters.fSC = 315.0e6 / 88.0;
@@ -114,8 +114,8 @@ NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_me
 
     // Resize the output buffers.
     Y.resize(videoParameters.fieldWidth);
-    I.resize(videoParameters.fieldWidth);
-    Q.resize(videoParameters.fieldWidth);
+    C1.resize(videoParameters.fieldWidth);
+    C2.resize(videoParameters.fieldWidth);
 }
 
 bool NTSCEncoder::encode()
@@ -369,27 +369,34 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
         burstAmplitude = 0.0;
     }
 
-    // Clear Y'IQ buffers. Values in these are scaled so that 0.0 is black and
+    // Clear output buffers. Values in these are scaled so that 0.0 is black and
     // 1.0 is white.
     Y.fill(0.0);
-    I.fill(0.0);
-    Q.fill(0.0);
+    C1.fill(0.0);
+    C2.fill(0.0);
 
     if (rgbData != nullptr) {
-        // Convert the R'G'B' data to Y'IQ form [Poynton p367 eq 30.2]
+        // Convert the R'G'B' data to component form
         for (qint32 i = 0; i < activeWidth; i++) {
             const double R = rgbData[i * 3]       / 65535.0;
             const double G = rgbData[(i * 3) + 1] / 65535.0;
             const double B = rgbData[(i * 3) + 2] / 65535.0;
             qint32 x = activeLeft + i;
             Y[x] = (R * 0.299)    + (G * 0.587)     + (B * 0.114);
-            I[x] = (R * 0.595901) + (G * -0.274557) + (B * -0.321344);
-            Q[x] = (R * 0.211537) + (G * -0.522736) + (B * 0.311200);
+            if (chromaMode == WIDEBAND_YUV) {
+                // Y'UV [Poynton p337 eq 28.5]
+                C1[x] = (R * -0.147141) + (G * -0.288869) + (B * 0.436010);
+                C2[x] = (R * 0.614975)  + (G * -0.514965) + (B * -0.100010);
+            } else {
+                // Y'IQ [Poynton p367 eq 30.2]
+                C1[x] = (R * 0.595901) + (G * -0.274557) + (B * -0.321344);
+                C2[x] = (R * 0.211537) + (G * -0.522736) + (B * 0.311200);
+            }
         }
 
-        // Low-pass filter I and Q to 1.3 MHz [Poynton p342]
-        uvFilter.apply(I);
-        uvFilter.apply(Q);
+        // Low-pass filter chroma components to 1.3 MHz [Poynton p342]
+        uvFilter.apply(C1);
+        uvFilter.apply(C2);
     }
 
     for (qint32 x = 0; x < outputLine.size(); x++) {
@@ -400,8 +407,15 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
         // Generate colorburst
         const double burst = sin(a + burstOffset) * burstAmplitude / 2.0;
 
-        // Encode the chroma signal [Poynton p368]
-        const double chroma = Q[x] * sin(a + 33.0) + I[x] * cos(a + 33.0);
+        // Encode the chroma signal
+        double chroma;
+        if (chromaMode == WIDEBAND_YUV) {
+            // Y'UV [Poynton p338]
+            chroma = C1[x] * sin(a - 33.0 - 123.0) + C2[x] * cos(a - 33.0 - 123.0);
+        } else {
+            // Y'IQ [Poynton p368]
+            chroma = C2[x] * sin(a + 33.0) + C1[x] * cos(a + 33.0);
+        }
 
         // Combine everything to make up the composite signal
         const double burstGate = raisedCosineGate(t, burstStartTime, burstEndTime, halfBurstRiseTime);
