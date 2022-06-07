@@ -206,17 +206,7 @@ void MainWindow::updateGuiLoaded()
 
     // Update the status bar
     QString statusText;
-    switch (tbcSource.getSystem()) {
-    case NTSC:
-        statusText += "NTSC";
-        break;
-    case PAL:
-        statusText += "PAL";
-        break;
-    case PAL_M:
-        statusText += "PAL-M";
-        break;
-    }
+    statusText += tbcSource.getSystemDescription();
     statusText += " source loaded with ";
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
