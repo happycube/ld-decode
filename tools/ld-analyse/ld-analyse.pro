@@ -82,6 +82,7 @@ HEADERS += \
     ../library/tbc/filters.h \
     ../library/tbc/jsonio.h \
     ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/linenumber.h \
     ../library/tbc/logging.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \

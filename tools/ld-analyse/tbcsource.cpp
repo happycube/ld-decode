@@ -335,18 +335,10 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     ScanLineData scanLineData;
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-    // Convert the scan line into field and field line
-    bool isFieldTop = true;
-    qint32 fieldLine = 0;
-
-    if (scanLine % 2 == 0) isFieldTop = false;
-    else isFieldTop = true;
-
-    if (isFieldTop) {
-        fieldLine = (scanLine / 2) + 1;
-    } else {
-        fieldLine = (scanLine / 2);
-    }
+    // Set the system and line number
+    scanLineData.systemDescription = ldDecodeMetaData.getVideoSystemDescription();
+    scanLineData.lineNumber = LineNumber::fromFrame1(scanLine, videoParameters.system);
+    const LineNumber &lineNumber = scanLineData.lineNumber;
 
     // Set the video parameters
     scanLineData.blackIre = videoParameters.black16bIre;
@@ -366,11 +358,11 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     decodeFrame();
 
     // Get the field video and dropout data
-    const SourceVideo::Data &fieldData = isFieldTop ? inputFields[inputStartIndex].data
-                                                    : inputFields[inputStartIndex + 1].data;
+    const SourceVideo::Data &fieldData = lineNumber.isFirstField() ? inputFields[inputStartIndex].data
+                                                                   : inputFields[inputStartIndex + 1].data;
     const ComponentFrame &componentFrame = componentFrames[0];
-    DropOuts &dropouts = isFieldTop ? firstField.dropOuts
-                                    : secondField.dropOuts;
+    DropOuts &dropouts = lineNumber.isFirstField() ? firstField.dropOuts
+                                                   : secondField.dropOuts;
 
     scanLineData.composite.resize(videoParameters.fieldWidth);
     scanLineData.luma.resize(videoParameters.fieldWidth);
@@ -378,14 +370,14 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 
     for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
         // Get the 16-bit composite value for the current pixel (frame data is numbered 0-624 or 0-524)
-        scanLineData.composite[xPosition] = fieldData[((fieldLine - 1) * videoParameters.fieldWidth) + xPosition];
+        scanLineData.composite[xPosition] = fieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition];
 
         // Get the decoded luma value for the current pixel (only computed in the active region)
         scanLineData.luma[xPosition] = static_cast<qint32>(componentFrame.y(scanLine - 1)[xPosition]);
 
         scanLineData.isDropout[xPosition] = false;
         for (qint32 doCount = 0; doCount < dropouts.size(); doCount++) {
-            if (dropouts.fieldLine(doCount) == fieldLine) {
+            if (dropouts.fieldLine(doCount) == lineNumber.field1()) {
                 if (xPosition >= dropouts.startx(doCount) && xPosition <= dropouts.endx(doCount)) scanLineData.isDropout[xPosition] = true;
             }
         }

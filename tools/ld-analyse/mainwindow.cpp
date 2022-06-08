@@ -72,7 +72,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     if (tbcSource.getIsWidescreen()) aspectRatio = Aspect::DAR_169;
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
-    connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
+    connect(oscilloscopeDialog, &OscilloscopeDialog::scopeCoordsChanged, this, &MainWindow::scopeCoordsChangedSignalHandler);
     lastScopeLine = 1;
     lastScopeDot = 1;
 
@@ -453,8 +453,8 @@ void MainWindow::updateOscilloscopeDialogue()
 {
     // Update the oscilloscope dialogue
     oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(lastScopeLine),
-                                       lastScopeLine, lastScopeDot,
-                                       tbcSource.getFrameHeight());
+                                       lastScopeDot, lastScopeLine - 1,
+                                       tbcSource.getFrameWidth(), tbcSource.getFrameHeight());
 }
 
 // Menu bar signal handlers -------------------------------------------------------------------------------------------
@@ -875,14 +875,14 @@ void MainWindow::on_aspectPushButton_clicked()
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
 
 // Handler called when another class changes the currenly selected scan line
-void MainWindow::scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot)
+void MainWindow::scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord)
 {
-    qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with scanLine =" << scanLine << "and picture dot" << pictureDot;
+    qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with xCoord =" << xCoord << "and yCoord =" << yCoord;
 
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        lastScopeDot = pictureDot;
-        lastScopeLine = scanLine;
+        lastScopeDot = xCoord;
+        lastScopeLine = yCoord + 1;
         updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
 
