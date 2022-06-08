@@ -62,8 +62,6 @@ public:
     void reset();
 
 private:
-    bool processingDone;
-
     // Debug
     bool debug_efmToF3Frames;
     bool debug_f3ToF2Frames;
