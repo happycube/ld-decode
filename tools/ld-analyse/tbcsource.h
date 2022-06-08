@@ -35,6 +35,7 @@
 // TBC library includes
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
+#include "linenumber.h"
 #include "vbidecoder.h"
 #include "filters.h"
 
@@ -50,6 +51,8 @@ public:
     explicit TbcSource(QObject *parent = nullptr);
 
     struct ScanLineData {
+        QString systemDescription;
+        LineNumber lineNumber;
         QVector<qint32> composite;
         QVector<qint32> luma;
         QVector<bool> isDropout;

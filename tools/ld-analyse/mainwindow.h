@@ -98,7 +98,7 @@ private slots:
     void on_aspectPushButton_clicked();
 
     // Miscellaneous handlers
-    void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
+    void scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord);
     void mousePressEvent(QMouseEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
     void chromaDecoderConfigChangedSignalHandler();
