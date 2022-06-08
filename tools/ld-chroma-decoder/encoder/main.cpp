@@ -81,6 +81,11 @@ int main(int argc, char *argv[])
                                      QCoreApplication::translate("main", "chroma-mode"));
     parser.addOption(chromaOption);
 
+    // Option to disable 7.5 IRE setup, as in NTSC-J (--no-setup)
+    QCommandLineOption setupOption(QStringList() << "no-setup",
+                                     QCoreApplication::translate("main", "NTSC only. Do not add 7.5 IRE setup (as in NTSC-J)"));
+    parser.addOption(setupOption);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -129,6 +134,8 @@ int main(int argc, char *argv[])
         }
     }
 
+    bool addSetup = !parser.isSet(setupOption);
+
     ChromaMode chromaMode = WIDEBAND_YUV;
     QString chromaName;
     if (parser.isSet(chromaOption)) {
@@ -168,7 +175,7 @@ int main(int argc, char *argv[])
     // Encode the data
     LdDecodeMetaData metaData;
     if( system == NTSC ) {
-        NTSCEncoder encoder(rgbFile, tbcFile, metaData, chromaMode);
+        NTSCEncoder encoder(rgbFile, tbcFile, metaData, chromaMode, addSetup);
         if (!encoder.encode()) {
             return -1;
         }
