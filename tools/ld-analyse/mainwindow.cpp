@@ -360,7 +360,7 @@ void MainWindow::showFrame()
     // If the scope window is open, update it too (using the last scope line selected by the user)
     if (oscilloscopeDialog->isVisible()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
     }
 
     // Update the closed caption dialog
@@ -449,11 +449,12 @@ void MainWindow::loadTbcFile(QString inputFileName)
 }
 
 // Method to update the line oscilloscope based on the frame number and scan line
-void MainWindow::updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot)
+void MainWindow::updateOscilloscopeDialogue()
 {
     // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(scanLine),
-                                       scanLine, pictureDot, tbcSource.getFrameHeight());
+    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(lastScopeLine),
+                                       lastScopeLine, lastScopeDot,
+                                       tbcSource.getFrameHeight());
 }
 
 // Menu bar signal handlers -------------------------------------------------------------------------------------------
@@ -497,7 +498,7 @@ void MainWindow::on_actionLine_scope_triggered()
 {
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
     }
 }
@@ -845,7 +846,7 @@ void MainWindow::on_mouseModePushButton_clicked()
     if (ui->mouseModePushButton->isChecked()) {
         // Show the oscilloscope view if currently hidden
         if (!oscilloscopeDialog->isVisible()) {
-            updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+            updateOscilloscopeDialogue();
             oscilloscopeDialog->show();
         }
     }
@@ -882,7 +883,7 @@ void MainWindow::scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot
         // Show the oscilloscope dialogue for the selected scan-line
         lastScopeDot = pictureDot;
         lastScopeLine = scanLine;
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
 
         // Update the frame viewer
@@ -971,7 +972,7 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
         lastScopeLine = unscaledY;
         lastScopeDot = unscaledX;
 
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
 
         // Update the frame viewer
@@ -992,7 +993,7 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
 
     // If the scope window is open, update it too
     if (oscilloscopeDialog->isVisible()) {
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
     }
 }
 
