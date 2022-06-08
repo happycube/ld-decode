@@ -147,7 +147,7 @@ private:
 
     // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
-    void updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot);
+    void updateOscilloscopeDialogue();
     void mouseScanLineSelect(qint32 oX, qint32 oY);
 };
 
