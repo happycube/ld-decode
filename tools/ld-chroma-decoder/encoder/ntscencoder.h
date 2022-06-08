@@ -40,7 +40,7 @@ enum ChromaMode {
 class NTSCEncoder
 {
 public:
-    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, ChromaMode &chromaMode);
+    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, ChromaMode &chromaMode, bool &addSetup);
 
     // Encode RGB stream to NTSC.
     // Returns true on success; on failure, prints an error and returns false.
@@ -51,10 +51,14 @@ private:
     bool encodeField(qint32 fieldNo);
     void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine);
 
+    const qint32 blankingIre = 0x3C00;
+    const qint32 setupIreOffset = 0x0A80; // 10.5 * 256
+
     QFile &rgbFile;
     QFile &tbcFile;
     LdDecodeMetaData &metaData;
     ChromaMode chromaMode;
+    bool addSetup;
 
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 activeWidth;

@@ -50,8 +50,8 @@
 #include <array>
 #include <cmath>
 
-NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData, ChromaMode &_chromaMode)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData), chromaMode(_chromaMode)
+NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData, ChromaMode &_chromaMode, bool &_addSetup)
+    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData), chromaMode(_chromaMode), addSetup(_addSetup)
 {
     // NTSC subcarrier frequency [Poynton p511]
     videoParameters.fSC = 315.0e6 / 88.0;
@@ -94,9 +94,7 @@ NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_me
     // White level, black level, and blanking level, extended to 16 bits
     // [SMPTE p2, Poynton p517]
     videoParameters.white16bIre = 0xC800;
-    const qint32 blankingIre = 0x3C00;
-    const qint32 ntscSetup = 0x0A80;  // 10.5 * 256
-    videoParameters.black16bIre = blankingIre + ntscSetup;  // (60 + 10.5) * 256
+    videoParameters.black16bIre = blankingIre + (addSetup ? setupIreOffset : 0);
     videoParameters.fieldWidth = 910;
     videoParameters.fieldHeight = 263;
     videoParameters.isMapped = false;
@@ -284,9 +282,9 @@ static constexpr auto uvFilter = makeFIRFilter(uvFilterCoeffs);
 
 void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine)
 {
-    // Resize the output line and fill with black
+    // Resize the output line and fill with blanking
     outputLine.resize(videoParameters.fieldWidth);
-    outputLine.fill(videoParameters.black16bIre - 0x0A80);
+    outputLine.fill(blankingIre);
 
     // Skip encoding the last (dummy) frameLine
     if (frameLine == 525)
