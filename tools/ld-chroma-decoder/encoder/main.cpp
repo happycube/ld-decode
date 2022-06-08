@@ -121,11 +121,8 @@ int main(int argc, char *argv[])
     QString systemName;
     if (parser.isSet(systemOption)) {
         systemName = parser.value(systemOption);
-        if (systemName == "ntsc" || systemName == "NTSC") {
-            system = NTSC;
-        } else if (systemName == "pal" || systemName == "PAL") {
-            system = PAL;
-        } else {
+        if (!parseVideoSystemName(systemName.toUpper(), system)
+            || (system != NTSC && system != PAL)) {
             // Quit with error
             qCritical("Unsupported color system");
             return -1;
