@@ -327,6 +327,22 @@ bool TbcSource::getIsDropoutPresent()
     return false;
 }
 
+// Get the decoded ComponentFrame for the current frame
+const ComponentFrame &TbcSource::getComponentFrame()
+{
+    // Load and decode SourceFields for the current frame
+    loadInputFields();
+    decodeFrame();
+
+    return componentFrames[0];
+}
+
+// Get the VideoParameters for the current source
+const LdDecodeMetaData::VideoParameters &TbcSource::getVideoParameters()
+{
+    return ldDecodeMetaData.getVideoParameters();
+}
+
 // Get scan line data from the frame
 TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 {
@@ -353,14 +369,10 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     scanLineData.isActiveLine = (scanLine - 1) >= videoParameters.firstActiveFrameLine
                                 && (scanLine -1) < videoParameters.lastActiveFrameLine;
 
-    // Load and decode SourceFields for the current frame
-    loadInputFields();
-    decodeFrame();
-
     // Get the field video and dropout data
     const SourceVideo::Data &fieldData = lineNumber.isFirstField() ? inputFields[inputStartIndex].data
                                                                    : inputFields[inputStartIndex + 1].data;
-    const ComponentFrame &componentFrame = componentFrames[0];
+    const ComponentFrame &componentFrame = getComponentFrame();
     DropOuts &dropouts = lineNumber.isFirstField() ? firstField.dropOuts
                                                    : secondField.dropOuts;
 

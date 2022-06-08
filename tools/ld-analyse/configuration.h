@@ -58,6 +58,8 @@ public:
     QByteArray getVbiDialogGeometry(void);
     void setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry);
     QByteArray getOscilloscopeDialogGeometry(void);
+    void setVectorscopeDialogGeometry(QByteArray vectorscopeDialogGeometry);
+    QByteArray getVectorscopeDialogGeometry(void);
     void setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisDialogGeometry);
     QByteArray getDropoutAnalysisDialogGeometry(void);
     void setVisibleDropoutAnalysisDialogGeometry(QByteArray visibleDropoutDialogGeometry);
@@ -90,6 +92,7 @@ private:
         qreal mainWindowScaleFactor;
         QByteArray vbiDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
+        QByteArray vectorscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
         QByteArray visibleDropoutAnalysisDialogGeometry;
         QByteArray blackSnrAnalysisDialogGeometry;
