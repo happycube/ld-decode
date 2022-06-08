@@ -35,6 +35,8 @@
 // See the comments in VideoParameters for the meanings of these values.
 // For descriptions of the systems, see ITU BT.1700.
 struct VideoSystemDefaults {
+    VideoSystem system;
+    const char *name;
     double fSC;
     qint32 minActiveFrameLine;
     qint32 firstActiveFieldLine;
@@ -43,8 +45,9 @@ struct VideoSystemDefaults {
     qint32 lastActiveFrameLine;
 };
 
-// PAL
 static constexpr VideoSystemDefaults palDefaults {
+    PAL,
+    "PAL",
     (283.75 * 15625) + 25,
     2,
     22, 308,
@@ -53,8 +56,9 @@ static constexpr VideoSystemDefaults palDefaults {
     44, 620,
 };
 
-// NTSC
 static constexpr VideoSystemDefaults ntscDefaults {
+    NTSC,
+    "NTSC",
     315.0e6 / 88.0,
     1,
     20, 259,
@@ -63,20 +67,40 @@ static constexpr VideoSystemDefaults ntscDefaults {
     40, 525,
 };
 
-// PAL-M
 static constexpr VideoSystemDefaults palMDefaults {
+    PAL_M,
+    "PAL-M",
     5.0e6 * (63.0 / 88.0) * (909.0 / 910.0),
     ntscDefaults.minActiveFrameLine,
     ntscDefaults.firstActiveFieldLine, ntscDefaults.lastActiveFieldLine,
     ntscDefaults.firstActiveFrameLine, ntscDefaults.lastActiveFrameLine,
 };
 
+// These must be in the same order as enum VideoSystem
+static constexpr VideoSystemDefaults VIDEO_SYSTEM_DEFAULTS[] = {
+    palDefaults,
+    ntscDefaults,
+    palMDefaults,
+};
+
 // Return appropriate defaults for the selected video system
 static const VideoSystemDefaults &getSystemDefaults(const LdDecodeMetaData::VideoParameters &videoParameters)
 {
-    if (videoParameters.system == PAL) return palDefaults;
-    else if (videoParameters.system == NTSC) return ntscDefaults;
-    else return palMDefaults;
+    return VIDEO_SYSTEM_DEFAULTS[videoParameters.system];
+}
+
+// Look up a video system by name.
+// Return true and set system if found; if not found, return false.
+bool parseVideoSystemName(QString name, VideoSystem &system)
+{
+    // Search VIDEO_SYSTEM_DEFAULTS for a matching name
+    for (const auto &defaults: VIDEO_SYSTEM_DEFAULTS) {
+        if (name == defaults.name) {
+            system = defaults.system;
+            return true;
+        }
+    }
+    return false;
 }
 
 // Read Vbi from JSON
@@ -168,10 +192,9 @@ void LdDecodeMetaData::VideoParameters::read(JsonReader &reader)
             if (fieldHeight < 300) system = PAL_M;
             else system = PAL;
         } else system = NTSC;
-    } else if (systemString == "PAL") system = PAL;
-    else if (systemString == "NTSC") system = NTSC;
-    else if (systemString == "PAL-M") system = PAL_M;
-    else reader.throwError("unknown value for videoParameters.system");
+    } else if (!parseVideoSystemName(QString::fromStdString(systemString), system)) {
+        reader.throwError("unknown value for videoParameters.system");
+    }
 
     isValid = true;
 }
@@ -202,13 +225,7 @@ void LdDecodeMetaData::VideoParameters::write(JsonWriter &writer) const
     writer.writeMember("isWidescreen", isWidescreen);
     writer.writeMember("numberOfSequentialFields", numberOfSequentialFields);
     writer.writeMember("sampleRate", sampleRate);
-    if (system == PAL) {
-        writer.writeMember("system", "PAL");
-    } else if (system == NTSC) {
-        writer.writeMember("system", "NTSC");
-    } else {
-        writer.writeMember("system", "PAL-M");
-    }
+    writer.writeMember("system", VIDEO_SYSTEM_DEFAULTS[system].name);
     writer.writeMember("white16bIre", white16bIre);
 
     writer.endObject();
@@ -1025,23 +1042,9 @@ LdDecodeMetaData::ClvTimecode LdDecodeMetaData::convertFrameNumberToClvTimecode(
 }
 
 // Method to return a description string for the current video format
-QString LdDecodeMetaData::getVideoSystemDescription()
+QString LdDecodeMetaData::getVideoSystemDescription() const
 {
-    QString videoSystemDescription;
-
-    switch (getVideoParameters().system) {
-    case PAL:
-        videoSystemDescription = "PAL";
-        break;
-    case PAL_M:
-        videoSystemDescription = "PAL-M";
-        break;
-    case NTSC:
-        videoSystemDescription = "NTSC";
-        break;
-    }
-
-    return videoSystemDescription;
+    return getSystemDefaults(videoParameters).name;
 }
 
 // Private method to generate a map of the PCM audio data (used by the sourceAudio library)
