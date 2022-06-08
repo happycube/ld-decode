@@ -14,5 +14,6 @@ SUBDIRS = \
     ld-disc-stacker \
     ld-process-vits \
     library/filter/testfilter \
+    library/tbc/testlinenumber \
     library/tbc/testmetadata \
     library/tbc/testvbidecoder
