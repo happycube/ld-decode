@@ -474,6 +474,7 @@
     <addaction name="actionWhite_SNR_analysis"/>
     <addaction name="actionVBI"/>
     <addaction name="actionLine_scope"/>
+    <addaction name="actionVectorscope"/>
     <addaction name="actionClosed_Captions"/>
     <addaction name="separator"/>
     <addaction name="actionChroma_decoder_configuration"/>
@@ -527,6 +528,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+L</string>
+   </property>
+  </action>
+  <action name="actionVectorscope">
+   <property name="text">
+    <string>Vectorscope...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+U</string>
    </property>
   </action>
   <action name="actionVBI">

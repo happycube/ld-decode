@@ -48,6 +48,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Set up dialogues
     oscilloscopeDialog = new OscilloscopeDialog(this);
+    vectorscopeDialog = new VectorscopeDialog(this);
     aboutDialog = new AboutDialog(this);
     vbiDialog = new VbiDialog(this);
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
@@ -76,6 +77,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     lastScopeLine = 1;
     lastScopeDot = 1;
 
+    // Connect to the changed signal from the vectorscope dialogue
+    connect(vectorscopeDialog, &VectorscopeDialog::scopeChanged, this, &MainWindow::vectorscopeChangedSignalHandler);
+
     // Connect to the chroma decoder configuration changed signal
     connect(chromaDecoderConfigDialog, &ChromaDecoderConfigDialog::chromaDecoderConfigChanged, this, &MainWindow::chromaDecoderConfigChangedSignalHandler);
 
@@ -88,6 +92,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     scaleFactor = configuration.getMainWindowScaleFactor();
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
+    vectorscopeDialog->restoreGeometry(configuration.getVectorscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
     visibleDropoutAnalysisDialog->restoreGeometry(configuration.getVisibleDropoutAnalysisDialogGeometry());
     blackSnrAnalysisDialog->restoreGeometry(configuration.getBlackSnrAnalysisDialogGeometry());
@@ -117,6 +122,7 @@ MainWindow::~MainWindow()
     configuration.setMainWindowScaleFactor(scaleFactor);
     configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
+    configuration.setVectorscopeDialogGeometry(vectorscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration.setVisibleDropoutAnalysisDialogGeometry(visibleDropoutAnalysisDialog->saveGeometry());
     configuration.setBlackSnrAnalysisDialogGeometry(blackSnrAnalysisDialog->saveGeometry());
@@ -167,6 +173,7 @@ void MainWindow::updateGuiLoaded()
 
     // Enable menu options
     ui->actionLine_scope->setEnabled(true);
+    ui->actionVectorscope->setEnabled(true);
     ui->actionVBI->setEnabled(true);
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
@@ -258,6 +265,7 @@ void MainWindow::updateGuiUnloaded()
 
     // Disable menu options
     ui->actionLine_scope->setEnabled(false);
+    ui->actionVectorscope->setEnabled(false);
     ui->actionVBI->setEnabled(false);
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
@@ -357,10 +365,12 @@ void MainWindow::showFrame()
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
     updateFrameViewer();
 
-    // If the scope window is open, update it too (using the last scope line selected by the user)
+    // If the scope dialogues are open, update them
     if (oscilloscopeDialog->isVisible()) {
-        // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue();
+    }
+    if (vectorscopeDialog->isVisible()) {
+        updateVectorscopeDialogue();
     }
 
     // Update the closed caption dialog
@@ -457,6 +467,13 @@ void MainWindow::updateOscilloscopeDialogue()
                                        tbcSource.getFrameWidth(), tbcSource.getFrameHeight());
 }
 
+// Method to update the vectorscope
+void MainWindow::updateVectorscopeDialogue()
+{
+    // Update the vectorscope dialogue
+    vectorscopeDialog->showTraceImage(tbcSource.getComponentFrame(), tbcSource.getVideoParameters());
+}
+
 // Menu bar signal handlers -------------------------------------------------------------------------------------------
 
 void MainWindow::on_actionExit_triggered()
@@ -500,6 +517,16 @@ void MainWindow::on_actionLine_scope_triggered()
         // Show the oscilloscope dialogue for the selected scan-line
         updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
+    }
+}
+
+// Display the vectorscope view
+void MainWindow::on_actionVectorscope_triggered()
+{
+    if (tbcSource.getIsSourceLoaded()) {
+        // Show the vectorscope dialogue
+        updateVectorscopeDialogue();
+        vectorscopeDialog->show();
     }
 }
 
@@ -891,6 +918,17 @@ void MainWindow::scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord)
     }
 }
 
+// Handler called when vectorscope settings are changed
+void MainWindow::vectorscopeChangedSignalHandler()
+{
+    qDebug() << "MainWindow::vectorscopeChangedSignalHandler(): Called";
+
+    if (tbcSource.getIsSourceLoaded()) {
+        // Update the vectorscope
+        updateVectorscopeDialogue();
+    }
+}
+
 // Mouse press event handler
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
@@ -991,9 +1029,12 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
     // Update the frame viewer
     updateFrameViewer();
 
-    // If the scope window is open, update it too
+    // If the scope windows are open, update them
     if (oscilloscopeDialog->isVisible()) {
         updateOscilloscopeDialogue();
+    }
+    if (vectorscopeDialog->isVisible()) {
+        updateVectorscopeDialogue();
     }
 }
 

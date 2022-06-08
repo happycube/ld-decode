@@ -72,6 +72,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("mainWindowScaleFactor", settings.windows.mainWindowScaleFactor);
     configuration->setValue("vbiDialogGeometry", settings.windows.vbiDialogGeometry);
     configuration->setValue("oscilloscopeDialogGeometry", settings.windows.oscilloscopeDialogGeometry);
+    configuration->setValue("vectorscopeDialogGeometry", settings.windows.vectorscopeDialogGeometry);
     configuration->setValue("dropoutAnalysisDialogGeometry", settings.windows.dropoutAnalysisDialogGeometry);
     configuration->setValue("visibleDropoutAnalysisDialogGeometry", settings.windows.visibleDropoutAnalysisDialogGeometry);
     configuration->setValue("blackSnrAnalysisDialogGeometry", settings.windows.blackSnrAnalysisDialogGeometry);
@@ -104,6 +105,7 @@ void Configuration::readConfiguration(void)
     settings.windows.mainWindowScaleFactor = configuration->value("mainWindowScaleFactor").toReal();
     settings.windows.vbiDialogGeometry = configuration->value("vbiDialogGeometry").toByteArray();
     settings.windows.oscilloscopeDialogGeometry = configuration->value("oscilloscopeDialogGeometry").toByteArray();
+    settings.windows.vectorscopeDialogGeometry = configuration->value("vectorscopeDialogGeometry").toByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = configuration->value("dropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.visibleDropoutAnalysisDialogGeometry = configuration->value("visibleDropoutAnalysisDialogGeometry").toByteArray();
     settings.windows.blackSnrAnalysisDialogGeometry = configuration->value("blackSnrAnalysisDialogGeometry").toByteArray();
@@ -127,6 +129,7 @@ void Configuration::setDefault(void)
     settings.windows.mainWindowScaleFactor = 1.0;
     settings.windows.vbiDialogGeometry = QByteArray();
     settings.windows.oscilloscopeDialogGeometry = QByteArray();
+    settings.windows.vectorscopeDialogGeometry = QByteArray();
     settings.windows.dropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.visibleDropoutAnalysisDialogGeometry = QByteArray();
     settings.windows.blackSnrAnalysisDialogGeometry = QByteArray();
@@ -200,6 +203,16 @@ void Configuration::setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogG
 QByteArray Configuration::getOscilloscopeDialogGeometry(void)
 {
     return settings.windows.oscilloscopeDialogGeometry;
+}
+
+void Configuration::setVectorscopeDialogGeometry(QByteArray vectorscopeDialogGeometry)
+{
+    settings.windows.vectorscopeDialogGeometry = vectorscopeDialogGeometry;
+}
+
+QByteArray Configuration::getVectorscopeDialogGeometry(void)
+{
+    return settings.windows.vectorscopeDialogGeometry;
 }
 
 void Configuration::setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisDialogGeometry)

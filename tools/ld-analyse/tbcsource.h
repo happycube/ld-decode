@@ -109,6 +109,8 @@ public:
     qint32 getGraphDataSize();
 
     bool getIsDropoutPresent();
+    const ComponentFrame &getComponentFrame();
+    const LdDecodeMetaData::VideoParameters &getVideoParameters();
     ScanLineData getScanLineData(qint32 scanLine);
 
     qint32 getFirstFieldNumber();
