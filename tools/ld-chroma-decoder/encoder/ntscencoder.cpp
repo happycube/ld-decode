@@ -408,8 +408,8 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
         // Encode the chroma signal
         double chroma;
         if (chromaMode == WIDEBAND_YUV) {
-            // Y'UV [Poynton p338]
-            chroma = C1[x] * sin(a - 33.0 - 123.0) + C2[x] * cos(a - 33.0 - 123.0);
+            // Y'UV [Poynton p338], offset 57 degrees
+            chroma = C1[x] * sin(a + 57.0 * M_PI / 180.0) + C2[x] * cos(a + 57.0 * M_PI / 180.0);
         } else {
             // Y'IQ [Poynton p368]
             chroma = C2[x] * sin(a + 33.0) + C1[x] * cos(a + 33.0);
