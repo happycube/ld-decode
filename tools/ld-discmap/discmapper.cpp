@@ -72,10 +72,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     qDebug() << discMap;
 
     // Show the disc type and video format:
-    if (discMap.isDiscCav() && discMap.isDiscPal()) qInfo() << "Input TBC is CAV PAL";
-    if (!discMap.isDiscCav() && discMap.isDiscPal()) qInfo() << "Input TBC is CLV PAL";
-    if (discMap.isDiscCav() && !discMap.isDiscPal()) qInfo() << "Input TBC is CAV NTSC";
-    if (!discMap.isDiscCav() && !discMap.isDiscPal()) qInfo() << "Input TBC is CLV NTSC";
+    qInfo().noquote() << "Input TBC is a" << discMap.discType() << "disc using" << discMap.discFormat();
 
     // Remove lead-in and lead-out frames from the map
     removeLeadInOut(discMap);
@@ -732,17 +729,30 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 
             // Save the audio (not field order dependent)
             if (!noAudio) {
-                // Read the audio
-                sourceAudioFirstField = sourceAudio.getAudioData(discMap.getFirstFieldAudioDataStart(frameNumber),
-                                                                 discMap.getFirstFieldAudioDataLength(frameNumber));
-                sourceAudioSecondField = sourceAudio.getAudioData(discMap.getSecondFieldAudioDataStart(frameNumber),
-                                                                  discMap.getSecondFieldAudioDataLength(frameNumber));
+                // Ensure there is audio to read from the first and second fields
+                if ((discMap.getFirstFieldAudioDataLength(frameNumber) > 0) &&
+                        (discMap.getSecondFieldAudioDataLength(frameNumber) > 0)) {
+                    // Read the audio
+                    sourceAudioFirstField = sourceAudio.getAudioData(discMap.getFirstFieldAudioDataStart(frameNumber),
+                                                                     discMap.getFirstFieldAudioDataLength(frameNumber));
+                    sourceAudioSecondField = sourceAudio.getAudioData(discMap.getSecondFieldAudioDataStart(frameNumber),
+                                                                      discMap.getSecondFieldAudioDataLength(frameNumber));
 
-                // Write the audio
-                if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioFirstField.data()),
-                                       sourceAudioFirstField.size() * 2)) writeFail = true;
-                if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioSecondField.data()),
-                                       sourceAudioSecondField.size() * 2)) writeFail = true;
+                    // Write the audio
+                    if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioFirstField.data()),
+                                           sourceAudioFirstField.size() * 2)) writeFail = true;
+                    if (!targetAudio.write(reinterpret_cast<const char *>(sourceAudioSecondField.data()),
+                                           sourceAudioSecondField.size() * 2)) writeFail = true;
+                } else {
+                    if (discMap.getFirstFieldAudioDataLength(frameNumber) < 1) {
+                        qInfo() << "Warning: Input file seems to have zero audio data in the first field of frame number #" << frameNumber;
+                        qInfo() << "The audio output might be corrupt.";
+                    }
+                    if (discMap.getSecondFieldAudioDataLength(frameNumber) < 1) {
+                        qInfo() << "Warning: Input file seems to have zero audio data in the second field of frame number #" << frameNumber;
+                        qInfo() << "The audio output might be corrupt.";
+                    }
+                }
             }
         } else {
             // Padded frame - write two dummy fields

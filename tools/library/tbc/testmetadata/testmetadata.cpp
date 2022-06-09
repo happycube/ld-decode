@@ -205,6 +205,28 @@ void testJsonReader()
     }
 }
 
+// Run unit tests for VideoSystem
+void testVideoSystem() {
+    std::cerr << "Testing VideoSystem\n";
+
+    VideoSystem system;
+    bool b;
+
+    b = parseVideoSystemName("PAL", system);
+    assert(b);
+    assert(system == PAL);
+    b = parseVideoSystemName("NTSC", system);
+    assert(b);
+    assert(system == NTSC);
+    b = parseVideoSystemName("PAL-M", system);
+    assert(b);
+    assert(system == PAL_M);
+    b = parseVideoSystemName("", system);
+    assert(!b);
+    b = parseVideoSystemName("SPURIOUS", system);
+    assert(!b);
+}
+
 int main(int argc, char *argv[])
 {
     // Initialise Qt
@@ -240,6 +262,7 @@ int main(int argc, char *argv[])
     if (positionalArguments.count() == 0) {
         // Run unit tests
         testJsonReader();
+        testVideoSystem();
         return 0;
     }
     if (positionalArguments.count() > 2) {

@@ -80,8 +80,10 @@ clean-tools:
 
 TESTCASES = \
 	check-library-filter \
+	check-library-linenumber \
 	check-library-metadata \
 	check-library-vbidecoder \
+	check-chroma-ntsc \
 	check-chroma-pal \
 	check-ld-cut-ntsc \
 	check-ld-cut-pal \
@@ -99,6 +101,10 @@ check-library-filter:
 	@$(TESTING) "library: filter"
 	@tools/library/filter/testfilter/testfilter
 
+check-library-linenumber:
+	@$(TESTING) "library: linenumber"
+	@tools/library/tbc/testlinenumber/testlinenumber
+
 check-library-metadata:
 	@$(TESTING) "library: metadata"
 	@tools/library/tbc/testmetadata/testmetadata
@@ -107,9 +113,17 @@ check-library-vbidecoder:
 	@$(TESTING) "library: vbidecoder"
 	@tools/library/tbc/testvbidecoder/testvbidecoder
 
+check-chroma-ntsc:
+	@$(TESTING) "ld-chroma-decoder (NTSC)"
+	@scripts/test-chroma \
+		--system ntsc \
+		--expect-psnr 25 \
+		--expect-psnr-range 0.5
+
 check-chroma-pal:
 	@$(TESTING) "ld-chroma-decoder (PAL)"
 	@scripts/test-chroma \
+		--system pal \
 		--expect-psnr 25 \
 		--expect-psnr-range 0.5
 

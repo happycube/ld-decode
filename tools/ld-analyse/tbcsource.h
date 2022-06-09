@@ -3,7 +3,7 @@
     tbcsource.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2018-2022 Simon Inns
     Copyright (C) 2021-2022 Adam Sampson
 
     This file is part of ld-decode-tools.
@@ -35,6 +35,7 @@
 // TBC library includes
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
+#include "linenumber.h"
 #include "vbidecoder.h"
 #include "filters.h"
 
@@ -50,6 +51,8 @@ public:
     explicit TbcSource(QObject *parent = nullptr);
 
     struct ScanLineData {
+        QString systemDescription;
+        LineNumber lineNumber;
         QVector<qint32> composite;
         QVector<qint32> luma;
         QVector<bool> isDropout;
@@ -92,6 +95,7 @@ public:
     qint32 getNumberOfFields();
     bool getIsWidescreen();
     VideoSystem getSystem();
+    QString getSystemDescription();
     qint32 getFrameHeight();
     qint32 getFrameWidth();
 
@@ -105,6 +109,8 @@ public:
     qint32 getGraphDataSize();
 
     bool getIsDropoutPresent();
+    const ComponentFrame &getComponentFrame();
+    const LdDecodeMetaData::VideoParameters &getVideoParameters();
     ScanLineData getScanLineData(qint32 scanLine);
 
     qint32 getFirstFieldNumber();

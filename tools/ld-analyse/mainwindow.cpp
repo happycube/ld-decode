@@ -3,7 +3,7 @@
     mainwindow.cpp
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2018-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -48,6 +48,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Set up dialogues
     oscilloscopeDialog = new OscilloscopeDialog(this);
+    vectorscopeDialog = new VectorscopeDialog(this);
     aboutDialog = new AboutDialog(this);
     vbiDialog = new VbiDialog(this);
     dropoutAnalysisDialog = new DropoutAnalysisDialog(this);
@@ -72,9 +73,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     if (tbcSource.getIsWidescreen()) aspectRatio = Aspect::DAR_169;
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
-    connect(oscilloscopeDialog, &OscilloscopeDialog::scanLineChanged, this, &MainWindow::scanLineChangedSignalHandler);
+    connect(oscilloscopeDialog, &OscilloscopeDialog::scopeCoordsChanged, this, &MainWindow::scopeCoordsChangedSignalHandler);
     lastScopeLine = 1;
     lastScopeDot = 1;
+
+    // Connect to the changed signal from the vectorscope dialogue
+    connect(vectorscopeDialog, &VectorscopeDialog::scopeChanged, this, &MainWindow::vectorscopeChangedSignalHandler);
 
     // Connect to the chroma decoder configuration changed signal
     connect(chromaDecoderConfigDialog, &ChromaDecoderConfigDialog::chromaDecoderConfigChanged, this, &MainWindow::chromaDecoderConfigChangedSignalHandler);
@@ -88,6 +92,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     scaleFactor = configuration.getMainWindowScaleFactor();
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
+    vectorscopeDialog->restoreGeometry(configuration.getVectorscopeDialogGeometry());
     dropoutAnalysisDialog->restoreGeometry(configuration.getDropoutAnalysisDialogGeometry());
     visibleDropoutAnalysisDialog->restoreGeometry(configuration.getVisibleDropoutAnalysisDialogGeometry());
     blackSnrAnalysisDialog->restoreGeometry(configuration.getBlackSnrAnalysisDialogGeometry());
@@ -117,6 +122,7 @@ MainWindow::~MainWindow()
     configuration.setMainWindowScaleFactor(scaleFactor);
     configuration.setVbiDialogGeometry(vbiDialog->saveGeometry());
     configuration.setOscilloscopeDialogGeometry(oscilloscopeDialog->saveGeometry());
+    configuration.setVectorscopeDialogGeometry(vectorscopeDialog->saveGeometry());
     configuration.setDropoutAnalysisDialogGeometry(dropoutAnalysisDialog->saveGeometry());
     configuration.setVisibleDropoutAnalysisDialogGeometry(visibleDropoutAnalysisDialog->saveGeometry());
     configuration.setBlackSnrAnalysisDialogGeometry(blackSnrAnalysisDialog->saveGeometry());
@@ -167,6 +173,7 @@ void MainWindow::updateGuiLoaded()
 
     // Enable menu options
     ui->actionLine_scope->setEnabled(true);
+    ui->actionVectorscope->setEnabled(true);
     ui->actionVBI->setEnabled(true);
     ui->actionNTSC->setEnabled(true);
     ui->actionVideo_metadata->setEnabled(true);
@@ -206,17 +213,7 @@ void MainWindow::updateGuiLoaded()
 
     // Update the status bar
     QString statusText;
-    switch (tbcSource.getSystem()) {
-    case NTSC:
-        statusText += "NTSC";
-        break;
-    case PAL:
-        statusText += "PAL";
-        break;
-    case PAL_M:
-        statusText += "PAL-M";
-        break;
-    }
+    statusText += tbcSource.getSystemDescription();
     statusText += " source loaded with ";
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
@@ -229,12 +226,12 @@ void MainWindow::updateGuiLoaded()
         ui->aspectPushButton->setText(tr(Aspect::DAR_169_S));
     }
 
+    // Load and show the current frame
+    showFrame();
+
     // Update the chroma decoder configuration dialogue
     chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
                                                 tbcSource.getNtscConfiguration(), tbcSource.getOutputConfiguration());
-
-    // Show the current frame
-    showFrame();
 
     // Ensure the busy dialogue is hidden
     busyDialog->hide();
@@ -268,6 +265,7 @@ void MainWindow::updateGuiUnloaded()
 
     // Disable menu options
     ui->actionLine_scope->setEnabled(false);
+    ui->actionVectorscope->setEnabled(false);
     ui->actionVBI->setEnabled(false);
     ui->actionNTSC->setEnabled(false);
     ui->actionVideo_metadata->setEnabled(false);
@@ -367,10 +365,12 @@ void MainWindow::showFrame()
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
     updateFrameViewer();
 
-    // If the scope window is open, update it too (using the last scope line selected by the user)
+    // If the scope dialogues are open, update them
     if (oscilloscopeDialog->isVisible()) {
-        // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
+    }
+    if (vectorscopeDialog->isVisible()) {
+        updateVectorscopeDialogue();
     }
 
     // Update the closed caption dialog
@@ -459,11 +459,19 @@ void MainWindow::loadTbcFile(QString inputFileName)
 }
 
 // Method to update the line oscilloscope based on the frame number and scan line
-void MainWindow::updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot)
+void MainWindow::updateOscilloscopeDialogue()
 {
     // Update the oscilloscope dialogue
-    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(scanLine),
-                                       scanLine, pictureDot, tbcSource.getFrameHeight());
+    oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(lastScopeLine),
+                                       lastScopeDot, lastScopeLine - 1,
+                                       tbcSource.getFrameWidth(), tbcSource.getFrameHeight());
+}
+
+// Method to update the vectorscope
+void MainWindow::updateVectorscopeDialogue()
+{
+    // Update the vectorscope dialogue
+    vectorscopeDialog->showTraceImage(tbcSource.getComponentFrame(), tbcSource.getVideoParameters());
 }
 
 // Menu bar signal handlers -------------------------------------------------------------------------------------------
@@ -507,8 +515,18 @@ void MainWindow::on_actionLine_scope_triggered()
 {
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
+    }
+}
+
+// Display the vectorscope view
+void MainWindow::on_actionVectorscope_triggered()
+{
+    if (tbcSource.getIsSourceLoaded()) {
+        // Show the vectorscope dialogue
+        updateVectorscopeDialogue();
+        vectorscopeDialog->show();
     }
 }
 
@@ -855,7 +873,7 @@ void MainWindow::on_mouseModePushButton_clicked()
     if (ui->mouseModePushButton->isChecked()) {
         // Show the oscilloscope view if currently hidden
         if (!oscilloscopeDialog->isVisible()) {
-            updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+            updateOscilloscopeDialogue();
             oscilloscopeDialog->show();
         }
     }
@@ -884,19 +902,30 @@ void MainWindow::on_aspectPushButton_clicked()
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
 
 // Handler called when another class changes the currenly selected scan line
-void MainWindow::scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot)
+void MainWindow::scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord)
 {
-    qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with scanLine =" << scanLine << "and picture dot" << pictureDot;
+    qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with xCoord =" << xCoord << "and yCoord =" << yCoord;
 
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
-        lastScopeDot = pictureDot;
-        lastScopeLine = scanLine;
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        lastScopeDot = xCoord;
+        lastScopeLine = yCoord + 1;
+        updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
 
         // Update the frame viewer
         updateFrameViewer();
+    }
+}
+
+// Handler called when vectorscope settings are changed
+void MainWindow::vectorscopeChangedSignalHandler()
+{
+    qDebug() << "MainWindow::vectorscopeChangedSignalHandler(): Called";
+
+    if (tbcSource.getIsSourceLoaded()) {
+        // Update the vectorscope
+        updateVectorscopeDialogue();
     }
 }
 
@@ -981,7 +1010,7 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
         lastScopeLine = unscaledY;
         lastScopeDot = unscaledX;
 
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
 
         // Update the frame viewer
@@ -1000,9 +1029,12 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
     // Update the frame viewer
     updateFrameViewer();
 
-    // If the scope window is open, update it too
+    // If the scope windows are open, update them
     if (oscilloscopeDialog->isVisible()) {
-        updateOscilloscopeDialogue(lastScopeLine, lastScopeDot);
+        updateOscilloscopeDialogue();
+    }
+    if (vectorscopeDialog->isVisible()) {
+        updateVectorscopeDialogue();
     }
 }
 

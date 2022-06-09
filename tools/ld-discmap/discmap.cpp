@@ -85,9 +85,13 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     }
 
     // Get the source format (PAL/NTSC)
+    m_videoSystemDescription = ldDecodeMetaData->getVideoSystemDescription();
     if (ldDecodeMetaData->getVideoParameters().system == PAL) m_isDiscPal = true;
-    else if (ldDecodeMetaData->getVideoParameters().system == NTSC) m_isDiscPal = true;
-    else qCritical("Video system must be PAL or NTSC");
+    else if (ldDecodeMetaData->getVideoParameters().system == NTSC) m_isDiscPal = false;
+    else {
+        qDebug() << "Input TBC video system" << m_videoSystemDescription << "is not supported";
+        qCritical("Video system must be PAL or NTSC");
+    }
 
     // Set the audio field length
     if (m_isDiscPal) {
@@ -133,9 +137,11 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     // Determine disc type
     if (cavCount > clvCount) {
         m_isDiscCav = true;
+        m_discType = "CAV";
         qDebug() << "Got" << cavCount << "valid CAV picture numbers from" << framesToCheck << "frames - source disc type is CAV";
     } else {
         m_isDiscCav = false;
+        m_discType = "CLV";
         qDebug() << "Got" << clvCount << "valid CLV picture numbers from" << framesToCheck << "frames - source disc type is CLV";
     }
 
@@ -384,21 +390,13 @@ bool DiscMap::isDiscPal() const
 // Method to return the disc type as a string
 QString DiscMap::discType() const
 {
-    QString discType;
-    if (m_isDiscCav) discType = "CAV";
-    else discType = "CLV";
-
-    return discType;
+    return m_discType;
 }
 
 // Method to return the disc format as a string
 QString DiscMap::discFormat() const
 {
-    QString discFormat;
-    if (m_isDiscPal) discFormat = "PAL";
-    else discFormat = "NTSC";
-
-    return discFormat;
+    return m_videoSystemDescription;
 }
 
 // Method to return the VBI frame number

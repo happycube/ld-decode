@@ -3,7 +3,7 @@
     mainwindow.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2018-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -35,6 +35,7 @@
 #include <QMouseEvent>
 
 #include "oscilloscopedialog.h"
+#include "vectorscopedialog.h"
 #include "aboutdialog.h"
 #include "vbidialog.h"
 #include "dropoutanalysisdialog.h"
@@ -65,6 +66,7 @@ private slots:
     void on_actionOpen_TBC_file_triggered();
     void on_actionReload_TBC_triggered();
     void on_actionLine_scope_triggered();
+    void on_actionVectorscope_triggered();
     void on_actionAbout_ld_analyse_triggered();
     void on_actionVBI_triggered();
     void on_actionDropout_analysis_triggered();
@@ -98,7 +100,8 @@ private slots:
     void on_aspectPushButton_clicked();
 
     // Miscellaneous handlers
-    void scanLineChangedSignalHandler(qint32 scanLine, qint32 pictureDot);
+    void scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord);
+    void vectorscopeChangedSignalHandler();
     void mousePressEvent(QMouseEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
     void chromaDecoderConfigChangedSignalHandler();
@@ -112,6 +115,7 @@ private:
 
     // Dialogues
     OscilloscopeDialog* oscilloscopeDialog;
+    VectorscopeDialog* vectorscopeDialog;
     AboutDialog* aboutDialog;
     VbiDialog* vbiDialog;
     DropoutAnalysisDialog* dropoutAnalysisDialog;
@@ -147,7 +151,8 @@ private:
 
     // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
-    void updateOscilloscopeDialogue(qint32 scanLine, qint32 pictureDot);
+    void updateOscilloscopeDialogue();
+    void updateVectorscopeDialogue();
     void mouseScanLineSelect(qint32 oX, qint32 oY);
 };
 

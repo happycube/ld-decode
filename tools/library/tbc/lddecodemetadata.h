@@ -27,6 +27,7 @@
 #ifndef LDDECODEMETADATA_H
 #define LDDECODEMETADATA_H
 
+#include <QString>
 #include <QVector>
 #include <QTemporaryFile>
 #include <QDebug>
@@ -39,11 +40,14 @@ class JsonReader;
 class JsonWriter;
 
 // The video system (combination of a line standard and a colour standard)
+// Note: If you update this, be sure to update VIDEO_SYSTEM_DEFAULTS also
 enum VideoSystem {
     PAL = 0,    // 625-line PAL
     NTSC,       // 525-line NTSC
     PAL_M,      // 525-line PAL
 };
+
+bool parseVideoSystemName(QString name, VideoSystem &system);
 
 class LdDecodeMetaData
 {
@@ -242,6 +246,9 @@ public:
     // PCM Analogue audio helper methods
     qint32 getFieldPcmAudioStart(qint32 sequentialFieldNumber);
     qint32 getFieldPcmAudioLength(qint32 sequentialFieldNumber);
+
+    // Video system helper methods
+    QString getVideoSystemDescription() const;
 
 private:
     bool isFirstFieldFirst;

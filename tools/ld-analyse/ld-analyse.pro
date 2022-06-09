@@ -31,6 +31,7 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     oscilloscopedialog.cpp \
+    vectorscopedialog.cpp \
     aboutdialog.cpp \
     chromadecoderconfigdialog.cpp \
     tbcsource.cpp \
@@ -62,6 +63,7 @@ HEADERS += \
     closedcaptionsdialog.h \
     mainwindow.h \
     oscilloscopedialog.h \
+    vectorscopedialog.h \
     aboutdialog.h \
     chromadecoderconfigdialog.h \
     tbcsource.h \
@@ -82,6 +84,7 @@ HEADERS += \
     ../library/tbc/filters.h \
     ../library/tbc/jsonio.h \
     ../library/tbc/lddecodemetadata.h \
+    ../library/tbc/linenumber.h \
     ../library/tbc/logging.h \
     ../library/tbc/sourcevideo.h \
     ../library/tbc/vbidecoder.h \
@@ -94,6 +97,7 @@ FORMS += \
     closedcaptionsdialog.ui \
     mainwindow.ui \
     oscilloscopedialog.ui \
+    vectorscopedialog.ui \
     aboutdialog.ui \
     chromadecoderconfigdialog.ui \
     vbidialog.ui \
