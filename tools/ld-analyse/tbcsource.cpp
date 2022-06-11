@@ -71,6 +71,21 @@ void TbcSource::unloadSource()
     resetState();
 }
 
+// Start saving the JSON file for the current source
+void TbcSource::saveSourceJson()
+{
+    // Start a background saving thread
+    qDebug() << "TbcSource::saveSourceJson(): Starting background save thread";
+    disconnect(&watcher, &QFutureWatcher<bool>::finished, nullptr, nullptr);
+    connect(&watcher, &QFutureWatcher<bool>::finished, this, &TbcSource::finishBackgroundSave);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    future = QtConcurrent::run(this, &TbcSource::startBackgroundSave, currentJsonFilename);
+#else
+    future = QtConcurrent::run(&TbcSource::startBackgroundSave, this, currentJsonFilename);
+#endif
+    watcher.setFuture(future);
+}
+
 // Method returns true is a TBC source is loaded
 bool TbcSource::getIsSourceLoaded()
 {
@@ -946,6 +961,7 @@ bool TbcSource::startBackgroundLoad(QString sourceFilename)
     // Both the video and metadata files are now open
     sourceReady = true;
     currentSourceFilename = sourceFilename;
+    currentJsonFilename = jsonFileName;
 
     // Configure the chroma decoder
     if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
@@ -969,4 +985,56 @@ void TbcSource::finishBackgroundLoad()
 {
     // Send a finished loading message to the main window
     emit finishedLoading(future.result());
+}
+
+bool TbcSource::startBackgroundSave(QString jsonFilename)
+{
+    qDebug() << "TbcSource::startBackgroundSave(): Saving to" << jsonFilename;
+    emit busy("Saving JSON metadata...");
+
+    // The general idea here is that decoding takes a long time -- so we want
+    // to be careful not to destroy the user's only copy of their JSON file if
+    // something goes wrong!
+
+    // Write the metadata out to a new temporary file
+    QString newJsonFilename = jsonFilename + ".new";
+    if (!ldDecodeMetaData.write(newJsonFilename)) {
+        // Writing failed
+        lastIOError = "Could not write to new JSON file";
+        return false;
+    }
+
+    // If there isn't already a .bup backup file, rename the existing file to that name
+    // (matching the behaviour of ld-process-vbi)
+    QString backupFilename = jsonFilename + ".bup";
+    if (!QFile::exists(backupFilename)) {
+        if (!QFile::rename(jsonFilename, jsonFilename + ".bup")) {
+            // Renaming failed
+            lastIOError = "Could not rename existing JSON file to backup";
+            return false;
+        }
+    } else {
+        // There is a backup, so it's safe to remove the existing file
+        if (!QFile::remove(jsonFilename)) {
+            // Deleting failed
+            lastIOError = "Could not remove existing JSON file";
+            return false;
+        }
+    }
+
+    // Rename the new file to the target name
+    if (!QFile::rename(newJsonFilename, jsonFilename)) {
+        // Renaming failed
+        lastIOError = "Could not rename new JSON file to target name";
+        return false;
+    }
+
+    qDebug() << "TbcSource::startBackgroundSave(): Save complete";
+    return true;
+}
+
+void TbcSource::finishBackgroundSave()
+{
+    // Send a finished saving message to the main window
+    emit finishedSaving(future.result());
 }

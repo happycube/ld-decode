@@ -69,6 +69,7 @@ public:
     void loadSource(QString inputFileName);
     void unloadSource();
     bool getIsSourceLoaded();
+    void saveSourceJson();
     QString getCurrentSourceFilename();
     QString getLastIOError();
 
@@ -134,9 +135,11 @@ public:
 signals:
     void busy(QString information);
     void finishedLoading(bool success);
+    void finishedSaving(bool success);
 
 private slots:
     void finishBackgroundLoad();
+    void finishBackgroundSave();
 
 private:
     bool sourceReady;
@@ -158,6 +161,7 @@ private:
     SourceMode sourceMode;
     LdDecodeMetaData ldDecodeMetaData;
     QString currentSourceFilename;
+    QString currentJsonFilename;
     QString lastIOError;
 
     // Chroma decoder objects
@@ -207,6 +211,7 @@ private:
     QImage generateQImage();
     void generateData();
     bool startBackgroundLoad(QString sourceFilename);
+    bool startBackgroundSave(QString jsonFilename);
 };
 
 #endif // TBCSOURCE_H

@@ -459,6 +459,7 @@
     </property>
     <addaction name="actionOpen_TBC_file"/>
     <addaction name="actionReload_TBC"/>
+    <addaction name="actionSave_JSON"/>
     <addaction name="separator"/>
     <addaction name="actionSave_frame_as_PNG"/>
     <addaction name="separator"/>
@@ -662,6 +663,11 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+A</string>
+   </property>
+  </action>
+  <action name="actionSave_JSON">
+   <property name="text">
+    <string>Save JSON</string>
    </property>
   </action>
   <action name="actionWhite_SNR_analysis">

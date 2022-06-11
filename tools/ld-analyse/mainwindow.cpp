@@ -75,6 +75,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Connect to the TbcSource signals (busy and finished loading)
     connect(&tbcSource, &TbcSource::busy, this, &MainWindow::on_busy);
     connect(&tbcSource, &TbcSource::finishedLoading, this, &MainWindow::on_finishedLoading);
+    connect(&tbcSource, &TbcSource::finishedSaving, this, &MainWindow::on_finishedSaving);
 
     // Load the window geometry and settings from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
@@ -166,6 +167,9 @@ void MainWindow::setGuiEnabled(bool enabled)
     ui->actionChroma_decoder_configuration->setEnabled(enabled);
     ui->actionReload_TBC->setEnabled(enabled);
 
+    // "Save JSON" should be disabled by default
+    ui->actionSave_JSON->setEnabled(false);
+
     // Set zoom button states
     ui->zoomInPushButton->setEnabled(enabled);
     ui->zoomOutPushButton->setEnabled(enabled);
@@ -232,6 +236,9 @@ void MainWindow::updateGuiLoaded()
 
     // Ensure the busy dialogue is hidden
     busyDialog->hide();
+
+    // Disable "Save JSON", now we've loaded the metadata into the GUI
+    ui->actionSave_JSON->setEnabled(false);
 }
 
 // Method to update the GUI when a file is unloaded
@@ -502,6 +509,14 @@ void MainWindow::on_actionReload_TBC_triggered()
     if (!lastFilename.isEmpty() && !lastFilename.isNull()) {
         loadTbcFile(lastFilename);
     }
+}
+
+// Start saving the modified JSON metadata
+void MainWindow::on_actionSave_JSON_triggered()
+{
+    tbcSource.saveSourceJson();
+
+    // Saving continues in the background...
 }
 
 // Display the scan line oscilloscope view
@@ -1004,6 +1019,9 @@ void MainWindow::videoParametersChangedSignalHandler(const LdDecodeMetaData::Vid
     // Update the VideoParameters in the source
     tbcSource.setVideoParameters(videoParameters);
 
+    // Enable the "Save JSON" action, since the metadata has been modified
+    ui->actionSave_JSON->setEnabled(true);
+
     // Update the aspect button's label
     updateAspectPushButton();
 
@@ -1099,6 +1117,23 @@ void MainWindow::on_finishedLoading(bool success)
     this->setEnabled(true);
 }
 
+// Signal handler for finishedSaving signal from TbcSource class
+void MainWindow::on_finishedSaving(bool success)
+{
+    qDebug() << "MainWindow::on_finishedSaving(): Called";
 
+    // Hide the busy dialogue
+    busyDialog->hide();
 
+    if (success) {
+        // Disable the "Save JSON" action until the metadata is modified again
+        ui->actionSave_JSON->setEnabled(false);
+    } else {
+        // Show the error to the user
+        QMessageBox messageBox;
+        messageBox.warning(this, "Error", tbcSource.getLastIOError());
+    }
 
+    // Enable the main window
+    this->setEnabled(true);
+}
