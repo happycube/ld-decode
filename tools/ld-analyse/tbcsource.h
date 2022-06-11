@@ -167,7 +167,7 @@ private:
 
     // Background loader globals
     QFutureWatcher<void> watcher;
-    QFuture <void> future;
+    QFuture<void> future;
 
     // Metadata for the loaded frame
     qint32 firstFieldNumber, secondFieldNumber;

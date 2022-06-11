@@ -49,11 +49,11 @@ void TbcSource::loadSource(QString sourceFilename)
     // Set the current file name
     QFileInfo inFileInfo(sourceFilename);
     currentSourceFilename = inFileInfo.fileName();
-    qDebug() << "TbcSource::startBackgroundLoad(): Opening TBC source file:" << currentSourceFilename;
+    qDebug() << "TbcSource::loadSource(): Opening TBC source file:" << currentSourceFilename;
 
     // Set up and fire-off background loading thread
     qDebug() << "TbcSource::loadSource(): Setting up background loader thread";
-    connect(&watcher, SIGNAL(finished()), this, SLOT(finishBackgroundLoad()));
+    connect(&watcher, &QFutureWatcher<void>::finished, this, &TbcSource::finishBackgroundLoad);
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     future = QtConcurrent::run(this, &TbcSource::startBackgroundLoad, sourceFilename);
 #else
