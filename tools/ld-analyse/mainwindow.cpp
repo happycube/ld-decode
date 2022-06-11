@@ -363,15 +363,9 @@ void MainWindow::showFrame()
     ui->frameViewerLabel->clear();
     ui->frameViewerLabel->setScaledContents(false);
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
-    updateFrameViewer();
 
-    // If the scope dialogues are open, update them
-    if (oscilloscopeDialog->isVisible()) {
-        updateOscilloscopeDialogue();
-    }
-    if (vectorscopeDialog->isVisible()) {
-        updateVectorscopeDialogue();
-    }
+    // Update the frame views
+    updateFrame();
 
     // Update the closed caption dialog
     if (tbcSource.getSystem() == NTSC) {
@@ -381,6 +375,21 @@ void MainWindow::showFrame()
     #if defined(Q_OS_MACOS)
     	repaint();
     #endif
+}
+
+// Redraw all the GUI elements that depend on the decoded frame
+void MainWindow::updateFrame()
+{
+    // Update the main frame viewer
+    updateFrameViewer();
+
+    // If the scope dialogues are open, update them
+    if (oscilloscopeDialog->isVisible()) {
+        updateOscilloscopeDialogue();
+    }
+    if (vectorscopeDialog->isVisible()) {
+        updateVectorscopeDialogue();
+    }
 }
 
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
@@ -1026,16 +1035,8 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
                                      chromaDecoderConfigDialog->getNtscConfiguration(),
                                      chromaDecoderConfigDialog->getOutputConfiguration());
 
-    // Update the frame viewer
-    updateFrameViewer();
-
-    // If the scope windows are open, update them
-    if (oscilloscopeDialog->isVisible()) {
-        updateOscilloscopeDialogue();
-    }
-    if (vectorscopeDialog->isVisible()) {
-        updateVectorscopeDialogue();
-    }
+    // Update the frame views
+    updateFrame();
 }
 
 // TbcSource class signal handlers ------------------------------------------------------------------------------------
