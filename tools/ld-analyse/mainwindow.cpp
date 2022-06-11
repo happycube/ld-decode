@@ -72,8 +72,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Connect to the chroma decoder configuration changed signal
     connect(chromaDecoderConfigDialog, &ChromaDecoderConfigDialog::chromaDecoderConfigChanged, this, &MainWindow::chromaDecoderConfigChangedSignalHandler);
 
-    // Connect to the TbcSource signals (busy loading and finished loading)
-    connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
+    // Connect to the TbcSource signals (busy and finished loading)
+    connect(&tbcSource, &TbcSource::busy, this, &MainWindow::on_busy);
     connect(&tbcSource, &TbcSource::finishedLoading, this, &MainWindow::on_finishedLoading);
 
     // Load the window geometry and settings from the configuration
@@ -1025,10 +1025,10 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
 
 // TbcSource class signal handlers ------------------------------------------------------------------------------------
 
-// Signal handler for busyLoading signal from TbcSource class
-void MainWindow::on_busyLoading(QString infoMessage)
+// Signal handler for busy signal from TbcSource class
+void MainWindow::on_busy(QString infoMessage)
 {
-    qDebug() << "MainWindow::on_busyLoading(): Got signal with message" << infoMessage;
+    qDebug() << "MainWindow::on_busy(): Got signal with message" << infoMessage;
     // Set the busy message and centre the dialog in the parent window
     busyDialog->setMessage(infoMessage);
     busyDialog->move(this->geometry().center() - busyDialog->rect().center());
@@ -1043,7 +1043,7 @@ void MainWindow::on_busyLoading(QString infoMessage)
 }
 
 // Signal handler for finishedLoading signal from TbcSource class
-void MainWindow::on_finishedLoading()
+void MainWindow::on_finishedLoading(bool success)
 {
     qDebug() << "MainWindow::on_finishedLoading(): Called";
 
@@ -1051,7 +1051,7 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
 
     // Ensure source loaded ok
-    if (tbcSource.getIsSourceLoaded()) {
+    if (success) {
         // Generate the graph data
         dropoutAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
         visibleDropoutAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
@@ -1092,7 +1092,7 @@ void MainWindow::on_finishedLoading()
 
         // Show the error to the user
         QMessageBox messageBox;
-        messageBox.warning(this, "Error", tbcSource.getLastLoadError());
+        messageBox.warning(this, "Error", tbcSource.getLastIOError());
     }
 
     // Enable the main window

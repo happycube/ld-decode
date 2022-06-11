@@ -110,8 +110,8 @@ private slots:
     void chromaDecoderConfigChangedSignalHandler();
 
     // Tbc Source signal handlers
-    void on_busyLoading(QString infoMessage);
-    void on_finishedLoading();    
+    void on_busy(QString infoMessage);
+    void on_finishedLoading(bool success);
 
 private:
     Ui::MainWindow *ui;
