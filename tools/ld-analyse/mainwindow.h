@@ -92,6 +92,7 @@ private slots:
     void on_frameNumberSpinBox_editingFinished();
     void on_frameHorizontalSlider_valueChanged(int value);
     void on_videoPushButton_clicked();
+    void on_aspectPushButton_clicked();
     void on_dropoutsPushButton_clicked();
     void on_sourcesPushButton_clicked();
     void on_fieldOrderPushButton_clicked();
@@ -99,7 +100,6 @@ private slots:
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
     void on_mouseModePushButton_clicked();
-    void on_aspectPushButton_clicked();
 
     // Miscellaneous handlers
     void scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord);
@@ -135,7 +135,7 @@ private:
     QLabel sourceVideoStatus;
     QLabel fieldNumberStatus;
     TbcSource tbcSource;
-    quint8 aspectRatio;
+    bool displayAspectRatio;
     qint32 lastScopeLine;
     qint32 lastScopeDot;
     qint32 currentFrameNumber;
@@ -146,11 +146,13 @@ private:
     // Update GUI methods
     void updateGuiLoaded();
     void updateGuiUnloaded();
+    void updateAspectPushButton();
     void updateSourcesPushButton();
 
     // Frame display methods
     void showFrame();
     void updateFrame();
+    qint32 getAspectAdjustment();
     void updateFrameViewer();
     void hideFrame();
 

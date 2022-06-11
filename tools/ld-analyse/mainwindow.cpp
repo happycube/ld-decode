@@ -26,21 +26,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-namespace {
-namespace Aspect {
-    constexpr quint8 SAR_11 = 0;
-    constexpr char const* SAR_11_S = "SAR 1:1";
-    constexpr quint8 DAR_43 = 1;
-    constexpr char const* DAR_43_S ="DAR 4:3";
-    constexpr int DAR_43_ADJ_525 = -150; // NTSC
-    constexpr int DAR_43_ADJ_625 = -196; // PAL
-    constexpr quint8 DAR_169 = 2;
-    constexpr char const* DAR_169_S ="DAR 16:9";
-    constexpr int DAR_169_ADJ_525 = 122;
-    constexpr int DAR_169_ADJ_625 = 103;
-}
-}
-
 MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
@@ -69,10 +54,6 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
 
     // Set the initial frame number
     currentFrameNumber = 1;
-
-    // Set the initial aspect
-    aspectRatio = Aspect::SAR_11;
-    if (tbcSource.getIsWidescreen()) aspectRatio = Aspect::DAR_169;
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scopeCoordsChanged, this, &MainWindow::scopeCoordsChangedSignalHandler);
@@ -206,7 +187,8 @@ void MainWindow::updateGuiLoaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
-    ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));
+    displayAspectRatio = false;
+    updateAspectPushButton();
     updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
@@ -229,13 +211,6 @@ void MainWindow::updateGuiLoaded()
     statusText += QString::number(tbcSource.getNumberOfFrames());
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
-
-    // Reset the aspect setting
-    aspectRatio = Aspect::SAR_11;
-    if (tbcSource.getIsWidescreen()) {
-        aspectRatio = Aspect::DAR_169;
-        ui->aspectPushButton->setText(tr(Aspect::DAR_169_S));
-    }
 
     // Load and show the current frame
     showFrame();
@@ -302,8 +277,8 @@ void MainWindow::updateGuiUnloaded()
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
-    aspectRatio = Aspect::SAR_11;
-    ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));;
+    displayAspectRatio = false;
+    updateAspectPushButton();
     updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
@@ -323,6 +298,18 @@ void MainWindow::updateGuiUnloaded()
     // Hide configuration dialogues
     videoParametersDialog->hide();
     chromaDecoderConfigDialog->hide();
+}
+
+// Update the aspect ratio button
+void MainWindow::updateAspectPushButton()
+{
+    if (!displayAspectRatio) {
+        ui->aspectPushButton->setText(tr("SAR 1:1"));
+    } else if (tbcSource.getIsWidescreen()) {
+        ui->aspectPushButton->setText(tr("DAR 16:9"));
+    } else {
+        ui->aspectPushButton->setText(tr("DAR 4:3"));
+    }
 }
 
 // Update the source selection button
@@ -408,6 +395,22 @@ void MainWindow::updateFrame()
     }
 }
 
+// Return the width adjustment for the current aspect mode
+qint32 MainWindow::getAspectAdjustment() {
+    // Using source aspect ratio? No adjustment
+    if (!displayAspectRatio) return 0;
+
+    if (tbcSource.getSystem() == PAL) {
+        // 625 lines
+        if (tbcSource.getIsWidescreen()) return 103; // 16:9
+        else return -196; // 4:3
+    } else {
+        // 525 lines
+        if (tbcSource.getIsWidescreen()) return 122; // 16:9
+        else return -150; // 4:3
+    }
+}
+
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
 void MainWindow::updateFrameViewer()
 {
@@ -429,17 +432,8 @@ void MainWindow::updateFrameViewer()
 
     QPixmap pixmap = QPixmap::fromImage(frameImage);
 
-    // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
-    qint32 adjustment = 0;
-    if (aspectRatio == Aspect::DAR_43) {
-        if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_43_ADJ_625; // 625-line 4:3
-        else adjustment = Aspect::DAR_43_ADJ_525; // 525-line 4:3
-    }
-    
-    if (aspectRatio == Aspect::DAR_169) {
-        if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_169_ADJ_625; // 625-line 16:9
-        else adjustment = Aspect::DAR_169_ADJ_525; // 525-line 16:9
-    }
+    // Get the aspect ratio adjustment if required
+    qint32 adjustment = getAspectAdjustment();
 
     // Scale and apply the pixmap (only if it's valid)
     if (!pixmap.isNull()) {
@@ -612,8 +606,10 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
     else filenameSuggestion += tr("chroma_");
 
-    if (aspectRatio == Aspect::DAR_43) filenameSuggestion += tr("ar43_");
-    if (aspectRatio == Aspect::DAR_169) filenameSuggestion += tr("ar169_");
+    if (displayAspectRatio) {
+        if (tbcSource.getIsWidescreen()) filenameSuggestion += tr("ar169_");
+        else filenameSuggestion += tr("ar43_");
+    }
 
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
@@ -630,25 +626,9 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         // Generate QImage for the current frame
         QImage imageToSave = tbcSource.getFrameImage();
 
-        // Change to 4:3 aspect ratio?
-        if (aspectRatio == Aspect::DAR_43) {
-            // Scale to 4:3 aspect
-            qint32 adjustment = 0;
-            if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_43_ADJ_625; // 625-line 4:3
-            else adjustment = Aspect::DAR_43_ADJ_525; // 525-line 4:3
-
-            imageToSave = imageToSave.scaled((imageToSave.size().width() + adjustment),
-                                             (imageToSave.size().height()),
-                                             Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        }
-        
-        // Change to 16:9 aspect ratio?
-        if (aspectRatio == Aspect::DAR_169) {
-            // Scale to 16:9 aspect
-            qint32 adjustment = 0;
-            if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_169_ADJ_625; // 625-line 16:9
-            else adjustment = Aspect::DAR_169_ADJ_525; // 525-line 16:9
-
+        // Get the aspect ratio adjustment, and scale the image if needed
+        qint32 adjustment = getAspectAdjustment();
+        if (adjustment != 0) {
             imageToSave = imageToSave.scaled((imageToSave.size().width() + adjustment),
                                              (imageToSave.size().height()),
                                              Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
@@ -807,6 +787,18 @@ void MainWindow::on_videoPushButton_clicked()
     showFrame();
 }
 
+// Aspect ratio button clicked
+void MainWindow::on_aspectPushButton_clicked()
+{
+    displayAspectRatio = !displayAspectRatio;
+
+    // Update the button text
+    updateAspectPushButton();
+
+    // Update the frame viewer (the scopes don't depend on this)
+    updateFrameViewer();
+}
+
 // Show/hide dropouts button clicked
 void MainWindow::on_dropoutsPushButton_clicked()
 {
@@ -910,23 +902,6 @@ void MainWindow::on_mouseModePushButton_clicked()
 
     // Update the frame viewer to display/hide the indicator line
     updateFrameViewer();
-}
-
-// Aspect ratio button clicked
-void MainWindow::on_aspectPushButton_clicked()
-{
-    aspectRatio += 1;
-    
-    if (aspectRatio > 2) aspectRatio = 0;
-    
-    if (aspectRatio == Aspect::SAR_11) ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));
-    else if (aspectRatio == Aspect::DAR_43) ui->aspectPushButton->setText(tr(Aspect::DAR_43_S));
-    else if (aspectRatio == Aspect::DAR_169) ui->aspectPushButton->setText(tr(Aspect::DAR_169_S));
-
-    qDebug() << "Aspect ratio: " << aspectRatio << " text " << ui->aspectPushButton->text();
-
-    // Show the current frame (why isn't this option passed?)
-    showFrame();
 }
 
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
@@ -1053,6 +1028,9 @@ void MainWindow::videoParametersChangedSignalHandler(const LdDecodeMetaData::Vid
 {
     // Update the VideoParameters in the source
     tbcSource.setVideoParameters(videoParameters);
+
+    // Update the aspect button's label
+    updateAspectPushButton();
 
     // Update the frame views
     updateFrame();
