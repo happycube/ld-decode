@@ -66,6 +66,7 @@ private slots:
     void on_actionExit_triggered();
     void on_actionOpen_TBC_file_triggered();
     void on_actionReload_TBC_triggered();
+    void on_actionSave_JSON_triggered();
     void on_actionLine_scope_triggered();
     void on_actionVectorscope_triggered();
     void on_actionAbout_ld_analyse_triggered();
@@ -112,6 +113,7 @@ private slots:
     // Tbc Source signal handlers
     void on_busy(QString infoMessage);
     void on_finishedLoading(bool success);
+    void on_finishedSaving(bool success);
 
 private:
     Ui::MainWindow *ui;
