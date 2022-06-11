@@ -146,6 +146,7 @@ private:
 
     // Frame display methods
     void showFrame();
+    void updateFrame();
     void updateFrameViewer();
     void hideFrame();
 
