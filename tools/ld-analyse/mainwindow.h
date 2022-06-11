@@ -44,6 +44,7 @@
 #include "whitesnranalysisdialog.h"
 #include "busydialog.h"
 #include "closedcaptionsdialog.h"
+#include "videoparametersdialog.h"
 #include "chromadecoderconfigdialog.h"
 #include "configuration.h"
 #include "tbcsource.h"
@@ -80,6 +81,7 @@ private slots:
     void on_actionZoom_2x_triggered();
     void on_actionZoom_3x_triggered();
     void on_actionClosed_Captions_triggered();
+    void on_actionVideo_parameters_triggered();
     void on_actionChroma_decoder_configuration_triggered();
 
     // Media control frame handlers
@@ -104,6 +106,7 @@ private slots:
     void vectorscopeChangedSignalHandler();
     void mousePressEvent(QMouseEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
+    void videoParametersChangedSignalHandler(const LdDecodeMetaData::VideoParameters &videoParameters);
     void chromaDecoderConfigChangedSignalHandler();
 
     // Tbc Source signal handlers
@@ -124,6 +127,7 @@ private:
     WhiteSnrAnalysisDialog* whiteSnrAnalysisDialog;
     BusyDialog* busyDialog;
     ClosedCaptionsDialog *closedCaptionDialog;
+    VideoParametersDialog *videoParametersDialog;
     ChromaDecoderConfigDialog *chromaDecoderConfigDialog;
 
     // Class globals

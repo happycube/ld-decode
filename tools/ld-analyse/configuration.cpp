@@ -78,6 +78,7 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("blackSnrAnalysisDialogGeometry", settings.windows.blackSnrAnalysisDialogGeometry);
     configuration->setValue("whiteSnrAnalysisDialogGeometry", settings.windows.whiteSnrAnalysisDialogGeometry);
     configuration->setValue("closedCaptionDialogGeometry", settings.windows.closedCaptionDialogGeometry);
+    configuration->setValue("videoParametersDialogGeometry", settings.windows.videoParametersDialogGeometry);
     configuration->setValue("chromaDecoderConfigDialogGeometry", settings.windows.chromaDecoderConfigDialogGeometry);
     configuration->endGroup();
 
@@ -111,6 +112,7 @@ void Configuration::readConfiguration(void)
     settings.windows.blackSnrAnalysisDialogGeometry = configuration->value("blackSnrAnalysisDialogGeometry").toByteArray();
     settings.windows.whiteSnrAnalysisDialogGeometry = configuration->value("whiteSnrAnalysisDialogGeometry").toByteArray();
     settings.windows.closedCaptionDialogGeometry = configuration->value("closedCaptionDialogGeometry").toByteArray();
+    settings.windows.videoParametersDialogGeometry = configuration->value("videoParametersDialogGeometry").toByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = configuration->value("chromaDecoderConfigDialogGeometry").toByteArray();
     configuration->endGroup();
 }
@@ -135,6 +137,7 @@ void Configuration::setDefault(void)
     settings.windows.blackSnrAnalysisDialogGeometry = QByteArray();
     settings.windows.whiteSnrAnalysisDialogGeometry = QByteArray();
     settings.windows.closedCaptionDialogGeometry = QByteArray();
+    settings.windows.videoParametersDialogGeometry = QByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = QByteArray();
 
     // Write the configuration
@@ -263,6 +266,16 @@ void Configuration::setClosedCaptionDialogGeometry(QByteArray closedCaptionDialo
 QByteArray Configuration::getClosedCaptionDialogGeometry(void)
 {
     return settings.windows.closedCaptionDialogGeometry;
+}
+
+void Configuration::setVideoParametersDialogGeometry(QByteArray videoParametersDialogGeometry)
+{
+    settings.windows.videoParametersDialogGeometry = videoParametersDialogGeometry;
+}
+
+QByteArray Configuration::getVideoParametersDialogGeometry(void)
+{
+    return settings.windows.videoParametersDialogGeometry;
 }
 
 void Configuration::setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry)

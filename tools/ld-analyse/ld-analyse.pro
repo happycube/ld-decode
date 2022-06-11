@@ -33,6 +33,7 @@ SOURCES += \
     oscilloscopedialog.cpp \
     vectorscopedialog.cpp \
     aboutdialog.cpp \
+    videoparametersdialog.cpp \
     chromadecoderconfigdialog.cpp \
     tbcsource.cpp \
     vbidialog.cpp \
@@ -65,6 +66,7 @@ HEADERS += \
     oscilloscopedialog.h \
     vectorscopedialog.h \
     aboutdialog.h \
+    videoparametersdialog.h \
     chromadecoderconfigdialog.h \
     tbcsource.h \
     vbidialog.h \
@@ -99,6 +101,7 @@ FORMS += \
     oscilloscopedialog.ui \
     vectorscopedialog.ui \
     aboutdialog.ui \
+    videoparametersdialog.ui \
     chromadecoderconfigdialog.ui \
     vbidialog.ui \
     dropoutanalysisdialog.ui \
