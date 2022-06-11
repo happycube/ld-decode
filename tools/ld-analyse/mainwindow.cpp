@@ -644,7 +644,6 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
 
             QMessageBox messageBox;
             messageBox.warning(this, "Warning","Could not save a PNG using the specified filename!");
-            messageBox.setFixedSize(500, 200);
         }
 
         // Update the configuration for the PNG directory
@@ -1109,7 +1108,6 @@ void MainWindow::on_finishedLoading()
         // Show the error to the user
         QMessageBox messageBox;
         messageBox.warning(this, "Error", tbcSource.getLastLoadError());
-        messageBox.setFixedSize(500, 200);
     }
 
     // Enable the main window
