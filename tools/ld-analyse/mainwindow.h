@@ -144,6 +144,7 @@ private:
     QString lastFilename;
 
     // Update GUI methods
+    void setGuiEnabled(bool enabled);
     void updateGuiLoaded();
     void updateGuiUnloaded();
     void updateAspectPushButton();
