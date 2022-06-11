@@ -58,6 +58,8 @@ private slots:
     void on_blackLevelAltResetButton_clicked();
     void on_whiteLevelResetButton_clicked();
 
+    void on_aspectRatioButtonGroup_buttonClicked(QAbstractButton *button);
+
 private:
     Ui::VideoParametersDialog *ui;
     LdDecodeMetaData::VideoParameters videoParameters;

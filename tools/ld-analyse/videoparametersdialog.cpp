@@ -48,6 +48,8 @@ void VideoParametersDialog::setVideoParameters(const LdDecodeMetaData::VideoPara
     // Transfer values to the dialogue
     ui->blackLevelSpinBox->setValue(videoParameters.black16bIre);
     ui->whiteLevelSpinBox->setValue(videoParameters.white16bIre);
+    if (videoParameters.isWidescreen) ui->aspectRatio169RadioButton->setChecked(true);
+    else ui->aspectRatio43RadioButton->setChecked(true);
 
     // Update the dialogue
     updateDialog();
@@ -118,4 +120,11 @@ void VideoParametersDialog::on_whiteLevelResetButton_clicked()
     } else {
         ui->whiteLevelSpinBox->setValue(0xD300);
     }
+}
+
+void VideoParametersDialog::on_aspectRatioButtonGroup_buttonClicked(QAbstractButton *button)
+{
+    videoParameters.isWidescreen = (button == ui->aspectRatio169RadioButton);
+    updateDialog();
+    emit videoParametersChanged(videoParameters);
 }
