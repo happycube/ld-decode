@@ -477,6 +477,7 @@
     <addaction name="actionVectorscope"/>
     <addaction name="actionClosed_Captions"/>
     <addaction name="separator"/>
+    <addaction name="actionVideo_parameters"/>
     <addaction name="actionChroma_decoder_configuration"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
@@ -637,6 +638,14 @@
   <action name="actionClosed_Captions">
    <property name="text">
     <string>Closed Captions...</string>
+   </property>
+  </action>
+  <action name="actionVideo_parameters">
+   <property name="text">
+    <string>Video parameters...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
    </property>
   </action>
   <action name="actionChroma_decoder_configuration">

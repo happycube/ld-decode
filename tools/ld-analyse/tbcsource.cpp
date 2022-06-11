@@ -343,6 +343,18 @@ const LdDecodeMetaData::VideoParameters &TbcSource::getVideoParameters()
     return ldDecodeMetaData.getVideoParameters();
 }
 
+// Update the VideoParameters for the current source
+void TbcSource::setVideoParameters(const LdDecodeMetaData::VideoParameters &videoParameters)
+{
+    invalidateFrameCache();
+
+    // Update the metadata
+    ldDecodeMetaData.setVideoParameters(videoParameters);
+
+    // Reconfigure the chroma decoder
+    configureChromaDecoder();
+}
+
 // Get scan line data from the frame
 TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 {
@@ -458,17 +470,7 @@ void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfi
     ntscConfiguration = _ntscConfiguration;
     outputConfiguration = _outputConfiguration;
 
-    // Configure the chroma decoder
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
-        palColour.updateConfiguration(videoParameters, palConfiguration);
-    } else {
-        ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
-    }
-
-    // Configure the OutputWriter.
-    // Because we have padding disabled, this won't change the VideoParameters.
-    outputWriter.updateConfiguration(videoParameters, outputConfiguration);
+    configureChromaDecoder();
 }
 
 const PalColour::Configuration &TbcSource::getPalConfiguration()
@@ -558,6 +560,22 @@ void TbcSource::invalidateFrameCache()
     inputFieldsValid = false;
     decodedFrameValid = false;
     frameCacheValid = false;
+}
+
+// Configure the chroma decoder for its settings and the VideoParameters
+void TbcSource::configureChromaDecoder()
+{
+    // Configure the chroma decoder
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
+        palColour.updateConfiguration(videoParameters, palConfiguration);
+    } else {
+        ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
+    }
+
+    // Configure the OutputWriter.
+    // Because we have padding disabled, this won't change the VideoParameters.
+    outputWriter.updateConfiguration(videoParameters, outputConfiguration);
 }
 
 // Ensure the SourceFields for the current frame are loaded

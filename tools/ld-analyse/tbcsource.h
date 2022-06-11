@@ -109,8 +109,11 @@ public:
     qint32 getGraphDataSize();
 
     bool getIsDropoutPresent();
-    const ComponentFrame &getComponentFrame();
+
     const LdDecodeMetaData::VideoParameters &getVideoParameters();
+    void setVideoParameters(const LdDecodeMetaData::VideoParameters &videoParameters);
+
+    const ComponentFrame &getComponentFrame();
     ScanLineData getScanLineData(qint32 scanLine);
 
     qint32 getFirstFieldNumber();
@@ -198,6 +201,7 @@ private:
 
     void resetState();
     void invalidateFrameCache();
+    void configureChromaDecoder();
     void loadInputFields();
     void decodeFrame();
     QImage generateQImage();

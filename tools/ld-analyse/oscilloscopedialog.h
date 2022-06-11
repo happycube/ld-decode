@@ -51,6 +51,7 @@ public:
 
 signals:
     void scopeCoordsChanged(qint32 xCoord, qint32 yCoord);
+    void scopeLevelSelect(qint32 value);
 
 private slots:
     void on_previousPushButton_clicked();
@@ -74,6 +75,7 @@ private:
     qint32 lastScopeY;
 
     QImage getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot);
+    void mouseLevelSelect(qint32 oY);
     void mousePictureDotSelect(qint32 oX);
 };
 

@@ -4,6 +4,7 @@
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2022 Simon Inns
+    Copyright (C) 2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -57,6 +58,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     whiteSnrAnalysisDialog = new WhiteSnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
+    videoParametersDialog = new VideoParametersDialog(this);
     chromaDecoderConfigDialog = new ChromaDecoderConfigDialog(this);
 
     // Add a status bar to show the state of the source video file
@@ -77,8 +79,14 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     lastScopeLine = 1;
     lastScopeDot = 1;
 
+    // Make shift-clicking on the oscilloscope change the black/white level
+    connect(oscilloscopeDialog, &OscilloscopeDialog::scopeLevelSelect, videoParametersDialog, &VideoParametersDialog::levelSelected);
+
     // Connect to the changed signal from the vectorscope dialogue
     connect(vectorscopeDialog, &VectorscopeDialog::scopeChanged, this, &MainWindow::vectorscopeChangedSignalHandler);
+
+    // Connect to the video parameters changed signal
+    connect(videoParametersDialog, &VideoParametersDialog::videoParametersChanged, this, &MainWindow::videoParametersChangedSignalHandler);
 
     // Connect to the chroma decoder configuration changed signal
     connect(chromaDecoderConfigDialog, &ChromaDecoderConfigDialog::chromaDecoderConfigChanged, this, &MainWindow::chromaDecoderConfigChangedSignalHandler);
@@ -98,6 +106,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     blackSnrAnalysisDialog->restoreGeometry(configuration.getBlackSnrAnalysisDialogGeometry());
     whiteSnrAnalysisDialog->restoreGeometry(configuration.getWhiteSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
+    videoParametersDialog->restoreGeometry(configuration.getVideoParametersDialogGeometry());
     chromaDecoderConfigDialog->restoreGeometry(configuration.getChromaDecoderConfigDialogGeometry());
 
     // Store the current button palette for the show dropouts button
@@ -128,6 +137,7 @@ MainWindow::~MainWindow()
     configuration.setBlackSnrAnalysisDialogGeometry(blackSnrAnalysisDialog->saveGeometry());
     configuration.setWhiteSnrAnalysisDialogGeometry(whiteSnrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
+    configuration.setVideoParametersDialogGeometry(videoParametersDialog->saveGeometry());
     configuration.setChromaDecoderConfigDialogGeometry(chromaDecoderConfigDialog->saveGeometry());
     configuration.writeConfiguration();
 
@@ -189,6 +199,7 @@ void MainWindow::updateGuiLoaded()
     ui->actionWhite_SNR_analysis->setEnabled(true);
     ui->actionSave_frame_as_PNG->setEnabled(true);
     ui->actionClosed_Captions->setEnabled(true);
+    ui->actionVideo_parameters->setEnabled(true);
     ui->actionChroma_decoder_configuration->setEnabled(true);
     ui->actionReload_TBC->setEnabled(true);
 
@@ -228,6 +239,9 @@ void MainWindow::updateGuiLoaded()
 
     // Load and show the current frame
     showFrame();
+
+    // Update the video parameters dialogue
+    videoParametersDialog->setVideoParameters(tbcSource.getVideoParameters());
 
     // Update the chroma decoder configuration dialogue
     chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
@@ -281,6 +295,7 @@ void MainWindow::updateGuiUnloaded()
     ui->actionWhite_SNR_analysis->setEnabled(false);
     ui->actionSave_frame_as_PNG->setEnabled(false);
     ui->actionClosed_Captions->setEnabled(false);
+    ui->actionVideo_parameters->setEnabled(false);
     ui->actionChroma_decoder_configuration->setEnabled(false);
     ui->actionReload_TBC->setEnabled(false);
 
@@ -306,6 +321,7 @@ void MainWindow::updateGuiUnloaded()
     dropoutAnalysisDialog->hide();
 
     // Hide configuration dialogues
+    videoParametersDialog->hide();
     chromaDecoderConfigDialog->hide();
 }
 
@@ -692,6 +708,12 @@ void MainWindow::on_actionClosed_Captions_triggered()
     closedCaptionDialog->show();
 }
 
+// Show video parameters dialogue
+void MainWindow::on_actionVideo_parameters_triggered()
+{
+    videoParametersDialog->show();
+}
+
 // Show chroma decoder configuration
 void MainWindow::on_actionChroma_decoder_configuration_triggered()
 {
@@ -1024,6 +1046,16 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
         // Update the frame viewer
         updateFrameViewer();
     }
+}
+
+// Handle parameters changed signal from the video parameters dialogue
+void MainWindow::videoParametersChangedSignalHandler(const LdDecodeMetaData::VideoParameters &videoParameters)
+{
+    // Update the VideoParameters in the source
+    tbcSource.setVideoParameters(videoParameters);
+
+    // Update the frame views
+    updateFrame();
 }
 
 // Handle configuration changed signal from the chroma decoder configuration dialogue
