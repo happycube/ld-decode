@@ -314,21 +314,8 @@ void OscilloscopeDialog::mousePressEvent(QMouseEvent *event)
 // Mouse drag event handler
 void OscilloscopeDialog::mouseMoveEvent(QMouseEvent *event)
 {
-    // Get the mouse position relative to our scene
-    QPoint origin = ui->scopeLabel->mapFromGlobal(QCursor::pos());
-
-    // Check that the mouse click is within bounds of the current picture
-    qint32 oX = origin.x();
-    qint32 oY = origin.y();
-
-    if (oX + 1 >= 0 &&
-            oY >= 0 &&
-            oX + 1 <= ui->scopeLabel->width() &&
-            oY <= ui->scopeLabel->height()) {
-
-        mousePictureDotSelect(oX);
-        event->accept();
-    }
+    // Handle this the same way as a click
+    mousePressEvent(event);
 }
 
 void OscilloscopeDialog::mousePictureDotSelect(qint32 oX)
