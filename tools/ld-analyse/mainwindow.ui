@@ -643,6 +643,9 @@
    <property name="text">
     <string>Chroma decoder configuration...</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+K</string>
+   </property>
   </action>
   <action name="actionReload_TBC">
    <property name="text">
