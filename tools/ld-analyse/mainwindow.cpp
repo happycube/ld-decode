@@ -132,17 +132,51 @@ MainWindow::~MainWindow()
 
 // Update GUI methods for when TBC source files are loaded and unloaded -----------------------------------------------
 
+// Enable or disable all the GUI controls
+void MainWindow::setGuiEnabled(bool enabled)
+{
+    // Enable the frame controls
+    ui->frameNumberSpinBox->setEnabled(enabled);
+    ui->previousPushButton->setEnabled(enabled);
+    ui->nextPushButton->setEnabled(enabled);
+    ui->startFramePushButton->setEnabled(enabled);
+    ui->endFramePushButton->setEnabled(enabled);
+    ui->frameHorizontalSlider->setEnabled(enabled);
+    ui->mediaControl_frame->setEnabled(enabled);
+
+    // Enable menu options
+    ui->actionLine_scope->setEnabled(enabled);
+    ui->actionVectorscope->setEnabled(enabled);
+    ui->actionVBI->setEnabled(enabled);
+    ui->actionNTSC->setEnabled(enabled);
+    ui->actionVideo_metadata->setEnabled(enabled);
+    ui->actionVITS_Metrics->setEnabled(enabled);
+    ui->actionZoom_In->setEnabled(enabled);
+    ui->actionZoom_Out->setEnabled(enabled);
+    ui->actionZoom_1x->setEnabled(enabled);
+    ui->actionZoom_2x->setEnabled(enabled);
+    ui->actionZoom_3x->setEnabled(enabled);
+    ui->actionDropout_analysis->setEnabled(enabled);
+    ui->actionVisible_Dropout_analysis->setEnabled(enabled);
+    ui->actionSNR_analysis->setEnabled(enabled); // Black SNR
+    ui->actionWhite_SNR_analysis->setEnabled(enabled);
+    ui->actionSave_frame_as_PNG->setEnabled(enabled);
+    ui->actionClosed_Captions->setEnabled(enabled);
+    ui->actionVideo_parameters->setEnabled(enabled);
+    ui->actionChroma_decoder_configuration->setEnabled(enabled);
+    ui->actionReload_TBC->setEnabled(enabled);
+
+    // Set zoom button states
+    ui->zoomInPushButton->setEnabled(enabled);
+    ui->zoomOutPushButton->setEnabled(enabled);
+    ui->originalSizePushButton->setEnabled(enabled);
+}
+
 // Method to update the GUI when a file is loaded
 void MainWindow::updateGuiLoaded()
 {
-    // Enable the frame controls
-    ui->frameNumberSpinBox->setEnabled(true);
-    ui->previousPushButton->setEnabled(true);
-    ui->nextPushButton->setEnabled(true);
-    ui->startFramePushButton->setEnabled(true);
-    ui->endFramePushButton->setEnabled(true);
-    ui->frameHorizontalSlider->setEnabled(true);
-    ui->mediaControl_frame->setEnabled(true);
+    // Enable the GUI controls
+    setGuiEnabled(true);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -162,28 +196,6 @@ void MainWindow::updateGuiLoaded()
     ui->nextPushButton->setAutoRepeatDelay(500);
     ui->nextPushButton->setAutoRepeatInterval(1);
 
-    // Enable menu options
-    ui->actionLine_scope->setEnabled(true);
-    ui->actionVectorscope->setEnabled(true);
-    ui->actionVBI->setEnabled(true);
-    ui->actionNTSC->setEnabled(true);
-    ui->actionVideo_metadata->setEnabled(true);
-    ui->actionVITS_Metrics->setEnabled(true);
-    ui->actionZoom_In->setEnabled(true);
-    ui->actionZoom_Out->setEnabled(true);
-    ui->actionZoom_1x->setEnabled(true);
-    ui->actionZoom_2x->setEnabled(true);
-    ui->actionZoom_3x->setEnabled(true);
-    ui->actionDropout_analysis->setEnabled(true);
-    ui->actionVisible_Dropout_analysis->setEnabled(true);
-    ui->actionSNR_analysis->setEnabled(true); // Black SNR
-    ui->actionWhite_SNR_analysis->setEnabled(true);
-    ui->actionSave_frame_as_PNG->setEnabled(true);
-    ui->actionClosed_Captions->setEnabled(true);
-    ui->actionVideo_parameters->setEnabled(true);
-    ui->actionChroma_decoder_configuration->setEnabled(true);
-    ui->actionReload_TBC->setEnabled(true);
-
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
@@ -192,11 +204,7 @@ void MainWindow::updateGuiLoaded()
     updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
-    // Set zoom button states
-    ui->zoomInPushButton->setEnabled(true);
-    ui->zoomOutPushButton->setEnabled(true);
-    ui->originalSizePushButton->setEnabled(true);
-
+    // Zoom button options
     ui->zoomInPushButton->setAutoRepeat(true);
     ui->zoomInPushButton->setAutoRepeatDelay(500);
     ui->zoomInPushButton->setAutoRepeatInterval(100);
@@ -229,14 +237,8 @@ void MainWindow::updateGuiLoaded()
 // Method to update the GUI when a file is unloaded
 void MainWindow::updateGuiUnloaded()
 {
-    // Disable the frame controls
-    ui->frameNumberSpinBox->setEnabled(false);
-    ui->previousPushButton->setEnabled(false);
-    ui->nextPushButton->setEnabled(false);
-    ui->startFramePushButton->setEnabled(false);
-    ui->endFramePushButton->setEnabled(false);
-    ui->frameHorizontalSlider->setEnabled(false);
-    ui->mediaControl_frame->setEnabled(false);
+    // Disable the GUI controls
+    setGuiEnabled(false);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -252,28 +254,6 @@ void MainWindow::updateGuiUnloaded()
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
-    // Disable menu options
-    ui->actionLine_scope->setEnabled(false);
-    ui->actionVectorscope->setEnabled(false);
-    ui->actionVBI->setEnabled(false);
-    ui->actionNTSC->setEnabled(false);
-    ui->actionVideo_metadata->setEnabled(false);
-    ui->actionVITS_Metrics->setEnabled(false);
-    ui->actionZoom_In->setEnabled(false);
-    ui->actionZoom_Out->setEnabled(false);
-    ui->actionZoom_1x->setEnabled(false);
-    ui->actionZoom_2x->setEnabled(false);
-    ui->actionZoom_3x->setEnabled(false);
-    ui->actionDropout_analysis->setEnabled(false);
-    ui->actionVisible_Dropout_analysis->setEnabled(false);
-    ui->actionSNR_analysis->setEnabled(false); // Black SNR
-    ui->actionWhite_SNR_analysis->setEnabled(false);
-    ui->actionSave_frame_as_PNG->setEnabled(false);
-    ui->actionClosed_Captions->setEnabled(false);
-    ui->actionVideo_parameters->setEnabled(false);
-    ui->actionChroma_decoder_configuration->setEnabled(false);
-    ui->actionReload_TBC->setEnabled(false);
-
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
@@ -281,11 +261,6 @@ void MainWindow::updateGuiUnloaded()
     updateAspectPushButton();
     updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
-
-    // Set zoom button states
-    ui->zoomInPushButton->setEnabled(false);
-    ui->zoomOutPushButton->setEnabled(false);
-    ui->originalSizePushButton->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
