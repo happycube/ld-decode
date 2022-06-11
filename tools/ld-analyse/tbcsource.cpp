@@ -53,7 +53,8 @@ void TbcSource::loadSource(QString sourceFilename)
 
     // Set up and fire-off background loading thread
     qDebug() << "TbcSource::loadSource(): Setting up background loader thread";
-    connect(&watcher, &QFutureWatcher<void>::finished, this, &TbcSource::finishBackgroundLoad);
+    disconnect(&watcher, &QFutureWatcher<bool>::finished, nullptr, nullptr);
+    connect(&watcher, &QFutureWatcher<bool>::finished, this, &TbcSource::finishBackgroundLoad);
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     future = QtConcurrent::run(this, &TbcSource::startBackgroundLoad, sourceFilename);
 #else
@@ -84,12 +85,10 @@ QString TbcSource::getCurrentSourceFilename()
     return currentSourceFilename;
 }
 
-// If loadSource failed, return a description of the last error
-QString TbcSource::getLastLoadError()
+// Return a description of the last IO error
+QString TbcSource::getLastIOError()
 {
-    if (sourceReady) return QString();
-
-    return lastLoadError;
+    return lastIOError;
 }
 
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
@@ -871,11 +870,11 @@ void TbcSource::generateData()
     }
 }
 
-void TbcSource::startBackgroundLoad(QString sourceFilename)
+bool TbcSource::startBackgroundLoad(QString sourceFilename)
 {
     // Open the TBC metadata file
     qDebug() << "TbcSource::startBackgroundLoad(): Processing JSON metadata...";
-    emit busyLoading("Processing JSON metadata...");
+    emit busy("Processing JSON metadata...");
 
     QString jsonFileName = sourceFilename + ".json";
 
@@ -902,8 +901,8 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         currentSourceFilename.clear();
 
         // Show an error to the user and give up
-        lastLoadError = "Could not load source TBC JSON metadata file";
-        return;
+        lastIOError = "Could not load source TBC JSON metadata file";
+        return false;
     }
 
     // Get the video parameters from the metadata
@@ -911,15 +910,15 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Open the new source video
     qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
-    emit busyLoading("Loading TBC file...");
+    emit busy("Loading TBC file...");
     if (!sourceVideo.open(sourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
         // Open failed
         qWarning() << "Open TBC file failed for filename" << sourceFilename;
         currentSourceFilename.clear();
 
         // Show an error to the user and give up
-        lastLoadError = "Could not open source TBC data file";
-        return;
+        lastIOError = "Could not open source TBC data file";
+        return false;
     }
 
     // Is there a separate _chroma.tbc file?
@@ -929,7 +928,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     if (QFileInfo::exists(chromaSourceFilename)) {
         // Yes! Open it.
         qDebug() << "TbcSource::startBackgroundLoad(): Loading chroma TBC file...";
-        emit busyLoading("Loading chroma TBC file...");
+        emit busy("Loading chroma TBC file...");
         if (!chromaSourceVideo.open(chromaSourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Open failed
             qWarning() << "Open chroma TBC file failed for filename" << chromaSourceFilename;
@@ -937,8 +936,8 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
             sourceVideo.close();
 
             // Show an error to the user and give up
-            lastLoadError = "Could not open source chroma TBC data file";
-            return;
+            lastIOError = "Could not open source chroma TBC data file";
+            return false;
         }
 
         sourceMode = isChromaTbc ? CHROMA_SOURCE : BOTH_SOURCES;
@@ -960,12 +959,14 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     }
 
     // Analyse the metadata
-    emit busyLoading("Generating graph data and chapter map...");
+    emit busy("Generating graph data and chapter map...");
     generateData();
+
+    return true;
 }
 
 void TbcSource::finishBackgroundLoad()
 {
     // Send a finished loading message to the main window
-    emit finishedLoading();
+    emit finishedLoading(future.result());
 }
