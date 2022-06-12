@@ -306,7 +306,12 @@ void OscilloscopeDialog::mousePressEvent(QMouseEvent *event)
             oX + 1 <= ui->scopeLabel->width() &&
             oY <= ui->scopeLabel->height()) {
 
-        mousePictureDotSelect(oX);
+        // Is shift held down?
+        if (event->modifiers().testFlag(Qt::ShiftModifier)) {
+            mouseLevelSelect(oY);
+        } else {
+            mousePictureDotSelect(oX);
+        }
         event->accept();
     }
 }
@@ -314,23 +319,20 @@ void OscilloscopeDialog::mousePressEvent(QMouseEvent *event)
 // Mouse drag event handler
 void OscilloscopeDialog::mouseMoveEvent(QMouseEvent *event)
 {
-    // Get the mouse position relative to our scene
-    QPoint origin = ui->scopeLabel->mapFromGlobal(QCursor::pos());
-
-    // Check that the mouse click is within bounds of the current picture
-    qint32 oX = origin.x();
-    qint32 oY = origin.y();
-
-    if (oX + 1 >= 0 &&
-            oY >= 0 &&
-            oX + 1 <= ui->scopeLabel->width() &&
-            oY <= ui->scopeLabel->height()) {
-
-        mousePictureDotSelect(oX);
-        event->accept();
-    }
+    // Handle this the same way as a click
+    mousePressEvent(event);
 }
 
+// Handle a click on the scope with shift held down, to select a level
+void OscilloscopeDialog::mouseLevelSelect(qint32 oY)
+{
+    qreal unscaledYR = (65536.0 / static_cast<qreal>(ui->scopeLabel->height())) * static_cast<qreal>(oY);
+
+    qint32 level = qBound(0, 65535 - static_cast<qint32>(unscaledYR), 65535);
+    emit scopeLevelSelect(level);
+}
+
+// Handle a click on the scope without shift held down, to select a sample
 void OscilloscopeDialog::mousePictureDotSelect(qint32 oX)
 {
     qreal unscaledXR = (static_cast<qreal>(scopeWidth) /

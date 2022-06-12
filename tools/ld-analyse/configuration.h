@@ -70,6 +70,8 @@ public:
     QByteArray getWhiteSnrAnalysisDialogGeometry(void);
     void setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry);
     QByteArray getClosedCaptionDialogGeometry(void);
+    void setVideoParametersDialogGeometry(QByteArray videoParametersConfigDialogGeometry);
+    QByteArray getVideoParametersDialogGeometry(void);
     void setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry);
     QByteArray getChromaDecoderConfigDialogGeometry(void);
 
@@ -98,6 +100,7 @@ private:
         QByteArray blackSnrAnalysisDialogGeometry;
         QByteArray whiteSnrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
+        QByteArray videoParametersDialogGeometry;
         QByteArray chromaDecoderConfigDialogGeometry;
     };
 

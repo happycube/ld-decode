@@ -4,6 +4,7 @@
 
     ld-analyse - TBC output analysis
     Copyright (C) 2018-2022 Simon Inns
+    Copyright (C) 2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -25,21 +26,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
-namespace {
-namespace Aspect {
-    constexpr quint8 SAR_11 = 0;
-    constexpr char const* SAR_11_S = "SAR 1:1";
-    constexpr quint8 DAR_43 = 1;
-    constexpr char const* DAR_43_S ="DAR 4:3";
-    constexpr int DAR_43_ADJ_525 = -150; // NTSC
-    constexpr int DAR_43_ADJ_625 = -196; // PAL
-    constexpr quint8 DAR_169 = 2;
-    constexpr char const* DAR_169_S ="DAR 16:9";
-    constexpr int DAR_169_ADJ_525 = 122;
-    constexpr int DAR_169_ADJ_625 = 103;
-}
-}
-
 MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
@@ -57,6 +43,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     whiteSnrAnalysisDialog = new WhiteSnrAnalysisDialog(this);
     busyDialog = new BusyDialog(this);
     closedCaptionDialog = new ClosedCaptionsDialog(this);
+    videoParametersDialog = new VideoParametersDialog(this);
     chromaDecoderConfigDialog = new ChromaDecoderConfigDialog(this);
 
     // Add a status bar to show the state of the source video file
@@ -68,24 +55,27 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Set the initial frame number
     currentFrameNumber = 1;
 
-    // Set the initial aspect
-    aspectRatio = Aspect::SAR_11;
-    if (tbcSource.getIsWidescreen()) aspectRatio = Aspect::DAR_169;
-
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scopeCoordsChanged, this, &MainWindow::scopeCoordsChangedSignalHandler);
     lastScopeLine = 1;
     lastScopeDot = 1;
 
+    // Make shift-clicking on the oscilloscope change the black/white level
+    connect(oscilloscopeDialog, &OscilloscopeDialog::scopeLevelSelect, videoParametersDialog, &VideoParametersDialog::levelSelected);
+
     // Connect to the changed signal from the vectorscope dialogue
     connect(vectorscopeDialog, &VectorscopeDialog::scopeChanged, this, &MainWindow::vectorscopeChangedSignalHandler);
+
+    // Connect to the video parameters changed signal
+    connect(videoParametersDialog, &VideoParametersDialog::videoParametersChanged, this, &MainWindow::videoParametersChangedSignalHandler);
 
     // Connect to the chroma decoder configuration changed signal
     connect(chromaDecoderConfigDialog, &ChromaDecoderConfigDialog::chromaDecoderConfigChanged, this, &MainWindow::chromaDecoderConfigChangedSignalHandler);
 
-    // Connect to the TbcSource signals (busy loading and finished loading)
-    connect(&tbcSource, &TbcSource::busyLoading, this, &MainWindow::on_busyLoading);
+    // Connect to the TbcSource signals (busy and finished loading)
+    connect(&tbcSource, &TbcSource::busy, this, &MainWindow::on_busy);
     connect(&tbcSource, &TbcSource::finishedLoading, this, &MainWindow::on_finishedLoading);
+    connect(&tbcSource, &TbcSource::finishedSaving, this, &MainWindow::on_finishedSaving);
 
     // Load the window geometry and settings from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
@@ -98,6 +88,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     blackSnrAnalysisDialog->restoreGeometry(configuration.getBlackSnrAnalysisDialogGeometry());
     whiteSnrAnalysisDialog->restoreGeometry(configuration.getWhiteSnrAnalysisDialogGeometry());
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
+    videoParametersDialog->restoreGeometry(configuration.getVideoParametersDialogGeometry());
     chromaDecoderConfigDialog->restoreGeometry(configuration.getChromaDecoderConfigDialogGeometry());
 
     // Store the current button palette for the show dropouts button
@@ -128,6 +119,7 @@ MainWindow::~MainWindow()
     configuration.setBlackSnrAnalysisDialogGeometry(blackSnrAnalysisDialog->saveGeometry());
     configuration.setWhiteSnrAnalysisDialogGeometry(whiteSnrAnalysisDialog->saveGeometry());
     configuration.setClosedCaptionDialogGeometry(closedCaptionDialog->saveGeometry());
+    configuration.setVideoParametersDialogGeometry(videoParametersDialog->saveGeometry());
     configuration.setChromaDecoderConfigDialogGeometry(chromaDecoderConfigDialog->saveGeometry());
     configuration.writeConfiguration();
 
@@ -141,17 +133,54 @@ MainWindow::~MainWindow()
 
 // Update GUI methods for when TBC source files are loaded and unloaded -----------------------------------------------
 
+// Enable or disable all the GUI controls
+void MainWindow::setGuiEnabled(bool enabled)
+{
+    // Enable the frame controls
+    ui->frameNumberSpinBox->setEnabled(enabled);
+    ui->previousPushButton->setEnabled(enabled);
+    ui->nextPushButton->setEnabled(enabled);
+    ui->startFramePushButton->setEnabled(enabled);
+    ui->endFramePushButton->setEnabled(enabled);
+    ui->frameHorizontalSlider->setEnabled(enabled);
+    ui->mediaControl_frame->setEnabled(enabled);
+
+    // Enable menu options
+    ui->actionLine_scope->setEnabled(enabled);
+    ui->actionVectorscope->setEnabled(enabled);
+    ui->actionVBI->setEnabled(enabled);
+    ui->actionNTSC->setEnabled(enabled);
+    ui->actionVideo_metadata->setEnabled(enabled);
+    ui->actionVITS_Metrics->setEnabled(enabled);
+    ui->actionZoom_In->setEnabled(enabled);
+    ui->actionZoom_Out->setEnabled(enabled);
+    ui->actionZoom_1x->setEnabled(enabled);
+    ui->actionZoom_2x->setEnabled(enabled);
+    ui->actionZoom_3x->setEnabled(enabled);
+    ui->actionDropout_analysis->setEnabled(enabled);
+    ui->actionVisible_Dropout_analysis->setEnabled(enabled);
+    ui->actionSNR_analysis->setEnabled(enabled); // Black SNR
+    ui->actionWhite_SNR_analysis->setEnabled(enabled);
+    ui->actionSave_frame_as_PNG->setEnabled(enabled);
+    ui->actionClosed_Captions->setEnabled(enabled);
+    ui->actionVideo_parameters->setEnabled(enabled);
+    ui->actionChroma_decoder_configuration->setEnabled(enabled);
+    ui->actionReload_TBC->setEnabled(enabled);
+
+    // "Save JSON" should be disabled by default
+    ui->actionSave_JSON->setEnabled(false);
+
+    // Set zoom button states
+    ui->zoomInPushButton->setEnabled(enabled);
+    ui->zoomOutPushButton->setEnabled(enabled);
+    ui->originalSizePushButton->setEnabled(enabled);
+}
+
 // Method to update the GUI when a file is loaded
 void MainWindow::updateGuiLoaded()
 {
-    // Enable the frame controls
-    ui->frameNumberSpinBox->setEnabled(true);
-    ui->previousPushButton->setEnabled(true);
-    ui->nextPushButton->setEnabled(true);
-    ui->startFramePushButton->setEnabled(true);
-    ui->endFramePushButton->setEnabled(true);
-    ui->frameHorizontalSlider->setEnabled(true);
-    ui->mediaControl_frame->setEnabled(true);
+    // Enable the GUI controls
+    setGuiEnabled(true);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -171,39 +200,15 @@ void MainWindow::updateGuiLoaded()
     ui->nextPushButton->setAutoRepeatDelay(500);
     ui->nextPushButton->setAutoRepeatInterval(1);
 
-    // Enable menu options
-    ui->actionLine_scope->setEnabled(true);
-    ui->actionVectorscope->setEnabled(true);
-    ui->actionVBI->setEnabled(true);
-    ui->actionNTSC->setEnabled(true);
-    ui->actionVideo_metadata->setEnabled(true);
-    ui->actionVITS_Metrics->setEnabled(true);
-    ui->actionZoom_In->setEnabled(true);
-    ui->actionZoom_Out->setEnabled(true);
-    ui->actionZoom_1x->setEnabled(true);
-    ui->actionZoom_2x->setEnabled(true);
-    ui->actionZoom_3x->setEnabled(true);
-    ui->actionDropout_analysis->setEnabled(true);
-    ui->actionVisible_Dropout_analysis->setEnabled(true);
-    ui->actionSNR_analysis->setEnabled(true); // Black SNR
-    ui->actionWhite_SNR_analysis->setEnabled(true);
-    ui->actionSave_frame_as_PNG->setEnabled(true);
-    ui->actionClosed_Captions->setEnabled(true);
-    ui->actionChroma_decoder_configuration->setEnabled(true);
-    ui->actionReload_TBC->setEnabled(true);
-
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
-    ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));
+    displayAspectRatio = false;
+    updateAspectPushButton();
     updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
-    // Set zoom button states
-    ui->zoomInPushButton->setEnabled(true);
-    ui->zoomOutPushButton->setEnabled(true);
-    ui->originalSizePushButton->setEnabled(true);
-
+    // Zoom button options
     ui->zoomInPushButton->setAutoRepeat(true);
     ui->zoomInPushButton->setAutoRepeatDelay(500);
     ui->zoomInPushButton->setAutoRepeatInterval(100);
@@ -219,15 +224,11 @@ void MainWindow::updateGuiLoaded()
     statusText += " sequential frames available";
     sourceVideoStatus.setText(statusText);
 
-    // Reset the aspect setting
-    aspectRatio = Aspect::SAR_11;
-    if (tbcSource.getIsWidescreen()) {
-        aspectRatio = Aspect::DAR_169;
-        ui->aspectPushButton->setText(tr(Aspect::DAR_169_S));
-    }
-
     // Load and show the current frame
     showFrame();
+
+    // Update the video parameters dialogue
+    videoParametersDialog->setVideoParameters(tbcSource.getVideoParameters());
 
     // Update the chroma decoder configuration dialogue
     chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
@@ -235,19 +236,16 @@ void MainWindow::updateGuiLoaded()
 
     // Ensure the busy dialogue is hidden
     busyDialog->hide();
+
+    // Disable "Save JSON", now we've loaded the metadata into the GUI
+    ui->actionSave_JSON->setEnabled(false);
 }
 
 // Method to update the GUI when a file is unloaded
 void MainWindow::updateGuiUnloaded()
 {
-    // Disable the frame controls
-    ui->frameNumberSpinBox->setEnabled(false);
-    ui->previousPushButton->setEnabled(false);
-    ui->nextPushButton->setEnabled(false);
-    ui->startFramePushButton->setEnabled(false);
-    ui->endFramePushButton->setEnabled(false);
-    ui->frameHorizontalSlider->setEnabled(false);
-    ui->mediaControl_frame->setEnabled(false);
+    // Disable the GUI controls
+    setGuiEnabled(false);
 
     // Update the current frame number
     currentFrameNumber = 1;
@@ -263,39 +261,13 @@ void MainWindow::updateGuiUnloaded()
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
 
-    // Disable menu options
-    ui->actionLine_scope->setEnabled(false);
-    ui->actionVectorscope->setEnabled(false);
-    ui->actionVBI->setEnabled(false);
-    ui->actionNTSC->setEnabled(false);
-    ui->actionVideo_metadata->setEnabled(false);
-    ui->actionVITS_Metrics->setEnabled(false);
-    ui->actionZoom_In->setEnabled(false);
-    ui->actionZoom_Out->setEnabled(false);
-    ui->actionZoom_1x->setEnabled(false);
-    ui->actionZoom_2x->setEnabled(false);
-    ui->actionZoom_3x->setEnabled(false);
-    ui->actionDropout_analysis->setEnabled(false);
-    ui->actionVisible_Dropout_analysis->setEnabled(false);
-    ui->actionSNR_analysis->setEnabled(false); // Black SNR
-    ui->actionWhite_SNR_analysis->setEnabled(false);
-    ui->actionSave_frame_as_PNG->setEnabled(false);
-    ui->actionClosed_Captions->setEnabled(false);
-    ui->actionChroma_decoder_configuration->setEnabled(false);
-    ui->actionReload_TBC->setEnabled(false);
-
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
     ui->dropoutsPushButton->setText(tr("Dropouts Off"));
-    aspectRatio = Aspect::SAR_11;
-    ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));;
+    displayAspectRatio = false;
+    updateAspectPushButton();
     updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
-
-    // Set zoom button states
-    ui->zoomInPushButton->setEnabled(false);
-    ui->zoomOutPushButton->setEnabled(false);
-    ui->originalSizePushButton->setEnabled(false);
 
     // Hide the displayed frame
     hideFrame();
@@ -306,7 +278,20 @@ void MainWindow::updateGuiUnloaded()
     dropoutAnalysisDialog->hide();
 
     // Hide configuration dialogues
+    videoParametersDialog->hide();
     chromaDecoderConfigDialog->hide();
+}
+
+// Update the aspect ratio button
+void MainWindow::updateAspectPushButton()
+{
+    if (!displayAspectRatio) {
+        ui->aspectPushButton->setText(tr("SAR 1:1"));
+    } else if (tbcSource.getIsWidescreen()) {
+        ui->aspectPushButton->setText(tr("DAR 16:9"));
+    } else {
+        ui->aspectPushButton->setText(tr("DAR 4:3"));
+    }
 }
 
 // Update the source selection button
@@ -363,15 +348,9 @@ void MainWindow::showFrame()
     ui->frameViewerLabel->clear();
     ui->frameViewerLabel->setScaledContents(false);
     ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
-    updateFrameViewer();
 
-    // If the scope dialogues are open, update them
-    if (oscilloscopeDialog->isVisible()) {
-        updateOscilloscopeDialogue();
-    }
-    if (vectorscopeDialog->isVisible()) {
-        updateVectorscopeDialogue();
-    }
+    // Update the frame views
+    updateFrame();
 
     // Update the closed caption dialog
     if (tbcSource.getSystem() == NTSC) {
@@ -381,6 +360,37 @@ void MainWindow::showFrame()
     #if defined(Q_OS_MACOS)
     	repaint();
     #endif
+}
+
+// Redraw all the GUI elements that depend on the decoded frame
+void MainWindow::updateFrame()
+{
+    // Update the main frame viewer
+    updateFrameViewer();
+
+    // If the scope dialogues are open, update them
+    if (oscilloscopeDialog->isVisible()) {
+        updateOscilloscopeDialogue();
+    }
+    if (vectorscopeDialog->isVisible()) {
+        updateVectorscopeDialogue();
+    }
+}
+
+// Return the width adjustment for the current aspect mode
+qint32 MainWindow::getAspectAdjustment() {
+    // Using source aspect ratio? No adjustment
+    if (!displayAspectRatio) return 0;
+
+    if (tbcSource.getSystem() == PAL) {
+        // 625 lines
+        if (tbcSource.getIsWidescreen()) return 103; // 16:9
+        else return -196; // 4:3
+    } else {
+        // 525 lines
+        if (tbcSource.getIsWidescreen()) return 122; // 16:9
+        else return -150; // 4:3
+    }
 }
 
 // Redraw the frame viewer (for example, when scaleFactor has been changed)
@@ -404,17 +414,8 @@ void MainWindow::updateFrameViewer()
 
     QPixmap pixmap = QPixmap::fromImage(frameImage);
 
-    // Get the pixmap width and height (and apply scaling and aspect ratio adjustment if required)
-    qint32 adjustment = 0;
-    if (aspectRatio == Aspect::DAR_43) {
-        if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_43_ADJ_625; // 625-line 4:3
-        else adjustment = Aspect::DAR_43_ADJ_525; // 525-line 4:3
-    }
-    
-    if (aspectRatio == Aspect::DAR_169) {
-        if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_169_ADJ_625; // 625-line 16:9
-        else adjustment = Aspect::DAR_169_ADJ_525; // 525-line 16:9
-    }
+    // Get the aspect ratio adjustment if required
+    qint32 adjustment = getAspectAdjustment();
 
     // Scale and apply the pixmap (only if it's valid)
     if (!pixmap.isNull()) {
@@ -510,6 +511,14 @@ void MainWindow::on_actionReload_TBC_triggered()
     }
 }
 
+// Start saving the modified JSON metadata
+void MainWindow::on_actionSave_JSON_triggered()
+{
+    tbcSource.saveSourceJson();
+
+    // Saving continues in the background...
+}
+
 // Display the scan line oscilloscope view
 void MainWindow::on_actionLine_scope_triggered()
 {
@@ -587,8 +596,10 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
     else filenameSuggestion += tr("chroma_");
 
-    if (aspectRatio == Aspect::DAR_43) filenameSuggestion += tr("ar43_");
-    if (aspectRatio == Aspect::DAR_169) filenameSuggestion += tr("ar169_");
+    if (displayAspectRatio) {
+        if (tbcSource.getIsWidescreen()) filenameSuggestion += tr("ar169_");
+        else filenameSuggestion += tr("ar43_");
+    }
 
     filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
 
@@ -605,25 +616,9 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         // Generate QImage for the current frame
         QImage imageToSave = tbcSource.getFrameImage();
 
-        // Change to 4:3 aspect ratio?
-        if (aspectRatio == Aspect::DAR_43) {
-            // Scale to 4:3 aspect
-            qint32 adjustment = 0;
-            if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_43_ADJ_625; // 625-line 4:3
-            else adjustment = Aspect::DAR_43_ADJ_525; // 525-line 4:3
-
-            imageToSave = imageToSave.scaled((imageToSave.size().width() + adjustment),
-                                             (imageToSave.size().height()),
-                                             Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        }
-        
-        // Change to 16:9 aspect ratio?
-        if (aspectRatio == Aspect::DAR_169) {
-            // Scale to 16:9 aspect
-            qint32 adjustment = 0;
-            if (tbcSource.getSystem() == PAL) adjustment = Aspect::DAR_169_ADJ_625; // 625-line 16:9
-            else adjustment = Aspect::DAR_169_ADJ_525; // 525-line 16:9
-
+        // Get the aspect ratio adjustment, and scale the image if needed
+        qint32 adjustment = getAspectAdjustment();
+        if (adjustment != 0) {
             imageToSave = imageToSave.scaled((imageToSave.size().width() + adjustment),
                                              (imageToSave.size().height()),
                                              Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
@@ -635,7 +630,6 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
 
             QMessageBox messageBox;
             messageBox.warning(this, "Warning","Could not save a PNG using the specified filename!");
-            messageBox.setFixedSize(500, 200);
         }
 
         // Update the configuration for the PNG directory
@@ -682,6 +676,12 @@ void MainWindow::on_actionZoom_3x_triggered()
 void MainWindow::on_actionClosed_Captions_triggered()
 {
     closedCaptionDialog->show();
+}
+
+// Show video parameters dialogue
+void MainWindow::on_actionVideo_parameters_triggered()
+{
+    videoParametersDialog->show();
 }
 
 // Show chroma decoder configuration
@@ -775,6 +775,18 @@ void MainWindow::on_videoPushButton_clicked()
 
     // Show the current frame
     showFrame();
+}
+
+// Aspect ratio button clicked
+void MainWindow::on_aspectPushButton_clicked()
+{
+    displayAspectRatio = !displayAspectRatio;
+
+    // Update the button text
+    updateAspectPushButton();
+
+    // Update the frame viewer (the scopes don't depend on this)
+    updateFrameViewer();
 }
 
 // Show/hide dropouts button clicked
@@ -880,23 +892,6 @@ void MainWindow::on_mouseModePushButton_clicked()
 
     // Update the frame viewer to display/hide the indicator line
     updateFrameViewer();
-}
-
-// Aspect ratio button clicked
-void MainWindow::on_aspectPushButton_clicked()
-{
-    aspectRatio += 1;
-    
-    if (aspectRatio > 2) aspectRatio = 0;
-    
-    if (aspectRatio == Aspect::SAR_11) ui->aspectPushButton->setText(tr(Aspect::SAR_11_S));
-    else if (aspectRatio == Aspect::DAR_43) ui->aspectPushButton->setText(tr(Aspect::DAR_43_S));
-    else if (aspectRatio == Aspect::DAR_169) ui->aspectPushButton->setText(tr(Aspect::DAR_169_S));
-
-    qDebug() << "Aspect ratio: " << aspectRatio << " text " << ui->aspectPushButton->text();
-
-    // Show the current frame (why isn't this option passed?)
-    showFrame();
 }
 
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
@@ -1018,6 +1013,22 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
     }
 }
 
+// Handle parameters changed signal from the video parameters dialogue
+void MainWindow::videoParametersChangedSignalHandler(const LdDecodeMetaData::VideoParameters &videoParameters)
+{
+    // Update the VideoParameters in the source
+    tbcSource.setVideoParameters(videoParameters);
+
+    // Enable the "Save JSON" action, since the metadata has been modified
+    ui->actionSave_JSON->setEnabled(true);
+
+    // Update the aspect button's label
+    updateAspectPushButton();
+
+    // Update the frame views
+    updateFrame();
+}
+
 // Handle configuration changed signal from the chroma decoder configuration dialogue
 void MainWindow::chromaDecoderConfigChangedSignalHandler()
 {
@@ -1026,24 +1037,16 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
                                      chromaDecoderConfigDialog->getNtscConfiguration(),
                                      chromaDecoderConfigDialog->getOutputConfiguration());
 
-    // Update the frame viewer
-    updateFrameViewer();
-
-    // If the scope windows are open, update them
-    if (oscilloscopeDialog->isVisible()) {
-        updateOscilloscopeDialogue();
-    }
-    if (vectorscopeDialog->isVisible()) {
-        updateVectorscopeDialogue();
-    }
+    // Update the frame views
+    updateFrame();
 }
 
 // TbcSource class signal handlers ------------------------------------------------------------------------------------
 
-// Signal handler for busyLoading signal from TbcSource class
-void MainWindow::on_busyLoading(QString infoMessage)
+// Signal handler for busy signal from TbcSource class
+void MainWindow::on_busy(QString infoMessage)
 {
-    qDebug() << "MainWindow::on_busyLoading(): Got signal with message" << infoMessage;
+    qDebug() << "MainWindow::on_busy(): Got signal with message" << infoMessage;
     // Set the busy message and centre the dialog in the parent window
     busyDialog->setMessage(infoMessage);
     busyDialog->move(this->geometry().center() - busyDialog->rect().center());
@@ -1058,7 +1061,7 @@ void MainWindow::on_busyLoading(QString infoMessage)
 }
 
 // Signal handler for finishedLoading signal from TbcSource class
-void MainWindow::on_finishedLoading()
+void MainWindow::on_finishedLoading(bool success)
 {
     qDebug() << "MainWindow::on_finishedLoading(): Called";
 
@@ -1066,7 +1069,7 @@ void MainWindow::on_finishedLoading()
     busyDialog->hide();
 
     // Ensure source loaded ok
-    if (tbcSource.getIsSourceLoaded()) {
+    if (success) {
         // Generate the graph data
         dropoutAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
         visibleDropoutAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
@@ -1107,14 +1110,30 @@ void MainWindow::on_finishedLoading()
 
         // Show the error to the user
         QMessageBox messageBox;
-        messageBox.warning(this, "Error", tbcSource.getLastLoadError());
-        messageBox.setFixedSize(500, 200);
+        messageBox.warning(this, "Error", tbcSource.getLastIOError());
     }
 
     // Enable the main window
     this->setEnabled(true);
 }
 
+// Signal handler for finishedSaving signal from TbcSource class
+void MainWindow::on_finishedSaving(bool success)
+{
+    qDebug() << "MainWindow::on_finishedSaving(): Called";
 
+    // Hide the busy dialogue
+    busyDialog->hide();
 
+    if (success) {
+        // Disable the "Save JSON" action until the metadata is modified again
+        ui->actionSave_JSON->setEnabled(false);
+    } else {
+        // Show the error to the user
+        QMessageBox messageBox;
+        messageBox.warning(this, "Error", tbcSource.getLastIOError());
+    }
 
+    // Enable the main window
+    this->setEnabled(true);
+}

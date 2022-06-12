@@ -49,11 +49,12 @@ void TbcSource::loadSource(QString sourceFilename)
     // Set the current file name
     QFileInfo inFileInfo(sourceFilename);
     currentSourceFilename = inFileInfo.fileName();
-    qDebug() << "TbcSource::startBackgroundLoad(): Opening TBC source file:" << currentSourceFilename;
+    qDebug() << "TbcSource::loadSource(): Opening TBC source file:" << currentSourceFilename;
 
     // Set up and fire-off background loading thread
     qDebug() << "TbcSource::loadSource(): Setting up background loader thread";
-    connect(&watcher, SIGNAL(finished()), this, SLOT(finishBackgroundLoad()));
+    disconnect(&watcher, &QFutureWatcher<bool>::finished, nullptr, nullptr);
+    connect(&watcher, &QFutureWatcher<bool>::finished, this, &TbcSource::finishBackgroundLoad);
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     future = QtConcurrent::run(this, &TbcSource::startBackgroundLoad, sourceFilename);
 #else
@@ -70,6 +71,21 @@ void TbcSource::unloadSource()
     resetState();
 }
 
+// Start saving the JSON file for the current source
+void TbcSource::saveSourceJson()
+{
+    // Start a background saving thread
+    qDebug() << "TbcSource::saveSourceJson(): Starting background save thread";
+    disconnect(&watcher, &QFutureWatcher<bool>::finished, nullptr, nullptr);
+    connect(&watcher, &QFutureWatcher<bool>::finished, this, &TbcSource::finishBackgroundSave);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    future = QtConcurrent::run(this, &TbcSource::startBackgroundSave, currentJsonFilename);
+#else
+    future = QtConcurrent::run(&TbcSource::startBackgroundSave, this, currentJsonFilename);
+#endif
+    watcher.setFuture(future);
+}
+
 // Method returns true is a TBC source is loaded
 bool TbcSource::getIsSourceLoaded()
 {
@@ -84,12 +100,10 @@ QString TbcSource::getCurrentSourceFilename()
     return currentSourceFilename;
 }
 
-// If loadSource failed, return a description of the last error
-QString TbcSource::getLastLoadError()
+// Return a description of the last IO error
+QString TbcSource::getLastIOError()
 {
-    if (sourceReady) return QString();
-
-    return lastLoadError;
+    return lastIOError;
 }
 
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
@@ -343,6 +357,18 @@ const LdDecodeMetaData::VideoParameters &TbcSource::getVideoParameters()
     return ldDecodeMetaData.getVideoParameters();
 }
 
+// Update the VideoParameters for the current source
+void TbcSource::setVideoParameters(const LdDecodeMetaData::VideoParameters &videoParameters)
+{
+    invalidateFrameCache();
+
+    // Update the metadata
+    ldDecodeMetaData.setVideoParameters(videoParameters);
+
+    // Reconfigure the chroma decoder
+    configureChromaDecoder();
+}
+
 // Get scan line data from the frame
 TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 {
@@ -458,17 +484,7 @@ void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfi
     ntscConfiguration = _ntscConfiguration;
     outputConfiguration = _outputConfiguration;
 
-    // Configure the chroma decoder
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
-        palColour.updateConfiguration(videoParameters, palConfiguration);
-    } else {
-        ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
-    }
-
-    // Configure the OutputWriter.
-    // Because we have padding disabled, this won't change the VideoParameters.
-    outputWriter.updateConfiguration(videoParameters, outputConfiguration);
+    configureChromaDecoder();
 }
 
 const PalColour::Configuration &TbcSource::getPalConfiguration()
@@ -558,6 +574,22 @@ void TbcSource::invalidateFrameCache()
     inputFieldsValid = false;
     decodedFrameValid = false;
     frameCacheValid = false;
+}
+
+// Configure the chroma decoder for its settings and the VideoParameters
+void TbcSource::configureChromaDecoder()
+{
+    // Configure the chroma decoder
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+    if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
+        palColour.updateConfiguration(videoParameters, palConfiguration);
+    } else {
+        ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
+    }
+
+    // Configure the OutputWriter.
+    // Because we have padding disabled, this won't change the VideoParameters.
+    outputWriter.updateConfiguration(videoParameters, outputConfiguration);
 }
 
 // Ensure the SourceFields for the current frame are loaded
@@ -853,11 +885,11 @@ void TbcSource::generateData()
     }
 }
 
-void TbcSource::startBackgroundLoad(QString sourceFilename)
+bool TbcSource::startBackgroundLoad(QString sourceFilename)
 {
     // Open the TBC metadata file
     qDebug() << "TbcSource::startBackgroundLoad(): Processing JSON metadata...";
-    emit busyLoading("Processing JSON metadata...");
+    emit busy("Processing JSON metadata...");
 
     QString jsonFileName = sourceFilename + ".json";
 
@@ -884,8 +916,8 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
         currentSourceFilename.clear();
 
         // Show an error to the user and give up
-        lastLoadError = "Could not load source TBC JSON metadata file";
-        return;
+        lastIOError = "Could not load source TBC JSON metadata file";
+        return false;
     }
 
     // Get the video parameters from the metadata
@@ -893,15 +925,15 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Open the new source video
     qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
-    emit busyLoading("Loading TBC file...");
+    emit busy("Loading TBC file...");
     if (!sourceVideo.open(sourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
         // Open failed
         qWarning() << "Open TBC file failed for filename" << sourceFilename;
         currentSourceFilename.clear();
 
         // Show an error to the user and give up
-        lastLoadError = "Could not open source TBC data file";
-        return;
+        lastIOError = "Could not open source TBC data file";
+        return false;
     }
 
     // Is there a separate _chroma.tbc file?
@@ -911,7 +943,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     if (QFileInfo::exists(chromaSourceFilename)) {
         // Yes! Open it.
         qDebug() << "TbcSource::startBackgroundLoad(): Loading chroma TBC file...";
-        emit busyLoading("Loading chroma TBC file...");
+        emit busy("Loading chroma TBC file...");
         if (!chromaSourceVideo.open(chromaSourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Open failed
             qWarning() << "Open chroma TBC file failed for filename" << chromaSourceFilename;
@@ -919,8 +951,8 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
             sourceVideo.close();
 
             // Show an error to the user and give up
-            lastLoadError = "Could not open source chroma TBC data file";
-            return;
+            lastIOError = "Could not open source chroma TBC data file";
+            return false;
         }
 
         sourceMode = isChromaTbc ? CHROMA_SOURCE : BOTH_SOURCES;
@@ -929,6 +961,7 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     // Both the video and metadata files are now open
     sourceReady = true;
     currentSourceFilename = sourceFilename;
+    currentJsonFilename = jsonFileName;
 
     // Configure the chroma decoder
     if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
@@ -942,12 +975,66 @@ void TbcSource::startBackgroundLoad(QString sourceFilename)
     }
 
     // Analyse the metadata
-    emit busyLoading("Generating graph data and chapter map...");
+    emit busy("Generating graph data and chapter map...");
     generateData();
+
+    return true;
 }
 
 void TbcSource::finishBackgroundLoad()
 {
     // Send a finished loading message to the main window
-    emit finishedLoading();
+    emit finishedLoading(future.result());
+}
+
+bool TbcSource::startBackgroundSave(QString jsonFilename)
+{
+    qDebug() << "TbcSource::startBackgroundSave(): Saving to" << jsonFilename;
+    emit busy("Saving JSON metadata...");
+
+    // The general idea here is that decoding takes a long time -- so we want
+    // to be careful not to destroy the user's only copy of their JSON file if
+    // something goes wrong!
+
+    // Write the metadata out to a new temporary file
+    QString newJsonFilename = jsonFilename + ".new";
+    if (!ldDecodeMetaData.write(newJsonFilename)) {
+        // Writing failed
+        lastIOError = "Could not write to new JSON file";
+        return false;
+    }
+
+    // If there isn't already a .bup backup file, rename the existing file to that name
+    // (matching the behaviour of ld-process-vbi)
+    QString backupFilename = jsonFilename + ".bup";
+    if (!QFile::exists(backupFilename)) {
+        if (!QFile::rename(jsonFilename, jsonFilename + ".bup")) {
+            // Renaming failed
+            lastIOError = "Could not rename existing JSON file to backup";
+            return false;
+        }
+    } else {
+        // There is a backup, so it's safe to remove the existing file
+        if (!QFile::remove(jsonFilename)) {
+            // Deleting failed
+            lastIOError = "Could not remove existing JSON file";
+            return false;
+        }
+    }
+
+    // Rename the new file to the target name
+    if (!QFile::rename(newJsonFilename, jsonFilename)) {
+        // Renaming failed
+        lastIOError = "Could not rename new JSON file to target name";
+        return false;
+    }
+
+    qDebug() << "TbcSource::startBackgroundSave(): Save complete";
+    return true;
+}
+
+void TbcSource::finishBackgroundSave()
+{
+    // Send a finished saving message to the main window
+    emit finishedSaving(future.result());
 }

@@ -69,8 +69,9 @@ public:
     void loadSource(QString inputFileName);
     void unloadSource();
     bool getIsSourceLoaded();
+    void saveSourceJson();
     QString getCurrentSourceFilename();
-    QString getLastLoadError();
+    QString getLastIOError();
 
     void setHighlightDropouts(bool _state);
     void setChromaDecoder(bool _state);
@@ -109,8 +110,11 @@ public:
     qint32 getGraphDataSize();
 
     bool getIsDropoutPresent();
-    const ComponentFrame &getComponentFrame();
+
     const LdDecodeMetaData::VideoParameters &getVideoParameters();
+    void setVideoParameters(const LdDecodeMetaData::VideoParameters &videoParameters);
+
+    const ComponentFrame &getComponentFrame();
     ScanLineData getScanLineData(qint32 scanLine);
 
     qint32 getFirstFieldNumber();
@@ -129,11 +133,13 @@ public:
     qint32 startOfChapter(qint32 currentFrameNumber);
 
 signals:
-    void busyLoading(QString information);
-    void finishedLoading();
+    void busy(QString information);
+    void finishedLoading(bool success);
+    void finishedSaving(bool success);
 
 private slots:
     void finishBackgroundLoad();
+    void finishBackgroundSave();
 
 private:
     bool sourceReady;
@@ -155,7 +161,8 @@ private:
     SourceMode sourceMode;
     LdDecodeMetaData ldDecodeMetaData;
     QString currentSourceFilename;
-    QString lastLoadError;
+    QString currentJsonFilename;
+    QString lastIOError;
 
     // Chroma decoder objects
     PalColour palColour;
@@ -166,8 +173,8 @@ private:
     VbiDecoder vbiDecoder;
 
     // Background loader globals
-    QFutureWatcher<void> watcher;
-    QFuture <void> future;
+    QFutureWatcher<bool> watcher;
+    QFuture<bool> future;
 
     // Metadata for the loaded frame
     qint32 firstFieldNumber, secondFieldNumber;
@@ -198,11 +205,13 @@ private:
 
     void resetState();
     void invalidateFrameCache();
+    void configureChromaDecoder();
     void loadInputFields();
     void decodeFrame();
     QImage generateQImage();
     void generateData();
-    void startBackgroundLoad(QString sourceFilename);
+    bool startBackgroundLoad(QString sourceFilename);
+    bool startBackgroundSave(QString jsonFilename);
 };
 
 #endif // TBCSOURCE_H
