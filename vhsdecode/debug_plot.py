@@ -6,7 +6,7 @@ class DebugPlot():
         return requested_info in self.__stuff_to_plot
 
 
-def plot_input_data(raw_data, raw_fft, demod_video, filtered_video, rfdecode):
+def plot_input_data(raw_data, raw_fft, env, env_mean, demod_video, filtered_video, rfdecode):
     import matplotlib.pyplot as plt
     import numpy as np
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
@@ -15,7 +15,14 @@ def plot_input_data(raw_data, raw_fft, demod_video, filtered_video, rfdecode):
     #        ax1.plot(hilbert, color='#FF0000')
     blocklen = len(raw_data)
     ax1.plot(raw_data, color="#00FF00")
+    ax1.plot(env, label="Envelope", color="#0000FF")
+    if rfdecode.dod_threshold_a:
+        ax1.axhline(rfdecode.dod_threshold_a, label='DOD Threshold (absolute)', color="#001100")
+    else:
+        ax1.axhline(rfdecode.dod_threshold_p * env_mean, label='DOD Threshold', color="#110000")
+        ax1.axhline(rfdecode.dod_threshold_p * env_mean * rfdecode.dod_hysteresis, label='DOD Hysteresis threshold', ls='--', color="#000011")
     ax1.set_title('Raw data')
+    ax1.legend()
     # 20 * np.log10(raw_fft.real)
     ax2.plot(demod_video)
     ax2.set_title('Demodulated video')

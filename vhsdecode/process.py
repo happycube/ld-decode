@@ -1736,6 +1736,8 @@ class VHSRFDecode(ldd.RFDecode):
 
             plot_input_data(
                 raw_data=data,
+                env=env,
+                env_mean=env_mean,
                 raw_fft=indata_fft,
                 demod_video=demod,
                 filtered_video=out_video,
