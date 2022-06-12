@@ -29,6 +29,7 @@ from vhsdecode.chroma import (
 from vhsdecode.doc import detect_dropouts_rf
 
 import vhsdecode.formats as vhs_formats
+
 # from vhsdecode.addons.FMdeemph import FMDeEmphasis
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
@@ -1202,7 +1203,16 @@ class VHSRFDecode(ldd.RFDecode):
         # can't be changed later.
         self._options = namedtuple(
             "Options",
-            "diff_demod_check_value tape_format disable_comb nldeemp disable_right_hsync sync_clip disable_dc_offset double_lpf",
+            [
+                "diff_demod_check_value",
+                "tape_format",
+                "disable_comb",
+                "nldeemp",
+                "disable_right_hsync",
+                "sync_clip",
+                "disable_dc_offset",
+                "double_lpf",
+            ],
         )(
             self.iretohz(100) * 2,
             tape_format,
@@ -1276,6 +1286,8 @@ class VHSRFDecode(ldd.RFDecode):
             self.SysParams["vsyncPulseUS"],
         )
 
+        self.debug_plot = debug_plot
+
         # Lastly we re-create the filters with the new parameters.
         self._computevideofilters_b()
 
@@ -1285,7 +1297,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Heterodyning / chroma wave related filter part
 
-        self.chromaAFC = ChromaAFC(
+        self._chroma_afc = ChromaAFC(
             self.freq_hz,
             DP["chroma_bpf_upper"] / DP["color_under_carrier"],
             self.SysParams,
@@ -1293,7 +1305,7 @@ class VHSRFDecode(ldd.RFDecode):
             tape_format=tape_format,
         )
 
-        self.Filters["FVideoBurst"] = self.chromaAFC.get_chroma_bandpass()
+        self.Filters["FVideoBurst"] = self._chroma_afc.get_chroma_bandpass()
 
         if self.notch is not None:
             if not self.cafc:
@@ -1302,7 +1314,7 @@ class VHSRFDecode(ldd.RFDecode):
                 )
             else:
                 self.Filters["FVideoNotch"] = sps.iirnotch(
-                    self.notch / self.chromaAFC.getOutFreqHalf(), self.notch_q
+                    self.notch / self._chroma_afc.getOutFreqHalf(), self.notch_q
                 )
 
             self.Filters["FVideoNotchF"] = lddu.filtfft(
@@ -1313,15 +1325,14 @@ class VHSRFDecode(ldd.RFDecode):
 
         # The following filters are for post-TBC:
         # The output sample rate is 4fsc
-        self.Filters["FChromaFinal"] = self.chromaAFC.get_chroma_bandpass_final()
-        self.Filters["FBurstNarrow"] = self.chromaAFC.get_burst_narrow()
-        self.chroma_heterodyne = self.chromaAFC.getChromaHet()
-        self.fsc_wave, self.fsc_cos_wave = self.chromaAFC.getFSCWaves()
+        self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final()
+        self.Filters["FBurstNarrow"] = self._chroma_afc.get_burst_narrow()
+        self.chroma_heterodyne = self._chroma_afc.getChromaHet()
+        self.fsc_wave, self.fsc_cos_wave = self._chroma_afc.getFSCWaves()
 
         # Increase the cutoff at the end of blocks to avoid edge distortion from filters
         # making it through.
         self.blockcut_end = 1024
-        self.demods = 0
 
         if self.sharpness_level != 0:
             # sharpness filter / video EQ
@@ -1337,11 +1348,13 @@ class VHSRFDecode(ldd.RFDecode):
                 # 1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
             }
 
-        self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+        if self.chroma_trap:
+            self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
 
-        self.AGClevels = StackableMA(
-            window_average=self.SysParams["FPS"] / 2
-        ), StackableMA(window_average=self.SysParams["FPS"] / 2)
+        if self.useAGC:
+            self.AGClevels = StackableMA(
+                window_average=self.SysParams["FPS"] / 2
+            ), StackableMA(window_average=self.SysParams["FPS"] / 2)
 
         level_detect_divisor = rf_options.get("level_detect_divisor", 1)
         if level_detect_divisor < 1 or level_detect_divisor > 6:
@@ -1351,7 +1364,6 @@ class VHSRFDecode(ldd.RFDecode):
         self.resync = Resync(
             self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
         )
-        self.debug_plot = debug_plot
 
     @property
     def sysparams_const(self):
@@ -1360,6 +1372,10 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def options(self):
         return self._options
+
+    @property
+    def chroma_afc(self):
+        return self._chroma_afc
 
     def computevideofilters(self):
         self.Filters = {}
@@ -1462,89 +1478,6 @@ class VHSRFDecode(ldd.RFDecode):
         # Defined earlier
         # SF["F05_offset"] = 32
 
-        if False:
-            import matplotlib.pyplot as plt
-
-            corner_freq = 1 / (math.pi * 2 * DP["deemph_tau"])
-
-            db2, da2 = FMDeEmphasisB(self.freq_hz, 1.5, 1e6, 3 / 4).get()
-            db3, da3 = FMDeEmphasisB(self.freq_hz, 1.5, 1e6, 4 / 4).get()
-            self.Filters["FVideo2"] = (
-                lddu.filtfft((db2, da2), self.blocklen) * filter_video_lpf
-            )
-            self.Filters["FVideo3"] = (
-                lddu.filtfft((db3, da3), self.blocklen) * filter_video_lpf
-            )
-
-            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-
-            w1, h1 = sps.freqz(db, da, fs=self.freq_hz)
-            w2, h2 = sps.freqz(db2, da2, fs=self.freq_hz)
-            w3, h3 = sps.freqz(db3, da3, fs=self.freq_hz)
-            # VHS eyeballed freqs.
-            test_arr = np.array(
-                [
-                    [
-                        0.04,
-                        0.05,
-                        0.07,
-                        0.1,
-                        corner_freq / 1e6,
-                        0.2,
-                        0.3,
-                        0.4,
-                        0.5,
-                        0.7,
-                        1,
-                        2,
-                        3,
-                        4,
-                        5,
-                    ],
-                    [
-                        0.4,
-                        0.6,
-                        1.2,
-                        2.2,
-                        3,
-                        5.25,
-                        7.5,
-                        9.2,
-                        10.5,
-                        11.75,
-                        12.75,
-                        13.5,
-                        13.8,
-                        13.9,
-                        14,
-                    ],
-                ]
-            )
-            test_arr[0] *= 1000000.0
-            # test_arr[1] *= -1
-            #            test_arr[0::] *= 1e6
-
-            # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
-            #        ax1.plot(hilbert, color='#FF0000')
-            # ax1.plot(data, color="#00FF00")
-            ax1.plot(test_arr[0], test_arr[1], color="#000000")
-            ax1.plot(w1, -20 * np.log10(h1))
-            ax2.plot(test_arr[0], test_arr[1], color="#000000")
-            ax2.plot(w2, -20 * np.log10(h2))
-            ax2.plot(test_arr[0], test_arr[1], color="#000000")
-            ax2.plot(w3, -20 * np.log10(h3))
-            # ax4.plot(test_arr[0], test_arr[1])
-            ax1.axhline(-3)
-            ax2.axhline(-3)
-            ax1.axhline(-7)
-            ax2.axhline(-7)
-            ax1.axvline(corner_freq)
-            ax2.axvline(corner_freq)
-            ax2.axvline(0.5e6)
-            ax2.axvline(1e6)
-            plt.show()
-            exit()
-
         self.Filters["FEnvPost"] = sps.butter(
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
@@ -1552,23 +1485,12 @@ class VHSRFDecode(ldd.RFDecode):
         filter_deemp = lddu.filtfft((db, da), self.blocklen)[:half_blocklen]
         self.Filters["FVideo"] = filter_deemp * filter_video_lpf
         if self.options.double_lpf:
-            #Double up the lpf to possibly closer emulate
-            #lpf in vcr. May add to other formats too later or
-            #make more configurable.
+            # Double up the lpf to possibly closer emulate
+            # lpf in vcr. May add to other formats too later or
+            # make more configurable.
             self.Filters["FVideo"] *= filter_video_lpf
 
         SF["FVideo05"] = filter_video_lpf * filter_deemp * filter_05
-
-        # if True:
-        #     import matplotlib.pyplot as plt
-
-        #     freqs = np.linspace(0, self.freq_hz_half, self.blocklen // 2)
-
-        #     fig, (ax1) = plt.subplots(1, 1, sharex=True)
-        #     ax1.plot(freqs, 20 * np.log10(filter_deemp[:self.blocklen // 2]))
-        #     ax1.plot(freqs, 20 * np.log10(self.Filters["FVideo"][:self.blocklen // 2]))
-        #     ax1.plot(freqs, (20 * np.log10(self.Filters["FVideo"] * filter_video_lpf)[:self.blocklen // 2]), color="#FF0000")
-        #     plt.show()
 
         # SF["YNRHighPass"] = sps.butter(
         #     1,
@@ -1588,6 +1510,11 @@ class VHSRFDecode(ldd.RFDecode):
                 ),
                 self.blocklen,
             )
+
+        if self.debug_plot and self.debug_plot.is_plot_requested("deemphasis"):
+            from vhsdecode.debug_plot import plot_deemphasis
+
+            plot_deemphasis(self, filter_video_lpf, DP, filter_deemp)
 
     def computedelays(self, mtf_level=0):
         """Override computedelays

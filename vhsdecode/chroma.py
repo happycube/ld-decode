@@ -197,7 +197,7 @@ def process_chroma(
             # it does the chroma filtering AFTER the TBC
             chroma = demod_chroma_filt(
                 chroma,
-                field.rf.chromaAFC.get_chroma_bandpass(),
+                field.rf.chroma_afc.get_chroma_bandpass(),
                 len(chroma),
                 field.rf.Filters["FVideoNotch"],
                 field.rf.notch,
@@ -205,7 +205,7 @@ def process_chroma(
             )
 
             if not disable_tracking_cafc:
-                spec, meas, offset, cphase = field.rf.chromaAFC.freqOffset(chroma)
+                spec, meas, offset, cphase = field.rf.chroma_afc.freqOffset(chroma)
                 ldd.logger.debug(
                     "Chroma under AFC: %.02f kHz, Offset (long term): %.02f Hz, Phase: %.02f deg"
                     % (meas / 1e3, offset, cphase * 360 / (2 * np.pi))
@@ -256,7 +256,7 @@ def process_chroma(
         lineoffset,
         linesout,
         outwidth,
-        field.rf.chromaAFC.getChromaHet()
+        field.rf.chroma_afc.getChromaHet()
         if (field.rf.cafc and not disable_tracking_cafc)
         else field.rf.chroma_heterodyne,
         phase_rotation,

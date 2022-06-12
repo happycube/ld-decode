@@ -21,10 +21,9 @@ class ChromaAFC:
         plot=False,
         tape_format="VHS",
     ):
-        self.SysParams = sys_params
         self.tape_format = tape_format
-        self.fv = self.SysParams["FPS"] * 2
-        self.fh = self.SysParams["FPS"] * self.SysParams["frame_lines"]
+        self.fv = sys_params["FPS"] * 2
+        self.fh = sys_params["FPS"] * sys_params["frame_lines"]
         self.color_under = color_under_carrier_f
         self.cc_phase = 0
         self.power_threshold = 1 / 3
@@ -33,13 +32,13 @@ class ChromaAFC:
         self.max_f_dev_percents = percent, percent  # max percent down, max percent up
         self.fft_plot = False
         self.demod_rate = demod_rate
-        self.fsc_mhz = self.SysParams["fsc_mhz"]
+        self.fsc_mhz = sys_params["fsc_mhz"]
         self.out_sample_rate_mhz = self.fsc_mhz * 4
         self.samp_rate = self.out_sample_rate_mhz * 1e6
         self.bpf_under_ratio = under_ratio
         self.out_frequency_half = self.out_sample_rate_mhz / 2
-        self.fieldlen = self.SysParams["outlinelen"] * max(
-            self.SysParams["field_lines"]
+        self.fieldlen = sys_params["outlinelen"] * max(
+            sys_params["field_lines"]
         )
         self.samples = np.arange(self.fieldlen)
 
