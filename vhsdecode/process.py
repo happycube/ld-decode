@@ -1666,6 +1666,7 @@ class VHSRFDecode(ldd.RFDecode):
                 env=env,
                 env_mean=env_mean,
                 raw_fft=indata_fft,
+                filtered_fft=indata_fft_filt,
                 demod_video=demod,
                 filtered_video=out_video,
                 rfdecode=self,

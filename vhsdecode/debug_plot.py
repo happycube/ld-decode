@@ -1,3 +1,10 @@
+from matplotlib import rc_context
+
+def to_db_power(input_data):
+    import numpy as np
+    return 20 * np.log10(input_data)
+
+
 class DebugPlot:
     def __init__(self, stuff_to_plot: str):
         self.__stuff_to_plot = stuff_to_plot.casefold().split()
@@ -6,13 +13,19 @@ class DebugPlot:
         return requested_info in self.__stuff_to_plot
 
 
+@rc_context({'figure.figsize': (14, 10), 'figure.constrained_layout.use': True})
 def plot_input_data(
-    raw_data, raw_fft, env, env_mean, demod_video, filtered_video, rfdecode
+        raw_data, raw_fft, filtered_fft, env, env_mean, demod_video, filtered_video, rfdecode, plot_db=False, plot_demod_fft=False
 ):
     import matplotlib.pyplot as plt
     import numpy as np
 
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+
+    ire0 = rfdecode.sysparams_const.ire0
+    ire100 = rfdecode.sysparams_const.ire0 + (100 * rfdecode.sysparams_const.hz_ire)
+    sync_hz = rfdecode.sysparams_const.vsync_hz
+    cc_freq = rfdecode.DecoderParams['color_under_carrier']
 
     # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
     #        ax1.plot(hilbert, color='#FF0000')
@@ -35,7 +48,6 @@ def plot_input_data(
         )
     ax1.set_title("Raw data")
     ax1.legend()
-    # 20 * np.log10(raw_fft.real)
     ax2.plot(demod_video)
     ax2.set_title("Demodulated video")
     ax3.plot(filtered_video, color="#00FF00")
@@ -43,12 +55,39 @@ def plot_input_data(
     ax3.axhline(rfdecode.iretohz(100), label="100 IRE", color="#000000", ls="--")
     ax3.set_title("Output video (Deemphasized and filtered) ")
     ax3.legend()
-    fig2, ax4 = plt.subplots(1, 1)
+
+    half_size = (blocklen // 2) + 1
+    freq_array = (np.arange(blocklen) / blocklen * rfdecode.freq_hz)[:half_size]
+
+    def to_plot(a):
+        return to_db_power(a) if plot_db else abs(a)
+
+    if plot_demod_fft:
+        fig2, (ax4, ax5) = plt.subplots(2, 1, sharex=True)
+        ax5 = fig2.add_subplot(2, 1, 2)
+        ax5.plot(
+            freq_array, to_db_power(abs(np.fft.rfft(demod_video))), color="#00FF00"
+        )
+        ax5.plot(
+            freq_array, to_db_power(abs(np.fft.rfft(filtered_video))), color="#FF0000"
+        )
+    else:
+        fig2, ax4 = plt.subplots(1, 1)
     ax4.plot(
-        np.arange(blocklen) / blocklen * rfdecode.freq_hz, abs(raw_fft), color="#00FF00"
+        freq_array, to_plot(raw_fft[:half_size]), color="#00FF00", label='Raw input'
+    )
+    ax4.plot(
+        freq_array, to_plot(filtered_fft[:half_size]), color="#FF0000", label='After rf filtering'
     )
     ax4.set_xlabel("frequency")
-    ax4.set_title("frequency spectrum of raw input")
+    if plot_db:
+        ax4.set_ylabel("dB power")
+    ax4.set_title("frequency spectrum of rf input")
+    ax4.axvline(ire0, label='0 IRE', color='#000000')
+    ax4.axvline(ire100, label='100 IRE', ls="--")
+    ax4.axvline(sync_hz, label='sync tip', ls="-.")
+    ax4.axvline(cc_freq, label='Chroma carrier', color="#6F6F00")
+    ax4.legend()
 
     plt.show()
     # exit(0)
