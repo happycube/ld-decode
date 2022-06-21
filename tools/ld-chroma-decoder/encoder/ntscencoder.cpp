@@ -280,6 +280,16 @@ static constexpr std::array<double, 13> uvFilterCoeffs {
 };
 static constexpr auto uvFilter = makeFIRFilter(uvFilterCoeffs);
 
+// 0.6 MHz low-pass filter
+//
+// The filter should be 0 dB at 0 Hz, >= -2 dB at 0.4 MHz, >= -6 dB at
+// 0.5 MHz, <= -6 dB at 0.6 MHz. [Clarke p15]
+static constexpr std::array<double, 23> qFilterCoeffs {
+    0.0002, 0.0027, 0.0085, 0.0171, 0.0278, 0.0398, 0.0522, 0.0639, 0.0742, 0.0821, 0.0872, 0.0889,
+    0.0872, 0.0821, 0.0742, 0.0639, 0.0522, 0.0398, 0.0278, 0.0171, 0.0085, 0.0027, 0.0002
+};
+static constexpr auto qFilter = makeFIRFilter(qFilterCoeffs);
+
 void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine)
 {
     // Resize the output line and fill with blanking
@@ -394,7 +404,11 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
 
         // Low-pass filter chroma components to 1.3 MHz [Poynton p342]
         uvFilter.apply(C1);
-        uvFilter.apply(C2);
+        if (chromaMode == NARROWBAND_Q) {
+            qFilter.apply(C2);
+        } else {
+            uvFilter.apply(C2);
+        }
     }
 
     for (qint32 x = 0; x < outputLine.size(); x++) {
