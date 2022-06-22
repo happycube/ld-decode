@@ -110,6 +110,20 @@ def test_sync(filename, num_pulses=None, blank_approx=None, sync_approx=None):
     return True
 
 
+def test_find_pulses(filename, num_pulses):
+    from vhsdecode.addons.resync import _findpulses_numba_raw
+
+    demod_05_data = np.loadtxt(filename)
+
+    # Just using some pre-tested values for now for optimizing function, many need changes later.
+    starts, lengths = _findpulses_numba_raw(demod_05_data, 3954307.8, 11.625, 1588.125)
+
+    assert len(starts) == num_pulses
+    assert len(lengths) == num_pulses
+    assert starts[200] == 495954
+    assert lengths[200] == 178
+
+
 class SyncTest(unittest.TestCase):
     def test_sync_pal_good(self):
         blank = 4130000
@@ -122,6 +136,9 @@ class SyncTest(unittest.TestCase):
         sync = 3800000
         print("pal noisy")
         test_sync("PAL_NOISY.txt.gz", blank_approx=blank, sync_approx=sync)
+
+    def test_find_pulses(self):
+        test_find_pulses("PAL_GOOD.txt.gz", 458)
 
 
 if __name__ == "__main__":

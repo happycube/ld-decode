@@ -179,6 +179,20 @@ def _fallback_vsync_loc_means(
     return vsync_locs, vsync_means
 
 
+def findpulses_range(sp, vsync_hz, blank_hz=None):
+    """Calculate half way point between blank and sync based on ire and reference
+    uses calculated 0 IRE based on other params if blank_hz is not provided.
+    """
+    if not blank_hz:
+        # Fall back to assume blank is at standard 0 ire.
+        blank_hz = iretohz(sp, 0)
+    sync_ire = hztoire(sp, vsync_hz)
+    pulse_hz_min = iretohz(sp, sync_ire - 10)
+    # Look for pulses at the halfway between vsync tip and blanking.
+    pulse_hz_max = (iretohz(sp, sync_ire) + blank_hz) / 2
+    return pulse_hz_min, pulse_hz_max
+
+
 # stores the last valid blacklevel, synclevel and vsynclocs state
 # preliminary solution to fix spurious decoding halts (numpy error case)
 class FieldState:
@@ -370,18 +384,6 @@ class Resync:
 
         return synclevel, blacklevel
 
-    def findpulses_range(self, sp, vsync_hz, blank_hz=None):
-        if not blank_hz:
-            # Fall back to assume blank is at standard 0 ire.
-            blank_hz = iretohz(sp, 0)
-        sync_ire = hztoire(sp, vsync_hz)
-        pulse_hz_min = iretohz(sp, sync_ire - 10)
-        # Look for pulses at the halfway between vsync tip and blanking.
-        pulse_hz_max = (iretohz(sp, sync_ire) + blank_hz) / 2
-        return pulse_hz_min, pulse_hz_max
-
-        # lddu.findpulses() equivalent
-
     def findpulses(self, sync_ref, high):
         return _findpulses_numba(
             sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 5 / 8
@@ -420,7 +422,7 @@ class Resync:
             found_candidate = False
             check_next = True
             while retries > 0:
-                pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, min_sync)
+                pulse_hz_min, pulse_hz_max = findpulses_range(sp, min_sync)
                 pulses_starts, pulses_lengths = self._findpulses_arr_reduced(
                     demod_05, pulse_hz_max, self.divisor
                 )
@@ -448,9 +450,7 @@ class Resync:
                         ):
                             # Use previous
                             min_sync = prev_min_sync
-                            pulse_hz_min, pulse_hz_max = self.findpulses_range(
-                                sp, min_sync
-                            )
+                            pulse_hz_min, pulse_hz_max = findpulses_range(sp, min_sync)
                             pulses_starts, pulses_lengths = self._findpulses_arr(
                                 demod_05, pulse_hz_max
                             )
@@ -470,7 +470,7 @@ class Resync:
                 return
 
         # the tape chewing test passed, then it should find sync
-        pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sync, blank_hz=blank)
+        pulse_hz_min, pulse_hz_max = findpulses_range(sp, sync, blank_hz=blank)
         pulses = self.findpulses(demod_05, pulse_hz_max)
 
         if False:
@@ -613,11 +613,11 @@ class Resync:
             sync, blank = sync + dc_offset, blank + dc_offset
 
             field.data["video"]["demod_05"] = sync_reference
-            pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sync)
+            pulse_hz_min, pulse_hz_max = findpulses_range(sp, sync)
         else:
             # pass one using standard levels (fallback sync logic)
             # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-            pulse_hz_min, pulse_hz_max = self.findpulses_range(sp, sp.vsync_hz)
+            pulse_hz_min, pulse_hz_max = findpulses_range(sp, sp.vsync_hz)
 
             # checks if the DC offset is abnormal before correcting it
             new_sync = self.VsyncSerration.mean_bias()
