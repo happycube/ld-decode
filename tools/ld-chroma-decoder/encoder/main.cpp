@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
 
     // Option to select chroma mode (--chroma-mode)
     QCommandLineOption chromaOption(QStringList() << "chroma-mode",
-                                     QCoreApplication::translate("main", "NTSC only. Chroma encoder mode to use (wideband-yuv, wideband-yiq; default: wideband-yuv)"),
+                                     QCoreApplication::translate("main", "NTSC only. Chroma encoder mode to use (wideband-yuv, wideband-yiq, narrowband-q; default: wideband-yuv)"),
                                      QCoreApplication::translate("main", "chroma-mode"));
     parser.addOption(chromaOption);
 
@@ -142,6 +142,8 @@ int main(int argc, char *argv[])
         chromaName = parser.value(chromaOption);
         if (chromaName == "wideband-yiq") {
             chromaMode = WIDEBAND_YIQ;
+        } else if (chromaName == "narrowband-q") {
+            chromaMode = NARROWBAND_Q;
         } else if (chromaName == "wideband-yuv") {
             chromaMode = WIDEBAND_YUV;
         } else {

@@ -35,6 +35,7 @@
 enum ChromaMode {
     WIDEBAND_YUV = 0,   // Y'UV
     WIDEBAND_YIQ,       // Y'IQ
+    NARROWBAND_Q        // Y'IQ with Q low-passed
 };
 
 class NTSCEncoder
