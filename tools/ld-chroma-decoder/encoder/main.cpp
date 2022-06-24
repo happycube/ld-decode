@@ -2,12 +2,12 @@
 
     main.cpp
 
-    ld-chroma-encoder - PAL encoder for testing
+    ld-chroma-encoder - Composite video encoder
     Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
 
-    ld-chroma-decoder is free software: you can redistribute it and/or
+    ld-chroma-encoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -51,9 +51,9 @@ int main(int argc, char *argv[])
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-chroma-encoder - PAL/NTSC encoder for testing\n"
+                "ld-chroma-encoder - Composite video encoder\n"
                 "\n"
-                "(c)2019-2020 Adam Sampson\n"
+                "(c)2019-2022 Adam Sampson\n"
                 "(c)2022 Phillip Blucas\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
