@@ -27,7 +27,7 @@
 #define NTSCENCODER_H
 
 #include <QFile>
-#include <QVector>
+#include <vector>
 
 #include "encoder.h"
 
@@ -46,7 +46,7 @@ public:
 
 protected:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine);
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine);
 
     const qint32 blankingIre = 0x3C00;
     const qint32 setupIreOffset = 0x0A80; // 10.5 * 256
@@ -54,9 +54,9 @@ protected:
     ChromaMode chromaMode;
     bool addSetup;
 
-    QVector<double> Y;
-    QVector<double> C1;
-    QVector<double> C2;
+    std::vector<double> Y;
+    std::vector<double> C1;
+    std::vector<double> C2;
 };
 
 #endif

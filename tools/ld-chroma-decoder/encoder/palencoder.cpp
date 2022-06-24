@@ -35,6 +35,7 @@
 
 #include "firfilter.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -172,11 +173,11 @@ static constexpr std::array<double, 13> uvFilterCoeffs {
 };
 static constexpr auto uvFilter = makeFIRFilter(uvFilterCoeffs);
 
-void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine)
+void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine)
 {
     // Resize the output line and fill with black
     outputLine.resize(videoParameters.fieldWidth);
-    outputLine.fill(videoParameters.black16bIre);
+    std::fill(outputLine.begin(), outputLine.end(), videoParameters.black16bIre);
     if (frameLine == 625) {
         // Dummy last line
         return;
@@ -261,9 +262,9 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
 
     // Clear Y'UV buffers. Values in these are scaled so that 0.0 is black and
     // 1.0 is white.
-    Y.fill(0.0);
-    U.fill(0.0);
-    V.fill(0.0);
+    std::fill(Y.begin(), Y.end(), 0.0);
+    std::fill(U.begin(), U.end(), 0.0);
+    std::fill(V.begin(), V.end(), 0.0);
 
     if (rgbData != nullptr) {
         // Convert the R'G'B' data to Y'UV form [Poynton p337 eq 28.5]
@@ -286,7 +287,7 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
         uvFilter.apply(V);
     }
 
-    for (qint32 x = 0; x < outputLine.size(); x++) {
+    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
         // For this sample, compute time relative to 0H, and subcarrier phase
         const double t = (x / videoParameters.sampleRate) - zeroH;
         const double a = 2.0 * M_PI * ((videoParameters.fSC * t) + prevCycles);

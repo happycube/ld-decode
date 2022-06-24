@@ -26,7 +26,7 @@
 #define PALENCODER_H
 
 #include <QFile>
-#include <QVector>
+#include <vector>
 
 #include "lddecodemetadata.h"
 
@@ -39,13 +39,13 @@ public:
 
 private:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine);
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine);
 
     bool scLocked;
 
-    QVector<double> Y;
-    QVector<double> U;
-    QVector<double> V;
+    std::vector<double> Y;
+    std::vector<double> U;
+    std::vector<double> V;
 };
 
 #endif

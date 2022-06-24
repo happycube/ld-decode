@@ -28,8 +28,8 @@
 
 #include <QByteArray>
 #include <QFile>
-#include <QVector>
 #include <cmath>
+#include <vector>
 
 #include "lddecodemetadata.h"
 
@@ -54,7 +54,7 @@ protected:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData) = 0;
 
     // Encode one line of a field into composite video
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine) = 0;
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine) = 0;
 
     QFile &rgbFile;
     QFile &tbcFile;

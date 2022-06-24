@@ -36,6 +36,7 @@
 
 #include "firfilter.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
@@ -165,11 +166,11 @@ static constexpr std::array<double, 23> qFilterCoeffs {
 };
 static constexpr auto qFilter = makeFIRFilter(qFilterCoeffs);
 
-void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine)
+void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine)
 {
     // Resize the output line and fill with blanking
     outputLine.resize(videoParameters.fieldWidth);
-    outputLine.fill(blankingIre);
+    std::fill(outputLine.begin(), outputLine.end(), blankingIre);
 
     // Skip encoding the last (dummy) frameLine
     if (frameLine == 525)
@@ -254,9 +255,9 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
 
     // Clear output buffers. Values in these are scaled so that 0.0 is black and
     // 1.0 is white.
-    Y.fill(0.0);
-    C1.fill(0.0);
-    C2.fill(0.0);
+    std::fill(Y.begin(), Y.end(), 0.0);
+    std::fill(C1.begin(), C1.end(), 0.0);
+    std::fill(C2.begin(), C2.end(), 0.0);
 
     if (rgbData != nullptr) {
         // Convert the R'G'B' data to component form
@@ -286,7 +287,7 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
         }
     }
 
-    for (qint32 x = 0; x < outputLine.size(); x++) {
+    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
         // For this sample, compute time relative to 0H, and subcarrier phase
         const double t = (x / videoParameters.sampleRate) - zeroH;
         const double a = 2.0 * M_PI * ((videoParameters.fSC * t) + prevCycles);

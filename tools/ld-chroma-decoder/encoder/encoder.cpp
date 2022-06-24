@@ -116,7 +116,7 @@ bool Encoder::encodeField(qint32 fieldNo)
     const qint32 lineOffset = fieldNo % 2;
 
     // TBC data is unsigned 16-bit values in native byte order
-    QVector<quint16> outputLine;
+    std::vector<quint16> outputLine;
 
     for (qint32 frameLine = 0; frameLine < 2 * videoParameters.fieldHeight; frameLine++) {
         // Skip lines that aren't in this field
