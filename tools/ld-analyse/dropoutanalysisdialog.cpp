@@ -52,7 +52,10 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     numberOfFrames = 0;
 
     // Connect to scale changed slot
-    connect(plot->axisWidget(QwtPlot::xBottom), &QwtScaleWidget::scaleDivChanged, this, &DropoutAnalysisDialog::scaleDivChangedSlot);
+    connect(
+        plot->axisWidget(QwtPlot::xBottom), SIGNAL( scaleDivChanged() ),
+        this, SLOT( scaleDivChangedSlot() )
+    );
 }
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()

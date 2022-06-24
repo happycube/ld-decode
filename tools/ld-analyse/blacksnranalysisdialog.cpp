@@ -54,7 +54,10 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     numberOfFrames = 0;
 
     // Connect to scale changed slot
-    connect(plot->axisWidget(QwtPlot::xBottom), &QwtScaleWidget::scaleDivChanged, this, &BlackSnrAnalysisDialog::scaleDivChangedSlot);
+    connect(
+        plot->axisWidget(QwtPlot::xBottom), SIGNAL( scaleDivChanged() ),
+        this, SLOT( scaleDivChangedSlot() )
+    );
 }
 
 BlackSnrAnalysisDialog::~BlackSnrAnalysisDialog()
