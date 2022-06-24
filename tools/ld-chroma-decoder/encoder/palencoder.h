@@ -3,7 +3,7 @@
     palencoder.h
 
     ld-chroma-encoder - Composite video encoder
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2019-2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -25,38 +25,24 @@
 #ifndef PALENCODER_H
 #define PALENCODER_H
 
-#include <QByteArray>
 #include <QFile>
 #include <QVector>
 
 #include "lddecodemetadata.h"
 
-class PALEncoder
+#include "encoder.h"
+
+class PALEncoder : public Encoder
 {
 public:
     PALEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, bool scLocked);
 
-    // Encode RGB stream to PAL.
-    // Returns true on success; on failure, prints an error and returns false.
-    bool encode();
-
 private:
-    qint32 encodeFrame(qint32 frameNo);
-    bool encodeField(qint32 fieldNo);
-    void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine);
+    virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine);
 
-    QFile &rgbFile;
-    QFile &tbcFile;
-    LdDecodeMetaData &metaData;
     bool scLocked;
 
-    LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 activeWidth;
-    qint32 activeHeight;
-    qint32 activeLeft;
-    qint32 activeTop;
-
-    QByteArray rgbFrame;
     QVector<double> Y;
     QVector<double> U;
     QVector<double> V;

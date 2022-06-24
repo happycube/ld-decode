@@ -3,7 +3,7 @@
     palencoder.cpp
 
     ld-chroma-encoder - Composite video encoder
-    Copyright (C) 2019 Adam Sampson
+    Copyright (C) 2019-2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -28,18 +28,7 @@
     This is a simplistic PAL encoder for decoder testing. The code aims to be
     accurate rather than fast.
 
-    References:
-
-    [Poynton] "Digital Video and HDTV Algorithms and Interfaces" by Charles
-    Poynton, 2003, first edition, ISBN 1-55860-792-7. Later editions have less
-    material about analogue video standards.
-
-    [EBU] "Specification of interfaces for 625-line digital PAL signals",
-    (https://tech.ebu.ch/docs/tech/tech3280.pdf) EBU Tech. 3280-E.
-
-    [Clarke] "Colour encoding and decoding techniques for line-locked sampled
-    PAL and NTSC television signals" (https://www.bbc.co.uk/rd/publications/rdreport_1986_02),
-    BBC Research Department Report 1986/02, by C.K.P. Clarke.
+    See \l Encoder for references.
  */
 
 #include "palencoder.h"
@@ -50,7 +39,7 @@
 #include <cmath>
 
 PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData, bool _scLocked)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData), scLocked(_scLocked)
+    : Encoder(_rgbFile, _tbcFile, _metaData), scLocked(_scLocked)
 {
     // PAL subcarrier frequency [Poynton p529] [EBU p5]
     videoParameters.fSC = 4433618.75;
@@ -130,101 +119,8 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     V.resize(videoParameters.fieldWidth);
 }
 
-bool PALEncoder::encode()
+void PALEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData)
 {
-    // Store video parameters
-    metaData.setVideoParameters(videoParameters);
-
-    // Process frames until EOF
-    qint32 numFrames = 0;
-    while (true) {
-        qint32 result = encodeFrame(numFrames);
-        if (result == -1) {
-            return false;
-        } else if (result == 0) {
-            break;
-        }
-        numFrames++;
-    }
-
-    return true;
-}
-
-// Read one frame from the input, and write two fields to the output.
-// Returns 0 on EOF, 1 on success; on failure, prints an error and returns -1.
-qint32 PALEncoder::encodeFrame(qint32 frameNo)
-{
-    // Read the input frame
-    qint64 remainBytes = rgbFrame.size();
-    qint64 posBytes = 0;
-    while (remainBytes > 0) {
-        qint64 count = rgbFile.read(rgbFrame.data() + posBytes, remainBytes);
-        if (count == 0 && remainBytes == rgbFrame.size()) {
-            // EOF at the start of a frame
-            return 0;
-        } else if (count == 0) {
-            qCritical() << "Unexpected end of input file";
-            return -1;
-        } else if (count < 0) {
-            qCritical() << "Error reading from input file";
-            return -1;
-        }
-        remainBytes -= count;
-        posBytes += count;
-    }
-
-    // Write the two fields -- even-numbered lines, then odd-numbered lines.
-    // In a PAL TBC file, the first field is the one that starts with the
-    // half-line (i.e. frame line 44, when counting from 0).
-    if (!encodeField(frameNo * 2)) {
-        return -1;
-    }
-    if (!encodeField((frameNo * 2) + 1)) {
-        return -1;
-    }
-
-    return 1;
-}
-
-// Encode one field from rgbFrame to the output.
-// Returns true on success; on failure, prints an error and returns false.
-bool PALEncoder::encodeField(qint32 fieldNo)
-{
-    const qint32 lineOffset = fieldNo % 2;
-
-    // TBC data is unsigned 16-bit values in native byte order
-    QVector<quint16> outputLine;
-
-    for (qint32 frameLine = 0; frameLine < 2 * videoParameters.fieldHeight; frameLine++) {
-        // Skip lines that aren't in this field
-        if ((frameLine % 2) != lineOffset) {
-            continue;
-        }
-
-        // Encode the line
-        const quint16 *rgbData = nullptr;
-        if (frameLine >= activeTop && frameLine < (activeTop + activeHeight)) {
-            rgbData = reinterpret_cast<const quint16 *>(rgbFrame.data()) + ((frameLine - activeTop) * activeWidth * 3);
-        }
-        encodeLine(fieldNo, frameLine, rgbData, outputLine);
-
-        // Write the line to the TBC file
-        const char *outputData = reinterpret_cast<const char *>(outputLine.data());
-        qint64 remainBytes = outputLine.size() * 2;
-        qint64 posBytes = 0;
-        while (remainBytes > 0) {
-            qint64 count = tbcFile.write(outputData + posBytes, remainBytes);
-            if (count < 0) {
-                qCritical() << "Error writing to output file";
-                return false;
-            }
-            remainBytes -= count;
-            posBytes += count;
-        }
-    }
-
-    // Generate field metadata
-    LdDecodeMetaData::Field fieldData;
     fieldData.seqNo = fieldNo;
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
@@ -232,25 +128,6 @@ bool PALEncoder::encodeField(qint32 fieldNo)
     fieldData.medianBurstIRE = 100.0 * (3.0 / 7.0) / 2.0;
     fieldData.fieldPhaseID = 0;
     fieldData.audioSamples = 0;
-    metaData.appendField(fieldData);
-
-    return true;
-}
-
-// Generate a gate waveform with raised-cosine transitions, with 50% points at given start and end times
-static double raisedCosineGate(double t, double startTime, double endTime, double halfRiseTime)
-{
-    if (t < startTime - halfRiseTime) {
-        return 0.0;
-    } else if (t < startTime + halfRiseTime) {
-        return 0.5 + (0.5 * sin((M_PI / 2.0) * ((t - startTime) / halfRiseTime)));
-    } else if (t < endTime - halfRiseTime) {
-        return 1.0;
-    } else if (t < endTime + halfRiseTime) {
-        return 0.5 - (0.5 * sin((M_PI / 2.0) * ((t - endTime) / halfRiseTime)));
-    } else {
-        return 0.0;
-    }
 }
 
 // Types of sync pulse [Poynton p521]
