@@ -118,9 +118,9 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     if (configuration.chromaFilter == transform2DFilter || configuration.chromaFilter == transform3DFilter) {
         // Create the Transform PAL filter
         if (configuration.chromaFilter == transform2DFilter) {
-            transformPal.reset(new TransformPal2D);
+            transformPal = std::make_unique<TransformPal2D>();
         } else {
-            transformPal.reset(new TransformPal3D);
+            transformPal = std::make_unique<TransformPal3D>();
         }
 
         // Configure the filter
