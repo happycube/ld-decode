@@ -492,34 +492,34 @@ int main(int argc, char *argv[])
     // Select the decoder
     std::unique_ptr<Decoder> decoder;
     if (decoderName == "pal2d") {
-        decoder.reset(new PalDecoder(palConfig));
+        decoder = std::make_unique<PalDecoder>(palConfig);
     } else if (decoderName == "transform2d") {
         palConfig.chromaFilter = PalColour::transform2DFilter;
         if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
             return -1;
         }
-        decoder.reset(new PalDecoder(palConfig));
+        decoder = std::make_unique<PalDecoder>(palConfig);
     } else if (decoderName == "transform3d") {
         palConfig.chromaFilter = PalColour::transform3DFilter;
         if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
             return -1;
         }
-        decoder.reset(new PalDecoder(palConfig));
+        decoder = std::make_unique<PalDecoder>(palConfig);
     } else if (decoderName == "ntsc1d") {
         combConfig.dimensions = 1;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "ntsc2d") {
         combConfig.dimensions = 2;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "ntsc3d") {
         combConfig.dimensions = 3;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "ntsc3dnoadapt") {
         combConfig.dimensions = 3;
         combConfig.adaptive = false;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "mono") {
-        decoder.reset(new MonoDecoder);
+        decoder = std::make_unique<MonoDecoder>();
     } else {
         qCritical() << "Unknown decoder" << decoderName;
         return -1;
