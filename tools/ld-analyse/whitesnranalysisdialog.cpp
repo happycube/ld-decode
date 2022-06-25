@@ -54,11 +54,15 @@ WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
     numberOfFrames = 0;
 
     // Connect to scale changed slot
-    // connect(plot->axisWidget(QwtPlot::xBottom), &QwtScaleWidget::scaleDivChanged, this, &WhiteSnrAnalysisDialog::scaleDivChangedSlot);
+#ifdef Q_OS_WIN32
+    // Workaround for linker issue with Qwt on windows
     connect(
         plot->axisWidget(QwtPlot::xBottom), SIGNAL( scaleDivChanged() ),
         this, SLOT( scaleDivChangedSlot() )
     );
+#else
+    connect(plot->axisWidget(QwtPlot::xBottom), &QwtScaleWidget::scaleDivChanged, this, &WhiteSnrAnalysisDialog::scaleDivChangedSlot);
+#endif
 }
 
 WhiteSnrAnalysisDialog::~WhiteSnrAnalysisDialog()

@@ -160,7 +160,7 @@ unix:!macx {
 win32: {
     LIBS += qwt.lib
 }
-win32:INCLUDEPATH += "D:\prog\vcpkg\installed\x64-windows\include\qwt"
+
 macx {
 INCLUDEPATH += "/usr/local/lib/qwt.framework/Versions/6/Headers"
 LIBS += -F"/usr/local/lib" -framework qwt
