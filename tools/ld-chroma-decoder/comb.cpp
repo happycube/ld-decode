@@ -35,11 +35,6 @@
 #include <memory>
 #include <utility>
 
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 Comb::MAX_WIDTH;
-constexpr qint32 Comb::MAX_HEIGHT;
-
 // Indexes for the candidates considered in 3D adaptive mode
 enum CandidateIndex : qint32 {
     CAND_LEFT,

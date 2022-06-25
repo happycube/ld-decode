@@ -66,11 +66,6 @@
     filters with more complex coefficients than the report describes.
  */
 
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 PalColour::MAX_WIDTH;
-constexpr qint32 PalColour::FILTER_SIZE;
-
 PalColour::PalColour()
     : configurationSet(false)
 {

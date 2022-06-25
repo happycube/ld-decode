@@ -45,18 +45,6 @@
     site (http://www.jim-easterbrook.me.uk/pal/).
  */
 
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 TransformPal3D::ZTILE;
-constexpr qint32 TransformPal3D::HALFZTILE;
-constexpr qint32 TransformPal3D::YTILE;
-constexpr qint32 TransformPal3D::HALFYTILE;
-constexpr qint32 TransformPal3D::XTILE;
-constexpr qint32 TransformPal3D::HALFXTILE;
-constexpr qint32 TransformPal3D::ZCOMPLEX;
-constexpr qint32 TransformPal3D::YCOMPLEX;
-constexpr qint32 TransformPal3D::XCOMPLEX;
-
 // Compute one value of the window function, applied to the data blocks before
 // the FFT to reduce edge effects. This is a symmetrical raised-cosine
 // function, which means that the overlapping inverse-FFT blocks can be summed
