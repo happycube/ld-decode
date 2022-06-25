@@ -5,11 +5,6 @@ import numpy as np
 import scipy.signal as sps
 from collections import namedtuple
 
-# Black will separate this statement and cause warnings so ignore it.
-# fmt: off
-import pyximport; pyximport.install(language_level=3)  # noqa: E702
-# fmt: on
-
 import lddecode.core as ldd
 from lddecode.core import npfft
 import lddecode.utils as lddu
@@ -438,6 +433,18 @@ class VHSRFDecode(ldd.RFDecode):
         # making it through.
         self.blockcut_end = 1024
 
+        level_detect_divisor = rf_options.get("level_detect_divisor", 1)
+        if level_detect_divisor < 1 or level_detect_divisor > 6:
+            ldd.logger.warning(
+                "Invalid level detect divisor value %s, using default.",
+                level_detect_divisor,
+            )
+            level_detect_divisor = 1
+
+        self.resync = Resync(
+            self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
+        )
+
         if self.sharpness_level != 0:
             # sharpness filter / video EQ
             iir_eq_loband = utils.firdes_highpass(
@@ -459,18 +466,6 @@ class VHSRFDecode(ldd.RFDecode):
             self.AGClevels = StackableMA(
                 window_average=self.SysParams["FPS"] / 2
             ), StackableMA(window_average=self.SysParams["FPS"] / 2)
-
-        level_detect_divisor = rf_options.get("level_detect_divisor", 1)
-        if level_detect_divisor < 1 or level_detect_divisor > 6:
-            ldd.logger.warning(
-                "Invalid level detect divisor value %s, using default.",
-                level_detect_divisor,
-            )
-            level_detect_divisor = 1
-
-        self.resync = Resync(
-            self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
-        )
 
     @property
     def sysparams_const(self):

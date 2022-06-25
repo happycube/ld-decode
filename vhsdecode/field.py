@@ -345,7 +345,7 @@ class FieldShared:
             # len(validpulses) > 300:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
             ax1.plot(self.data["video"]["demod"])
 
             # (
@@ -378,13 +378,13 @@ class FieldShared:
                     valid_pulse[1][0] : valid_pulse[1][0] + valid_pulse[1][1]
                 ] = valid_pulse[1][1]
 
-            # ax2.plot(pulselen)
+            ax2.plot(pulselen)
 
             # for p in linelocs_dict.values():
             #    ax3.axvline(p)
             # ldd.logger.info("p %s", p)
-            # for ll in rv_ll:
-            #     ax3.axvline(ll)
+            for ll in rv_ll:
+                ax3.axvline(ll)
 
             # ax1.axhline(self.pulse_hz_min, color="#00FFFF")
             # ax1.axhline(self.pulse_hz_max, color="#000000")
@@ -421,30 +421,6 @@ class FieldShared:
                 == np.asanyarray(sync.refine_linelocs_hsync(self, linebad2))
             )
         # return sync.refine_linelocs_hsync(self, self.linebad)
-
-        # if False:
-        # import matplotlib.pyplot as plt
-
-        # fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-        # ax1.plot(self.data["video"]["demod_05"])
-
-        # sync, blank = self.rf.resync.VsyncSerration.getLevels()
-
-        # ax1.axhline(sync, color="#FF0000")
-        # ax1.axhline(blank, color="#00FF00")
-
-        # for raw_pulse in linelocs2:
-        #     ax1.axvline(raw_pulse, color="#910000")
-
-        # for raw_pulse in right_locs:
-        #     ax1.axvline(raw_pulse, color="#000000")
-
-        # for raw_pulse in hsync_from_right:
-        #     ax1.axvline(raw_pulse, color="#00FF00")
-
-        # ax2.plot(linelocs2, hsync_from_right - linelocs2)
-
-        # plt.show()
 
     def _refine_linelocs_hsync(self, linebad):
         """Refine the line start locations using horizontal sync data."""
@@ -676,6 +652,45 @@ class FieldShared:
             wow[l] = np.median(wow[l : l + 4])
 
         return wow
+
+    def fix_badlines(self, linelocs_in, linelocs_backup_in=None):
+        """Go through the list of lines marked bad and guess something for the lineloc based on
+        previous/next good lines"""
+        # Overridden to add some further logic.
+        self.linebad = self.compute_deriv_error(linelocs_in, self.linebad)
+        linelocs = np.array(linelocs_in.copy())
+
+        if linelocs_backup_in is not None:
+            linelocs_backup = np.array(linelocs_backup_in.copy())
+            badlines = np.isnan(linelocs)
+            linelocs[badlines] = linelocs_backup[badlines]
+
+        # If the next good line is this far down, don't use it to calculate guessed lineloc
+        # as it may be below head switch and thus distort.
+        last_from_bottom = len(linelocs) - 16
+
+        for l in np.where(self.linebad)[0]:
+            prevgood = l - 1
+            nextgood = l + 1
+
+            while prevgood >= 0 and self.linebad[prevgood]:
+                prevgood -= 1
+
+            while nextgood < len(linelocs) and self.linebad[nextgood]:
+                nextgood += 1
+
+            firstcheck = 0 if self.rf.system == "PAL" else 1
+
+            if prevgood >= firstcheck and nextgood < (len(linelocs) + self.lineoffset) :
+                if nextgood > last_from_bottom:
+                    # Don't use prev+next for these as that could cross head switch.
+                    guess_len = linelocs[prevgood] - linelocs[prevgood - 1]
+                    linelocs[l] = linelocs[l - 1] + guess_len
+                else:
+                    gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
+                    linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
+
+        return linelocs
 
 
 class FieldPALShared(FieldShared, ldd.FieldPAL):

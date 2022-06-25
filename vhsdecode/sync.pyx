@@ -207,6 +207,7 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
     cdef double zc_threshold = rf.iretohz(rf.SysParams["vsync_ire"] / 2)
     cdef double ire_30 = rf.iretohz(30)
     cdef double ire_n_55 = rf.iretohz(-55)
+    cdef double ire_105 = rf.iretohz(105)
 
     cdef bint right_cross_refined
     cdef double zc_fr
@@ -253,10 +254,14 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
             linelocs2[i] = zc
 
             # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+            # TODO: Use correct values for NTSC/PAL here
             hsync_area = demod_05[
-                int(zc - (one_usec * 0.75)) : int(zc + (one_usec * 8))
+                int(zc - (one_usec * 0.75)) : int(zc + (one_usec * 3))
             ]
-            if is_out_of_range(hsync_area, ire_n_55, ire_30):
+            back_porch = demod_05[
+                int(zc + one_usec * 3) : int(zc + (one_usec * 8))
+            ]
+            if is_out_of_range(hsync_area, ire_n_55, ire_30) or is_out_of_range(back_porch, ire_n_55, ire_105):
                 # don't use the computed value here if it's bad
                 linebad[i] = True
                 linelocs2[i] = field.linelocs1[i]
@@ -282,7 +287,24 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
                 if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
                     linelocs2[i] = zc2
                 else:
-                    linebad[i] = True
+
+                    front_porch_level = c_median(
+                        demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
+                    )
+
+                    # Try again with a measured front porch.
+                    zc2 = calczc(
+                        demod_05,
+                        ll1,
+                        (front_porch_level + sync_level) / 2,
+                        reverse=False,
+                        count=400,
+                    )
+                    if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
+                        linelocs2[i] = zc2
+                    else:
+                        # Give up
+                        linebad[i] = True
         else:
             linebad[i] = True
 
