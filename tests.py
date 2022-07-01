@@ -71,6 +71,7 @@ class DemodTest(unittest.TestCase):
 
 def test_sync(filename, num_pulses=None, blank_approx=None, sync_approx=None):
     import lddecode.core as ldd
+    from vhsdecode.field import FieldPALVHS
     import logging
     import math
 
@@ -93,7 +94,7 @@ def test_sync(filename, num_pulses=None, blank_approx=None, sync_approx=None):
     data_stub["video"]["demod"] = np.zeros_like(demod_05_data)
     data_stub["video"]["demod_05"] = demod_05_data
 
-    field = process.FieldPALVHS(rfdecoder, data_stub)
+    field = FieldPALVHS(rfdecoder, data_stub)
 
     pulses = rfdecoder.resync.getpulses_override(field)
 
