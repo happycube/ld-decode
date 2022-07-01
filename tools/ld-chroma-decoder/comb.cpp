@@ -35,11 +35,6 @@
 #include <memory>
 #include <utility>
 
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 Comb::MAX_WIDTH;
-constexpr qint32 Comb::MAX_HEIGHT;
-
 // Indexes for the candidates considered in 3D adaptive mode
 enum CandidateIndex : qint32 {
     CAND_LEFT,
@@ -144,10 +139,9 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
     // Buffers for the next, current and previous frame.
     // Because we only need three of these, we allocate them upfront then
     // rotate the pointers below.
-    std::unique_ptr<FrameBuffer> nextFrameBuffer, currentFrameBuffer, previousFrameBuffer;
-    nextFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
-    currentFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
-    previousFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
+    auto nextFrameBuffer = std::make_unique<FrameBuffer>(videoParameters, configuration);
+    auto currentFrameBuffer = std::make_unique<FrameBuffer>(videoParameters, configuration);
+    auto previousFrameBuffer = std::make_unique<FrameBuffer>(videoParameters, configuration);
 
     // Decode each pair of fields into a frame.
     // To support 3D operation, where we need to see three input frames at a time,

@@ -1,4 +1,4 @@
-CONFIG += c++11 testcase
+CONFIG += c++17 testcase
 CONFIG -= app_bundle
 
 SOURCES += \

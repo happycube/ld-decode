@@ -66,11 +66,6 @@
     filters with more complex coefficients than the report describes.
  */
 
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 PalColour::MAX_WIDTH;
-constexpr qint32 PalColour::FILTER_SIZE;
-
 PalColour::PalColour()
     : configurationSet(false)
 {
@@ -123,9 +118,9 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
     if (configuration.chromaFilter == transform2DFilter || configuration.chromaFilter == transform3DFilter) {
         // Create the Transform PAL filter
         if (configuration.chromaFilter == transform2DFilter) {
-            transformPal.reset(new TransformPal2D);
+            transformPal = std::make_unique<TransformPal2D>();
         } else {
-            transformPal.reset(new TransformPal3D);
+            transformPal = std::make_unique<TransformPal3D>();
         }
 
         // Configure the filter

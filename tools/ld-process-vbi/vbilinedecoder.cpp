@@ -25,11 +25,6 @@
 #include "vbilinedecoder.h"
 #include "decoderpool.h"
 
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 VbiLineDecoder::startFieldLine;
-constexpr qint32 VbiLineDecoder::endFieldLine;
-
 VbiLineDecoder::VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
     : QThread(parent), abort(_abort), decoderPool(_decoderPool)
 {
