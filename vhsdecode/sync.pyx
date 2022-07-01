@@ -207,11 +207,12 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
     cdef double zc_threshold = rf.iretohz(rf.SysParams["vsync_ire"] / 2)
     cdef double ire_30 = rf.iretohz(30)
     cdef double ire_n_55 = rf.iretohz(-55)
-    cdef double ire_105 = rf.iretohz(105)
+    cdef double ire_110 = rf.iretohz(110)
 
     cdef bint right_cross_refined
     cdef double zc_fr
     cdef double porch_level
+    cdef double prev_porch_level = -1
     cdef double sync_level
     cdef int ll1
     cdef int i
@@ -256,19 +257,28 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
             # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
             # TODO: Use correct values for NTSC/PAL here
             hsync_area = demod_05[
-                int(zc - (one_usec * 0.75)) : int(zc + (one_usec * 3))
+                int(zc - (one_usec * 0.75)) : int(zc + (one_usec * 3.5))
             ]
             back_porch = demod_05[
-                int(zc + one_usec * 3) : int(zc + (one_usec * 8))
+                int(zc + one_usec * 3.5) : int(zc + (one_usec * 8))
             ]
-            if is_out_of_range(hsync_area, ire_n_55, ire_30) or is_out_of_range(back_porch, ire_n_55, ire_105):
+            if is_out_of_range(hsync_area, ire_n_55, ire_110): # or is_out_of_range(back_porch, ire_n_55, ire_110):
                 # don't use the computed value here if it's bad
                 linebad[i] = True
                 linelocs2[i] = field.linelocs1[i]
             else:
-                porch_level = c_median(
-                    demod_05[int(zc + (one_usec * 8)) : int(zc + (one_usec * 9))]
-                )
+
+                if max(hsync_area) < ire_30:
+                    porch_level = c_median(
+                        demod_05[int(zc + (one_usec * 8)) : int(zc + (one_usec * 9))]
+                    )
+                else:
+                    if prev_porch_level > 0:
+                        porch_level = prev_porch_level
+                    else:
+                        porch_level = c_median(
+                            demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
+                        )
                 sync_level = c_median(
                     demod_05[int(zc + (one_usec * 1)) : int(zc + (one_usec * 2.5))]
                 )
@@ -286,22 +296,26 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
                 # any wild variation here indicates a failure
                 if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
                     linelocs2[i] = zc2
+                    prev_porch_level = porch_level
                 else:
+                    # Give up
+                    # front_porch_level = c_median(
+                    #     demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
+                    # )
 
-                    front_porch_level = c_median(
-                        demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
-                    )
-
-                    # Try again with a measured front porch.
-                    zc2 = calczc(
-                        demod_05,
-                        ll1,
-                        (front_porch_level + sync_level) / 2,
-                        reverse=False,
-                        count=400,
-                    )
-                    if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
-                        linelocs2[i] = zc2
+                    if prev_porch_level > 0:
+                        # Try again with a earlier measurement porch.
+                        zc2 = calczc(
+                            demod_05,
+                            ll1,
+                            (prev_porch_level + sync_level) / 2,
+                            reverse=False,
+                            count=400,
+                        )
+                        if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
+                            linelocs2[i] = zc2
+                        else:
+                            linebad[i] = True
                     else:
                         # Give up
                         linebad[i] = True
@@ -342,6 +356,7 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
                 if zc2 is not None and abs(zc2 - right_cross) < (one_usec / 2):
                     right_cross = zc2
                     right_cross_refined = True
+                    prev_porch_level = porch_level
 
         if linebad[i]:
             linelocs2[i] = field.linelocs1[

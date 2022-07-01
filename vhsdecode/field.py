@@ -684,8 +684,9 @@ class FieldShared:
             if prevgood >= firstcheck and nextgood < (len(linelocs) + self.lineoffset) :
                 if nextgood > last_from_bottom:
                     # Don't use prev+next for these as that could cross head switch.
-                    guess_len = linelocs[prevgood] - linelocs[prevgood - 1]
-                    linelocs[l] = linelocs[l - 1] + guess_len
+                    if prevgood > last_from_bottom + 4:
+                        guess_len = linelocs[prevgood] - linelocs[prevgood - 1]
+                        linelocs[l] = linelocs[l - 1] + guess_len
                 else:
                     gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
                     linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
