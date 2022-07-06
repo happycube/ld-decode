@@ -66,7 +66,7 @@ def field_class_from_formats(system: str, tape_format: str):
         else:
             if tape_format != "VHS":
                 ldd.logger.info(
-                    "Tape format unimplemented for PAL, using VHS settings."
+                    "Tape format unimplemented for PAL, using VHS field class."
                 )
             field_class = FieldPALVHS
     elif system == "NTSC":
@@ -74,11 +74,14 @@ def field_class_from_formats(system: str, tape_format: str):
             field_class = FieldNTSCUMatic
         elif tape_format == "SVHS":
             field_class = FieldNTSCSVHS
+        elif tape_format == "BETAMAX":
+            field_class = FieldNTSCBetamax
         elif tape_format == "VIDEO8" or tape_format == "HI8":
             field_class = FieldNTSCVideo8
-        elif tape_format != "VHS":
-            ldd.logger.info("Tape format unimplemented for NTSC, using VHS settings.")
-        field_class = FieldNTSCVHS
+        else:
+            if tape_format != "VHS":
+                ldd.logger.info("Tape format unimplemented for NTSC, using VHS field class.")
+            field_class = FieldNTSCVHS
     elif system == "MPAL" and tape_format == "VHS":
         field_class = FieldMPALVHS
 
@@ -837,6 +840,23 @@ class FieldNTSCSVHS(FieldNTSCVHS):
 
     def __init__(self, *args, **kwargs):
         super(FieldNTSCSVHS, self).__init__(*args, **kwargs)
+
+
+class FieldNTSCBetamax(FieldNTSCShared):
+    def __init__(self, *args, **kwargs):
+        super(FieldNTSCBetamax, self).__init__(*args, **kwargs)
+
+    def try_detect_track(self):
+        return 0, False
+
+    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldNTSCBetamax, self).downscale(
+            linesoffset, final, *args, **kwargs
+        )
+
+        dschroma = decode_chroma_betamax(self)
+
+        return (dsout, dschroma), dsaudio, dsefm
 
 
 class FieldMPALVHS(FieldNTSCVHS):

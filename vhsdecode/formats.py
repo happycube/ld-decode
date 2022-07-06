@@ -103,6 +103,15 @@ def get_format_params(system: str, tape_format: str, logger):
             return get_sysparams_ntsc_svhs(SysParams_NTSC), get_rfparams_ntsc_svhs(
                 RFParams_NTSC
             )
+        elif tape_format == "BETAMAX":
+            from vhsdecode.format_defs.betamax import (
+                get_rfparams_ntsc_betamax,
+                get_sysparams_ntsc_betamax,
+            )
+
+            return get_sysparams_ntsc_betamax(SysParams_NTSC), get_rfparams_ntsc_betamax(
+                RFParams_NTSC
+            )
         elif tape_format == "VIDEO8":
             from vhsdecode.format_defs.video8 import (
                 get_rfparams_ntsc_video8,
