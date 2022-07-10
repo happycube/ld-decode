@@ -109,9 +109,9 @@ def get_format_params(system: str, tape_format: str, logger):
                 get_sysparams_ntsc_betamax,
             )
 
-            return get_sysparams_ntsc_betamax(SysParams_NTSC), get_rfparams_ntsc_betamax(
-                RFParams_NTSC
-            )
+            return get_sysparams_ntsc_betamax(
+                SysParams_NTSC
+            ), get_rfparams_ntsc_betamax(RFParams_NTSC)
         elif tape_format == "VIDEO8":
             from vhsdecode.format_defs.video8 import (
                 get_rfparams_ntsc_video8,
@@ -149,6 +149,19 @@ def get_format_params(system: str, tape_format: str, logger):
 
         return get_sysparams_mpal_vhs(SysParams_NTSC), get_rfparams_mpal_vhs(
             RFParams_NTSC
+        )
+    elif system == "MESECAM":
+        if tape_format != "VHS":
+            logger.warning(
+                'Tape format "%s" not supported for MESECAM yet', tape_format
+            )
+        from vhsdecode.format_defs.vhs import (
+            get_rfparams_mesecam_vhs,
+            get_sysparams_mesecam_vhs,
+        )
+
+        return get_sysparams_mesecam_vhs(SysParams_PAL), get_rfparams_mesecam_vhs(
+            RFParams_PAL
         )
     else:
         raise Exception("Unknown video system! ", system)

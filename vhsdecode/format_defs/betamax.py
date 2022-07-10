@@ -124,10 +124,10 @@ def get_rfparams_ntsc_betamax(rfparams_ntsc):
     rfparams["video_hpf_extra_order"] = 1
 
     # Low-pass filter on Y after demodulation
-    rfparams["video_lpf_freq"] = 3400000
+    rfparams["video_lpf_freq"] = 3000000
     rfparams["video_lpf_order"] = 1
 
-    # NTSC color under carrier is ??
+    # This is PAL value atn, NTSC color under carrier is ??
     # TODO: Need exact freq
     #  Betamax uses different freq on track A/B to achieve 90 degree offset between tracks
     # See Television UK June 1980
@@ -158,14 +158,12 @@ def get_rfparams_ntsc_betamax(rfparams_ntsc):
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 2
 
-
     """Fill in parameters that are shared between systems for betamax"""
 
     # Not sure if this is the same between PAL/NTSC
 
     # Temporary video emphasis filter constants
-    # Ideally we would calculate this based on tau and 'x' value, for now
-    # it's eyeballed based on graph and output.
+    # Needs to be verified
     rfparams["deemph_mid"] = 300000
     rfparams["deemph_gain"] = 12.5
 

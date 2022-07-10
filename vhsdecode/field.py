@@ -80,10 +80,14 @@ def field_class_from_formats(system: str, tape_format: str):
             field_class = FieldNTSCVideo8
         else:
             if tape_format != "VHS":
-                ldd.logger.info("Tape format unimplemented for NTSC, using VHS field class.")
+                ldd.logger.info(
+                    "Tape format unimplemented for NTSC, using VHS field class."
+                )
             field_class = FieldNTSCVHS
     elif system == "MPAL" and tape_format == "VHS":
         field_class = FieldMPALVHS
+    elif system == "MESECAM" and tape_format == "VHS":
+        field_class = FieldMESECAMVHS
 
     if not field_class:
         raise Exception("Unknown video system!", system)
@@ -684,14 +688,16 @@ class FieldShared:
 
             firstcheck = 0 if self.rf.system == "PAL" else 1
 
-            if prevgood >= firstcheck and nextgood < (len(linelocs) + self.lineoffset) :
+            if prevgood >= firstcheck and nextgood < (len(linelocs) + self.lineoffset):
                 if nextgood > last_from_bottom:
                     # Don't use prev+next for these as that could cross head switch.
                     if prevgood > last_from_bottom + 4:
                         guess_len = linelocs[prevgood] - linelocs[prevgood - 1]
                         linelocs[l] = linelocs[l - 1] + guess_len
                 else:
-                    gap = (linelocs[nextgood] - linelocs[prevgood]) / (nextgood - prevgood)
+                    gap = (linelocs[nextgood] - linelocs[prevgood]) / (
+                        nextgood - prevgood
+                    )
                     linelocs[l] = (gap * (l - prevgood)) + linelocs[prevgood]
 
         return linelocs
@@ -899,5 +905,21 @@ class FieldNTSCVideo8(FieldNTSCShared):
         dschroma = decode_chroma_video8(self)
 
         self.fieldPhaseID = get_field_phase_id(self)
+
+        return (dsout, dschroma), dsaudio, dsefm
+
+
+class FieldMESECAMVHS(FieldPALShared):
+    def __init__(self, *args, **kwargs):
+        super(FieldMESECAMVHS, self).__init__(*args, **kwargs)
+
+    def try_detect_track(self):
+        return 0, False
+
+    def downscale(self, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldMESECAMVHS, self).downscale(
+            final, *args, **kwargs
+        )
+        dschroma = decode_chroma_vhs(self, False)
 
         return (dsout, dschroma), dsaudio, dsefm

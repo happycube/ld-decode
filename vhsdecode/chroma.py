@@ -305,7 +305,7 @@ def check_increment_field_no(rf):
     return raw_loc
 
 
-def decode_chroma_vhs(field):
+def decode_chroma_vhs(field, rotation=True):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
 
@@ -314,19 +314,20 @@ def decode_chroma_vhs(field):
     # make sure we re-check the phase occasionally.
     raw_loc = check_increment_field_no(rf)
 
-    # If we moved significantly more than the length of one field, re-check phase
-    # as we may have skipped fields.
-    if raw_loc - rf.last_raw_loc > 1.3:
-        if rf.detect_track:
-            ldd.logger.info("Possibly skipped a track, re-checking phase..")
-            rf.needs_detect = True
+    if rotation:
+        # If we moved significantly more than the length of one field, re-check phase
+        # as we may have skipped fields.
+        if raw_loc - rf.last_raw_loc > 1.3:
+            if rf.detect_track:
+                ldd.logger.info("Possibly skipped a track, re-checking phase..")
+                rf.needs_detect = True
 
-    if rf.detect_track and rf.needs_detect or rf.recheck_phase:
-        rf.track_phase, rf.needs_detect = field.try_detect_track()
+        if rf.detect_track and rf.needs_detect or rf.recheck_phase:
+            rf.track_phase, rf.needs_detect = field.try_detect_track()
 
     uphet = process_chroma(
         field,
-        rf.track_phase,
+        rf.track_phase if rotation else None,
         disable_comb=rf.options.disable_comb,
         disable_tracking_cafc=False,
     )

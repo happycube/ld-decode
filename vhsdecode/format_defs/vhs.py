@@ -276,3 +276,28 @@ def get_sysparams_mpal_vhs(sysparams_ntsc):
     params["burst_abs_ref"] = 3500
 
     return params
+
+
+def get_rfparams_mesecam_vhs(rfparams_pal):
+    params = get_rfparams_pal_vhs(rfparams_pal)
+
+    # Average of the two carriers specified, need to check if this works correctly
+    # and calculate exact value
+    params["color_under_carrier"] = (654300 + 810500) / 2
+
+    return params
+
+
+def get_sysparams_mesecam_vhs(sysparams_pal):
+    """Get system params for MESECAM VHS"""
+
+    # This will be the same as PAL other than chroma
+    sysparams = get_sysparams_pal_vhs(sysparams_pal)
+
+    # FSC specified in Panasonic NV-F55/95 handbook, need to check if this is correct
+    # This differs from normal SECAM, possibly it's done like this to put the upconverted
+    # subcarriers at the correct frequencies.
+    # TODO: Needs testing
+    sysparams["fsc_mhz"] = 4.406
+
+    return sysparams

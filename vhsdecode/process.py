@@ -28,9 +28,15 @@ from vhsdecode.field import field_class_from_formats
 def parent_system(system):
     if system == "MPAL":
         parent_system = "NTSC"
+    elif system == "MESECAM" or system == "SECAM":
+        parent_system = "PAL"
     else:
         parent_system = system
     return parent_system
+
+
+def is_secam(system: str):
+    return system == "SECAM" or system == "MESECAM"
 
 
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
@@ -341,7 +347,7 @@ class VHSRFDecode(ldd.RFDecode):
             "dod_hysteresis", vhs_formats.DEFAULT_HYSTERESIS
         )
         self.chroma_trap = rf_options.get("chroma_trap", False)
-        track_phase = rf_options.get("track_phase", None)
+        track_phase = None if is_secam(system) else rf_options.get("track_phase", None)
         self.recheck_phase = rf_options.get("recheck_phase", False)
         high_boost = rf_options.get("high_boost", None)
         self.notch = rf_options.get("notch", None)
@@ -354,14 +360,15 @@ class VHSRFDecode(ldd.RFDecode):
         # cafc requires --recheck_phase
         self.recheck_phase = True if self.cafc else self.recheck_phase
 
+        self.detect_track = False
+        self.needs_detect = False
         if track_phase is None:
             self.track_phase = 0
-            self.detect_track = True
-            self.needs_detect = True
+            if not is_secam(system):
+                self.detect_track = True
+                self.needs_detect = True
         elif track_phase == 0 or track_phase == 1:
             self.track_phase = track_phase
-            self.detect_track = False
-            self.needs_detect = False
         else:
             raise Exception("Track phase can only be 0, 1 or None")
         self.hsync_tolerance = 0.8
