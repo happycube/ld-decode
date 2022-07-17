@@ -23,6 +23,7 @@ from vhsdecode.addons.chromaAFC import ChromaAFC
 from vhsdecode.demod import replace_spikes, unwrap_hilbert, smooth_spikes
 
 from vhsdecode.field import field_class_from_formats
+from vhsdecode.video_eq import VideoEQ
 
 
 def parent_system(system):
@@ -334,11 +335,6 @@ class VHSRFDecode(ldd.RFDecode):
         # palm to avoid it throwing errors.
         self.color_system = system
 
-        # controls the sharpness EQ gain
-        self.sharpness_level = (
-            rf_options.get("sharpness", vhs_formats.DEFAULT_SHARPNESS) / 100
-        )
-
         self.dod_threshold_p = rf_options.get(
             "dod_threshold_p", vhs_formats.DEFAULT_THRESHOLD_P_DDD
         )
@@ -401,6 +397,15 @@ class VHSRFDecode(ldd.RFDecode):
 
         self.high_boost = high_boost if high_boost is not None else DP["boost_bpf_mult"]
 
+        # controls the sharpness EQ gain
+        sharpness_level = (
+            rf_options.get("sharpness", vhs_formats.DEFAULT_SHARPNESS) / 100
+        )
+
+        self.video_eq = None
+        if sharpness_level != 0:
+            self.video_eq = VideoEQ(DP, sharpness_level, self.freq_hz)
+
         # Heterodyning / chroma wave related filter part
 
         self._chroma_afc = ChromaAFC(
@@ -451,20 +456,6 @@ class VHSRFDecode(ldd.RFDecode):
         self.resync = Resync(
             self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
         )
-
-        if self.sharpness_level != 0:
-            # sharpness filter / video EQ
-            iir_eq_loband = utils.firdes_highpass(
-                self.freq_hz,
-                DP["video_eq"]["loband"]["corner"],
-                DP["video_eq"]["loband"]["transition"],
-                DP["video_eq"]["loband"]["order_limit"],
-            )
-
-            self.videoEQFilter = {
-                0: utils.FiltersClass(iir_eq_loband[0], iir_eq_loband[1], self.freq_hz),
-                # 1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], self.freq_hz),
-            }
 
         if self.chroma_trap:
             self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
@@ -636,21 +627,6 @@ class VHSRFDecode(ldd.RFDecode):
         self.delays["video_sync"] = 0
         self.delays["video_white"] = 0
 
-    # It enhances the upper band of the video signal
-    def video_EQ(self, demod):
-        overlap = 10  # how many samples the edge distortion produces
-        ha = self.videoEQFilter[0].filtfilt(demod)
-        hb = self.videoEQFilter[0].lfilt(demod[:overlap])
-        hc = np.concatenate(
-            (hb[:overlap], ha[overlap:])
-        )  # edge distortion compensation, needs check
-        hf = np.multiply(self.DecoderParams["video_eq"]["loband"]["gain"], hc)
-
-        gain = self.sharpness_level
-        result = np.multiply(np.add(np.roll(np.multiply(gain, hf), 0), demod), 1)
-
-        return result
-
     def demodblock(
         self, data=None, mtf_level=0, fftdata=None, cut=False, thread_benchmark=False
     ):
@@ -705,9 +681,9 @@ class VHSRFDecode(ldd.RFDecode):
             demod = self.chromaTrap.work(demod)
 
         # Disabled if sharpness level is zero (default).
-        if self.sharpness_level > 0:
+        if self.video_eq:
             # applies the video EQ
-            demod = self.video_EQ(demod)
+            demod = self.video_eq.filter_video(demod)
 
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and
         # replace the spikes with data from the diffed demod.
