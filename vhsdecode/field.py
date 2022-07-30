@@ -126,6 +126,154 @@ def _get_line0_fallback(valid_pulses, raw_pulses, demod_05, sp):
     return None, None, None
 
 
+P_HSYNC, P_EQPL1, P_VSYNC, P_EQPL2, P_EQPL, P_OTHER = range(6)
+P_NAME = ["HSYNC", "EQPL1", "VSYNC", "EQPL2", "EQPL", "OTHER"]
+
+
+def print_output_order(n, done, pulses):
+    nums = map(lambda p: P_NAME[p[0]], pulses)
+    print("n:", n, " ", done, " ", list(nums))
+
+
+def print_output_types(pulses):
+    nums = map(lambda p: (P_NAME[p[0]], p[1]), pulses)
+    print(list(nums))
+
+
+def _len_to_type(pulse, lt_hsync, lt_eq, lt_vsync):
+    if inrange(pulse.len, *lt_hsync):
+        return P_HSYNC
+    elif inrange(pulse.len, *lt_eq):
+        return P_EQPL
+    elif inrange(pulse.len, *lt_vsync):
+        return P_VSYNC
+    else:
+        print("outside", pulse.len)
+        return P_OTHER
+
+
+def _to_type_list(raw_pulses, lt_hsync, lt_eq, lt_vsync):
+    return list(map(lambda p: _len_to_type(p, lt_hsync, lt_eq, lt_vsync), raw_pulses))
+
+
+def _add_type_to_pulses(raw_pulses, lt_hsync, lt_eq, lt_vsync):
+    return list(map(lambda p: (_len_to_type(p, lt_hsync, lt_eq, lt_vsync), p) , raw_pulses))
+
+
+def _to_seq(type_list, num_pulses):
+    cur_type = None
+    output = list()
+    for pulse_type in type_list:
+        if pulse_type == cur_type:
+            cur = output[-1]
+            output[-1] = (cur[0], cur[1] + 1)
+        else:
+            output.append((pulse_type, 1))
+            cur_type = pulse_type
+
+    return output
+
+
+def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len):
+    """Look though raw_pulses for a set valid vertical sync pulse seires.
+    num_pulses_half: number of equalization pulses per section / 2
+    """
+    done = False
+    num_pulses_half = num_pulses / 2
+
+    vsyncs = []  # VSYNC area (first broad pulse->first EQ after broad pulses)
+
+    validpulses = []
+    vsync_start = None
+
+    # state_end tracks the earliest expected phase transition...
+    state_end = 0
+    # ... and state length is set by the phase transition to set above (in H)
+    state_length = None
+
+    lt_hsync = line_timings["hsync"]
+    lt_eq = line_timings["eq"]
+    lt_vsync = line_timings["vsync"]
+
+    # state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
+    HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
+
+    # test_list = _to_seq(_to_type_list(raw_pulses, lt_hsync, lt_eq, lt_vsync), num_pulses)
+    # print_output_types(test_list)
+
+    for p in raw_pulses:
+        spulse = None
+
+        state = validpulses[-1][0] if len(validpulses) > 0 else -1
+
+        if state == -1:
+            # First valid pulse must be a regular HSYNC
+            if inrange(p.len, *lt_hsync):
+                spulse = (HSYNC, p)
+        elif state == HSYNC:
+            # HSYNC can transition to EQPUL/pre-vsync at the end of a field
+            if inrange(p.len, *lt_hsync):
+                spulse = (HSYNC, p)
+            elif inrange(p.len, *lt_eq):
+                spulse = (EQPL1, p)
+                state_length = num_pulses_half
+            elif inrange(p.len, *lt_vsync):
+                # should not happen(tm)
+                vsync_start = len(validpulses) - 1
+                spulse = (VSYNC, p)
+        elif state == EQPL1:
+            if inrange(p.len, *lt_eq):
+                spulse = (EQPL1, p)
+            elif inrange(p.len, *lt_vsync):
+                # len(validpulses)-1 before appending adds index to first VSYNC pulse
+                vsync_start = len(validpulses) - 1
+                spulse = (VSYNC, p)
+                state_length = num_pulses_half
+            elif inrange(p.len, *lt_hsync):
+                # previous state transition was likely in error!
+                spulse = (HSYNC, p)
+        elif state == VSYNC:
+            if inrange(p.len, *lt_eq):
+                # len(validpulses)-1 before appending adds index to first EQ pulse
+                vsyncs.append((vsync_start, len(validpulses) - 1))
+                spulse = (EQPL2, p)
+                state_length = num_pulses_half
+            elif inrange(p.len, *lt_vsync):
+                spulse = (VSYNC, p)
+            elif p.start > state_end and inrange(p.len, *lt_hsync):
+                spulse = (HSYNC, p)
+        elif state == EQPL2:
+            if inrange(p.len, *lt_eq):
+                spulse = (EQPL2, p)
+            elif inrange(p.len, *lt_hsync):
+                spulse = (HSYNC, p)
+                done = True
+
+        if spulse is not None and spulse[0] != state:
+            if spulse[1].start < state_end:
+                spulse = None
+            elif state_length:
+                state_end = spulse[1].start + (
+                    (state_length - 0.1) * in_line_len
+                )
+                state_length = None
+
+        # Quality check
+        if spulse is not None:
+            good = (
+                sync.pulse_qualitycheck(validpulses[-1], spulse, in_line_len)
+                if len(validpulses)
+                else False
+            )
+
+            validpulses.append((spulse[0], spulse[1], good))
+
+        if done:
+            return done, validpulses
+
+    return done, validpulses
+
+
 class FieldShared:
     def _get_line0_fallback(self, valid_pulses):
         return _get_line0_fallback(
@@ -138,17 +286,33 @@ class FieldShared:
     def pulse_qualitycheck(self, prev_pulse, pulse):
         return sync.pulse_qualitycheck(prev_pulse, pulse, self.inlinelen)
 
+    def run_vblank_state_machine(self, pulses, LT):
+        """ Determines if a pulse set is a valid vblank by running a state machine """
+        a = _run_vblank_state_machine(pulses, LT, self.rf.SysParams["numPulses"], self.inlinelen)
+        # b = super(FieldShared, self).run_vblank_state_machine(pulses, LT)
+        # print("A : ", a)
+        # print("B : ", b)
+        # exit(0)
+        return a
+
     def refinepulses(self):
         LT = self.get_timings()
         lt_hsync = LT["hsync"]
         lt_eq = LT["eq"]
+        # lt_vsync = LT["vsync"]
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
         i = 0
+
+        # print("lt_hsync: ", lt_hsync, " lt_eq: ", lt_eq, " lt_vsync: ", lt_vsync)
+
         # Pulse = namedtuple("Pulse", "start len")
         valid_pulses = []
         num_vblanks = 0
+
+        # test_list = _to_seq(_to_type_list(self.rawpulses, lt_hsync, lt_eq, lt_vsync), self.rf.SysParams["numPulses"])
+        # print_output_types(test_list)
 
         while i < len(self.rawpulses):
             curpulse = self.rawpulses[i]
@@ -184,6 +348,7 @@ class FieldShared:
                 done, vblank_pulses = self.run_vblank_state_machine(
                     self.rawpulses[i - 2 : i + 24], LT
                 )
+                # print_output_order(i, done, vblank_pulses)
                 if done:
                     [valid_pulses.append(p) for p in vblank_pulses[2:]]
                     i += len(vblank_pulses) - 2
