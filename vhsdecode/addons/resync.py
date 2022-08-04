@@ -109,22 +109,63 @@ Make sure to refresh numba cache if modified.
 """
 Pulse = namedtuple("Pulse", "start len")
 
+# Old impl for reference
+# @njit(cache=True, nogil=True, parallel=True)
+# def _findpulses_numba_raw_b(sync_ref, high, min_synclen, max_synclen):
+#     """Locate possible pulses by looking at areas within some range.
+#     Outputs arrays of starts and lengths
+#     """
+#     mid_sync = high
+#     where_all_picture = np.where(sync_ref > mid_sync)[0]
+#     locs_len = np.diff(where_all_picture)
+#     # min_synclen = self.eq_pulselen * 1 / 8
+#     # max_synclen = self.linelen * 5 / 8
+#     is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
+#     where_all_syncs = np.where(is_sync)[0]
+#     pulses_lengths = locs_len[where_all_syncs]
+#     pulses_starts = where_all_picture[where_all_syncs]
+#     return pulses_starts, pulses_lengths
 
-@njit(cache=True, nogil=True, parallel=True)
+
+@njit(cache=True, nogil=True)
 def _findpulses_numba_raw(sync_ref, high, min_synclen, max_synclen):
     """Locate possible pulses by looking at areas within some range.
     Outputs arrays of starts and lengths
     """
-    mid_sync = high
-    where_all_picture = np.where(sync_ref > mid_sync)[0]
-    locs_len = np.diff(where_all_picture)
-    # min_synclen = self.eq_pulselen * 1 / 8
-    # max_synclen = self.linelen * 5 / 8
-    is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
-    where_all_syncs = np.where(is_sync)[0]
-    pulses_lengths = locs_len[where_all_syncs]
-    pulses_starts = where_all_picture[where_all_syncs]
-    return pulses_starts, pulses_lengths
+
+    in_pulse = sync_ref[0] <= high
+
+    # Start/lengths lists
+    # It's possible this could be optimized further by using a different data structure here.
+    starts = []
+    lengths = []
+
+    cur_start = 0
+
+    # Basic algorithm here is swapping between two states, going to the other one if we detect the
+    # current sample passed the threshold.
+    for pos, value in enumerate(sync_ref):
+        if in_pulse:
+            if value > high:
+                length = pos - cur_start
+                # If the pulse is in range, and it's not a starting one
+                if inrange(length, min_synclen, max_synclen) and cur_start != 0:
+                    starts.append(cur_start)
+                    lengths.append(length)
+                in_pulse = False
+        elif value <= high:
+            cur_start = pos
+            in_pulse = True
+
+    # Not using a possible trailing pulse
+    # if in_pulse:
+    #     # Handle trailing pulse
+    #     length = len(sync_ref) - 1 - cur_start
+    #     if inrange(length, min_synclen, max_synclen):
+    #         starts.append(cur_start)
+    #         lengths.append(length)
+
+    return np.asarray(starts), np.asarray(lengths)
 
 
 def _to_pulses_list(pulses_starts, pulses_lengths):

@@ -126,8 +126,8 @@ def _get_line0_fallback(valid_pulses, raw_pulses, demod_05, sp):
     return None, None, None
 
 
-P_HSYNC, P_EQPL1, P_VSYNC, P_EQPL2, P_EQPL, P_OTHER = range(6)
-P_NAME = ["HSYNC", "EQPL1", "VSYNC", "EQPL2", "EQPL", "OTHER"]
+P_HSYNC, P_EQPL1, P_VSYNC, P_EQPL2, P_EQPL, P_OTHER_S, P_OTHER_L = range(7)
+P_NAME = ["HSYNC", "EQPL1", "VSYNC", "EQPL2", "EQPL", "OTHER_S", "OTHER_L"]
 
 
 def print_output_order(n, done, pulses):
@@ -147,9 +147,11 @@ def _len_to_type(pulse, lt_hsync, lt_eq, lt_vsync):
         return P_EQPL
     elif inrange(pulse.len, *lt_vsync):
         return P_VSYNC
-    else:
+    elif pulse.len < lt_hsync[0]:
         print("outside", pulse.len)
-        return P_OTHER
+        return P_OTHER_S
+    else:
+        return P_OTHER_L
 
 
 def _to_type_list(raw_pulses, lt_hsync, lt_eq, lt_vsync):
@@ -160,18 +162,23 @@ def _add_type_to_pulses(raw_pulses, lt_hsync, lt_eq, lt_vsync):
     return list(map(lambda p: (_len_to_type(p, lt_hsync, lt_eq, lt_vsync), p) , raw_pulses))
 
 
-def _to_seq(type_list, num_pulses):
+def _to_seq(type_list, num_pulses, skip_bad=True):
     cur_type = None
     output = list()
     for pulse_type in type_list:
-        if pulse_type == cur_type:
-            cur = output[-1]
-            output[-1] = (cur[0], cur[1] + 1)
-        else:
-            output.append((pulse_type, 1))
-            cur_type = pulse_type
+        if not skip_bad or pulse_type <= P_EQPL:
+            if pulse_type == cur_type:
+                cur = output[-1]
+                output[-1] = (cur[0], cur[1] + 1)
+            else:
+                output.append((pulse_type, 1))
+                cur_type = pulse_type
 
     return output
+
+
+def _is_valid_seq(type_list, num_pulses):
+    return len(type_list) >= 4 and type_list[1:3] == [(P_EQPL, num_pulses), (P_VSYNC, num_pulses), (P_EQPL, num_pulses)]
 
 
 def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len):
@@ -200,6 +207,7 @@ def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len)
 
     # test_list = _to_seq(_to_type_list(raw_pulses, lt_hsync, lt_eq, lt_vsync), num_pulses)
     # print_output_types(test_list)
+    # print("Is valid: ", _is_valid_seq(test_list, num_pulses))
 
     for p in raw_pulses:
         spulse = None
