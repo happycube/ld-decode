@@ -121,8 +121,8 @@ def test_find_pulses(filename, num_pulses):
 
     assert len(starts) == num_pulses
     assert len(lengths) == num_pulses
-    assert starts[200] == 495954
-    assert lengths[200] == 178
+    assert starts[200] == 495955
+    assert lengths[200] == 177
 
 
 class SyncTest(unittest.TestCase):
