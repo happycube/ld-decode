@@ -255,7 +255,7 @@ def load_packed_data_3_32(infile, sample, readlen):
 # // 4: 3333 3333
 # """
 
-# @njit(cache=True, nogil=True)
+@njit(cache=True, nogil=True)
 def unpack_data_4_40(indata, readlen, offset):
     """Inner unpacking function, split off to allow numba optimisation."""
     unpacked = np.zeros(readlen + 4, dtype=np.uint16)
@@ -823,41 +823,66 @@ def findareas(array, cross):
     return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
 
 
-def findpulses(array, low, high):
-    """ Find areas where `array` is between `low` and `high`
+Pulse = namedtuple("Pulse", "start len")
 
-    returns: array of tuples of said areas (begin, end, length)
+
+@njit(cache=True, nogil=True)
+def findpulses_numba_raw(sync_ref, high, min_synclen=0, max_synclen=5000):
+    """Locate possible pulses by looking at areas within some range.
+    Outputs arrays of starts and lengths
     """
 
-    Pulse = namedtuple("Pulse", "start len")
+    in_pulse = sync_ref[0] <= high
 
-    array_inrange = inrange(array, low, high)
+    # Start/lengths lists
+    # It's possible this could be optimized further by using
+    # a different data structure here.
+    starts = []
+    lengths = []
 
-    starts = np.where(
-        np.logical_and(array_inrange[1:] == True, array_inrange[:-1] == False)
-    )[0]
-    ends = np.where(
-        np.logical_and(array_inrange[1:] == False, array_inrange[:-1] == True)
-    )[0]
+    cur_start = 0
 
-    if len(starts) == 0 or len(ends) == 0:
-        return []
+    # Basic algorithm here is swapping between two states, going to the other one if we detect the
+    # current sample passed the threshold.
+    for pos, value in enumerate(sync_ref):
+        if in_pulse:
+            if value > high:
+                length = pos - cur_start
+                # If the pulse is in range, and it's not a starting one
+                if inrange(length, min_synclen, max_synclen) and cur_start != 0:
+                    starts.append(cur_start)
+                    lengths.append(length)
+                in_pulse = False
+        elif value <= high:
+            cur_start = pos
+            in_pulse = True
 
-    # remove 'dangling' beginnings and endings so everything zips up nicely and in order
-    if ends[0] < starts[0]:
-        ends = ends[1:]
+    # Not using a possible trailing pulse
+    # if in_pulse:
+    #     # Handle trailing pulse
+    #     length = len(sync_ref) - 1 - cur_start
+    #     if inrange(length, min_synclen, max_synclen):
+    #         starts.append(cur_start)
+    #         lengths.append(length)
 
-    try:
-        if starts[-1] > ends[-1]:
-            starts = starts[:-1]
-    except IndexError:
-        print(
-            "Index error at lddecode/utils.findpulses(). Are we on the end of the file?",
-            file=sys.stderr,
-        )
-        return []
+    return np.asarray(starts), np.asarray(lengths)
 
-    return [Pulse(z[0], z[1] - z[0]) for z in zip(starts, ends)]
+
+def _to_pulses_list(pulses_starts, pulses_lengths):
+    """Make list of Pulse objects from arrays of pulses starts and lengths"""
+    # Not using numba for this right now as it seemed to cause random segfault
+    # in tests.
+    return [Pulse(z[0], z[1]) for z in zip(pulses_starts, pulses_lengths)]
+
+
+def findpulses(sync_ref, _, high):
+    """Locate possible pulses by looking at areas within some range.
+    .outputs a list of Pulse tuples
+    """
+    pulses_starts, pulses_lengths = findpulses_numba_raw(
+        sync_ref, high
+    )
+    return _to_pulses_list(pulses_starts, pulses_lengths)
 
 
 def findpeaks(array, low=0):
