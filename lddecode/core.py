@@ -3190,6 +3190,7 @@ class LDdecode:
         system="NTSC",
         doDOD=True,
         threads=4,
+        inputfreq=40,
         extra_options={},
     ):
         global logger
@@ -3251,6 +3252,7 @@ class LDdecode:
 
         self.system = system
         self.rf = RFDecode(
+            inputfreq=inputfreq,
             system=system,
             decode_analog_audio=analog_audio,
             decode_digital_audio=digital_audio,
