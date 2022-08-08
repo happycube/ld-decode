@@ -98,7 +98,7 @@ def make_loader(filename, inputfreq=None):
     if inputfreq is not None:
         # We're resampling, so we have to use ffmpeg.
 
-        if filename.endswith(".s16"):
+        if filename.endswith(".s16") or filename.endswith(".raw"):
             input_args = ["-f", "s16le"]
         elif filename.endswith(".r16") or filename.endswith(".u16"):
             input_args = ["-f", "u16le"]
@@ -108,8 +108,6 @@ def make_loader(filename, inputfreq=None):
             input_args = ["-f", "s8"]
         elif filename.endswith(".r8") or filename.endswith(".u8"):
             input_args = ["-f", "u8"]
-        elif filename.endswith(".u16"):
-            input_args = ["-f", "u16le"]
         elif filename.endswith(".lds") or filename.endswith(".r30"):
             raise ValueError("File format not supported when resampling: " + filename)
         else:
