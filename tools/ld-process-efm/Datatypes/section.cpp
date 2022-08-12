@@ -131,10 +131,8 @@ Section::QMetadata Section::getQMetadata()
 bool Section::verifyQ()
 {
     // CRC check the Q-subcode - CRC is on control+mode+data 4+4+72 = 80 bits with 16-bit CRC (96 bits total)
-    char crcSource[10];
-    for (qint32 byteNo = 0; byteNo < 10; byteNo++) crcSource[byteNo] = static_cast<char>(qSubcode[byteNo]);
     quint16 crcChecksum = static_cast<quint16>(~((qSubcode[10] << 8) + qSubcode[11])); // Inverted on disc
-    quint16 calcChecksum = crc16(crcSource, 10);
+    quint16 calcChecksum = crc16(qSubcode, 10);
 
     // Is the Q subcode valid?
     if (crcChecksum != calcChecksum) {
@@ -147,7 +145,7 @@ bool Section::verifyQ()
 
 // Method to perform CRC16 (XMODEM)
 // Adapted from http://mdfs.net/Info/Comp/Comms/CRC16.htm
-quint16 Section::crc16(char *addr, quint16 num)
+quint16 Section::crc16(const uchar *addr, quint16 num)
 {
     qint32 i;
     quint32 crc = 0;
