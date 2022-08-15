@@ -1,5 +1,6 @@
 import numpy as np
 import vhsdecode.utils as utils
+from vhsdecode.linear_filter import FiltersClass
 
 
 class VideoEQ:
@@ -15,7 +16,7 @@ class VideoEQ:
         )
 
         self._video_eq_filter = {
-            0: utils.FiltersClass(iir_eq_loband[0], iir_eq_loband[1], freq_hz),
+            0: FiltersClass(iir_eq_loband[0], iir_eq_loband[1], freq_hz),
             # 1: utils.FiltersClass(iir_eq_hiband[0], iir_eq_hiband[1], freq_hz),
         }
 

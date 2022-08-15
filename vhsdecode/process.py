@@ -706,6 +706,7 @@ class VHSRFDecode(ldd.RFDecode):
         out_video = npfft.irfft(out_video_fft).real
         if self.options.double_lpf:
             # Compensate for phase shift of the extra lpf
+            # TODO: What's this supposed to be?
             out_video = np.roll(out_video, 0)
 
         if self.options.nldeemp:

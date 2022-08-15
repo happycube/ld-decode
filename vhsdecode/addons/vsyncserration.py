@@ -3,7 +3,6 @@
 # Also gives the base for level clamping, and maybe genlocking/vroom prevention
 
 from vhsdecode.utils import (
-    FiltersClass,
     firdes_lowpass,
     firdes_highpass,
     plot_scope,
@@ -11,6 +10,8 @@ from vhsdecode.utils import (
     zero_cross_det,
     StackableMA,
 )
+
+from vhsdecode.linear_filter import FiltersClass, chainfiltfilt_b
 import numpy as np
 from scipy.signal import argrelextrema
 from os import getpid
@@ -203,7 +204,7 @@ class VsyncSerration:
 
     # measures the harmonics of the EQ pulses
     def _power_ratio_search(self, data):
-        first_harmonic = np.square(_chainfiltfilt(data, self.serrationFilter_base))
+        first_harmonic = np.square(chainfiltfilt_b(data, self.serrationFilter_base))
         first_harmonic = self.serrationFilter_envelope.filtfilt(first_harmonic)
         return argrelextrema(first_harmonic, np.less)[0]
 

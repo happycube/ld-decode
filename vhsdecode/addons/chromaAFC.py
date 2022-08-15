@@ -4,6 +4,7 @@ import scipy.signal as sps
 from scipy.fftpack import fft, fftfreq
 import lddecode.core as ldd
 from scipy.signal import argrelextrema
+from vhsdecode.linear_filter import FiltersClass
 
 twopi = 2 * np.pi
 
@@ -492,8 +493,8 @@ class ChromaAFC:
         )
 
         return {
-            utils.FiltersClass(iir_narrow_lo[0], iir_narrow_lo[1], self.samp_rate),
-            utils.FiltersClass(iir_narrow_hi[0], iir_narrow_hi[1], self.samp_rate),
+            FiltersClass(iir_narrow_lo[0], iir_narrow_lo[1], self.samp_rate),
+            FiltersClass(iir_narrow_hi[0], iir_narrow_hi[1], self.samp_rate),
         }
 
     def get_band_tolerance(self):
