@@ -99,7 +99,7 @@ def get_sysparams_pal_betamax(sysparams_pal):
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
     # This has to be low enough to avoid clipping, so we have to
     # tell the chroma decoder to boost it by a bit afterwards.
-    sysparams["burst_abs_ref"] = 2500
+    sysparams["burst_abs_ref"] = 5000
 
     return sysparams
 
@@ -195,6 +195,6 @@ def get_sysparams_ntsc_betamax(sysparams_ntsc):
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
     # This has to be low enough to avoid clipping, so we have to
     # tell the chroma decoder to boost it by a bit afterwards.
-    sysparams["burst_abs_ref"] = 2500
+    sysparams["burst_abs_ref"] = 4000
 
     return sysparams

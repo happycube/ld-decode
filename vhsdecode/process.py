@@ -653,21 +653,24 @@ class VHSRFDecode(ldd.RFDecode):
         # Roll this a bit to compensate for filter delay, value eyballed for now.
         np.abs(raw_filtered, out=raw_filtered)
         raw_env = np.roll(raw_filtered, 4)
+        del raw_filtered
         # Downconvert to single precision for some possible speedup since we don't need
         # super high accuracy for the dropout detection.
         env = utils.filter_simple(raw_env, self.Filters["FEnvPost"]).astype(np.single)
+        del raw_env
         env_mean = np.mean(env)
 
         # Applies RF filters
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
-        data_filtered = npfft.ifft(indata_fft_filt)
 
         # Boost high frequencies in areas where the signal is weak to reduce missed zero crossings
         # on sharp transitions. Using filtfilt to avoid phase issues.
         if len(np.where(env == 0)[0]) == 0:  # checks for zeroes on env
+            data_filtered = npfft.ifft(indata_fft_filt)
             high_part = utils.filter_simple(data_filtered, self.Filters["RFTop"]) * (
                 (env_mean * 0.9) / env
             )
+            del data_filtered
             indata_fft_filt += npfft.fft(high_part * self.high_boost)
         else:
             ldd.logger.warning("RF signal is weak. Is your deck tracking properly?")
@@ -697,6 +700,7 @@ class VHSRFDecode(ldd.RFDecode):
                 ).real
 
                 demod = replace_spikes(demod, demod_b, check_value)
+                del demod_b
                 # Not used yet, needs more testing.
                 # 2.2 seems to be a sweet spot between reducing spikes and not causing
                 # more
@@ -718,14 +722,18 @@ class VHSRFDecode(ldd.RFDecode):
                 * self.Filters["NLHighPassF"][0 : (self.blocklen // 2) + 1]
             )
             # Limit it to preserve sharp transitions
-            limited_hf_part = np.clip(
+            np.clip(
                 hf_part,
                 self.DecoderParams["nonlinear_highpass_limit_l"],
                 self.DecoderParams["nonlinear_highpass_limit_h"],
+                out=hf_part
             )
+
             # And subtract it from the output signal.
-            out_video -= limited_hf_part
+            out_video -= hf_part
             # out_video = hf_part + self.iretohz(50)
+
+        del out_video_fft
 
         out_video05 = npfft.irfft(
             demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]

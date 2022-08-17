@@ -229,7 +229,7 @@ fi
 if [ "$videosystem" = "pal" ]; then
 	echo "Processing tbc as PAL"
 	if [ "$chroma_gain" = "-1" ]; then
-		chroma_gain=1.5
+		chroma_gain=1
 	fi
 	if [ "$chroma_decoder" = "" ]; then
 		chroma_decoder="transform2d"
@@ -242,7 +242,7 @@ fi
 if [ "$videosystem" = "ntsc" ]; then
 	echo "Processing tbc as NTSC"
 	if [ "$chroma_gain" = "-1" ]; then
-		chroma_gain=2
+		chroma_gain=1
 	fi
 	if [ "$chroma_decoder" = "" ]; then
 		chroma_decoder="ntsc2d"

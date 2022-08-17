@@ -125,7 +125,7 @@ def get_sysparams_pal_vhs(sysparams_pal):
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
     # This has to be low enough to avoid clipping, so we have to
     # tell the chroma decoder to boost it by a bit afterwards.
-    SysParams_PAL_VHS["burst_abs_ref"] = 2500
+    SysParams_PAL_VHS["burst_abs_ref"] = 5000
 
     return SysParams_PAL_VHS
 
@@ -222,7 +222,7 @@ def get_sysparams_ntsc_vhs(sysparams_ntsc):
 
     # Mean absolute value of color burst for Automatic Chroma Control.
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
-    SysParams_NTSC_VHS["burst_abs_ref"] = 1750
+    SysParams_NTSC_VHS["burst_abs_ref"] = 3200
 
     return SysParams_NTSC_VHS
 
@@ -273,7 +273,7 @@ def get_sysparams_mpal_vhs(sysparams_ntsc):
 
     params["outlinelen"] = calclinelen(params, 4, "fsc_mhz")
     params["outfreq"] = 4 * params["fsc_mhz"]
-    params["burst_abs_ref"] = 3500
+    params["burst_abs_ref"] = 5000
 
     return params
 

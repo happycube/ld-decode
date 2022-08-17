@@ -123,9 +123,7 @@ def upconvert_chroma(
         # Mixing the chroma signal with a signal at the frequency of colour under + fsc gives us
         # a signal with frequencies at the difference and sum, the difference is what we want as
         # it's at the right frequency.
-        mixed = heterodyne * c
-
-        uphet[start:end] = mixed
+        uphet[start:end] = heterodyne * c
 
     else:
         #        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
@@ -173,7 +171,7 @@ def demod_chroma_filt(data, filter, blocklen, notch, do_notch=None, move=10):
     # TODO: Not sure if we need this after hilbert filter change, needs check.
     out_chroma = np.roll(out_chroma, move)
     # crude DC offset removal
-    out_chroma = out_chroma - np.mean(out_chroma)
+    out_chroma -= np.mean(out_chroma)
     return out_chroma
 
 

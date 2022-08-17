@@ -314,15 +314,10 @@ class VsyncSerration:
         # diff = np.add(forward[0][padding:], -self.sync_level_bias)
         forward[0][padding:] -= self.sync_level_bias
         diff = forward[0][padding:]
+        # Since we modified this, make sure it's not re-used accidentaly.
         del forward
         where_allmin = argrelextrema(diff, np.less)[0]
         if len(where_allmin) > 0:
-            # import timeit
-            # time_a = timeit.timeit(lambda: self._power_ratio_search(padded) , number=50)
-            # time_b = timeit.timeit(lambda: self._power_ratio_search_b(padded) , number=50)
-            # print("time a", time_a)
-            # print("time b", time_b)
-            # print("diff", self._power_ratio_search(padded) - self._power_ratio_search_b(padded))
             serrations = self._power_ratio_search(padded)
             where_min = self._vsync_arbitrage(where_allmin, serrations, len(padded))
             serration_locs = list()

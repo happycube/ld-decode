@@ -50,7 +50,7 @@ def get_sysparams_pal_umatic(sysparams_pal):
     # a difference on these parameters.
     SysParams_PAL_UMATIC["ire0"] = 4257143
     SysParams_PAL_UMATIC["hz_ire"] = 1600000 / 140.0
-    SysParams_PAL_UMATIC["burst_abs_ref"] = 3750
+    SysParams_PAL_UMATIC["burst_abs_ref"] = 5000
 
     return SysParams_PAL_UMATIC
 
@@ -115,6 +115,6 @@ def get_sysparams_ntsc_umatic(sysparams_ntsc):
 
     SysParams_NTSC_UMATIC["ire0"] = 4257143
     SysParams_NTSC_UMATIC["hz_ire"] = 1600000 / 140.0
-    SysParams_NTSC_UMATIC["burst_abs_ref"] = 2750
+    SysParams_NTSC_UMATIC["burst_abs_ref"] = 4000
 
     return SysParams_NTSC_UMATIC
