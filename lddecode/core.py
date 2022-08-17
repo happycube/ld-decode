@@ -3776,7 +3776,7 @@ class LDdecode:
             "syncConf": f.compute_syncconf(),
             "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
-            "fileLoc": np.floor(self.fieldloc),
+            "fileLoc": int(np.floor(self.fieldloc)),
             "medianBurstIRE": roundfloat(f.burstmedian),
         }
 

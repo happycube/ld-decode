@@ -651,7 +651,8 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Calculate an evelope with signal strength using absolute of hilbert transform.
         # Roll this a bit to compensate for filter delay, value eyballed for now.
-        raw_env = np.roll(np.abs(raw_filtered), 4)
+        np.abs(raw_filtered, out=raw_filtered)
+        raw_env = np.roll(raw_filtered, 4)
         # Downconvert to single precision for some possible speedup since we don't need
         # super high accuracy for the dropout detection.
         env = utils.filter_simple(raw_env, self.Filters["FEnvPost"]).astype(np.single)
@@ -692,8 +693,9 @@ class VHSRFDecode(ldd.RFDecode):
 
             if np.max(demod[20:-20]) > check_value:
                 demod_b = unwrap_hilbert(
-                    np.pad(np.diff(hilbert), (1, 0), mode="constant"), self.freq_hz
+                    np.ediff1d(hilbert, to_begin=0), self.freq_hz
                 ).real
+
                 demod = replace_spikes(demod, demod_b, check_value)
                 # Not used yet, needs more testing.
                 # 2.2 seems to be a sweet spot between reducing spikes and not causing

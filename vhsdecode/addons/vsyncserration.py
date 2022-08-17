@@ -100,6 +100,7 @@ class VsyncSerration:
         self.serrationFilter_envelope = FiltersClass(
             iir_serration_envelope_lo[0], iir_serration_envelope_lo[1], self.samp_rate
         )
+
         # -- end of uses of power_ratio_search()
 
         # several timing related constants
@@ -204,7 +205,9 @@ class VsyncSerration:
 
     # measures the harmonics of the EQ pulses
     def _power_ratio_search(self, data):
-        first_harmonic = np.square(chainfiltfilt_b(data, self.serrationFilter_base))
+        first_harmonic = chainfiltfilt_b(data, self.serrationFilter_base)
+        # Make sure we do this in place to avoid allocating an extra array.
+        first_harmonic **= 2
         first_harmonic = self.serrationFilter_envelope.filtfilt(first_harmonic)
         return argrelextrema(first_harmonic, np.less)[0]
 
@@ -298,7 +301,7 @@ class VsyncSerration:
     def mean_bias(self):
         return np.mean(self.sync_level_bias)
 
-    def remove_bias(self, data):
+    def _remove_bias(self, data):
         return data - self.sync_level_bias
 
     # this is the start-of-search
@@ -306,9 +309,20 @@ class VsyncSerration:
         padded = np.append(np.flip(data[:padding]), data)
         forward = self._vsync_envelope_double(padded)
         self.sync_level_bias = forward[1]
-        diff = np.add(forward[0][padding:], -self.sync_level_bias)
+
+        # Optimization - do in place
+        # diff = np.add(forward[0][padding:], -self.sync_level_bias)
+        forward[0][padding:] -= self.sync_level_bias
+        diff = forward[0][padding:]
+        del forward
         where_allmin = argrelextrema(diff, np.less)[0]
         if len(where_allmin) > 0:
+            # import timeit
+            # time_a = timeit.timeit(lambda: self._power_ratio_search(padded) , number=50)
+            # time_b = timeit.timeit(lambda: self._power_ratio_search_b(padded) , number=50)
+            # print("time a", time_a)
+            # print("time b", time_b)
+            # print("diff", self._power_ratio_search(padded) - self._power_ratio_search_b(padded))
             serrations = self._power_ratio_search(padded)
             where_min = self._vsync_arbitrage(where_allmin, serrations, len(padded))
             serration_locs = list()
