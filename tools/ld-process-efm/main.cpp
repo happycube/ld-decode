@@ -122,9 +122,24 @@ int main(int argc, char *argv[])
     processStandardDebugOptions(parser);
 
     // Get the audio options from the parser
-    bool concealAudio = parser.isSet(concealAudioOption);
-    bool silenceAudio = parser.isSet(silenceAudioOption);
-    bool passThroughAudio = parser.isSet(passThroughAudioOption);
+    EfmProcess::ErrorTreatment errorTreatment = EfmProcess::ErrorTreatment::conceal;
+    int numTreatments = 0;
+    if (parser.isSet(concealAudioOption)) {
+        errorTreatment = EfmProcess::ErrorTreatment::conceal;
+        numTreatments++;
+    }
+    if (parser.isSet(silenceAudioOption)) {
+        errorTreatment = EfmProcess::ErrorTreatment::silence;
+        numTreatments++;
+    }
+    if (parser.isSet(passThroughAudioOption)) {
+        errorTreatment = EfmProcess::ErrorTreatment::passThrough;
+        numTreatments++;
+    }
+    if (numTreatments > 1) {
+        qCritical() << "You may only specify one error treatment option (-c, -s or -g)";
+        return 1;
+    }
 
     // Get the decoding options from the parser
     bool pad = parser.isSet(padOption);
@@ -157,7 +172,7 @@ int main(int argc, char *argv[])
     efmProcess.setDebug(debug_efmToF3Frames, debug_syncF3Frames, debug_f3ToF2Frames,
                         debug_f2ToF1Frame, debug_f1ToAudio, debug_f1ToData);
     efmProcess.setDecoderOptions(pad, decodeAsData, noTimeStamp);
-    efmProcess.setAudioErrorTreatment(concealAudio, silenceAudio, passThroughAudio);
+    efmProcess.setAudioErrorTreatment(errorTreatment);
 
     if (!efmProcess.process(inputFilename, outputFilename)) return 1;
 

@@ -55,17 +55,12 @@ void EfmProcess::setDebug(bool _debug_efmToF3Frames, bool _debug_syncF3Frames,
 }
 
 // Set the audio error treatment type
-void EfmProcess::setAudioErrorTreatment(bool concealAudio, bool silenceAudio, bool passThroughAudio)
+void EfmProcess::setAudioErrorTreatment(EfmProcess::ErrorTreatment _errorTreatment)
 {
-    qDebug() << "EfmProcess::setAudioErrorTreatment(): Conceal audio =" << concealAudio;
-    qDebug() << "EfmProcess::setAudioErrorTreatment(): Silence audio =" << silenceAudio;
-    qDebug() << "EfmProcess::setAudioErrorTreatment(): Pass through audio =" << passThroughAudio;
+    qDebug() << "EfmProcess::setAudioErrorTreatment(): Error treatment =" << _errorTreatment;
 
     // Set the audio error treatment option
-    errorTreatment = F1ToAudio::ErrorTreatment::conceal; // Default
-    if (concealAudio) errorTreatment = F1ToAudio::ErrorTreatment::conceal;
-    if (silenceAudio) errorTreatment = F1ToAudio::ErrorTreatment::silence;
-    if (passThroughAudio) errorTreatment = F1ToAudio::ErrorTreatment::passThrough;
+    errorTreatment = _errorTreatment;
 
     // Set the conceal type option (THIS SHOULD BE REMOVED)
     concealType = F1ToAudio::ConcealType::linear;
