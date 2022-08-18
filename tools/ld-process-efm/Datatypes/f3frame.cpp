@@ -47,7 +47,7 @@ F3Frame::F3Frame()
     }
 }
 
-F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength)
+F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength, bool audioIsDts)
 {
     validEfmSymbols = 0;
     invalidEfmSymbols = 0;
@@ -57,11 +57,11 @@ F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength)
     isSync1 = false;
     subcodeSymbol = 0;
 
-    setTValues(tValuesIn, tLength);
+    setTValues(tValuesIn, tLength, audioIsDts);
 }
 
 // This method sets the T-values for the F3 Frame
-void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength)
+void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength, bool audioIsDts)
 {
     // Does tValuesIn contain values?
     if (tLength == 0) {
@@ -134,8 +134,9 @@ void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength)
 
     // Step 3:
 
-    // Decode the subcode symbol
-    if (efmValues[0] == 0x801) {
+    // Decode the subcode symbol.
+    // Some (but not all) DTS LaserDiscs use a non-standard Sync 0 value.
+    if (efmValues[0] == 0x801 || (audioIsDts && efmValues[0] == 0x812)) {
         // Sync 0
         subcodeSymbol = 0;
         isSync0 = true;
