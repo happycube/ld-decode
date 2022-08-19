@@ -355,7 +355,7 @@
        <item>
         <widget class="QCheckBox" name="colorLpfHqCheckBox">
          <property name="text">
-          <string>Use full bandwidth Q channel filter</string>
+          <string>Use equiband chroma post-filter</string>
          </property>
         </widget>
        </item>
