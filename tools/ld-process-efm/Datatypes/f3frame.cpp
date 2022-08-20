@@ -216,41 +216,22 @@ bool F3Frame::isSubcodeSync1()
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to translate 14-bit EFM value into 8-bit byte
-// Returns -1 if the EFM value is could not be converted
+// Returns -1 if the EFM value could not be converted (which never happens,
+// since we always correct to the most likely value)
 qint16 F3Frame::translateEfm(qint16 efmValue)
 {
-    qint16 result = -1;
-    qint16 lutPos = 0;
-    while (result == -1 && lutPos < 256) {
-        if (efm2numberLUT[lutPos] == efmValue) result = lutPos;
-        lutPos++;
+    for (qint16 lutPos = 0; lutPos < 256; lutPos++) {
+        if (efm2numberLUT[lutPos] == efmValue) {
+            // Symbol was valid
+            validEfmSymbols++;
+            return lutPos;
+        }
     }
 
-    // Was 14-bit EFM symbol invalid?
-    if (result == -1) {
-        // Symbol was invalid
-        invalidEfmSymbols++;
-
-        // Attempt to recover symbol using cosine similarity lookup
-        result = -1;
-        lutPos = 0;
-        while (result == -1 && lutPos < 16384) {
-            if (efmerr2positionLUT[lutPos] == efmValue) result = lutPos;
-            lutPos++;
-        }
-
-        // Was lookup successful?
-        if (result != -1) {
-            // Get the translated value from the second LUT
-            result = efmerr2valueLUT[result];
-            correctedEfmSymbols++;
-        }
-    } else {
-        // Symbol was valid
-        validEfmSymbols++;
-    }
-
-    return result;
+    // Symbol was invalid. Correct it using cosine similarity lookup.
+    invalidEfmSymbols++;
+    correctedEfmSymbols++;
+    return efmerr2valueLUT[efmValue & 0x3fff];
 }
 
 // Method to get 'width' bits (max 15) from a byte array starting from bit 'bitIndex'
