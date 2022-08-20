@@ -50,7 +50,6 @@ public:
         double chromaPhase = 0.0;
         bool colorlpf = false;
         bool colorlpf_hq = true;
-        bool whitePoint75 = false;
         qint32 dimensions = 2;
         bool adaptive = true;
         bool showMap = false;
