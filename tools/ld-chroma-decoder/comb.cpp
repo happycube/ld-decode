@@ -191,14 +191,12 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         // Demodulate chroma giving I/Q
         if (configuration.phaseCompensation) {
             currentFrameBuffer->splitIQlocked();
-            currentFrameBuffer->filterIQ();
         } else {
             currentFrameBuffer->splitIQ();
             // Extract Y from baseband and I/Q
             currentFrameBuffer->adjustY();
-            // Post-filter I/Q
-            if (configuration.colorlpf) currentFrameBuffer->filterIQ();
         }
+        currentFrameBuffer->filterIQ();
 
         // Apply noise reduction
         currentFrameBuffer->doCNR();
@@ -641,8 +639,7 @@ void Comb::FrameBuffer::splitIQ()
 // Filter the IQ from the component frame
 void Comb::FrameBuffer::filterIQ()
 {
-    auto iFilter = makeFIRFilter(c_colorlpi_b);
-    auto qFilter = makeFIRFilter(c_colorlpq_b);
+    auto iqFilter = makeFIRFilter(c_colorlp_b);
 
     // Temporary output buffer for the filter
     const int width = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
@@ -652,16 +649,12 @@ void Comb::FrameBuffer::filterIQ()
         double *I = componentFrame->u(lineNumber) + videoParameters.activeVideoStart;
         double *Q = componentFrame->v(lineNumber) + videoParameters.activeVideoStart;
 
-        // Apply iFilter to I
-        iFilter.apply(I, tempBuf.data(), width);
+        // Apply filter to I
+        iqFilter.apply(I, tempBuf.data(), width);
         std::copy(tempBuf.begin(), tempBuf.end(), I);
 
-        // Apply iFilter (equiband) or qFilter (narrowband) to Q
-        if (configuration.colorlpf_hq) {
-            iFilter.apply(Q, tempBuf.data(), width);
-        } else {
-            qFilter.apply(Q, tempBuf.data(), width);
-        }
+        // Apply filter to Q
+        iqFilter.apply(Q, tempBuf.data(), width);
         std::copy(tempBuf.begin(), tempBuf.end(), Q);
     }
 }

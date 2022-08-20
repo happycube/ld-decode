@@ -346,20 +346,6 @@
         </widget>
        </item>
        <item>
-        <widget class="QCheckBox" name="colorLpfCheckBox">
-         <property name="text">
-          <string>Use chroma post-filter</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="colorLpfHqCheckBox">
-         <property name="text">
-          <string>Use equiband chroma post-filter</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <spacer name="verticalSpacer_5">
          <property name="orientation">
           <enum>Qt::Vertical</enum>

@@ -189,12 +189,10 @@ Nnrc = 16
 hp_nrc_filter = sps.firwin(Nnrc + 1, 0.4 / (freq / 2.0), window='hamming', pass_zero=False)
 WriteFilter("nrc", hp_nrc_filter)
 
-# Post-filters for decoding NTSC. The I filter is used for both I and Q in equiband mode.
+# Post-filter for decoding NTSC, used for both I and Q.
 # The shape is based on the PAL post-filters.
-colorlpi = sps.remez(17, [0.0, 1.3, 3.8, freq4/2], [1.0, 0.0], [1.0, 1.0], fs=freq4)
-colorlpq = sps.remez(15, [0.0, 0.6, 3.1, freq4/2], [1.0, 0.0], [1.0, 1.0], fs=freq4)
-WriteFilter("colorlpi", colorlpi)
-WriteFilter("colorlpq", colorlpq)
+colorlp = sps.remez(17, [0.0, 1.3, 3.8, freq4/2], [1.0, 0.0], [1.0, 1.0], fs=freq4)
+WriteFilter("colorlp", colorlp)
 
 Ncolorbp4 = 8
 colorbp4_filter = sps.firwin(Ncolorbp4 + 1, [3.4006 / (freq / 2), 3.7585 / (freq / 2)], window='hamming', pass_zero=False)

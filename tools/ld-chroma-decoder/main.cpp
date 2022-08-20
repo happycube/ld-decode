@@ -223,16 +223,6 @@ int main(int argc, char *argv[])
                                      QCoreApplication::translate("main", "NTSC: Overlay the adaptive filter map (only used for testing)"));
     parser.addOption(showMapOption);
 
-    // Option to enable the standard IQ filter
-    QCommandLineOption iqFilterOption(QStringList() << "iq-filter",
-                                      QCoreApplication::translate("main", "NTSC: Enable IQ filter with equiband I and Q"));
-    parser.addOption(iqFilterOption);
-
-    // Option to enable the traditional IQ filter
-    QCommandLineOption narrowIQFilterOption(QStringList() << "narrow-iq-filter",
-                                            QCoreApplication::translate("main", "NTSC: Enable IQ filter with narrowband Q"));
-    parser.addOption(narrowIQFilterOption);
-
     // Option to set the chroma noise reduction level
     QCommandLineOption chromaNROption(QStringList() << "chroma-nr",
                                       QCoreApplication::translate("main", "NTSC: Chroma noise reduction level in dB (default 0.0)"),
@@ -384,22 +374,6 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(showMapOption)) {
         combConfig.showMap = true;
-    }
-
-    if (parser.isSet(iqFilterOption)) {
-        combConfig.colorlpf = true;
-        combConfig.colorlpf_hq = true;
-    }
-
-    if (parser.isSet(narrowIQFilterOption)) {
-        if (parser.isSet(iqFilterOption)) {
-            // Quit with error
-            qCritical("You can only enable one of the IQ filters");
-            return -1;
-        }
-
-        combConfig.colorlpf = true;
-        combConfig.colorlpf_hq = false;
     }
 
     if (parser.isSet(chromaNROption)) {

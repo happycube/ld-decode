@@ -221,12 +221,6 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->showMapCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
     ui->showMapCheckBox->setChecked(ntscConfiguration.showMap);
 
-    ui->colorLpfCheckBox->setEnabled(isSourceNtsc);
-    ui->colorLpfCheckBox->setChecked(ntscConfiguration.colorlpf);
-
-    ui->colorLpfHqCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.colorlpf);
-    ui->colorLpfHqCheckBox->setChecked(ntscConfiguration.colorlpf_hq);
-
     ui->cNRLabel->setEnabled(isSourceNtsc);
 
     ui->cNRHorizontalSlider->setEnabled(isSourceNtsc);
@@ -325,19 +319,6 @@ void ChromaDecoderConfigDialog::on_adaptiveCheckBox_clicked()
 void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
 {
     ntscConfiguration.showMap = ui->showMapCheckBox->isChecked();
-    emit chromaDecoderConfigChanged();
-}
-
-void ChromaDecoderConfigDialog::on_colorLpfCheckBox_clicked()
-{
-    ntscConfiguration.colorlpf = ui->colorLpfCheckBox->isChecked();
-    updateDialog();
-    emit chromaDecoderConfigChanged();
-}
-
-void ChromaDecoderConfigDialog::on_colorLpfHqCheckBox_clicked()
-{
-    ntscConfiguration.colorlpf_hq = ui->colorLpfHqCheckBox->isChecked();
     emit chromaDecoderConfigChanged();
 }
 
