@@ -33,9 +33,9 @@ class F3Frame
 {
 public:
     F3Frame();
-    F3Frame(uchar *tValuesIn, qint32 tLength);
+    F3Frame(uchar *tValuesIn, qint32 tLength, bool audioIsDts);
 
-    void setTValues(uchar *tValuesIn, qint32 tLength);
+    void setTValues(uchar *tValuesIn, qint32 tLength, bool audioIsDts);
     uchar* getDataSymbols();
     uchar* getErrorSymbols();
     uchar getSubcodeSymbol();

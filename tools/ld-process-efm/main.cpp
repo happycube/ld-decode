@@ -79,6 +79,10 @@ int main(int argc, char *argv[])
                                        QCoreApplication::translate("main", "Decode F1 frames as data instead of audio"));
     parser.addOption(decodeAsDataOption);
 
+    QCommandLineOption audioIsDtsOption(QStringList() << "D" << "dts",
+                                        QCoreApplication::translate("main", "Audio is DTS rather than PCM (allow non-standard F3 syncs)"));
+    parser.addOption(audioIsDtsOption);
+
     QCommandLineOption noTimeStampOption(QStringList() << "t" << "time",
                                        QCoreApplication::translate("main", "Non-standard audio decode (no time-stamp information)"));
     parser.addOption(noTimeStampOption);
@@ -121,14 +125,32 @@ int main(int argc, char *argv[])
     // Standard logging options
     processStandardDebugOptions(parser);
 
-    // Get the audio options from the parser
-    bool concealAudio = parser.isSet(concealAudioOption);
-    bool silenceAudio = parser.isSet(silenceAudioOption);
-    bool passThroughAudio = parser.isSet(passThroughAudioOption);
+    // Get the audio options from the parser.
+    // Default to conceal for PCM audio, and passThrough for DTS audio.
+    EfmProcess::ErrorTreatment errorTreatment = parser.isSet(audioIsDtsOption) ? EfmProcess::ErrorTreatment::passThrough
+                                                                               : EfmProcess::ErrorTreatment::conceal;
+    int numTreatments = 0;
+    if (parser.isSet(concealAudioOption)) {
+        errorTreatment = EfmProcess::ErrorTreatment::conceal;
+        numTreatments++;
+    }
+    if (parser.isSet(silenceAudioOption)) {
+        errorTreatment = EfmProcess::ErrorTreatment::silence;
+        numTreatments++;
+    }
+    if (parser.isSet(passThroughAudioOption)) {
+        errorTreatment = EfmProcess::ErrorTreatment::passThrough;
+        numTreatments++;
+    }
+    if (numTreatments > 1) {
+        qCritical() << "You may only specify one error treatment option (-c, -s or -g)";
+        return 1;
+    }
 
     // Get the decoding options from the parser
     bool pad = parser.isSet(padOption);
     bool decodeAsData = parser.isSet(decodeAsDataOption);
+    bool audioIsDts = parser.isSet(audioIsDtsOption);
     bool noTimeStamp = parser.isSet(noTimeStampOption);
 
     // Get the additional debug options from the parser
@@ -156,8 +178,8 @@ int main(int argc, char *argv[])
     EfmProcess efmProcess;
     efmProcess.setDebug(debug_efmToF3Frames, debug_syncF3Frames, debug_f3ToF2Frames,
                         debug_f2ToF1Frame, debug_f1ToAudio, debug_f1ToData);
-    efmProcess.setDecoderOptions(pad, decodeAsData, noTimeStamp);
-    efmProcess.setAudioErrorTreatment(concealAudio, silenceAudio, passThroughAudio);
+    efmProcess.setDecoderOptions(pad, decodeAsData, audioIsDts, noTimeStamp);
+    efmProcess.setAudioErrorTreatment(errorTreatment);
 
     if (!efmProcess.process(inputFilename, outputFilename)) return 1;
 
