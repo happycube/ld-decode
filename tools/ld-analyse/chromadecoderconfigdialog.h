@@ -59,7 +59,6 @@ private slots:
     void on_chromaPhaseHorizontalSlider_valueChanged(int value);
 
     void on_palFilterButtonGroup_buttonClicked(QAbstractButton *button);
-    void on_thresholdModeCheckBox_clicked();
     void on_thresholdHorizontalSlider_valueChanged(int value);
     void on_showFFTsCheckBox_clicked();
     void on_simplePALCheckBox_clicked();

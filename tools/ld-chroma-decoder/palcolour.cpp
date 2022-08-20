@@ -124,7 +124,7 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
         }
 
         // Configure the filter
-        transformPal->updateConfiguration(videoParameters, configuration.transformMode, configuration.transformThreshold,
+        transformPal->updateConfiguration(videoParameters, configuration.transformThreshold,
                                           configuration.transformThresholds);
     }
 
