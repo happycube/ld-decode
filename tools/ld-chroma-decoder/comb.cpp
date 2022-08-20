@@ -30,10 +30,13 @@
 #include "framecanvas.h"
 
 #include "deemp.h"
+#include "firfilter.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <utility>
+#include <vector>
 
 // Indexes for the candidates considered in 3D adaptive mode
 enum CandidateIndex : qint32 {
@@ -188,7 +191,7 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         // Demodulate chroma giving I/Q
         if (configuration.phaseCompensation) {
             currentFrameBuffer->splitIQlocked();
-            currentFrameBuffer->filterIQFull();
+            currentFrameBuffer->filterIQ();
         } else {
             currentFrameBuffer->splitIQ();
             // Extract Y from baseband and I/Q
@@ -638,62 +641,28 @@ void Comb::FrameBuffer::splitIQ()
 // Filter the IQ from the component frame
 void Comb::FrameBuffer::filterIQ()
 {
-    auto iFilter(f_colorlpi);
-    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+    auto iFilter = makeFIRFilter(c_colorlpi_b);
+    auto qFilter = makeFIRFilter(c_colorlpq_b);
+
+    // Temporary output buffer for the filter
+    const int width = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
+    std::vector<double> tempBuf(width);
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        double *I = componentFrame->u(lineNumber);
-        double *Q = componentFrame->v(lineNumber);
+        double *I = componentFrame->u(lineNumber) + videoParameters.activeVideoStart;
+        double *Q = componentFrame->v(lineNumber) + videoParameters.activeVideoStart;
 
-        iFilter.clear();
-        qFilter.clear();
+        // Apply iFilter to I
+        iFilter.apply(I, tempBuf.data(), width);
+        std::copy(tempBuf.begin(), tempBuf.end(), I);
 
-        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
-
-        double filti = 0, filtq = 0;
-
-        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qint32 phase = h % 4;
-
-            switch (phase) {
-                case 0: filti = iFilter.feed(I[h]); break;
-                case 1: filtq = qFilter.feed(Q[h]); break;
-                case 2: filti = iFilter.feed(I[h]); break;
-                case 3: filtq = qFilter.feed(Q[h]); break;
-                default: break;
-            }
-
-            I[h - qoffset] = filti;
-            Q[h - qoffset] = filtq;
+        // Apply iFilter (equiband) or qFilter (narrowband) to Q
+        if (configuration.colorlpf_hq) {
+            iFilter.apply(Q, tempBuf.data(), width);
+        } else {
+            qFilter.apply(Q, tempBuf.data(), width);
         }
-    }
-}
-
-
-// Filter the full set of I and Q values from the input buffer.
-void Comb::FrameBuffer::filterIQFull()
-{
-    auto iFilter(f_colorlpi);
-    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
-
-    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        double *I = componentFrame->u(lineNumber);
-        double *Q = componentFrame->v(lineNumber);
-
-        iFilter.clear();
-        qFilter.clear();
-
-        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
-
-        double filti = 0, filtq = 0;
-
-        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            filti = iFilter.feed(I[h]);
-            filtq = qFilter.feed(Q[h]);
-
-            I[h - qoffset] = filti;
-            Q[h - qoffset] = filtq;
-        }
+        std::copy(tempBuf.begin(), tempBuf.end(), Q);
     }
 }
 
