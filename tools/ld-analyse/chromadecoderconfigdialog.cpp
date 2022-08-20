@@ -177,16 +177,13 @@ void ChromaDecoderConfigDialog::updateDialog()
     }
 
     const bool isTransform = (palConfiguration.chromaFilter != PalColour::palColourFilter);
-    const bool isThresholdMode = (palConfiguration.transformMode == TransformPal::thresholdMode);
-    ui->thresholdModeCheckBox->setEnabled(isSourcePal && isTransform);
-    ui->thresholdModeCheckBox->setChecked(isThresholdMode);
 
-    ui->thresholdLabel->setEnabled(isSourcePal && isTransform && isThresholdMode);
+    ui->thresholdLabel->setEnabled(isSourcePal && isTransform);
 
-    ui->thresholdHorizontalSlider->setEnabled(isSourcePal && isTransform && isThresholdMode);
+    ui->thresholdHorizontalSlider->setEnabled(isSourcePal && isTransform);
     ui->thresholdHorizontalSlider->setValue(static_cast<qint32>(palConfiguration.transformThreshold * 100));
 
-    ui->thresholdValueLabel->setEnabled(isSourcePal && isTransform && isThresholdMode);
+    ui->thresholdValueLabel->setEnabled(isSourcePal && isTransform);
     ui->thresholdValueLabel->setText(QString::number(palConfiguration.transformThreshold, 'f', 2));
 
     ui->showFFTsCheckBox->setEnabled(isSourcePal && isTransform);
@@ -256,17 +253,6 @@ void ChromaDecoderConfigDialog::on_palFilterButtonGroup_buttonClicked(QAbstractB
         palConfiguration.chromaFilter = PalColour::transform2DFilter;
     } else {
         palConfiguration.chromaFilter = PalColour::transform3DFilter;
-    }
-    updateDialog();
-    emit chromaDecoderConfigChanged();
-}
-
-void ChromaDecoderConfigDialog::on_thresholdModeCheckBox_clicked()
-{
-    if (ui->thresholdModeCheckBox->isChecked()) {
-        palConfiguration.transformMode = TransformPal::thresholdMode;
-    } else {
-        palConfiguration.transformMode = TransformPal::levelMode;
     }
     updateDialog();
     emit chromaDecoderConfigChanged();

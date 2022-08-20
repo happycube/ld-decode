@@ -247,21 +247,15 @@ int main(int argc, char *argv[])
                                            QCoreApplication::translate("main", "Transform: Use 1D UV filter (default 2D)"));
     parser.addOption(simplePALOption);
 
-    // Option to select the Transform PAL filter mode
-    QCommandLineOption transformModeOption(QStringList() << "transform-mode",
-                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default threshold)"),
-                                           QCoreApplication::translate("main", "mode"));
-    parser.addOption(transformModeOption);
-
     // Option to select the Transform PAL threshold
     QCommandLineOption transformThresholdOption(QStringList() << "transform-threshold",
-                                                QCoreApplication::translate("main", "Transform: Uniform similarity threshold in 'threshold' mode (default 0.4)"),
+                                                QCoreApplication::translate("main", "Transform: Uniform similarity threshold (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
 
     // Option to select the Transform PAL thresholds file
     QCommandLineOption transformThresholdsOption(QStringList() << "transform-thresholds",
-                                                 QCoreApplication::translate("main", "Transform: File containing per-bin similarity thresholds in 'threshold' mode"),
+                                                 QCoreApplication::translate("main", "Transform: File containing per-bin similarity thresholds"),
                                                  QCoreApplication::translate("main", "file"));
     parser.addOption(transformThresholdsOption);
 
@@ -399,20 +393,6 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(ntscPhaseCompOption)) {
         combConfig.phaseCompensation = true;
-    }
-
-    if (parser.isSet(transformModeOption)) {
-        const QString name = parser.value(transformModeOption);
-
-        if (name == "level") {
-            palConfig.transformMode = TransformPal::levelMode;
-        } else if (name == "threshold") {
-            palConfig.transformMode = TransformPal::thresholdMode;
-        } else {
-            // Quit with error
-            qCritical() << "Unknown Transform mode" << name;
-            return -1;
-        }
     }
 
     if (parser.isSet(simplePALOption)) {
