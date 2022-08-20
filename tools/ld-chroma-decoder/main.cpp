@@ -235,6 +235,11 @@ int main(int argc, char *argv[])
                                     QCoreApplication::translate("main", "number"));
     parser.addOption(lumaNROption);
 
+    // Option to use phase compensating decoder
+    QCommandLineOption ntscPhaseCompOption(QStringList() << "ntsc-phase-comp",
+                                           QCoreApplication::translate("main", "NTSC: Adjust phase per-line using burst phase"));
+    parser.addOption(ntscPhaseCompOption);
+
     // -- PAL decoder options --
 
     // Option to use Simple PAL UV filter
@@ -264,11 +269,6 @@ int main(int argc, char *argv[])
     QCommandLineOption showFFTsOption(QStringList() << "show-ffts",
                                       QCoreApplication::translate("main", "Transform: Overlay the input and output FFTs"));
     parser.addOption(showFFTsOption);
-
-    // Option to use phase compensating decoder
-    QCommandLineOption ntscPhaseComp(QStringList() << "ntsc-phase-comp",
-                                      QCoreApplication::translate("main", "Use NTSC QADM decoder taking burst phase into account (BETA)"));
-    parser.addOption(ntscPhaseComp);
 
     // -- Positional arguments --
 
@@ -397,6 +397,10 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (parser.isSet(ntscPhaseCompOption)) {
+        combConfig.phaseCompensation = true;
+    }
+
     if (parser.isSet(transformModeOption)) {
         const QString name = parser.value(transformModeOption);
 
@@ -425,10 +429,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (parser.isSet(ntscPhaseComp)) {
-        combConfig.phaseCompensation = true;
-    }
-    
     LdDecodeMetaData::LineParameters lineParameters;
     if (parser.isSet(firstFieldLineOption)) {
         lineParameters.firstActiveFieldLine = parser.value(firstFieldLineOption).toInt();
