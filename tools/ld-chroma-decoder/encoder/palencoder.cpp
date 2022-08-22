@@ -2,12 +2,12 @@
 
     palencoder.cpp
 
-    ld-chroma-encoder - PAL encoder for testing
-    Copyright (C) 2019 Adam Sampson
+    ld-chroma-encoder - Composite video encoder
+    Copyright (C) 2019-2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
-    ld-chroma-decoder is free software: you can redistribute it and/or
+    ld-chroma-encoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -28,29 +28,19 @@
     This is a simplistic PAL encoder for decoder testing. The code aims to be
     accurate rather than fast.
 
-    References:
-
-    [Poynton] "Digital Video and HDTV Algorithms and Interfaces" by Charles
-    Poynton, 2003, first edition, ISBN 1-55860-792-7. Later editions have less
-    material about analogue video standards.
-
-    [EBU] "Specification of interfaces for 625-line digital PAL signals",
-    (https://tech.ebu.ch/docs/tech/tech3280.pdf) EBU Tech. 3280-E.
-
-    [Clarke] "Colour encoding and decoding techniques for line-locked sampled
-    PAL and NTSC television signals" (https://www.bbc.co.uk/rd/publications/rdreport_1986_02),
-    BBC Research Department Report 1986/02, by C.K.P. Clarke.
+    See \l Encoder for references.
  */
 
 #include "palencoder.h"
 
 #include "firfilter.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
-PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData, bool _scLocked)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData), scLocked(_scLocked)
+PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData, bool _scLocked)
+    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData), scLocked(_scLocked)
 {
     // PAL subcarrier frequency [Poynton p529] [EBU p5]
     videoParameters.fSC = 4433618.75;
@@ -130,101 +120,8 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_meta
     V.resize(videoParameters.fieldWidth);
 }
 
-bool PALEncoder::encode()
+void PALEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData)
 {
-    // Store video parameters
-    metaData.setVideoParameters(videoParameters);
-
-    // Process frames until EOF
-    qint32 numFrames = 0;
-    while (true) {
-        qint32 result = encodeFrame(numFrames);
-        if (result == -1) {
-            return false;
-        } else if (result == 0) {
-            break;
-        }
-        numFrames++;
-    }
-
-    return true;
-}
-
-// Read one frame from the input, and write two fields to the output.
-// Returns 0 on EOF, 1 on success; on failure, prints an error and returns -1.
-qint32 PALEncoder::encodeFrame(qint32 frameNo)
-{
-    // Read the input frame
-    qint64 remainBytes = rgbFrame.size();
-    qint64 posBytes = 0;
-    while (remainBytes > 0) {
-        qint64 count = rgbFile.read(rgbFrame.data() + posBytes, remainBytes);
-        if (count == 0 && remainBytes == rgbFrame.size()) {
-            // EOF at the start of a frame
-            return 0;
-        } else if (count == 0) {
-            qCritical() << "Unexpected end of input file";
-            return -1;
-        } else if (count < 0) {
-            qCritical() << "Error reading from input file";
-            return -1;
-        }
-        remainBytes -= count;
-        posBytes += count;
-    }
-
-    // Write the two fields -- even-numbered lines, then odd-numbered lines.
-    // In a PAL TBC file, the first field is the one that starts with the
-    // half-line (i.e. frame line 44, when counting from 0).
-    if (!encodeField(frameNo * 2)) {
-        return -1;
-    }
-    if (!encodeField((frameNo * 2) + 1)) {
-        return -1;
-    }
-
-    return 1;
-}
-
-// Encode one field from rgbFrame to the output.
-// Returns true on success; on failure, prints an error and returns false.
-bool PALEncoder::encodeField(qint32 fieldNo)
-{
-    const qint32 lineOffset = fieldNo % 2;
-
-    // TBC data is unsigned 16-bit values in native byte order
-    QVector<quint16> outputLine;
-
-    for (qint32 frameLine = 0; frameLine < 2 * videoParameters.fieldHeight; frameLine++) {
-        // Skip lines that aren't in this field
-        if ((frameLine % 2) != lineOffset) {
-            continue;
-        }
-
-        // Encode the line
-        const quint16 *rgbData = nullptr;
-        if (frameLine >= activeTop && frameLine < (activeTop + activeHeight)) {
-            rgbData = reinterpret_cast<const quint16 *>(rgbFrame.data()) + ((frameLine - activeTop) * activeWidth * 3);
-        }
-        encodeLine(fieldNo, frameLine, rgbData, outputLine);
-
-        // Write the line to the TBC file
-        const char *outputData = reinterpret_cast<const char *>(outputLine.data());
-        qint64 remainBytes = outputLine.size() * 2;
-        qint64 posBytes = 0;
-        while (remainBytes > 0) {
-            qint64 count = tbcFile.write(outputData + posBytes, remainBytes);
-            if (count < 0) {
-                qCritical() << "Error writing to output file";
-                return false;
-            }
-            remainBytes -= count;
-            posBytes += count;
-        }
-    }
-
-    // Generate field metadata
-    LdDecodeMetaData::Field fieldData;
     fieldData.seqNo = fieldNo;
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
@@ -232,25 +129,6 @@ bool PALEncoder::encodeField(qint32 fieldNo)
     fieldData.medianBurstIRE = 100.0 * (3.0 / 7.0) / 2.0;
     fieldData.fieldPhaseID = 0;
     fieldData.audioSamples = 0;
-    metaData.appendField(fieldData);
-
-    return true;
-}
-
-// Generate a gate waveform with raised-cosine transitions, with 50% points at given start and end times
-static double raisedCosineGate(double t, double startTime, double endTime, double halfRiseTime)
-{
-    if (t < startTime - halfRiseTime) {
-        return 0.0;
-    } else if (t < startTime + halfRiseTime) {
-        return 0.5 + (0.5 * sin((M_PI / 2.0) * ((t - startTime) / halfRiseTime)));
-    } else if (t < endTime - halfRiseTime) {
-        return 1.0;
-    } else if (t < endTime + halfRiseTime) {
-        return 0.5 - (0.5 * sin((M_PI / 2.0) * ((t - endTime) / halfRiseTime)));
-    } else {
-        return 0.0;
-    }
 }
 
 // Types of sync pulse [Poynton p521]
@@ -283,25 +161,25 @@ static double syncPulseGate(double t, double startTime, SyncPulseType type)
     return raisedCosineGate(t, startTime, startTime + length, 200.0e-9 / 2.0);
 }
 
-// 1.3 MHz low-pass Gaussian filter, as used in pyctools-pal's coder.
-// Generated by: c = scipy.signal.gaussian(13, 1.49); c / sum(c)
+// 1.3 MHz low-pass Gaussian filter
+// Generated by: c = scipy.signal.gaussian(13, 1.52); c / sum(c)
 //
 // The UV filter should be 0 dB at 0 Hz, >= -3 dB at 1.3 MHz, <= -20 dB at
 // 4.0 MHz. [Clarke p8]
 static constexpr std::array<double, 13> uvFilterCoeffs {
-    8.06454142158873e-05, 0.0009604748783110286, 0.007290763490157312, 0.035272860169480155, 0.10876496139131472,
-    0.21375585039760908, 0.2677488885178237, 0.21375585039760908, 0.10876496139131472, 0.035272860169480155,
-    0.007290763490157312, 0.0009604748783110286, 8.06454142158873e-05
+    0.00010852890120228184, 0.0011732778293138913, 0.008227778710181127, 0.03742748297181873, 0.11043962430879829,
+    0.21139051659718247, 0.2624655813630064, 0.21139051659718247, 0.11043962430879829, 0.03742748297181873,
+    0.008227778710181127, 0.0011732778293138913, 0.00010852890120228184,
 };
 static constexpr auto uvFilter = makeFIRFilter(uvFilterCoeffs);
 
-void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine)
+void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+                            std::vector<double> &outputC, std::vector<double> &outputVBS)
 {
-    // Resize the output line and fill with black
-    outputLine.resize(videoParameters.fieldWidth);
-    outputLine.fill(videoParameters.black16bIre);
     if (frameLine == 625) {
-        // Dummy last line
+        // Dummy last line, filled with black
+        std::fill(outputC.begin(), outputC.end(), 0.0);
+        std::fill(outputVBS.begin(), outputVBS.end(), 0.0);
         return;
     }
 
@@ -384,9 +262,9 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
 
     // Clear Y'UV buffers. Values in these are scaled so that 0.0 is black and
     // 1.0 is white.
-    Y.fill(0.0);
-    U.fill(0.0);
-    V.fill(0.0);
+    std::fill(Y.begin(), Y.end(), 0.0);
+    std::fill(U.begin(), U.end(), 0.0);
+    std::fill(V.begin(), V.end(), 0.0);
 
     if (rgbData != nullptr) {
         // Convert the R'G'B' data to Y'UV form [Poynton p337 eq 28.5]
@@ -409,7 +287,7 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
         uvFilter.apply(V);
     }
 
-    for (qint32 x = 0; x < outputLine.size(); x++) {
+    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
         // For this sample, compute time relative to 0H, and subcarrier phase
         const double t = (x / videoParameters.sampleRate) - zeroH;
         const double a = 2.0 * M_PI * ((videoParameters.fSC * t) + prevCycles);
@@ -420,24 +298,17 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
         // Encode the chroma signal [Poynton p338]
         const double chroma = (U[x] * sin(a)) + (V[x] * cos(a) * Vsw);
 
-        // Combine everything to make up the composite signal
+        // Generate C output
         const double burstGate = raisedCosineGate(t, burstStartTime, burstEndTime, halfBurstRiseTime);
-        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double chromaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfChromaRiseTime);
+        outputC[x] = (burst * burstGate)
+                     + qBound(-chromaGate, chroma, chromaGate);
+
+        // Generate VBS output
+        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double leftSyncGate = syncPulseGate(t, leftSyncStartTime, leftSyncType);
         const double rightSyncGate = syncPulseGate(t, rightSyncStartTime, rightSyncType);
-        const double composite = (burst * burstGate)
-                                 + qBound(-lumaGate, Y[x], lumaGate)
-                                 + qBound(-chromaGate, chroma, chromaGate)
-                                 + (syncLevel * (leftSyncGate + rightSyncGate));
-
-        // Scale to a 16-bit output sample and limit the excursion to the
-        // permitted sample values. [EBU p6]
-        //
-        // With line-locked sampling, some colours (e.g. the yellow colourbar)
-        // can result in values outside this range because there isn't enough
-        // headroom.
-        const double scaled = (composite * (videoParameters.white16bIre - videoParameters.black16bIre)) + videoParameters.black16bIre;
-        outputLine[x] = qBound(static_cast<double>(0x0100), scaled, static_cast<double>(0xFEFF));
+        outputVBS[x] = qBound(-lumaGate, Y[x], lumaGate)
+                       + (syncLevel * (leftSyncGate + rightSyncGate));
     }
 }

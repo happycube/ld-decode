@@ -18,6 +18,7 @@ win32:DEFINES += _USE_MATH_DEFINES
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    encoder.cpp \
     main.cpp \
     ntscencoder.cpp \
     palencoder.cpp \
@@ -28,6 +29,7 @@ SOURCES += \
     ../../library/tbc/vbidecoder.cpp
 
 HEADERS += \
+    encoder.h \
     ntscencoder.h \
     palencoder.h \
     ../../library/filter/firfilter.h \
