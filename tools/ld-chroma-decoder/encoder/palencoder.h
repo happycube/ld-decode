@@ -39,7 +39,8 @@ public:
 
 private:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine);
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+                            std::vector<double> &outputC, std::vector<double> &outputVBS);
 
     bool scLocked;
 

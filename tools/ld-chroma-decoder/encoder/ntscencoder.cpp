@@ -166,15 +166,18 @@ static constexpr std::array<double, 23> qFilterCoeffs {
 };
 static constexpr auto qFilter = makeFIRFilter(qFilterCoeffs);
 
-void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine)
+void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+                             std::vector<double> &outputC, std::vector<double> &outputVBS)
 {
-    // Resize the output line and fill with blanking
-    outputLine.resize(videoParameters.fieldWidth);
-    std::fill(outputLine.begin(), outputLine.end(), blankingIre);
+    if (frameLine == 525) {
+        // Dummy last line, filled with blanking
+        std::fill(outputC.begin(), outputC.end(), 0.0);
+        const double blanking = (static_cast<double>(blankingIre) - videoParameters.black16bIre)
+                                / (videoParameters.white16bIre - videoParameters.black16bIre);
+        std::fill(outputVBS.begin(), outputVBS.end(), blanking);
 
-    // Skip encoding the last (dummy) frameLine
-    if (frameLine == 525)
         return;
+    }
 
     // How many complete lines have gone by since the start of the 4-field
     // sequence? Subcarrier is positive going at line 10, so adjust for
@@ -305,20 +308,17 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
             chroma = C2[x] * sin(a + 33.0) + C1[x] * cos(a + 33.0);
         }
 
-        // Combine everything to make up the composite signal
+        // Generate C output
         const double burstGate = raisedCosineGate(t, burstStartTime, burstEndTime, halfBurstRiseTime);
-        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double chromaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfChromaRiseTime);
+        outputC[x] = (burst * burstGate)
+                     + qBound(-chromaGate, chroma, chromaGate);
+
+        // Generate VBS output
+        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double leftSyncGate = syncPulseGate(t, leftSyncStartTime, leftSyncType);
         const double rightSyncGate = syncPulseGate(t, rightSyncStartTime, rightSyncType);
-        const double composite = (burst * burstGate)
-                                 + qBound(-lumaGate, Y[x], lumaGate)
-                                 + qBound(-chromaGate, chroma, chromaGate)
-                                 + (syncLevel * (leftSyncGate + rightSyncGate));
-
-        // Scale to a 16-bit output sample and limit the excursion to the
-        // permitted sample values. [SMPTE p6]
-        const double scaled = (composite * (videoParameters.white16bIre - videoParameters.black16bIre)) + videoParameters.black16bIre;
-        outputLine[x] = qBound(static_cast<double>(0x0100), scaled, static_cast<double>(0xFEFF));
+        outputVBS[x] = qBound(-lumaGate, Y[x], lumaGate)
+                       + (syncLevel * (leftSyncGate + rightSyncGate));
     }
 }

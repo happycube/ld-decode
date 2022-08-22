@@ -53,8 +53,11 @@ protected:
     // Fill in the metadata for a generated field
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData) = 0;
 
-    // Encode one line of a field into composite video
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine) = 0;
+    // Encode one line of a field into composite video.
+    // outputC includes the chroma signal and burst.
+    // outputVBS includes the luma signal, blanking and syncs.
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+                            std::vector<double> &outputC, std::vector<double> &outputVBS) = 0;
 
     QFile &rgbFile;
     QFile &tbcFile;

@@ -173,13 +173,13 @@ static constexpr std::array<double, 13> uvFilterCoeffs {
 };
 static constexpr auto uvFilter = makeFIRFilter(uvFilterCoeffs);
 
-void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, std::vector<quint16> &outputLine)
+void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+                            std::vector<double> &outputC, std::vector<double> &outputVBS)
 {
-    // Resize the output line and fill with black
-    outputLine.resize(videoParameters.fieldWidth);
-    std::fill(outputLine.begin(), outputLine.end(), videoParameters.black16bIre);
     if (frameLine == 625) {
-        // Dummy last line
+        // Dummy last line, filled with black
+        std::fill(outputC.begin(), outputC.end(), 0.0);
+        std::fill(outputVBS.begin(), outputVBS.end(), 0.0);
         return;
     }
 
@@ -298,24 +298,17 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
         // Encode the chroma signal [Poynton p338]
         const double chroma = (U[x] * sin(a)) + (V[x] * cos(a) * Vsw);
 
-        // Combine everything to make up the composite signal
+        // Generate C output
         const double burstGate = raisedCosineGate(t, burstStartTime, burstEndTime, halfBurstRiseTime);
-        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double chromaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfChromaRiseTime);
+        outputC[x] = (burst * burstGate)
+                     + qBound(-chromaGate, chroma, chromaGate);
+
+        // Generate VBS output
+        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double leftSyncGate = syncPulseGate(t, leftSyncStartTime, leftSyncType);
         const double rightSyncGate = syncPulseGate(t, rightSyncStartTime, rightSyncType);
-        const double composite = (burst * burstGate)
-                                 + qBound(-lumaGate, Y[x], lumaGate)
-                                 + qBound(-chromaGate, chroma, chromaGate)
-                                 + (syncLevel * (leftSyncGate + rightSyncGate));
-
-        // Scale to a 16-bit output sample and limit the excursion to the
-        // permitted sample values. [EBU p6]
-        //
-        // With line-locked sampling, some colours (e.g. the yellow colourbar)
-        // can result in values outside this range because there isn't enough
-        // headroom.
-        const double scaled = (composite * (videoParameters.white16bIre - videoParameters.black16bIre)) + videoParameters.black16bIre;
-        outputLine[x] = qBound(static_cast<double>(0x0100), scaled, static_cast<double>(0xFEFF));
+        outputVBS[x] = qBound(-lumaGate, Y[x], lumaGate)
+                       + (syncLevel * (leftSyncGate + rightSyncGate));
     }
 }

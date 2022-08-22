@@ -115,8 +115,12 @@ bool Encoder::encodeField(qint32 fieldNo)
 {
     const qint32 lineOffset = fieldNo % 2;
 
+    // Output from the encoder
+    std::vector<double> outputC(videoParameters.fieldWidth);
+    std::vector<double> outputVBS(videoParameters.fieldWidth);
+
     // TBC data is unsigned 16-bit values in native byte order
-    std::vector<quint16> outputLine;
+    std::vector<quint16> outputLine(videoParameters.fieldWidth);
 
     for (qint32 frameLine = 0; frameLine < 2 * videoParameters.fieldHeight; frameLine++) {
         // Skip lines that aren't in this field
@@ -129,7 +133,19 @@ bool Encoder::encodeField(qint32 fieldNo)
         if (frameLine >= activeTop && frameLine < (activeTop + activeHeight)) {
             rgbData = reinterpret_cast<const quint16 *>(rgbFrame.data()) + ((frameLine - activeTop) * activeWidth * 3);
         }
-        encodeLine(fieldNo, frameLine, rgbData, outputLine);
+        encodeLine(fieldNo, frameLine, rgbData, outputC, outputVBS);
+
+        // Scale to a 16-bit output sample and limit the excursion to the
+        // permitted sample values. [EBU p6] [SMPTE p6]
+        //
+        // With PAL line-locked sampling, some colours (e.g. the yellow
+        // colourbar) can result in values outside this range because there
+        // isn't enough headroom.
+        for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+            const double scaled = ((outputC[x] + outputVBS[x])
+                                   * (videoParameters.white16bIre - videoParameters.black16bIre)) + videoParameters.black16bIre;
+            outputLine[x] = qBound(static_cast<double>(0x0100), scaled, static_cast<double>(0xFEFF));
+        }
 
         // Write the line to the TBC file
         const char *outputData = reinterpret_cast<const char *>(outputLine.data());
