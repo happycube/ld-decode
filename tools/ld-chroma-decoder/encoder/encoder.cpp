@@ -48,8 +48,8 @@
 
 #include "encoder.h"
 
-Encoder::Encoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData)
+Encoder::Encoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData)
+    : rgbFile(_rgbFile), tbcFile(_tbcFile), chromaFile(_chromaFile), metaData(_metaData)
 {
 }
 
@@ -119,8 +119,8 @@ bool Encoder::encodeField(qint32 fieldNo)
     std::vector<double> outputC(videoParameters.fieldWidth);
     std::vector<double> outputVBS(videoParameters.fieldWidth);
 
-    // TBC data is unsigned 16-bit values in native byte order
-    std::vector<quint16> outputLine(videoParameters.fieldWidth);
+    // Buffer for conversion
+    std::vector<quint16> outputBuffer(videoParameters.fieldWidth);
 
     for (qint32 frameLine = 0; frameLine < 2 * videoParameters.fieldHeight; frameLine++) {
         // Skip lines that aren't in this field
@@ -135,30 +135,16 @@ bool Encoder::encodeField(qint32 fieldNo)
         }
         encodeLine(fieldNo, frameLine, rgbData, outputC, outputVBS);
 
-        // Scale to a 16-bit output sample and limit the excursion to the
-        // permitted sample values. [EBU p6] [SMPTE p6]
-        //
-        // With PAL line-locked sampling, some colours (e.g. the yellow
-        // colourbar) can result in values outside this range because there
-        // isn't enough headroom.
-        for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-            const double scaled = ((outputC[x] + outputVBS[x])
-                                   * (videoParameters.white16bIre - videoParameters.black16bIre)) + videoParameters.black16bIre;
-            outputLine[x] = qBound(static_cast<double>(0x0100), scaled, static_cast<double>(0xFEFF));
-        }
-
-        // Write the line to the TBC file
-        const char *outputData = reinterpret_cast<const char *>(outputLine.data());
-        qint64 remainBytes = outputLine.size() * 2;
-        qint64 posBytes = 0;
-        while (remainBytes > 0) {
-            qint64 count = tbcFile.write(outputData + posBytes, remainBytes);
-            if (count < 0) {
-                qCritical() << "Error writing to output file";
-                return false;
+        if (chromaFile.isOpen()) {
+            // Write C and VBS to separate output files
+            if (!writeLine(outputC, outputBuffer, true, chromaFile)) return false;
+            if (!writeLine(outputVBS, outputBuffer, false, tbcFile)) return false;
+        } else {
+            // Combine C and VBS into a single output file
+            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+                outputVBS[x] += outputC[x];
             }
-            remainBytes -= count;
-            posBytes += count;
+            if (!writeLine(outputVBS, outputBuffer, false, tbcFile)) return false;
         }
     }
 
@@ -166,6 +152,41 @@ bool Encoder::encodeField(qint32 fieldNo)
     LdDecodeMetaData::Field fieldData;
     getFieldMetadata(fieldNo, fieldData);
     metaData.appendField(fieldData);
+
+    return true;
+}
+
+bool Encoder::writeLine(const std::vector<double> &input, std::vector<quint16> &buffer, bool isChroma, QFile &file)
+{
+    // Scale to a 16-bit output sample and limit the excursion to the
+    // permitted sample values. [EBU p6] [SMPTE p6]
+    //
+    // With PAL line-locked sampling, some colours (e.g. the yellow
+    // colourbar) can result in values outside this range because there
+    // isn't enough headroom.
+    //
+    // Separate chroma is scaled like the normal signal, but centred on 0x7FFF.
+    const double scale = videoParameters.white16bIre - videoParameters.black16bIre;
+    const double offset = isChroma ? 0x7FFF : videoParameters.black16bIre;
+    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+        const double scaled = qBound(static_cast<double>(0x0100), (input[x] * scale) + offset, static_cast<double>(0xFEFF));
+        buffer[x] = static_cast<quint16>(scaled);
+    }
+
+    // Write the converted line to the output file.
+    // TBC data is unsigned 16-bit values in native byte order.
+    const char *outputData = reinterpret_cast<const char *>(buffer.data());
+    qint64 remainBytes = buffer.size() * 2;
+    qint64 posBytes = 0;
+    while (remainBytes > 0) {
+        qint64 count = file.write(outputData + posBytes, remainBytes);
+        if (count < 0) {
+            qCritical() << "Error writing to output file";
+            return false;
+        }
+        remainBytes -= count;
+        posBytes += count;
+    }
 
     return true;
 }

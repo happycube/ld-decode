@@ -42,7 +42,8 @@ enum ChromaMode {
 class NTSCEncoder : public Encoder
 {
 public:
-    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, ChromaMode chromaMode, bool addSetup);
+    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
+                ChromaMode chromaMode, bool addSetup);
 
 protected:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);

@@ -39,8 +39,8 @@
 #include <array>
 #include <cmath>
 
-PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData, bool _scLocked)
-    : Encoder(_rgbFile, _tbcFile, _metaData), scLocked(_scLocked)
+PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData, bool _scLocked)
+    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData), scLocked(_scLocked)
 {
     // PAL subcarrier frequency [Poynton p529] [EBU p5]
     videoParameters.fSC = 4433618.75;

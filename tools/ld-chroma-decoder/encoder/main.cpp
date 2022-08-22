@@ -3,7 +3,7 @@
     main.cpp
 
     ld-chroma-encoder - Composite video encoder
-    Copyright (C) 2019-2020 Adam Sampson
+    Copyright (C) 2019-2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -94,6 +94,10 @@ int main(int argc, char *argv[])
     // Positional argument to specify output video file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file"));
 
+    // Positional argument to specify chroma output video file
+    parser.addPositionalArgument("chroma", QCoreApplication::translate("main", "Specify chroma output TBC file (optional)"),
+                                 "[chroma]");
+
     // Process the command line options and arguments given by the user
     parser.process(a);
 
@@ -106,10 +110,14 @@ int main(int argc, char *argv[])
     // Get the arguments from the parser
     QString inputFileName;
     QString outputFileName;
+    QString chromaFileName;
     QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 2) {
+    if (positionalArguments.count() == 2 || positionalArguments.count() == 3) {
         inputFileName = positionalArguments.at(0);
         outputFileName = positionalArguments.at(1);
+        if (positionalArguments.count() > 2) {
+            chromaFileName = positionalArguments.at(2);
+        }
     } else {
         // Quit with error
         qCritical("You must specify the input RGB and output TBC files");
@@ -167,22 +175,29 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Open the output file
+    // Open the main output file
     QFile tbcFile(outputFileName);
     if (!tbcFile.open(QFile::WriteOnly)) {
         qCritical() << "Cannot open output file:" << outputFileName;
         return -1;
     }
 
+    // Open the chroma output file, if specified
+    QFile chromaFile(chromaFileName);
+    if (chromaFileName != "" && !chromaFile.open(QFile::WriteOnly)) {
+        qCritical() << "Cannot open chroma output file:" << chromaFileName;
+        return -1;
+    }
+
     // Encode the data
     LdDecodeMetaData metaData;
-    if( system == NTSC ) {
-        NTSCEncoder encoder(rgbFile, tbcFile, metaData, chromaMode, addSetup);
+    if (system == NTSC) {
+        NTSCEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, chromaMode, addSetup);
         if (!encoder.encode()) {
             return -1;
         }
     } else {
-        PALEncoder encoder(rgbFile, tbcFile, metaData, scLocked);
+        PALEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, scLocked);
         if (!encoder.encode()) {
             return -1;
         }

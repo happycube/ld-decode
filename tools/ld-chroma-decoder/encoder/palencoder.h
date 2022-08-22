@@ -35,7 +35,7 @@
 class PALEncoder : public Encoder
 {
 public:
-    PALEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, bool scLocked);
+    PALEncoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData, bool scLocked);
 
 private:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);

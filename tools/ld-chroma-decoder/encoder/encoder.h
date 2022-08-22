@@ -40,7 +40,7 @@ public:
     // This only sets the member variables it takes as parameters; subclasses
     // must initialise the VideoParameters, compute the active region and
     // resize rgbFrame.
-    Encoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData);
+    Encoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData);
 
     // Encode RGB stream to TBC.
     // Returns true on success; on failure, prints an error and returns false.
@@ -59,8 +59,13 @@ protected:
     virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
                             std::vector<double> &outputC, std::vector<double> &outputVBS) = 0;
 
+    // Scale and write a line of data to one of the output files.
+    // Returns true on success; on failure, prints an error and returns false.
+    bool writeLine(const std::vector<double> &input, std::vector<quint16> &buffer, bool isChroma, QFile &file);
+
     QFile &rgbFile;
     QFile &tbcFile;
+    QFile &chromaFile;
     LdDecodeMetaData &metaData;
 
     LdDecodeMetaData::VideoParameters videoParameters;
