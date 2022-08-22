@@ -1,0 +1,110 @@
+-- ld-decode rev8 output data(base)file schema DRAFT
+
+-- Typically only one DecodeInfo will be in the database, but in theory 
+-- an entire stack could fit in one (quite large) file.
+CREATE TABLE DecodeInfo(
+    -- decodeID is used as part of a primary key, so it should be short!
+    -- one possiblity:  'project|[timecode/hash]'
+    decodeID      TEXT,
+    inputFileName TEXT,
+
+    numberOfSequentialFields INTEGER DEFAULT 0,
+    
+    gitBranch   TEXT,
+    gitVersion  TEXT,
+
+    tvSystem    TEXT,
+    
+    sampleRate  FLOAT,
+
+    fieldWidth  INTEGER,
+    fieldHeight INTEGER,
+
+    black16bIre FLOAT,
+    white16bIre FLOAT,
+
+    -- sadly, I can't figure out how to make SQLite do aliases @ this level
+    colourBurstStart FLOAT,
+    colourBurstEnd   FLOAT,
+    activeVideoStart FLOAT,
+    activeVideoEnd   FLOAT
+);
+
+CREATE TABLE analogAudioEncoding(
+    decodeID       TEXT, 
+
+    numberOfBits   INTEGER DEFAULT 16,
+    isLittleEndian INTEGER DEFAULT TRUE,
+    isSigned       INTEGER DEFAULT TRUE,
+    sampleRate     FLOAT   DEFAULT 44100
+);
+
+CREATE TABLE field(
+    decodeID        TEXT, 
+    adjustIter      INTEGER,
+    -- seqNo -> fieldNum
+    fieldNum        INTEGER,
+
+    isFirstField    INTEGER,
+    syncConf        INTEGER,
+    fileLoc         FLOAT,
+    medianBurstIRE  FLOAT,
+
+    nAudioSamples   INTEGER,
+
+    -- Data goes here, possibly an array of lines?
+    -- (which still wouldn't really solve the PAL 4x FSC problem)
+    -- video_data       BLOB,
+
+    -- Analog(ue) audio data if applicable
+    -- audio_data       BLOB,
+
+    PRIMARY KEY (decodeId, adjustIteration, fieldNum)
+);
+
+CREATE TABLE fieldMetrics(
+    decodeID        TEXT, 
+    adjustIter      INTEGER,
+    fieldNum        INTEGER,
+
+    whiteSNR        FLOAT,
+    grayIRE         FLOAT,
+    grayPSNR        FLOAT,
+    blackPSNR       FLOAT,
+
+    PRIMARY KEY (decodeId, adjustIteration, fieldNum)
+);
+
+CREATE TABLE fieldDropouts(
+    decodeID        TEXT, 
+    adjustIter      INTEGER,
+    fieldNum        INTEGER,
+
+    fieldLine       INTEGER,
+    startX          FLOAT,
+    endX            FLOAT,
+
+    PRIMARY KEY (decodeId, adjustIteration, fieldNum)
+);
+
+CREATE TABLE ldVITSInfo(
+    decodeID        TEXT, 
+    adjustIter      INTEGER,
+    fieldNum        INTEGER,
+
+    philips16       INT,
+    philips17       INT,
+    philips18       INT,
+
+    diskType        TEXT,
+
+    clvMinutes      INTEGER,
+    clvSeconds      INTEGER,
+    clvFrameNr      INTEGER,
+    cavFrameNr      INTEGER,
+
+    special         TEXT,
+
+    PRIMARY KEY (decodeId, adjustIteration, fieldNum)
+);
+
