@@ -64,15 +64,10 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Option to produce subcarrier-locked output (-c)
-    QCommandLineOption scLockedOption(QStringList() << "c" << "sc-locked",
-                                      QCoreApplication::translate("main", "Output samples are subcarrier-locked. PAL only. (default: line-locked)"));
-    parser.addOption(scLockedOption);
-
-    // Option to select color system (-f)
+    // Option to select video system (-f)
     QCommandLineOption systemOption(QStringList() << "f" << "system",
-                                     QCoreApplication::translate("main", "Select color system, PAL or NTSC. (default PAL)"),
-                                     QCoreApplication::translate("main", "system"));
+                                    QCoreApplication::translate("main", "Video system (PAL, NTSC; default PAL)"),
+                                    QCoreApplication::translate("main", "system"));
     parser.addOption(systemOption);
 
     // Option to specify where to start in the field sequence (--field-offset)
@@ -81,16 +76,25 @@ int main(int argc, char *argv[])
                                          QCoreApplication::translate("main", "offset"));
     parser.addOption(fieldOffsetOption);
 
+    // -- NTSC options --
+
     // Option to select chroma mode (--chroma-mode)
     QCommandLineOption chromaOption(QStringList() << "chroma-mode",
-                                     QCoreApplication::translate("main", "NTSC only. Chroma encoder mode to use (wideband-yuv, wideband-yiq, narrowband-q; default: wideband-yuv)"),
+                                     QCoreApplication::translate("main", "NTSC: Chroma encoder mode to use (wideband-yuv, wideband-yiq, narrowband-q; default: wideband-yuv)"),
                                      QCoreApplication::translate("main", "chroma-mode"));
     parser.addOption(chromaOption);
 
     // Option to disable 7.5 IRE setup, as in NTSC-J (--no-setup)
     QCommandLineOption setupOption(QStringList() << "no-setup",
-                                     QCoreApplication::translate("main", "NTSC only. Do not add 7.5 IRE setup (as in NTSC-J)"));
+                                   QCoreApplication::translate("main", "NTSC: Output NTSC-J, without 7.5 IRE setup"));
     parser.addOption(setupOption);
+
+    // -- PAL options --
+
+    // Option to produce subcarrier-locked output (-c)
+    QCommandLineOption scLockedOption(QStringList() << "c" << "sc-locked",
+                                      QCoreApplication::translate("main", "PAL: Output samples are subcarrier-locked (default: line-locked)"));
+    parser.addOption(scLockedOption);
 
     // -- Positional arguments --
 
@@ -109,32 +113,6 @@ int main(int argc, char *argv[])
 
     // Standard logging options
     processStandardDebugOptions(parser);
-
-    // Get the options from the parser
-    const bool scLocked = parser.isSet(scLockedOption);
-
-    // Get the arguments from the parser
-    QString inputFileName;
-    QString outputFileName;
-    QString chromaFileName;
-    QStringList positionalArguments = parser.positionalArguments();
-    if (positionalArguments.count() == 2 || positionalArguments.count() == 3) {
-        inputFileName = positionalArguments.at(0);
-        outputFileName = positionalArguments.at(1);
-        if (positionalArguments.count() > 2) {
-            chromaFileName = positionalArguments.at(2);
-        }
-    } else {
-        // Quit with error
-        qCritical("You must specify the input RGB and output TBC files");
-        return -1;
-    }
-
-    if (inputFileName == outputFileName) {
-        // Quit with error
-        qCritical("Input and output files cannot be the same");
-        return -1;
-    }
 
     VideoSystem system = PAL;
     QString systemName;
@@ -180,6 +158,32 @@ int main(int argc, char *argv[])
         }
 
     }
+
+    const bool scLocked = parser.isSet(scLockedOption);
+
+    // Get the arguments from the parser
+    QString inputFileName;
+    QString outputFileName;
+    QString chromaFileName;
+    QStringList positionalArguments = parser.positionalArguments();
+    if (positionalArguments.count() == 2 || positionalArguments.count() == 3) {
+        inputFileName = positionalArguments.at(0);
+        outputFileName = positionalArguments.at(1);
+        if (positionalArguments.count() > 2) {
+            chromaFileName = positionalArguments.at(2);
+        }
+    } else {
+        // Quit with error
+        qCritical("You must specify the input RGB and output TBC files");
+        return -1;
+    }
+
+    if (inputFileName == outputFileName) {
+        // Quit with error
+        qCritical("Input and output files cannot be the same");
+        return -1;
+    }
+
     // Open the input file
     QFile rgbFile(inputFileName);
     if (inputFileName == "-") {
