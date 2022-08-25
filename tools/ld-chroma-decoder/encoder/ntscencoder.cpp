@@ -41,8 +41,9 @@
 #include <cmath>
 
 NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
-                         ChromaMode _chromaMode, bool _addSetup)
-    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData), chromaMode(_chromaMode), addSetup(_addSetup)
+                         int _fieldOffset, ChromaMode _chromaMode, bool _addSetup)
+    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData),
+      fieldOffset(_fieldOffset), chromaMode(_chromaMode), addSetup(_addSetup)
 {
     // NTSC subcarrier frequency [Poynton p511]
     videoParameters.fSC = 315.0e6 / 88.0;
@@ -113,7 +114,7 @@ void NTSCEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fiel
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
     fieldData.medianBurstIRE = 20;
-    fieldData.fieldPhaseID = fieldNo % 4;
+    fieldData.fieldPhaseID = (fieldNo + fieldOffset) % 4;
     fieldData.audioSamples = 0;
 }
 
@@ -183,7 +184,7 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
     // How many complete lines have gone by since the start of the 4-field
     // sequence? Subcarrier is positive going at line 10, so adjust for
     // that here. [SMPTE p3]
-    const qint32 fieldID = fieldNo % 4;
+    const qint32 fieldID = (fieldNo + fieldOffset) % 4;
     qint32 prevLines = ((fieldID / 2) * 525) + ((fieldID % 2) * 263) + (frameLine / 2) - 10;
     // XXX The third field shouldn't be special like this. If anything,
     // colorframe B needs something, but prevLines seems correct.

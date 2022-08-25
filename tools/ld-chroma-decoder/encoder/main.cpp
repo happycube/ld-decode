@@ -75,6 +75,12 @@ int main(int argc, char *argv[])
                                      QCoreApplication::translate("main", "system"));
     parser.addOption(systemOption);
 
+    // Option to specify where to start in the field sequence (--field-offset)
+    QCommandLineOption fieldOffsetOption(QStringList() << "field-offset",
+                                         QCoreApplication::translate("main", "Offset of the first output field within the field sequence (0, 2 for NTSC; 0, 2, 4, 6 for PAL; default: 0)"),
+                                         QCoreApplication::translate("main", "offset"));
+    parser.addOption(fieldOffsetOption);
+
     // Option to select chroma mode (--chroma-mode)
     QCommandLineOption chromaOption(QStringList() << "chroma-mode",
                                      QCoreApplication::translate("main", "NTSC only. Chroma encoder mode to use (wideband-yuv, wideband-yiq, narrowband-q; default: wideband-yuv)"),
@@ -142,6 +148,19 @@ int main(int argc, char *argv[])
         }
     }
 
+    int fieldOffset = 0;
+    if (parser.isSet(fieldOffsetOption)) {
+        fieldOffset = parser.value(fieldOffsetOption).toInt();
+        if ((fieldOffset % 2) != 0
+            || fieldOffset < 0
+            || (system == PAL && fieldOffset > 7)
+            || (system == NTSC && fieldOffset > 3)) {
+            // Quit with error
+            qCritical("Field offset must be 0 or 2 for NTSC, or 0, 2, 4 or 6 for PAL");
+            return -1;
+        }
+    }
+
     bool addSetup = !parser.isSet(setupOption);
 
     ChromaMode chromaMode = WIDEBAND_YUV;
@@ -192,12 +211,12 @@ int main(int argc, char *argv[])
     // Encode the data
     LdDecodeMetaData metaData;
     if (system == NTSC) {
-        NTSCEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, chromaMode, addSetup);
+        NTSCEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, fieldOffset, chromaMode, addSetup);
         if (!encoder.encode()) {
             return -1;
         }
     } else {
-        PALEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, scLocked);
+        PALEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, fieldOffset, scLocked);
         if (!encoder.encode()) {
             return -1;
         }
