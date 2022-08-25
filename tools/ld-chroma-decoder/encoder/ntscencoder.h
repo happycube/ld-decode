@@ -43,7 +43,7 @@ class NTSCEncoder : public Encoder
 {
 public:
     NTSCEncoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
-                ChromaMode chromaMode, bool addSetup);
+                int fieldOffset, ChromaMode chromaMode, bool addSetup);
 
 protected:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
@@ -53,6 +53,7 @@ protected:
     const qint32 blankingIre = 0x3C00;
     const qint32 setupIreOffset = 0x0A80; // 10.5 * 256
 
+    int fieldOffset;
     ChromaMode chromaMode;
     bool addSetup;
 

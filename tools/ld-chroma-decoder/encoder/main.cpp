@@ -64,27 +64,37 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Option to produce subcarrier-locked output (-c)
-    QCommandLineOption scLockedOption(QStringList() << "c" << "sc-locked",
-                                      QCoreApplication::translate("main", "Output samples are subcarrier-locked. PAL only. (default: line-locked)"));
-    parser.addOption(scLockedOption);
-
-    // Option to select color system (-f)
+    // Option to select video system (-f)
     QCommandLineOption systemOption(QStringList() << "f" << "system",
-                                     QCoreApplication::translate("main", "Select color system, PAL or NTSC. (default PAL)"),
-                                     QCoreApplication::translate("main", "system"));
+                                    QCoreApplication::translate("main", "Video system (PAL, NTSC; default PAL)"),
+                                    QCoreApplication::translate("main", "system"));
     parser.addOption(systemOption);
+
+    // Option to specify where to start in the field sequence (--field-offset)
+    QCommandLineOption fieldOffsetOption(QStringList() << "field-offset",
+                                         QCoreApplication::translate("main", "Offset of the first output field within the field sequence (0, 2 for NTSC; 0, 2, 4, 6 for PAL; default: 0)"),
+                                         QCoreApplication::translate("main", "offset"));
+    parser.addOption(fieldOffsetOption);
+
+    // -- NTSC options --
 
     // Option to select chroma mode (--chroma-mode)
     QCommandLineOption chromaOption(QStringList() << "chroma-mode",
-                                     QCoreApplication::translate("main", "NTSC only. Chroma encoder mode to use (wideband-yuv, wideband-yiq, narrowband-q; default: wideband-yuv)"),
+                                     QCoreApplication::translate("main", "NTSC: Chroma encoder mode to use (wideband-yuv, wideband-yiq, narrowband-q; default: wideband-yuv)"),
                                      QCoreApplication::translate("main", "chroma-mode"));
     parser.addOption(chromaOption);
 
     // Option to disable 7.5 IRE setup, as in NTSC-J (--no-setup)
     QCommandLineOption setupOption(QStringList() << "no-setup",
-                                     QCoreApplication::translate("main", "NTSC only. Do not add 7.5 IRE setup (as in NTSC-J)"));
+                                   QCoreApplication::translate("main", "NTSC: Output NTSC-J, without 7.5 IRE setup"));
     parser.addOption(setupOption);
+
+    // -- PAL options --
+
+    // Option to produce subcarrier-locked output (-c)
+    QCommandLineOption scLockedOption(QStringList() << "c" << "sc-locked",
+                                      QCoreApplication::translate("main", "PAL: Output samples are subcarrier-locked (default: line-locked)"));
+    parser.addOption(scLockedOption);
 
     // -- Positional arguments --
 
@@ -104,7 +114,51 @@ int main(int argc, char *argv[])
     // Standard logging options
     processStandardDebugOptions(parser);
 
-    // Get the options from the parser
+    VideoSystem system = PAL;
+    QString systemName;
+    if (parser.isSet(systemOption)) {
+        systemName = parser.value(systemOption);
+        if (!parseVideoSystemName(systemName.toUpper(), system)
+            || (system != NTSC && system != PAL)) {
+            // Quit with error
+            qCritical("Unsupported color system");
+            return -1;
+        }
+    }
+
+    int fieldOffset = 0;
+    if (parser.isSet(fieldOffsetOption)) {
+        fieldOffset = parser.value(fieldOffsetOption).toInt();
+        if ((fieldOffset % 2) != 0
+            || fieldOffset < 0
+            || (system == PAL && fieldOffset > 7)
+            || (system == NTSC && fieldOffset > 3)) {
+            // Quit with error
+            qCritical("Field offset must be 0 or 2 for NTSC, or 0, 2, 4 or 6 for PAL");
+            return -1;
+        }
+    }
+
+    bool addSetup = !parser.isSet(setupOption);
+
+    ChromaMode chromaMode = WIDEBAND_YUV;
+    QString chromaName;
+    if (parser.isSet(chromaOption)) {
+        chromaName = parser.value(chromaOption);
+        if (chromaName == "wideband-yiq") {
+            chromaMode = WIDEBAND_YIQ;
+        } else if (chromaName == "narrowband-q") {
+            chromaMode = NARROWBAND_Q;
+        } else if (chromaName == "wideband-yuv") {
+            chromaMode = WIDEBAND_YUV;
+        } else {
+            // Quit with error
+            qCritical("Unsupported chroma encoder mode");
+            return -1;
+        }
+
+    }
+
     const bool scLocked = parser.isSet(scLockedOption);
 
     // Get the arguments from the parser
@@ -130,37 +184,6 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    VideoSystem system = PAL;
-    QString systemName;
-    if (parser.isSet(systemOption)) {
-        systemName = parser.value(systemOption);
-        if (!parseVideoSystemName(systemName.toUpper(), system)
-            || (system != NTSC && system != PAL)) {
-            // Quit with error
-            qCritical("Unsupported color system");
-            return -1;
-        }
-    }
-
-    bool addSetup = !parser.isSet(setupOption);
-
-    ChromaMode chromaMode = WIDEBAND_YUV;
-    QString chromaName;
-    if (parser.isSet(chromaOption)) {
-        chromaName = parser.value(chromaOption);
-        if (chromaName == "wideband-yiq") {
-            chromaMode = WIDEBAND_YIQ;
-        } else if (chromaName == "narrowband-q") {
-            chromaMode = NARROWBAND_Q;
-        } else if (chromaName == "wideband-yuv") {
-            chromaMode = WIDEBAND_YUV;
-        } else {
-            // Quit with error
-            qCritical("Unsupported chroma encoder mode");
-            return -1;
-        }
-
-    }
     // Open the input file
     QFile rgbFile(inputFileName);
     if (inputFileName == "-") {
@@ -192,12 +215,12 @@ int main(int argc, char *argv[])
     // Encode the data
     LdDecodeMetaData metaData;
     if (system == NTSC) {
-        NTSCEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, chromaMode, addSetup);
+        NTSCEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, fieldOffset, chromaMode, addSetup);
         if (!encoder.encode()) {
             return -1;
         }
     } else {
-        PALEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, scLocked);
+        PALEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, fieldOffset, scLocked);
         if (!encoder.encode()) {
             return -1;
         }

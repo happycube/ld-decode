@@ -39,8 +39,9 @@
 #include <array>
 #include <cmath>
 
-PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData, bool _scLocked)
-    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData), scLocked(_scLocked)
+PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
+                       int _fieldOffset, bool _scLocked)
+    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData), fieldOffset(_fieldOffset), scLocked(_scLocked)
 {
     // PAL subcarrier frequency [Poynton p529] [EBU p5]
     videoParameters.fSC = 4433618.75;
@@ -184,7 +185,7 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
     }
 
     // How many complete lines have gone by since the start of the 4-frame sequence?
-    const qint32 fieldID = fieldNo % 8; 
+    const qint32 fieldID = (fieldNo + fieldOffset) % 8;
     const qint32 prevLines = ((fieldID / 2) * 625) + ((fieldID % 2) * 313) + (frameLine / 2);
 
     // Compute the time at which 0H occurs within the line (see above)
