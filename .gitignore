@@ -56,3 +56,13 @@ testout
 # Profiling results
 perf.data*
 Benchfile*
+
+# CMake related things
+/CMakeFiles
+*/CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+moc_*.cpp_parameters
+moc_*.cpp
+ui_*.h
