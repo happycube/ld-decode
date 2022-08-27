@@ -41,6 +41,8 @@ class EfmProcess
 public:
     EfmProcess();
 
+    using ErrorTreatment = F1ToAudio::ErrorTreatment;
+
     struct Statistics {
         EfmToF3Frames::Statistics efmToF3Frames;
         SyncF3Frames::Statistics syncF3Frames;
@@ -53,9 +55,8 @@ public:
     void setDebug(bool _debug_efmToF3Frames, bool _debug_syncF3Frames,
                   bool _debug_f3ToF2Frames, bool _debug_f2ToF1Frames,
                   bool _debug_f1ToAudio, bool _debug_f1ToData);
-    void setAudioErrorTreatment(bool concealAudio,
-                                            bool silenceAudio, bool passThroughAudio);
-    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData, bool _noTimeStamp);
+    void setAudioErrorTreatment(ErrorTreatment _errorTreatment);
+    void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData, bool _audioIsDts, bool _noTimeStamp);
     void reportStatistics();
     bool process(QString inputFilename, QString outputFilename);
     Statistics getStatistics();
@@ -84,6 +85,7 @@ private:
     bool padInitialDiscTime;
     bool decodeAsAudio;
     bool decodeAsData;
+    bool audioIsDts;
     bool noTimeStamp;
 
     Statistics statistics;

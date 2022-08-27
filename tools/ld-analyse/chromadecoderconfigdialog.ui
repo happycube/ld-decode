@@ -181,13 +181,6 @@
         </spacer>
        </item>
        <item>
-        <widget class="QCheckBox" name="thresholdModeCheckBox">
-         <property name="text">
-          <string>Use threshold comparison mode</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <spacer name="verticalSpacer_2">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -342,20 +335,6 @@
         <widget class="QCheckBox" name="showMapCheckBox">
          <property name="text">
           <string>Overlay adaptive filter visualisation</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="colorLpfCheckBox">
-         <property name="text">
-          <string>Use chroma post-filter</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="colorLpfHqCheckBox">
-         <property name="text">
-          <string>Use full bandwidth Q channel filter</string>
          </property>
         </widget>
        </item>

@@ -87,7 +87,7 @@ private:
     uchar wSubcode[12];
 
     bool verifyQ();
-    quint16 crc16(char *addr, quint16 num);
+    quint16 crc16(const uchar *addr, quint16 num);
     qint32 decodeQAddress();
     void decodeQControl();
     void decodeQDataMode1And4();

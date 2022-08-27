@@ -60,7 +60,6 @@ public:
         double yNRLevel = 0.5;
         bool simplePAL = false;
         ChromaFilterMode chromaFilter = palColourFilter;
-        TransformPal::TransformMode transformMode = TransformPal::thresholdMode;
         double transformThreshold = 0.4;
         QVector<double> transformThresholds;
         bool showFFTs = false;

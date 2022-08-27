@@ -54,13 +54,14 @@ public:
         qint64 correctedEfmSymbols;
     };
 
-    QVector<F3Frame> process(QByteArray efmDataIn, bool debugState);
+    QVector<F3Frame> process(QByteArray efmDataIn, bool debugState, bool _audioIsDts);
     Statistics getStatistics();
     void reportStatistics();
     void reset();
 
 private:
     bool debugOn;
+    bool audioIsDts;
     Statistics statistics;
     QByteArray efmDataBuffer;
     QVector<F3Frame> f3FramesOut;

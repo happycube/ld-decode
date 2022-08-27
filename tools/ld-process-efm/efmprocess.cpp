@@ -55,26 +55,22 @@ void EfmProcess::setDebug(bool _debug_efmToF3Frames, bool _debug_syncF3Frames,
 }
 
 // Set the audio error treatment type
-void EfmProcess::setAudioErrorTreatment(bool concealAudio, bool silenceAudio, bool passThroughAudio)
+void EfmProcess::setAudioErrorTreatment(EfmProcess::ErrorTreatment _errorTreatment)
 {
-    qDebug() << "EfmProcess::setAudioErrorTreatment(): Conceal audio =" << concealAudio;
-    qDebug() << "EfmProcess::setAudioErrorTreatment(): Silence audio =" << silenceAudio;
-    qDebug() << "EfmProcess::setAudioErrorTreatment(): Pass through audio =" << passThroughAudio;
+    qDebug() << "EfmProcess::setAudioErrorTreatment(): Error treatment =" << _errorTreatment;
 
     // Set the audio error treatment option
-    errorTreatment = F1ToAudio::ErrorTreatment::conceal; // Default
-    if (concealAudio) errorTreatment = F1ToAudio::ErrorTreatment::conceal;
-    if (silenceAudio) errorTreatment = F1ToAudio::ErrorTreatment::silence;
-    if (passThroughAudio) errorTreatment = F1ToAudio::ErrorTreatment::passThrough;
+    errorTreatment = _errorTreatment;
 
     // Set the conceal type option (THIS SHOULD BE REMOVED)
     concealType = F1ToAudio::ConcealType::linear;
 }
 
 // Set the decoder options
-void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData, bool _noTimeStamp)
+void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData, bool _audioIsDts, bool _noTimeStamp)
 {
     qDebug() << "EfmProcess::setDecoderOptions(): Pad initial disc time is" << _padInitialDiscTime;
+    qDebug() << "EfmProcess::setDecoderOptions(): Audio-is-DTS is" << _audioIsDts;
     qDebug() << "EfmProcess::setDecoderOptions(): No time-stamp is" << _noTimeStamp;
     padInitialDiscTime = _padInitialDiscTime;
 
@@ -89,6 +85,7 @@ void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData,
         qDebug() << "EfmProcess::setDecoderOptions(): Decoding F1 frames as audio";
     }
 
+    audioIsDts = _audioIsDts;
     noTimeStamp = _noTimeStamp;
 }
 
@@ -158,7 +155,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         if (bytesRead != bufferSize) inputEfmBuffer.resize(static_cast<qint32>(bytesRead));
 
         // Perform EFM processing
-        QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_efmToF3Frames);
+        QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_efmToF3Frames, audioIsDts);
         QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_syncF3Frames);
         QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_f3ToF2Frames, noTimeStamp);
         QVector<F1Frame> f1Frames = f2ToF1Frames.process(f2Frames, debug_f2ToF1Frame, noTimeStamp);

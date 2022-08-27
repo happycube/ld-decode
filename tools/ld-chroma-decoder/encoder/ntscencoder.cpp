@@ -2,13 +2,13 @@
 
     ntscencoder.cpp
 
-    ld-chroma-encoder - NTSC encoder for testing
-    Copyright (C) 2019 Adam Sampson
+    ld-chroma-encoder - Composite video encoder
+    Copyright (C) 2019-2022 Adam Sampson
     Copyright (C) 2022 Phillip Blucas
 
     This file is part of ld-decode-tools.
 
-    ld-chroma-decoder is free software: you can redistribute it and/or
+    ld-chroma-encoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -29,29 +29,21 @@
     This is a simplistic NTSC encoder for decoder testing. The code aims to be
     accurate rather than fast.
 
-    References:
-
-    [Poynton] "Digital Video and HDTV Algorithms and Interfaces" by Charles
-    Poynton, 2003, first edition, ISBN 1-55860-792-7. Later editions have less
-    material about analog video standards.
-
-    [SMPTE] "System M/NTSC Composite Video Signals Bit-Parallel Digital Interface",
-    (https://ieeexplore.ieee.org/document/7290873) SMPTE 244M-2003.
-
-    [Clarke] "Colour encoding and decoding techniques for line-locked sampled
-    PAL and NTSC television signals" (https://www.bbc.co.uk/rd/publications/rdreport_1986_02),
-    BBC Research Department Report 1986/02, by C.K.P. Clarke.
+    See \l Encoder for references.
  */
 
 #include "ntscencoder.h"
 
 #include "firfilter.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 
-NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_metaData, ChromaMode &_chromaMode, bool &_addSetup)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), metaData(_metaData), chromaMode(_chromaMode), addSetup(_addSetup)
+NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
+                         int _fieldOffset, ChromaMode _chromaMode, bool _addSetup)
+    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData),
+      fieldOffset(_fieldOffset), chromaMode(_chromaMode), addSetup(_addSetup)
 {
     // NTSC subcarrier frequency [Poynton p511]
     videoParameters.fSC = 315.0e6 / 88.0;
@@ -116,126 +108,14 @@ NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, LdDecodeMetaData &_me
     C2.resize(videoParameters.fieldWidth);
 }
 
-bool NTSCEncoder::encode()
+void NTSCEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData)
 {
-    // Store video parameters
-    metaData.setVideoParameters(videoParameters);
-
-    // Process frames until EOF
-    qint32 numFrames = 0;
-    while (true) {
-        qint32 result = encodeFrame(numFrames);
-        if (result == -1) {
-            return false;
-        } else if (result == 0) {
-            break;
-        }
-        numFrames++;
-    }
-
-    return true;
-}
-
-// Read one frame from the input, and write two fields to the output.
-// Returns 0 on EOF, 1 on success; on failure, prints an error and returns -1.
-qint32 NTSCEncoder::encodeFrame(qint32 frameNo)
-{
-    // Read the input frame
-    qint64 remainBytes = rgbFrame.size();
-    qint64 posBytes = 0;
-    while (remainBytes > 0) {
-        qint64 count = rgbFile.read(rgbFrame.data() + posBytes, remainBytes);
-        if (count == 0 && remainBytes == rgbFrame.size()) {
-            // EOF at the start of a frame
-            return 0;
-        } else if (count == 0) {
-            qCritical() << "Unexpected end of input file";
-            return -1;
-        } else if (count < 0) {
-            qCritical() << "Error reading from input file";
-            return -1;
-        }
-        remainBytes -= count;
-        posBytes += count;
-    }
-
-    // Write the two fields -- even-numbered lines, then odd-numbered lines.
-    // In an NTSC TBC file, the first field is the one that starts with the
-    // half-line (i.e. frame line 39, when counting from 0).
-    if (!encodeField(frameNo * 2)) {
-        return -1;
-    }
-    if (!encodeField((frameNo * 2) + 1)) {
-        return -1;
-    }
-
-    return 1;
-}
-
-// Encode one field from rgbFrame to the output.
-// Returns true on success; on failure, prints an error and returns false.
-bool NTSCEncoder::encodeField(qint32 fieldNo)
-{
-    const qint32 lineOffset = fieldNo % 2;
-
-    // TBC data is unsigned 16-bit values in native byte order
-    QVector<quint16> outputLine;
-
-    for (qint32 frameLine = 0; frameLine < 2 * videoParameters.fieldHeight; frameLine++) {
-        // Skip lines that aren't in this field
-        if ((frameLine % 2) != lineOffset) {
-            continue;
-        }
-
-        // Encode the line
-        const quint16 *rgbData = nullptr;
-        if (frameLine >= activeTop && frameLine < (activeTop + activeHeight)) {
-            rgbData = reinterpret_cast<const quint16 *>(rgbFrame.data()) + ((frameLine - activeTop) * activeWidth * 3);
-        }
-        encodeLine(fieldNo, frameLine, rgbData, outputLine);
-
-        // Write the line to the TBC file
-        const char *outputData = reinterpret_cast<const char *>(outputLine.data());
-        qint64 remainBytes = outputLine.size() * 2;
-        qint64 posBytes = 0;
-        while (remainBytes > 0) {
-            qint64 count = tbcFile.write(outputData + posBytes, remainBytes);
-            if (count < 0) {
-                qCritical() << "Error writing to output file";
-                return false;
-            }
-            remainBytes -= count;
-            posBytes += count;
-        }
-    }
-
-    // Generate field metadata
-    LdDecodeMetaData::Field fieldData;
     fieldData.seqNo = fieldNo;
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
     fieldData.medianBurstIRE = 20;
-    fieldData.fieldPhaseID = fieldNo % 4;
+    fieldData.fieldPhaseID = (fieldNo + fieldOffset) % 4;
     fieldData.audioSamples = 0;
-    metaData.appendField(fieldData);
-
-    return true;
-}
-
-// Generate a gate waveform with raised-cosine transitions, with 50% points at given start and end times
-static double raisedCosineGate(double t, double startTime, double endTime, double halfRiseTime)
-{
-    if (t < startTime - halfRiseTime) {
-        return 0.0;
-    } else if (t < startTime + halfRiseTime) {
-        return 0.5 + (0.5 * sin((M_PI / 2.0) * ((t - startTime) / halfRiseTime)));
-    } else if (t < endTime - halfRiseTime) {
-        return 1.0;
-    } else if (t < endTime + halfRiseTime) {
-        return 0.5 - (0.5 * sin((M_PI / 2.0) * ((t - endTime) / halfRiseTime)));
-    } else {
-        return 0.0;
-    }
 }
 
 // Types of sync pulse [Poynton p502]
@@ -288,20 +168,23 @@ static constexpr std::array<double, 23> qFilterCoeffs {
 };
 static constexpr auto qFilter = makeFIRFilter(qFilterCoeffs);
 
-void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine)
+void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+                             std::vector<double> &outputC, std::vector<double> &outputVBS)
 {
-    // Resize the output line and fill with blanking
-    outputLine.resize(videoParameters.fieldWidth);
-    outputLine.fill(blankingIre);
+    if (frameLine == 525) {
+        // Dummy last line, filled with blanking
+        std::fill(outputC.begin(), outputC.end(), 0.0);
+        const double blanking = (static_cast<double>(blankingIre) - videoParameters.black16bIre)
+                                / (videoParameters.white16bIre - videoParameters.black16bIre);
+        std::fill(outputVBS.begin(), outputVBS.end(), blanking);
 
-    // Skip encoding the last (dummy) frameLine
-    if (frameLine == 525)
         return;
+    }
 
     // How many complete lines have gone by since the start of the 4-field
     // sequence? Subcarrier is positive going at line 10, so adjust for
     // that here. [SMPTE p3]
-    const qint32 fieldID = fieldNo % 4;
+    const qint32 fieldID = (fieldNo + fieldOffset) % 4;
     qint32 prevLines = ((fieldID / 2) * 525) + ((fieldID % 2) * 263) + (frameLine / 2) - 10;
     // XXX The third field shouldn't be special like this. If anything,
     // colorframe B needs something, but prevLines seems correct.
@@ -377,9 +260,9 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
 
     // Clear output buffers. Values in these are scaled so that 0.0 is black and
     // 1.0 is white.
-    Y.fill(0.0);
-    C1.fill(0.0);
-    C2.fill(0.0);
+    std::fill(Y.begin(), Y.end(), 0.0);
+    std::fill(C1.begin(), C1.end(), 0.0);
+    std::fill(C2.begin(), C2.end(), 0.0);
 
     if (rgbData != nullptr) {
         // Convert the R'G'B' data to component form
@@ -409,7 +292,7 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
         }
     }
 
-    for (qint32 x = 0; x < outputLine.size(); x++) {
+    for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
         // For this sample, compute time relative to 0H, and subcarrier phase
         const double t = (x / videoParameters.sampleRate) - zeroH;
         const double a = 2.0 * M_PI * ((videoParameters.fSC * t) + prevCycles);
@@ -427,20 +310,17 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
             chroma = C2[x] * sin(a + 33.0) + C1[x] * cos(a + 33.0);
         }
 
-        // Combine everything to make up the composite signal
+        // Generate C output
         const double burstGate = raisedCosineGate(t, burstStartTime, burstEndTime, halfBurstRiseTime);
-        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double chromaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfChromaRiseTime);
+        outputC[x] = (burst * burstGate)
+                     + qBound(-chromaGate, chroma, chromaGate);
+
+        // Generate VBS output
+        const double lumaGate = raisedCosineGate(t, activeStartTime, activeEndTime, halfLumaRiseTime);
         const double leftSyncGate = syncPulseGate(t, leftSyncStartTime, leftSyncType);
         const double rightSyncGate = syncPulseGate(t, rightSyncStartTime, rightSyncType);
-        const double composite = (burst * burstGate)
-                                 + qBound(-lumaGate, Y[x], lumaGate)
-                                 + qBound(-chromaGate, chroma, chromaGate)
-                                 + (syncLevel * (leftSyncGate + rightSyncGate));
-
-        // Scale to a 16-bit output sample and limit the excursion to the
-        // permitted sample values. [SMPTE p6]
-        const double scaled = (composite * (videoParameters.white16bIre - videoParameters.black16bIre)) + videoParameters.black16bIre;
-        outputLine[x] = qBound(static_cast<double>(0x0100), scaled, static_cast<double>(0xFEFF));
+        outputVBS[x] = qBound(-lumaGate, Y[x], lumaGate)
+                       + (syncLevel * (leftSyncGate + rightSyncGate));
     }
 }
