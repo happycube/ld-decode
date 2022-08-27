@@ -108,12 +108,12 @@ mark_as_advanced (
 #
 
 cmake_minimum_required(VERSION 3.22)
-project(ld-analyse VERSION 1.0 LANGUAGES CXX)
+project(ld-analyse)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 #list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
 
-# Set up AUTOMOC and some sensible defaults for runtime execution
+# Set up AUTOMOC and some sensible defaults for runtime executionGui
 # When using Qt 6.3, you can replace the code block below with
 #qt_standard_project_setup()
 set(CMAKE_AUTOMOC ON)
@@ -121,8 +121,8 @@ include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
 find_library(QWT_LIBRARY_RELEASE NAMES qwt qwt-qt5 qt5-qwt PATH_SUFFIXES lib)
-find_package(QT NAMES Qt6 qwt-qt6 REQUIRED COMPONENTS Core HINTS Gui Widgets ${QT_LIBRARY_DIR})
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
+find_package(QT NAMES Qt5 REQUIRED COMPONENTS Core Gui Widgets HINTS ${QT_LIBRARY_DIR})
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
 
 # Name all the files
 add_executable(ld-analyse MACOSX_BUNDLE
@@ -180,23 +180,23 @@ execute_process(
 
 # Pass it on to the source code
 add_definitions(-DAPP_BRANCH="\""+${GIT_BRANCH}+"\"" -DAPP_COMMIT="\""+${GIT_COMMIT_HASH}+"\"")
-
 target_compile_definitions(ld-analyse PRIVATE
     QT_DEPRECATED_WARNINGS
 )
 
 target_include_directories(ld-analyse PUBLIC
-    ${QWT_INCLUDE_DIRS}
+    ${QWT_INCLUDE_DIR}
 )
 
-target_link_libraries(ld-analyse PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets fftw3 ld-tbc ld-filter ld-chroma-lib ${QWT_LIBRARY})
+target_link_libraries(ld-analyse PRIVATE Qt::Core Qt::Gui Qt::Widgets Qwt::Qwt ${QWT_LIBRARY} fftw3 ld-tbc ld-filter ld-chroma-lib)
 
-#message( STATUS "--------- Qwt_FOUND = ${Qwt_FOUND} ---------")
-#message( STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
-#message( STATUS "--------- QWT_LIBRARIES = ${QWT_LIBRARIES} ---------")
-#message( STATUS "--------- QWT_INCLUDE_DIRS = ${QWT_INCLUDE_DIRS} ---------")
-#message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------")
-#message( STATUS "--------- QWT_VERSION_STRING = ${QWT_VERSION_STRING} ---------")
+#message( STATUS "--------- QT5_LIBRARY_DIR = ${QT5_LIBRARY_DIR} ---------")
+message( STATUS "--------- Qwt_FOUND = ${Qwt_FOUND} ---------")
+message( STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
+message( STATUS "--------- QWT_LIBRARIES = ${QWT_LIBRARIES} ---------")
+message( STATUS "--------- QWT_INCLUDE_DIRS = ${QWT_INCLUDE_DIRS} ---------")
+message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------")
+message( STATUS "--------- QWT_VERSION_STRING = ${QWT_VERSION_STRING} ---------")
 
 # Resources:
 set(resources1_resource_files

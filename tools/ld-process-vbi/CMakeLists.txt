@@ -51,14 +51,14 @@ execute_process(
 # Pass it on to the source code
 add_definitions(-DAPP_BRANCH="\""+${GIT_BRANCH}+"\"" -DAPP_COMMIT="\""+${GIT_COMMIT_HASH}+"\"")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
+find_package(Qt5 REQUIRED COMPONENTS Core Widgets Gui)
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})
 
 QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
 
 find_library(QWT_LIBRARY_RELEASE NAMES qwt qwt-qt5 qt5-qwt PATH_SUFFIXES lib)
-find_package(QT NAMES Qt6 Qt5 qwt-qt6 REQUIRED COMPONENTS Core Gui Widgets HINTS ${QT_LIBRARY_DIR})
+find_package(QT NAMES Qt5 Qt5 qwt-qt6 REQUIRED COMPONENTS Core Gui Widgets HINTS ${QT_LIBRARY_DIR})
 
 # ld-process-vbi executable
 

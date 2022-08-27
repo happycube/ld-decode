@@ -12,12 +12,13 @@ set(CMAKE_AUTOUIC_SEARCH_PATHS "${SMAKE_CURRENT_SOURCE_DIR}/ui")
 # Include all the paths
 message( STATUS "--------- Finding packages---------")
 
-find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt5 REQUIRED COMPONENTS Core)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavcodec
     libavformat
     libavutil
+    fftw3
 )
 
 # Make the libraries

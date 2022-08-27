@@ -52,7 +52,7 @@ ADD_DEFINITIONS(${QT_DEFINITIONS})
 QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
 
 find_library(QWT_LIBRARY_RELEASE NAMES qwt qwt-qt5 qt5-qwt PATH_SUFFIXES lib)
-find_package(QT NAMES Qt6 Qt5 qwt-qt6 REQUIRED COMPONENTS Core Gui Widgets HINTS ${QT_LIBRARY_DIR})
+find_package(QT NAMES Qt5 Qt5 qwt-qt6 REQUIRED COMPONENTS Core Gui Widgets HINTS ${QT_LIBRARY_DIR})
 
 # ld-export-metadata executable
 

@@ -6,6 +6,7 @@ cmake_minimum_required( VERSION 3.22 )
 #ld-chroma-encoder SOURCES
 set ( SOURCES
 	"main.cpp"
+	"encoder.cpp"
 	"ntscencoder.cpp"
 	"palencoder.cpp"
 	"../../library/tbc/dropouts.cpp"
@@ -17,6 +18,7 @@ set ( SOURCES
 
 #ld-chroma-encoder HEADERS
 set ( HEADERS
+	"encoder.h"
 	"ntscencoder.h"
 	"palencoder.h"
 	"../../library/filter/firfilter.h"
@@ -50,7 +52,7 @@ execute_process(
 # Pass it on to the source code
 add_definitions(-DAPP_BRANCH="\""+${GIT_BRANCH}+"\"" -DAPP_COMMIT="\""+${GIT_COMMIT_HASH}+"\"")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
+find_package(Qt5 REQUIRED COMPONENTS Core)
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})
 
@@ -60,6 +62,6 @@ QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core fftw3 ld-tbc ld-filter)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Core fftw3 ld-tbc ld-filter)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "")

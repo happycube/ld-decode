@@ -87,11 +87,13 @@ ADD_DEFINITIONS(${QT_DEFINITIONS})
 
 QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
 
+find_package(Qt5 REQUIRED COMPONENTS Core)
+
 # ld-chroma-decoder executable
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core fftw3 ld-tbc ld-filter)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Core fftw3 ld-tbc ld-filter)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "")
 
@@ -103,7 +105,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -O3 -Wall -ftree-vectorize -ffa
 
 add_library(ld-chroma-lib SHARED
 	"comb.h"
-    "palcolour.h"
+	"palcolour.h"
 )
 
 target_include_directories(ld-chroma-lib PUBLIC ./)
