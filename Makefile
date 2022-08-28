@@ -57,18 +57,18 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/lemon/Documents/DomesdayProject/ld-decode-cmake
+CMAKE_SOURCE_DIR = /home/sneki/Documents/domesday/ld-decode-cmake
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/lemon/Documents/DomesdayProject/ld-decode-cmake
+CMAKE_BINARY_DIR = /home/sneki/Documents/domesday/ld-decode-cmake
 
 #=============================================================================
 # Targets provided globally by CMake.
 
 # Special rule for the target edit_cache
 edit_cache:
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "No interactive CMake dialog available..."
-	/usr/bin/cmake -E echo No\ interactive\ CMake\ dialog\ available.
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --cyan "Running CMake cache editor..."
+	/usr/bin/ccmake -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
 .PHONY : edit_cache
 
 # Special rule for the target edit_cache
@@ -132,9 +132,9 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/lemon/Documents/DomesdayProject/ld-decode-cmake/CMakeFiles /home/lemon/Documents/DomesdayProject/ld-decode-cmake//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/sneki/Documents/domesday/ld-decode-cmake/CMakeFiles /home/sneki/Documents/domesday/ld-decode-cmake//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/lemon/Documents/DomesdayProject/ld-decode-cmake/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/sneki/Documents/domesday/ld-decode-cmake/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
