@@ -1,7 +1,6 @@
 message( STATUS "---------Beginning cmake build of ld-analyse---------")
 project(ld-analyse)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
 include_directories(Graphics)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -44,18 +43,25 @@ add_executable(ld-analyse MACOSX_BUNDLE
     whitesnranalysisdialog.cpp whitesnranalysisdialog.h whitesnranalysisdialog.ui
 )
 
+find_path ( QWT_INCLUDE_DIR
+  NAMES qwt_plot.h
+  HINTS ${QT_INCLUDE_DIR}
+  PATH_SUFFIXES qwt qwt-qt5 qwt6
+)
+
+find_library ( QWT_LIBRARY
+  NAMES qwt qwt-qt5
+  HINTS ${QT_LIBRARY_DIR}
+)
+
 target_include_directories(ld-analyse PUBLIC
     ${QWT_INCLUDE_DIR}
 )
 
 target_link_libraries(ld-analyse PRIVATE Qt::Core Qt::Gui Qt::Widgets ${QWT_LIBRARY} fftw3 ld-library ld-chroma-lib)
 
-#message( STATUS "--------- QT5_LIBRARY_DIR = ${QT5_LIBRARY_DIR} ---------")
-#message( STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
-#message( STATUS "--------- QWT_LIBRARIES = ${QWT_LIBRARIES} ---------")
-#message( STATUS "--------- QWT_INCLUDE_DIRS = ${QWT_INCLUDE_DIRS} ---------")
-#message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------")
-#message( STATUS "--------- QWT_VERSION_STRING = ${QWT_VERSION_STRING} ---------")
+message( STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
+message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------")
 
 # Resources:
 set(resources1_resource_files
