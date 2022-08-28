@@ -86,4 +86,4 @@ add_library(ld-chroma-lib SHARED
 target_include_directories(ld-chroma-lib PUBLIC ./)
 
 set_target_properties(ld-chroma-lib PROPERTIES LINKER_LANGUAGE CXX)
-install(TARGETS ld-chroma-lib LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+#install(TARGETS ld-chroma-lib LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
