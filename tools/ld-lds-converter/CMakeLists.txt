@@ -4,8 +4,8 @@ project( ld-lds-converter )
 #ld-lds-converter SOURCES
 set( SOURCES
 	"dataconverter.cpp"
-	"main.cpp"
-	"../library/tbc/logging.cpp"
+		"main.cpp"
+		"../library/tbc/logging.cpp"
 )
 
 #ld-lds-converter HEADERS
@@ -28,8 +28,6 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-set(CMAKE_AUTOUIC_SEARCH_PATHS "${SMAKE_CURRENT_SOURCE_DIR}/ui")
 
 # Link them to the project
 

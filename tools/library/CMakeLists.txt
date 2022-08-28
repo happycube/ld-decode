@@ -1,9 +1,6 @@
 message( STATUS "---------Beginning cmake build of ld-library---------")
 project( ld-library )
 
-#add_compile_options(-std=c++17
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -O3 -Wall -ftree-vectorize -funroll-loops")
-
 include_directories()
 
 find_package(OpenCV REQUIRED)

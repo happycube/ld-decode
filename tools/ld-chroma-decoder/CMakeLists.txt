@@ -55,8 +55,6 @@ set ( HEADERS
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-set(CMAKE_AUTOUIC_SEARCH_PATHS "${SMAKE_CURRENT_SOURCE_DIR}/ui")
-
 ADD_DEFINITIONS(${QT_DEFINITIONS})
 
 QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
@@ -75,8 +73,6 @@ install(TARGETS ${PROJECT_NAME} DESTINATION "")
 # Make a library for ld-analyse to use
 
 project( ld-chroma-lib )
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -O3 -Wall -ftree-vectorize -ffast-math -funroll-loops")
 
 add_library(ld-chroma-lib SHARED
 	"comb.h"

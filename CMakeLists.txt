@@ -46,7 +46,8 @@ execute_process(
 )
 
 # Pass it on to the source code
-add_definitions(-DAPP_BRANCH="\""+${GIT_BRANCH}+"\"" -DAPP_COMMIT="\""+${GIT_COMMIT_HASH}+"\"")
+add_compile_definitions(APP_BRANCH)#=${GIT_BRANCH})
+add_compile_definitions(APP_COMMIT)#=${GIT_COMMIT_HASH})
 
 message( STATUS "--------- Git branch: ${GIT_BRANCH} ---------")
 message( STATUS "--------- Git commit: ${GIT_COMMIT_HASH} ---------")

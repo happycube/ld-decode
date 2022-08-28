@@ -26,25 +26,6 @@ set ( HEADERS
 	"../library/tbc/vbidecoder.h"
 )
 
-# Get the current working branch
-execute_process(
-	COMMAND git rev-parse --abbrev-ref HEAD
-	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-	OUTPUT_VARIABLE GIT_BRANCH
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Get the latest abbreviated commit hash of the working branch
-execute_process(
-	COMMAND git log -1 --format=%h
-	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-	OUTPUT_VARIABLE GIT_COMMIT_HASH
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Pass it on to the source code
-add_definitions(-DAPP_BRANCH="\""+${GIT_BRANCH}+"\"" -DAPP_COMMIT="\""+${GIT_COMMIT_HASH}+"\"")
-
 find_package(Qt5 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
@@ -59,8 +40,6 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Widgets ld-library)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-set(CMAKE_AUTOUIC_SEARCH_PATHS "${SMAKE_CURRENT_SOURCE_DIR}/ui")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE )
 
