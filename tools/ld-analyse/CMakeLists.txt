@@ -1,7 +1,7 @@
 message( STATUS "---------Beginning cmake build of ld-analyse---------")
 project(ld-analyse)
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
+#list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
 include_directories(Graphics)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
