@@ -1,7 +1,5 @@
 message( STATUS "---------Beginning cmake build of ld-chroma-decoder---------")
-
 project( ld-chroma-decoder )
-cmake_minimum_required( VERSION 3.22 )
 
 #ld-chroma-decoder SOURCES
 set ( SOURCES
@@ -57,43 +55,20 @@ set ( HEADERS
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-set(CMAKE_CXX_STANDARD 17)
-
-# Get the current working branch
-execute_process(
-	COMMAND git rev-parse --abbrev-ref HEAD
-	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-	OUTPUT_VARIABLE GIT_BRANCH
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Get the latest abbreviated commit hash of the working branch
-execute_process(
-	COMMAND git log -1 --format=%h
-	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-	OUTPUT_VARIABLE GIT_COMMIT_HASH
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Pass it on to the source code
-add_definitions(-DAPP_BRANCH="\""+${GIT_BRANCH}+"\"" -DAPP_COMMIT="\""+${GIT_COMMIT_HASH}+"\"")
-
-message( STATUS "--------- Git branch: ${GIT_BRANCH} ---------")
-message( STATUS "--------- Git commit: ${GIT_COMMIT_HASH} ---------")
-
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${SMAKE_CURRENT_SOURCE_DIR}/ui")
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})
 
 QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
 
-find_package(Qt5 REQUIRED COMPONENTS Core)
+find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
 
 # ld-chroma-decoder executable
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Core fftw3 ld-tbc ld-filter)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core fftw3 ld-library)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "")
 
@@ -111,4 +86,4 @@ add_library(ld-chroma-lib SHARED
 target_include_directories(ld-chroma-lib PUBLIC ./)
 
 set_target_properties(ld-chroma-lib PROPERTIES LINKER_LANGUAGE CXX)
-install(TARGETS ld-chroma-lib LIBRARY DESTINATION /usr/lib64 ARCHIVE DESTINATION /usr/lib64)
+install(TARGETS ld-chroma-lib LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
