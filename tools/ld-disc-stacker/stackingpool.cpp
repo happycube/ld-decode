@@ -174,11 +174,20 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
             // Use VBI frame number mapping to get the same frame from the
             // current additional source
             qint32 currentSourceFrameNumber = convertVbiFrameNumberToSequential(currentVbiFrame, sourceNo);
-            firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(currentSourceFrameNumber);
-            secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(currentSourceFrameNumber);
 
-            qDebug().nospace() << "Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
-                        " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+            // Check the current source contains the frame
+            if (ldDecodeMetaData[sourceNo]->getNumberOfFrames() < currentSourceFrameNumber) {
+                firstFieldNumber[sourceNo] = -1;
+                secondFieldNumber[sourceNo] = -1;
+
+                qDebug().nospace() << "Source #" << sourceNo << " does not contain VBI frame number " << currentVbiFrame;
+            } else {
+                firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(currentSourceFrameNumber);
+                secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(currentSourceFrameNumber);
+
+                qDebug().nospace() << "Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+            }
         } else {
             qDebug().nospace() << "Source #" << sourceNo << " does not contain a usable frame";
         }
@@ -397,16 +406,26 @@ QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
     QVector<qint32> availableSourcesForFrame;
     for (qint32 sourceNo = 0; sourceNo < sourceVideos.size(); sourceNo++) {
         if (vbiFrameNumber >= sourceMinimumVbiFrame[sourceNo] && vbiFrameNumber <= sourceMaximumVbiFrame[sourceNo]) {
-            // Get the field numbers for the frame
-            qint32 firstFieldNumber = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo));
-            qint32 secondFieldNumber = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo));
+            // Get the field numbers for the frame - THIS CRASHES
+            qint32 sequentialFrameNumber = convertVbiFrameNumberToSequential(vbiFrameNumber, sourceNo);
 
-            // Ensure the frame is not a padded field (i.e. missing)
-            if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == false && ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == false) {
-                availableSourcesForFrame.append(sourceNo);
+            // Check the source contains enough frames to have the required sequential frame
+            if (ldDecodeMetaData[sourceNo]->getNumberOfFrames() < sequentialFrameNumber)
+            {
+                // Sequential frame is out of bounds
+                qDebug() << "VBI Frame number" << vbiFrameNumber << "is out of bounds for source " << sourceNo;
             } else {
-                if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == true) qDebug() << "First field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
-                if (ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == true) qDebug() << "Second field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
+                // Sequential frame is in bounds
+                qint32 firstFieldNumber = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(sequentialFrameNumber);
+                qint32 secondFieldNumber = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(sequentialFrameNumber);
+
+                // Ensure the frame is not a padded field (i.e. missing)
+                if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == false && ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == false) {
+                    availableSourcesForFrame.append(sourceNo);
+                } else {
+                    if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == true) qDebug() << "First field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
+                    if (ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == true) qDebug() << "Second field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
+                }
             }
         }
     }
