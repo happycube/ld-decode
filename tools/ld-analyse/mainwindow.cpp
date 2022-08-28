@@ -601,7 +601,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         else filenameSuggestion += tr("ar43_");
     }
 
-    filenameSuggestion += QString::number(currentFrameNumber) + tr(".png");
+    filenameSuggestion += QString::number(currentFrameNumber) + "_" + tbcSource.getCurrentSourceFilename().split("/").last() + tr(".png");
 
     QString pngFilename = QFileDialog::getSaveFileName(this,
                 tr("Save PNG file"),
