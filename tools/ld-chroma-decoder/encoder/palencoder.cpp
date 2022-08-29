@@ -62,6 +62,11 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdD
         // moves to the right by (4 / 625) samples on each line. The values
         // in this struct represent the sample numbers *on the first line*.
         //
+        // Each line in the output TBC consists of a series of blanking samples
+        // followed by a series of active samples [EBU p9] -- different from
+        // ld-decode, which starts each line with the leading edge of the
+        // horizontal sync pulse (0H).
+        //
         // The first sample in the TBC frame is the first blanking sample of
         // field 1 line 1, sample 948 of 1135. 0H occurs midway between samples
         // 957 and 958. [EBU p7]

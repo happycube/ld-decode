@@ -3982,6 +3982,7 @@ class LDdecode:
         vp = {}
 
         vp["numberOfSequentialFields"] = len(self.fieldinfo)
+        vp["osInfo"] = f'{platform.system()}:{platform.release()}:{platform.version()}'
 
         if f is None:
             return
