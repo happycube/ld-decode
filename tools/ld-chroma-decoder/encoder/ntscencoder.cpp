@@ -58,11 +58,14 @@ NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, L
     // Each 63.555 usec line is 910 samples long. The values
     // in this struct represent the sample numbers *on the first line*.
     //
+    // Each line in the output TBC consists of a series of blanking samples
+    // followed by a series of active samples [SMPTE p4] -- different from
+    // ld-decode, which starts each line with the leading edge of the
+    // horizontal sync pulse (0H).
+    //
     // The first sample in the TBC frame is the first blanking sample of
     // field 1 line 1, sample 768 of 910. 0H occurs 33/90 between samples
     // 784 and 785. [SMPTE p4]
-
-    // Subcarrier is co-incident with 0H, i.e. SCH phase is 0. [Poynton p511]
     const double zeroH = 784 + 33.0 / 90.0 - 768;
 
     // Burst gate opens 19 cycles after 0H, and closes 9 cycles later.
@@ -114,7 +117,7 @@ void NTSCEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fiel
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
     fieldData.medianBurstIRE = 20;
-    fieldData.fieldPhaseID = (fieldNo + fieldOffset) % 4;
+    fieldData.fieldPhaseID = ((fieldNo + fieldOffset) % 4) + 1;
     fieldData.audioSamples = 0;
 }
 
@@ -182,26 +185,21 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
     }
 
     // How many complete lines have gone by since the start of the 4-field
-    // sequence? Subcarrier is positive going at line 10, so adjust for
-    // that here. [SMPTE p3]
+    // sequence?
     const qint32 fieldID = (fieldNo + fieldOffset) % 4;
-    qint32 prevLines = ((fieldID / 2) * 525) + ((fieldID % 2) * 263) + (frameLine / 2) - 10;
-    // XXX The third field shouldn't be special like this. If anything,
-    // colorframe B needs something, but prevLines seems correct.
-    if (fieldID == 2)
-        prevLines--;
+    const qint32 prevLines = ((fieldID / 2) * 525) + ((fieldID % 2) * 263) + (frameLine / 2);
 
-    // Subcarrier is co-incident with 0H which is 33/90 after sample 784
-    // [SMPTE p5] [Poynton p511]
+    // Compute the time at which 0H occurs within the line (see above).
     const double zeroH = (784 + 33.0 / 90.0 - 768) / videoParameters.sampleRate;
 
-    // How many cycles of the subcarrier have gone by at 0H? [Poynton p511]
-    // There are 227.5 cycles per lines (910/4). 0H is offset 33/90 of one
-    // sample, which is 33/360 of one 4-sample cycle.
-    const double prevCycles = prevLines * 227.5 + 33.0 / 360.0;
+    // How many cycles of the subcarrier have gone by at 0H?
+    // There are 227.5 cycles per line (910/4). [Poynton p511]
+    // Subtract 1/4 cycle because the burst is inverted but it should be
+    // crossing zero and going positive at the start of the field sequence.
+    const double prevCycles = (prevLines * 227.5) - 0.25;
 
     // The colorburst is inverted from subcarrier [SMPTE p4] [Poynton p512]
-    const double burstOffset = 227.5 * M_PI / 180.0;
+    const double burstOffset = 180.0 * M_PI / 180.0;
 
     // Burst peak-to-peak amplitude is 2/5 of black-white range
     // [Poynton p516 eq 42.6]
@@ -303,11 +301,11 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
         // Encode the chroma signal
         double chroma;
         if (chromaMode == WIDEBAND_YUV) {
-            // Y'UV [Poynton p338], offset 57 degrees
-            chroma = C1[x] * sin(a + 57.0 * M_PI / 180.0) + C2[x] * cos(a + 57.0 * M_PI / 180.0);
+            // Y'UV [Poynton p338]
+            chroma = C1[x] * sin(a) + C2[x] * cos(a);
         } else {
             // Y'IQ [Poynton p368]
-            chroma = C2[x] * sin(a + 33.0) + C1[x] * cos(a + 33.0);
+            chroma = C2[x] * sin(a + 33.0 * M_PI / 180.0) + C1[x] * cos(a + 33.0 * M_PI / 180.0);
         }
 
         // Generate C output

@@ -533,9 +533,8 @@ namespace {
 
     // Rotate the burst angle to get the correct values.
     // We do the 33 degree rotation here to avoid computing it for every pixel.
-    // TODO: additionally we need to rotate another ~10 degrees to get the correct hue, find out why.
-    constexpr double ROTATE_SIN = 0.6819983600624985;
-    constexpr double ROTATE_COS = 0.7313537016191705;
+    constexpr double ROTATE_SIN = 0.5446390350150271;
+    constexpr double ROTATE_COS = 0.838670567945424;
 
     BurstInfo detectBurst(const quint16* lineData,
                           const LdDecodeMetaData::VideoParameters& videoParameters)
