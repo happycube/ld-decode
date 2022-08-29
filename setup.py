@@ -19,7 +19,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Topic :: Multimedia :: Video :: Capture',
     ],
-
+    setup_requires=['cython'],
     packages=['lddecode', 'vhsdecode', 'vhsdecode/addons', 'vhsdecode/format_defs', 'cvbsdecode'],
     scripts=[
         'cx-expander',
@@ -46,6 +46,6 @@ setup(
         'numba',
         'numpy',
         'scipy',
-        'cython'
+        'Cython'
     ],
 )
