@@ -1,8 +1,6 @@
 message( STATUS "---------Beginning cmake build of ld-analyse---------")
 project(ld-analyse)
 
-include_directories(Graphics)
-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # Name all the files
@@ -54,24 +52,26 @@ find_library ( QWT_LIBRARY
   HINTS ${QT_LIBRARY_DIR}
 )
 
-target_include_directories(ld-analyse PUBLIC
-    ${QWT_INCLUDE_DIR}
+target_link_libraries(ld-analyse PRIVATE
+    Qt::Core
+    Qt::Gui
+    Qt::Widgets
+    ${QWT_LIBRARY}
+    fftw3
+    ld-library
+    ld-chroma-lib
 )
 
-target_link_libraries(ld-analyse PRIVATE Qt::Core Qt::Gui Qt::Widgets ${QWT_LIBRARY} fftw3 ld-library ld-chroma-lib)
-
 message( STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
-message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------")
+message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------") 
 
 # Resources:
-set(resources1_resource_files
+set(ld-analyse-resources
     "Graphics/64-analyse.png"
     "Graphics/128-analyse.png"
     "Graphics/256-analyse.png"
     "Graphics/end-frame.svg"
-    #"Graphics/ld-analyse logo.ai"
-    #"Graphics/ld-analyse.icns"
-    "Graphics/next-frame.svg" ${QWT_LIBRARY}
+    "Graphics/next-frame.svg"
     "Graphics/oscilloscope-target.svg"
     "Graphics/prev-frame.svg"
     "Graphics/start-frame.svg"
@@ -80,11 +80,15 @@ set(resources1_resource_files
     "Graphics/zoom-out.svg"
 )
 
-qt_add_resources(ld-analyse "resources1"
+qt_add_resources(ld-analyse "ld-analyse-resources"
     PREFIX
-        "/icons/Graphics"
+        "/icons"
     FILES
-        ${resources1_resource_files}
+        ${ld-analyse-resources}
+)
+
+target_include_directories(ld-analyse PUBLIC
+    ${QWT_INCLUDE_DIR}
 )
 
 if(WIN32)
@@ -99,9 +103,9 @@ if(WIN32)
     )
 endif()
 
-#install(TARGETS ld-analyse
-#    BUNDLE DESTINATION .
-#    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-#)
+install(TARGETS ld-analyse
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
-install(TARGETS ${PROJECT_NAME} DESTINATION "")
+#install(TARGETS ${PROJECT_NAME} DESTINATION "")

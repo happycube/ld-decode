@@ -57,10 +57,9 @@ message( STATUS "--------- Git commit: ${GIT_COMMIT_HASH} ---------")
 # Make the library
 add_subdirectory(tools/library)
 
-# This makes a library and a tool
-add_subdirectory(tools/ld-chroma-decoder)
-
 # Make the tools
+add_subdirectory(tools/ld-analyse)
+add_subdirectory(tools/ld-chroma-decoder)
 add_subdirectory(tools/ld-chroma-decoder/encoder)
 add_subdirectory(tools/ld-disc-stacker)
 add_subdirectory(tools/ld-discmap)
@@ -70,8 +69,6 @@ add_subdirectory(tools/ld-lds-converter)
 add_subdirectory(tools/ld-process-efm)
 add_subdirectory(tools/ld-process-vbi)
 add_subdirectory(tools/ld-process-vits)
-
-add_subdirectory(tools/ld-analyse)
 
 # ld-ldf-reader executable
 add_executable(${PROJECT_NAME} "ld-ldf-reader.c" )
