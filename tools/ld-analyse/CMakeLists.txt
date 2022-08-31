@@ -40,13 +40,10 @@ find_library(QWT_LIBRARY
 )
 
 target_link_libraries(ld-analyse PRIVATE
-    Qt::Core
-    Qt::Gui
-    Qt::Widgets
+    Qt::Core Qt::Gui Qt::Widgets
     ${QWT_LIBRARY}
     fftw3
-    ld-library
-    ld-chroma-lib
+    ld-library ld-chroma-lib
 )
 
 message(STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
@@ -62,10 +59,8 @@ if(WIN32)
         QUSB_LIBRARY
     )
 
-    target_link_libraries(ld-analyse PRIVATE
-        # TODO: Does this depend on compiler?
-        AdvAPI32
-    )
+    # TODO: Does this depend on compiler?
+    target_link_libraries(ld-analyse PRIVATE AdvAPI32)
 endif()
 
 install(TARGETS ld-analyse)
