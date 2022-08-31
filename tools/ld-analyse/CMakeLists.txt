@@ -58,9 +58,6 @@ if(WIN32)
         NOMINMAX
         QUSB_LIBRARY
     )
-
-    # TODO: Does this depend on compiler?
-    target_link_libraries(ld-analyse PRIVATE AdvAPI32)
 endif()
 
 install(TARGETS ld-analyse)
