@@ -58,11 +58,15 @@ perf.data*
 Benchfile*
 
 # CMake related things
-/CMakeFiles
-*/CMakeFiles
+*.depends
+*.ninja
+*_autogen/
+.ninja_*
+.qt/
 CMakeCache.txt
+CMakeFiles/
 cmake_install.cmake
 install_manifest.txt
-moc_*.cpp_parameters
 moc_*.cpp
+moc_*.cpp_parameters
 ui_*.h
