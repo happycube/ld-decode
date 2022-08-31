@@ -6,25 +6,12 @@ set(SOURCES
     correctorpool.cpp
     main.cpp
     dropoutcorrect.cpp
-    ../library/tbc/dropouts.cpp
-    ../library/tbc/filters.cpp
-    ../library/tbc/jsonio.cpp
-    ../library/tbc/lddecodemetadata.cpp
-    ../library/tbc/logging.cpp
-    ../library/tbc/sourcevideo.cpp
-    ../library/tbc/vbidecoder.cpp
 )
 
 #ld-dropout-correct HEADERS
 set(HEADERS
     correctorpool.h
     dropoutcorrect.h
-    ../library/tbc/dropouts.h
-    ../library/tbc/jsonio.h
-    ../library/tbc/lddecodemetadata.h
-    ../library/tbc/logging.h
-    ../library/tbc/sourcevideo.h
-    ../library/tbc/vbidecoder.h
 )
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})

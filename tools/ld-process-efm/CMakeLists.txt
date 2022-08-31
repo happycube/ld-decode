@@ -21,7 +21,6 @@ set(SOURCES
     Decoders/f2tof1frames.cpp
     Decoders/f3tof2frames.cpp
     Decoders/syncf3frames.cpp
-    ../library/tbc/logging.cpp
 )
 
 #ld-process-efm HEADERS
@@ -54,7 +53,6 @@ set(HEADERS
     ezpwd/serialize
     ezpwd/serialize_definitions
     ezpwd/timeofday
-    ../library/tbc/logging.h
 )
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})

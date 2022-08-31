@@ -19,24 +19,6 @@ set(ld-analyse_SOURCES
     vbidialog.cpp vbidialog.h vbidialog.ui
     configuration.cpp configuration.h
     dropoutanalysisdialog.cpp dropoutanalysisdialog.h dropoutanalysisdialog.ui
-    ../ld-chroma-decoder/palcolour.cpp ../ld-chroma-decoder/palcolour.h
-    ../ld-chroma-decoder/comb.cpp ../ld-chroma-decoder/comb.h
-    ../ld-chroma-decoder/componentframe.cpp ../ld-chroma-decoder/componentframe.h
-    ../ld-chroma-decoder/outputwriter.cpp ../ld-chroma-decoder/outputwriter.h
-    ../ld-chroma-decoder/transformpal.cpp ../ld-chroma-decoder/transformpal.h
-    ../ld-chroma-decoder/transformpal2d.cpp ../ld-chroma-decoder/transformpal2d.h
-    ../ld-chroma-decoder/transformpal3d.cpp ../ld-chroma-decoder/transformpal3d.h
-    ../ld-chroma-decoder/framecanvas.cpp ../ld-chroma-decoder/framecanvas.h
-    ../ld-chroma-decoder/sourcefield.cpp ../ld-chroma-decoder/sourcefield.h
-    ../library/filter/firfilter.h
-    ../library/tbc/dropouts.cpp ../library/tbc/dropouts.h
-    ../library/tbc/filters.cpp ../library/tbc/filters.h
-    ../library/tbc/jsonio.cpp ../library/tbc/jsonio.h
-    ../library/tbc/lddecodemetadata.cpp ../library/tbc/lddecodemetadata.h
-    ../library/tbc/linenumber.h
-    ../library/tbc/logging.cpp ../library/tbc/logging.h
-    ../library/tbc/sourcevideo.cpp ../library/tbc/sourcevideo.h
-    ../library/tbc/vbidecoder.cpp ../library/tbc/vbidecoder.h
     visibledropoutanalysisdialog.cpp visibledropoutanalysisdialog.h visibledropoutanalysisdialog.ui
     whitesnranalysisdialog.cpp whitesnranalysisdialog.h whitesnranalysisdialog.ui
 )
