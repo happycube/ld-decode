@@ -1,10 +1,6 @@
 message( STATUS "---------Beginning cmake build of ld-library---------")
 project( ld-library )
 
-include_directories()
-
-find_package(OpenCV REQUIRED)
-
 add_library(ld-library SHARED
     "filter/deemp.h"
     "filter/firfilter.h"
@@ -21,6 +17,5 @@ add_library(ld-library SHARED
 )
 
 target_include_directories(ld-library PUBLIC ./ filter tbc)
-target_link_libraries(ld-library ${OpenCV_LIBS})
 
 set_target_properties(ld-library PROPERTIES LINKER_LANGUAGE CXX)

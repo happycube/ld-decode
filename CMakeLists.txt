@@ -22,6 +22,9 @@ set(CMAKE_AUTOUIC ON)
 find_library(QWT_LIBRARY_RELEASE NAMES qwt qwt-qt5 qt5-qwt PATH_SUFFIXES lib)
 find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
+find_package(OpenCV REQUIRED)
+
+include_directories(${OpenCV_LIBS})
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
