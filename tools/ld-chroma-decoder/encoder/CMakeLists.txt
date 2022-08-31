@@ -1,30 +1,30 @@
-message( STATUS "---------Beginning cmake build of ld-chroma-encoder---------")
-project( ld-chroma-encoder )
+message(STATUS "---------Beginning cmake build of ld-chroma-encoder---------")
+project(ld-chroma-encoder)
 
 #ld-chroma-encoder SOURCES
-set ( SOURCES
-	main.cpp
-	encoder.cpp
-	ntscencoder.cpp
-	palencoder.cpp
-	../../library/tbc/dropouts.cpp
-	../../library/tbc/jsonio.cpp
-	../../library/tbc/lddecodemetadata.cpp
-	../../library/tbc/logging.cpp
-	../../library/tbc/vbidecoder.cpp
+set(SOURCES
+    main.cpp
+    encoder.cpp
+    ntscencoder.cpp
+    palencoder.cpp
+    ../../library/tbc/dropouts.cpp
+    ../../library/tbc/jsonio.cpp
+    ../../library/tbc/lddecodemetadata.cpp
+    ../../library/tbc/logging.cpp
+    ../../library/tbc/vbidecoder.cpp
 )
 
 #ld-chroma-encoder HEADERS
-set ( HEADERS
-	encoder.h
-	ntscencoder.h
-	palencoder.h
-	../../library/filter/firfilter.h
-	../../library/tbc/dropouts.h
-	../../library/tbc/jsonio.h
-	../../library/tbc/lddecodemetadata.h
-	../../library/tbc/logging.h
-	../../library/tbc/vbidecoder.h
+set(HEADERS
+    encoder.h
+    ntscencoder.h
+    palencoder.h
+    ../../library/filter/firfilter.h
+    ../../library/tbc/dropouts.h
+    ../../library/tbc/jsonio.h
+    ../../library/tbc/lddecodemetadata.h
+    ../../library/tbc/logging.h
+    ../../library/tbc/vbidecoder.h
 )
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)

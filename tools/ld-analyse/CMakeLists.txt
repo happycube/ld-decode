@@ -1,4 +1,4 @@
-message( STATUS "---------Beginning cmake build of ld-analyse---------")
+message(STATUS "---------Beginning cmake build of ld-analyse---------")
 project(ld-analyse)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -46,15 +46,15 @@ qt_add_resources(ld-analyse_SOURCES ld-analyse-resources.qrc)
 add_executable(ld-analyse MACOSX_BUNDLE
     ${ld-analyse_SOURCES})
 
-find_path ( QWT_INCLUDE_DIR
-  NAMES qwt_plot.h
-  HINTS ${QT_INCLUDE_DIR}
-  PATH_SUFFIXES qwt qwt-qt5 qwt6
+find_path(QWT_INCLUDE_DIR
+    NAMES qwt_plot.h
+    HINTS ${QT_INCLUDE_DIR}
+    PATH_SUFFIXES qwt qwt-qt5 qwt6
 )
 
-find_library ( QWT_LIBRARY
-  NAMES qwt qwt-qt5
-  HINTS ${QT_LIBRARY_DIR}
+find_library(QWT_LIBRARY
+    NAMES qwt qwt-qt5
+    HINTS ${QT_LIBRARY_DIR}
 )
 
 target_link_libraries(ld-analyse PRIVATE
@@ -67,8 +67,8 @@ target_link_libraries(ld-analyse PRIVATE
     ld-chroma-lib
 )
 
-message( STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
-message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------") 
+message(STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
+message(STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------")
 
 target_include_directories(ld-analyse PUBLIC
     ${QWT_INCLUDE_DIR}

@@ -1,5 +1,5 @@
-message( STATUS "---------Beginning cmake build of ld-library---------")
-project( ld-library )
+message(STATUS "---------Beginning cmake build of ld-library---------")
+project(ld-library)
 
 add_library(ld-library SHARED
     filter/deemp.h

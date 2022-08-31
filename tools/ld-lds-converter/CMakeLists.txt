@@ -1,17 +1,17 @@
-message( STATUS "---------Beginning cmake build of ld-lds-converter ---------")
-project( ld-lds-converter )
+message(STATUS "---------Beginning cmake build of ld-lds-converter ---------")
+project(ld-lds-converter)
 
 #ld-lds-converter SOURCES
-set( SOURCES
-	dataconverter.cpp
-		main.cpp
-		../library/tbc/logging.cpp
+set(SOURCES
+    dataconverter.cpp
+    main.cpp
+    ../library/tbc/logging.cpp
 )
 
 #ld-lds-converter HEADERS
-set ( HEADERS
-	dataconverter.h
-	../library/tbc/logging.h
+set(HEADERS
+    dataconverter.h
+    ../library/tbc/logging.h
 )
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})

@@ -1,33 +1,33 @@
-message( STATUS "---------Beginning cmake build of ld-discmap ---------")
-project( ld-discmap )
+message(STATUS "---------Beginning cmake build of ld-discmap ---------")
+project(ld-discmap)
 
 #ld-discmap SOURCES
-set( SOURCES
-	discmap.cpp
-	discmapper.cpp
-	frame.cpp
-	main.cpp
-	../library/tbc/dropouts.cpp
-	../library/tbc/jsonio.cpp
-	../library/tbc/lddecodemetadata.cpp
-	../library/tbc/logging.cpp
-	../library/tbc/sourceaudio.cpp
-	../library/tbc/sourcevideo.cpp
-	../library/tbc/vbidecoder.cpp
+set(SOURCES
+    discmap.cpp
+    discmapper.cpp
+    frame.cpp
+    main.cpp
+    ../library/tbc/dropouts.cpp
+    ../library/tbc/jsonio.cpp
+    ../library/tbc/lddecodemetadata.cpp
+    ../library/tbc/logging.cpp
+    ../library/tbc/sourceaudio.cpp
+    ../library/tbc/sourcevideo.cpp
+    ../library/tbc/vbidecoder.cpp
 )
 
 #ld-discmap HEADERS
-set ( HEADERS
-	discmap.h
-	discmapper.h
-	frame.h
-	../library/tbc/dropouts.h
-	../library/tbc/jsonio.h
-	../library/tbc/lddecodemetadata.h
-	../library/tbc/logging.h
-	../library/tbc/sourceaudio.h
-	../library/tbc/sourcevideo.h
-	../library/tbc/vbidecoder.h
+set(HEADERS
+    discmap.h
+    discmapper.h
+    frame.h
+    ../library/tbc/dropouts.h
+    ../library/tbc/jsonio.h
+    ../library/tbc/lddecodemetadata.h
+    ../library/tbc/logging.h
+    ../library/tbc/sourceaudio.h
+    ../library/tbc/sourcevideo.h
+    ../library/tbc/vbidecoder.h
 )
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})
