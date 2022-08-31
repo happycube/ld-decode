@@ -45,5 +45,3 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core fftw3 ld-library ld-chroma-lib)
 
 install(TARGETS ${PROJECT_NAME})
-
-#install(TARGETS ld-chroma-lib LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

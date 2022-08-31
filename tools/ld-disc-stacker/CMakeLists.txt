@@ -26,4 +26,4 @@ target_link_libraries(${PROJECT_NAME} PRIVATE)
 
 # Link them to the project
 
-install(TARGETS ${PROJECT_NAME} DESTINATION "")
+install(TARGETS ${PROJECT_NAME})

@@ -26,4 +26,4 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # Link them to the project
 
-install(TARGETS ${PROJECT_NAME} DESTINATION "")
+install(TARGETS ${PROJECT_NAME})

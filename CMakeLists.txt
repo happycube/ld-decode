@@ -75,7 +75,7 @@ add_executable(${PROJECT_NAME} ld-ldf-reader.c)
 
 target_link_libraries(${PROJECT_NAME} PkgConfig::LIBAV)
 
-install(TARGETS ${PROJECT_NAME} DESTINATION "")
+install(TARGETS ${PROJECT_NAME})
 
 set(OUTPUT ${CMAKE_CURRENT_BINARY_DIR})
 set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/lddecode/__init__.py)

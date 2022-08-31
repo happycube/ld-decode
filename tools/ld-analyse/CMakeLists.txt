@@ -68,9 +68,4 @@ if(WIN32)
     )
 endif()
 
-install(TARGETS ld-analyse
-    BUNDLE DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-#install(TARGETS ${PROJECT_NAME} DESTINATION "")
+install(TARGETS ld-analyse)

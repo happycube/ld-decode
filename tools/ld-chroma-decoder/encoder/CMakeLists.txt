@@ -24,4 +24,4 @@ add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 
-install(TARGETS ${PROJECT_NAME} DESTINATION "")
+install(TARGETS ${PROJECT_NAME})
