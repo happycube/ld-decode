@@ -8,15 +8,9 @@ set(SOURCES
     vitsanalyser.cpp
 )
 
-#ld-process-vits HEADERS
-set(HEADERS
-    processingpool.h
-    vitsanalyser.h
-)
-
 # ld-process-vits executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 

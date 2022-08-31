@@ -8,15 +8,9 @@ set(SOURCES
     stackingpool.cpp
 )
 
-#ld-disc-stacker HEADERS
-set(HEADERS
-    stacker.h
-    stackingpool.h
-)
-
 # ld-disc-stacker executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Widgets ld-library)
 

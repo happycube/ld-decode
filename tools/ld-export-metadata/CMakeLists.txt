@@ -9,16 +9,9 @@ set(SOURCES
     main.cpp
 )
 
-#ld-export-metadata HEADERS
-set(HEADERS
-    closedcaptions.h
-    csv.h
-    ffmetadata.h
-)
-
 # ld-export-metadata executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 

@@ -27,20 +27,11 @@ set(SOURCES
     paldecoder.cpp
 )
 
-#ld-chroma-decoder HEADERS
-set(HEADERS
-    decoder.h
-    decoderpool.h
-    monodecoder.h
-    ntscdecoder.h
-    paldecoder.h
-)
-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # ld-chroma-decoder executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core fftw3 ld-library ld-chroma-lib)
 

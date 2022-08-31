@@ -7,14 +7,9 @@ set(SOURCES
     main.cpp
 )
 
-#ld-lds-converter HEADERS
-set(HEADERS
-    dataconverter.h
-)
-
 # ld-lds-converter executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 

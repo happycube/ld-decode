@@ -11,18 +11,9 @@ set(SOURCES
     whiteflag.cpp
 )
 
-#ld-process-vbi HEADERS
-set(HEADERS
-    closedcaption.h
-    decoderpool.h
-    fmcode.h
-    vbilinedecoder.h
-    whiteflag.h
-)
-
 # ld-process-vbi executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 

@@ -9,16 +9,9 @@ set(SOURCES
     main.cpp
 )
 
-#ld-discmap HEADERS
-set(HEADERS
-    discmap.h
-    discmapper.h
-    frame.h
-)
-
 # ld-discmap executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 

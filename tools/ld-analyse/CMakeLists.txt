@@ -5,22 +5,22 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # Name all the files
 set(ld-analyse_SOURCES
-    blacksnranalysisdialog.cpp blacksnranalysisdialog.h blacksnranalysisdialog.ui
-    busydialog.cpp busydialog.h busydialog.ui
-    closedcaptionsdialog.cpp closedcaptionsdialog.h closedcaptionsdialog.ui
+    blacksnranalysisdialog.cpp blacksnranalysisdialog.ui
+    busydialog.cpp busydialog.ui
+    closedcaptionsdialog.cpp closedcaptionsdialog.ui
     main.cpp
-    mainwindow.cpp mainwindow.h mainwindow.ui
-    oscilloscopedialog.cpp oscilloscopedialog.h oscilloscopedialog.ui
-    vectorscopedialog.cpp vectorscopedialog.h vectorscopedialog.ui
-    aboutdialog.cpp aboutdialog.h aboutdialog.ui
-    videoparametersdialog.cpp videoparametersdialog.h videoparametersdialog.ui
-    chromadecoderconfigdialog.cpp chromadecoderconfigdialog.h chromadecoderconfigdialog.ui
-    tbcsource.cpp tbcsource.h
-    vbidialog.cpp vbidialog.h vbidialog.ui
-    configuration.cpp configuration.h
-    dropoutanalysisdialog.cpp dropoutanalysisdialog.h dropoutanalysisdialog.ui
-    visibledropoutanalysisdialog.cpp visibledropoutanalysisdialog.h visibledropoutanalysisdialog.ui
-    whitesnranalysisdialog.cpp whitesnranalysisdialog.h whitesnranalysisdialog.ui
+    mainwindow.cpp mainwindow.ui
+    oscilloscopedialog.cpp oscilloscopedialog.ui
+    vectorscopedialog.cpp vectorscopedialog.ui
+    aboutdialog.cpp aboutdialog.ui
+    videoparametersdialog.cpp videoparametersdialog.ui
+    chromadecoderconfigdialog.cpp chromadecoderconfigdialog.ui
+    tbcsource.cpp
+    vbidialog.cpp vbidialog.ui
+    configuration.cpp
+    dropoutanalysisdialog.cpp dropoutanalysisdialog.ui
+    visibledropoutanalysisdialog.cpp visibledropoutanalysisdialog.ui
+    whitesnranalysisdialog.cpp whitesnranalysisdialog.ui
 )
 
 qt_add_resources(ld-analyse_SOURCES ld-analyse-resources.qrc)

@@ -23,41 +23,9 @@ set(SOURCES
     Decoders/syncf3frames.cpp
 )
 
-#ld-process-efm HEADERS
-set(HEADERS
-    efmprocess.h
-    Datatypes/audio.h
-    Datatypes/f1frame.h
-    Datatypes/f2frame.h
-    Datatypes/f3frame.h
-    Datatypes/section.h
-    Datatypes/sector.h
-    Datatypes/tracktime.h
-    Decoders/c1circ.h
-    Decoders/c2circ.h
-    Decoders/c2deinterleave.h
-    Decoders/efmtof3frames.h
-    Decoders/f1toaudio.h
-    Decoders/f1todata.h
-    Decoders/f2tof1frames.h
-    Decoders/f3tof2frames.h
-    Decoders/syncf3frames.h
-    ezpwd/asserter
-    ezpwd/bch
-    ezpwd/bch_base
-    ezpwd/corrector
-    ezpwd/definitions
-    ezpwd/ezcod
-    ezpwd/output
-    ezpwd/rs
-    ezpwd/serialize
-    ezpwd/serialize_definitions
-    ezpwd/timeofday
-)
-
 # ld-process-efm executable
 
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Widgets ld-library)
 
