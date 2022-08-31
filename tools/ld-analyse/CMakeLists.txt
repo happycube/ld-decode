@@ -4,7 +4,7 @@ project(ld-analyse)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # Name all the files
-add_executable(ld-analyse MACOSX_BUNDLE
+set(ld-analyse_SOURCES
     blacksnranalysisdialog.cpp blacksnranalysisdialog.h blacksnranalysisdialog.ui
     busydialog.cpp busydialog.h busydialog.ui
     closedcaptionsdialog.cpp closedcaptionsdialog.h closedcaptionsdialog.ui
@@ -41,6 +41,11 @@ add_executable(ld-analyse MACOSX_BUNDLE
     whitesnranalysisdialog.cpp whitesnranalysisdialog.h whitesnranalysisdialog.ui
 )
 
+qt_add_resources(ld-analyse_SOURCES ld-analyse-resources.qrc)
+
+add_executable(ld-analyse MACOSX_BUNDLE
+    ${ld-analyse_SOURCES})
+
 find_path ( QWT_INCLUDE_DIR
   NAMES qwt_plot.h
   HINTS ${QT_INCLUDE_DIR}
@@ -64,28 +69,6 @@ target_link_libraries(ld-analyse PRIVATE
 
 message( STATUS "--------- QWT_LIBRARY = ${QWT_LIBRARY} ---------")
 message( STATUS "--------- QWT_INCLUDE_DIR = ${QWT_INCLUDE_DIR} ---------") 
-
-# Resources:
-set(ld-analyse-resources
-    "Graphics/64-analyse.png"
-    "Graphics/128-analyse.png"
-    "Graphics/256-analyse.png"
-    "Graphics/end-frame.svg"
-    "Graphics/next-frame.svg"
-    "Graphics/oscilloscope-target.svg"
-    "Graphics/prev-frame.svg"
-    "Graphics/start-frame.svg"
-    "Graphics/zoom-in.svg"
-    "Graphics/zoom-original.svg"
-    "Graphics/zoom-out.svg"
-)
-
-qt_add_resources(ld-analyse "ld-analyse-resources"
-    PREFIX
-        "/icons"
-    FILES
-        ${ld-analyse-resources}
-)
 
 target_include_directories(ld-analyse PUBLIC
     ${QWT_INCLUDE_DIR}

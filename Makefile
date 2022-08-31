@@ -185,4 +185,4 @@ check-decode-pal-clv:
 ### Generated files, not updated automatically ###
 
 tools/library/filter/deemp.h: scripts/filtermaker
-	$(PYTHON3) scripts/filtermaker >$@
+	$(PYTHON3) scripts/filtermaker
