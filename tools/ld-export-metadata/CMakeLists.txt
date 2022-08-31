@@ -3,27 +3,27 @@ project( ld-export-metadata )
 
 #ld-export-metadata SOURCES
 set( SOURCES
-	"closedcaptions.cpp"
-	"csv.cpp"
-	"ffmetadata.cpp"
-	"main.cpp"
-	"../library/tbc/dropouts.cpp"
-	"../library/tbc/jsonio.cpp"
-	"../library/tbc/lddecodemetadata.cpp"
-	"../library/tbc/logging.cpp"
-	"../library/tbc/vbidecoder.cpp"
+	closedcaptions.cpp
+	csv.cpp
+	ffmetadata.cpp
+	main.cpp
+	../library/tbc/dropouts.cpp
+	../library/tbc/jsonio.cpp
+	../library/tbc/lddecodemetadata.cpp
+	../library/tbc/logging.cpp
+	../library/tbc/vbidecoder.cpp
 )
 
 #ld-export-metadata HEADERS
 set ( HEADERS
-	"closedcaptions.h"
-	"csv.h"
-	"ffmetadata.h"
-	"../library/tbc/dropouts.h"
-	"../library/tbc/jsonio.h"
-	"../library/tbc/lddecodemetadata.h"
-	"../library/tbc/logging.h"
-	"../library/tbc/vbidecoder.h"
+	closedcaptions.h
+	csv.h
+	ffmetadata.h
+	../library/tbc/dropouts.h
+	../library/tbc/jsonio.h
+	../library/tbc/lddecodemetadata.h
+	../library/tbc/logging.h
+	../library/tbc/vbidecoder.h
 )
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})

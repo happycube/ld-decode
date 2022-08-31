@@ -3,15 +3,15 @@ project( ld-lds-converter )
 
 #ld-lds-converter SOURCES
 set( SOURCES
-	"dataconverter.cpp"
-		"main.cpp"
-		"../library/tbc/logging.cpp"
+	dataconverter.cpp
+		main.cpp
+		../library/tbc/logging.cpp
 )
 
 #ld-lds-converter HEADERS
 set ( HEADERS
-	"dataconverter.h"
-	"../library/tbc/logging.h"
+	dataconverter.h
+	../library/tbc/logging.h
 )
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})

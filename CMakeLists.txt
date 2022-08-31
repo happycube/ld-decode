@@ -71,14 +71,14 @@ add_subdirectory(tools/ld-process-vbi)
 add_subdirectory(tools/ld-process-vits)
 
 # ld-ldf-reader executable
-add_executable(${PROJECT_NAME} "ld-ldf-reader.c" )
+add_executable(${PROJECT_NAME} ld-ldf-reader.c )
 
 target_link_libraries(${PROJECT_NAME} PkgConfig::LIBAV )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "")
 
 set(OUTPUT ${CMAKE_CURRENT_BINARY_DIR})
-set(DEPS "${CMAKE_CURRENT_SOURCE_DIR}/lddecode/__init__.py")
+set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/lddecode/__init__.py)
 
 # install Python files (there might be a better way to do it)
 
@@ -88,7 +88,7 @@ find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
 
 add_custom_command(
   OUTPUT ${OUTPUT}/timestamp
-  COMMAND ${PYTHON} "./setup.py" build
+  COMMAND ${PYTHON} ./setup.py build
   COMMAND ${CMAKE_COMMAND} -E touch ${OUTPUT}/timestamp
   DEPENDS ${DEPS}
 )

@@ -3,33 +3,33 @@ project( ld-process-vbi )
 
 #ld-process-vbi SOURCES
 set( SOURCES
-	"closedcaption.cpp"
-	"decoderpool.cpp"
-	"main.cpp"
-	"fmcode.cpp"
-	"vbilinedecoder.cpp"
-	"whiteflag.cpp"
-	"../library/tbc/dropouts.cpp"
-	"../library/tbc/jsonio.cpp"
-	"../library/tbc/lddecodemetadata.cpp"
-	"../library/tbc/logging.cpp"
-	"../library/tbc/sourcevideo.cpp"
-	"../library/tbc/vbidecoder.cpp"
+	closedcaption.cpp
+	decoderpool.cpp
+	main.cpp
+	fmcode.cpp
+	vbilinedecoder.cpp
+	whiteflag.cpp
+	../library/tbc/dropouts.cpp
+	../library/tbc/jsonio.cpp
+	../library/tbc/lddecodemetadata.cpp
+	../library/tbc/logging.cpp
+	../library/tbc/sourcevideo.cpp
+	../library/tbc/vbidecoder.cpp
 )
 
 #ld-process-vbi HEADERS
 set ( HEADERS
-	"closedcaption.h"
-	"decoderpool.h"
-	"fmcode.h"
-	"vbilinedecoder.h"
-	"whiteflag.h"
-	"../library/tbc/dropouts.h"
-	"../library/tbc/jsonio.h"
-	"../library/tbc/lddecodemetadata.h"
-	"../library/tbc/logging.h"
-	"../library/tbc/sourcevideo.h"
-	"../library/tbc/vbidecoder.h"
+	closedcaption.h
+	decoderpool.h
+	fmcode.h
+	vbilinedecoder.h
+	whiteflag.h
+	../library/tbc/dropouts.h
+	../library/tbc/jsonio.h
+	../library/tbc/lddecodemetadata.h
+	../library/tbc/logging.h
+	../library/tbc/sourcevideo.h
+	../library/tbc/vbidecoder.h
 )
 
 ADD_DEFINITIONS(${QT_DEFINITIONS})
