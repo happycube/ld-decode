@@ -19,3 +19,9 @@ add_library(ld-library SHARED
 target_include_directories(ld-library PUBLIC ./ filter tbc)
 
 set_target_properties(ld-library PROPERTIES LINKER_LANGUAGE CXX)
+
+# XXX Build and run tests
+# tbc/testmetadata/testmetadata.cpp
+# tbc/testvbidecoder/testvbidecoder.cpp
+# tbc/testlinenumber/testlinenumber.cpp
+# filter/testfilter/testfilter.cpp

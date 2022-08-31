@@ -94,3 +94,5 @@ add_custom_command(
 )
 
 add_custom_target(target ALL DEPENDS ${OUTPUT}/timestamp)
+
+# XXX Run tests
