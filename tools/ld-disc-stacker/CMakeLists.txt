@@ -14,13 +14,6 @@ set(HEADERS
     stackingpool.h
 )
 
-find_package(Qt5 REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
-
-ADD_DEFINITIONS(${QT_DEFINITIONS})
-
-QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
-
 # ld-disc-stacker executable
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})

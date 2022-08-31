@@ -16,13 +16,6 @@ set(HEADERS
     frame.h
 )
 
-ADD_DEFINITIONS(${QT_DEFINITIONS})
-
-QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
-
-find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
-
 # ld-discmap executable
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
