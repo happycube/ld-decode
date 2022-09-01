@@ -65,6 +65,9 @@ Benchfile*
 .qt/
 CMakeCache.txt
 CMakeFiles/
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
 cmake_install.cmake
 install_manifest.txt
 moc_*.cpp
