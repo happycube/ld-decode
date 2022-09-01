@@ -14,16 +14,30 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
-find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core Gui Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
+find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
+
+# For Qt < 5.15, emulate 5.15's Qt5CoreConfig.cmake, so we don't have to
+# specify Qt5/Qt6 elsewhere.
+if(QT_VERSION VERSION_LESS 5.15)
+    function(qt_add_resources outfiles)
+        qt5_add_resources("${outfiles}" ${ARGN})
+        set("${outfiles}" "${${outfiles}}" PARENT_SCOPE)
+    endfunction()
+    foreach(library Core Gui Widgets)
+        add_library(Qt::${library} INTERFACE IMPORTED)
+        set_target_properties(Qt::${library} PROPERTIES
+            INTERFACE_LINK_LIBRARIES "Qt5::${library}")
+    endforeach()
+endif()
 
 find_path(QWT_INCLUDE_DIR
     NAMES qwt_plot.h
     HINTS ${QT_INCLUDE_DIR}
-    PATH_SUFFIXES qwt qwt-qt5 qwt6
+    PATH_SUFFIXES qwt-qt${QT_VERSION_MAJOR} qwt6 qwt
 )
 find_library(QWT_LIBRARY
-    NAMES qwt qwt-qt5
+    NAMES qwt6-qt${QT_VERSION_MAJOR} qwt-qt${QT_VERSION_MAJOR} qwt
     HINTS ${QT_LIBRARY_DIR}
 )
 add_library(qwt::qwt INTERFACE IMPORTED)
