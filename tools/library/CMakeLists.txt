@@ -1,4 +1,4 @@
-add_library(ld-library STATIC
+add_library(lddecode-library STATIC
     tbc/dropouts.cpp
     tbc/filters.cpp
     tbc/jsonio.cpp
@@ -9,9 +9,9 @@ add_library(ld-library STATIC
     tbc/vbidecoder.cpp
 )
 
-target_include_directories(ld-library PUBLIC filter tbc)
+target_include_directories(lddecode-library PUBLIC filter tbc)
 
-target_link_libraries(ld-library PRIVATE Qt::Core)
+target_link_libraries(lddecode-library PRIVATE Qt::Core)
 
 # XXX Build and run tests
 # tbc/testmetadata/testmetadata.cpp

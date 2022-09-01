@@ -26,7 +26,7 @@ target_link_libraries(ld-analyse PRIVATE
     Qt::Core Qt::Gui Qt::Widgets
     qwt::qwt
     fftw3
-    ld-library ld-chroma-lib
+    lddecode-library lddecode-chroma
 )
 
 if(WIN32)

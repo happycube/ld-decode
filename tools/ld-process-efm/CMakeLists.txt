@@ -21,6 +21,6 @@ add_executable(ld-process-efm
 
 target_include_directories(ld-process-efm PRIVATE .)
 
-target_link_libraries(ld-process-efm PRIVATE Qt::Core ld-library)
+target_link_libraries(ld-process-efm PRIVATE Qt::Core lddecode-library)
 
 install(TARGETS ld-process-efm)

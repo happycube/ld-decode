@@ -4,6 +4,6 @@ add_executable(ld-disc-stacker
     stackingpool.cpp
 )
 
-target_link_libraries(ld-disc-stacker PRIVATE Qt::Core ld-library)
+target_link_libraries(ld-disc-stacker PRIVATE Qt::Core lddecode-library)
 
 install(TARGETS ld-disc-stacker)

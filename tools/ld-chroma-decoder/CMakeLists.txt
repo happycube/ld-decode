@@ -1,6 +1,6 @@
 # Library for chroma decoders
 
-add_library(ld-chroma-lib STATIC
+add_library(lddecode-chroma STATIC
     comb.cpp
     componentframe.cpp
     framecanvas.cpp
@@ -12,9 +12,9 @@ add_library(ld-chroma-lib STATIC
     transformpal3d.cpp
 )
 
-target_include_directories(ld-chroma-lib PUBLIC .)
+target_include_directories(lddecode-chroma PUBLIC .)
 
-target_link_libraries(ld-chroma-lib PRIVATE Qt::Core fftw3 ld-library)
+target_link_libraries(lddecode-chroma PRIVATE Qt::Core fftw3 lddecode-library)
 
 # ld-chroma-decoder
 
@@ -27,6 +27,6 @@ add_executable(ld-chroma-decoder
     paldecoder.cpp
 )
 
-target_link_libraries(ld-chroma-decoder PRIVATE Qt::Core fftw3 ld-library ld-chroma-lib)
+target_link_libraries(ld-chroma-decoder PRIVATE Qt::Core fftw3 lddecode-library lddecode-chroma)
 
 install(TARGETS ld-chroma-decoder)

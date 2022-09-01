@@ -4,6 +4,6 @@ add_executable(ld-process-vits
     vitsanalyser.cpp
 )
 
-target_link_libraries(ld-process-vits PRIVATE Qt::Core ld-library)
+target_link_libraries(ld-process-vits PRIVATE Qt::Core lddecode-library)
 
 install(TARGETS ld-process-vits)
