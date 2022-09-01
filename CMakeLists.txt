@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 project(ld-decode-tools)
 
 #list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
+include(CTest)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -89,6 +90,13 @@ add_subdirectory(tools/ld-process-efm)
 add_subdirectory(tools/ld-process-vbi)
 add_subdirectory(tools/ld-process-vits)
 add_subdirectory(tools/library)
+
+if(BUILD_TESTING)
+    add_subdirectory(tools/library/filter/testfilter)
+    add_subdirectory(tools/library/tbc/testlinenumber)
+    add_subdirectory(tools/library/tbc/testmetadata)
+    add_subdirectory(tools/library/tbc/testvbidecoder)
+endif()
 
 # ld-ldf-reader
 

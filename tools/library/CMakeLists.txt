@@ -12,9 +12,3 @@ add_library(lddecode-library STATIC
 target_include_directories(lddecode-library PUBLIC filter tbc)
 
 target_link_libraries(lddecode-library PRIVATE Qt::Core)
-
-# XXX Build and run tests
-# tbc/testmetadata/testmetadata.cpp
-# tbc/testvbidecoder/testvbidecoder.cpp
-# tbc/testlinenumber/testlinenumber.cpp
-# filter/testfilter/testfilter.cpp
