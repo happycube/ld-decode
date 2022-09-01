@@ -17,9 +17,23 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
-find_library(QWT_LIBRARY_RELEASE NAMES qwt qwt-qt5 qt5-qwt PATH_SUFFIXES lib)
 find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets)
+
+find_path(QWT_INCLUDE_DIR
+    NAMES qwt_plot.h
+    HINTS ${QT_INCLUDE_DIR}
+    PATH_SUFFIXES qwt qwt-qt5 qwt6
+)
+find_library(QWT_LIBRARY
+    NAMES qwt qwt-qt5
+    HINTS ${QT_LIBRARY_DIR}
+)
+add_library(qwt::qwt INTERFACE IMPORTED)
+set_target_properties(qwt::qwt PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${QWT_INCLUDE_DIR}"
+    INTERFACE_LINK_LIBRARIES "${QWT_LIBRARY}"
+)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
