@@ -27,9 +27,9 @@ set(SOURCES
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
+target_include_directories(${PROJECT_NAME} PRIVATE .)
 
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
 
 # Link them to the project
 

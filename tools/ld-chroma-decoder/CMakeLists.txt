@@ -27,8 +27,6 @@ set(SOURCES
     paldecoder.cpp
 )
 
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
 # ld-chroma-decoder executable
 
 add_executable(${PROJECT_NAME} ${SOURCES})

@@ -9,8 +9,6 @@ set(SOURCES
     palencoder.cpp
 )
 
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
 # ld-chroma-encoder executable
 
 add_executable(${PROJECT_NAME} ${SOURCES})
