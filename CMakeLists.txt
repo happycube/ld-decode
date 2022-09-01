@@ -17,6 +17,7 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
+message(STATUS "Qt Version: ${QT_VERSION}")
 
 # For Qt < 5.15, emulate 5.15's Qt5CoreConfig.cmake, so we don't have to
 # specify Qt5/Qt6 elsewhere.
@@ -32,22 +33,10 @@ if(QT_VERSION VERSION_LESS 5.15)
     endforeach()
 endif()
 
-find_path(QWT_INCLUDE_DIR
-    NAMES qwt_plot.h
-    HINTS ${QT_INCLUDE_DIR}
-    PATH_SUFFIXES qwt-qt${QT_VERSION_MAJOR} qwt6 qwt
-)
-find_library(QWT_LIBRARY
-    NAMES qwt6-qt${QT_VERSION_MAJOR} qwt-qt${QT_VERSION_MAJOR} qwt
-    HINTS ${QT_LIBRARY_DIR}
-)
-add_library(qwt::qwt INTERFACE IMPORTED)
-set_target_properties(qwt::qwt PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${QWT_INCLUDE_DIR}"
-    INTERFACE_LINK_LIBRARIES "${QWT_LIBRARY}"
-)
-
 find_package(PkgConfig REQUIRED)
+
+find_package(Qwt REQUIRED)
+
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavcodec
     libavformat
