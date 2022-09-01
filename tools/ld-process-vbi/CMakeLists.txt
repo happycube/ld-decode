@@ -1,52 +1,12 @@
-message( STATUS "---------Beginning cmake build of ld-process-vbi ---------")
-project( ld-process-vbi )
-
-#ld-process-vbi SOURCES
-set( SOURCES
-	"closedcaption.cpp"
-	"decoderpool.cpp"
-	"main.cpp"
-	"fmcode.cpp"
-	"vbilinedecoder.cpp"
-	"whiteflag.cpp"
-	"../library/tbc/dropouts.cpp"
-	"../library/tbc/jsonio.cpp"
-	"../library/tbc/lddecodemetadata.cpp"
-	"../library/tbc/logging.cpp"
-	"../library/tbc/sourcevideo.cpp"
-	"../library/tbc/vbidecoder.cpp"
+add_executable(ld-process-vbi
+    closedcaption.cpp
+    decoderpool.cpp
+    main.cpp
+    fmcode.cpp
+    vbilinedecoder.cpp
+    whiteflag.cpp
 )
 
-#ld-process-vbi HEADERS
-set ( HEADERS
-	"closedcaption.h"
-	"decoderpool.h"
-	"fmcode.h"
-	"vbilinedecoder.h"
-	"whiteflag.h"
-	"../library/tbc/dropouts.h"
-	"../library/tbc/jsonio.h"
-	"../library/tbc/lddecodemetadata.h"
-	"../library/tbc/logging.h"
-	"../library/tbc/sourcevideo.h"
-	"../library/tbc/vbidecoder.h"
-)
+target_link_libraries(ld-process-vbi PRIVATE Qt::Core lddecode-library)
 
-ADD_DEFINITIONS(${QT_DEFINITIONS})
-
-QT_WRAP_CPP(HEADERS_MOC ${HEADERS})
-
-find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
-
-# ld-process-vbi executable
-
-add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS_MOC})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-set(CMAKE_INCLUDE_CURRENT_DIR ON)
-
-# Link them to the project
-
-install(TARGETS ${PROJECT_NAME} DESTINATION "")
+install(TARGETS ld-process-vbi)

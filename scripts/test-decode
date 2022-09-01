@@ -30,7 +30,8 @@ import subprocess
 import sys
 
 dry_run = False
-src_dir = None
+source_dir = None
+build_dir = None
 
 def die(*args):
     """Print an error message and exit."""
@@ -73,7 +74,7 @@ def run_ld_cut(args):
     cutfile = args.output + '.cut.ldf'
     safe_unlink(cutfile)
 
-    cmd = [src_dir + '/ld-cut']
+    cmd = [source_dir + '/ld-cut']
     if args.pal:
         cmd += ['--pal']
     if args.cutseek is not None:
@@ -88,7 +89,7 @@ def run_ld_cut(args):
 
     # Set PATH so it can invoke helper programs
     env = os.environ.copy()
-    env['PATH'] = src_dir + ':' + env['PATH']
+    env['PATH'] = build_dir + ':' + source_dir + ':' + env['PATH']
     run_command(cmd, env=env)
 
     # Use the output as the input for the rest of the decoding process
@@ -99,7 +100,7 @@ def run_ld_decode(args):
 
     clean(args, ['.tbc', '.tbc.json', '.efm', '.pcm'])
 
-    cmd = [src_dir + '/ld-decode']
+    cmd = [source_dir + '/ld-decode']
     cmd += ['--ignoreleadout']
     if args.pal:
         cmd += ['--pal']
@@ -108,7 +109,7 @@ def run_ld_decode(args):
 
     # Set PATH so it can invoke helper programs
     env = os.environ.copy()
-    env['PATH'] = src_dir + ':' + env['PATH']
+    env['PATH'] = build_dir + ':' + source_dir + ':' + env['PATH']
     run_command(cmd, env=env)
 
 def run_ld_process_vbi(args):
@@ -116,7 +117,7 @@ def run_ld_process_vbi(args):
 
     clean(args, ['.tbc.json.bup'])
 
-    cmd = [src_dir + '/tools/ld-process-vbi/ld-process-vbi']
+    cmd = [build_dir + '/tools/ld-process-vbi/ld-process-vbi']
     cmd += [args.output + '.tbc']
     run_command(cmd)
 
@@ -163,7 +164,7 @@ def run_ld_export_metadata(args):
 
     clean(args, ['.vits.csv', '.vbi.csv', '.ffmetadata'])
 
-    cmd = [src_dir + '/tools/ld-export-metadata/ld-export-metadata']
+    cmd = [build_dir + '/tools/ld-export-metadata/ld-export-metadata']
     cmd += ['--vits-csv', args.output + '.vits.csv']
     cmd += ['--vbi-csv', args.output + '.vbi.csv']
     cmd += ['--ffmetadata', args.output + '.ffmetadata']
@@ -188,7 +189,7 @@ def run_ld_process_efm(args):
         if os.stat(efm_file).st_size == 0:
             die(efm_file, 'is empty')
 
-    cmd = [src_dir + '/tools/ld-process-efm/ld-process-efm']
+    cmd = [build_dir + '/tools/ld-process-efm/ld-process-efm']
     cmd += [efm_file, pcm_file]
     run_command(cmd)
 
@@ -206,7 +207,7 @@ def run_ld_dropout_correct(args):
 
     clean(args, ['.doc.tbc', '.doc.tbc.json'])
 
-    cmd = [src_dir + '/tools/ld-dropout-correct/ld-dropout-correct']
+    cmd = [build_dir + '/tools/ld-dropout-correct/ld-dropout-correct']
     cmd += ['--overcorrect', args.output + '.tbc', args.output + '.doc.tbc']
     run_command(cmd)
 
@@ -216,7 +217,7 @@ def run_ld_chroma_decoder(args, decoder):
     clean(args, ['.rgb'])
     rgb_file = args.output + '.rgb'
 
-    cmd = [src_dir + '/tools/ld-chroma-decoder/ld-chroma-decoder']
+    cmd = [build_dir + '/tools/ld-chroma-decoder/ld-chroma-decoder']
     if decoder is not None:
         cmd += ['--decoder', decoder]
     cmd += [args.output + '.doc.tbc', rgb_file]
@@ -251,6 +252,10 @@ def main():
                        help='base name for output files (default testout/test)')
     group.add_argument('-n', '--dry-run', action='store_true',
                        help='show commands, rather than running them')
+    group.add_argument('--source', metavar='DIR',
+                       help='source tree to test (default same as this script)')
+    group.add_argument('--build', metavar='DIR',
+                       help='build tree to test (default source tree)')
     group.add_argument('--pal', action='store_true',
                        help='source is PAL (default NTSC)')
     group.add_argument('--no-efm', action='store_true', dest='no_efm',
@@ -289,9 +294,15 @@ def main():
 
     # Find the top-level source directory
     prog_path = os.path.realpath(sys.argv[0])
-    global src_dir
-    src_dir = os.path.dirname(os.path.dirname(prog_path))
-    print('Decoding', args.infile, 'using tools from', src_dir, file=sys.stderr)
+    global source_dir, build_dir
+    source_dir = os.path.dirname(os.path.dirname(prog_path))
+    if args.source:
+        source_dir = args.source
+    build_dir = source_dir
+    if args.build:
+        build_dir = args.build
+
+    print('Decoding', args.infile, 'using tools from', build_dir, file=sys.stderr)
 
     # Remove display environment variables, as the decoding tools shouldn't
     # depend on having a display
