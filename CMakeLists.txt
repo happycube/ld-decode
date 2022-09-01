@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(ld-decode-tools)
 
-#list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
 include(CTest)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -96,6 +96,7 @@ if(BUILD_TESTING)
     add_subdirectory(tools/library/tbc/testlinenumber)
     add_subdirectory(tools/library/tbc/testmetadata)
     add_subdirectory(tools/library/tbc/testvbidecoder)
+    include(LdDecodeTests)
 endif()
 
 # ld-ldf-reader
@@ -128,5 +129,3 @@ if(0)
 endif()
 
 # XXX Install rule for Python
-
-# XXX Run tests
