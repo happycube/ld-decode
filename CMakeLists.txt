@@ -34,9 +34,9 @@ if(QT_VERSION VERSION_LESS 5.15)
 endif()
 
 find_package(PkgConfig REQUIRED)
-
-find_package(Qwt REQUIRED)
-
+pkg_check_modules(QWT REQUIRED IMPORTED_TARGET
+    Qt${QT_VERSION_MAJOR}Qwt6
+)
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavcodec
     libavformat
