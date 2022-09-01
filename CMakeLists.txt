@@ -84,14 +84,17 @@ message(STATUS "--------- Installing Python files to ${OUTPUT} ---------")
 
 find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
 
-add_custom_command(
-    OUTPUT ${OUTPUT}/timestamp
-    COMMAND ${PYTHON} ./setup.py build
-    COMMAND ${CMAKE_COMMAND} -E touch ${OUTPUT}/timestamp
-    DEPENDS ${DEPS}
-)
+if(0)
+    # XXX This doesn't work when building in a separate object directory
+    add_custom_command(
+        OUTPUT ${OUTPUT}/timestamp
+        COMMAND ${PYTHON} ./setup.py build
+        COMMAND ${CMAKE_COMMAND} -E touch ${OUTPUT}/timestamp
+        DEPENDS ${DEPS}
+    )
 
-add_custom_target(target ALL DEPENDS ${OUTPUT}/timestamp)
+    add_custom_target(target ALL DEPENDS ${OUTPUT}/timestamp)
+endif()
 
 # XXX Install rule for Python
 
