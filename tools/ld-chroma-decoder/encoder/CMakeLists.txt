@@ -1,18 +1,10 @@
-message(STATUS "---------Beginning cmake build of ld-chroma-encoder---------")
-project(ld-chroma-encoder)
-
-#ld-chroma-encoder SOURCES
-set(SOURCES
+add_executable(ld-chroma-encoder
     main.cpp
     encoder.cpp
     ntscencoder.cpp
     palencoder.cpp
 )
 
-# ld-chroma-encoder executable
+target_link_libraries(ld-chroma-encoder PRIVATE Qt::Core ld-library)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-chroma-encoder)

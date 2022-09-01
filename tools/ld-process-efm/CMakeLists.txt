@@ -1,8 +1,4 @@
-message(STATUS "---------Beginning cmake build of ld-process-efm ---------")
-project(ld-process-efm)
-
-#ld-process-efm SOURCES
-set(SOURCES
+add_executable(ld-process-efm
     efmprocess.cpp
     main.cpp
     Datatypes/audio.cpp
@@ -23,14 +19,8 @@ set(SOURCES
     Decoders/syncf3frames.cpp
 )
 
-# ld-process-efm executable
+target_include_directories(ld-process-efm PRIVATE .)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+target_link_libraries(ld-process-efm PRIVATE Qt::Core ld-library)
 
-target_include_directories(${PROJECT_NAME} PRIVATE .)
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-# Link them to the project
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-process-efm)

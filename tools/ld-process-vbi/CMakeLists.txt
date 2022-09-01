@@ -1,8 +1,4 @@
-message(STATUS "---------Beginning cmake build of ld-process-vbi ---------")
-project(ld-process-vbi)
-
-#ld-process-vbi SOURCES
-set(SOURCES
+add_executable(ld-process-vbi
     closedcaption.cpp
     decoderpool.cpp
     main.cpp
@@ -11,12 +7,6 @@ set(SOURCES
     whiteflag.cpp
 )
 
-# ld-process-vbi executable
+target_link_libraries(ld-process-vbi PRIVATE Qt::Core ld-library)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-# Link them to the project
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-process-vbi)

@@ -1,19 +1,15 @@
-message(STATUS "---------Beginning cmake build of ld-ldf-reader---------")
-
 cmake_minimum_required(VERSION 3.16)
-project(ld-ldf-reader)
+
+project(ld-decode-tools)
 
 #list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Include all the paths
-message(STATUS "--------- Finding packages---------")
+# Check for dependencies
 
-# Set up AUTOMOC and some sensible defaults for runtime executionGui
-# When using Qt 6.3, you can replace the code block below with
-#qt_standard_project_setup()
+# When using Qt 6.3, you can replace the code block below with qt_standard_project_setup()
 set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
@@ -41,10 +37,13 @@ pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavcodec
     libavformat
     libavutil
+)
+pkg_check_modules(FFTW REQUIRED IMPORTED_TARGET
     fftw3
 )
 
-# Get the current working branch
+# Get the Git branch and revision
+
 execute_process(
     COMMAND git rev-parse --abbrev-ref HEAD
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -52,7 +51,6 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-# Get the latest abbreviated commit hash of the working branch
 execute_process(
     COMMAND git log -1 --format=%h
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -60,17 +58,11 @@ execute_process(
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 
-# Pass it on to the source code
 add_compile_definitions(APP_BRANCH=\"${GIT_BRANCH}\")
 add_compile_definitions(APP_COMMIT=\"${GIT_COMMIT_HASH}\")
 
-message(STATUS "--------- Git branch: ${GIT_BRANCH} ---------")
-message(STATUS "--------- Git commit: ${GIT_COMMIT_HASH} ---------")
+# Subdirectories
 
-# Make the library
-add_subdirectory(tools/library)
-
-# Make the tools
 add_subdirectory(tools/ld-analyse)
 add_subdirectory(tools/ld-chroma-decoder)
 add_subdirectory(tools/ld-chroma-decoder/encoder)
@@ -82,24 +74,26 @@ add_subdirectory(tools/ld-lds-converter)
 add_subdirectory(tools/ld-process-efm)
 add_subdirectory(tools/ld-process-vbi)
 add_subdirectory(tools/ld-process-vits)
+add_subdirectory(tools/library)
 
-# ld-ldf-reader executable
-add_executable(${PROJECT_NAME} ld-ldf-reader.c)
+# ld-ldf-reader
 
-target_link_libraries(${PROJECT_NAME} PkgConfig::LIBAV)
+add_executable(ld-ldf-reader
+    ld-ldf-reader.c)
 
-install(TARGETS ${PROJECT_NAME})
+target_link_libraries(ld-ldf-reader PkgConfig::LIBAV)
+
+install(TARGETS ld-ldf-reader)
+
+# Python library and tools
+
+find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
 
 set(OUTPUT ${CMAKE_CURRENT_BINARY_DIR})
 set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/lddecode/__init__.py)
 
-# install Python files (there might be a better way to do it)
-
-message(STATUS "--------- Installing Python files to ${OUTPUT} ---------")
-
-find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
-
 if(0)
+    # XXX There must be a better way to do this!
     # XXX This doesn't work when building in a separate object directory
     add_custom_command(
         OUTPUT ${OUTPUT}/timestamp

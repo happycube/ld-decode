@@ -1,7 +1,3 @@
-message(STATUS "---------Beginning cmake build of ld-analyse---------")
-project(ld-analyse)
-
-# Name all the files
 set(ld-analyse_SOURCES
     blacksnranalysisdialog.cpp blacksnranalysisdialog.ui
     busydialog.cpp busydialog.ui

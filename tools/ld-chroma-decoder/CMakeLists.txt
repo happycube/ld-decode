@@ -1,5 +1,4 @@
-message(STATUS "---------Beginning cmake build of ld-chroma-decoder---------")
-project(ld-chroma-decoder)
+# Library for chroma decoders
 
 add_library(ld-chroma-lib STATIC
     comb.cpp
@@ -17,8 +16,9 @@ target_include_directories(ld-chroma-lib PUBLIC .)
 
 target_link_libraries(ld-chroma-lib PRIVATE Qt::Core fftw3 ld-library)
 
-#ld-chroma-decoder SOURCES
-set(SOURCES
+# ld-chroma-decoder
+
+add_executable(ld-chroma-decoder
     decoder.cpp
     decoderpool.cpp
     main.cpp
@@ -27,10 +27,6 @@ set(SOURCES
     paldecoder.cpp
 )
 
-# ld-chroma-decoder executable
+target_link_libraries(ld-chroma-decoder PRIVATE Qt::Core fftw3 ld-library ld-chroma-lib)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core fftw3 ld-library ld-chroma-lib)
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-chroma-decoder)

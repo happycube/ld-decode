@@ -1,19 +1,9 @@
-message(STATUS "---------Beginning cmake build of ld-dropout-correct ---------")
-project(ld-dropout-correct)
-
-#ld-dropout-correct SOURCES
-set(SOURCES
+add_executable(ld-dropout-correct
     correctorpool.cpp
     main.cpp
     dropoutcorrect.cpp
 )
 
-# ld-dropout-correct executable
+target_link_libraries(ld-dropout-correct PRIVATE Qt::Core ld-library)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-# Link them to the project
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-dropout-correct)

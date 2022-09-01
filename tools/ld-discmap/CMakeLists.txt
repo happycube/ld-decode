@@ -1,20 +1,10 @@
-message(STATUS "---------Beginning cmake build of ld-discmap ---------")
-project(ld-discmap)
-
-#ld-discmap SOURCES
-set(SOURCES
+add_executable(ld-discmap
     discmap.cpp
     discmapper.cpp
     frame.cpp
     main.cpp
 )
 
-# ld-discmap executable
+target_link_libraries(ld-discmap PRIVATE Qt::Core ld-library)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-# Link them to the project
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-discmap)

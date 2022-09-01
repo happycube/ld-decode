@@ -1,19 +1,9 @@
-message(STATUS "---------Beginning cmake build of ld-process-vits ---------")
-project(ld-process-vits)
-
-#ld-process-vits SOURCES
-set(SOURCES
+add_executable(ld-process-vits
     main.cpp
     processingpool.cpp
     vitsanalyser.cpp
 )
 
-# ld-process-vits executable
+target_link_libraries(ld-process-vits PRIVATE Qt::Core ld-library)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-# Link them to the project
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-process-vits)

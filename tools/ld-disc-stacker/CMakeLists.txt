@@ -1,19 +1,9 @@
-message(STATUS "---------Beginning cmake build of ld-disc-stacker ---------")
-project(ld-disc-stacker)
-
-#ld-disc-stacker SOURCES
-set(SOURCES
+add_executable(ld-disc-stacker
     main.cpp
     stacker.cpp
     stackingpool.cpp
 )
 
-# ld-disc-stacker executable
+target_link_libraries(ld-disc-stacker PRIVATE Qt::Core ld-library)
 
-add_executable(${PROJECT_NAME} ${SOURCES})
-
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt::Core ld-library)
-
-# Link them to the project
-
-install(TARGETS ${PROJECT_NAME})
+install(TARGETS ld-disc-stacker)
