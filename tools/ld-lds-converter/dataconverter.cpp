@@ -230,8 +230,8 @@ void DataConverter::unpackFile(void)
 
     // Are we writing a RIFF header?
     if (isRIFF) {
-            // Writes a WAV RIFF header, 44.1k, mono, 16-bit signed
-            QString riffHex = "52494646FFFFFFFF57415645666D7420100000000100010044AC000088580100020010004C4953541A000000494E464F495346540E0000004C61766635382E32392E3130300064617461FFFFFFFF";
+            // Writes a WAV RIFF header, 40k, mono, 16-bit signed
+            QString riffHex = "52494646FFFFFFFF57415645666D74201000000001000100409C000088580100020010004C4953541A000000494E464F495346540E0000004C61766635382E32392E3130300064617461FFFFFFFF";
             QByteArray riffArray = QByteArray::fromHex(riffHex.toLatin1());
             outputFileHandle->write(riffArray);
         }
