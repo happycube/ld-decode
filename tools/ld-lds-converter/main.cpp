@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 
     // Option to unpack 10-bit data with RIFF WAV headers (-r)
     QCommandLineOption showRIFFOption(QStringList() << "r" << "riff",
-                                        QCoreApplication::translate("main", "Unpack 10-bit data into 16-bit with RIFF WAV headers"));
+                                        QCoreApplication::translate("main", "Unpack 10-bit data into 16-bit with RIFF WAV headers (use this ONLY for FlaCCL)"));
     parser.addOption(showRIFFOption);
 
     // Process the command line arguments given by the user
