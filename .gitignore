@@ -56,3 +56,21 @@ testout
 # Profiling results
 perf.data*
 Benchfile*
+
+# CMake related things
+*.depends
+*.ninja
+*_autogen/
+.ninja_*
+.qt/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+DartConfiguration.tcl
+Makefile
+Testing/
+cmake_install.cmake
+install_manifest.txt
+moc_*.cpp
+moc_*.cpp_parameters
+ui_*.h
