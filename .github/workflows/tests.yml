@@ -75,10 +75,6 @@ jobs:
       timeout-minutes: 5
       run: cd obj && cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_QWT=OFF ..
 
-    - name: CMake
-      timeout-minutes: 15
-      run: cmake .
-
     - name: Build
       timeout-minutes: 15
       run: make -C obj VERBOSE=1
