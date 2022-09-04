@@ -24,8 +24,7 @@ add_executable(ld-analyse MACOSX_BUNDLE
 
 target_link_libraries(ld-analyse PRIVATE
     Qt::Core Qt::Gui Qt::Widgets
-    qwt::qwt
-    fftw3
+    PkgConfig::QWT
     lddecode-library lddecode-chroma
 )
 

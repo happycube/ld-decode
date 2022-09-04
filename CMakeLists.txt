@@ -8,6 +8,11 @@ include(CTest)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Options that can be specified with -D
+
+set(USE_QWT ON CACHE BOOL
+    "Use the Qwt library; if OFF, ld-analyse will not be built")
+
 # Check for dependencies
 
 # When using Qt 6.3, you can replace the code block below with qt_standard_project_setup()
@@ -34,9 +39,11 @@ if(QT_VERSION VERSION_LESS 5.15)
 endif()
 
 find_package(PkgConfig REQUIRED)
-
-find_package(Qwt REQUIRED)
-
+if(USE_QWT)
+    pkg_check_modules(QWT REQUIRED IMPORTED_TARGET
+        Qt${QT_VERSION_MAJOR}Qwt6
+    )
+endif()
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavcodec
     libavformat
@@ -67,7 +74,9 @@ add_compile_definitions(APP_COMMIT=\"${GIT_COMMIT_HASH}\")
 
 # Subdirectories
 
-add_subdirectory(tools/ld-analyse)
+if(USE_QWT)
+    add_subdirectory(tools/ld-analyse)
+endif()
 add_subdirectory(tools/ld-chroma-decoder)
 add_subdirectory(tools/ld-chroma-decoder/encoder)
 add_subdirectory(tools/ld-disc-stacker)
