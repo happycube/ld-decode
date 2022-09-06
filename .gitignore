@@ -50,9 +50,6 @@ __pycache__
 
 # ld-decode data files
 *.tbc
-*.tbc.json
-*.tbcc
-*.tbcc.json
 testdata
 testout
 
@@ -60,12 +57,20 @@ testout
 perf.data*
 Benchfile*
 
-# Video data files
-/*.rgb
-/*.avi
-/*.avs
-/*.png
-/*.ffindex
-
-# Other
-/*.log
+# CMake related things
+*.depends
+*.ninja
+*_autogen/
+.ninja_*
+.qt/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+DartConfiguration.tcl
+Makefile
+Testing/
+cmake_install.cmake
+install_manifest.txt
+moc_*.cpp
+moc_*.cpp_parameters
+ui_*.h

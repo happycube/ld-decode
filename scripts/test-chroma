@@ -37,7 +37,7 @@ import statistics
 import subprocess
 import sys
 
-src_dir = None
+build_dir = None
 
 def safe_unlink(filename):
     """Remove a file if it exists; if not, do nothing."""
@@ -89,7 +89,7 @@ def test_encode(args, source, sc_locked, png_suffix):
 
     # Encode the .rgb to .tbc, using ld-chroma-encoder
     tbc_file = args.output + '.tbc'
-    cmd = [src_dir + '/tools/ld-chroma-decoder/encoder/ld-chroma-encoder']
+    cmd = [build_dir + '/tools/ld-chroma-decoder/encoder/ld-chroma-encoder']
     if sc_locked:
         cmd += ['--sc-locked']
     if args.system == 'ntsc':
@@ -122,7 +122,7 @@ def test_decode(args, decoder, phase_locked, output_format, png_suffix):
     # Decode the .tbc using ld-chroma-decoder
     tbc_file = args.output + '.tbc'
     decoded_file = args.output + '.decoded'
-    cmd = [src_dir + '/tools/ld-chroma-decoder/ld-chroma-decoder',
+    cmd = [build_dir + '/tools/ld-chroma-decoder/ld-chroma-decoder',
         '--quiet',
         '-f', decoder,
         '--chroma-nr', '0',
@@ -173,6 +173,8 @@ def main():
                        help='input video file (default colour bars)')
     group.add_argument('output', metavar='output', nargs='?', default='testout/test',
                        help='base name for output files (default testout/test)')
+    group.add_argument('--build', metavar='DIR',
+                       help='build tree to test (default same as this script)')
     group.add_argument('--system', choices=['pal', 'ntsc'], default='pal',
                        help='select color system (default pal)')
     group.add_argument('--png', action='store_true',
@@ -186,8 +188,10 @@ def main():
 
     # Find the top-level source directory
     prog_path = os.path.realpath(sys.argv[0])
-    global src_dir
-    src_dir = os.path.dirname(os.path.dirname(prog_path))
+    global build_dir
+    build_dir = os.path.dirname(os.path.dirname(prog_path))
+    if args.build:
+        build_dir = args.build
 
     # Remove display environment variables, as the decoding tools shouldn't
     # depend on having a display
