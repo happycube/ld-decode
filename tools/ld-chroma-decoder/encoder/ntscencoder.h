@@ -2,13 +2,13 @@
 
     ntscencoder.h
 
-    ld-chroma-encoder - NTSC encoder for testing
-    Copyright (C) 2019 Adam Sampson
+    ld-chroma-encoder - Composite video encoder
+    Copyright (C) 2019-2022 Adam Sampson
     Copyright (C) 2022 Phillip Blucas
 
     This file is part of ld-decode-tools.
 
-    ld-chroma-decoder is free software: you can redistribute it and/or
+    ld-chroma-encoder is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -26,9 +26,10 @@
 #ifndef NTSCENCODER_H
 #define NTSCENCODER_H
 
-#include <QByteArray>
 #include <QFile>
-#include <QVector>
+#include <vector>
+
+#include "encoder.h"
 
 #include "lddecodemetadata.h"
 
@@ -38,39 +39,27 @@ enum ChromaMode {
     NARROWBAND_Q        // Y'IQ with Q low-passed
 };
 
-class NTSCEncoder
+class NTSCEncoder : public Encoder
 {
 public:
-    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, LdDecodeMetaData &metaData, ChromaMode &chromaMode, bool &addSetup);
+    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
+                int fieldOffset, ChromaMode chromaMode, bool addSetup);
 
-    // Encode RGB stream to NTSC.
-    // Returns true on success; on failure, prints an error and returns false.
-    bool encode();
-
-private:
-    qint32 encodeFrame(qint32 frameNo);
-    bool encodeField(qint32 fieldNo);
-    void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData, QVector<quint16> &outputLine);
+protected:
+    virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+                            std::vector<double> &outputC, std::vector<double> &outputVBS);
 
     const qint32 blankingIre = 0x3C00;
     const qint32 setupIreOffset = 0x0A80; // 10.5 * 256
 
-    QFile &rgbFile;
-    QFile &tbcFile;
-    LdDecodeMetaData &metaData;
+    int fieldOffset;
     ChromaMode chromaMode;
     bool addSetup;
 
-    LdDecodeMetaData::VideoParameters videoParameters;
-    qint32 activeWidth;
-    qint32 activeHeight;
-    qint32 activeLeft;
-    qint32 activeTop;
-
-    QByteArray rgbFrame;
-    QVector<double> Y;
-    QVector<double> C1;
-    QVector<double> C2;
+    std::vector<double> Y;
+    std::vector<double> C1;
+    std::vector<double> C2;
 };
 
 #endif

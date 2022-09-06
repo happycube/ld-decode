@@ -59,7 +59,6 @@ private slots:
     void on_chromaPhaseHorizontalSlider_valueChanged(int value);
 
     void on_palFilterButtonGroup_buttonClicked(QAbstractButton *button);
-    void on_thresholdModeCheckBox_clicked();
     void on_thresholdHorizontalSlider_valueChanged(int value);
     void on_showFFTsCheckBox_clicked();
     void on_simplePALCheckBox_clicked();
@@ -68,8 +67,6 @@ private slots:
     void on_phaseCompCheckBox_clicked();
     void on_adaptiveCheckBox_clicked();
     void on_showMapCheckBox_clicked();
-    void on_colorLpfCheckBox_clicked();
-    void on_colorLpfHqCheckBox_clicked();
     void on_cNRHorizontalSlider_valueChanged(int value);
     void on_yNRHorizontalSlider_valueChanged(int value);
 

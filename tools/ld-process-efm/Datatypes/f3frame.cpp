@@ -47,7 +47,7 @@ F3Frame::F3Frame()
     }
 }
 
-F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength)
+F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength, bool audioIsDts)
 {
     validEfmSymbols = 0;
     invalidEfmSymbols = 0;
@@ -57,11 +57,11 @@ F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength)
     isSync1 = false;
     subcodeSymbol = 0;
 
-    setTValues(tValuesIn, tLength);
+    setTValues(tValuesIn, tLength, audioIsDts);
 }
 
 // This method sets the T-values for the F3 Frame
-void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength)
+void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength, bool audioIsDts)
 {
     // Does tValuesIn contain values?
     if (tLength == 0) {
@@ -134,8 +134,9 @@ void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength)
 
     // Step 3:
 
-    // Decode the subcode symbol
-    if (efmValues[0] == 0x801) {
+    // Decode the subcode symbol.
+    // Some (but not all) DTS LaserDiscs use a non-standard Sync 0 value.
+    if (efmValues[0] == 0x801 || (audioIsDts && efmValues[0] == 0x812)) {
         // Sync 0
         subcodeSymbol = 0;
         isSync0 = true;
@@ -216,41 +217,22 @@ bool F3Frame::isSubcodeSync1()
 // Private methods ----------------------------------------------------------------------------------------------------
 
 // Method to translate 14-bit EFM value into 8-bit byte
-// Returns -1 if the EFM value is could not be converted
+// Returns -1 if the EFM value could not be converted (which never happens,
+// since we always correct to the most likely value)
 qint16 F3Frame::translateEfm(qint16 efmValue)
 {
-    qint16 result = -1;
-    qint16 lutPos = 0;
-    while (result == -1 && lutPos < 256) {
-        if (efm2numberLUT[lutPos] == efmValue) result = lutPos;
-        lutPos++;
+    for (qint16 lutPos = 0; lutPos < 256; lutPos++) {
+        if (efm2numberLUT[lutPos] == efmValue) {
+            // Symbol was valid
+            validEfmSymbols++;
+            return lutPos;
+        }
     }
 
-    // Was 14-bit EFM symbol invalid?
-    if (result == -1) {
-        // Symbol was invalid
-        invalidEfmSymbols++;
-
-        // Attempt to recover symbol using cosine similarity lookup
-        result = -1;
-        lutPos = 0;
-        while (result == -1 && lutPos < 16384) {
-            if (efmerr2positionLUT[lutPos] == efmValue) result = lutPos;
-            lutPos++;
-        }
-
-        // Was lookup successful?
-        if (result != -1) {
-            // Get the translated value from the second LUT
-            result = efmerr2valueLUT[result];
-            correctedEfmSymbols++;
-        }
-    } else {
-        // Symbol was valid
-        validEfmSymbols++;
-    }
-
-    return result;
+    // Symbol was invalid. Correct it using cosine similarity lookup.
+    invalidEfmSymbols++;
+    correctedEfmSymbols++;
+    return efmerr2valueLUT[efmValue & 0x3fff];
 }
 
 // Method to get 'width' bits (max 15) from a byte array starting from bit 'bitIndex'
