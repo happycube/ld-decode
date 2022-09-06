@@ -9,7 +9,7 @@ This version has been modified to work with the differences found in the tracked
 
 ![](assets/images/DdD-EBU-Colour-Bar-PAL-VHS-SP.png)
 
-EBU ColourBar Test Tape With [WSS](https://en.wikipedia.org/wiki/Widescreen_signaling) (PAL) export exported full-frame (1112 x 624)
+SMPTE ColourBars (16:9) Test Tape With [WSS](https://en.wikipedia.org/wiki/Widescreen_signaling) (PAL) export exported full-frame (1112 x 624)
 
 Currently, only VHS/S-VHS and U-Matic format tapes are fully supported;
 of those, only NTSC, PAL and PAL-M variants fully* are supported, with plans and/or ongoing work to support more formats and systems check with [Media Format Support List.](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
@@ -27,7 +27,11 @@ Test samples & signals can be generated using [HackTV](https://github.com/fsphil
 
 Note for test media generation AJA/Magewell/Blackmagic and even some consumer digital to analogue converters have test generators built-in some prosumer/broadcast decks also have generators built in same for later camcorders.
 
-# ld-tools Windows
+# HiFi-Decode
+
+Functional but still a work in progress is VideoMem's [HiFi-Decode Branch](https://github.com/VideoMem/ld-decode/tree/hifi-decode) witch can  take uncompressed or flac compressed RF files and output standard 24bit 192khz .wav PCM files.
+
+# ld-tools for Windows (Not The Decoder)
 
 The ld-tools suit has been ported to windows, LD-Analyse fully works please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases)
 
@@ -35,25 +39,25 @@ The ld-tools suit has been ported to windows, LD-Analyse fully works please see 
 
 ## A Tape Player (VCR/VTR etc)
 
-Preferably adjusted per tape and in excellent mechanical and head condition, S-VHS decks are preferable as they were built generally better than cheaper later consumer VHS decks, and are easier to adjust tape guides to achieve optimal alignment however any working clean VCR should work.
+Preferably adjusted per tape and in excellent mechanical and head condition, S-VHS decks are preferable as they were built generally better than cheaper later consumer VHS decks, and are easier to adjust tape guides to achieve optimal alignment however any working clean VCR should work, however you don't need an SVHS VCR at all even for SVHS tapes!
 
-Its recommended if possible to fully service your VCR/VTR one should inspect heads and solder joint conditions (note parts with removable shielding may go unchecked), replace expanded or leaky capacitors etc, but at the minium clean the heads with 99.9% Isopropanol and lint free cloths/pads/paper & making sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils.
+Its recommended if possible to fully service your VCR/VTR one should inspect/clean heads and solder joint conditions (note parts with removable shielding may go unchecked), replace expanded or leaky capacitors etc, but at the minimum clean the heads with 99.9% Isopropanol and lint free cloths/pads/paper & making sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils.
 
 Its good practice to not cross contaminate tapes especially if dealing with mouldy or contained tapes always clean your tape track/drum/heads before and afterwards!
 
 ## RF Capture Device
 
-## [Domesday Duplicator (DdD)](https://github.com/happycube/ld-decode/wiki/Domesday-Duplicator) (Method 01 - 300-350USD*)
+## [Domesday Duplicator (DdD)](https://github.com/harrypm/DomesdayDuplicator#readme) (Method 01 - 300-350USD*)
 
 Capture is done using an simple GUI application.
 
-[Linux Application](https://github.com/simoninns/DomesdayDuplicator)
+[Linux Application](https://github.com/harrypm/DomesdayDuplicator#readme)
 
-[Windows Application](https://github.com/TokugawaHeavyIndustries/DomesdayDuplicator-WinBuild/releases/tag/v2.2)
+[Windows Application](https://github.com/TokugawaHeavyIndustries/DomesdayDuplicator-WinBuild/releases/)
 
-Originally geared towards capturing RF from laserdiscs players, it does however also work perfectly well for digitizing VHS RF data. It consists of a custom analogue to digital board with an amplifier, an off-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
+Originally geared towards capturing RF from laserdiscs players, it does however also work perfectly well for digitizing Tape RF data. It consists of a custom analogue to digital board with an amplifier, an off-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
 
-[More Information](https://www.domesday86.com/?page_id=978) / [How To Aquire?](https://docs.google.com/document/d/1liOpdM6z51AwM5jGLoUak6h9aJ0eY0fQduE5k4TcleU/edit?usp=sharing) / [How to Fabricate & Flash?](https://docs.google.com/document/d/1k2bPPwHPoG7xXpS1NCYEe3w_jD_ts0yRCp-2aQ6QoKY/edit?usp=sharing)
+[How To Aquire?](https://docs.google.com/document/d/1liOpdM6z51AwM5jGLoUak6h9aJ0eY0fQduE5k4TcleU/edit?usp=sharing) / [How to Fabricate & Flash?](https://docs.google.com/document/d/1k2bPPwHPoG7xXpS1NCYEe3w_jD_ts0yRCp-2aQ6QoKY/edit?usp=sharing) / [More Information](https://www.domesday86.com/?page_id=978)
 
 ## [CX Card & CXADC](https://github.com/happycube/cxadc-linux3) (Method 02 - 20-35USD)
 
@@ -69,21 +73,37 @@ The cards sadly however at stock without any modifications these have more self-
 
 # Deployment of Capture Hardware
 
-Please Read the [VHS-Decode Wiki](https://github.com/oyvindln/vhs-decode/wiki) for more in-depth information.
+Please Read the [VHS-Decode Wiki](https://github.com/oyvindln/vhs-decode/wiki) for more in-depth information as it has examples locations and setup photos for various decks that have been [RF tap'ed and tested](https://github.com/oyvindln/vhs-decode/wiki/004-The-Tap-List).
 
-If there is no info on your VCR in the wiki then acquire the service manual for your device, Google it!
+If there is no info on your VCR in the wiki then acquire the service manual for your device, Google it! (But they are nearly all labelled clearly, so are not hard to visually identify and if serviced commonly marked with a sharpie)
 
-Your find and probe/solder an BNC bulk head to your RF output starting with test points.
+1. Find your test points test points will be called one of the following if looking though a service manual or labels on the VCR boards:
 
-Test points normally will be called the following:
+Modulated Video:
 
-**RF Y, RF C, RF Y+C, PB, V RF, V ENV, ENV, ENVELOPE, VIDEO ENVE, VIDEO ENVELOPE** - Video
+RF C, RF Y+C, PB, V RF, V ENV, ENV, ENVELOPE, VIDEO ENVE, VIDEO ENVELOPE
 
-**RF-Out, A-RF, HIFI RF** - Audio
+(Normally accompanied by a Composite test point useful if your VCR only has a SCART connection you can add another BNC for video)
 
-These can be found on mainboard test points on consumer VCR's, but on higher-end units you have more options, once located solder an pigtail BNC or SMA connector for easy signal hook up to your capture device and mount to the back of the device or thread though an opening if available, do not make sharp bends in cabling.
+HiFi Audio:
 
-Some UMATIC decks have a direct RF output on the back that may be viable. (*needs expanding on*)
+RF-Out, A-RF, HIFI RF
+
+2. Decide on connection method, Soldered or Clipped/Clamped. (Soldered is recommended due to reliability)
+
+For some Sony decks you can use Dupont connectors on the pins to save effort soldering or hooking an probe.
+
+For alligator clips this is red signal black ground if you have bigger test points like on Rackmount and later prosumer decks.
+
+For direct soldering RG178 or RG316 cable to an BNC bulk head is recommended this allows a short clean direct run to a fixed mounting point you can drill or melt/file out or just thread the cable though a ventilation slit and so on.
+
+3. Test to see if an 10uf capacitor is needed, If you want to see your tape during RF capture or are playing SVHS or other higher bandwidth tapes you will need to add one in-line before your bulkhead/probe connection to avoid signal dropout. (Applies to most VCRs but not all)
+
+**Note** Do not make sharp bends in any RF cabling.
+
+**Note** with Coax cable (RGxxx etc) the centre stranded wire is signal and outer shield wire is ground twist the ground strands tight to make a solder able connection, and use ample flux to flow solder correctly, then wipe with 99.9% IPA to clean the flux off.
+
+**Note** Some UMATIC decks have a direct RF output on the back that may be viable for RF capture. (*needs expanding on*)
 
 # Dependencies - Software
 
@@ -96,7 +116,7 @@ It also partially runs on Windows natively; currently, ld-tools have been ported
 
 Other dependencies include Python 3.5+,numpy, scipy, cython, numba, pandas, Qt5, Qmake, and FFmpeg.
 
-Useful tools to note is StaxRip & Lossless Cut this gives you full encode-deinterlacing and basic editing to quickly handle uncompressed files.
+Some useful free tools to note for post processing are [StaxRip](https://github.com/staxrip/staxrip) & [Lossless Cut](https://github.com/mifi/lossless-cut) & of course [DaVinci Resolve](https://www.blackmagicdesign.com/uk/products/davinciresolve) this gives you basic editing to quickly handle uncompressed files cross operating systems, and for windows users an easy FFMPEG/AviSynth/Vapoursynth encoding and de-interlacing experience, and full colour grading and post production ability.
 
 # Installation and running the software on Ubuntu/Debian
 
@@ -163,25 +183,47 @@ Use analyse tool to inspect decoded tape:
 
 ## Compression and Decompression
 
-Editable flags are `--bps` ie 16/8 bit and `% --ogg` and change `<capture>` to your input & output file names.
+For DomesDayDuplicator Captures simply run
+
+`ld-compress <capture>`
+
+Your .lds file will be compressed to an FLAC OGG .ldf file
+
+For CXADC and other 8/16bit captures use the following
+
+Editable flags are `--bps` for 8 or 16 bit and `% --ogg` and change `<capture>` to your input file name.
 
 Reduce size of captured CXADC data (by 40-60%):
 
-    flac --best --sample-rate=48000 --sign=unsigned --channels=1 --endian=little --bps=8 % --ogg -f <capture>.u8 -o <capture>.vhs
+    flac --best --sample-rate=48000 --sign=unsigned --channels=1 --endian=little --bps=8 % --ogg -f <capture>.u8 <capture>.vhs
 
 Decompress FLAC compressed captures.
 
-    flac -d --force-raw-format --sign=unsigned --endian=little <capture>.vhs -o <capture>.u16
+    flac -d --force-raw-format --sign=unsigned --endian=little <capture>.vhs <capture>.u16
 
 ## Generating Colour Video Files (TBC to Playable MKV)
 
-VHS-Decode produces two timebase corrected 16-bit headerless files separated into chroma/luma video signals in the .tbc format plus .json and .log files, usable with the LD-Decode family of tools (ld-analyse, ld-process-vbi, and ld-process-vits), Notably VBI (Vertical Blanking Interval) data recovery software like [VHS-Teletext](https://github.com/ali1234/vhs-teletext/) (Europe Subtitles) and FFMPEG's read [VITC timecode](https://github.com/oyvindln/vhs-decode/wiki/VITC-&-Subtitles) & [EIA-608](https://github.com/amiaopensource/sccyou)(USA Closed Captioning), also tape-based [arcade games](https://vhs.thenvm.org/resources-research/).
+VHS-Decode produces two timebase corrected 16-bit headerless files separated into chroma/luma video signals in the .tbc format plus .json and .log files, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, and ld-process-vits.
 
-Please Check the Wiki for the full [upto-date command list!](https://github.com/oyvindln/vhs-decode/wiki/Command-List)
+But also notably VBI (Vertical Blanking Interval) data recovery software can be used like and for the following:
+
+[VHS-Teletext](https://github.com/ali1234/vhs-teletext/) (Europe Subtitles)
+
+[FFMPEG EIA-608](https://github.com/amiaopensource/sccyou) (North America Closed Captioning)
+
+[FFMEPG Read VITC Timecode](https://github.com/oyvindln/vhs-decode/wiki/VITC-&-Subtitles) (Standard SMPTE Timecode)
+
+[Tape-based Arcade Games!](https://vhs.thenvm.org/resources-research/)
+
+### To generate an colour output with the Top VBI area use the following command:
+
+`./gen_chroma_vid.sh --ffll 2 --lfll 308 --ffrl 2 --lfrl 620 <capture>.tbc`
+
+Please Check the Wiki for the complete [upto-date command list!](https://github.com/oyvindln/vhs-decode/wiki/Command-List)
 
 *gen_chroma_vid.sh now automatically detects PAL/NTSC based on the .JSON legacy scripts still exsist*
 
-`gen_chroma_vid.sh -h` (Lists Command Options)
+`./gen_chroma_vid.sh -h` (Lists Command Options)
 
 To generate .mkv files viewable in most media players, simply use the scripts installed:
 
@@ -189,7 +231,7 @@ Command Examples:
 
     gen_chroma_vid.sh -v -s <skip number of frames> -l <number of frames long> -i <.tbc filename without .tbc extension>
 
-The `-a` option can embed an audio file.
+The `-a` option can embed an audio file, such as audio decoded via [HiFi Decode](https://github.com/VideoMem/ld-decode/tree/hifi-decode)
 
     gen_chroma_vid.sh -v -s <skip n frames> -l <n frames long> -a <capture>.flac -i <.tbc filename without .tbc extension>
 
@@ -281,9 +323,9 @@ Please Check the Wiki for the full [upto-date command list!](https://github.com/
 
 U-Matic 625-line and 525-line Low Band, PAL and NTSC.
 
-BetaMax PAL **Preliminary Support Added**
+Betamax 625-line and 525-line, PAL & NTSC (More Samples Needed)
 
-Video8 & High8 PAL & NTSC **Preliminary Support Added**
+Video8 & High8 625-line and 525-line, PAL & NTSC (Filtering Work Needed, Luma Only)
 
 ## Input file formats:
 
