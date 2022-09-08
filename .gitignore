@@ -63,8 +63,11 @@ Benchfile*
 *_autogen/
 .ninja_*
 .qt/
+*-qt/
+build-*/
 CMakeCache.txt
 CMakeFiles/
+CMakeLists.txt.user
 CTestTestfile.cmake
 DartConfiguration.tcl
 Makefile
