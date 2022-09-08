@@ -65,6 +65,7 @@ Benchfile*
 .qt/
 CMakeCache.txt
 CMakeFiles/
+CMakeLists.txt.user
 CTestTestfile.cmake
 DartConfiguration.tcl
 Makefile
