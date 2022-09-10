@@ -4003,18 +4003,18 @@ class LDdecode:
         # current burst adjustment as of 2/27/19, update when #158 is fixed!
         badj = -1.4
         spu = f.rf.SysParams["outfreq"]
-        vp["colourBurstStart"] = np.round(
+        vp["colourBurstStart"] = int(np.round(
             (f.rf.SysParams["colorBurstUS"][0] * spu) + badj
-        )
-        vp["colourBurstEnd"] = np.round(
+        ))
+        vp["colourBurstEnd"] = int(np.round(
             (f.rf.SysParams["colorBurstUS"][1] * spu) + badj
-        )
-        vp["activeVideoStart"] = np.round(
+        ))
+        vp["activeVideoStart"] = int(np.round(
             (f.rf.SysParams["activeVideoUS"][0] * spu) + badj
-        )
-        vp["activeVideoEnd"] = np.round(
+        ))
+        vp["activeVideoEnd"] = int(np.round(
             (f.rf.SysParams["activeVideoUS"][1] * spu) + badj
-        )
+        ))
 
         jout["videoParameters"] = vp
 
