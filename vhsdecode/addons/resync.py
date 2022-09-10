@@ -20,7 +20,7 @@ def hztoire(sysparams, hz, ire0=None):
     return (hz - ire0) / sysparams.hz_ire
 
 
-@njit(cache=True, parallel=True, nogil=True)
+@njit(cache=True, nogil=True)
 def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full=True):
     """Check if adjusted levels are somewhat sane."""
     # ldd.logger.info("am below new blank %s , amount below half_sync %s", amount_below, amount_below_half_sync)
@@ -79,16 +79,14 @@ def _pulses_blacklevel(demod_05, freq_mhz: float, pulses, vsync_locs, synclevel)
             after_last += 1
 
     # TODO: This needs to be reworked for samples where the levels vary throughout the field
-    r1 = range(max(before_first - 5, 1), before_first) if before_first > 1 else (0, 0)
+    r1 = range(max(before_first - 5, 1), before_first) if before_first > 1 else range(0)
     r2 = (
         range(after_last + 1, max(after_last + 6, last_index))
         if after_last < last_index - 1
-        else (0, 0)
+        else range(0)
     )
 
     black_means = []
-
-    # freq_mhz = field.rf.freq
 
     for i in itertools.chain(r1, r2):
         if i < 0 or i >= len(pulses):

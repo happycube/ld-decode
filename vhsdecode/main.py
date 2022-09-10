@@ -22,6 +22,7 @@ from vhsdecode.cmdcommons import (
     get_rf_options,
     get_extra_options,
 )
+
 supported_tape_formats = {"VHS", "SVHS", "UMATIC", "BETAMAX", "VIDEO8", "HI8"}
 
 

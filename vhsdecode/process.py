@@ -414,6 +414,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.SysParams,
             self.DecoderParams["color_under_carrier"],
             tape_format=tape_format,
+            do_cafc=self.cafc,
         )
 
         self.Filters["FVideoBurst"] = self._chroma_afc.get_chroma_bandpass()
@@ -726,7 +727,7 @@ class VHSRFDecode(ldd.RFDecode):
                 hf_part,
                 self.DecoderParams["nonlinear_highpass_limit_l"],
                 self.DecoderParams["nonlinear_highpass_limit_h"],
-                out=hf_part
+                out=hf_part,
             )
 
             # And subtract it from the output signal.
