@@ -11,7 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Options that can be specified with -D
 
 set(USE_QWT ON CACHE BOOL
-    "Use the Qwt library; if OFF, ld-analyse will not be built")
+  "Use the Qwt library; if OFF, ld-analyse will not be built")
+
+set(SEACH_QT5_ONLY OFF CACHE BOOL
+  "Only search for Qt5 (use e.g if qwt is not packaged for qt6 but both qt5 and qt6 are installed)")
 
 # Check for dependencies
 
@@ -20,7 +23,11 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
-find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+if(SEARCH_QT5_ONLY)
+  find_package(QT NAMES Qt5 REQUIRED COMPONENTS Core)
+else()
+  find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+endif()
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
 message(STATUS "Qt Version: ${QT_VERSION}")
 
