@@ -22,7 +22,6 @@ from vhsdecode.cmdcommons import (
     get_rf_options,
     get_extra_options,
 )
-
 supported_tape_formats = {"VHS", "SVHS", "UMATIC", "BETAMAX", "VIDEO8", "HI8"}
 
 
@@ -30,7 +29,7 @@ def main(use_gui=False):
     import vhsdecode.formats as f
 
     parser, debug_group = common_parser(
-        "Extracts video from raw VHS rf captures", use_gui=use_gui
+        "Extracts video from raw rf captures of colour-under tapes", use_gui=use_gui
     )
     if not use_gui:
         parser.add_argument(
