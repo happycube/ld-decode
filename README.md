@@ -35,7 +35,7 @@ Functional but still a work in progress is VideoMem's [HiFi-Decode Branch](https
 
 ## A Tape Player (VCR/VTR etc)
 
-Preferably adjusted per tape and in excellent mechanical and head condition, S-VHS decks are preferable as they were built generally better than cheaper later consumer VHS decks, and are easier to adjust tape guides to achieve optimal alignment however any working clean VCR should work, however you don't need an SVHS VCR at all even for SVHS tapes!
+Preferably adjusted per tape and in excellent mechanical and head condition, for VHS, S-VHS decks are preferable as they were built generally better than cheaper later consumer decks, and are easier to adjust tape guides to achieve optimal alignment however any working clean VCR should work, however you don't need an SVHS VCR at all even for SVHS tapes!
 
 Its recommended if possible to fully service your VCR/VTR one should inspect/clean heads and solder joint conditions (note parts with removable shielding may go unchecked), replace expanded or leaky capacitors etc, but at the minimum clean the heads with 99.9% Isopropanol and lint free cloths/pads/paper & making sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils.
 
@@ -203,13 +203,13 @@ For DomesDayDuplicator Captures simply run
 
 Your .lds file will be compressed to an FLAC OGG .ldf file
 
-For CXADC and other 8/16bit captures use the following
+For CXADC and other 8/16bit captures use the following:
 
 Editable flags are
 
 The `--bps` flag can be changed to `--bps=8` or `--bps=16` for 8 & 16 bit captures.
 
-The `--ogg` flag will use OGG encoding witch makes the file compatible for Audition/Audacity inspection.
+The `--ogg` flag will use OGG encoding - Allows for 100GB+ captures & easy Audition/Audacity inspection.
 
 Change `<capture>` to your input file name.
 
@@ -221,7 +221,7 @@ Decompress FLAC compressed captures.
 
     flac -d --force-raw-format --sign=unsigned --endian=little <capture>.vhs <capture>.u16
 
-Output will be `filename.ogg` so rename the end extention to .vhs / .hifi etc etc  
+Output will be `filename.ogg` so rename the end extension to .vhs / .hifi etc.  
 
 ## Generating Colour Video Files (TBC to Playable MKV)
 
