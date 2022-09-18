@@ -10,8 +10,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Options that can be specified with -D
 
-set(USE_QWT ON CACHE BOOL
-    "Use the Qwt library; if OFF, ld-analyse will not be built")
+option(USE_QWT
+    "Use the Qwt library; if OFF, ld-analyse will not be built"
+    ON
+)
+
+#Not working on windows as of yet. The decoders are able to use ffmpeg binaries instead if needed.
+if(NOT $WIN32)
+  option(BUILD_LDF_READER
+    "build ld_ldf_reader"
+    ON
+  )
+endif()
+
+option(SEACRH_QT5_ONLY
+    "Only search for Qt5 (use e.g if qwt is not packaged for qt6 but both qt5 and qt6 are installed)"
+    OFF
+)
 
 # Check for dependencies
 
@@ -20,7 +35,11 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
-find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+if(SEARCH_QT5_ONLY)
+    find_package(QT NAMES Qt5 REQUIRED COMPONENTS Core)
+else()
+    find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+endif()
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
 message(STATUS "Qt Version: ${QT_VERSION}")
 
@@ -99,12 +118,14 @@ endif()
 
 # ld-ldf-reader
 
-add_executable(ld-ldf-reader
-    ld-ldf-reader.c)
+if(BUILD_LDF_READER)
+    add_executable(ld-ldf-reader
+      ld-ldf-reader.c)
 
-target_link_libraries(ld-ldf-reader PkgConfig::LIBAV)
+    target_link_libraries(ld-ldf-reader PkgConfig::LIBAV)
 
-install(TARGETS ld-ldf-reader)
+    install(TARGETS ld-ldf-reader)
+endif()
 
 # Python library and tools
 

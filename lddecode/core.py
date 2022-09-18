@@ -510,10 +510,11 @@ class RFDecode:
             )
             SF["Fvideo_lpf"] *= filtfft(video_notch, self.blocklen)
 
-        video_hpf = sps.butter(
-            DP["video_hpf_order"], DP["video_hpf_freq"] / self.freq_hz_half, "high"
-        )
-        SF["Fvideo_hpf"] = filtfft(video_hpf, self.blocklen)
+        # Currently not used - was used for PAL DOD
+        # video_hpf = sps.butter(
+        #     DP["video_hpf_order"], DP["video_hpf_freq"] / self.freq_hz_half, "high"
+        # )
+        # SF["Fvideo_hpf"] = filtfft(video_hpf, self.blocklen)
 
         # The deemphasis filter
         deemp1, deemp2 = DP["video_deemp"]
@@ -684,8 +685,9 @@ class RFDecode:
         hilbert = npfft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
 
-        demod_fft_full = npfft.fft(demod)
-        demod_hpf = npfft.ifft(demod_fft_full * self.Filters["Fvideo_hpf"]).real
+        # Was used for DOD on PAL, currently not used
+        # demod_fft_full = npfft.fft(demod)
+        # demod_hpf = npfft.ifft(demod_fft_full * self.Filters["Fvideo_hpf"]).real
 
         # use a clipped demod for video output processing to reduce speckling impact
         demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
@@ -703,7 +705,6 @@ class RFDecode:
                 [
                     out_video,
                     demod,
-                    demod_hpf,
                     out_video05,
                     out_videoburst,
                     out_videopilot,
@@ -711,7 +712,6 @@ class RFDecode:
                 names=[
                     "demod",
                     "demod_raw",
-                    "demod_hpf",
                     "demod_05",
                     "demod_burst",
                     "demod_pilot",
@@ -719,8 +719,8 @@ class RFDecode:
             )
         else:
             video_out = np.rec.array(
-                [out_video, demod, demod_hpf, out_video05, out_videoburst],
-                names=["demod", "demod_raw", "demod_hpf", "demod_05", "demod_burst"],
+                [out_video, demod, out_video05, out_videoburst],
+                names=["demod", "demod_raw", "demod_05", "demod_burst"],
             )
 
         rv["video"] = (
@@ -1093,10 +1093,10 @@ class DemodCache:
                     return None
 
                 # ??? - I think I put it in to make sure it isn't erased for whatever reason, but might not be needed
-                rawdatac = rawdata.copy()
+                # rawdatac = rawdata.copy()
 
                 self.blocks[b] = {}
-                self.blocks[b]["rawinput"] = rawdatac
+                self.blocks[b]["rawinput"] = rawdata
 
             if self.blocks[b] is None:
                 self.lock.release()
