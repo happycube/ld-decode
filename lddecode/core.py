@@ -38,7 +38,7 @@ else:
 # internal libraries
 
 from . import efm_pll
-from .utils import get_git_info, ldf_pipe, traceback
+from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
@@ -3275,6 +3275,8 @@ class LDdecode:
 
         self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
+        self.ac3 = extra_options.get("AC3", False)
+        print(self.ac3)
         self.write_rf_tbc = extra_options.get("write_RF_TBC", False)
 
         self.has_analog_audio = True
@@ -3290,7 +3292,9 @@ class LDdecode:
         self.outfile_audio = None
         self.outfile_efm = None
         self.outfile_pre_efm = None
+        self.outfile_ac3 = None
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
+        self.do_rftbc = False
 
         if fname_out is not None:
             self.outfile_video = open(fname_out + ".tbc", "wb")
@@ -3304,8 +3308,14 @@ class LDdecode:
                     self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
                 self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + ".tbc.ldf")
+                self.do_rftbc = True
+            if self.ac3:
+                self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
+                self.do_rftbc = True
 
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
+        if self.pipe_rftbc:
+            self.do_rftbc = True
 
         self.fname_out = fname_out
 
@@ -3388,6 +3398,7 @@ class LDdecode:
             "outfile_json",
             "outfile_efm",
             "outfile_rftbc",
+            "outfile_ac3",
         ]:
             setattr(self, outfiles, None)
 
@@ -3445,6 +3456,7 @@ class LDdecode:
         if self.digital_audio is True:
             if self.outfile_pre_efm is not None:
                 self.outfile_pre_efm.write(efm.tobytes())
+
             efm_out = self.efm_pll.process(efm)
             self.outfile_efm.write(efm_out.tobytes())
 
@@ -3456,11 +3468,14 @@ class LDdecode:
         self.outfile_video.write(picture)
         self.fields_written += 1
 
-        if self.outfile_rftbc is not None or self.pipe_rftbc is not None:
+        if self.do_rftbc:
             rftbc = f.rf_tbc()
 
             if self.outfile_rftbc is not None:
                 self.outfile_rftbc.write(rftbc)
+
+            if self.outfile_ac3 is not None:
+                self.outfile_ac3.write(rftbc)
 
             if self.pipe_rftbc is not None:
                 self.pipe_rftbc.send(rftbc)
