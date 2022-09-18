@@ -526,7 +526,7 @@ class LoadLDF:
         return self.read(infile, sample, readlen)
 
 
-def ldf_pipe(outname, compression_level=6):
+def ldf_pipe(outname: str, compression_level: int = 6):
     corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(
         " "
     )
@@ -537,6 +537,26 @@ def ldf_pipe(outname, compression_level=6):
 
     return process, process.stdin
 
+def ac3_pipe(outname: str):
+    processes = []
+
+    cmd1 = "sox -r 40000000 -b 16 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw - sinc -n 500 2600000-3160000"
+    cmd2 = "ac3_demodulate - -"
+    cmd3 = f"ac3_decode - {outname}"
+
+    # This is done in reverse order to allow for pipe building
+    processes.append(subprocess.Popen(cmd3.split(' '), 
+                                      stdin=subprocess.PIPE))
+
+    processes.append(subprocess.Popen(cmd2.split(' '), 
+                                      stdin=subprocess.PIPE, 
+                                      stdout=processes[-1].stdin))
+
+    processes.append(subprocess.Popen(cmd1.split(' '), 
+                                      stdin=subprocess.PIPE, 
+                                      stdout=processes[-1].stdin))
+
+    return processes, processes[-1].stdin
 
 # Git helpers
 

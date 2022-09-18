@@ -113,6 +113,12 @@ parser.add_argument(
     help="Disable analog(ue) audio decoding",
 )
 parser.add_argument(
+    "--AC3",
+    action="store_true",
+    default=False,
+    help="Enable AC3 audio decoding (NTSC only)",
+)
+parser.add_argument(
     "--start_fileloc",
     metavar="start_fileloc",
     type=float,
@@ -272,6 +278,7 @@ extra_options = {
     "deemp_mult": (args.deemp_adjust, args.deemp_adjust),
     "deemp_coeff": (args.deemp_low, args.deemp_high),
     "audio_filterwidth": args.audio_filterwidth,
+    "AC3": args.AC3,
 }
 
 if vid_standard == "NTSC" and args.NTSC_color_notch_filter:
@@ -279,6 +286,13 @@ if vid_standard == "NTSC" and args.NTSC_color_notch_filter:
 
 if vid_standard == "PAL" and args.V4300D_notch_filter:
     extra_options["PAL_V4300D_NotchFilter"] = True
+
+if vid_standard == "PAL" and args.V4300D_notch_filter:
+    extra_options["PAL_V4300D_NotchFilter"] = True
+
+if vid_standard == "PAL" and args.AC3:
+    print("ERROR: AC3 audio decoding is only supported for NTSC")
+    exit(1)
 
 if args.lowband:
     extra_options["lowband"] = True
@@ -288,8 +302,6 @@ try:
 except ValueError as e:
     print(e)
     exit(1)
-
-system = "PAL" if args.pal else "NTSC"
 
 # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
 # allowing SIGINT/control-C's to be handled cleanly
@@ -308,7 +320,7 @@ ldd = LDdecode(
     est_frames=req_frames,
     analog_audio=0 if args.daa else args.analog_audio_freq,
     digital_audio=not args.noefm,
-    system=system,
+    system=vid_standard,
     doDOD=not args.nodod,
     threads=args.threads,
     extra_options=extra_options,
@@ -321,7 +333,7 @@ if args.start_fileloc != -1:
 else:
     ldd.roughseek(firstframe * 2)
 
-if system == "NTSC" and not args.ntscj:
+if vid_standard == "NTSC" and not args.ntscj:
     ldd.blackIRE = 7.5
 
 # print(ldd.blackIRE)
