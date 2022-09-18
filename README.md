@@ -31,15 +31,11 @@ Note for test media generation AJA/Magewell/Blackmagic and even some consumer di
 
 Functional but still a work in progress is VideoMem's [HiFi-Decode Branch](https://github.com/VideoMem/ld-decode/tree/hifi-decode) witch can  take uncompressed or flac compressed RF files and output standard 24bit 192khz .wav PCM files.
 
-# ld-tools for Windows (Not The Decoder)
-
-The ld-tools suit has been ported to windows, LD-Analyse fully works please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases)
-
 # Dependencies - Hardware
 
 ## A Tape Player (VCR/VTR etc)
 
-Preferably adjusted per tape and in excellent mechanical and head condition, S-VHS decks are preferable as they were built generally better than cheaper later consumer VHS decks, and are easier to adjust tape guides to achieve optimal alignment however any working clean VCR should work, however you don't need an SVHS VCR at all even for SVHS tapes!
+Preferably adjusted per tape and in excellent mechanical and head condition, for VHS, S-VHS decks are preferable as they were built generally better than cheaper later consumer decks, and are easier to adjust tape guides to achieve optimal alignment however any working clean VCR should work, however you don't need an SVHS VCR at all even for SVHS tapes!
 
 Its recommended if possible to fully service your VCR/VTR one should inspect/clean heads and solder joint conditions (note parts with removable shielding may go unchecked), replace expanded or leaky capacitors etc, but at the minimum clean the heads with 99.9% Isopropanol and lint free cloths/pads/paper & making sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils.
 
@@ -105,16 +101,16 @@ For direct soldering RG178 or RG316 cable to an BNC bulk head is recommended thi
 
 **Note** Some UMATIC decks have a direct RF output on the back that may be viable for RF capture. (*needs expanding on*)
 
-# Dependencies - Software
+# Dependencies & Installation - Software
 
 VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest version of Ubuntu and Linux Mint.
 Other distributions might have outdated (or even newer) versions of certain Python libraries or other dependencies, breaking compatibility.
 
 Its fully working on WSL2 Ubuntu 20.04 (Windows Subsystem for Linux) however issues with larger captures i.g 180gb+ may require expanding the default [virtual disk size](https://docs.microsoft.com/en-us/windows/wsl/vhd-size)
 
-It also partially runs on Windows natively; currently, ld-tools have been ported over.
+It also partially runs on Windows natively; currently, [ld-tools](https://github.com/oyvindln/vhs-decode/releases) have been ported over.
 
-Other dependencies include Python 3.5+,numpy, scipy, cython, numba, pandas, Qt5, Qmake, and FFmpeg.
+Other dependencies include Python 3.5+, numpy, scipy, cython, numba, pandas, Qt5, Cmake, and FFmpeg.
 
 Some useful free tools to note for post processing are [StaxRip](https://github.com/staxrip/staxrip) & [Lossless Cut](https://github.com/mifi/lossless-cut) & of course [DaVinci Resolve](https://www.blackmagicdesign.com/uk/products/davinciresolve) this gives you basic editing to quickly handle uncompressed files cross operating systems, and for windows users an easy FFMPEG/AviSynth/Vapoursynth encoding and de-interlacing experience, and full colour grading and post production ability.
 
@@ -122,9 +118,13 @@ Some useful free tools to note for post processing are [StaxRip](https://github.
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
-    sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make ocl-icd-opencl-dev mono-runtime cython3
+    sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make cython3 cmake
 
-Install all dependencies required for gooey graphical user interface:
+Install dependencies for GPU FLAC compression support:
+
+    sudo apt install make ocl-icd-opencl-dev mono-runtime
+
+Install all dependencies required for optional gooey graphical user interface:
 
     sudo apt-get install build-essential dpkg-dev freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev
     libgstreamer-plugins-base1.0-dev libgtk-3-dev libjpeg-dev libnotify-dev
@@ -135,15 +135,29 @@ Download VHS-Decode:
 
     git clone https://github.com/oyvindln/vhs-decode.git vhs-decode
 
+Install VHS-Decode:
+
+    cd vhs-decode
+
+    sudo ./setup.py install
+
 Compile and install Domesday tools:
 
-    cd vhs-decode && make -j8 && sudo make install && make clean
+    mkdir build
+    cd build
+    cmake ..
+    make -j4
+    sudo make install
 
 To update do `git pull` while inside of the vhs-decode directory.
 
 # Usage
 
 Note with WSL2 & Ubuntu, `./` in front of applications and scripts may be needed to run them.
+
+## ld-tools suite for Windows (Note this is only the tools, not the decoder's)
+
+The ld-tools suit has been ported to windows, This mainly allows the use of LD-Analyse to view .TBC files, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases)
 
 ## CX Card Setup & Capture
 
@@ -189,17 +203,25 @@ For DomesDayDuplicator Captures simply run
 
 Your .lds file will be compressed to an FLAC OGG .ldf file
 
-For CXADC and other 8/16bit captures use the following
+For CXADC and other 8/16bit captures use the following:
 
-Editable flags are `--bps` for 8 or 16 bit and `% --ogg` and change `<capture>` to your input file name.
+Editable flags are
+
+The `--bps` flag can be changed to `--bps=8` or `--bps=16` for 8 & 16 bit captures.
+
+The `--ogg` flag will use OGG encoding - Allows for 100GB+ captures & easy Audition/Audacity inspection.
+
+Change `<capture>` to your input file name.
 
 Reduce size of captured CXADC data (by 40-60%):
 
-    flac --best --sample-rate=48000 --sign=unsigned --channels=1 --endian=little --bps=8 % --ogg -f <capture>.u8 <capture>.vhs
+    flac --best --sample-rate=48000 --sign=unsigned --channels=1 --endian=little --bps=8 --ogg -f <capture>.u8 <output-name>
 
 Decompress FLAC compressed captures.
 
     flac -d --force-raw-format --sign=unsigned --endian=little <capture>.vhs <capture>.u16
+
+Output will be `filename.ogg` so rename the end extension to .vhs / .hifi etc.  
 
 ## Generating Colour Video Files (TBC to Playable MKV)
 
