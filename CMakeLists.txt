@@ -15,15 +15,15 @@ option(USE_QWT
     ON
 )
 
-#Not working on windows as of yet. The decoders are able to use ffmpeg binaries instead if needed.
+# Not working on Windows as of yet. The decoders are able to use ffmpeg binaries instead if needed.
 if(NOT $WIN32)
-  option(BUILD_LDF_READER
-    "build ld_ldf_reader"
-    ON
-  )
+    option(BUILD_LDF_READER
+        "build ld_ldf_reader"
+        ON
+    )
 endif()
 
-option(SEACRH_QT5_ONLY
+option(SEARCH_QT5_ONLY
     "Only search for Qt5 (use e.g if qwt is not packaged for qt6 but both qt5 and qt6 are installed)"
     OFF
 )
