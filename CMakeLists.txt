@@ -28,6 +28,11 @@ option(SEARCH_QT5_ONLY
     OFF
 )
 
+option(BUILD_PYTHON
+    "Build and install ld-decode's Python library and tools"
+    ON
+)
+
 # Check for dependencies
 
 # When using Qt 6.3, you can replace the code block below with qt_standard_project_setup()
@@ -129,22 +134,29 @@ endif()
 
 # Python library and tools
 
-find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
+if(BUILD_PYTHON)
+    find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
 
-set(OUTPUT ${CMAKE_CURRENT_BINARY_DIR})
-set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/lddecode/__init__.py)
+    set(PYTHON_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/python-build)
 
-if(0)
-    # XXX There must be a better way to do this!
-    # XXX This doesn't work when building in a separate object directory
-    add_custom_command(
-        OUTPUT ${OUTPUT}/timestamp
-        COMMAND ${PYTHON} ./setup.py build
-        COMMAND ${CMAKE_COMMAND} -E touch ${OUTPUT}/timestamp
-        DEPENDS ${DEPS}
+    add_custom_target(python-build ALL
+        COMMAND ${PYTHON} ./setup.py --quiet
+            build --build-base ${PYTHON_BUILD_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
-    add_custom_target(target ALL DEPENDS ${OUTPUT}/timestamp)
+    # We must run build/egg_info here to specify the directories.
+    install(CODE "
+        if(NOT DEFINED ENV{DESTDIR})
+            set(ENV{DESTDIR} /)
+        endif()
+        execute_process(
+            COMMAND ${PYTHON} ./setup.py --quiet
+                build --build-base ${PYTHON_BUILD_DIR}
+                egg_info --egg-base ${CMAKE_CURRENT_BINARY_DIR}
+                install --prefix ${CMAKE_INSTALL_PREFIX}
+                        --root \$ENV{DESTDIR}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    ")
 endif()
-
-# XXX Install rule for Python
