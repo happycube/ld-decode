@@ -15,6 +15,10 @@ option(USE_QWT
     ON
 )
 
+set(USE_QT_VERSION "" CACHE STRING
+    "Version of Qt to use (by default, try Qt 6 then Qt 5)"
+)
+
 # Not working on Windows as of yet. The decoders are able to use ffmpeg binaries instead if needed.
 if(NOT $WIN32)
     option(BUILD_LDF_READER
@@ -22,11 +26,6 @@ if(NOT $WIN32)
         ON
     )
 endif()
-
-option(SEARCH_QT5_ONLY
-    "Only search for Qt5 (use e.g if qwt is not packaged for qt6 but both qt5 and qt6 are installed)"
-    OFF
-)
 
 option(BUILD_PYTHON
     "Build and install ld-decode's Python library and tools"
@@ -40,11 +39,11 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
-if(SEARCH_QT5_ONLY)
-    find_package(QT NAMES Qt5 REQUIRED COMPONENTS Core)
-else()
-    find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+set(QT_PACKAGE_NAMES Qt5 Qt6)
+if(USE_QT_VERSION)
+    set(QT_PACKAGE_NAMES Qt${USE_QT_VERSION})
 endif()
+find_package(QT NAMES ${QT_PACKAGE_NAMES} REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
 message(STATUS "Qt Version: ${QT_VERSION}")
 
