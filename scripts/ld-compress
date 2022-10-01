@@ -82,7 +82,7 @@ else
         then
                     if [ ! -f "$(basename "$f" .lds).flac.ldf" ]
           then
-           >&2 echo Compressing \'"$f"\' to \'"$(basename "$f" .lds).flac.ldf"\' && ${fileinput_method} "$f" | ld-lds-converter -r -u |  mono /opt/flaccl/CUETools.FLACCL.cmd.exe - --ignore-chunk-sizes -q -"$level" --lax -o "$(basename "$f" .lds).flac.ldf" && >&2 echo \'"$(basename "$f" .lds).flac.ldf"\' written. || echo Error: Please see the ld-decode wiki to troubleshoot https://github.com/happycube/ld-decode/wiki/ld-decode-utilities
+           >&2 echo Compressing \'"$f"\' to \'"$(basename "$f" .lds).flac.ldf"\' && ${fileinput_method} "$f" | ld-lds-converter -r -u |  flaldf - --ignore-chunk-sizes -q -"$level" --lax -o "$(basename "$f" .lds).flac.ldf" && >&2 echo \'"$(basename "$f" .lds).flac.ldf"\' written. || echo Error: Please see the ld-decode wiki to troubleshoot https://github.com/happycube/ld-decode/wiki/ld-compress
            else
            >&2 echo File "$(basename "$f" .lds).flac.ldf" already exists. Skipping.
            fi
