@@ -15,17 +15,21 @@ option(USE_QWT
     ON
 )
 
-#Not working on windows as of yet. The decoders are able to use ffmpeg binaries instead if needed.
+set(USE_QT_VERSION "" CACHE STRING
+    "Version of Qt to use (by default, try Qt 6 then Qt 5)"
+)
+
+# Not working on Windows as of yet. The decoders are able to use ffmpeg binaries instead if needed.
 if(NOT $WIN32)
-  option(BUILD_LDF_READER
-    "build ld_ldf_reader"
-    ON
-  )
+    option(BUILD_LDF_READER
+        "build ld_ldf_reader"
+        ON
+    )
 endif()
 
-option(SEACRH_QT5_ONLY
-    "Only search for Qt5 (use e.g if qwt is not packaged for qt6 but both qt5 and qt6 are installed)"
-    OFF
+option(BUILD_PYTHON
+    "Build and install ld-decode's Python library and tools"
+    ON
 )
 
 # Check for dependencies
@@ -35,11 +39,11 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
-if(SEARCH_QT5_ONLY)
-    find_package(QT NAMES Qt5 REQUIRED COMPONENTS Core)
-else()
-    find_package(QT NAMES Qt5 Qt6 REQUIRED COMPONENTS Core)
+set(QT_PACKAGE_NAMES Qt5 Qt6)
+if(USE_QT_VERSION)
+    set(QT_PACKAGE_NAMES Qt${USE_QT_VERSION})
 endif()
+find_package(QT NAMES ${QT_PACKAGE_NAMES} REQUIRED COMPONENTS Core)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
 message(STATUS "Qt Version: ${QT_VERSION}")
 
@@ -129,22 +133,29 @@ endif()
 
 # Python library and tools
 
-find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
+if(BUILD_PYTHON)
+    find_package(Python3 3.6 REQUIRED COMPONENTS Interpreter)
 
-set(OUTPUT ${CMAKE_CURRENT_BINARY_DIR})
-set(DEPS ${CMAKE_CURRENT_SOURCE_DIR}/lddecode/__init__.py)
+    set(PYTHON_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/python-build)
 
-if(0)
-    # XXX There must be a better way to do this!
-    # XXX This doesn't work when building in a separate object directory
-    add_custom_command(
-        OUTPUT ${OUTPUT}/timestamp
-        COMMAND ${PYTHON} ./setup.py build
-        COMMAND ${CMAKE_COMMAND} -E touch ${OUTPUT}/timestamp
-        DEPENDS ${DEPS}
+    add_custom_target(python-build ALL
+        COMMAND ${PYTHON} ./setup.py --quiet
+            build --build-base ${PYTHON_BUILD_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
 
-    add_custom_target(target ALL DEPENDS ${OUTPUT}/timestamp)
+    # We must run build/egg_info here to specify the directories.
+    install(CODE "
+        if(NOT DEFINED ENV{DESTDIR})
+            set(ENV{DESTDIR} /)
+        endif()
+        execute_process(
+            COMMAND ${PYTHON} ./setup.py --quiet
+                build --build-base ${PYTHON_BUILD_DIR}
+                egg_info --egg-base ${CMAKE_CURRENT_BINARY_DIR}
+                install --prefix ${CMAKE_INSTALL_PREFIX}
+                        --root \$ENV{DESTDIR}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    ")
 endif()
-
-# XXX Install rule for Python

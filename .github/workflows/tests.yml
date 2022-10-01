@@ -32,7 +32,7 @@ jobs:
 
     - name: Configure
       timeout-minutes: 5
-      run: cd obj && cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+      run: cd obj && cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_QT_VERSION=5 ..
 
     - name: Build
       timeout-minutes: 15
@@ -73,7 +73,7 @@ jobs:
 
     - name: Configure
       timeout-minutes: 5
-      run: cd obj && cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_QWT=OFF ..
+      run: cd obj && cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DUSE_QT_VERSION=6 -DUSE_QWT=OFF ..
 
     - name: Build
       timeout-minutes: 15
