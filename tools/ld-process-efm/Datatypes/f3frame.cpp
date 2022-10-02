@@ -196,17 +196,67 @@ bool F3Frame::isSubcodeSync1()
 
 // Private methods ----------------------------------------------------------------------------------------------------
 
+// Custom hash table mapping EFM symbols to their values.
+//
+// This uses 2 KiB of storage, so it will fit comfortably within L1 cache
+// even on low-end machines. It does at most two lookups for each symbol,
+// with each lookup needing a single 32-bit memory read.
+class EfmHashTable
+{
+public:
+    EfmHashTable() {
+        // Zero out the table (since 0 is not a valid EFM symbol)
+        for (qint32 i = 0; i < 512; i++) buckets[i] = 0;
+
+        // Put the EFM codes into the table
+        for (qint32 value = 0; value < 256; value++) {
+            const qint16 symbol = efm2numberLUT[value];
+            qint32 bucket = getHash(symbol) * 2;
+
+            // If this bucket is already occupied, use the next one
+            if (buckets[bucket] != 0) bucket++;
+
+            // Store the value in the top half of the bucket
+            buckets[bucket] = (value << 16) | symbol;
+        }
+    }
+
+    // Look up the value of an EFM symbol, returning -1 if not found
+    qint16 getValue(qint16 symbol) const {
+        const qint32 bucket = getHash(symbol) * 2;
+
+        // If present, the symbol must be in this bucket or the next one
+        const quint32 thisBucket = buckets[bucket];
+        if ((thisBucket & 0xFFFF) == symbol) return thisBucket >> 16;
+        const quint32 nextBucket = buckets[bucket + 1];
+        if ((nextBucket & 0xFFFF) == symbol) return nextBucket >> 16;
+
+        // Not found
+        return -1;
+    }
+
+private:
+    // Hash an EFM value into an 8-bit result. This function was selected so
+    // that at most two valid EFM codes give the same hash value.
+    static qint32 getHash(qint16 symbol) {
+        return (symbol ^ (symbol >> 1) ^ (symbol >> 3) ^ (symbol >> 7)) & 0xFF;
+    }
+
+    quint32 buckets[512];
+};
+static EfmHashTable efmHashTable;
+
 // Method to translate 14-bit EFM value into 8-bit byte
 // Returns -1 if the EFM value could not be converted (which never happens,
 // since we always correct to the most likely value)
 qint16 F3Frame::translateEfm(qint16 efmValue)
 {
-    for (qint16 lutPos = 0; lutPos < 256; lutPos++) {
-        if (efm2numberLUT[lutPos] == efmValue) {
-            // Symbol was valid
-            validEfmSymbols++;
-            return lutPos;
-        }
+    // Look up the symbol in the hash table
+    qint16 value = efmHashTable.getValue(efmValue);
+    if (value != -1) {
+        // Symbol was valid
+        validEfmSymbols++;
+        return value;
     }
 
     // Symbol was invalid. Correct it using cosine similarity lookup.
