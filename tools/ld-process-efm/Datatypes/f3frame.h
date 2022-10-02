@@ -33,9 +33,9 @@ class F3Frame
 {
 public:
     F3Frame();
-    F3Frame(uchar *tValuesIn, qint32 tLength, bool audioIsDts);
+    F3Frame(const uchar *tValuesIn, qint32 tLength, bool audioIsDts);
 
-    void setTValues(uchar *tValuesIn, qint32 tLength, bool audioIsDts);
+    void setTValues(const uchar *tValuesIn, qint32 tLength, bool audioIsDts);
     uchar* getDataSymbols();
     uchar* getErrorSymbols();
     uchar getSubcodeSymbol();
@@ -58,7 +58,7 @@ private:
     qint64 correctedEfmSymbols;
 
     qint16 translateEfm(qint16 efmValue);
-    qint16 getBits(uchar *rawData, qint16 bitIndex, qint16 width);
+    qint16 getBits(const uchar *rawData, qint16 bitIndex, qint16 width);
 };
 
 // The following table provides the 10-bit EFM code (padded with leading

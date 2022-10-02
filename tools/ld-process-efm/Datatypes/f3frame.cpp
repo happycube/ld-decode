@@ -47,7 +47,7 @@ F3Frame::F3Frame()
     }
 }
 
-F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength, bool audioIsDts)
+F3Frame::F3Frame(const uchar *tValuesIn, qint32 tLength, bool audioIsDts)
 {
     validEfmSymbols = 0;
     invalidEfmSymbols = 0;
@@ -61,7 +61,7 @@ F3Frame::F3Frame(uchar *tValuesIn, qint32 tLength, bool audioIsDts)
 }
 
 // This method sets the T-values for the F3 Frame
-void F3Frame::setTValues(uchar* tValuesIn, qint32 tLength, bool audioIsDts)
+void F3Frame::setTValues(const uchar *tValuesIn, qint32 tLength, bool audioIsDts)
 {
     // Does tValuesIn contain values?
     if (tLength == 0) {
@@ -236,7 +236,7 @@ qint16 F3Frame::translateEfm(qint16 efmValue)
 }
 
 // Method to get 'width' bits (max 15) from a byte array starting from bit 'bitIndex'
-inline qint16 F3Frame::getBits(uchar *rawData, qint16 bitIndex, qint16 width)
+inline qint16 F3Frame::getBits(const uchar *rawData, qint16 bitIndex, qint16 width)
 {
     qint16 byteIndex = bitIndex / 8;
     qint16 bitInByteIndex = 7 - (bitIndex % 8);
