@@ -4,6 +4,7 @@
 
     ld-process-efm - EFM data decoder
     Copyright (C) 2019-2022 Simon Inns
+    Copyright (C) 2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -69,70 +70,49 @@ void F3Frame::setTValues(const uchar *tValuesIn, qint32 tLength, bool audioIsDts
         return;
     }
 
-    // Now perform the conversion
     // Step 1:
 
-    // Convert the T values into a bit stream
-    // Should produce 588 channel bits which is 73.5 bytes of data
-    uchar rawFrameData[75];
-    qint32 bitPosition = 7;
-    qint32 bytePosition = 0;
-    uchar byteData = 0;
-
-    bool finished = false;
-    for (qint32 tPosition = 0; tPosition < tLength; tPosition++) {
-        uchar tValuesIn_tPosition = tValuesIn[tPosition];
-        for (qint32 bitCount = 0; bitCount < tValuesIn_tPosition; bitCount++) {
-            if (bitCount == 0) byteData |= (1 << bitPosition);
-            bitPosition--;
-
-            if (bitPosition < 0) {
-                rawFrameData[bytePosition] = byteData;
-                byteData = 0;
-                bitPosition = 7;
-                bytePosition++;
-
-                // Check for overflow (due to errors in the T values) and stop processing to prevent crashes
-                if (bytePosition > 73) {
-                    finished = true;
-                    break;
-                }
-            }
-
-            if (finished) break;
-        }
-
-        if (finished) break;
-    }
-
-    // Add in the last nybble to get from 73.5 to 74 bytes
-    if (bytePosition < 74) rawFrameData[bytePosition] = byteData;
-
-    // Step 2:
-
-    // Take the bit stream and extract just the EFM values it contains
+    // Convert the T-values, which represent the spacing between 1 bits, into
+    // EFM values.
+    //
     // There are 33 EFM values per F3 frame (1 Subcode symbol and 32 data symbols)
-
+    //
     // Composition of an EFM packet is as follows:
     //
     //  1 * (24 + 3) bits sync pattern         =  27
     //  1 * (14 + 3) bits control and display  =  17
     // 32 * (14 + 3) data+parity               = 544
     //                                   total = 588 bits
+    //
+    // We don't bother storing the sync pattern, or the 3 merging bits after
+    // each EFM code.
 
+    // Clear the EFM buffer
     qint16 efmValues[33];
-    qint16 currentBit = 0;
+    for (qint32 i = 0; i < 33; i++) efmValues[i] = 0;
 
-    // Ignore the sync pattern (which is 24 bits plus 3 merging bits)
-    currentBit += 24 + 3;
+    // Iterate through the T-values, keeping track of the bit position within the frame.
+    // The loop executes an extra time at the end to write the final 1 bit.
+    qint32 frameBits = 0;
+    for (qint32 tPosition = 0; tPosition < tLength + 1; tPosition++) {
+        const uchar tValue = (tPosition == tLength) ? 0 : tValuesIn[tPosition];
 
-    // Get the 33 x 14-bit sync/EFM values
-    for (qint32 counter = 0; counter < 33; counter++) {
-        efmValues[counter] = getBits(rawFrameData, currentBit, 14);
-        currentBit += 14 + 3; // the value plus 3 merging bits
+        // If we're inside an EFM value (not the sync pattern, or the merging
+        // bits, or past the end of the buffer), write a 1 bit in the
+        // appropriate place
+        const qint32 efmBits = frameBits - (24 + 3);
+        if (efmBits >= 0) {
+            const qint32 efmIndex = efmBits / (14 + 3);
+            const qint32 efmBit = efmBits % (14 + 3);
+            if (efmIndex < 33 && efmBit < 14) {
+                efmValues[efmIndex] |= (1 << (13 - efmBit));
+            }
+        }
+
+        frameBits += tValue;
     }
 
-    // Step 3:
+    // Step 2:
 
     // Decode the subcode symbol.
     // Some (but not all) DTS LaserDiscs use a non-standard Sync 0 value.
@@ -149,7 +129,7 @@ void F3Frame::setTValues(const uchar *tValuesIn, qint32 tLength, bool audioIsDts
         subcodeSymbol = static_cast<uchar>(translateEfm(efmValues[0]));
     }
 
-    // Step 4:
+    // Step 3:
 
     // Decode the data symbols
     for (qint32 i = 0; i < 32; i++) {
@@ -234,24 +214,3 @@ qint16 F3Frame::translateEfm(qint16 efmValue)
     correctedEfmSymbols++;
     return efmerr2valueLUT[efmValue & 0x3fff];
 }
-
-// Method to get 'width' bits (max 15) from a byte array starting from bit 'bitIndex'
-inline qint16 F3Frame::getBits(const uchar *rawData, qint16 bitIndex, qint16 width)
-{
-    qint16 byteIndex = bitIndex / 8;
-    qint16 bitInByteIndex = 7 - (bitIndex % 8);
-
-    qint16 result = 0;
-    for (qint16 nBits = width - 1; nBits > -1; nBits--) {
-        if (rawData[byteIndex] & (1 << bitInByteIndex)) result += (1 << nBits);
-
-        bitInByteIndex--;
-        if (bitInByteIndex < 0) {
-            bitInByteIndex = 7;
-            byteIndex++;
-        }
-    }
-
-    return result;
-}
-

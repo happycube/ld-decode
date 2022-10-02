@@ -58,7 +58,6 @@ private:
     qint64 correctedEfmSymbols;
 
     qint16 translateEfm(qint16 efmValue);
-    qint16 getBits(const uchar *rawData, qint16 bitIndex, qint16 width);
 };
 
 // The following table provides the 10-bit EFM code (padded with leading
