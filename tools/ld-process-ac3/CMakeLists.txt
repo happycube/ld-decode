@@ -11,6 +11,6 @@ endif ()
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-
+include_directories(../ld-process-efm)
 add_subdirectory(demodulate)
 add_subdirectory(decode)
