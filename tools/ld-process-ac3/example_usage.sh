@@ -34,13 +34,13 @@ cmake --build ./cmake-build-debug -j 3
 # individual steps (useful to cache while developing)
 #ffmpeg -hide_banner -y -i "$path" -f s16le -c:a pcm_s16le TP0
 #sox -r 40000000 -b 16 -c 1 -e signed -t raw TP0 -b 8 -r 46080000 -e unsigned -c 1 -t raw TP1 sinc -n 500 2600000-3160000
-#time cmake-build-debug/demodulate/ac3_demodulate TP1 TP2 demodulate_log
-#time cmake-build-debug/decode/ac3_decode TP2 "$outpath" decode_log
+#time cmake-build-debug/demodulate/ld-ac3-demodulate TP1 TP2 demodulate_log
+#time cmake-build-debug/decode/ld-ac3-decode TP2 "$outpath" decode_log
 
 time (
   ffmpeg -hide_banner -loglevel error -y -i "$path" -f s16le -c:a pcm_s16le - |
     sox -r 40000000 -b 16 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw - sinc -n 500 2600000-3160000 |
-    cmake-build-debug/demodulate/ac3_demodulate - - demodulate_log |
-    cmake-build-debug/decode/ac3_decode - "$outpath" decode_log
+    cmake-build-debug/demodulate/ld-ac3-demodulate - - demodulate_log |
+    cmake-build-debug/decode/ld-ac3-decode - "$outpath" decode_log
 )
 ffplay -codec:a:0 ac3 "$outpath"
