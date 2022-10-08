@@ -1,3 +1,8 @@
-add_executable(ac3_decode main.cpp QPSKFramer.hpp Blocker.hpp Corrector.hpp AC3Framer.hpp ac3_parsing.hpp ../logger.hpp ac3_parsing.cpp)
+add_executable(ld-ac3-decode
+    ac3_parsing.cpp
+    main.cpp
+)
 
-target_include_directories(ac3_decode PRIVATE . ../../ld-process-efm)
+target_include_directories(ld-ac3-decode PRIVATE . ../../ld-process-efm)
+
+install(TARGETS ld-ac3-decode)
