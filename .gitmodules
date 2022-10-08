@@ -1,0 +1,3 @@
+[submodule "tools/ld-process-ac3"]
+	path = tools/ld-process-ac3
+	url = https://github.com/LeightonSmallshire/LD-Process-AC3
