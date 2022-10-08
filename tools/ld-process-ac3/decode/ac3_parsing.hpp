@@ -30,10 +30,12 @@
 
 #pragma once
 
-#include <iostream>
 #include <algorithm>
-#include <cstdint>
+#include <array>
 #include <cassert>
+#include <cstdint>
+#include <iostream>
+#include <vector>
 
 
 const double fscod_lookup[]{48, 44.1, 32};
