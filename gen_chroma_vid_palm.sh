@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CHROMA_DECODER="transform2d"
-CHROMA_GAIN=1.5
+CHROMA_GAIN=1
 FILTER_COMPLEX="[1:v]format=yuv422p10le[chroma];[0:v][chroma]mergeplanes=0x001112:yuv422p10le[output]"
 
 # Append audio track captured over line input or with external sound recorder, skip if absent:
