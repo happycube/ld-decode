@@ -93,7 +93,7 @@ struct SyncInfo {
         fscod = source.get(2);
         assert(fscod != 0b11); // code 3 unused
         frmsizecod = source.get(6);
-        assert(frmsizecod <= 37); // max frmsizecod is 36
+        //assert(frmsizecod <= 37); // max frmsizecod is 36
         // used to determine the number of 16-bit words before the next sync word
     }
 };
@@ -208,8 +208,8 @@ struct SyncFrame {
         int frameSize, frameSize58;
         uint8_t *frame = frameData.data();
 
-        assert(syncInfo.frmsizecod == 28);
-        assert(syncInfo.fscod == 0b00);
+        //assert(syncInfo.frmsizecod == 28);
+        //assert(syncInfo.fscod == 0b00);
         frameSize = 768; // frame size from frmsizecod & fscod. todo: lookup / calculate
         frameSize58 = (frameSize >> 1) + (frameSize >> 3); // 1/8 + 4/8
 
