@@ -101,7 +101,7 @@ struct AC3Framer {
                 ac3Buffer.insert(ac3Buffer.end(), buffer[bytePosition]);
                 if (ac3Buffer.size() == currentAc3Size) {
                     currentAc3Size = 0;
-                    assert(ac3Buffer[4] == 0x1c); // fscod and frmsizecod fixed until lookup above implemented
+                    // assert(ac3Buffer[4] == 0x1c); // fscod and frmsizecod fixed until lookup above implemented
                     return ac3Buffer;
                 }
             }
