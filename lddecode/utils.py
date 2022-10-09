@@ -541,8 +541,8 @@ def ac3_pipe(outname: str):
     processes = []
 
     cmd1 = "sox -r 40000000 -b 16 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw - sinc -n 500 2600000-3160000"
-    cmd2 = "ac3_demodulate - -"
-    cmd3 = f"ac3_decode - {outname}"
+    cmd2 = "ld-ac3-demodulate - -"
+    cmd3 = f"ld-ac3-decode - {outname}"
 
     # This is done in reverse order to allow for pipe building
     processes.append(subprocess.Popen(cmd3.split(' '), 
