@@ -134,7 +134,7 @@ def common_parser_inner(parser, use_gui=False):
 
     extra_filtering_group = parser.add_argument_group("Extra filtering")
     extra_filtering_group.add_argument(
-        "-ct",
+        "--ct",
         "--chroma_trap",
         dest="chroma_trap",
         action="store_true",
@@ -142,8 +142,9 @@ def common_parser_inner(parser, use_gui=False):
         help="Enable filter to reduce chroma interference on luma.",
     )
     extra_filtering_group.add_argument(
-        "-sl",
+        "--sl",
         "--sharpness",
+        dest="sharpness",
         metavar="sharpness",
         type=int,
         default=0,
@@ -184,7 +185,7 @@ def common_parser_inner(parser, use_gui=False):
     add_argument_hidden_in_gui(
         system_group,
         use_gui,
-        "-pm",
+        "--pm",
         "--palm",
         dest="palm",
         action="store_true",

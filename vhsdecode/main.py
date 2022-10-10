@@ -48,9 +48,10 @@ def main(use_gui=False):
             help=argparse.SUPPRESS,
         )
     parser.add_argument(
-        "-tf",
+        "--tf",
         "--tape_format",
         type=str.upper,
+        dest="tape_format",
         metavar="tape_format",
         default="VHS",
         choices=supported_tape_formats,
@@ -74,7 +75,7 @@ def main(use_gui=False):
         help="Multiplier for boost to high rf frequencies, uses default if not specified. Subject to change.",
     )
     luma_group.add_argument(
-        "-nodd",
+        "--nodd",
         "--no_diff_demod",
         dest="disable_diff_demod",
         action="store_true",
@@ -83,7 +84,7 @@ def main(use_gui=False):
     )
     if not use_gui:
         luma_group.add_argument(
-            "-noclamp",
+            "--noclamp",
             "--no_clamping",
             dest="disable_dc_offset",
             action="store_true",
@@ -99,7 +100,7 @@ def main(use_gui=False):
         help="Enable blanking DC offset clamping/compensation",
     )
     luma_group.add_argument(
-        "-nld",
+        "--nld",
         "--non_linear_deemphasis",
         dest="nldeemp",
         action="store_true",
@@ -108,7 +109,7 @@ def main(use_gui=False):
     )
     chroma_group = parser.add_argument_group("Chroma decoding options")
     chroma_group.add_argument(
-        "-cafc",
+        "--cafc",
         "--chroma_AFC",
         dest="cafc",
         action="store_true",
@@ -138,9 +139,9 @@ def main(use_gui=False):
         default=False,
         help="Disable internal chroma comb filter.",
     )
-    plot_options = "demodblock"
+    plot_options = "demodblock, deemphasis"
     debug_group.add_argument(
-        "-dp",
+        "--dp",
         "--debug_plot",
         dest="debug_plot",
         help="Do a plot for the requested data, separated by whitespace. Current options are: "
@@ -148,7 +149,7 @@ def main(use_gui=False):
         + ".",
     )
     debug_group.add_argument(
-        "-sclip",
+        "--sclip",
         "--sync_clip",
         dest="sync_clip",
         action="store_true",
@@ -156,7 +157,7 @@ def main(use_gui=False):
         help="Enables sync clipping",
     )
     debug_group.add_argument(
-        "-drh",
+        "--drh",
         "--disable_right_hsync",
         dest="disable_right_hsync",
         action="store_true",
