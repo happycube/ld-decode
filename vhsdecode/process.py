@@ -9,7 +9,7 @@ import lddecode.core as ldd
 from lddecode.core import npfft
 import lddecode.utils as lddu
 import vhsdecode.utils as utils
-from vhsdecode.utils import StackableMA
+from vhsdecode.utils import StackableMA, filtfft
 from vhsdecode.chroma import demod_chroma_filt
 
 import vhsdecode.formats as vhs_formats
@@ -562,19 +562,18 @@ class VHSRFDecode(ldd.RFDecode):
         #     lddu.filtfft((db2, da2), self.blocklen)
         # )
 
-        half_blocklen = (self.blocklen // 2) + 1
-
         video_lpf = sps.butter(
             DP["video_lpf_order"], DP["video_lpf_freq"] / self.freq_hz_half, "low"
         )
         # SF["Fvideo_lpf"] = lddu.filtfft(video_lpf, self.blocklen)
-        filter_video_lpf = lddu.filtfft(video_lpf, self.blocklen)[:half_blocklen]
+        filter_video_lpf = filtfft(video_lpf, self.blocklen, False)
         SF["Fvideo_lpf"] = video_lpf
 
         # additional filters:  0.5mhz, used for sync detection.
         # Using an FIR filter here to get a known delay
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
-        filter_05 = lddu.filtfft((F0_5, [1.0]), self.blocklen)[:half_blocklen]
+        filter_05 = filtfft((F0_5, [1.0]), self.blocklen, False)
+
         # SF["F05"] = lddu.filtfft((F0_5, [1.0]), self.blocklen)
         # Defined earlier
         # SF["F05_offset"] = 32
@@ -583,7 +582,7 @@ class VHSRFDecode(ldd.RFDecode):
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
-        filter_deemp = lddu.filtfft((db, da), self.blocklen)[:half_blocklen]
+        filter_deemp = filtfft((db, da), self.blocklen, whole=False)
         self.Filters["FVideo"] = filter_deemp * filter_video_lpf
         if self.options.double_lpf:
             # Double up the lpf to possibly closer emulate
@@ -603,13 +602,14 @@ class VHSRFDecode(ldd.RFDecode):
         # )
 
         if self.options.nldeemp:
-            SF["NLHighPassF"] = lddu.filtfft(
+            SF["NLHighPassF"] = filtfft(
                 sps.butter(
                     1,
                     [DP["nonlinear_highpass_freq"] / self.freq_hz_half],
                     btype="highpass",
                 ),
                 self.blocklen,
+                whole=False
             )
 
         if self.debug_plot and self.debug_plot.is_plot_requested("deemphasis"):
@@ -709,7 +709,7 @@ class VHSRFDecode(ldd.RFDecode):
                     demod = smooth_spikes(demod, check_value * 2.2)
         # applies main deemphasis filter
         demod_fft = npfft.rfft(demod)
-        out_video_fft = demod_fft * self.Filters["FVideo"][0 : (self.blocklen // 2) + 1]
+        out_video_fft = demod_fft * self.Filters["FVideo"]
         out_video = npfft.irfft(out_video_fft).real
         if self.options.double_lpf:
             # Compensate for phase shift of the extra lpf
@@ -720,7 +720,7 @@ class VHSRFDecode(ldd.RFDecode):
             # Extract the high frequency part of the signal
             hf_part = npfft.irfft(
                 out_video_fft
-                * self.Filters["NLHighPassF"][0 : (self.blocklen // 2) + 1]
+                * self.Filters["NLHighPassF"]
             )
             # Limit it to preserve sharp transitions
             np.clip(
@@ -737,7 +737,7 @@ class VHSRFDecode(ldd.RFDecode):
         del out_video_fft
 
         out_video05 = npfft.irfft(
-            demod_fft * self.Filters["FVideo05"][0 : (self.blocklen // 2) + 1]
+            demod_fft * self.Filters["FVideo05"]
         ).real
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 

@@ -117,6 +117,17 @@ def moving_average(data_list, window=1024):
     return average, data_list
 
 
+# This converts a regular B, A filter to an FFT of our selected block length
+# if Whole is false, output only up to and including the nyquist frequency (for use with rfft)
+def filtfft(filt, blocklen, whole=True):
+    worN = blocklen if whole else (blocklen // 2) + 1
+
+    # When not calculating the whole spectrum,
+    # we still need to include the nyquist value here to give the same result as with
+    # the whole freq range output.
+    return signal.freqz(filt[0], filt[1], worN, whole=whole, include_nyquist=True)[1]
+
+
 def design_filter(samp_rate, passband, stopband, order_limit=20):
     max_loss_passband = 3  # The maximum loss allowed in the passband
     min_loss_stopband = 30  # The minimum loss allowed in the stopband
