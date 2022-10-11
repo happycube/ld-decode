@@ -93,6 +93,9 @@ int main(int argc, char *argv[]) {
     std::ostream *output = &std::cout;
     Logger::LOG_STREAM = &std::cerr;
 
+    // Don't force a .flush() on cout when reading from cin
+    std::cin.tie(nullptr);
+
     // prep input file (if not piped)
     std::ifstream inputFile;
     if (memcmp(posArgv[0], "-\x00", 2) != 0) {
