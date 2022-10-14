@@ -120,12 +120,18 @@ def moving_average(data_list, window=1024):
 # This converts a regular B, A filter to an FFT of our selected block length
 # if Whole is false, output only up to and including the nyquist frequency (for use with rfft)
 def filtfft(filt, blocklen, whole=True):
-    worN = blocklen if whole else (blocklen // 2) + 1
+    # worN = blocklen if whole else (blocklen // 2) + 1
+    worN = blocklen
+    output_size = blocklen if whole else (blocklen // 2) + 1
 
     # When not calculating the whole spectrum,
     # we still need to include the nyquist value here to give the same result as with
     # the whole freq range output.
-    return signal.freqz(filt[0], filt[1], worN, whole=whole, include_nyquist=True)[1]
+    # This requires scipy 1.5.0 or newer.
+    # return signal.freqz(filt[0], filt[1], worN, whole=whole, include_nyquist=True)[1]
+
+    # Using the old way for now.
+    return signal.freqz(filt[0], filt[1], worN, whole=True)[1][:output_size]
 
 
 def design_filter(samp_rate, passband, stopband, order_limit=20):
