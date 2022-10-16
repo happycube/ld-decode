@@ -1089,10 +1089,13 @@ def jsondump_thread(ldd, outname):
 class StridedCollector:
     # This keeps a numpy buffer and outputs an fft block and keeps the overlap
     # for the next fft.
-    def __init__(self, blocklen=65536, stride=2048):
+    def __init__(self, blocklen=65536, cut_begin=2048, cut_end=0):
         self.buffer = None
         self.blocklen = blocklen
-        self.stride = stride
+
+        self.cut_begin = cut_begin
+        self.cut_end = self.blocklen - cut_end
+        self.stride = cut_begin + cut_end
 
     def add(self, data):
         if self.buffer is None:
@@ -1104,6 +1107,11 @@ class StridedCollector:
 
     def have_block(self):
         return (self.buffer is not None) and (len(self.buffer) >= self.blocklen)
+
+    def cut(self, processed_data):
+        # TODO: assert len(processed_data) == self.blocklen
+
+        return processed_data[self.cut_begin : self.cut_end]
 
     def get_block(self):
         if self.have_block():
