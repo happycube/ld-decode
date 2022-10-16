@@ -28,54 +28,96 @@
 
 #include "Resampler.hpp"
 
-#include <algorithm>
+#include <cstdint>
+
+// Return the number of 1 bits in a uint64_t
+// XXX In C++20, we can use std::popcount
+static inline int popcount64(uint64_t value) {
+#if defined(__GNUC__)
+    return __builtin_popcountll(value);
+#else
+    value -= (value >> 1) & 0x5555555555555555ULL;
+    value = (value & 0x3333333333333333ULL) + ((value >> 2) & 0x3333333333333333ULL);
+    value = (value + (value >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+    return (value * 0x0101010101010101ULL) >> 56;
+#endif
+}
 
 template<class DATA_SRC>
 struct Demodulator {
     static constexpr int compareIntervalSize = 16;
     static constexpr int cyclesPerSymbol = 10;
     static constexpr int samplesBetweenSymbols = compareIntervalSize * cyclesPerSymbol;
+    static constexpr int phaseShift = samplesPerCarrierCycle / 4;
 
-    static constexpr int buffer_size = 1024;
+    /* The overall idea here is that we're reading input sample bits from the
+     * source, and we want to identify symbols by comparing the most recent
+     * compareIntervalSize bits with the same number of bits from
+     * samplesBetweenSymbols + (0..3) * phaseShift samples earlier. We do the
+     * comparison by XORing the two bit-strings, and counting the number of 1
+     * bits in the result.
+     *
+     * buffer holds the history of input bits, with buffer[0]'s LSB being the
+     * most recent.
+     *
+     * buffer[0]: ................................................XXXXXXXXXXXXXXXX
+     *
+     * The samples we want to compare against are all in buffer[2] (with the
+     * constant values above -- this might not be true if they were changed, in
+     * which case we'd need to join together two words, so we check this below).
+     *
+     * buffer[2]: ................XXXXXXXXXXXXXXXX................................ (phase 0)
+     * buffer[2]: ....XXXXXXXXXXXXXXXX............................................ (phase 3)
+     *
+     * So in next(), we just need to shift buffer[2] by the right amount, XOR
+     * with buffer[0], mask off the bits we're interested in, and popcount the 1s. */
+
+    // Find the start of the bit-string to compare against in the buffer
+    static constexpr int offsetWords = samplesBetweenSymbols / 64;
+    static constexpr int offsetShift = samplesBetweenSymbols % 64;
+
+    // ... which also tells us how big the buffer needs to be
+    static constexpr int bufferWords = offsetWords + 1;
+
+    // Check how many bits are left at the MSB end of buffer[offsetWords]
+    static constexpr int bitsLeft = 64 - offsetShift - (3 * phaseShift) - compareIntervalSize;
+    static_assert(bitsLeft >= 0, "Would need to read two words");
+
+    // How many samples to read into the buffer on startup.
+    // (This is larger than it needs to be -- but keep it the same as the
+    // original Scala code for now, so we can compare the output.)
     static constexpr int bufferPreload = samplesBetweenSymbols * 2;
-    static_assert(buffer_size > bufferPreload, "buffer_size too small");
 
-    int buffer[buffer_size];
-    int buffer_pos;
+    uint64_t buffer[bufferWords];
     DATA_SRC &source;
 
     explicit Demodulator(DATA_SRC &source) : source(source) {
         // Load bufferPreload samples into buffer
+        for (int i = 0; i < bufferWords; i++)
+            buffer[i] = 0;
         for (int i = 0; i < bufferPreload; i++)
-            buffer[i] = source.next();
-        buffer_pos = bufferPreload;
+            next();
     }
 
     // Votes on the value of a symbol from a window of samples
     char next() {
-        buffer[buffer_pos] = source.next();
+        // Read the next source sample into the LSB of buffer[0],
+        // shifting the rest of buffer along by one bit
+        for (int i = bufferWords - 1; i > 0; i--)
+            buffer[i] = (buffer[i] << 1) | (buffer[i - 1] >> 63);
+        buffer[0] = (buffer[0] << 1) | source.next();
 
-        int sums[4] {0, 0, 0, 0};
+        // Do the comparison (see above)
+        int sums[4];
         for (int ph = 0; ph < 4; ph++) {
-            const int phase = ph * (samplesPerCarrierCycle / 4);
-            int sum = 0;
-            for (int j = 0; j < compareIntervalSize; j++) {
-                sum += buffer[buffer_pos - j] ^ buffer[buffer_pos - j - samplesBetweenSymbols - phase];
-            }
-            sums[ph] = sum;
+            sums[ph] = popcount64((buffer[0] ^ (buffer[offsetWords] >> (offsetShift + (ph * phaseShift))))
+                                  & ((1 << compareIntervalSize) - 1));
         }
 
+        // Work out which symbol this represents
         const int a = sums[2] - sums[0];
         const int b = sums[3] - sums[1];
         const char winner = (abs(a) > abs(b)) ? (a > 0 ? 0 : 3) : (b > 0 ? 1 : 2);
-
-        buffer_pos++;
-
-        // If the buffer is full, throw away all but the last bufferPreload samples
-        if (buffer_pos == buffer_size) {
-            std::copy(&buffer[buffer_size - bufferPreload], &buffer[buffer_size], buffer);
-            buffer_pos = bufferPreload;
-        }
 
         return winner;
     }
