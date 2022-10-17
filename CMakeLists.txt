@@ -21,7 +21,7 @@ set(USE_QT_VERSION "" CACHE STRING
 )
 
 # Not working on Windows and macos as of yet. The decoders are able to use ffmpeg binaries instead if needed.
-if(LINUX)
+if((NOT WIN32) AND (NOT APPLE))
     option(BUILD_LDF_READER
         "build ld_ldf_reader"
         ON
@@ -64,13 +64,17 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 if(USE_QWT)
-    find_package(Qwt REQUIRED)
+    # try pkg-config first
+    pkg_check_modules(QWT Qt${QT_VERSION_MAJOR}Qwt6)
+    if(QWT_FOUND)
+        # .....
+        set(QWT_INCLUDE_DIR ${QWT_INCLUDE_DIRS})
+        set(QWT_LIBRARY ${QWT_LIBRARIES})
+    else()
+        find_package(Qwt REQUIRED)
+    endif()
 endif()
-pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
-    libavcodec
-    libavformat
-    libavutil
-)
+
 pkg_check_modules(FFTW REQUIRED IMPORTED_TARGET
     fftw3
 )
@@ -123,6 +127,12 @@ endif()
 # ld-ldf-reader
 
 if(BUILD_LDF_READER)
+    pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
+        libavcodec
+        libavformat
+        libavutil
+    )
+
     add_executable(ld-ldf-reader
       ld-ldf-reader.c)
 
