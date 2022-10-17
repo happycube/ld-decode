@@ -1,5 +1,8 @@
 # Library for chroma decoders
 
+# For M_PI constant
+add_compile_definitions(_USE_MATH_DEFINES)
+
 add_library(lddecode-chroma STATIC
     comb.cpp
     componentframe.cpp
