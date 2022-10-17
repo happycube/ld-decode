@@ -540,9 +540,9 @@ def ldf_pipe(outname: str, compression_level: int = 6):
 def ac3_pipe(outname: str):
     processes = []
 
-    cmd1 = "sox -r 40000000 -b 16 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw - sinc -n 500 2600000-3160000"
+    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -"
     cmd2 = "ld-ac3-demodulate - -"
-    cmd3 = f"ld-ac3-decode - {outname}"
+    cmd3 = f"ld-ac3-decode - {outname} {outname + '.log'}"
 
     # This is done in reverse order to allow for pipe building
     processes.append(subprocess.Popen(cmd3.split(' '), 
@@ -1089,7 +1089,7 @@ def jsondump_thread(ldd, outname):
 class StridedCollector:
     # This keeps a numpy buffer and outputs an fft block and keeps the overlap
     # for the next fft.
-    def __init__(self, blocklen=65536, cut_begin=2048, cut_end=0):
+    def __init__(self, blocklen=32768, cut_begin=2048, cut_end=0):
         self.buffer = None
         self.blocklen = blocklen
 
