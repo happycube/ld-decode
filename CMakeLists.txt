@@ -5,6 +5,7 @@ project(ld-decode-tools)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
 include(CTest)
 
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -16,11 +17,11 @@ option(USE_QWT
 )
 
 set(USE_QT_VERSION "" CACHE STRING
-    "Version of Qt to use (by default, try Qt 6 then Qt 5)"
+    "Version of Qt to use, 5 or 6 (Which is used by default can vary due to how cmake find functions work, but will often default to Qt6)"
 )
 
-# Not working on Windows as of yet. The decoders are able to use ffmpeg binaries instead if needed.
-if(NOT $WIN32)
+# Not working on Windows and macos as of yet. The decoders are able to use ffmpeg binaries instead if needed.
+if(LINUX)
     option(BUILD_LDF_READER
         "build ld_ldf_reader"
         ON
@@ -63,9 +64,7 @@ endif()
 
 find_package(PkgConfig REQUIRED)
 if(USE_QWT)
-    pkg_check_modules(QWT REQUIRED IMPORTED_TARGET
-        Qt${QT_VERSION_MAJOR}Qwt6
-    )
+    find_package(Qwt REQUIRED)
 endif()
 pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
     libavcodec
