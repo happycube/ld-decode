@@ -104,6 +104,8 @@ def run_ld_decode(args):
     cmd += ['--ignoreleadout']
     if args.pal:
         cmd += ['--pal']
+    if args.AC3:
+        cmd += ['--AC3']
 
     cmd += [args.infile, args.output]
 
@@ -260,6 +262,8 @@ def main():
                        help='source is PAL (default NTSC)')
     group.add_argument('--no-efm', action='store_true', dest='no_efm',
                        help='source has no EFM')
+    group.add_argument('--AC3', action='store_true', dest='AC3',
+                       help='source has AC3 audio')
     group.add_argument('--cut-seek', dest='cutseek', type=int,
                        help='start ld-cut by seeking to frame #')
     group.add_argument('--cut-start', dest='cutstart', type=int,
