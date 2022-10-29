@@ -541,12 +541,16 @@ def ac3_pipe(outname: str):
     processes = []
 
     cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -"
-    cmd2 = "ld-ac3-demodulate - -"
-    cmd3 = f"ld-ac3-decode - {outname} {outname + '.log'}"
+    cmd2 = "ld-ac3-demodulate -v 3 - -"
+    cmd3 = f"ld-ac3-decode - {outname}"
+
+    logfp = open(f"{outname + '.log'}", 'w')
 
     # This is done in reverse order to allow for pipe building
     processes.append(subprocess.Popen(cmd3.split(' '), 
-                                      stdin=subprocess.PIPE))
+                                      stdin=subprocess.PIPE,
+                                      stdout=logfp,
+                                      stderr=subprocess.STDOUT))
 
     processes.append(subprocess.Popen(cmd2.split(' '), 
                                       stdin=subprocess.PIPE, 
