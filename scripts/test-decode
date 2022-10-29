@@ -98,12 +98,14 @@ def run_ld_cut(args):
 def run_ld_decode(args):
     """Run ld-decode."""
 
-    clean(args, ['.tbc', '.tbc.json', '.efm', '.pcm'])
+    clean(args, ['.tbc', '.tbc.json', '.efm', '.pcm', '.ac3', '.ac3.log'])
 
     cmd = [source_dir + '/ld-decode']
     cmd += ['--ignoreleadout']
     if args.pal:
         cmd += ['--pal']
+    if args.AC3:
+        cmd += ['--AC3']
 
     cmd += [args.infile, args.output]
 
@@ -111,6 +113,16 @@ def run_ld_decode(args):
     env = os.environ.copy()
     env['PATH'] = build_dir + ':' + source_dir + ':' + env['PATH']
     run_command(cmd, env=env)
+    
+    # If doing AC3, check that there are enough output samples
+    if (args.expect_ac3_bytes is not None) and (not dry_run):
+        ac3_file = args.output + '.ac3'
+        if not os.path.exists(ac3_file):
+            die(ac3_file, 'does not exist')
+        ac3_bytes = os.stat(ac3_file).st_size
+        if ac3_bytes < args.expect_ac3_bytes:
+            die(ac3_file, 'contains', ac3_bytes,
+                'samples; expected at least', args.ac3_bytes)
 
 def run_ld_process_vbi(args):
     """Run ld-process-vbi."""
@@ -260,6 +272,8 @@ def main():
                        help='source is PAL (default NTSC)')
     group.add_argument('--no-efm', action='store_true', dest='no_efm',
                        help='source has no EFM')
+    group.add_argument('--AC3', action='store_true', dest='AC3',
+                       help='source has AC3 audio')
     group.add_argument('--cut-seek', dest='cutseek', type=int,
                        help='start ld-cut by seeking to frame #')
     group.add_argument('--cut-start', dest='cutstart', type=int,
@@ -281,6 +295,8 @@ def main():
                        help='Print VBI values (to find out what to pass into expect-vbi)')
     group.add_argument('--expect-efm-samples', metavar='N', type=int,
                        help='expect at least N stereo pairs of samples in EFM output')
+    group.add_argument('--expect-AC3-file-size', dest='expect_ac3_bytes', metavar='N', type=int,
+                       help='expect at least N bytes in EFM output')
     args = parser.parse_args()
 
     global dry_run

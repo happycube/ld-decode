@@ -526,7 +526,7 @@ class LoadLDF:
         return self.read(infile, sample, readlen)
 
 
-def ldf_pipe(outname, compression_level=6):
+def ldf_pipe(outname: str, compression_level: int = 6):
     corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(
         " "
     )
@@ -537,6 +537,30 @@ def ldf_pipe(outname, compression_level=6):
 
     return process, process.stdin
 
+def ac3_pipe(outname: str):
+    processes = []
+
+    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -"
+    cmd2 = "ld-ac3-demodulate -v 3 - -"
+    cmd3 = f"ld-ac3-decode - {outname}"
+
+    logfp = open(f"{outname + '.log'}", 'w')
+
+    # This is done in reverse order to allow for pipe building
+    processes.append(subprocess.Popen(cmd3.split(' '), 
+                                      stdin=subprocess.PIPE,
+                                      stdout=logfp,
+                                      stderr=subprocess.STDOUT))
+
+    processes.append(subprocess.Popen(cmd2.split(' '), 
+                                      stdin=subprocess.PIPE, 
+                                      stdout=processes[-1].stdin))
+
+    processes.append(subprocess.Popen(cmd1.split(' '), 
+                                      stdin=subprocess.PIPE, 
+                                      stdout=processes[-1].stdin))
+
+    return processes, processes[-1].stdin
 
 # Git helpers
 
@@ -1069,10 +1093,13 @@ def jsondump_thread(ldd, outname):
 class StridedCollector:
     # This keeps a numpy buffer and outputs an fft block and keeps the overlap
     # for the next fft.
-    def __init__(self, blocklen=65536, stride=2048):
+    def __init__(self, blocklen=32768, cut_begin=2048, cut_end=0):
         self.buffer = None
         self.blocklen = blocklen
-        self.stride = stride
+
+        self.cut_begin = cut_begin
+        self.cut_end = self.blocklen - cut_end
+        self.stride = cut_begin + cut_end
 
     def add(self, data):
         if self.buffer is None:
@@ -1084,6 +1111,11 @@ class StridedCollector:
 
     def have_block(self):
         return (self.buffer is not None) and (len(self.buffer) >= self.blocklen)
+
+    def cut(self, processed_data):
+        # TODO: assert len(processed_data) == self.blocklen
+
+        return processed_data[self.cut_begin : self.cut_end]
 
     def get_block(self):
         if self.have_block():

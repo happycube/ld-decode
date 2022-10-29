@@ -38,13 +38,13 @@ else:
 # internal libraries
 
 from . import efm_pll
-from .utils import get_git_info, ldf_pipe, traceback
+from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findnextburst, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
-from .utils import fft_do_slice, fft_determine_slices
+from .utils import fft_do_slice, fft_determine_slices, StridedCollector
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -84,8 +84,9 @@ SysParams_NTSC = {
     "analog_audio": True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     "audio_lfreq": (1000000 * 315 / 88 / 227.5) * 146.25,
-    # NOTE: this changes to 2.88mhz on AC3 disks
     "audio_rfreq": (1000000 * 315 / 88 / 227.5) * 178.75,
+    # On AC3 disks, the right channel is replaced by a QPSK 2.88mhz channel
+    "audio_rfreq_AC3": 2880000,
     "colorBurstUS": (5.3, 7.8),
     "activeVideoUS": (9.45, 63.555 - 1.0),
     # Known-good area for computing black SNR - for NTSC pull from VSYNC
@@ -298,6 +299,7 @@ class RFDecode:
           - PAL_V4300D_NotchFilter - cut 8.5mhz spurious signal
           - NTSC_ColorNotchFilter:  notch filter on decoded video to reduce color 'wobble'
           - lowband: Substitute different decode settings for lower-bandwidth disks
+          - AC3: Supports AC3
 
         """
 
@@ -333,6 +335,9 @@ class RFDecode:
                 self.DecoderParams = copy.deepcopy(RFParams_PAL)
 
         self.SysParams["analog_audio"] = has_analog_audio
+        self.SysParams["AC3"] = extra_options.get("AC3", False)
+        if self.SysParams["AC3"]:
+            self.SysParams["audio_rfreq"] = self.SysParams["audio_rfreq_AC3"]
 
         fw = extra_options.get("audio_filterwidth", 0)
         if fw is not None and fw > 0:
@@ -378,6 +383,17 @@ class RFDecode:
 
         if self.decode_digital_audio:
             self.computeefmfilter()
+
+        if self.SysParams['AC3']:
+            apass = 288000
+            self.Filters['AC3_fir'] = sps.firwin(161,
+            [
+                (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
+                (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
+            ], 
+            pass_zero=False)
+
+            self.Filters['AC3'] = filtfft((self.Filters['AC3_fir'], [1.0]), self.blocklen)
 
         self.computedelays()
 
@@ -733,6 +749,7 @@ class RFDecode:
                 efm_out = efm_out[self.blockcut : -self.blockcut_end]
             rv["efm"] = np.int16(np.clip(efm_out.real, -32768, 32767))
 
+        # NOTE: ac3 audio is filtered after RF TBC
         if self.decode_analog_audio:
             stage1_out = []
             for channel in ['left', 'right']:
@@ -3275,6 +3292,7 @@ class LDdecode:
 
         self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
+        self.ac3 = extra_options.get("AC3", False)
         self.write_rf_tbc = extra_options.get("write_RF_TBC", False)
 
         self.has_analog_audio = True
@@ -3290,7 +3308,9 @@ class LDdecode:
         self.outfile_audio = None
         self.outfile_efm = None
         self.outfile_pre_efm = None
+        self.outfile_ac3 = None
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
+        self.do_rftbc = False
 
         if fname_out is not None:
             self.outfile_video = open(fname_out + ".tbc", "wb")
@@ -3304,8 +3324,15 @@ class LDdecode:
                     self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
                 self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + ".tbc.ldf")
+                self.do_rftbc = True
+            if self.ac3:
+                self.AC3Collector = StridedCollector(cut_begin=1024, cut_end=0)
+                self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
+                self.do_rftbc = True
 
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
+        if self.pipe_rftbc:
+            self.do_rftbc = True
 
         self.fname_out = fname_out
 
@@ -3388,6 +3415,7 @@ class LDdecode:
             "outfile_json",
             "outfile_efm",
             "outfile_rftbc",
+            "outfile_ac3",
         ]:
             setattr(self, outfiles, None)
 
@@ -3440,11 +3468,26 @@ class LDdecode:
 
         return np.median(sync_hzs), np.median(ire0_hzs)
 
+    def AC3filter(self, rftbc):
+        self.AC3Collector.add(rftbc)
+
+        blk = self.AC3Collector.get_block()
+        while blk is not None:
+            fftdata = np.fft.fft(blk)
+            filtdata = np.fft.ifft(fftdata * self.rf.Filters['AC3']).real
+            odata = self.AC3Collector.cut(filtdata)
+            odata = np.int8(odata / 32)
+
+            self.outfile_ac3.write(odata)
+
+            blk = self.AC3Collector.get_block()
+
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
         if self.digital_audio is True:
             if self.outfile_pre_efm is not None:
                 self.outfile_pre_efm.write(efm.tobytes())
+
             efm_out = self.efm_pll.process(efm)
             self.outfile_efm.write(efm_out.tobytes())
 
@@ -3456,11 +3499,14 @@ class LDdecode:
         self.outfile_video.write(picture)
         self.fields_written += 1
 
-        if self.outfile_rftbc is not None or self.pipe_rftbc is not None:
+        if self.do_rftbc:
             rftbc = f.rf_tbc()
 
             if self.outfile_rftbc is not None:
                 self.outfile_rftbc.write(rftbc)
+
+            if self.outfile_ac3 is not None:
+                self.AC3filter(rftbc)
 
             if self.pipe_rftbc is not None:
                 self.pipe_rftbc.send(rftbc)
