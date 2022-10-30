@@ -141,7 +141,7 @@ Install VHS-Decode:
 
     sudo ./setup.py install
 
-Compile and install Domesday tools:
+Compile and Install ld-tools suite: (Required)
 
     mkdir build
     cd build
@@ -209,8 +209,6 @@ Editable flags are
 
 The `--bps` flag can be changed to `--bps=8` or `--bps=16` for 8 & 16 bit captures.
 
-The `--ogg` flag will use OGG encoding - Allows for 100GB+ captures & easy Audition/Audacity inspection.
-
 Change `<capture>` to your input file name.
 
 Reduce size of captured CXADC data (by 40-60%):
@@ -247,28 +245,30 @@ Please Check the Wiki for the complete [upto-date command list!](https://github.
 
 `./gen_chroma_vid.sh -h` (Lists Command Options)
 
+`./gen_chroma_vid.sh Input-TBC-Name` (Will just export the video with standard settings and the same input file name)
+
 To generate .mkv files viewable in most media players, simply use the scripts installed:
 
 Command Examples:
 
-    gen_chroma_vid.sh -v -s <skip number of frames> -l <number of frames long> -i <.tbc filename without .tbc extension>
+    ./gen_chroma_vid.sh -v -s <skip number of frames> -l <number of frames long> -i <.tbc filename without .tbc extension>
 
 The `-a` option can embed an audio file, such as audio decoded via [HiFi Decode](https://github.com/VideoMem/ld-decode/tree/hifi-decode)
 
-    gen_chroma_vid.sh -v -s <skip n frames> -l <n frames long> -a <capture>.flac -i <.tbc filename without .tbc extension>
+    ./gen_chroma_vid.sh -v -s <skip n frames> -l <n frames long> -a <capture>.flac -i <.tbc filename without .tbc extension>
 
 So for example open terminal in the directory of target TBC/Metadata files and run
 
-    gen_chroma_vid.sh -v -s <skip n frames> -l <number of frames long> -a <capture>.flac -i <.tbc filename without .tbc extension>
+    ./gen_chroma_vid.sh -v -s <skip n frames> -l <number of frames long> -a <capture>.flac -i <.tbc filename without .tbc extension>
 
-This will use decoded .tbc files, generate a lossless, interlaced and high-bitrate (roughly 100-150 Mb/s) FFV1 codec video which,
-although ideal for archival and reducing further loss in quality however this may be unsuitable for sharing online.
+This will use decoded .tbc files, generate a lossless, interlaced and high-bitrate (roughly 70-100 Mb/s) FFV1 codec video which,
+although ideal for archival and reducing further loss in quality however this may be unsuitable for sharing online without de-interlacing.
 
 An additional processing mode is included in the script files, but commented out.
 
 ## Terminal Arguments
 
-Please Check the Wiki for the full [upto-date command list!](https://github.com/oyvindln/vhs-decode/wiki/Command-List)
+#### Please Check the Wiki for the [complete and upto-date command list!](https://github.com/oyvindln/vhs-decode/wiki/Command-List)
 
 VHS-Decode supports various arguments to process differently captured tape recordings and different tape formats/systems.
 These tend to change frequently as new features are added or superseded.
@@ -297,18 +297,20 @@ Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 
 ## Colour System Commands
 
-Changes the colour system to NTSC, PAL, PAL-M, or NTSC-J, respectively.
+Changes the colour or TV system to NTSC, PAL, PAL-M, NTSC-J, or MESECAM respectively.
 Please note that, as of writing, support for PAL-M is **experimental**.
 
-`-n` = NTSC
+`-n` = NTSC 
 
-`-p` = PAL
+`-p` = PAL 
 
 `-pm` = PAL-M
 
-`--NTSCJ` = NTSC-J
+`--NTSCJ` = NTSC-J 
 
-# Time & Location Control
+`--MESECAM` = MESECAM
+
+# [Time & Location Control](https://github.com/oyvindln/vhs-decode/wiki/Command-List#time--location-control)
 
 These commands are used for jumping ahead in a file or defining limits.
 Useful for recovering decoding after a crash, or by limiting process time by producing shorter samples.
@@ -325,21 +327,17 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 ## Time Base Correction & Visuals Control
 
-Please Check the Wiki for the full [upto-date command list!](https://github.com/oyvindln/vhs-decode/wiki/Command-List)
-
 `--debug` sets logger verbosity level to *debug*. Useful for debugging and better log information. (Recommended To Enable for Archival)
 
 `-ct` enables a *chroma trap*, a filter intended to reduce chroma interference on the main luma signal. Use if seeing banding or checkerboarding on the main luma .tbc in ld-analyse.
 
-`-sl` defines the output *sharpness level*, as an integer from 0-100, the default being 0. Higher values are better suited for plain, flat images i.e. cartoons and animated material, as strong ghosting can occur (akin to cranking up the sharpness on any regular TV set.)
+`--recheck_phase` Re-check chroma phase on every field, fixes most colour issues. (No effect on U-matic)
 
-`--recheck_phase` Re-check chroma phase on every field. (No effect on U-matic)
+`-sl` defines the output *sharpness level*, as an integer from 0-100, the default being 0. Higher values are better suited for plain, flat images i.e. cartoons and animated material, as strong ghosting can occur (akin to cranking up the sharpness on any regular TV set.)
 
 `-dp demodblock` Displays Raw Demodulated Frequency Spectrum Graphs, makes a pop-up window per each thread so -t 32 would give you 32 GUI windows etc
 
-# [Supported formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
-
-## Tapes:
+# [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
 
 (S-)VHS 625-line and 525-line, PAL, PAL-M and NTSC.
 
@@ -357,11 +355,11 @@ Video8 & High8 625-line and 525-line, PAL & NTSC (Filtering Work Needed, Luma On
 
 .r16/.u16 (CXADC 16-bit raw data).
 
-.flac/.cvbs/.vhs/.svhs/.bcam/.bmax/.vid8/.hi8 (FLAC-compressed captures, can be either 8-bit or 16-bit).
+.flac/.cvbs/.vhs/.svhs/.betacam/.betamax/.video8/.hi8 (FLAC-compressed captures, can be either 8-bit or 16-bit).
 
 ## Output file formats:
 
-Unlike LD-Decode, VHS-Decode does not output its timebase-corrected frames as a single .tbc file
+Unlike LD-Decode, VHS-Decode does not output its timebase-corrected frames as a single .tbc file.
 
 Both the luminance and chrominance channels are separate data files essentially an digital "S-Video", additionally useful for troubleshooting descriptor/log files are generated so you end up with 4 files in the following naming.
 
