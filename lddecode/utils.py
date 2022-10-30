@@ -1052,6 +1052,7 @@ def write_json(ldd, jsondict, outname):
     json.dump(
         jsondict,
         fp,
+        allow_nan=False,
         indent=4 if ldd.verboseVITS else None,
         separators=(",", ":") if not ldd.verboseVITS else None,
     )
