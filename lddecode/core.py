@@ -2886,6 +2886,9 @@ class FieldPAL(Field):
             if lineburst is not None:
                 burstlevel.append(lineburst)
 
+        if burstlevel == []:
+            return 0.0
+
         return np.median(burstlevel) / self.rf.SysParams["hz_ire"]
 
     def get_following_field_number(self):
