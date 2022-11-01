@@ -1,3 +1,6 @@
+# For M_PI constant
+add_compile_definitions(_USE_MATH_DEFINES)
+
 set(ld-analyse_SOURCES
     blacksnranalysisdialog.cpp blacksnranalysisdialog.ui
     busydialog.cpp busydialog.ui
@@ -22,9 +25,13 @@ qt_add_resources(ld-analyse_SOURCES ld-analyse-resources.qrc)
 add_executable(ld-analyse MACOSX_BUNDLE
     ${ld-analyse_SOURCES})
 
+target_include_directories(ld-analyse PRIVATE
+    ${QWT_INCLUDE_DIR}
+)
+
 target_link_libraries(ld-analyse PRIVATE
     Qt::Core Qt::Gui Qt::Widgets
-    PkgConfig::QWT
+    ${QWT_LIBRARY}
     lddecode-library lddecode-chroma
 )
 
