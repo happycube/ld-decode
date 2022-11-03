@@ -1,16 +1,16 @@
 import math
 import numpy as np
 import scipy.signal as sps
-import copy
 
+from collections import namedtuple
 import itertools
 
 import lddecode.core as ldd
 import lddecode.utils as lddu
 from lddecode.utils import inrange
-from vhsdecode.utils import get_line
 
 import vhsdecode.formats as vhs_formats
+import vhsdecode.sync as sync
 from vhsdecode.addons.chromasep import ChromaSepClass
 
 # from vhsdecode.process import getpulses_override as vhs_getpulses_override
@@ -247,6 +247,10 @@ class FieldPALCVBS(ldd.FieldPAL):
 
         return linelocs
 
+    def refine_linelocs_hsync(self):
+        print("ref hsync")
+        return sync.refine_linelocs_hsync(self, self.linebad)
+
     def _determine_field_number(self):
         """Using LD code as it should work on stable sources, but may not work on stuff like vhs."""
         return 1 + (self.rf.field_number % 8)
@@ -477,6 +481,19 @@ class VHSDecodeInner(ldd.RFDecode):
         self.demods = 0
 
         self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+
+        self._options = namedtuple(
+            "Options",
+            [
+                "disable_right_hsync",
+            ],
+        )(
+            True
+        )
+
+    @property
+    def options(self):
+        return self._options
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
