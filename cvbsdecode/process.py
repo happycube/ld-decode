@@ -248,7 +248,6 @@ class FieldPALCVBS(ldd.FieldPAL):
         return linelocs
 
     def refine_linelocs_hsync(self):
-        print("ref hsync")
         return sync.refine_linelocs_hsync(self, self.linebad)
 
     def _determine_field_number(self):
@@ -337,7 +336,7 @@ class CVBSDecode(ldd.LDdecode):
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
         # Overwrite the rf decoder with the VHS-altered one
-        self.rf = VHSDecodeInner(
+        self.rf = CVBSDecodeInner(
             system=system,
             tape_format="UMATIC",
             inputfreq=inputfreq,
@@ -403,11 +402,11 @@ class CVBSDecode(ldd.LDdecode):
         return None
 
 
-class VHSDecodeInner(ldd.RFDecode):
+class CVBSDecodeInner(ldd.RFDecode):
     def __init__(self, inputfreq=40, system="NTSC", tape_format="VHS", rf_options={}):
 
         # First init the rf decoder normally.
-        super(VHSDecodeInner, self).__init__(
+        super(CVBSDecodeInner, self).__init__(
             inputfreq, system, decode_analog_audio=False, has_analog_audio=False
         )
 
@@ -423,10 +422,12 @@ class VHSDecodeInner(ldd.RFDecode):
 
         # Then we override the laserdisc parameters with VHS ones.
 
-        self.SysParams, self.DecoderParams = vhs_formats.get_format_params(system, "UMATIC", ldd.logger)
+        self.SysParams, self.DecoderParams = vhs_formats.get_format_params(
+            system, "UMATIC", ldd.logger
+        )
 
         # TEMP just set this high so it doesn't mess with anything.
-        self.DecoderParams["video_lpf_freq"] = 6800000
+        self.DecoderParams["video_lpf_freq"] = 6400000
 
         # Lastly we re-create the filters with the new parameters.
         self.computevideofilters()
@@ -481,15 +482,12 @@ class VHSDecodeInner(ldd.RFDecode):
         self.demods = 0
 
         self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
-
         self._options = namedtuple(
             "Options",
             [
                 "disable_right_hsync",
             ],
-        )(
-            True
-        )
+        )(not rf_options.get("rhs_hsync", False))
 
     @property
     def options(self):
@@ -507,7 +505,9 @@ class VHSDecodeInner(ldd.RFDecode):
         self.delays["video_white"] = 0
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
-        data = npfft.ifft(fftdata).real
+        datalen = len(fftdata)
+        # We don't need the complex side here, should see if we could avoid even calculating it later.
+        data = npfft.irfft(fftdata[:datalen + 1], datalen).real
 
         rv = {}
 
@@ -540,7 +540,7 @@ class VHSDecodeInner(ldd.RFDecode):
         luma05 = np.roll(luma05, -self.Filters["F05_offset"])
         videoburst = npfft.irfft(
             luma_fft * self.Filters["Fburst"][: (len(self.Filters["Fburst"]) // 2) + 1]
-        )
+        ).astype(np.float32)
 
         if False:
             import matplotlib.pyplot as plt
@@ -567,8 +567,8 @@ class VHSDecodeInner(ldd.RFDecode):
         #            exit(0)
 
         video_out = np.rec.array(
-            [luma, luma05, videoburst, data],
-            names=["demod", "demod_05", "demod_burst", "raw"],
+            [luma, luma05, videoburst],
+            names=["demod", "demod_05", "demod_burst"],
         )
 
         rv["video"] = (

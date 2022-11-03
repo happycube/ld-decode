@@ -34,6 +34,13 @@ parser.add_argument(
     default=False,
     help="Enable auto sync level detection.",
 )
+parser.add_argument(
+    "--right_hand_hsync",
+    dest="rhs_hsync",
+    action="store_true",
+    default=False,
+    help="Additionally use right hand side of hsync for line start detection. Improves accuracy on tape sources but might cause issues on high bandwidth stable ones",
+)
 
 args = parser.parse_args()
 filename, outname, firstframe, req_frames = get_basics(args)
@@ -48,6 +55,7 @@ except ValueError as e:
 
 rf_options = get_rf_options(args)
 rf_options["auto_sync"] = args.auto_sync
+rf_options["rhs_hsync"] = args.rhs_hsync
 
 extra_options = get_extra_options(args)
 extra_options["cvbs"] = True
