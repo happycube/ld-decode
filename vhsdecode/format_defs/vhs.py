@@ -54,7 +54,7 @@ def get_rfparams_pal_vhs(rfparams_pal):
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
-    RFParams_PAL_VHS["video_bpf_low"] = 2100000
+    RFParams_PAL_VHS["video_bpf_low"] = 2200000
     RFParams_PAL_VHS["video_bpf_high"] = 5680000
     # Band-pass filter order.
     # Order may be fine as is.
