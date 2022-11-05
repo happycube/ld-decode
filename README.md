@@ -11,13 +11,17 @@ This version has been modified to work with the differences found in the tracked
 
 SMPTE ColourBars (16:9) Test Tape With [WSS](https://en.wikipedia.org/wiki/Widescreen_signaling) (PAL) export exported full-frame (1112 x 624)
 
-Currently, only VHS/S-VHS and U-Matic format tapes are fully supported;
-of those, only NTSC, PAL and PAL-M variants fully* are supported, with plans and/or ongoing work to support more formats and systems check with [Media Format Support List.](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
+# [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
 
-By default, the main VHS-Decode script allocates only one thread, though the gen_chroma_vid scripts allocate two threads.
+**(S-)VHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M **Fully Supported**
 
-The `make` rule of thumb of "number of logical processors, plus one" generally applies here,
-though it mainly depends on the amount of memory available to the decoder.
+**U-Matic** 625-line and 525-line Low Band, PAL and NTSC. - **Fully Supported**
+
+**Betamax** 625-line and 525-line, PAL & NTSC - **Working**
+
+**Video8 & High8** 625-line and 525-line, PAL & NTSC - **Working**
+
+## [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
 
 ## CVBS-Decode
 
@@ -29,19 +33,23 @@ Note for test media generation AJA/Magewell/Blackmagic and even some consumer di
 
 # HiFi-Decode
 
-Functional but still a work in progress is VideoMem's [HiFi-Decode Branch](https://github.com/VideoMem/ld-decode/tree/hifi-decode) witch can  take uncompressed or flac compressed RF files and output standard 24bit 192khz .wav PCM files.
+Functional but still a work in progress is VideoMem's [HiFi-Decode Branch](https://github.com/VideoMem/ld-decode/tree/hifi-decode) witch takes uncompressed or flac compressed RF captures of HiFi audio, decodes and outputs standard 24bit 192khz FLAC or PCM (.wav) stereo files.
 
 # Dependencies - Hardware
 
 ## A Tape Player (VCR/VTR etc)
 
-Preferably adjusted per tape and in excellent mechanical and head condition, for VHS, S-VHS decks are preferable as they were built generally better than cheaper later consumer decks, and are easier to adjust tape guides to achieve optimal alignment however any working clean VCR should work, however you don't need an SVHS VCR at all even for SVHS tapes!
+Preferably adjusted per tape and in excellent mechanical and head condition, prosumer metal track decks are preferable as they were built generally better in terms of mechnical stability than cheaper later consumer decks that use more plastics, the only crtical requirement is test points or a head amplifyer that is easy to tap into this goes for any and all tape formats.
 
-Its recommended if possible to fully service your VCR/VTR one should inspect/clean heads and solder joint conditions (note parts with removable shielding may go unchecked), replace expanded or leaky capacitors etc, but at the minimum clean the heads with 99.9% Isopropanol and lint free cloths/pads/paper & making sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils.
+**Note** SVHS tapes can be RF captured on standard VHS HiFi decks.
 
-Its good practice to not cross contaminate tapes especially if dealing with mouldy or contained tapes always clean your tape track/drum/heads before and afterwards!
+**Note** SVHS NTSC Decks - Currently inflated you can import PAL decks with NTSC support for 1/3rd the price though this only applys if  conventinal refrance SVHS captures are required.
 
-## RF Capture Device
+Its good practice to not cross contaminate tapes especially if dealing with mouldy or contained tapes always clean your tape track/drum/heads before and afterwards with with 99.9% Isopropanol and lint free cloths/pads/paper this ensures less dropouts from dirty heads.
+
+It also helps to make sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils to avoid mechnincal failures.
+
+## RF Capture Devices  
 
 ## [Domesday Duplicator (DdD)](https://github.com/harrypm/DomesdayDuplicator#readme) (Method 01 - 300-350USD*)
 
@@ -116,6 +124,11 @@ Some useful free tools to note for post processing are [StaxRip](https://github.
 
 # Installation and running the software on Ubuntu/Debian
 
+By default, the main VHS-Decode script allocates only one thread, though the gen_chroma_vid scripts allocate two threads.
+
+The `make` rule of thumb of "number of logical processors, plus one" generally applies here,
+though it mainly depends on the amount of memory available to the decoder.
+
 Install all dependencies required by LD-Decode and VHS-Decode:
 
     sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make cython3 cmake
@@ -126,10 +139,11 @@ Install dependencies for GPU FLAC compression support:
 
 Install all dependencies required for optional gooey graphical user interface:
 
-    sudo apt-get install build-essential dpkg-dev freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev
-    libgstreamer-plugins-base1.0-dev libgtk-3-dev libjpeg-dev libnotify-dev
-    libpng-dev libsdl2-dev libsm-dev libtiff-dev libwebkit2gtk-4.0-dev libxtst-dev
-    python3.9-dev libpython3.9-dev pip3 install Gooey
+    sudo apt-get install build-essential dpkg-dev freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libjpeg-dev libnotify-dev libpng-dev libsdl2-dev libsm-dev libtiff-dev libwebkit2gtk-4.0-dev libxtst-dev python3.9-dev libpython3.9-dev
+
+Then install gooey
+
+    pip3 install Gooey
 
 Download VHS-Decode:
 
@@ -155,9 +169,11 @@ To update do `git pull` while inside of the vhs-decode directory.
 
 Note with WSL2 & Ubuntu, `./` in front of applications and scripts may be needed to run them.
 
+Use `cd vhs-decode` to enter into the directory to run commands, `cd..` to go back a directory.
+
 ## ld-tools suite for Windows (Note this is only the tools, not the decoder's)
 
-The ld-tools suit has been ported to windows, This mainly allows the use of LD-Analyse to view .TBC files, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases)
+The ld-tools suit has been ported to windows, This mainly allows the easy use of LD-Analyse to view .TBC files, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases)
 
 ## CX Card Setup & Capture
 
@@ -300,13 +316,13 @@ Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 Changes the colour or TV system to NTSC, PAL, PAL-M, NTSC-J, or MESECAM respectively.
 Please note that, as of writing, support for PAL-M is **experimental**.
 
-`-n` = NTSC 
+`-n` = NTSC
 
-`-p` = PAL 
+`-p` = PAL
 
 `-pm` = PAL-M
 
-`--NTSCJ` = NTSC-J 
+`--NTSCJ` = NTSC-J
 
 `--MESECAM` = MESECAM
 
@@ -336,16 +352,6 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 `-sl` defines the output *sharpness level*, as an integer from 0-100, the default being 0. Higher values are better suited for plain, flat images i.e. cartoons and animated material, as strong ghosting can occur (akin to cranking up the sharpness on any regular TV set.)
 
 `-dp demodblock` Displays Raw Demodulated Frequency Spectrum Graphs, makes a pop-up window per each thread so -t 32 would give you 32 GUI windows etc
-
-# [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
-
-(S-)VHS 625-line and 525-line, PAL, PAL-M and NTSC.
-
-U-Matic 625-line and 525-line Low Band, PAL and NTSC.
-
-Betamax 625-line and 525-line, PAL & NTSC (More Samples Needed)
-
-Video8 & High8 625-line and 525-line, PAL & NTSC (Filtering Work Needed, Luma Only)
 
 ## Input file formats:
 
