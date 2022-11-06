@@ -385,8 +385,8 @@ class RFDecode:
             self.computeefmfilter()
 
         if self.SysParams['AC3']:
-            apass = 288000
-            self.Filters['AC3_fir'] = sps.firwin(161,
+            apass = 288000 * .65
+            self.Filters['AC3_fir'] = sps.firwin(301,
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
                 (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
@@ -394,6 +394,21 @@ class RFDecode:
             pass_zero=False)
 
             self.Filters['AC3'] = filtfft((self.Filters['AC3_fir'], [1.0]), self.blocklen)
+
+
+            apass = 288000 * .55
+            # The BPF filter, defined for each system in DecoderParams
+            filt_ac3 = sps.butter(
+                3,
+                [
+                    (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
+                    (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
+                ],
+                btype="bandpass",
+            )
+            # Start building up the combined FFT filter using the BPF
+            #self.Filters["AC3"] = filtfft(filt_ac3, self.blocklen)
+
 
         self.computedelays()
 
