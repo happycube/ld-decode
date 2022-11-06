@@ -3479,9 +3479,9 @@ class LDdecode:
             fftdata = np.fft.fft(blk)
             filtdata = np.fft.ifft(fftdata * self.rf.Filters['AC3']).real
             odata = self.AC3Collector.cut(filtdata)
-            odata = np.int8(odata / 32)
+            odata = np.clip(odata / 64, -100, 100) 
 
-            self.outfile_ac3.write(odata)
+            self.outfile_ac3.write(np.int8(odata))
 
             blk = self.AC3Collector.get_block()
 
