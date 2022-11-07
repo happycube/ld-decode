@@ -70,6 +70,8 @@ class ChromaSepClass:
 
         delayed = np.roll(downsampled, self.delay)
         combed = np.multiply(np.add(downsampled, delayed), 0.5)
+        del downsampled
+        del delayed
 
         result = self.method(
             combed,

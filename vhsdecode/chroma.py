@@ -191,7 +191,7 @@ def process_chroma(
         field.rf.chroma_last_field = field.rf.field_number
 
         # If chroma AFC is enabled
-        if field.rf.cafc:
+        if field.rf.do_cafc:
             # it does the chroma filtering AFTER the TBC
             chroma = demod_chroma_filt(
                 chroma,
@@ -255,7 +255,7 @@ def process_chroma(
         linesout,
         outwidth,
         field.rf.chroma_afc.getChromaHet()
-        if (field.rf.cafc and not disable_tracking_cafc)
+        if (field.rf.do_cafc and not disable_tracking_cafc)
         else field.rf.chroma_heterodyne,
         phase_rotation,
         starting_phase,

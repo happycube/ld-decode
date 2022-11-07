@@ -334,7 +334,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Store a separate setting for *color* system as opposed to 525/625 line here.
         # TODO: Fix upstream so we don't have to fake tell ld-decode code that we are using ntsc for
         # palm to avoid it throwing errors.
-        self.color_system = system
+        self._color_system = system
 
         self.dod_threshold_p = rf_options.get(
             "dod_threshold_p", vhs_formats.DEFAULT_THRESHOLD_P_DDD
@@ -343,19 +343,19 @@ class VHSRFDecode(ldd.RFDecode):
         self.dod_hysteresis = rf_options.get(
             "dod_hysteresis", vhs_formats.DEFAULT_HYSTERESIS
         )
-        self.chroma_trap = rf_options.get("chroma_trap", False)
+        self._chroma_trap = rf_options.get("chroma_trap", False)
         track_phase = None if is_secam(system) else rf_options.get("track_phase", None)
-        self.recheck_phase = rf_options.get("recheck_phase", False)
+        self._recheck_phase = rf_options.get("recheck_phase", False)
         high_boost = rf_options.get("high_boost", None)
-        self.notch = rf_options.get("notch", None)
-        self.notch_q = rf_options.get("notch_q", 10.0)
-        self.disable_diff_demod = rf_options.get("disable_diff_demod", False)
+        self._notch = rf_options.get("notch", None)
+        self._notch_q = rf_options.get("notch_q", 10.0)
+        self._disable_diff_demod = rf_options.get("disable_diff_demod", False)
         self.useAGC = extra_options.get("useAGC", False)
         self.debug = extra_options.get("debug", False)
         # Enable cafc for betamax until proper track detection for it is implemented.
-        self.cafc = True if tape_format == "BETAMAX" else rf_options.get("cafc", False)
+        self._do_cafc = True if tape_format == "BETAMAX" else rf_options.get("cafc", False)
         # cafc requires --recheck_phase
-        self.recheck_phase = True if self.cafc else self.recheck_phase
+        self._recheck_phase = True if self._do_cafc else self._recheck_phase
 
         self.detect_track = False
         self.needs_detect = False
@@ -396,16 +396,16 @@ class VHSRFDecode(ldd.RFDecode):
 
         DP = self.DecoderParams
 
-        self.high_boost = high_boost if high_boost is not None else DP["boost_bpf_mult"]
+        self._high_boost = high_boost if high_boost is not None else DP["boost_bpf_mult"]
 
         # controls the sharpness EQ gain
         sharpness_level = (
             rf_options.get("sharpness", vhs_formats.DEFAULT_SHARPNESS) / 100
         )
 
-        self.video_eq = None
+        self._video_eq = None
         if sharpness_level != 0:
-            self.video_eq = VideoEQ(DP, sharpness_level, self.freq_hz)
+            self._video_eq = VideoEQ(DP, sharpness_level, self.freq_hz)
 
         # Heterodyning / chroma wave related filter part
 
@@ -415,19 +415,19 @@ class VHSRFDecode(ldd.RFDecode):
             self.SysParams,
             self.DecoderParams["color_under_carrier"],
             tape_format=tape_format,
-            do_cafc=self.cafc,
+            do_cafc=self._do_cafc,
         )
 
         self.Filters["FVideoBurst"] = self._chroma_afc.get_chroma_bandpass()
 
-        if self.notch is not None:
-            if not self.cafc:
+        if self._notch is not None:
+            if not self._do_cafc:
                 self.Filters["FVideoNotch"] = sps.iirnotch(
-                    self.notch / self.freq_half, self.notch_q
+                    self._notch / self.freq_half, self._notch_q
                 )
             else:
                 self.Filters["FVideoNotch"] = sps.iirnotch(
-                    self.notch / self._chroma_afc.getOutFreqHalf(), self.notch_q
+                    self._notch / self._chroma_afc.getOutFreqHalf(), self._notch_q
                 )
 
             self.Filters["FVideoNotchF"] = lddu.filtfft(
@@ -459,7 +459,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
         )
 
-        if self.chroma_trap:
+        if self._chroma_trap:
             self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
 
         if self.useAGC:
@@ -476,8 +476,24 @@ class VHSRFDecode(ldd.RFDecode):
         return self._options
 
     @property
+    def notch(self):
+        return self._notch
+
+    @property
     def chroma_afc(self):
         return self._chroma_afc
+
+    @property
+    def do_cafc(self):
+        return self._do_cafc
+
+    @property
+    def recheck_phase(self):
+        return self._recheck_phase
+
+    @property
+    def color_system(self):
+        return self._color_system
 
     def computevideofilters(self):
         self.Filters = {}
@@ -644,7 +660,7 @@ class VHSRFDecode(ldd.RFDecode):
         if data is None:
             data = npfft.ifft(indata_fft).real
 
-        if self.notch is not None:
+        if self._notch is not None:
             indata_fft = indata_fft * self.Filters["FVideoNotchF"]
 
         raw_filtered = npfft.ifft(
@@ -673,7 +689,7 @@ class VHSRFDecode(ldd.RFDecode):
                 (env_mean * 0.9) / env
             )
             del data_filtered
-            indata_fft_filt += npfft.fft(high_part * self.high_boost)
+            indata_fft_filt += npfft.fft(high_part * self._high_boost)
         else:
             ldd.logger.warning("RF signal is weak. Is your deck tracking properly?")
 
@@ -682,18 +698,18 @@ class VHSRFDecode(ldd.RFDecode):
         # FM demodulator
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
 
-        if self.chroma_trap:
+        if self._chroma_trap:
             # applies the Subcarrier trap
             demod = self.chromaTrap.work(demod)
 
         # Disabled if sharpness level is zero (default).
-        if self.video_eq:
+        if self._video_eq:
             # applies the video EQ
-            demod = self.video_eq.filter_video(demod)
+            demod = self._video_eq.filter_video(demod)
 
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and
         # replace the spikes with data from the diffed demod.
-        if not self.disable_diff_demod:
+        if not self._disable_diff_demod:
             check_value = self.options.diff_demod_check_value
 
             if np.max(demod[20:-20]) > check_value:
@@ -749,10 +765,10 @@ class VHSRFDecode(ldd.RFDecode):
                 self.Filters["FVideoBurst"],
                 self.blocklen,
                 self.Filters["FVideoNotch"],
-                self.notch,
+                self._notch,
                 # if cafc is enabled, this filtering will be done after TBC
             )
-            if not self.cafc
+            if not self._do_cafc
             else data[: self.blocklen]
         )
 
