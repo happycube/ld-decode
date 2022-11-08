@@ -102,6 +102,10 @@ SysParams_NTSC = {
     # What 0 IRE/0V should be in digitaloutput
     "outputZero": 1024,
     "fieldPhases": 4,
+    # Likely locations of solid white in VITS on LD's (line, start, length)
+    # The first three are typical VITS locations (first most common), and last
+    # is the MCA Code first-field flag.
+    "LD_VITS_whitelocs": [(20, 14, 12), (20, 52, 8), (13, 13, 15), (11, 12, 45)],
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
@@ -143,6 +147,9 @@ SysParams_PAL = {
     # What 0 IRE/0V should be in digitaloutput
     "outputZero": 256,
     "fieldPhases": 8,
+    # Likely locations of solid white in VITS on LD's
+    # (an array of line/start/length)
+    "LD_VITS_whitelocs": [(19, 12, 8)],
 }
 
 SysParams_PAL["outlinelen"] = calclinelen(SysParams_PAL, 4, "fsc_mhz")
@@ -377,7 +384,7 @@ class RFDecode:
 
         self.computevideofilters()
 
-        # This is > 0 because decode_analog_audio is in khz.
+        # This is > 0 because decode_analog_audio is in khz (44.1, 48, 3xHSYNC, etc).
         if self.decode_analog_audio != 0:
             self.computeaudiofilters()
 
@@ -385,8 +392,8 @@ class RFDecode:
             self.computeefmfilter()
 
         if self.SysParams['AC3']:
-            apass = 288000 * .65
-            self.Filters['AC3_fir'] = sps.firwin(301,
+            apass = 288000 * 0.65
+            self.Filters['AC3_fir'] = sps.firwin(257,
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
                 (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
@@ -394,21 +401,6 @@ class RFDecode:
             pass_zero=False)
 
             self.Filters['AC3'] = filtfft((self.Filters['AC3_fir'], [1.0]), self.blocklen)
-
-
-            apass = 288000 * .55
-            # The BPF filter, defined for each system in DecoderParams
-            filt_ac3 = sps.butter(
-                3,
-                [
-                    (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
-                    (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
-                ],
-                btype="bandpass",
-            )
-            # Start building up the combined FFT filter using the BPF
-            #self.Filters["AC3"] = filtfft(filt_ac3, self.blocklen)
-
 
         self.computedelays()
 
@@ -1528,7 +1520,8 @@ class Field:
         _begin = linelocs[l_adj] if linelocs is not None else self.linelocs[l_adj]
         _begin += self.usectoinpx(begin, l_adj) if begin is not None else 0
 
-        _length = self.usectoinpx(length, l_adj) if length is not None else 1
+        _length = length if length else self.rf.SysParams["line_period"]
+        _length = self.usectoinpx(_length)
 
         return slice(
             int(np.floor(_begin + begin_offset)),
@@ -3826,15 +3819,13 @@ class LDdecode:
 
         if system == "NTSC":
             self.computeMetricsNTSC(metrics, f, fp)
-            whitelocs = [(20, 14, 12), (20, 52, 8), (13, 13, 15)]  # , (20, 13, 2)]
         else:
             self.computeMetricsPAL(metrics, f, fp)
-            whitelocs = [(19, 12, 8)]
 
         # FIXME: these should probably be computed in the Field class
         f.whitesnr_slice = None
 
-        for l in whitelocs:
+        for l in f.rf.SysParams["LD_VITS_whitelocs"]:
             wl_slice = f.lineslice_tbc(*l)
             # logger.info(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
             if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
