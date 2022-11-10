@@ -22,6 +22,7 @@ from vhsdecode.cmdcommons import (
     get_rf_options,
     get_extra_options,
 )
+
 supported_tape_formats = {"VHS", "SVHS", "UMATIC", "BETAMAX", "VIDEO8", "HI8"}
 
 
@@ -179,6 +180,13 @@ def main(use_gui=False):
         default=False,
         help="Skip resampling input to 40 mhz (needs testing).",
     )
+    debug_group.add_argument(
+        "--fallback_vsync",
+        dest="fallback_vsync",
+        action="store_true",
+        default=False,
+        help="Enable vsync detect fallback. Will be enabled by default once more tested, so expect this option to change.",
+    )
     dodgroup = parser.add_argument_group("Dropout detection options")
     dodgroup.add_argument(
         "--noDOD",
@@ -253,6 +261,7 @@ def main(use_gui=False):
     rf_options["sync_clip"] = args.sync_clip
     rf_options["disable_right_hsync"] = args.disable_right_hsync
     rf_options["level_detect_divisor"] = args.level_detect_divisor
+    rf_options["fallback_vsync"] = args.fallback_vsync
 
     extra_options = get_extra_options(args, not use_gui)
 

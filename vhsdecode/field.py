@@ -99,7 +99,22 @@ def getpulses_override(field):
     return field.rf.resync.getpulses_override(field)
 
 
-def _get_line0_fallback(valid_pulses, raw_pulses, demod_05, sp):
+def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _system):
+    """
+    Try a more primitive way of locating line 0 if the normal approach fails.
+    Currently we basically just look for the first long pulse that could be start of vsync pulses in
+    e.g a 240p/280p signal
+    """
+
+    PULSE_START = 0
+    PULSE_LEN = 1
+
+    long_pulses = list(
+        filter(
+            lambda p: inrange(p[PULSE_LEN], lt_vsync[0], lt_vsync[1] * 10), raw_pulses
+        )
+    )
+
     if False:
         # len(validpulses) > 300:
         import matplotlib.pyplot as plt
@@ -107,23 +122,40 @@ def _get_line0_fallback(valid_pulses, raw_pulses, demod_05, sp):
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
         ax1.plot(demod_05)
 
-        for raw_pulse in raw_pulses:
+        for raw_pulse in long_pulses:
             ax2.axvline(raw_pulse.start, color="#910000")
             ax2.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
 
-        for valid_pulse in valid_pulses:
-            color = (
-                "#FF0000"
-                if valid_pulse[0] == 2
-                else "#00FF00"
-                if valid_pulse[0] == 1
-                else "#0F0F0F"
-            )
-            ax3.axvline(valid_pulse[1][0], color=color)
-            ax3.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+        # for valid_pulse in long_pulses:
+        #     color = (
+        #         "#FF0000"
+        #         if valid_pulse[0] == 2
+        #         else "#00FF00"
+        #         if valid_pulse[0] == 1
+        #         else "#0F0F0F"
+        #     )
+        #     ax3.axvline(valid_pulse[1][0], color=color)
+        #     ax3.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
 
         plt.show()
-    return None, None, None
+    if long_pulses:
+        # Offset from start of first vsync to first line
+        # NOTE: Not technically to first line but to the loc that would be expected for getLine0.
+        # May need a different value for NTSC, may need tweaking..
+        offset = linelen * 3
+        line_0 = long_pulses[0][PULSE_START] - offset
+        # If we see exactly 2 groups of 3 long pulses, assume that we are dealing with a 240p/288p signal and
+        # use the second group as loc of last line
+        last_lineloc = (
+            long_pulses[3][PULSE_START] - offset
+            if len(long_pulses) == 6
+            and long_pulses[3][PULSE_START] - long_pulses[2][PULSE_START]
+            > (lt_vsync[1] * 10)
+            else None
+        )
+        return line_0, last_lineloc, True
+    else:
+        return None, None, None
 
 
 P_HSYNC, P_EQPL1, P_VSYNC, P_EQPL2, P_EQPL, P_OTHER_S, P_OTHER_L = range(7)
@@ -159,7 +191,9 @@ def _to_type_list(raw_pulses, lt_hsync, lt_eq, lt_vsync):
 
 
 def _add_type_to_pulses(raw_pulses, lt_hsync, lt_eq, lt_vsync):
-    return list(map(lambda p: (_len_to_type(p, lt_hsync, lt_eq, lt_vsync), p) , raw_pulses))
+    return list(
+        map(lambda p: (_len_to_type(p, lt_hsync, lt_eq, lt_vsync), p), raw_pulses)
+    )
 
 
 def _to_seq(type_list, num_pulses, skip_bad=True):
@@ -178,7 +212,11 @@ def _to_seq(type_list, num_pulses, skip_bad=True):
 
 
 def _is_valid_seq(type_list, num_pulses):
-    return len(type_list) >= 4 and type_list[1:3] == [(P_EQPL, num_pulses), (P_VSYNC, num_pulses), (P_EQPL, num_pulses)]
+    return len(type_list) >= 4 and type_list[1:3] == [
+        (P_EQPL, num_pulses),
+        (P_VSYNC, num_pulses),
+        (P_EQPL, num_pulses),
+    ]
 
 
 def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len):
@@ -261,9 +299,7 @@ def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len)
             if spulse[1].start < state_end:
                 spulse = None
             elif state_length:
-                state_end = spulse[1].start + (
-                    (state_length - 0.1) * in_line_len
-                )
+                state_end = spulse[1].start + ((state_length - 0.1) * in_line_len)
                 state_length = None
 
         # Quality check
@@ -284,19 +320,26 @@ def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len)
 
 class FieldShared:
     def _get_line0_fallback(self, valid_pulses):
-        return _get_line0_fallback(
+        res = get_line0_fallback(
             valid_pulses,
             self.rawpulses,
             self.data["video"]["demod_05"],
-            self.rf.sysparams_const,
+            self.lt_vsync,
+            self.inlinelen,
+            self.rf.system,
         )
+        # Not needed after this.
+        del self.lt_vsync
+        return res
 
     def pulse_qualitycheck(self, prev_pulse, pulse):
         return sync.pulse_qualitycheck(prev_pulse, pulse, self.inlinelen)
 
     def run_vblank_state_machine(self, pulses, LT):
-        """ Determines if a pulse set is a valid vblank by running a state machine """
-        a = _run_vblank_state_machine(pulses, LT, self.rf.SysParams["numPulses"], self.inlinelen)
+        """Determines if a pulse set is a valid vblank by running a state machine"""
+        a = _run_vblank_state_machine(
+            pulses, LT, self.rf.SysParams["numPulses"], self.inlinelen
+        )
         # b = super(FieldShared, self).run_vblank_state_machine(pulses, LT)
         # print("A : ", a)
         # print("B : ", b)
@@ -307,7 +350,7 @@ class FieldShared:
         LT = self.get_timings()
         lt_hsync = LT["hsync"]
         lt_eq = LT["eq"]
-        # lt_vsync = LT["vsync"]
+        self.lt_vsync = LT["vsync"]
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
@@ -379,10 +422,22 @@ class FieldShared:
         self.validpulses = validpulses = self.refinepulses()
 
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
-        if not line0loc:
-            line0loc, lastlineloc, self.isFirstField = self._get_line0_fallback(
+
+        if self.rf.options.fallback_vsync and (
+            not line0loc or self.sync_confidence == 0
+        ):
+            self.sync_confidence = 0
+            line0loc_t, lastlineloc_t, is_first_field_t = self._get_line0_fallback(
                 validpulses
             )
+            if line0loc_t:
+                ldd.logger.debug("Using fallback vsync, signal may be non-standard.")
+                line0loc = line0loc_t
+                lastlineloc = lastlineloc_t
+                self.isFirstField = (
+                    not self.prevfield.isFirstField if self.prevfield else True
+                )
+                self.sync_confidence = 10
         # Not sure if this is used for video.
         self.linecount = 263 if self.isFirstField else 262
 

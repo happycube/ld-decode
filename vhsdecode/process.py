@@ -319,6 +319,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "sync_clip",
                 "disable_dc_offset",
                 "double_lpf",
+                "fallback_vsync",
             ],
         )(
             self.iretohz(100) * 2,
@@ -329,6 +330,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("sync_clip", False),
             rf_options.get("disable_dc_offset", False),
             tape_format == "VHS",
+            rf_options.get("fallback_vsync", False),
         )
 
         # Store a separate setting for *color* system as opposed to 525/625 line here.
@@ -353,7 +355,9 @@ class VHSRFDecode(ldd.RFDecode):
         self.useAGC = extra_options.get("useAGC", False)
         self.debug = extra_options.get("debug", False)
         # Enable cafc for betamax until proper track detection for it is implemented.
-        self._do_cafc = True if tape_format == "BETAMAX" else rf_options.get("cafc", False)
+        self._do_cafc = (
+            True if tape_format == "BETAMAX" else rf_options.get("cafc", False)
+        )
         # cafc requires --recheck_phase
         self._recheck_phase = True if self._do_cafc else self._recheck_phase
 
@@ -396,7 +400,9 @@ class VHSRFDecode(ldd.RFDecode):
 
         DP = self.DecoderParams
 
-        self._high_boost = high_boost if high_boost is not None else DP["boost_bpf_mult"]
+        self._high_boost = (
+            high_boost if high_boost is not None else DP["boost_bpf_mult"]
+        )
 
         # controls the sharpness EQ gain
         sharpness_level = (
@@ -626,7 +632,7 @@ class VHSRFDecode(ldd.RFDecode):
                     btype="highpass",
                 ),
                 self.blocklen,
-                whole=False
+                whole=False,
             )
 
         if self.debug_plot and self.debug_plot.is_plot_requested("deemphasis"):
@@ -735,10 +741,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         if self.options.nldeemp:
             # Extract the high frequency part of the signal
-            hf_part = npfft.irfft(
-                out_video_fft
-                * self.Filters["NLHighPassF"]
-            )
+            hf_part = npfft.irfft(out_video_fft * self.Filters["NLHighPassF"])
             # Limit it to preserve sharp transitions
             np.clip(
                 hf_part,
@@ -753,9 +756,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         del out_video_fft
 
-        out_video05 = npfft.irfft(
-            demod_fft * self.Filters["FVideo05"]
-        ).real
+        out_video05 = npfft.irfft(demod_fft * self.Filters["FVideo05"]).real
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         # Filter out the color-under signal from the raw data.

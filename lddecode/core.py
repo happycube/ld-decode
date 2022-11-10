@@ -390,7 +390,7 @@ class RFDecode:
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
                 (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
-            ], 
+            ],
             pass_zero=False)
 
             self.Filters['AC3'] = filtfft((self.Filters['AC3_fir'], [1.0]), self.blocklen)
