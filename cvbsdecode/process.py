@@ -507,7 +507,7 @@ class CVBSDecodeInner(ldd.RFDecode):
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
         datalen = len(fftdata)
         # We don't need the complex side here, should see if we could avoid even calculating it later.
-        data = npfft.irfft(fftdata[:datalen + 1], datalen).real
+        data = npfft.irfft(fftdata[: datalen + 1], datalen).real
 
         rv = {}
 

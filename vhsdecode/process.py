@@ -783,6 +783,7 @@ class VHSRFDecode(ldd.RFDecode):
                 filtered_fft=indata_fft_filt,
                 demod_video=demod,
                 filtered_video=out_video,
+                chroma=out_chroma,
                 rfdecode=self,
             )
 

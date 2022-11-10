@@ -1,7 +1,9 @@
 from matplotlib import rc_context
 
+
 def to_db_power(input_data):
     import numpy as np
+
     return 20 * np.log10(input_data)
 
 
@@ -13,19 +15,29 @@ class DebugPlot:
         return requested_info in self.__stuff_to_plot
 
 
-@rc_context({'figure.figsize': (14, 10), 'figure.constrained_layout.use': True})
+@rc_context({"figure.figsize": (14, 10), "figure.constrained_layout.use": True})
 def plot_input_data(
-        raw_data, raw_fft, filtered_fft, env, env_mean, demod_video, filtered_video, rfdecode, plot_db=False, plot_demod_fft=False
+    raw_data,
+    raw_fft,
+    filtered_fft,
+    env,
+    env_mean,
+    demod_video,
+    filtered_video,
+    chroma,
+    rfdecode,
+    plot_db=False,
+    plot_demod_fft=False,
 ):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
 
     ire0 = rfdecode.sysparams_const.ire0
     ire100 = rfdecode.sysparams_const.ire0 + (100 * rfdecode.sysparams_const.hz_ire)
     sync_hz = rfdecode.sysparams_const.vsync_hz
-    cc_freq = rfdecode.DecoderParams['color_under_carrier']
+    cc_freq = rfdecode.DecoderParams["color_under_carrier"]
 
     # ax1.plot((20 * np.log10(self.Filters["Fdeemp"])))
     #        ax1.plot(hilbert, color='#FF0000')
@@ -55,6 +67,8 @@ def plot_input_data(
     ax3.axhline(rfdecode.iretohz(100), label="100 IRE", color="#000000", ls="--")
     ax3.set_title("Output video (Deemphasized and filtered) ")
     ax3.legend()
+    ax4.plot(chroma)
+    ax4.set_title("Chroma signal")
 
     half_size = (blocklen // 2) + 1
     freq_array = (np.arange(blocklen) / blocklen * rfdecode.freq_hz)[:half_size]
@@ -74,19 +88,22 @@ def plot_input_data(
     else:
         fig2, ax4 = plt.subplots(1, 1)
     ax4.plot(
-        freq_array, to_plot(raw_fft[:half_size]), color="#00FF00", label='Raw input'
+        freq_array, to_plot(raw_fft[:half_size]), color="#00FF00", label="Raw input"
     )
     ax4.plot(
-        freq_array, to_plot(filtered_fft[:half_size]), color="#FF0000", label='After rf filtering'
+        freq_array,
+        to_plot(filtered_fft[:half_size]),
+        color="#FF0000",
+        label="After rf filtering",
     )
     ax4.set_xlabel("frequency")
     if plot_db:
         ax4.set_ylabel("dB power")
     ax4.set_title("frequency spectrum of rf input")
-    ax4.axvline(ire0, label='0 IRE', color='#000000')
-    ax4.axvline(ire100, label='100 IRE', ls="--")
-    ax4.axvline(sync_hz, label='sync tip', ls="-.")
-    ax4.axvline(cc_freq, label='Chroma carrier', color="#6F6F00")
+    ax4.axvline(ire0, label="0 IRE", color="#000000")
+    ax4.axvline(ire100, label="100 IRE", ls="--")
+    ax4.axvline(sync_hz, label="sync tip", ls="-.")
+    ax4.axvline(cc_freq, label="Chroma carrier", color="#6F6F00")
     ax4.legend()
 
     plt.show()
