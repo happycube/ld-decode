@@ -30,6 +30,8 @@ add_executable(ld-chroma-decoder
     paldecoder.cpp
 )
 
+target_include_directories(ld-chroma-decoder PRIVATE ${FFTW_INCLUDE_DIRS})
+
 target_link_libraries(ld-chroma-decoder PRIVATE Qt::Core lddecode-library lddecode-chroma)
 
 install(TARGETS ld-chroma-decoder)
