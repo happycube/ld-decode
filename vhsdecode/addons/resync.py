@@ -425,12 +425,12 @@ class Resync:
 
     def findpulses(self, sync_ref, high):
         return _findpulses_numba(
-            sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 2
+            sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 3
         )
 
     def _findpulses_arr(self, sync_ref, high):
         return _findpulses_numba_raw(
-            sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 2
+            sync_ref, high, self.eq_pulselen * 1 / 8, self.linelen * 3
         )
 
     def _findpulses_arr_reduced(self, sync_ref, high, divisor):
