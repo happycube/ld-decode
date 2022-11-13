@@ -53,7 +53,6 @@ protected:
     const qint32 blankingIre = 0x3C00;
     const qint32 setupIreOffset = 0x0A80; // 10.5 * 256
 
-    int fieldOffset;
     ChromaMode chromaMode;
     bool addSetup;
 

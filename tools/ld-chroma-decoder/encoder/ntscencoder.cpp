@@ -42,8 +42,8 @@
 
 NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
                          int _fieldOffset, ChromaMode _chromaMode, bool _addSetup)
-    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData),
-      fieldOffset(_fieldOffset), chromaMode(_chromaMode), addSetup(_addSetup)
+    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData, _fieldOffset),
+      chromaMode(_chromaMode), addSetup(_addSetup)
 {
     // NTSC subcarrier frequency [Poynton p511]
     videoParameters.fSC = 315.0e6 / 88.0;

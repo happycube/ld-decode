@@ -43,7 +43,6 @@ private:
     virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
                             std::vector<double> &outputC, std::vector<double> &outputVBS);
 
-    int fieldOffset;
     bool scLocked;
 
     std::vector<double> Y;

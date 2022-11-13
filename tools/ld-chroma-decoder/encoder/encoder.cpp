@@ -48,8 +48,8 @@
 
 #include "encoder.h"
 
-Encoder::Encoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), chromaFile(_chromaFile), metaData(_metaData)
+Encoder::Encoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData, int _fieldOffset)
+    : rgbFile(_rgbFile), tbcFile(_tbcFile), chromaFile(_chromaFile), metaData(_metaData), fieldOffset(_fieldOffset)
 {
 }
 

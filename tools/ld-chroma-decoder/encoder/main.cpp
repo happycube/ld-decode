@@ -156,7 +156,6 @@ int main(int argc, char *argv[])
             qCritical("Unsupported chroma encoder mode");
             return -1;
         }
-
     }
 
     const bool scLocked = parser.isSet(scLockedOption);

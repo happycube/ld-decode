@@ -40,7 +40,7 @@ public:
     // This only sets the member variables it takes as parameters; subclasses
     // must initialise the VideoParameters, compute the active region and
     // resize rgbFrame.
-    Encoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData);
+    Encoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData, int fieldOffset);
 
     // Encode RGB stream to TBC.
     // Returns true on success; on failure, prints an error and returns false.
@@ -67,6 +67,7 @@ protected:
     QFile &tbcFile;
     QFile &chromaFile;
     LdDecodeMetaData &metaData;
+    int fieldOffset;
 
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 activeWidth;

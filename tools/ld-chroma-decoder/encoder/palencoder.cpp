@@ -41,7 +41,7 @@
 
 PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
                        int _fieldOffset, bool _scLocked)
-    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData), fieldOffset(_fieldOffset), scLocked(_scLocked)
+    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData, _fieldOffset), scLocked(_scLocked)
 {
     // PAL subcarrier frequency [Poynton p529] [EBU p5]
     videoParameters.fSC = 4433618.75;
