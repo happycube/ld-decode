@@ -35,12 +35,12 @@
 class PALEncoder : public Encoder
 {
 public:
-    PALEncoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
-               int fieldOffset, bool scLocked);
+    PALEncoder(QFile &inputFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
+               int fieldOffset, bool isComponent, bool scLocked);
 
 private:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *inputData,
                             std::vector<double> &outputC, std::vector<double> &outputVBS);
 
     bool scLocked;

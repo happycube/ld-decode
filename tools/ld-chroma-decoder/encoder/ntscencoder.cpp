@@ -40,9 +40,9 @@
 #include <array>
 #include <cmath>
 
-NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
-                         int _fieldOffset, ChromaMode _chromaMode, bool _addSetup)
-    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData, _fieldOffset),
+NTSCEncoder::NTSCEncoder(QFile &_inputFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
+                         int _fieldOffset, bool _isComponent, ChromaMode _chromaMode, bool _addSetup)
+    : Encoder(_inputFile, _tbcFile, _chromaFile, _metaData, _fieldOffset, _isComponent),
       chromaMode(_chromaMode), addSetup(_addSetup)
 {
     // NTSC subcarrier frequency [Poynton p511]
@@ -101,9 +101,8 @@ NTSCEncoder::NTSCEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, L
     activeTop = 39;
     activeHeight = 525 - activeTop;
 
-    // Resize the input buffer.
-    // The RGB data is triples of 16-bit unsigned numbers in native byte order.
-    rgbFrame.resize(activeWidth * activeHeight * 3 * 2);
+    // Resize the RGB48/YUV444P16 input buffer.
+    inputFrame.resize(activeWidth * activeHeight * 3 * 2);
 
     // Resize the output buffers.
     Y.resize(videoParameters.fieldWidth);
@@ -171,7 +170,11 @@ static constexpr std::array<double, 23> qFilterCoeffs {
 };
 static constexpr auto qFilter = makeFIRFilter(qFilterCoeffs);
 
-void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+// Y'IQ [Poynton p367 eq 30.2]
+static const double SIN_33 = sin(33.0 * M_PI / 180.0);
+static const double COS_33 = cos(33.0 * M_PI / 180.0);
+
+void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *inputData,
                              std::vector<double> &outputC, std::vector<double> &outputVBS)
 {
     if (frameLine == 525) {
@@ -262,22 +265,41 @@ void NTSCEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rg
     std::fill(C1.begin(), C1.end(), 0.0);
     std::fill(C2.begin(), C2.end(), 0.0);
 
-    if (rgbData != nullptr) {
-        // Convert the R'G'B' data to component form
-        for (qint32 i = 0; i < activeWidth; i++) {
-            const double R = rgbData[i * 3]       / 65535.0;
-            const double G = rgbData[(i * 3) + 1] / 65535.0;
-            const double B = rgbData[(i * 3) + 2] / 65535.0;
-            qint32 x = activeLeft + i;
-            Y[x] = (R * 0.299)    + (G * 0.587)     + (B * 0.114);
-            if (chromaMode == WIDEBAND_YUV) {
-                // Y'UV [Poynton p337 eq 28.5]
-                C1[x] = (R * -0.147141) + (G * -0.288869) + (B * 0.436010);
-                C2[x] = (R * 0.614975)  + (G * -0.514965) + (B * -0.100010);
-            } else {
-                // Y'IQ [Poynton p367 eq 30.2]
-                C1[x] = (R * 0.595901) + (G * -0.274557) + (B * -0.321344);
-                C2[x] = (R * 0.211537) + (G * -0.522736) + (B * 0.311200);
+    if (inputData != nullptr) {
+        if (isComponent) {
+            // Convert the Y'CbCr data to Y'UV form [Poynton p307 eq 25.5]
+            int stride = activeWidth * activeHeight;
+            for (qint32 i = 0; i < activeWidth; i++) {
+                qint32 x = activeLeft + i;
+                Y[x] = (inputData[i] - Y_ZERO) / Y_SCALE;
+                const double U    = (inputData[i + stride    ] - C_ZERO) * cbScale;
+                const double V    = (inputData[i + stride * 2] - C_ZERO) * crScale;
+                if (chromaMode == WIDEBAND_YUV) {
+                    C1[x] = U;
+                    C2[x] = V;
+                } else {
+                    // Rotate 33 degrees to create Y'IQ
+                    C1[x] = -SIN_33 * U + COS_33 * V;
+                    C2[x] =  COS_33 * U + SIN_33 * V;
+                }
+            }
+        } else {
+            // Convert the R'G'B' data to Y'UV/Y'IQ
+            for (qint32 i = 0; i < activeWidth; i++) {
+                const double R = inputData[i * 3]       / 65535.0;
+                const double G = inputData[(i * 3) + 1] / 65535.0;
+                const double B = inputData[(i * 3) + 2] / 65535.0;
+                qint32 x = activeLeft + i;
+                Y[x] = (R * 0.299)    + (G * 0.587)     + (B * 0.114);
+                if (chromaMode == WIDEBAND_YUV) {
+                    // Y'UV [Poynton p337 eq 28.5]
+                    C1[x] = (R * -0.147141) + (G * -0.288869) + (B * 0.436010);
+                    C2[x] = (R * 0.614975)  + (G * -0.514965) + (B * -0.100010);
+                } else {
+                    // Y'IQ [Poynton p367 eq 30.2]
+                    C1[x] = (R * 0.595901) + (G * -0.274557) + (B * -0.321344);
+                    C2[x] = (R * 0.211537) + (G * -0.522736) + (B * 0.311200);
+                }
             }
         }
 

@@ -39,9 +39,9 @@
 #include <array>
 #include <cmath>
 
-PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
-                       int _fieldOffset, bool _scLocked)
-    : Encoder(_rgbFile, _tbcFile, _chromaFile, _metaData, _fieldOffset), scLocked(_scLocked)
+PALEncoder::PALEncoder(QFile &_inputFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
+                       int _fieldOffset, bool _isComponent, bool _scLocked)
+    : Encoder(_inputFile, _tbcFile, _chromaFile, _metaData, _fieldOffset, _isComponent), scLocked(_scLocked)
 {
     // PAL subcarrier frequency [Poynton p529] [EBU p5]
     videoParameters.fSC = 4433618.75;
@@ -116,9 +116,8 @@ PALEncoder::PALEncoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdD
     activeTop = 44;
     activeHeight = 620 - activeTop;
 
-    // Resize the input buffer.
-    // The RGB data is triples of 16-bit unsigned numbers in native byte order.
-    rgbFrame.resize(activeWidth * activeHeight * 3 * 2);
+    // Resize the RGB48/YUV444P16 input buffer.
+    inputFrame.resize(activeWidth * activeHeight * 3 * 2);
 
     // Resize the output buffers.
     Y.resize(videoParameters.fieldWidth);
@@ -179,7 +178,7 @@ static constexpr std::array<double, 13> uvFilterCoeffs {
 };
 static constexpr auto uvFilter = makeFIRFilter(uvFilterCoeffs);
 
-void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *inputData,
                             std::vector<double> &outputC, std::vector<double> &outputVBS)
 {
     if (frameLine == 625) {
@@ -272,22 +271,35 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgb
     std::fill(U.begin(), U.end(), 0.0);
     std::fill(V.begin(), V.end(), 0.0);
 
-    if (rgbData != nullptr) {
-        // Convert the R'G'B' data to Y'UV form [Poynton p337 eq 28.5]
-        for (qint32 i = 0; i < activeWidth; i++) {
-            const double R = rgbData[i * 3]       / 65535.0;
-            const double G = rgbData[(i * 3) + 1] / 65535.0;
-            const double B = rgbData[(i * 3) + 2] / 65535.0;
-
-            qint32 x = activeLeft + i;
-            if (videoParameters.isSubcarrierLocked && (fieldNo % 2) == 1) {
-                x += 2;
+    if (inputData != nullptr) {
+        if (isComponent) {
+            // Convert the Y'CbCr data to Y'UV form [Poynton p307 eq 25.5]
+            int stride = activeWidth * activeHeight;
+            for (qint32 i = 0; i < activeWidth; i++) {
+                qint32 x = activeLeft + i;
+                if (videoParameters.isSubcarrierLocked && (fieldNo % 2) == 1) {
+                    x += 2;
+                }
+                Y[x] = (inputData[i] - Y_ZERO) / Y_SCALE;
+                U[x] = (inputData[i + stride    ] - C_ZERO) * cbScale;
+                V[x] = (inputData[i + stride * 2] - C_ZERO) * crScale;
             }
-            Y[x] = (R * 0.299)     + (G * 0.587)     + (B * 0.114);
-            U[x] = (R * -0.147141) + (G * -0.288869) + (B * 0.436010);
-            V[x] = (R * 0.614975)  + (G * -0.514965) + (B * -0.100010);
-        }
+        } else {
+            // Convert the R'G'B' data to Y'UV form [Poynton p337 eq 28.5]
+            for (qint32 i = 0; i < activeWidth; i++) {
+                const double R = inputData[i * 3]       / 65535.0;
+                const double G = inputData[(i * 3) + 1] / 65535.0;
+                const double B = inputData[(i * 3) + 2] / 65535.0;
 
+                qint32 x = activeLeft + i;
+                if (videoParameters.isSubcarrierLocked && (fieldNo % 2) == 1) {
+                    x += 2;
+                }
+                Y[x] = (R * 0.299)     + (G * 0.587)     + (B * 0.114);
+                U[x] = (R * -0.147141) + (G * -0.288869) + (B * 0.436010);
+                V[x] = (R * 0.614975)  + (G * -0.514965) + (B * -0.100010);
+            }
+        }
         // Low-pass filter U and V to 1.3 MHz [Poynton p342]
         uvFilter.apply(U);
         uvFilter.apply(V);

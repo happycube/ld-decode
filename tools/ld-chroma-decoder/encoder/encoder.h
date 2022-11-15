@@ -33,16 +33,36 @@
 
 #include "lddecodemetadata.h"
 
+// Limits, zero points and scaling factors (from 0-1) for Y'CbCr colour representations
+// [Poynton ch25 p305] [BT.601-7 sec 2.5.3]
+static constexpr double ONE_MINUS_Kb = 1.0 - 0.114;
+static constexpr double ONE_MINUS_Kr = 1.0 - 0.299;
+static constexpr double Y_ZERO = 16.0 * 256.0;
+static constexpr double Y_SCALE = 219.0 * 256.0;
+static constexpr double C_ZERO = 128.0 * 256.0;
+static constexpr double C_SCALE = 112.0 * 256.0;
+
+// kB = sqrt(209556997.0 / 96146491.0) / 3.0
+// kR = sqrt(221990474.0 / 288439473.0)
+// [Poynton eq 28.1 p336]
+static constexpr double kB = 0.49211104112248356308804691718185;
+static constexpr double kR = 0.87728321993817866838972487283129;
+
+// [Poynton eq 25.5 p307]
+static constexpr double cbScale = ONE_MINUS_Kb * kB / C_SCALE;
+static constexpr double crScale = ONE_MINUS_Kr * kR / C_SCALE;
+
 class Encoder
 {
 public:
     // Constructor.
     // This only sets the member variables it takes as parameters; subclasses
     // must initialise the VideoParameters, compute the active region and
-    // resize rgbFrame.
-    Encoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData, int fieldOffset);
+    // resize inputFrame.
+    Encoder(QFile &inputFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
+            int fieldOffset, bool isComponent);
 
-    // Encode RGB stream to TBC.
+    // Encode input RGB/YCbCr stream to TBC.
     // Returns true on success; on failure, prints an error and returns false.
     bool encode();
 
@@ -56,18 +76,19 @@ protected:
     // Encode one line of a field into composite video.
     // outputC includes the chroma signal and burst.
     // outputVBS includes the luma signal, blanking and syncs.
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *inputData,
                             std::vector<double> &outputC, std::vector<double> &outputVBS) = 0;
 
     // Scale and write a line of data to one of the output files.
     // Returns true on success; on failure, prints an error and returns false.
     bool writeLine(const std::vector<double> &input, std::vector<quint16> &buffer, bool isChroma, QFile &file);
 
-    QFile &rgbFile;
+    QFile &inputFile;
     QFile &tbcFile;
     QFile &chromaFile;
     LdDecodeMetaData &metaData;
     int fieldOffset;
+    bool isComponent;
 
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 activeWidth;
@@ -75,7 +96,7 @@ protected:
     qint32 activeLeft;
     qint32 activeTop;
 
-    QByteArray rgbFrame;
+    QByteArray inputFrame;
 };
 
 // Generate a gate waveform with raised-cosine transitions, with 50% points at given start and end times
