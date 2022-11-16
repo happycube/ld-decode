@@ -3636,19 +3636,23 @@ class LDdecode:
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
                 if self.useAGC and f.isFirstField and f.sync_confidence > 80:
                     sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
-                    vsync_ire = self.rf.DecoderParams["vsync_ire"]
 
-                    sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - vsync_ire)
+                    actualwhiteIRE = f.rf.hztoire(ire100_hz)
+
+                    sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
+                    whitediff = np.abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
                     ire0_diff = np.abs(self.rf.hztoire(ire0_hz))
 
                     acceptable_diff = 2 if self.fields_written else 0.5
 
-                    if max(sync_ire_diff, ire0_diff) > acceptable_diff:
+                    if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
                         redo = True
 
                         self.rf.DecoderParams["ire0"] = ire0_hz
                         # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                        self.rf.DecoderParams["hz_ire"] = (sync_hz - ire0_hz) / vsync_ire
+                        self.rf.DecoderParams["hz_ire"] = (ire100_hz - ire0_hz) / 100
+                        self.rf.DecoderParams["vsync_ire"] = (sync_hz - ire0_hz) / self.rf.DecoderParams["hz_ire"]
+                        #print(self.rf.DecoderParams["ire0"], self.rf.DecoderParams["hz_ire"], self.rf.DecoderParams["vsync_ire"])
 
                 if adjusted is False and redo is True:
                     self.demodcache.flush_demod()
