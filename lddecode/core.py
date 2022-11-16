@@ -108,7 +108,7 @@ SysParams_NTSC = {
     "LD_VITS_whitelocs": [(20, 14, 12), (20, 52, 8), (13, 13, 15), (11, 12, 45)],
     # Similar but with percentile to use to compute white level
     # (in case VITS white test areas are not present)
-    "LD_VITS_code_slices": [(11, 12, 45, 50), (16, 12, 48, 85), (10, 13, 39, 85)],
+    "LD_VITS_code_slices": [(16, 12, 48, 85), (17, 12, 48, 85), (10, 13, 39, 85)],
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
@@ -156,7 +156,7 @@ SysParams_PAL = {
     # Similar but with percentile to use to compute white level
     # (in case VITS white test areas are not present)
     # FIXME: these are NTSC values
-    "LD_VITS_code_slices": [(11, 12, 45, 50), (16, 12, 48, 85), (10, 13, 39, 85)],
+    "LD_VITS_code_slices": [(16, 12, 48, 85), (17, 12, 48, 85)],
 }
 
 SysParams_PAL["outlinelen"] = calclinelen(SysParams_PAL, 4, "fsc_mhz")
@@ -3476,9 +3476,16 @@ class LDdecode:
         ire0_hzs = []
         ire100_hzs = []
 
-        #for l in field.rf.SysParams[]:
-
-
+        for wl in field.rf.SysParams['LD_VITS_whitelocs'] + field.rf.SysParams['LD_VITS_code_slices']:
+            # Code slice areas have a fourth value for percentile.
+            ls = field.lineslice(*wl[:3])
+            cut = field.data['video']['demod'][ls]
+            freq = np.percentile(cut, 50 if len(wl) == 3 else wl[3])
+            freq_ire = field.rf.hztoire(freq, spec=True)
+            
+            if inrange(freq_ire, 95, 110):
+                ire100_hzs.append(freq)
+            
         for l in range(12, self.output_lines):
             lsa = field.lineslice(l, 0.25, 4)
 
@@ -3497,7 +3504,7 @@ class LDdecode:
                 sync_hzs.append(nb_median(field.data["video"]["demod_05"][lsa]) / adj)
                 ire0_hzs.append(nb_median(field.data["video"]["demod_05"][lsb]) / adj)
 
-        return np.median(sync_hzs), np.median(ire0_hzs)
+        return np.median(sync_hzs), np.median(ire0_hzs), np.mean(ire100_hzs)
 
     def AC3filter(self, rftbc):
         self.AC3Collector.add(rftbc)
@@ -3628,7 +3635,7 @@ class LDdecode:
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
                 if self.useAGC and f.isFirstField and f.sync_confidence > 80:
-                    sync_hz, ire0_hz = self.detectLevels(f)
+                    sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
                     vsync_ire = self.rf.DecoderParams["vsync_ire"]
 
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - vsync_ire)
