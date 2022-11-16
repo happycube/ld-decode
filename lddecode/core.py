@@ -106,6 +106,9 @@ SysParams_NTSC = {
     # The first three are typical VITS locations (first most common), and last
     # is the MCA Code first-field flag.
     "LD_VITS_whitelocs": [(20, 14, 12), (20, 52, 8), (13, 13, 15), (11, 12, 45)],
+    # Similar but with percentile to use to compute white level
+    # (in case VITS white test areas are not present)
+    "LD_VITS_code_slices": [(11, 12, 45, 50), (16, 12, 48, 85), (10, 13, 39, 85)],
 }
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
@@ -150,6 +153,10 @@ SysParams_PAL = {
     # Likely locations of solid white in VITS on LD's
     # (an array of line/start/length)
     "LD_VITS_whitelocs": [(19, 12, 8)],
+    # Similar but with percentile to use to compute white level
+    # (in case VITS white test areas are not present)
+    # FIXME: these are NTSC values
+    "LD_VITS_code_slices": [(11, 12, 45, 50), (16, 12, 48, 85), (10, 13, 39, 85)],
 }
 
 SysParams_PAL["outlinelen"] = calclinelen(SysParams_PAL, 4, "fsc_mhz")
@@ -340,6 +347,11 @@ class RFDecode:
                 self.DecoderParams = copy.deepcopy(RFParams_PAL_lowband)
             else:
                 self.DecoderParams = copy.deepcopy(RFParams_PAL)
+
+        # Make (intentionally) mutable copies of HZ<->IRE levels
+        self.DecoderParams['ire0']   = self.SysParams['ire0']
+        self.DecoderParams['hz_ire'] = self.SysParams['hz_ire']
+        self.DecoderParams['vsync_ire'] = self.SysParams['vsync_ire']
 
         self.SysParams["analog_audio"] = has_analog_audio
         self.SysParams["AC3"] = extra_options.get("AC3", False)
@@ -648,11 +660,13 @@ class RFDecode:
             # Compute the sample rate decimation caused by stage 1 binning
             self.Filters['audio_fdiv'] = self.blocklen // self.audio[channel].nbins
 
-    def iretohz(self, ire):
-        return self.SysParams["ire0"] + (self.SysParams["hz_ire"] * ire)
+    def iretohz(self, ire, spec=False):
+        params = self.SysParams if spec else self.DecoderParams
+        return params["ire0"] + (params["hz_ire"] * ire)
 
-    def hztoire(self, hz):
-        return (hz - self.SysParams["ire0"]) / self.SysParams["hz_ire"]
+    def hztoire(self, hz, spec=False):
+        params = self.SysParams if spec else self.DecoderParams
+        return (hz - params["ire0"]) / params["hz_ire"]
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
         rv = {}
@@ -875,16 +889,16 @@ class RFDecode:
         synclen_full = int(4.7 * rf.freq)
 
         # sync 1 (used for gap determination)
-        fakeoutput[1500 : 1500 + synclen_full] = rf.iretohz(rf.SysParams["vsync_ire"])
+        fakeoutput[1500 : 1500 + synclen_full] = rf.iretohz(rf.DecoderParams["vsync_ire"])
         # sync 2 (used for pilot/rot level setting)
-        fakeoutput[2000 : 2000 + synclen_full] = rf.iretohz(rf.SysParams["vsync_ire"])
+        fakeoutput[2000 : 2000 + synclen_full] = rf.iretohz(rf.DecoderParams["vsync_ire"])
 
         porch_end = 2000 + synclen_full + int(0.6 * rf.freq)
         burst_end = porch_end + int(1.2 * rf.freq)
 
         rate = np.full(burst_end - porch_end, rf.SysParams["fsc_mhz"], dtype=np.double)
         fakeoutput[porch_end:burst_end] += (
-            genwave(rate, rf.freq / 2) * rf.SysParams["hz_ire"] * 20
+            genwave(rate, rf.freq / 2) * rf.DecoderParams["hz_ire"] * 20
         )
 
         # white
@@ -895,16 +909,16 @@ class RFDecode:
 
         rate = np.full(5500 - 4200, rf.SysParams["fsc_mhz"], dtype=np.double)
         fakeoutput[4200:5500] += (
-            genwave(rate, rf.freq / 2) * rf.SysParams["hz_ire"] * 20
+            genwave(rate, rf.freq / 2) * rf.DecoderParams["hz_ire"] * 20
         )
 
         rate = np.full(synclen_full, rf.SysParams["fsc_mhz"], dtype=np.double)
         fakeoutput[2000 : 2000 + synclen_full] = rf.iretohz(
-            rf.SysParams["vsync_ire"]
+            rf.DecoderParams["vsync_ire"]
         ) + (
             genwave(rate, rf.freq / 2)
-            * rf.SysParams["hz_ire"]
-            * rf.SysParams["vsync_ire"]
+            * rf.DecoderParams["hz_ire"]
+            * rf.DecoderParams["vsync_ire"]
         )
 
         # add filters to generate a fake signal
@@ -928,7 +942,7 @@ class RFDecode:
 
         vdemod = fakedecode["video"]["demod"]
         vdemod_raw = fakedecode["video"]["demod_raw"]
-        vsync_cross_hz = rf.iretohz(rf.SysParams["vsync_ire"] / 2)
+        vsync_cross_hz = rf.iretohz(rf.DecoderParams["vsync_ire"] / 2)
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync level
         # (but only regular filtering is needed for DOD)
@@ -1444,6 +1458,7 @@ class Field:
 
         self.lineoffset = 0
 
+        self.needrerun = False
         self.valid = False
         self.sync_confidence = 100
 
@@ -1535,8 +1550,8 @@ class Field:
         return x / self.rf.SysParams["outfreq"]
 
     def hz_to_output(self, input):
-        reduced = (input - self.rf.SysParams["ire0"]) / self.rf.SysParams["hz_ire"]
-        reduced -= self.rf.SysParams["vsync_ire"]
+        reduced = (input - self.rf.DecoderParams["ire0"]) / self.rf.DecoderParams["hz_ire"]
+        reduced -= self.rf.DecoderParams["vsync_ire"]
 
         return np.uint16(
             np.clip(
@@ -1548,7 +1563,7 @@ class Field:
     def output_to_ire(self, output):
         return (
             (output - self.rf.SysParams["outputZero"]) / self.out_scale
-        ) + self.rf.SysParams["vsync_ire"]
+        ) + self.rf.DecoderParams["vsync_ire"]
 
     def lineslice_tbc(self, l, begin=None, length=None, linelocs=None, keepphase=False):
         """ return a slice corresponding with pre-TBC line l """
@@ -1946,7 +1961,7 @@ class Field:
         score = 0
         vsync_lines = 0
 
-        vsync_ire = self.rf.SysParams["vsync_ire"]
+        vsync_ire = self.rf.DecoderParams["vsync_ire"]
 
         for l in range(self.outlinecount, self.outlinecount + 8):
             sl = self.lineslice(l, 0, self.rf.SysParams["line_period"])
@@ -2063,10 +2078,10 @@ class Field:
         # pass one using standard levels
 
         # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-        pulse_hz_min = self.rf.iretohz(self.rf.SysParams["vsync_ire"] - 10)
-        pulse_hz_max = self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
+        pulse_hz_min = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] - 10)
+        pulse_hz_max = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] / 2)
 
-        pulse_hz_min = self.rf.iretohz(self.rf.SysParams["vsync_ire"] - 20)
+        pulse_hz_min = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] - 20)
         pulse_hz_max = self.rf.iretohz(-20)
 
         pulses = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
@@ -2098,7 +2113,7 @@ class Field:
 
         synclevel = np.median(vsync_means)
 
-        if np.abs(self.rf.hztoire(synclevel) - self.rf.SysParams["vsync_ire"]) < 5:
+        if np.abs(self.rf.hztoire(synclevel) - self.rf.DecoderParams["vsync_ire"]) < 5:
             # sync level is close enough to use
             return pulses
 
@@ -2131,7 +2146,7 @@ class Field:
 
         blacklevel = np.median(black_means)
 
-        pulse_hz_min = synclevel - (self.rf.SysParams["hz_ire"] * 10)
+        pulse_hz_min = synclevel - (self.rf.DecoderParams["hz_ire"] * 10)
         pulse_hz_max = (blacklevel + synclevel) / 2
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
@@ -2310,7 +2325,7 @@ class Field:
             zc = calczc(
                 self.data["video"]["demod_05"],
                 ll1,
-                self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2),
+                self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] / 2),
                 reverse=False,
                 count=self.rf.freq * 2,
             )
@@ -2453,7 +2468,7 @@ class Field:
                 logger.warning("WARNING: TBC failure at line %d", l)
                 dsout[
                     (l - lineoffset) * outwidth : (l + 1 - lineoffset) * outwidth
-                ] = self.rf.SysParams["ire0"]
+                ] = self.rf.DecoderParams["ire0"]
 
         if audio != 0 and self.rf.decode_analog_audio:
             self.dsaudio, self.audio_next_offset = downscale_audio(
@@ -2778,12 +2793,12 @@ class Field:
             return None, None
 
         burstarea = burstarea - nb_mean(burstarea)
-        threshold = 5 * self.rf.SysParams["hz_ire"]
+        threshold = 5 * self.rf.DecoderParams["hz_ire"]
 
         burstarea_demod = self.data["video"]["demod"][s + bstart : s + bend]
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
 
-        if nb_absmax(burstarea_demod) > (30 * self.rf.SysParams["hz_ire"]):
+        if nb_absmax(burstarea_demod) > (30 * self.rf.DecoderParams["hz_ire"]):
             return None, None
 
         zcburstdiv = (lfreq * fsc_mhz_inv) / 2
@@ -2881,7 +2896,7 @@ class FieldPAL(Field):
         burstarea = self.data["video"]["demod"][lineslice].copy()
         burstarea -= nb_mean(burstarea)
 
-        if max(burstarea) > (30 * self.rf.SysParams["hz_ire"]):
+        if max(burstarea) > (30 * self.rf.DecoderParams["hz_ire"]):
             return None
 
         return rms(burstarea) * np.sqrt(2)
@@ -2897,7 +2912,7 @@ class FieldPAL(Field):
         if burstlevel == []:
             return 0.0
 
-        return np.median(burstlevel) / self.rf.SysParams["hz_ire"]
+        return np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]
 
     def get_following_field_number(self):
         if self.prevfield is not None:
@@ -2936,7 +2951,7 @@ class FieldPAL(Field):
         if burstlevel6 is None:
             return self.get_following_field_number()
 
-        burstlevel6 /= self.rf.SysParams["hz_ire"]
+        burstlevel6 /= self.rf.DecoderParams["hz_ire"]
 
         if inrange(burstlevel6, self.burstmedian * 0.8, self.burstmedian * 1.2):
             hasburst = True
@@ -2997,7 +3012,7 @@ class FieldPAL(Field):
         super(FieldPAL, self).process()
 
         self.out_scale = np.double(0xD300 - 0x0100) / (
-            100 - self.rf.SysParams["vsync_ire"]
+            100 - self.rf.DecoderParams["vsync_ire"]
         )
 
         if not self.valid:
@@ -3226,7 +3241,7 @@ class FieldNTSC(Field):
     def calc_burstmedian(self):
         burstlevel = [self.get_burstlevel(l) for l in range(11, 264)]
 
-        return np.median(burstlevel) / self.rf.SysParams["hz_ire"]
+        return np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]
 
     def apply_offsets(self, linelocs, phaseoffset, picoffset=0):
         # logger.info(phaseoffset, (phaseoffset * (self.rf.freq / (4 * 315 / 88))))
@@ -3243,7 +3258,7 @@ class FieldNTSC(Field):
         super(FieldNTSC, self).process()
 
         self.out_scale = np.double(0xC800 - 0x0400) / (
-            100 - self.rf.SysParams["vsync_ire"]
+            100 - self.rf.DecoderParams["vsync_ire"]
         )
 
         if not self.valid:
@@ -3454,10 +3469,15 @@ class LDdecode:
         return np.abs(self.mtf_level - oldmtf) < 0.05
 
     def detectLevels(self, field):
-        # Returns sync level and ire0 level of a field, computed from HSYNC areas
+        # Returns sync level, 0IRE, and 100IRE levels of a field
+        # computed from HSYNC areas and VITS
 
         sync_hzs = []
         ire0_hzs = []
+        ire100_hzs = []
+
+        #for l in field.rf.SysParams[]:
+
 
         for l in range(12, self.output_lines):
             lsa = field.lineslice(l, 0.25, 4)
@@ -3604,12 +3624,12 @@ class LDdecode:
                     self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
                     self.bw_ratios = self.bw_ratios[-keep:]
 
-                redo = not self.checkMTF(f, self.prevfield)
+                redo = f.needrerun or not self.checkMTF(f, self.prevfield)
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
                 if self.useAGC and f.isFirstField and f.sync_confidence > 80:
                     sync_hz, ire0_hz = self.detectLevels(f)
-                    vsync_ire = self.rf.SysParams["vsync_ire"]
+                    vsync_ire = self.rf.DecoderParams["vsync_ire"]
 
                     sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - vsync_ire)
                     ire0_diff = np.abs(self.rf.hztoire(ire0_hz))
@@ -3619,9 +3639,9 @@ class LDdecode:
                     if max(sync_ire_diff, ire0_diff) > acceptable_diff:
                         redo = True
 
-                        self.rf.SysParams["ire0"] = ire0_hz
+                        self.rf.DecoderParams["ire0"] = ire0_hz
                         # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                        self.rf.SysParams["hz_ire"] = (sync_hz - ire0_hz) / vsync_ire
+                        self.rf.DecoderParams["hz_ire"] = (sync_hz - ire0_hz) / vsync_ire
 
                 if adjusted is False and redo is True:
                     self.demodcache.flush_demod()
