@@ -9,7 +9,7 @@ set(SCRIPTS_DIR ${CMAKE_SOURCE_DIR}/scripts)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
 
 add_test(
-    NAME chroma-ntsc
+    NAME chroma-ntsc-rgb
     COMMAND ${SCRIPTS_DIR}/test-chroma
         --build ${CMAKE_BINARY_DIR}
         --system ntsc
@@ -18,12 +18,32 @@ add_test(
 )
 
 add_test(
-    NAME chroma-pal
+    NAME chroma-ntsc-ycbcr
+    COMMAND ${SCRIPTS_DIR}/test-chroma
+        --build ${CMAKE_BINARY_DIR}
+        --system ntsc
+        --expect-psnr 25
+        --expect-psnr-range 0.5
+        --input-format yuv
+)
+
+add_test(
+    NAME chroma-pal-rgb
     COMMAND ${SCRIPTS_DIR}/test-chroma
         --build ${CMAKE_BINARY_DIR}
         --system pal
         --expect-psnr 25
         --expect-psnr-range 0.5
+)
+
+add_test(
+    NAME chroma-pal-ycbcr
+    COMMAND ${SCRIPTS_DIR}/test-chroma
+        --build ${CMAKE_BINARY_DIR}
+        --system pal
+        --expect-psnr 25
+        --expect-psnr-range 0.5
+        --input-format yuv
 )
 
 add_test(

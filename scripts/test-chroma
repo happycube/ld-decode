@@ -55,11 +55,19 @@ def clean(args, suffixes):
 
 FFMPEG_CMD = ['ffmpeg', '-loglevel', 'error']
 RGB_FORMAT = ['-f', 'rawvideo', '-pix_fmt', 'rgb48']
+YUV_FORMAT = ['-f', 'rawvideo', '-pix_fmt', 'yuv444p16']
 
 def test_encode(args, source, sc_locked, png_suffix):
-    """Generate a test video in .rgb form, and encode it to .tbc."""
+    """Generate a test video in .rgb/.yuv form, and encode it to .tbc."""
 
-    clean(args, ['.rgb', png_suffix, '.tbc'])
+    if args.input_format == 'yuv':
+        suffix = '.yuv'
+        PIX_FORMAT = YUV_FORMAT
+    else:
+        suffix = '.rgb'
+        PIX_FORMAT = RGB_FORMAT
+
+    clean(args, [suffix, png_suffix, '.tbc'])
 
     if args.system == 'ntsc':
         FILTER_ARGS = ['-filter:v', 'pad=758:486:-1:-1']
@@ -68,37 +76,38 @@ def test_encode(args, source, sc_locked, png_suffix):
         FILTER_ARGS = ['-filter:v', 'pad=928:576:-1:-1']
         SIZE_ARGS   = ['-s', '928x576', '-r', 'pal']
 
-    # Convert the source video to .rgb using ffmpeg
-    rgb_file = args.output + '.rgb'
+    # Convert the source video to .rgb/.yuv using ffmpeg
+    converted_file = args.output + suffix
     subprocess.check_call(
         FFMPEG_CMD
         + source
         + FILTER_ARGS
         + SIZE_ARGS
-        + RGB_FORMAT + [rgb_file]
+        + PIX_FORMAT + [converted_file]
         )
     if args.png:
-        # Convert .rgb to PNG
+        # Convert .rgb/.yuv to PNG
         subprocess.check_call(
             FFMPEG_CMD
-            + RGB_FORMAT
             + SIZE_ARGS
-            + ['-i', rgb_file]
+            + PIX_FORMAT
+            + ['-i', converted_file]
             + ['-frames:v', '1', args.output + png_suffix]
             )
 
     # Encode the .rgb to .tbc, using ld-chroma-encoder
     tbc_file = args.output + '.tbc'
     cmd = [build_dir + '/tools/ld-chroma-decoder/encoder/ld-chroma-encoder']
+    cmd += ['--input-format', args.input_format]
     if sc_locked:
         cmd += ['--sc-locked']
     if args.system == 'ntsc':
         cmd += ['--system', 'ntsc']
-    cmd += [rgb_file, tbc_file]
+    cmd += [converted_file, tbc_file]
     subprocess.check_call(cmd)
 
 def test_decode(args, decoder, phase_locked, output_format, png_suffix):
-    """Decode a .tbc file, compare it with the original .rgb, and return the
+    """Decode a .tbc file, compare it with the original .rgb/.yuv, and return the
     median pSNR."""
 
     clean(args, ['.decoded', '.psnr', png_suffix])
@@ -144,15 +153,29 @@ def test_decode(args, decoder, phase_locked, output_format, png_suffix):
             + ['-frames:v', '1', args.output + png_suffix]
             )
 
-    # Compare the video from the pipe to the original .rgb using ffmpeg
-    rgb_file = args.output + '.rgb'
+    if args.input_format == 'yuv':
+        suffix = '.yuv'
+        PIX_FORMAT = YUV_FORMAT
+        lavf_format = 'yuv444p16'
+    else:
+        suffix = '.rgb'
+        PIX_FORMAT = RGB_FORMAT
+        lavf_format = 'rgb48'
+
+    if args.system == 'ntsc':
+        SIZE_ARGS = ['-s', '758x486']
+    else:
+        SIZE_ARGS = ['-s', '928x576']
+
+    # Compare the video from the pipe to the original .rgb/.yuv using ffmpeg
+    ref_file = args.output + suffix
     psnr_file = args.output + '.psnr'
     subprocess.check_call(
         FFMPEG_CMD
         + decoded_format + ['-i', decoded_file]
-        + RGB_FORMAT + ['-i', rgb_file]
-        + ['-lavfi', '[0:v] format=pix_fmts=rgb48, split [rgb];'
-                     '[rgb][1:v] psnr=stats_file=%s' % psnr_file,
+        + PIX_FORMAT + SIZE_ARGS + ['-i', ref_file]
+        + ['-lavfi', '[0:v] format=pix_fmts=%s, split [decoded];'
+                     '[decoded][1:v] psnr=stats_file=%s' % (lavf_format, psnr_file),
            '-f', 'null', '-']
         )
 
@@ -173,6 +196,8 @@ def main():
                        help='input video file (default colour bars)')
     group.add_argument('output', metavar='output', nargs='?', default='testout/test',
                        help='base name for output files (default testout/test)')
+    group.add_argument('--input-format', choices=['rgb', 'yuv'], default='rgb',
+                       help='input format is RGB48 or YUV444P16')
     group.add_argument('--build', metavar='DIR',
                        help='build tree to test (default same as this script)')
     group.add_argument('--system', choices=['pal', 'ntsc'], default='pal',
