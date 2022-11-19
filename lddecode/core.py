@@ -155,8 +155,7 @@ SysParams_PAL = {
     "LD_VITS_whitelocs": [(19, 12, 8)],
     # Similar but with percentile to use to compute white level
     # (in case VITS white test areas are not present)
-    # FIXME: these are NTSC values
-    "LD_VITS_code_slices": [(16, 12, 48, 85), (17, 12, 48, 85)],
+    "LD_VITS_code_slices": [(16, 11, 49, 85), (17, 11, 49, 85)],
 }
 
 SysParams_PAL["outlinelen"] = calclinelen(SysParams_PAL, 4, "fsc_mhz")
