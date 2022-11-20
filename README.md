@@ -25,7 +25,7 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://en.wikipedia.org/wiki/Wides
 
 ## CVBS-Decode
 
-The repository also contains an **experimental** CVBS decoder, `cvbs-decode`, which shares code with ld-decode and vhs-decode. Capable of decoding basic raw digitized NTSC and PAL composite video, including colour if the source is somewhat stable. Samples can be captured using cxadc, however, this is somewhat buggy as the cx chip can decide to resample or do other things if it detects a valid video signal.
+The repository also contains an **experimental** CVBS decoder, `cvbs-decode`, which shares code with ld-decode and vhs-decode. Capable of decoding basic raw digitized NTSC and PAL composite video, including colour if the source is somewhat stable. Samples can be captured using cxadc, however, this is somewhat buggy as the cx chip can decide to resample or do other things if it detects a valid video signal if the gain is too high.
 
 Test samples & signals can be generated using [HackTV](https://github.com/fsphil/hacktv)
 
@@ -309,7 +309,7 @@ By default, this is set to 40 MHz (the sample rate used by the Domesday Duplicat
 
 Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 
-`-tf` Sets Tape Format enter `VHS` `SVHS` or `UMATIC` etc. (Default is VHS)
+`-tf` Sets Tape Format enter `VHS`, `SVHS`, `UMATIC`, `BETAMAX`, `VIDEO8`, `HI8`  (Default is VHS)
 
 ## Colour System Commands
 
@@ -320,7 +320,7 @@ Please note that, as of writing, support for PAL-M is **experimental**.
 
 `-p` = PAL
 
-`-pm` = PAL-M
+`--pm` = PAL-M
 
 `--NTSCJ` = NTSC-J
 
@@ -345,13 +345,13 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 `--debug` sets logger verbosity level to *debug*. Useful for debugging and better log information. (Recommended To Enable for Archival)
 
-`-ct` enables a *chroma trap*, a filter intended to reduce chroma interference on the main luma signal. Use if seeing banding or checkerboarding on the main luma .tbc in ld-analyse.
+`--ct` enables a *chroma trap*, a filter intended to reduce chroma interference on the main luma signal. Use if seeing banding or checkerboarding on the main luma .tbc in ld-analyse.
 
 `--recheck_phase` Re-check chroma phase on every field, fixes most colour issues. (No effect on U-matic)
 
-`-sl` defines the output *sharpness level*, as an integer from 0-100, the default being 0. Higher values are better suited for plain, flat images i.e. cartoons and animated material, as strong ghosting can occur (akin to cranking up the sharpness on any regular TV set.)
+`--sl` defines the output *sharpness level*, as an integer from 0-100, the default being 0. Higher values are better suited for plain, flat images i.e. cartoons and animated material, as strong ghosting can occur (akin to cranking up the sharpness on any regular TV set.)
 
-`-dp demodblock` Displays Raw Demodulated Frequency Spectrum Graphs, makes a pop-up window per each thread so -t 32 would give you 32 GUI windows etc
+`--dp demodblock` Displays Raw Demodulated Frequency Spectrum Graphs, makes a pop-up window per each thread so -t 32 would give you 32 GUI windows etc
 
 ## Input file formats:
 
