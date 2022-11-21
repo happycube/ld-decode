@@ -403,7 +403,7 @@ class RFDecode:
             self.computeefmfilter()
 
         if self.SysParams['AC3']:
-            apass = 288000 * 1
+            apass = 288000 * .8
             self.Filters['AC3_fir'] = [sps.firwin(257,
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
@@ -411,13 +411,19 @@ class RFDecode:
             ], 
             pass_zero=False), [1.0]]
 
-            self.Filters['AC3_iir'] = sps.butter(1, [1.48/20, 3.45/20], btype='bandpass')
+            # This analog audio bandpass filter is an approximation of
+            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm, 
+            # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
+            self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
+
+            self.Filters['AC3_iir'] = sps.butter(4, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
 
             firfilt = filtfft(self.Filters['AC3_fir'], self.blocklen)
             iirfilt = filtfft(self.Filters['AC3_iir'], self.blocklen)
 
             self.Filters['AC3'] = iirfilt * firfilt
             #self.Filters['AC3'] = firfilt
+            #self.Filters['AC3'] = iirfilt
 
         self.computedelays()
 
