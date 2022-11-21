@@ -403,15 +403,21 @@ class RFDecode:
             self.computeefmfilter()
 
         if self.SysParams['AC3']:
-            apass = 288000 * 0.65
-            self.Filters['AC3_fir'] = sps.firwin(257,
+            apass = 288000 * 1
+            self.Filters['AC3_fir'] = [sps.firwin(257,
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
                 (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
             ], 
-            pass_zero=False)
+            pass_zero=False), [1.0]]
 
-            self.Filters['AC3'] = filtfft((self.Filters['AC3_fir'], [1.0]), self.blocklen)
+            self.Filters['AC3_iir'] = sps.butter(1, [1.48/20, 3.45/20], btype='bandpass')
+
+            firfilt = filtfft(self.Filters['AC3_fir'], self.blocklen)
+            iirfilt = filtfft(self.Filters['AC3_iir'], self.blocklen)
+
+            self.Filters['AC3'] = iirfilt * firfilt
+            #self.Filters['AC3'] = firfilt
 
         self.computedelays()
 
