@@ -31,7 +31,9 @@
 #include <iomanip>
 #include <chrono>
 #include <map>
-
+#ifdef __APPLE__
+#include <sstream>
+#endif
 
 enum LogLevel {
     DEBU = 0,
