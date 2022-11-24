@@ -42,4 +42,7 @@ if(WIN32)
     )
 endif()
 
-install(TARGETS ld-analyse)
+install(
+        TARGETS ld-analyse
+        BUNDLE DESTINATION bin
+)
