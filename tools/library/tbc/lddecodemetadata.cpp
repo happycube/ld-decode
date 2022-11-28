@@ -1071,7 +1071,7 @@ void LdDecodeMetaData::generatePcmAudioMap()
             pcmAudioFieldStartSampleMap[fieldNo] = 0;
         } else {
             // Every following field's start position is the start+length of the previous
-            pcmAudioFieldStartSampleMap[fieldNo] = pcmAudioFieldStartSampleMap[fieldNo - 1] + pcmAudioFieldLengthMap[fieldNo];
+            pcmAudioFieldStartSampleMap[fieldNo] = pcmAudioFieldStartSampleMap[fieldNo - 1] + pcmAudioFieldLengthMap[fieldNo - 1];
         }
     }
 }
