@@ -1071,7 +1071,7 @@ void LdDecodeMetaData::generatePcmAudioMap()
             pcmAudioFieldStartSampleMap[fieldNo] = 0;
         } else {
             // Every following field's start position is the start+length of the previous
-            pcmAudioFieldStartSampleMap[fieldNo] = pcmAudioFieldStartSampleMap[fieldNo - 1] + pcmAudioFieldLengthMap[fieldNo];
+            pcmAudioFieldStartSampleMap[fieldNo] = pcmAudioFieldStartSampleMap[fieldNo - 1] + pcmAudioFieldLengthMap[fieldNo - 1];
         }
     }
 }
@@ -1080,12 +1080,14 @@ void LdDecodeMetaData::generatePcmAudioMap()
 qint32 LdDecodeMetaData::getFieldPcmAudioStart(qint32 sequentialFieldNumber)
 {
     if (pcmAudioFieldStartSampleMap.size() < sequentialFieldNumber) return -1;
-    return pcmAudioFieldStartSampleMap[sequentialFieldNumber];
+    // Field numbers are 1 indexed, but our map is 0 indexed
+    return pcmAudioFieldStartSampleMap[sequentialFieldNumber - 1];
 }
 
 // Method to get the sample length of the specified sequential field number
 qint32 LdDecodeMetaData::getFieldPcmAudioLength(qint32 sequentialFieldNumber)
 {
     if (pcmAudioFieldLengthMap.size() < sequentialFieldNumber) return -1;
-    return pcmAudioFieldLengthMap[sequentialFieldNumber];
+    // Field numbers are 1 indexed, but our map is 0 indexed
+    return pcmAudioFieldLengthMap[sequentialFieldNumber - 1];
 }
