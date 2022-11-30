@@ -84,6 +84,7 @@ SysParams_NTSC = {
     "analog_audio": True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     "audio_lfreq": (1000000 * 315 / 88 / 227.5) * 146.25,
+    # NOTE: this changes to 2.88mhz on AC3 disks
     "audio_rfreq": (1000000 * 315 / 88 / 227.5) * 178.75,
     # On AC3 disks, the right channel is replaced by a QPSK 2.88mhz channel
     "audio_rfreq_AC3": 2880000,
@@ -390,7 +391,7 @@ class RFDecode:
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
                 (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
-            ],
+            ], 
             pass_zero=False)
 
             self.Filters['AC3'] = filtfft((self.Filters['AC3_fir'], [1.0]), self.blocklen)

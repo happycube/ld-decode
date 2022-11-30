@@ -42,18 +42,17 @@ enum ChromaMode {
 class NTSCEncoder : public Encoder
 {
 public:
-    NTSCEncoder(QFile &rgbFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
-                int fieldOffset, ChromaMode chromaMode, bool addSetup);
+    NTSCEncoder(QFile &inputFile, QFile &tbcFile, QFile &chromaFile, LdDecodeMetaData &metaData,
+                int fieldOffset, bool isComponent, ChromaMode chromaMode, bool addSetup);
 
 protected:
     virtual void getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData);
-    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *rgbData,
+    virtual void encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *inputData,
                             std::vector<double> &outputC, std::vector<double> &outputVBS);
 
     const qint32 blankingIre = 0x3C00;
     const qint32 setupIreOffset = 0x0A80; // 10.5 * 256
 
-    int fieldOffset;
     ChromaMode chromaMode;
     bool addSetup;
 

@@ -70,6 +70,12 @@ int main(int argc, char *argv[])
                                     QCoreApplication::translate("main", "system"));
     parser.addOption(systemOption);
 
+    // Option to select the input format (-p)
+    QCommandLineOption inputFormatOption(QStringList() << "p" << "input-format",
+                                       QCoreApplication::translate("main", "Input format (rgb, yuv; default rgb); RGB48, YUV444P16 formats are supported"),
+                                       QCoreApplication::translate("main", "input-format"));
+    parser.addOption(inputFormatOption);
+
     // Option to specify where to start in the field sequence (--field-offset)
     QCommandLineOption fieldOffsetOption(QStringList() << "field-offset",
                                          QCoreApplication::translate("main", "Offset of the first output field within the field sequence (0, 2 for NTSC; 0, 2, 4, 6 for PAL; default: 0)"),
@@ -141,6 +147,23 @@ int main(int argc, char *argv[])
 
     bool addSetup = !parser.isSet(setupOption);
 
+    // Select the input format
+    bool isComponent = false;
+    QString inputFormatName;
+    if (parser.isSet(inputFormatOption)) {
+        inputFormatName = parser.value(inputFormatOption);
+    } else {
+        inputFormatName = "rgb";
+    }
+    if (inputFormatName == "yuv") {
+        isComponent = true;
+    } else if (inputFormatName == "rgb") {
+        isComponent = false;
+    } else {
+        qCritical() << "Unknown input format" << inputFormatName;
+        return -1;
+    }
+
     ChromaMode chromaMode = WIDEBAND_YUV;
     QString chromaName;
     if (parser.isSet(chromaOption)) {
@@ -156,7 +179,6 @@ int main(int argc, char *argv[])
             qCritical("Unsupported chroma encoder mode");
             return -1;
         }
-
     }
 
     const bool scLocked = parser.isSet(scLockedOption);
@@ -174,7 +196,7 @@ int main(int argc, char *argv[])
         }
     } else {
         // Quit with error
-        qCritical("You must specify the input RGB and output TBC files");
+        qCritical("You must specify the input RGB/YCbCr and output TBC files");
         return -1;
     }
 
@@ -185,14 +207,14 @@ int main(int argc, char *argv[])
     }
 
     // Open the input file
-    QFile rgbFile(inputFileName);
+    QFile inputFile(inputFileName);
     if (inputFileName == "-") {
-        if (!rgbFile.open(stdin, QFile::ReadOnly)) {
+        if (!inputFile.open(stdin, QFile::ReadOnly)) {
             qCritical("Cannot open stdin");
             return -1;
         }
     } else {
-        if (!rgbFile.open(QFile::ReadOnly)) {
+        if (!inputFile.open(QFile::ReadOnly)) {
             qCritical() << "Cannot open input file:" << inputFileName;
             return -1;
         }
@@ -215,12 +237,12 @@ int main(int argc, char *argv[])
     // Encode the data
     LdDecodeMetaData metaData;
     if (system == NTSC) {
-        NTSCEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, fieldOffset, chromaMode, addSetup);
+        NTSCEncoder encoder(inputFile, tbcFile, chromaFile, metaData, fieldOffset, isComponent, chromaMode, addSetup);
         if (!encoder.encode()) {
             return -1;
         }
     } else {
-        PALEncoder encoder(rgbFile, tbcFile, chromaFile, metaData, fieldOffset, scLocked);
+        PALEncoder encoder(inputFile, tbcFile, chromaFile, metaData, fieldOffset, isComponent, scLocked);
         if (!encoder.encode()) {
             return -1;
         }

@@ -48,8 +48,10 @@
 
 #include "encoder.h"
 
-Encoder::Encoder(QFile &_rgbFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData)
-    : rgbFile(_rgbFile), tbcFile(_tbcFile), chromaFile(_chromaFile), metaData(_metaData)
+Encoder::Encoder(QFile &_inputFile, QFile &_tbcFile, QFile &_chromaFile, LdDecodeMetaData &_metaData,
+                 int _fieldOffset, bool _isComponent)
+    : inputFile(_inputFile), tbcFile(_tbcFile), chromaFile(_chromaFile), metaData(_metaData),
+      fieldOffset(_fieldOffset), isComponent(_isComponent)
 {
 }
 
@@ -78,11 +80,11 @@ bool Encoder::encode()
 qint32 Encoder::encodeFrame(qint32 frameNo)
 {
     // Read the input frame
-    qint64 remainBytes = rgbFrame.size();
+    qint64 remainBytes = inputFrame.size();
     qint64 posBytes = 0;
     while (remainBytes > 0) {
-        qint64 count = rgbFile.read(rgbFrame.data() + posBytes, remainBytes);
-        if (count == 0 && remainBytes == rgbFrame.size()) {
+        qint64 count = inputFile.read(inputFrame.data() + posBytes, remainBytes);
+        if (count == 0 && remainBytes == inputFrame.size()) {
             // EOF at the start of a frame
             return 0;
         } else if (count == 0) {
@@ -109,7 +111,7 @@ qint32 Encoder::encodeFrame(qint32 frameNo)
     return 1;
 }
 
-// Encode one field from rgbFrame to the output.
+// Encode one field from inputFrame to the output.
 // Returns true on success; on failure, prints an error and returns false.
 bool Encoder::encodeField(qint32 fieldNo)
 {
@@ -129,11 +131,15 @@ bool Encoder::encodeField(qint32 fieldNo)
         }
 
         // Encode the line
-        const quint16 *rgbData = nullptr;
+        const quint16 *inputData = nullptr;
         if (frameLine >= activeTop && frameLine < (activeTop + activeHeight)) {
-            rgbData = reinterpret_cast<const quint16 *>(rgbFrame.data()) + ((frameLine - activeTop) * activeWidth * 3);
+            if (isComponent) {
+                inputData = reinterpret_cast<const quint16 *>(inputFrame.data()) + ((frameLine - activeTop) * activeWidth);
+            } else {
+                inputData = reinterpret_cast<const quint16 *>(inputFrame.data()) + ((frameLine - activeTop) * activeWidth * 3);
+            }
         }
-        encodeLine(fieldNo, frameLine, rgbData, outputC, outputVBS);
+        encodeLine(fieldNo, frameLine, inputData, outputC, outputVBS);
 
         if (chromaFile.isOpen()) {
             // Write C and VBS to separate output files
