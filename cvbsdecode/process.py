@@ -126,8 +126,8 @@ def getpulses_override(field):
         sync_level, blank_level = find_sync_levels(field)
 
         if sync_level is not None and blank_level is not None:
-            field.rf.SysParams["ire0"] = blank_level
-            field.rf.SysParams["hz_ire"] = (blank_level - sync_level) / (
+            field.rf.DecoderParams["ire0"] = blank_level
+            field.rf.DecoderParams["hz_ire"] = (blank_level - sync_level) / (
                 -field.rf.SysParams["vsync_ire"]
             )
 
@@ -561,8 +561,8 @@ class CVBSDecodeInner(ldd.RFDecode):
             # print("Vsync IRE", self.SysParams["vsync_ire"])
             #            ax2 = ax1.twinx()
             #            ax3 = ax1.twinx()
-            ax1.plot(luma[:2048])
-            ax2.plot(luma05[:2048])
+            ax1.plot(luma)
+            ax2.plot(luma05)
             #            ax4.plot(env, color="#00FF00")
             #            ax3.plot(np.angle(hilbert))
             #            ax4.plot(hilbert.imag)
