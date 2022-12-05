@@ -420,11 +420,16 @@ class CVBSDecodeInner(ldd.RFDecode):
         self.field_number = 0
         self.last_raw_loc = None
 
-        # Then we override the laserdisc parameters with VHS ones.
-
+        # Then we override the laserdisc parameters.
         self.SysParams, self.DecoderParams = vhs_formats.get_format_params(
             system, "UMATIC", ldd.logger
         )
+
+        # Make (intentionally) mutable copies of HZ<->IRE levels
+        # (NOTE: used by upstream functions, we use a namedtuple to keep const values already)
+        self.DecoderParams['ire0']  = self.SysParams['ire0']
+        self.DecoderParams['hz_ire'] = self.SysParams['hz_ire']
+        self.DecoderParams['vsync_ire'] = self.SysParams['vsync_ire']
 
         # TEMP just set this high so it doesn't mess with anything.
         self.DecoderParams["video_lpf_freq"] = 6400000

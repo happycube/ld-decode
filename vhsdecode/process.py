@@ -381,6 +381,12 @@ class VHSRFDecode(ldd.RFDecode):
             system, tape_format, ldd.logger
         )
 
+        # Make (intentionally) mutable copies of HZ<->IRE levels
+        # (NOTE: used by upstream functions, we use a namedtuple to keep const values already)
+        self.DecoderParams['ire0']  = self.SysParams['ire0']
+        self.DecoderParams['hz_ire'] = self.SysParams['hz_ire']
+        self.DecoderParams['vsync_ire'] = self.SysParams['vsync_ire']
+
         # As agc can alter these sysParams values, store a copy to then
         # initial value for reference.
         self._sysparams_const = namedtuple(
