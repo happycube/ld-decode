@@ -242,24 +242,31 @@ Decompress FLAC compressed captures.
 
 Output will be `filename.ogg` so rename the end extension to .vhs / .hifi etc.  
 
-## Generating Colour Video Files (TBC to Playable MKV)
+## Generating Colour Video Files (.TBC to Playable .MKV)
 
-VHS-Decode produces two timebase corrected 16-bit headerless files separated into chroma/luma video signals in the .tbc format plus .json and .log files, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, and ld-process-vits.
+VHS-Decode produces two timebase corrected 16-bit headerless files separated into chroma/luma video signals in the .tbc format plus .json and .log files, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, ld-process-vits and ld-dropout-correct.
 
 But also notably VBI (Vertical Blanking Interval) data recovery software can be used like and for the following:
 
-[VHS-Teletext](https://github.com/ali1234/vhs-teletext/) (Europe Subtitles)
+[VHS-Teletext](https://github.com/oyvindln/vhs-decode/wiki/PAL-Teletext-Subtitles) (European Subtitles)
 
-[FFMPEG EIA-608](https://github.com/amiaopensource/sccyou) (North America Closed Captioning)
+[FFMPEG EIA-608](https://github.com/oyvindln/vhs-decode/wiki/NTSC-Closed-Captioning) (North America Closed Captioning)
 
 [FFMEPG Read VITC Timecode](https://github.com/oyvindln/vhs-decode/wiki/VITC-&-Subtitles) (Standard SMPTE Timecode)
 
-[Tape-based Arcade Games!](https://vhs.thenvm.org/resources-research/)
+[Tape-based Arcade Games!](https://vhs.thenvm.org/resources/)
 
-### To generate an colour output with the Top VBI area use the following command:
+### To generate an video output with the Top VBI area included use the following command:
 
-`./gen_chroma_vid.sh --ffll 2 --lfll 308 --ffrl 2 --lfrl 620 <capture>.tbc`
+PAL:
 
+    ./gen_chroma_vid.sh --ffll 2 --lfll 308 --ffrl 2 --lfrl 620 <capture>.tbc
+      
+NTSC:
+
+    ./gen_chroma_vid.sh --ffll 2 --lfll 308 --ffrl 2 --lfrl 520 <capture>.tbc
+    
+   
 Please Check the Wiki for the complete [upto-date command list!](https://github.com/oyvindln/vhs-decode/wiki/Command-List)
 
 *gen_chroma_vid.sh now automatically detects PAL/NTSC based on the .JSON legacy scripts still exsist*
