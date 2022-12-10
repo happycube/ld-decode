@@ -52,6 +52,14 @@ static constexpr double kR = 0.87728321993817866838972487283129;
 static constexpr double cbScale = ONE_MINUS_Kb * kB / C_SCALE;
 static constexpr double crScale = ONE_MINUS_Kr * kR / C_SCALE;
 
+// Types of sync pulse [Poynton p521 for PAL, p502 for NTSC]
+enum SyncPulseType {
+    NONE = 0,
+    NORMAL,
+    EQUALIZATION,
+    BROAD
+};
+
 class Encoder
 {
 public:
