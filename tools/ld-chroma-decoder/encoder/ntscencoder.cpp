@@ -120,14 +120,6 @@ void NTSCEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fiel
     fieldData.audioSamples = 0;
 }
 
-// Types of sync pulse [Poynton p502]
-enum SyncPulseType {
-    NONE = 0,
-    NORMAL,
-    EQUALIZATION,
-    BROAD
-};
-
 // Generate a gate waveform for a sync pulse in one half of a line
 static double syncPulseGate(double t, double startTime, SyncPulseType type)
 {

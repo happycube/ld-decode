@@ -136,14 +136,6 @@ void PALEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &field
     fieldData.audioSamples = 0;
 }
 
-// Types of sync pulse [Poynton p521]
-enum SyncPulseType {
-    NONE = 0,
-    NORMAL,
-    EQUALISATION,
-    BROAD
-};
-
 // Generate a gate waveform for a sync pulse in one half of a line
 static double syncPulseGate(double t, double startTime, SyncPulseType type)
 {
@@ -155,7 +147,7 @@ static double syncPulseGate(double t, double startTime, SyncPulseType type)
     case NORMAL:
         length = 4.7e-6;
         break;
-    case EQUALISATION:
+    case EQUALIZATION:
         length = 4.7e-6 / 2.0;
         break;
     case BROAD:
@@ -241,17 +233,17 @@ void PALEncoder::encodeLine(qint32 fieldNo, qint32 frameLine, const quint16 *inp
     if (frameLine < 5) {
         leftSyncType = BROAD;
     } else if (frameLine >= 5 && frameLine < 10) {
-        leftSyncType = EQUALISATION;
+        leftSyncType = EQUALIZATION;
     } else if (frameLine >= 620) {
-        leftSyncType = EQUALISATION;
+        leftSyncType = EQUALIZATION;
     }
     SyncPulseType rightSyncType = NONE;
     if (frameLine < 4) {
         rightSyncType = BROAD;
     } else if (frameLine >= 4 && frameLine < 9) {
-        rightSyncType = EQUALISATION;
+        rightSyncType = EQUALIZATION;
     } else if (frameLine >= 619 && frameLine < 624) {
-        rightSyncType = EQUALISATION;
+        rightSyncType = EQUALIZATION;
     } else if (frameLine == 624) {
         rightSyncType = BROAD;
     }
