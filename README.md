@@ -45,7 +45,7 @@ Preferably adjusted per tape and in excellent mechanical and head condition, pro
 
 **Note** SVHS NTSC Decks - Currently inflated you can import PAL decks with NTSC support for 1/3rd the price though this only applys if  conventinal refrance SVHS captures are required.
 
-Its good practice to not cross contaminate tapes especially if dealing with mouldy or contained tapes always clean your tape track/drum/heads before and afterwards with with 99.9% Isopropanol and lint free cloths/pads/paper this ensures less dropouts from dirty heads.
+Its good practice to not cross contaminate tapes especially if dealing with mouldy or contaminated tapes.  Always clean your tape track/drum/heads before and afterwards with with 99.9% Isopropanol and lint free cloths/pads/paper this ensures less dropouts from dirty heads.
 
 It also helps to make sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils to avoid mechnincal failures.
 
