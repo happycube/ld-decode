@@ -16,6 +16,11 @@ option(USE_QWT
     ON
 )
 
+# Needed for ezpwd as it uses alternative operators
+if(MSVC)
+    add_compile_options(/permissive-)
+endif()
+
 set(USE_QT_VERSION "" CACHE STRING
     "Version of Qt to use, 5 or 6 (Which is used by default can vary due to how cmake find functions work, but will often default to Qt6)"
 )

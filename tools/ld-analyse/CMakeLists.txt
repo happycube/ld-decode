@@ -40,6 +40,7 @@ if(WIN32)
         NOMINMAX
         QUSB_LIBRARY
     )
+    set_property(TARGET ld-analyse PROPERTY WIN32_EXECUTABLE true)
 endif()
 
 install(
