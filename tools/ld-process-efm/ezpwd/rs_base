@@ -780,10 +780,10 @@ namespace ezpwd {
 						       &data )
 	    const
 	{
-	    if ( data.second < data.first or data.second - data.first <= ssize_t( NROOTS )) {
+	    if ( data.second < data.first or data.second - data.first <= ptrdiff_t( NROOTS )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: supplied data too short for some payload + parity", -1 );
 	    }
-	    if ( data.second - data.first > ssize_t( SIZE )) {
+	    if ( data.second - data.first > ptrdiff_t( SIZE )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: supplied data longer than max. payload + parity", -1 );
 	    }
 	    return encode( data.first, data.second - data.first - NROOTS, data.second - NROOTS );
@@ -799,7 +799,7 @@ namespace ezpwd {
 	    if ( data.second < data.first ) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: data length invalid", -1 );
 	    }
-	    if ( parity.second - parity.first != ssize_t( NROOTS )) {
+	    if ( parity.second - parity.first != ptrdiff_t( NROOTS )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: parity length incompatible with number of roots", -1 );
 	    }
 	    return encode( data.first, data.second - data.first, parity.first );
@@ -810,10 +810,10 @@ namespace ezpwd {
 						       &data )
 	    const
 	{
-	    if ( data.second < data.first or data.second - data.first <= ssize_t( NROOTS )) {
+	    if ( data.second < data.first or data.second - data.first <= ptrdiff_t( NROOTS )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: supplied data too short for some payload + parity", -1 );
 	    }
-	    if ( data.second - data.first > ssize_t( SIZE )) {
+	    if ( data.second - data.first > ptrdiff_t( SIZE )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: supplied data longer than max. payload + parity", -1 );
 	    }
 	    return encode( data.first, data.second - data.first - NROOTS, data.second - NROOTS );
@@ -829,7 +829,7 @@ namespace ezpwd {
 	    if ( data.second < data.first ) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: data length invalid", -1 );
 	    }
-	    if ( parity.second - parity.first != ssize_t (NROOTS )) {
+	    if ( parity.second - parity.first != ptrdiff_t (NROOTS )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: parity length incompatible with number of roots", -1 );
 	    }
 	    return encode( data.first, data.second - data.first, parity.first );
@@ -840,10 +840,10 @@ namespace ezpwd {
 						       &data )
 	    const
 	{
-	    if ( data.second < data.first or data.second - data.first <= ssize_t( NROOTS )) {
+	    if ( data.second < data.first or data.second - data.first <= ptrdiff_t( NROOTS )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: supplied data too short for some payload + parity", -1 );
 	    }
-	    if ( data.second - data.first > ssize_t( SIZE )) {
+	    if ( data.second - data.first > ptrdiff_t( SIZE )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: supplied data longer than max. payload + parity", -1 );
 	    }
 	    return encode( data.first, data.second - data.first - NROOTS, data.second - NROOTS );
@@ -859,7 +859,7 @@ namespace ezpwd {
 	    if ( data.second < data.first ) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: data length invalid", -1 );
 	    }
-	    if ( parity.second - parity.first != ssize_t( NROOTS )) {
+	    if ( parity.second - parity.first != ptrdiff_t( NROOTS )) {
 	        EZPWD_RAISE_OR_RETURN( std::runtime_error, "reed-solomon: parity length incompatible with number of roots", -1 );
 	    }
 	    return encode( data.first, data.second - data.first, parity.first );
