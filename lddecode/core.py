@@ -4014,7 +4014,7 @@ class LDdecode:
                         disk_TimeCode = f"{self.clvMinutes}:xx"
                     # print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
                     elif self.isCLV and self.frameNumber is not None:
-                        disk_TimeCode = "CLV Timecode %d:%.2d.%.2d frame %d" % (
+                        disk_TimeCode = "%d:%.2d.%.2d Frame #%d" % (
                             self.clvMinutes,
                             self.clvSeconds,
                             self.clvFrameNum,
