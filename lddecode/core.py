@@ -3666,13 +3666,21 @@ class LDdecode:
                     acceptable_diff = 2 if self.fields_written else 0.5
 
                     if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
-                        redo = True
+                        hz_ire = (ire100_hz - ire0_hz) / 100
+                        vsync_ire = (sync_hz - ire0_hz) / hz_ire
 
-                        self.rf.DecoderParams["ire0"] = ire0_hz
-                        # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                        self.rf.DecoderParams["hz_ire"] = (ire100_hz - ire0_hz) / 100
-                        self.rf.DecoderParams["vsync_ire"] = (sync_hz - ire0_hz) / self.rf.DecoderParams["hz_ire"]
-                        #print(self.rf.DecoderParams["ire0"], self.rf.DecoderParams["hz_ire"], self.rf.DecoderParams["vsync_ire"])
+                        if vsync_ire > -20:
+                            logger.warning(
+                                "At field #{0}, Auto-level detection malfunction (vsync IRE computed at {1}, nominal ~= -40), possible disk skipping".format(
+                                    len(self.fieldinfo), np.round(vsync_ire, 2)
+                                ))
+                        else:
+                            redo = True
+
+                            self.rf.DecoderParams["ire0"] = ire0_hz
+                            # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                            self.rf.DecoderParams["hz_ire"] = hz_ire
+                            self.rf.DecoderParams["vsync_ire"] = vsync_ire
 
                 if adjusted is False and redo is True:
                     self.demodcache.flush_demod()
@@ -4015,7 +4023,7 @@ class LDdecode:
                         disk_TimeCode = f"{self.clvMinutes}:xx"
                     # print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
                     elif self.isCLV and self.frameNumber is not None:
-                        disk_TimeCode = "CLV Timecode %d:%.2d.%.2d frame %d" % (
+                        disk_TimeCode = "%d:%.2d.%.2d Frame #%d" % (
                             self.clvMinutes,
                             self.clvSeconds,
                             self.clvFrameNum,
