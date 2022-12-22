@@ -2,6 +2,7 @@ import math
 import os
 import time
 import numpy as np
+import traceback
 import scipy.signal as sps
 from collections import namedtuple
 
@@ -171,6 +172,10 @@ class VHSDecode(ldd.LDdecode):
 
     def build_json(self, f):
         try:
+            if not f:
+                # Make sure we don't fail if the last attempted field failed to decode
+                # Might be better to fix this elsewhere.
+                f = self.prevfield
             jout = super(VHSDecode, self).build_json(f)
 
             black = jout["videoParameters"]["black16bIre"]
@@ -185,6 +190,7 @@ class VHSDecode(ldd.LDdecode):
             jout["videoParameters"]["white16bIre"] = white * (1 + self.level_adjust)
             return jout
         except TypeError as e:
+            traceback.print_exc()
             print("Cannot build json: %s" % e)
             return None
 

@@ -1,4 +1,5 @@
 import math
+import traceback
 import numpy as np
 import scipy.signal as sps
 
@@ -400,6 +401,26 @@ class CVBSDecode(ldd.LDdecode):
 
     def computeMetricsNTSC(self, metrics, f, fp=None):
         return None
+
+    def build_json(self, f):
+        # TODO: Make some shared function/class for stuff that is the same in cvbs and vhs-decode
+        try:
+            if not f:
+                # Make sure we don't fail if the last attempted field failed to decode
+                # Might be better to fix this elsewhere.
+                f = self.prevfield
+            jout = super(VHSDecode, self).build_json(f)
+
+            if self.rf.color_system == "MPAL":
+                # jout["videoParameters"]["isSourcePal"] = True
+                # jout["videoParameters"]["isSourcePalM"] = True
+                jout["videoParameters"]["system"] = "PAL-M"
+
+            return jout
+        except TypeError as e:
+            traceback.print_exc()
+            print("Cannot build json: %s" % e)
+            return None
 
 
 class CVBSDecodeInner(ldd.RFDecode):

@@ -319,6 +319,20 @@ def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len)
 
 
 class FieldShared:
+    def downscale(self, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldShared, self).downscale(
+            False, *args, **kwargs
+        )
+        # hpf = utils.filter_simple(dsout, self.rf.Filters["NLHighPass"])
+        # dsout = ynr(dsout, hpf, self.outlinelen)
+        # dsout = y_comb(dsout, self.outlinelen, 20000)
+
+        if final:
+            dsout = self.hz_to_output(dsout)
+            self.dspicture = dsout
+
+        return dsout, dsaudio, dsefm
+
     def _get_line0_fallback(self, valid_pulses):
         res = get_line0_fallback(
             valid_pulses,
@@ -979,13 +993,6 @@ class FieldPALVHS(FieldPALShared):
             final, *args, **kwargs
         )
         dschroma = decode_chroma_vhs(self)
-        # hpf = utils.filter_simple(dsout, self.rf.Filters["NLHighPass"])
-        # dsout = ynr(dsout, hpf, self.outlinelen)
-        # dsout = y_comb(dsout, self.outlinelen, 20000)
-
-        # if final:
-        #     dsout = self.hz_to_output(dsout)
-        #     self.dspicture = dsout
 
         return (dsout, dschroma), dsaudio, dsefm
 
