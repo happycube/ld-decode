@@ -40,7 +40,7 @@ SourceAudio::~SourceAudio()
 bool SourceAudio::open(QFileInfo inputFileInfo)
 {
     // Get the input audio fileinfo from the input TBC fileinfo:
-    QFileInfo inputAudioFileInfo(inputFileInfo.absolutePath() + "/" + inputFileInfo.baseName() + ".pcm");
+    QFileInfo inputAudioFileInfo(inputFileInfo.absolutePath() + "/" + inputFileInfo.completeBaseName() + ".pcm");
 
     // Open the audio source data file
     inputAudioFile.setFileName(inputAudioFileInfo.filePath());
