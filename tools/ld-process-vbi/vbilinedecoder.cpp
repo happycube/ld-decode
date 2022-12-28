@@ -146,7 +146,7 @@ qint32 VbiLineDecoder::manchesterDecoder(const SourceVideo::Data &lineData, qint
     QVector<bool> manchesterData = getTransitionMap(lineData, zcPoint);
 
     // Get the number of samples for 1.5us
-    qreal fJumpSamples = (videoParameters.sampleRate / 1000000) * 1.5;
+    double fJumpSamples = (videoParameters.sampleRate / 1000000) * 1.5;
     qint32 jumpSamples = static_cast<qint32>(fJumpSamples);
 
     // Keep track of the number of bits decoded
