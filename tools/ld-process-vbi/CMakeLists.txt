@@ -1,4 +1,5 @@
 add_executable(ld-process-vbi
+    biphasecode.cpp
     closedcaption.cpp
     decoderpool.cpp
     main.cpp

@@ -48,6 +48,8 @@ void VbiLineDecoder::run()
             break;
         }
 
+        BiphaseCode biphaseCode;
+
         FmCode fmCode;
         FmCode::FmDecode fmDecode;
 
@@ -57,19 +59,15 @@ void VbiLineDecoder::run()
         ClosedCaption closedCaption;
         ClosedCaption::CcData ccData;
 
-        if (fieldMetadata.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
-        else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
+        if (fieldMetadata.isFirstField) qDebug() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
+        else qDebug() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
 
-        // Determine the 16-bit zero-crossing point
-        qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
-
-        // Get the VBI data from field lines 16-18
-        qDebug() << "VbiDecoder::process(): Getting field-lines for field" << fieldNumber;
-        for (qint32 i = 0; i < 3; i++) {
-            fieldMetadata.vbi.vbiData[i] = manchesterDecoder(getActiveVideoLine(sourceFieldData, i + 16 - startFieldLine, videoParameters),
-                                                             zcPoint, videoParameters);
-            if (fieldMetadata.vbi.vbiData[i] == 0) qDebug() << "VbiDecoder::process(): No VBI present on line" << i + 16;
-        }
+        // Get the 24-bit biphase-coded data from field lines 16-18
+        BiphaseCode biphaseCode;
+        biphaseCode.decodeLines(getActiveVideoLine(sourceFieldData, 16 - startFieldLine, videoParameters),
+                                getActiveVideoLine(sourceFieldData, 17 - startFieldLine, videoParameters),
+                                getActiveVideoLine(sourceFieldData, 18 - startFieldLine, videoParameters),
+                                videoParameters, fieldMetadata);
 
         // Show the VBI data as hexadecimal (for every 1000th field)
         if (fieldNumber % 1000 == 0) {
@@ -111,9 +109,6 @@ void VbiLineDecoder::run()
             }
         }
 
-        // Update the metadata for the field
-        fieldMetadata.vbi.inUse = true;
-
         // Write the result to the output metadata
         if (!decoderPool.setOutputField(fieldNumber, fieldMetadata)) {
             abort = true;
@@ -136,90 +131,4 @@ SourceVideo::Data VbiLineDecoder::getActiveVideoLine(const SourceVideo::Data &so
     qint32 length = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
 
     return sourceField.mid(startPointer, length);
-}
-
-// Private method to read a 24-bit biphase coded signal (manchester code) from a field line
-qint32 VbiLineDecoder::manchesterDecoder(const SourceVideo::Data &lineData, qint32 zcPoint,
-                                         LdDecodeMetaData::VideoParameters videoParameters)
-{
-    qint32 result = 0;
-    QVector<bool> manchesterData = getTransitionMap(lineData, zcPoint);
-
-    // Get the number of samples for 1.5us
-    double fJumpSamples = (videoParameters.sampleRate / 1000000) * 1.5;
-    qint32 jumpSamples = static_cast<qint32>(fJumpSamples);
-
-    // Keep track of the number of bits decoded
-    qint32 decodeCount = 0;
-
-    // Find the first transition
-    qint32 x = 0;
-    while (x < manchesterData.size() && manchesterData[x] == false) {
-        x++;
-    }
-
-    if (x < manchesterData.size()) {
-        // Plot the first transition (which is always 01)
-        result += 1;
-        decodeCount++;
-
-        // Find the rest of the transitions based on the expected clock rate of 2us per cell window
-        while (x < manchesterData.size()) {
-            x = x + jumpSamples;
-
-            // Ensure we don't go out of bounds
-            if (x >= manchesterData.size()) break;
-
-            bool startState = manchesterData[x];
-            while (x < manchesterData.size() && manchesterData[x] == startState)
-            {
-                x++;
-            }
-
-            if (x < manchesterData.size()) {
-                if (manchesterData[x - 1] == false && manchesterData[x] == true) {
-                    // 01 transition
-                    result = (result << 1) + 1;
-                }
-                if (manchesterData[x - 1] == true && manchesterData[x] == false) {
-                    // 10 transition
-                    result = result << 1;
-                }
-                decodeCount++;
-            }
-        }
-    }
-
-    // We must have 24-bits if the decode was successful
-    if (decodeCount != 24) {
-        if (decodeCount != 0) qDebug() << "VbiDecoder::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
-        result = 0;
-    }
-
-    return result;
-}
-
-// Private method to get the map of transitions across the sample and reject noise
-QVector<bool> VbiLineDecoder::getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint)
-{
-    // First read the data into a boolean array using debounce to remove transition noise
-    bool previousState = false;
-    bool currentState = false;
-    qint32 debounce = 0;
-    QVector<bool> manchesterData;
-
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint++) {
-        if (lineData[xPoint] > zcPoint) currentState = true; else currentState = false;
-
-        if (currentState != previousState) debounce++;
-
-        if (debounce > 3) {
-            debounce = 0;
-            previousState = currentState;
-        }
-
-        manchesterData.append(previousState);
-    }
-
-    return manchesterData;
 }

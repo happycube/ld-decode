@@ -28,6 +28,8 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
+// Decoder for NTSC LaserDisc white flag lines.
+// Specified in IEC 60587-1986 section 10.2.4.
 class WhiteFlag
 {
 public:
