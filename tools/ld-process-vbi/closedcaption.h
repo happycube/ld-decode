@@ -31,13 +31,9 @@
 class ClosedCaption
 {
 public:
-    struct CcData {
-        uchar byte0;
-        uchar byte1;
-        bool isValid;
-    };
-
-    CcData getData(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters);
+    bool decodeLine(const SourceVideo::Data& lineData,
+                    const LdDecodeMetaData::VideoParameters& videoParameters,
+                    LdDecodeMetaData::Field& fieldMetadata);
 
 private:
     bool isEvenParity(uchar data);
