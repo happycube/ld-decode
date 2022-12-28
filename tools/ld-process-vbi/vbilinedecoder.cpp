@@ -48,6 +48,11 @@ void VbiLineDecoder::run()
             break;
         }
 
+        // Show progress (for every 1000th field)
+        if (fieldNumber % 1000 == 0) {
+            qInfo() << "Processing field" << fieldNumber;
+        }
+
         BiphaseCode biphaseCode;
 
         FmCode fmCode;
@@ -68,11 +73,6 @@ void VbiLineDecoder::run()
                                 getActiveVideoLine(sourceFieldData, 17 - startFieldLine, videoParameters),
                                 getActiveVideoLine(sourceFieldData, 18 - startFieldLine, videoParameters),
                                 videoParameters, fieldMetadata);
-
-        // Show the VBI data as hexadecimal (for every 1000th field)
-        if (fieldNumber % 1000 == 0) {
-            qInfo() << "Processing field" << fieldNumber;
-        }
 
         // Process NTSC specific data if source type is NTSC
         if (videoParameters.system == NTSC) {
