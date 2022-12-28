@@ -126,8 +126,8 @@ public:
     // VITS metrics metadata definition
     struct VitsMetrics {
         bool inUse = false;
-        qreal wSNR = 0.0;
-        qreal bPSNR = 0.0;
+        double wSNR = 0.0;
+        double bPSNR = 0.0;
 
         void read(JsonReader &reader);
         void write(JsonWriter &writer) const;
@@ -166,7 +166,7 @@ public:
         qint32 seqNo = 0;   // Note: This is the unique primary-key
         bool isFirstField = false;
         qint32 syncConf = 0;
-        qreal medianBurstIRE = 0.0;
+        double medianBurstIRE = 0.0;
         qint32 fieldPhaseID = -1;
         qint32 audioSamples = -1;
 

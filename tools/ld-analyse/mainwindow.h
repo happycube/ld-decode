@@ -141,7 +141,7 @@ private:
     qint32 lastScopeLine;
     qint32 lastScopeDot;
     qint32 currentFrameNumber;
-    qreal scaleFactor;
+    double scaleFactor;
     QPalette buttonPalette;
     QString lastFilename;
 

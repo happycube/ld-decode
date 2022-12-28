@@ -44,7 +44,7 @@ void DropOutCorrect::run()
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
     bool reverse, intraField, overCorrect;
     QVector<qint32> availableSourcesForFrame;
-    QVector<qreal> sourceFrameQuality;
+    QVector<double> sourceFrameQuality;
 
     // Statistics
     Statistics statistics;
@@ -123,7 +123,7 @@ void DropOutCorrect::correctField(const QVector<QVector<DropOutLocation>> &thisF
                                   const QVector<QVector<DropOutLocation>> &otherFieldDropouts,
                                   QVector<SourceVideo::Data> &thisFieldData, const QVector<SourceVideo::Data> &otherFieldData,
                                   bool thisFieldIsFirst, bool intraField, const QVector<qint32> &availableSourcesForFrame,
-                                  const QVector<qreal> &sourceFrameQuality, Statistics &statistics)
+                                  const QVector<double> &sourceFrameQuality, Statistics &statistics)
 {
     for (qint32 dropoutIndex = 0; dropoutIndex < thisFieldDropouts[0].size(); dropoutIndex++) {
         Replacement replacement, chromaReplacement;
@@ -257,7 +257,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
                                                                 qint32 dropOutIndex, bool thisFieldIsFirst, bool matchChromaPhase,
                                                                 bool isColourBurst, bool intraField,
                                                                 const QVector<qint32> &availableSourcesForFrame,
-                                                                const QVector<qreal> &sourceFrameQuality)
+                                                                const QVector<double> &sourceFrameQuality)
 {
     // Define the minimum step size to use when searching for replacement
     // lines, and the offset to the nearest replacement line in the other
@@ -406,7 +406,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
 void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutLocation>> &targetDropouts, qint32 targetIndex,
                                                   const QVector<QVector<DropOutLocation>> &sourceDropouts, bool isSameField,
                                                   qint32 sourceOffset, qint32 stepAmount,
-                                                  qint32 sourceNo, const QVector<qreal> &sourceFrameQuality,
+                                                  qint32 sourceNo, const QVector<double> &sourceFrameQuality,
                                                   QVector<Replacement> &candidates)
 {    
     // Calculate the start source line, applying sourceOffset to find a line with the right chroma phase

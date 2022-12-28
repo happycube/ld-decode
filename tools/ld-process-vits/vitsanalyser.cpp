@@ -91,10 +91,10 @@ void VitsAnalyser::run()
         if (blSliceToUse != -1) bPSNR = calculateSnr(blSlice[blSliceToUse], true);
 
         // Update the metadata for the field
-        qreal old_wSNR = fieldMetadata.vitsMetrics.wSNR;
-        qreal old_bPSNR = fieldMetadata.vitsMetrics.bPSNR;
-        fieldMetadata.vitsMetrics.wSNR = static_cast<qreal>(roundDouble(wSNR, 1));
-        fieldMetadata.vitsMetrics.bPSNR = static_cast<qreal>(roundDouble(bPSNR, 1));
+        double old_wSNR = fieldMetadata.vitsMetrics.wSNR;
+        double old_bPSNR = fieldMetadata.vitsMetrics.bPSNR;
+        fieldMetadata.vitsMetrics.wSNR = roundDouble(wSNR, 1);
+        fieldMetadata.vitsMetrics.bPSNR = roundDouble(bPSNR, 1);
 
         // Show the result as debug
         qDebug().nospace() << "Field #" << fieldNumber << " has wSNR of " << fieldMetadata.vitsMetrics.wSNR << " (" << old_wSNR << ")"

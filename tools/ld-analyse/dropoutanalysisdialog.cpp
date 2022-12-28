@@ -86,9 +86,9 @@ void DropoutAnalysisDialog::removeChartContents()
 }
 
 // Add a data point to the chart
-void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, qreal doLength)
+void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, double doLength)
 {
-    points->append(QPointF(frameNumber, doLength));
+    points->append(QPointF(static_cast<qreal>(frameNumber), static_cast<qreal>(doLength)));
 
     // Keep track of the maximum Y value
     if (doLength > maxY) maxY = doLength;

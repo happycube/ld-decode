@@ -326,7 +326,7 @@ void OscilloscopeDialog::mouseMoveEvent(QMouseEvent *event)
 // Handle a click on the scope with shift held down, to select a level
 void OscilloscopeDialog::mouseLevelSelect(qint32 oY)
 {
-    qreal unscaledYR = (65536.0 / static_cast<qreal>(ui->scopeLabel->height())) * static_cast<qreal>(oY);
+    double unscaledYR = (65536.0 / static_cast<double>(ui->scopeLabel->height())) * static_cast<double>(oY);
 
     qint32 level = qBound(0, 65535 - static_cast<qint32>(unscaledYR), 65535);
     emit scopeLevelSelect(level);
@@ -335,8 +335,8 @@ void OscilloscopeDialog::mouseLevelSelect(qint32 oY)
 // Handle a click on the scope without shift held down, to select a sample
 void OscilloscopeDialog::mousePictureDotSelect(qint32 oX)
 {
-    qreal unscaledXR = (static_cast<qreal>(scopeWidth) /
-                        static_cast<qreal>(ui->scopeLabel->width())) * static_cast<qreal>(oX);
+    double unscaledXR = (static_cast<double>(scopeWidth) /
+                         static_cast<double>(ui->scopeLabel->width())) * static_cast<double>(oX);
 
     qint32 unscaledX = static_cast<qint32>(unscaledXR);
     if (unscaledX > scopeWidth - 1) unscaledX = scopeWidth - 1;

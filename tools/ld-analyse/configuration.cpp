@@ -178,12 +178,12 @@ QByteArray Configuration::getMainWindowGeometry(void)
     return settings.windows.mainWindowGeometry;
 }
 
-void Configuration::setMainWindowScaleFactor(qreal mainWindowScaleFactor)
+void Configuration::setMainWindowScaleFactor(double mainWindowScaleFactor)
 {
     settings.windows.mainWindowScaleFactor = mainWindowScaleFactor;
 }
 
-qreal Configuration::getMainWindowScaleFactor(void)
+double Configuration::getMainWindowScaleFactor(void)
 {
     return settings.windows.mainWindowScaleFactor;
 }

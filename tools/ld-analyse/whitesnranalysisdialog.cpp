@@ -91,10 +91,10 @@ void WhiteSnrAnalysisDialog::removeChartContents()
 }
 
 // Add a data point to the chart
-void WhiteSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal whiteSnr)
+void WhiteSnrAnalysisDialog::addDataPoint(qint32 frameNumber, double whiteSnr)
 {
-    if (!std::isnan(static_cast<float>(whiteSnr))) {
-        whitePoints->append(QPointF(frameNumber, whiteSnr));
+    if (!std::isnan(whiteSnr)) {
+        whitePoints->append(QPointF(static_cast<qreal>(frameNumber), static_cast<qreal>(whiteSnr)));
         if (whiteSnr > maxY) maxY = ceil(whiteSnr); // Round up
 
         // Add to trendline data
