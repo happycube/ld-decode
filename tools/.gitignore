@@ -53,6 +53,8 @@ CMakeLists.txt.user*
 /ld-discmap/ld-discmap
 /ld-disc-stacker/ld-disc-stacker
 /ld-process-vits/ld-process-vits
+/ld-process-ac3/decode/ld-ac3-decode
+/ld-process-ac3/demodulate/ld-ac3-demodulate
 /library/filter/testfilter/testfilter
 /library/tbc/testlinenumber/testlinenumber
 /library/tbc/testvbidecoder/testvbidecoder
