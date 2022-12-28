@@ -53,7 +53,7 @@ bool BiphaseCode::decodeLine(qint32 lineIndex, const SourceVideo::Data& lineData
                                 LdDecodeMetaData::Field& fieldMetadata)
 {
     // Determine the 16-bit zero-crossing point
-    qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
+    qint32 zcPoint = (videoParameters.white16bIre + videoParameters.black16bIre) / 2;
 
     fieldMetadata.vbi.vbiData[lineIndex] = manchesterDecoder(lineData, zcPoint, videoParameters);
 

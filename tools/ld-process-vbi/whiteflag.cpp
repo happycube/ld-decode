@@ -28,7 +28,7 @@
 bool WhiteFlag::getWhiteFlag(const SourceVideo::Data &activeLineData, const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     // Determine the 16-bit zero-crossing point
-    qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
+    qint32 zcPoint = (videoParameters.white16bIre + videoParameters.black16bIre) / 2;
 
     qint32 whiteCount = 0;
     for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
