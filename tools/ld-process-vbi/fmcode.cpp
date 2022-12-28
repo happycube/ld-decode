@@ -25,7 +25,7 @@
 #include "fmcode.h"
 
 // Public method to read a 40-bit FM coded signal from a field line
-FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters)
+FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     FmDecode fmDecode;
     fmDecode.receiverClockSyncBits = 0;

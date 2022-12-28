@@ -57,8 +57,8 @@ private:
     QAtomicInt& abort;
     DecoderPool& decoderPool;
 
-    SourceVideo::Data getActiveVideoLine(const SourceVideo::Data& sourceFrame, qint32 scanLine,
-                                         LdDecodeMetaData::VideoParameters videoParameters);
+    SourceVideo::Data getActiveVideoLine(const SourceVideo::Data& sourceField, qint32 fieldLine,
+                                         const LdDecodeMetaData::VideoParameters& videoParameters);
 };
 
 #endif // VBILINEDECODER_H

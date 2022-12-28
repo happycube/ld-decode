@@ -37,7 +37,7 @@ public:
         bool isValid;
     };
 
-    CcData getData(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    CcData getData(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters);
 
 private:
     bool isEvenParity(uchar data);

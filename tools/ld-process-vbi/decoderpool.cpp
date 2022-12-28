@@ -127,7 +127,7 @@ bool DecoderPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVid
 // Put a decoded frame into the output stream.
 //
 // Returns true on success, false on failure.
-bool DecoderPool::setOutputField(qint32 fieldNumber, LdDecodeMetaData::Field fieldMetadata)
+bool DecoderPool::setOutputField(qint32 fieldNumber, const LdDecodeMetaData::Field& fieldMetadata)
 {
     QMutexLocker locker(&outputMutex);
 
