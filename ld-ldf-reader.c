@@ -166,7 +166,7 @@ int main (int argc, char **argv)
         seekto = atoll(argv[2]);
     }
 
-#if LIBAVFORMAT_VERSION_MAJOR < 59
+#if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 7, 100)
     av_register_all();
 #else
     // Later versions of ffmpeg register all codecs automatically
