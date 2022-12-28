@@ -38,7 +38,7 @@ FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, const LdDe
     quint64 decodedBytes = 0;
 
     // Determine the 16-bit zero-crossing point
-    qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
+    qint32 zcPoint = (videoParameters.white16bIre + videoParameters.black16bIre) / 2;
 
     QVector<bool> fmData = getTransitionMap(lineData, zcPoint);
 
