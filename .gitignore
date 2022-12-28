@@ -10,6 +10,7 @@ scipy
 __pycache__
 /build
 /dist
+/python-build
 
 # Prerequisites
 *.d
