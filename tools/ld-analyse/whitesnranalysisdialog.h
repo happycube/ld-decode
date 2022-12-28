@@ -54,7 +54,7 @@ public:
     ~WhiteSnrAnalysisDialog();
 
     void startUpdate(qint32 _numberOfFrames);
-    void addDataPoint(qint32 frameNumber, qreal whiteSnr);
+    void addDataPoint(qint32 frameNumber, double whiteSnr);
     void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 

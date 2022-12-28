@@ -54,7 +54,7 @@ public:
     ~BlackSnrAnalysisDialog();
 
     void startUpdate(qint32 _numberOfFrames);
-    void addDataPoint(qint32 frameNumber, qreal blackSnr);
+    void addDataPoint(qint32 frameNumber, double blackSnr);
     void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
