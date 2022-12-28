@@ -58,24 +58,24 @@ void VbiLineDecoder::run()
 
         // Get the 24-bit biphase-coded data from field lines 16-18
         BiphaseCode biphaseCode;
-        biphaseCode.decodeLines(getActiveVideoLine(sourceFieldData, 16 - startFieldLine, videoParameters),
-                                getActiveVideoLine(sourceFieldData, 17 - startFieldLine, videoParameters),
-                                getActiveVideoLine(sourceFieldData, 18 - startFieldLine, videoParameters),
+        biphaseCode.decodeLines(getActiveVideoLine(sourceFieldData, 16, videoParameters),
+                                getActiveVideoLine(sourceFieldData, 17, videoParameters),
+                                getActiveVideoLine(sourceFieldData, 18, videoParameters),
                                 videoParameters, fieldMetadata);
 
         // Process NTSC specific data if source type is NTSC
         if (videoParameters.system == NTSC) {
             // Get the 40-bit FM coded data from field line 10
             FmCode fmCode;
-            fmCode.decodeLine(getActiveVideoLine(sourceFieldData, 10 - startFieldLine, videoParameters), videoParameters, fieldMetadata);
+            fmCode.decodeLine(getActiveVideoLine(sourceFieldData, 10, videoParameters), videoParameters, fieldMetadata);
 
             // Get the white flag from field line 11
             WhiteFlag whiteFlag;
-            whiteFlag.decodeLine(getActiveVideoLine(sourceFieldData, 11 - startFieldLine, videoParameters), videoParameters, fieldMetadata);
+            whiteFlag.decodeLine(getActiveVideoLine(sourceFieldData, 11, videoParameters), videoParameters, fieldMetadata);
 
             // Get the closed captioning from field line 21
             ClosedCaption closedCaption;
-            closedCaption.decodeLine(getActiveVideoLine(sourceFieldData, 21 - startFieldLine, videoParameters), videoParameters, fieldMetadata);
+            closedCaption.decodeLine(getActiveVideoLine(sourceFieldData, 21, videoParameters), videoParameters, fieldMetadata);
 
             fieldMetadata.ntsc.inUse = true;
         }
@@ -92,13 +92,13 @@ void VbiLineDecoder::run()
 SourceVideo::Data VbiLineDecoder::getActiveVideoLine(const SourceVideo::Data &sourceField, qint32 fieldLine,
                                                      const LdDecodeMetaData::VideoParameters& videoParameters)
 {
-    // Range-check the scan line
-    if (fieldLine < 0 || fieldLine >= videoParameters.fieldHeight) {
+    // Range-check the field line
+    if (fieldLine < startFieldLine || fieldLine > endFieldLine) {
         qWarning() << "Cannot generate field-line data, line number is out of bounds! Scan line =" << fieldLine;
         return SourceVideo::Data();
     }
 
-    qint32 startPointer = (fieldLine * videoParameters.fieldWidth) + videoParameters.activeVideoStart;
+    qint32 startPointer = ((fieldLine - startFieldLine) * videoParameters.fieldWidth) + videoParameters.activeVideoStart;
     qint32 length = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
 
     return sourceField.mid(startPointer, length);
