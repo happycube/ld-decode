@@ -269,7 +269,7 @@ def unpack_data_4_40(indata, readlen, offset):
 
     # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
     rv_unsigned = unpacked[offset : offset + readlen]
-    rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
+    rv_signed = np.left_shift(rv_unsigned - 512, 6).astype(np.int16)
 
     # # Original implementation.
     #  unpacked = np.zeros(readlen + 4, dtype=np.uint16)
