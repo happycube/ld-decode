@@ -45,7 +45,7 @@ class VbiLineDecoder : public QThread {
 public:
     explicit VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
 
-    // The range of field lines needed from the input file (inclusive)
+    // The range of field lines needed from the input file (1-based, inclusive)
     static constexpr qint32 startFieldLine = 10;
     static constexpr qint32 endFieldLine = 21;
 
