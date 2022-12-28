@@ -140,8 +140,8 @@ public:
         qint32 fmCodeData = 0;
         bool fieldFlag = false;
         bool whiteFlag = false;
-        qint32 ccData0 = 0;
-        qint32 ccData1 = 0;
+        qint32 ccData0 = -1;
+        qint32 ccData1 = -1;
 
         void read(JsonReader &reader);
         void write(JsonWriter &writer) const;

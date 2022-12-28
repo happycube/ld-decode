@@ -24,16 +24,23 @@
 
 #include "fmcode.h"
 
-// Public method to read a 40-bit FM coded signal from a field line
-FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters)
+// Public method to read a 40-bit FM coded signal from a field line.
+// Return true if decoding was successful, false otherwise.
+bool FmCode::decodeLine(const SourceVideo::Data &lineData,
+                        const LdDecodeMetaData::VideoParameters& videoParameters,
+                        LdDecodeMetaData::Field& fieldMetadata)
 {
-    FmDecode fmDecode;
-    fmDecode.receiverClockSyncBits = 0;
-    fmDecode.videoFieldIndicator = 0;
-    fmDecode.leadingDataRecognitionBits = 0;
-    fmDecode.data = 0;
-    fmDecode.dataParityBit = 0;
-    fmDecode.trailingDataRecognitionBits = 0;
+    // Reset data to invalid
+    fieldMetadata.ntsc.isFmCodeDataValid = false;
+    fieldMetadata.ntsc.fmCodeData = -1;
+    fieldMetadata.ntsc.fieldFlag = false;
+
+    quint64 receiverClockSyncBits = 0;
+    quint64 videoFieldIndicator = 0;
+    quint64 leadingDataRecognitionBits = 0;
+    quint64 dataValue = 0;
+    quint64 dataParityBit = 0;
+    quint64 trailingDataRecognitionBits = 0;
 
     quint64 decodedBytes = 0;
 
@@ -98,57 +105,50 @@ FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, const LdDe
     if (decodeCount != 40) {
         if (decodeCount == 0) qDebug() << "FmCode::fmDecoder(): No FM code data found in the field line";
         else qDebug() << "FmCode::fmDecoder(): FM decode failed!  Only got" << decodeCount << "bits";
-        decodedBytes = 0;
-    } else {
-        // Show the 40-bit FM coded data as hexadecimal
-        qDebug() << "FmCode::fmDecoder(): 40-bit FM code is" << QString::number(decodedBytes, 16);
-
-        // Split the result into the required fields
-        bool isValid = true;
-
-        fmDecode.receiverClockSyncBits = (decodedBytes & 0xF000000000) >> 36;
-        fmDecode.videoFieldIndicator = (decodedBytes & 0x0800000000) >> 35;
-        fmDecode.leadingDataRecognitionBits = (decodedBytes & 0x07F0000000) >> 28;
-        fmDecode.data = (decodedBytes & 0x000FFFFF00) >>  8;
-        fmDecode.dataParityBit = (decodedBytes & 0x0000000080) >> 7;
-        fmDecode.trailingDataRecognitionBits = (decodedBytes & 0x000000007F);
-
-        qDebug() << "FmCode::fmDecoder(): receiverClockSyncBits =" << fmDecode.receiverClockSyncBits;
-        qDebug() << "FmCode::fmDecoder(): videoFieldIndicator =" << fmDecode.videoFieldIndicator;
-        qDebug() << "FmCode::fmDecoder(): leadingDataRecognitionBits =" << fmDecode.leadingDataRecognitionBits;
-        qDebug() << "FmCode::fmDecoder(): data =" << fmDecode.data;
-        qDebug() << "FmCode::fmDecoder(): dataParityBit =" << fmDecode.dataParityBit;
-        qDebug() << "FmCode::fmDecoder(): trailingDataRecognitionBits =" << fmDecode.trailingDataRecognitionBits;
-
-        // Sanity check the data
-        if (fmDecode.receiverClockSyncBits != 3 || fmDecode.leadingDataRecognitionBits != 114 || fmDecode.trailingDataRecognitionBits != 13) {
-            qWarning() << "FM code does not appear sane";
-            isValid = false;
-        }
-
-        // Check parity (dataParityBit = 1 = odd parity)
-        if (fmDecode.dataParityBit == 1 && !isEvenParity(fmDecode.data)) {
-            qWarning() << "Data fails parity check (expected even, got odd)";
-            isValid = false;
-        }
-
-        if (fmDecode.dataParityBit == 0 && isEvenParity(fmDecode.data)) {
-            qWarning() << "Data fails parity check (expected odd, got even)";
-            isValid = false;
-        }
-
-        // If the result isn't valid, clear all the fields
-        if (!isValid) {
-            fmDecode.receiverClockSyncBits = 0;
-            fmDecode.videoFieldIndicator = 0;
-            fmDecode.leadingDataRecognitionBits = 0;
-            fmDecode.data = 0;
-            fmDecode.dataParityBit = 0;
-            fmDecode.trailingDataRecognitionBits = 0;
-        }
+        return false;
     }
 
-    return fmDecode;
+    // Show the 40-bit FM coded data as hexadecimal
+    qDebug() << "FmCode::fmDecoder(): 40-bit FM code is" << QString::number(decodedBytes, 16);
+
+    // Split the result into the required fields
+    receiverClockSyncBits = (decodedBytes & 0xF000000000) >> 36;
+    videoFieldIndicator = (decodedBytes & 0x0800000000) >> 35;
+    leadingDataRecognitionBits = (decodedBytes & 0x07F0000000) >> 28;
+    dataValue = (decodedBytes & 0x000FFFFF00) >>  8;
+    dataParityBit = (decodedBytes & 0x0000000080) >> 7;
+    trailingDataRecognitionBits = (decodedBytes & 0x000000007F);
+
+    qDebug() << "FmCode::fmDecoder(): receiverClockSyncBits =" << receiverClockSyncBits;
+    qDebug() << "FmCode::fmDecoder(): videoFieldIndicator =" << videoFieldIndicator;
+    qDebug() << "FmCode::fmDecoder(): leadingDataRecognitionBits =" << leadingDataRecognitionBits;
+    qDebug() << "FmCode::fmDecoder(): dataValue =" << dataValue;
+    qDebug() << "FmCode::fmDecoder(): dataParityBit =" << dataParityBit;
+    qDebug() << "FmCode::fmDecoder(): trailingDataRecognitionBits =" << trailingDataRecognitionBits;
+
+    // Sanity check the data
+    if (receiverClockSyncBits != 3 || leadingDataRecognitionBits != 114 || trailingDataRecognitionBits != 13) {
+        qWarning() << "FM code does not appear sane";
+        return false;
+    }
+
+    // Check parity (dataParityBit = 1 = odd parity)
+    if (dataParityBit == 1 && !isEvenParity(dataValue)) {
+        qWarning() << "Data fails parity check (expected even, got odd)";
+        return false;
+    }
+
+    if (dataParityBit == 0 && isEvenParity(dataValue)) {
+        qWarning() << "Data fails parity check (expected odd, got even)";
+        return false;
+    }
+
+    // Everything looks good -- update the metadata
+    fieldMetadata.ntsc.isFmCodeDataValid = true;
+    fieldMetadata.ntsc.fmCodeData = static_cast<qint32>(dataValue);
+    fieldMetadata.ntsc.fieldFlag = (videoFieldIndicator == 1);
+
+    return true;
 }
 
 // Private method to check data for even parity

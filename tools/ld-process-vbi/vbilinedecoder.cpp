@@ -53,17 +53,6 @@ void VbiLineDecoder::run()
             qInfo() << "Processing field" << fieldNumber;
         }
 
-        BiphaseCode biphaseCode;
-
-        FmCode fmCode;
-        FmCode::FmDecode fmDecode;
-
-        bool isWhiteFlag = false;
-        WhiteFlag whiteFlag;
-
-        ClosedCaption closedCaption;
-        ClosedCaption::CcData ccData;
-
         if (fieldMetadata.isFirstField) qDebug() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
         else qDebug() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
 
@@ -77,36 +66,18 @@ void VbiLineDecoder::run()
         // Process NTSC specific data if source type is NTSC
         if (videoParameters.system == NTSC) {
             // Get the 40-bit FM coded data from field line 10
-            fmDecode = fmCode.fmDecoder(getActiveVideoLine(sourceFieldData, 10 - startFieldLine, videoParameters), videoParameters);
+            FmCode fmCode;
+            fmCode.decodeLine(getActiveVideoLine(sourceFieldData, 10 - startFieldLine, videoParameters), videoParameters, fieldMetadata);
 
             // Get the white flag from field line 11
-            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(sourceFieldData, 11 - startFieldLine, videoParameters), videoParameters);
+            WhiteFlag whiteFlag;
+            whiteFlag.decodeLine(getActiveVideoLine(sourceFieldData, 11 - startFieldLine, videoParameters), videoParameters, fieldMetadata);
 
             // Get the closed captioning from field line 21
-            ccData = closedCaption.getData(getActiveVideoLine(sourceFieldData, 21 - startFieldLine, videoParameters), videoParameters);
+            ClosedCaption closedCaption;
+            closedCaption.decodeLine(getActiveVideoLine(sourceFieldData, 21 - startFieldLine, videoParameters), videoParameters, fieldMetadata);
 
-            // Update the metadata
-            if (fmDecode.receiverClockSyncBits != 0) {
-                fieldMetadata.ntsc.isFmCodeDataValid = true;
-                fieldMetadata.ntsc.fmCodeData = static_cast<qint32>(fmDecode.data);
-                if (fmDecode.videoFieldIndicator == 1) fieldMetadata.ntsc.fieldFlag = true;
-                else fieldMetadata.ntsc.fieldFlag = false;
-            } else {
-                fieldMetadata.ntsc.isFmCodeDataValid = false;
-                fieldMetadata.ntsc.fmCodeData = -1;
-                fieldMetadata.ntsc.fieldFlag = false;
-            }
-
-            fieldMetadata.ntsc.whiteFlag = isWhiteFlag;
             fieldMetadata.ntsc.inUse = true;
-
-            if (ccData.isValid) {
-                fieldMetadata.ntsc.ccData0 = ccData.byte0;
-                fieldMetadata.ntsc.ccData1 = ccData.byte1;
-            } else {
-                fieldMetadata.ntsc.ccData0 = -1;
-                fieldMetadata.ntsc.ccData1 = -1;
-            }
         }
 
         // Write the result to the output metadata

@@ -33,16 +33,9 @@
 class FmCode
 {
 public:
-    struct FmDecode {
-        quint64 receiverClockSyncBits;
-        quint64 videoFieldIndicator;
-        quint64 leadingDataRecognitionBits;
-        quint64 data;
-        quint64 dataParityBit;
-        quint64 trailingDataRecognitionBits;
-    };
-
-    FmCode::FmDecode fmDecoder(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters);
+    bool decodeLine(const SourceVideo::Data &lineData,
+                    const LdDecodeMetaData::VideoParameters& videoParameters,
+                    LdDecodeMetaData::Field& fieldMetadata);
 
 private:
     bool isEvenParity(quint64 data);

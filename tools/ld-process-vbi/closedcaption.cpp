@@ -24,13 +24,15 @@
 
 #include "closedcaption.h"
 
-// Public method to read CEA-608 Closed Captioning data (NTSC only)
-ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters)
+// Public method to read CEA-608 Closed Captioning data (NTSC only).
+// Return true if CC data was decoded successfully, false otherwise.
+bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
+                               const LdDecodeMetaData::VideoParameters& videoParameters,
+                               LdDecodeMetaData::Field& fieldMetadata)
 {
-    CcData ccData;
-    ccData.byte0 = 0;
-    ccData.byte1 = 0;
-    ccData.isValid = false;
+    // Reset data to invalid
+    fieldMetadata.ntsc.ccData0 = -1;
+    fieldMetadata.ntsc.ccData1 = -1;
 
     // Determine the 16-bit zero-crossing point
     qint32 zcPoint = ((videoParameters.white16bIre - videoParameters.black16bIre) / 4) + videoParameters.black16bIre;
@@ -53,7 +55,7 @@ ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, 
     // Check that the first transition is where it should be
     if (abs(x - expectedStart) > 16) {
         qDebug() << "ClosedCaption::getData(): Expected" << expectedStart << "but got" << x << "- invalid CC line";
-        return ccData;
+        return false;
     } else {
         qDebug() << "ClosedCaption::getData(): Found start bit transition at" << x << "(expected" << expectedStart << ")";
     }
@@ -94,19 +96,17 @@ ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, 
 
     if (isEvenParity(byte0) && byte0Parity != 1) {
         qDebug() << "ClosedCaption::getData(): First byte failed parity check!";
-        byte0 = 0;
+    } else {
+        fieldMetadata.ntsc.ccData0 = byte0;
     }
 
     if (isEvenParity(byte1) && byte1Parity != 1) {
         qDebug() << "ClosedCaption::getData(): Second byte failed parity check!";
-        byte1 = 0;
+    } else {
+        fieldMetadata.ntsc.ccData1 = byte1;
     }
 
-    ccData.byte0 = byte0;
-    ccData.byte1 = byte1;
-    ccData.isValid = true;
-
-    return ccData;
+    return true;
 }
 
 // Private method to check data for even parity
