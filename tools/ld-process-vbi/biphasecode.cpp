@@ -82,12 +82,12 @@ qint32 BiphaseCode::manchesterDecoder(const SourceVideo::Data &lineData, qint32 
 
     if (x < manchesterData.size()) {
         // Plot the first transition (which is always 01)
-        result += 1;
+        result++;
         decodeCount++;
 
         // Find the rest of the transitions based on the expected clock rate of 2us per cell window
         while (x < manchesterData.size()) {
-            x = x + jumpSamples;
+            x += jumpSamples;
 
             // Ensure we don't go out of bounds
             if (x >= manchesterData.size()) break;

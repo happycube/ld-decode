@@ -59,7 +59,7 @@ ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, 
     }
 
     // Skip the the start bit and move to the centre of the first payload bit
-    x = x + samplesPerBit + (samplesPerBit / 2);
+    x += samplesPerBit + (samplesPerBit / 2);
 
     // Get the first 7 bit code
     uchar byte0 = 0;
@@ -114,7 +114,7 @@ bool ClosedCaption::isEvenParity(uchar data)
 {
     qint32 count = 0, b = 1;
 
-    for(qint32 i = 0; i < 7; i++) {
+    for (qint32 i = 0; i < 7; i++) {
         if (data & (b << i)) {
             count++;
         }

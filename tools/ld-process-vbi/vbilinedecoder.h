@@ -57,9 +57,6 @@ private:
     QAtomicInt& abort;
     DecoderPool& decoderPool;
 
-    // Temporary output buffer
-    LdDecodeMetaData::Field outputData;
-
     SourceVideo::Data getActiveVideoLine(const SourceVideo::Data& sourceFrame, qint32 scanLine,
                                          LdDecodeMetaData::VideoParameters videoParameters);
 };

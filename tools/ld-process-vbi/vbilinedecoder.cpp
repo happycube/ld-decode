@@ -41,7 +41,7 @@ void VbiLineDecoder::run()
     LdDecodeMetaData::Field fieldMetadata;
     LdDecodeMetaData::VideoParameters videoParameters;
 
-    while(!abort) {
+    while (!abort) {
         // Get the next field to process from the input file
         if (!decoderPool.getInputField(fieldNumber, sourceFieldData, fieldMetadata, videoParameters)) {
             // No more input fields -- exit
