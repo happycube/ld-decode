@@ -93,7 +93,7 @@ void EfmToF3Frames::reportStatistics()
     qInfo() << "    Invalid EFM symbols:" << statistics.invalidEfmSymbols;
     qInfo() << "  Corrected EFM symbols:" << statistics.correctedEfmSymbols;
 
-    qreal efmSymbolErrorRate = static_cast<qreal>(statistics.validEfmSymbols + statistics.invalidEfmSymbols);
+    double efmSymbolErrorRate = static_cast<double>(statistics.validEfmSymbols + statistics.invalidEfmSymbols);
     efmSymbolErrorRate = (100 / efmSymbolErrorRate) * (statistics.invalidEfmSymbols);
     qInfo().nospace() << "         EFM error rate: " << efmSymbolErrorRate << "%";
 

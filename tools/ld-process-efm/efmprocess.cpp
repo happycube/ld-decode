@@ -168,7 +168,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         }
 
         // Report progress to user
-        qreal percent = 100 - (100.0 / static_cast<qreal>(initialInputFileSize)) * static_cast<qreal>(inputFileHandle.bytesAvailable());
+        double percent = 100 - (100.0 / static_cast<double>(initialInputFileSize)) * static_cast<double>(inputFileHandle.bytesAvailable());
         if (static_cast<qint32>(percent) > lastPercent) {
             qInfo().nospace() << "Processed " << static_cast<qint32>(percent) << "%";
         }
