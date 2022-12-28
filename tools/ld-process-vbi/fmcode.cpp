@@ -56,7 +56,7 @@ FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, LdDecodeMe
     }
 
     if (x < fmData.size()) {
-        qint32 lastTransistionX = x;
+        qint32 lastTransitionX = x;
         bool lastState = fmData[x];
 
         // Find the rest of the bits
@@ -70,9 +70,9 @@ FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, LdDecodeMe
             lastState = fmData[x];
 
             // Was the transition in the middle of the cell?
-            if (x - lastTransistionX < samples) {
+            if (x - lastTransitionX < samples) {
                 decodedBytes = (decodedBytes << 1) + 1;
-                lastTransistionX = x;
+                lastTransitionX = x;
                 decodeCount++;
 
                 // Find the end of the cell
@@ -82,15 +82,15 @@ FmCode::FmDecode FmCode::fmDecoder(const SourceVideo::Data &lineData, LdDecodeMe
                 }
                 if (x >= fmData.size()) break; // Check for overflow
                 lastState = fmData[x];
-                lastTransistionX = x;
+                lastTransitionX = x;
             } else {
                 decodedBytes = (decodedBytes << 1);
-                lastTransistionX = x;
+                lastTransitionX = x;
                 decodeCount++;
             }
 
             // Next x
-            x = x + 1;
+            x++;
         }
     }
 
@@ -156,7 +156,7 @@ bool FmCode::isEvenParity(quint64 data)
 {
     quint64 count = 0, b = 1;
 
-    for(quint64 i = 0; i < 64; i++) {
+    for (quint64 i = 0; i < 64; i++) {
         if (data & (b << i)) {
             count++;
         }
@@ -178,7 +178,6 @@ QVector<bool> FmCode::getTransitionMap(const SourceVideo::Data &lineData, qint32
     qint32 debounce = 0;
     QVector<bool> fmData;
 
-    qint32 fmPointer = 0;
     for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint++) {
         if (lineData[xPoint] > zcPoint) currentState = true; else currentState = false;
 
@@ -190,7 +189,6 @@ QVector<bool> FmCode::getTransitionMap(const SourceVideo::Data &lineData, qint32
         }
 
         fmData.append(previousState);
-        fmPointer++;
     }
 
     return fmData;
