@@ -28,6 +28,8 @@
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
+// Decoder for NTSC LaserDisc FM code lines.
+// Specified in IEC 60587-1986 section 10.2.
 class FmCode
 {
 public:

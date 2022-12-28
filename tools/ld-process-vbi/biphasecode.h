@@ -1,6 +1,6 @@
 /************************************************************************
 
-    vbilinedecoder.h
+    biphasecode.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
     Copyright (C) 2018-2019 Simon Inns
@@ -22,46 +22,30 @@
 
 ************************************************************************/
 
-#ifndef VBILINEDECODER_H
-#define VBILINEDECODER_H
-
-#include <QObject>
-#include <QAtomicInt>
-#include <QThread>
-#include <QDebug>
+#ifndef BIPHASECODE_H
+#define BIPHASECODE_H
 
 #include "lddecodemetadata.h"
 #include "sourcevideo.h"
-#include "biphasecode.h"
-#include "fmcode.h"
-#include "whiteflag.h"
-#include "closedcaption.h"
 
-class DecoderPool;
+#include <QVector>
 
-class VbiLineDecoder : public QThread {
-    Q_OBJECT
-
+// Decoder for PAL/NTSC LaserDisc biphase code lines.
+// Specified in IEC 60586-1986 section 10.1 (PAL) and IEC 60587-1986 section 10.1 (NTSC).
+class BiphaseCode {
 public:
-    explicit VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
-
-    // The range of field lines needed from the input file (inclusive)
-    static constexpr qint32 startFieldLine = 10;
-    static constexpr qint32 endFieldLine = 21;
-
-protected:
-    void run() override;
+    bool decodeLines(const SourceVideo::Data& line16Data, const SourceVideo::Data& line17Data,
+                     const SourceVideo::Data& line18Data,
+                     const LdDecodeMetaData::VideoParameters& videoParameters,
+                     LdDecodeMetaData::Field& fieldMetadata);
+    bool decodeLine(qint32 lineIndex, const SourceVideo::Data& lineData,
+                    const LdDecodeMetaData::VideoParameters& videoParameters,
+                    LdDecodeMetaData::Field& fieldMetadata);
 
 private:
-    // Decoder pool
-    QAtomicInt& abort;
-    DecoderPool& decoderPool;
-
-    // Temporary output buffer
-    LdDecodeMetaData::Field outputData;
-
-    SourceVideo::Data getActiveVideoLine(const SourceVideo::Data& sourceFrame, qint32 scanLine,
-                                         LdDecodeMetaData::VideoParameters videoParameters);
+    qint32 manchesterDecoder(const SourceVideo::Data& lineData, qint32 zcPoint,
+                             LdDecodeMetaData::VideoParameters videoParameters);
+    QVector<bool> getTransitionMap(const SourceVideo::Data& lineData, qint32 zcPoint);
 };
 
-#endif // VBILINEDECODER_H
+#endif // BIPHASECODE_H
