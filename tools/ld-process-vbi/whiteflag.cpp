@@ -25,7 +25,7 @@
 #include "whiteflag.h"
 
 // Public method to read the white flag status from a field-line
-bool WhiteFlag::getWhiteFlag(const SourceVideo::Data &activeLineData, LdDecodeMetaData::VideoParameters videoParameters)
+bool WhiteFlag::getWhiteFlag(const SourceVideo::Data &activeLineData, const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     // Determine the 16-bit zero-crossing point
     qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;

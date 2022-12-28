@@ -42,7 +42,7 @@ public:
         quint64 trailingDataRecognitionBits;
     };
 
-    FmCode::FmDecode fmDecoder(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    FmCode::FmDecode fmDecoder(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters);
 
 private:
     bool isEvenParity(quint64 data);

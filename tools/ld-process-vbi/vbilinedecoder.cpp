@@ -119,7 +119,7 @@ void VbiLineDecoder::run()
 
 // Private method to get a single scanline of greyscale data
 SourceVideo::Data VbiLineDecoder::getActiveVideoLine(const SourceVideo::Data &sourceField, qint32 fieldLine,
-                                                     LdDecodeMetaData::VideoParameters videoParameters)
+                                                     const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     // Range-check the scan line
     if (fieldLine < 0 || fieldLine >= videoParameters.fieldHeight) {

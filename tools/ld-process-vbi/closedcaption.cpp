@@ -25,7 +25,7 @@
 #include "closedcaption.h"
 
 // Public method to read CEA-608 Closed Captioning data (NTSC only)
-ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters)
+ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     CcData ccData;
     ccData.byte0 = 0;
