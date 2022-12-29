@@ -36,10 +36,6 @@ public:
     bool decodeLine(const SourceVideo::Data &lineData,
                     const LdDecodeMetaData::VideoParameters& videoParameters,
                     LdDecodeMetaData::Field& fieldMetadata);
-
-private:
-    bool isEvenParity(quint64 data);
-    QVector<bool> getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint);
 };
 
 #endif // FMCODE_H

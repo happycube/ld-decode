@@ -45,7 +45,6 @@ public:
 private:
     qint32 manchesterDecoder(const SourceVideo::Data& lineData, qint32 zcPoint,
                              LdDecodeMetaData::VideoParameters videoParameters);
-    QVector<bool> getTransitionMap(const SourceVideo::Data& lineData, qint32 zcPoint);
 };
 
 #endif // BIPHASECODE_H

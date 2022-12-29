@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "biphasecode.h"
+#include "vbiutilities.h"
 
 // Decode the three biphase code lines, writing the result into fieldMetadata.
 // Return true if any line was decoded successfully, false if none were.
@@ -119,29 +120,4 @@ qint32 BiphaseCode::manchesterDecoder(const SourceVideo::Data &lineData, qint32 
     }
 
     return result;
-}
-
-// Private method to get the map of transitions across the sample and reject noise
-QVector<bool> BiphaseCode::getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint)
-{
-    // First read the data into a boolean array using debounce to remove transition noise
-    bool previousState = false;
-    bool currentState = false;
-    qint32 debounce = 0;
-    QVector<bool> manchesterData;
-
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint++) {
-        if (lineData[xPoint] > zcPoint) currentState = true; else currentState = false;
-
-        if (currentState != previousState) debounce++;
-
-        if (debounce > 3) {
-            debounce = 0;
-            previousState = currentState;
-        }
-
-        manchesterData.append(previousState);
-    }
-
-    return manchesterData;
 }
