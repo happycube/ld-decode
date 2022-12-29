@@ -32,10 +32,6 @@
 
 #include "lddecodemetadata.h"
 #include "sourcevideo.h"
-#include "biphasecode.h"
-#include "fmcode.h"
-#include "whiteflag.h"
-#include "closedcaption.h"
 
 class DecoderPool;
 

@@ -23,7 +23,11 @@
 ************************************************************************/
 
 #include "vbilinedecoder.h"
+#include "biphasecode.h"
+#include "closedcaption.h"
 #include "decoderpool.h"
+#include "fmcode.h"
+#include "whiteflag.h"
 
 VbiLineDecoder::VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
     : QThread(parent), abort(_abort), decoderPool(_decoderPool)
