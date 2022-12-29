@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "closedcaption.h"
+#include "vbiutilities.h"
 
 // Public method to read CEA-608 Closed Captioning data (NTSC only).
 // Return true if CC data was decoded successfully, false otherwise.
@@ -107,48 +108,4 @@ bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
     }
 
     return true;
-}
-
-// Private method to check data for even parity
-bool ClosedCaption::isEvenParity(uchar data)
-{
-    qint32 count = 0, b = 1;
-
-    for (qint32 i = 0; i < 7; i++) {
-        if (data & (b << i)) {
-            count++;
-        }
-    }
-
-    if (count % 2) {
-        return false;
-    }
-
-    return true;
-}
-
-// Private method to get the map of transitions across the sample and reject noise
-QVector<bool> ClosedCaption::getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint)
-{
-    // First read the data into a boolean array using debounce to remove transition noise
-    bool previousState = false;
-    bool currentState = false;
-    qint32 debounce = 0;
-    QVector<bool> transitionMap;
-
-    // Each value is 2 bytes (16-bit greyscale data)
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint++) {
-        if (lineData[xPoint] > zcPoint) currentState = true; else currentState = false;
-
-        if (currentState != previousState) debounce++;
-
-        if (debounce > 3) {
-            debounce = 0;
-            previousState = currentState;
-        }
-
-        transitionMap.append(previousState);
-    }
-
-    return transitionMap;
 }

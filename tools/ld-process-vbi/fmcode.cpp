@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "fmcode.h"
+#include "vbiutilities.h"
 
 // Public method to read a 40-bit FM coded signal from a field line.
 // Return true if decoding was successful, false otherwise.
@@ -149,47 +150,4 @@ bool FmCode::decodeLine(const SourceVideo::Data &lineData,
     fieldMetadata.ntsc.fieldFlag = (videoFieldIndicator == 1);
 
     return true;
-}
-
-// Private method to check data for even parity
-bool FmCode::isEvenParity(quint64 data)
-{
-    quint64 count = 0, b = 1;
-
-    for (quint64 i = 0; i < 64; i++) {
-        if (data & (b << i)) {
-            count++;
-        }
-    }
-
-    if (count % 2) {
-        return false;
-    }
-
-    return true;
-}
-
-// Private method to get the map of transitions across the sample and reject noise
-QVector<bool> FmCode::getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint)
-{
-    // First read the data into a boolean array using debounce to remove transition noise
-    bool previousState = false;
-    bool currentState = false;
-    qint32 debounce = 0;
-    QVector<bool> fmData;
-
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint++) {
-        if (lineData[xPoint] > zcPoint) currentState = true; else currentState = false;
-
-        if (currentState != previousState) debounce++;
-
-        if (debounce > 3) {
-            debounce = 0;
-            previousState = currentState;
-        }
-
-        fmData.append(previousState);
-    }
-
-    return fmData;
 }
