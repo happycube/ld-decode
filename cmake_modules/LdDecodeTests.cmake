@@ -104,6 +104,7 @@ add_test(
         --expect-frames 4
         --expect-bpsnr 38.4
         --expect-vbi 9151527,16065688,16065688
+        --expect-vitc 2,10,8,13,4,3,0,1
         --expect-efm-samples 5292
         ${TESTDATA_DIR}/pal/jason-testpattern.lds
 )
