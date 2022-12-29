@@ -291,14 +291,22 @@ void LdDecodeMetaData::Ntsc::write(JsonWriter &writer) const
     writer.beginObject();
 
     // Keep members in alphabetical order
-    writer.writeMember("isFmCodeDataValid", isFmCodeDataValid);
+    if (ccData0 != -1) {
+        writer.writeMember("ccData0", ccData0);
+    }
+    if (ccData1 != -1) {
+        writer.writeMember("ccData1", ccData1);
+    }
+    if (isFmCodeDataValid) {
+        writer.writeMember("fieldFlag", fieldFlag);
+    }
     if (isFmCodeDataValid) {
         writer.writeMember("fmCodeData", fmCodeData);
     }
-    writer.writeMember("fieldFlag", fieldFlag);
-    writer.writeMember("whiteFlag", whiteFlag);
-    writer.writeMember("ccData0", ccData0);
-    writer.writeMember("ccData1", ccData1);
+    writer.writeMember("isFmCodeDataValid", isFmCodeDataValid);
+    if (whiteFlag) {
+        writer.writeMember("whiteFlag", whiteFlag);
+    }
 
     writer.endObject();
 }
