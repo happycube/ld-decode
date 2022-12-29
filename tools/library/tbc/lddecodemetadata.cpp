@@ -311,6 +311,56 @@ void LdDecodeMetaData::Ntsc::write(JsonWriter &writer) const
     writer.endObject();
 }
 
+// Read Vitc from JSON
+void LdDecodeMetaData::Vitc::read(JsonReader &reader)
+{
+    reader.beginObject();
+
+    std::string member;
+    while (reader.readMember(member)) {
+        if (member == "vitcData") {
+            reader.beginArray();
+
+            // There should be exactly 8 values, but handle more or less
+            unsigned int i = 0;
+            while (reader.readElement()) {
+                int value;
+                reader.read(value);
+
+                if (i < vitcData.size()) vitcData[i++] = value;
+            }
+            while (i < vitcData.size()) vitcData[i++] = 0;
+
+            reader.endArray();
+        } else {
+            reader.discard();
+        }
+    }
+
+    reader.endObject();
+
+    inUse = true;
+}
+
+// Write Vitc to JSON
+void LdDecodeMetaData::Vitc::write(JsonWriter &writer) const
+{
+    assert(inUse);
+
+    writer.beginObject();
+
+    // Keep members in alphabetical order
+    writer.writeMember("vitcData");
+    writer.beginArray();
+    for (auto value : vitcData) {
+        writer.writeElement();
+        writer.write(value);
+    }
+    writer.endArray();
+
+    writer.endObject();
+}
+
 // Read PcmAudioParameters from JSON
 void LdDecodeMetaData::PcmAudioParameters::read(JsonReader &reader)
 {
@@ -367,6 +417,7 @@ void LdDecodeMetaData::Field::read(JsonReader &reader)
         else if (member == "seqNo") reader.read(seqNo);
         else if (member == "syncConf") reader.read(syncConf);
         else if (member == "vbi") vbi.read(reader);
+        else if (member == "vitc") vitc.read(reader);
         else if (member == "vitsMetrics") vitsMetrics.read(reader);
         else reader.discard();
     }
@@ -414,6 +465,10 @@ void LdDecodeMetaData::Field::write(JsonWriter &writer) const
     if (vbi.inUse) {
         writer.writeMember("vbi");
         vbi.write(writer);
+    }
+    if (vitc.inUse) {
+        writer.writeMember("vitc");
+        vitc.write(writer);
     }
     if (vitsMetrics.inUse) {
         writer.writeMember("vitsMetrics");
@@ -715,6 +770,17 @@ const LdDecodeMetaData::Ntsc &LdDecodeMetaData::getFieldNtsc(qint32 sequentialFi
     return fields[fieldNumber].ntsc;
 }
 
+// This method gets the VITC metadata for the specified sequential field number
+const LdDecodeMetaData::Vitc &LdDecodeMetaData::getFieldVitc(qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+    if (fieldNumber < 0 || fieldNumber >= getNumberOfFields()) {
+        qCritical() << "LdDecodeMetaData::getFieldVitc(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    return fields[fieldNumber].vitc;
+}
+
 // This method gets the drop-out metadata for the specified sequential field number
 const DropOuts &LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
 {
@@ -768,6 +834,17 @@ void LdDecodeMetaData::updateFieldNtsc(const LdDecodeMetaData::Ntsc &ntsc, qint3
     }
 
     fields[fieldNumber].ntsc = ntsc;
+}
+
+// This method sets the VITC metadata for a field
+void LdDecodeMetaData::updateFieldVitc(const LdDecodeMetaData::Vitc &vitc, qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+    if (fieldNumber < 0 || fieldNumber >= getNumberOfFields()) {
+        qCritical() << "LdDecodeMetaData::updateFieldVitc(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    fields[fieldNumber].vitc = vitc;
 }
 
 // This method sets the field dropout metadata for a field
