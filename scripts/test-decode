@@ -171,6 +171,23 @@ def run_ld_process_vbi(args):
             die(json_file, 'did not contain a field with VBI values',
                 args.expect_vbi)
 
+    # Print VITC data
+    if args.print_vitc:
+        for field in data["fields"]:
+            if "vitc" in field:
+                print("VITC data:", field["vitc"]["vitcData"])
+
+    # Check for a field with the expected VITC values
+    if args.expect_vitc is not None:
+        for field in data["fields"]:
+            if ("vitc" not in field) or ("vitcData" not in field["vitc"]):
+                pass
+            elif field["vitc"]["vitcData"] == args.expect_vitc:
+                break
+        else:
+            die(json_file, 'did not contain a field with VITC values',
+                args.expect_vitc)
+
 def run_ld_export_metadata(args):
     """Run ld-export-metadata."""
 
@@ -248,12 +265,18 @@ def run_ld_chroma_decoder(args, decoder):
             die(rgb_file, 'contains', rgb_frames,
                 'frames; expected at least', args.expect_frames)
 
-def parse_vbi_arg(s):
-    """Parse a VBI triple argument."""
+def parse_list_arg(s, num):
+    """Parse an argument with a comma-separated list of values."""
     values = s.split(",")
-    if len(values) != 3:
-        raise ValueError("VBI argument must have three values")
+    if len(values) != num:
+        raise ValueError(f"Argument must have {num} values")
     return [int(value) for value in values]
+
+def parse_vbi_arg(s):
+    return parse_list_arg(s, 3)
+
+def parse_vitc_arg(s):
+    return parse_list_arg(s, 8)
 
 def main():
     parser = argparse.ArgumentParser(description='Run the decoding toolchain against an RF sample')
@@ -293,6 +316,10 @@ def main():
                        help='expect at least one field with VBI values N,N,N')
     group.add_argument('--print-vbi', action='store_true',
                        help='Print VBI values (to find out what to pass into expect-vbi)')
+    group.add_argument('--expect-vitc', metavar='N,N,N,N,N,N,N,N', type=parse_vitc_arg,
+                       help='expect at least one field with VITC values N,N,N,N,N,N,N,N')
+    group.add_argument('--print-vitc', action='store_true',
+                       help='Print VITC values (to find out what to pass into expect-vitc)')
     group.add_argument('--expect-efm-samples', metavar='N', type=int,
                        help='expect at least N stereo pairs of samples in EFM output')
     group.add_argument('--expect-AC3-file-size', dest='expect_ac3_bytes', metavar='N', type=int,

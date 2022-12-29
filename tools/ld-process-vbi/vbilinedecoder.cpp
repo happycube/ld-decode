@@ -27,6 +27,7 @@
 #include "closedcaption.h"
 #include "decoderpool.h"
 #include "fmcode.h"
+#include "vitccode.h"
 #include "whiteflag.h"
 
 VbiLineDecoder::VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
@@ -82,6 +83,15 @@ void VbiLineDecoder::run()
             closedCaption.decodeLine(getActiveVideoLine(sourceFieldData, 21, videoParameters), videoParameters, fieldMetadata);
 
             fieldMetadata.ntsc.inUse = true;
+        }
+
+        // Get VITC data, trying each possible line and stopping when we find a valid one
+        VitcCode vitcCode;
+        for (qint32 lineNumber: vitcCode.getLineNumbers(videoParameters)) {
+            if (vitcCode.decodeLine(getActiveVideoLine(sourceFieldData, lineNumber, videoParameters),
+                                    videoParameters, fieldMetadata)) {
+                break;
+            }
         }
 
         // Write the result to the output metadata
