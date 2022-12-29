@@ -1046,15 +1046,23 @@ class DemodCache:
         self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
         self.deqeue_thread.start()
 
+        self.ended = False
+
     def end(self):
-        # stop workers
-        for i in self.threads:
-            self.q_in.put(None)
+        if not self.ended:
+            # stop workers
+            for i in self.threads:
+                self.q_in.put(None)
 
-        for t in self.threads:
-            t.join()
+            for t in self.threads:
+                t.join()
 
-        self.q_out.put(None)
+            self.q_out.put(None)
+            # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
+            # Might want to do this in a cleaner way later but this works for now.
+            if hasattr(self.loader, "_close") and callable(self.loader._close):
+                self.loader._close()
+            self.ended = True
 
     def __del__(self):
         self.end()
@@ -1064,11 +1072,10 @@ class DemodCache:
         if len(self.lru) < self.lrusize:
             return
 
-        self.lock.acquire()
-        for k in self.lru[self.lrusize :]:
-            if k in self.blocks:
-                del self.blocks[k]
-        self.lock.release()
+        with self.lock:
+            for k in self.lru[self.lrusize :]:
+                if k in self.blocks:
+                    del self.blocks[k]
 
         self.lru = self.lru[: self.lrusize]
 
@@ -1078,9 +1085,8 @@ class DemodCache:
             if self.blocks[k] is None:
                 pass
             elif "demod" in self.blocks[k]:
-                self.lock.acquire()
-                del self.blocks[k]["demod"]
-                self.lock.release()
+                with self.lock:
+                    del self.blocks[k]["demod"]
 
     def apply_newparams(self, newparams):
         for k in newparams.keys():
@@ -1121,7 +1127,7 @@ class DemodCache:
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
                     output["demod"] = self.rf.demodblock(
-                        fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
                     output["MTF"] = target_MTF
 
@@ -1137,53 +1143,48 @@ class DemodCache:
 
         hc = 0
 
-        self.lock.acquire()
+        with self.lock:
+            for b in blocknums:
+                if b not in self.blocks:
+                    LRUupdate(self.lru, b)
 
-        for b in blocknums:
-            if b not in self.blocks:
-                LRUupdate(self.lru, b)
+                    rawdata = self.loader(self.infile, b * self.blocksize, self.rf.blocklen)
 
-                rawdata = self.loader(self.infile, b * self.blocksize, self.rf.blocklen)
+                    if rawdata is None or len(rawdata) < self.rf.blocklen:
+                        self.blocks[b] = None
+                        return None
 
-                if rawdata is None or len(rawdata) < self.rf.blocklen:
-                    self.blocks[b] = None
-                    self.lock.release()
+                    # ??? - I think I put it in to make sure it isn't erased for whatever reason, but might not be needed
+                    # rawdatac = rawdata.copy()
+
+                    self.blocks[b] = {}
+                    self.blocks[b]["rawinput"] = rawdata
+
+                if self.blocks[b] is None:
                     return None
 
-                # ??? - I think I put it in to make sure it isn't erased for whatever reason, but might not be needed
-                # rawdatac = rawdata.copy()
+                if dodemod:
+                    handling = need_demod = ("demod" not in self.blocks[b]) or (
+                        np.abs(self.blocks[b]["MTF"] - MTF) > self.MTF_tolerance
+                    )
+                else:
+                    handling = need_demod = False
 
-                self.blocks[b] = {}
-                self.blocks[b]["rawinput"] = rawdata
+                # Check to see if it's already in queue to process
+                if need_demod:
+                    for inqueue in self.q_in_metadata:
+                        if inqueue[0] == b and (
+                            np.abs(inqueue[1] - MTF) <= self.MTF_tolerance
+                        ):
+                            handling = False
+                            # print(b)
 
-            if self.blocks[b] is None:
-                self.lock.release()
-                return None
+                    need_blocks.append(b)
 
-            if dodemod:
-                handling = need_demod = ("demod" not in self.blocks[b]) or (
-                    np.abs(self.blocks[b]["MTF"] - MTF) > self.MTF_tolerance
-                )
-            else:
-                handling = need_demod = False
-
-            # Check to see if it's already in queue to process
-            if need_demod:
-                for inqueue in self.q_in_metadata:
-                    if inqueue[0] == b and (
-                        np.abs(inqueue[1] - MTF) <= self.MTF_tolerance
-                    ):
-                        handling = False
-                        # print(b)
-
-                need_blocks.append(b)
-
-            if handling:
-                self.q_in.put(("DEMOD", b, self.blocks[b], MTF))
-                self.q_in_metadata.append((b, MTF))
-                hc = hc + 1
-
-        self.lock.release()
+                if handling:
+                    self.q_in.put(("DEMOD", b, self.blocks[b], MTF))
+                    self.q_in_metadata.append((b, MTF))
+                    hc = hc + 1
 
         return need_blocks
 
@@ -1194,34 +1195,31 @@ class DemodCache:
             if rv is None:
                 return
 
-            self.lock.acquire()
+            with self.lock:
+                blocknum, item = rv
 
-            blocknum, item = rv
-
-            if "MTF" not in item or "demod" not in item:
-                # This shouldn't happen, but was observed by Simon on a decode
-                logger.error(
-                    "incomplete demodulated block placed on queue, block #%d", blocknum
-                )
-                self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
-                self.lock.release()
-                continue
-
-            self.q_in_metadata.remove((blocknum, item["MTF"]))
-
-            for k in item.keys():
-                if k == "demod" and (
-                    np.abs(item["MTF"] - self.currentMTF) > self.MTF_tolerance
-                ):
+                if "MTF" not in item or "demod" not in item:
+                    # This shouldn't happen, but was observed by Simon on a decode
+                    logger.error(
+                        "incomplete demodulated block placed on queue, block #%d", blocknum
+                    )
+                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
                     continue
-                self.blocks[blocknum][k] = item[k]
 
-            if "input" not in self.blocks[blocknum]:
-                self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
-                    self.rf.blockcut : -self.rf.blockcut_end
-                ]
+                self.q_in_metadata.remove((blocknum, item["MTF"]))
 
-            self.lock.release()
+                for k in item.keys():
+                    if k == "demod" and (
+                        np.abs(item["MTF"] - self.currentMTF) > self.MTF_tolerance
+                    ):
+                        continue
+                    self.blocks[blocknum][k] = item[k]
+
+                if "input" not in self.blocks[blocknum]:
+                    self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
+                        self.rf.blockcut : -self.rf.blockcut_end
+                    ]
+
 
     def read(self, begin, length, MTF=0, dodemod=True):
         # transpose the cache by key, not block #
