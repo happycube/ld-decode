@@ -126,6 +126,7 @@ if(BUILD_TESTING)
     add_subdirectory(tools/library/tbc/testlinenumber)
     add_subdirectory(tools/library/tbc/testmetadata)
     add_subdirectory(tools/library/tbc/testvbidecoder)
+    add_subdirectory(tools/library/tbc/testvitcdecoder)
     include(LdDecodeTests)
 endif()
 
