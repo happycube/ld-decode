@@ -136,6 +136,8 @@ private:
     Configuration configuration;
     QLabel sourceVideoStatus;
     QLabel fieldNumberStatus;
+    QLabel vbiStatus;
+    QLabel timeCodeStatus;
     TbcSource tbcSource;
     bool displayAspectRatio;
     qint32 lastScopeLine;

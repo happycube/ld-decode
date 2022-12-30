@@ -37,6 +37,7 @@
 #include "lddecodemetadata.h"
 #include "linenumber.h"
 #include "vbidecoder.h"
+#include "vitcdecoder.h"
 #include "filters.h"
 
 // Chroma decoder includes
@@ -102,6 +103,8 @@ public:
 
     VbiDecoder::Vbi getFrameVbi();
     bool getIsFrameVbiValid();
+    VitcDecoder::Vitc getFrameVitc();
+    bool getIsFrameVitcValid();
 
     QVector<double> getBlackSnrGraphData();
     QVector<double> getWhiteSnrGraphData();
@@ -169,8 +172,9 @@ private:
     Comb ntscColour;
     OutputWriter outputWriter;
 
-    // VBI decoder
+    // VBI decoders
     VbiDecoder vbiDecoder;
+    VitcDecoder vitcDecoder;
 
     // Background loader globals
     QFutureWatcher<bool> watcher;

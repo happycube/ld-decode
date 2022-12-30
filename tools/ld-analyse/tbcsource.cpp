@@ -444,6 +444,26 @@ bool TbcSource::getIsFrameVbiValid()
     return true;
 }
 
+// Method to return the decoded VITC data for the frame
+VitcDecoder::Vitc TbcSource::getFrameVitc()
+{
+    if (loadedFrameNumber == -1) return VitcDecoder::Vitc();
+
+    const VideoSystem system = ldDecodeMetaData.getVideoParameters().system;
+    if (firstField.vitc.inUse) return vitcDecoder.decode(firstField.vitc.vitcData, system);
+    if (secondField.vitc.inUse) return vitcDecoder.decode(secondField.vitc.vitcData, system);
+
+    return VitcDecoder::Vitc();
+}
+
+// Method returns true if the VITC is valid for the frame
+bool TbcSource::getIsFrameVitcValid()
+{
+    if (loadedFrameNumber == -1) return false;
+
+    return firstField.vitc.inUse || secondField.vitc.inUse;
+}
+
 // Method to get the field number of the first field of the frame
 qint32 TbcSource::getFirstFieldNumber()
 {
