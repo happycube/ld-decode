@@ -50,3 +50,4 @@ CMakeLists.txt.user*
 /library/tbc/testlinenumber/testlinenumber
 /library/tbc/testmetadata/testmetadata
 /library/tbc/testvbidecoder/testvbidecoder
+/library/tbc/testvitcdecoder/testvitcdecoder
