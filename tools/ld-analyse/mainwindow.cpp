@@ -49,8 +49,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
     ui->statusBar->addWidget(&fieldNumberStatus);
+    ui->statusBar->addWidget(&vbiStatus);
+    ui->statusBar->addWidget(&timeCodeStatus);
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
+    vbiStatus.hide();
+    timeCodeStatus.hide();
 
     // Set the initial frame number
     currentFrameNumber = 1;
@@ -260,6 +264,8 @@ void MainWindow::updateGuiUnloaded()
     // Set the status bar text
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
+    vbiStatus.hide();
+    timeCodeStatus.hide();
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
@@ -326,6 +332,41 @@ void MainWindow::showFrame()
     // Show the field numbers
     fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber()) + "/" +
                               QString::number(tbcSource.getSecondFieldNumber()));
+
+    // Show VBI position in the status bar, if available
+    if (tbcSource.getIsFrameVbiValid()) {
+        VbiDecoder::Vbi vbi = tbcSource.getFrameVbi();
+        if (vbi.clvHr != -1) {
+            vbiStatus.setText(QString(" -  CLV time code: %1:%2:%3")
+                                  .arg(vbi.clvHr, 2, 10, QChar('0'))
+                                  .arg(vbi.clvMin, 2, 10, QChar('0'))
+                                  .arg(vbi.clvSec, 2, 10, QChar('0')));
+            vbiStatus.show();
+        } else if (vbi.picNo != -1) {
+            vbiStatus.setText(QString(" -  CAV picture number: %1")
+                                  .arg(vbi.picNo, 5, 10, QChar('0')));
+            vbiStatus.show();
+        } else {
+            vbiStatus.hide();
+        }
+    } else {
+        vbiStatus.hide();
+    }
+
+    // Show timecode in the status bar, if available
+    if (tbcSource.getIsFrameVitcValid()) {
+        // Use ; rather than : if the drop flag is set (as ffmpeg does)
+        VitcDecoder::Vitc vitc = tbcSource.getFrameVitc();
+        timeCodeStatus.setText(QString(" -  VITC time code: %1:%2:%3%4%5")
+                                   .arg(vitc.hour, 2, 10, QChar('0'))
+                                   .arg(vitc.minute, 2, 10, QChar('0'))
+                                   .arg(vitc.second, 2, 10, QChar('0'))
+                                   .arg(vitc.isDropFrame ? QChar(';') : QChar(':'))
+                                   .arg(vitc.frame, 2, 10, QChar('0')));
+        timeCodeStatus.show();
+    } else {
+        timeCodeStatus.hide();
+    }
 
     // If there are dropouts in the frame, highlight the show dropouts button
     if (tbcSource.getIsDropoutPresent()) {
