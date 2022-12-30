@@ -34,7 +34,7 @@ struct OneBitADC {
     // with the rolling average, this also might act as a primitive high-pass filter.
     // Compares each sample against the rolling average of the last N samples and returns high/low
 
-    explicit OneBitADC(int buf_size, DATA_SRC &source) : buf_size(buf_size), source(source) {
+    explicit OneBitADC(int buf_size, DATA_SRC &source) : source(source), buf_size(buf_size) {
         buffer = new uint8_t[buf_size];
 
         // initialize the buffer

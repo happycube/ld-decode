@@ -61,7 +61,7 @@ public:
 
     const std::string &logLabel;
 
-    explicit Logger(const LogLevel &level, const std::string &label) : logLevel(level), logLabel(label) {}
+    explicit Logger(const LogLevel &level, const std::string &label) : logLabel(label), logLevel(level) {}
 
     ~Logger() {
         if (logLevel < GLOBAL_LOG_LEVEL)
