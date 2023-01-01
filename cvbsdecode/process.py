@@ -409,12 +409,12 @@ class CVBSDecode(ldd.LDdecode):
                 # Make sure we don't fail if the last attempted field failed to decode
                 # Might be better to fix this elsewhere.
                 f = self.prevfield
-            jout = super(VHSDecode, self).build_json(f)
+            jout = super(CVBSDecode, self).build_json(f)
 
-            if self.rf.color_system == "MPAL":
+            #if self.rf.color_system == "MPAL":
                 # jout["videoParameters"]["isSourcePal"] = True
                 # jout["videoParameters"]["isSourcePalM"] = True
-                jout["videoParameters"]["system"] = "PAL-M"
+                # jout["videoParameters"]["system"] = "PAL-M"
 
             return jout
         except TypeError as e:
