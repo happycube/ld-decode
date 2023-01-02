@@ -51,8 +51,8 @@ def find_sync_levels(field):
     data = field.data["video"]["demod_05"][10:]
 
     # Start with finding the minimum value of the input.
-    sync_min = min(data)
-    max_val = max(data)
+    sync_min = np.amin(data)
+    max_val = np.amax(data)
 
     # Use the max for a temporary reference point which may be max ire or not.
     difference = max_val - sync_min
