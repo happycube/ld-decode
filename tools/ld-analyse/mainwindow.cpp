@@ -49,8 +49,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Add a status bar to show the state of the source video file
     ui->statusBar->addWidget(&sourceVideoStatus);
     ui->statusBar->addWidget(&fieldNumberStatus);
+    ui->statusBar->addWidget(&vbiStatus);
+    ui->statusBar->addWidget(&timeCodeStatus);
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
+    vbiStatus.hide();
+    timeCodeStatus.hide();
 
     // Set the initial frame number
     currentFrameNumber = 1;
@@ -260,6 +264,8 @@ void MainWindow::updateGuiUnloaded()
     // Set the status bar text
     sourceVideoStatus.setText(tr("No source video file loaded"));
     fieldNumberStatus.setText(tr(" -  Fields: ./."));
+    vbiStatus.hide();
+    timeCodeStatus.hide();
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
@@ -326,6 +332,41 @@ void MainWindow::showFrame()
     // Show the field numbers
     fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber()) + "/" +
                               QString::number(tbcSource.getSecondFieldNumber()));
+
+    // Show VBI position in the status bar, if available
+    if (tbcSource.getIsFrameVbiValid()) {
+        VbiDecoder::Vbi vbi = tbcSource.getFrameVbi();
+        if (vbi.clvHr != -1) {
+            vbiStatus.setText(QString(" -  CLV time code: %1:%2:%3")
+                                  .arg(vbi.clvHr, 2, 10, QChar('0'))
+                                  .arg(vbi.clvMin, 2, 10, QChar('0'))
+                                  .arg(vbi.clvSec, 2, 10, QChar('0')));
+            vbiStatus.show();
+        } else if (vbi.picNo != -1) {
+            vbiStatus.setText(QString(" -  CAV picture number: %1")
+                                  .arg(vbi.picNo, 5, 10, QChar('0')));
+            vbiStatus.show();
+        } else {
+            vbiStatus.hide();
+        }
+    } else {
+        vbiStatus.hide();
+    }
+
+    // Show timecode in the status bar, if available
+    if (tbcSource.getIsFrameVitcValid()) {
+        // Use ; rather than : if the drop flag is set (as ffmpeg does)
+        VitcDecoder::Vitc vitc = tbcSource.getFrameVitc();
+        timeCodeStatus.setText(QString(" -  VITC time code: %1:%2:%3%4%5")
+                                   .arg(vitc.hour, 2, 10, QChar('0'))
+                                   .arg(vitc.minute, 2, 10, QChar('0'))
+                                   .arg(vitc.second, 2, 10, QChar('0'))
+                                   .arg(vitc.isDropFrame ? QChar(';') : QChar(':'))
+                                   .arg(vitc.frame, 2, 10, QChar('0')));
+        timeCodeStatus.show();
+    } else {
+        timeCodeStatus.hide();
+    }
 
     // If there are dropouts in the frame, highlight the show dropouts button
     if (tbcSource.getIsDropoutPresent()) {
@@ -419,8 +460,9 @@ void MainWindow::updateFrameViewer()
 
     // Scale and apply the pixmap (only if it's valid)
     if (!pixmap.isNull()) {
-        ui->frameViewerLabel->setPixmap(pixmap.scaled((scaleFactor * (pixmap.size().width() + adjustment)),
-                                                      (scaleFactor * pixmap.size().height()),
+        const int width = static_cast<int>(scaleFactor * (pixmap.size().width() + adjustment));
+        const int height = static_cast<int>(scaleFactor * pixmap.size().height());
+        ui->frameViewerLabel->setPixmap(pixmap.scaled(width, height,
                                                       Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     }
 
@@ -853,7 +895,7 @@ void MainWindow::on_fieldOrderPushButton_clicked()
 // Zoom in
 void MainWindow::on_zoomInPushButton_clicked()
 {
-    qreal factor = 1.1;
+    constexpr double factor = 1.1;
     if (((scaleFactor * factor) > 0.333) && ((scaleFactor * factor) < 3.0)) {
         scaleFactor *= factor;
     }
@@ -864,7 +906,7 @@ void MainWindow::on_zoomInPushButton_clicked()
 // Zoom out
 void MainWindow::on_zoomOutPushButton_clicked()
 {
-    qreal factor = 0.9;
+    constexpr double factor = 0.9;
     if (((scaleFactor * factor) > 0.333) && ((scaleFactor * factor) < 3.0)) {
         scaleFactor *= factor;
     }
@@ -980,21 +1022,21 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
 #endif
 
     // X calc
-    qreal offsetX = ((static_cast<qreal>(ui->frameViewerLabel->width()) -
-                     static_cast<qreal>(frameViewerPixmap.width())) / 2.0);
+    double offsetX = ((static_cast<double>(ui->frameViewerLabel->width()) -
+                       static_cast<double>(frameViewerPixmap.width())) / 2.0);
 
-    qreal unscaledXR = (static_cast<qreal>(tbcSource.getFrameWidth()) /
-                        static_cast<qreal>(frameViewerPixmap.width())) * static_cast<qreal>(oX - offsetX);
+    double unscaledXR = (static_cast<double>(tbcSource.getFrameWidth()) /
+                         static_cast<double>(frameViewerPixmap.width())) * static_cast<double>(oX - offsetX);
     qint32 unscaledX = static_cast<qint32>(unscaledXR);
     if (unscaledX > tbcSource.getFrameWidth() - 1) unscaledX = tbcSource.getFrameWidth() - 1;
     if (unscaledX < 0) unscaledX = 0;
 
     // Y Calc
-    qreal offsetY = ((static_cast<qreal>(ui->frameViewerLabel->height()) -
-                     static_cast<qreal>(frameViewerPixmap.height())) / 2.0);
+    double offsetY = ((static_cast<double>(ui->frameViewerLabel->height()) -
+                       static_cast<double>(frameViewerPixmap.height())) / 2.0);
 
-    qreal unscaledYR = (static_cast<qreal>(tbcSource.getFrameHeight()) /
-                        static_cast<qreal>(frameViewerPixmap.height())) * static_cast<qreal>(oY - offsetY);
+    double unscaledYR = (static_cast<double>(tbcSource.getFrameHeight()) /
+                         static_cast<double>(frameViewerPixmap.height())) * static_cast<double>(oY - offsetY);
     qint32 unscaledY = static_cast<qint32>(unscaledYR);
     if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
     if (unscaledY < 1) unscaledY = 1;
@@ -1076,10 +1118,10 @@ void MainWindow::on_finishedLoading(bool success)
         blackSnrAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
         whiteSnrAnalysisDialog->startUpdate(tbcSource.getNumberOfFrames());
 
-        QVector<qreal> doGraphData = tbcSource.getDropOutGraphData();
-        QVector<qreal> visibleDoGraphData = tbcSource.getVisibleDropOutGraphData();
-        QVector<qreal> blackSnrGraphData = tbcSource.getBlackSnrGraphData();
-        QVector<qreal> whiteSnrGraphData = tbcSource.getWhiteSnrGraphData();
+        QVector<double> doGraphData = tbcSource.getDropOutGraphData();
+        QVector<double> visibleDoGraphData = tbcSource.getVisibleDropOutGraphData();
+        QVector<double> blackSnrGraphData = tbcSource.getBlackSnrGraphData();
+        QVector<double> whiteSnrGraphData = tbcSource.getWhiteSnrGraphData();
 
         for (qint32 frameNumber = 0; frameNumber < tbcSource.getNumberOfFrames(); frameNumber++) {
             dropoutAnalysisDialog->addDataPoint(frameNumber + 1, doGraphData[frameNumber]);

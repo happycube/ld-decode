@@ -3093,7 +3093,7 @@ class CombNTSC:
         # this is a translation of this code from tools/ld-chroma-decoder/comb.cpp:
         #
         # for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-        #  qreal tc1 = (((line[h + 2] + line[h - 2]) / 2) - line[h]);
+        #  double tc1 = (line[h] - ((line[h - 2] + line[h + 2]) / 2.0)) / 2.0;
 
         fldata = data.astype(np.float32)
         cbuffer = np.zeros_like(fldata)

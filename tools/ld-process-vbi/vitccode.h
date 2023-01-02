@@ -1,9 +1,9 @@
 /************************************************************************
 
-    whiteflag.h
+    vitccode.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2022 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -22,20 +22,22 @@
 
 ************************************************************************/
 
-#ifndef WHITEFLAG_H
-#define WHITEFLAG_H
+#ifndef VITCCODE_H
+#define VITCCODE_H
 
 #include "sourcevideo.h"
 #include "lddecodemetadata.h"
 
-// Decoder for NTSC LaserDisc white flag lines.
-// Specified in IEC 60587-1986 section 10.2.4.
-class WhiteFlag
+#include <vector>
+
+class VitcCode
 {
 public:
-    bool decodeLine(const SourceVideo::Data& lineData,
+    bool decodeLine(const SourceVideo::Data &lineData,
                     const LdDecodeMetaData::VideoParameters& videoParameters,
                     LdDecodeMetaData::Field& fieldMetadata);
+
+    std::vector<qint32> getLineNumbers(const LdDecodeMetaData::VideoParameters& videoParameters);
 };
 
-#endif // WHITEFLAG_H
+#endif // VITCCODE_H

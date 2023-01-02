@@ -61,9 +61,9 @@ void C1Circ::reportStatistics()
     qInfo() << "        C1s corrected:" << statistics.c1Corrected;
     qInfo() << " Delay buffer flushes:" << statistics.c1flushed;
 
-    qreal c1ErrorRate = static_cast<qreal>(statistics.c1Passed) +
-            static_cast<qreal>(statistics.c1Failed) +
-            static_cast<qreal>(statistics.c1Corrected);
+    double c1ErrorRate = static_cast<double>(statistics.c1Passed) +
+            static_cast<double>(statistics.c1Failed) +
+            static_cast<double>(statistics.c1Corrected);
 
     c1ErrorRate = (100 / c1ErrorRate) * (statistics.c1Failed + statistics.c1Corrected);
     qInfo().nospace() << "        C1 Error rate: " << c1ErrorRate << "%";

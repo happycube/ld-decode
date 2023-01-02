@@ -1,9 +1,11 @@
 add_executable(ld-process-vbi
+    biphasecode.cpp
     closedcaption.cpp
     decoderpool.cpp
     main.cpp
     fmcode.cpp
     vbilinedecoder.cpp
+    vitccode.cpp
     whiteflag.cpp
 )
 

@@ -91,10 +91,10 @@ void BlackSnrAnalysisDialog::removeChartContents()
 }
 
 // Add a data point to the chart
-void BlackSnrAnalysisDialog::addDataPoint(qint32 frameNumber, qreal blackSnr)
+void BlackSnrAnalysisDialog::addDataPoint(qint32 frameNumber, double blackSnr)
 {
-    if (!std::isnan(static_cast<float>(blackSnr))) {
-        blackPoints->append(QPointF(frameNumber, blackSnr));
+    if (!std::isnan(blackSnr)) {
+        blackPoints->append(QPointF(static_cast<qreal>(frameNumber), static_cast<qreal>(blackSnr)));
         if (blackSnr > maxY) maxY = ceil(blackSnr); // Round up
 
         // Add to trendline data

@@ -52,7 +52,7 @@ public:
     ~DropoutAnalysisDialog();
 
     void startUpdate(qint32 _numberOfFrames);
-    void addDataPoint(qint32 frameNumber, qreal doLength);
+    void addDataPoint(qint32 frameNumber, double doLength);
     void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 

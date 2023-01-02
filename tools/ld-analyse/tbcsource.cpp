@@ -301,25 +301,25 @@ qint32 TbcSource::getFrameWidth()
 }
 
 // Get black SNR data for graphing
-QVector<qreal> TbcSource::getBlackSnrGraphData()
+QVector<double> TbcSource::getBlackSnrGraphData()
 {
     return blackSnrGraphData;
 }
 
 // Get white SNR data for graphing
-QVector<qreal> TbcSource::getWhiteSnrGraphData()
+QVector<double> TbcSource::getWhiteSnrGraphData()
 {
     return whiteSnrGraphData;
 }
 
 // Get dropout data for graphing
-QVector<qreal> TbcSource::getDropOutGraphData()
+QVector<double> TbcSource::getDropOutGraphData()
 {
     return dropoutGraphData;
 }
 
 // Get visible dropout data for graphing
-QVector<qreal> TbcSource::getVisibleDropOutGraphData()
+QVector<double> TbcSource::getVisibleDropOutGraphData()
 {
     return visibleDropoutGraphData;
 }
@@ -442,6 +442,26 @@ bool TbcSource::getIsFrameVbiValid()
     if (secondField.vbi.vbiData[0] == -1 || secondField.vbi.vbiData[1] == -1 || secondField.vbi.vbiData[2] == -1) return false;
 
     return true;
+}
+
+// Method to return the decoded VITC data for the frame
+VitcDecoder::Vitc TbcSource::getFrameVitc()
+{
+    if (loadedFrameNumber == -1) return VitcDecoder::Vitc();
+
+    const VideoSystem system = ldDecodeMetaData.getVideoParameters().system;
+    if (firstField.vitc.inUse) return vitcDecoder.decode(firstField.vitc.vitcData, system);
+    if (secondField.vitc.inUse) return vitcDecoder.decode(secondField.vitc.vitcData, system);
+
+    return VitcDecoder::Vitc();
+}
+
+// Method returns true if the VITC is valid for the frame
+bool TbcSource::getIsFrameVitcValid()
+{
+    if (loadedFrameNumber == -1) return false;
+
+    return firstField.vitc.inUse || secondField.vitc.inUse;
 }
 
 // Method to get the field number of the first field of the frame
@@ -763,15 +783,15 @@ void TbcSource::generateData()
 
     const qint32 numFrames = ldDecodeMetaData.getNumberOfFrames();
     for (qint32 frameNumber = 0; frameNumber < numFrames; frameNumber++) {
-        qreal doLength = 0;
-        qreal visibleDoLength = 0;
-        qreal blackSnrTotal = 0;
-        qreal whiteSnrTotal = 0;
+        double doLength = 0;
+        double visibleDoLength = 0;
+        double blackSnrTotal = 0;
+        double whiteSnrTotal = 0;
 
         // SNR data may be missing in some fields, so we count the points to prevent
         // the frame average from being thrown-off by missing data
-        qreal blackSnrPoints = 0;
-        qreal whiteSnrPoints = 0;
+        double blackSnrPoints = 0;
+        double whiteSnrPoints = 0;
 
         const LdDecodeMetaData::Field &firstField = ldDecodeMetaData.getField(ldDecodeMetaData.getFirstFieldNumber(frameNumber + 1));
         const LdDecodeMetaData::Field &secondField = ldDecodeMetaData.getField(ldDecodeMetaData.getSecondFieldNumber(frameNumber + 1));
@@ -780,7 +800,7 @@ void TbcSource::generateData()
         if (firstField.dropOuts.size() > 0) {
             // Calculate the total length of the dropouts
             for (qint32 i = 0; i < firstField.dropOuts.size(); i++) {
-                doLength += firstField.dropOuts.endx(i) - firstField.dropOuts.startx(i);
+                doLength += static_cast<double>(firstField.dropOuts.endx(i) - firstField.dropOuts.startx(i));
             }
         }
 
@@ -788,7 +808,7 @@ void TbcSource::generateData()
         if (secondField.dropOuts.size() > 0) {
             // Calculate the total length of the dropouts
             for (qint32 i = 0; i < secondField.dropOuts.size(); i++) {
-                doLength += secondField.dropOuts.endx(i) - secondField.dropOuts.startx(i);
+                doLength += static_cast<double>(secondField.dropOuts.endx(i) - secondField.dropOuts.startx(i));
             }
         }
 
@@ -807,7 +827,7 @@ void TbcSource::generateData()
                         if (firstField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = firstField.dropOuts.endx(i);
                         else endx = videoParameters.activeVideoEnd;
 
-                        visibleDoLength += endx - startx;
+                        visibleDoLength += static_cast<double>(endx - startx);
                     }
                 }
             }
@@ -826,7 +846,7 @@ void TbcSource::generateData()
                         if (secondField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = secondField.dropOuts.endx(i);
                         else endx = videoParameters.activeVideoEnd;
 
-                        visibleDoLength += endx - startx;
+                        visibleDoLength += static_cast<double>(endx - startx);
                     }
                 }
             }

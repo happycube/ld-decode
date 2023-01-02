@@ -23,14 +23,17 @@
 ************************************************************************/
 
 #include "closedcaption.h"
+#include "vbiutilities.h"
 
-// Public method to read CEA-608 Closed Captioning data (NTSC only)
-ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, LdDecodeMetaData::VideoParameters videoParameters)
+// Public method to read CEA-608 Closed Captioning data (NTSC only).
+// Return true if CC data was decoded successfully, false otherwise.
+bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
+                               const LdDecodeMetaData::VideoParameters& videoParameters,
+                               LdDecodeMetaData::Field& fieldMetadata)
 {
-    CcData ccData;
-    ccData.byte0 = 0;
-    ccData.byte1 = 0;
-    ccData.isValid = false;
+    // Reset data to invalid
+    fieldMetadata.ntsc.ccData0 = -1;
+    fieldMetadata.ntsc.ccData1 = -1;
 
     // Determine the 16-bit zero-crossing point
     qint32 zcPoint = ((videoParameters.white16bIre - videoParameters.black16bIre) / 4) + videoParameters.black16bIre;
@@ -53,13 +56,13 @@ ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, 
     // Check that the first transition is where it should be
     if (abs(x - expectedStart) > 16) {
         qDebug() << "ClosedCaption::getData(): Expected" << expectedStart << "but got" << x << "- invalid CC line";
-        return ccData;
+        return false;
     } else {
         qDebug() << "ClosedCaption::getData(): Found start bit transition at" << x << "(expected" << expectedStart << ")";
     }
 
     // Skip the the start bit and move to the centre of the first payload bit
-    x = x + samplesPerBit + (samplesPerBit / 2);
+    x += samplesPerBit + (samplesPerBit / 2);
 
     // Get the first 7 bit code
     uchar byte0 = 0;
@@ -94,61 +97,15 @@ ClosedCaption::CcData ClosedCaption::getData(const SourceVideo::Data &lineData, 
 
     if (isEvenParity(byte0) && byte0Parity != 1) {
         qDebug() << "ClosedCaption::getData(): First byte failed parity check!";
-        byte0 = 0;
+    } else {
+        fieldMetadata.ntsc.ccData0 = byte0;
     }
 
     if (isEvenParity(byte1) && byte1Parity != 1) {
         qDebug() << "ClosedCaption::getData(): Second byte failed parity check!";
-        byte1 = 0;
-    }
-
-    ccData.byte0 = byte0;
-    ccData.byte1 = byte1;
-    ccData.isValid = true;
-
-    return ccData;
-}
-
-// Private method to check data for even parity
-bool ClosedCaption::isEvenParity(uchar data)
-{
-    qint32 count = 0, b = 1;
-
-    for(qint32 i = 0; i < 7; i++) {
-        if (data & (b << i)) {
-            count++;
-        }
-    }
-
-    if (count % 2) {
-        return false;
+    } else {
+        fieldMetadata.ntsc.ccData1 = byte1;
     }
 
     return true;
-}
-
-// Private method to get the map of transitions across the sample and reject noise
-QVector<bool> ClosedCaption::getTransitionMap(const SourceVideo::Data &lineData, qint32 zcPoint)
-{
-    // First read the data into a boolean array using debounce to remove transition noise
-    bool previousState = false;
-    bool currentState = false;
-    qint32 debounce = 0;
-    QVector<bool> transitionMap;
-
-    // Each value is 2 bytes (16-bit greyscale data)
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint++) {
-        if (lineData[xPoint] > zcPoint) currentState = true; else currentState = false;
-
-        if (currentState != previousState) debounce++;
-
-        if (debounce > 3) {
-            debounce = 0;
-            previousState = currentState;
-        }
-
-        transitionMap.append(previousState);
-    }
-
-    return transitionMap;
 }

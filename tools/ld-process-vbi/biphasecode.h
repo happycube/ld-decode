@@ -1,9 +1,9 @@
 /************************************************************************
 
-    whiteflag.h
+    biphasecode.h
 
     ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
-    Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -22,20 +22,29 @@
 
 ************************************************************************/
 
-#ifndef WHITEFLAG_H
-#define WHITEFLAG_H
+#ifndef BIPHASECODE_H
+#define BIPHASECODE_H
 
-#include "sourcevideo.h"
 #include "lddecodemetadata.h"
+#include "sourcevideo.h"
 
-// Decoder for NTSC LaserDisc white flag lines.
-// Specified in IEC 60587-1986 section 10.2.4.
-class WhiteFlag
-{
+#include <QVector>
+
+// Decoder for PAL/NTSC LaserDisc biphase code lines.
+// Specified in IEC 60586-1986 section 10.1 (PAL) and IEC 60587-1986 section 10.1 (NTSC).
+class BiphaseCode {
 public:
-    bool decodeLine(const SourceVideo::Data& lineData,
+    bool decodeLines(const SourceVideo::Data& line16Data, const SourceVideo::Data& line17Data,
+                     const SourceVideo::Data& line18Data,
+                     const LdDecodeMetaData::VideoParameters& videoParameters,
+                     LdDecodeMetaData::Field& fieldMetadata);
+    bool decodeLine(qint32 lineIndex, const SourceVideo::Data& lineData,
                     const LdDecodeMetaData::VideoParameters& videoParameters,
                     LdDecodeMetaData::Field& fieldMetadata);
+
+private:
+    qint32 manchesterDecoder(const SourceVideo::Data& lineData, qint32 zcPoint,
+                             LdDecodeMetaData::VideoParameters videoParameters);
 };
 
-#endif // WHITEFLAG_H
+#endif // BIPHASECODE_H

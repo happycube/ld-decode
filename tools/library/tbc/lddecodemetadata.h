@@ -126,8 +126,8 @@ public:
     // VITS metrics metadata definition
     struct VitsMetrics {
         bool inUse = false;
-        qreal wSNR = 0.0;
-        qreal bPSNR = 0.0;
+        double wSNR = 0.0;
+        double bPSNR = 0.0;
 
         void read(JsonReader &reader);
         void write(JsonWriter &writer) const;
@@ -140,8 +140,20 @@ public:
         qint32 fmCodeData = 0;
         bool fieldFlag = false;
         bool whiteFlag = false;
-        qint32 ccData0 = 0;
-        qint32 ccData1 = 0;
+        qint32 ccData0 = -1;
+        qint32 ccData1 = -1;
+
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
+    };
+
+    // VITC timecode definition
+    struct Vitc {
+        bool inUse = false;
+
+        // Just the VITC data, without the sync bits or CRC.
+        // vitcData[0]'s LSB is bit 2; vitcData[7]'s MSB is bit 79.
+        std::array<qint32, 8> vitcData;
 
         void read(JsonReader &reader);
         void write(JsonWriter &writer) const;
@@ -166,13 +178,14 @@ public:
         qint32 seqNo = 0;   // Note: This is the unique primary-key
         bool isFirstField = false;
         qint32 syncConf = 0;
-        qreal medianBurstIRE = 0.0;
+        double medianBurstIRE = 0.0;
         qint32 fieldPhaseID = -1;
         qint32 audioSamples = -1;
 
         VitsMetrics vitsMetrics;
         Vbi vbi;
         Ntsc ntsc;
+        Vitc vitc;
         DropOuts dropOuts;
         bool pad = false;
 
@@ -219,6 +232,7 @@ public:
     const VitsMetrics &getFieldVitsMetrics(qint32 sequentialFieldNumber);
     const Vbi &getFieldVbi(qint32 sequentialFieldNumber);
     const Ntsc &getFieldNtsc(qint32 sequentialFieldNumber);
+    const Vitc &getFieldVitc(qint32 sequentialFieldNumber);
     const DropOuts &getFieldDropOuts(qint32 sequentialFieldNumber);
 
     // Set field metadata
@@ -226,6 +240,7 @@ public:
     void updateFieldVitsMetrics(const LdDecodeMetaData::VitsMetrics &vitsMetrics, qint32 sequentialFieldNumber);
     void updateFieldVbi(const LdDecodeMetaData::Vbi &vbi, qint32 sequentialFieldNumber);
     void updateFieldNtsc(const LdDecodeMetaData::Ntsc &ntsc, qint32 sequentialFieldNumber);
+    void updateFieldVitc(const LdDecodeMetaData::Vitc &vitc, qint32 sequentialFieldNumber);
     void updateFieldDropOuts(const DropOuts &dropOuts, qint32 sequentialFieldNumber);
     void clearFieldDropOuts(qint32 sequentialFieldNumber);
 

@@ -324,13 +324,13 @@ void F1ToAudio::linearInterpolationConceal()
     rightSamples.resize(samplesToGenerate);
 
     // Calculate sample step values and initial values
-    qreal leftStep = (static_cast<qreal>(leftChannelEndValue) -
-                      static_cast<qreal>(leftChannelStartValue)) / static_cast<qreal>(samplesToGenerate);
-    qreal leftValue = static_cast<qreal>(leftChannelStartValue);
+    double leftStep = (static_cast<double>(leftChannelEndValue) -
+                       static_cast<double>(leftChannelStartValue)) / static_cast<double>(samplesToGenerate);
+    double leftValue = static_cast<double>(leftChannelStartValue);
 
-    qreal rightStep = (static_cast<qreal>(rightChannelEndValue) -
-                       static_cast<qreal>(rightChannelStartValue)) / static_cast<qreal>(samplesToGenerate);
-    qreal rightValue = static_cast<qreal>(rightChannelStartValue);
+    double rightStep = (static_cast<double>(rightChannelEndValue) -
+                        static_cast<double>(rightChannelStartValue)) / static_cast<double>(samplesToGenerate);
+    double rightValue = static_cast<double>(rightChannelStartValue);
 
     // Generate the interpolated samples
     for (qint32 i = 0; i < samplesToGenerate; i++) {
@@ -384,13 +384,13 @@ void F1ToAudio::predictiveInterpolationConceal()
     rightSamples.resize(samplesToGenerate);
 
     // Calculate sample step values and initial values
-    qreal leftStep = (static_cast<qreal>(leftChannelEndValue) -
-                      static_cast<qreal>(leftChannelStartValue)) / static_cast<qreal>(samplesToGenerate);
-    qreal leftValue = static_cast<qreal>(leftChannelStartValue);
+    double leftStep = (static_cast<double>(leftChannelEndValue) -
+                       static_cast<double>(leftChannelStartValue)) / static_cast<double>(samplesToGenerate);
+    double leftValue = static_cast<double>(leftChannelStartValue);
 
-    qreal rightStep = (static_cast<qreal>(rightChannelEndValue) -
-                       static_cast<qreal>(rightChannelStartValue)) / static_cast<qreal>(samplesToGenerate);
-    qreal rightValue = static_cast<qreal>(rightChannelStartValue);
+    double rightStep = (static_cast<double>(rightChannelEndValue) -
+                        static_cast<double>(rightChannelStartValue)) / static_cast<double>(samplesToGenerate);
+    double rightValue = static_cast<double>(rightChannelStartValue);
 
     // Generate the interpolated samples
     for (qint32 i = 0; i < samplesToGenerate; i++) {

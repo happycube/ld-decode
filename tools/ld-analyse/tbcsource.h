@@ -37,6 +37,7 @@
 #include "lddecodemetadata.h"
 #include "linenumber.h"
 #include "vbidecoder.h"
+#include "vitcdecoder.h"
 #include "filters.h"
 
 // Chroma decoder includes
@@ -102,11 +103,13 @@ public:
 
     VbiDecoder::Vbi getFrameVbi();
     bool getIsFrameVbiValid();
+    VitcDecoder::Vitc getFrameVitc();
+    bool getIsFrameVitcValid();
 
-    QVector<qreal> getBlackSnrGraphData();
-    QVector<qreal> getWhiteSnrGraphData();
-    QVector<qreal> getDropOutGraphData();
-    QVector<qreal> getVisibleDropOutGraphData();
+    QVector<double> getBlackSnrGraphData();
+    QVector<double> getWhiteSnrGraphData();
+    QVector<double> getDropOutGraphData();
+    QVector<double> getVisibleDropOutGraphData();
     qint32 getGraphDataSize();
 
     bool getIsDropoutPresent();
@@ -145,10 +148,10 @@ private:
     bool sourceReady;
 
     // Frame data
-    QVector<qreal> blackSnrGraphData;
-    QVector<qreal> whiteSnrGraphData;
-    QVector<qreal> dropoutGraphData;
-    QVector<qreal> visibleDropoutGraphData;
+    QVector<double> blackSnrGraphData;
+    QVector<double> whiteSnrGraphData;
+    QVector<double> dropoutGraphData;
+    QVector<double> visibleDropoutGraphData;
 
     // Frame image options
     bool chromaOn;
@@ -169,8 +172,9 @@ private:
     Comb ntscColour;
     OutputWriter outputWriter;
 
-    // VBI decoder
+    // VBI decoders
     VbiDecoder vbiDecoder;
+    VitcDecoder vitcDecoder;
 
     // Background loader globals
     QFutureWatcher<bool> watcher;

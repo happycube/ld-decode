@@ -136,12 +136,14 @@ private:
     Configuration configuration;
     QLabel sourceVideoStatus;
     QLabel fieldNumberStatus;
+    QLabel vbiStatus;
+    QLabel timeCodeStatus;
     TbcSource tbcSource;
     bool displayAspectRatio;
     qint32 lastScopeLine;
     qint32 lastScopeDot;
     qint32 currentFrameNumber;
-    qreal scaleFactor;
+    double scaleFactor;
     QPalette buttonPalette;
     QString lastFilename;
 
