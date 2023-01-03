@@ -133,6 +133,7 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
     // Everything looks good -- update the metadata
     fieldMetadata.vitc.inUse = true;
     std::copy(vitcData.begin(), vitcData.begin() + 8, fieldMetadata.vitc.vitcData.begin());
+    qDebug() << "VitcCode::decodeLine(): Found VITC";
 
     return true;
 }
