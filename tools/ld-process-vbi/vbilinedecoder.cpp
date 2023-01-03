@@ -63,24 +63,24 @@ void VbiLineDecoder::run()
 
         // Get the 24-bit biphase-coded data from field lines 16-18
         BiphaseCode biphaseCode;
-        biphaseCode.decodeLines(getActiveVideoLine(sourceFieldData, 16, videoParameters),
-                                getActiveVideoLine(sourceFieldData, 17, videoParameters),
-                                getActiveVideoLine(sourceFieldData, 18, videoParameters),
+        biphaseCode.decodeLines(getFieldLine(sourceFieldData, 16, videoParameters),
+                                getFieldLine(sourceFieldData, 17, videoParameters),
+                                getFieldLine(sourceFieldData, 18, videoParameters),
                                 videoParameters, fieldMetadata);
 
         // Process NTSC specific data if source type is NTSC
         if (videoParameters.system == NTSC) {
             // Get the 40-bit FM coded data from field line 10
             FmCode fmCode;
-            fmCode.decodeLine(getActiveVideoLine(sourceFieldData, 10, videoParameters), videoParameters, fieldMetadata);
+            fmCode.decodeLine(getFieldLine(sourceFieldData, 10, videoParameters), videoParameters, fieldMetadata);
 
             // Get the white flag from field line 11
             WhiteFlag whiteFlag;
-            whiteFlag.decodeLine(getActiveVideoLine(sourceFieldData, 11, videoParameters), videoParameters, fieldMetadata);
+            whiteFlag.decodeLine(getFieldLine(sourceFieldData, 11, videoParameters), videoParameters, fieldMetadata);
 
             // Get the closed captioning from field line 21
             ClosedCaption closedCaption;
-            closedCaption.decodeLine(getActiveVideoLine(sourceFieldData, 21, videoParameters), videoParameters, fieldMetadata);
+            closedCaption.decodeLine(getFieldLine(sourceFieldData, 21, videoParameters), videoParameters, fieldMetadata);
 
             fieldMetadata.ntsc.inUse = true;
         }
@@ -88,7 +88,7 @@ void VbiLineDecoder::run()
         // Get VITC data, trying each possible line and stopping when we find a valid one
         VitcCode vitcCode;
         for (qint32 lineNumber: vitcCode.getLineNumbers(videoParameters)) {
-            if (vitcCode.decodeLine(getActiveVideoLine(sourceFieldData, lineNumber, videoParameters),
+            if (vitcCode.decodeLine(getFieldLine(sourceFieldData, lineNumber, videoParameters),
                                     videoParameters, fieldMetadata)) {
                 break;
             }
@@ -103,8 +103,8 @@ void VbiLineDecoder::run()
 }
 
 // Private method to get a single scanline of greyscale data
-SourceVideo::Data VbiLineDecoder::getActiveVideoLine(const SourceVideo::Data &sourceField, qint32 fieldLine,
-                                                     const LdDecodeMetaData::VideoParameters& videoParameters)
+SourceVideo::Data VbiLineDecoder::getFieldLine(const SourceVideo::Data &sourceField, qint32 fieldLine,
+                                               const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     // Range-check the field line
     if (fieldLine < startFieldLine || fieldLine > endFieldLine) {
@@ -112,8 +112,6 @@ SourceVideo::Data VbiLineDecoder::getActiveVideoLine(const SourceVideo::Data &so
         return SourceVideo::Data();
     }
 
-    qint32 startPointer = ((fieldLine - startFieldLine) * videoParameters.fieldWidth) + videoParameters.activeVideoStart;
-    qint32 length = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
-
-    return sourceField.mid(startPointer, length);
+    qint32 startPointer = (fieldLine - startFieldLine) * videoParameters.fieldWidth;
+    return sourceField.mid(startPointer, videoParameters.fieldWidth);
 }

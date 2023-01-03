@@ -74,4 +74,16 @@ static inline QVector<bool> getTransitionMap(const InputData &lineData, qint32 z
     return transitionMap;
 }
 
+// Find the next sample with a given value in the output of getTransitionMap.
+// Return true if found before the limit, false if not found.
+static inline bool findTransition(const QVector<bool> &transitionMap, bool wantValue,
+                                  double &position, double positionLimit)
+{
+    while (position < positionLimit) {
+        if (transitionMap[static_cast<qint32>(position)] == wantValue) return true;
+        position += 1.0;
+    }
+    return false;
+}
+
 #endif

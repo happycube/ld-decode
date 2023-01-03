@@ -35,7 +35,7 @@ bool WhiteFlag::decodeLine(const SourceVideo::Data& lineData,
 
     qint32 whiteCount = 0;
     for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
-        if (lineData[x - videoParameters.activeVideoStart] > zcPoint) whiteCount++;
+        if (lineData[x] > zcPoint) whiteCount++;
     }
 
     // Mark the line as a white flag if at least 50% of the data is above the zc point

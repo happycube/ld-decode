@@ -73,33 +73,35 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
     std::array<qint32, 12> crcData;
     std::fill(crcData.begin(), crcData.end(), 0);
 
-    // Find the leading 1 of the first byte [ITU 6.19]
-    double byteStart = (((videoParameters.system == PAL) ? 11.2e-6 : 10.0e-6) * videoParameters.sampleRate)
-                       - static_cast<double>(videoParameters.activeVideoStart);
+    // Find the leading edge of the first byte. As per [ITU 6.19], there should
+    // be (625/525-line) 11.2/10.0 usec between the leading edge of the sync
+    // pulse and the leading edge of the first byte, and 1.9/2.1 usec between
+    // the trailing edge and the next sync pulse, but in practice signals that
+    // don't meet these specs are common. So start searching from the end of
+    // the colourburst, and just make sure there's space for 90 bits before the
+    // next sync pulse.
+    double byteStart = videoParameters.colourBurstEnd;
     double byteStartLimit = static_cast<double>(lineData.size()) - (90 * bitSamples);
-    while (true) {
-        if (byteStart >= byteStartLimit) {
-            qDebug() << "VitcCode::decodeLine(): No leading edge found";
-            return false;
-        }
-        if (dataBits[static_cast<qint32>(byteStart)] == true) break;
-        byteStart += 1.0;
+    if (!findTransition(dataBits, false, byteStart, byteStartLimit)) {
+        qDebug() << "VitcCode::decodeLine(): No leading zero found";
+        return false;
+    }
+    if (!findTransition(dataBits, true, byteStart, byteStartLimit)) {
+        qDebug() << "VitcCode::decodeLine(): No leading edge found";
+        return false;
     }
 
     // Sample each of the 9 bytes
     qint32 bitCount = 0;
     for (qint32 byteNum = 0; byteNum < 9; byteNum++) {
         // Resynchronise by finding the 1-0 transition in the synchronisation sequence
-        byteStart -= bitSamples / 2;
+        byteStart += bitSamples * 0.5;
         byteStartLimit += 10 * bitSamples;
-        while (true) {
-            if (byteStart >= byteStartLimit) {
-                qDebug() << "VitcCode::decodeLine(): No transition found for byte" << byteNum;
-                return false;
-            }
-            if (dataBits[static_cast<qint32>(byteStart + bitSamples)] == false) break;
-            byteStart += 1.0;
+        if (!findTransition(dataBits, false, byteStart, byteStartLimit)) {
+            qDebug() << "VitcCode::decodeLine(): No transition found for byte" << byteNum;
+            return false;
         }
+        byteStart -= bitSamples;
 
         // Extract 10 bits by sampling the centre of each bit, LSB first
         for (qint32 i = 0; i < 10; i++) {
