@@ -142,13 +142,20 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
 std::vector<qint32> VitcCode::getLineNumbers(const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     // VITC can be on any line between 10-20 (525-line) or 6-22 (625-line), but
-    // the standards [ITU 6.20, SMPTE 10.6] recommend lines to use. The lists
-    // below try the lines that don't clash with LaserDisc VBI lines first.
+    // the standards [ITU 6.20, SMPTE 10.6] recommend lines to use. Try the
+    // recommended lines first (prioritising those that don't clash with
+    // LaserDisc VBI), then the others.
     if (videoParameters.system == PAL) {
         // 625-line
-        return { 21, 19, 18, 20 };
+        return {
+            21, 19, 18, 20,
+            6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 22,
+        };
     } else {
         // 525-line
-        return { 14, 12, 16, 18 };
+        return {
+            14, 12, 16, 18,
+            10, 11, 13, 15, 17, 19, 20,
+        };
     }
 }
