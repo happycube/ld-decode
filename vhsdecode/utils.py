@@ -108,12 +108,14 @@ def pad_or_truncate(data, filler):
     return data
 
 
+@njit(cache=True)
 def moving_average(data_list, window=1024):
-    average = np.mean(data_list)
 
     # TODO(oln): Should this maybe be done first?
     if len(data_list) >= window:
         data_list = data_list[-window:]
+
+    average = np.mean(data_list)
 
     return average, data_list
 

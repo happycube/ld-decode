@@ -241,7 +241,7 @@ class FieldState:
         # ma_min_watermark = int(ma_depth / 2)
         # TODO: Set to 0 for now to start using detected levels on the first field
         # May want to alter later to do this more dynamically.
-        ma_min_watermark = 0
+        ma_min_watermark = 1
         self._blanklevels = utils.StackableMA(
             window_average=ma_depth, min_watermark=ma_min_watermark
         )
@@ -283,6 +283,7 @@ class Resync:
         self.divisor = divisor
         self.debug = debug
         self.samp_rate = fs
+
         if debug:
             self.SysParams = sysparams.copy()
         self._vsync_serration = VsyncSerration(fs, sysparams, divisor)
@@ -292,6 +293,9 @@ class Resync:
         self.use_serration = True
 
         # self._temp_c = 0
+
+    def has_levels(self):
+        return self._field_state.has_levels()
 
     def _debug_field(self, sync_reference):
         ldd.logger.debug(
@@ -554,9 +558,9 @@ class Resync:
             full,
         )
 
-    def get_pulses(self, field):
+    def get_pulses(self, field, check_levels=True):
         if self.use_serration:
-            return self.getpulses_serration(field)
+            return self._get_pulses_serration(field, check_levels)
         else:
             import vhsdecode.leveldetect
 
@@ -582,7 +586,7 @@ class Resync:
 
             return self.findpulses(field.data["video"]["demod_05"], (blank + sync) / 2)
 
-    def getpulses_serration(self, field):
+    def _get_pulses_serration(self, field, check_levels):
         """Find sync pulses in the demodulated video signal
 
         NOTE: TEMPORARY override until an override for the value itself is added upstream.
@@ -594,10 +598,11 @@ class Resync:
         if self.debug:
             self._debug_field(sync_reference)
 
-        # measures the serration levels if possible
-        self._vsync_serration.work(sync_reference)
-        # adds the sync and blanking levels from the back porch
-        self.add_pulselevels_to_serration_measures(field, sync_reference, sp)
+        if check_levels or not self._field_state.has_levels():
+            # measures the serration levels if possible
+            self._vsync_serration.work(sync_reference)
+            # adds the sync and blanking levels from the back porch
+            self.add_pulselevels_to_serration_measures(field, sync_reference, sp)
 
         # safe clips the bottom of the sync pulses but leaves picture area unchanged
         # NOTE: Disabled for now as it doesn't seem to have much purpose at the moment and can

@@ -170,7 +170,7 @@ def main(use_gui=False):
         dest="level_detect_divisor",
         metavar="value",
         type=int,
-        default=2,
+        default=3,
         help="Use only every nth sample for vsync serration code - may improve speed at cost of minor accuracy. Limited to max 6.",
     )
     debug_group.add_argument(
@@ -186,6 +186,13 @@ def main(use_gui=False):
         action="store_true",
         default=False,
         help="Enable vsync detect fallback. Will be enabled by default once more tested, so expect this option to change.",
+    )
+    debug_group.add_argument(
+        "--use_saved_levels",
+        dest="saved_levels",
+        action="store_true",
+        default=False,
+        help="Try re-using video levels detected from the first decoded fields instead of re-calculating each frame. Will be done by default once well tested",
     )
     dodgroup = parser.add_argument_group("Dropout detection options")
     dodgroup.add_argument(
@@ -262,6 +269,7 @@ def main(use_gui=False):
     rf_options["disable_right_hsync"] = args.disable_right_hsync
     rf_options["level_detect_divisor"] = args.level_detect_divisor
     rf_options["fallback_vsync"] = args.fallback_vsync
+    rf_options["saved_levels"] = args.saved_levels
 
     extra_options = get_extra_options(args, not use_gui)
 

@@ -19,6 +19,7 @@ from vhsdecode.chroma import (
     try_detect_track_vhs_ntsc,
 )
 
+NO_PULSES_FOUND = 1
 
 # def ynr(data, hpfdata, line_len):
 #     """Dumb vcr-line ynr
@@ -93,10 +94,6 @@ def field_class_from_formats(system: str, tape_format: str):
         raise Exception("Unknown video system!", system)
 
     return field_class
-
-
-def getpulses_override(field):
-    return field.rf.resync.get_pulses(field)
 
 
 def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _system):
@@ -427,15 +424,36 @@ class FieldShared:
 
         return valid_pulses  # , num_vblanks
 
-    def compute_linelocs(self):
-        self.rawpulses = self.getpulses()
+    def _try_get_pulses(self, check_levels):
+        self.rawpulses = self.rf.resync.get_pulses(self, check_levels)
+        # self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
-            ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
-            return None, None, int(self.rf.freq_hz / 10)
+            return NO_PULSES_FOUND
 
         self.validpulses = validpulses = self.refinepulses()
 
-        line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        #line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        return self.getLine0(validpulses)
+
+    def compute_linelocs(self):
+        has_levels = self.rf.resync.has_levels()
+        # Skip vsync serration/level detect if we already have levels from a previous field and
+        # the option is enabled.
+        do_level_detect = not self.rf.options.saved_levels or not has_levels
+        res = self._try_get_pulses(do_level_detect)
+        if (res == NO_PULSES_FOUND or res[0] == None or self.sync_confidence == 0) and not do_level_detect:
+            # If we failed to fild valid pulses with the previous levels
+            # and level detection was skipped, try again
+            # running the full level detection
+            ldd.logger.debug("Search for pulses failed, re-checking levels")
+            res = self._try_get_pulses(True)
+
+        if res == NO_PULSES_FOUND:
+            ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
+            return None, None, int(self.rf.freq_hz / 10)
+
+        line0loc, lastlineloc, self.isFirstField = res
+        validpulses = self.validpulses
 
         if self.rf.options.fallback_vsync and (
             not line0loc or self.sync_confidence == 0
@@ -547,7 +565,9 @@ class FieldShared:
                 )
 
             if linelocs_filled[0] < self.inlinelen:
-                ldd.logger.info("linelocs_filled[0] too short! %s", self.inlinelen)
+                ldd.logger.info("linelocs_filled[0] too short! (%s) should be at least %s. Skipping a bit...", linelocs_filled[0], self.inlinelen)
+                # Skip a bit if no line positions were filled (which causes following code to fail for now).
+                # Amount may need tweaking.
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
         for l in range(1, proclines):

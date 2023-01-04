@@ -73,6 +73,7 @@ class VHSDecode(ldd.LDdecode):
             system=parent_system(system),
             doDOD=doDOD,
             threads=threads,
+            inputfreq=inputfreq,
             extra_options=extra_options,
         )
 
@@ -326,6 +327,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "disable_dc_offset",
                 "double_lpf",
                 "fallback_vsync",
+                "saved_levels",
             ],
         )(
             self.iretohz(100) * 2,
@@ -337,6 +339,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("disable_dc_offset", False),
             tape_format == "VHS",
             rf_options.get("fallback_vsync", False),
+            rf_options.get("saved_levels", False),
         )
 
         # Store a separate setting for *color* system as opposed to 525/625 line here.
