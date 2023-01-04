@@ -250,30 +250,30 @@ class FieldState:
         )
         self._locs = None
 
-    def setSyncLevel(self, level):
+    def set_sync_level(self, level):
         self._synclevels.push(level)
 
-    def setLevels(self, sync, blank):
+    def set_levels(self, sync, blank):
         self._blanklevels.push(blank)
-        self.setSyncLevel(sync)
+        self.set_sync_level(sync)
 
-    def getSyncLevel(self):
+    def pull_sync_level(self):
         return self._synclevels.pull()
 
-    def getLevels(self):
+    def pull_levels(self):
         blevels = self._blanklevels.pull()
         if blevels is not None:
-            return self.getSyncLevel(), blevels
+            return self.pull_sync_level(), blevels
         else:
             return None, None
 
-    def setLocs(self, locs):
+    def set_locs(self, locs):
         self._locs = locs
 
-    def getLocs(self):
+    def get_locs(self):
         return self._locs
 
-    def hasLevels(self):
+    def has_levels(self):
         return self._blanklevels.has_values() and self._synclevels.has_values()
 
 
@@ -285,10 +285,10 @@ class Resync:
         self.samp_rate = fs
         if debug:
             self.SysParams = sysparams.copy()
-        self.VsyncSerration = VsyncSerration(fs, sysparams, divisor)
-        self.FieldState = FieldState(sysparams)
-        self.eq_pulselen = self.VsyncSerration.getEQpulselen()
-        self.linelen = self.VsyncSerration.getLinelen()
+        self._vsync_serration = VsyncSerration(fs, sysparams, divisor)
+        self._field_state = FieldState(sysparams)
+        self.eq_pulselen = self._vsync_serration.getEQpulselen()
+        self.linelen = self._vsync_serration.getLinelen()
         self.use_serration = True
 
         # self._temp_c = 0
@@ -352,18 +352,18 @@ class Resync:
         )
 
         if len(vsync_means) == 0:
-            synclevel = self.FieldState.getSyncLevel()
+            synclevel = self._field_state.pull_sync_level()
             if synclevel is None:
                 return None, None
         else:
             synclevel = np.median(vsync_means)
-            self.FieldState.setSyncLevel(synclevel)
-            self.FieldState.setLocs(vsync_locs)
+            self._field_state.set_sync_level(synclevel)
+            self._field_state.set_locs(vsync_locs)
 
         # TODO: Think this was a bug - need to use absolute locs here,
         # not position in pulse list
         # if vsync_locs is None or not len(vsync_locs):
-        #     vsync_locs = self.FieldState.getLocs()
+        #     vsync_locs = self._field_state.get_locs()
 
         # Now compute black level and try again
         black_means = self._pulses_blacklevel(field, pulses, vsync_locs, synclevel)
@@ -401,7 +401,7 @@ class Resync:
         if np.isnan(blacklevel).any() or np.isnan(synclevel).any():
             ldd.logger.debug("blacklevel or synclevel had a NaN!")
             # utils.plot_scope(field.data["video"]["demod_05"], title='Failed field demod05')
-            sl, bl = self.FieldState.getLevels()
+            sl, bl = self._field_state.pull_levels()
             if bl is not None and sl is not None:
                 blacklevel, synclevel = bl, sl
             else:
@@ -416,7 +416,7 @@ class Resync:
                 False,
             ):
                 if store_in_field_state:
-                    self.FieldState.setLevels(synclevel, blacklevel)
+                    self._field_state.set_levels(synclevel, blacklevel)
             else:
                 ldd.logger.debug("level check failed in pulses_levels!")
                 return None, None
@@ -448,8 +448,8 @@ class Resync:
         return pulses_starts, pulses_lengths
 
     def add_pulselevels_to_serration_measures(self, field, demod_05, sp):
-        if self.VsyncSerration.hasSerration():
-            sync, blank = self.VsyncSerration.getLevels()
+        if self._vsync_serration.hasSerration():
+            sync, blank = self._vsync_serration.getLevels()
         else:
             # it starts finding the sync from the minima in 5 ire steps
             ire_step = 5
@@ -532,7 +532,7 @@ class Resync:
             field, sp, pulses, pulse_hz_max, store_in_field_state=True
         )
         if f_sync is not None and f_blank is not None:
-            self.VsyncSerration.push_levels((f_sync, f_blank))
+            self._vsync_serration.push_levels((f_sync, f_blank))
         else:
             ldd.logger.debug(
                 "Level detection had issues, so don't store anything in VsyncSerration."
@@ -554,15 +554,15 @@ class Resync:
             full,
         )
 
-    def getpulses_override(self, field):
+    def get_pulses(self, field):
         if self.use_serration:
             return self.getpulses_serration(field)
         else:
             import vhsdecode.leveldetect
 
             sync, blank = None, None
-            if self.FieldState.hasLevels():
-                sync, blank = self.FieldState.getLevels()
+            if self._field_state.has_levels():
+                sync, blank = self._field_state.pull_levels()
                 pulses = self.findpulses(
                     field.data["video"]["demod_05"], (blank + sync) / 2
                 )
@@ -578,7 +578,7 @@ class Resync:
                 def_blank,
                 field.get_linefreq(),
             )
-            self.FieldState.setLevels(sync, blank)
+            self._field_state.set_levels(sync, blank)
 
             return self.findpulses(field.data["video"]["demod_05"], (blank + sync) / 2)
 
@@ -595,7 +595,7 @@ class Resync:
             self._debug_field(sync_reference)
 
         # measures the serration levels if possible
-        self.VsyncSerration.work(sync_reference)
+        self._vsync_serration.work(sync_reference)
         # adds the sync and blanking levels from the back porch
         self.add_pulselevels_to_serration_measures(field, sync_reference, sp)
 
@@ -605,7 +605,7 @@ class Resync:
         demod_data = (
             field.data["video"]["demod"]
             if not field.rf.options.sync_clip
-            else self.VsyncSerration.safe_sync_clip(
+            else self._vsync_serration.safe_sync_clip(
                 sync_reference, field.data["video"]["demod"]
             )
         )
@@ -615,13 +615,13 @@ class Resync:
         # self._temp_c += 1
 
         # if it has levels, then compensate blanking bias
-        if self.VsyncSerration.hasLevels() or self.FieldState.hasLevels():
-            if self.VsyncSerration.hasLevels():
-                new_sync, new_blank = self.VsyncSerration.getLevels()
+        if self._vsync_serration.hasLevels() or self._field_state.has_levels():
+            if self._vsync_serration.hasLevels():
+                new_sync, new_blank = self._vsync_serration.getLevels()
                 if self.level_check(sp, new_sync, new_blank, sync_reference):
                     sync, blank = new_sync, new_blank
-                elif self.FieldState.hasLevels():
-                    sync, blank = self.FieldState.getLevels()
+                elif self._field_state.has_levels():
+                    sync, blank = self._field_state.pull_levels()
                     ldd.logger.debug(
                         "Level check failed on serration measured levels [new_sync: %s, new_blank: %s], falling back to levels from FieldState [sync %s, blank %s].",
                         new_sync,
@@ -639,7 +639,7 @@ class Resync:
                     sync = sp.ire0
                     blank = sp.vsync_hz
             else:
-                sync, blank = self.FieldState.getLevels()
+                sync, blank = self._field_state.pull_levels()
 
             if self._sysparams_consistency_checks(field):
                 field.rf.SysParams["ire0"] = blank
@@ -659,7 +659,7 @@ class Resync:
             pulse_hz_min, pulse_hz_max = findpulses_range(sp, sp.vsync_hz)
 
             # checks if the DC offset is abnormal before correcting it
-            new_sync = self.VsyncSerration.mean_bias()
+            new_sync = self._vsync_serration.mean_bias()
             vsync_hz = sp.vsync_hz
             new_blank = iretohz(sp, hztoire(sp, new_sync) / 2)
 

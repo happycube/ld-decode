@@ -96,7 +96,7 @@ def field_class_from_formats(system: str, tape_format: str):
 
 
 def getpulses_override(field):
-    return field.rf.resync.getpulses_override(field)
+    return field.rf.resync.get_pulses(field)
 
 
 def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _system):
@@ -850,7 +850,7 @@ class FieldShared:
 
     def getpulses(self):
         """Find sync pulses in the demodulated video signal"""
-        return self.rf.resync.getpulses_override(self)
+        return self.rf.resync.get_pulses(self)
 
     def compute_deriv_error(self, linelocs, baserr):
         """Disabled this for now as tapes have large variations in line pos

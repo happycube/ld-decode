@@ -341,9 +341,9 @@ class VsyncSerration:
                         dualplot_scope(
                             data_copy,
                             np.clip(
-                                mask * max(data_copy),
-                                a_max=max(data_copy),
-                                a_min=min(data_copy),
+                                mask * np.amax(data_copy),
+                                a_max=np.amax(data_copy),
+                                a_min=np.amin(data_copy),
                             ),
                             title="VBI position",
                         )

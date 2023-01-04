@@ -268,7 +268,7 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
                 linelocs2[i] = field.linelocs1[i]
             else:
 
-                if max(hsync_area) < ire_30:
+                if np.amax(hsync_area) < ire_30:
                     porch_level = c_median(
                         demod_05[int(zc + (one_usec * 8)) : int(zc + (one_usec * 9))]
                     )
