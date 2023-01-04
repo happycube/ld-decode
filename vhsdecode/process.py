@@ -25,6 +25,7 @@ from vhsdecode.demod import replace_spikes, unwrap_hilbert, smooth_spikes
 
 from vhsdecode.field import field_class_from_formats
 from vhsdecode.video_eq import VideoEQ
+from vhsdecode.doc import DodOptions
 
 
 def parent_system(system):
@@ -347,13 +348,16 @@ class VHSRFDecode(ldd.RFDecode):
         # palm to avoid it throwing errors.
         self._color_system = system
 
-        self.dod_threshold_p = rf_options.get(
-            "dod_threshold_p", vhs_formats.DEFAULT_THRESHOLD_P_DDD
+        self._dod_options = DodOptions(
+            dod_threshold_p=rf_options.get(
+                "dod_threshold_p", vhs_formats.DEFAULT_THRESHOLD_P_DDD
+            ),
+            dod_threshold_a=rf_options.get("dod_threshold_a", None),
+            dod_hysteresis=rf_options.get(
+                "dod_hysteresis", vhs_formats.DEFAULT_HYSTERESIS
+            ),
         )
-        self.dod_threshold_a = rf_options.get("dod_threshold_a", None)
-        self.dod_hysteresis = rf_options.get(
-            "dod_hysteresis", vhs_formats.DEFAULT_HYSTERESIS
-        )
+
         self._chroma_trap = rf_options.get("chroma_trap", False)
         track_phase = None if is_secam(system) else rf_options.get("track_phase", None)
         self._recheck_phase = rf_options.get("recheck_phase", False)
@@ -392,9 +396,9 @@ class VHSRFDecode(ldd.RFDecode):
 
         # Make (intentionally) mutable copies of HZ<->IRE levels
         # (NOTE: used by upstream functions, we use a namedtuple to keep const values already)
-        self.DecoderParams['ire0']  = self.SysParams['ire0']
-        self.DecoderParams['hz_ire'] = self.SysParams['hz_ire']
-        self.DecoderParams['vsync_ire'] = self.SysParams['vsync_ire']
+        self.DecoderParams["ire0"] = self.SysParams["ire0"]
+        self.DecoderParams["hz_ire"] = self.SysParams["hz_ire"]
+        self.DecoderParams["vsync_ire"] = self.SysParams["vsync_ire"]
 
         # As agc can alter these sysParams values, store a copy to then
         # initial value for reference.
@@ -515,6 +519,10 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def color_system(self):
         return self._color_system
+
+    @property
+    def dod_options(self):
+        return self._dod_options
 
     def computevideofilters(self):
         self.Filters = {}

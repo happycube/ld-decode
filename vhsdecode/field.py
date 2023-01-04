@@ -881,7 +881,7 @@ class FieldShared:
         return baserr
 
     def dropout_detect(self):
-        return detect_dropouts_rf(self)
+        return detect_dropouts_rf(self, self.rf.dod_options)
 
     def get_timings(self):
         """Get the expected length and tolerance for sync pulses. Overriden to allow wider tolerance."""

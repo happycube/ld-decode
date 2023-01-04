@@ -289,7 +289,7 @@ class Resync:
         self._vsync_serration = VsyncSerration(fs, sysparams, divisor)
         self._field_state = FieldState(sysparams)
         self.eq_pulselen = self._vsync_serration.getEQpulselen()
-        self.linelen = self._vsync_serration.getLinelen()
+        self.linelen = self._vsync_serration.get_line_len()
         self.use_serration = True
 
         # self._temp_c = 0
@@ -452,8 +452,8 @@ class Resync:
         return pulses_starts, pulses_lengths
 
     def add_pulselevels_to_serration_measures(self, field, demod_05, sp):
-        if self._vsync_serration.hasSerration():
-            sync, blank = self._vsync_serration.getLevels()
+        if self._vsync_serration.has_serration():
+            sync, blank = self._vsync_serration.pull_levels()
         else:
             # it starts finding the sync from the minima in 5 ire steps
             ire_step = 5
@@ -587,10 +587,7 @@ class Resync:
             return self.findpulses(field.data["video"]["demod_05"], (blank + sync) / 2)
 
     def _get_pulses_serration(self, field, check_levels):
-        """Find sync pulses in the demodulated video signal
-
-        NOTE: TEMPORARY override until an override for the value itself is added upstream.
-        """
+        """Find sync pulses in the demodulated video signal"""
 
         sp = field.rf.sysparams_const
 
@@ -620,9 +617,9 @@ class Resync:
         # self._temp_c += 1
 
         # if it has levels, then compensate blanking bias
-        if self._vsync_serration.hasLevels() or self._field_state.has_levels():
-            if self._vsync_serration.hasLevels():
-                new_sync, new_blank = self._vsync_serration.getLevels()
+        if self._vsync_serration.has_levels() or self._field_state.has_levels():
+            if self._vsync_serration.has_levels():
+                new_sync, new_blank = self._vsync_serration.pull_levels()
                 if self.level_check(sp, new_sync, new_blank, sync_reference):
                     sync, blank = new_sync, new_blank
                 elif self._field_state.has_levels():

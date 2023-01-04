@@ -131,19 +131,19 @@ class VsyncSerration:
     def getEQpulselen(self):
         return self.eq_pulselen * self._divisor
 
-    def getLinelen(self):
+    def get_line_len(self):
         return self.linelen * self._divisor
 
     # returns the measured sync level and blank level
-    def getLevels(self):
+    def pull_levels(self):
         sync, blank = self.levels[0].pull(), self.levels[1].pull()
         return sync, blank
 
     # returns true if it has levels above the min_watermark
-    def hasLevels(self):
+    def has_levels(self):
         return self.levels[0].has_values() and self.levels[1].has_values()
 
-    def hasSerration(self):
+    def has_serration(self):
         return self.found_serration
 
     # it adds external levels to the stack
@@ -285,7 +285,7 @@ class VsyncSerration:
                 self.found_serration = True
                 self.push_levels(self._get_serration_sync_levels(serration))
                 if self.show_decoded:
-                    sync, blank = self.getLevels()
+                    sync, blank = self.get_levels()
                     marker = np.ones(len(serration)) * blank
                     dualplot_scope(
                         serration,
@@ -363,14 +363,14 @@ class VsyncSerration:
     # this runs the measures
     def work(self, data):
         self.found_serration = False
-        self._vsync_envelope(data[::self._divisor])
-        if self.hasLevels() and self.found_serration:
+        self._vsync_envelope(data[:: self._divisor])
+        if self.has_levels() and self.found_serration:
             ldd.logger.debug(
                 "VBI serration levels %d - Sync tip: %.02f kHz, Blanking (ire0): %.02f kHz"
                 % (
                     self.levels[0].size(),
-                    self.getLevels()[0] / 1e3,
-                    self.getLevels()[1] / 1e3,
+                    self.get_levels()[0] / 1e3,
+                    self.get_levels()[1] / 1e3,
                 )
             )
         elif self.fieldcount % 10 == 0:
@@ -382,6 +382,8 @@ class VsyncSerration:
 
     # safe clips the bottom of the sync pulses, but not the picture area
     def safe_sync_clip(self, sync_ref, data):
-        if self.hasLevels():
-            data = _safe_sync_clip(sync_ref, data, self.getLevels(), self.getEQpulselen())
+        if self.has_levels():
+            data = _safe_sync_clip(
+                sync_ref, data, self.get_levels(), self.getEQpulselen()
+            )
         return data
