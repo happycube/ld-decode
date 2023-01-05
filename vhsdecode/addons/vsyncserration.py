@@ -285,7 +285,7 @@ class VsyncSerration:
                 self.found_serration = True
                 self.push_levels(self._get_serration_sync_levels(serration))
                 if self.show_decoded:
-                    sync, blank = self.get_levels()
+                    sync, blank = self.pull_levels()
                     marker = np.ones(len(serration)) * blank
                     dualplot_scope(
                         serration,
@@ -369,8 +369,8 @@ class VsyncSerration:
                 "VBI serration levels %d - Sync tip: %.02f kHz, Blanking (ire0): %.02f kHz"
                 % (
                     self.levels[0].size(),
-                    self.get_levels()[0] / 1e3,
-                    self.get_levels()[1] / 1e3,
+                    self.pull_levels()[0] / 1e3,
+                    self.pull_levels()[1] / 1e3,
                 )
             )
         elif self.fieldcount % 10 == 0:
@@ -384,6 +384,6 @@ class VsyncSerration:
     def safe_sync_clip(self, sync_ref, data):
         if self.has_levels():
             data = _safe_sync_clip(
-                sync_ref, data, self.get_levels(), self.getEQpulselen()
+                sync_ref, data, self.pull_levels(), self.getEQpulselen()
             )
         return data

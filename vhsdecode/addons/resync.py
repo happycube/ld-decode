@@ -241,7 +241,7 @@ class FieldState:
         # ma_min_watermark = int(ma_depth / 2)
         # TODO: Set to 0 for now to start using detected levels on the first field
         # May want to alter later to do this more dynamically.
-        ma_min_watermark = 1
+        ma_min_watermark = 0
         self._blanklevels = utils.StackableMA(
             window_average=ma_depth, min_watermark=ma_min_watermark
         )

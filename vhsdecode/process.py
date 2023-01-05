@@ -42,6 +42,15 @@ def is_secam(system: str):
     return system == "SECAM" or system == "MESECAM"
 
 
+def _computefilters_dummy(self):
+    self.Filters = {}
+    # Needs to be defined here as it's referenced in constructor.
+    self.Filters["F05_offset"] = 32
+
+# HACK - override this in a hacky way for now to skip generating some filters we don't use.
+# including one that requires > 20 mhz sample rate.
+ldd.RFDecode.computefilters = _computefilters_dummy
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -473,12 +482,21 @@ class VHSRFDecode(ldd.RFDecode):
         self.blockcut_end = 1024
 
         level_detect_divisor = rf_options.get("level_detect_divisor", 1)
-        if level_detect_divisor < 1 or level_detect_divisor > 6:
+
+        if level_detect_divisor < 1 or level_detect_divisor > 10:
             ldd.logger.warning(
                 "Invalid level detect divisor value %s, using default.",
                 level_detect_divisor,
             )
             level_detect_divisor = 1
+        elif inputfreq / level_detect_divisor < 4:
+            ldd.logger.warning(
+                "Level detect divisor too high (%s) for input frequency (%s) mhz. Limiting to %s",
+                level_detect_divisor,
+                inputfreq,
+                int(inputfreq // 4),
+            )
+            level_detect_divisor = int(inputfreq // 4)
 
         self.resync = Resync(
             self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
@@ -523,6 +541,11 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def dod_options(self):
         return self._dod_options
+
+    def computefilters(self):
+        # Override the stuff used in lddecode to skip generating filters we don't use.
+        self.computevideofilters()
+        self.computedelays()
 
     def computevideofilters(self):
         self.Filters = {}

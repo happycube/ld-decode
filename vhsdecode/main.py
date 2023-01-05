@@ -171,7 +171,7 @@ def main(use_gui=False):
         metavar="value",
         type=int,
         default=3,
-        help="Use only every nth sample for vsync serration code - may improve speed at cost of minor accuracy. Limited to max 6.",
+        help="Use only every nth sample for vsync serration code - may improve speed at cost of minor accuracy. Limited to max 10.",
     )
     debug_group.add_argument(
         "--no_resample",
