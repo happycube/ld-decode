@@ -25,15 +25,16 @@
 #include "closedcaption.h"
 #include "vbiutilities.h"
 
-// Public method to read CEA-608 Closed Captioning data (NTSC only).
+// Public method to read CEA-608 Closed Captioning data.
 // Return true if CC data was decoded successfully, false otherwise.
 bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
                                const LdDecodeMetaData::VideoParameters& videoParameters,
                                LdDecodeMetaData::Field& fieldMetadata)
 {
     // Reset data to invalid
-    fieldMetadata.ntsc.ccData0 = -1;
-    fieldMetadata.ntsc.ccData1 = -1;
+    fieldMetadata.closedCaption.inUse = false;
+    fieldMetadata.closedCaption.data0 = -1;
+    fieldMetadata.closedCaption.data1 = -1;
 
     // Determine the 16-bit zero-crossing point
     qint32 zcPoint = ((videoParameters.white16bIre - videoParameters.black16bIre) / 4) + videoParameters.black16bIre;
@@ -98,13 +99,15 @@ bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
     if (isEvenParity(byte0) && byte0Parity != 1) {
         qDebug() << "ClosedCaption::getData(): First byte failed parity check!";
     } else {
-        fieldMetadata.ntsc.ccData0 = byte0;
+        fieldMetadata.closedCaption.data0 = byte0;
+        fieldMetadata.closedCaption.inUse = true;
     }
 
     if (isEvenParity(byte1) && byte1Parity != 1) {
         qDebug() << "ClosedCaption::getData(): Second byte failed parity check!";
     } else {
-        fieldMetadata.ntsc.ccData1 = byte1;
+        fieldMetadata.closedCaption.data1 = byte1;
+        fieldMetadata.closedCaption.inUse = true;
     }
 
     return true;

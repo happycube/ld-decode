@@ -394,9 +394,8 @@ void MainWindow::showFrame()
     updateFrame();
 
     // Update the closed caption dialog
-    if (tbcSource.getSystem() == NTSC) {
-        closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(), tbcSource.getCcData1());
-    }
+    closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(), tbcSource.getCcData1());
+
     // QT Bug workaround for some macOS versions
     #if defined(Q_OS_MACOS)
     	repaint();
