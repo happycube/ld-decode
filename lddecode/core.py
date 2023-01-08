@@ -1077,7 +1077,8 @@ class DemodCache:
             for k in self.lru[self.lrusize :]:
                 if k in self.blocks:
                     del self.blocks[k]
-                    del self.block_status[k]
+                if k in self.block_status:
+                    self.block_status[k]
 
         self.lru = self.lru[: self.lrusize]
 
