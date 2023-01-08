@@ -140,17 +140,20 @@ For Ubuntu 22.04 that is:
     sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake
 
 
-Install dependencies for GPU FLAC compression support:
+### Optional dependencies (for extra features)
+For optional GPU FLAC compression support:
 
     sudo apt install make ocl-icd-opencl-dev mono-runtime
 
-Install all dependencies required for optional gooey graphical user interface:
+If you want to try the gooey gui wrapper for vhs-decode (```vhs-decode-gui```) :
 
     sudo apt-get install build-essential dpkg-dev freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libjpeg-dev libnotify-dev libpng-dev libsdl2-dev libsm-dev libtiff-dev libwebkit2gtk-4.0-dev libxtst-dev python3.9-dev libpython3.9-dev
 
 Then install gooey
 
     pip3 install gooey
+
+## Building
 
 Download VHS-Decode:
 
