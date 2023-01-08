@@ -167,13 +167,15 @@ Install VHS-Decode:
 
 Compile and Install ld-tools suite: (Required)
 
-    mkdir build
-    cd build
-    cmake ..
+    mkdir build2
+    cd build2
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5
     make -j4
     sudo make install
 
 To update do `git pull` while inside of the vhs-decode directory.
+
+### Note debian/ubuntu does not have a qt6 version of qwt in repositories as of yet so have to inform the build script to use Qt5 if both qt5 and qt6 are installed with -DUSE_QT_VERSION=5 as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
 
 # Usage
 
