@@ -39,10 +39,15 @@ using std::vector;
 // Generate an SCC format timestamp based on the field index
 QString generateTimeStamp(qint32 fieldIndex, VideoSystem system)
 {
-    // Set some constants for the timecode calculations
-    double fieldsPerSecond = ((system == PAL) ? 25 : 29.97) * 2.0;
-    double fieldsPerMinute = fieldsPerSecond * 60;
-    double fieldsPerHour = fieldsPerMinute * 60;
+    // Convert to a 0-based count of frames
+    const qint32 frameIndex = (fieldIndex - 1) / 2;
+
+    // Set some constants for the timecode calculations.
+    // We are generating non-drop timecode (:ff not ;ff), so
+    // the 29.97 FPS systems notionally have 30 FPS.
+    const qint32 framesPerSecond = (system == PAL) ? 25 : 30;
+    const qint32 framesPerMinute = framesPerSecond * 60;
+    const qint32 framesPerHour = framesPerMinute * 60;
 
     // Since the subtitle is relative to the video we
     // can simply calculate the timecode from the sequential
@@ -54,18 +59,15 @@ QString generateTimeStamp(qint32 fieldIndex, VideoSystem system)
     // frame-number/CLV timecode; as both are useful depending on
     // the use-case?
     //
-    qint32 hh = static_cast<qint32>((fieldIndex / fieldsPerHour));
-    qint32 mm = static_cast<qint32>((fieldIndex / fieldsPerMinute)) % 60;
-    qint32 ss = (fieldIndex % static_cast<qint32>(fieldsPerMinute)) / fieldsPerSecond;
-    qint32 ff = fieldIndex % static_cast<qint32>(fieldsPerMinute) % static_cast<qint32>(fieldsPerSecond);
-
-    // Output is expecting frames, not fields, so approximate it
-    ff = ff / 2;
+    qint32 hh = frameIndex / framesPerHour;
+    qint32 mm = (frameIndex / framesPerMinute) % 60;
+    qint32 ss = (frameIndex % framesPerMinute) / framesPerSecond;
+    qint32 ff = (frameIndex % framesPerMinute) % framesPerSecond;
 
     // Create the timestamp
     return QString("%1").arg(hh, 2, 10, QLatin1Char('0')) + ":" +
                               QString("%1").arg(mm, 2, 10, QLatin1Char('0')) + ":" +
-                              QString("%1").arg(ss, 2, 10, QLatin1Char('0')) + ";" +
+                              QString("%1").arg(ss, 2, 10, QLatin1Char('0')) + ":" +
                               QString("%1").arg(ff, 2, 10, QLatin1Char('0'));
 }
 
