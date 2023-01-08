@@ -321,6 +321,8 @@ class RFDecode:
         self.blockcut_end = 0
         self.system = system
 
+        self.setupcount = 0
+
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_NotchFilter = extra_options.get("PAL_V4300D_NotchFilter", False)
         lowband = extra_options.get("lowband", False)
@@ -392,6 +394,8 @@ class RFDecode:
 
     def computefilters(self):
         """ (re)compute the filter sets """
+
+        self.setupcount += 1
 
         self.computevideofilters()
 
@@ -813,6 +817,8 @@ class RFDecode:
                 else audio_out
             )
 
+        rv['setupcount'] = self.setupcount
+
         return rv
 
     # Second phase audio filtering.  This works on a whole field's samples, since
@@ -1014,6 +1020,8 @@ class DemodCache:
         self.lock = threading.Lock()
         self.blocks = {}
 
+        self.passcounts = {}
+
         if platform.system() == "Darwin":
             set_start_method("fork")
 
@@ -1024,9 +1032,9 @@ class DemodCache:
         # find a better way to do this later.
         thread_type = Process if platform.system() != "Windows" else threading.Thread
 
-        self.q_in = JoinableQueue()
-        self.q_in_metadata = []
+        self.block_status = {}
 
+        self.q_in = JoinableQueue()
         self.q_out = Queue()
 
         self.threadpipes = []
@@ -1045,23 +1053,17 @@ class DemodCache:
         self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
         self.deqeue_thread.start()
 
-        self.ended = False
+        self.request = 0
 
     def end(self):
-        if not self.ended:
-            # stop workers
-            for i in self.threads:
-                self.q_in.put(None)
+        # stop workers
+        for i in self.threads:
+            self.q_in.put(None)
 
-            for t in self.threads:
-                t.join()
+        for t in self.threads:
+            t.join()
 
-            self.q_out.put(None)
-            # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
-            # Might want to do this in a cleaner way later but this works for now.
-            if hasattr(self.loader, "_close") and callable(self.loader._close):
-                self.loader._close()
-            self.ended = True
+        self.q_out.put(None)
 
     def __del__(self):
         self.end()
@@ -1075,6 +1077,8 @@ class DemodCache:
             for k in self.lru[self.lrusize :]:
                 if k in self.blocks:
                     del self.blocks[k]
+                if k in self.block_status:
+                    self.block_status[k]
 
         self.lru = self.lru[: self.lrusize]
 
@@ -1085,6 +1089,7 @@ class DemodCache:
                 pass
             elif "demod" in self.blocks[k]:
                 with self.lock:
+                    del self.block_status[k]
                     del self.blocks[k]["demod"]
 
     def apply_newparams(self, newparams):
@@ -1111,7 +1116,7 @@ class DemodCache:
                 return
 
             if item[0] == "DEMOD":
-                blocknum, block, target_MTF = item[1:]
+                blocknum, block, target_MTF, request = item[1:]
 
                 output = {}
 
@@ -1121,14 +1126,15 @@ class DemodCache:
                 else:
                     fftdata = block["fft"]
 
-                if (
+                if True or (
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
                     output["demod"] = self.rf.demodblock(
-                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
                     output["MTF"] = target_MTF
+                    output["request"] = request
 
                 self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
@@ -1137,10 +1143,11 @@ class DemodCache:
             if not ispiped:
                 self.q_in.task_done()
 
-    def doread(self, blocknums, MTF, dodemod=True):
+    def doread(self, blocknums, MTF, dodemod=False):
         need_blocks = []
 
         hc = 0
+        wc = 0
 
         with self.lock:
             for b in blocknums:
@@ -1153,37 +1160,32 @@ class DemodCache:
                         self.blocks[b] = None
                         return None
 
-                    # ??? - I think I put it in to make sure it isn't erased for whatever reason, but might not be needed
-                    # rawdatac = rawdata.copy()
-
                     self.blocks[b] = {}
                     self.blocks[b]["rawinput"] = rawdata
 
                 if self.blocks[b] is None:
                     return None
 
-                if dodemod:
-                    handling = need_demod = ("demod" not in self.blocks[b]) or (
-                        np.abs(self.blocks[b]["MTF"] - MTF) > self.MTF_tolerance
-                    )
-                else:
-                    handling = need_demod = False
+                try:
+                    waiting = self.block_status[b]["waiting"]
+                except:
+                    waiting = False
 
-                # Check to see if it's already in queue to process
-                if need_demod:
-                    for inqueue in self.q_in_metadata:
-                        if inqueue[0] == b and (
-                            np.abs(inqueue[1] - MTF) <= self.MTF_tolerance
-                        ):
-                            handling = False
-                            # print(b)
+                try:
+                    # Until the block is actually ready, this comparison will hit an unknown key
+                    if not dodemod and self.blocks[b]["request"] == self.block_status[b]['request']:
+                        continue
+                except:
+                    pass
 
-                    need_blocks.append(b)
-
-                if handling:
-                    self.q_in.put(("DEMOD", b, self.blocks[b], MTF))
-                    self.q_in_metadata.append((b, MTF))
+                if dodemod or not waiting:
+                    self.block_status[b] = {'MTF': MTF, 'waiting': True, 'request': self.request}
+                    self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
                     hc = hc + 1
+
+                if self.block_status[b]["waiting"]:
+                    need_blocks.append(b)
+                    wc += 1
 
         return need_blocks
 
@@ -1202,17 +1204,16 @@ class DemodCache:
                     logger.error(
                         "incomplete demodulated block placed on queue, block #%d", blocknum
                     )
-                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
+                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
+                    self.lock.release()
                     continue
 
-                self.q_in_metadata.remove((blocknum, item["MTF"]))
+                if item['request'] == self.block_status[blocknum]['request']:
+                    for k in item.keys():
+                        self.blocks[blocknum][k] = item[k]
 
-                for k in item.keys():
-                    if k == "demod" and (
-                        np.abs(item["MTF"] - self.currentMTF) > self.MTF_tolerance
-                    ):
-                        continue
-                    self.blocks[blocknum][k] = item[k]
+                    if 'demod' in item.keys():
+                        self.block_status[blocknum]['waiting'] = False
 
                 if "input" not in self.blocks[blocknum]:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
@@ -1225,6 +1226,8 @@ class DemodCache:
         t = {"input": [], "fft": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
         self.currentMTF = MTF
+        if dodemod:
+            self.request += 1
 
         end = begin + length
 
