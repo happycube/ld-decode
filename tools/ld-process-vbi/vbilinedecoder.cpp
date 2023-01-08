@@ -78,10 +78,6 @@ void VbiLineDecoder::run()
             WhiteFlag whiteFlag;
             whiteFlag.decodeLine(getFieldLine(sourceFieldData, 11, videoParameters), videoParameters, fieldMetadata);
 
-            // Get the closed captioning from field line 21
-            ClosedCaption closedCaption;
-            closedCaption.decodeLine(getFieldLine(sourceFieldData, 21, videoParameters), videoParameters, fieldMetadata);
-
             fieldMetadata.ntsc.inUse = true;
         }
 
@@ -93,6 +89,11 @@ void VbiLineDecoder::run()
                 break;
             }
         }
+
+        // Get Closed Caption data from line 21 (525-line) or 22 (625-line)
+        ClosedCaption closedCaption;
+        closedCaption.decodeLine(getFieldLine(sourceFieldData, (videoParameters.system == PAL) ? 22 : 21, videoParameters),
+                                 videoParameters, fieldMetadata);
 
         // Write the result to the output metadata
         if (!decoderPool.setOutputField(fieldNumber, fieldMetadata)) {
