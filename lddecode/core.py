@@ -1014,7 +1014,7 @@ class DemodCache:
 
         # Cache dictionary - key is block #, which holds data for that block
         self.lrusize = cachesize
-        self.prefetch = 128  # TODO: set this to proper amount for format
+        self.prefetch = 32  # TODO: set this to proper amount for format
         self.lru = []
 
         self.lock = threading.Lock()
