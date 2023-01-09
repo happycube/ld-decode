@@ -915,7 +915,8 @@ class FieldShared:
         wow = np.ones(len(lineinfo))
 
         for l in range(0, len(wow) - 1):
-            wow[l] = max(min(self.get_linelen(l) / self.inlinelen, 1.02), 0.9)
+            computed = self.get_linelen(l) / self.inlinelen
+            wow[l] = computed if inrange(computed, 0.9, 1.02) else 1.0
 
         for l in range(self.lineoffset, self.lineoffset + 10):
             wow[l] = np.median(wow[l : l + 4])
