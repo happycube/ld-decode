@@ -1014,13 +1014,11 @@ class DemodCache:
 
         # Cache dictionary - key is block #, which holds data for that block
         self.lrusize = cachesize
-        self.prefetch = 32  # TODO: set this to proper amount for format
+        self.prefetch = 128  # TODO: set this to proper amount for format
         self.lru = []
 
         self.lock = threading.Lock()
         self.blocks = {}
-
-        self.passcounts = {}
 
         if platform.system() == "Darwin":
             set_start_method("fork")
@@ -1082,19 +1080,36 @@ class DemodCache:
 
         self.lru = self.lru[: self.lrusize]
 
-    def flush_demod(self):
+    def flush_demod(self, first_block = 0, prefetch_only=False):
         """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
-        for k in self.blocks.keys():
-            if self.blocks[k] is None:
-                pass
-            elif "demod" in self.blocks[k]:
-                with self.lock:
-                    del self.block_status[k]
-                    del self.blocks[k]["demod"]
+        blocks_toredo = []
+
+        with self.lock:
+            for k in self.block_status.keys():
+                if k < first_block:
+                    continue 
+
+                if prefetch_only and self.block_status[k]['prefetch'] == False:
+                    continue
+
+                if self.block_status[k]['prefetch'] == True:
+                    blocks_toredo.append(k)
+
+                self.block_status[k] = {'MTF': -1, 'request': -1, 'waiting': False, 'prefetch': False}
+
+            for k in self.blocks.keys():
+                if k < first_block or self.blocks[k] is None or 'demod' not in self.blocks[k]:
+                    continue
+
+                if k not in blocks_toredo:
+                    blocks_toredo.append(k)
+
+                del self.blocks[k]["demod"]
+
+        return blocks_toredo
 
     def apply_newparams(self, newparams):
         for k in newparams.keys():
-            # print(k, k in self.rf.SysParams, k in self.rf.DecoderParams)
             if k in self.rf.SysParams:
                 self.rf.SysParams[k] = newparams[k]
 
@@ -1143,11 +1158,14 @@ class DemodCache:
             if not ispiped:
                 self.q_in.task_done()
 
-    def doread(self, blocknums, MTF, dodemod=False):
+    def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = []
+        queuelist = []
+        reached_end = False
 
-        hc = 0
-        wc = 0
+        if redo:
+            for b in self.flush_demod(prefetch_only=True):
+                queuelist.append(b)
 
         with self.lock:
             for b in blocknums:
@@ -1164,7 +1182,8 @@ class DemodCache:
                     self.blocks[b]["rawinput"] = rawdata
 
                 if self.blocks[b] is None:
-                    return None
+                    reached_end = True
+                    break
 
                 try:
                     waiting = self.block_status[b]["waiting"]
@@ -1173,21 +1192,22 @@ class DemodCache:
 
                 try:
                     # Until the block is actually ready, this comparison will hit an unknown key
-                    if not dodemod and self.blocks[b]["request"] == self.block_status[b]['request']:
+                    if not redo and not waiting and self.blocks[b]["request"] == self.block_status[b]['request']:
                         continue
                 except:
                     pass
 
-                if dodemod or not waiting:
-                    self.block_status[b] = {'MTF': MTF, 'waiting': True, 'request': self.request}
-                    self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
-                    hc = hc + 1
-
-                if self.block_status[b]["waiting"]:
+                if redo or not waiting:
+                    queuelist.append(b)
                     need_blocks.append(b)
-                    wc += 1
+                elif self.block_status[b]["waiting"]:
+                    need_blocks.append(b)
 
-        return need_blocks
+            for b in queuelist:
+                self.block_status[b] = {'MTF': MTF, 'waiting': True, 'request': self.request, 'prefetch': prefetch}
+                self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
+
+        return None if reached_end else need_blocks
 
     def dequeue(self):
         # This is the thread's main loop - run until killed.
@@ -1221,12 +1241,12 @@ class DemodCache:
                     ]
 
 
-    def read(self, begin, length, MTF=0, dodemod=True):
+    def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block #
         t = {"input": [], "fft": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
         self.currentMTF = MTF
-        if dodemod:
+        if forceredo:
             self.request += 1
 
         end = begin + length
@@ -1236,9 +1256,9 @@ class DemodCache:
             end // self.blocksize, (end // self.blocksize) + self.prefetch
         )
 
-        need_blocks = self.doread(toread, MTF, dodemod)
+        need_blocks = self.doread(toread, MTF, forceredo)
 
-        if dodemod is False:
+        if getraw:
             raw = [self.blocks[toread[0]]["rawinput"][begin % self.blocksize :]]
             for i in range(toread[1], toread[-2]):
                 raw.append(self.blocks[i]["rawinput"])
@@ -1276,7 +1296,7 @@ class DemodCache:
 
         rv["startloc"] = (begin // self.blocksize) * self.blocksize
 
-        need_blocks = self.doread(toread_prefetch, MTF)
+        need_blocks = self.doread(toread_prefetch, MTF, prefetch=True)
 
         return rv
 
@@ -3572,7 +3592,7 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
 
-    def decodefield(self, initphase=False):
+    def decodefield(self, initphase=False, redo=False):
         """ returns field object if valid, and the offset to the next decode """
         self.readloc = int(self.fdoffset - self.rf.blockcut)
         if self.readloc < 0:
@@ -3585,6 +3605,7 @@ class LDdecode:
             self.readloc_block * self.blocksize,
             self.numblocks * self.blocksize,
             self.mtf_level,
+            forceredo=redo
         )
 
         if self.rawdecode is None:
@@ -3629,7 +3650,7 @@ class LDdecode:
                 done = True
 
             self.fieldloc = self.fdoffset
-            f, offset = self.decodefield(initphase=initphase)
+            f, offset = self.decodefield(initphase=initphase, redo=redo)
 
             if f is None:
                 if offset is None:
