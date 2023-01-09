@@ -179,6 +179,7 @@ def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
 
     blocklen_half = rf.blocklen // 2
     freqs = np.linspace(0, rf.freq_hz_half, blocklen_half)
+    ax2.set_ylim(bottom=-100)
     ax2.plot(
         freqs, 20 * np.log10(filter_deemp[:blocklen_half]), label="Deemphasis only"
     )
