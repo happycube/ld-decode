@@ -196,13 +196,13 @@ See the readme file for [CXADC](https://github.com/happycube/cxadc-linux3#readme
 To see a live preview of tape signal being received by a CXADC card, note that the video head tracked signal will be unstable or wobbly if settings are not the same; you may only see "signal flash" if in 16-bit mode for example.
 This is quite useful if you don't own a CRT with Horizontal/Vertical shifting, as it will allow you to inspect the full area for alignment and/or tracking issues.
 
-PAL framing for 35.8 MHz/8-bit mode:
+PAL framing for the default 28.64 MHz/8-bit mode:
 
-    ffplay -hide_banner -async 1 -f rawvideo -pix_fmt gray8 -video_size 2291x625 -i /dev/cxadc0 -vf scale=1135x625,eq=gamma=0.5:contrast=1.5
+    ffplay -hide_banner -async 1 -f rawvideo -pix_fmt gray8 -video_size 1832x625 -i /dev/cxadc0 -vf scale=1135x625,eq=gamma=0.5:contrast=1.5
 
-NTSC framing for 35.8 MHz/8-bit mode:
+NTSC framing for 28.64 MHz/8-bit mode:
 
-    ffplay -hide_banner -async 1 -f rawvideo -pix_fmt gray8 -video_size 2275x525 -i /dev/cxadc0 -vf scale=910x525,eq=gamma=0.5:contrast=1.5
+    ffplay -hide_banner -async 1 -f rawvideo -pix_fmt gray8 -video_size 1820x525 -i /dev/cxadc0 -vf scale=910x525,eq=gamma=0.5:contrast=1.5
 
 Capture 30 seconds of tape signal using CXADC driver 8-bit samples
 
