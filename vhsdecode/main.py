@@ -56,7 +56,7 @@ def main(use_gui=False):
         metavar="tape_format",
         default="VHS",
         choices=supported_tape_formats,
-        help="Tape format, currently VHS (Default), SVHS or UMATIC are supported.",
+        help="Tape format, currently VHS (Default), SVHS, UMATIC, BETAMAX VIDEO8, HI8 are supported",
     )
     luma_group = parser.add_argument_group("Luma decoding options")
     luma_group.add_argument(
