@@ -1519,6 +1519,9 @@ class Field:
     def get_linelen(self, line=None, linelocs=None):
         # compute adjusted frequency from neighboring line lengths
 
+        if line is None:
+            return self.rf.linelen
+
         # If this is run early, line locations are unknown, so return
         # the general value
         if linelocs is None:
@@ -1526,9 +1529,6 @@ class Field:
                 linelocs = self.linelocs
             else:
                 return self.rf.linelen
-
-        if line is None:
-            return self.rf.linelen
 
         if line >= self.linecount + self.lineoffset:
             length = (self.linelocs[line + 0] - self.linelocs[line - 1]) / 1
@@ -2111,8 +2111,10 @@ class Field:
         vsync_locs = []
         vsync_means = []
 
+        minlength = self.usectoinpx(10)
+
         for i, p in enumerate(pulses):
-            if p.len > self.usectoinpx(10):
+            if p.len > minlength:
                 vsync_locs.append(i)
                 vsync_means.append(
                     np.mean(
@@ -3331,6 +3333,9 @@ class LDdecode:
             from line_profiler import LineProfiler
 
             self.lpf = LineProfiler()
+            self.lpf.add_function(Field.process)
+            self.lpf.add_function(Field.compute_linelocs)
+            self.lpf.add_function(Field.getpulses)
 
         self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
@@ -3605,6 +3610,7 @@ class LDdecode:
                 self.lpf.add_function(f.refine_linelocs_burst)
                 self.lpf.add_function(f.compute_burst_offsets)
 
+            self.lpf.add_function(f.get_linelen)
             self.lpf.add_function(f.get_burstlevel)
             self.lpf.add_function(f.compute_line_bursts)
             lpf_wrapper = self.lpf(f.process)
