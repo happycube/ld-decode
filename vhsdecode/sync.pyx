@@ -202,6 +202,7 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
     rf = field.rf
     cdef int normal_hsync_length = field.usectoinpx(rf.SysParams["hsyncPulseUS"])
     cdef int one_usec = rf.freq
+    cdef float sample_rate_mhz = rf.freq
     cdef bint is_pal = rf.system == "PAL"
     cdef bint disable_right_hsync = rf.options.disable_right_hsync
     cdef double zc_threshold = rf.iretohz(rf.SysParams["vsync_ire"] / 2)
@@ -371,6 +372,7 @@ def refine_linelocs_hsync(field, np.ndarray linebad):
                 linebad[i] = False
                 # TODO: Magic value here, this seem to give be approximately correct results
                 # but may not be ideal for all inputs.
-                linelocs2[i] = right_cross - normal_hsync_length + 2.25
+                # Value based on default sample rate so scale if it's different.
+                linelocs2[i] = right_cross - normal_hsync_length + (2.25 * (sample_rate_mhz / 40.0))
 
     return linelocs2

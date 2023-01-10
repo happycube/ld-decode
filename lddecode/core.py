@@ -1132,7 +1132,9 @@ class DemodCache:
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
+                    ## TODO: Temp change here to supply data again, push to upstream.
                     output["demod"] = self.rf.demodblock(
+                        data=block["rawinput"],
                         fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
                     output["MTF"] = target_MTF

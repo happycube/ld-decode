@@ -813,6 +813,8 @@ class VHSRFDecode(ldd.RFDecode):
                 self.blocklen,
                 self.Filters["FVideoNotch"],
                 self._notch,
+                move=int(10 * (self.freq / 40))
+                # TODO: Do we need to tweak move elsewhere too?
                 # if cafc is enabled, this filtering will be done after TBC
             )
             if not self._do_cafc
