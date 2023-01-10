@@ -2829,7 +2829,6 @@ class Field:
         passcount = 0
         while passcount < 2:
             rising_count = 0
-            count = 0
             phase_offset = []
 
             # this subroutine is in utils.py, broken out so it can be JIT'd
@@ -2837,11 +2836,10 @@ class Field:
                 burstarea, 0, len(burstarea) - 1, threshold
             )
 
-            for prevalue, zc in bursts:
-                count += 1
+            if len(bursts) == 0:
+                return None, None
 
-                #print(prevalue, zc)
-                
+            for prevalue, zc in bursts:
                 zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
                 zc_round = nb_round(zc_cycle)
 
@@ -2852,14 +2850,10 @@ class Field:
                 else:
                     rising_count += zc_round % 2
 
-            if count:
-                phase_adjust += nb_median(np.array(phase_offset))
-            else:
-                return None, None
-
+            phase_adjust += nb_median(np.array(phase_offset))
             passcount += 1
 
-        rising = (rising_count / count) > 0.5
+        rising = (rising_count / len(bursts)) > 0.5
 
         return rising, -phase_adjust
 
