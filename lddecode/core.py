@@ -42,7 +42,7 @@ from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
-from .utils import LRUupdate, clb_findnextburst, angular_mean, phase_distance
+from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector
 
@@ -322,6 +322,8 @@ class RFDecode:
         self.blockcut_end = 0
         self.system = system
 
+        self.setupcount = 0
+
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_NotchFilter = extra_options.get("PAL_V4300D_NotchFilter", False)
         lowband = extra_options.get("lowband", False)
@@ -394,6 +396,8 @@ class RFDecode:
     def computefilters(self):
         """ (re)compute the filter sets """
 
+        self.setupcount += 1
+
         self.computevideofilters()
 
         # This is > 0 because decode_analog_audio is in khz (44.1, 48, 3xHSYNC, etc).
@@ -431,8 +435,6 @@ class RFDecode:
             iirfilt = filtfft(self.Filters['AC3_iir'], self.blocklen)
 
             self.Filters['AC3'] = iirfilt * firfilt
-            #self.Filters['AC3'] = firfilt
-            #self.Filters['AC3'] = iirfilt
 
         self.computedelays()
 
@@ -547,7 +549,6 @@ class RFDecode:
             SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
 
         SF["hilbert"] = build_hilbert(self.blocklen)
-
         SF["RFVideo"] *= SF["hilbert"]
 
         # Second phase FFT filtering, which is performed after the signal is demodulated
@@ -564,12 +565,6 @@ class RFDecode:
                 "bandstop",
             )
             SF["Fvideo_lpf"] *= filtfft(video_notch, self.blocklen)
-
-        # Currently not used - was used for PAL DOD
-        # video_hpf = sps.butter(
-        #     DP["video_hpf_order"], DP["video_hpf_freq"] / self.freq_hz_half, "high"
-        # )
-        # SF["Fvideo_hpf"] = filtfft(video_hpf, self.blocklen)
 
         # The deemphasis filter
         deemp1, deemp2 = DP["video_deemp"]
@@ -742,10 +737,6 @@ class RFDecode:
         hilbert = npfft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
 
-        # Was used for DOD on PAL, currently not used
-        # demod_fft_full = npfft.fft(demod)
-        # demod_hpf = npfft.ifft(demod_fft_full * self.Filters["Fvideo_hpf"]).real
-
         # use a clipped demod for video output processing to reduce speckling impact
         demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
 
@@ -813,6 +804,8 @@ class RFDecode:
                 if cut
                 else audio_out
             )
+
+        rv['setupcount'] = self.setupcount
 
         return rv
 
@@ -1021,13 +1014,12 @@ class DemodCache:
         # Workaround to make it work on windows.
         # Using Process gives a "io.BufferedReader can't be pickled error".
         # Using Thread may be a bit slower due to how python threads work,
-        # so ideally we would want to
-        # find a better way to do this later.
+        # so ideally we would want to find a better way to do this later.
         thread_type = Process if platform.system() != "Windows" else threading.Thread
 
-        self.q_in = JoinableQueue()
-        self.q_in_metadata = []
+        self.block_status = {}
 
+        self.q_in = JoinableQueue()
         self.q_out = Queue()
 
         self.threadpipes = []
@@ -1046,23 +1038,17 @@ class DemodCache:
         self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
         self.deqeue_thread.start()
 
-        self.ended = False
+        self.request = 0
 
     def end(self):
-        if not self.ended:
-            # stop workers
-            for i in self.threads:
-                self.q_in.put(None)
+        # stop workers
+        for i in self.threads:
+            self.q_in.put(None)
 
-            for t in self.threads:
-                t.join()
+        for t in self.threads:
+            t.join()
 
-            self.q_out.put(None)
-            # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
-            # Might want to do this in a cleaner way later but this works for now.
-            if hasattr(self.loader, "_close") and callable(self.loader._close):
-                self.loader._close()
-            self.ended = True
+        self.q_out.put(None)
 
     def __del__(self):
         self.end()
@@ -1076,21 +1062,41 @@ class DemodCache:
             for k in self.lru[self.lrusize :]:
                 if k in self.blocks:
                     del self.blocks[k]
+                if k in self.block_status:
+                    self.block_status[k]
 
         self.lru = self.lru[: self.lrusize]
 
-    def flush_demod(self):
+    def flush_demod(self, first_block = 0, prefetch_only=False):
         """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
-        for k in self.blocks.keys():
-            if self.blocks[k] is None:
-                pass
-            elif "demod" in self.blocks[k]:
-                with self.lock:
-                    del self.blocks[k]["demod"]
+        blocks_toredo = []
+
+        with self.lock:
+            for k in self.block_status.keys():
+                if k < first_block:
+                    continue 
+
+                if prefetch_only and self.block_status[k]['prefetch'] == False:
+                    continue
+
+                if self.block_status[k]['prefetch'] == True:
+                    blocks_toredo.append(k)
+
+                self.block_status[k] = {'MTF': -1, 'request': -1, 'waiting': False, 'prefetch': False}
+
+            for k in self.blocks.keys():
+                if k < first_block or self.blocks[k] is None or 'demod' not in self.blocks[k]:
+                    continue
+
+                if k not in blocks_toredo:
+                    blocks_toredo.append(k)
+
+                del self.blocks[k]["demod"]
+
+        return blocks_toredo
 
     def apply_newparams(self, newparams):
         for k in newparams.keys():
-            # print(k, k in self.rf.SysParams, k in self.rf.DecoderParams)
             if k in self.rf.SysParams:
                 self.rf.SysParams[k] = newparams[k]
 
@@ -1112,7 +1118,7 @@ class DemodCache:
                 return
 
             if item[0] == "DEMOD":
-                blocknum, block, target_MTF = item[1:]
+                blocknum, block, target_MTF, request = item[1:]
 
                 output = {}
 
@@ -1122,14 +1128,15 @@ class DemodCache:
                 else:
                     fftdata = block["fft"]
 
-                if (
+                if True or (
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
                     output["demod"] = self.rf.demodblock(
-                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
                     output["MTF"] = target_MTF
+                    output["request"] = request
 
                 self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
@@ -1138,10 +1145,14 @@ class DemodCache:
             if not ispiped:
                 self.q_in.task_done()
 
-    def doread(self, blocknums, MTF, dodemod=True):
+    def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = []
+        queuelist = []
+        reached_end = False
 
-        hc = 0
+        if redo:
+            for b in self.flush_demod(prefetch_only=True):
+                queuelist.append(b)
 
         with self.lock:
             for b in blocknums:
@@ -1154,39 +1165,36 @@ class DemodCache:
                         self.blocks[b] = None
                         return None
 
-                    # ??? - I think I put it in to make sure it isn't erased for whatever reason, but might not be needed
-                    # rawdatac = rawdata.copy()
-
                     self.blocks[b] = {}
                     self.blocks[b]["rawinput"] = rawdata
 
                 if self.blocks[b] is None:
-                    return None
+                    reached_end = True
+                    break
 
-                if dodemod:
-                    handling = need_demod = ("demod" not in self.blocks[b]) or (
-                        np.abs(self.blocks[b]["MTF"] - MTF) > self.MTF_tolerance
-                    )
-                else:
-                    handling = need_demod = False
+                try:
+                    waiting = self.block_status[b]["waiting"]
+                except:
+                    waiting = False
 
-                # Check to see if it's already in queue to process
-                if need_demod:
-                    for inqueue in self.q_in_metadata:
-                        if inqueue[0] == b and (
-                            np.abs(inqueue[1] - MTF) <= self.MTF_tolerance
-                        ):
-                            handling = False
-                            # print(b)
+                try:
+                    # Until the block is actually ready, this comparison will hit an unknown key
+                    if not redo and not waiting and self.blocks[b]["request"] == self.block_status[b]['request']:
+                        continue
+                except:
+                    pass
 
+                if redo or not waiting:
+                    queuelist.append(b)
+                    need_blocks.append(b)
+                elif self.block_status[b]["waiting"]:
                     need_blocks.append(b)
 
-                if handling:
-                    self.q_in.put(("DEMOD", b, self.blocks[b], MTF))
-                    self.q_in_metadata.append((b, MTF))
-                    hc = hc + 1
+            for b in queuelist:
+                self.block_status[b] = {'MTF': MTF, 'waiting': True, 'request': self.request, 'prefetch': prefetch}
+                self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
-        return need_blocks
+        return None if reached_end else need_blocks
 
     def dequeue(self):
         # This is the thread's main loop - run until killed.
@@ -1203,17 +1211,16 @@ class DemodCache:
                     logger.error(
                         "incomplete demodulated block placed on queue, block #%d", blocknum
                     )
-                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF))
+                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
+                    self.lock.release()
                     continue
 
-                self.q_in_metadata.remove((blocknum, item["MTF"]))
+                if item['request'] == self.block_status[blocknum]['request']:
+                    for k in item.keys():
+                        self.blocks[blocknum][k] = item[k]
 
-                for k in item.keys():
-                    if k == "demod" and (
-                        np.abs(item["MTF"] - self.currentMTF) > self.MTF_tolerance
-                    ):
-                        continue
-                    self.blocks[blocknum][k] = item[k]
+                    if 'demod' in item.keys():
+                        self.block_status[blocknum]['waiting'] = False
 
                 if "input" not in self.blocks[blocknum]:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
@@ -1221,11 +1228,13 @@ class DemodCache:
                     ]
 
 
-    def read(self, begin, length, MTF=0, dodemod=True):
+    def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block #
         t = {"input": [], "fft": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
         self.currentMTF = MTF
+        if forceredo:
+            self.request += 1
 
         end = begin + length
 
@@ -1234,9 +1243,9 @@ class DemodCache:
             end // self.blocksize, (end // self.blocksize) + self.prefetch
         )
 
-        need_blocks = self.doread(toread, MTF, dodemod)
+        need_blocks = self.doread(toread, MTF, forceredo)
 
-        if dodemod is False:
+        if getraw:
             raw = [self.blocks[toread[0]]["rawinput"][begin % self.blocksize :]]
             for i in range(toread[1], toread[-2]):
                 raw.append(self.blocks[i]["rawinput"])
@@ -1274,7 +1283,7 @@ class DemodCache:
 
         rv["startloc"] = (begin // self.blocksize) * self.blocksize
 
-        need_blocks = self.doread(toread_prefetch, MTF)
+        need_blocks = self.doread(toread_prefetch, MTF, prefetch=True)
 
         return rv
 
@@ -1511,6 +1520,9 @@ class Field:
     def get_linelen(self, line=None, linelocs=None):
         # compute adjusted frequency from neighboring line lengths
 
+        if line is None:
+            return self.rf.linelen
+
         # If this is run early, line locations are unknown, so return
         # the general value
         if linelocs is None:
@@ -1518,9 +1530,6 @@ class Field:
                 linelocs = self.linelocs
             else:
                 return self.rf.linelen
-
-        if line is None:
-            return self.rf.linelen
 
         if line >= self.linecount + self.lineoffset:
             length = (self.linelocs[line + 0] - self.linelocs[line - 1]) / 1
@@ -1831,12 +1840,9 @@ class Field:
         else:
             return core + 0.5 + (0 if isFirstField else 1)
 
-        return core
-
     def processVBlank(self, validpulses, start, limit=None):
 
         firstblank, lastblank = self.getBlankRange(validpulses, start)
-        conf = 100
 
         """
         First Look at each equalization/vblank pulse section - if the expected # are there and valid,
@@ -1903,15 +1909,13 @@ class Field:
             eqgap = self.rf.SysParams["firstFieldH"][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            return np.int(line0), isfirstfield, firstblank, conf
+            return np.int(line0), isfirstfield, firstblank, 100
 
         """
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
         pulse and the following line.  If the combined xH is correct for the standard in question
         (1.5H for NTSC, 1 or 2H for PAL, that means line 0 has been found correctly.
         """
-
-        conf = 50
 
         if (
             validpulses[firstblank - 1][2]
@@ -1936,9 +1940,7 @@ class Field:
                 self.sync_confidence = 0
                 return None, None, None, 0
 
-            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank, conf
-
-        conf = 0
+            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank, 50
 
         return None, None, None, 0
 
@@ -1996,11 +1998,9 @@ class Field:
 
         if vsync_lines >= 2:
             return 100
-
-        if vsync_lines == 1 and score > 0:
+        elif vsync_lines == 1 and score > 0:
             return 50
-
-        if score > 0:
+        elif score > 0:
             return 25
 
         return 0
@@ -2112,8 +2112,10 @@ class Field:
         vsync_locs = []
         vsync_means = []
 
+        minlength = self.usectoinpx(10)
+
         for i, p in enumerate(pulses):
-            if p.len > self.usectoinpx(10):
+            if p.len > minlength:
                 vsync_locs.append(i)
                 vsync_means.append(
                     np.mean(
@@ -2789,6 +2791,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
+
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -2829,17 +2832,17 @@ class Field:
         passcount = 0
         while passcount < 2:
             rising_count = 0
-            count = 0
             phase_offset = []
 
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            prevalue, zc = clb_findnextburst(
+            bursts = clb_findbursts(
                 burstarea, 0, len(burstarea) - 1, threshold
             )
 
-            while zc is not None:
-                count += 1
+            if len(bursts) == 0:
+                return None, None
 
+            for prevalue, zc in bursts:
                 zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
                 zc_round = nb_round(zc_cycle)
 
@@ -2850,18 +2853,10 @@ class Field:
                 else:
                     rising_count += zc_round % 2
 
-                prevalue, zc = clb_findnextburst(
-                    burstarea, int(zc + 1), len(burstarea) - 1, threshold
-                )
-
-            if count:
-                phase_adjust += nb_median(np.array(phase_offset))
-            else:
-                return None, None
-
+            phase_adjust += nb_median(np.array(phase_offset))
             passcount += 1
 
-        rising = (rising_count / count) > 0.5
+        rising = (rising_count / len(bursts)) > 0.5
 
         return rising, -phase_adjust
 
@@ -3334,6 +3329,15 @@ class LDdecode:
 
         self.blackIRE = 0
 
+        self.use_profiler = extra_options.get("use_profiler", False)
+        if self.use_profiler:
+            from line_profiler import LineProfiler
+
+            self.lpf = LineProfiler()
+            self.lpf.add_function(Field.process)
+            self.lpf.add_function(Field.compute_linelocs)
+            self.lpf.add_function(Field.getpulses)
+
         self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
         self.ac3 = extra_options.get("AC3", False)
@@ -3570,7 +3574,7 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
 
-    def decodefield(self, initphase=False):
+    def decodefield(self, initphase=False, redo=False):
         """ returns field object if valid, and the offset to the next decode """
         self.readloc = int(self.fdoffset - self.rf.blockcut)
         if self.readloc < 0:
@@ -3583,6 +3587,7 @@ class LDdecode:
             self.readloc_block * self.blocksize,
             self.numblocks * self.blocksize,
             self.mtf_level,
+            forceredo=redo
         )
 
         if self.rawdecode is None:
@@ -3601,8 +3606,20 @@ class LDdecode:
             readloc=self.rawdecode["startloc"],
         )
 
+        if self.use_profiler:
+            if self.system == 'NTSC':
+                self.lpf.add_function(f.refine_linelocs_burst)
+                self.lpf.add_function(f.compute_burst_offsets)
+
+            self.lpf.add_function(f.get_linelen)
+            self.lpf.add_function(f.get_burstlevel)
+            self.lpf.add_function(f.compute_line_bursts)
+            lpf_wrapper = self.lpf(f.process)
+        else:
+            lpf_wrapper = f.process
+
         try:
-            f.process()
+            lpf_wrapper()
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
@@ -3627,7 +3644,7 @@ class LDdecode:
                 done = True
 
             self.fieldloc = self.fdoffset
-            f, offset = self.decodefield(initphase=initphase)
+            f, offset = self.decodefield(initphase=initphase, redo=redo)
 
             if f is None:
                 if offset is None:
