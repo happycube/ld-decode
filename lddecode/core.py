@@ -3607,10 +3607,12 @@ class LDdecode:
         )
 
         if self.use_profiler:
-            self.lpf.add_function(f.refine_linelocs_burst)
+            if self.system == 'NTSC':
+                self.lpf.add_function(f.refine_linelocs_burst)
+                self.lpf.add_function(f.compute_burst_offsets)
+
             self.lpf.add_function(f.get_burstlevel)
             self.lpf.add_function(f.compute_line_bursts)
-            self.lpf.add_function(f.compute_burst_offsets)
             lpf_wrapper = self.lpf(f.process)
         else:
             lpf_wrapper = f.process
