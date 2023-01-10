@@ -16,7 +16,7 @@ RUN apt -y install --no-install-recommends make cmake python3-numpy python3-scip
 # clone and build the latest master
 RUN git clone --depth 2 https://github.com/oyvindln/vhs-decode.git
 
-RUN cd vhs-decode && mkdir build2 && cd build2 && cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Relase -DUSE_QWT=OFF && make && make install
+RUN cd vhs-decode && mkdir build2 && cd build2 && cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release -DUSE_QWT=OFF && make && make install
 WORKDIR /vhs-decode
 RUN python3 setup.py install && rm -r build2
 
