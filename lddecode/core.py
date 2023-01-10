@@ -434,8 +434,6 @@ class RFDecode:
             iirfilt = filtfft(self.Filters['AC3_iir'], self.blocklen)
 
             self.Filters['AC3'] = iirfilt * firfilt
-            #self.Filters['AC3'] = firfilt
-            #self.Filters['AC3'] = iirfilt
 
         self.computedelays()
 
@@ -550,7 +548,6 @@ class RFDecode:
             SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
 
         SF["hilbert"] = build_hilbert(self.blocklen)
-
         SF["RFVideo"] *= SF["hilbert"]
 
         # Second phase FFT filtering, which is performed after the signal is demodulated
@@ -567,12 +564,6 @@ class RFDecode:
                 "bandstop",
             )
             SF["Fvideo_lpf"] *= filtfft(video_notch, self.blocklen)
-
-        # Currently not used - was used for PAL DOD
-        # video_hpf = sps.butter(
-        #     DP["video_hpf_order"], DP["video_hpf_freq"] / self.freq_hz_half, "high"
-        # )
-        # SF["Fvideo_hpf"] = filtfft(video_hpf, self.blocklen)
 
         # The deemphasis filter
         deemp1, deemp2 = DP["video_deemp"]
@@ -744,10 +735,6 @@ class RFDecode:
 
         hilbert = npfft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
-
-        # Was used for DOD on PAL, currently not used
-        # demod_fft_full = npfft.fft(demod)
-        # demod_hpf = npfft.ifft(demod_fft_full * self.Filters["Fvideo_hpf"]).real
 
         # use a clipped demod for video output processing to reduce speckling impact
         demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
@@ -1026,8 +1013,7 @@ class DemodCache:
         # Workaround to make it work on windows.
         # Using Process gives a "io.BufferedReader can't be pickled error".
         # Using Thread may be a bit slower due to how python threads work,
-        # so ideally we would want to
-        # find a better way to do this later.
+        # so ideally we would want to find a better way to do this later.
         thread_type = Process if platform.system() != "Windows" else threading.Thread
 
         self.block_status = {}
@@ -1853,12 +1839,9 @@ class Field:
         else:
             return core + 0.5 + (0 if isFirstField else 1)
 
-        return core
-
     def processVBlank(self, validpulses, start, limit=None):
 
         firstblank, lastblank = self.getBlankRange(validpulses, start)
-        conf = 100
 
         """
         First Look at each equalization/vblank pulse section - if the expected # are there and valid,
@@ -1925,15 +1908,13 @@ class Field:
             eqgap = self.rf.SysParams["firstFieldH"][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            return np.int(line0), isfirstfield, firstblank, conf
+            return np.int(line0), isfirstfield, firstblank, 100
 
         """
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
         pulse and the following line.  If the combined xH is correct for the standard in question
         (1.5H for NTSC, 1 or 2H for PAL, that means line 0 has been found correctly.
         """
-
-        conf = 50
 
         if (
             validpulses[firstblank - 1][2]
@@ -1958,9 +1939,7 @@ class Field:
                 self.sync_confidence = 0
                 return None, None, None, 0
 
-            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank, conf
-
-        conf = 0
+            return validpulses[firstblank - 1][1].start, isfirstfield, firstblank, 50
 
         return None, None, None, 0
 
@@ -2018,11 +1997,9 @@ class Field:
 
         if vsync_lines >= 2:
             return 100
-
-        if vsync_lines == 1 and score > 0:
+        elif vsync_lines == 1 and score > 0:
             return 50
-
-        if score > 0:
+        elif score > 0:
             return 25
 
         return 0
