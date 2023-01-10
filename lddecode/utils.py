@@ -1034,12 +1034,23 @@ def dsa_rescale_and_clip(infloat):
 
 
 @njit(cache=True)
-def clb_findnextburst(burstarea, i, endburstarea, threshold):
-    for j in range(i, endburstarea):
+def clb_findbursts(burstarea, i, endburstarea, threshold):
+    out = []
+    
+    j = i
+    while j < endburstarea:
         if np.abs(burstarea[j]) > threshold:
-            return burstarea[j], calczc_do(burstarea, j, 0)
+            pre = burstarea[j]
+            zc = calczc_do(burstarea, j, 0)
+            if zc is not None:
+                out.append((burstarea[j], zc))
+                j = int(zc) + 1
+            else:
+                return out
+        else:
+            j += 1
 
-    return (None, None)
+    return out
 
 
 @njit(cache=True)

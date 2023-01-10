@@ -42,7 +42,7 @@ from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
-from .utils import LRUupdate, clb_findnextburst, angular_mean, phase_distance
+from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector
 
@@ -2788,6 +2788,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
+
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -2832,13 +2833,15 @@ class Field:
             phase_offset = []
 
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            prevalue, zc = clb_findnextburst(
+            bursts = clb_findbursts(
                 burstarea, 0, len(burstarea) - 1, threshold
             )
 
-            while zc is not None:
+            for prevalue, zc in bursts:
                 count += 1
 
+                #print(prevalue, zc)
+                
                 zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
                 zc_round = nb_round(zc_cycle)
 
@@ -2848,10 +2851,6 @@ class Field:
                     rising_count += not (zc_round % 2)
                 else:
                     rising_count += zc_round % 2
-
-                prevalue, zc = clb_findnextburst(
-                    burstarea, int(zc + 1), len(burstarea) - 1, threshold
-                )
 
             if count:
                 phase_adjust += nb_median(np.array(phase_offset))
@@ -3333,6 +3332,12 @@ class LDdecode:
 
         self.blackIRE = 0
 
+        self.use_profiler = extra_options.get("use_profiler", False)
+        if self.use_profiler:
+            from line_profiler import LineProfiler
+
+            self.lpf = LineProfiler()
+
         self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
         self.ac3 = extra_options.get("AC3", False)
@@ -3601,8 +3606,17 @@ class LDdecode:
             readloc=self.rawdecode["startloc"],
         )
 
+        if self.use_profiler:
+            self.lpf.add_function(f.refine_linelocs_burst)
+            self.lpf.add_function(f.get_burstlevel)
+            self.lpf.add_function(f.compute_line_bursts)
+            self.lpf.add_function(f.compute_burst_offsets)
+            lpf_wrapper = self.lpf(f.process)
+        else:
+            lpf_wrapper = f.process
+
         try:
-            f.process()
+            lpf_wrapper()
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
