@@ -1050,6 +1050,7 @@ class DemodCache:
                 t.join()
 
             self.q_out.put(None)
+            self.deqeue_thread.join()
             # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
             # Might want to do this in a cleaner way later but this works for now.
             if hasattr(self.loader, "_close") and callable(self.loader._close):
