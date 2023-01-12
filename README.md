@@ -92,18 +92,19 @@ While you can use any generic card with the correct chips, today we recommend th
 
 [Ware to Buy? & More Info](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards)
 
-
 Sadly however at stock without any modifications CX Cards proform slightly worse then a DomesdayDuplicator with about a 3db signal to noise difference, and its internal digital gain can affect captures drastically.
 
 Currently the CX23883-39 based white variant cards have been consistently lower noise, these have also been easily upgraded to 40msps 8-bit with a drop-in crystal upgrade for use with formats like LaserDisc but at stock with external amplification they are quite optimal for VHS & HiFi, but higher bandwidth formats like SVHS & ED Beta can benifit from crystal upgrades.
+
 # Deployment of Capture Hardware
+
 Please read [VCR Reports](https://github.com/oyvindln/vhs-decode/wiki/VCR-reports) / [The Tap List](https://github.com/oyvindln/vhs-decode/wiki/004-The-Tap-List) / [Hardware Installation Guide](https://github.com/oyvindln/vhs-decode/wiki/Hardware-Installation-Guide)
 
 Information on various VCRs that have been documented alongside high resolution pictures of VCR's that have had RF Taps installed, guidance on recommneded cables/connectors & tools to use are also included.
 
-The process of installing involves running a short cable internally to a BNC jack at back of a metal/plastic VCR chassis or threaded out a vent, this allows direct access to the FM RF signals conveinintly & reliyably, we call this a Tap Point or RF Tap.
+The setup process for RF capture involves running a short cable internally from points that provide the signal to a BNC jack at back of a metal/plastic VCR chassis or threaded out a vent, this allows direct access to the FM RF signals conveniently & reliably, we call this a Tap Point or RF Tap.
 
-Head Drum -> Amplificaiton & Tracking -> FM RF Test Points -> RF Capture
+Head Drum -> Amplification & Tracking -> FM RF Test/Signal Points -> RF Capture -> Software Decoding -> Lossless TBC Files -> Audio/Video Files
 
 ## Find Test Points
 
@@ -172,6 +173,8 @@ Install dependencies for GPU FLAC compression support:
 
     sudo apt install make ocl-icd-opencl-dev mono-runtime
 
+## For optional gooey graphical user interface 
+
 If you want to try the gooey gui wrapper for vhs-decode (`vhs-decode-gui`) :
 
     sudo apt-get install build-essential dpkg-dev freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libjpeg-dev libnotify-dev libpng-dev libsdl2-dev libsm-dev libtiff-dev libwebkit2gtk-4.0-dev libxtst-dev python3.9-dev libpython3.9-dev
@@ -203,7 +206,6 @@ Compile and Install ld-tools suite: (Required)
 Go back to the main directory with 
 
     cd .. 
-
 
 To update do `git pull` while inside of the vhs-decode directory.
 
@@ -348,11 +350,11 @@ Both commands will automatically use the last file generated as the input.
 
 For editors this transcodes an FFV1/V210 output to a "*near complient*" interlaced ProRes HQ file:
     
-    ffmpeg -hide_banner -i "$1.mkv" -vf setfield=tff -flags +ilme+ildct -c:v prores -profile:v 3 -vendor apl0 -bits_per_mb 8000 -quant_mat hq -mbs_per_slice 8 -pixel_format yuv422p10lep -vendor apl0 -bits_per_mb 8000 -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 -vf setdar=4/3,setfield=tff "$1_ProResHQ.mov"
+    ffmpeg -hide_banner -i "$1.mkv" -vf setfield=tff -flags +ilme+ildct -c:v prores -profile:v 3 -vendor apl0 -bits_per_mb 8000 -quant_mat hq -mbs_per_slice 8 -pixel_format yuv422p10lep -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 -c:a s24le -vf setdar=4/3,setfield=tff "$1_ProResHQ.mov"
     
 For basic online sharing you can use this command to convert the FFV1 output to a de-interlaced lossy upscaled MP4:
     
-    ffmpeg -hide_banner -i "$1.mkv" -vf scale=in_color_matrix=bt601:out_color_matrix=bt709:1440x1080,bwdif=1:0:0 -c:v libx264 -preset veryslow -b:v 6M -maxrate 6M -bufsize 6M -pixel_format yuv420p -color_primaries bt709 -color_trc bt709 -colorspace bt709 -aspect 4:3 -c:a libopus -b:a 192k -strict -2 -movflags +faststart -y "$1_1440x1080_lossy.mp4"
+    ffmpeg -hide_banner -i "$1.mkv" -vf scale=in_color_matrix=bt601:out_color_matrix=bt709:1440x1080,bwdif=1:0:0 -c:v libx264 -preset veryslow -b:v 15M -maxrate 15M -bufsize 8M -pixel_format yuv420p -color_primaries bt709 -color_trc bt709 -colorspace bt709 -aspect 4:3 -c:a libopus -b:a 192k -strict -2 -movflags +faststart -y "$1_1440x1080_lossy.mp4"
 
 Will just export the video with standard settings and the same input file name, the .tbc extention is not required.
 
