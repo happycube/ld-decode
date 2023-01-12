@@ -175,11 +175,13 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     if sampletype == 4:
         indata = np.fromstring(inbuf, "float32", len(inbuf) // 4) * 32768
     elif sampletype == 3:
-        indata = np.fromstring(inbuf, "uint16", len(inbuf) // 2)
+        indata = np.frombuffer(inbuf, "uint16", len(inbuf) // 2)
     elif sampletype == 2:
         indata = np.fromstring(inbuf, "int16", len(inbuf) // 2)
     else:
-        indata = np.fromstring(inbuf, "uint8", len(inbuf))
+        # NOTE(oln): Can probably use frombuffer for other variants too but
+        # didn't have any samples to test with.
+        indata = np.frombuffer(inbuf, "uint8", len(inbuf))
 
     if len(indata) < readlen:
         return None
@@ -192,10 +194,6 @@ def load_unpacked_data_u8(infile, sample, readlen):
 
 
 def load_unpacked_data_s16(infile, sample, readlen):
-    return load_unpacked_data(infile, sample, readlen, 2)
-
-
-def load_unpacked_data_u16(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 2)
 
 
@@ -412,7 +410,7 @@ class LoadFFmpeg:
 
         data = buf_data + read_data
         assert len(data) == readlen * 2
-        return np.fromstring(data, "<i2")
+        return np.frombuffer(data, "<i2")
 
     def __call__(self, infile, sample, readlen):
         return self.read(infile, sample, readlen)

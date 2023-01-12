@@ -1038,16 +1038,23 @@ class DemodCache:
         self.deqeue_thread.start()
 
         self.request = 0
+        self.ended = False
 
     def end(self):
-        # stop workers
-        for i in self.threads:
-            self.q_in.put(None)
+        if not self.ended:
+            # stop workers
+            for i in self.threads:
+                self.q_in.put(None)
 
-        for t in self.threads:
-            t.join()
+            for t in self.threads:
+                t.join()
 
-        self.q_out.put(None)
+            self.q_out.put(None)
+            # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
+            # Might want to do this in a cleaner way later but this works for now.
+            if hasattr(self.loader, "_close") and callable(self.loader._close):
+                self.loader._close()
+            self.ended = True
 
     def __del__(self):
         self.end()
@@ -1132,7 +1139,7 @@ class DemodCache:
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
                     output["demod"] = self.rf.demodblock(
-                        fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
                     output["MTF"] = target_MTF
                     output["request"] = request
