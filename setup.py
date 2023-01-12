@@ -28,10 +28,6 @@ setup(
         'scripts/ld-compress',
         'vhs-decode',
         'cvbs-decode',
-        'gen_chroma_vid.sh',
-        'gen_chroma_vid_pal.sh',
-        'gen_chroma_vid_palm.sh',
-        'gen_chroma_vid_ntsc.sh'
     ],
 
     ext_modules=cythonize(['vhsdecode/*.pyx'], language_level=3),
