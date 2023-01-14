@@ -50,7 +50,11 @@ if(USE_QT_VERSION)
     set(QT_PACKAGE_NAMES Qt${USE_QT_VERSION})
 endif()
 find_package(QT NAMES ${QT_PACKAGE_NAMES} REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
+if(USE_QWT)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets)
+else()
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core)
+endif()
 message(STATUS "Qt Version: ${QT_VERSION}")
 
 # For Qt < 5.15, emulate 5.15's Qt5CoreConfig.cmake, so we don't have to
@@ -154,6 +158,18 @@ if(BUILD_PYTHON)
 
     set(PYTHON_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/python-build)
 
+    # python setup.py install seems to behave differently if prefix
+    # is supplied, requiring setting pythonpath after install.
+    # If a custom prefix is not set, don't supply prefix at allocate_lock
+    # /usr/local is the default on linux.
+    # Install not really tested on windows as of yet.
+    if(${CMAKE_INSTALL_PREFIX} STREQUAL "/usr/local")
+        set(PYTHON_PREFIX_LINE "")
+    else()
+        message(STATUS "Custom install prefix supplied - you may have to manually specify PYTHONPATH")
+        set(PYTHON_PREFIX_LINE "--prefix ${CMAKE_INSTALL_PREFIX}")
+    endif()
+
     add_custom_target(python-build ALL
         COMMAND ${PYTHON} ./setup.py --quiet
             build --build-base ${PYTHON_BUILD_DIR}
@@ -169,7 +185,7 @@ if(BUILD_PYTHON)
             COMMAND ${PYTHON} ./setup.py --quiet
                 build --build-base ${PYTHON_BUILD_DIR}
                 egg_info --egg-base ${CMAKE_CURRENT_BINARY_DIR}
-                install --prefix ${CMAKE_INSTALL_PREFIX}
+                install ${PYTHON_PREFIX_LINE}
                         --root \$ENV{DESTDIR}
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
