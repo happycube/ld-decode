@@ -22,7 +22,7 @@ WORKDIR /vhs-decode
 RUN python3 -m pip install --user .
 
 # Install ffmpeg static to avoid draggin in tons of deps
-RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O - | tar Jxvf - --wildcards --strip-components=1 ffmpeg-*-amd64-static/ffmpeg -C /usr/local/bin/
+RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz -O - | tar Jxvf - --wildcards --strip-components=1 ffmpeg-*-amd64-static/ffmpeg && cp ffmpeg /usr/local/bin/
 
 # remove build stuff
 # RUN apt -y remove qtbase5-dev make cmake pkg-config git --autoremove
@@ -32,12 +32,12 @@ RUN apt-get clean
 
 ##### TODO upstream : only look for find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets) if gui is used
 
-FROM ubuntu:22.04
+FROM ubuntu:22.10
 RUN apt-get update && \
     apt-get -y -qq install apt-utils sudo && \
     apt-get -y -qq install locales && locale-gen en_US.UTF-8;
 
 RUN apt -y upgrade && apt -y install --no-install-recommends libqt5core5a libfftw3-3 python3 cython3 python3-numba python3-numpy python3-scipy && apt-get clean
-COPY --from=0 /usr/local/bin /usr/bin/
+COPY --from=0 /usr/local/bin /usr/local/bin/
 COPY --from=0 /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
