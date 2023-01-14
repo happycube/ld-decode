@@ -1,7 +1,5 @@
 # known to work with 22.04, other versions may have incompatibilities
-FROM ubuntu:22.10
-
-ENV DEBIAN_FRONTEND noninteractive
+FROM ubuntu:22.10 as builder
 
 RUN apt-get update && \
     apt-get -y -qq install apt-utils sudo && \
@@ -11,7 +9,8 @@ RUN apt -y upgrade
 
 # libqwt-qt5-dev
 # python3-matplotlib
-RUN apt -y install --no-install-recommends make cmake python3-numpy python3-scipy git qtbase5-dev libfftw3-dev python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev openssl pv cython3 pkg-config python3-setuptools libqt5core5a ca-certificates python3-pip wget xz-utils
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt -y install --no-install-recommends make cmake python3 git qtbase5-dev libfftw3-dev openssl pv pkg-config python3-setuptools libqt5core5a ca-certificates python3-pip wget xz-utils python3-dev build-essential
 
 # clone and build the latest master
 RUN git clone --depth 2 https://github.com/oyvindln/vhs-decode.git
@@ -19,6 +18,7 @@ RUN git clone --depth 2 https://github.com/oyvindln/vhs-decode.git
 RUN cd vhs-decode && mkdir build2 && cd build2 && cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_QWT=OFF -DBUILD_PYTHON=OFF -DBUILD_LDF_READER=OFF && make && make install
 WORKDIR /vhs-decode
 #RUN python3 setup.py install && rm -r build2
+RUN pip install --user numpy scipy numba cython
 RUN python3 -m pip install --user .
 
 # Install ffmpeg static to avoid draggin in tons of deps
@@ -30,14 +30,13 @@ RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.t
 # clean up intermediate files to make docker image smaller
 RUN apt-get clean
 
-##### TODO upstream : only look for find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets) if gui is used
-
 FROM ubuntu:22.10
+ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get -y -qq install apt-utils sudo && \
     apt-get -y -qq install locales && locale-gen en_US.UTF-8;
 
-RUN apt -y upgrade && apt -y install --no-install-recommends libqt5core5a libfftw3-3 python3 cython3 python3-numba python3-numpy python3-scipy && apt-get clean
+RUN apt -y upgrade && apt -y install --no-install-recommends libqt5core5a libfftw3-3 python3 && apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY --from=0 /usr/local/bin /usr/local/bin/
 COPY --from=0 /root/.local /root/.local
 ENV PATH=/root/.local/bin:$PATH
