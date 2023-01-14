@@ -42,7 +42,7 @@ bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
     QVector<bool> transitionMap = getTransitionMap(lineData, zcPoint);
 
     // Set the number of samples to the expected start of the start bit transition
-    qint32 expectedStart = 262;
+    qint32 expectedStart = videoParameters.activeVideoStart + 262;
 
     // Set the width of 1 bit
     qint32 samplesPerBit = 28;
