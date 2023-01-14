@@ -84,7 +84,6 @@ SysParams_NTSC = {
     "analog_audio": True,
     # From the spec - audio frequencies are multiples of the (color) line rate
     "audio_lfreq": (1000000 * 315 / 88 / 227.5) * 146.25,
-    # NOTE: this changes to 2.88mhz on AC3 disks
     "audio_rfreq": (1000000 * 315 / 88 / 227.5) * 178.75,
     # On AC3 disks, the right channel is replaced by a QPSK 2.88mhz channel
     "audio_rfreq_AC3": 2880000,
@@ -1039,16 +1038,24 @@ class DemodCache:
         self.deqeue_thread.start()
 
         self.request = 0
+        self.ended = False
 
     def end(self):
-        # stop workers
-        for i in self.threads:
-            self.q_in.put(None)
+        if not self.ended:
+            # stop workers
+            for i in self.threads:
+                self.q_in.put(None)
 
-        for t in self.threads:
-            t.join()
+            for t in self.threads:
+                t.join()
 
-        self.q_out.put(None)
+            self.q_out.put(None)
+            self.deqeue_thread.join()
+            # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
+            # Might want to do this in a cleaner way later but this works for now.
+            if hasattr(self.loader, "_close") and callable(self.loader._close):
+                self.loader._close()
+            self.ended = True
 
     def __del__(self):
         self.end()
@@ -1132,10 +1139,8 @@ class DemodCache:
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
-                    ## TODO: Temp change here to supply data again, push to upstream.
                     output["demod"] = self.rf.demodblock(
-                        data=block["rawinput"],
-                        fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
                     output["MTF"] = target_MTF
                     output["request"] = request
@@ -2181,8 +2186,8 @@ class Field:
                 logger.error("Unable to find any sync pulses, skipping one field")
                 return None, None, None
             else:
-                logger.error("Unable to find any sync pulses, skipping 100 ms")
-                return None, None, int(self.rf.freq_hz / 10)
+                logger.error("Unable to find any sync pulses, skipping one second")
+                return None, None, int(self.rf.freq_hz)
 
 
         self.validpulses = validpulses = self.refinepulses()
