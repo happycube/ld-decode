@@ -105,7 +105,7 @@ int main(int argc, char *argv[])
     // -- Positional arguments --
 
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input RGB file (- for piped input)"));
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input RGB/YCbCr file (- for piped input)"));
 
     // Positional argument to specify output video file
     parser.addPositionalArgument("output", QCoreApplication::translate("main", "Specify output TBC file"));
