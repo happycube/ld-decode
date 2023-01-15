@@ -58,7 +58,7 @@ bool FmCode::decodeLine(const SourceVideo::Data &lineData,
     qint32 decodeCount = 0;
 
     // Find the first transition
-    qint32 x = 0;
+    qint32 x = videoParameters.activeVideoStart;
     while (x < fmData.size() && fmData[x] == false) {
         x++;
     }

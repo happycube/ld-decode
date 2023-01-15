@@ -73,33 +73,35 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
     std::array<qint32, 12> crcData;
     std::fill(crcData.begin(), crcData.end(), 0);
 
-    // Find the leading 1 of the first byte [ITU 6.19]
-    double byteStart = (((videoParameters.system == PAL) ? 11.2e-6 : 10.0e-6) * videoParameters.sampleRate)
-                       - static_cast<double>(videoParameters.activeVideoStart);
+    // Find the leading edge of the first byte. As per [ITU 6.19], there should
+    // be (625/525-line) 11.2/10.0 usec between the leading edge of the sync
+    // pulse and the leading edge of the first byte, and 1.9/2.1 usec between
+    // the trailing edge and the next sync pulse, but in practice signals that
+    // don't meet these specs are common. So start searching from the end of
+    // the colourburst, and just make sure there's space for 90 bits before the
+    // next sync pulse.
+    double byteStart = videoParameters.colourBurstEnd;
     double byteStartLimit = static_cast<double>(lineData.size()) - (90 * bitSamples);
-    while (true) {
-        if (byteStart >= byteStartLimit) {
-            qDebug() << "VitcCode::decodeLine(): No leading edge found";
-            return false;
-        }
-        if (dataBits[static_cast<qint32>(byteStart)] == true) break;
-        byteStart += 1.0;
+    if (!findTransition(dataBits, false, byteStart, byteStartLimit)) {
+        qDebug() << "VitcCode::decodeLine(): No leading zero found";
+        return false;
+    }
+    if (!findTransition(dataBits, true, byteStart, byteStartLimit)) {
+        qDebug() << "VitcCode::decodeLine(): No leading edge found";
+        return false;
     }
 
     // Sample each of the 9 bytes
     qint32 bitCount = 0;
     for (qint32 byteNum = 0; byteNum < 9; byteNum++) {
         // Resynchronise by finding the 1-0 transition in the synchronisation sequence
-        byteStart -= bitSamples / 2;
+        byteStart += bitSamples * 0.5;
         byteStartLimit += 10 * bitSamples;
-        while (true) {
-            if (byteStart >= byteStartLimit) {
-                qDebug() << "VitcCode::decodeLine(): No transition found for byte" << byteNum;
-                return false;
-            }
-            if (dataBits[static_cast<qint32>(byteStart + bitSamples)] == false) break;
-            byteStart += 1.0;
+        if (!findTransition(dataBits, false, byteStart, byteStartLimit)) {
+            qDebug() << "VitcCode::decodeLine(): No transition found for byte" << byteNum;
+            return false;
         }
+        byteStart -= bitSamples;
 
         // Extract 10 bits by sampling the centre of each bit, LSB first
         for (qint32 i = 0; i < 10; i++) {
@@ -133,6 +135,7 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
     // Everything looks good -- update the metadata
     fieldMetadata.vitc.inUse = true;
     std::copy(vitcData.begin(), vitcData.begin() + 8, fieldMetadata.vitc.vitcData.begin());
+    qDebug() << "VitcCode::decodeLine(): Found VITC";
 
     return true;
 }
@@ -141,13 +144,20 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
 std::vector<qint32> VitcCode::getLineNumbers(const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     // VITC can be on any line between 10-20 (525-line) or 6-22 (625-line), but
-    // the standards [ITU 6.20, SMPTE 10.6] recommend lines to use. The lists
-    // below try the lines that don't clash with LaserDisc VBI lines first.
+    // the standards [ITU 6.20, SMPTE 10.6] recommend lines to use. Try the
+    // recommended lines first (prioritising those that don't clash with
+    // LaserDisc VBI), then the others.
     if (videoParameters.system == PAL) {
         // 625-line
-        return { 21, 19, 18, 20 };
+        return {
+            21, 19, 18, 20,
+            6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 22,
+        };
     } else {
         // 525-line
-        return { 14, 12, 16, 18 };
+        return {
+            14, 12, 16, 18,
+            10, 11, 13, 15, 17, 19, 20,
+        };
     }
 }
