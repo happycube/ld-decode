@@ -96,12 +96,12 @@ def test_sync(filename, num_pulses=None, blank_approx=None, sync_approx=None):
 
     field = FieldPALVHS(rfdecoder, data_stub)
 
-    pulses = rfdecoder.resync.getpulses_override(field)
+    pulses = rfdecoder.resync.get_pulses(field)
 
     if num_pulses:
         assert(len(pulses) == num_pulses)
 
-    measured_sync, measured_blank = rfdecoder.resync.FieldState.getLevels()
+    measured_sync, measured_blank = rfdecoder.resync._field_state.pull_levels()
 
     if blank_approx:
         math.isclose(measured_blank, blank_approx)
