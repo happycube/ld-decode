@@ -18,7 +18,7 @@ from vhsdecode.cmdcommons import (
 )
 
 
-def main():
+def main(args=None):
     parser, _ = common_parser("Extracts video from raw cvbs captures")
     parser.add_argument(
         "-S",
@@ -44,7 +44,7 @@ def main():
         help="Additionally use right hand side of hsync for line start detection. Improves accuracy on tape sources but might cause issues on high bandwidth stable ones",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     filename, outname, firstframe, req_frames = get_basics(args)
     system = select_system(args)
     sample_freq = select_sample_freq(args)

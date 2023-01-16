@@ -26,11 +26,9 @@ def main(argv):
         from cvbsdecode.main import main as cvbsmain
 
         cvbsmain()
-    # elif to_run == 'ld':
-    #    # This is a bit hacky, need to
-    #    with open("ld-decode") as f:
-    #        code = compile(f.read(), "ld-decode", 'exec')
-    #        exec(code)
+    elif to_run == 'ld':
+        from lddecode.main import main as ldmain
+        ldmain(sys.argv[1:])
     else:
         print_options()
 

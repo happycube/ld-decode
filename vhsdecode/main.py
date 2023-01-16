@@ -26,7 +26,7 @@ from vhsdecode.cmdcommons import (
 supported_tape_formats = {"VHS", "SVHS", "UMATIC", "BETAMAX", "VIDEO8", "HI8"}
 
 
-def main(use_gui=False):
+def main(args=None, use_gui=False):
     import vhsdecode.formats as f
 
     parser, debug_group = common_parser(
@@ -231,7 +231,7 @@ def main(use_gui=False):
         help="Dropout detection hysteresis, the rf level needs to go above the dropout threshold multiplied by this for a dropout to end.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     filename, outname, firstframe, req_frames = get_basics(args)
 
