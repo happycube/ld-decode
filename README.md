@@ -21,7 +21,7 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://en.wikipedia.org/wiki/Wides
 
 **Video8 & High8** 625-line and 525-line, PAL & NTSC - **Working (Luma Only)**
 
-## [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
+# [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
 
 Example Videos: [VHS-Decode](https://odysee.com/@vhs-decode:7) / [The Rewinding](https://odysee.com/@therewinding:4?view=content) - Odysee
 
@@ -29,11 +29,11 @@ Example Workflow [Flowcharts and Overview Graphics](https://github.com/oyvindln/
 
 The frequently asked questions page and the [Wiki](https://github.com/oyvindln/vhs-decode/wiki), will help break things down and explain the real world benifits of direct RF capture preservation and software decoding compared to conventional high-cost hardware based workflows, so if you have just found this project welcome to the affordable future of tape media preservation.
 
-## [CVBS-Decode](https://github.com/oyvindln/vhs-decode/wiki/CVBS-Composite-Decode)
+# [CVBS-Decode - Composite Video Decoder](https://github.com/oyvindln/vhs-decode/wiki/CVBS-Composite-Decode)
 
 This repository also contains an **experimental** CVBS decoder, `cvbs-decode`, which shares code with ld-decode and vhs-decode. Capable of decoding basic raw digitized NTSC and PAL composite video, including colour if the source is somewhat stable. 
 
-RAW CVBS can be captured using CX Cards & CXADC, however, this is somewhat buggy as the cx chip can decide to resample or do other things if it detects a valid video signal normally this happens when an unknown internal gain threshhold is reached.
+RAW CVBS has been captured using CX Cards & CXADC, however, this is somewhat buggy as the cx chip can decide to resample or do other things if it detects a valid video signal normally this happens when an unknown internal gain threshhold is reached.
 
 Test samples & signals can be generated using [HackTV](https://github.com/fsphil/hacktv)
 
@@ -43,15 +43,15 @@ Note for test media generation AJA/Magewell/Blackmagic and even some consumer di
 
 Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage) witch provides decoding for VHS & Video8/High8 HiFi FM tracks which takes uncompressed or flac compressed RF captures of HiFi FM signals and outputs standard 24-bit 192khz FLAC or PCM (.wav) stereo files.
 
-# ld-tools suite for Windows
+# LD-Tools suite for Windows
 
-The ld-tools suit has been ported to windows, This mainly allows the easy use of LD-Analyse to view .TBC files, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases) **(Note this is only the tools, not the decoders)**
+The ld-tools suit has been ported to windows, This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases) **(Note this is only the tools, not the decoders)**
 
 # Dependencies - Hardware
 
 ## A Working Tape Player (VCR/VTR etc)
 
-Preferably adjusted per tape and in excellent mechanical and head condition, prosumer metal track decks are preferable as they were built generally better in terms of mechnical stability than cheaper later consumer decks that use more plastics, the only **crtical requirement** is test points or a head amplifyer that is easy to tap into this goes for any and all tape formats.
+Preferably adjusted per tape and in excellent mechanical and head condition, prosumer metal track decks are preferable as they were built generally better in terms of mechnical stability than cheaper later consumer decks that use more plastics, the only **crtical requirement** is avalible test points or a head amplifyer that is easy to tap into this goes for any and all tape formats.
 
 **Note** SVHS tapes can be RF captured on standard VHS HiFi decks.
 
@@ -217,7 +217,7 @@ Note with WSL2 & Ubuntu, `./` in front of applications and scripts may be needed
 
 Use `cd vhs-decode` to enter into the directory to run commands, `cd..` to go back a directory.
 
-Use `CTRL + C` to stop the current process.
+Use <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop the current process.
 
 You dont actaully type `<` and `>` on your input & output files.
 
@@ -332,7 +332,7 @@ Decompress FLAC compressed captures:
 
 ## Generating Colour Video Files (.TBC to Playable .MKV)
 
-VHS-Decode produces two timebase corrected 16-bit `GREY16` headerless files separated into chroma/luma composite video signals in the .tbc format alongside .json and .log files, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, ld-process-vits and ld-dropout-correct.
+VHS-Decode produces two timebase corrected 16-bit `GREY16` headerless files separated into chroma/luma composite video signals in the `.tbc` format alongside `.json` and `.log` files, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, ld-process-vits and ld-dropout-correct.
 
 The gen chroma scrips will use decoded .tbc files and generate standard video files by default a lossless, interlaced top field first and high-bitrate (roughly 70-100 Mb/s) FFV1 codec video which, which although ideal for archival and further processing.
 
@@ -467,6 +467,10 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 ## Input file formats:
 
+**Note** Input for the decoders can be RAW uncompressed data or FLAC compressed data. 
+
+**Note** .RAW will need to be renamed to s16/u16 
+
 .ldf/.lds (40msps Domesday Duplicator FLAC-compressed and uncompressed data).
 
 .r8/.u8   (CXADC 8-bit raw data).
@@ -475,20 +479,19 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 .flac/.cvbs/.vhs/.svhs/.betacam/.betamax/.video8/.hi8 (FLAC-compressed captures, can be either 8-bit or 16-bit).
 
-**Note** .RAW will need to be renamed to s16/u16 
 ## Output file formats:
 
-Unlike LD-Decode, VHS-Decode does not output its timebase-corrected frames as a single .tbc file.
+Unlike CVBS-Decode & LD-Decode, VHS-Decode does not output its timebase-corrected frames as a single .tbc file.
 
 Both the luminance and chrominance channels are separate data files essentially an digital "S-Video", additionally useful for troubleshooting descriptor/log files are generated so you end up with 4 files in the following naming.
 
-filename.tbc        - Luminance Image Data
+`filename.tbc`        - Luminance Image Data
 
-filename_chroma.tbc - Chrominance Image Data
+`filename_chroma.tbc` - Chrominance Image Data
 
-filename.tbc.json   - Frame Descriptor Table (Resolution/Dropouts/SNR/Frames/VBI Timecode)
+`filename.tbc.json`   - Frame Descriptor Table (Resolution/Dropouts/SNR/Frames/VBI Timecode)
 
-filename.log        - Timecode Indexed Action/Output Log
+`filename.log`        - Timecode Indexed Action/Output Log
 
 # Join us!
 
