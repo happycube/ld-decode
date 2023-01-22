@@ -126,6 +126,13 @@ def main(args=None):
         help="Enable AC3 audio decoding (NTSC only)",
     )
     parser.add_argument(
+        "--AC3_QPSK",
+        dest="AC3_QPSK",
+        action="store_true",
+        default=False,
+        help="Enable AC3 demodulated output (debugging option)",
+    )
+    parser.add_argument(
         "--start_fileloc",
         metavar="start_fileloc",
         type=float,
@@ -286,6 +293,7 @@ def main(args=None):
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "audio_filterwidth": args.audio_filterwidth,
         "AC3": args.AC3,
+        "AC3_QPSK": args.AC3_QPSK,
     }
 
     if vid_standard == "NTSC" and args.NTSC_color_notch_filter:

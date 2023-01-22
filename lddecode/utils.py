@@ -1,6 +1,7 @@
 # A collection of helper functions used in dev notebooks and lddecode_core.py
 
 from collections import namedtuple
+import io
 import json
 import math
 import os
@@ -531,12 +532,51 @@ def ldf_pipe(outname: str, compression_level: int = 6):
     corecmd = "ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i - -acodec flac -f ogg".split(
         " "
     )
+    corecmd = ['cat']
     process = subprocess.Popen(
-        [*corecmd, "-compression_level", str(compression_level), outname],
+        #[*corecmd, "-compression_level", str(compression_level), outname],
+        ['cat'],
+        stdout=open(outname + '.rawtbc', 'wb'),
         stdin=subprocess.PIPE,
     )
 
     return process, process.stdin
+
+class TeeFile(io.BytesIO):
+    """
+    A file-like object that runs as a background thread to write to multiple files.
+    """
+    def __init__(self, filelist):
+        super().__init__()
+        self.filelist = filelist
+        self.pipe_r, self.pipe_w = os.pipe()
+        self.thread = threading.Thread(target=self.write_to_files, daemon=True)
+        self.thread.start()
+
+    def write_to_files(self):
+        """
+        This method runs in a separate thread and reads data from the pipe,
+        and writes it to the files in `filelist`.
+        """
+        while True:
+            # read data from the pipe
+            data = os.read(self.pipe_r, 1024)
+            if not data:
+                break
+            # write data to the files
+            for f in self.filelist:
+                f.write(data)
+                f.flush()
+
+    def fileno(self):
+        """
+        Returns the write end of the pipe, so it can be passed as a file descriptor to `subprocess.Popen()`.
+        """
+        return self.pipe_w
+
+    def close(self):
+        os.close(self.pipe_r)
+        os.close(self.pipe_w)
 
 def ac3_pipe(outname: str):
     processes = []
@@ -562,6 +602,33 @@ def ac3_pipe(outname: str):
                                       stdout=processes[-1].stdin))
 
     return processes, processes[-1].stdin
+
+def ac3_qpska_pipe(outname: str):
+    processes = []
+
+    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -"
+    cmd2 = f"ld-ac3-demodulate -v 3 - {outname}.qpsk"
+
+    logfp = open(f"{outname + '.log.qpsk'}", 'w')
+
+    # This is done in reverse order to allow for pipe building
+    processes.append(subprocess.Popen(cmd2.split(' '), 
+                                      stdin=subprocess.PIPE, 
+                                      stderr=logfp))
+
+    processes.append(subprocess.Popen(cmd1.split(' '), 
+                                      stdin=subprocess.PIPE, 
+                                      stdout=processes[-1].stdin))
+
+    return processes, processes[-1].stdin
+
+def ac3_qpsk_pipe(outname: str):
+    processes = []
+
+    cmd1 = "cat"
+
+    return processes, open(outname + '.rawtbcrf', 'wb')
+
 
 # Git helpers
 
