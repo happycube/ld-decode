@@ -482,16 +482,16 @@ qint32 TbcSource::getCcData0()
 {
     if (loadedFrameNumber == -1) return 0;
 
-    if (firstField.ntsc.ccData0 != -1) return firstField.ntsc.ccData0;
-    return secondField.ntsc.ccData0;
+    if (firstField.closedCaption.data0 != -1) return firstField.closedCaption.data0;
+    return secondField.closedCaption.data0;
 }
 
 qint32 TbcSource::getCcData1()
 {
     if (loadedFrameNumber == -1) return 0;
 
-    if (firstField.ntsc.ccData1 != -1) return firstField.ntsc.ccData1;
-    return secondField.ntsc.ccData1;
+    if (firstField.closedCaption.data1 != -1) return firstField.closedCaption.data1;
+    return secondField.closedCaption.data1;
 }
 
 void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfiguration,

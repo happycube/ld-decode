@@ -5,7 +5,7 @@
     ld-decode-tools TBC library
     Copyright (C) 2018-2020 Simon Inns
     Copyright (C) 2022 Ryan Holtz
-    Copyright (C) 2022 Adam Sampson
+    Copyright (C) 2022-2023 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -263,7 +263,7 @@ void LdDecodeMetaData::VitsMetrics::write(JsonWriter &writer) const
 }
 
 // Read Ntsc from JSON
-void LdDecodeMetaData::Ntsc::read(JsonReader &reader)
+void LdDecodeMetaData::Ntsc::read(JsonReader &reader, ClosedCaption &closedCaption)
 {
     reader.beginObject();
 
@@ -273,9 +273,16 @@ void LdDecodeMetaData::Ntsc::read(JsonReader &reader)
         else if (member == "fmCodeData") reader.read(fmCodeData);
         else if (member == "fieldFlag") reader.read(fieldFlag);
         else if (member == "whiteFlag") reader.read(whiteFlag);
-        else if (member == "ccData0") reader.read(ccData0);
-        else if (member == "ccData1") reader.read(ccData1);
-        else reader.discard();
+        else if (member == "ccData0") {
+            // rev7 and earlier put ccData0/1 here rather than in cc
+            reader.read(closedCaption.data0);
+            closedCaption.inUse = true;
+        } else if (member == "ccData1") {
+            reader.read(closedCaption.data1);
+            closedCaption.inUse = true;
+        } else {
+            reader.discard();
+        }
     }
 
     reader.endObject();
@@ -291,12 +298,6 @@ void LdDecodeMetaData::Ntsc::write(JsonWriter &writer) const
     writer.beginObject();
 
     // Keep members in alphabetical order
-    if (ccData0 != -1) {
-        writer.writeMember("ccData0", ccData0);
-    }
-    if (ccData1 != -1) {
-        writer.writeMember("ccData1", ccData1);
-    }
     if (isFmCodeDataValid) {
         writer.writeMember("fieldFlag", fieldFlag);
     }
@@ -361,6 +362,41 @@ void LdDecodeMetaData::Vitc::write(JsonWriter &writer) const
     writer.endObject();
 }
 
+// Read ClosedCaption from JSON
+void LdDecodeMetaData::ClosedCaption::read(JsonReader &reader)
+{
+    reader.beginObject();
+
+    std::string member;
+    while (reader.readMember(member)) {
+        if (member == "data0") reader.read(data0);
+        else if (member == "data1") reader.read(data1);
+        else reader.discard();
+    }
+
+    reader.endObject();
+
+    inUse = true;
+}
+
+// Write ClosedCaption to JSON
+void LdDecodeMetaData::ClosedCaption::write(JsonWriter &writer) const
+{
+    assert(inUse);
+
+    writer.beginObject();
+
+    // Keep members in alphabetical order
+    if (data0 != -1) {
+        writer.writeMember("data0", data0);
+    }
+    if (data1 != -1) {
+        writer.writeMember("data1", data1);
+    }
+
+    writer.endObject();
+}
+
 // Read PcmAudioParameters from JSON
 void LdDecodeMetaData::PcmAudioParameters::read(JsonReader &reader)
 {
@@ -404,6 +440,7 @@ void LdDecodeMetaData::Field::read(JsonReader &reader)
     std::string member;
     while (reader.readMember(member)) {
         if (member == "audioSamples") reader.read(audioSamples);
+        else if (member == "cc") closedCaption.read(reader);
         else if (member == "decodeFaults") reader.read(decodeFaults);
         else if (member == "diskLoc") reader.read(diskLoc);
         else if (member == "dropOuts") dropOuts.read(reader);
@@ -412,7 +449,7 @@ void LdDecodeMetaData::Field::read(JsonReader &reader)
         else if (member == "fileLoc") reader.read(fileLoc);
         else if (member == "isFirstField") reader.read(isFirstField);
         else if (member == "medianBurstIRE") reader.read(medianBurstIRE);
-        else if (member == "ntsc") ntsc.read(reader);
+        else if (member == "ntsc") ntsc.read(reader, closedCaption);
         else if (member == "pad") reader.read(pad);
         else if (member == "seqNo") reader.read(seqNo);
         else if (member == "syncConf") reader.read(syncConf);
@@ -433,6 +470,10 @@ void LdDecodeMetaData::Field::write(JsonWriter &writer) const
     // Keep members in alphabetical order
     if (audioSamples != -1) {
         writer.writeMember("audioSamples", audioSamples);
+    }
+    if (closedCaption.inUse) {
+        writer.writeMember("cc");
+        closedCaption.write(writer);
     }
     if (decodeFaults != -1) {
         writer.writeMember("decodeFaults", decodeFaults);
@@ -781,6 +822,17 @@ const LdDecodeMetaData::Vitc &LdDecodeMetaData::getFieldVitc(qint32 sequentialFi
     return fields[fieldNumber].vitc;
 }
 
+// This method gets the Closed Caption metadata for the specified sequential field number
+const LdDecodeMetaData::ClosedCaption &LdDecodeMetaData::getFieldClosedCaption(qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+    if (fieldNumber < 0 || fieldNumber >= getNumberOfFields()) {
+        qCritical() << "LdDecodeMetaData::getFieldClosedCaption(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    return fields[fieldNumber].closedCaption;
+}
+
 // This method gets the drop-out metadata for the specified sequential field number
 const DropOuts &LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
 {
@@ -845,6 +897,17 @@ void LdDecodeMetaData::updateFieldVitc(const LdDecodeMetaData::Vitc &vitc, qint3
     }
 
     fields[fieldNumber].vitc = vitc;
+}
+
+// This method sets the Closed Caption metadata for a field
+void LdDecodeMetaData::updateFieldClosedCaption(const LdDecodeMetaData::ClosedCaption &closedCaption, qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+    if (fieldNumber < 0 || fieldNumber >= getNumberOfFields()) {
+        qCritical() << "LdDecodeMetaData::updateFieldClosedCaption(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    fields[fieldNumber].closedCaption = closedCaption;
 }
 
 // This method sets the field dropout metadata for a field

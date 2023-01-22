@@ -5,7 +5,7 @@
     ld-decode-tools TBC library
     Copyright (C) 2018-2020 Simon Inns
     Copyright (C) 2022 Ryan Holtz
-    Copyright (C) 2022 Adam Sampson
+    Copyright (C) 2022-2023 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -134,16 +134,15 @@ public:
     };
 
     // NTSC Specific metadata definition
+    struct ClosedCaption;
     struct Ntsc {
         bool inUse = false;
         bool isFmCodeDataValid = false;
         qint32 fmCodeData = 0;
         bool fieldFlag = false;
         bool whiteFlag = false;
-        qint32 ccData0 = -1;
-        qint32 ccData1 = -1;
 
-        void read(JsonReader &reader);
+        void read(JsonReader &reader, ClosedCaption &closedCaption);
         void write(JsonWriter &writer) const;
     };
 
@@ -154,6 +153,17 @@ public:
         // Just the VITC data, without the sync bits or CRC.
         // vitcData[0]'s LSB is bit 2; vitcData[7]'s MSB is bit 79.
         std::array<qint32, 8> vitcData;
+
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
+    };
+
+    // Closed Caption definition
+    struct ClosedCaption {
+        bool inUse = false;
+
+        qint32 data0 = -1;
+        qint32 data1 = -1;
 
         void read(JsonReader &reader);
         void write(JsonWriter &writer) const;
@@ -186,6 +196,7 @@ public:
         Vbi vbi;
         Ntsc ntsc;
         Vitc vitc;
+        ClosedCaption closedCaption;
         DropOuts dropOuts;
         bool pad = false;
 
@@ -233,6 +244,7 @@ public:
     const Vbi &getFieldVbi(qint32 sequentialFieldNumber);
     const Ntsc &getFieldNtsc(qint32 sequentialFieldNumber);
     const Vitc &getFieldVitc(qint32 sequentialFieldNumber);
+    const ClosedCaption &getFieldClosedCaption(qint32 sequentialFieldNumber);
     const DropOuts &getFieldDropOuts(qint32 sequentialFieldNumber);
 
     // Set field metadata
@@ -241,6 +253,7 @@ public:
     void updateFieldVbi(const LdDecodeMetaData::Vbi &vbi, qint32 sequentialFieldNumber);
     void updateFieldNtsc(const LdDecodeMetaData::Ntsc &ntsc, qint32 sequentialFieldNumber);
     void updateFieldVitc(const LdDecodeMetaData::Vitc &vitc, qint32 sequentialFieldNumber);
+    void updateFieldClosedCaption(const LdDecodeMetaData::ClosedCaption &closedCaption, qint32 sequentialFieldNumber);
     void updateFieldDropOuts(const DropOuts &dropOuts, qint32 sequentialFieldNumber);
     void clearFieldDropOuts(qint32 sequentialFieldNumber);
 

@@ -135,6 +135,7 @@ bool DecoderPool::setOutputField(qint32 fieldNumber, const LdDecodeMetaData::Fie
     ldDecodeMetaData.updateFieldVbi(fieldMetadata.vbi, fieldNumber);
     ldDecodeMetaData.updateFieldNtsc(fieldMetadata.ntsc, fieldNumber);
     ldDecodeMetaData.updateFieldVitc(fieldMetadata.vitc, fieldNumber);
+    ldDecodeMetaData.updateFieldClosedCaption(fieldMetadata.closedCaption, fieldNumber);
 
     return true;
 }
