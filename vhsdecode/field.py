@@ -48,6 +48,7 @@ def y_comb(data, line_len, limit):
     diffb = np.clip(data - np.roll(data, -line_len), -limit, limit)
     difff = np.clip(data - np.roll(data, line_len), -limit, limit)
 
+    # data -= np.clip(diffb + difff, -limit, limit) / 2
     data -= (diffb + difff) / 2
 
     return data
@@ -318,8 +319,9 @@ def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len)
 class FieldShared:
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldShared, self).downscale(
-            False, *args, **kwargs
+            final=False, *args, **kwargs
         )
+
         # hpf = utils.filter_simple(dsout, self.rf.Filters["NLHighPass"])
         # dsout = ynr(dsout, hpf, self.outlinelen)
         # dsout = y_comb(dsout, self.outlinelen, 20000)
@@ -432,7 +434,7 @@ class FieldShared:
 
         self.validpulses = validpulses = self.refinepulses()
 
-        #line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        # line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         return self.getLine0(validpulses)
 
     def compute_linelocs(self):
@@ -441,7 +443,9 @@ class FieldShared:
         # the option is enabled.
         do_level_detect = not self.rf.options.saved_levels or not has_levels
         res = self._try_get_pulses(do_level_detect)
-        if (res == NO_PULSES_FOUND or res[0] == None or self.sync_confidence == 0) and not do_level_detect:
+        if (
+            res == NO_PULSES_FOUND or res[0] == None or self.sync_confidence == 0
+        ) and not do_level_detect:
             # If we failed to fild valid pulses with the previous levels
             # and level detection was skipped, try again
             # running the full level detection
@@ -565,7 +569,11 @@ class FieldShared:
                 )
 
             if linelocs_filled[0] < self.inlinelen:
-                ldd.logger.info("linelocs_filled[0] too short! (%s) should be at least %s. Skipping a bit...", linelocs_filled[0], self.inlinelen)
+                ldd.logger.info(
+                    "linelocs_filled[0] too short! (%s) should be at least %s. Skipping a bit...",
+                    linelocs_filled[0],
+                    self.inlinelen,
+                )
                 # Skip a bit if no line positions were filled (which causes following code to fail for now).
                 # Amount may need tweaking.
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
@@ -1011,7 +1019,7 @@ class FieldPALVHS(FieldPALShared):
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(
-            final, *args, **kwargs
+            final=final, *args, **kwargs
         )
         dschroma = decode_chroma_vhs(self)
 
@@ -1034,7 +1042,7 @@ class FieldPALUMatic(FieldPALShared):
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALUMatic, self).downscale(
-            final, *args, **kwargs
+            final=final, *args, **kwargs
         )
         dschroma = decode_chroma_umatic(self)
 
@@ -1051,7 +1059,7 @@ class FieldPALBetamax(FieldPALShared):
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALBetamax, self).downscale(
-            final, *args, **kwargs
+            final=final, *args, **kwargs
         )
 
         dschroma = decode_chroma_betamax(self)
@@ -1069,7 +1077,7 @@ class FieldPALVideo8(FieldPALShared):
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVideo8, self).downscale(
-            final, *args, **kwargs
+            final=final, *args, **kwargs
         )
 
         dschroma = decode_chroma_video8(self)
@@ -1084,10 +1092,10 @@ class FieldNTSCVHS(FieldNTSCShared):
     def try_detect_track(self):
         return try_detect_track_vhs_ntsc(self)
 
-    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+    def downscale(self, final=False, *args, **kwargs):
         """Downscale the channels and upconvert chroma to standard color carrier frequency."""
         dsout, dsaudio, dsefm = super(FieldNTSCVHS, self).downscale(
-            linesoffset, final, *args, **kwargs
+            final=final, *args, **kwargs
         )
 
         dschroma = decode_chroma_vhs(self)
@@ -1111,9 +1119,9 @@ class FieldNTSCBetamax(FieldNTSCShared):
     def try_detect_track(self):
         return 0, False
 
-    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+    def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldNTSCBetamax, self).downscale(
-            linesoffset, final, *args, **kwargs
+            final=final, *args, **kwargs
         )
 
         dschroma = decode_chroma_betamax(self)
@@ -1133,9 +1141,9 @@ class FieldNTSCUMatic(FieldNTSCShared):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCUMatic, self).__init__(*args, **kwargs)
 
-    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+    def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldNTSCUMatic, self).downscale(
-            linesoffset, final, *args, **kwargs
+            final=final, *args, **kwargs
         )
         dschroma = decode_chroma_umatic(self)
 
@@ -1152,10 +1160,10 @@ class FieldNTSCVideo8(FieldNTSCShared):
         ldd.logger.info("track detection not implemented for 8mm!")
         return 0, False
 
-    def downscale(self, linesoffset=0, final=False, *args, **kwargs):
+    def downscale(self, final=False, *args, **kwargs):
         """Downscale the channels and upconvert chroma to standard color carrier frequency."""
         dsout, dsaudio, dsefm = super(FieldNTSCVideo8, self).downscale(
-            linesoffset, final, *args, **kwargs
+            final=final, *args, **kwargs
         )
 
         dschroma = decode_chroma_video8(self)
@@ -1174,7 +1182,7 @@ class FieldMESECAMVHS(FieldPALShared):
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldMESECAMVHS, self).downscale(
-            final, *args, **kwargs
+            final=final, *args, **kwargs
         )
         dschroma = decode_chroma_vhs(self, False)
 
