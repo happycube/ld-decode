@@ -44,16 +44,16 @@ def plot_input_data(
     blocklen = len(raw_data)
     ax1.plot(raw_data, color="#00FF00")
     ax1.plot(env, label="Envelope", color="#0000FF")
-    if rfdecode.dod_threshold_a:
+    if rfdecode.dod_options.dod_threshold_a:
         ax1.axhline(
-            rfdecode.dod_threshold_a, label="DOD Threshold (absolute)", color="#001100"
+            rfdecode.dod_options.dod_threshold_a, label="DOD Threshold (absolute)", color="#001100"
         )
     else:
         ax1.axhline(
-            rfdecode.dod_threshold_p * env_mean, label="DOD Threshold", color="#110000"
+            rfdecode.dod_options.dod_threshold_p * env_mean, label="DOD Threshold", color="#110000"
         )
         ax1.axhline(
-            rfdecode.dod_threshold_p * env_mean * rfdecode.dod_hysteresis,
+            rfdecode.dod_options.dod_threshold_p * env_mean * rfdecode.dod_options.dod_hysteresis,
             label="DOD Hysteresis threshold",
             ls="--",
             color="#000011",
