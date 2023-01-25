@@ -98,7 +98,7 @@ int main(int argc, char *argv[]) {
 
     // prep input file (if not piped)
     std::ifstream inputFile;
-    if (memcmp(posArgv[0], "-\x00", 2) != 0) {
+    if (std::strcmp(posArgv[0], "-") != 0) {
         fprintf(stderr, "using input file: %s\n", posArgv[0]);
         char fileBuffer[8196]; // 8K
         inputFile.rdbuf()->pubsetbuf(fileBuffer, sizeof fileBuffer);
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
 
     // prep output file (if not piped)
     std::ofstream outputFile;
-    if (memcmp(posArgv[1], "-\x00", 2) != 0) {
+    if (std::strcmp(posArgv[1], "-") != 0) {
         fprintf(stderr, "using output file: %s\n", posArgv[1]);
         outputFile.open(posArgv[1], std::ostream::binary);
         assert(outputFile.good());
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
 
     // prep logger file (if not piped)
     std::ofstream loggerFile;
-    if (posArgc > 2 && memcmp(posArgv[2], "-\x00", 2) != 0) {
+    if (posArgc > 2 && std::strcmp(posArgv[2], "-") != 0) {
         fprintf(stderr, "using logger file: %s\n", posArgv[2]);
         loggerFile.open(posArgv[2], std::ifstream::binary);
         assert(loggerFile.good());
