@@ -126,14 +126,19 @@ int main(int argc, char *argv[]) {
         while (true) {
             auto frame = ac3Framer.next();
 
-            // partial decode of AC3 frame
-            auto sf = SyncFrame(frame);
-            auto crc_status = sf.check_crc();
+            try {
+                // partial decode of AC3 frame
+                auto sf = SyncFrame(frame);
+                auto crc_status = sf.check_crc();
 
-            if (!(crc_status & 1))
-                Logger(INFO, "CRC1") << "frame " << ac3_frames;
-            if (!(crc_status >> 1)) // note; data covered by crc2 is useless without crc1
-                Logger(INFO, "CRC2") << "frame " << ac3_frames;
+                if (!(crc_status & 1))
+                    Logger(INFO, "CRC1") << "frame " << ac3_frames;
+                if (!(crc_status >> 1)) // note; data covered by crc2 is useless without crc1
+                    Logger(INFO, "CRC2") << "frame " << ac3_frames;
+            } catch (InvalidFrameError &e) {
+                // Frame data is not valid enough to check the CRCs
+                Logger(INFO, "SyncFrame") << "frame " << ac3_frames;
+            }
 
             for (auto &b: frame)
                 *output << b;
