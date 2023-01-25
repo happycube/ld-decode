@@ -227,9 +227,9 @@ public:
 
         // If present, the symbol must be in this bucket or the next one
         const quint32 thisBucket = buckets[bucket];
-        if ((thisBucket & 0xFFFF) == symbol) return thisBucket >> 16;
+        if ((thisBucket & 0xFFFF) == static_cast<quint32>(symbol)) return thisBucket >> 16;
         const quint32 nextBucket = buckets[bucket + 1];
-        if ((nextBucket & 0xFFFF) == symbol) return nextBucket >> 16;
+        if ((nextBucket & 0xFFFF) == static_cast<quint32>(symbol)) return nextBucket >> 16;
 
         // Not found
         return -1;
