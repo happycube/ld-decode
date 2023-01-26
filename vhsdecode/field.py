@@ -45,11 +45,10 @@ def y_comb(data, line_len, limit):
     adjecent lines
     """
 
-    diffb = np.clip(data - np.roll(data, -line_len), -limit, limit)
-    difff = np.clip(data - np.roll(data, line_len), -limit, limit)
+    diffb = data - np.roll(data, -line_len)
+    difff = data - np.roll(data, line_len)
 
-    # data -= np.clip(diffb + difff, -limit, limit) / 2
-    data -= (diffb + difff) / 2
+    data -= np.clip(diffb + difff, -limit, limit) / 2
 
     return data
 
@@ -324,7 +323,9 @@ class FieldShared:
 
         # hpf = utils.filter_simple(dsout, self.rf.Filters["NLHighPass"])
         # dsout = ynr(dsout, hpf, self.outlinelen)
-        # dsout = y_comb(dsout, self.outlinelen, 20000)
+        y_comb_value = self.rf.options.y_comb
+        if y_comb_value != 0:
+            dsout = y_comb(dsout, self.outlinelen, y_comb_value)
 
         if final:
             dsout = self.hz_to_output(dsout)

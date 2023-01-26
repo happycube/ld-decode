@@ -323,35 +323,6 @@ class VHSRFDecode(ldd.RFDecode):
             extra_options=extra_options,
         )
 
-        # No idea if this is a common pythonic way to accomplish it but this gives us values that
-        # can't be changed later.
-        self._options = namedtuple(
-            "Options",
-            [
-                "diff_demod_check_value",
-                "tape_format",
-                "disable_comb",
-                "nldeemp",
-                "disable_right_hsync",
-                "sync_clip",
-                "disable_dc_offset",
-                "double_lpf",
-                "fallback_vsync",
-                "saved_levels",
-            ],
-        )(
-            self.iretohz(100) * 2,
-            tape_format,
-            rf_options.get("disable_comb", False),
-            rf_options.get("nldeemp", False),
-            rf_options.get("disable_right_hsync", False),
-            rf_options.get("sync_clip", False),
-            rf_options.get("disable_dc_offset", False),
-            tape_format == "VHS",
-            rf_options.get("fallback_vsync", False),
-            rf_options.get("saved_levels", False),
-        )
-
         # Store a separate setting for *color* system as opposed to 525/625 line here.
         # TODO: Fix upstream so we don't have to fake tell ld-decode code that we are using ntsc for
         # palm to avoid it throwing errors.
@@ -408,6 +379,38 @@ class VHSRFDecode(ldd.RFDecode):
         self.DecoderParams["ire0"] = self.SysParams["ire0"]
         self.DecoderParams["hz_ire"] = self.SysParams["hz_ire"]
         self.DecoderParams["vsync_ire"] = self.SysParams["vsync_ire"]
+
+        # No idea if this is a common pythonic way to accomplish it but this gives us values that
+        # can't be changed later.
+        # first depends on IRE/Hz so has to be set after that is properly set.
+        self._options = namedtuple(
+            "Options",
+            [
+                "diff_demod_check_value",
+                "tape_format",
+                "disable_comb",
+                "nldeemp",
+                "disable_right_hsync",
+                "sync_clip",
+                "disable_dc_offset",
+                "double_lpf",
+                "fallback_vsync",
+                "saved_levels",
+                "y_comb"
+            ],
+        )(
+            self.iretohz(100) * 2,
+            tape_format,
+            rf_options.get("disable_comb", False),
+            rf_options.get("nldeemp", False),
+            rf_options.get("disable_right_hsync", False),
+            rf_options.get("sync_clip", False),
+            rf_options.get("disable_dc_offset", False),
+            tape_format == "VHS",
+            rf_options.get("fallback_vsync", False),
+            rf_options.get("saved_levels", False),
+            rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
+        )
 
         # As agc can alter these sysParams values, store a copy to then
         # initial value for reference.

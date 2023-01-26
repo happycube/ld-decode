@@ -108,6 +108,17 @@ def main(args=None, use_gui=False):
         default=False,
         help="Enable non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
     )
+    luma_group.add_argument(
+        "--y_comb",
+        dest="y_comb",
+        metavar="IRE",
+        action="store",
+        nargs="?",
+        type=float,
+        default=0,
+        const=1.5,
+        help="Enable y comb filter, optionally specifying IRE limit.",
+    )
     chroma_group = parser.add_argument_group("Chroma decoding options")
     chroma_group.add_argument(
         "--cafc",
@@ -264,6 +275,7 @@ def main(args=None, use_gui=False):
     rf_options["disable_dc_offset"] = not args.enable_dc_offset
     rf_options["disable_comb"] = args.disable_comb
     rf_options["nldeemp"] = args.nldeemp
+    rf_options["y_comb"] = args.y_comb
     rf_options["cafc"] = args.cafc
     rf_options["sync_clip"] = args.sync_clip
     rf_options["disable_right_hsync"] = args.disable_right_hsync
