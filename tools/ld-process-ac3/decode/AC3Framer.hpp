@@ -99,9 +99,10 @@ struct AC3Framer {
             if (currentAc3Size != 0) { // append to the ac3 block
                 // ac3Buffer.emplace_back(buffer[i]); // todo
                 ac3Buffer.insert(ac3Buffer.end(), buffer[bytePosition]);
-                if (ac3Buffer.size() == currentAc3Size) {
+                if (static_cast<int>(ac3Buffer.size()) == currentAc3Size) {
                     currentAc3Size = 0;
-                    // assert(ac3Buffer[4] == 0x1c); // fscod and frmsizecod fixed until lookup above implemented
+                    // XXX fscod and frmsizecod fixed until lookup above implemented;
+                    // for now, SyncFrame::check_crc will check the equivalent of assert(ac3Buffer[4] == 0x1c)
                     return ac3Buffer;
                 }
             }

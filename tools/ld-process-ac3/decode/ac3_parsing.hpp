@@ -32,9 +32,9 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 
@@ -80,6 +80,14 @@ struct bitbuffer {
 };
 
 
+// Exception thrown when constructing a SyncFrame from invalid data
+class InvalidFrameError : public std::runtime_error
+{
+public:
+    InvalidFrameError(std::string message) : std::runtime_error(message) {}
+};
+
+
 struct SyncInfo {
     uint16_t syncword; // 0x0B77
     uint16_t crc1; // crc for first 5/8ths of the block
@@ -88,12 +96,14 @@ struct SyncInfo {
 
     explicit SyncInfo(bitbuffer &source) {
         syncword = source.get(16);
-        assert(syncword == 0x0B77);
+        if (syncword != 0x0B77) throw InvalidFrameError("invalid syncword");
         crc1 = source.get(16);
         fscod = source.get(2);
-        assert(fscod != 0b11); // code 3 unused
+        // code 3 unused
+        if (fscod == 0b11) throw InvalidFrameError("invalid fscod");
         frmsizecod = source.get(6);
-        //assert(frmsizecod <= 37); // max frmsizecod is 36
+        // max frmsizecod is 36
+        if (frmsizecod > 36) throw InvalidFrameError("invalid frmsizcod");
         // used to determine the number of 16-bit words before the next sync word
     }
 };
@@ -197,6 +207,7 @@ struct SyncFrame {
     SyncInfo syncInfo;
     BitStreamInformation bsi;
 
+    // Constructor. May throw InvalidFrameError.
     explicit SyncFrame(std::vector<uint8_t> &f) : frameData(f),
                                                   bs(f.data(), f.data() + f.size()),
                                                   syncInfo(bs), bsi(bs) {}
@@ -204,12 +215,15 @@ struct SyncFrame {
     // See page 106, 7.10.2 Checking Bit Stream Consistency
     // these checks almost entirely apply to audio blocks, which are not unpacked here, so cant be checked.
 
+    // Check both CRCs in the frame are valid.
+    // May throw InvalidFrameError.
     uint8_t check_crc() {
         int frameSize, frameSize58;
         uint8_t *frame = frameData.data();
 
-        //assert(syncInfo.frmsizecod == 28);
-        //assert(syncInfo.fscod == 0b00);
+        if (syncInfo.frmsizecod != 28) throw InvalidFrameError("invalid frmsizecod");
+        if (syncInfo.fscod != 0b00) throw InvalidFrameError("invalid fscod");
+
         frameSize = 768; // frame size from frmsizecod & fscod. todo: lookup / calculate
         frameSize58 = (frameSize >> 1) + (frameSize >> 3); // 1/8 + 4/8
 
