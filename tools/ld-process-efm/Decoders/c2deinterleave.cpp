@@ -69,11 +69,11 @@ void C2Deinterleave::pushC2(const uchar *dataSymbols, const uchar *errorSymbols)
         newC2Element.c2Error[i] = errorSymbols[i];
     }
 
-    c2DelayBuffer.append(newC2Element);
+    c2DelayBuffer.push_back(newC2Element);
 
     if (c2DelayBuffer.size() >= 3) {
         // Maintain the C2 delay buffer at 3 elements maximum
-        if (c2DelayBuffer.size() > 3) c2DelayBuffer.removeFirst();
+        if (c2DelayBuffer.size() > 3) c2DelayBuffer.erase(c2DelayBuffer.begin());
 
         // Deinterleave the C2 data
         deinterleave();

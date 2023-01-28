@@ -33,7 +33,7 @@ EfmToF3Frames::EfmToF3Frames()
 // Public methods -----------------------------------------------------------------------------------------------------
 
 // Main processing method
-QVector<F3Frame> EfmToF3Frames::process(QByteArray efmDataIn, bool debugState, bool _audioIsDts)
+std::vector<F3Frame> EfmToF3Frames::process(QByteArray efmDataIn, bool debugState, bool _audioIsDts)
 {
     debugOn = debugState;
     audioIsDts = _audioIsDts;
@@ -383,11 +383,11 @@ EfmToF3Frames::StateMachine EfmToF3Frames::sm_state_processFrame()
 
     // Now we hand the data over to the F3 frame class which converts the data
     // into a F3 frame and save the F3 frame to our output data buffer
-    f3FramesOut.append(F3Frame(frameT, tLength, audioIsDts));
+    f3FramesOut.emplace_back(frameT, tLength, audioIsDts);
 
-    statistics.validEfmSymbols += f3FramesOut.last().getNumberOfValidEfmSymbols();
-    statistics.invalidEfmSymbols += f3FramesOut.last().getNumberOfInvalidEfmSymbols();
-    statistics.correctedEfmSymbols += f3FramesOut.last().getNumberOfCorrectedEfmSymbols();
+    statistics.validEfmSymbols += f3FramesOut.back().getNumberOfValidEfmSymbols();
+    statistics.invalidEfmSymbols += f3FramesOut.back().getNumberOfInvalidEfmSymbols();
+    statistics.correctedEfmSymbols += f3FramesOut.back().getNumberOfCorrectedEfmSymbols();
 
     // Discard all transitions up to the sync end
     efmDataBuffer.remove(0, endSyncTransition);

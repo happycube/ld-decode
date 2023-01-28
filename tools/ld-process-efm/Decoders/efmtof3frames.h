@@ -27,6 +27,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <vector>
 
 #include "Datatypes/f3frame.h"
 
@@ -54,7 +55,7 @@ public:
         qint64 correctedEfmSymbols;
     };
 
-    QVector<F3Frame> process(QByteArray efmDataIn, bool debugState, bool _audioIsDts);
+    std::vector<F3Frame> process(QByteArray efmDataIn, bool debugState, bool _audioIsDts);
     const Statistics &getStatistics() const;
     void reportStatistics() const;
     void reset();
@@ -64,7 +65,7 @@ private:
     bool audioIsDts;
     Statistics statistics;
     QByteArray efmDataBuffer;
-    QVector<F3Frame> f3FramesOut;
+    std::vector<F3Frame> f3FramesOut;
 
     // State machine state definitions
     enum StateMachine {

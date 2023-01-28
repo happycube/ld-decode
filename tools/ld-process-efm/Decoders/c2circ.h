@@ -27,6 +27,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <vector>
 
 #include <ezpwd/rs_base>
 #include <ezpwd/rs>
@@ -64,7 +65,7 @@ private:
         uchar c1Data[28];
         uchar c1Error[28];
     };
-    QVector<C1Element> c1DelayBuffer;
+    std::vector<C1Element> c1DelayBuffer;
 
     uchar interleavedC2Data[28];
     uchar interleavedC2Errors[28];

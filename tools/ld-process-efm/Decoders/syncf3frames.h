@@ -27,6 +27,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <vector>
 
 #include "Datatypes/f3frame.h"
 
@@ -42,7 +43,7 @@ public:
         qint32 totalSections;
     };
 
-    QVector<F3Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);
+    const std::vector<F3Frame> &process(const std::vector<F3Frame> &f3FramesIn, bool debugState);
     const Statistics &getStatistics() const;
     void reportStatistics() const;
     void reset();
@@ -50,8 +51,8 @@ public:
 private:
     bool debugOn;
     Statistics statistics;
-    QVector<F3Frame> f3FrameBuffer;
-    QVector<F3Frame> f3FramesOut;
+    std::vector<F3Frame> f3FrameBuffer;
+    std::vector<F3Frame> f3FramesOut;
     bool waitingForData;
     qint32 syncRecoveryAttempts;
 

@@ -70,11 +70,11 @@ void C2Circ::pushC1(const uchar *dataSymbols, const uchar *errorSymbols)
         newC1Element.c1Data[i] = dataSymbols[i];
         newC1Element.c1Error[i] = errorSymbols[i];
     }
-    c1DelayBuffer.append(newC1Element);
+    c1DelayBuffer.push_back(newC1Element);
 
     if (c1DelayBuffer.size() >= 109) {
         // Maintain the C1 delay buffer at 109 elements maximum
-        if (c1DelayBuffer.size() > 109) c1DelayBuffer.removeFirst();
+        if (c1DelayBuffer.size() > 109) c1DelayBuffer.erase(c1DelayBuffer.begin());
 
         // Interleave the C1 data and perform C2 error correction
         interleave();

@@ -27,6 +27,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <vector>
 
 class C2Deinterleave
 {
@@ -54,7 +55,7 @@ private:
         uchar c2Data[28];
         uchar c2Error[28];
     };
-    QVector<C2Element> c2DelayBuffer;
+    std::vector<C2Element> c2DelayBuffer;
 
     uchar outputC2Data[24];
     uchar outputC2Errors[24];
