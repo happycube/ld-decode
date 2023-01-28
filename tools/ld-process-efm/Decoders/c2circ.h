@@ -51,12 +51,12 @@ public:
 
     void reset();
     void resetStatistics();
-    Statistics getStatistics();
-    void reportStatistics();
-    void pushC1(uchar *dataSymbols, uchar *errorSymbols);
-    uchar* getDataSymbols();
-    uchar* getErrorSymbols();
-    bool getDataValid();
+    const Statistics &getStatistics() const;
+    void reportStatistics() const;
+    void pushC1(const uchar *dataSymbols, const uchar *errorSymbols);
+    const uchar *getDataSymbols() const;
+    const uchar *getErrorSymbols() const;
+    bool getDataValid() const;
     void flush();
 
 private:

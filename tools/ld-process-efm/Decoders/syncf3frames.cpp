@@ -88,13 +88,13 @@ QVector<F3Frame> SyncF3Frames::process(QVector<F3Frame> f3FramesIn, bool debugSt
 }
 
 // Get method - retrieve statistics
-SyncF3Frames::Statistics SyncF3Frames::getStatistics()
+const SyncF3Frames::Statistics &SyncF3Frames::getStatistics() const
 {
     return statistics;
 }
 
 // Method to report decoding statistics to qInfo
-void SyncF3Frames::reportStatistics()
+void SyncF3Frames::reportStatistics() const
 {
     qInfo() << "";
     qInfo() << "F3 Frame synchronisation:";

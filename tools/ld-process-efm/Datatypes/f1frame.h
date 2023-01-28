@@ -35,17 +35,17 @@ class F1Frame
 public:
     F1Frame();
 
-    void setData(uchar *dataParam, bool _isCorrupt, bool _isEncoderOn, bool _isMissing,
+    void setData(const uchar *dataParam, bool _isCorrupt, bool _isEncoderOn, bool _isMissing,
                  TrackTime _discTime, TrackTime _trackTime, qint32 _trackNumber);
-    uchar* getDataSymbols(void);
+    const uchar *getDataSymbols() const;
 
-    bool isCorrupt();
-    bool isEncoderOn();
-    bool isMissing();
+    bool isCorrupt() const;
+    bool isEncoderOn() const;
+    bool isMissing() const;
 
-    TrackTime getDiscTime();
-    TrackTime getTrackTime();
-    qint32 getTrackNumber();
+    TrackTime getDiscTime() const;
+    TrackTime getTrackTime() const;
+    qint32 getTrackNumber() const;
 
 private:
     bool isCorruptFlag;

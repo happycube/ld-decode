@@ -59,7 +59,7 @@ QByteArray F1ToData::process(QVector<F1Frame> f1FramesIn, bool debugState)
 
     // Append input data to the processing buffer
     for (qint32 i = 0; i < f1FramesIn.size(); i++) {
-        f1DataBuffer.append(reinterpret_cast<char*>(f1FramesIn[i].getDataSymbols()), 24);
+        f1DataBuffer.append(reinterpret_cast<const char *>(f1FramesIn[i].getDataSymbols()), 24);
 
         // Each validity flag covers 24 bytes of data symbols
         for (qint32 p = 0; p < 24; p++) {
@@ -95,13 +95,13 @@ QByteArray F1ToData::process(QVector<F1Frame> f1FramesIn, bool debugState)
 }
 
 // Get method - retrieve statistics
-F1ToData::Statistics F1ToData::getStatistics()
+const F1ToData::Statistics &F1ToData::getStatistics() const
 {
     return statistics;
 }
 
 // Method to report decoding statistics to qInfo
-void F1ToData::reportStatistics()
+void F1ToData::reportStatistics() const
 {
     qInfo()           << "";
     qInfo()           << "F1 Frames to Data:";

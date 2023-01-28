@@ -45,13 +45,13 @@ void C2Circ::resetStatistics()
     statistics.c2flushed = 0;
 }
 
-C2Circ::Statistics C2Circ::getStatistics()
+const C2Circ::Statistics &C2Circ::getStatistics() const
 {
     return statistics;
 }
 
 // Method to write statistics information to qInfo
-void C2Circ::reportStatistics(void)
+void C2Circ::reportStatistics() const
 {
     qInfo() << "";
     qInfo() << "F3 to F2 frame C2 Error correction:";
@@ -62,7 +62,7 @@ void C2Circ::reportStatistics(void)
     qInfo() << " Delay buffer flushes:" << statistics.c2flushed;
 }
 
-void C2Circ::pushC1(uchar* dataSymbols, uchar* errorSymbols)
+void C2Circ::pushC1(const uchar *dataSymbols, const uchar *errorSymbols)
 {
     // Create a new C1 element and append it to the C1 delay buffer
     C1Element newC1Element;
@@ -83,14 +83,14 @@ void C2Circ::pushC1(uchar* dataSymbols, uchar* errorSymbols)
 }
 
 // Return the C2 data symbols if available
-uchar* C2Circ::getDataSymbols()
+const uchar *C2Circ::getDataSymbols() const
 {
     if (c1DelayBuffer.size() >= 109) return outputC2Data;
     return nullptr;
 }
 
 // Return the C2 error symbols if available
-uchar* C2Circ::getErrorSymbols()
+const uchar *C2Circ::getErrorSymbols() const
 {
     if (c1DelayBuffer.size() >= 109) return outputC2Errors;
     return nullptr;

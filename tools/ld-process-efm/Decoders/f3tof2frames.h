@@ -60,8 +60,8 @@ public:
     };
 
     QVector<F2Frame> process(QVector<F3Frame> f3FramesIn, bool debugState, bool noTimeStamp);
-    Statistics getStatistics();
-    void reportStatistics();
+    const Statistics &getStatistics();
+    void reportStatistics() const;
     void reset();
 
 private:

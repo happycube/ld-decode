@@ -67,13 +67,13 @@ QVector<F1Frame> F2ToF1Frames::process(QVector<F2Frame> f2FramesIn, bool _debugS
 }
 
 // Get method - retrieve statistics
-F2ToF1Frames::Statistics F2ToF1Frames::getStatistics()
+const F2ToF1Frames::Statistics &F2ToF1Frames::getStatistics() const
 {
     return statistics;
 }
 
 // Method to report decoding statistics to qInfo
-void F2ToF1Frames::reportStatistics()
+void F2ToF1Frames::reportStatistics() const
 {
     qInfo()           << "";
     qInfo()           << "F2 Frames to F1 Frames:";

@@ -43,8 +43,8 @@ public:
     };
 
     QVector<F3Frame> process(QVector<F3Frame> f3FramesIn, bool debugState);
-    Statistics getStatistics();
-    void reportStatistics();
+    const Statistics &getStatistics() const;
+    void reportStatistics() const;
     void reset();
 
 private:

@@ -90,7 +90,7 @@ void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData,
 }
 
 // Output the result of the decode to qInfo
-void EfmProcess::reportStatistics()
+void EfmProcess::reportStatistics() const
 {
     efmToF3Frames.reportStatistics();
     syncF3Frames.reportStatistics();
@@ -192,7 +192,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 }
 
 // Return statistics about the decoding process
-EfmProcess::Statistics EfmProcess::getStatistics(void)
+EfmProcess::Statistics EfmProcess::getStatistics()
 {
     // Gather statistics
     statistics.f3ToF2Frames = f3ToF2Frames.getStatistics();

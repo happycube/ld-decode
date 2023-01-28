@@ -158,13 +158,13 @@ void Sector::setData(QByteArray _sectorData, bool _isValid)
 }
 
 // Method to get the sector's mode
-qint32 Sector::getMode()
+qint32 Sector::getMode() const
 {
     return mode;
 }
 
 // Method to get the sector's address
-TrackTime Sector::getAddress()
+TrackTime Sector::getAddress() const
 {
     return address;
 }
@@ -185,19 +185,19 @@ void Sector::setAsNull(TrackTime _address)
 }
 
 // Method to get the sector's validity
-bool Sector::isValid()
+bool Sector::isValid() const
 {
     return valid;
 }
 
 // Method to get the sector's missing flag
-bool Sector::isMissing()
+bool Sector::isMissing() const
 {
     return missing;
 }
 
 // Method to get the corrected flag (i.e. sector was invalid, but corrected by ECC)
-bool Sector::isCorrected()
+bool Sector::isCorrected() const
 {
     if (qCorrected && pCorrected) return true;
     return false;

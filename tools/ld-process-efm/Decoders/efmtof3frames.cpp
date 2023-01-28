@@ -74,13 +74,13 @@ QVector<F3Frame> EfmToF3Frames::process(QByteArray efmDataIn, bool debugState, b
 }
 
 // Get method - retrieve statistics
-EfmToF3Frames::Statistics EfmToF3Frames::getStatistics()
+const EfmToF3Frames::Statistics &EfmToF3Frames::getStatistics() const
 {
     return statistics;
 }
 
 // Method to report decoding statistics to qInfo
-void EfmToF3Frames::reportStatistics()
+void EfmToF3Frames::reportStatistics() const
 {
     qInfo() << "";
     qInfo() << "EFM to F3 Frames:";
@@ -109,7 +109,7 @@ void EfmToF3Frames::reportStatistics()
 }
 
 // Method to reset the class
-void EfmToF3Frames::reset(void)
+void EfmToF3Frames::reset()
 {
     clearStatistics();
 

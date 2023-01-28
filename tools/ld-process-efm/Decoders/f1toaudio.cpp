@@ -71,13 +71,13 @@ QByteArray F1ToAudio::process(QVector<F1Frame> f1FramesIn, bool _padInitialDiscT
 }
 
 // Get method - retrieve statistics
-F1ToAudio::Statistics F1ToAudio::getStatistics()
+const F1ToAudio::Statistics &F1ToAudio::getStatistics() const
 {
     return statistics;
 }
 
 // Method to report decoding statistics to qInfo
-void F1ToAudio::reportStatistics()
+void F1ToAudio::reportStatistics() const
 {
     qInfo()           << "";
     qInfo()           << "F1 Frames to Audio:";
@@ -352,7 +352,7 @@ void F1ToAudio::linearInterpolationConceal()
             samplePointer++;
         }
         outputSample.setSampleValues(sampleValues);
-        pcmOutputBuffer.append(QByteArray(reinterpret_cast<char*>(outputSample.getSampleFrame()), 24));
+        pcmOutputBuffer.append(QByteArray(reinterpret_cast<const char *>(outputSample.getSampleFrame()), 24));
         statistics.concealedSamples += 6;
         statistics.totalSamples += 6;
     }
@@ -421,7 +421,7 @@ void F1ToAudio::predictiveInterpolationConceal()
             samplePointer++;
         }
         outputSample.setSampleValues(sampleValues);
-        pcmOutputBuffer.append(QByteArray(reinterpret_cast<char*>(outputSample.getSampleFrame()), 24));
+        pcmOutputBuffer.append(QByteArray(reinterpret_cast<const char *>(outputSample.getSampleFrame()), 24));
         statistics.concealedSamples += 6;
         statistics.totalSamples += 6;
     }

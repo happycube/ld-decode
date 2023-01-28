@@ -55,8 +55,8 @@ public:
     };
 
     QVector<F3Frame> process(QByteArray efmDataIn, bool debugState, bool _audioIsDts);
-    Statistics getStatistics();
-    void reportStatistics();
+    const Statistics &getStatistics() const;
+    void reportStatistics() const;
     void reset();
 
 private:

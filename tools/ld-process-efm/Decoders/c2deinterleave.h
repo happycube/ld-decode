@@ -42,11 +42,11 @@ public:
 
     void reset();
     void resetStatistics();
-    Statistics getStatistics();
-    void reportStatistics();
-    void pushC2(uchar* dataSymbols, uchar* errorSymbols);
-    uchar* getDataSymbols();
-    uchar* getErrorSymbols();
+    const Statistics &getStatistics() const;
+    void reportStatistics() const;
+    void pushC2(const uchar *dataSymbols, const uchar *errorSymbols);
+    const uchar *getDataSymbols() const;
+    const uchar *getErrorSymbols() const;
     void flush();
 
 private:

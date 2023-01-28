@@ -63,8 +63,8 @@ public:
 
     QByteArray process(QVector<F1Frame> f1FramesIn, bool _padInitialDiscTime,
                        ErrorTreatment _errorTreatment, ConcealType _concealType, bool debugState);
-    Statistics getStatistics();
-    void reportStatistics();
+    const Statistics &getStatistics() const;
+    void reportStatistics() const;
     void reset();
     void clearStatistics();
 
