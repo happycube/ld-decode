@@ -38,7 +38,8 @@ NO_PULSES_FOUND = 1
 #     return data
 
 
-@njit(cache=True)
+# Can't use numba here due to clip being a recent addition.
+#@njit(cache=True)
 def y_comb(data, line_len, limit):
     """Basic Y comb filter, essentially just blending a line with it's neighbours, limited to some maximum
     Utilized for Betamax, VHS LP etc as the half-shift in those formats helps put crosstalk on opposite phase on
