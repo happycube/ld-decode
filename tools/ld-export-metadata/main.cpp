@@ -3,7 +3,7 @@
     main.cpp
 
     ld-export-metadata - Export JSON metadata into other formats
-    Copyright (C) 2020 Adam Sampson
+    Copyright (C) 2020-2023 Adam Sampson
     Copyright (C) 2021 Simon Inns
 
     This file is part of ld-decode-tools.
@@ -28,6 +28,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
+#include "audacity.h"
 #include "csv.h"
 #include "ffmetadata.h"
 #include "closedcaptions.h"
@@ -53,7 +54,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-export-metadata - Export JSON metadata into other formats\n"
                 "\n"
-                "(c)2020 Adam Sampson\n"
+                "(c)2020-2023 Adam Sampson\n"
                 "(c)2021 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
@@ -75,6 +76,11 @@ int main(int argc, char *argv[])
                                           QCoreApplication::translate("main", "Write VBI information as CSV"),
                                           QCoreApplication::translate("main", "file"));
     parser.addOption(writeVbiCsvOption);
+
+    QCommandLineOption writeAudacityLabelsOption("audacity-labels",
+                                                 QCoreApplication::translate("main", "Write navigation information as Audacity labels"),
+                                                 QCoreApplication::translate("main", "file"));
+    parser.addOption(writeAudacityLabelsOption);
 
     QCommandLineOption writeFfmetadataOption("ffmetadata",
                                              QCoreApplication::translate("main", "Write navigation information as FFMETADATA1"),
@@ -125,6 +131,13 @@ int main(int argc, char *argv[])
     if (parser.isSet(writeVbiCsvOption)) {
         const QString &fileName = parser.value(writeVbiCsvOption);
         if (!writeVbiCsv(metaData, fileName)) {
+            qCritical() << "Failed to write output file:" << fileName;
+            return 1;
+        }
+    }
+    if (parser.isSet(writeAudacityLabelsOption)) {
+        const QString &fileName = parser.value(writeAudacityLabelsOption);
+        if (!writeAudacityLabels(metaData, fileName)) {
             qCritical() << "Failed to write output file:" << fileName;
             return 1;
         }
