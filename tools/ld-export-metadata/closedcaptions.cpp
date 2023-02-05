@@ -40,14 +40,14 @@ using std::vector;
 QString generateTimeStamp(qint32 fieldIndex, VideoSystem system)
 {
     // Convert to a 0-based count of frames
-    const qint32 frameIndex = (fieldIndex - 1) / 2;
+    double frameIndex = static_cast<double>((fieldIndex - 1) / 2);
 
     // Set some constants for the timecode calculations.
     // We are generating non-drop timecode (:ff not ;ff), so
-    // the 29.97 FPS systems notionally have 30 FPS.
-    const qint32 framesPerSecond = (system == PAL) ? 25 : 30;
-    const qint32 framesPerMinute = framesPerSecond * 60;
-    const qint32 framesPerHour = framesPerMinute * 60;
+    // the clock actually counts at 29.97 FPS.
+    const double framesPerSecond = (system == PAL) ? 25.0 : 29.97;
+    const double framesPerMinute = framesPerSecond * 60.0;
+    const double framesPerHour = framesPerMinute * 60.0;
 
     // Since the subtitle is relative to the video we
     // can simply calculate the timecode from the sequential
@@ -59,16 +59,19 @@ QString generateTimeStamp(qint32 fieldIndex, VideoSystem system)
     // frame-number/CLV timecode; as both are useful depending on
     // the use-case?
     //
-    qint32 hh = frameIndex / framesPerHour;
-    qint32 mm = (frameIndex / framesPerMinute) % 60;
-    qint32 ss = (frameIndex % framesPerMinute) / framesPerSecond;
-    qint32 ff = (frameIndex % framesPerMinute) % framesPerSecond;
+    const qint32 hh = static_cast<qint32>(frameIndex / framesPerHour);
+    frameIndex -= static_cast<double>(hh) * framesPerHour;
+    const qint32 mm = static_cast<qint32>(frameIndex / framesPerMinute);
+    frameIndex -= static_cast<double>(mm) * framesPerMinute;
+    const qint32 ss = static_cast<qint32>(frameIndex / framesPerSecond);
+    frameIndex -= static_cast<double>(ss) * framesPerSecond;
+    const qint32 ff = static_cast<qint32>(frameIndex);
 
     // Create the timestamp
-    return QString("%1").arg(hh, 2, 10, QLatin1Char('0')) + ":" +
-                              QString("%1").arg(mm, 2, 10, QLatin1Char('0')) + ":" +
-                              QString("%1").arg(ss, 2, 10, QLatin1Char('0')) + ":" +
-                              QString("%1").arg(ff, 2, 10, QLatin1Char('0'));
+    return QString("%1:%2:%3:%4").arg(hh, 2, 10, QLatin1Char('0'))
+                                 .arg(mm, 2, 10, QLatin1Char('0'))
+                                 .arg(ss, 2, 10, QLatin1Char('0'))
+                                 .arg(ff, 2, 10, QLatin1Char('0'));
 }
 
 // Sanity check the CC data byte and set to -1 if it probably is invalid
