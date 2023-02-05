@@ -38,7 +38,7 @@ else:
 # internal libraries
 
 from . import efm_pll
-from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
+from .utils import get_git_info, ac3_pipe, ac3_qpsk_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
@@ -355,7 +355,7 @@ class RFDecode:
         self.DecoderParams['vsync_ire'] = self.SysParams['vsync_ire']
 
         self.SysParams["analog_audio"] = has_analog_audio
-        self.SysParams["AC3"] = extra_options.get("AC3", False)
+        self.SysParams["AC3"] = extra_options.get("AC3", False) or extra_options.get("AC3_QPSK", False) 
         if self.SysParams["AC3"]:
             self.SysParams["audio_rfreq"] = self.SysParams["audio_rfreq_AC3"]
 
@@ -3348,6 +3348,7 @@ class LDdecode:
         self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
         self.ac3 = extra_options.get("AC3", False)
+        self.ac3_qpsk = extra_options.get("AC3_QPSK", False)
         self.write_rf_tbc = extra_options.get("write_RF_TBC", False)
 
         self.has_analog_audio = True
@@ -3363,7 +3364,7 @@ class LDdecode:
         self.outfile_audio = None
         self.outfile_efm = None
         self.outfile_pre_efm = None
-        self.outfile_ac3 = None
+        self.outfile_ac3, self.outfile_ac3_qpsk = None, None
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
 
@@ -3380,9 +3381,12 @@ class LDdecode:
             if self.write_rf_tbc:
                 self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + ".tbc.ldf")
                 self.do_rftbc = True
-            if self.ac3:
+            if self.ac3 or self.ac3_qpsk:
                 self.AC3Collector = StridedCollector(cut_begin=1024, cut_end=0)
-                self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
+                if self.ac3:
+                    self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
+                if self.ac3_qpsk:
+                    self.ac3_qpsk_processes, self.outfile_ac3_qpsk = ac3_qpsk_pipe(fname_out + ".ac3")
                 self.do_rftbc = True
 
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
@@ -3471,6 +3475,7 @@ class LDdecode:
             "outfile_efm",
             "outfile_rftbc",
             "outfile_ac3",
+            "outfile_ac3_qpsk",
         ]:
             setattr(self, outfiles, None)
 
@@ -3545,7 +3550,11 @@ class LDdecode:
             odata = self.AC3Collector.cut(filtdata)
             odata = np.clip(odata / 64, -100, 100) 
 
-            self.outfile_ac3.write(np.int8(odata))
+            if self.ac3:
+                self.outfile_ac3.write(np.int8(odata))
+
+            if self.ac3_qpsk:
+                self.outfile_ac3_qpsk.write(np.int8(odata))
 
             blk = self.AC3Collector.get_block()
 
@@ -3572,7 +3581,7 @@ class LDdecode:
             if self.outfile_rftbc is not None:
                 self.outfile_rftbc.write(rftbc)
 
-            if self.outfile_ac3 is not None:
+            if self.outfile_ac3 is not None or self.outfile_ac3_qpsk is not None:
                 self.AC3filter(rftbc)
 
             if self.pipe_rftbc is not None:
