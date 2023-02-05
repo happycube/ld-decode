@@ -36,15 +36,15 @@ public:
     F3Frame(const uchar *tValuesIn, qint32 tLength, bool audioIsDts);
 
     void setTValues(const uchar *tValuesIn, qint32 tLength, bool audioIsDts);
-    uchar* getDataSymbols();
-    uchar* getErrorSymbols();
-    uchar getSubcodeSymbol();
-    bool isSubcodeSync0();
-    bool isSubcodeSync1();
+    const uchar *getDataSymbols() const;
+    const uchar *getErrorSymbols() const;
+    uchar getSubcodeSymbol() const;
+    bool isSubcodeSync0() const;
+    bool isSubcodeSync1() const;
 
-    qint64 getNumberOfValidEfmSymbols();
-    qint64 getNumberOfInvalidEfmSymbols();
-    qint64 getNumberOfCorrectedEfmSymbols();
+    qint64 getNumberOfValidEfmSymbols() const;
+    qint64 getNumberOfInvalidEfmSymbols() const;
+    qint64 getNumberOfCorrectedEfmSymbols() const;
 
 private:
     uchar dataSymbols[32];

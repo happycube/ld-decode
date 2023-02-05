@@ -46,13 +46,13 @@ public:
     Sector(QByteArray _sectorData, bool _isValid);
 
     void setData(QByteArray _sectorData, bool _isValid);
-    qint32 getMode();
-    TrackTime getAddress();
+    qint32 getMode() const;
+    TrackTime getAddress() const;
     QByteArray getUserData();
     void setAsNull(TrackTime _address);
-    bool isValid();
-    bool isMissing();
-    bool isCorrected();
+    bool isValid() const;
+    bool isMissing() const;
+    bool isCorrected() const;
 
 private:
     // Mode 1 sector fields:
@@ -70,10 +70,10 @@ private:
     void performQParityECC(uchar *uF1Data, uchar *uF1Erasures);
     void performPParityECC(uchar *uF1Data, uchar *uF1Erasures);
 
-    qint32 bcdToInteger(uchar bcd);
-    QString dataToString(QByteArray data);
+    static qint32 bcdToInteger(uchar bcd);
+    static QString dataToString(QByteArray data);
 
-    quint32 crc32(uchar *src, qint32 size);
+    static quint32 crc32(uchar *src, qint32 size);
 };
 
 // This table is the CRC32 look-up for the EDC process.  The table is generated from the

@@ -40,7 +40,7 @@ struct Reclocker {
     static constexpr int counterBits = 16;
     static constexpr int nominalFrequency = 288000; // 2.88KHz QPSK eye pattern clock. PD4606A Pin 85 EPCK.
     static constexpr int sampleRate = 2.88e6 * samplesPerCarrierCycle; // PD4606A Pin 4, XIN 46.08MHz
-    static constexpr int nominalAdd = int((long) (1 << counterBits) * (long) nominalFrequency / (long) sampleRate);
+    static constexpr int nominalAdd = int(((1LL << counterBits) * nominalFrequency) / sampleRate);
 
     DATA_SRC &source;
     int totalBitsIn = 0;

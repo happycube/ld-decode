@@ -27,6 +27,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <vector>
 
 #include <ezpwd/rs_base>
 #include <ezpwd/rs>
@@ -51,12 +52,12 @@ public:
 
     void reset();
     void resetStatistics();
-    Statistics getStatistics();
-    void reportStatistics();
-    void pushC1(uchar *dataSymbols, uchar *errorSymbols);
-    uchar* getDataSymbols();
-    uchar* getErrorSymbols();
-    bool getDataValid();
+    const Statistics &getStatistics() const;
+    void reportStatistics() const;
+    void pushC1(const uchar *dataSymbols, const uchar *errorSymbols);
+    const uchar *getDataSymbols() const;
+    const uchar *getErrorSymbols() const;
+    bool getDataValid() const;
     void flush();
 
 private:
@@ -64,7 +65,7 @@ private:
         uchar c1Data[28];
         uchar c1Error[28];
     };
-    QVector<C1Element> c1DelayBuffer;
+    std::vector<C1Element> c1DelayBuffer;
 
     uchar interleavedC2Data[28];
     uchar interleavedC2Errors[28];
