@@ -1,4 +1,5 @@
 add_executable(ld-export-metadata
+    audacity.cpp
     closedcaptions.cpp
     csv.cpp
     ffmetadata.cpp
