@@ -117,6 +117,7 @@ RF C, RF Y+C, PB, V RF, V ENV, ENV, ENVELOPE, VIDEO ENVE, VIDEO ENVELOPE
 #### HiFi Audio FM Signal:
 
 RF-Out, A-RF, HIFI RF, HiFi ENV, A ENV
+
 ## Parts for RF Tap
 
 [What tools do I need?](https://github.com/oyvindln/vhs-decode/wiki/Hardware-Installation-Guide)
@@ -342,6 +343,7 @@ To generate .mkv files viewable in most media players, simply use the gen_chroma
 ### Export your TBC files to a video file with
 
     ./gen_chroma_vid.sh Input-TBC-Name
+
 ## Editing & Basic Online Usage
 
 For editing due to lack of support of FFV1 and sharing online without de-interlacing is not supported properly, as such the two commands are provided below to make suitable files for this use.
@@ -378,13 +380,13 @@ Software decoding provides the full signal frame, recovery software can be used 
 
 [VITC Timecode](https://github.com/oyvindln/vhs-decode/wiki/VITC-&-Subtitles) (Standard SMPTE Timecode)
 
-[PAL Teletext](https://github.com/oyvindln/vhs-decode/wiki/PAL-Teletext-Subtitles) (European Subtitles & Information Graphics)
-
 [CC EIA-608](https://github.com/oyvindln/vhs-decode/wiki/NTSC-Closed-Captioning) (Closed Captioning)
+
+[PAL Teletext](https://github.com/oyvindln/vhs-decode/wiki/PAL-Teletext-Subtitles) (European Subtitles & Information Graphics)
 
 [Tape-based Arcade Games!](https://vhs.thenvm.org/resources/)
 
-[Ruxpin TV Teddy](https://github.com/oyvindln/vhs-decode/blob/vhs_decode/tools/ruxpin-decode/readme.pdf) (Extra audio In VBI)
+[Ruxpin TV Teddy](https://github.com/oyvindln/vhs-decode/blob/vhs_decode/tools/ruxpin-decode/readme.pdf) (Extra audio in visable frame)
 
 ### Generate an video output with the top VBI area:
 
@@ -395,6 +397,7 @@ Software decoding provides the full signal frame, recovery software can be used 
 ### NTSC
 
     ./gen_chroma_vid.sh --ffll 1 --lfll 259 --ffrl 2 --lfrl 525 <tbc-name>
+    
 ## Terminal Arguments
 
 VHS-Decode supports various arguments to change how captured tape recordings are processed these vary slightly between formats like VHS & Umatic but the basic oprations remain the same.
