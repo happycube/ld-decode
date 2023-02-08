@@ -45,7 +45,7 @@ Section::Section()
     qMetadata.qMode1And4.isEncoderRunning = true;
 }
 
-bool Section::setData(uchar *dataIn)
+bool Section::setData(const uchar *dataIn)
 {
     // Interpret the section data
     qint32 symbolNumber = 2;
@@ -114,13 +114,13 @@ bool Section::setData(uchar *dataIn)
 }
 
 // Method to determine the Q mode
-qint32 Section::getQMode()
+qint32 Section::getQMode() const
 {
     return qMode;
 }
 
 // Method to get Q channel metadata
-Section::QMetadata Section::getQMetadata()
+const Section::QMetadata &Section::getQMetadata() const
 {
     return qMetadata;
 }

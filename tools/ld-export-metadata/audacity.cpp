@@ -1,9 +1,9 @@
 /************************************************************************
 
-    ffmetadata.cpp
+    audacity.cpp
 
     ld-export-metadata - Export JSON metadata into other formats
-    Copyright (C) 2019-2023 Adam Sampson
+    Copyright (C) 2023 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -22,7 +22,7 @@
 
 ************************************************************************/
 
-#include "ffmetadata.h"
+#include "audacity.h"
 
 #include "navigation.h"
 
@@ -30,12 +30,13 @@
 #include <QFile>
 #include <QTextStream>
 
-bool writeFfmetadata(LdDecodeMetaData &metaData, const QString &fileName)
+bool writeAudacityLabels(LdDecodeMetaData &metaData, const QString &fileName)
 {
     const auto videoParameters = metaData.getVideoParameters();
 
-    // Select the appropriate timebase to make 0-based field numbers work
-    const QString timeBase = videoParameters.system == PAL ? "1/50" : "1001/60000";
+    // Positions are given in seconds, with exclusive ranges.
+    // Select a scale factor to convert from 0-based field numbers to seconds.
+    const double timeFactor = videoParameters.system == PAL ? (1.0 / 50.0) : (1001.0 / 60000.0);
 
     // Extract navigation information
     const NavigationInfo navInfo(metaData);
@@ -43,7 +44,7 @@ bool writeFfmetadata(LdDecodeMetaData &metaData, const QString &fileName)
     // Open the output file
     QFile file(fileName);
     if (!file.open(QFile::WriteOnly | QFile::Text)) {
-        qDebug("writeFfmetadata: Could not open file for output");
+        qDebug("writeAudacityLabels: Could not open file for output");
         return false;
     }
     QTextStream stream(&file);
@@ -51,26 +52,19 @@ bool writeFfmetadata(LdDecodeMetaData &metaData, const QString &fileName)
     stream.setCodec("UTF-8");
 #endif
 
-    // Write the header
-    stream << ";FFMETADATA1\n";
-
     // Write the chapter changes
     for (const auto &chapter: navInfo.chapters) {
-        stream << "\n";
-        stream << "[CHAPTER]\n";
-        stream << "TIMEBASE=" << timeBase << "\n";
-        stream << "START=" << chapter.startField << "\n";
-        stream << "END=" << chapter.endField - 1 << "\n";
-        stream << "title=" << QString("Chapter %1").arg(chapter.number) << "\n";
+        stream << QString("%1\t%2\tChapter %3\n")
+                      .arg(static_cast<double>(chapter.startField) * timeFactor, 0, 'f')
+                      .arg(static_cast<double>(chapter.endField) * timeFactor, 0, 'f')
+                      .arg(chapter.number);
     }
 
-    if (!navInfo.stopCodes.empty()) {
-        // Write the stop codes, as comments
-        // XXX Is there a way to represent these properly?
-        stream << "\n";
-        for (qint32 field: navInfo.stopCodes) {
-            stream << "; Stop code at " << field << "\n";
-        }
+    // Write the stop codes
+    for (qint32 field: navInfo.stopCodes) {
+        stream << QString("%1\t%2\tStop code\n")
+                      .arg(static_cast<double>(field) * timeFactor, 0, 'f')
+                      .arg(static_cast<double>(field) * timeFactor, 0, 'f');
     }
 
     // Done!

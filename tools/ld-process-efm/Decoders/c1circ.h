@@ -53,11 +53,11 @@ public:
 
     void reset();
     void resetStatistics();
-    Statistics getStatistics();
-    void reportStatistics();
+    const Statistics &getStatistics() const;
+    void reportStatistics() const;
     void pushF3Frame(F3Frame f3Frame);
-    uchar* getDataSymbols();
-    uchar* getErrorSymbols();
+    const uchar *getDataSymbols() const;
+    const uchar *getErrorSymbols() const;
     void flush();
 
 private:

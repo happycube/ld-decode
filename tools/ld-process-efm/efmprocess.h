@@ -57,7 +57,7 @@ public:
                   bool _debug_f1ToAudio, bool _debug_f1ToData);
     void setAudioErrorTreatment(ErrorTreatment _errorTreatment);
     void setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData, bool _audioIsDts, bool _noTimeStamp);
-    void reportStatistics();
+    void reportStatistics() const;
     bool process(QString inputFilename, QString outputFilename);
     Statistics getStatistics();
     void reset();

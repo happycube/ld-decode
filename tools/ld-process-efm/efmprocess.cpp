@@ -24,6 +24,8 @@
 
 #include "efmprocess.h"
 
+#include <vector>
+
 EfmProcess::EfmProcess()
 {
     debug_efmToF3Frames = false;
@@ -90,7 +92,7 @@ void EfmProcess::setDecoderOptions(bool _padInitialDiscTime, bool _decodeAsData,
 }
 
 // Output the result of the decode to qInfo
-void EfmProcess::reportStatistics()
+void EfmProcess::reportStatistics() const
 {
     efmToF3Frames.reportStatistics();
     syncF3Frames.reportStatistics();
@@ -155,10 +157,10 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
         if (bytesRead != bufferSize) inputEfmBuffer.resize(static_cast<qint32>(bytesRead));
 
         // Perform EFM processing
-        QVector<F3Frame> initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_efmToF3Frames, audioIsDts);
-        QVector<F3Frame> syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_syncF3Frames);
-        QVector<F2Frame> f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_f3ToF2Frames, noTimeStamp);
-        QVector<F1Frame> f1Frames = f2ToF1Frames.process(f2Frames, debug_f2ToF1Frame, noTimeStamp);
+        const std::vector<F3Frame> &initialF3Frames = efmToF3Frames.process(inputEfmBuffer, debug_efmToF3Frames, audioIsDts);
+        const std::vector<F3Frame> &syncedF3Frames = syncF3Frames.process(initialF3Frames, debug_syncF3Frames);
+        const std::vector<F2Frame> &f2Frames = f3ToF2Frames.process(syncedF3Frames, debug_f3ToF2Frames, noTimeStamp);
+        const std::vector<F1Frame> &f1Frames = f2ToF1Frames.process(f2Frames, debug_f2ToF1Frame, noTimeStamp);
 
         // Process as either audio or data
         if (decodeAsAudio) {
@@ -192,7 +194,7 @@ bool EfmProcess::process(QString inputFilename, QString outputFilename)
 }
 
 // Return statistics about the decoding process
-EfmProcess::Statistics EfmProcess::getStatistics(void)
+EfmProcess::Statistics EfmProcess::getStatistics()
 {
     // Gather statistics
     statistics.f3ToF2Frames = f3ToF2Frames.getStatistics();

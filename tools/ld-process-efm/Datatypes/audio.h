@@ -42,11 +42,11 @@ public:
     };
 
     Audio();
-    Audio(uchar *_sampleFrame);
+    Audio(const uchar *_sampleFrame);
 
-    uchar* getSampleFrame();
-    void setSampleValues(Audio::SampleValues _sampleValues);
-    SampleValues getSampleValues();
+    const uchar *getSampleFrame() const;
+    void setSampleValues(const Audio::SampleValues &_sampleValues);
+    const SampleValues &getSampleValues() const;
     void setSampleToSilence();
 
 private:

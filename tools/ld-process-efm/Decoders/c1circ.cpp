@@ -45,13 +45,13 @@ void C1Circ::resetStatistics()
     statistics.c1flushed = 0;
 }
 
-C1Circ::Statistics C1Circ::getStatistics()
+const C1Circ::Statistics &C1Circ::getStatistics() const
 {
     return statistics;
 }
 
 // Method to write statistics information to qInfo
-void C1Circ::reportStatistics()
+void C1Circ::reportStatistics() const
 {
     qInfo() << "";
     qInfo() << "F3 to F2 frame C1 Error correction:";
@@ -90,14 +90,14 @@ void C1Circ::pushF3Frame(F3Frame f3Frame)
 }
 
 // Return the C1 data symbols if available
-uchar* C1Circ::getDataSymbols()
+const uchar *C1Circ::getDataSymbols() const
 {
     if (c1BufferLevel > 1) return outputC1Data;
     return nullptr;
 }
 
 // Return the C1 error symbols if available
-uchar* C1Circ::getErrorSymbols()
+const uchar *C1Circ::getErrorSymbols() const
 {
     if (c1BufferLevel > 1) return outputC1Errors;
     return nullptr;

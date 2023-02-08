@@ -147,49 +147,49 @@ void F3Frame::setTValues(const uchar *tValuesIn, qint32 tLength, bool audioIsDts
 }
 
 // Return the number of valid EFM symbols in the frame
-qint64 F3Frame::getNumberOfValidEfmSymbols()
+qint64 F3Frame::getNumberOfValidEfmSymbols() const
 {
     return validEfmSymbols;
 }
 
 // Return the number of invalid EFM symbols in the frame
-qint64 F3Frame::getNumberOfInvalidEfmSymbols()
+qint64 F3Frame::getNumberOfInvalidEfmSymbols() const
 {
     return invalidEfmSymbols;
 }
 
 // Return the number of corrected EFM symbols in the frame
-qint64 F3Frame::getNumberOfCorrectedEfmSymbols()
+qint64 F3Frame::getNumberOfCorrectedEfmSymbols() const
 {
     return correctedEfmSymbols;
 }
 
 // This method returns the 32 data symbols for the F3 Frame
-uchar *F3Frame::getDataSymbols()
+const uchar *F3Frame::getDataSymbols() const
 {
     return dataSymbols;
 }
 
 // This method returns the 32 error symbols for the F3 Frame
-uchar *F3Frame::getErrorSymbols()
+const uchar *F3Frame::getErrorSymbols() const
 {
     return errorSymbols;
 }
 
 // This method returns the subcode symbol for the F3 frame
-uchar F3Frame::getSubcodeSymbol()
+uchar F3Frame::getSubcodeSymbol() const
 {
     return subcodeSymbol;
 }
 
 // This method returns true if the subcode symbol is a SYNC0 pattern
-bool F3Frame::isSubcodeSync0()
+bool F3Frame::isSubcodeSync0() const
 {
     return isSync0;
 }
 
 // This method returns true if the subcode symbol is a SYNC1 pattern
-bool F3Frame::isSubcodeSync1()
+bool F3Frame::isSubcodeSync1() const
 {
     return isSync1;
 }
@@ -227,9 +227,9 @@ public:
 
         // If present, the symbol must be in this bucket or the next one
         const quint32 thisBucket = buckets[bucket];
-        if ((thisBucket & 0xFFFF) == symbol) return thisBucket >> 16;
+        if ((thisBucket & 0xFFFF) == static_cast<quint32>(symbol)) return thisBucket >> 16;
         const quint32 nextBucket = buckets[bucket + 1];
-        if ((nextBucket & 0xFFFF) == symbol) return nextBucket >> 16;
+        if ((nextBucket & 0xFFFF) == static_cast<quint32>(symbol)) return nextBucket >> 16;
 
         // Not found
         return -1;
