@@ -13,20 +13,12 @@ from lddecode.utils import inrange
 import vhsdecode.formats as vhs_formats
 import vhsdecode.sync as sync
 from vhsdecode.addons.chromasep import ChromaSepClass
+from vhsdecode.process import parent_system
 
 # from vhsdecode.process import getpulses_override as vhs_getpulses_override
 # from vhsdecode.addons.vsyncserration import VsyncSerration
 
-# Use PyFFTW's faster FFT implementation if available
-try:
-    import pyfftw.interfaces.numpy_fft as npfft
-    import pyfftw.interfaces
-
-    pyfftw.interfaces.cache.enable()
-    pyfftw.interfaces.cache.set_keepalive_time(10)
-except ImportError:
-    import numpy.fft as npfft
-
+from lddecode.core import npfft
 
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
@@ -304,6 +296,22 @@ class FieldNTSCCVBS(ldd.FieldNTSC):
         return baserr
 
 
+class FieldMPALCVBS(FieldNTSCCVBS):
+    def __init__(self, *args, **kwargs):
+        super(FieldMPALCVBS, self).__init__(*args, **kwargs)
+
+    def refine_linelocs_burst(self, linelocs=None):
+        """Not used for PALM.
+        """
+        if linelocs is None:
+            linelocs = self.linelocs2
+        else:
+            linelocs = linelocs.copy()
+
+        self.fieldPhaseID = 0
+
+        return linelocs
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -329,7 +337,7 @@ class CVBSDecode(ldd.LDdecode):
             freader,
             logger,
             analog_audio=False,
-            system=system,
+            system=parent_system(system),
             doDOD=False,
             threads=threads,
             extra_options=extra_options,
@@ -351,6 +359,8 @@ class CVBSDecode(ldd.LDdecode):
             self.FieldClass = FieldPALCVBS
         elif system == "NTSC":
             self.FieldClass = FieldNTSCCVBS
+        elif system == "MPAL":
+            self.FieldClass = FieldMPALCVBS
         else:
             raise Exception("Unknown video system!", system)
 
@@ -411,10 +421,10 @@ class CVBSDecode(ldd.LDdecode):
                 f = self.prevfield
             jout = super(CVBSDecode, self).build_json(f)
 
-            #if self.rf.color_system == "MPAL":
-                # jout["videoParameters"]["isSourcePal"] = True
-                # jout["videoParameters"]["isSourcePalM"] = True
-                # jout["videoParameters"]["system"] = "PAL-M"
+            if self.rf.color_system == "MPAL":
+                #jout["videoParameters"]["isSourcePal"] = True
+                #jout["videoParameters"]["isSourcePalM"] = True
+                jout["videoParameters"]["system"] = "PAL-M"
 
             return jout
         except TypeError as e:
@@ -426,12 +436,18 @@ class CVBSDecode(ldd.LDdecode):
 class CVBSDecodeInner(ldd.RFDecode):
     def __init__(self, inputfreq=40, system="NTSC", tape_format="VHS", rf_options={}):
 
+        # Make sure delays are populated with something
+        # TODO: Fix this properly.
+        self.computedelays()
+
         # First init the rf decoder normally.
         super(CVBSDecodeInner, self).__init__(
-            inputfreq, system, decode_analog_audio=False, has_analog_audio=False
+            inputfreq, parent_system(system), decode_analog_audio=False, has_analog_audio=False
         )
 
-        self.chroma_trap = rf_options.get("chroma_trap", False)
+        self._color_system = system
+
+        self._chroma_trap = rf_options.get("chroma_trap", False)
         self.notch = rf_options.get("notch", None)
         self.notch_q = rf_options.get("notch_q", 10.0)
         self.auto_sync = rf_options.get("auto_sync", False)
@@ -507,7 +523,8 @@ class CVBSDecodeInner(ldd.RFDecode):
         self.blockcut_end = 1024
         self.demods = 0
 
-        self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+        if self._chroma_trap:
+            self._chroma_sep_class = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
         self._options = namedtuple(
             "Options",
             [
@@ -518,6 +535,10 @@ class CVBSDecodeInner(ldd.RFDecode):
     @property
     def options(self):
         return self._options
+
+    @property
+    def color_system(self):
+        return self._color_system
 
     def computedelays(self, mtf_level=0):
         """Override computedelays
@@ -539,8 +560,8 @@ class CVBSDecodeInner(ldd.RFDecode):
 
         # applies the Subcarrier trap
         # (this will remove most chroma info)
-        if self.chroma_trap:
-            luma = self.chromaTrap.work(data)
+        if self._chroma_trap:
+            luma = self._chroma_sep_class.work(data)
         else:
             luma = data
 
