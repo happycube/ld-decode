@@ -51,6 +51,7 @@ __pycache__
 
 # ld-decode data files
 *.tbc
+*.tbc.json
 testdata
 testout
 
@@ -73,8 +74,11 @@ DartConfiguration.tcl
 Makefile
 Testing/
 build-*/
+build/
+dist/
 cmake_install.cmake
 install_manifest.txt
 moc_*.cpp
 moc_*.cpp_parameters
 ui_*.h
+.log
