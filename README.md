@@ -162,11 +162,11 @@ though it mainly depends on the amount of memory available to the decoder.
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
-    sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make cython3 cmake
+    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make cython3 cmake
 
 For Ubuntu 22.04 that is:
 
-    sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake
+    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake
 
 ## Install HiFi-Decode Dependencies 
 
@@ -196,7 +196,7 @@ If you want to try the gooey gui wrapper for vhs-decode (`vhs-decode-gui`) :
 
 Then install gooey
 
-    pip3 install Gooey
+    pip3 install attrdict3 Gooey
 
 ## Building
 
