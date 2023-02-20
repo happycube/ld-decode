@@ -41,11 +41,11 @@ Note for test media generation AJA/Magewell/Blackmagic and even some consumer di
 
 # [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage)
 
-Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage) witch provides decoding for VHS & Video8/High8 HiFi FM tracks which takes uncompressed or flac compressed RF captures of HiFi FM signals and outputs standard 24-bit 192khz FLAC or PCM (.wav) stereo files.
+Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) witch provides decoding for VHS & Video8/High8 HiFi FM tracks which takes uncompressed or flac compressed RF captures of HiFi FM signals and outputs standard 24-bit 192khz FLAC or PCM (.wav) stereo files.
 
-# LD-Tools suite for Windows
+# Builds for Windows
 
-The ld-tools suit has been ported to windows, This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases) **(Note this is only the tools, not the decoders)**
+The ld-tools suit alongside beta versions of `ld-decode` / `vhs-decode` / `cvbs-decode` has been ported to windows, This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures inside windows, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases)
 
 # Dependencies - Hardware
 
@@ -167,6 +167,20 @@ Install all dependencies required by LD-Decode and VHS-Decode:
 For Ubuntu 22.04 that is:
 
     sudo apt install clang libfann-dev python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-pandas python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake
+
+## Install HiFi-Decode Dependencies 
+
+Install Sound File
+
+    pip3 install -I soundfile==0.10.3.post1
+
+Install GNU Radio
+
+    sudo apt-get install gnuradio
+
+Install Zmq
+
+    sudo apt-get install libzmq3-dev
 
 ## For optional GPU (Nvidia Cuda) FLAC compression support:
 
