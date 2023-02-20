@@ -1,7 +1,7 @@
 import argparse
 import lddecode.utils as lddu
 
-
+DDD_FREQ = 40
 CXADC_FREQ = (8 * 315.0) / 88.0  # 28.636363636
 CXADC_FREQ_HIGH = 3150.0 / 88.0  # 35.795454545
 CXADC_TENBIT_FREQ = (8 * 315.0) / 88.0 / 2.0  # 14.318181818
@@ -47,7 +47,7 @@ def common_parser_gui(meta_title):
     return common_parser_gui_inner(meta_title)
 
 
-def common_parser_cli(meta_title):
+def common_parser_cli(meta_title, default_threads=4):
     parser = argparse.ArgumentParser(description=meta_title)
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
     parser.add_argument(
@@ -65,10 +65,10 @@ def common_parser_cli(meta_title):
     parser.add_argument(
         "--AGC", dest="AGC", action="store_true", default=False, help=argparse.SUPPRESS
     )
-    return common_parser_inner(parser)
+    return common_parser_inner(parser, default_threads=default_threads)
 
 
-def common_parser_inner(parser, use_gui=False):
+def common_parser_inner(parser, use_gui=False, default_threads=4):
     parser.add_argument(
         "--system",
         metavar="system",
@@ -144,7 +144,7 @@ def common_parser_inner(parser, use_gui=False):
         "--threads",
         metavar="threads",
         type=int,
-        default=4,
+        default=default_threads,
         help="number of CPU threads to use",
     )
 
@@ -239,6 +239,8 @@ def select_sample_freq(args):
         else CXADC_TENBIT_FREQ_HIGH
         if args.cxadc3_tenbit
         else args.inputfreq
+        if args.inputfreq is not None
+        else DDD_FREQ
     )
     return sample_freq
 
