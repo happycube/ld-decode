@@ -109,6 +109,10 @@ def fill_rfparams_hi8_shared(rfparams):
         "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 2},
     }
 
+    # Upper frequency of bandpass to filter out chroma from the rf signal.
+    # For vhs decks it's typically a bit more than 2x cc
+    rfparams["chroma_bpf_upper"] = 1200000
+
 
 def fill_chroma_params_pal(rfparams):
     # PAL color under carrier is 46.875 fH
@@ -141,10 +145,6 @@ def get_rfparams_pal_video8(rfparams_pal):
 
     rfparams = {**rfparams_pal}
 
-    # Upper frequency of bandpass to filter out chroma from the rf signal.
-    # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1200000
-
     # Video EQ after FM demod (PAL VHS)
     rfparams["video_eq"] = {
         "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 2},
@@ -174,10 +174,6 @@ def get_rfparams_ntsc_video8(rfparams_ntsc):
     rfparams = {**rfparams_ntsc}
 
     fill_chroma_params_ntsc(rfparams)
-
-    # Upper frequency of bandpass to filter out chroma from the rf signal.
-    # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1200000
 
     # Video EQ after FM demod (PAL VHS)
     rfparams["video_eq"] = {
@@ -210,16 +206,24 @@ def get_rfparams_pal_hi8(rfparams_pal):
     return rfparams
 
 
+def get_sysparams_pal_hi8(sysparams_pal):
+    sysparams = {**sysparams_pal}
+
+    fill_sysparams_video8_shared(sysparams_pal)
+
+    # Mean absolute value of color burst for Automatic Chroma Control.
+    # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
+    sysparams["burst_abs_ref"] = 1750
+
+    return sysparams
+
+
 def get_rfparams_ntsc_hi8(rfparams_ntsc):
-    """Get RF params for PAL video8"""
+    """Get RF params for NTSC video8"""
 
     rfparams = {**rfparams_ntsc}
 
     fill_chroma_params_ntsc(rfparams)
-
-    # Upper frequency of bandpass to filter out chroma from the rf signal.
-    # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1200000
 
     fill_rfparams_hi8_shared(rfparams)
 

@@ -383,24 +383,25 @@ class Resync:
         if blacklevel < synclevel:
             blacklevel = math.nan
 
-        # if store_in_field_state:
-        #     import matplotlib.pyplot as plt
+        if False:
+            #"store_in_field_state:
+            import matplotlib.pyplot as plt
 
-        #     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
-        #     fig.set_size_inches(40, 10)
-        #     plt.text(1, 1, "black: %s sync: %s" % (blacklevel, synclevel))
-        #     ax1.plot(field.data["video"]["demod_05"])
-        #     ax1.axhline(synclevel)
-        #     ax1.axhline(pulse_level, color="#00FF00")
-        #     if blacklevel is not math.nan:
-        #         ax1.axhline(blacklevel, color="#000000")
-        #     for p in pulses:
-        #         ax2.axvline(p.start, color="#00FF00")
-        #         ax2.axvline(p.start + p.len, color="#0000FF")
-        #     for loc in vsync_locs:
-        #         ax2.axvline(pulses[loc].start, color="#FF0000")
-        #     # ax2.plot(self.Filters["FVideo05"])
-        #     plt.show()
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+            fig.set_size_inches(40, 10)
+            plt.text(1, 1, "black: %s sync: %s" % (blacklevel, synclevel))
+            ax1.plot(field.data["video"]["demod_05"])
+            ax1.axhline(synclevel)
+            ax1.axhline(pulse_level, color="#00FF00")
+            if blacklevel is not math.nan:
+                ax1.axhline(blacklevel, color="#000000")
+            for p in pulses:
+                ax2.axvline(p.start, color="#00FF00")
+                ax2.axvline(p.start + p.len, color="#0000FF")
+            for loc in vsync_locs:
+                ax2.axvline(pulses[loc].start, color="#FF0000")
+            # ax2.plot(self.Filters["FVideo05"])
+            plt.show()
 
         if np.isnan(blacklevel).any() or np.isnan(synclevel).any():
             ldd.logger.debug("blacklevel or synclevel had a NaN!")

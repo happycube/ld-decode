@@ -23,7 +23,17 @@ from vhsdecode.cmdcommons import (
     get_extra_options,
 )
 
-supported_tape_formats = {"VHS", "SVHS", "UMATIC", "BETAMAX", "VIDEO8", "HI8"}
+supported_tape_formats = {
+    "VHS",
+    "SVHS",
+    "UMATIC",
+    "UMATIC_HI",
+    "BETAMAX",
+    "VIDEO8",
+    "HI8",
+    "EIAJ",
+    "TYPEC",
+}
 
 
 def main(args=None, use_gui=False):
@@ -56,7 +66,7 @@ def main(args=None, use_gui=False):
         metavar="tape_format",
         default="VHS",
         choices=supported_tape_formats,
-        help="Tape format, currently VHS (Default), SVHS, UMATIC, BETAMAX VIDEO8, HI8 are supported",
+        help="Tape format, currently VHS (Default), SVHS, UMATIC, UMATIC_HI, BETAMAX, VIDEO8, HI8 ,EIAJ, are supported",
     )
     luma_group = parser.add_argument_group("Luma decoding options")
     luma_group.add_argument(
@@ -250,6 +260,10 @@ def main(args=None, use_gui=False):
     sample_freq = select_sample_freq(args)
 
     loader_input_freq = sample_freq if not args.no_resample else None
+    if sample_freq == 40 and filename.endswith(".lds"):
+        # Needs to be set to 0 so the loader does not try to resample.
+        # TODO: Fix this properly
+        loader_input_freq = None
 
     if not args.no_resample:
         sample_freq = 40

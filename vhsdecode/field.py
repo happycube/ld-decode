@@ -39,7 +39,7 @@ NO_PULSES_FOUND = 1
 
 
 # Can't use numba here due to clip being a recent addition.
-#@njit(cache=True)
+# @njit(cache=True)
 def y_comb(data, line_len, limit):
     """Basic Y comb filter, essentially just blending a line with it's neighbours, limited to some maximum
     Utilized for Betamax, VHS LP etc as the half-shift in those formats helps put crosstalk on opposite phase on
@@ -57,7 +57,11 @@ def y_comb(data, line_len, limit):
 def field_class_from_formats(system: str, tape_format: str):
     field_class = None
     if system == "PAL":
-        if tape_format == "UMATIC":
+        if (
+            tape_format == "UMATIC"
+            or tape_format == "UMATIC_HI"
+            or tape_format == "EIAJ"
+        ):
             field_class = FieldPALUMatic
         elif tape_format == "SVHS":
             field_class = FieldPALSVHS
@@ -74,6 +78,8 @@ def field_class_from_formats(system: str, tape_format: str):
     elif system == "NTSC":
         if tape_format == "UMATIC":
             field_class = FieldNTSCUMatic
+        elif tape_format == "TYPEC":
+            field_class = FieldNTSCTypeC
         elif tape_format == "SVHS":
             field_class = FieldNTSCSVHS
         elif tape_format == "BETAMAX":
@@ -1152,6 +1158,20 @@ class FieldNTSCUMatic(FieldNTSCShared):
         self.fieldPhaseID = get_field_phase_id(self)
 
         return (dsout, dschroma), dsaudio, dsefm
+
+
+class FieldNTSCTypeC(FieldShared, ldd.FieldNTSC):
+    def __init__(self, *args, **kwargs):
+        super(FieldNTSCTypeC, self).__init__(*args, **kwargs)
+
+    def downscale(self, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldNTSCTypeC, self).downscale(
+            final=final, *args, **kwargs
+        )
+
+        # self.fieldPhaseID = get_field_phase_id(self)
+
+        return (dsout, None), dsaudio, dsefm
 
 
 class FieldNTSCVideo8(FieldNTSCShared):

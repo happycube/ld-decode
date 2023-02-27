@@ -47,6 +47,7 @@ def _computefilters_dummy(self):
     # Needs to be defined here as it's referenced in constructor.
     self.Filters["F05_offset"] = 32
 
+
 # HACK - override this in a hacky way for now to skip generating some filters we don't use.
 # including one that requires > 20 mhz sample rate.
 ldd.RFDecode.computefilters = _computefilters_dummy
@@ -112,7 +113,7 @@ class VHSDecode(ldd.LDdecode):
             num_worker_threads=self.numthreads,
         )
 
-        if fname_out is not None:
+        if fname_out is not None and self.rf.options.write_chroma:
             self.outfile_chroma = open(fname_out + "_chroma.tbc", "wb")
         else:
             self.outfile_chroma = None
@@ -168,11 +169,13 @@ class VHSDecode(ldd.LDdecode):
         self.fieldinfo.append(fi)
 
         self.outfile_video.write(picturey)
-        self.outfile_chroma.write(picturec)
+        if self.rf.options.write_chroma:
+            self.outfile_chroma.write(picturec)
         self.fields_written += 1
 
     def close(self):
-        setattr(self, "outfile_chroma", None)
+        if self.rf.options.write_chroma:
+            setattr(self, "outfile_chroma", None)
         super(VHSDecode, self).close()
 
     def computeMetricsPAL(self, metrics, f, fp=None):
@@ -365,6 +368,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.track_phase = track_phase
         else:
             raise Exception("Track phase can only be 0, 1 or None")
+
         self.hsync_tolerance = 0.8
 
         self.field_number = 0
@@ -379,6 +383,8 @@ class VHSRFDecode(ldd.RFDecode):
         self.DecoderParams["ire0"] = self.SysParams["ire0"]
         self.DecoderParams["hz_ire"] = self.SysParams["hz_ire"]
         self.DecoderParams["vsync_ire"] = self.SysParams["vsync_ire"]
+
+        write_chroma = tape_format != "TYPEC"
 
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
         # can't be changed later.
@@ -396,7 +402,9 @@ class VHSRFDecode(ldd.RFDecode):
                 "double_lpf",
                 "fallback_vsync",
                 "saved_levels",
-                "y_comb"
+                "y_comb",
+                "write_chroma",
+                "color_under",
             ],
         )(
             self.iretohz(100) * 2,
@@ -410,6 +418,8 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("fallback_vsync", False),
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
+            write_chroma,
+            tape_format != "TYPEC",
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -455,7 +465,11 @@ class VHSRFDecode(ldd.RFDecode):
             do_cafc=self._do_cafc,
         )
 
-        self.Filters["FVideoBurst"] = self._chroma_afc.get_chroma_bandpass()
+        self.Filters["FVideoBurst"] = (
+            self._chroma_afc.get_chroma_bandpass()
+            if self._options.color_under
+            else self._chroma_afc.get_chroma_bandpass_final()
+        )
 
         if self._notch is not None:
             if not self._do_cafc:
@@ -476,9 +490,10 @@ class VHSRFDecode(ldd.RFDecode):
         # The following filters are for post-TBC:
         # The output sample rate is 4fsc
         self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final()
-        self.Filters["FBurstNarrow"] = self._chroma_afc.get_burst_narrow()
-        self.chroma_heterodyne = self._chroma_afc.getChromaHet()
-        self.fsc_wave, self.fsc_cos_wave = self._chroma_afc.getFSCWaves()
+        if tape_format != "TYPEC":
+            self.Filters["FBurstNarrow"] = self._chroma_afc.get_burst_narrow()
+            self.chroma_heterodyne = self._chroma_afc.getChromaHet()
+            self.fsc_wave, self.fsc_cos_wave = self._chroma_afc.getFSCWaves()
 
         # Increase the cutoff at the end of blocks to avoid edge distortion from filters
         # making it through.
@@ -809,9 +824,10 @@ class VHSRFDecode(ldd.RFDecode):
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         # Filter out the color-under signal from the raw data.
+        chroma_source = data if self.options.color_under else out_video
         out_chroma = (
             demod_chroma_filt(
-                data,
+                chroma_source,
                 self.Filters["FVideoBurst"],
                 self.blocklen,
                 self.Filters["FVideoNotch"],
