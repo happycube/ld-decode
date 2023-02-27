@@ -17,9 +17,15 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://en.wikipedia.org/wiki/Wides
 
 **U-Matic** 625-line and 525-line Low Band, PAL and NTSC. - **Fully Supported**
 
+**U-Matic** 625-line and 525-line High Band Band, PAL and NTSC. - **Supported**
+
 **Betamax** 625-line and 525-line, PAL & NTSC - **Suppported**
 
-**Video8 & High8** 625-line and 525-line, PAL & NTSC - **Working (Luma Only)**
+**Video8 & High8** 625-line and 525-line, PAL & NTSC - **Working (Chroma Needs Work)**
+
+**1" Type C (SMPTE Type C)** 525-line, NTSC - **Working** (PAl Samples Required!) 
+
+**EIAJ-1 / EIAJ-2** 625-line, PAL. **Working** (NTSC Samples Required!) 
 
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
 
@@ -428,7 +434,7 @@ The decoder is 8/16 bit agnostic so as long as sample rate is defined it will de
 
 Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 
-`-tf` Sets Tape Format enter `VHS`, `SVHS`, `UMATIC`, `BETAMAX`, `VIDEO8`, `HI8`  (Default is VHS)
+`-tf` Sets Tape Format enter `VHS`, `SVHS`, `UMATIC`, `UMATIC_HI`, `BETAMAX`, `VIDEO8`, `HI8`, `TYPEC`, `EIAJ` (Default is VHS)
 
 ##  CXADC Specific Sample Rate Commands
 
@@ -498,13 +504,13 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 ## Output file formats:
 
-Unlike CVBS-Decode & LD-Decode, VHS-Decode does not output its timebase-corrected frames as a single .tbc file.
+Unlike CVBS-Decode & LD-Decode, VHS-Decode does not output its timebase-corrected frames as a single .tbc file for colour under formats.
 
 Both the luminance and chrominance channels are separate data files essentially an digital "S-Video", additionally useful for troubleshooting descriptor/log files are generated so you end up with 4 files in the following naming.
 
-`filename.tbc`        - Luminance Image Data
+`filename.tbc`        - Luminance Image Data (Combined for CVBS)
 
-`filename_chroma.tbc` - Chrominance Image Data
+`filename_chroma.tbc` - Chrominance Image Data (QAM Modulated)
 
 `filename.tbc.json`   - Frame Descriptor Table (Resolution/Dropouts/SNR/Frames/VBI Timecode)
 
