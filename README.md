@@ -9,23 +9,23 @@ This version has been modified to work with the differences found in the tracked
 
 ![](assets/images/DdD-EBU-Colour-Bar-PAL-VHS-SP.png)
 
-SMPTE ColourBars (16:9) Test Tape With [WSS](https://en.wikipedia.org/wiki/Widescreen_signaling) (PAL) export exported full-frame (1112 x 624)
+SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-decode/wiki/Wide-Screen-Signalling) (PAL) exported full-frame (1112 x 624)
 
 # [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
 
-**(S-)VHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M **Fully Supported**
+**(S-)VHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M. **Fully Supported**
 
-**U-Matic** 625-line and 525-line Low Band, PAL and NTSC. - **Fully Supported**
+**U-Matic Low Band** 625-line and 525-line - PAL and NTSC. **Fully Supported**
 
-**U-Matic** 625-line and 525-line High Band Band, PAL and NTSC. - **Supported**
+**U-Matic High Band** 625-line - PAL. **Supported**
 
-**Betamax** 625-line and 525-line, PAL & NTSC - **Suppported**
+**Betamax** 625-line and 525-line - PAL & NTSC. **Suppported**
 
-**Video8 & High8** 625-line and 525-line, PAL & NTSC - **Working (Chroma Needs Work)**
+**Video8 & High8** 625-line and 525-line - PAL & NTSC. **Working (Chroma Needs Work)**
 
-**1" Type C (SMPTE Type C)** 525-line, NTSC - **Working** (PAl Samples Required!) 
+**1" Type C (SMPTE Type C)** 525-line - NTSC. **Working** (PAL Samples Required!) 
 
-**EIAJ-1 / EIAJ-2** 625-line, PAL. **Working** (NTSC Samples Required!) 
+**EIAJ-1 / EIAJ-2** 625-line - PAL. **Working** (NTSC Samples Required!) 
 
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
 
@@ -39,7 +39,7 @@ The frequently asked questions page and the [Wiki](https://github.com/oyvindln/v
 
 This repository also contains an **experimental** CVBS decoder, `cvbs-decode`, which shares code with ld-decode and vhs-decode. Capable of decoding basic raw digitized NTSC and PAL composite video, including colour if the source is somewhat stable. 
 
-RAW CVBS has been captured using CX Cards & CXADC, however, this is somewhat buggy as the cx chip can decide to resample or do other things if it detects a valid video signal normally this happens when an unknown internal gain threshold is reached.
+RAW CVBS has been captured using CX Cards & CXADC, however, only at lowest gain states, CVBS capture is not possible with the DomesDayDuplicator Rev3 due to input filtering on the hardware.
 
 Test samples & signals can be generated using [HackTV](https://github.com/fsphil/hacktv)
 
