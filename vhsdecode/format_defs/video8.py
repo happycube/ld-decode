@@ -52,6 +52,10 @@ def fill_rfparams_video8_shared(rfparams):
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 0
 
+    # Upper frequency of bandpass to filter out chroma from the rf signal.
+    # For vhs decks it's typically a bit more than 2x cc
+    rfparams["chroma_bpf_upper"] = 1200000
+
 
 def fill_rfparams_hi8_shared(rfparams):
     """Fill in parameters that are shared between systems for VHS"""
@@ -159,7 +163,7 @@ def get_rfparams_pal_video8(rfparams_pal):
 def get_sysparams_pal_video8(sysparams_pal):
     sysparams = {**sysparams_pal}
 
-    fill_sysparams_video8_shared(sysparams_pal)
+    fill_sysparams_video8_shared(sysparams)
 
     # Mean absolute value of color burst for Automatic Chroma Control.
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
@@ -209,7 +213,7 @@ def get_rfparams_pal_hi8(rfparams_pal):
 def get_sysparams_pal_hi8(sysparams_pal):
     sysparams = {**sysparams_pal}
 
-    fill_sysparams_video8_shared(sysparams_pal)
+    fill_sysparams_hi8_shared(sysparams)
 
     # Mean absolute value of color burst for Automatic Chroma Control.
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
