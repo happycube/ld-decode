@@ -462,7 +462,7 @@ class RFDecode:
 
         """Compute filter coefficients for the given FFTFilter."""
         # Anything above the highest frequency is left as zero.
-        coeffs = np.zeros(self.blocklen, dtype=np.complex)
+        coeffs = np.zeros(self.blocklen, dtype=complex)
 
         # Generate the frequency-domain coefficients by cubic interpolation between the equaliser values.
         a_interp = spi.interp1d(freqs, amp, kind="cubic")
@@ -1396,8 +1396,8 @@ def _downscale_audio_to_output(
     failed = False
 
     for i in range(len(arange) - 1):
-        start = np.int(locs[i])
-        end = np.int(locs[i + 1])
+        start = int(locs[i])
+        end = int(locs[i + 1])
         if end > start and end < len(audio_left):
             output_left = nb_mean(audio_left[start:end])
             output_right = nb_mean(audio_right[start:end])
@@ -1916,7 +1916,7 @@ class Field:
             eqgap = self.rf.SysParams["firstFieldH"][isfirstfield]
             line0 = firstloc - ((eqgap + distfroml1) * self.inlinelen)
 
-            return np.int(line0), isfirstfield, firstblank, 100
+            return int(line0), isfirstfield, firstblank, 100
 
         """
         If there are no valid sections, check line 0 and the first eq pulse, and the last eq
@@ -2526,7 +2526,7 @@ class Field:
         """
 
         # Convert raw RF to floating point to help the scaler
-        fdata = self.data["input"].astype(np.float)
+        fdata = self.data["input"].astype(float)
 
         if linelocs is None:
             linelocs = self.linelocs
@@ -4193,8 +4193,8 @@ class LDdecode:
         vp["fieldWidth"] = f.rf.SysParams["outlinelen"]
         vp["sampleRate"] = f.rf.SysParams["outfreq"] * 1000000
 
-        vp["black16bIre"] = np.float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
-        vp["white16bIre"] = np.float(f.hz_to_output(f.rf.iretohz(100)))
+        vp["black16bIre"] = float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
+        vp["white16bIre"] = float(f.hz_to_output(f.rf.iretohz(100)))
 
         vp["fieldHeight"] = f.outlinecount
 
