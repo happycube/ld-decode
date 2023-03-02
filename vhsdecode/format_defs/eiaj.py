@@ -20,14 +20,19 @@ def get_rfparams_pal_eiaj(RFParams_PAL):
         "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 1},
     }
 
-    # Video Y FM de-emphasis (550 ~ 650ns)
+    # Video Y FM de-emphasis ()
+    # Seems to be around 215-220 ns according to AV-3670 schematics?
+    # Doesn't seem to give the right result with that fed in to the deemphasis function
+    # , eyeballed something that worked instead.
     RFParams_PAL_EIAJ["deemph_tau"] = 600e-9
 
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
-    RFParams_PAL_EIAJ["deemph_mid"] = 500000
-    RFParams_PAL_EIAJ["deemph_gain"] = 10.8
+    # AV-3670 seems to have a simple RC low-pass filter with about 220 ns time constant as deepmhasis but
+    # this seems to work a bit better
+    RFParams_PAL_EIAJ["deemph_mid"] = 725000
+    RFParams_PAL_EIAJ["deemph_gain"] = 25
 
     # This has not really been stress-tested due to lack of crummy EIAJ samples.
     RFParams_PAL_EIAJ["boost_bpf_low"] = 5400000
@@ -51,8 +56,10 @@ def get_sysparams_pal_eiaj(sysparams_pal):
     # SysParams_PAL_EIAJ["ire0"] = 4257143
     # SysParams_PAL_EIAJ["hz_ire"] = 1600000 / 140.0
     # SysParams_PAL_EIAJ["burst_abs_ref"] = 5000
-    SysParams_PAL_EIAJ["ire0"] = 4450000  # 4257143
-    SysParams_PAL_EIAJ["hz_ire"] = 1400000 / 140.0
+    SysParams_PAL_EIAJ["hz_ire"] = 1800000 / (100 + -SysParams_PAL_EIAJ["vsync_ire"])
+    SysParams_PAL_EIAJ["ire0"] = 3.8e6 + (
+        SysParams_PAL_EIAJ["hz_ire"] * -SysParams_PAL_EIAJ["vsync_ire"]
+    )
     SysParams_PAL_EIAJ["burst_abs_ref"] = 1000
 
     return SysParams_PAL_EIAJ

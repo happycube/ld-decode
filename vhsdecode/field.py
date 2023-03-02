@@ -113,6 +113,7 @@ def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _s
     PULSE_START = 0
     PULSE_LEN = 1
 
+    # TODO: get max len from field.
     long_pulses = list(
         filter(
             lambda p: inrange(p[PULSE_LEN], lt_vsync[0], lt_vsync[1] * 10), raw_pulses
@@ -150,6 +151,7 @@ def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _s
         line_0 = long_pulses[0][PULSE_START] - offset
         # If we see exactly 2 groups of 3 long pulses, assume that we are dealing with a 240p/288p signal and
         # use the second group as loc of last line
+        # TODO: we also have examples where vsync is one very long pulse, need to sort that too here.
         last_lineloc = (
             long_pulses[3][PULSE_START] - offset
             if len(long_pulses) == 6
@@ -668,7 +670,7 @@ class FieldShared:
             # for p in linelocs_dict.values():
             #    ax3.axvline(p)
             # ldd.logger.info("p %s", p)
-            for ll in rv_ll:
+            for ll in linelocs:
                 ax3.axvline(ll)
 
             # ax1.axhline(self.pulse_hz_min, color="#00FFFF")

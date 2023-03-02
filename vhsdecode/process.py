@@ -15,7 +15,7 @@ from vhsdecode.chroma import demod_chroma_filt
 
 import vhsdecode.formats as vhs_formats
 
-# from vhsdecode.addons.FMdeemph import FMDeEmphasis
+from vhsdecode.addons.FMdeemph import FMDeEmphasis
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.addons.resync import Resync
@@ -637,9 +637,13 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         # Video (luma) main de-emphasis
-        db, da = FMDeEmphasisB(self.freq_hz, DP["deemph_gain"], DP["deemph_mid"]).get()
-        # Sync de-emphasis
-        # db05, da05 = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
+        if self.options.tape_format == "EIAJ":
+            # EIAJ seems to use a simpler deemphasis filter so we can use the time constant
+            db, da = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
+        else:
+            db, da = FMDeEmphasisB(self.freq_hz, DP["deemph_gain"], DP["deemph_mid"]).get()
+
+        filter_deemp = filtfft((db, da), self.blocklen, whole=False)
 
         # db2, da2 = FMDeEmphasisB(
         #     self.freq_hz, 1.5, 1e6, 3 / 4
@@ -669,7 +673,6 @@ class VHSRFDecode(ldd.RFDecode):
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
-        filter_deemp = filtfft((db, da), self.blocklen, whole=False)
         self.Filters["FVideo"] = filter_deemp * filter_video_lpf
         if self.options.double_lpf:
             # Double up the lpf to possibly closer emulate
