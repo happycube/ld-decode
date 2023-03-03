@@ -10,7 +10,7 @@ def get_rfparams_ntsc_typec(RFParams_NTSC):
     RFParams_NTSC_TYPEC["video_hpf_extra"] = 1500000
     RFParams_NTSC_TYPEC["video_hpf_extra_order"] = 1
     RFParams_NTSC_TYPEC["video_lpf_freq"] = 4200000
-    RFParams_NTSC_TYPEC["video_lpf_order"] = 2
+    RFParams_NTSC_TYPEC["video_lpf_order"] = 1
     # 923828 ± x00
     RFParams_NTSC_TYPEC["color_under_carrier"] = 3.58e6  # TODO set to fsc properly
     RFParams_NTSC_TYPEC["chroma_bpf_upper"] = 200000
@@ -27,8 +27,8 @@ def get_rfparams_ntsc_typec(RFParams_NTSC):
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
-    RFParams_NTSC_TYPEC["deemph_mid"] = 500000
-    RFParams_NTSC_TYPEC["deemph_gain"] = 10.8
+    RFParams_NTSC_TYPEC["deemph_mid"] = 420000
+    RFParams_NTSC_TYPEC["deemph_gain"] = 7.35
 
     # This has not really been stress-tested due to lack of crummy TYPEC samples.
     RFParams_NTSC_TYPEC["boost_bpf_low"] = 9500000

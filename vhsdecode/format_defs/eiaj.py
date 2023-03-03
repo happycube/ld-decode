@@ -9,8 +9,8 @@ def get_rfparams_pal_eiaj(RFParams_PAL):
     RFParams_PAL_EIAJ["video_lpf_extra_order"] = 3
     RFParams_PAL_EIAJ["video_hpf_extra"] = 1500000
     RFParams_PAL_EIAJ["video_hpf_extra_order"] = 1
-    RFParams_PAL_EIAJ["video_lpf_freq"] = 4200000
-    RFParams_PAL_EIAJ["video_lpf_order"] = 2
+    RFParams_PAL_EIAJ["video_lpf_freq"] = 3000000
+    RFParams_PAL_EIAJ["video_lpf_order"] = 1
     # 685546 ± 200
     RFParams_PAL_EIAJ["color_under_carrier"] = (625 * 25) * (351 / 8)
     RFParams_PAL_EIAJ["chroma_bpf_upper"] = 1300000
@@ -22,17 +22,14 @@ def get_rfparams_pal_eiaj(RFParams_PAL):
 
     # Video Y FM de-emphasis ()
     # Seems to be around 215-220 ns according to AV-3670 schematics?
-    # Doesn't seem to give the right result with that fed in to the deemphasis function
-    # , eyeballed something that worked instead.
-    RFParams_PAL_EIAJ["deemph_tau"] = 600e-9
+    # Eyeballed approximation based on circuit simulation.
+    RFParams_PAL_EIAJ["deemph_tau"] = 520e-9
 
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
-    # it's eyeballed based on graph and output.
-    # AV-3670 seems to have a simple RC low-pass filter with about 220 ns time constant as deepmhasis but
-    # this seems to work a bit better
-    RFParams_PAL_EIAJ["deemph_mid"] = 725000
-    RFParams_PAL_EIAJ["deemph_gain"] = 25
+    # Parameters eyeballed based circuit simluation of AV-3670 by ifb.
+    RFParams_PAL_EIAJ["deemph_mid"] = 360000
+    RFParams_PAL_EIAJ["deemph_gain"] = 10
 
     # This has not really been stress-tested due to lack of crummy EIAJ samples.
     RFParams_PAL_EIAJ["boost_bpf_low"] = 5400000

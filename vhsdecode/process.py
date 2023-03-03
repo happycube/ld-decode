@@ -637,11 +637,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         # Video (luma) main de-emphasis
-        if self.options.tape_format == "EIAJ":
-            # EIAJ seems to use a simpler deemphasis filter so we can use the time constant
-            db, da = FMDeEmphasis(self.freq_hz, tau=DP["deemph_tau"]).get()
-        else:
-            db, da = FMDeEmphasisB(self.freq_hz, DP["deemph_gain"], DP["deemph_mid"]).get()
+        db, da = FMDeEmphasisB(self.freq_hz, DP["deemph_gain"], DP["deemph_mid"]).get()
 
         filter_deemp = filtfft((db, da), self.blocklen, whole=False)
 
