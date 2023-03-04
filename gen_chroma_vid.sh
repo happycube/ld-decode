@@ -286,7 +286,7 @@ fi
 # There might be a better way of supporting monochrome output
 if [ "$monochrome" = "1" ]; then
 	ffmpeg -hide_banner -thread_queue_size 4096 -color_range tv \
-	-i <(
+	-thread_queue_size 2048 -i <(
 		ld-dropout-correct -i "$input_tbc" --output-json /dev/null - |
 			ld-chroma-decoder --chroma-gain 0 -f mono -p y4m "${decoder_opts[@]}" --input-json "$input_tbc_json" - -
 	) \
@@ -298,11 +298,11 @@ if [ "$monochrome" = "1" ]; then
 	-shortest -y "$input_stripped"."$video_container"
 else
 	ffmpeg -hide_banner -thread_queue_size 4096 -color_range tv \
-	-i <(
+	-thread_queue_size 2048 -i <(
 		ld-dropout-correct -i "$input_tbc" --output-json /dev/null - |
 			ld-chroma-decoder --chroma-gain 0 -f mono -p y4m "${decoder_opts[@]}" --input-json "$input_tbc_json" - -
 	) \
-	-i <(
+	-thread_queue_size 2048 -i <(
 		ld-dropout-correct -i "$input_chroma_tbc" --input-json "$input_tbc_json" --output-json /dev/null - |
 			ld-chroma-decoder -f $chroma_decoder "${decoder_opts[@]}" --luma-nr 0 --chroma-gain $chroma_gain --chroma-phase "$chroma_phase" -p y4m --input-json "$input_tbc_json" - -
 	) \
