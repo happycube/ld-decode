@@ -53,4 +53,67 @@ def get_sysparams_ntsc_typec(sysparams_NTSC):
     SysParams_NTSC_TYPEC["ire0"] = 7.9e6
     SysParams_NTSC_TYPEC["burst_abs_ref"] = 5000
 
+    # Sync tip = 7.06 mhz
+    # Peak white = 10.00 mhz
+
     return SysParams_NTSC_TYPEC
+
+def get_rfparams_pal_typec(RFParams_PAL):
+    RFParams_PAL_TYPEC = {**RFParams_PAL}
+    # TYPEC section
+    # These need tweaking.
+    RFParams_PAL_TYPEC["video_bpf_low"] = 1500000
+    RFParams_PAL_TYPEC["video_bpf_high"] = 12000000
+    RFParams_PAL_TYPEC["video_bpf_order"] = 1
+    RFParams_PAL_TYPEC["video_lpf_extra"] = 14000000
+    RFParams_PAL_TYPEC["video_lpf_extra_order"] = 3
+    RFParams_PAL_TYPEC["video_hpf_extra"] = 500000
+    RFParams_PAL_TYPEC["video_hpf_extra_order"] = 1
+    RFParams_PAL_TYPEC["video_lpf_freq"] = 5200000
+    RFParams_PAL_TYPEC["video_lpf_order"] = 1
+    # 923828 ± x00
+    RFParams_PAL_TYPEC["color_under_carrier"] = 4.43e6  # TODO set to fsc properly
+    RFParams_PAL_TYPEC["chroma_bpf_upper"] = 200000
+
+    # Video EQ after FM demod (NTSC TYPEC) (based on NTSC one, needs tweak)
+    RFParams_PAL_TYPEC["video_eq"] = {
+        "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 1},
+    }
+
+    # Video Y FM de-emphasis 1
+    RFParams_PAL_TYPEC["deemph_tau"] = 180e-9
+    # RFParams_PAL_TYPEC["deemph_tau2"] = 610e-9
+
+    # Temporary video emphasis filter constants
+    # Ideally we would calculate this based on tau and 'x' value, for now
+    # it's eyeballed based on graph and output.
+    RFParams_PAL_TYPEC["deemph_mid"] = 478500
+    RFParams_PAL_TYPEC["deemph_gain"] = 9.53
+
+    # This has not really been stress-tested due to lack of crummy TYPEC samples.
+    RFParams_PAL_TYPEC["boost_bpf_low"] = 9500000
+    RFParams_PAL_TYPEC["boost_bpf_high"] = 10000000
+    RFParams_PAL_TYPEC["boost_bpf_mult"] = 0
+
+    # Needs to be tweaked, just using some random values for now.
+    RFParams_PAL_TYPEC["nonlinear_highpass_freq"] = 1000000
+    RFParams_PAL_TYPEC["nonlinear_highpass_limit_h"] = 5000
+    RFParams_PAL_TYPEC["nonlinear_highpass_limit_l"] = -20000
+
+    return RFParams_PAL_TYPEC
+
+
+def get_sysparams_pal_typec(sysparams_PAL):
+    SysParams_PAL_TYPEC = {**sysparams_PAL}
+
+    # NTSC and NTSC "regular-band" use the same frequencies, but
+    # not sure if PAL sync being -43 and ntsc being -40 makes
+    # a difference on these parameters.
+    SysParams_PAL_TYPEC["hz_ire"] = 1740000 / 143.0
+    SysParams_PAL_TYPEC["ire0"] = 7.68e6
+    SysParams_PAL_TYPEC["burst_abs_ref"] = 5000
+
+    # Sync tip = 7.16 mhz
+    # Peak white = 8.90 mhz
+
+    return SysParams_PAL_TYPEC

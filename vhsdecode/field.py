@@ -63,6 +63,8 @@ def field_class_from_formats(system: str, tape_format: str):
             or tape_format == "EIAJ"
         ):
             field_class = FieldPALUMatic
+        elif tape_format == "TYPEC":
+            field_class = FieldPALTypeC
         elif tape_format == "SVHS":
             field_class = FieldPALSVHS
         elif tape_format == "BETAMAX":
@@ -1093,6 +1095,17 @@ class FieldPALVideo8(FieldPALShared):
         dschroma = decode_chroma_video8(self)
 
         return (dsout, dschroma), dsaudio, dsefm
+
+class FieldPALTypeC(FieldPALShared, ldd.FieldPAL):
+    def __init__(self, *args, **kwargs):
+        super(FieldPALTypeC, self).__init__(*args, **kwargs)
+
+    def downscale(self, final=False, *args, **kwargs):
+        dsout, dsaudio, dsefm = super(FieldPALTypeC, self).downscale(
+            final=final, *args, **kwargs
+        )
+
+        return (dsout, None), dsaudio, dsefm
 
 
 class FieldNTSCVHS(FieldNTSCShared):

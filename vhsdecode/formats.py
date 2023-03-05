@@ -92,6 +92,15 @@ def get_format_params(system: str, tape_format: str, logger):
             return get_sysparams_pal_eiaj(SysParams_PAL), get_rfparams_pal_eiaj(
                 RFParams_PAL
             )
+        elif tape_format == "TYPEC":
+            from vhsdecode.format_defs.typec import (
+                get_rfparams_pal_typec,
+                get_sysparams_pal_typec,
+            )
+
+            return get_sysparams_pal_typec(SysParams_PAL), get_rfparams_pal_typec(
+                RFParams_PAL
+            )
         else:
             if tape_format != "VHS":
                 logger.warning(
