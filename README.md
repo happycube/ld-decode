@@ -21,11 +21,11 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-dec
 
 **Betamax** 625-line and 525-line - PAL & NTSC. **Suppported**
 
-**Video8 & High8** 625-line and 525-line - PAL & NTSC. **Working (Chroma Needs Work)**
+**Video8 & Hi8** 625-line and 525-line - PAL & NTSC. **Working (Chroma Needs Work)**
 
-**1" Type C (SMPTE Type C)** 525-line - NTSC. **Working** (PAL Samples Required!) 
+**1" Type C (SMPTE Type C)** 625-line and 525-line - PAL & NTSC. **Working** (More Samples Required!) 
 
-**EIAJ-1 / EIAJ-2** 625-line - PAL. **Working** (NTSC Samples Required!) 
+**EIAJ ** 625-line - PAL. **Working** (NTSC Samples Required!) 
 
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
 
@@ -45,9 +45,9 @@ Test samples & signals can be generated using [HackTV](https://github.com/fsphil
 
 Note for test media generation AJA/Magewell/Blackmagic and even some consumer digital to analogue converters have test generators built-in some prosumer/broadcast decks also have generators built in same for HDV camcorders.
 
-# [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage)
+# [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage) & [RTL-SDR Decode](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR)
 
-Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) witch provides decoding for VHS & Video8/High8 HiFi FM tracks which takes uncompressed or flac compressed RF captures of HiFi FM signals and outputs standard 24-bit 192khz FLAC or PCM (.wav) stereo files.
+Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) witch provides decoding for VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or flac compressed RF captures of HiFi FM signals and outputs standard 24-bit 192khz FLAC or PCM (.wav) stereo files.
 
 # Builds for Windows
 
