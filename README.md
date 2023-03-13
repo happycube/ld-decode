@@ -25,7 +25,7 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-dec
 
 **1" Type C (SMPTE Type C)** 625-line and 525-line - PAL & NTSC. **Working** (More Samples Required!) 
 
-**EIAJ ** 625-line - PAL. **Working** (NTSC Samples Required!) 
+**EIAJ** 625-line - PAL. **Working** (NTSC Samples Required!) 
 
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
 
