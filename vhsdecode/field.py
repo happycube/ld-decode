@@ -105,67 +105,6 @@ def field_class_from_formats(system: str, tape_format: str):
     return field_class
 
 
-def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _system):
-    """
-    Try a more primitive way of locating line 0 if the normal approach fails.
-    Currently we basically just look for the first long pulse that could be start of vsync pulses in
-    e.g a 240p/280p signal
-    """
-
-    PULSE_START = 0
-    PULSE_LEN = 1
-
-    # TODO: get max len from field.
-    long_pulses = list(
-        filter(
-            lambda p: inrange(p[PULSE_LEN], lt_vsync[0], lt_vsync[1] * 10), raw_pulses
-        )
-    )
-
-    if False:
-        # len(validpulses) > 300:
-        import matplotlib.pyplot as plt
-
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
-        ax1.plot(demod_05)
-
-        for raw_pulse in long_pulses:
-            ax2.axvline(raw_pulse.start, color="#910000")
-            ax2.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
-
-        # for valid_pulse in long_pulses:
-        #     color = (
-        #         "#FF0000"
-        #         if valid_pulse[0] == 2
-        #         else "#00FF00"
-        #         if valid_pulse[0] == 1
-        #         else "#0F0F0F"
-        #     )
-        #     ax3.axvline(valid_pulse[1][0], color=color)
-        #     ax3.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
-
-        plt.show()
-    if long_pulses:
-        # Offset from start of first vsync to first line
-        # NOTE: Not technically to first line but to the loc that would be expected for getLine0.
-        # May need a different value for NTSC, may need tweaking..
-        offset = linelen * 3
-        line_0 = long_pulses[0][PULSE_START] - offset
-        # If we see exactly 2 groups of 3 long pulses, assume that we are dealing with a 240p/288p signal and
-        # use the second group as loc of last line
-        # TODO: we also have examples where vsync is one very long pulse, need to sort that too here.
-        last_lineloc = (
-            long_pulses[3][PULSE_START] - offset
-            if len(long_pulses) == 6
-            and long_pulses[3][PULSE_START] - long_pulses[2][PULSE_START]
-            > (lt_vsync[1] * 10)
-            else None
-        )
-        return line_0, last_lineloc, True
-    else:
-        return None, None, None
-
-
 P_HSYNC, P_EQPL1, P_VSYNC, P_EQPL2, P_EQPL, P_OTHER_S, P_OTHER_L = range(7)
 P_NAME = ["HSYNC", "EQPL1", "VSYNC", "EQPL2", "EQPL", "OTHER_S", "OTHER_L"]
 
@@ -225,6 +164,86 @@ def _is_valid_seq(type_list, num_pulses):
         (P_VSYNC, num_pulses),
         (P_EQPL, num_pulses),
     ]
+
+
+def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _system):
+    """
+    Try a more primitive way of locating line 0 if the normal approach fails.
+    This doesn't actually fine line 0, rather it locates the approx position of the last vsync before vertical blanking
+    as the later code is designed to work off of that.
+    Currently we basically just look for the first "long" pulse that could be start of vsync pulses in
+    e.g a 240p/280p signal (that is, a pulse that is at least vsync pulse length.)
+    """
+
+    PULSE_START = 0
+    PULSE_LEN = 1
+
+    # TODO: get max len from field.
+    long_pulses = list(
+        filter(
+            lambda p: inrange(p[PULSE_LEN], lt_vsync[0], lt_vsync[1] * 10), raw_pulses
+        )
+    )
+
+    if False:
+        # len(validpulses) > 300:
+        import matplotlib.pyplot as plt
+
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+        ax1.plot(demod_05)
+
+        for raw_pulse in long_pulses:
+            ax2.axvline(raw_pulse.start, color="#910000")
+            ax2.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
+
+        # for valid_pulse in long_pulses:
+        #     color = (
+        #         "#FF0000"
+        #         if valid_pulse[0] == 2
+        #         else "#00FF00"
+        #         if valid_pulse[0] == 1
+        #         else "#0F0F0F"
+        #     )
+        #     ax3.axvline(valid_pulse[1][0], color=color)
+        #     ax3.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
+
+        plt.show()
+    if long_pulses:
+        # Offset from start of first vsync to first line
+        # NOTE: Not technically to first line but to the loc that would be expected for getLine0.
+        # may need tweaking..
+
+        first_long_pulse_pos = long_pulses[0][PULSE_START]
+
+        line_0 = None
+        # TODO: Optimize this
+        # Look for the last vsync before the vsync area as that is what
+        # the other functions want.
+        for p in valid_pulses:
+            if p[1][PULSE_START] > first_long_pulse_pos:
+                break
+            if p[0] == P_HSYNC:
+                line_0 = p[1][PULSE_START]
+
+        if line_0 is None:
+            ldd.logger.info(
+                "WARNING, line0 hsync not found, guessing something, result may be garbled."
+            )
+            line_0 = first_long_pulse_pos - (3 * linelen)
+
+        # If we see exactly 2 groups of 3 long pulses, assume that we are dealing with a 240p/288p signal and
+        # use the second group as loc of last line
+        # TODO: we also have examples where vsync is one very long pulse, need to sort that too here.
+        last_lineloc = (
+            long_pulses[3][PULSE_START] - offset
+            if len(long_pulses) == 6
+            and long_pulses[3][PULSE_START] - long_pulses[2][PULSE_START]
+            > (lt_vsync[1] * 10)
+            else None
+        )
+        return line_0, last_lineloc, True
+    else:
+        return None, None, None
 
 
 def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len):
@@ -447,6 +466,8 @@ class FieldShared:
         self.validpulses = validpulses = self.refinepulses()
 
         # line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        # NOTE: This seems to get the position of the last normal vsync before the vertical blanking interval rather than line0
+        # (which is only the same thing on the top field of 525-line system signals)
         return self.getLine0(validpulses)
 
     def compute_linelocs(self):
@@ -522,14 +543,6 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        # Numba prefers we use a numba typed list, or we will get
-        # deprection warnings.
-        # validpulses_typed = TypedList()
-        # Need to initialize this manually as constructor didn't take
-        # arguments in older versions of numba.
-        # [validpulses_typed.append(p) for p in validpulses]
-        # TODO: Seems lists in numba are a bit wonky still so disabling for now.
-
         linelocs_dict, linelocs_dist = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
@@ -551,7 +564,6 @@ class FieldShared:
         self.linelocs0 = linelocs.copy()
 
         if linelocs_filled[0] < 0:
-            # logger.info("linelocs_filled[0] < 0, %s", linelocs_filled)
             next_valid = None
             for i in range(0, self.outlinecount + 1):
                 if linelocs[i] > 0:
@@ -634,8 +646,12 @@ class FieldShared:
             # len(validpulses) > 300:
             import matplotlib.pyplot as plt
 
-            fig, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex=True)
+            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
             ax1.plot(self.data["video"]["demod"])
+            ax1.axvline(rv_ll[0], color="#00FF00")
+            ax1.axvline(line0loc, color="#FF0000")
+            ax1.axvline(linelocs_dict[0], color="#000000")
+            ax1.axvline(rv_ll[10], color="#00FF00")
 
             # (
             #     sync,
@@ -675,6 +691,10 @@ class FieldShared:
             for ll in linelocs:
                 ax3.axvline(ll)
 
+            for ll in rv_ll:
+                ax4.axvline(ll)
+            # for i in range (0, proclines):
+            #    ax4.axvline(line0loc + (i * self.meanlinelen))
             # ax1.axhline(self.pulse_hz_min, color="#00FFFF")
             # ax1.axhline(self.pulse_hz_max, color="#000000")
             plt.show()
@@ -1095,6 +1115,7 @@ class FieldPALVideo8(FieldPALShared):
         dschroma = decode_chroma_video8(self)
 
         return (dsout, dschroma), dsaudio, dsefm
+
 
 class FieldPALTypeC(FieldPALShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):

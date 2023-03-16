@@ -206,7 +206,7 @@ def main(args=None, use_gui=False):
         dest="fallback_vsync",
         action="store_true",
         default=False,
-        help="Enable vsync detect fallback. Will be enabled by default once more tested, so expect this option to change.",
+        help="Enable vsync detect fallback. Will be enabled by default once more tested, so expect this option to change. Always enabled when using TypeC tape format",
     )
     debug_group.add_argument(
         "--use_saved_levels",

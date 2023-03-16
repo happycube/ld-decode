@@ -415,7 +415,8 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("sync_clip", False),
             rf_options.get("disable_dc_offset", False),
             tape_format == "VHS",
-            rf_options.get("fallback_vsync", False),
+            # Always use this if we are decoding TYPEC since it doesn't have normal vsync.
+            rf_options.get("fallback_vsync", False) or tape_format == "TYPEC",
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,

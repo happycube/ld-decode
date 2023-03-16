@@ -58,6 +58,7 @@ def get_sysparams_ntsc_typec(sysparams_NTSC):
 
     return SysParams_NTSC_TYPEC
 
+
 def get_rfparams_pal_typec(RFParams_PAL):
     RFParams_PAL_TYPEC = {**RFParams_PAL}
     # TYPEC section
