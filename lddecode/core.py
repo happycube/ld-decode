@@ -46,6 +46,8 @@ from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector
 
+from .fdls import FDLS
+
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
     # which doesn't work when we do more threads, do disable that...
@@ -447,6 +449,69 @@ class RFDecode:
         This improved EFM filter was devised by Adam Sampson (@atsampson)
         """
 
+        
+        nbins = 512
+        
+        # Frequency bands
+        freqs = np.linspace(0.0e6, 1.9e6, num=11)
+        freq_per_bin = self.freq_hz / (nbins * 2)
+        # Amplitude and phase adjustments for each band.
+        # These values were adjusted empirically based on a selection of NTSC and PAL samples.
+        amp = np.array(
+            [0.0, 0.215, 0.41, 0.73, 0.98, 1.03, 0.99, 0.81, 0.59, 0.42, 0.0]
+            #[0.0, 0.215, 0.41, 0.73, 0.98, 1.05, 0.99, 0.81, 0.59, 0.42, 0.0]
+        )
+        phase = np.array(
+            [0.0, -0.92, -1.03, -1.11, -1.2, -1.2, -1.2, -1.2, -1.05, -0.95, -0.8]
+            #[0, -0.92, -1.03, -1.11, -1.2, -1.23, -1.21, -1.15, -1.0, -0.9, -0.6]
+        )
+        phase = [p * 1.1 for p in phase]
+
+        """Compute filter coefficients for the given FFTFilter."""
+        # Anything above the highest frequency is left as zero.
+        coeffs = np.zeros(nbins, dtype=complex)
+
+        # Generate the frequency-domain coefficients by cubic interpolation between the equaliser values.
+        a_interp = spi.interp1d(freqs, amp, kind="cubic")
+        p_interp = spi.interp1d(freqs, phase, kind="cubic")
+
+        nonzero_bins = int(freqs[-1] / freq_per_bin) + 1
+
+        bin_freqs = np.arange(nonzero_bins) * freq_per_bin
+        bin_amps = a_interp(bin_freqs)
+        bin_phases = p_interp(bin_freqs)
+
+        # Scale by the amplitude, rotate by the phase
+        coeffs[:nonzero_bins] = bin_amps * (
+            np.cos(bin_phases) + (complex(0, -1) * np.sin(bin_phases))
+        )
+        
+        impulse = npfft.irfft(coeffs)
+        fir_size = int(len(impulse)*(1.9/20.0))
+        
+        if True:
+            # Rotate and window the result to get the FIR filter
+            impulse[:] = np.roll(impulse, fir_size // 2)
+            impulse[:fir_size] *= sps.get_window('hamming', fir_size)
+            impulse[fir_size:] = 0.0        
+            # Rotate the FIR filter back, so it doesn't add a delay
+            #impulse[:] = np.roll(impulse, -fir_size // 2)
+            impulse[:] = np.roll(impulse, (-len(impulse)) // 2)
+
+        self.Filters["Fefm"] = filtfft([impulse, [1.0]], self.blocklen) * 1
+        
+        return (bin_freqs, bin_amps, bin_phases), coeffs
+
+    def computeefmfilter0(self):
+        """Frequency-domain equalisation filter for the LaserDisc EFM signal.
+        This was inspired by the input signal equaliser in WSJT-X, described in
+        Steven J. Franke and Joseph H. Taylor, "The MSK144 Protocol for
+        Meteor-Scatter Communication", QEX July/August 2017.
+        <http://physics.princeton.edu/pulsar/k1jt/MSK144_Protocol_QEX.pdf>
+
+        This improved EFM filter was devised by Adam Sampson (@atsampson)
+        """
+
         # Frequency bands
         freqs = np.linspace(0.0e6, 1.9e6, num=11)
         freq_per_bin = self.freq_hz / self.blocklen
@@ -456,9 +521,17 @@ class RFDecode:
             [0.0, 0.215, 0.41, 0.73, 0.98, 1.03, 0.99, 0.81, 0.59, 0.42, 0.0]
         )
         phase = np.array(
-            [0.0, -0.92, -1.03, -1.11, -1.2, -1.2, -1.2, -1.2, -1.05, -0.95, -0.8]
+            #[0.0, -0.92, -1.03, -1.11, -1.2, -1.2, -1.2, -1.2, -1.05, -0.95, -0.8]
+            #[0.0, -0.92, -1.03, -1.11, -1.2, -1.22, -1.21, -1.18, -1.05, -0.95, -0.8]
+            [0.0, -0.92, -1.03, -1.11, -1.2, -1.22, -1.21, -1.18, -1.05, -0.95, -0.8]
         )
         phase = [p * 1.25 for p in phase]
+
+        freqs = (freqs / 20000000) * np.pi
+        b, a = FDLS(71, 48, freqs/1, amp*1, np.array(phase)/np.pi, -0.1)
+        self.Filters['Fefm'] = filtfft([b, a], self.blocklen)
+
+        return
 
         """Compute filter coefficients for the given FFTFilter."""
         # Anything above the highest frequency is left as zero.
@@ -471,13 +544,27 @@ class RFDecode:
         nonzero_bins = int(freqs[-1] / freq_per_bin) + 1
 
         bin_freqs = np.arange(nonzero_bins) * freq_per_bin
-        bin_amp = a_interp(bin_freqs)
-        bin_phase = p_interp(bin_freqs)
+        bin_amps = a_interp(bin_freqs)
+        bin_phases = p_interp(bin_freqs)
 
         # Scale by the amplitude, rotate by the phase
-        coeffs[:nonzero_bins] = bin_amp * (
-            np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase))
+        coeffs[:nonzero_bins] = bin_amps * (
+            np.cos(bin_phases) + (complex(0, -1) * np.sin(bin_phases))
         )
+
+        if False:
+            impulse = npfft.irfft(coeffs)
+
+            fir_size = int(self.blocklen*(freqs[-1]/20.0))
+
+            # Rotate and window the result to get the FIR filter
+            impulse[:] = np.roll(impulse, fir_size // 2)
+            impulse[:fir_size] *= sps.get_window('hamming', fir_size)
+            impulse[fir_size:] = 0.0        
+            # Rotate the FIR filter back, so it doesn't add a delay
+            impulse[:] = np.roll(impulse, (-len(impulse)) // 2)
+
+            coeffs = npfft.rfft(impulse)
 
         self.Filters["Fefm"] = coeffs * 8
 
