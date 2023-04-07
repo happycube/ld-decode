@@ -1,13 +1,13 @@
 /************************************************************************
 
-    vbidialog.h
+    videoid.h
 
-    ld-analyse - TBC output analysis
-    Copyright (C) 2018-2022 Simon Inns
+    ld-process-vbi - VBI and IEC NTSC specific processor for ld-decode
+    Copyright (C) 2018-2019 Simon Inns
 
     This file is part of ld-decode-tools.
 
-    ld-analyse is free software: you can redistribute it and/or
+    ld-process-vbi is free software: you can redistribute it and/or
     modify it under the terms of the GNU General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -22,35 +22,18 @@
 
 ************************************************************************/
 
-#ifndef VBIDIALOG_H
-#define VBIDIALOG_H
+#ifndef VIDEOID_H
+#define VIDEOID_H
 
-#include <QDialog>
-
+#include "sourcevideo.h"
 #include "lddecodemetadata.h"
-#include "vbidecoder.h"
-#include "videoiddecoder.h"
 
-namespace Ui {
-class VbiDialog;
-}
-
-class VbiDialog : public QDialog
+class VideoID
 {
-    Q_OBJECT
-
 public:
-    explicit VbiDialog(QWidget *parent = nullptr);
-    ~VbiDialog();
-
-    void updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid);
-    void updateVideoId(VideoIdDecoder::VideoId videoid, bool isVideoIdValid);
-
-private:
-    Ui::VbiDialog *ui;
-
-    VbiDecoder vbiDecoder;
-    VideoIdDecoder videoIdDecoder;
+    bool decodeLine(const SourceVideo::Data& lineData,
+                    const LdDecodeMetaData::VideoParameters& videoParameters,
+                    LdDecodeMetaData::Field& fieldMetadata);
 };
 
-#endif // VBIDIALOG_H
+#endif // VIDEOID_H
