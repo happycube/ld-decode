@@ -280,7 +280,7 @@ class FieldState:
 
 
 class Resync:
-    def __init__(self, fs, sysparams, divisor=1, debug=False):
+    def __init__(self, fs, sysparams, sysparams_const, divisor=1, debug=False):
 
         self.divisor = divisor
         self.debug = debug
@@ -296,12 +296,18 @@ class Resync:
         # This should be enough to cover all "long" pulses,
         # longest variant being ones where all of vsync is just one long pulse.
         self._long_pulse_max = self.linelen * 5
+        # Last half-way point between blank/sync we used when looking for pulses.
+        self._last_pulse_threshold = findpulses_range(sysparams_const, sysparams_const.vsync_hz)
 
         # self._temp_c = 0
 
     @property
     def long_pulse_max(self):
         return self._long_pulse_max
+
+    @property
+    def last_pulse_threshold(self):
+        return self._last_pulse_threshold
 
     def has_levels(self):
         return self._field_state.has_levels()
@@ -713,5 +719,7 @@ class Resync:
             ):
                 field.data["video"]["demod_05"] = sync_reference - new_sync + vsync_hz
                 field.data["video"]["demod"] = demod_data - new_sync + vsync_hz
+
+        self._last_pulse_threshold = pulse_hz_max
 
         return self.findpulses(field.data["video"]["demod_05"], pulse_hz_max)

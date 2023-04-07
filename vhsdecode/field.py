@@ -217,6 +217,8 @@ def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _s
 
         line_0 = None
         # TODO: Optimize this
+        # TODO: This will not give the correct result if the last hsync is damaged somehow, need
+        # to add some compensation for that case.
         # Look for the last vsync before the vsync area as that is what
         # the other functions want.
         for p in valid_pulses:
@@ -648,10 +650,10 @@ class FieldShared:
 
             fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
             ax1.plot(self.data["video"]["demod"])
-            ax1.axvline(rv_ll[0], color="#00FF00")
-            ax1.axvline(line0loc, color="#FF0000")
-            ax1.axvline(linelocs_dict[0], color="#000000")
-            ax1.axvline(rv_ll[10], color="#00FF00")
+
+            to_right_edge = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"]) + (
+                2.25 * (self.rf.freq / 40.0)
+            )
 
             # (
             #     sync,
@@ -693,6 +695,7 @@ class FieldShared:
 
             for ll in rv_ll:
                 ax4.axvline(ll)
+                ax4.axvline(ll + to_right_edge, color="#FF0000")
             # for i in range (0, proclines):
             #    ax4.axvline(line0loc + (i * self.meanlinelen))
             # ax1.axhline(self.pulse_hz_min, color="#00FFFF")
@@ -707,7 +710,9 @@ class FieldShared:
         return rv_ll, rv_err, nextfield
 
     def refine_linelocs_hsync(self):
-        return sync.refine_linelocs_hsync(self, self.linebad)
+        return sync.refine_linelocs_hsync(
+            self, self.linebad, self.rf.resync.last_pulse_threshold
+        )
 
         if False:
             import timeit

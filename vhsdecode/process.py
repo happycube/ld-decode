@@ -90,7 +90,7 @@ class VHSDecode(ldd.LDdecode):
 
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
-        # Overwrite the rf decoder with the VHS-altered one
+        # Overwrite the rf  with the VHS-altered one
         self.rf = VHSRFDecode(
             system=system,
             tape_format=tape_format,
@@ -518,7 +518,11 @@ class VHSRFDecode(ldd.RFDecode):
             level_detect_divisor = int(inputfreq // 4)
 
         self.resync = Resync(
-            self.freq_hz, self.SysParams, divisor=level_detect_divisor, debug=self.debug
+            self.freq_hz,
+            self.SysParams,
+            self._sysparams_const,
+            divisor=level_detect_divisor,
+            debug=self.debug,
         )
 
         if self._chroma_trap:
