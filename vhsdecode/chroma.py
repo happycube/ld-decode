@@ -174,7 +174,7 @@ def demod_chroma_filt(data, filter, blocklen, notch, do_notch=None, move=10):
     # Move chroma to compensate for Y filter delay.
     # value needs tweaking, ideally it should be calculated if possible.
     # TODO: Not sure if we need this after hilbert filter change, needs check.
-    out_chroma = np.roll(out_chroma, move)
+    out_chroma = np.roll(out_chroma, move).astype(np.single)
     # crude DC offset removal
     out_chroma -= np.mean(out_chroma)
     return out_chroma

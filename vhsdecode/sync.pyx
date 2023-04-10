@@ -36,7 +36,9 @@ cdef c_median(np.ndarray data):
     # calling np.median via cython.
     return lddu.nb_median(data)
 
-cdef bint is_out_of_range(double[:] data, double min, double max):
+@cython.wraparound(False)
+@cython.boundscheck(False)
+cdef bint is_out_of_range(double[:] data, double min, double max) nogil:
     """Check if data stays between min and max, returns fals if not."""
     cdef Py_ssize_t i
     for i in range(0, len(data)):
@@ -230,6 +232,9 @@ def refine_linelocs_hsync(field, np.ndarray linebad, double hsync_threshold):
     cdef int ll1
     cdef int i
     cdef double[:] hsync_area
+
+    # Make sure we've done a copy
+    assert(field.linelocs1.dtype != linelocs2.dtype, "BUG! input to refine_linelocs_hsync was not copied!")
 
     for i in range(len(field.linelocs1)):
         # skip VSYNC lines, since they handle the pulses differently

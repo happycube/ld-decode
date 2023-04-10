@@ -545,7 +545,7 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        linelocs_dict, linelocs_dist = sync.valid_pulses_to_linelocs(
+        linelocs_dict, _ = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
             self.skipdetected,
@@ -557,10 +557,10 @@ class FieldShared:
 
         rv_err = np.full(proclines, False)
 
-        # Convert dictionary into list, then fill in gaps
-        linelocs = [
+        # Convert dictionary into array, then fill in gaps
+        linelocs = np.asarray([
             linelocs_dict[l] if l in linelocs_dict else -1 for l in range(0, proclines)
-        ]
+        ])
         linelocs_filled = linelocs.copy()
 
         self.linelocs0 = linelocs.copy()
@@ -640,7 +640,7 @@ class FieldShared:
 
         # *finally* done :)
 
-        rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
+        rv_ll = np.asarray([linelocs_filled[l] for l in range(0, proclines)])
 
         # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
 
