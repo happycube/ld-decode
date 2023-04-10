@@ -26,9 +26,11 @@ from vhsdecode.demod import replace_spikes, unwrap_hilbert, smooth_spikes
 from vhsdecode.field import field_class_from_formats
 from vhsdecode.video_eq import VideoEQ
 from vhsdecode.doc import DodOptions
+from vhsdecode.field_averages import FieldAverage
 
 
 def parent_system(system):
+    """Returns 'PAL' for 625 line systems and 'NTSC' for 525-line systems"""
     if system == "MPAL":
         parent_system = "NTSC"
     elif system == "MESECAM" or system == "SECAM":
@@ -533,6 +535,8 @@ class VHSRFDecode(ldd.RFDecode):
                 window_average=self.SysParams["FPS"] / 2
             ), StackableMA(window_average=self.SysParams["FPS"] / 2)
 
+        self._field_averages = FieldAverage()
+
     @property
     def sysparams_const(self):
         return self._sysparams_const
@@ -564,6 +568,10 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def dod_options(self):
         return self._dod_options
+
+    @property
+    def field_averages(self):
+        return self._field_averages
 
     def computefilters(self):
         # Override the stuff used in lddecode to skip generating filters we don't use.

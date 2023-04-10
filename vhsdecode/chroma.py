@@ -35,15 +35,20 @@ def chroma_to_u16(chroma):
 @njit(cache=True, nogil=True)
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
+    STARTING_LINE = int(16)
+    assert(lines > STARTING_LINE)
 
     output = np.zeros(chroma.size, dtype=np.double)
+    mean_burst_accumulator = 0
     for linenumber in range(16, lines):
         linestart = linelength * linenumber
         lineend = linestart + linelength
         line = chroma[linestart:lineend]
-        output[linestart:lineend] = acc_line(line, burst_abs_ref, burststart, burstend)
+        acced, rms = acc_line(line, burst_abs_ref, burststart, burstend)
+        output[linestart:lineend] = acced
+        mean_burst_accumulator += rms
 
-    return output
+    return output, mean_burst_accumulator / (lines - STARTING_LINE)
 
 
 @njit(cache=True)
@@ -58,7 +63,7 @@ def acc_line(chroma, burst_abs_ref, burststart, burstend):
     scale = burst_abs_ref / burst_abs_mean if burst_abs_mean != 0 else 1
     output = line * scale
 
-    return output
+    return output, burst_abs_mean
 
 
 @njit(cache=True, nogil=True)
@@ -276,7 +281,7 @@ def process_chroma(
             uphet = comb_c_pal(uphet, outwidth)
 
     # Final automatic chroma gain.
-    uphet = acc(
+    uphet, mean_rms = acc(
         uphet,
         field.rf.SysParams["burst_abs_ref"],
         burstarea[0],
@@ -284,6 +289,8 @@ def process_chroma(
         outwidth,
         linesout,
     )
+
+    field.rf.field_averages.chroma_level.push(mean_rms)
 
     return uphet
 
