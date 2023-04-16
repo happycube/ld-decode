@@ -78,3 +78,6 @@ install_manifest.txt
 moc_*.cpp
 moc_*.cpp_parameters
 ui_*.h
+
+# vscode related thingss
+.vscode/
