@@ -234,7 +234,8 @@ def refine_linelocs_hsync(field, np.ndarray linebad, double hsync_threshold):
     cdef double[:] hsync_area
 
     # Make sure we've done a copy
-    assert(field.linelocs1.dtype != linelocs2.dtype, "BUG! input to refine_linelocs_hsync was not copied!")
+    if type(field.linelocs1) == type(linelocs2):
+        assert(field.linelocs1.dtype != linelocs2.dtype, "BUG! input to refine_linelocs_hsync was not copied!")
 
     for i in range(len(field.linelocs1)):
         # skip VSYNC lines, since they handle the pulses differently

@@ -241,7 +241,7 @@ class FieldPALCVBS(ldd.FieldPAL):
         return linelocs
 
     def refine_linelocs_hsync(self):
-        return sync.refine_linelocs_hsync(self, self.linebad)
+        return sync.refine_linelocs_hsync(self, self.linebad, 0) # TODO fix last param once it's actually used.
 
     def _determine_field_number(self):
         """Using LD code as it should work on stable sources, but may not work on stuff like vhs."""
