@@ -26,7 +26,7 @@ add_executable(ld-analyse MACOSX_BUNDLE
     ${ld-analyse_SOURCES})
 
 target_include_directories(ld-analyse PRIVATE
-    ${QWT_INCLUDE_DIR}  ${FFTW_INCLUDE_DIRS}
+    ${QWT_INCLUDE_DIR}  ${FFTW_INCLUDE_DIR}
 )
 
 target_link_libraries(ld-analyse PRIVATE
