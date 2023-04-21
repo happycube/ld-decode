@@ -29,8 +29,11 @@
 #include <QThread>
 #include <QFile>
 #include <QFileInfo>
-#include <io.h>
-#include <fcntl.h>
+
+#ifdef _WIN32
+	#include <io.h>
+	#include <fcntl.h>
+#endif
 
 #include "logging.h"
 #include "lddecodemetadata.h"
@@ -39,7 +42,7 @@
 
 int main(int argc, char *argv[])
 {
-	#ifdef _WIN32 || _WIN64
+	#ifdef _WIN32
 	_setmode(_fileno(stdout), O_BINARY);
 	_setmode(_fileno(stdin), O_BINARY);	
 	#endif
