@@ -27,6 +27,8 @@
 #include <getopt.h>
 #include <cassert>
 #include <cstring>
+#include <io.h>
+#include <fcntl.h>
 
 #include "../logger.hpp"
 #include "AC3Framer.hpp"
@@ -49,6 +51,10 @@ void doHelp(const std::string &app) {
 }
 
 int main(int argc, char *argv[]) {
+	#ifdef _WIN32 || _WIN64
+	_setmode(_fileno(stdout), O_BINARY);
+	_setmode(_fileno(stdin), O_BINARY);	
+	#endif
     while (true) {
         switch (getopt(argc, argv, "v:h?")) {
             // could have stdin/stdout as defaults, with switches to change them

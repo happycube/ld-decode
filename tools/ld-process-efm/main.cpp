@@ -27,12 +27,18 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 #include <QThread>
+#include <io.h>
+#include <fcntl.h>
 
 #include "logging.h"
 #include "efmprocess.h"
 
 int main(int argc, char *argv[])
 {
+	#ifdef _WIN32 || _WIN64
+	_setmode(_fileno(stdout), O_BINARY);
+	_setmode(_fileno(stdin), O_BINARY);	
+	#endif
     // Install the local debug message handler
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
