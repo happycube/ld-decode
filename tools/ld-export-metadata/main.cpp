@@ -28,11 +28,6 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
-#ifdef _WIN32
-	#include <io.h>
-	#include <fcntl.h>
-#endif
-
 #include "audacity.h"
 #include "csv.h"
 #include "ffmetadata.h"
@@ -43,10 +38,8 @@
 
 int main(int argc, char *argv[])
 {
-	#ifdef _WIN32
-	_setmode(_fileno(stdout), O_BINARY);
-	_setmode(_fileno(stdin), O_BINARY);	
-	#endif
+    //set 'binary mode' for stdin and stdout on windows
+    setBinaryMode();
     // Install the local debug message handler
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);

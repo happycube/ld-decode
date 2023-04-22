@@ -33,11 +33,6 @@
 #include <fstream>
 #include <memory>
 
-#ifdef _WIN32
-	#include <io.h>
-	#include <fcntl.h>
-#endif
-
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
 #include "logging.h"
@@ -102,10 +97,8 @@ static bool loadTransformThresholds(QCommandLineParser &parser, QCommandLineOpti
 
 int main(int argc, char *argv[])
 {
-	#ifdef _WIN32
-	_setmode(_fileno(stdout), O_BINARY);
-	_setmode(_fileno(stdin), O_BINARY);	
-	#endif
+    //set 'binary mode' for stdin and stdout on windows
+    setBinaryMode();
     // Install the local debug message handler
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
