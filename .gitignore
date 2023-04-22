@@ -82,3 +82,6 @@ moc_*.cpp
 moc_*.cpp_parameters
 ui_*.h
 .log
+
+# vscode related thingss
+.vscode/
