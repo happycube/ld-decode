@@ -16,6 +16,65 @@ class DebugPlot:
 
 
 @rc_context({"figure.figsize": (14, 10), "figure.constrained_layout.use": True})
+def plot_data_and_pulses(
+    demod_video, raw_pulses=None, linelocs=None, pulses=None, extra_lines=None
+):
+    import matplotlib.pyplot as plt
+
+    # Make sure we have enough plots
+    # Surely there is a cleaner way to handle this.
+    plots = 1
+    if raw_pulses is not None:
+        plots += 1
+    if linelocs is not None:
+        plots += 1
+    if pulses is not None:
+        plots += 1
+    if extra_lines is not None:
+        plots += 1
+
+    plots = max(2, plots)
+
+    ax_number = 0
+
+    fig, ax = plt.subplots(plots, 1, sharex=True)
+    ax[ax_number].plot(demod_video)
+    ax[ax_number].set_title("Video")
+
+    if raw_pulses is not None:
+        ax_number += 1
+        ax[ax_number].set_title("Raw pulses")
+        for raw_pulse in raw_pulses:
+            ax[ax_number].axvline(raw_pulse.start, color="#910000")
+            ax[ax_number].axvline(raw_pulse.start + raw_pulse.len, color="#090909")
+
+    if pulses is not None:
+        ax_number += 1
+        ax[ax_number].set_title("Validated pulses")
+        for pulse in pulses:
+            color = "#FF0000" if pulse[0] == 2 else "#00FF00"
+            ax[ax_number].axvline(pulse[1][0], color=color)
+            ax[ax_number].axvline(pulse[1][0] + pulse[1][1], color="#009900")
+
+    if linelocs is not None:
+        ax_number += 1
+        ax[ax_number].set_title("Calculated line locations")
+        for ll in linelocs:
+            ax[ax_number].axvline(ll)
+
+    if extra_lines is not None:
+        ax_number += 1
+        for extra_line in extra_lines:
+            ax[ax_number].axvline(extra_line)
+
+    # to_right_edge = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"]) + (
+    #    2.25 * (self.rf.freq / 40.0)
+    # )
+
+    plt.show()
+
+
+@rc_context({"figure.figsize": (14, 10), "figure.constrained_layout.use": True})
 def plot_input_data(
     raw_data,
     raw_fft,
@@ -46,14 +105,20 @@ def plot_input_data(
     ax1.plot(env, label="Envelope", color="#0000FF")
     if rfdecode.dod_options.dod_threshold_a:
         ax1.axhline(
-            rfdecode.dod_options.dod_threshold_a, label="DOD Threshold (absolute)", color="#001100"
+            rfdecode.dod_options.dod_threshold_a,
+            label="DOD Threshold (absolute)",
+            color="#001100",
         )
     else:
         ax1.axhline(
-            rfdecode.dod_options.dod_threshold_p * env_mean, label="DOD Threshold", color="#110000"
+            rfdecode.dod_options.dod_threshold_p * env_mean,
+            label="DOD Threshold",
+            color="#110000",
         )
         ax1.axhline(
-            rfdecode.dod_options.dod_threshold_p * env_mean * rfdecode.dod_options.dod_hysteresis,
+            rfdecode.dod_options.dod_threshold_p
+            * env_mean
+            * rfdecode.dod_options.dod_hysteresis,
             label="DOD Hysteresis threshold",
             ls="--",
             color="#000011",

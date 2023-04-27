@@ -54,6 +54,7 @@ def _computefilters_dummy(self):
 # including one that requires > 20 mhz sample rate.
 ldd.RFDecode.computefilters = _computefilters_dummy
 
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -76,7 +77,6 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
     ):
-
         super(VHSDecode, self).__init__(
             fname_in,
             fname_out,
@@ -318,7 +318,6 @@ class VHSRFDecode(ldd.RFDecode):
         extra_options={},
         debug_plot=None,
     ):
-
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(
             inputfreq,

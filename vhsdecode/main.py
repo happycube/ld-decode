@@ -161,7 +161,7 @@ def main(args=None, use_gui=False):
         default=False,
         help="Disable internal chroma comb filter.",
     )
-    plot_options = "demodblock, deemphasis"
+    plot_options = "demodblock, deemphasis, raw_pulses, line_locs"
     debug_group.add_argument(
         "--dp",
         "--debug_plot",

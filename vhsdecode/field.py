@@ -19,6 +19,8 @@ from vhsdecode.chroma import (
     try_detect_track_vhs_ntsc,
 )
 
+from vhsdecode.debug_plot import plot_data_and_pulses
+
 NO_PULSES_FOUND = 1
 
 # def ynr(data, hpfdata, line_len):
@@ -540,8 +542,22 @@ class FieldShared:
 
         # If we don't have enough data at the end, move onto the next field
         lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
+        if self.rf.debug_plot and self.rf.debug_plot.is_plot_requested("raw_pulses"):
+            plot_data_and_pulses(
+                self.data["video"]["demod"],
+                raw_pulses=self.rawpulses,
+                extra_lines=[line0loc, lastlineloc_or_0],
+            )
+
         if lastline < proclines:
             if self.prevfield is not None:
+                ldd.logger.info(
+                    "lastline = %s, proclines = %s, meanlinelen = %s, line0loc = %s)",
+                    lastline,
+                    proclines,
+                    meanlinelen,
+                    line0loc,
+                )
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
@@ -558,9 +574,12 @@ class FieldShared:
         rv_err = np.full(proclines, False)
 
         # Convert dictionary into array, then fill in gaps
-        linelocs = np.asarray([
-            linelocs_dict[l] if l in linelocs_dict else -1 for l in range(0, proclines)
-        ])
+        linelocs = np.asarray(
+            [
+                linelocs_dict[l] if l in linelocs_dict else -1
+                for l in range(0, proclines)
+            ]
+        )
         linelocs_filled = linelocs.copy()
 
         self.linelocs0 = linelocs.copy()
@@ -644,63 +663,13 @@ class FieldShared:
 
         # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
 
-        if False:
-            # len(validpulses) > 300:
-            import matplotlib.pyplot as plt
-
-            fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, sharex=True)
-            ax1.plot(self.data["video"]["demod"])
-
-            to_right_edge = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"]) + (
-                2.25 * (self.rf.freq / 40.0)
+        if self.rf.debug_plot and self.rf.debug_plot.is_plot_requested("line_locs"):
+            plot_data_and_pulses(
+                self.data["video"]["demod"],
+                raw_pulses=self.rawpulses,
+                linelocs=linelocs,
+                pulses=validpulses,
             )
-
-            # (
-            #     sync,
-            #     blank,
-            # ) = (
-            #     self.rf.resync.FieldState.getLevels()
-            # )  # self.rf.resync.VsyncSerration.getLevels()
-
-            # ax1.axhline(sync, color="#FF0000")
-            # ax1.axhline(blank, color="#00FF00")
-
-            # for raw_pulse in self.rawpulses:
-            #     ax1.axvline(raw_pulse.start, color="#910000")
-            #     ax1.axvline(raw_pulse.start + raw_pulse.len, color="#090909")
-
-            # for valid_pulse in validpulses:
-            #     if valid_pulse[0] != 0:
-            #         color = "#FF0000" if valid_pulse[0] == 2 else "#00FF00"
-            #         ax1.axvline(valid_pulse[1][0], color=color)
-            #         ax1.axvline(valid_pulse[1][0] + valid_pulse[1][1], color="#009900")
-
-            # ax1.axvline(line0loc, color="000000")
-
-            # ax2.plot(np.diff(self.data["video"]["demod_05"]))
-
-            pulselen = np.zeros_like(self.data["video"]["demod_05"])
-            for valid_pulse in validpulses:
-                pulselen[
-                    valid_pulse[1][0] : valid_pulse[1][0] + valid_pulse[1][1]
-                ] = valid_pulse[1][1]
-
-            ax2.plot(pulselen)
-
-            # for p in linelocs_dict.values():
-            #    ax3.axvline(p)
-            # ldd.logger.info("p %s", p)
-            for ll in linelocs:
-                ax3.axvline(ll)
-
-            for ll in rv_ll:
-                ax4.axvline(ll)
-                ax4.axvline(ll + to_right_edge, color="#FF0000")
-            # for i in range (0, proclines):
-            #    ax4.axvline(line0loc + (i * self.meanlinelen))
-            # ax1.axhline(self.pulse_hz_min, color="#00FFFF")
-            # ax1.axhline(self.pulse_hz_max, color="#000000")
-            plt.show()
 
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
