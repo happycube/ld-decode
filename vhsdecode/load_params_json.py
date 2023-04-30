@@ -5,7 +5,6 @@ def _override_group(json_input, group, group_name, logger):
     """Go through a group of parameters and replace the ones found in 'json_input'"""
     changed = {}
     if group_name in json_input:
-        print(json_input[group_name])
         for item in json_input[group_name]:
             if item in group:
                 changed[item] = json_input[group_name][item]
