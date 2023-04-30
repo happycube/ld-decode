@@ -7,7 +7,7 @@ from importlib import import_module
 
 
 def print_options():
-    print("Options are vhs, cvbs")
+    print("Options are cvbs, ld, vhs")
 
 
 def main(argv):

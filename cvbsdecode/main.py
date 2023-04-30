@@ -53,7 +53,7 @@ def main(args=None):
         loader = lddu.make_loader(filename, sample_freq)
     except ValueError as e:
         print(e)
-        exit(1)
+        sys.exit(1)
 
     rf_options = get_rf_options(args)
     rf_options["auto_sync"] = args.auto_sync
@@ -98,7 +98,7 @@ def main(args=None):
     if args.seek != -1:
         if vhsd.seek(args.seek if firstframe == 0 else firstframe, args.seek) is None:
             print("ERROR: Seeking failed", file=sys.stderr)
-            exit(1)
+            sys.exit(1)
 
     # if args.MTF is not None:
     #    ldd.rf.mtf_mult = args.MTF
@@ -131,7 +131,7 @@ def main(args=None):
         except KeyboardInterrupt:
             print("Terminated, saving JSON and exiting")
             cleanup(outname)
-            exit(1)
+            sys.exit(1)
         except Exception as err:
             print(
                 "\nERROR - please paste the following into a bug report:",
@@ -142,7 +142,7 @@ def main(args=None):
             print("Exception:", err, " Traceback:", file=sys.stderr)
             traceback.print_tb(err.__traceback__)
             cleanup(outname)
-            exit(1)
+            sys.exit(1)
 
         if f is None:
             # or (args.ignoreleadout == False and vhsd.leadOut == True):
@@ -153,4 +153,4 @@ def main(args=None):
 
     print("saving JSON and exiting")
     cleanup(outname)
-    exit(0)
+    sys.exit(0)

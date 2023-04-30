@@ -280,7 +280,7 @@ def main(args=None, use_gui=False):
         loader = lddu.make_loader(filename, loader_input_freq)
     except ValueError as e:
         print(e)
-        exit(1)
+        sys.exit(1)
 
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
     if args.cxadc or args.cxadc3 or args.cxadc_tenbit or args.cxadc3_tenbit:
@@ -376,7 +376,7 @@ def main(args=None, use_gui=False):
         except KeyboardInterrupt:
             print("Terminated, saving JSON and exiting")
             cleanup()
-            exit(1)
+            sys.exit(1)
         except Exception as err:
             print(
                 "\nERROR - please paste the following into a bug report:",
@@ -387,7 +387,7 @@ def main(args=None, use_gui=False):
             print("Exception:", err, " Traceback:", file=sys.stderr)
             traceback.print_tb(err.__traceback__)
             cleanup()
-            exit(1)
+            sys.exit(1)
 
         if f is None:
             # or (args.ignoreleadout == False and vhsd.leadOut == True):
@@ -398,4 +398,4 @@ def main(args=None, use_gui=False):
 
     print("saving JSON and exiting")
     cleanup()
-    exit(0)
+    sys.exit(0)
