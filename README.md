@@ -194,16 +194,6 @@ Install dependencies for GPU FLAC compression support:
 
     sudo apt install make ocl-icd-opencl-dev mono-runtime
 
-## For optional gooey graphical user interface 
-
-If you want to try the gooey gui wrapper for vhs-decode (`vhs-decode-gui`) :
-
-    sudo apt-get install build-essential dpkg-dev freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libjpeg-dev libnotify-dev libpng-dev libsdl2-dev libsm-dev libtiff-dev libwebkit2gtk-4.0-dev libxtst-dev python3.9-dev libpython3.9-dev
-
-Then install gooey
-
-    pip3 install attrdict3 Gooey
-
 ## Building
 
 Download VHS-Decode:
@@ -515,6 +505,23 @@ Both the luminance and chrominance channels are separate data files essentially 
 `filename.tbc.json`   - Frame Descriptor Table (Resolution/Dropouts/SNR/Frames/VBI Timecode)
 
 `filename.log`        - Timecode Indexed Action/Output Log
+
+
+## Experimental gooey graphical user interface (partially broken at the moment)
+
+Untill there is an update to wxPython this is going to be a bit tricky to get running due to this issue:
+https://github.com/wxWidgets/Phoenix/issues/2296
+
+Due to this it's not often tested currently, so don't recommend trying to use it other than for development purposes.
+
+If you want to try the gooey gui wrapper for vhs-decode (`vhs-decode-gui`) :
+
+    sudo apt-get install build-essential dpkg-dev freeglut3-dev libgl1-mesa-dev libglu1-mesa-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev libjpeg-dev libnotify-dev libpng-dev libsdl2-dev libsm-dev libtiff-dev libwebkit2gtk-4.0-dev libxtst-dev python3.9-dev libpython3.9-dev
+
+Then install gooey
+
+    pip3 install attrdict3
+    pip3 install Gooey
 
 # Join us!
 
