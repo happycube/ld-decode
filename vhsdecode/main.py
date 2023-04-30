@@ -68,6 +68,14 @@ def main(args=None, use_gui=False):
         choices=supported_tape_formats,
         help="Tape format, currently VHS (Default), SVHS, UMATIC, UMATIC_HI, BETAMAX, VIDEO8, HI8 ,EIAJ, are supported",
     )
+    parser.add_argument(
+        "--params_file",
+        type=argparse.FileType("r"),
+        dest="params_file",
+        metavar="params_file_json",
+        default=None,
+        help="Override format/system parameters with specified json file.",
+    )
     luma_group = parser.add_argument_group("Luma decoding options")
     luma_group.add_argument(
         "-L",
@@ -298,6 +306,7 @@ def main(args=None, use_gui=False):
     rf_options["saved_levels"] = args.saved_levels
 
     extra_options = get_extra_options(args, not use_gui)
+    extra_options["params_file"] = args.params_file
 
     # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
     # allowing SIGINT/control-C's to be handled cleanly

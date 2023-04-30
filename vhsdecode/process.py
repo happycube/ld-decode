@@ -27,6 +27,7 @@ from vhsdecode.field import field_class_from_formats
 from vhsdecode.video_eq import VideoEQ
 from vhsdecode.doc import DodOptions
 from vhsdecode.field_averages import FieldAverage
+from vhsdecode.load_params_json import override_params
 
 
 def parent_system(system):
@@ -378,6 +379,10 @@ class VHSRFDecode(ldd.RFDecode):
         self.SysParams, self.DecoderParams = vhs_formats.get_format_params(
             system, tape_format, ldd.logger
         )
+
+        params_file = extra_options.get("params_file", None)
+        if params_file:
+            override_params(self.SysParams, self.DecoderParams, params_file, ldd.logger)
 
         # Make (intentionally) mutable copies of HZ<->IRE levels
         # (NOTE: used by upstream functions, we use a namedtuple to keep const values already)
