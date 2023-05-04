@@ -354,7 +354,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.debug = extra_options.get("debug", False)
         # Enable cafc for betamax until proper track detection for it is implemented.
         self._do_cafc = (
-            True if tape_format == "BETAMAX" else rf_options.get("cafc", False)
+            True if (tape_format == "BETAMAX" and system is not "NTSC") else rf_options.get("cafc", False)
         )
         # cafc requires --recheck_phase
         self._recheck_phase = True if self._do_cafc else self._recheck_phase

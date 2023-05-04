@@ -1,5 +1,6 @@
 """Module containing parameters for VHS and SVHS"""
 
+PAL_ROTATION = [-1, 0]
 
 def fill_rfparams_vhs_shared(rfparams):
     """Fill in parameters that are shared between systems for VHS"""

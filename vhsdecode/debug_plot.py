@@ -17,7 +17,7 @@ class DebugPlot:
 
 @rc_context({"figure.figsize": (14, 10), "figure.constrained_layout.use": True})
 def plot_data_and_pulses(
-    demod_video, raw_pulses=None, linelocs=None, pulses=None, extra_lines=None
+    demod_video, raw_pulses=None, linelocs=None, pulses=None, extra_lines=None,threshold=None
 ):
     import matplotlib.pyplot as plt
 
@@ -40,6 +40,8 @@ def plot_data_and_pulses(
     fig, ax = plt.subplots(plots, 1, sharex=True)
     ax[ax_number].plot(demod_video)
     ax[ax_number].set_title("Video")
+    if threshold is not None:
+        ax[ax_number].axhline(threshold)
 
     if raw_pulses is not None:
         ax_number += 1

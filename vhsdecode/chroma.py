@@ -186,6 +186,7 @@ def process_chroma(
     disable_deemph=False,
     disable_comb=False,
     disable_tracking_cafc=False,
+    chroma_rotation=None
 ):
     # Run TBC/downscale on chroma (if new field, else uses cache)
     if (
@@ -239,20 +240,34 @@ def process_chroma(
 
     # Track 2 is rotated ccw in both NTSC and PAL for VHS
     # u-matic has no phase rotation.
-    phase_rotation = -1 if track_phase is not None else 0
+    phase_rotation = -1
     # What phase we start on. (Needed for NTSC to get the color phase correct)
     starting_phase = 0
 
-    if track_phase is not None and field.rf.field_number % 2 == track_phase:
-        if field.rf.color_system == "PAL" or field.rf.color_system == "MPAL":
-            # For PAL, track 1 has no rotation.
-            phase_rotation = 0
-        elif field.rf.color_system == "NTSC":
-            # For NTSC, track 1 rotates cw
-            phase_rotation = 1
-            starting_phase = 1
-        else:
-            raise Exception("Unknown video system!", field.rf.color_system)
+    # Rotation per track
+    # VHS PAL: Track1 0, Track2 -90
+    # VHS NTSC: Track1 +90, Track2 -90
+    # Betamax PAL: None - uses frequency offset instead
+    # Betamax NTSC: Track1 180, Track2 0
+    # Video8 NTSC: Track1 0, Track2 180
+    # Video8 PAL: Track1 0, Track2 -90
+
+
+    if track_phase is not None:
+        if field.rf.field_number % 2 == track_phase:
+            if chroma_rotation:
+                phase_rotation = chroma_rotation[0]
+            elif field.rf.color_system == "PAL" or field.rf.color_system == "MPAL":
+                # For PAL, track 2 is rotated -90 each hsync.
+                phase_rotation = 0
+            elif field.rf.color_system == "NTSC":
+                # For NTSC VHS, track 1 rotates cw
+                phase_rotation = 1
+                starting_phase = 1
+            #elif:
+            #    raise Exception("Unknown video system!", field.rf.color_system)
+        elif chroma_rotation:
+            phase_rotation = chroma_rotation[1]
 
     uphet = upconvert_chroma(
         chroma,
@@ -334,7 +349,7 @@ def decode_chroma_vhs(field, rotation=True):
         field,
         rf.track_phase if rotation else None,
         disable_comb=rf.options.disable_comb,
-        disable_tracking_cafc=False,
+        disable_tracking_cafc=False
     )
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
@@ -343,7 +358,7 @@ def decode_chroma_vhs(field, rotation=True):
 
 
 def decode_chroma_umatic(field):
-    """Do track detection if needed and upconvert the chroma signal"""
+    """Upconvert the chroma signal"""
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
     # make sure we re-check the phase occasionally.
@@ -358,7 +373,7 @@ def decode_chroma_umatic(field):
     return chroma_to_u16(uphet)
 
 
-def decode_chroma_betamax(field):
+def decode_chroma_betamax(field, chroma_rotation=None):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
 
@@ -379,9 +394,10 @@ def decode_chroma_betamax(field):
 
     uphet = process_chroma(
         field,
-        None,
+        rf.track_phase,
         disable_comb=rf.options.disable_comb,
         disable_tracking_cafc=False,
+        chroma_rotation=chroma_rotation
     )
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
@@ -389,12 +405,12 @@ def decode_chroma_betamax(field):
     return chroma_to_u16(uphet)
 
 
-def decode_chroma_video8(field):
+def decode_chroma_video8(field, chroma_rotation=None):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
 
-    ldd.logger.info(
-        "Track detection and phase inversion not implemented for video8 yet!"
+    ldd.logger.debug(
+        "Proper chroma deemphasis not implemented for video8 yet!"
     )
 
     # Use field number based on raw data position
@@ -414,9 +430,10 @@ def decode_chroma_video8(field):
 
     uphet = process_chroma(
         field,
-        None,
+        track_phase=rf.track_phase,
         disable_comb=rf.options.disable_comb,
         disable_tracking_cafc=False,
+        chroma_rotation=chroma_rotation
     )
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
@@ -729,7 +746,7 @@ def try_detect_track_vhs_pal(field):
     return assumed_phase, needs_recheck(phase0_mean, phase1_mean)
 
 
-def try_detect_track_vhs_ntsc(field):
+def try_detect_track_ntsc(field, chroma_rotation=None):
     """Try to detect which track the current field was read from.
     returns 0 or 1 depending on detected track phase.
 
@@ -739,12 +756,17 @@ def try_detect_track_vhs_ntsc(field):
     the bursts will have the same phase instead, and thus the mean absolute
     sum will be much higher. This seem to give a reasonably good guess, but could probably
     be improved.
+
+    assumed_phase is 0 if field number % 2 matches second track,
+     1 if it matches settings for the first track.
+
     """
     ldd.logger.debug("Trying to detect NTSC track phase ...")
     burst_area = get_burstarea(field)
 
     # Upconvert chroma twice, once for each possible track phase
-    uphet = [process_chroma(field, 0, True), process_chroma(field, 1, True)]
+    
+    uphet = [process_chroma(field, 0, True, chroma_rotation=chroma_rotation), process_chroma(field, 1, True, chroma_rotation=chroma_rotation)]
 
     # Look at the bursts from each upconversion and see which one looks most
     # normal.

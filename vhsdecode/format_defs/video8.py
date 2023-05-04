@@ -121,11 +121,15 @@ def fill_rfparams_hi8_shared(rfparams):
 def fill_chroma_params_pal(rfparams):
     # PAL color under carrier is 46.875 fH
     rfparams["color_under_carrier"] = (625 * 25) * 46.875
+    # Phase rotation applied (in 90 degree / Pi/2 radian steps) to chroma signal on each hsync for each track.
+    rfparams["chroma_rotation"] = [0,-1]
 
 
 def fill_chroma_params_ntsc(rfparams):
     # NTSC color under carrier is 47.25 fH
     rfparams["color_under_carrier"] = (525 * (30 / 1.001)) * 47.25
+    # Phase rotation applied (in 90 degree / Pi/2 radian steps) to chroma signal on each hsync for each track.
+    rfparams["chroma_rotation"] = [0,2]
 
 
 def fill_sysparams_video8_shared(sysparams):
