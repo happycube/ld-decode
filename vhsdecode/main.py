@@ -283,6 +283,13 @@ def main(args=None, use_gui=False):
         print(e)
         sys.exit(1)
 
+
+    # Note: Fallback to ffmpeg, not .lds format
+    # Temporary workaround until this is sorted upstream.
+    if loader is lddu.load_packed_data_4_40 and not filename.endswith(".lds"):
+        loader = lddu.LoadFFmpeg()
+
+
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
     if args.cxadc or args.cxadc3 or args.cxadc_tenbit or args.cxadc3_tenbit:
         dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
