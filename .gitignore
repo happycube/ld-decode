@@ -85,3 +85,4 @@ ui_*.h
 
 # vscode related thingss
 .vscode/
+.theia/
