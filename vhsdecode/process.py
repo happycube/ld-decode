@@ -56,6 +56,10 @@ def _computefilters_dummy(self):
 ldd.RFDecode.computefilters = _computefilters_dummy
 
 
+def _demodcache_dummy(self, *args, **kwargs):
+    self.ended = True
+    pass
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -78,6 +82,12 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
     ):
+        # monkey patch init with a dummy to prevent calling set_start_method twice on macos
+        # and not create extra threads.
+        # This is kinda hacky and should be sorted in a better way ideally.
+        temp_init = ldd.DemodCache.__init__
+        ldd.DemodCache.__init__ = _demodcache_dummy
+
         super(VHSDecode, self).__init__(
             fname_in,
             fname_out,
@@ -108,6 +118,9 @@ class VHSDecode(ldd.LDdecode):
         # phase, may want to do this in a better way later.
         self.rf.decoder = self
         self.FieldClass = field_class_from_formats(system, tape_format)
+
+        # Restore init functino now that superclass constructor is finished.
+        ldd.DemodCache.__init__ = temp_init
 
         self.demodcache = ldd.DemodCache(
             self.rf,
