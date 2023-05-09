@@ -240,7 +240,7 @@ def process_chroma(
 
     # Track 2 is rotated ccw in both NTSC and PAL for VHS
     # u-matic has no phase rotation.
-    phase_rotation = -1
+    phase_rotation = -1 if track_phase is not None else 0
     # What phase we start on. (Needed for NTSC to get the color phase correct)
     starting_phase = 0
 

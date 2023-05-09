@@ -1076,7 +1076,7 @@ class FieldPALBetamax(FieldPALShared):
             final=final, *args, **kwargs
         )
 
-        dschroma = decode_chroma_betamax(self)
+        dschroma = decode_chroma_betamax(self, chroma_rotation=self.rf.DecoderParams['chroma_rotation'])
 
         return (dsout, dschroma), dsaudio, dsefm
 
