@@ -205,7 +205,7 @@ def process_chroma(
                 len(chroma),
                 field.rf.Filters["FVideoNotch"],
                 field.rf.notch,
-                move=0,
+                move=(int(10 * (field.rf.sys_params['outfreq'] / 40))),
             )
 
             if not disable_tracking_cafc:
@@ -704,6 +704,9 @@ def log_track_phase(track_phase, phase0_mean, phase1_mean, assumed_phase):
     ldd.logger.info("phase1 mean: %.02f", phase1_mean)
     ldd.logger.info("assumed_phase: %d", assumed_phase)
 
+
+def try_detect_track_betamax_pal(field):
+    pass
 
 def try_detect_track_vhs_pal(field):
     """Try to detect what video track we are on.

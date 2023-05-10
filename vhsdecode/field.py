@@ -17,6 +17,7 @@ from vhsdecode.chroma import (
     get_field_phase_id,
     try_detect_track_vhs_pal,
     try_detect_track_ntsc,
+    try_detect_track_betamax_pal
 )
 
 from vhsdecode.debug_plot import plot_data_and_pulses
@@ -1068,7 +1069,7 @@ class FieldPALBetamax(FieldPALShared):
         super(FieldPALBetamax, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        # ldd.logger.info("try_detect_track not implemented for beta yet!")
+        test = try_detect_track_betamax_pal(self)
         return 0, False
 
     def downscale(self, final=False, *args, **kwargs):

@@ -236,6 +236,31 @@ def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
             ],
         ]
     )
+
+    # Betamax pal eyeballed freqs for -3 dB
+    _test_arr = np.array(
+        [
+            [
+                0.05,
+                #corner_freq / 1e6,
+                0.2,
+                0.5,
+                1.0,
+                2.0,
+                4.0
+            ],
+            [
+                0.2,
+                #3,
+                4.6,
+                8.5,
+                11.7,
+                13.3,
+                11.6
+            ],
+        ]
+    )
+
     test_arr[0] *= 1000000.0
 
     ax1.plot(test_arr[0], test_arr[1], color="#000000")

@@ -559,6 +559,10 @@ class VHSRFDecode(ldd.RFDecode):
         return self._sysparams_const
 
     @property
+    def sys_params(self):
+        return self.SysParams
+
+    @property
     def options(self):
         return self._options
 
