@@ -177,7 +177,6 @@ def plot_input_data(
     ax4.legend()
 
     plt.show()
-    # exit(0)
 
 
 def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
@@ -283,4 +282,4 @@ def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
     )
     ax2.legend()
     plt.show()
-    exit()
+    sys.exit()

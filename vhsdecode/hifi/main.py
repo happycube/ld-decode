@@ -86,9 +86,9 @@ def as_soundfile(pathR, sample_rate=44100):
         return sf.SoundFile(pathR, 'r', channels=1, samplerate=int(sample_rate), format='RAW', subtype='PCM_S8',
                             endian='LITTLE')
     elif '.u16' in path or '.r16' in path:
-        exit('Unsigned 16 bit raw not supported yet')
+        sys.exit('Unsigned 16 bit raw not supported yet')
     elif '.ogx' in path:
-        exit('OGX container not supported yet, try converting it to flac')
+        sys.exit('OGX container not supported yet, try converting it to flac')
     else:
         return sf.SoundFile(pathR, 'r')
 
@@ -235,7 +235,7 @@ def main():
             decode(decoder, filename, outname)
     else:
         print('No sample rate specified')
-        exit(0)
+        sys.exit(0)
 
 
 if __name__ == "__main__":

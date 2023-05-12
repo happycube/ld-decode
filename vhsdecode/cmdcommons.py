@@ -262,15 +262,15 @@ def select_system(args):
 
     if args.pal and args.ntsc:
         print("ERROR: Can only be PAL or NTSC")
-        exit(1)
+        sys.exit(1)
 
     if args.palm and args.pal:
         print("ERROR: Can only be PAL-M or PAL")
-        exit(1)
+        sys.exit(1)
 
     if args.palm and args.ntsc:
         print("ERROR: Can only be PAL-M or NTSC")
-        exit(1)
+        sys.exit(1)
 
     return system
 

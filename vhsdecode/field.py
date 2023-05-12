@@ -389,10 +389,6 @@ class FieldShared:
         a = _run_vblank_state_machine(
             pulses, LT, self.rf.SysParams["numPulses"], self.inlinelen
         )
-        # b = super(FieldShared, self).run_vblank_state_machine(pulses, LT)
-        # print("A : ", a)
-        # print("B : ", b)
-        # exit(0)
         return a
 
     def refinepulses(self):
