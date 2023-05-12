@@ -142,13 +142,12 @@ def make_loader(filename, inputfreq=None):
         or filename.endswith(".vhs")
     ):
         try:
-            rv = LoadLDF(filename)
+            return LoadLDF(filename)
         except FileNotFoundError:
             print(
                 "ld-ldf-reader not found in PATH, using ffmpeg instead.",
                 file=sys.stderr,
             )
-            rv = LoadFFmpeg()
         except Exception:
             # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
             traceback.print_exc()
@@ -156,11 +155,8 @@ def make_loader(filename, inputfreq=None):
                 "Failed to load with ld-ldf-reader, trying ffmpeg instead.",
                 file=sys.stderr,
             )
-            rv = LoadFFmpeg()
 
-        return rv
-    else:
-        return load_packed_data_4_40
+    return LoadFFmpeg()
 
 
 def load_unpacked_data(infile, sample, readlen, sampletype):
