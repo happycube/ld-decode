@@ -55,7 +55,7 @@ endif()
 if(UNIX)
 	install(TARGETS ld-analyse BUNDLE DESTINATION bin)
 	#add .tbc mime type
-	install(CODE "execute_process(COMMAND xdg-mime install --novendor --mode system ${CMAKE_CURRENT_SOURCE_DIR}/install/ld-analyse.xml)")
+	install(CODE "execute_process(COMMAND xdg-mime install --novendor --mode system ${CMAKE_CURRENT_SOURCE_DIR}/install/application-video-tbc.xml)")
 	#add ld-analyse icon
 	install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 16 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/16-analyse.png ld-analyse)")
 	install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 32 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/32-analyse.png ld-analyse)")
@@ -63,8 +63,6 @@ if(UNIX)
 	install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 128 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/128-analyse.png ld-analyse)")
 	#add ld-analyse to application menu
 	install(CODE "execute_process(COMMAND xdg-desktop-menu install --novendor --mode system ${CMAKE_CURRENT_SOURCE_DIR}/install/ld-analyse.desktop)")
-	#set ld-analyse as default program for .tbc
-	install(CODE "execute_process(COMMAND xdg-mime default ${CMAKE_CURRENT_SOURCE_DIR}/install/ld-analyse.desktop application/tbc)")
 else()
 	install(
 			TARGETS ld-analyse
