@@ -435,6 +435,12 @@ class RFDecode:
 
             self.Filters['AC3'] = iirfilt * firfilt
 
+        for f in self.Filters.keys():
+            try:
+                self.Filters[f] = self.Filters[f].astype(np.complex64)
+            except:
+                pass
+
         self.computedelays()
 
     def computeefmfilter(self):
@@ -692,7 +698,7 @@ class RFDecode:
         if fftdata is not None:
             indata_fft = fftdata
         elif data is not None:
-            indata_fft = npfft.fft(data[: self.blocklen])
+            indata_fft = npfft.fft(data[: self.blocklen].astype(np.complex64))
         else:
             raise Exception("demodblock called without raw or FFT data")
 
@@ -739,15 +745,16 @@ class RFDecode:
         # use a clipped demod for video output processing to reduce speckling impact
         demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
 
-        out_video = npfft.ifft(demod_fft * self.Filters["FVideo"]).real
+        out_video = npfft.ifft(demod_fft * self.Filters["FVideo"]).real.astype(np.float32)
+        #print(out_video.dtype, self.Filters["FVideo"].dtype)
 
-        out_video05 = npfft.ifft(demod_fft * self.Filters["FVideo05"]).real
+        out_video05 = npfft.ifft(demod_fft * self.Filters["FVideo05"]).real.astype(np.float32)
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
-        out_videoburst = npfft.ifft(demod_fft * self.Filters["FVideoBurst"]).real
+        out_videoburst = npfft.ifft(demod_fft * self.Filters["FVideoBurst"]).real.astype(np.float32)
 
         if self.system == "PAL":
-            out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
+            out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real.astype(np.float32)
             video_out = np.rec.array(
                 [
                     out_video,
@@ -1130,7 +1137,7 @@ class DemodCache:
                 output = {}
 
                 if "fft" not in block:
-                    output["fft"] = npfft.fft(block["rawinput"])
+                    output["fft"] = npfft.fft(block["rawinput"].astype(np.complex64))
                     fftdata = output["fft"]
                 else:
                     fftdata = block["fft"]
