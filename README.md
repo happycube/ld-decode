@@ -47,11 +47,7 @@ Note for test media generation AJA/Magewell/Blackmagic and even some consumer di
 
 # [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage) & [RTL-SDR Decode](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR)
 
-Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) witch provides decoding for VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or flac compressed RF captures of HiFi FM signals and outputs standard 24-bit 192khz FLAC or PCM (.wav) stereo files.
-
-# Builds for Windows
-
-The ld-tools suit alongside beta versions of `ld-decode` / `vhs-decode` / `cvbs-decode` has been ported to windows, This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures inside windows, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases)
+Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) witch provides decoding for VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or flac compressed RF captures of HiFi FM signals and outputs standard 24-bit 192khz FLAC or PCM (.wav) stereo files, RTLSDR decode can run in realtime (1~3 sec delay) and provides live playback 8msps RF files and a 48khz 24-bit FLAC file of the decoded audio.
 
 # Dependencies - Hardware
 
@@ -67,7 +63,9 @@ Preferably adjusted per tape and in excellent mechanical and head condition, pro
 
 Its good practice to not cross contaminate tapes especially if dealing with mouldy or contaminated tapes.  
 
-It also helps to make sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils to avoid mechanical failures.
+It also helps to make sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate grease's and oils to avoid mechanical failures please read the [Cleaning & Servicing Guide](https://github.com/oyvindln/vhs-decode/wiki/Cleaning-&-Servicing-Guide)
+
+
 ## A RF Capture Device
 
 Currently standardised to 2 methods but RF capture is not limited to these methods.
@@ -108,21 +106,22 @@ Please read [VCR Reports](https://github.com/oyvindln/vhs-decode/wiki/VCR-report
 
 Information on various VCRs that have been documented alongside high resolution pictures of VCR's that have had RF Taps installed, guidance on recommneded cables/connectors & tools to use are also included.
 
-The setup process for RF capture involves running a short cable internally from points that provide the signal to a BNC jack at back of a metal/plastic VCR chassis or threaded out a vent, this allows direct access to the FM RF signals conveniently & reliably, we call this a Tap Point or RF Tap.
+The setup process for RF capture involves running a short cable internally from points that provide the signal to a BNC jack at back of a metal/plastic VCR chassis or threaded out a vent, this allows direct access to the FM RF signals conveniently & reliably, we call this a Tap Point or RF Tap, for some decks and camcorders however Dupont conectors and ribbion jigs can be used.
 
 Head Drum -> Amplification & Tracking -> FM RF Test/Signal Points -> RF Capture -> Software Decoding -> Lossless TBC Files -> Audio/Video Files
 
 ## Find Test Points
 
-#### Video FM Signal:
+### Test Point Names
 
-RF C, RF Y+C, PB, V RF, V ENV, ENV, ENVELOPE, VIDEO ENVE, VIDEO ENVELOPE
+**Video FM RF Signal:**
 
-(Normally accompanied by a Composite test point useful if your VCR only has a SCART connection you can add another BNC for video)
+`RF C`, `RF Y`, `RF Y+C`, `V RF`, `PB`, `PB.FM`, `V ENV`, `ENV`, `ENVE`, `ENVELOPE`, `VIDEO ENVE`, `VIDEO ENVELOPE`
 
-#### HiFi Audio FM Signal:
+**HiFi Audio FM Signal:**
 
-RF-Out, A-RF, HIFI RF, HiFi ENV, A ENV
+`HiFi`, `A.PB`, `A FM`, `A.PB.FM`, `Audio FM`, `A-Out`, `A ENV`, `HIFI Envelope`, `FM Mix Out`
+
 
 ## Parts for RF Tap
 
@@ -158,6 +157,10 @@ While type and voltage does not matter much its best to use new/tested capacitor
 **Note**  Do not make sharp bends in any RF cabling, keep total cable runs as short as possible Ideally 30-60cm, more cable = more signal loss.
 
 **Note** Some UMATIC decks have a RF output on the back this only provides Luma RF for dropout detection (Not the full signal for RF capture)
+
+# Builds for Windows
+
+The ld-tools suit alongside beta versions of `ld-decode` / `vhs-decode` / `cvbs-decode` has been ported to windows, This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures inside windows with drag and drop bat scripts, please see the wiki for more information [Windows Tools Builds](https://github.com/oyvindln/vhs-decode/releases).
 
 # Installation and running the software on Ubuntu/Debian
 
@@ -291,11 +294,9 @@ Other dependencies include Python 3.5+, numpy, scipy, cython, numba, pandas, Qt5
 
 Some useful free tools to note for post processing are
 [StaxRip](https://github.com/staxrip/staxrip) & [Lossless Cut](https://github.com/mifi/lossless-cut) & of course [DaVinci Resolve](https://www.blackmagicdesign.com/uk/products/davinciresolve) this gives you basic editing to quickly handle uncompressed files cross operating systems, and for windows users an easy FFMPEG/AviSynth/Vapoursynth encoding and QTGMC de-interlacing experience, and full colour grading and post production ability.
+
+
 ## Decoding RF Captures
-
-To use VHS Decode GUI Run:
-
-    ./vhs-decode-gui
 
 Decode your captured tape to a .tbc by using:
 
@@ -319,7 +320,11 @@ For DomesDayDuplicator Captures simply run
 
 `ld-compress <capture>`
 
-Your .lds file will be compressed to an FLAC OGG .ldf file
+For DomesDayDuplicator Captures (Windows Systems) simply drag and drop on 
+
+`ld-compress.bat` or `ld-compress-nvidia-gpu.bat`
+
+Your `.lds` file will be compressed to an FLAC OGG `.ldf` file.
 
 For CXADC and other 8/16bit captures use the following:
 
@@ -343,6 +348,7 @@ Decompress FLAC compressed captures:
 
 ## Generating Colour Video Files (.TBC to Playable .MKV)
 
+
 VHS-Decode produces two timebase corrected 16-bit `GREY16` headerless files separated into chroma/luma composite video signals in the `.tbc` format alongside `.json` and `.log` files, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, ld-process-vits and ld-dropout-correct.
 
 The gen chroma scrips will use decoded .tbc files and generate standard video files by default a lossless, interlaced top field first and high-bitrate (roughly 70-100 Mb/s) FFV1 codec video which, which although ideal for archival and further processing, not supported in big NLEs.
@@ -350,11 +356,15 @@ The gen chroma scrips will use decoded .tbc files and generate standard video fi
 *gen_chroma_vid.sh automatically detects PAL/NTSC based on the .JSON, although legacy scripts still exsist*
 
 To generate .mkv files viewable in most media players, simply use the gen_chroma_vid.sh scripts below.
-### Export your TBC files to a video file with
+
+### Export your TBC files to a video file with the following basic command
+
 
     ./gen_chroma_vid.sh Input-TBC-Name
-
+    
+    
 ## Editing & Basic Online Usage
+
 
 For editing due to lack of support of FFV1 and sharing online without de-interlacing is not supported properly, as such the two commands are provided below to make suitable files for this use.
 
@@ -384,19 +394,22 @@ So for example open terminal in the directory of target TBC/Metadata files and r
 
     ./gen_chroma_vid.sh -v -s <skip n frames> -l <number of frames long> -a <capture>.flac -i <.tbc filename without .tbc extension>
 
+
 ## VBI (Vertical Blanking Interval) Data Recovery
+
 
 Software decoding provides the full signal frame, recovery software can be used to read and extract this information, however some information can be automatically extracted in the TBC file stage with `ld-processs-vbi` like VITC & Closed Captions. 
 
-[VITC Timecode](https://github.com/oyvindln/vhs-decode/wiki/VITC-&-Subtitles) (Standard SMPTE Timecode)
+[VITC Timecode](https://github.com/oyvindln/vhs-decode/wiki/VITC-SMPTE-Timecode) (Standard SMPTE Timecode)
 
 [CC EIA-608](https://github.com/oyvindln/vhs-decode/wiki/NTSC-Closed-Captioning) (Closed Captioning)
 
-[PAL Teletext](https://github.com/oyvindln/vhs-decode/wiki/PAL-Teletext-Subtitles) (European Subtitles & Information Graphics)
+[Teletext](https://github.com/oyvindln/vhs-decode/wiki/Teletext) (European Subtitles & Information Graphics)
 
 [Tape-based Arcade Games!](https://vhs.thenvm.org/resources/)
 
 [Ruxpin TV Teddy](https://github.com/oyvindln/vhs-decode/blob/vhs_decode/tools/ruxpin-decode/readme.pdf) (Extra audio in visable frame)
+
 
 ### Generate an video output with the top VBI area:
 
@@ -408,11 +421,14 @@ Software decoding provides the full signal frame, recovery software can be used 
 
     ./gen_chroma_vid.sh --ffll 1 --lfll 259 --ffrl 2 --lfrl 525 <tbc-name>
     
+    
 ## Terminal Arguments
+
 
 VHS-Decode supports various arguments to change how captured tape recordings are processed these vary slightly between formats like VHS & Umatic but the basic oprations remain the same.
 
 The list below is a short list for common/daily usage but does not cover all the abbilitys and new or advanced command arguments possible so please read the [complete and upto-date command list](https://github.com/oyvindln/vhs-decode/wiki/Command-List) on the wiki as commands may change or be depricated so its always good to check this list after any updates.
+
 
 ## Sample Rate Comamnds
 
@@ -426,7 +442,9 @@ Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 
 `-tf` Sets Tape Format enter `VHS`, `SVHS`, `UMATIC`, `UMATIC_HI`, `BETAMAX`, `VIDEO8`, `HI8`, `TYPEC`, `EIAJ` (Default is VHS)
 
+
 ##  CXADC Specific Sample Rate Commands
+
 
 `--cxadc`    28.6 MHz/8-bit  (8fsc)
 
@@ -436,7 +454,9 @@ Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 
 `--10cxadc3` 17.9 MHz/16-bit (5fsc)
 
+
 ## Colour System Commands
+
 
 Changes the colour or TV system to NTSC, PAL, PAL-M, NTSC-J, or MESECAM respectively.
 Please note that, as of writing, support for PAL-M is **experimental**.
@@ -451,7 +471,9 @@ Please note that, as of writing, support for PAL-M is **experimental**.
 
 `--MESECAM` = MESECAM
 
+
 # [Time & Location Control](https://github.com/oyvindln/vhs-decode/wiki/Command-List#time--location-control)
+
 
 These commands are used for jumping ahead in a file or defining limits.
 Useful for recovering decoding after a crash, or by limiting process time by producing shorter samples.
@@ -466,7 +488,9 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 (note: upon crashing, vhs-decode automatically dumps the last known sample location in the terminal output)
 
+
 ## [Time Base Correction & Visuals Control](https://github.com/oyvindln/vhs-decode/wiki/Command-List#decode-tbc---time-base-correction-control)
+
 
 `--debug` sets logger verbosity level to *debug*. Useful for debugging and better log information. (Recommended To Enable for Archival)
 
@@ -478,9 +502,11 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 `--dp demodblock` Displays Raw Demodulated Frequency Spectrum Graphs, makes a pop-up window per each thread so -t 32 would give you 32 GUI windows etc
 
+
 ## Input file formats:
 
-**Note** Input for the decoders can be RAW uncompressed data or FLAC compressed data. 
+
+**Note** The decoders can be RAW uncompressed data or FLAC compressed data. 
 
 **Note** .RAW will need to be renamed to s16/u16 
 
@@ -492,7 +518,9 @@ Useful for recovering decoding after a crash, or by limiting process time by pro
 
 .flac/.cvbs/.vhs/.svhs/.betacam/.betamax/.video8/.hi8 (FLAC-compressed captures, can be either 8-bit or 16-bit).
 
+
 ## Output file formats:
+
 
 Unlike CVBS-Decode & LD-Decode, VHS-Decode does not output its timebase-corrected frames as a single .tbc file for colour under formats.
 
@@ -522,6 +550,10 @@ Then install gooey
 
     pip3 install attrdict3
     pip3 install Gooey
+
+To use VHS Decode GUI Run:
+
+    ./vhs-decode-gui
 
 # Join us!
 
