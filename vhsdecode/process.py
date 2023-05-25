@@ -496,7 +496,7 @@ class VHSRFDecode(ldd.RFDecode):
         if self.options.chroma_deemphasis_filter:
             from vhsdecode.addons.biquad import peaking
             out_freq_half = self._chroma_afc.getOutFreqHalf()
-            print(out_freq_half)
+
             (b, a) = peaking(self.sys_params['fsc_mhz'] / out_freq_half, 3.4, BW=0.5/out_freq_half, type='constantq')
             self.Filters["chroma_deemphasis"] = (b, a)
 
