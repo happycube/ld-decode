@@ -186,7 +186,8 @@ def process_chroma(
     disable_deemph=False,
     disable_comb=False,
     disable_tracking_cafc=False,
-    chroma_rotation=None
+    chroma_rotation=None,
+    do_chroma_deemphasis=False
 ):
     # Run TBC/downscale on chroma (if new field, else uses cache)
     if (
@@ -287,6 +288,9 @@ def process_chroma(
     # carrier frequency here.
     # We do however want to be careful to avoid filtering out too much of the sideband.
     uphet = utils.filter_simple(uphet, field.rf.Filters["FChromaFinal"])
+    if do_chroma_deemphasis:
+        b, a = field.rf.Filters["chroma_deemphasis"]
+        uphet = sps.lfilter(b, a, uphet)
 
     # Basic comb filter for NTSC to calm the color a little.
     if not disable_comb:
@@ -433,7 +437,8 @@ def decode_chroma_video8(field, chroma_rotation=None):
         track_phase=rf.track_phase,
         disable_comb=rf.options.disable_comb,
         disable_tracking_cafc=False,
-        chroma_rotation=chroma_rotation
+        chroma_rotation=chroma_rotation,
+        do_chroma_deemphasis=True
     )
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.

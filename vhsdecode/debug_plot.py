@@ -1,3 +1,4 @@
+import sys
 from matplotlib import rc_context
 
 
@@ -256,6 +257,32 @@ def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
                 11.7,
                 13.3,
                 11.6
+            ],
+        ]
+    )
+
+    # Video8 freqs for -3 dB
+    _test_arr = np.array(
+        [
+            [
+                0.05,
+                0.1,
+                #corner_freq / 1e6,
+                0.2,
+                0.5,
+                1.0,
+                2.0,
+                4.0
+            ],
+            [
+                0.9,
+                2.6,
+                #3,
+                6.4,
+                11.2,
+                13.1,
+                13.8,
+                13.9
             ],
         ]
     )

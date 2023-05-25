@@ -424,6 +424,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "y_comb",
                 "write_chroma",
                 "color_under",
+                "chroma_deemphasis_filter"
             ],
         )(
             self.iretohz(100) * 2,
@@ -440,6 +441,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,
             tape_format != "TYPEC",
+            tape_format == "VIDEO8" or tape_format == "HI8"
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -490,6 +492,13 @@ class VHSRFDecode(ldd.RFDecode):
             if self._options.color_under
             else self._chroma_afc.get_chroma_bandpass_final()
         )
+
+        if self.options.chroma_deemphasis_filter:
+            from vhsdecode.addons.biquad import peaking
+            out_freq_half = self._chroma_afc.getOutFreqHalf()
+            print(out_freq_half)
+            (b, a) = peaking(self.sys_params['fsc_mhz'] / out_freq_half, 3.4, BW=0.5/out_freq_half, type='constantq')
+            self.Filters["chroma_deemphasis"] = (b, a)
 
         if self._notch is not None:
             if not self._do_cafc:
@@ -703,6 +712,12 @@ class VHSRFDecode(ldd.RFDecode):
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
+        #self.Filters["chroma_notch"] = sps.iirnotch(
+        #            self.sys_params["fsc_mhz"] / self.freq_half, 1
+        #)
+        #chroma_notch_fft = filtfft(chroma_notch, self.blocklen, False)
+
+
         self.Filters["FVideo"] = filter_deemp * filter_video_lpf
         if self.options.double_lpf:
             # Double up the lpf to possibly closer emulate
@@ -831,6 +846,9 @@ class VHSRFDecode(ldd.RFDecode):
         demod_fft = npfft.rfft(demod)
         out_video_fft = demod_fft * self.Filters["FVideo"]
         out_video = npfft.irfft(out_video_fft).real
+
+        # out_video = sps.lfilter(self.Filters["chroma_notch"][0], self.Filters["chroma_notch"][1], out_video[::-1])[::-1]
+
         if self.options.double_lpf:
             # Compensate for phase shift of the extra lpf
             # TODO: What's this supposed to be?
