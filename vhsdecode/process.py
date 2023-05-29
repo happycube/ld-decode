@@ -60,6 +60,7 @@ def _demodcache_dummy(self, *args, **kwargs):
     self.ended = True
     pass
 
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -367,7 +368,9 @@ class VHSRFDecode(ldd.RFDecode):
         self.debug = extra_options.get("debug", False)
         # Enable cafc for betamax until proper track detection for it is implemented.
         self._do_cafc = (
-            True if (tape_format == "BETAMAX" and system is not "NTSC") else rf_options.get("cafc", False)
+            True
+            if (tape_format == "BETAMAX" and system != "NTSC")
+            else rf_options.get("cafc", False)
         )
         # cafc requires --recheck_phase
         self._recheck_phase = True if self._do_cafc else self._recheck_phase
@@ -424,7 +427,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "y_comb",
                 "write_chroma",
                 "color_under",
-                "chroma_deemphasis_filter"
+                "chroma_deemphasis_filter",
             ],
         )(
             self.iretohz(100) * 2,
@@ -441,7 +444,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,
             tape_format != "TYPEC",
-            tape_format == "VIDEO8" or tape_format == "HI8"
+            tape_format == "VIDEO8" or tape_format == "HI8",
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -495,9 +498,15 @@ class VHSRFDecode(ldd.RFDecode):
 
         if self.options.chroma_deemphasis_filter:
             from vhsdecode.addons.biquad import peaking
+
             out_freq_half = self._chroma_afc.getOutFreqHalf()
 
-            (b, a) = peaking(self.sys_params['fsc_mhz'] / out_freq_half, 3.4, BW=0.5/out_freq_half, type='constantq')
+            (b, a) = peaking(
+                self.sys_params["fsc_mhz"] / out_freq_half,
+                3.4,
+                BW=0.5 / out_freq_half,
+                type="constantq",
+            )
             self.Filters["chroma_deemphasis"] = (b, a)
 
         if self._notch is not None:
@@ -712,11 +721,10 @@ class VHSRFDecode(ldd.RFDecode):
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
-        #self.Filters["chroma_notch"] = sps.iirnotch(
+        # self.Filters["chroma_notch"] = sps.iirnotch(
         #            self.sys_params["fsc_mhz"] / self.freq_half, 1
-        #)
-        #chroma_notch_fft = filtfft(chroma_notch, self.blocklen, False)
-
+        # )
+        # chroma_notch_fft = filtfft(chroma_notch, self.blocklen, False)
 
         self.Filters["FVideo"] = filter_deemp * filter_video_lpf
         if self.options.double_lpf:
