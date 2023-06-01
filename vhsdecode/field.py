@@ -65,6 +65,7 @@ def field_class_from_formats(system: str, tape_format: str):
             or tape_format == "UMATIC_HI"
             or tape_format == "EIAJ"
             or tape_format == "VCR"
+            or tape_format == "VCR_LP"
         ):
             # These use simple chroma downconversion and filters.
             field_class = FieldPALUMatic

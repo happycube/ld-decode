@@ -110,6 +110,15 @@ def get_format_params(system: str, tape_format: str, logger):
             return get_sysparams_pal_vcr(SysParams_PAL), get_rfparams_pal_vcr(
                 RFParams_PAL
             )
+        elif tape_format == "VCR_LP":
+            from vhsdecode.format_defs.vcr import (
+                get_rfparams_pal_vcr_lp,
+                get_sysparams_pal_vcr_lp,
+            )
+
+            return get_sysparams_pal_vcr_lp(SysParams_PAL), get_rfparams_pal_vcr_lp(
+                RFParams_PAL
+            )
         else:
             if tape_format != "VHS":
                 logger.warning(

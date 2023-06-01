@@ -34,6 +34,7 @@ supported_tape_formats = {
     "HI8",
     "EIAJ",
     "VCR",
+    "VCR_LP",
     "TYPEC",
 }
 
@@ -68,7 +69,7 @@ def main(args=None, use_gui=False):
         metavar="tape_format",
         default="VHS",
         choices=supported_tape_formats,
-        help="Tape format, currently VHS (Default), SVHS, UMATIC, UMATIC_HI, BETAMAX, BETAMAX_HIFI, VIDEO8, HI8 ,EIAJ, VCR and TYPEC, are supported",
+        help="Tape format, currently VHS (Default), SVHS, UMATIC, UMATIC_HI, BETAMAX, BETAMAX_HIFI, VIDEO8, HI8 ,EIAJ, VCR, VCR_LP and TYPEC, are supported",
     )
     parser.add_argument(
         "--params_file",
