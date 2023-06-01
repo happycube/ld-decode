@@ -329,40 +329,10 @@ def check_increment_field_no(rf):
     return raw_loc
 
 
-def decode_chroma_vhs(field, rotation=True):
-    """Do track detection if needed and upconvert the chroma signal"""
-    rf = field.rf
-
-    # Use field number based on raw data position
-    # This may not be 100% accurate, so we may want to add some more logic to
-    # make sure we re-check the phase occasionally.
-    raw_loc = check_increment_field_no(rf)
-
-    if rotation:
-        # If we moved significantly more than the length of one field, re-check phase
-        # as we may have skipped fields.
-        if raw_loc - rf.last_raw_loc > 1.3:
-            if rf.detect_track:
-                ldd.logger.info("Possibly skipped a track, re-checking phase..")
-                rf.needs_detect = True
-
-        if rf.detect_track and rf.needs_detect or rf.recheck_phase:
-            rf.track_phase, rf.needs_detect = field.try_detect_track()
-
-    uphet = process_chroma(
-        field,
-        rf.track_phase if rotation else None,
-        disable_comb=rf.options.disable_comb,
-        disable_tracking_cafc=False
-    )
-    field.uphet_temp = uphet
-    # Store previous raw location so we can detect if we moved in the next call.
-    rf.last_raw_loc = raw_loc
-    return chroma_to_u16(uphet)
-
-
-def decode_chroma_umatic(field):
-    """Upconvert the chroma signal"""
+def decode_chroma_simple(field):
+    """Upconvert the chroma signal
+       Simple upconversion with no rotation etc for umatic, vcr, eiaj and similar.
+    """
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
     # make sure we re-check the phase occasionally.
@@ -377,45 +347,9 @@ def decode_chroma_umatic(field):
     return chroma_to_u16(uphet)
 
 
-def decode_chroma_betamax(field, chroma_rotation=None):
+def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
-
-    # Use field number based on raw data position
-    # This may not be 100% accurate, so we may want to add some more logic to
-    # make sure we re-check the phase occasionally.
-    raw_loc = check_increment_field_no(rf)
-
-    # If we moved significantly more than the length of one field, re-check phase
-    # as we may have skipped fields.
-    if raw_loc - rf.last_raw_loc > 1.3:
-        if rf.detect_track:
-            ldd.logger.info("Possibly skipped a track, re-checking phase..")
-            rf.needs_detect = True
-
-    if rf.detect_track and rf.needs_detect or rf.recheck_phase:
-        rf.track_phase, rf.needs_detect = field.try_detect_track()
-
-    uphet = process_chroma(
-        field,
-        rf.track_phase,
-        disable_comb=rf.options.disable_comb,
-        disable_tracking_cafc=False,
-        chroma_rotation=chroma_rotation
-    )
-    field.uphet_temp = uphet
-    # Store previous raw location so we can detect if we moved in the next call.
-    rf.last_raw_loc = raw_loc
-    return chroma_to_u16(uphet)
-
-
-def decode_chroma_video8(field, chroma_rotation=None):
-    """Do track detection if needed and upconvert the chroma signal"""
-    rf = field.rf
-
-    ldd.logger.debug(
-        "Proper chroma deemphasis not implemented for video8 yet!"
-    )
 
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
@@ -438,7 +372,7 @@ def decode_chroma_video8(field, chroma_rotation=None):
         disable_comb=rf.options.disable_comb,
         disable_tracking_cafc=False,
         chroma_rotation=chroma_rotation,
-        do_chroma_deemphasis=True
+        do_chroma_deemphasis=do_chroma_deemphasis
     )
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.

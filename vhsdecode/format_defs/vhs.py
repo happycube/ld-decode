@@ -1,6 +1,7 @@
 """Module containing parameters for VHS and SVHS"""
 
 PAL_ROTATION = [-1, 0]
+NTSC_ROTATION = [-1, 1]
 
 def fill_rfparams_vhs_shared(rfparams):
     """Fill in parameters that are shared between systems for VHS"""
@@ -107,6 +108,8 @@ def get_rfparams_pal_vhs(rfparams_pal):
     # RFParams_PAL_VHS["nonlinear_highpass_limit_h"] = 5000
     # RFParams_PAL_VHS["nonlinear_highpass_limit_l"] = -20000
 
+    RFParams_PAL_VHS["chroma_rotation"] = PAL_ROTATION
+
     fill_rfparams_vhs_shared(RFParams_PAL_VHS)
 
     return RFParams_PAL_VHS
@@ -190,6 +193,8 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
     # NTSC color under carrier is 40H
     RFParams_NTSC_VHS["color_under_carrier"] = (525 * (30 / 1.001)) * 40
 
+    RFParams_NTSC_VHS["chroma_rotation"] = NTSC_ROTATION
+
     # Upper frequency of bandpass to filter out chroma from the rf signal.
     RFParams_NTSC_VHS["chroma_bpf_upper"] = 1400000
 
@@ -254,6 +259,7 @@ def get_rfparams_mpal_vhs(rfparams_ntsc):
     params = get_rfparams_ntsc_vhs(rfparams_ntsc)
     # Same as NTSC other than color carrier
     params["color_under_carrier"] = 631.337e3
+    params["chroma_rotation"] = PAL_ROTATION
 
     return params
 
@@ -285,6 +291,7 @@ def get_rfparams_mesecam_vhs(rfparams_pal):
     # Average of the two carriers specified, need to check if this works correctly
     # and calculate exact value
     params["color_under_carrier"] = (654300 + 810500) / 2
+    params["chroma_rotation"] = None
 
     return params
 
