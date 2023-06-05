@@ -39,7 +39,7 @@ else:
 
 from . import efm_pll
 from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
-from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
+from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
@@ -750,11 +750,11 @@ class RFDecode:
             out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
             video_out = np.rec.array(
                 [
-                    out_video,
-                    demod,
-                    out_video05,
-                    out_videoburst,
-                    out_videopilot,
+                    out_video.astype(np.float32),
+                    demod.astype(np.float32),
+                    out_video05.astype(np.float32),
+                    out_videoburst.astype(np.float32),
+                    out_videopilot.astype(np.float32),
                 ],
                 names=[
                     "demod",
@@ -766,7 +766,7 @@ class RFDecode:
             )
         else:
             video_out = np.rec.array(
-                [out_video, demod, out_video05, out_videoburst],
+                [out_video.astype(np.float32), demod.astype(np.float32), out_video05.astype(np.float32), out_videoburst.astype(np.float32)],
                 names=["demod", "demod_raw", "demod_05", "demod_burst"],
             )
 
@@ -2676,13 +2676,13 @@ class Field:
                 valid_min[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min
                 valid_min05[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_05
 
-        iserr2 = f.data["video"]["demod"] < valid_min
-        iserr2 |= f.data["video"]["demod"] > valid_max
+        n_orlt(iserr1, f.data["video"]["demod"], valid_min)
+        n_orgt(iserr1, f.data["video"]["demod"], valid_max)
 
-        iserr3 = f.data["video"]["demod_05"] < valid_min05
-        iserr3 |= f.data["video"]["demod_05"] > valid_max05
+        n_orlt(iserr1, f.data["video"]["demod_05"], valid_min05)
+        n_orgt(iserr1, f.data["video"]["demod_05"], valid_max05)
 
-        iserr = iserr1 | iserr2 | iserr3 | iserr_rf
+        iserr = iserr1 | iserr_rf
 
         # filter out dropouts outside actual field
         iserr[:int(f.linelocs[f.lineoffset + 1])] = False
