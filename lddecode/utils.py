@@ -834,6 +834,17 @@ def roundfloat(fl, places=3):
     return np.round(fl * r) / r
 
 
+@njit(nogil=True, cache=True)
+def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
+    reduced = (input - ire0) / hz_ire
+    reduced -= vsync_ire
+
+    return (
+        np.clip((reduced * out_scale) + outputZero, 0, 65535) + 0.5
+    ).astype(np.uint16)
+
+
+
 # Something like this should be a numpy function, but I can't find it.
 @jit(cache=True)
 def findareas(array, cross):
