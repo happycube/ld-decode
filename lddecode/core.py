@@ -44,7 +44,7 @@ from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
-from .utils import fft_do_slice, fft_determine_slices, StridedCollector
+from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -1587,7 +1587,18 @@ class Field:
     def outpxtousec(self, x):
         return x / self.rf.SysParams["outfreq"]
 
+    #@profile
     def hz_to_output(self, input):
+        if type(input) == np.ndarray:
+            return hz_to_output_array(
+                input,
+                self.rf.DecoderParams["ire0"],
+                self.rf.DecoderParams["hz_ire"],
+                self.rf.SysParams["outputZero"],
+                self.rf.DecoderParams["vsync_ire"],
+                self.out_scale,
+            )
+
         reduced = (input - self.rf.DecoderParams["ire0"]) / self.rf.DecoderParams["hz_ire"]
         reduced -= self.rf.DecoderParams["vsync_ire"]
 
@@ -2182,6 +2193,7 @@ class Field:
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
+    #@profile
     def compute_linelocs(self):
 
         self.rawpulses = self.getpulses()
