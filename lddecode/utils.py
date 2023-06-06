@@ -721,30 +721,29 @@ def unwrap_hilbert_getangles(hilbert):
     tangles = np.angle(hilbert)
     dangles = np.ediff1d(tangles, to_begin=0)
 
+    # make sure unwapping goes the right way
+    if dangles[0] < -pi:
+        dangles[0] += tau
+
     return dangles
 
 @njit(cache=True,nogil=True)
-def unwrap_hilbert_fixangles(tdangles2):
+def unwrap_hilbert_fixangles(tdangles2, freq_hz):
     # With extremely bad data, the unwrapped angles can jump.
     while np.min(tdangles2) < 0:
         tdangles2[tdangles2 < 0] += tau
     while np.max(tdangles2) > tau:
         tdangles2[tdangles2 > tau] -= tau
 
-    return tdangles2
+    return tdangles2 * (freq_hz / tau)
 
 def unwrap_hilbert(hilbert, freq_hz):
     dangles = unwrap_hilbert_getangles(hilbert)
 
-    # make sure unwapping goes the right way
-    if dangles[0] < -pi:
-        dangles[0] += tau
-
+    # This can't be run with numba
     tdangles2 = np.unwrap(dangles)
 
-    tdangles2 = unwrap_hilbert_fixangles(tdangles2)
-
-    return tdangles2 * (freq_hz / tau)
+    return unwrap_hilbert_fixangles(tdangles2, freq_hz) #* (freq_hz / tau)
 
 
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
