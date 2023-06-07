@@ -27,6 +27,8 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-dec
 
 **EIAJ** 625-line - PAL. **Working** (NTSC Samples Required!) 
 
+**Philips VCR** 625-line - PAL. **Working**
+
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
 
 Example Videos: [VHS-Decode](https://odysee.com/@vhs-decode:7) / [The Rewinding](https://odysee.com/@therewinding:4?view=content) - Odysee
@@ -251,7 +253,7 @@ You dont actaully type `<` and `>` on your input & output files.
 
 To see if you have a connection, use the live preview mode and then hook up your RF cable, normally you will see a white flash as a signal, if not change your vmux or input within a 0-2 range with the below command.
 
-    sudo echo 0 >/sys/module/cxadc/parameters/vmux
+    sudo echo 0 >/sys/class/cxadc/cxadc0/device/parameters/vmux
 
 To see a live preview of tape signal being received by a CXADC card, note that the video head tracked signal will be unstable or wobbly if settings are not the same; you may only see "signal flash" if in 16-bit mode for example.
 
@@ -297,6 +299,7 @@ Some useful free tools to note for post processing are
 
 
 ## Decoding RF Captures
+
 
 Decode your captured tape to a .tbc by using:
 
@@ -355,7 +358,7 @@ The gen chroma scrips will use decoded .tbc files and generate standard video fi
 
 *gen_chroma_vid.sh automatically detects PAL/NTSC based on the .JSON, although legacy scripts still exist*
 
-To generate .mkv files viewable in most media players, simply use the gen_chroma_vid.sh scripts below.
+To generate .mkv files viewable in most media players, simply use the `gen_chroma_vid.sh` script below.
 
 ### Export your TBC files to a video file with the following basic command
 
@@ -402,7 +405,7 @@ Software decoding provides the full signal frame, recovery software can be used 
 
 [VITC Timecode](https://github.com/oyvindln/vhs-decode/wiki/VITC-SMPTE-Timecode) (Standard SMPTE Timecode)
 
-[CC EIA-608](https://github.com/oyvindln/vhs-decode/wiki/NTSC-Closed-Captioning) (Closed Captioning)
+[CC EIA-608](https://github.com/oyvindln/vhs-decode/wiki/Closed-Captioning) (Closed Captioning)
 
 [Teletext](https://github.com/oyvindln/vhs-decode/wiki/Teletext) (European Subtitles & Information Graphics)
 
@@ -440,7 +443,7 @@ The decoder is 8/16 bit agnostic so as long as sample rate is defined, it will d
 
 Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 
-`-tf` Sets Tape Format enter `VHS`, `SVHS`, `UMATIC`, `UMATIC_HI`, `BETAMAX`, `VIDEO8`, `HI8`, `TYPEC`, `EIAJ` (Default is VHS)
+`-tf` Sets Tape Format enter `VHS`, `SVHS`, `UMATIC`, `UMATIC_HI`, `BETAMAX`, `VIDEO8`, `HI8`, `TYPEC`, `EIAJ`, `VCR` (Default is VHS)
 
 
 ##  CXADC Specific Sample Rate Commands
@@ -510,11 +513,11 @@ Useful to recover decoding after a crash, or for limiting process time by produc
 
 **Note** .RAW will need to be renamed to s16/u16 
 
-.ldf/.lds (40msps Domesday Duplicator FLAC-compressed and uncompressed data).
+`.ldf`/`.lds` (40msps Domesday Duplicator FLAC-compressed and uncompressed data).
 
-.r8/.u8   (CXADC 8-bit raw data).
+`.r8`/`.u8`   (CXADC 8-bit raw data).
 
-.r16/.u16 (CXADC 16-bit raw data).
+`.r16`/`.u16` (CXADC 16-bit raw data).
 
 .flac/.cvbs/.vhs/.svhs/.betacam/.betamax/.video8/.hi8 (FLAC-compressed captures, can be either 8-bit or 16-bit).
 
@@ -526,9 +529,9 @@ Unlike CVBS-Decode & LD-Decode, VHS-Decode does not output its timebase-correcte
 
 Both the luminance and chrominance channels are separate data files, essentially a digital "S-Video", additionally useful for troubleshooting. Descriptor/log files are generated so you end up with 4 files with the following naming:
 
-`filename.tbc`        - Luminance Image Data (Combined for CVBS)
+`filename.tbc`        - Luminance (Y) Image Data (Combined Y/C for CVBS)
 
-`filename_chroma.tbc` - Chrominance Image Data (QAM Modulated)
+`filename_chroma.tbc` - Chrominance (C) Image Data (QAM Modulated)
 
 `filename.tbc.json`   - Frame Descriptor Table (Resolution/Dropouts/SNR/Frames/VBI Timecode)
 
