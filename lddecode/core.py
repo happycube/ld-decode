@@ -1596,7 +1596,7 @@ class Field:
                 self.rf.DecoderParams["hz_ire"],
                 self.rf.SysParams["outputZero"],
                 self.rf.DecoderParams["vsync_ire"],
-                self.out_scale,
+                self.out_scale
             )
 
         reduced = (input - self.rf.DecoderParams["ire0"]) / self.rf.DecoderParams["hz_ire"]
