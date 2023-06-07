@@ -703,7 +703,7 @@ class RFDecode:
         rv["rfhpf"] = npfft.ifft(indata_fft * self.Filters["Frfhpf"]).real
         rv["rfhpf"] = rv["rfhpf"][
             self.blockcut - rotdelay : -self.blockcut_end - rotdelay
-        ]
+        ].astype(np.float32)
 
         if self.system == "PAL" and self.PAL_V4300D_NotchFilter:
             """ This routine works around an 'interesting' issue seen with LD-V4300D players and
@@ -791,7 +791,7 @@ class RFDecode:
                 # Demodulate and restore frequency after bin slicing
                 a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
 
-                stage1_out.append(a1u)
+                stage1_out.append(a1u.astype(np.float32))
 
             audio_out = np.rec.array(
                 [stage1_out[0], stage1_out[1]], names=["audio_left", "audio_right"]
@@ -1233,7 +1233,6 @@ class DemodCache:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
                         self.rf.blockcut : -self.rf.blockcut_end
                     ]
-
 
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block #
