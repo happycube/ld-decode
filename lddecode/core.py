@@ -2793,7 +2793,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-
+    @profile
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -2837,20 +2837,20 @@ class Field:
             phase_offset = []
 
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            bursts = clb_findbursts(
+            risings, zcs = clb_findbursts(
                 burstarea, 0, len(burstarea) - 1, threshold
             )
 
-            if len(bursts) == 0:
+            if len(zcs) == 0:
                 return None, None
 
-            for prevalue, zc in bursts:
+            for rising, zc in zip(risings, zcs):
                 zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
                 zc_round = nb_round(zc_cycle)
 
                 phase_offset.append(zc_round - zc_cycle)
 
-                if prevalue < 0:
+                if rising:
                     rising_count += not (zc_round % 2)
                 else:
                     rising_count += zc_round % 2
@@ -2858,7 +2858,7 @@ class Field:
             phase_adjust += nb_median(np.array(phase_offset))
             passcount += 1
 
-        rising = (rising_count / len(bursts)) > 0.5
+        rising = (rising_count / len(zcs)) > 0.5
 
         return rising, -phase_adjust
 

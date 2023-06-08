@@ -1072,24 +1072,26 @@ def dsa_rescale_and_clip(infloat):
 # removed so that they can be JIT'd
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def clb_findbursts(burstarea, i, endburstarea, threshold):
-    out = []
+    rising = []
+    zcs = []
     
     j = i
     while j < endburstarea:
         if np.abs(burstarea[j]) > threshold:
-            pre = burstarea[j]
+            rising.append(burstarea[j] < 0)
             zc = calczc_do(burstarea, j, 0)
             if zc is not None:
-                out.append((burstarea[j], zc))
+                zcs.append(zc)
                 j = int(zc) + 1
             else:
-                return out
+                return rising, zcs
         else:
             j += 1
 
-    return out
+    return rising, zcs
+
 
 
 @njit(cache=True)
