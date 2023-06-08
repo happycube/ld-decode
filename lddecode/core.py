@@ -1231,7 +1231,7 @@ class DemodCache:
             return rv
 
         while need_blocks is not None and len(need_blocks):
-            time.sleep(0.001)  # A crude busy loop
+            time.sleep(0.0005)  # A crude busy loop
             need_blocks = self.doread(toread, MTF)
 
         if need_blocks is None:
@@ -2837,16 +2837,8 @@ class Field:
         # the colo(u)r burst phase of the line.
         for passcount in range(2):
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            zc_count = clb_findbursts(isrising, zcs, burstarea, 0, len(burstarea) - 1, threshold)
+            zc_count, phase_adjust, rising_count = clb_findbursts(isrising, zcs, burstarea, 0, len(burstarea) - 1, threshold, bstart, s_rem, zcburstdiv, phase_adjust)
 
-            if zc_count == 0:
-                return None, None
-
-            zc_cycles = ((bstart + zcs - s_rem) / zcburstdiv) + phase_adjust
-            zc_rounds = np.round(zc_cycles)
-            phase_adjust += nb_median(zc_rounds - zc_cycles)
-
-        rising_count = np.sum(np.bitwise_xor(isrising, (zc_rounds % 2) != 0))
         rising = rising_count > (zc_count / 2)
 
         return rising, -phase_adjust
