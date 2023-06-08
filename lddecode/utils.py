@@ -1073,24 +1073,27 @@ def dsa_rescale_and_clip(infloat):
 
 
 @njit(cache=True,nogil=True)
-def clb_findbursts(burstarea, i, endburstarea, threshold):
-    out = []
-    
+def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold):
+    zc_count = 0
     j = i
-    while j < endburstarea:
+
+    isrising.fill(False)
+    zcs.fill(0)
+
+    while j < endburstarea and zc_count < len(zcs):
         if np.abs(burstarea[j]) > threshold:
             zc = calczc_do(burstarea, j, 0)
             if zc is not None:
-                out.append((burstarea[j] < 0, zc))
+                isrising[zc_count] = burstarea[j] < 0
+                zcs[zc_count] = zc
+                zc_count += 1
                 j = int(zc) + 1
             else:
-                return out
+                return zc_count
         else:
             j += 1
 
-    return out
-
-
+    return zc_count
 
 @njit(cache=True)
 def distance_from_round(x):

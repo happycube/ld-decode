@@ -2793,7 +2793,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    #@profile
+
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -2829,36 +2829,25 @@ class Field:
         # Apply phase adjustment from previous frame/line if available.
         phase_adjust = -prev_phaseadjust
 
+        # a proper color burst should have ~12-13 zero crossings
+        isrising = np.zeros(16, dtype=np.bool_)
+        zcs = np.zeros(16, dtype=np.float32)
+
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
-        passcount = 0
-        while passcount < 2:
-            rising_count = 0
-            phase_offset = []
-
+        for passcount in range(2):
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            bursts = clb_findbursts(
-                burstarea, 0, len(burstarea) - 1, threshold
-            )
+            zc_count = clb_findbursts(isrising, zcs, burstarea, 0, len(burstarea) - 1, threshold)
 
-            if len(bursts) == 0:
+            if zc_count == 0:
                 return None, None
 
-            for rising, zc in bursts:
-                zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
-                zc_round = nb_round(zc_cycle)
+            zc_cycles = ((bstart + zcs - s_rem) / zcburstdiv) + phase_adjust
+            zc_rounds = np.round(zc_cycles)
+            phase_adjust += nb_median(zc_rounds - zc_cycles)
 
-                phase_offset.append(zc_round - zc_cycle)
-
-                if rising:
-                    rising_count += not (zc_round % 2)
-                else:
-                    rising_count += zc_round % 2
-
-            phase_adjust += nb_median(np.array(phase_offset))
-            passcount += 1
-
-        rising = (rising_count / len(bursts)) > 0.5
+        rising_count = np.sum(np.bitwise_xor(isrising, (zc_rounds % 2) != 0))
+        rising = rising_count > (zc_count / 2)
 
         return rising, -phase_adjust
 
