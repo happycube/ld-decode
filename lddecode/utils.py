@@ -1075,6 +1075,7 @@ def dsa_rescale_and_clip(infloat):
 @njit(cache=True,nogil=True)
 def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart, s_rem, zcburstdiv, phase_adjust):
     zc_count = 0
+    rising_count = 0
     j = i
 
     isrising.fill(False)
@@ -1095,6 +1096,7 @@ def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart,
 
     if zc_count:
         zc_cycles = ((bstart + zcs - s_rem) / zcburstdiv) + phase_adjust
+        # numba doesn't support np.round over an array, so we have to do this
         zc_rounds = (zc_cycles + .5).astype(np.int32)
         phase_adjust += nb_median(zc_rounds - zc_cycles)
         rising_count = np.sum(np.bitwise_xor(isrising, (zc_rounds % 2) != 0))
