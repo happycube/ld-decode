@@ -1599,7 +1599,7 @@ class Field:
             else self.rf.SysParams["outlinelen"]
         )
 
-        return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
+        return slice(nb_round(_begin), nb_round(_begin + _length))
 
     def get_timings(self):
         pulses = self.rawpulses
@@ -1888,7 +1888,7 @@ class Field:
             dist = (firstloc - loc_presync) / self.inlinelen
             # get the integer rounded X * .5H distance.  then invert to determine
             # the half-H alignment with the sync/blank pulses
-            hdist = int(np.round(dist * 2))
+            hdist = nb_round(dist * 2)
 
             # isfirstfield = not ((hdist % 2) == self.rf.SysParams['firstField1H'][0])
             isfirstfield = (hdist % 2) == (self.rf.SysParams["firstFieldH"][1] != 1)
@@ -2032,7 +2032,7 @@ class Field:
                     meanlinelen
                     * self.rf.SysParams["field_lines"][0 if isFirstField_next else 1]
                 )
-                line0loc_next = int(np.round(self.vblank_next - fieldlen))
+                line0loc_next = nb_round(self.vblank_next - fieldlen)
 
                 if line0loc_next < 0:
                     self.sync_confidence = 10
@@ -2742,7 +2742,7 @@ class Field:
                 end_linepos = end_rf_linepos / (
                     field.linelocs[line + 1] - field.linelocs[line]
                 )
-                end_linepos = int(np.round(end_linepos * field.outlinelen))
+                end_linepos = nb_round(end_linepos * field.outlinelen)
 
                 first_line = line + 1 + lineoffset
 
@@ -2793,7 +2793,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    @profile
+    #@profile
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -2837,14 +2837,14 @@ class Field:
             phase_offset = []
 
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            risings, zcs = clb_findbursts(
+            bursts = clb_findbursts(
                 burstarea, 0, len(burstarea) - 1, threshold
             )
 
-            if len(zcs) == 0:
+            if len(bursts) == 0:
                 return None, None
 
-            for rising, zc in zip(risings, zcs):
+            for rising, zc in bursts:
                 zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
                 zc_round = nb_round(zc_cycle)
 
@@ -2858,7 +2858,7 @@ class Field:
             phase_adjust += nb_median(np.array(phase_offset))
             passcount += 1
 
-        rising = (rising_count / len(zcs)) > 0.5
+        rising = (rising_count / len(bursts)) > 0.5
 
         return rising, -phase_adjust
 
