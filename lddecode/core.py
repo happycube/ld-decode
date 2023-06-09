@@ -28,6 +28,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
+from .utils import Pulse
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -1496,6 +1497,7 @@ class Field:
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
 
+    @profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
         #print(self.readloc, self.linelocs1, self.nextfieldoffset)
@@ -1551,6 +1553,7 @@ class Field:
     def inpxtousec(self, x, line=None):
         return x / self.get_linefreq(line)
 
+    @profile
     def lineslice(self, l, begin=None, length=None, linelocs=None, begin_offset=0):
         """ return a slice corresponding with pre-TBC line l, begin+length are uSecs """
 
@@ -1601,6 +1604,7 @@ class Field:
             (output - self.rf.SysParams["outputZero"]) / self.out_scale
         ) + self.rf.DecoderParams["vsync_ire"]
 
+    @profile
     def lineslice_tbc(self, l, begin=None, length=None, linelocs=None, keepphase=False):
         """ return a slice corresponding with pre-TBC line l """
 
@@ -1619,6 +1623,7 @@ class Field:
 
         return slice(nb_round(_begin), nb_round(_begin + _length))
 
+    @profile
     def get_timings(self):
         pulses = self.rawpulses
         hsync_typical = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
@@ -1670,8 +1675,7 @@ class Field:
 
         return LT
 
-    def pulse_qualitycheck(self, prevpulse, pulse):
-
+    def pulse_qualitycheck(self, prevpulse: Pulse, pulse: Pulse):
         if prevpulse[0] > 0 and pulse[0] > 0:
             exprange = (0.4, 0.6)
         elif prevpulse[0] == 0 and pulse[0] == 0:
@@ -1684,6 +1688,7 @@ class Field:
 
         return inorder
 
+    @profile
     def run_vblank_state_machine(self, pulses, LT):
         """ Determines if a pulse set is a valid vblank by running a state machine """
 
@@ -1774,6 +1779,7 @@ class Field:
 
         return done, validpulses
 
+    @profile
     def refinepulses(self):
         LT = self.get_timings()
 
@@ -1813,6 +1819,7 @@ class Field:
 
         return valid_pulses
 
+    @profile
     def getBlankRange(self, validpulses, start=0):
         vp_type = np.array([p[0] for p in validpulses])
 
@@ -1953,11 +1960,12 @@ class Field:
 
         return None, None, None, 0
 
+    @profile
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
         longrun = [-1, -1]
         currun = None
-        for i, v in enumerate([p[0] for p in self.validpulses]):
+        for i, v in enumerate([p[0] for p in validpulses]):
             if v != 0:
                 if currun is not None and currun[1] > longrun[1]:
                     longrun = currun
@@ -1972,16 +1980,17 @@ class Field:
 
         linelens = []
         for i in range(longrun[0] + 1, longrun[0] + longrun[1]):
-            linelen = self.validpulses[i][1].start - self.validpulses[i - 1][1].start
+            linelen = validpulses[i][1].start - validpulses[i - 1][1].start
             if inrange(linelen / self.inlinelen, 0.95, 1.05):
                 linelens.append(
-                    self.validpulses[i][1].start - self.validpulses[i - 1][1].start
+                    validpulses[i][1].start - validpulses[i - 1][1].start
                 )
 
         if len(linelens) > 0:
             return np.mean(linelens)
         else:
             return self.inlinelen
+
 
     def skip_check(self):
         """ This routine checks to see if there's a (probable) VSYNC at the end.
@@ -2017,7 +2026,8 @@ class Field:
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
-    def getLine0(self, validpulses):
+    @profile
+    def getLine0(self, validpulses, meanlinelen):
         # Gather the local line 0 location and projected from the previous field
 
         self.sync_confidence = 100
@@ -2045,7 +2055,6 @@ class Field:
             if self.vblank_next is not None:
                 isFirstField_next = not isNotFirstField_next
 
-                meanlinelen = self.computeLineLen(validpulses)
                 fieldlen = (
                     meanlinelen
                     * self.rf.SysParams["field_lines"][0 if isFirstField_next else 1]
@@ -2180,7 +2189,7 @@ class Field:
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
-    #@profile
+    @profile
     def compute_linelocs(self):
 
         self.rawpulses = self.getpulses()
@@ -2194,8 +2203,8 @@ class Field:
 
 
         self.validpulses = validpulses = self.refinepulses()
-
-        line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
+        meanlinelen = self.computeLineLen(validpulses)
+        line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses, meanlinelen)
         self.linecount = 263 if self.isFirstField else 262
 
         # Number of lines to actually process.  This is set so that the entire following
@@ -2219,8 +2228,6 @@ class Field:
                 logger.error("Unable to determine start of field - dropping field")
 
             return None, None, self.inlinelen * 200
-
-        meanlinelen = self.computeLineLen(validpulses)
 
         # If we don't have enough data at the end, move onto the next field
         lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
@@ -2341,6 +2348,7 @@ class Field:
 
         return rv_ll, rv_err, nextfield
 
+    @profile
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
 
