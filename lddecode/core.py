@@ -984,7 +984,10 @@ class DemodCache:
 
         # Cache dictionary - key is block #, which holds data for that block
         self.lrusize = cachesize
-        self.prefetch = 32  # TODO: set this to proper amount for format
+
+        self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams["FPS"])
+        self.prefetch = int(self.bytes_per_frame / self.blocksize) + 4
+
         self.lru = []
 
         self.lock = threading.Lock()
@@ -994,6 +997,8 @@ class DemodCache:
 
         self.q_in = Queue()
         self.q_out = Queue()
+        self.waiting = set()
+        self.q_out_event = threading.Event()
 
         self.threadpipes = []
         self.threads = []
@@ -1163,13 +1168,17 @@ class DemodCache:
                 if redo or not waiting:
                     queuelist.append(b)
                     need_blocks.append(b)
-                elif self.block_status[b]["waiting"]:
+                elif waiting:
                     need_blocks.append(b)
+               
+                if not prefetch:
+                    self.waiting.add(b)
 
             for b in queuelist:
                 self.block_status[b] = {'MTF': MTF, 'waiting': True, 'request': self.request, 'prefetch': prefetch}
                 self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
+        self.q_out_event.clear()
         return None if reached_end else need_blocks
 
     def dequeue(self):
@@ -1196,7 +1205,14 @@ class DemodCache:
                         self.blocks[blocknum][k] = item[k]
 
                     if 'demod' in item.keys():
-                        self.block_status[blocknum]['waiting'] = False
+                        if self.block_status[blocknum]['waiting']:
+                            self.block_status[blocknum]['waiting'] = False
+
+                    if blocknum in self.waiting:
+                        self.waiting.remove(blocknum)
+
+                    if not len(self.waiting):
+                        self.q_out_event.set()
 
                 if "input" not in self.blocks[blocknum]:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
@@ -1231,8 +1247,10 @@ class DemodCache:
             return rv
 
         while need_blocks is not None and len(need_blocks):
-            time.sleep(0.0005)  # A crude busy loop
+            self.q_out_event.wait(.01)
             need_blocks = self.doread(toread, MTF)
+            if need_blocks:
+                self.q_out_event.clear()
 
         if need_blocks is None:
             # EOF
