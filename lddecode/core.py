@@ -3405,7 +3405,6 @@ class LDdecode:
         self.fname_out = fname_out
 
         self.firstfield = None  # In frame output mode, the first field goes here
-        self.fieldloc = 0
 
         self.system = system
         self.rf = RFDecode(
@@ -3438,12 +3437,9 @@ class LDdecode:
         self.audio_offset = 0
         self.mtf_level = 1
 
-        self.prevfield = None
-        self.curfield = None
+        self.fieldstack = [None, None]
 
         self.doDOD = doDOD
-
-        self.badfields = None
 
         self.fieldinfo = []
 
@@ -3462,6 +3458,9 @@ class LDdecode:
         )
 
         self.bw_ratios = []
+
+        self.decodethread = None
+        self.threadreturn = {}
 
     def __del__(self):
         del self.demodcache
@@ -3562,7 +3561,6 @@ class LDdecode:
 
             blk = self.AC3Collector.get_block()
 
-    #@profile
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
         if self.digital_audio is True:
@@ -3596,36 +3594,41 @@ class LDdecode:
             self.outfile_audio.write(audio)
 
     @profile
-    def decodefield(self, initphase=False, redo=False):
+    def decodefield(self, start, mtf_level, audio_offset, prevfield=None, initphase=False, redo=False, rv=None):
         """ returns field object if valid, and the offset to the next decode """
-        self.readloc = int(self.fdoffset - self.rf.blockcut)
-        if self.readloc < 0:
-            self.readloc = 0
 
-        self.readloc_block = self.readloc // self.blocksize
-        self.numblocks = (self.readlen // self.blocksize) + 2
+        if rv is None:
+            rv = {}
 
-        self.rawdecode = self.demodcache.read(
-            self.readloc_block * self.blocksize,
-            self.numblocks * self.blocksize,
-            self.mtf_level,
+        rv['field'] = None
+        rv['offset'] = None
+    
+        readloc = int(start - self.rf.blockcut)
+        if readloc < 0:
+            readloc = 0
+
+        readloc_block = readloc // self.blocksize
+        numblocks = (self.readlen // self.blocksize) + 2
+
+        rawdecode = self.demodcache.read(
+            readloc_block * self.blocksize,
+            numblocks * self.blocksize,
+            mtf_level,
             forceredo=redo
         )
 
-        if self.rawdecode is None:
+        if rawdecode is None:
             # logger.info("Failed to demodulate data")
             return None, None
 
-        self.indata = self.rawdecode["input"]
-
         f = self.FieldClass(
             self.rf,
-            self.rawdecode,
-            audio_offset=self.audio_offset,
-            prevfield=self.curfield,
+            rawdecode,
+            audio_offset=audio_offset,
+            prevfield=prevfield,
             initphase=initphase,
             fields_written=self.fields_written,
-            readloc=self.rawdecode["startloc"],
+            readloc=rawdecode["startloc"],
         )
 
         if self.use_profiler:
@@ -3647,41 +3650,89 @@ class LDdecode:
         except Exception as e:
             raise e
 
+        rv['field'] = f
+        rv['offset'] = f.nextfieldoffset - (readloc - rawdecode["startloc"])
+
         if not f.valid:
             # logger.info("Bad data - jumping one second")
-            return f, f.nextfieldoffset
+            rv['offset'] = f.nextfieldoffset
 
-        return f, f.nextfieldoffset - (self.readloc - self.rawdecode["startloc"])
+        return rv['field'], rv['offset']
 
     @profile
     def readfield(self, initphase=False):
-        # pretty much a retry-ing wrapper around decodefield with MTF checking
-        self.prevfield = self.curfield
         done = False
         adjusted = False
-        redo = False
+        redo = None
+
+        if len(self.fieldstack) >= 2:
+            self.fieldstack.pop(-1)
 
         while done is False:
             if redo:
+                # Drop existing thread
+                if self.decodethread:
+                    self.decodethread.join()
+                    self.decodethread = None
+
+                # Start new thread
+                self.threadreturn = {}
+                df_args = (redo, self.mtf_level, self.audio_offset, self.fieldstack[0], initphase, redo, self.threadreturn)
+
+                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+                # .run() does not actually run this in the background
+                self.decodethread.run()
+                f, offset = self.threadreturn['field'], self.threadreturn['offset']
+                self.decodethread = None
+
                 # Only allow one redo, no matter what
                 done = True
+                redo = None
+            elif self.decodethread and self.decodethread.ident:
+                self.decodethread.join()
+                self.decodethread = None
+                
+                f, offset = self.threadreturn['field'], self.threadreturn['offset']
+                #print(f, f.valid, f.readloc, offset)
+            else: # assume first run
+                f = None
+                offset = 0
 
-            self.fieldloc = self.fdoffset
-            f, offset = self.decodefield(initphase=initphase, redo=redo)
+            if True:
+                # Start new thread
+                self.threadreturn = {}
+                if f and f.valid:
+                    self.audio_offset = f.audio_next_offset
+                    prevfield = f
+                    toffset = self.fdoffset + offset
+                    # XXX: this is wrong somehow
+                    audio_offset = f.audio_next_offset
+                else:
+                    prevfield = None
+                    toffset = self.fdoffset
+                    audio_offset = self.audio_offset
 
-            if f is None:
-                if offset is None:
-                    # EOF, probably
-                    return None
+                    if offset:
+                        toffset += offset
 
-            self.fdoffset += offset
+                df_args = (toffset, self.mtf_level, audio_offset, prevfield, initphase, False, self.threadreturn)
 
-            if f is not None and f.valid:
+                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+                #elf.decodethread.run()
+                self.decodethread.start()
+                #self.decodethread.join()
+            
+            # process previous run
+            if f:
+                self.fdoffset += offset
+            elif offset is None:
+                # Probable end, so push an empty field
+                self.fieldstack.insert(0, None)
+
+            if f and f.valid:
                 picture, audio, efm = f.downscale(
                     linesout=self.output_lines, final=True, audio=self.analog_audio
                 )
-
-                self.audio_offset = f.audio_next_offset
 
                 metrics = self.computeMetrics(f, None, verbose=True)
                 if "blackToWhiteRFRatio" in metrics and adjusted is False:
@@ -3689,7 +3740,9 @@ class LDdecode:
                     self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
                     self.bw_ratios = self.bw_ratios[-keep:]
 
-                redo = f.needrerun or not self.checkMTF(f, self.prevfield)
+                redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
+                if redo:
+                    redo = self.fdoffset - offset
 
                 # Perform AGC changes on first fields only to prevent luma mismatch intra-field
                 if self.useAGC and f.isFirstField and f.sync_confidence > 80:
@@ -3697,9 +3750,9 @@ class LDdecode:
 
                     actualwhiteIRE = f.rf.hztoire(ire100_hz)
 
-                    sync_ire_diff = np.abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
-                    whitediff = np.abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
-                    ire0_diff = np.abs(self.rf.hztoire(ire0_hz))
+                    sync_ire_diff = nb_abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
+                    whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
+                    ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
 
                     acceptable_diff = 2 if self.fields_written else 0.5
 
@@ -3713,31 +3766,34 @@ class LDdecode:
                                     len(self.fieldinfo), np.round(vsync_ire, 2)
                                 ))
                         else:
-                            redo = True
+                            redo = self.fdoffset - offset
 
                             self.rf.DecoderParams["ire0"] = ire0_hz
                             # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
                             self.rf.DecoderParams["hz_ire"] = hz_ire
                             self.rf.DecoderParams["vsync_ire"] = vsync_ire
 
-                if adjusted is False and redo is True:
+                if adjusted is False and redo:
                     self.demodcache.flush_demod()
                     adjusted = True
-                    self.fdoffset -= offset
+                    self.fdoffset = redo
                 else:
                     done = True
-            else:
-                # Probably jumping ahead - delete the previous field so
-                # TBC computations aren't thrown off
-                if self.curfield is not None and self.badfields is None:
-                    self.badfields = (self.curfield, f)
-                self.curfield = None
+                    self.fieldstack.insert(0, f)
+                    self.audio_offset = f.audio_next_offset
+
+            if f is None and offset is None:
+                # EOF, probably
+                return None
+
+            if self.decodethread and not self.decodethread.ident and not redo:
+                self.decodethread.start()
+            elif redo:
+                self.decodethread = None
 
         if f is None or f.valid is False:
             return None
-
-        self.curfield = f
-
+        
         if f is not None and self.fname_out is not None:
             # Only write a FirstField first
             if len(self.fieldinfo) == 0 and not f.isFirstField:
@@ -3855,7 +3911,7 @@ class LDdecode:
             # Unforunately this is too short to get a 50IRE RF level
             wl_slice = f.lineslice_tbc(13, 4.7 + 15.5, 3)
             metrics["greyPSNR"] = self.calcpsnr(f, wl_slice)
-            metrics["greyIRE"] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
+            metrics["greyIRE"] = nb_mean(f.output_to_ire(f.dspicture[wl_slice]))
         else:
             # There's a nice long burst at 50IRE block on field2 l13
             b50slice = f.lineslice_tbc(13, 36, 20)
@@ -3879,7 +3935,7 @@ class LDdecode:
 
         ire50_slice = f.lineslice_tbc(19, 36, 10)
         metrics["greyPSNR"] = self.calcpsnr(f, ire50_slice)
-        metrics["greyIRE"] = np.mean(f.output_to_ire(f.dspicture[ire50_slice]))
+        metrics["greyIRE"] = nb_mean(f.output_to_ire(f.dspicture[ire50_slice]))
 
         ire50_rawslice = f.lineslice(19, 36, 10)
         rawdata = f.rawdata[
@@ -3981,6 +4037,7 @@ class LDdecode:
 
         return metrics_rounded
 
+    #@profile
     def buildmetadata(self, f, check_phase=True):
         """ returns field information JSON and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
@@ -3989,8 +4046,8 @@ class LDdecode:
             "isFirstField": True if f.isFirstField else False,
             "syncConf": f.compute_syncconf(),
             "seqNo": len(self.fieldinfo) + 1,
-            "diskLoc": np.round((self.fieldloc / self.bytes_per_field) * 10) / 10,
-            "fileLoc": int(np.floor(self.fieldloc)),
+            "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
+            "fileLoc": int(np.floor(f.readloc)),
             "medianBurstIRE": roundfloat(f.burstmedian),
         }
 
@@ -4036,7 +4093,7 @@ class LDdecode:
                     return fi, True
 
         fi["decodeFaults"] = decodeFaults
-        fi["vitsMetrics"] = self.computeMetrics(self.curfield, self.prevfield)
+        fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
 
         fi["vbi"] = {"vbiData": [int(lc) for lc in f.linecode if lc is not None]}
 
@@ -4049,7 +4106,7 @@ class LDdecode:
                 # process VBI frame info data
                 self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
 
-                rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+                rawloc = np.floor((f.readloc / self.bytes_per_field) / 2)
 
                 disk_Type = "CLV" if self.isCLV else "CAV"
                 disk_TimeCode = None
@@ -4115,11 +4172,13 @@ class LDdecode:
             at file location 0
         """
 
+        curfield = None
+        prevfield = None
+
         self.roughseek(startfield)
 
         for fields in range(10):
-            self.fieldloc = self.fdoffset
-            f, offset = self.decodefield(initphase=True)
+            f, offset = self.decodefield(self.fdoffset, 0, 0)
 
             if f is None:
                 # If given an invalid starting location (i.e. seeking to a frame in an already cut raw file),
@@ -4132,27 +4191,23 @@ class LDdecode:
             elif not f.valid:
                 self.fdoffset += offset
             else:
-                self.prevfield = self.curfield
-                self.curfield = f
+                prevfield = curfield
+                curfield = f
                 self.fdoffset += offset
 
                 # Two fields are needed to be sure to have sufficient Philips code data
                 # to determine frame #.
-                if self.prevfield is not None and f.valid:
-                    fnum = self.decodeFrameNumber(self.prevfield, self.curfield)
+                if prevfield is not None and f.valid:
+                    fnum = self.decodeFrameNumber(prevfield, curfield)
 
                     if self.earlyCLV:
                         logger.error("Cannot seek in early CLV disks w/o timecode")
                         return None, startfield
                     elif fnum is not None:
-                        rawloc = np.floor((self.readloc / self.bytes_per_field) / 2)
+                        rawloc = np.floor((f.readloc / self.bytes_per_field) / 2)
                         logger.info("seeking: file loc %d frame # %d", rawloc, fnum)
 
-                        # Clear field memory on seeks
-                        self.prevfield = None
-                        self.curfield = None
-
-                        return fnum, startfield
+                        return fnum, startfield, f.readloc
 
         return None, None
 
@@ -4168,11 +4223,11 @@ class LDdecode:
         curfield = startframe * 2
 
         for retries in range(3):
-            fnr, curfield = self.seek_getframenr(curfield)
+            fnr, curfield, readloc = self.seek_getframenr(curfield)
             if fnr is None:
                 return None
 
-            cur = int((self.fieldloc / self.bytes_per_field))
+            cur = int((readloc / self.bytes_per_field))
             if fnr == target:
                 logger.info("Finished seek")
                 print("Finished seeking, starting at frame", fnr, file=sys.stderr)
@@ -4183,7 +4238,7 @@ class LDdecode:
 
         return None
 
-    def build_json(self, f):
+    def build_json(self):
         """ build up the JSON structure for file output. """
         jout = {}
         jout["pcmAudioParameters"] = {
@@ -4198,8 +4253,13 @@ class LDdecode:
         vp["numberOfSequentialFields"] = len(self.fieldinfo)
         vp["osInfo"] = f'{platform.system()}:{platform.release()}:{platform.version()}'
 
-        if f is None:
-            return
+        # get the first valid field in the stack if any
+        for f in self.fieldstack:
+            if f:
+                break
+
+        if not f:
+            return None
 
         vp["gitBranch"] = self.branch
         vp["gitCommit"] = self.commit
