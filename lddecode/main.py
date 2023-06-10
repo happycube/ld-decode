@@ -384,6 +384,7 @@ def main(args=None):
         if audio_pipe is not None:
             audio_pipe.close()
 
+    firstdecode = time.time()
     while not done and ldd.fields_written < (req_frames * 2):
         try:
             f = ldd.readfield()
@@ -411,3 +412,5 @@ def main(args=None):
 
     print("\nCompleted: saving JSON and exiting", file=sys.stderr)
     cleanup()
+
+    print(time.time()-firstdecode)

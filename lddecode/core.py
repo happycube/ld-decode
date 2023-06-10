@@ -1559,6 +1559,7 @@ class Field:
     def inpxtousec(self, x, line=None):
         return x / self.get_linefreq(line)
 
+    @profile
     def lineslice(self, l, begin=None, length=None, linelocs=None, begin_offset=0):
         """ return a slice corresponding with pre-TBC line l, begin+length are uSecs """
 
@@ -1572,8 +1573,8 @@ class Field:
         _length = self.usectoinpx(_length)
 
         return slice(
-            int(np.floor(_begin + begin_offset)),
-            int(np.ceil(_begin + _length + begin_offset)),
+            int(_begin + begin_offset),
+            int(_begin + _length + begin_offset + 1),
         )
 
     def usectooutpx(self, x):
@@ -2663,17 +2664,10 @@ class Field:
         iserr_rf1 = (f.data["rfhpf"] < (-rfstd * 3)) | (
             f.data["rfhpf"] > (rfstd * 3)
         )  # | (f.rawdata <= -32000)
-        iserr_rf = np.full_like(iserr_rf1, False)
-        iserr_rf[self.rf.delays["video_rot"] :] = iserr_rf1[
+        iserr = np.full_like(iserr_rf1, False)
+        iserr[self.rf.delays["video_rot"] :] = iserr_rf1[
             : -self.rf.delays["video_rot"]
         ]
-
-        # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
-        # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
-        iserr1 = nb_gt(f.data["video"]["demod_raw"], self.rf.freq_hz_half)
-        #iserr1 = f.data["video"]["demod_raw"] > self.rf.freq_hz_half
-        # This didn't work right for PAL (issue #471)
-        # iserr1 |= f.data['video']['demod_hpf'] > 3000000
 
         # build sets of min/max valid levels
         valid_min = np.full_like(
@@ -2705,13 +2699,15 @@ class Field:
                 valid_min[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min
                 valid_min05[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_05
 
-        n_orlt(iserr1, f.data["video"]["demod"], valid_min)
-        n_orgt(iserr1, f.data["video"]["demod"], valid_max)
+        # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
+        # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
+        n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.freq_hz_half)
 
-        n_orlt(iserr1, f.data["video"]["demod_05"], valid_min05)
-        n_orgt(iserr1, f.data["video"]["demod_05"], valid_max05)
+        n_orlt(iserr, f.data["video"]["demod"], valid_min)
+        n_orgt(iserr, f.data["video"]["demod"], valid_max)
 
-        iserr = iserr1 | iserr_rf
+        n_orlt(iserr, f.data["video"]["demod_05"], valid_min05)
+        n_orgt(iserr, f.data["video"]["demod_05"], valid_max05)
 
         # filter out dropouts outside actual field
         iserr[:int(f.linelocs[f.lineoffset + 1])] = False
@@ -3509,6 +3505,7 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < 0.05
 
+    @profile
     def detectLevels(self, field):
         # Returns sync level, 0IRE, and 100IRE levels of a field
         # computed from HSYNC areas and VITS
