@@ -1628,7 +1628,7 @@ class Field:
 
         return slice(nb_round(_begin), nb_round(_begin + _length))
 
-
+    @profile
     def get_timings(self):
         pulses = self.rawpulses
         hsync_typical = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
@@ -1784,9 +1784,9 @@ class Field:
 
         return done, validpulses
 
-    #@profile
+    @profile
     def refinepulses(self):
-        LT = self.get_timings()
+        self.LT = self.get_timings()
 
         HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
@@ -1796,7 +1796,7 @@ class Field:
 
         while i < len(self.rawpulses):
             curpulse = self.rawpulses[i]
-            if inrange(curpulse.len, *LT["hsync"]):
+            if inrange(curpulse.len, *self.LT["hsync"]):
                 good = (
                     self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse))
                     if len(valid_pulses)
@@ -1806,12 +1806,12 @@ class Field:
                 i += 1
             elif (
                 i > 2
-                and inrange(self.rawpulses[i].len, *LT["eq"])
+                and inrange(self.rawpulses[i].len, *self.LT["eq"])
                 and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC)
             ):
                 # print(i, self.rawpulses[i])
                 done, vblank_pulses = self.run_vblank_state_machine(
-                    self.rawpulses[i - 2 : i + 24], LT
+                    self.rawpulses[i - 2 : i + 24], self.LT
                 )
                 if done:
                     [valid_pulses.append(p) for p in vblank_pulses[2:]]
@@ -2670,8 +2670,8 @@ class Field:
 
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
-        #iserr1 = nb_gt(f.data["video"]["demod_raw"], self.rf.freq_hz_half)
-        iserr1 = f.data["video"]["demod_raw"] > self.rf.freq_hz_half
+        iserr1 = nb_gt(f.data["video"]["demod_raw"], self.rf.freq_hz_half)
+        #iserr1 = f.data["video"]["demod_raw"] > self.rf.freq_hz_half
         # This didn't work right for PAL (issue #471)
         # iserr1 |= f.data['video']['demod_hpf'] > 3000000
 
@@ -2689,7 +2689,7 @@ class Field:
 
         # Account for sync pulses when checking demod
 
-        hsync_len = int(f.get_timings()['hsync'][1])
+        hsync_len = int(f.LT['hsync'][1])
         vsync_ire = f.rf.SysParams['vsync_ire']
         vsync_lines = self.get_vsync_lines()
 
