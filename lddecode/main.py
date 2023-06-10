@@ -377,7 +377,7 @@ def main(args=None):
     jsondumper = jsondump_thread(ldd, outname)
 
     def cleanup():
-        jsondumper.put(ldd.build_json(ldd.curfield))
+        jsondumper.put(ldd.build_json())
         # logger.flush()
         ldd.close()
         jsondumper.put(None)
@@ -407,7 +407,7 @@ def main(args=None):
             done = True
 
         if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
-            jsondumper.put(ldd.build_json(ldd.curfield))
+            jsondumper.put(ldd.build_json())
 
     print("\nCompleted: saving JSON and exiting", file=sys.stderr)
     cleanup()
