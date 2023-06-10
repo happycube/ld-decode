@@ -28,7 +28,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse
+from .utils import Pulse, nb_std, nb_gt
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -43,6 +43,12 @@ except ImportError:
 # XXX: This is a hack so that logging is treated the same way in both this
 # and ld-decode.  Probably should just bring all logging in here...
 logger = None
+
+try:
+    profile
+except:
+    def profile(fn):
+        return fn
 
 
 def calclinelen(SP, mult, mhz):
@@ -1497,7 +1503,7 @@ class Field:
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
 
-    @profile
+    #@profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
         #print(self.readloc, self.linelocs1, self.nextfieldoffset)
@@ -1553,7 +1559,6 @@ class Field:
     def inpxtousec(self, x, line=None):
         return x / self.get_linefreq(line)
 
-    @profile
     def lineslice(self, l, begin=None, length=None, linelocs=None, begin_offset=0):
         """ return a slice corresponding with pre-TBC line l, begin+length are uSecs """
 
@@ -1604,7 +1609,7 @@ class Field:
             (output - self.rf.SysParams["outputZero"]) / self.out_scale
         ) + self.rf.DecoderParams["vsync_ire"]
 
-    @profile
+
     def lineslice_tbc(self, l, begin=None, length=None, linelocs=None, keepphase=False):
         """ return a slice corresponding with pre-TBC line l """
 
@@ -1623,7 +1628,7 @@ class Field:
 
         return slice(nb_round(_begin), nb_round(_begin + _length))
 
-    @profile
+
     def get_timings(self):
         pulses = self.rawpulses
         hsync_typical = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
@@ -1688,7 +1693,7 @@ class Field:
 
         return inorder
 
-    @profile
+    #@profile
     def run_vblank_state_machine(self, pulses, LT):
         """ Determines if a pulse set is a valid vblank by running a state machine """
 
@@ -1779,7 +1784,7 @@ class Field:
 
         return done, validpulses
 
-    @profile
+    #@profile
     def refinepulses(self):
         LT = self.get_timings()
 
@@ -1819,7 +1824,7 @@ class Field:
 
         return valid_pulses
 
-    @profile
+    #@profile
     def getBlankRange(self, validpulses, start=0):
         vp_type = np.array([p[0] for p in validpulses])
 
@@ -1960,7 +1965,7 @@ class Field:
 
         return None, None, None, 0
 
-    @profile
+    #@profile
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
         longrun = [-1, -1]
@@ -2026,7 +2031,7 @@ class Field:
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
-    @profile
+    #@profile
     def getLine0(self, validpulses, meanlinelen):
         # Gather the local line 0 location and projected from the previous field
 
@@ -2189,7 +2194,7 @@ class Field:
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
-    @profile
+    #@profile
     def compute_linelocs(self):
 
         self.rawpulses = self.getpulses()
@@ -2348,7 +2353,7 @@ class Field:
 
         return rv_ll, rv_err, nextfield
 
-    @profile
+    #@profile
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
 
@@ -2541,6 +2546,7 @@ class Field:
 
         return dsout, self.dsaudio, self.efmout
 
+    @profile
     def rf_tbc(self, linelocs=None):
         """ This outputs a TBC'd version of the input RF data, mostly intended
             to assist in audio processing.  Outputs a uint16 array.
@@ -2645,13 +2651,14 @@ class Field:
 
         return rv
 
+    @profile
     def dropout_detect_demod(self):
         # current field
         f = self
 
         isPAL = self.rf.system == "PAL"
 
-        rfstd = np.std(f.data["rfhpf"])
+        rfstd = nb_std(f.data["rfhpf"])
         # iserr_rf = np.full(len(f.data['video']['demod']), False, dtype=np.bool)
         iserr_rf1 = (f.data["rfhpf"] < (-rfstd * 3)) | (
             f.data["rfhpf"] > (rfstd * 3)
@@ -2663,6 +2670,7 @@ class Field:
 
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
+        #iserr1 = nb_gt(f.data["video"]["demod_raw"], self.rf.freq_hz_half)
         iserr1 = f.data["video"]["demod_raw"] > self.rf.freq_hz_half
         # This didn't work right for PAL (issue #471)
         # iserr1 |= f.data['video']['demod_hpf'] > 3000000
@@ -2713,6 +2721,7 @@ class Field:
 
         return iserr
 
+    @profile
     def build_errlist(self, errmap):
         errlist = []
 
@@ -2733,6 +2742,7 @@ class Field:
 
         return errlist
 
+    @profile
     def dropout_errlist_to_tbc(field, errlist):
         """Convert data from raw data coordinates to tbc coordinates, and splits up
         multi-line dropouts.
@@ -2799,6 +2809,7 @@ class Field:
 
         return dropouts
 
+    @profile
     def dropout_detect(self):
         """ returns dropouts in three arrays, to line up with the JSON output """
 
@@ -3584,7 +3595,7 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
 
-    #@profile
+    @profile
     def decodefield(self, initphase=False, redo=False):
         """ returns field object if valid, and the offset to the next decode """
         self.readloc = int(self.fdoffset - self.rf.blockcut)
@@ -3642,7 +3653,7 @@ class LDdecode:
 
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode["startloc"])
 
-    #@profile
+    @profile
     def readfield(self, initphase=False):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
