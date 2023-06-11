@@ -213,13 +213,6 @@ def main(args=None):
     )
 
     parser.add_argument(
-        "--OpenCL",
-        action="store_true",
-        default=False,
-        help="Use OpenCL acceleration",
-    )
-
-    parser.add_argument(
         "-f",
         "--frequency",
         dest="inputfreq",
@@ -293,7 +286,6 @@ def main(args=None):
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "audio_filterwidth": args.audio_filterwidth,
         "AC3": args.AC3,
-        "OpenCL": args.OpenCL,
     }
 
     if vid_standard == "NTSC" and args.NTSC_color_notch_filter:
@@ -421,4 +413,4 @@ def main(args=None):
     print("\nCompleted: saving JSON and exiting", file=sys.stderr)
     cleanup()
 
-    print(time.time()-firstdecode)
+#    print(time.time()-firstdecode)
