@@ -28,7 +28,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt
+from .utils import Pulse, nb_std, nb_gt, n_ornotrange, init_opencl
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -50,12 +50,27 @@ except:
     def profile(fn):
         return fn
 
+have_pyopencl = False
+BLOCKSIZE = 32 * 1024
+
+try:
+    if True:
+        import pyopencl as cl
+        import pyopencl.array as cla
+        import pyvkfft.opencl
+        from pyvkfft.fft import fftn as vkfftn, ifftn as vkifftn, rfftn as vkrfftn, irfftn as vkirfftn
+        from pyvkfft.opencl import VkFFTApp
+        import pyopencl.reduction as cl_reduction
+        have_pyopencl = True
+        BLOCKSIZE = 128 * 1024
+except:
+    pass
 
 def calclinelen(SP, mult, mhz):
     if type(mhz) == str:
         mhz = SP[mhz]
 
-    return int(np.round(SP["line_period"] * mhz * mult))
+    return int(nb_round(SP["line_period"] * mhz * mult))
 
 
 # states for first field of validpulses (second field is pulse #)
@@ -283,7 +298,7 @@ class RFDecode:
         self,
         inputfreq=40,
         system="NTSC",
-        blocklen=32 * 1024,
+        blocklen=BLOCKSIZE,
         decode_digital_audio=False,
         decode_analog_audio=0,
         has_analog_audio=True,
@@ -367,6 +382,8 @@ class RFDecode:
 
         linelen = self.freq_hz / (1000000.0 / self.SysParams["line_period"])
         self.linelen = int(np.round(linelen))
+        self.samplesperline = self.freq / self.linelen
+
         # How much horizontal sync position can deviate from previous/expected position
         # and still be interpreted as a horizontal sync pulse.
         # Too high tolerance may result in false positive sync pulses, too low may end up missing them.
@@ -376,11 +393,172 @@ class RFDecode:
         self.decode_digital_audio = decode_digital_audio
         self.decode_analog_audio = decode_analog_audio
 
+        # Optional OpenCL support
+        self.opencl_context = None
+        self.opencl_queue = None
+        self.opencl_initevent = None
+        self.OpenCL_Filters = {}
+
         self.computefilters()
 
         # The 0.5mhz filter is rolled back to align with the data, so there
         # are a few unusable samples at the end.
         self.blockcut_end = self.Filters["F05_offset"]
+
+
+    def use_opencl(self, opencl_init_event, devname = None):
+        self.opencl_context = init_opencl(cl, devname)
+        if not self.opencl_context:
+            print('unable to open opencl context')
+            return False
+        self.opencl_queue = cl.CommandQueue(self.opencl_context)
+        if not self.opencl_queue:
+            print('unable to open opencl queue')
+            return False
+        self.prepare_opencl()
+        self.computefilters()
+
+        blockshape = (self.blocklen,)
+
+        self.opencl_buffers = {}
+        self.opencl_buffers['inbuf_complex64'] = cla.empty(self.opencl_queue, blockshape, dtype=np.complex64)
+        self.opencl_buffers['fftbuf'] = cla.empty(self.opencl_queue,blockshape, dtype=np.complex64)
+        self.opencl_buffers['demod_fft'] = cla.empty(self.opencl_queue,blockshape, dtype=np.complex64)
+        self.opencl_buffers['fftfilt'] = cla.empty(self.opencl_queue,blockshape, dtype=np.complex64)
+        self.opencl_buffers['hilbert'] = cla.empty(self.opencl_queue,blockshape, dtype=np.complex64)
+        self.opencl_buffers['rfhpf'] = cla.empty(self.opencl_queue, blockshape, dtype=np.complex64)
+        self.opencl_buffers['rfhpf_sqsum'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+        self.opencl_buffers['gtangles'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+        self.opencl_buffers['demod'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+        self.opencl_buffers['demod_clipped'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+        self.opencl_buffers['demod_clipped_cplx'] = cla.empty(self.opencl_queue, blockshape, dtype=np.complex64)
+
+        self.opencl_buffers['demodtmp1'] = cla.empty(self.opencl_queue, blockshape, dtype=np.complex64)
+        self.opencl_buffers['demodtmp2'] = cla.empty(self.opencl_queue, blockshape, dtype=np.complex64)
+        self.opencl_buffers['demodtmp3'] = cla.empty(self.opencl_queue, blockshape, dtype=np.complex64)
+        self.opencl_buffers['demodtmp4'] = cla.empty(self.opencl_queue, blockshape, dtype=np.complex64)
+
+        self.opencl_buffers['demodtmp1r'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+        self.opencl_buffers['demodtmp2r'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+        self.opencl_buffers['demodtmp3r'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+        self.opencl_buffers['demodtmp4r'] = cla.empty(self.opencl_queue, blockshape, dtype=np.float32)
+
+        opencl_init_event.set()
+
+    def prepare_opencl(self):
+        # ? - move to separate file?
+
+        self.opencl_kernels = cl.Program(self.opencl_context, """
+            __kernel void int16_to_complex64(__global short *real_part, __global float2 *output) {
+                int gid = get_global_id(0);
+                output[gid].x = (float)real_part[gid];
+                output[gid].y = (float)0;
+            }
+
+            __kernel void complex64_getreal(__global float2 *input, __global float *output) {
+                int gid = get_global_id(0);
+                output[gid] = input[gid].x;
+            }
+
+            __kernel void compute_magnitude(__global float2* data, __global float* output) {
+                int gid = get_global_id(0);
+                float2 cmplx = data[gid];
+                output[gid-get_global_offset(0)] = sqrt((cmplx.x * cmplx.x) + (cmplx.y * cmplx.y));
+            }
+
+            __kernel void PAL_WibbleRemover(__global float2* fftbuf, __global float* data, float mean, float std_dev) {
+                int gid = get_global_id(0);
+                if (fabs(data[gid - get_global_offset(0)] - mean) > 3*std_dev) {
+                    fftbuf[gid - 1] = 0;
+                    fftbuf[gid] = 0;
+                    fftbuf[gid + 1] = 0;
+                    //data[gid - get_global_offset(0)] = 0;
+                }
+            }
+ 
+            __kernel void compute_angle(__global float2* complex_arr, __global float* angle_arr) {
+                int id = get_global_id(0);
+                float2 complex_val = complex_arr[id];
+                float angle = atan2(complex_val.y, complex_val.x);
+                angle_arr[id] = angle;
+            }
+
+            /* This implements:
+                tdangles2 = np.unwrap(dangles)
+                # With extremely bad data, the unwrapped angles can jump.
+                while np.min(tdangles2) < 0:
+                    tdangles2[tdangles2 < 0] += tau
+                while np.max(tdangles2) > tau:
+                    tdangles2[tdangles2 > tau] -= tau
+                return tdangles2 * (freq_hz / tau)
+            */
+
+            __kernel void angle_diff_and_unwrap(__global const float* input, __global float* output, float freq_hz) {
+                int id = get_global_id(0);
+                output[0] = 0;
+                if (id >= 1) {
+                    output[id] = input[id] - input[id - 1];
+                    while (output[id] < 0) {
+                        output[id] += 6.283185307179586;
+                    }
+                    while (output[id] > 6.283185307179586) {
+                        output[id] -= 6.283185307179586;
+                    }
+                    output[id] *= freq_hz / 6.283185307179586;
+                }
+            }
+
+            __kernel void sum(__global const float *a, __global float *b, int n) {
+                int gid = get_global_id(0);
+                float sum = 0;
+                for (int i = gid; i < n; i += get_global_size(0)) {
+                    sum += a[i];
+                }
+                b[gid] = sum;
+            }
+            
+            __kernel void sum_of_squares(__global const float *a, __global float *b, int n) {
+                int gid = get_global_id(0);
+                float sum = 0;
+                for (int i = gid; i < n; i += get_global_size(0)) {
+                    sum += a[i] * a[i];
+                }
+                b[gid] = sum;
+            }
+
+            __kernel void clip(__global const float* input, __global float* output, float _min, float _max) {
+                int id = get_global_id(0);
+                if (input[id] < _min) {
+                    output[id] = _min;
+                } else if (input[id] > _max) {
+                    output[id] = _max;
+                } else {
+                    output[id] = input[id];
+                }
+            }
+
+            __kernel void float32_to_complex64(__global float *real_part, __global float2 *output) {
+                int gid = get_global_id(0);
+                output[gid].x = (float)real_part[gid];
+                output[gid].y = (float)0;
+            }            
+            """).build()
+
+        self.opencl_fft = VkFFTApp((self.blocklen,),
+               np.complex64,
+               queue=self.opencl_queue,
+               ndim=1, 
+               inplace=False, 
+               norm=1)
+        
+        self.sum_gpu = cl_reduction.ReductionKernel(self.opencl_context, np.float32, neutral="0",
+                                        reduce_expr="a+b", map_expr="x[i]",
+                                        arguments="__global float *x")
+
+        self.square_diff_gpu = cl_reduction.ReductionKernel(self.opencl_context, np.float32, neutral="0",
+                                                reduce_expr="a+b", map_expr="(x[i]-mean)*(x[i]-mean)",
+                                                arguments="__global float *x, float mean")
+
 
     def computefilters(self):
         """ (re)compute the filter sets """
@@ -426,6 +604,15 @@ class RFDecode:
             self.Filters['AC3'] = iirfilt * firfilt
 
         self.computedelays()
+
+        if self.opencl_context:
+            self.OpenCL_Filters = {}
+            for f in self.Filters.keys():
+                if type(self.Filters[f]) == np.ndarray:
+                    self.OpenCL_Filters[f] = cla.to_device(self.opencl_queue, self.Filters[f].astype(np.complex64))
+                else:
+                    self.OpenCL_Filters[f] = self.Filters[f]
+
 
     def computeefmfilter(self):
         """Frequency-domain equalisation filter for the LaserDisc EFM signal.
@@ -673,11 +860,177 @@ class RFDecode:
         return (hz - params["ire0"]) / params["hz_ire"]
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
-        rv = {}
-
         mtf_level *= self.mtf_mult
         mtf_level *= self.DecoderParams["MTF_basemult"]
         mtf_level += self.mtf_offset
+
+        if self.opencl_context:
+            return self.demodblock_opencl(data, mtf_level, fftdata, cut)
+        else:
+            return self.demodblock_cpu(data, mtf_level, fftdata, cut)
+
+    def demodblock_opencl(self, data=None, mtf_level=0, fftdata=None, cut=False):
+        rv = {}
+
+        blockshape = (self.blocklen,)
+        if False and fftdata is not None:
+            indata_fft = fftdata
+        elif data is not None:
+            indata_fft = np.zeros(blockshape, dtype=np.complex64)
+            inbuf_int16 = cla.to_device(self.opencl_queue, data)
+            self.opencl_kernels.int16_to_complex64(self.opencl_queue, (self.blocklen,), None, inbuf_int16.data, self.opencl_buffers['inbuf_complex64'].data)
+            self.opencl_fft.fft(self.opencl_buffers['inbuf_complex64'], dest=self.opencl_buffers['fftbuf'])
+            self.opencl_buffers['fftbuf'].get(ary=indata_fft)
+            
+            # delete OpenCL buffers when finished to avoid resource exhaustion
+            del inbuf_int16
+        else:
+            raise Exception("demodblock called without raw or FFT data")
+
+        rotdelay = 0
+        if getattr(self, "delays", None) is not None and "video_rot" in self.delays:
+            rotdelay = self.delays["video_rot"]
+
+        self.opencl_fft.ifft((self.opencl_buffers['fftbuf'] * self.OpenCL_Filters['Frfhpf']), self.opencl_buffers['rfhpf'])
+        rv["rfhpf"] = self.opencl_buffers['rfhpf'].get()[
+            self.blockcut - rotdelay : -self.blockcut_end - rotdelay
+        ]
+
+        if self.system == "PAL" and self.PAL_V4300D_NotchFilter:
+            """ This routine works around an 'interesting' issue seen with LD-V4300D players and
+                some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
+
+                The idea here is to look for anomolies (3 std deviations) and snip them out of the
+                FFT.  There may be side effects, however, but generally minor compared to the
+                'wibble' itself and only in certain cases.
+            """
+            bin_start, bin_end = int(self.blocklen * (8.42 / self.freq)), int(1 + (self.blocklen * (8.6 / self.freq)))
+            flip_start  = self.blocklen - bin_end
+            flip_end = self.blocklen - bin_start
+            N = bin_end-bin_start
+
+            fftbuf_sqsum = cla.empty(self.opencl_queue, (N,), dtype=np.float32)
+
+            for start, end in ((bin_start, bin_end), (flip_start, flip_end)):    
+                global_work_offset = [start]
+
+                self.opencl_kernels.compute_magnitude(self.opencl_queue, (N,), None, self.opencl_buffers['fftbuf'].data, fftbuf_sqsum.data, global_offset=global_work_offset)
+                mean = self.sum_gpu(fftbuf_sqsum).get() / N
+                # XXX: slow!
+                variance = self.square_diff_gpu(fftbuf_sqsum, np.float32(mean)).get() / N
+                std_dev = np.sqrt(variance)
+
+                self.opencl_kernels.PAL_WibbleRemover(self.opencl_queue, (N,), None, self.opencl_buffers['fftbuf'].data, fftbuf_sqsum.data, np.float32(mean), np.float32(std_dev), global_offset=global_work_offset)
+
+            del fftbuf_sqsum
+                
+        fftfilt = self.opencl_buffers['fftbuf'] * self.OpenCL_Filters["RFVideo"]
+
+        if mtf_level != 0:
+            fftfilt *= self.OpenCL_Filters["MTF"] ** mtf_level
+
+        self.opencl_fft.ifft(fftfilt, self.opencl_buffers['hilbert'])
+        self.opencl_kernels.compute_angle(self.opencl_queue, blockshape, None, self.opencl_buffers['hilbert'].data, self.opencl_buffers['gtangles'].data)
+        self.opencl_kernels.angle_diff_and_unwrap(self.opencl_queue, blockshape, None, self.opencl_buffers['gtangles'].data, self.opencl_buffers['demod'].data, np.float32(self.freq_hz))
+
+        # use a clipped demod for video output processing to reduce speckling impact
+        self.opencl_kernels.clip(self.opencl_queue, blockshape, None, self.opencl_buffers['demod'].data, self.opencl_buffers['demod_clipped'].data, np.float32(150000), np.float32(self.freq_hz*.75))
+        self.opencl_kernels.float32_to_complex64(self.opencl_queue, (self.blocklen,), None, self.opencl_buffers['demod_clipped'].data, self.opencl_buffers['demod_clipped_cplx'].data)
+
+        self.opencl_fft.fft(self.opencl_buffers['demod_clipped_cplx'], dest=self.opencl_buffers['demod_fft'])
+        
+        self.opencl_fft.ifft(self.opencl_buffers['demod_fft'] * self.OpenCL_Filters["FVideo"], self.opencl_buffers['demodtmp1'])
+        self.opencl_fft.ifft(self.opencl_buffers['demod_fft'] * self.OpenCL_Filters["FVideo05"], self.opencl_buffers['demodtmp2'])
+        self.opencl_fft.ifft(self.opencl_buffers['demod_fft'] * self.OpenCL_Filters["FVideoBurst"], self.opencl_buffers['demodtmp3'])
+
+        self.opencl_kernels.complex64_getreal(self.opencl_queue, blockshape, None, self.opencl_buffers['demodtmp1'].data, self.opencl_buffers['demodtmp1r'].data)
+        self.opencl_kernels.complex64_getreal(self.opencl_queue, blockshape, None, self.opencl_buffers['demodtmp2'].data, self.opencl_buffers['demodtmp2r'].data)
+        self.opencl_kernels.complex64_getreal(self.opencl_queue, blockshape, None, self.opencl_buffers['demodtmp3'].data, self.opencl_buffers['demodtmp3r'].data)
+
+        self.opencl_queue.finish()
+
+        (out_video, event1) = self.opencl_buffers['demodtmp1r'].get_async()
+        (out_video05, event2) = self.opencl_buffers['demodtmp2r'].get_async()
+        (out_videoburst, event3) = self.opencl_buffers['demodtmp3r'].get_async()
+
+        for event in [event1, event2, event3]:
+            event.wait()
+
+        out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
+
+        rv['fft'] = indata_fft
+        
+        if self.system == "PAL":
+            self.opencl_fft.ifft(self.opencl_buffers['demod_fft'] * self.OpenCL_Filters["FVideoPilot"], self.opencl_buffers['demodtmp1'])
+            self.opencl_kernels.complex64_getreal(self.opencl_queue, blockshape, None, self.opencl_buffers['demodtmp1'].data, self.opencl_buffers['demodtmp1r'].data)
+            out_videopilot = self.opencl_buffers['demodtmp1r'].get()
+
+            video_out = np.rec.array(
+                [
+                    out_video,
+                    self.opencl_buffers['demod'].get().real,
+                    out_video05,
+                    out_videoburst,
+                    out_videopilot,
+                ],
+                names=[
+                    "demod",
+                    "demod_raw",
+                    "demod_05",
+                    "demod_burst",
+                    "demod_pilot",
+                ],
+            )
+        else:
+            video_out = np.rec.array(
+                [out_video, self.opencl_buffers['demod'].get().real, out_video05, out_videoburst],
+                names=["demod", "demod_raw", "demod_05", "demod_burst"],
+            )
+
+        rv["video"] = (
+            video_out[self.blockcut : -self.blockcut_end] if cut else video_out
+        )
+
+        if self.decode_digital_audio:
+            self.opencl_fft.ifft(self.opencl_buffers['fftbuf'] * self.OpenCL_Filters["Fefm"], self.opencl_buffers['demodtmp1'])
+            self.opencl_kernels.complex64_getreal(self.opencl_queue, blockshape, None, self.opencl_buffers['demodtmp1'].data, self.opencl_buffers['demodtmp1r'].data)
+            (efm_out, event) = self.opencl_buffers['demodtmp1r'].get_async()
+            event.wait()
+
+            if cut:
+                efm_out = efm_out[self.blockcut : -self.blockcut_end]
+            rv["efm"] = np.int16(np.clip(efm_out.real, -32768, 32767))
+
+        # NOTE: ac3 audio is filtered after RF TBC
+        if self.decode_analog_audio:
+            stage1_out = []
+            for channel in ['left', 'right']:
+                afilter = self.audio[channel]
+
+                # Apply first stage audio filter
+                a1 = npfft.ifft(afilter.slicer(indata_fft) * afilter.filt1)
+                # Demodulate and restore frequency after bin slicing
+                a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
+
+                stage1_out.append(a1u)
+
+            audio_out = np.rec.array(
+                [stage1_out[0].astype(np.float32), stage1_out[1].astype(np.float32)], names=["audio_left", "audio_right"]
+            )
+
+            fdiv = video_out.shape[0] // audio_out.shape[0]
+            rv["audio"] = (
+                audio_out[self.blockcut // fdiv : -self.blockcut_end // fdiv]
+                if cut
+                else audio_out
+            )
+
+        rv['setupcount'] = self.setupcount
+        
+        return rv        
+
+    def demodblock_cpu(self, data=None, mtf_level=0, fftdata=None, cut=False):
+        rv = {}
 
         if fftdata is not None:
             indata_fft = fftdata
@@ -784,7 +1137,7 @@ class RFDecode:
                 stage1_out.append(a1u.astype(np.float32))
 
             audio_out = np.rec.array(
-                [stage1_out[0], stage1_out[1]], names=["audio_left", "audio_right"]
+                [stage1_out[0].astype(np.float32), stage1_out[1].astype(np.float32)], names=["audio_left", "audio_right"]
             )
 
             fdiv = video_out.shape[0] // audio_out.shape[0]
@@ -940,7 +1293,7 @@ class RFDecode:
         fakesignal += 8192
         fakesignal[6000:6005] = 0
 
-        fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level)
+        fakedecode = rf.demodblock_cpu(fakesignal, mtf_level=mtf_level)
 
         vdemod = fakedecode["video"]["demod"]
         vdemod_raw = fakedecode["video"]["demod_raw"]
@@ -976,6 +1329,8 @@ class DemodCache:
         rf,
         infile,
         loader,
+        rf_args,
+        OpenCL = False,
         cachesize=256,
         num_worker_threads=6,
         MTF_tolerance=0.05,
@@ -983,6 +1338,7 @@ class DemodCache:
         self.infile = infile
         self.loader = loader
         self.rf = rf
+        self.rf_args = rf_args
 
         self.currentMTF = 1
         self.MTF_tolerance = MTF_tolerance
@@ -992,8 +1348,9 @@ class DemodCache:
         # Cache dictionary - key is block #, which holds data for that block
         self.lrusize = cachesize
 
-        self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams["FPS"])
-        self.prefetch = int(self.bytes_per_frame / self.blocksize) + 4
+        # should be in self.rf, but may not be computed yet
+        self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
+        self.prefetch = int((self.bytes_per_field * 2) / self.blocksize) + 4
 
         self.lru = []
 
@@ -1016,9 +1373,21 @@ class DemodCache:
         self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
         num_worker_threads = max(num_worker_threads - 1, 1)
 
+        opencl_worker_threads = 1 if OpenCL else 0
+        opencl_init_event = threading.Event()
+
+        for i in range(opencl_worker_threads):
+            t = threading.Thread(
+                target=self.worker, daemon=True, args=(opencl_init_event,)
+            )
+            t.start()
+            opencl_init_event.wait()
+            self.threads.append(t)
+
+        num_worker_threads = num_worker_threads if not OpenCL else 0
         for i in range(num_worker_threads):
             t = threading.Thread(
-                target=self.worker, daemon=True, args=()
+                target=self.worker, daemon=True, args=(False,)
             )
             t.start()
             self.threads.append(t)
@@ -1097,11 +1466,23 @@ class DemodCache:
 
         self.rf.computefilters()
 
-    def worker(self):
+    def worker(self, opencl_init_event):
+        blocksrun = 0
+        blockstime = 0
+        opencl = False
+
+        rf = RFDecode(**self.rf_args)
+
+        if have_pyopencl and opencl_init_event:
+            opencl = True
+            opencl_init_event.clear()   
+            rf.use_opencl(opencl_init_event)
+
         while True:
             item = self.q_in.get()
 
             if item is None or item[0] == "END":
+                #print(opencl, blocksrun, blockstime / blocksrun)
                 return
 
             if item[0] == "DEMOD":
@@ -1119,9 +1500,13 @@ class DemodCache:
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
-                    output["demod"] = self.rf.demodblock(
+                    st = time.time()
+                    output["demod"] = rf.demodblock(
                         data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
+                    blockstime += time.time() - st
+                    blocksrun += 1
+
                     output["MTF"] = target_MTF
                     output["request"] = request
 
@@ -1130,8 +1515,6 @@ class DemodCache:
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
-#            if not ispiped:
-#                self.q_in.task_done()
 
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = []
@@ -1523,6 +1906,7 @@ class Field:
 
         self.valid = True
 
+    @profile
     def get_linelen(self, line=None, linelocs=None):
         # compute adjusted frequency from neighboring line lengths
 
@@ -1551,7 +1935,7 @@ class Field:
         return length
 
     def get_linefreq(self, line=None, linelocs=None):
-        return self.rf.freq * (self.get_linelen(line, linelocs) / self.rf.linelen)
+        return self.rf.samplesperline * self.get_linelen(line, linelocs)
 
     def usectoinpx(self, x, line=None):
         return x * self.get_linefreq(line)
@@ -2703,11 +3087,8 @@ class Field:
         # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
         n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.freq_hz_half)
 
-        n_orlt(iserr, f.data["video"]["demod"], valid_min)
-        n_orgt(iserr, f.data["video"]["demod"], valid_max)
-
-        n_orlt(iserr, f.data["video"]["demod_05"], valid_min05)
-        n_orgt(iserr, f.data["video"]["demod_05"], valid_max05)
+        n_ornotrange(iserr, f.data["video"]["demod"], valid_min, valid_max)
+        n_ornotrange(iserr, f.data["video"]["demod_05"], valid_min05, valid_max05)
 
         # filter out dropouts outside actual field
         iserr[:int(f.linelocs[f.lineoffset + 1])] = False
@@ -2826,7 +3207,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-
+    @profile
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -3358,6 +3739,7 @@ class LDdecode:
         self.digital_audio = digital_audio
         self.ac3 = extra_options.get("AC3", False)
         self.write_rf_tbc = extra_options.get("write_RF_TBC", False)
+        self.OpenCL = extra_options.get("OpenCL", False)
 
         self.has_analog_audio = True
         if system == "PAL":
@@ -3403,14 +3785,17 @@ class LDdecode:
         self.firstfield = None  # In frame output mode, the first field goes here
 
         self.system = system
-        self.rf = RFDecode(
-            inputfreq=inputfreq,
-            system=system,
-            decode_analog_audio=analog_audio,
-            decode_digital_audio=digital_audio,
-            has_analog_audio=self.has_analog_audio,
-            extra_options=extra_options,
-        )
+        self.rf_opts = {
+            'inputfreq':inputfreq,
+            'system':system,
+            'decode_analog_audio':analog_audio,
+            'decode_digital_audio':digital_audio,
+            'has_analog_audio':self.has_analog_audio,
+            'extra_options':extra_options,
+            'blocklen': 128 * 1024 if self.OpenCL else 32 * 1024,
+        }
+
+        self.rf = RFDecode(**self.rf_opts)
 
         if system == "PAL":
             self.FieldClass = FieldPAL
@@ -3450,7 +3835,7 @@ class LDdecode:
         self.verboseVITS = False
 
         self.demodcache = DemodCache(
-            self.rf, self.infile, self.freader, num_worker_threads=self.numthreads
+            self.rf, self.infile, self.freader, self.rf_opts, OpenCL=self.OpenCL, num_worker_threads=self.numthreads
         )
 
         self.bw_ratios = []
@@ -4034,7 +4419,7 @@ class LDdecode:
 
         return metrics_rounded
 
-    #@profile
+    @profile
     def buildmetadata(self, f, check_phase=True):
         """ returns field information JSON and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
