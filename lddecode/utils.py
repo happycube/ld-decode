@@ -1072,7 +1072,7 @@ def n_ornotrange(a, x, y, z):
     a |= (x < y) | (x > z)
 
 
-@njit(cache=True, nojit=True)
+@njit(cache=True, nogil=True)
 def angular_mean_helper(x, cycle_len=1.0, zero_base=True):
     """ Compute the mean phase, assuming 0..1 is one phase cycle
 
