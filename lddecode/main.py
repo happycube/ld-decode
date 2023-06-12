@@ -208,7 +208,7 @@ def main(args=None):
         "--threads",
         metavar="threads",
         type=int,
-        default=5,
+        default=4,
         help="number of CPU threads to use",
     )
 
@@ -377,13 +377,14 @@ def main(args=None):
     jsondumper = jsondump_thread(ldd, outname)
 
     def cleanup():
-        jsondumper.put(ldd.build_json(ldd.curfield))
+        jsondumper.put(ldd.build_json())
         # logger.flush()
         ldd.close()
         jsondumper.put(None)
         if audio_pipe is not None:
             audio_pipe.close()
 
+    firstdecode = time.time()
     while not done and ldd.fields_written < (req_frames * 2):
         try:
             f = ldd.readfield()
@@ -407,7 +408,9 @@ def main(args=None):
             done = True
 
         if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
-            jsondumper.put(ldd.build_json(ldd.curfield))
+            jsondumper.put(ldd.build_json())
 
     print("\nCompleted: saving JSON and exiting", file=sys.stderr)
     cleanup()
+
+#    print(time.time()-firstdecode)

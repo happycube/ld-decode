@@ -642,7 +642,7 @@ def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def calczc_findfirst(data, target, rising):
     if rising:
         for i in range(0, len(data)):
@@ -658,7 +658,7 @@ def calczc_findfirst(data, target, rising):
         return None
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def calczc_do(data, _start_offset, target, edge=0, count=10):
     start_offset = max(1, int(_start_offset))
     icount = int(count + 1)
@@ -716,8 +716,8 @@ def build_hilbert(fft_size):
 
     return output
 
-
-def unwrap_hilbert(hilbert, freq_hz):
+@njit(cache=True,nogil=True)
+def unwrap_hilbert_getangles(hilbert):
     tangles = np.angle(hilbert)
     dangles = np.ediff1d(tangles, to_begin=0)
 
@@ -725,13 +725,25 @@ def unwrap_hilbert(hilbert, freq_hz):
     if dangles[0] < -pi:
         dangles[0] += tau
 
-    tdangles2 = np.unwrap(dangles)
+    return dangles
+
+@njit(cache=True,nogil=True)
+def unwrap_hilbert_fixangles(tdangles2, freq_hz):
     # With extremely bad data, the unwrapped angles can jump.
     while np.min(tdangles2) < 0:
         tdangles2[tdangles2 < 0] += tau
     while np.max(tdangles2) > tau:
         tdangles2[tdangles2 > tau] -= tau
+
     return tdangles2 * (freq_hz / tau)
+
+def unwrap_hilbert(hilbert, freq_hz):
+    dangles = unwrap_hilbert_getangles(hilbert)
+
+    # This can't be run with numba
+    tdangles2 = np.unwrap(dangles)
+
+    return unwrap_hilbert_fixangles(tdangles2, freq_hz) #* (freq_hz / tau)
 
 
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
@@ -822,6 +834,17 @@ def roundfloat(fl, places=3):
     return np.round(fl * r) / r
 
 
+@njit(nogil=True, cache=True)
+def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
+    reduced = (input - ire0) / hz_ire
+    reduced -= vsync_ire
+
+    return (
+        np.clip((reduced * out_scale) + outputZero, 0, 65535) + 0.5
+    ).astype(np.uint16)
+
+
+
 # Something like this should be a numpy function, but I can't find it.
 @jit(cache=True)
 def findareas(array, cross):
@@ -903,7 +926,53 @@ def findpulses(sync_ref, _, high):
     )
     return _to_pulses_list(pulses_starts, pulses_lengths)
 
+if False:
+    @njit(cache=True,nogil=True)
+    def numba_pulse_qualitycheck(prevpulse: Pulse, pulse: Pulse, inlinelen: int):
 
+        if prevpulse[0] > 0 and pulse[0] > 0:
+            exprange = (0.4, 0.6)
+        elif prevpulse[0] == 0 and pulse[0] == 0:
+            exprange = (0.9, 1.1)
+        else:  # transition to/from regular hsyncs can be .5 or 1H
+            exprange = (0.4, 1.1)
+
+        linelen = (pulse[1].start - prevpulse[1].start) / inlinelen
+        inorder = inrange(linelen, *exprange)
+
+        return inorder
+
+    @njit(cache=True,nogil=True)
+    def numba_computeLineLen(validpulses, inlinelen):
+        # determine longest run of 0's
+        longrun = [-1, -1]
+        currun = None
+        for i, v in enumerate([p[0] for p in validpulses]):
+            if v != 0:
+                if currun is not None and currun[1] > longrun[1]:
+                    longrun = currun
+                currun = None
+            elif currun is None:
+                currun = [i, 0]
+            else:
+                currun[1] += 1
+
+        if currun is not None and currun[1] > longrun[1]:
+            longrun = currun
+
+        linelens = []
+        for i in range(longrun[0] + 1, longrun[0] + longrun[1]):
+            linelen = validpulses[i][1].start - validpulses[i - 1][1].start
+            if inrange(linelen / inlinelen, 0.95, 1.05):
+                linelens.append(
+                    validpulses[i][1].start - validpulses[i - 1][1].start
+                )
+
+        # Can't prepare the mean here since numba np.mean doesn't work over lists
+        return linelens
+
+
+@njit(cache=True, nogil=True)
 def findpeaks(array, low=0):
     array2 = array.copy()
     array2[np.where(array2 < low)] = 0
@@ -928,52 +997,83 @@ def LRUupdate(l, k):
     l.insert(0, k)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_median(m):
     return np.median(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_round(m):
     return int(np.round(m))
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_mean(m):
     return np.mean(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_min(m):
     return np.min(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_max(m):
     return np.max(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_abs(m):
     return np.abs(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_absmax(m):
     return np.max(np.abs(m))
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
+def nb_std(m):
+    return np.std(m)
+
+
+@njit(cache=True,nogil=True)
+def nb_diff(m):
+    return np.diff(m)
+
+
+@njit(cache=True,nogil=True)
 def nb_mul(x, y):
     return x * y
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_where(x):
     return np.where(x)
 
 
-def angular_mean(x, cycle_len=1.0, zero_base=True):
+@njit(cache=True,nogil=True)
+def nb_gt(x, y):
+    return (x > y)
+
+
+@njit(cache=True,nogil=True)
+def n_orgt(a, x, y):
+    a |= (x > y)
+
+
+@njit(cache=True,nogil=True)
+def n_orlt(a, x, y):
+    a |= (x < y)
+
+
+@njit(cache=True,nogil=True)
+def n_ornotrange(a, x, y, z):
+    a |= (x < y) | (x > z)
+
+
+@njit(cache=True, nogil=True)
+def angular_mean_helper(x, cycle_len=1.0, zero_base=True):
     """ Compute the mean phase, assuming 0..1 is one phase cycle
 
         (Using this technique handles the 3.99, 5.01 issue
@@ -981,18 +1081,14 @@ def angular_mean(x, cycle_len=1.0, zero_base=True):
         naive computation could be changed to rotate around 0.5,
         that breaks down when things are out of phase...)
     """
-    x2 = x - np.floor(x)  # not strictly necessary but slightly more precise
+    x2 = x - x.astype(np.int32)  # not strictly necessary but slightly more precise
 
     # refer to https://en.wikipedia.org/wiki/Mean_of_circular_quantities
     angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
 
-    am = np.angle(np.mean(angles)) / (np.pi * 2)
-    if zero_base and (am < 0):
-        am = 1 + am
+    return angles
 
-    return am
-
-
+@njit(cache=True)
 def phase_distance(x, c=0.75):
     """ returns the shortest path between two phases (assuming x and c are in (0..1)) """
     d = (x - np.floor(x)) - c
@@ -1027,30 +1123,61 @@ def dsa_rescale_and_clip(infloat):
 # removed so that they can be JIT'd
 
 
-@njit(cache=True)
-def clb_findbursts(burstarea, i, endburstarea, threshold):
-    out = []
-    
+@njit(cache=True,nogil=True)
+def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart, s_rem, zcburstdiv, phase_adjust):
+    zc_count = 0
+    rising_count = 0
     j = i
-    while j < endburstarea:
+
+    isrising.fill(False)
+    zcs.fill(0)
+
+    while j < endburstarea and zc_count < len(zcs):
         if np.abs(burstarea[j]) > threshold:
-            pre = burstarea[j]
             zc = calczc_do(burstarea, j, 0)
             if zc is not None:
-                out.append((burstarea[j], zc))
+                isrising[zc_count] = burstarea[j] < 0
+                zcs[zc_count] = zc
+                zc_count += 1
                 j = int(zc) + 1
             else:
-                return out
+                break
         else:
             j += 1
 
-    return out
+    if zc_count:
+        zc_cycles = ((bstart + zcs - s_rem) / zcburstdiv) + phase_adjust
+        # numba doesn't support np.round over an array, so we have to do this
+        zc_rounds = (zc_cycles + .5).astype(np.int32)
+        phase_adjust += nb_median(zc_rounds - zc_cycles)
+        rising_count = np.sum(np.bitwise_xor(isrising, (zc_rounds % 2) != 0))
 
+    return zc_count, phase_adjust, rising_count
 
 @njit(cache=True)
 def distance_from_round(x):
     # Yes, this was a hotspot.
     return np.round(x) - x
+
+
+def init_opencl(cl, name = None):
+    # Create some context on the first available GPU
+    if 'PYOPENCL_CTX' in os.environ:
+        ctx = cl.create_some_context()
+    else:
+        ctx = None
+        # Find the first OpenCL GPU available and use it, unless
+        for p in cl.get_platforms():
+            for d in p.get_devices():
+                if d.type & cl.device_type.GPU == 1:
+                    continue
+                print("Selected device: ", d.name)
+                ctx = cl.Context(devices=(d,))
+                break
+            if ctx is not None:
+                break
+    #queue = cl.CommandQueue(ctx)
+    return ctx
 
 
 # Write the .tbc.json file (used by lddecode and notebooks)
