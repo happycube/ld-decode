@@ -25,7 +25,7 @@ from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
-from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
+from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
 from .utils import Pulse, nb_std, nb_gt, n_ornotrange
@@ -2929,7 +2929,10 @@ class FieldPAL(Field):
 
             zcs.append(zc)
 
-        am = angular_mean(zcs)
+        angles = angular_mean_helper(np.array(zcs))
+        am = np.angle(np.mean(angles)) / (np.pi * 2)
+        if (am < 0):
+            am = 1 + am
 
         for l in range(0, 323):
             linelocs[l] += (phase_distance(zcs[l], am) * plen[l]) * 1

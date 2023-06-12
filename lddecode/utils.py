@@ -1072,8 +1072,8 @@ def n_ornotrange(a, x, y, z):
     a |= (x < y) | (x > z)
 
 
-@njit(cache=True,nogil=True)
-def angular_mean(x, cycle_len=1.0, zero_base=True):
+@njit(cache=True, nojit=True)
+def angular_mean_helper(x, cycle_len=1.0, zero_base=True):
     """ Compute the mean phase, assuming 0..1 is one phase cycle
 
         (Using this technique handles the 3.99, 5.01 issue
@@ -1081,16 +1081,12 @@ def angular_mean(x, cycle_len=1.0, zero_base=True):
         naive computation could be changed to rotate around 0.5,
         that breaks down when things are out of phase...)
     """
-    x2 = x - np.floor(x)  # not strictly necessary but slightly more precise
+    x2 = x - x.astype(np.int32)  # not strictly necessary but slightly more precise
 
     # refer to https://en.wikipedia.org/wiki/Mean_of_circular_quantities
     angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
 
-    am = np.angle(np.mean(angles)) / (np.pi * 2)
-    if zero_base and (am < 0):
-        am = 1 + am
-
-    return am
+    return angles
 
 @njit(cache=True)
 def phase_distance(x, c=0.75):
