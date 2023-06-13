@@ -432,7 +432,7 @@ class VHSRFDecode(ldd.RFDecode):
         )(
             self.iretohz(100) * 2,
             tape_format,
-            rf_options.get("disable_comb", False),
+            rf_options.get("disable_comb", False) or is_secam(system),
             rf_options.get("nldeemp", False),
             rf_options.get("disable_right_hsync", False),
             rf_options.get("sync_clip", False),
