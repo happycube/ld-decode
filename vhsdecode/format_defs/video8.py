@@ -137,7 +137,7 @@ def fill_sysparams_video8_shared(sysparams):
     sysparams["hz_ire"] = 1.2e6 / (100 + (-sysparams["vsync_ire"]))
 
     # 0 IRE level after demodulation
-    sysparams["ire0"] = 5.2e6 - (sysparams["hz_ire"] * 100)
+    sysparams["ire0"] = 5.4e6 - (sysparams["hz_ire"] * 100)
 
 
 def fill_sysparams_hi8_shared(sysparams):
