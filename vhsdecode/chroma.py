@@ -36,7 +36,7 @@ def chroma_to_u16(chroma):
 def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     """Scale chroma according to the level of the color burst on each line."""
     STARTING_LINE = int(16)
-    assert(lines > STARTING_LINE)
+    assert lines > STARTING_LINE
 
     output = np.zeros(chroma.size, dtype=np.double)
     mean_burst_accumulator = 0
@@ -187,7 +187,7 @@ def process_chroma(
     disable_comb=False,
     disable_tracking_cafc=False,
     chroma_rotation=None,
-    do_chroma_deemphasis=False
+    do_chroma_deemphasis=False,
 ):
     # Run TBC/downscale on chroma (if new field, else uses cache)
     if (
@@ -206,7 +206,7 @@ def process_chroma(
                 len(chroma),
                 field.rf.Filters["FVideoNotch"],
                 field.rf.notch,
-                move=(int(10 * (field.rf.sys_params['outfreq'] / 40))),
+                move=(int(10 * (field.rf.sys_params["outfreq"] / 40))),
             )
 
             if not disable_tracking_cafc:
@@ -253,21 +253,10 @@ def process_chroma(
     # Video8 NTSC: Track1 0, Track2 180
     # Video8 PAL: Track1 0, Track2 -90
 
-
-    if track_phase is not None:
+    if track_phase is not None and chroma_rotation:
         if field.rf.field_number % 2 == track_phase:
-            if chroma_rotation:
-                phase_rotation = chroma_rotation[0]
-            elif field.rf.color_system == "PAL" or field.rf.color_system == "MPAL":
-                # For PAL, track 2 is rotated -90 each hsync.
-                phase_rotation = 0
-            elif field.rf.color_system == "NTSC":
-                # For NTSC VHS, track 1 rotates cw
-                phase_rotation = 1
-                starting_phase = 1
-            #elif:
-            #    raise Exception("Unknown video system!", field.rf.color_system)
-        elif chroma_rotation:
+            phase_rotation = chroma_rotation[0]
+        else:
             phase_rotation = chroma_rotation[1]
 
     uphet = upconvert_chroma(
@@ -331,7 +320,7 @@ def check_increment_field_no(rf):
 
 def decode_chroma_simple(field):
     """Upconvert the chroma signal
-       Simple upconversion with no rotation etc for umatic, vcr, eiaj and similar.
+    Simple upconversion with no rotation etc for umatic, vcr, eiaj and similar.
     """
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
@@ -372,7 +361,7 @@ def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False):
         disable_comb=rf.options.disable_comb,
         disable_tracking_cafc=False,
         chroma_rotation=chroma_rotation,
-        do_chroma_deemphasis=do_chroma_deemphasis
+        do_chroma_deemphasis=do_chroma_deemphasis,
     )
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
@@ -647,7 +636,8 @@ def log_track_phase(track_phase, phase0_mean, phase1_mean, assumed_phase):
 def try_detect_track_betamax_pal(field):
     pass
 
-def try_detect_track_vhs_pal(field):
+
+def try_detect_track_vhs_pal(field, chroma_rotation=None):
     """Try to detect what video track we are on.
 
     VHS tapes have two tracks with different azimuth that alternate and are read by alternating
@@ -660,7 +650,10 @@ def try_detect_track_vhs_pal(field):
     burst_area = get_burstarea(field)
 
     # Upconvert chroma twice, once for each possible track phase
-    uphet = [process_chroma(field, 0, True, True), process_chroma(field, 1, True, True)]
+    uphet = [
+        process_chroma(field, 0, True, True, chroma_rotation=chroma_rotation),
+        process_chroma(field, 1, True, True, chroma_rotation=chroma_rotation),
+    ]
 
     sine_wave = field.rf.fsc_wave
     cosine_wave = field.rf.fsc_cos_wave
@@ -707,8 +700,11 @@ def try_detect_track_ntsc(field, chroma_rotation=None):
     burst_area = get_burstarea(field)
 
     # Upconvert chroma twice, once for each possible track phase
-    
-    uphet = [process_chroma(field, 0, True, chroma_rotation=chroma_rotation), process_chroma(field, 1, True, chroma_rotation=chroma_rotation)]
+
+    uphet = [
+        process_chroma(field, 0, True, chroma_rotation=chroma_rotation),
+        process_chroma(field, 1, True, chroma_rotation=chroma_rotation),
+    ]
 
     # Look at the bursts from each upconversion and see which one looks most
     # normal.

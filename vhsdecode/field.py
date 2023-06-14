@@ -15,7 +15,7 @@ from vhsdecode.chroma import (
     get_field_phase_id,
     try_detect_track_vhs_pal,
     try_detect_track_ntsc,
-    try_detect_track_betamax_pal
+    try_detect_track_betamax_pal,
 )
 
 from vhsdecode.debug_plot import plot_data_and_pulses
@@ -534,9 +534,9 @@ class FieldShared:
             plot_data_and_pulses(
                 self.data["video"]["demod"],
                 raw_pulses=self.rawpulses,
-                threshold=self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
+                threshold=self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2),
             )
-        #threshold=self.rf.resync.last_pulse_threshold
+        # threshold=self.rf.resync.last_pulse_threshold
 
         if line0loc is None:
             if self.initphase is False:
@@ -1033,12 +1033,12 @@ class FieldPALVHS(FieldPALShared):
         dsout, dsaudio, dsefm = super(FieldPALVHS, self).downscale(
             final=final, *args, **kwargs
         )
-        dschroma = decode_chroma(self)
+        dschroma = decode_chroma(self, self.rf.DecoderParams["chroma_rotation"])
 
         return (dsout, dschroma), dsaudio, dsefm
 
     def try_detect_track(self):
-        return try_detect_track_vhs_pal(self)
+        return try_detect_track_vhs_pal(self, self.rf.DecoderParams["chroma_rotation"])
 
 
 class FieldPALSVHS(FieldPALVHS):
@@ -1074,7 +1074,9 @@ class FieldPALBetamax(FieldPALShared):
             final=final, *args, **kwargs
         )
 
-        dschroma = decode_chroma(self, chroma_rotation=self.rf.DecoderParams['chroma_rotation'])
+        dschroma = decode_chroma(
+            self, chroma_rotation=self.rf.DecoderParams["chroma_rotation"]
+        )
 
         return (dsout, dschroma), dsaudio, dsefm
 
@@ -1085,14 +1087,18 @@ class FieldPALVideo8(FieldPALShared):
 
     def try_detect_track(self):
         # PAL Video8 uses the same chroma phase rotation setup as PAL VHS.
-        return try_detect_track_vhs_pal(self)
+        return try_detect_track_vhs_pal(self, self.rf.DecoderParams["chroma_rotation"])
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALVideo8, self).downscale(
             final=final, *args, **kwargs
         )
 
-        dschroma = decode_chroma(self, chroma_rotation=self.rf.DecoderParams['chroma_rotation'], do_chroma_deemphasis=True)
+        dschroma = decode_chroma(
+            self,
+            chroma_rotation=self.rf.DecoderParams["chroma_rotation"],
+            do_chroma_deemphasis=True,
+        )
 
         return (dsout, dschroma), dsaudio, dsefm
 
@@ -1114,7 +1120,7 @@ class FieldNTSCVHS(FieldNTSCShared):
         super(FieldNTSCVHS, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        return try_detect_track_ntsc(self)
+        return try_detect_track_ntsc(self, self.rf.DecoderParams["chroma_rotation"])
 
     def downscale(self, final=False, *args, **kwargs):
         """Downscale the channels and upconvert chroma to standard color carrier frequency."""
@@ -1122,7 +1128,7 @@ class FieldNTSCVHS(FieldNTSCShared):
             final=final, *args, **kwargs
         )
 
-        dschroma = decode_chroma(self)
+        dschroma = decode_chroma(self, self.rf.DecoderParams["chroma_rotation"])
 
         self.fieldPhaseID = get_field_phase_id(self)
 
@@ -1141,14 +1147,14 @@ class FieldNTSCBetamax(FieldNTSCShared):
         super(FieldNTSCBetamax, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        return try_detect_track_ntsc(self, self.rf.DecoderParams['chroma_rotation'])
+        return try_detect_track_ntsc(self, self.rf.DecoderParams["chroma_rotation"])
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldNTSCBetamax, self).downscale(
             final=final, *args, **kwargs
         )
 
-        dschroma = decode_chroma(self, self.rf.DecoderParams['chroma_rotation'])
+        dschroma = decode_chroma(self, self.rf.DecoderParams["chroma_rotation"])
 
         return (dsout, dschroma), dsaudio, dsefm
 
@@ -1158,7 +1164,7 @@ class FieldMPALVHS(FieldNTSCVHS):
         super(FieldMPALVHS, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        return try_detect_track_vhs_pal(self)
+        return try_detect_track_vhs_pal(self, self.rf.DecoderParams["chroma_rotation"])
 
 
 class FieldNTSCUMatic(FieldNTSCShared):
@@ -1195,7 +1201,7 @@ class FieldNTSCVideo8(FieldNTSCShared):
         super(FieldNTSCVideo8, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        return try_detect_track_ntsc(self, self.rf.DecoderParams['chroma_rotation'])
+        return try_detect_track_ntsc(self, self.rf.DecoderParams["chroma_rotation"])
 
     def downscale(self, final=False, *args, **kwargs):
         """Downscale the channels and upconvert chroma to standard color carrier frequency."""
@@ -1203,7 +1209,9 @@ class FieldNTSCVideo8(FieldNTSCShared):
             final=final, *args, **kwargs
         )
 
-        dschroma = decode_chroma(self, self.rf.DecoderParams['chroma_rotation'], do_chroma_deemphasis=True)
+        dschroma = decode_chroma(
+            self, self.rf.DecoderParams["chroma_rotation"], do_chroma_deemphasis=True
+        )
 
         self.fieldPhaseID = get_field_phase_id(self)
 

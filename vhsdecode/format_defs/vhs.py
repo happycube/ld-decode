@@ -1,7 +1,8 @@
 """Module containing parameters for VHS and SVHS"""
 
-PAL_ROTATION = [-1, 0]
+PAL_ROTATION = [0, -1]
 NTSC_ROTATION = [-1, 1]
+
 
 def fill_rfparams_vhs_shared(rfparams):
     """Fill in parameters that are shared between systems for VHS"""
@@ -243,7 +244,6 @@ def get_rfparams_ntsc_svhs(rfparams_ntsc):
 
 
 def get_sysparams_ntsc_svhs(sysparams_ntsc):
-
     SysParams_NTSC_SVHS = get_sysparams_ntsc_vhs(sysparams_ntsc)
 
     # frequency/ire IRE change pr frequency (Is this labeled correctly?)
