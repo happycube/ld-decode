@@ -384,10 +384,14 @@ def main(args=None):
         if audio_pipe is not None:
             audio_pipe.close()
 
+    # seconddecode is taken so that setup time is not included in FPS calculation
     firstdecode = time.time()
+    seconddecode = None
     while not done and ldd.fields_written < (req_frames * 2):
         try:
             f = ldd.readfield()
+            if not seconddecode:
+                seconddecode = time.time()
         except KeyboardInterrupt as kbd:
             print("\nTerminated, saving JSON and exiting", file=sys.stderr)
             cleanup()
@@ -410,7 +414,16 @@ def main(args=None):
         if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
             jsondumper.put(ldd.build_json())
 
-    print("\nCompleted: saving JSON and exiting", file=sys.stderr)
+    if ldd.fields_written:
+        timeused = time.time() - firstdecode
+        timeused2 = time.time() - seconddecode
+        frames = ldd.fields_written // 2
+        fps = frames / timeused2
+ 
+        print(f"\nCompleted: saving JSON and exiting.  Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)", file=sys.stderr)
+    else:
+        print(f"\nCompleted without handling any frames.", file=sys.stderr)
+
     cleanup()
 
 #    print(time.time()-firstdecode)
