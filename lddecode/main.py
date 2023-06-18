@@ -420,7 +420,7 @@ def main(args=None):
         frames = ldd.fields_written // 2
         fps = frames / timeused2
  
-        print(f"\nCompleted: saving JSON and exiting.  Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS)", file=sys.stderr)
+        print(f"\nCompleted: saving JSON and exiting.  Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)", file=sys.stderr)
     else:
         print(f"\nCompleted without handling any frames.", file=sys.stderr)
 
