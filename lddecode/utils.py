@@ -719,7 +719,7 @@ def build_hilbert(fft_size):
 @njit(cache=True,nogil=True)
 def unwrap_hilbert_getangles(hilbert):
     tangles = np.angle(hilbert)
-    dangles = np.ediff1d(tangles, to_begin=0)
+    dangles = np.ediff1d(tangles, to_begin=0).real
 
     # make sure unwapping goes the right way
     if dangles[0] < -pi:
@@ -846,7 +846,7 @@ def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
 
 
 # Something like this should be a numpy function, but I can't find it.
-@jit(cache=True)
+@jit(cache=True, nopython=True)
 def findareas(array, cross):
     """ Find areas where `array` is <= `cross`
 
