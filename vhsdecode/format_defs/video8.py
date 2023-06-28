@@ -69,7 +69,7 @@ def fill_rfparams_hi8_shared(rfparams):
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
-    rfparams["deemph_mid"] = 260000
+    rfparams["deemph_mid"] = 550000 # TODO: Not correct, needs to be fixed properly
     rfparams["deemph_gain"] = 14
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
@@ -89,15 +89,15 @@ def fill_rfparams_hi8_shared(rfparams):
     rfparams["video_lpf_extra"] = 8810000
     rfparams["video_lpf_extra_order"] = 3
 
-    rfparams["video_hpf_extra"] = 1520000
-    rfparams["video_hpf_extra_order"] = 1
+    rfparams["video_hpf_extra"] = 2520000
+    rfparams["video_hpf_extra_order"] = 3
 
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 5500000
     rfparams["video_lpf_order"] = 1
 
-    # Video Y FM de-emphasis (1.25~1.35µs)
-    rfparams["deemph_tau"] = 1.30e-6
+    # Video Y FM de-emphasis
+    rfparams["deemph_tau"] = 0.47e-6 # From spec
 
     # Filter to pull out high frequencies for high frequency boost
     # This should cover the area around reference white.
