@@ -312,6 +312,10 @@ class FieldMPALCVBS(FieldNTSCCVBS):
 
         return linelocs
 
+def _demodcache_dummy(self, *args, **kwargs):
+    self.ended = True
+    pass
+
 # Superclass to override laserdisc-specific parts of ld-decode with stuff that works for VHS
 #
 # We do this simply by using inheritance and overriding functions. This results in some redundant
@@ -331,6 +335,12 @@ class CVBSDecode(ldd.LDdecode):
         rf_options={},
         extra_options={},
     ):
+        # monkey patch init with a dummy to prevent calling set_start_method twice on macos
+        # and not create extra threads.
+        # This is kinda hacky and should be sorted in a better way ideally.
+        temp_init = ldd.DemodCache.__init__
+        ldd.DemodCache.__init__ = _demodcache_dummy
+
         super(CVBSDecode, self).__init__(
             fname_in,
             fname_out,
@@ -363,6 +373,9 @@ class CVBSDecode(ldd.LDdecode):
             self.FieldClass = FieldMPALCVBS
         else:
             raise Exception("Unknown video system!", system)
+
+        # Restore init functino now that superclass constructor is finished.
+        ldd.DemodCache.__init__ = temp_init
 
         self.demodcache = ldd.DemodCache(
             self.rf, self.infile, self.freader, num_worker_threads=self.numthreads
