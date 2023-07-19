@@ -1,3 +1,4 @@
+import os
 import sys
 import signal
 import traceback
@@ -266,6 +267,20 @@ def main(args=None, use_gui=False):
     args = parser.parse_args(args)
 
     filename, outname, firstframe, req_frames = get_basics(args)
+
+    if not args.overwrite:
+        conflicts_ext = [".tbc", "_chroma.tbc", ".log", ".tbc.json"]
+        conflicts = []
+
+        for ext in conflicts_ext:
+            if os.path.isfile(outname + ext):
+                conflicts.append(outname + ext)
+    
+        if conflicts:
+            print("Existing decode files found, remove them or run command with --overwrite")
+            for conflict in conflicts:
+                print("\t", conflict)
+            sys.exit(1)
 
     system = select_system(args)
     sample_freq = select_sample_freq(args)

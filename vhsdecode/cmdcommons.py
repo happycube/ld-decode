@@ -101,6 +101,13 @@ def common_parser_inner(parser, use_gui=False, default_threads=4):
         default=99999999,
         help="limit length to n frames",
     )
+    file_options_group.add_argument(
+        "--overwrite",
+        dest="overwrite",
+        action="store_true",
+        default=False,
+        help="Overwrite existing decode files.",
+    )
     input_format_group = parser.add_argument_group("Input format")
     input_format_group.add_argument(
         "-f",
