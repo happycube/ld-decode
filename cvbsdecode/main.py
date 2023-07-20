@@ -49,6 +49,20 @@ def main(args=None):
     system = select_system(args)
     sample_freq = select_sample_freq(args)
 
+    if not args.overwrite:
+        conflicts_ext = [".tbc", ".log", ".tbc.json"]
+        conflicts = []
+
+        for ext in conflicts_ext:
+            if os.path.isfile(outname + ext):
+                conflicts.append(outname + ext)
+
+        if conflicts:
+            print("Existing decode files found, remove them or run command with --overwrite")
+            for conflict in conflicts:
+                print("\t", conflict)
+            sys.exit(1)
+
     try:
         loader = lddu.make_loader(filename, sample_freq)
     except ValueError as e:
