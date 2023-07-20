@@ -275,9 +275,11 @@ def main(args=None, use_gui=False):
         for ext in conflicts_ext:
             if os.path.isfile(outname + ext):
                 conflicts.append(outname + ext)
-    
+
         if conflicts:
-            print("Existing decode files found, remove them or run command with --overwrite")
+            print(
+                "Existing decode files found, remove them or run command with --overwrite"
+            )
             for conflict in conflicts:
                 print("\t", conflict)
             sys.exit(1)
@@ -300,12 +302,10 @@ def main(args=None, use_gui=False):
         print(e)
         sys.exit(1)
 
-
     # Note: Fallback to ffmpeg, not .lds format
     # Temporary workaround until this is sorted upstream.
     if loader is lddu.load_packed_data_4_40 and not filename.endswith(".lds"):
         loader = lddu.LoadFFmpeg()
-
 
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
     if args.cxadc or args.cxadc3 or args.cxadc_tenbit or args.cxadc3_tenbit:
@@ -329,6 +329,7 @@ def main(args=None, use_gui=False):
     rf_options["level_detect_divisor"] = args.level_detect_divisor
     rf_options["fallback_vsync"] = args.fallback_vsync
     rf_options["saved_levels"] = args.saved_levels
+    rf_options["skip_hsync_refine"] = args.skip_hsync_refine
 
     extra_options = get_extra_options(args, not use_gui)
     extra_options["params_file"] = args.params_file

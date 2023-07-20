@@ -428,6 +428,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "write_chroma",
                 "color_under",
                 "chroma_deemphasis_filter",
+                "skip_hsync_refine",
             ],
         )(
             self.iretohz(100) * 2,
@@ -445,6 +446,7 @@ class VHSRFDecode(ldd.RFDecode):
             write_chroma,
             tape_format != "TYPEC",
             tape_format == "VIDEO8" or tape_format == "HI8",
+            rf_options.get("skip_hsync_refine", False),
         )
 
         # As agc can alter these sysParams values, store a copy to then

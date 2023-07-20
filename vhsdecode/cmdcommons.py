@@ -232,6 +232,13 @@ def common_parser_inner(parser, use_gui=False, default_threads=4):
         default=False,
         help="Set log legel to DEBUG.",
     )
+    debug_group.add_argument(
+        "--skip_hsync_refine",
+        dest="skip_hsync_refine",
+        action="store_true",
+        default=False,
+        help="Skip refining line locations using hsync - less accurate line start detection but may avoid issues in some cases..",
+    )
     return parser, debug_group
 
 
@@ -253,7 +260,6 @@ def select_sample_freq(args):
 
 
 def select_system(args):
-
     if args.pal:
         system = "PAL"
     elif args.palm:

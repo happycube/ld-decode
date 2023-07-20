@@ -685,9 +685,12 @@ class FieldShared:
         return rv_ll, rv_err, nextfield
 
     def refine_linelocs_hsync(self):
-        return sync.refine_linelocs_hsync(
-            self, self.linebad, self.rf.resync.last_pulse_threshold
-        )
+        if not self.rf.options.skip_hsync_refine:
+            return sync.refine_linelocs_hsync(
+                self, self.linebad, self.rf.resync.last_pulse_threshold
+            )
+        else:
+            return self.linelocs1.copy()
 
         if False:
             import timeit
