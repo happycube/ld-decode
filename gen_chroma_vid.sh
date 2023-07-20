@@ -10,6 +10,7 @@ monochrome=0
 chroma_decoder=""
 video_codec="ffv1"
 video_container="mkv"
+video_gop=25
 
 #output_format is set here as that could be changed to yuv444p10le if desired
 FILTER_COMPLEX="[1:v]format=$output_format[chroma];[0:v][chroma]mergeplanes=0x001112:$output_format[output]"
@@ -36,6 +37,7 @@ usage() {
 	echo "--video-codec                               Specify the output video codec to use (ex. v210); default is FFV1"
 	echo "--video-container                           Specify the output video container to use (ex. mov); default is mkv."
         echo "                                            Specify only the container type, do not include a period."
+	echo "--video-gop                                 Specify the output video GOP to use; default is 25"
 	echo "-b, --blackandwhite                         Output in black and white"
 	echo "--pad, --output-padding <number>            Pad the output frame to a multiple of this many pixels on"
 	echo "-d, --decoder <decoder>                     Decoder to use (pal2d, transform2d, transform3d, ntsc1d,"
@@ -138,6 +140,10 @@ while [ "$1" != "" ]; do
 	--video-container)
 		shift
 		video_container="$1"
+		;;
+	--video-gop)
+		shift
+		video_gop="$1"
 		;;
 	-b | --blackandwhite)
 		shift
@@ -292,7 +298,7 @@ if [ "$monochrome" = "1" ]; then
 	) \
 	"${audio_opts_1[@]}" \
 	-filter_complex "$FILTER_COMPLEX_MONO" \
-	-map "[output]":v -c:v "$video_codec" -coder 1 -context 1 -g 25 -level 3 -slices 16 -slicecrc 1 -top 1 \
+	-map "[output]":v -c:v "$video_codec" -coder 1 -context 1 -g "$video_gop" -level 3 -slices 16 -slicecrc 1 -top 1 \
 	-pixel_format "$output_format" -color_range tv -color_primaries "$color_primaries" -color_trc "$color_trc" \
 	-colorspace $color_space "${audio_opts_2[@]}" \
 	-shortest -y "$input_stripped"."$video_container"
@@ -308,7 +314,7 @@ else
 	) \
 	"${audio_opts_1[@]}" \
 	-filter_complex "$FILTER_COMPLEX" \
-	-map "[output]":v -c:v "$video_codec" -coder 1 -context 1 -g 25 -level 3 -slices 16 -slicecrc 1 -top 1 \
+	-map "[output]":v -c:v "$video_codec" -coder 1 -context 1 -g "$video_gop" -level 3 -slices 16 -slicecrc 1 -top 1 \
 	-pixel_format "$output_format" -color_range tv -color_primaries "$color_primaries" -color_trc "$color_trc" \
 	-colorspace $color_space "${audio_opts_2[@]}" \
 	-shortest -y "${input_stripped}"."$video_container"
