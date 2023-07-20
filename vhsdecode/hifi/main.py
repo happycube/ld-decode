@@ -2,6 +2,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from datetime import datetime
+import os
+import sys
 import soundfile as sf
 
 from vhsdecode.cmdcommons import (
@@ -212,6 +214,12 @@ def log_bias(decoder):
 
 
 def main():
+    if not args.overwrite:
+        if os.path.isfile(outname):
+            print("Existing decode files found, remove them or run command with --overwrite")
+            print("\t", outname)
+            sys.exit(1)
+
     print("Initializing ...")
     if options['format'] == 'vhs':
         print('PAL VHS format selected') if system == 'PAL' else print('NTSC VHS format selected')
