@@ -1072,25 +1072,36 @@ def dsa_rescale_and_clip(infloat):
 # removed so that they can be JIT'd
 
 
-@njit(cache=True)
-def clb_findbursts(burstarea, i, endburstarea, threshold):
-    out = []
-    
+@njit(cache=True,nogil=True)
+def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart, s_rem, zcburstdiv, phase_adjust):
+    zc_count = 0
+    rising_count = 0
     j = i
-    while j < endburstarea:
+
+    isrising.fill(False)
+    zcs.fill(0)
+
+    while j < endburstarea and zc_count < len(zcs):
         if np.abs(burstarea[j]) > threshold:
-            pre = burstarea[j]
             zc = calczc_do(burstarea, j, 0)
             if zc is not None:
-                out.append((burstarea[j], zc))
+                isrising[zc_count] = burstarea[j] < 0
+                zcs[zc_count] = zc
+                zc_count += 1
                 j = int(zc) + 1
             else:
-                return out
+                break
         else:
             j += 1
 
-    return out
+    if zc_count:
+        zc_cycles = ((bstart + zcs - s_rem) / zcburstdiv) + phase_adjust
+        # numba doesn't support np.round over an array, so we have to do this
+        zc_rounds = (zc_cycles + .5).astype(np.int32)
+        phase_adjust += nb_median(zc_rounds - zc_cycles)
+        rising_count = np.sum(np.bitwise_xor(isrising, (zc_rounds % 2) != 0))
 
+    return zc_count, phase_adjust, rising_count
 
 @njit(cache=True)
 def distance_from_round(x):

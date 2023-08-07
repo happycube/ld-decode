@@ -1231,7 +1231,7 @@ class DemodCache:
             return rv
 
         while need_blocks is not None and len(need_blocks):
-            time.sleep(0.001)  # A crude busy loop
+            time.sleep(0.0005)  # A crude busy loop
             need_blocks = self.doread(toread, MTF)
 
         if need_blocks is None:
@@ -1599,7 +1599,7 @@ class Field:
             else self.rf.SysParams["outlinelen"]
         )
 
-        return slice(int(np.round(_begin)), int(np.round(_begin + _length)))
+        return slice(nb_round(_begin), nb_round(_begin + _length))
 
     def get_timings(self):
         pulses = self.rawpulses
@@ -1888,7 +1888,7 @@ class Field:
             dist = (firstloc - loc_presync) / self.inlinelen
             # get the integer rounded X * .5H distance.  then invert to determine
             # the half-H alignment with the sync/blank pulses
-            hdist = int(np.round(dist * 2))
+            hdist = nb_round(dist * 2)
 
             # isfirstfield = not ((hdist % 2) == self.rf.SysParams['firstField1H'][0])
             isfirstfield = (hdist % 2) == (self.rf.SysParams["firstFieldH"][1] != 1)
@@ -2032,7 +2032,7 @@ class Field:
                     meanlinelen
                     * self.rf.SysParams["field_lines"][0 if isFirstField_next else 1]
                 )
-                line0loc_next = int(np.round(self.vblank_next - fieldlen))
+                line0loc_next = nb_round(self.vblank_next - fieldlen)
 
                 if line0loc_next < 0:
                     self.sync_confidence = 10
@@ -2742,7 +2742,7 @@ class Field:
                 end_linepos = end_rf_linepos / (
                     field.linelocs[line + 1] - field.linelocs[line]
                 )
-                end_linepos = int(np.round(end_linepos * field.outlinelen))
+                end_linepos = nb_round(end_linepos * field.outlinelen)
 
                 first_line = line + 1 + lineoffset
 
@@ -2829,36 +2829,17 @@ class Field:
         # Apply phase adjustment from previous frame/line if available.
         phase_adjust = -prev_phaseadjust
 
+        # a proper color burst should have ~12-13 zero crossings
+        isrising = np.zeros(16, dtype=np.bool_)
+        zcs = np.zeros(16, dtype=np.float32)
+
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
-        passcount = 0
-        while passcount < 2:
-            rising_count = 0
-            phase_offset = []
-
+        for passcount in range(2):
             # this subroutine is in utils.py, broken out so it can be JIT'd
-            bursts = clb_findbursts(
-                burstarea, 0, len(burstarea) - 1, threshold
-            )
+            zc_count, phase_adjust, rising_count = clb_findbursts(isrising, zcs, burstarea, 0, len(burstarea) - 1, threshold, bstart, s_rem, zcburstdiv, phase_adjust)
 
-            if len(bursts) == 0:
-                return None, None
-
-            for prevalue, zc in bursts:
-                zc_cycle = ((bstart + zc - s_rem) / zcburstdiv) + phase_adjust
-                zc_round = nb_round(zc_cycle)
-
-                phase_offset.append(zc_round - zc_cycle)
-
-                if prevalue < 0:
-                    rising_count += not (zc_round % 2)
-                else:
-                    rising_count += zc_round % 2
-
-            phase_adjust += nb_median(np.array(phase_offset))
-            passcount += 1
-
-        rising = (rising_count / len(bursts)) > 0.5
+        rising = rising_count > (zc_count / 2)
 
         return rising, -phase_adjust
 
