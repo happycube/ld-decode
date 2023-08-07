@@ -642,7 +642,7 @@ def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def calczc_findfirst(data, target, rising):
     if rising:
         for i in range(0, len(data)):
@@ -658,7 +658,7 @@ def calczc_findfirst(data, target, rising):
         return None
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def calczc_do(data, _start_offset, target, edge=0, count=10):
     start_offset = max(1, int(_start_offset))
     icount = int(count + 1)
@@ -716,8 +716,8 @@ def build_hilbert(fft_size):
 
     return output
 
-
-def unwrap_hilbert(hilbert, freq_hz):
+@njit(cache=True,nogil=True)
+def unwrap_hilbert_getangles(hilbert):
     tangles = np.angle(hilbert)
     dangles = np.ediff1d(tangles, to_begin=0)
 
@@ -725,13 +725,25 @@ def unwrap_hilbert(hilbert, freq_hz):
     if dangles[0] < -pi:
         dangles[0] += tau
 
-    tdangles2 = np.unwrap(dangles)
+    return dangles
+
+@njit(cache=True,nogil=True)
+def unwrap_hilbert_fixangles(tdangles2, freq_hz):
     # With extremely bad data, the unwrapped angles can jump.
     while np.min(tdangles2) < 0:
         tdangles2[tdangles2 < 0] += tau
     while np.max(tdangles2) > tau:
         tdangles2[tdangles2 > tau] -= tau
+
     return tdangles2 * (freq_hz / tau)
+
+def unwrap_hilbert(hilbert, freq_hz):
+    dangles = unwrap_hilbert_getangles(hilbert)
+
+    # This can't be run with numba
+    tdangles2 = np.unwrap(dangles)
+
+    return unwrap_hilbert_fixangles(tdangles2, freq_hz) #* (freq_hz / tau)
 
 
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
@@ -822,6 +834,17 @@ def roundfloat(fl, places=3):
     return np.round(fl * r) / r
 
 
+@njit(nogil=True, cache=True)
+def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
+    reduced = (input - ire0) / hz_ire
+    reduced -= vsync_ire
+
+    return (
+        np.clip((reduced * out_scale) + outputZero, 0, 65535) + 0.5
+    ).astype(np.uint16)
+
+
+
 # Something like this should be a numpy function, but I can't find it.
 @jit(cache=True)
 def findareas(array, cross):
@@ -904,6 +927,7 @@ def findpulses(sync_ref, _, high):
     return _to_pulses_list(pulses_starts, pulses_lengths)
 
 
+@njit(cache=True, nogil=True)
 def findpeaks(array, low=0):
     array2 = array.copy()
     array2[np.where(array2 < low)] = 0
@@ -928,51 +952,72 @@ def LRUupdate(l, k):
     l.insert(0, k)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_median(m):
     return np.median(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_round(m):
     return int(np.round(m))
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_mean(m):
     return np.mean(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_min(m):
     return np.min(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_max(m):
     return np.max(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_abs(m):
     return np.abs(m)
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_absmax(m):
     return np.max(np.abs(m))
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
+def nb_std(m):
+    return np.std(m)
+
+
+@njit(cache=True,nogil=True)
+def nb_diff(m):
+    return np.diff(m)
+
+
+@njit(cache=True,nogil=True)
 def nb_mul(x, y):
     return x * y
 
 
-@njit(cache=True)
+@njit(cache=True,nogil=True)
 def nb_where(x):
     return np.where(x)
 
 
+@njit(cache=True,nogil=True)
+def n_orgt(a, x, y):
+    a |= (x > y)
+
+
+@njit(cache=True,nogil=True)
+def n_orlt(a, x, y):
+    a |= (x < y)
+
+
+@njit(cache=True,nogil=True)
 def angular_mean(x, cycle_len=1.0, zero_base=True):
     """ Compute the mean phase, assuming 0..1 is one phase cycle
 
@@ -992,7 +1037,7 @@ def angular_mean(x, cycle_len=1.0, zero_base=True):
 
     return am
 
-
+@njit(cache=True)
 def phase_distance(x, c=0.75):
     """ returns the shortest path between two phases (assuming x and c are in (0..1)) """
     d = (x - np.floor(x)) - c

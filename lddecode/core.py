@@ -39,12 +39,12 @@ else:
 
 from . import efm_pll
 from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
-from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_absmax
+from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
-from .utils import fft_do_slice, fft_determine_slices, StridedCollector
+from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -750,11 +750,11 @@ class RFDecode:
             out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
             video_out = np.rec.array(
                 [
-                    out_video,
-                    demod,
-                    out_video05,
-                    out_videoburst,
-                    out_videopilot,
+                    out_video.astype(np.float32),
+                    demod.astype(np.float32),
+                    out_video05.astype(np.float32),
+                    out_videoburst.astype(np.float32),
+                    out_videopilot.astype(np.float32),
                 ],
                 names=[
                     "demod",
@@ -766,7 +766,7 @@ class RFDecode:
             )
         else:
             video_out = np.rec.array(
-                [out_video, demod, out_video05, out_videoburst],
+                [out_video.astype(np.float32), demod.astype(np.float32), out_video05.astype(np.float32), out_videoburst.astype(np.float32)],
                 names=["demod", "demod_raw", "demod_05", "demod_burst"],
             )
 
@@ -1418,7 +1418,7 @@ def _downscale_audio_to_output(
 
 # Downscales to 16bit/44.1khz.  It might be nice when analog audio is better to support 24/96,
 # but if we only support one output type, matching CD audio/digital sound is greatly preferable.
-def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100):
+def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100, rv=None):
     """downscale audio for output.
 
     Parameters:
@@ -1455,6 +1455,10 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100):
 
     if failed:
         logger.warning("Analog audio processing error, muting samples")
+
+    if rv is not None:
+        rv['dsaudio'] = output16
+        rv['audio_next_offset'] = arange[-1] - frametime
 
     return output16, arange[-1] - frametime
 
@@ -1583,7 +1587,18 @@ class Field:
     def outpxtousec(self, x):
         return x / self.rf.SysParams["outfreq"]
 
+    #@profile
     def hz_to_output(self, input):
+        if type(input) == np.ndarray:
+            return hz_to_output_array(
+                input,
+                self.rf.DecoderParams["ire0"],
+                self.rf.DecoderParams["hz_ire"],
+                self.rf.SysParams["outputZero"],
+                self.rf.DecoderParams["vsync_ire"],
+                self.out_scale,
+            )
+
         reduced = (input - self.rf.DecoderParams["ire0"]) / self.rf.DecoderParams["hz_ire"]
         reduced -= self.rf.DecoderParams["vsync_ire"]
 
@@ -2178,6 +2193,7 @@ class Field:
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
+    #@profile
     def compute_linelocs(self):
 
         self.rawpulses = self.getpulses()
@@ -2457,6 +2473,7 @@ class Field:
 
         return wow
 
+    #@profile
     def downscale(
         self,
         lineinfo=None,
@@ -2473,6 +2490,20 @@ class Field:
         if linesout is None:
             # for video always output 263/313 lines
             linesout = self.outlinecount
+
+        audio_thread = None
+        if audio != 0 and self.rf.decode_analog_audio:
+            audio_rv = {}
+            audio_thread = threading.Thread(target=downscale_audio, args=(
+                self.data["audio"],
+                lineinfo,
+                self.rf,
+                self.linecount,
+                self.audio_offset,
+                audio,
+                audio_rv)
+            )
+            audio_thread.start()
 
         dsout = np.zeros((linesout * outwidth), dtype=np.double)
         # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
@@ -2497,16 +2528,6 @@ class Field:
                     (l - lineoffset) * outwidth : (l + 1 - lineoffset) * outwidth
                 ] = self.rf.DecoderParams["ire0"]
 
-        if audio != 0 and self.rf.decode_analog_audio:
-            self.dsaudio, self.audio_next_offset = downscale_audio(
-                self.data["audio"],
-                lineinfo,
-                self.rf,
-                self.linecount,
-                self.audio_offset,
-                freq=audio
-            )
-
         if self.rf.decode_digital_audio:
             self.efmout = self.data["efm"][
                 int(self.linelocs[1]) : int(self.linelocs[self.linecount + 1])
@@ -2517,6 +2538,11 @@ class Field:
         if final:
             dsout = self.hz_to_output(dsout)
             self.dspicture = dsout
+
+        if audio_thread:
+            audio_thread.join()
+            self.dsaudio = audio_rv["dsaudio"]
+            self.audio_next_offset = audio_rv["audio_next_offset"]
 
         return dsout, self.dsaudio, self.efmout
 
@@ -2676,13 +2702,13 @@ class Field:
                 valid_min[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min
                 valid_min05[int(f.linelocs[l]):int(f.linelocs[l]) + hsync_len] = sync_min_05
 
-        iserr2 = f.data["video"]["demod"] < valid_min
-        iserr2 |= f.data["video"]["demod"] > valid_max
+        n_orlt(iserr1, f.data["video"]["demod"], valid_min)
+        n_orgt(iserr1, f.data["video"]["demod"], valid_max)
 
-        iserr3 = f.data["video"]["demod_05"] < valid_min05
-        iserr3 |= f.data["video"]["demod_05"] > valid_max05
+        n_orlt(iserr1, f.data["video"]["demod_05"], valid_min05)
+        n_orgt(iserr1, f.data["video"]["demod_05"], valid_max05)
 
-        iserr = iserr1 | iserr2 | iserr3 | iserr_rf
+        iserr = iserr1 | iserr_rf
 
         # filter out dropouts outside actual field
         iserr[:int(f.linelocs[f.lineoffset + 1])] = False
@@ -3549,6 +3575,7 @@ class LDdecode:
 
             blk = self.AC3Collector.get_block()
 
+    #@profile
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
         if self.digital_audio is True:
@@ -3581,6 +3608,7 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
 
+    #@profile
     def decodefield(self, initphase=False, redo=False):
         """ returns field object if valid, and the offset to the next decode """
         self.readloc = int(self.fdoffset - self.rf.blockcut)
@@ -3638,6 +3666,7 @@ class LDdecode:
 
         return f, f.nextfieldoffset - (self.readloc - self.rawdecode["startloc"])
 
+    #@profile
     def readfield(self, initphase=False):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
