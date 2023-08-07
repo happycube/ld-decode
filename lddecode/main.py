@@ -208,7 +208,7 @@ def main(args=None):
         "--threads",
         metavar="threads",
         type=int,
-        default=5,
+        default=4,
         help="number of CPU threads to use",
     )
 

@@ -6,12 +6,7 @@ import threading
 import time
 import types
 
-from multiprocessing import Queue, JoinableQueue, Pipe
-
-if platform.system() == "Darwin":
-    from multiprocessing import set_start_method
-if platform.system() != "Windows":
-    from multiprocessing import Process
+from queue import Queue
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -20,20 +15,8 @@ import scipy.interpolate as spi
 import numba
 from numba import njit
 
-# Use PyFFTW's faster FFT implementation if available
-if platform.system != "Windows":
-    try:
-        import pyfftw.interfaces.numpy_fft as npfft
-        import pyfftw.interfaces
-
-        pyfftw.interfaces.cache.enable()
-        pyfftw.interfaces.cache.set_keepalive_time(10)
-    except ImportError:
-        import numpy.fft as npfft
-else:
-    # Don't use pyfftw on windows as we have to use Thread and that causes
-    # issues if also using pyfftw.
-    import numpy.fft as npfft
+# Use standard numpy fft, since it's thread-safe
+import numpy.fft as npfft
 
 # internal libraries
 
@@ -703,7 +686,7 @@ class RFDecode:
         rv["rfhpf"] = npfft.ifft(indata_fft * self.Filters["Frfhpf"]).real
         rv["rfhpf"] = rv["rfhpf"][
             self.blockcut - rotdelay : -self.blockcut_end - rotdelay
-        ]
+        ].astype(np.float32)
 
         if self.system == "PAL" and self.PAL_V4300D_NotchFilter:
             """ This routine works around an 'interesting' issue seen with LD-V4300D players and
@@ -791,7 +774,7 @@ class RFDecode:
                 # Demodulate and restore frequency after bin slicing
                 a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
 
-                stage1_out.append(a1u)
+                stage1_out.append(a1u.astype(np.float32))
 
             audio_out = np.rec.array(
                 [stage1_out[0], stage1_out[1]], names=["audio_left", "audio_right"]
@@ -1007,38 +990,28 @@ class DemodCache:
         self.lock = threading.Lock()
         self.blocks = {}
 
-        if platform.system() == "Darwin":
-            set_start_method("fork")
-
-        # Workaround to make it work on windows.
-        # Using Process gives a "io.BufferedReader can't be pickled error".
-        # Using Thread may be a bit slower due to how python threads work,
-        # so ideally we would want to find a better way to do this later.
-        thread_type = Process if platform.system() != "Windows" else threading.Thread
-
         self.block_status = {}
 
-        self.q_in = JoinableQueue()
+        self.q_in = Queue()
         self.q_out = Queue()
 
         self.threadpipes = []
         self.threads = []
 
+        self.request = 0
+        self.ended = False
+
+        self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
         num_worker_threads = max(num_worker_threads - 1, 1)
 
         for i in range(num_worker_threads):
-            self.threadpipes.append(Pipe())
-            t = thread_type(
-                target=self.worker, daemon=True, args=(self.threadpipes[-1][1],)
+            t = threading.Thread(
+                target=self.worker, daemon=True, args=()
             )
             t.start()
             self.threads.append(t)
 
-        self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
         self.deqeue_thread.start()
-
-        self.request = 0
-        self.ended = False
 
     def end(self):
         if not self.ended:
@@ -1112,14 +1085,9 @@ class DemodCache:
 
         self.rf.computefilters()
 
-    def worker(self, pipein):
+    def worker(self):
         while True:
-            ispiped = False
-            if pipein.poll():
-                item = pipein.recv()
-                ispiped = True
-            else:
-                item = self.q_in.get()
+            item = self.q_in.get()
 
             if item is None or item[0] == "END":
                 return
@@ -1145,12 +1113,13 @@ class DemodCache:
                     output["MTF"] = target_MTF
                     output["request"] = request
 
+                # print(blocknum, output)
                 self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
-            if not ispiped:
-                self.q_in.task_done()
+#            if not ispiped:
+#                self.q_in.task_done()
 
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = []
@@ -1233,7 +1202,6 @@ class DemodCache:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
                         self.rf.blockcut : -self.rf.blockcut_end
                     ]
-
 
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block #
@@ -1512,6 +1480,7 @@ class Field:
 
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
+        #print(self.readloc, self.linelocs1, self.nextfieldoffset)
         if self.linelocs1 is None:
             if self.nextfieldoffset is None:
                 self.nextfieldoffset = self.rf.linelen * 200
@@ -1596,7 +1565,7 @@ class Field:
                 self.rf.DecoderParams["hz_ire"],
                 self.rf.SysParams["outputZero"],
                 self.rf.DecoderParams["vsync_ire"],
-                self.out_scale,
+                self.out_scale
             )
 
         reduced = (input - self.rf.DecoderParams["ire0"]) / self.rf.DecoderParams["hz_ire"]
