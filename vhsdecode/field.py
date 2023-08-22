@@ -67,7 +67,7 @@ def field_class_from_formats(system: str, tape_format: str):
         ):
             # These use simple chroma downconversion and filters.
             field_class = FieldPALUMatic
-        elif tape_format == "TYPEC":
+        elif tape_format == "TYPEC" or tape_format == "TYPEB":
             field_class = FieldPALTypeC
         elif tape_format == "SVHS":
             field_class = FieldPALSVHS
@@ -84,7 +84,7 @@ def field_class_from_formats(system: str, tape_format: str):
     elif system == "NTSC":
         if tape_format == "UMATIC":
             field_class = FieldNTSCUMatic
-        elif tape_format == "TYPEC":
+        elif tape_format == "TYPEC" or tape_format == "TYPEB":
             field_class = FieldNTSCTypeC
         elif tape_format == "SVHS":
             field_class = FieldNTSCSVHS

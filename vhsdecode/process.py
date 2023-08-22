@@ -406,7 +406,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.DecoderParams["hz_ire"] = self.SysParams["hz_ire"]
         self.DecoderParams["vsync_ire"] = self.SysParams["vsync_ire"]
 
-        write_chroma = tape_format != "TYPEC"
+        write_chroma = is_color_under = vhs_formats.is_color_under(tape_format)
 
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
         # can't be changed later.
@@ -444,7 +444,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,
-            tape_format != "TYPEC",
+            is_color_under,
             tape_format == "VIDEO8" or tape_format == "HI8",
             rf_options.get("skip_hsync_refine", False),
         )
@@ -530,7 +530,7 @@ class VHSRFDecode(ldd.RFDecode):
         # The following filters are for post-TBC:
         # The output sample rate is 4fsc
         self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final()
-        if tape_format != "TYPEC":
+        if is_color_under:
             self.Filters["FBurstNarrow"] = self._chroma_afc.get_burst_narrow()
             self.chroma_heterodyne = self._chroma_afc.getChromaHet()
             self.fsc_wave, self.fsc_cos_wave = self._chroma_afc.getFSCWaves()

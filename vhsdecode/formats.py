@@ -21,6 +21,9 @@ MAX_WOW = 1.06
 SysParams_NTSC["analog_audio"] = False
 SysParams_PAL["analog_audio"] = False
 
+def is_color_under(tape_format: str):
+    return tape_format not in ["TYPEC", "TYPEB"]
+
 
 def get_format_params(system: str, tape_format: str, logger):
     """Get format parameters based on video system and tape format.
@@ -90,6 +93,15 @@ def get_format_params(system: str, tape_format: str, logger):
             )
 
             return get_sysparams_pal_eiaj(SysParams_PAL), get_rfparams_pal_eiaj(
+                RFParams_PAL
+            )
+        elif tape_format == "TYPEB":
+            from vhsdecode.format_defs.typec import (
+                get_rfparams_pal_typeb,
+                get_sysparams_pal_typeb,
+            )
+
+            return get_sysparams_pal_typeb(SysParams_PAL), get_rfparams_pal_typeb(
                 RFParams_PAL
             )
         elif tape_format == "TYPEC":
@@ -186,6 +198,15 @@ def get_format_params(system: str, tape_format: str, logger):
             )
 
             return get_sysparams_ntsc_hi8(SysParams_NTSC), get_rfparams_ntsc_hi8(
+                RFParams_NTSC
+            )
+        elif tape_format == "TYPEB":
+            from vhsdecode.format_defs.typec import (
+                get_rfparams_ntsc_typeb,
+                get_sysparams_ntsc_typeb,
+            )
+
+            return get_sysparams_ntsc_typeb(SysParams_NTSC), get_rfparams_ntsc_typeb(
                 RFParams_NTSC
             )
         elif tape_format == "TYPEC":
