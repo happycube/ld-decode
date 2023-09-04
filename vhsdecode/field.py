@@ -352,6 +352,17 @@ def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len)
 
 
 class FieldShared:
+    def process(self):
+        if self.prevfield:
+            if self.readloc > self.prevfield.readloc:
+                self.field_number = self.prevfield.field_number + 1
+            else:
+                self.field_number = self.prevfield.field_number
+                ldd.logger.debug("readloc loc didn't advance.")
+        else:
+            self.field_number = 0
+        super(FieldShared, self).process()
+
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldShared, self).downscale(
             final=False, *args, **kwargs

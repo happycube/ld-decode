@@ -190,12 +190,9 @@ def process_chroma(
     do_chroma_deemphasis=False,
 ):
     # Run TBC/downscale on chroma (if new field, else uses cache)
-    if (
-        field.rf.field_number != field.rf.chroma_last_field
-        or field.rf.chroma_last_field == -1
-    ):
+    # Cached if chroma process is run multiple times on one field due to track detection.
+    if field.chroma_tbc_buffer is None:
         chroma, _, _ = ldd.Field.downscale(field, channel="demod_burst")
-        field.rf.chroma_last_field = field.rf.field_number
 
         # If chroma AFC is enabled
         if field.rf.do_cafc:
@@ -217,8 +214,9 @@ def process_chroma(
                 )
 
         field.rf.chroma_tbc_buffer = chroma
+        field.chroma_tbc_buffer = chroma
     else:
-        chroma = field.rf.chroma_tbc_buffer
+        chroma = field.chroma_tbc_buffer
 
     lineoffset = field.lineoffset + 1
     linesout = field.outlinecount
@@ -303,9 +301,14 @@ def process_chroma(
     return uphet
 
 
-def check_increment_field_no(rf):
+def check_increment_field_no(rf, field):
     """Increment field number if the raw data location moved significantly since the last call"""
     raw_loc = rf.decoder.readloc / rf.decoder.bytes_per_field
+
+    prev_loc = field.prevfield.readloc if field.prevfield else None
+
+    # print("dec readloc: ", rf.decoder.readloc, " field readloc", field.readloc, " prev readloc", prev_loc)
+    # print("dec raw loc", raw_loc, "field raw loc", field.readloc / rf.decoder.bytes_per_field)
 
     if rf.last_raw_loc is None:
         rf.last_raw_loc = raw_loc
@@ -315,6 +318,8 @@ def check_increment_field_no(rf):
     else:
         ldd.logger.debug("Raw data loc didn't advance.")
 
+    # print("self field number", field.field_number, " rf.field_number", rf.field_number)
+
     return raw_loc
 
 
@@ -322,14 +327,19 @@ def decode_chroma_simple(field):
     """Upconvert the chroma signal
     Simple upconversion with no rotation etc for umatic, vcr, eiaj and similar.
     """
+
+    field.chroma_tbc_buffer = None
+
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
     # make sure we re-check the phase occasionally.
-    raw_loc = check_increment_field_no(field.rf)
+    raw_loc = check_increment_field_no(field.rf, field)
 
     uphet = process_chroma(
         field, None, True, field.rf.options.disable_comb, disable_tracking_cafc=False
     )
+    # Release to avoid keeping this im memory - TODO: should do this in a cleaner manner.
+    field.chroma_tbc_buffer = None
     field.uphet_temp = uphet
     # Store previous raw location so we can detect if we moved in the next call.
     field.rf.last_raw_loc = raw_loc
@@ -339,17 +349,25 @@ def decode_chroma_simple(field):
 def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
+    field.chroma_tbc_buffer = None
 
     # Use field number based on raw data position
     # This may not be 100% accurate, so we may want to add some more logic to
     # make sure we re-check the phase occasionally.
-    raw_loc = check_increment_field_no(rf)
+    raw_loc = check_increment_field_no(rf, field)
 
     # If we moved significantly more than the length of one field, re-check phase
     # as we may have skipped fields.
-    if raw_loc - rf.last_raw_loc > 1.3:
-        if rf.detect_track:
-            ldd.logger.info("Possibly skipped a track, re-checking phase..")
+    # if raw_loc - rf.last_raw_loc > 1.3:
+    if (
+        not field.prevfield
+        or ((field.readloc - field.prevfield.readloc) / rf.decoder.bytes_per_field)
+        > 1.3
+    ):
+        if rf.detect_track and not rf.needs_detect:
+            ldd.logger.info(
+                "Possibly skipped a track, re-checking phase.. %s", rf.track_phase
+            )
             rf.needs_detect = True
 
     if rf.detect_track and rf.needs_detect or rf.recheck_phase:
@@ -364,6 +382,8 @@ def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False):
         do_chroma_deemphasis=do_chroma_deemphasis,
     )
     field.uphet_temp = uphet
+    # Release to avoid keeping this im memory - should do this in a cleaner manner.
+    field.chroma_tbc_buffer = None
     # Store previous raw location so we can detect if we moved in the next call.
     rf.last_raw_loc = raw_loc
     return chroma_to_u16(uphet)

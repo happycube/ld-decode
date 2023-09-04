@@ -113,8 +113,7 @@ class VHSDecode(ldd.LDdecode):
             extra_options=extra_options,
             debug_plot=debug_plot,
         )
-        self.rf.chroma_last_field = -1
-        self.rf.chroma_tbc_buffer = np.array([])
+
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
         self.rf.decoder = self
