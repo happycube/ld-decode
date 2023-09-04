@@ -238,6 +238,7 @@ if [ "$chroma_decoder" = "ntsc1d" ] || [ "$chroma_decoder" = "ntsc2d" ] || [ "$c
 	videosystem="ntsc"
 elif [ "$chroma_decoder" = "pal2d" ] || [ "$chroma_decoder" = "transform2d" ] || [ "$chroma_decoder" = "transform3d" ]; then
 	videosystem="pal"
+	fi
 fi
 
 if [ "$videosystem" = "" ]; then
