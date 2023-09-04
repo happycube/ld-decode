@@ -926,6 +926,51 @@ def findpulses(sync_ref, _, high):
     )
     return _to_pulses_list(pulses_starts, pulses_lengths)
 
+if False:
+    @njit(cache=True,nogil=True)
+    def numba_pulse_qualitycheck(prevpulse: Pulse, pulse: Pulse, inlinelen: int):
+
+        if prevpulse[0] > 0 and pulse[0] > 0:
+            exprange = (0.4, 0.6)
+        elif prevpulse[0] == 0 and pulse[0] == 0:
+            exprange = (0.9, 1.1)
+        else:  # transition to/from regular hsyncs can be .5 or 1H
+            exprange = (0.4, 1.1)
+
+        linelen = (pulse[1].start - prevpulse[1].start) / inlinelen
+        inorder = inrange(linelen, *exprange)
+
+        return inorder
+
+    @njit(cache=True,nogil=True)
+    def numba_computeLineLen(validpulses, inlinelen):
+        # determine longest run of 0's
+        longrun = [-1, -1]
+        currun = None
+        for i, v in enumerate([p[0] for p in validpulses]):
+            if v != 0:
+                if currun is not None and currun[1] > longrun[1]:
+                    longrun = currun
+                currun = None
+            elif currun is None:
+                currun = [i, 0]
+            else:
+                currun[1] += 1
+
+        if currun is not None and currun[1] > longrun[1]:
+            longrun = currun
+
+        linelens = []
+        for i in range(longrun[0] + 1, longrun[0] + longrun[1]):
+            linelen = validpulses[i][1].start - validpulses[i - 1][1].start
+            if inrange(linelen / inlinelen, 0.95, 1.05):
+                linelens.append(
+                    validpulses[i][1].start - validpulses[i - 1][1].start
+                )
+
+        # Can't prepare the mean here since numba np.mean doesn't work over lists
+        return linelens
+
 
 @njit(cache=True, nogil=True)
 def findpeaks(array, low=0):
@@ -1005,6 +1050,11 @@ def nb_mul(x, y):
 @njit(cache=True,nogil=True)
 def nb_where(x):
     return np.where(x)
+
+
+@njit(cache=True,nogil=True)
+def nb_gt(x, y):
+    return (x > y)
 
 
 @njit(cache=True,nogil=True)
