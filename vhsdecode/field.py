@@ -474,21 +474,23 @@ class FieldShared:
         self.rawpulses = self.rf.resync.get_pulses(self, check_levels)
         # self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
-            return NO_PULSES_FOUND
+            return NO_PULSES_FOUND, None
 
         self.validpulses = validpulses = self.refinepulses()
+        meanlinelen = self.computeLineLen(validpulses)
+        self.meanlinelen = meanlinelen
 
         # line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         # NOTE: This seems to get the position of the last normal vsync before the vertical blanking interval rather than line0
         # (which is only the same thing on the top field of 525-line system signals)
-        return self.getLine0(validpulses)
+        return self.getLine0(validpulses, meanlinelen), meanlinelen
 
     def compute_linelocs(self):
         has_levels = self.rf.resync.has_levels()
         # Skip vsync serration/level detect if we already have levels from a previous field and
         # the option is enabled.
         do_level_detect = not self.rf.options.saved_levels or not has_levels
-        res = self._try_get_pulses(do_level_detect)
+        res, meanlinelen = self._try_get_pulses(do_level_detect)
         if (
             res == NO_PULSES_FOUND or res[0] == None or self.sync_confidence == 0
         ) and not do_level_detect:
@@ -496,7 +498,7 @@ class FieldShared:
             # and level detection was skipped, try again
             # running the full level detection
             ldd.logger.debug("Search for pulses failed, re-checking levels")
-            res = self._try_get_pulses(True)
+            res, meanlinelen = self._try_get_pulses(True)
 
         if res == NO_PULSES_FOUND:
             ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
@@ -553,9 +555,6 @@ class FieldShared:
             if self.initphase is False:
                 ldd.logger.error("Unable to determine start of field - dropping field")
             return None, None, self.inlinelen * 100
-
-        meanlinelen = self.computeLineLen(validpulses)
-        self.meanlinelen = meanlinelen
 
         # If we don't have enough data at the end, move onto the next field
         lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
