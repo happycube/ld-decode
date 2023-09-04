@@ -126,6 +126,13 @@ def main(args=None):
         help="Enable AC3 audio decoding (NTSC only)",
     )
     parser.add_argument(
+        "--DB",
+        dest='write_db',
+        action="store_true",
+        default=False,
+        help="Enable .sqlite output",
+    )
+    parser.add_argument(
         "--start_fileloc",
         metavar="start_fileloc",
         type=float,
@@ -286,6 +293,7 @@ def main(args=None):
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "audio_filterwidth": args.audio_filterwidth,
         "AC3": args.AC3,
+        "write_db": args.write_db,
     }
 
     if vid_standard == "NTSC" and args.NTSC_color_notch_filter:

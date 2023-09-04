@@ -1,12 +1,16 @@
+import bz2
 import copy
 import itertools
+import os
 import platform
+import sqlite3
 import sys
 import threading
 import time
 import types
 
 from queue import Queue
+from textwrap import dedent
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -3400,6 +3404,9 @@ class LDdecode:
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
 
+        self.write_db = extra_options.get("write_db", [])
+        self.dbconn = None
+
         if fname_out is not None:
             self.outfile_video = open(fname_out + ".tbc", "wb")
             if self.analog_audio:
@@ -3417,6 +3424,12 @@ class LDdecode:
                 self.AC3Collector = StridedCollector(cut_begin=1024, cut_end=0)
                 self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
                 self.do_rftbc = True
+            if self.write_db:
+                if os.path.exists(fname_out + '.sqlite'):
+                    os.unlink(fname_out + '.sqlite')
+
+                self.dbconn = sqlite3.connect(fname_out + ".sqlite")
+                self.create_schema()
 
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
         if self.pipe_rftbc:
@@ -3571,7 +3584,7 @@ class LDdecode:
 
         return np.median(sync_hzs), np.median(ire0_hzs), np.mean(ire100_hzs)
 
-    def AC3filter(self, rftbc):
+    def AC3filter(self, fi, rftbc):
         self.AC3Collector.add(rftbc)
 
         blk = self.AC3Collector.get_block()
@@ -3581,41 +3594,96 @@ class LDdecode:
             odata = self.AC3Collector.cut(filtdata)
             odata = np.clip(odata / 64, -100, 100) 
 
-            self.outfile_ac3.write(np.int8(odata))
+            if self.outfile_ac3:
+                self.outfile_ac3.write(np.int8(odata))
+
+            if 'ac3' in self.write_db:
+                self.write_sqlite(fi, 'ac3', odata.tobytes())
 
             blk = self.AC3Collector.get_block()
 
-    def writeout(self, dataset):
+    def write_sqlite(self, fi, dtype, data):
+        if self.dbconn is None:
+            return
+
+        self.dbconn.execute('INSERT INTO data (seqNo, type, data) VALUES (?, ?, ?)', (fi['seqNo'], dtype, data))
+
+    def write_field(self, dataset):
         f, fi, picture, audio, efm = dataset
-        if self.digital_audio is True:
-            if self.outfile_pre_efm is not None:
+
+        if self.digital_audio:
+            if self.outfile_pre_efm:
                 self.outfile_pre_efm.write(efm.tobytes())
 
+            if 'pre_efm' in self.write_db:
+                self.write_sqlite(fi, 'pre_efm', efm.tobytes())
+
             efm_out = self.efm_pll.process(efm)
-            self.outfile_efm.write(efm_out.tobytes())
+            if self.outfile_efm:
+                self.outfile_efm.write(efm_out.tobytes())
+
+            if 'efm' in self.write_db:
+                self.write_sqlite(fi, 'efm', efm_out.tobytes())
 
         fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
+        fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
+
         self.fieldinfo.append(fi)
+
+        if self.write_db:
+            # Always write the field info to the database if it exists
+            wSNR = fi['vitsMetrics'].get('wSNR', -1)
+            bPSNR = fi['vitsMetrics'].get('bPSNR', -1)
+
+            self.dbconn.execute('''INSERT INTO fields 
+                                (seqNo, isFirstField, syncConf, diskLoc, 
+                                fileLoc, medianBurstIRE, fieldPhaseID, 
+                                decodeFaults, vitsMetrics_wSNR, vitsMetrics_bPSNR, 
+                                audioSamples, efmTValues) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                (fi['seqNo'], fi['isFirstField'], fi['syncConf'], fi['diskLoc'],
+                                fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'],
+                                fi['decodeFaults'], wSNR, bPSNR,
+                                fi['audioSamples'], fi['efmTValues']))
+            
+            # Not all fields have dropouts, so check first
+            if self.doDOD and fi["dropOuts"]:
+                dropout_lines = fi["dropOuts"]["fieldLine"]
+                dropout_starts = fi["dropOuts"]["startx"]
+                dropout_ends = fi["dropOuts"]["endx"]
+
+                for z in zip(dropout_lines, dropout_starts, dropout_ends):
+                    self.dbconn.execute('''INSERT INTO dropouts 
+                                        (seqNo, fieldLine, startx, endx) VALUES (?, ?, ?, ?)''',
+                                        (fi['seqNo'], z[0], z[1], z[2]))
 
         self.outfile_video.write(picture)
         self.fields_written += 1
 
+        if 'video' in self.write_db:
+            self.write_sqlite(fi, 'picture', picture.tobytes())
+
         if self.do_rftbc:
             rftbc = f.rf_tbc()
 
-            if self.outfile_rftbc is not None:
+            if self.outfile_rftbc:
                 self.outfile_rftbc.write(rftbc)
 
-            if self.outfile_ac3 is not None:
+            if self.outfile_ac3 or 'ac3' in self.write_db:
                 self.AC3filter(rftbc)
 
-            if self.pipe_rftbc is not None:
+            if self.pipe_rftbc:
                 self.pipe_rftbc.send(rftbc)
 
-        if audio is not None and self.outfile_audio is not None:
-            self.outfile_audio.write(audio)
+        if self.analog_audio:
+            if self.outfile_audio:
+                self.outfile_audio.write(audio)
+
+            if 'audio' in self.write_db:
+                self.write_sqlite(fi, 'audio', audio.tobytes())
+
+        self.dbconn.commit()
 
     @profile
     def decodefield(self, start, mtf_level, audio_offset, prevfield=None, initphase=False, redo=False, rv=None):
@@ -3742,9 +3810,7 @@ class LDdecode:
                 df_args = (toffset, self.mtf_level, audio_offset, prevfield, initphase, False, self.threadreturn)
 
                 self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-                #elf.decodethread.run()
                 self.decodethread.start()
-                #self.decodethread.join()
             
             # process previous run
             if f:
@@ -3835,13 +3901,13 @@ class LDdecode:
 
             if needFiller:
                 if self.lastvalidfield[not f.isFirstField] is not None:
-                    self.writeout(self.lastvalidfield[not f.isFirstField])
-                    self.writeout(self.lastvalidfield[f.isFirstField])
+                    self.write_field(self.lastvalidfield[not f.isFirstField])
+                    self.write_field(self.lastvalidfield[f.isFirstField])
 
                 # If this is the first field to be written, don't write anything
                 return f
 
-            self.writeout(self.lastvalidfield[f.isFirstField])
+            self.write_field(self.lastvalidfield[f.isFirstField])
 
         return f
 
@@ -4088,6 +4154,8 @@ class LDdecode:
                     "startx": dropout_starts,
                     "endx": dropout_ends,
                 }
+            else:
+                fi['dropOuts'] = None
 
         # This is a bitmap, not a counter
         decodeFaults = 0
@@ -4267,15 +4335,85 @@ class LDdecode:
 
         return None
 
+    def create_schema(self):
+        cur = self.dbconn.cursor()
+
+        cur.executescript(dedent('''\
+            CREATE TABLE pcmAudioParameters (
+                bits INTEGER PRIMARY KEY,
+                isLittleEndian BOOLEAN,
+                isSigned BOOLEAN,
+                sampleRate REAL
+            );
+
+            CREATE TABLE videoParameters (
+                numberOfSequentialFields INTEGER PRIMARY KEY,
+                osInfo TEXT,
+                gitBranch TEXT,
+                gitCommit TEXT,
+                system TEXT,
+                fieldWidth INTEGER,
+                sampleRate REAL,
+                black16bIre REAL,
+                white16bIre REAL,
+                fieldHeight INTEGER,
+                colourBurstStart INTEGER,
+                colourBurstEnd INTEGER,
+                activeVideoStart INTEGER,
+                activeVideoEnd INTEGER
+            );
+
+            CREATE TABLE fields (
+                seqNo INTEGER PRIMARY KEY,
+                isFirstField BOOLEAN,
+                syncConf INTEGER,
+                diskLoc REAL,
+                fileLoc INTEGER,
+                medianBurstIRE REAL,
+                fieldPhaseID INTEGER,
+                decodeFaults INTEGER,
+                vitsMetrics_wSNR REAL,
+                vitsMetrics_bPSNR REAL,
+                audioSamples INTEGER,
+                efmTValues INTEGER
+            );
+
+            CREATE TABLE data (
+                seqNo INTEGER,
+                type TEXT,
+                data BLOB,
+                PRIMARY KEY(seqNo, type),
+                FOREIGN KEY(seqNo) REFERENCES fields(seqNo)
+            );
+
+            CREATE TABLE dropOuts (
+                id INTEGER PRIMARY KEY,
+                seqNo INTEGER,
+                fieldLine INTEGER,
+                startx INTEGER,
+                endx INTEGER,
+                FOREIGN KEY(seqNo) REFERENCES fields(seqNo)
+            );'''))
+
+        self.dbconn.commit()
+
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cur.fetchall()
+        print([table[0] for table in tables])
+
+        cur.close()
+
     def build_json(self):
-        """ build up the JSON structure for file output. """
+        """ build up the base JSON structure and metadata tables for the .sqlite file. """
         jout = {}
-        jout["pcmAudioParameters"] = {
+        pcmAudioParameters = {
             "bits": 16,
             "isLittleEndian": True,
             "isSigned": True,
             "sampleRate": self.analog_audio,
         }
+
+        jout["pcmAudioParameters"] = pcmAudioParameters
 
         vp = {}
 
@@ -4320,6 +4458,23 @@ class LDdecode:
         ))
 
         jout["videoParameters"] = vp
+
+        if self.write_db:
+            # Replace existing parameter tables with current values
+            cursor = self.dbconn.cursor()
+
+            cursor.execute("""
+                INSERT OR REPLACE INTO pcmAudioParameters (bits, isLittleEndian, isSigned, sampleRate)
+                VALUES (?, ?, ?, ?)
+            """, (pcmAudioParameters["bits"], pcmAudioParameters["isLittleEndian"], pcmAudioParameters["isSigned"], pcmAudioParameters["sampleRate"]))
+
+            cursor.execute("""\
+                INSERT OR REPLACE INTO videoParameters (numberOfSequentialFields, osInfo, gitBranch, gitCommit, system, fieldWidth, sampleRate, black16bIre, white16bIre, fieldHeight, colourBurstStart, colourBurstEnd, activeVideoStart, activeVideoEnd)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (vp["numberOfSequentialFields"], vp["osInfo"], vp["gitBranch"], vp["gitCommit"], vp["system"], vp["fieldWidth"], vp["sampleRate"], vp["black16bIre"], vp["white16bIre"], vp["fieldHeight"], vp["colourBurstStart"], vp["colourBurstEnd"], vp["activeVideoStart"], vp["activeVideoEnd"]))
+
+            self.dbconn.commit()
+            cursor.close()
 
         jout["fields"] = self.fieldinfo.copy()
 
