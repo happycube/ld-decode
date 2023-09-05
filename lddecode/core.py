@@ -3648,7 +3648,7 @@ class LDdecode:
                                 fi['audioSamples'], fi['efmTValues']))
             
             # Not all fields have dropouts, so check first
-            if self.doDOD and fi["dropOuts"]:
+            if self.doDOD and "dropOuts" in fi:
                 dropout_lines = fi["dropOuts"]["fieldLine"]
                 dropout_starts = fi["dropOuts"]["startx"]
                 dropout_ends = fi["dropOuts"]["endx"]
@@ -4154,8 +4154,6 @@ class LDdecode:
                     "startx": dropout_starts,
                     "endx": dropout_ends,
                 }
-            else:
-                fi['dropOuts'] = None
 
         # This is a bitmap, not a counter
         decodeFaults = 0
