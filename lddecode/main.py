@@ -127,10 +127,19 @@ def main(args=None):
     )
     parser.add_argument(
         "--DB",
+        "--db",
         dest='write_db',
         action="store_true",
         default=False,
-        help="Enable .sqlite output",
+        help="Enable full .sqlite output",
+    )
+    parser.add_argument(
+        "--DBug",
+        "--dbug",
+        dest='write_dbug',
+        action="store_true",
+        default=False,
+        help="Enable intermediate .sqlite output (not implemented yet)",
     )
     parser.add_argument(
         "--start_fileloc",
@@ -292,8 +301,7 @@ def main(args=None):
         "deemp_mult": (args.deemp_adjust, args.deemp_adjust),
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "audio_filterwidth": args.audio_filterwidth,
-        "AC3": args.AC3,
-        "write_db": args.write_db,
+        "AC3": args.AC3
     }
 
     if vid_standard == "NTSC" and args.NTSC_color_notch_filter:
@@ -308,6 +316,23 @@ def main(args=None):
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")
         sys.exit(1)
+
+    extra_options["write_db"] = ['base']
+    if args.write_db or args.write_dbug:
+        extra_options["write_db"].append("video")
+        if args.AC3:
+            extra_options["write_db"].append("ac3")
+        if args.RF_TBC:
+            extra_options["write_db"].append("rftbc")
+        if args.prefm:
+            extra_options["write_db"].append("prefm")
+        if not args.noefm:
+            extra_options["write_db"].append("efm")
+        if not args.daa:
+            extra_options["write_db"].append("audio")
+
+    if args.write_dbug:
+        pass
 
     if args.lowband:
         extra_options["lowband"] = True

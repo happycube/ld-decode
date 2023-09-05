@@ -4397,10 +4397,6 @@ class LDdecode:
 
         self.dbconn.commit()
 
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = cur.fetchall()
-        print([table[0] for table in tables])
-
         cur.close()
 
     def build_json(self):
