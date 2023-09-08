@@ -2530,6 +2530,8 @@ class Field:
         # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
         lineoffset = self.lineoffset + 1
 
+        #print(lineinfo[linesout] - lineinfo[1])
+
         for l in range(lineoffset, linesout + lineoffset):
             if lineinfo[l + 1] > lineinfo[l]:
                 scaled = scale(
@@ -2544,7 +2546,9 @@ class Field:
                     (l - lineoffset) * outwidth : (l + 1 - lineoffset) * outwidth
                 ] = scaled
             else:
-                logger.warning("WARNING: TBC failure at line %d", l)
+                # Massive TBC error detected
+                self.sync_confidence = 1
+                #logger.warning("WARNING: TBC failure at line %d", l)
                 dsout[
                     (l - lineoffset) * outwidth : (l + 1 - lineoffset) * outwidth
                 ] = self.rf.DecoderParams["ire0"]
@@ -3799,6 +3803,11 @@ class LDdecode:
                     self.fdoffset = redo
                 else:
                     done = True
+                    fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
+                    minlength = (f.inlinelen * self.output_lines) - 2
+                    if ((f.sync_confidence < 50) and (fieldlength < minlength)):
+                        logger.warning("WARNING: Player skip detected, output will be corrupted")
+
                     self.fieldstack.insert(0, f)
                     self.audio_offset = f.audio_next_offset
 

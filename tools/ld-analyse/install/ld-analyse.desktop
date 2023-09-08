@@ -7,5 +7,6 @@ Exec=ld-analyse
 Icon=ld-analyse
 Type=Application
 Name=ld-analyse
+MimeType=application/video-tbc
 Comment=
 Categories=AudioVideo;Video;Utility;
