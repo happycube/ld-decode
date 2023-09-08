@@ -392,7 +392,7 @@ class CVBSDecode(ldd.LDdecode):
         ldd.DemodCache.__init__ = temp_init
 
         self.demodcache = ldd.DemodCache(
-            self.rf, self.infile, self.freader, num_worker_threads=self.numthreads
+            self.rf, self.infile, self.freader, None, num_worker_threads=self.numthreads
         )
 
     # Override to avoid NaN in JSON.
@@ -439,14 +439,17 @@ class CVBSDecode(ldd.LDdecode):
     def computeMetricsNTSC(self, metrics, f, fp=None):
         return None
 
-    def build_json(self, f):
-        # TODO: Make some shared function/class for stuff that is the same in cvbs and vhs-decode
+    def build_json(self):
+        # for f in self.fieldstack:
+        #    if f:
+        #        break
+        ## TODO: Make some shared function/class for stuff that is the same in cvbs and vhs-decode
         try:
-            if not f:
-                # Make sure we don't fail if the last attempted field failed to decode
-                # Might be better to fix this elsewhere.
-                f = self.prevfield
-            jout = super(CVBSDecode, self).build_json(f)
+            # if not f:
+            #    # Make sure we don't fail if the last attempted field failed to decode
+            #    # Might be better to fix this elsewhere.
+            #    f = self.prevfield
+            jout = super(CVBSDecode, self).build_json()
 
             if self.rf.color_system == "MPAL":
                 # jout["videoParameters"]["isSourcePal"] = True

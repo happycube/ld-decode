@@ -1068,7 +1068,12 @@ def n_orlt(a, x, y):
 
 
 @njit(cache=True,nogil=True)
-def angular_mean(x, cycle_len=1.0, zero_base=True):
+def n_ornotrange(a, x, y, z):
+    a |= (x < y) | (x > z)
+
+
+@njit(cache=True, nogil=True)
+def angular_mean_helper(x, cycle_len=1.0, zero_base=True):
     """ Compute the mean phase, assuming 0..1 is one phase cycle
 
         (Using this technique handles the 3.99, 5.01 issue
@@ -1076,16 +1081,12 @@ def angular_mean(x, cycle_len=1.0, zero_base=True):
         naive computation could be changed to rotate around 0.5,
         that breaks down when things are out of phase...)
     """
-    x2 = x - np.floor(x)  # not strictly necessary but slightly more precise
+    x2 = x - x.astype(np.int32)  # not strictly necessary but slightly more precise
 
     # refer to https://en.wikipedia.org/wiki/Mean_of_circular_quantities
     angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
 
-    am = np.angle(np.mean(angles)) / (np.pi * 2)
-    if zero_base and (am < 0):
-        am = 1 + am
-
-    return am
+    return angles
 
 @njit(cache=True)
 def phase_distance(x, c=0.75):
@@ -1157,6 +1158,26 @@ def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart,
 def distance_from_round(x):
     # Yes, this was a hotspot.
     return np.round(x) - x
+
+
+def init_opencl(cl, name = None):
+    # Create some context on the first available GPU
+    if 'PYOPENCL_CTX' in os.environ:
+        ctx = cl.create_some_context()
+    else:
+        ctx = None
+        # Find the first OpenCL GPU available and use it, unless
+        for p in cl.get_platforms():
+            for d in p.get_devices():
+                if d.type & cl.device_type.GPU == 1:
+                    continue
+                print("Selected device: ", d.name)
+                ctx = cl.Context(devices=(d,))
+                break
+            if ctx is not None:
+                break
+    #queue = cl.CommandQueue(ctx)
+    return ctx
 
 
 # Write the .tbc.json file (used by lddecode and notebooks)

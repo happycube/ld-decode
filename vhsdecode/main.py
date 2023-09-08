@@ -393,7 +393,7 @@ def main(args=None, use_gui=False):
     jsondumper = lddu.jsondump_thread(vhsd, outname)
 
     def cleanup():
-        jsondumper.put(vhsd.build_json(vhsd.curfield))
+        jsondumper.put(vhsd.build_json())
         vhsd.close()
         jsondumper.put(None)
 
@@ -421,7 +421,7 @@ def main(args=None, use_gui=False):
             done = True
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
-            jsondumper.put(vhsd.build_json(vhsd.curfield))
+            jsondumper.put(vhsd.build_json())
 
     print("saving JSON and exiting")
     cleanup()

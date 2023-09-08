@@ -252,7 +252,8 @@ def process_chroma(
     # Video8 PAL: Track1 0, Track2 -90
 
     if track_phase is not None and chroma_rotation:
-        if field.rf.field_number % 2 == track_phase:
+        #if field.rf.field_number % 2 == track_phase:
+        if field.field_number % 2 == track_phase:
             phase_rotation = chroma_rotation[0]
         else:
             phase_rotation = chroma_rotation[1]
@@ -303,6 +304,7 @@ def process_chroma(
 
 def check_increment_field_no(rf, field):
     """Increment field number if the raw data location moved significantly since the last call"""
+    return None
     raw_loc = rf.decoder.readloc / rf.decoder.bytes_per_field
 
     prev_loc = field.prevfield.readloc if field.prevfield else None

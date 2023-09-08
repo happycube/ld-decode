@@ -121,7 +121,7 @@ def main(args=None):
     #    ldd.rf.mtf_offset = args.MTF_offset
 
     def write_json(vhsd, outname):
-        jsondict = vhsd.build_json(vhsd.curfield)
+        jsondict = vhsd.build_json()
 
         fp = open(outname + ".tbc.json.tmp", "w")
         json.dump(jsondict, fp, indent=4)
@@ -135,7 +135,7 @@ def main(args=None):
     jsondumper = lddu.jsondump_thread(vhsd, outname)
 
     def cleanup(outname):
-        jsondumper.put(vhsd.build_json(vhsd.curfield))
+        jsondumper.put(vhsd.build_json())
         vhsd.close()
         jsondumper.put(None)
 
@@ -163,7 +163,7 @@ def main(args=None):
             done = True
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
-            jsondumper.put(vhsd.build_json(vhsd.curfield))
+            jsondumper.put(vhsd.build_json())
 
     print("saving JSON and exiting")
     cleanup(outname)

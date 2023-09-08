@@ -2,6 +2,7 @@ import math
 import os
 import time
 import numpy as np
+import threading
 import traceback
 import scipy.signal as sps
 from collections import namedtuple
@@ -126,6 +127,7 @@ class VHSDecode(ldd.LDdecode):
             self.rf,
             self.infile,
             self.freader,
+            self.rf_opts,
             num_worker_threads=self.numthreads,
         )
 
@@ -200,13 +202,13 @@ class VHSDecode(ldd.LDdecode):
     def computeMetricsNTSC(self, metrics, f, fp=None):
         return None
 
-    def build_json(self, f):
+    def build_json(self):
         try:
-            if not f:
-                # Make sure we don't fail if the last attempted field failed to decode
-                # Might be better to fix this elsewhere.
-                f = self.prevfield
-            jout = super(VHSDecode, self).build_json(f)
+            # if not f:
+            #    # Make sure we don't fail if the last attempted field failed to decode
+            #    # Might be better to fix this elsewhere.
+            #    f = self.prevfield
+            jout = super(VHSDecode, self).build_json()
 
             black = jout["videoParameters"]["black16bIre"]
             white = jout["videoParameters"]["white16bIre"]
@@ -225,6 +227,186 @@ class VHSDecode(ldd.LDdecode):
             return None
 
     def readfield(self, initphase=False):
+        done = False
+        adjusted = False
+        redo = None
+
+        if len(self.fieldstack) >= 2:
+            self.fieldstack.pop(-1)
+
+        while done is False:
+            if redo:
+                # Drop existing thread
+                if self.decodethread:
+                    self.decodethread.join()
+                    self.decodethread = None
+
+                # Start new thread
+                self.threadreturn = {}
+                df_args = (
+                    redo,
+                    self.mtf_level,
+                    self.audio_offset,
+                    self.fieldstack[0],
+                    initphase,
+                    redo,
+                    self.threadreturn,
+                )
+
+                self.decodethread = threading.Thread(
+                    target=self.decodefield, args=df_args
+                )
+                # .run() does not actually run this in the background
+                self.decodethread.run()
+                f, offset = self.threadreturn["field"], self.threadreturn["offset"]
+                self.decodethread = None
+
+                # Only allow one redo, no matter what
+                done = True
+                redo = None
+            elif self.decodethread and self.decodethread.ident:
+                self.decodethread.join()
+                self.decodethread = None
+
+                f, offset = self.threadreturn["field"], self.threadreturn["offset"]
+                # print(f, f.valid, f.readloc, offset)
+            else:  # assume first run
+                f = None
+                offset = 0
+
+            if True:
+                # Start new thread
+                self.threadreturn = {}
+                if f and f.valid:
+                    self.audio_offset = f.audio_next_offset
+                    prevfield = f
+                    toffset = self.fdoffset + offset
+                    # XXX: this is wrong somehow
+                    audio_offset = f.audio_next_offset
+                else:
+                    prevfield = None
+                    toffset = self.fdoffset
+                    audio_offset = self.audio_offset
+
+                    if offset:
+                        toffset += offset
+
+                df_args = (
+                    toffset,
+                    self.mtf_level,
+                    audio_offset,
+                    prevfield,
+                    initphase,
+                    False,
+                    self.threadreturn,
+                )
+
+                self.decodethread = threading.Thread(
+                    target=self.decodefield, args=df_args
+                )
+                # elf.decodethread.run()
+                self.decodethread.start()
+                # self.decodethread.join()
+
+            # process previous run
+            if f:
+                self.fdoffset += offset
+            elif offset is None:
+                # Probable end, so push an empty field
+                self.fieldstack.insert(0, None)
+
+            if f and f.valid:
+                picture, audio, efm = f.downscale(
+                    linesout=self.output_lines, final=True, audio=self.analog_audio
+                )
+
+                _ = self.computeMetrics(f, None, verbose=True)
+                # if "blackToWhiteRFRatio" in metrics and adjusted is False:
+                #    keep = 900 if self.isCLV else 30
+                #    self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
+                #    self.bw_ratios = self.bw_ratios[-keep:]
+
+                redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
+                if redo:
+                    redo = self.fdoffset - offset
+
+                # Perform AGC changes on first fields only to prevent luma mismatch intra-field
+                if self.useAGC and f.isFirstField and f.sync_confidence > 80:
+                    # TODO: actuall test this after changes
+                    sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
+
+                    actualwhiteIRE = f.rf.hztoire(ire100_hz)
+
+                    sync_ire_diff = nb_abs(
+                        self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"]
+                    )
+                    whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
+                    ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
+
+                    acceptable_diff = 2 if self.fields_written else 0.5
+
+                    if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
+                        hz_ire = (ire100_hz - ire0_hz) / 100
+                        vsync_ire = (sync_hz - ire0_hz) / hz_ire
+
+                        if vsync_ire > -20:
+                            logger.warning(
+                                "At field #{0}, Auto-level detection malfunction (vsync IRE computed at {1}, nominal ~= -40), possible disk skipping".format(
+                                    len(self.fieldinfo), np.round(vsync_ire, 2)
+                                )
+                            )
+                        else:
+                            redo = self.fdoffset - offset
+
+                            self.rf.DecoderParams["ire0"] = ire0_hz
+                            # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                            self.rf.DecoderParams["hz_ire"] = hz_ire
+                            self.rf.DecoderParams["vsync_ire"] = vsync_ire
+
+                if adjusted is False and redo:
+                    self.demodcache.flush_demod()
+                    adjusted = True
+                    self.fdoffset = redo
+                else:
+                    done = True
+                    self.fieldstack.insert(0, f)
+                    self.audio_offset = f.audio_next_offset
+
+            if f is None and offset is None:
+                # EOF, probably
+                return None
+
+            if self.decodethread and not self.decodethread.ident and not redo:
+                self.decodethread.start()
+            elif redo:
+                self.decodethread = None
+
+        if f is None or f.valid is False:
+            return None
+
+        if f is not None and self.fname_out is not None:
+            # Only write a FirstField first
+            if len(self.fieldinfo) == 0 and not f.isFirstField:
+                return f
+
+            # XXX: this routine currently performs a needed sanity check
+            fi, needFiller = self.buildmetadata(f)
+
+            self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
+
+            if needFiller:
+                if self.lastvalidfield[not f.isFirstField] is not None:
+                    self.writeout(self.lastvalidfield[not f.isFirstField])
+                    self.writeout(self.lastvalidfield[f.isFirstField])
+
+                # If this is the first field to be written, don't write anything
+                return f
+
+            self.writeout(self.lastvalidfield[f.isFirstField])
+
+        return f
+
+    def __readfield(self, initphase=False):
         # pretty much a retry-ing wrapper around decodefield with MTF checking
         self.prevfield = self.curfield
         done = False
