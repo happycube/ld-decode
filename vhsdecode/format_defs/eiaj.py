@@ -34,7 +34,7 @@ def get_rfparams_pal_eiaj(RFParams_PAL):
     # This has not really been stress-tested due to lack of crummy EIAJ samples.
     RFParams_PAL_EIAJ["boost_bpf_low"] = 5400000
     RFParams_PAL_EIAJ["boost_bpf_high"] = 6000000
-    RFParams_PAL_EIAJ["boost_bpf_mult"] = 1
+    RFParams_PAL_EIAJ["boost_bpf_mult"] = 0
 
     # Needs to be tweaked, just using some random values for now.
     RFParams_PAL_EIAJ["nonlinear_highpass_freq"] = 1000000
