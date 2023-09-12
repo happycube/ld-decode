@@ -170,7 +170,7 @@ def _is_valid_seq(type_list, num_pulses):
     ]
 
 
-def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _system):
+def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, num_eq_pulses):
     """
     Try a more primitive way of locating line 0 if the normal approach fails.
     This doesn't actually fine line 0, rather it locates the approx position of the last vsync before vertical blanking
@@ -237,9 +237,12 @@ def get_line0_fallback(valid_pulses, raw_pulses, demod_05, lt_vsync, linelen, _s
             )
             line_0 = first_long_pulse_pos - (3 * linelen)
 
+        offset = num_eq_pulses * linelen
+
         # If we see exactly 2 groups of 3 long pulses, assume that we are dealing with a 240p/288p signal and
         # use the second group as loc of last line
         # TODO: we also have examples where vsync is one very long pulse, need to sort that too here.
+        # TODO: Needs to be validated properly on 240p/288p input
         last_lineloc = (
             long_pulses[3][PULSE_START] - offset
             if len(long_pulses) == 6
@@ -387,7 +390,7 @@ class FieldShared:
             self.data["video"]["demod_05"],
             self.lt_vsync,
             self.inlinelen,
-            self.rf.system,
+            self.rf.SysParams["numPulses"]
         )
         # Not needed after this.
         del self.lt_vsync
