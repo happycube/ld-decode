@@ -1,8 +1,9 @@
+import argparse
 import os
 import sys
 import signal
 import traceback
-import argparse
+import time
 
 import numpy
 
@@ -397,9 +398,17 @@ def main(args=None, use_gui=False):
         vhsd.close()
         jsondumper.put(None)
 
+    # TODO: Put the stuff below this in a function so we can re-use for both vhs and cvbs
+
+    # seconddecode is taken so that setup time is not included in FPS calculation
+    firstdecode = time.time()
+    seconddecode = None
+
     while not done and vhsd.fields_written < (req_frames * 2):
         try:
             f = vhsd.readfield()
+            if not seconddecode:
+                seconddecode = time.time()
         except KeyboardInterrupt:
             print("Terminated, saving JSON and exiting")
             cleanup()
@@ -417,12 +426,23 @@ def main(args=None, use_gui=False):
             sys.exit(1)
 
         if f is None:
-            # or (args.ignoreleadout == False and vhsd.leadOut == True):
             done = True
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
             jsondumper.put(vhsd.build_json())
 
-    print("saving JSON and exiting")
+    if vhsd.fields_written:
+        timeused = time.time() - firstdecode
+        timeused2 = time.time() - seconddecode
+        frames = vhsd.fields_written // 2
+        fps = frames / timeused2
+
+        print(
+            f"\nCompleted: saving JSON and exiting.  Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)",
+            file=sys.stderr,
+        )
+    else:
+        print(f"\nCompleted without handling any frames.", file=sys.stderr)
+
     cleanup()
     sys.exit(0)
