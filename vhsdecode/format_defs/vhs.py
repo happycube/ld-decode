@@ -37,7 +37,7 @@ def fill_rfparams_svhs_shared(rfparams):
     rfparams["video_lpf_extra"] = 9210000
     rfparams["video_lpf_extra_order"] = 3
 
-    rfparams["video_hpf_extra"] = 1520000
+    rfparams["video_hpf_extra"] = 1720000
     rfparams["video_hpf_extra_order"] = 3
 
     # Low-pass filter on Y after demodulation
@@ -142,9 +142,6 @@ def get_rfparams_pal_svhs(sysparams_pal):
     RFParams_PAL_SVHS = get_rfparams_pal_vhs(sysparams_pal)
 
     fill_rfparams_svhs_shared(RFParams_PAL_SVHS)
-
-    RFParams_PAL_SVHS["deemph_mid"] = 260000
-    RFParams_PAL_SVHS["deemph_gain"] = 10
 
     RFParams_PAL_SVHS["nonlinear_highpass_freq"] = 500000
     RFParams_PAL_SVHS["nonlinear_highpass_limit_h"] = 5000
