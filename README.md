@@ -94,11 +94,7 @@ Currently standardised is 2 methods but RF capture is not limited to these metho
 
 Capture is done using an simple GUI application.
 
-[Linux Application](https://github.com/harrypm/DomesdayDuplicator#readme)
-
-[Windows Application](https://github.com/TokugawaHeavyIndustries/DomesdayDuplicator-WinBuild/releases/)
-
-[MacOS Application](https://github.com/harrypm/DomesdayDuplicator#macos-software-installation)
+[Linux Application](https://github.com/harrypm/DomesdayDuplicator#readme) / [Windows Application](https://github.com/TokugawaHeavyIndustries/DomesdayDuplicator-WinBuild/releases/) / [MacOS Application](https://github.com/harrypm/DomesdayDuplicator#macos-software-installation)
 
 Originally geared towards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing tape RF data. It consists of a custom analogue to digital board with an amplifier, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
 
@@ -165,14 +161,16 @@ On CX White Cards you use the S-Video Luma pin for the RF input, but a BNC can b
 
 ## Install A RF Tap
 
+[Hardware Installation Guide]() Goes over the install steps for VHS Decks to Sony 8mm camcorders.
 
-If you want to still use live playback or are using lower signal decks adding an 10uf (3.3uf to 100uf range works fine as well) capacitor to the test point or amplifier can stop dropouts and improve signal level, avoiding dropouts.
+If you want to still use live playback or are using lower signal decks adding an 10uf (3.3uf to 100uf range) capacitor to the test point or amplifier can stop dropouts and improve signal level, avoiding dropouts.
 
-Center is Signal, Outer is Ground, this goes for jacks and for coaxial cable.
+Center is Signal, Outer is Ground, this goes for jacks and for coaxial cable in genaral.
 
 The Negative leg (shorter) goes on test/signal point, Positive leg (longer) on cable to connector/probe
 
 While type and voltage does not matter much its best to use new/tested capacitors.
+
 ## Notes:
 
 **Note** We use Aliexpress links for wide availability globally, but local venders are a thing.
@@ -187,15 +185,15 @@ While type and voltage does not matter much its best to use new/tested capacitor
 # Windows Builds
 
 
-[Windows Setup & Downloads](https://github.com/oyvindln/vhs-decode/wiki/Windows-Build)
+[Windows Binarys Download](https://github.com/oyvindln/vhs-decode/wiki/Windows-Build)
 
-The ld-tools suit alongside a combined exe version of `ld-decode` / `vhs-decode` / `cvbs-decode` has been ported to windows. This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures inside Windows with drag and drop bat scripts. 
+The ld-tools suit alongside a combined exe version of `ld-decode` / `vhs-decode` / `cvbs-decode` has been ported to windows. This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures inside Windows with drag and drop bat scripts, hifi-decode has yet to be ported, but [RTLSDR-Decode](RTLSDR) is cross plafrom as its GNURadio based.
 
 
 # MacOS Builds
 
 
-See building on MacOS page on [MacOS Build](https://github.com/oyvindln/vhs-decode/wiki/MacOS-Build) currently install docs are only for ARM based apple products such as the M1/M1 Max and newer devices.
+See building on MacOS page on [MacOS Build](https://github.com/oyvindln/vhs-decode/wiki/MacOS-Build) install docs are only currently for ARM based apple products such as the M1/M2 lines.
 
 
 # Dependencies & Installation - Software
@@ -214,13 +212,8 @@ Some useful free tools to note for post processing are
 [StaxRip](https://github.com/staxrip/staxrip) & [Lossless Cut](https://github.com/mifi/lossless-cut) & of course [DaVinci Resolve](https://www.blackmagicdesign.com/uk/products/davinciresolve) - these give you basic editing to quickly handle uncompressed files across operating systems, and for Windows users an easy FFmpeg/AviSynth/Vapoursynth encoding and QTGMC de-interlacing experience, and full colour grading and post production ability.
 
 
-# Installation and running the software on Ubuntu/Debian
+# Installation on Linux
 
-
-By default, the main VHS-Decode script allocates only one thread, though the gen_chroma_vid scripts allocate two threads.
-
-The `make` rule of thumb of "number of logical processors, plus one" generally applies here,
-though it mainly depends on the amount of memory available to the decoder.
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
@@ -230,7 +223,9 @@ For Ubuntu 22.04 that is:
 
     sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake
 
+
 ## Install HiFi-Decode Dependencies 
+
 
 Install Sound File
 
@@ -244,17 +239,14 @@ Install Zmq
 
     sudo apt-get install libzmq3-dev
 
-## For optional GPU (Nvidia Cuda) FLAC compression support:
-
-Install dependencies for GPU FLAC compression support:
+Install dependencies for GPU (Nvidia Cards) FLAC compression support:
 
     sudo apt install make ocl-icd-opencl-dev mono-runtime
 
-## For Experimental GUI Graphical User Interface
 
-[Gooey Wiki Page](https://github.com/oyvindln/vhs-decode/wiki/GUI-Graphical-User-Interface)
+## Build VHS-Decode & LD-Tools Suite
 
-## Building
+The vhs-decode respository also has hifi-decode, cvbs-decode, ld-decode included.
 
 Download VHS-Decode:
 
@@ -286,7 +278,7 @@ To update do `git pull` while inside of the vhs-decode directory.
 # Usage
 
 
-Note with WSL2 & Ubuntu, `./` in front of applications and scripts may be needed to run them.
+Note with WSL2 & Ubuntu, `./` in front of applications and scripts may be needed to run them or to run scripts within the folder.
 
 Use `cd vhs-decode` to enter into the directory to run commands, `cd..` to go back a directory.
 
@@ -297,17 +289,24 @@ You dont actaully type `<` and `>` on your input & output files.
 
 ## Basic CX Card Setup & RF Capture
 
+* Ensure system is powered off
+* Physically Install CX Card
+* Install CXADC driver
+
+------------
+
+Connect Card to RF Tap
+
+* Find Vmux Input (Via Live Preview)
+* Configure Capture
+* Capture RF Data
+* FLAC Compress RF Data (Archive)
 
 [CXADC Readme](https://github.com/happycube/cxadc-linux3#readme) for information on how to install & configure the driver, this also goes into depth on modes.
 
 [Commands for real-time FLAC capture on CX Cards](https://github.com/happycube/cxadc-linux3/wiki/FLAC-Compression-Guide)
 
 [Naming Guide For RF Captures!](https://github.com/oyvindln/vhs-decode/wiki/Capture-Naming-Guide)
-
-* Install CX Card & Install CXADC driver
-* Find Input
-* Check Gain
-* Capture
 
 To see if you have a connection, use the live preview mode and then hook up your RF cable, normally you will see a white flash as a signal, if not change your vmux or input within a 0-2 range with the below command.
 
@@ -341,30 +340,8 @@ It is recommended to use a fast storage device with 40-100 MB/s or faster write 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Signal-Examples/Video-FM-2023-02-04-14-08-13.png" width="600" height="">
 
 
-## Decoding RF Captures
+## Compress your FM RF Captures
 
-
-Decode your captured tape to a .tbc by using:
-
-    vhs-decode [arguments] <capture file> <output name>
-
-Basic Usage Example:
-
-    ./vhs-decode --debug --pal --threads 8 --tape_format VHS --cxadc CX-White-2022.10.25.u8 my-first-decode-2022.10.25
-
-After decoding process your tapes VBI data with:
-
-    ld-process-vbi <decoded tape name>.tbc
-
-Use analyse tool to inspect decoded tape data:
-
-    ld-analyse <decoded tape name>.tbc
-
-(TBC are headerless you can open them at any time during decoding, preview is limited to what frame info has been fully written to the JSON file)
-
-<img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/ld-analyse-chroma-frame-107-2023-02-23-23-01-21.png"  width="600" height="">
-
-## Compression and Decompression
 
 For DomesDayDuplicator captures on Linux simply run:
 
@@ -376,7 +353,7 @@ For DomesDayDuplicator captures on Windows simply drag and drop on:
 
 Your `.lds` file will be compressed to an FLAC OGG `.ldf` file.
 
-For CXADC and other 8/16bit captures use the following:
+For CXADC and other standard 8-bit or 16-bit RF captures use the following:
 
 [Copy Paste FLAC Compression Commands for CXADC](https://github.com/happycube/cxadc-linux3/wiki/FLAC-Compression-Guide#post-capture-flac-compression)
 
@@ -397,18 +374,41 @@ Decompress FLAC compressed captures:
     flac -d --force-raw-format --sign=unsigned --endian=little <capture>.vhs <capture>.u16
 
 
-## Generating Colour Video Files (.TBC to Playable .MKV)
+# Decoding FM RF Captures
+
+
+Decode your captured tape to `.tbc` by using:
+
+    vhs-decode [arguments] <capture file> <output name>
+
+Basic Usage Example:
+
+    ./vhs-decode --debug --pal --threads 8 --tape_format VHS --cxadc CX-White-2022.10.25.u8 my-first-decode-2022.10.25
+
+After decoding process your tapes VBI data with:
+
+    ld-process-vbi <decoded tape name>.tbc
+
+Use analyse tool to inspect decoded tape data:
+
+    ld-analyse <decoded tape name>.tbc
+
+(`.tbc` files are headerless you can open them at any time during decoding, preview is limited to what frame info has been fully written to the JSON file updated every 100 frames or so)
+
+<img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/ld-analyse-chroma-frame-107-2023-02-23-23-01-21.png"  width="600" height="">
+
+## Exporitng to Video Files
+
 
 ### [Read the full exporting guide here](https://github.com/oyvindln/vhs-decode/wiki/Video-Exporting-&-Gen-Chroma-Scripts)
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/TV-PC-Levels.png" width="600" height="">
 
+VHS-Decode produces two timebase corrected files an S-Video signal in the file domain for VHS/Beta/Video8/Hi8 etc, It can also produce a single CVBS file for formats like SMPTE-C/B. 
 
-VHS-Decode produces two timebase corrected 16-bit `GREY16` headerless files separated into chroma/luma composite video signals in the `.tbc` format `filename.tbc` & `filename_chroma.tbc` respectively alongside `.json` and `.log` files with frame and decode information, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, ld-process-vits, ld-dropout-correct & ld-chroma-decoder etc 
+These are stored in 16-bit `GREY16` headerless files separated into chroma/luma composite video signals in the `.tbc` format `filename.tbc` & `filename_chroma.tbc` respectively alongside `.json` and `.log` files with frame and decode information, usable with the LD-Decode family of tools ld-analyse, ld-process-vbi, ld-process-vits, ld-dropout-correct & ld-chroma-decoder etc 
 
-The gen chroma scrips will use decoded .tbc files and generate standard video files - by default a lossless, interlaced top field first and high-bitrate (roughly 70-100 Mb/s) FFV1 codec video which, which although ideal for archival and further processing has only recently started to gain support in modern [NLEs](https://en.wikipedia.org/wiki/Non-linear_editing).
-
-*gen_chroma_vid.sh automatically detects PAL/NTSC based on the .JSON, although legacy scripts still exist*
+The gen chroma scrips will by default render a lossless, interlaced top field first and high-bitrate (roughly 70-100 Mb/s) FFV1 codec video which, which although ideal for archival and further processing has only recently started to gain support in modern [NLEs](https://en.wikipedia.org/wiki/Non-linear_editing).
 
 To generate .mkv files viewable in most media players, simply use the `gen_chroma_vid.sh` script below.
 
