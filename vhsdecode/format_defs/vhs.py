@@ -49,6 +49,14 @@ def fill_rfparams_svhs_shared(rfparams):
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 1.1
 
+    # SVHS uses the emphasis curve from VHS + an additional sub-emphasis filter
+    # The latter isn't properly implemented yet but
+    # adjusting the corner frequency here makes it look a bit closer
+    # than just using the values for VHS, it needs to be properly
+    # sorted though.
+    rfparams["deemph_mid"] = 350000
+    #rfparams["deemph_gain"] = 14
+
 
 def get_rfparams_pal_vhs(rfparams_pal):
     """Get RF params for PAL VHS"""
