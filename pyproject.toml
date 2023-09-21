@@ -22,10 +22,10 @@ dynamic = ["version"]
 [project.optional-dependencies]
 
 [project.scripts]
-ld-decode = "lddecode:main"
-vhs-decode = "vhsdecode:main"
-cvbs-decode = "cvbsdecode:main"
-hifi-decode = "hifidecode:main"
+ld-decode = "lddecode.main:main"
+vhs-decode = "vhsdecode.main:main"
+cvbs-decode = "cvbsdecode.main:main"
+hifi-decode = "vhsdecode.hifi.main:main"
 
 [console_scripts]
 # TODO: These should maybe be made modules too
