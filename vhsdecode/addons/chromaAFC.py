@@ -32,7 +32,6 @@ class ChromaAFC:
         self.transition_expand = 12
         percent = 100 * (-1 + (self.color_under + (2 * self.fh)) / self.color_under)
         self.max_f_dev_percents = percent, percent  # max percent down, max percent up
-        self.fft_plot = False
         self.demod_rate = demod_rate
         self.fsc_mhz = sys_params["fsc_mhz"]
         self.out_sample_rate_mhz = self.fsc_mhz * 4
@@ -349,12 +348,19 @@ class ChromaAFC:
             freqs_delta = np.abs(freqs_peaks - self.color_under)
             where_min = np.where(freqs_delta == min(freqs_delta))[0]
             peak_freq = freqs_peaks[where_min][0]
-            fh_4 = self.fh / 4
-            carrier_freq = (
-                self.fineTune(peak_freq, self.fh)
+
+            # TODO: Define this elsewhere.
+            # PAL betamax needs a wider fine tune threshold
+            # due to use of frequency half-shift.
+            fine_tune_threshold = (
+                self.fh
                 if self.tape_format == "UMATIC"
-                else self.fineTune(peak_freq, fh_4)
+                else self.fh / 2
+                if self.tape_format == "BETAMAX"
+                else self.fh / 4
             )
+
+            carrier_freq = self.fineTune(peak_freq, fine_tune_threshold)
 
             where_selected = np.where(sample_freq == carrier_freq)[0]
             self.cc_phase = (
