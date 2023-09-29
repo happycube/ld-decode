@@ -182,13 +182,16 @@ While type and voltage does not matter much its best to use new/tested capacitor
 **Note** Some UMATIC decks have an RF output on the back, however this only provides Luma RF for dropout detection and not the full signal required for RF capture.
 
 
-# Windows Builds
+# Windows Builds & WSL2
 
 
 [Windows Binarys Download](https://github.com/oyvindln/vhs-decode/wiki/Windows-Build)
 
 The ld-tools suit alongside a combined exe version of `ld-decode` / `vhs-decode` / `cvbs-decode` has been ported to windows. This allows the use of ld-analyse to view TBC files and ld-lds-converter to convert and compress DdD captures inside Windows with drag and drop bat scripts, hifi-decode has yet to be ported, but [RTLSDR-Decode](RTLSDR) is cross plafrom as its GNURadio based.
 
+[Windows Sub-System For Linux - WSL2 Setup](https://github.com/oyvindln/vhs-decode/wiki/WSL2-Setup)
+
+The decode suit can also run navtively inside WLS2 for Windows 10/11.
 
 # MacOS Builds
 
@@ -204,7 +207,7 @@ Other distributions might have outdated (or even newer) versions of certain Pyth
 
 There is a [Linux compatability doc](https://docs.google.com/document/d/132ycIMMNvdKvrNZSzbckXVEPQVLTnH_YX0Oh3lqtkkQ/edit) for various tested distributions of Linux.
 
-Its fully working on WSL2 Ubuntu 20.04 (Windows Subsystem for Linux) however issues with larger captures i.g 180gb+ may require expanding the default [virtual disk size](https://docs.microsoft.com/en-us/windows/wsl/vhd-size)
+Its fully working on WSL2 20.04 & 22.04.1 LTS (Windows Subsystem for Linux) however issues with larger captures i.g 180gb+ may require expanding the default [virtual disk size](https://docs.microsoft.com/en-us/windows/wsl/vhd-size).
 
 Other dependencies include Python 3.5+, numpy, scipy, cython, numba, pandas, Qt5, Cmake, and FFmpeg.
 
@@ -427,11 +430,12 @@ Both commands will automatically use the last file generated as the input.
 
 For editors this transcodes an FFV1/V210 output to a "*near compliant*" interlaced ProRes HQ file:
     
-    ffmpeg -hide_banner -i "$1.mkv" -vf setfield=tff -flags +ilme+ildct -c:v prores -profile:v 3 -vendor apl0 -bits_per_mb 8000 -quant_mat hq -mbs_per_slice 8 -pixel_format yuv422p10lep -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 -c:a s24le -vf setdar=4/3,setfield=tff "$1_ProResHQ.mov"
+    ffmpeg -hide_banner -i "$1.mkv" -vf setfield=tff -flags +ilme+ildct -c:v prores -profile:v 3 -vendor apl0 -bits_per_mb 8000 -quant_mat hq -mbs_per_slice 8 -pixel_format yuv422p10lep -color_range tv -color_trc bt709 -c:a s24le -vf setdar=4/3,setfield=tff "$1_ProResHQ.mov"
     
-For basic online sharing you can use this command to convert the FFV1 output to a de-interlaced lossy upscaled MP4:
+For basic online sharing you can use this command to convert the FFV1 output to a de-interlaced (bwdif) lossy upscaled 4:3 1080p MP4:
     
-    ffmpeg -hide_banner -i "$1.mkv" -vf scale=in_color_matrix=bt601:out_color_matrix=bt709:1440x1080,bwdif=1:0:0 -c:v libx264 -preset veryslow -b:v 15M -maxrate 15M -bufsize 8M -pixel_format yuv420p -color_primaries bt709 -color_trc bt709 -colorspace bt709 -aspect 4:3 -c:a libopus -b:a 192k -strict -2 -movflags +faststart -y "$1_1440x1080_lossy.mp4"
+    ffmpeg -hide_banner -i "$1.mkv" -vf scale=in_color_matrix=bt601:out_color_matrix=bt709:1440x1080,bwdif=1:0:0 -c:v libx264 -preset veryslow -b:v 15M -maxrate 15M -bufsize 8M -pixel_format yuv420p -color_trc bt709 -aspect 4:3 -c:a libopus -b:a 192k -strict -2 -movflags +faststart -y "$1_1440x1080_lossy.mp4"
+
 
 To just export the video with standard settings and the same input file name, the .tbc extention is not required.
 
@@ -465,7 +469,9 @@ Software decoding provides the full signal frame, recovery software can be used 
 
 [Ruxpin TV Teddy](https://github.com/oyvindln/vhs-decode/blob/vhs_decode/tools/ruxpin-decode/readme.pdf) (Extra audio in visable frame)
 
+
 ### Generate an video output with the top VBI area:
+
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/Jennings-With-VBI.png" width="600" height="">
 
@@ -487,6 +493,7 @@ The list below is a short list for common/daily usage but does not cover all the
 
 
 ## Sample Rate Comamnds
+
 
 By default, this is set to 40 MHz (the sample rate used internally and by the Domesday Duplicator) at 16 bits.
 
