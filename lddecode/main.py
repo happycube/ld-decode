@@ -189,6 +189,14 @@ def main(args=None):
         help="Deemphasis level multiplier",
     )
     parser.add_argument(
+        "-D",
+        "--deemp_adjust_cb",
+        metavar="deemp_adjust_cb",
+        type=float,
+        default=None,
+        help="Deemphasis level multiplier for the color burst region",
+    )
+    parser.add_argument(
         "--deemp_low",
         metavar="deemp_low",
         type=float,
@@ -282,7 +290,7 @@ def main(args=None):
         "write_RF_TBC": args.RF_TBC,
         "pipe_RF_TBC": audio_pipe,
         "write_pre_efm": args.prefm,
-        "deemp_mult": (args.deemp_adjust, args.deemp_adjust),
+        "deemp_mult": (args.deemp_adjust, args.deemp_adjust_cb if args.deemp_adjust_cb != None else args.deemp_adjust),
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "audio_filterwidth": args.audio_filterwidth,
         "AC3": args.AC3,
@@ -419,7 +427,7 @@ def main(args=None):
         timeused2 = time.time() - seconddecode
         frames = ldd.fields_written // 2
         fps = frames / timeused2
- 
+
         print(f"\nCompleted: saving JSON and exiting.  Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)", file=sys.stderr)
     else:
         print(f"\nCompleted without handling any frames.", file=sys.stderr)
