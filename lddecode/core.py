@@ -406,19 +406,19 @@ class RFDecode:
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
                 (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
-            ], 
+            ],
             pass_zero=False), [1.0]]
 
             self.Filters['AC3_fir'] = sps.butter(3,
             [
                 (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
                 (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
-            ], 
+            ],
             btype='bandpass')
 
 
             # This analog audio bandpass filter is an approximation of
-            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm, 
+            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm,
             # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
             self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
 
@@ -563,9 +563,15 @@ class RFDecode:
         # The deemphasis filter
         deemp1, deemp2 = DP["video_deemp"]
         deemp1 *= self.deemp_mult[0]
-        deemp2 *= self.deemp_mult[1]
+        deemp2 *= self.deemp_mult[0]
+        deempcb1, deempcb2 = DP["video_deemp"]
+        deempcb1 *= self.deemp_mult[1]
+        deempcb2 *= self.deemp_mult[1]
         SF["Fdeemp"] = filtfft(
             emphasis_iir(deemp1, deemp2, self.freq_hz), self.blocklen
+        )
+        SF["Fdeemp_cb"] = filtfft(
+            emphasis_iir(deempcb1, deempcb2, self.freq_hz), self.blocklen
         )
 
         # The direct opposite of the above, used in test signal generation
@@ -579,7 +585,7 @@ class RFDecode:
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
         SF["F05_offset"] = 32
         F0_5_fft = filtfft((F0_5, [1.0]), self.blocklen)
-        SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * F0_5_fft
+        SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp_cb"] * F0_5_fft
 
         SF["Fburst"] = filtfft(
             sps.butter(
@@ -1078,7 +1084,7 @@ class DemodCache:
         with self.lock:
             for k in self.block_status.keys():
                 if k < first_block:
-                    continue 
+                    continue
 
                 if prefetch_only and self.block_status[k]['prefetch'] == False:
                     continue
@@ -1196,7 +1202,7 @@ class DemodCache:
                     need_blocks.append(b)
                 elif waiting:
                     need_blocks.append(b)
-               
+
                 if not prefetch:
                     self.waiting.add(b)
 
@@ -3547,10 +3553,10 @@ class LDdecode:
             cut = field.data['video']['demod'][ls]
             freq = np.percentile(cut, 50 if len(wl) == 3 else wl[3])
             freq_ire = field.rf.hztoire(freq, spec=True)
-            
+
             if inrange(freq_ire, 95, 110):
                 ire100_hzs.append(freq)
-            
+
         for l in range(12, self.output_lines):
             lsa = field.lineslice(l, 0.25, 4)
 
@@ -3579,7 +3585,7 @@ class LDdecode:
             fftdata = np.fft.fft(blk)
             filtdata = np.fft.ifft(fftdata * self.rf.Filters['AC3']).real
             odata = self.AC3Collector.cut(filtdata)
-            odata = np.clip(odata / 64, -100, 100) 
+            odata = np.clip(odata / 64, -100, 100)
 
             self.outfile_ac3.write(np.int8(odata))
 
@@ -3626,7 +3632,7 @@ class LDdecode:
 
         rv['field'] = None
         rv['offset'] = None
-    
+
         readloc = int(start - self.rf.blockcut)
         if readloc < 0:
             readloc = 0
@@ -3715,7 +3721,7 @@ class LDdecode:
             elif self.decodethread and self.decodethread.ident:
                 self.decodethread.join()
                 self.decodethread = None
-                
+
                 f, offset = self.threadreturn['field'], self.threadreturn['offset']
                 #print(f, f.valid, f.readloc, offset)
             else: # assume first run
@@ -3745,7 +3751,7 @@ class LDdecode:
                 #elf.decodethread.run()
                 self.decodethread.start()
                 #self.decodethread.join()
-            
+
             # process previous run
             if f:
                 self.fdoffset += offset
@@ -3822,7 +3828,7 @@ class LDdecode:
 
         if f is None or f.valid is False:
             return None
-        
+
         if f is not None and self.fname_out is not None:
             # Only write a FirstField first
             if len(self.fieldinfo) == 0 and not f.isFirstField:
