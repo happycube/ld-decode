@@ -130,7 +130,15 @@ def main(args=None, use_gui=False):
         dest="nldeemp",
         action="store_true",
         default=False,
-        help="Enable non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
+        help="Enable primitive clipping non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
+    )
+    luma_group.add_argument(
+        "--sd",
+        "--sub_deemphasis",
+        dest="subdeemp",
+        action="store_true",
+        default=False,
+        help="Enable non-linear sub deemphasis. (WIP).",
     )
     luma_group.add_argument(
         "--y_comb",
@@ -324,6 +332,7 @@ def main(args=None, use_gui=False):
     rf_options["disable_dc_offset"] = not args.enable_dc_offset
     rf_options["disable_comb"] = args.disable_comb
     rf_options["nldeemp"] = args.nldeemp
+    rf_options["subdeemp"] = args.subdeemp
     rf_options["y_comb"] = args.y_comb
     rf_options["cafc"] = args.cafc
     rf_options["sync_clip"] = args.sync_clip

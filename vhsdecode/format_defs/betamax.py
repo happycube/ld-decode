@@ -5,17 +5,17 @@ def get_rfparams_pal_betamax(rfparams_pal):
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking, this is a bit random as of now.
-    rfparams["video_bpf_low"] = 2000000
+    rfparams["video_bpf_low"] = 1800000
     rfparams["video_bpf_high"] = 5880000
     # Band-pass filter order.
     # Order may be fine as is.
-    rfparams["video_bpf_order"] = 1
+    rfparams["video_bpf_order"] = 2
     # Sharper upper cutoff to get rid of high-frequency junk.
     rfparams["video_lpf_extra"] = 6010000
     rfparams["video_lpf_extra_order"] = 3
 
-    rfparams["video_hpf_extra"] = 1520000
-    rfparams["video_hpf_extra_order"] = 1
+    rfparams["video_hpf_extra"] = 1320000
+    rfparams["video_hpf_extra_order"] = 2
 
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 3500000
@@ -70,20 +70,21 @@ def get_rfparams_pal_betamax(rfparams_pal):
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
-    #rfparams["deemph_mid"] = 330000
-    #rfparams["deemph_gain"] = 13.5
+    # rfparams["deemph_mid"] = 330000
+    # rfparams["deemph_gain"] = 13.5
     rfparams["deemph_mid"] = 300000
     rfparams["deemph_gain"] = 12.5
 
-
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
-    rfparams["nonlinear_highpass_freq"] = 600000
+    rfparams["nonlinear_highpass_freq"] = 520000
+    rfparams["nonlinear_bandpass_upper"] = 4.5e6
+    rfparams["nonlinear_exp_scaling"] = 0.3
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
 
     # Phase rotation applied to chroma signal on each hsync for each track.
-    rfparams["chroma_rotation"] = [0,0]
+    rfparams["chroma_rotation"] = [0, 0]
 
     return rfparams
 
@@ -106,6 +107,10 @@ def get_sysparams_pal_betamax(sysparams_pal):
     # This has to be low enough to avoid clipping, so we have to
     # tell the chroma decoder to boost it by a bit afterwards.
     sysparams["burst_abs_ref"] = 5000
+
+    sysparams["nonlinear_deviation"] = sysparams["hz_ire"] * (
+        100 + (-sysparams["vsync_ire"])
+    )
 
     return sysparams
 
@@ -173,7 +178,7 @@ def _fill_rfparams_ntsc_betamax_common(rfparams):
     rfparams["nonlinear_highpass_limit_l"] = -20000
 
     # Phase rotation applied (in 90 degree / Pi/2 radian steps) to chroma signal on each hsync for each track.
-    rfparams["chroma_rotation"] = [2,0]
+    rfparams["chroma_rotation"] = [2, 0]
 
 
 def get_rfparams_ntsc_betamax(rfparams_ntsc):
@@ -182,11 +187,12 @@ def get_rfparams_ntsc_betamax(rfparams_ntsc):
 
     return rfparams
 
+
 def get_rfparams_ntsc_betamax_hifi(rfparams_ntsc):
     rfparams = {**rfparams_ntsc}
     _fill_rfparams_ntsc_betamax_common(rfparams)
 
-        # Band-pass filter for Video rf.
+    # Band-pass filter for Video rf.
     # TODO: Needs tweaking, this is a bit random as of now.
     rfparams["video_bpf_low"] = 2000000
     rfparams["video_bpf_high"] = 5880000

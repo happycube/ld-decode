@@ -29,6 +29,7 @@ from vhsdecode.video_eq import VideoEQ
 from vhsdecode.doc import DodOptions
 from vhsdecode.field_averages import FieldAverage
 from vhsdecode.load_params_json import override_params
+from vhsdecode.nonlinear_filter import sub_deemphasis
 
 
 def parent_system(system):
@@ -599,6 +600,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "tape_format",
                 "disable_comb",
                 "nldeemp",
+                "subdeemp",
                 "disable_right_hsync",
                 "sync_clip",
                 "disable_dc_offset",
@@ -616,12 +618,17 @@ class VHSRFDecode(ldd.RFDecode):
             tape_format,
             rf_options.get("disable_comb", False) or is_secam(system),
             rf_options.get("nldeemp", False),
+            rf_options.get("subdeemp", False),
             rf_options.get("disable_right_hsync", False),
             rf_options.get("sync_clip", False),
             rf_options.get("disable_dc_offset", False),
             tape_format == "VHS",
             # Always use this if we are decoding TYPEC since it doesn't have normal vsync.
-            rf_options.get("fallback_vsync", False) or tape_format == "TYPEC",
+            # also enable by default with EIAJ since that was typically used with a primitive sync gen
+            # which output not quite standard vsync.
+            rf_options.get("fallback_vsync", False)
+            or tape_format == "TYPEC"
+            or tape_format == "EIAJ",
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,
@@ -640,6 +647,19 @@ class VHSRFDecode(ldd.RFDecode):
             self.SysParams["vsync_ire"],
             self.SysParams["ire0"],
             self.SysParams["vsyncPulseUS"],
+        )
+
+        #
+        self._sub_emphasis_params = namedtuple(
+            "SubEmphasisParams", "exponential_scaling scaling_1 scaling_2 deviation"
+        )(
+            self.DecoderParams.get("nonlinear_exp_scaling", 0.4),
+            self.DecoderParams.get("nonlinear_scaling_1", None),
+            self.DecoderParams.get("nonlinear_scaling_2", None),
+            self.SysParams.get(
+                "nonlinear_deviation",
+                self._sysparams_const.hz_ire * (100 + -self._sysparams_const.vsync_ire),
+            ),
         )
 
         self.debug_plot = debug_plot
@@ -909,6 +929,8 @@ class VHSRFDecode(ldd.RFDecode):
         # )
         # chroma_notch_fft = filtfft(chroma_notch, self.blocklen, False)
 
+        self.Filters["FDeemp"] = filter_deemp
+
         self.Filters["FVideo"] = filter_deemp * filter_video_lpf
         if self.options.double_lpf:
             # Double up the lpf to possibly closer emulate
@@ -927,15 +949,36 @@ class VHSRFDecode(ldd.RFDecode):
         #     output="sos",
         # )
 
-        if self.options.nldeemp:
+        if self.options.nldeemp or self.options.subdeemp:
+            upper_freq = (
+                DP.get(
+                    "nonlinear_bandpass_upper",
+                    min(DP["video_lpf_freq"] * 1.5, self.freq_hz_half - 1),
+                )
+                / self.freq_hz_half
+            )
             SF["NLHighPassF"] = filtfft(
                 sps.butter(
                     1,
-                    [DP["nonlinear_highpass_freq"] / self.freq_hz_half],
-                    btype="highpass",
+                    [DP["nonlinear_highpass_freq"] / self.freq_hz_half, upper_freq],
+                    btype="bandpass",
                 ),
                 self.blocklen,
                 whole=False,
+            )
+
+        if (
+            self.debug_plot
+            and self.debug_plot.is_plot_requested("nldeemp")
+            and self.options.subdeemp
+        ):
+            from vhsdecode.nonlinear_filter import test_filter
+
+            test_filter(
+                self.Filters,
+                self.freq_hz,
+                self.blocklen,
+                (self._sysparams_const.hz_ire * 143.0),
             )
 
         if self.debug_plot and self.debug_plot.is_plot_requested("deemphasis"):
@@ -1058,7 +1101,17 @@ class VHSRFDecode(ldd.RFDecode):
 
             # And subtract it from the output signal.
             out_video -= hf_part
-            # out_video = hf_part + self.iretohz(50)
+
+        if self.options.subdeemp:
+            out_video = sub_deemphasis(
+                out_video,
+                out_video_fft,
+                self.Filters,
+                self._sub_emphasis_params.deviation,
+                self._sub_emphasis_params.exponential_scaling,
+                self._sub_emphasis_params.scaling_1,
+                self._sub_emphasis_params.scaling_2,
+            )
 
         del out_video_fft
 

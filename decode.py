@@ -7,7 +7,7 @@ from importlib import import_module
 
 
 def print_options():
-    print("Options are cvbs, ld, vhs")
+    print("Options are vhs, cvbs, ld, hifi")
 
 
 def main(argv):
@@ -24,11 +24,13 @@ def main(argv):
         vhsmain()
     elif to_run == "cvbs":
         from cvbsdecode.main import main as cvbsmain
-
         cvbsmain()
     elif to_run == 'ld':
         from lddecode.main import main as ldmain
         ldmain(sys.argv[1:])
+    elif to_run == 'hifi':
+        from vhsdecode.hifi.main import main as hifimain
+        hifimain(sys.argv[1:])
     else:
         print_options()
 

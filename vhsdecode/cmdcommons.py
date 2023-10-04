@@ -1,5 +1,6 @@
 import argparse
 import lddecode.utils as lddu
+import sys
 
 DDD_FREQ = 40
 CXADC_FREQ = (8 * 315.0) / 88.0  # 28.636363636
