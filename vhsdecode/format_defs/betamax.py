@@ -43,12 +43,6 @@ def get_rfparams_pal_betamax(rfparams_pal):
     # Video Y FM de-emphasis (1.25~1.35µs)
     rfparams["deemph_tau"] = 1.30e-6
 
-    # Temporary video emphasis filter constants
-    # Ideally we would calculate this based on tau and 'x' value, for now
-    # it's eyeballed based on graph and output.
-    # rfparams["deemph_mid"] = 260000
-    # rfparams["deemph_gain"] = 14
-
     # Filter to pull out high frequencies for high frequency boost
     # This should cover the area around reference white.
     # Used to reduce streaks due to amplitude loss on phase change around
@@ -58,15 +52,6 @@ def get_rfparams_pal_betamax(rfparams_pal):
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 2
 
-    # Parameters for high-pass filter used for non-linear deemphasis, these are
-    # probably not correct.
-    # rfparams["nonlinear_highpass_freq"] = 600000
-    # rfparams["nonlinear_highpass_limit_h"] = 5000
-    # rfparams["nonlinear_highpass_limit_l"] = -20000
-
-    """Fill in parameters that are shared between systems for VHS"""
-
-    # PAL and NTSC uses the same main de-emphasis
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
@@ -84,6 +69,7 @@ def get_rfparams_pal_betamax(rfparams_pal):
     rfparams["nonlinear_highpass_limit_l"] = -20000
 
     # Phase rotation applied to chroma signal on each hsync for each track.
+    # Not used on PAL Betamax
     rfparams["chroma_rotation"] = [0, 0]
 
     return rfparams

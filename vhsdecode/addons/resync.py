@@ -52,7 +52,6 @@ def check_levels(data, old_sync, new_sync, new_blank, vsync_hz_ref, hz_ire, full
 
 # search for black level on back porch
 def _pulses_blacklevel(demod_05, freq_mhz: float, pulses, vsync_locs, synclevel):
-
     if not vsync_locs or len(vsync_locs) == 0:
         return None
 
@@ -281,7 +280,6 @@ class FieldState:
 
 class Resync:
     def __init__(self, fs, sysparams, sysparams_const, divisor=1, debug=False):
-
         self.divisor = divisor
         self.debug = debug
         self.samp_rate = fs
@@ -297,7 +295,9 @@ class Resync:
         # longest variant being ones where all of vsync is just one long pulse.
         self._long_pulse_max = self.linelen * 5
         # Last half-way point between blank/sync we used when looking for pulses.
-        self._last_pulse_threshold = findpulses_range(sysparams_const, sysparams_const.vsync_hz)
+        self._last_pulse_threshold = findpulses_range(
+            sysparams_const, sysparams_const.vsync_hz
+        )
 
         # self._temp_c = 0
 
@@ -361,7 +361,6 @@ class Resync:
     def pulses_levels(
         self, field, sp, pulses, pulse_level=0, store_in_field_state=False
     ):
-
         vsync_len_px = field.usectoinpx(sp.vsync_pulse_us)
         min_len = vsync_len_px * 0.8
         max_len = vsync_len_px * 1.2
@@ -410,9 +409,9 @@ class Resync:
             ax1.axhline(pulse_level, color="#00FF00")
             if blacklevel is not math.nan:
                 ax1.axhline(blacklevel, color="#000000")
-            for p in pulses:
-                ax2.axvline(p.start, color="#00FF00")
-                ax2.axvline(p.start + p.len, color="#0000FF")
+            for ps in pulses:
+                ax2.axvline(ps.start, color="#00FF00")
+                ax2.axvline(ps.start + ps.len, color="#0000FF")
             for loc in vsync_locs:
                 ax2.axvline(pulses[loc].start, color="#FF0000")
             # ax2.plot(self.Filters["FVideo05"])
@@ -428,12 +427,17 @@ class Resync:
                 return None, None
         else:
             # Make sure these levels are sane before using them.
-            if self.level_check(
-                field.rf.sysparams_const,
-                synclevel,
-                blacklevel,
-                field.data["video"]["demod_05"],
-                False,
+            # Also don't save if we only found 1 or 2 vsyncs in case
+            # they were false positives.
+            if (
+                self.level_check(
+                    field.rf.sysparams_const,
+                    synclevel,
+                    blacklevel,
+                    field.data["video"]["demod_05"],
+                    True,
+                )
+                and len(vsync_means) > 3
             ):
                 if store_in_field_state:
                     self._field_state.set_levels(synclevel, blacklevel)
@@ -558,6 +562,7 @@ class Resync:
 
         # the tape chewing test passed, then it should find sync
         pulse_hz_min, pulse_hz_max = findpulses_range(sp, sync, blank_hz=blank)
+
         pulses = self.findpulses(demod_05, pulse_hz_max)
 
         if False:
