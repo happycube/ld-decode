@@ -477,9 +477,10 @@ class RFDecode:
             np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase))
         )
 
-        emp = filtfft(emphasis_iir(1/0.5e+6, 1/2.5e+6, self.freq_hz), self.blocklen)
+#        emp = filtfft(emphasis_iir(1/0.5e+6, 1/2.5e+6, self.freq_hz), self.blocklen)
 
-        self.Filters["Fefm"] = coeffs * (emp ** 0.5) * 8
+#        self.Filters["Fefm"] = coeffs * (emp ** 0.5) * 8
+        self.Filters["Fefm"] = coeffs * 8
 
     def computevideofilters(self):
         self.Filters = {}
