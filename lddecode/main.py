@@ -76,14 +76,14 @@ def main(args=None):
         "--MTF",
         metavar="mtf",
         type=float,
-        default=None,
+        default=1.0,
         help="mtf compensation multiplier",
     )
     parser.add_argument(
         "--MTF_offset",
         metavar="mtf_offset",
         type=float,
-        default=None,
+        default=0,
         help="mtf compensation offset",
     )
     parser.add_argument(
@@ -181,26 +181,18 @@ def main(args=None):
     )
 
     parser.add_argument(
-        "-d",
-        "--deemp_adjust",
-        metavar="deemp_adjust",
-        type=float,
-        default=1.0,
-        help="Deemphasis level multiplier",
-    )
-    parser.add_argument(
         "--deemp_low",
         metavar="deemp_low",
         type=float,
         default=0,
-        help="Deemphasis low coefficient",
+        help="Deemphasis low frequency in nsecs (defaults:  NTSC 3.125mhz, PAL 2.5mhz)",
     )
     parser.add_argument(
         "--deemp_high",
         metavar="deemp_high",
         type=float,
         default=0,
-        help="Deemphasis high coefficient",
+        help="Deemphasis high frequency in mhz (defaults:  NTSC 8.33mhz, PAL 10mhz)",
     )
 
     parser.add_argument(
@@ -282,8 +274,9 @@ def main(args=None):
         "write_RF_TBC": args.RF_TBC,
         "pipe_RF_TBC": audio_pipe,
         "write_pre_efm": args.prefm,
-        "deemp_mult": (args.deemp_adjust, args.deemp_adjust),
         "deemp_coeff": (args.deemp_low, args.deemp_high),
+        "MTF_level": args.MTF,
+        "MTF_offset": args.MTF_offset,
         "audio_filterwidth": args.audio_filterwidth,
         "AC3": args.AC3,
     }
@@ -349,12 +342,6 @@ def main(args=None):
         if ldd.seek(args.seek if firstframe == 0 else firstframe, args.seek) is None:
             print("ERROR: Seeking failed", file=sys.stderr)
             sys.exit(1)
-
-    if args.MTF is not None:
-        ldd.rf.mtf_mult = args.MTF
-
-    if args.MTF_offset is not None:
-        ldd.rf.mtf_offset = args.MTF_offset
 
     DecoderParamsOverride = {}
     if args.vbpf_high is not None:

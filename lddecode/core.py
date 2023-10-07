@@ -324,8 +324,8 @@ class RFDecode:
         self.freq_hz = self.freq * 1000000
         self.freq_hz_half = self.freq_hz / 2
 
-        self.mtf_mult = 1.0
-        self.mtf_offset = 0
+        self.mtf_mult   = extra_options.get("MTF_level", 1.0)
+        self.mtf_offset = extra_options.get("MTF_offset", 0)
 
         if system == "NTSC":
             self.SysParams = copy.deepcopy(SysParams_NTSC)
@@ -354,15 +354,17 @@ class RFDecode:
         if fw is not None and fw > 0:
             self.DecoderParams['audio_filterwidth'] = fw
 
-        self.deemp_mult = extra_options.get("deemp_mult", (1.0, 1.0))
-
         deemp = list(self.DecoderParams["video_deemp"])
+
+        # note that deemp[0] is the t1 (high freuqency) coefficient, and 
+        # deemp[1] is the t2 (low frequency) one.  These are passed in as
+        # mhz, but need to be converted to seconds.3
 
         deemp_low, deemp_high = extra_options.get("deemp_coeff", (0, 0))
         if deemp_low > 0:
-            deemp[0] = deemp_low
+            deemp[1] = 1 / (deemp_low  * 1000000)
         if deemp_high > 0:
-            deemp[1] = deemp_high
+            deemp[0] = 1 / (deemp_high * 1000000)
 
         self.DecoderParams["video_deemp"] = deemp
 
@@ -562,8 +564,6 @@ class RFDecode:
 
         # The deemphasis filter
         deemp1, deemp2 = DP["video_deemp"]
-        deemp1 *= self.deemp_mult[0]
-        deemp2 *= self.deemp_mult[1]
         SF["Fdeemp"] = filtfft(
             emphasis_iir(deemp1, deemp2, self.freq_hz), self.blocklen
         )
@@ -679,8 +679,8 @@ class RFDecode:
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
         mtf_level *= self.mtf_mult
-        mtf_level *= self.DecoderParams["MTF_basemult"]
         mtf_level += self.mtf_offset
+        mtf_level *= self.DecoderParams["MTF_basemult"]
 
         return self.demodblock_cpu(data, mtf_level, fftdata, cut)
 

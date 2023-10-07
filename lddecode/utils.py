@@ -625,8 +625,9 @@ def emphasis_iir(t1, t2, fs):
 
     # Zero at t1, pole at t2
     tf_b, tf_a = sps.zpk2tf([-w1], [-w2], w2 / w1)
-    return sps.bilinear(tf_b, tf_a, fs)
+    rv = sps.bilinear(tf_b, tf_a, fs)
 
+    return rv
 
 # This converts a regular B, A filter to an FFT of our selected block length
 def filtfft(filt, blocklen):
