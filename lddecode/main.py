@@ -194,6 +194,13 @@ def main(args=None):
         default=0,
         help="Deemphasis high frequency in mhz (defaults:  NTSC 8.33mhz, PAL 10mhz)",
     )
+    parser.add_argument(
+        "--deemp_strength",
+        metavar="deemp_str",
+        type=float,
+        default=0,
+        help="Strength of deemphasis (default 1.0)",
+    )
 
     parser.add_argument(
         "-t",
@@ -275,6 +282,7 @@ def main(args=None):
         "pipe_RF_TBC": audio_pipe,
         "write_pre_efm": args.prefm,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
+        "deemp_str": args.deemp_strength,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
         "audio_filterwidth": args.audio_filterwidth,

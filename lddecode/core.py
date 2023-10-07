@@ -366,7 +366,8 @@ class RFDecode:
         if deemp_high > 0:
             deemp[0] = 1 / (deemp_high * 1000000)
 
-        self.DecoderParams["video_deemp"] = deemp
+        self.DecoderParams["video_deemp"]          = deemp
+        self.DecoderParams["video_deemp_strength"] = extra_options.get("deemp_str", 1.0)
 
         linelen = self.freq_hz / (1000000.0 / self.SysParams["line_period"])
         self.linelen = int(np.round(linelen))
@@ -572,7 +573,7 @@ class RFDecode:
         SF["Femp"] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
 
         # Post processing:  lowpass filter + deemp
-        SF["FVideo"] = SF["Fvideo_lpf"] * SF["Fdeemp"]
+        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP['video_deemp_strength'])
 
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
