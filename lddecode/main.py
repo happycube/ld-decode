@@ -198,7 +198,7 @@ def main(args=None):
         "--deemp_strength",
         metavar="deemp_str",
         type=float,
-        default=0,
+        default=1,
         help="Strength of deemphasis (default 1.0)",
     )
 
