@@ -35,7 +35,7 @@ endif()
 
 option(BUILD_PYTHON
     "Build and install ld-decode's Python library and tools"
-    ON
+    OFF
 )
 
 # Check for dependencies
