@@ -226,6 +226,9 @@ For Ubuntu 22.04 that is:
 
     sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake
 
+Install pip
+
+    sudo apt install python3-pip
 
 ## Install HiFi-Decode Dependencies 
 
@@ -241,6 +244,10 @@ Install GNU Radio
 Install Zmq
 
     sudo apt-get install libzmq3-dev
+
+Install pyhht
+
+    pip install pyhht
 
 Install dependencies for GPU (Nvidia Cards) FLAC compression support:
 
