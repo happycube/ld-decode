@@ -202,54 +202,36 @@ See building on MacOS page on [MacOS Build](https://github.com/oyvindln/vhs-deco
 # Dependencies & Installation - Software
 
 
-VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest versions of Ubuntu and Linux Mint.
+VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest versions of Ubuntu, Debian and Linux Mint.
 Other distributions might have outdated (or even newer) versions of certain Python libraries or other dependencies, breaking compatibility.
 
 There is a [Linux compatability doc](https://docs.google.com/document/d/132ycIMMNvdKvrNZSzbckXVEPQVLTnH_YX0Oh3lqtkkQ/edit) for various tested distributions of Linux.
 
 Its fully working on WSL2 20.04 & 22.04.1 LTS (Windows Subsystem for Linux) however issues with larger captures i.g 180gb+ may require expanding the default [virtual disk size](https://docs.microsoft.com/en-us/windows/wsl/vhd-size).
 
-Other dependencies include Python 3.5+, numpy, scipy, cython, numba, pandas, Qt5, Cmake, and FFmpeg.
+Other dependencies include Python 3.8+, numpy, scipy, cython, numba, pandas, Qt5, Cmake, and FFmpeg.
 
 Some useful free tools to note for post processing are
 [StaxRip](https://github.com/staxrip/staxrip) & [Lossless Cut](https://github.com/mifi/lossless-cut) & of course [DaVinci Resolve](https://www.blackmagicdesign.com/uk/products/davinciresolve) - these give you basic editing to quickly handle uncompressed files across operating systems, and for Windows users an easy FFmpeg/AviSynth/Vapoursynth encoding and QTGMC de-interlacing experience, and full colour grading and post production ability.
 
 
-# Installation on Linux
-
+# Installation on Linux (Ubuntu/Debian-based)
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
-    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make cython3 cmake
+    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils make cython3 cmake pipx
 
 For Ubuntu 22.04 that is:
 
-    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake
+    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-distutils pkg-config make cython3 cmake pipx
 
-Install pip
+Set up pipx
 
-    sudo apt install python3-pip
+    pipx ensurepath
 
-## Install HiFi-Decode Dependencies 
+(Alternatively, a [python virtual environment](https://docs.python.org/3/library/venv.html) can be used instead of using pipx)
 
-
-Install Sound File
-
-    pip3 install -I soundfile==0.10.3.post1
-
-Install GNU Radio
-
-    sudo apt-get install gnuradio
-
-Install Zmq
-
-    sudo apt-get install libzmq3-dev
-
-Install pyhht
-
-    pip install pyhht
-
-Install dependencies for GPU (Nvidia Cards) FLAC compression support:
+Optional dependencies for GPU (Nvidia Cards) FLAC compression support:
 
     sudo apt install make ocl-icd-opencl-dev mono-runtime
 
@@ -266,7 +248,9 @@ Install VHS-Decode:
 
     cd vhs-decode
 
-    sudo ./setup.py install
+Build and install vhs-decode via pipx
+
+    pipx install .
 
 Compile and Install ld-tools suite: (Required)
 
@@ -275,12 +259,15 @@ Compile and Install ld-tools suite: (Required)
     cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5
     make -j4
     sudo make install
+   
 
 Go back to the main directory with 
 
     cd .. 
 
 To update do `git pull` while inside of the vhs-decode directory.
+To update to the latest git version of vhs-decode/ld-decode/hi-fi decode, run `pipx install .` inside the vhs-decode directory after running `git pull`
+To update the tools to the latest version, the steps under "Compile and Install ld-tools suite: (Required)" has to be re-ran after a `git pull`. The tools are not updated very often.
 
 **Note:** debian/ubuntu does not have a qt6 version of qwt in repositories as of yet so you have to inform the build script to use Qt5 if both qt5 and qt6 are installed with -DUSE_QT_VERSION=5 as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
 
