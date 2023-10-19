@@ -298,7 +298,7 @@ def main(args=None, use_gui=False):
     sample_freq = select_sample_freq(args)
 
     loader_input_freq = sample_freq if not args.no_resample else None
-    if sample_freq == 40 and filename.endswith(".lds"):
+    if sample_freq == 40 and (filename.endswith(".lds") or filename.endswith(".ldf")):
         # Needs to be set to 0 so the loader does not try to resample.
         # TODO: Fix this properly
         loader_input_freq = None

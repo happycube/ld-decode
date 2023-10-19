@@ -13,12 +13,16 @@ def fill_rfparams_video8_shared(rfparams):
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value
     # video8 uses same time constant as vhs, but lower 'x' value
-    rfparams["deemph_mid"] = 260000
-    rfparams["deemph_gain"] = 14
+    rfparams["deemph_mid"] = 273755.82
+    rfparams["deemph_gain"] = 13.9794
+    rfparams["deemph_q"] = 0.4613901
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
-    rfparams["nonlinear_highpass_freq"] = 600000
+    rfparams["nonlinear_highpass_freq"] = 210000
+    rfparams["nonlinear_exp_scaling"] = 0.38
+    rfparams["nonlinear_scaling_1"] = 0.35
+    #rfparams["nonlinear_scaling_2"] = 0.65
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
 

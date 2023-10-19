@@ -57,14 +57,15 @@ def get_rfparams_pal_betamax(rfparams_pal):
     # it's eyeballed based on graph and output.
     # rfparams["deemph_mid"] = 330000
     # rfparams["deemph_gain"] = 13.5
-    rfparams["deemph_mid"] = 300000
+    rfparams["deemph_mid"] = 330000
     rfparams["deemph_gain"] = 12.5
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
     rfparams["nonlinear_highpass_freq"] = 662300
     rfparams["nonlinear_bandpass_upper"] = 4.5e6
-    rfparams["nonlinear_exp_scaling"] = 0.3
+    rfparams["nonlinear_exp_scaling"] = 0.25
+    rfparams["nonlinear_scaling_1"] = 0.7
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
 

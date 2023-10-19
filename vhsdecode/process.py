@@ -653,7 +653,7 @@ class VHSRFDecode(ldd.RFDecode):
         self._sub_emphasis_params = namedtuple(
             "SubEmphasisParams", "exponential_scaling scaling_1 scaling_2 deviation"
         )(
-            self.DecoderParams.get("nonlinear_exp_scaling", 0.4),
+            self.DecoderParams.get("nonlinear_exp_scaling", 0.25),
             self.DecoderParams.get("nonlinear_scaling_1", None),
             self.DecoderParams.get("nonlinear_scaling_2", None),
             self.SysParams.get(
@@ -892,7 +892,9 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         # Video (luma) main de-emphasis
-        db, da = FMDeEmphasisB(self.freq_hz, DP["deemph_gain"], DP["deemph_mid"]).get()
+        db, da = FMDeEmphasisB(
+            self.freq_hz, DP["deemph_gain"], DP["deemph_mid"], DP.get("deemph_q", 1 / 2)
+        ).get()
 
         filter_deemp = filtfft((db, da), self.blocklen, whole=False)
 
@@ -950,22 +952,30 @@ class VHSRFDecode(ldd.RFDecode):
         # )
 
         if self.options.nldeemp or self.options.subdeemp:
-            upper_freq = (
-                DP.get(
-                    "nonlinear_bandpass_upper",
-                    min(DP["video_lpf_freq"] * 1.5, self.freq_hz_half - 1),
+            upper_freq = DP.get("nonlinear_bandpass_upper", None)
+            if upper_freq:
+                SF["NLHighPassF"] = filtfft(
+                    sps.butter(
+                        1,
+                        [
+                            DP["nonlinear_highpass_freq"] / self.freq_hz_half,
+                            upper_freq / self.freq_hz_half,
+                        ],
+                        btype="bandpass",
+                    ),
+                    self.blocklen,
+                    whole=False,
                 )
-                / self.freq_hz_half
-            )
-            SF["NLHighPassF"] = filtfft(
-                sps.butter(
-                    1,
-                    [DP["nonlinear_highpass_freq"] / self.freq_hz_half, upper_freq],
-                    btype="bandpass",
-                ),
-                self.blocklen,
-                whole=False,
-            )
+            else:
+                SF["NLHighPassF"] = filtfft(
+                    sps.butter(
+                        1,
+                        [DP["nonlinear_highpass_freq"] / self.freq_hz_half],
+                        btype="highpass",
+                    ),
+                    self.blocklen,
+                    whole=False,
+                )
 
         if (
             self.debug_plot
@@ -979,6 +989,7 @@ class VHSRFDecode(ldd.RFDecode):
                 self.freq_hz,
                 self.blocklen,
                 (self._sysparams_const.hz_ire * 143.0),
+                self._sub_emphasis_params,
             )
 
         if self.debug_plot and self.debug_plot.is_plot_requested("deemphasis"):

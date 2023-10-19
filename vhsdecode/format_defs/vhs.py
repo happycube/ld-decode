@@ -11,8 +11,9 @@ def fill_rfparams_vhs_shared(rfparams):
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
-    rfparams["deemph_mid"] = 260000
-    rfparams["deemph_gain"] = 14
+    rfparams["deemph_mid"] = 273755.82
+    rfparams["deemph_gain"] = 13.9794
+    rfparams["deemph_q"] = 0.4613901
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
