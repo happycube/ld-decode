@@ -19,11 +19,11 @@ def _sub_deemphasis_debug(
         out_video,
         out_video_fft,
         filters,
-        deviation * (1 / const_amplitude),
+        deviation,  # * (1 / const_amplitude)
         sub_emphasis_params.exponential_scaling,
         sub_emphasis_params.scaling_1,
         sub_emphasis_params.scaling_2,
-        debug_const_amplitude=False,
+        debug_const_amplitude=const_amplitude,
     )
     # return result
     return npfft.irfft(npfft.rfft(result) * filters["FDeemp"])
@@ -198,6 +198,26 @@ def test_filter(filters, sample_rate, blocklen, deviation, sub_emphasis_params):
             ]
         )
 
+        video8_full_emp_db_v_freqs = [
+            50000,
+            100000,
+            200000,
+            500000,
+            1000000,
+            2000000,
+            4000000,
+        ]
+        video8_full_emp_db_ampls = [-3, -6, -10, -15, -20]
+        video8_full_emp_db_v = np.array(
+            [
+                [0.9, 2.6, 6.4, 11.2, 13.1, 13.8, 13.9],
+                [0.9, 2.8, 6.9, 12.3, 14.1, 15.1, 15.3],
+                [0.9, 2.9, 7.4, 13.8, 16.4, 17.2, 17.2],
+                [0.9, 3.0, 7.8, 15.4, 18.6, 19.7, 20.0],
+                [0.9, 3.1, 8.0, 16.6, 20.8, 22.5, 23.0],
+            ]
+        )
+
         def _from_freq(freq):
             return (blocklen / (sample_rate)) * freq
 
@@ -215,7 +235,7 @@ def test_filter(filters, sample_rate, blocklen, deviation, sub_emphasis_params):
         # ax[3].plot(freqs,_to_db(w_fft * hpf) - _to_db(w_fft))
 
         w2 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(-17), sub_emphasis_params
+            w, w_fft, filters, deviation, _from_db(-20), sub_emphasis_params
         )
         ax[2].plot(freqs, _to_db(npfft.rfft(w2) / w_fft))
 
@@ -223,24 +243,29 @@ def test_filter(filters, sample_rate, blocklen, deviation, sub_emphasis_params):
         # print("test, -6db", _from_db(-6), " round ", _to_db(_from_db(5)))
 
         w3 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(-11), sub_emphasis_params
+            w, w_fft, filters, deviation, _from_db(-15), sub_emphasis_params
+        )
+        ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft))
+
+        w3 = _sub_deemphasis_debug(
+            w, w_fft, filters, deviation, _from_db(-10), sub_emphasis_params
+        )
+        ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft))
+
+        w3 = _sub_deemphasis_debug(
+            w, w_fft, filters, deviation, _from_db(-6), sub_emphasis_params
         )
         ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft))
 
         w3 = _sub_deemphasis_debug(
             w, w_fft, filters, deviation, _from_db(-3), sub_emphasis_params
         )
-        ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft))
-
-        w3 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(0), sub_emphasis_params
-        )
         ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft), color="#000000")
 
         ##positions = _from_freq(betamax_full_deemp_db_v_freqs).astype(int)
 
         for i in range(0, 5):
-            ax[2].plot(betamax_full_deemp_db_v_freqs, -(betamax_full_deemp_db_v_625[i]))
+            ax[2].plot(video8_full_emp_db_v_freqs, -(video8_full_emp_db_v[i]))
 
         # for i in range(0, 3):
         #    ax[2].plot(video8_sub_emp_freqs, -(video8_sub_emp_db_v[i]))

@@ -14,14 +14,16 @@ def fill_rfparams_video8_shared(rfparams):
     # Ideally we would calculate this based on tau and 'x' value
     # video8 uses same time constant as vhs, but lower 'x' value
     rfparams["deemph_mid"] = 273755.82
-    rfparams["deemph_gain"] = 13.9794
+    #rfparams["deemph_gain"] = 13.9794
+    rfparams["deemph_gain"] = 11.5794
     rfparams["deemph_q"] = 0.4613901
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
-    rfparams["nonlinear_highpass_freq"] = 210000
-    rfparams["nonlinear_exp_scaling"] = 0.38
-    rfparams["nonlinear_scaling_1"] = 0.35
+    # 198943.67
+    rfparams["nonlinear_highpass_freq"] = 198943.67
+    rfparams["nonlinear_exp_scaling"] = 0.53
+    rfparams["nonlinear_scaling_1"] = 0.73
     #rfparams["nonlinear_scaling_2"] = 0.65
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
@@ -29,16 +31,17 @@ def fill_rfparams_video8_shared(rfparams):
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
     rfparams["video_bpf_low"] = 2100000
-    rfparams["video_bpf_high"] = 6300000
+    rfparams["video_bpf_high"] = 6600000
     # Band-pass filter order.
     # Order may be fine as is.
     rfparams["video_bpf_order"] = 1
     # Sharper upper cutoff to get rid of high-frequency junk.
-    rfparams["video_lpf_extra"] = 6310000
+    rfparams["video_lpf_extra"] = 6710000
     rfparams["video_lpf_extra_order"] = 3
 
-    rfparams["video_hpf_extra"] = 1520000
-    rfparams["video_hpf_extra_order"] = 1
+    ## TODO: Maybe a Notch filter for audio freqs
+    rfparams["video_hpf_extra"] = 2520000
+    rfparams["video_hpf_extra_order"] = 2
 
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 3500000
@@ -52,7 +55,7 @@ def fill_rfparams_video8_shared(rfparams):
     # Used to reduce streaks due to amplitude loss on phase change around
     # sharp transitions.
     rfparams["boost_bpf_low"] = 5200000
-    rfparams["boost_bpf_high"] = 5700000
+    rfparams["boost_bpf_high"] = 5800000
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 0
 
