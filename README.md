@@ -407,6 +407,8 @@ The export scrips will by default render a lossless, interlaced top field first 
 
 To generate .mkv files viewable in most media players, simply use the `tbc-video-export.py` script below.
 
+Read the `README_gen_chroma_vid_scripts` readme for the legacy script options.
+
 ### Export your TBC files to a video file with the following basic command
 
 
@@ -425,7 +427,7 @@ Windows
 
 For archival to web use we have a wide range of pre-made FFmpeg profiles defined inside the `tbc-video-export.json` file.
 
-Note for Odysee uplaods the provided web files are ideal, for Vimeo de-interlace the FFV1 export, but for YouTube de-interlace and upscale to 5760x4320p to have base possible re-encoding from there side as SD/HD media is overcompressed on YouTube.
+Note for Odysee uploads the provided web files are ideal, for Vimeo de-interlace the FFV1 export, but for YouTube de-interlace and upscale to 5760x4320p to have base possible re-encoding from there side as SD/HD media is overcompressed on YouTube.
 
 The stock profiles for web use the BDWIF deinterlacer, but QTGMC is always recommended, [de-interlacing guide](https://github.com/oyvindln/vhs-decode/wiki/Deinterlacing).
 
@@ -482,9 +484,9 @@ Software decoding provides the full signal frame, recovery software can be used 
 ### Generate an video output with the top VBI area:
 
 
-<img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/Jennings-With-VBI.png" width="600" height="">
+    python3 tbc-video-export.py --vbi 
 
-    tbc-video-expor
+<img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/Jennings-With-VBI.png" width="600" height="">
 
 
 ## Terminal Arguments
