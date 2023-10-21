@@ -274,7 +274,7 @@ if [ "$videosystem" = "pal" ]; then
 	fi
 	color_space="bt470bg"
 	color_primaries="bt470bg"
-	color_trc="gamma28"
+	color_trc="bt709"
 fi
 
 if [ "$videosystem" = "ntsc" ]; then
@@ -287,7 +287,7 @@ if [ "$videosystem" = "ntsc" ]; then
 	fi
 	color_space="smpte170m"
 	color_primaries="smpte170m"
-	color_trc="smpte170m"
+	color_trc="bt709"
 	decoder_opts+=( --ntsc-phase-comp )
 fi
 
