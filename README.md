@@ -394,7 +394,7 @@ Use analyse tool to inspect decoded tape data:
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/ld-analyse-chroma-frame-107-2023-02-23-23-01-21.png"  width="600" height="">
 
-## Exporitng to Video Files
+## Exporting to Video Files
 
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/TV-PC-Levels.png" width="600" height="">
