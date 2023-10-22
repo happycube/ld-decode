@@ -502,6 +502,7 @@ class CVBSDecodeInner(ldd.RFDecode):
 
         # TEMP just set this high so it doesn't mess with anything.
         self.DecoderParams["video_lpf_freq"] = 6400000
+        self.DecoderParams["video_deemp_strength"] = 1
 
         # Lastly we re-create the filters with the new parameters.
         self.computevideofilters()
