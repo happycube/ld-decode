@@ -24,6 +24,7 @@ if os.name == "nt":
 
 class VideoSystem(Enum):
     PAL = "pal"
+    PALM = "pal-m"
     NTSC = "ntsc"
 
     def __str__(self):
@@ -99,11 +100,18 @@ class DecoderSettings:
         if not self.program_opts.verbose:
             decoder_opts.append("-q")
 
-        if self.video_system is VideoSystem.PAL:
-            if self.program_opts.chroma_decoder is None:
-                # chroma decoder unset, use transform2d
+        if self.program_opts.chroma_decoder is None:
+            # set default chroma decoder if unset
+            if (
+                self.video_system is VideoSystem.PAL
+                or self.video_system is VideoSystem.PALM
+            ):
                 decoder_opts.append(["-f", ChromaDecoder.TRANSFORM2D.value])
+            elif self.video_system is VideoSystem.NTSC:
+                decoder_opts.append(["-f", ChromaDecoder.NTSC2D.value])
+            
 
+        if self.video_system is VideoSystem.PAL:
             # vbi is set, use preset line values
             if self.program_opts.vbi:
                 decoder_opts.append(["--ffll", "2"])
@@ -116,13 +124,10 @@ class DecoderSettings:
                 decoder_opts.append(["--ffrl", "118"])
                 decoder_opts.append(["--lfrl", "548"])
 
-        elif self.video_system is VideoSystem.NTSC:
-            if self.program_opts.chroma_decoder is None:
-                # chroma decoder unset, use ntsc2d
-                decoder_opts.append(["-f", ChromaDecoder.NTSC2D.value])
-
-            decoder_opts.append("--ntsc-phase-comp")
-
+        elif (
+            self.video_system is VideoSystem.NTSC
+            or self.video_system is VideoSystem.PALM
+        ):
             # vbi is set, use preset line values
             if self.program_opts.vbi:
                 decoder_opts.append(["--ffll", "1"])
@@ -134,6 +139,9 @@ class DecoderSettings:
                 decoder_opts.append(["--lfll", "308"])
                 decoder_opts.append(["--ffrl", "118"])
                 decoder_opts.append(["--lfrl", "453"])
+
+        if self.video_system is VideoSystem.NTSC:
+            decoder_opts.append("--ntsc-phase-comp")
 
         if self.program_opts.chroma_decoder is not None:
             decoder_opts.append(
@@ -311,7 +319,10 @@ class FFmpegSettings:
 
         if self.video_system == VideoSystem.PAL:
             rate = 25
-        elif self.video_system == VideoSystem.NTSC:
+        elif (
+            self.video_system == VideoSystem.NTSC
+            or self.video_system == VideoSystem.PALM
+        ):
             rate = 29.97
 
         if self.profile.get_video_doublerate():
@@ -339,7 +350,10 @@ class FFmpegSettings:
         """Returns FFmpeg opts for color settings."""
         ffmpeg_opts = []
 
-        if self.video_system == VideoSystem.PAL:
+        if (
+            self.video_system == VideoSystem.PAL
+            or self.video_system == VideoSystem.PALM
+        ):
             ffmpeg_opts.append(["-colorspace", "bt470bg"])
             ffmpeg_opts.append(["-color_primaries", "bt470bg"])
             ffmpeg_opts.append(["-color_trc", "bt709"])
@@ -1283,11 +1297,15 @@ class TBCVideoExport:
         # search for PAL* or NTSC* in videoParameters.system or the existence
         # if isSourcePal keys
         if (
-            VideoSystem.PAL.value in tbc_json_data["videoParameters"]["system"].lower()
+            VideoSystem.PAL.value == tbc_json_data["videoParameters"]["system"].lower()
             or "isSourcePal" in tbc_json_data["videoParameters"]
-            or "isSourcePalM" in tbc_json_data["videoParameters"]
         ):
             return VideoSystem.PAL
+        elif (
+            VideoSystem.PALM.value == tbc_json_data["videoParameters"]["system"].lower()
+            or "isSourcePalM" in tbc_json_data["videoParameters"]
+        ):
+            return VideoSystem.PALM
         elif (
             VideoSystem.NTSC.value in tbc_json_data["videoParameters"]["system"].lower()
         ):
