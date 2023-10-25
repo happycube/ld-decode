@@ -312,7 +312,7 @@ class FFmpegSettings:
         if self.video_system == VideoSystem.PAL:
             rate = 25
         elif self.video_system == VideoSystem.NTSC:
-            rate = 30
+            rate = 29.97
 
         if self.profile.get_video_doublerate():
             rate = rate * 2
