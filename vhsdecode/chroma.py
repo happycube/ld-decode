@@ -21,7 +21,7 @@ def needs_recheck(sum_0: float, sum_1: float):
     return True if max(sum_0, sum_1) / min(sum_0, sum_1) < RECHECK_THRESHOLD else False
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
     S16_ABS_MAX = 32767
@@ -51,7 +51,7 @@ def acc(chroma, burst_abs_ref, burststart, burstend, linelength, lines):
     return output, mean_burst_accumulator / (lines - STARTING_LINE)
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def acc_line(chroma, burst_abs_ref, burststart, burstend):
     """Scale chroma according to the level of the color burst the line."""
     output = np.zeros(chroma.size, dtype=np.double)
@@ -89,7 +89,7 @@ def comb_c_pal(data, line_len):
     return data
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def comb_c_ntsc(data, line_len):
     """Very basic comb filter, adds the signal together with a signal delayed by 1H,
     line by line. VCRs do this to reduce crosstalk.
@@ -150,7 +150,7 @@ def upconvert_chroma(
     return uphet
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
     for line in range(lineoffset, linesout + lineoffset):
         linestart = (line - lineoffset) * outwidth
@@ -571,7 +571,7 @@ def detect_burst_ntsc(
     return even_i_acc / num_lines, odd_i_acc / num_lines
 
 
-@njit(cache=True)
+@njit(cache=True, nogil=True)
 def detect_burst_ntsc_line(
     chroma_data, sine, cosine, burst_area, line_length, line_number
 ):
