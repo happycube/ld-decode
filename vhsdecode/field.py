@@ -369,14 +369,23 @@ class FieldShared:
 
     def hz_to_output(self, input):
         if type(input) == np.ndarray:
-            return hz_to_output_array(
-                input,
-                self.rf.DecoderParams["ire0"] + self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ int(self.isFirstField)],
-                self.rf.DecoderParams["hz_ire"],
-                self.rf.SysParams["outputZero"],
-                self.rf.DecoderParams["vsync_ire"],
-                self.out_scale
-            )
+            if self.rf.options.export_raw_tbc:
+                return input.astype(np.single)
+            else:
+                return hz_to_output_array(
+                    input,
+                    self.rf.DecoderParams["ire0"] + self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ int(self.isFirstField)],
+                    self.rf.DecoderParams["hz_ire"],
+                    self.rf.SysParams["outputZero"],
+                    self.rf.DecoderParams["vsync_ire"],
+                    self.out_scale
+                )
+
+        # Not sure what situations will cause input to not be a ndarray.
+
+        if self.rf.options.export_raw_tbc:
+            # Not sure if this will work.
+            return np.single(input)
 
         reduced = (input - self.rf.DecoderParams["ire0"] - self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ int(self.isFirstField)]) / self.rf.DecoderParams["hz_ire"]
         reduced -= self.rf.DecoderParams["vsync_ire"]

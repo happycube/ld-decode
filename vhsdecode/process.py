@@ -589,7 +589,9 @@ class VHSRFDecode(ldd.RFDecode):
         self.DecoderParams["vsync_ire"] = self.SysParams["vsync_ire"]
         self.DecoderParams["track_ire0_offset"] = self.SysParams.get("track_ire0_offset", [0, 0])
 
-        write_chroma = is_color_under = vhs_formats.is_color_under(tape_format)
+        export_raw_tbc = rf_options.get("export_raw_tbc", False)
+        is_color_under = vhs_formats.is_color_under(tape_format)
+        write_chroma = is_color_under and not export_raw_tbc and not rf_options.get("skip_chroma", False)
 
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
         # can't be changed later.
@@ -613,6 +615,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "color_under",
                 "chroma_deemphasis_filter",
                 "skip_hsync_refine",
+                "export_raw_tbc",
             ],
         )(
             self.iretohz(100) * 2,
@@ -636,6 +639,7 @@ class VHSRFDecode(ldd.RFDecode):
             is_color_under,
             tape_format == "VIDEO8" or tape_format == "HI8",
             rf_options.get("skip_hsync_refine", False),
+            export_raw_tbc,
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -1161,6 +1165,9 @@ class VHSRFDecode(ldd.RFDecode):
                 chroma=out_chroma,
                 rfdecode=self,
             )
+
+        if self.options.export_raw_tbc:
+            out_video = demod
 
         # demod_burst is a bit misleading, but keeping the naming for compatability.
         video_out = np.rec.array(

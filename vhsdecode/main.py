@@ -177,12 +177,18 @@ def main(args=None, use_gui=False):
         help="Re-check chroma phase on every field. (No effect on U-matic)",
     )
     chroma_group.add_argument(
-        "-nocomb",
         "--no_comb",
         dest="disable_comb",
         action="store_true",
         default=False,
         help="Disable internal chroma comb filter.",
+    )
+    chroma_group.add_argument(
+        "--skip_chroma",
+        dest="skip_chroma",
+        action="store_true",
+        default=False,
+        help="Don't output chroma even for formats that may have it and possibly skip some of the chroma processing.",
     )
     plot_options = "demodblock, deemphasis, raw_pulses, line_locs"
     debug_group.add_argument(
@@ -237,6 +243,13 @@ def main(args=None, use_gui=False):
         action="store_true",
         default=False,
         help="Try re-using video levels detected from the first decoded fields instead of re-calculating each frame. Will be done by default once well tested",
+    )
+    debug_group.add_argument(
+        "--export_raw_tbc",
+        dest="export_raw_tbc",
+        action="store_true",
+        default=False,
+        help="export a raw TBC without deemphasis applied for filter tuning",
     )
     dodgroup = parser.add_argument_group("Dropout detection options")
     dodgroup.add_argument(
@@ -332,6 +345,7 @@ def main(args=None, use_gui=False):
     rf_options["disable_diff_demod"] = args.disable_diff_demod
     rf_options["disable_dc_offset"] = not args.enable_dc_offset
     rf_options["disable_comb"] = args.disable_comb
+    rf_options["skip_chroma"] = args.skip_chroma
     rf_options["nldeemp"] = args.nldeemp
     rf_options["subdeemp"] = args.subdeemp
     rf_options["y_comb"] = args.y_comb
@@ -342,6 +356,7 @@ def main(args=None, use_gui=False):
     rf_options["fallback_vsync"] = args.fallback_vsync
     rf_options["saved_levels"] = args.saved_levels
     rf_options["skip_hsync_refine"] = args.skip_hsync_refine
+    rf_options["export_raw_tbc"] = args.export_raw_tbc
 
     extra_options = get_extra_options(args, not use_gui)
     extra_options["params_file"] = args.params_file
