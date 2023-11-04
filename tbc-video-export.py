@@ -4,13 +4,17 @@
 # - JuniorIsAJitterbug
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
 import pathlib
+import sys
 import tempfile
+from dataclasses import dataclass
 from enum import Enum
 from shutil import which
+from threading import Thread
 
 if os.name == "nt":
     import win32pipe
@@ -19,509 +23,106 @@ if os.name == "nt":
     import pywintypes
     import winerror
     import win32con
-    from threading import Thread
-
-
-class VideoSystem(Enum):
-    PAL = "pal"
-    PALM = "pal-m"
-    NTSC = "ntsc"
-
-    def __str__(self):
-        return self.value
-
-
-class ChromaDecoder(Enum):
-    PAL2D = "pal2d"
-    TRANSFORM2D = "transform2d"
-    TRANSFORM3D = "transform3d"
-    NTSC1D = "ntsc1d"
-    NTSC2D = "ntsc2d"
-    NTSC3D = "ntsc3d"
-    NTSC3DNOADAPT = "ntsc3dnoadapt"
-
-    def __str__(self):
-        return self.value
-
-
-class InputFiles:
-    def __init__(self, file, input_json):
-        self.path = pathlib.Path(file).parent
-        self.name = pathlib.Path(file).stem
-        self.tbc = os.path.join(self.path, self.name + ".tbc")
-        self.tbc_chroma = os.path.join(self.path, self.name + "_chroma.tbc")
-
-        if input_json is not None:
-            self.tbc_json = input_json
-        else:
-            self.tbc_json = os.path.join(self.path, self.name + ".tbc.json")
-
-        try:
-            with open(self.tbc_json, "r") as file:
-                self.tbc_json_data = json.load(file)
-        except:
-            raise Exception(json_file + " is not valid json file")
-
-        self.video_luma = None
-        self.video = None
-
-    def check_files_exist(self):
-        files = [self.tbc, self.tbc_chroma, self.tbc_json]
-
-        for file in files:
-            if not os.path.isfile(file):
-                raise Exception("missing required tbc file " + file)
-
-
-class DecoderSettings:
-    def __init__(self, program_opts, video_system):
-        self.program_opts = program_opts
-        self.video_system = video_system
-
-    def convert_opt(self, program_opts, program_opt_name, target_opt_name):
-        """Converts a program opt to a subprocess opt."""
-        rt = []
-        value = getattr(program_opts, program_opt_name)
-
-        if value is not None:
-            if type(value) is bool:
-                # only appends opt on true, fine for current use
-                if value is True:
-                    rt.append([target_opt_name])
-            else:
-                rt.append([target_opt_name, str(value)])
-
-        return rt
-
-    def get_opts(self):
-        """Generate ld-chroma-decoder opts."""
-        decoder_opts = []
-
-        if not self.program_opts.verbose:
-            decoder_opts.append("-q")
-
-        if self.program_opts.chroma_decoder is None:
-            # set default chroma decoder if unset
-            if (
-                self.video_system is VideoSystem.PAL
-                or self.video_system is VideoSystem.PALM
-            ):
-                decoder_opts.append(["-f", ChromaDecoder.TRANSFORM2D.value])
-            elif self.video_system is VideoSystem.NTSC:
-                decoder_opts.append(["-f", ChromaDecoder.NTSC2D.value])
-            
-
-        if self.video_system is VideoSystem.PAL:
-            # vbi is set, use preset line values
-            if self.program_opts.vbi:
-                decoder_opts.append(["--ffll", "2"])
-                decoder_opts.append(["--lfll", "308"])
-                decoder_opts.append(["--ffrl", "2"])
-                decoder_opts.append(["--lfrl", "620"])
-            elif self.program_opts.letterbox:
-                decoder_opts.append(["--ffll", "2"])
-                decoder_opts.append(["--lfll", "308"])
-                decoder_opts.append(["--ffrl", "118"])
-                decoder_opts.append(["--lfrl", "548"])
-
-        elif (
-            self.video_system is VideoSystem.NTSC
-            or self.video_system is VideoSystem.PALM
-        ):
-            # vbi is set, use preset line values
-            if self.program_opts.vbi:
-                decoder_opts.append(["--ffll", "1"])
-                decoder_opts.append(["--lfll", "259"])
-                decoder_opts.append(["--ffrl", "2"])
-                decoder_opts.append(["--lfrl", "525"])
-            elif self.program_opts.letterbox:
-                decoder_opts.append(["--ffll", "2"])
-                decoder_opts.append(["--lfll", "308"])
-                decoder_opts.append(["--ffrl", "118"])
-                decoder_opts.append(["--lfrl", "453"])
-
-        if self.video_system is VideoSystem.NTSC:
-            decoder_opts.append("--ntsc-phase-comp")
-
-        if self.program_opts.chroma_decoder is not None:
-            decoder_opts.append(
-                self.convert_opt(self.program_opts, "chroma_decoder", "-f")
-            )
-
-        if not self.program_opts.vbi:
-            decoder_opts.append(
-                self.convert_opt(self.program_opts, "first_active_field_line", "--ffll")
-            )
-            decoder_opts.append(
-                self.convert_opt(self.program_opts, "last_active_field_line", "--lfll")
-            )
-            decoder_opts.append(
-                self.convert_opt(self.program_opts, "first_active_frame_line", "--ffrl")
-            )
-            decoder_opts.append(
-                self.convert_opt(self.program_opts, "last_active_frame_line", "--lfrl")
-            )
-
-        decoder_opts.append(self.convert_opt(self.program_opts, "start", "-s"))
-        decoder_opts.append(self.convert_opt(self.program_opts, "length", "-l"))
-        decoder_opts.append(self.convert_opt(self.program_opts, "reverse", "-r"))
-        decoder_opts.append(self.convert_opt(self.program_opts, "threads", "-t"))
-        decoder_opts.append(
-            self.convert_opt(self.program_opts, "output_padding", "--pad")
-        )
-        decoder_opts.append(self.convert_opt(self.program_opts, "offset", "-o"))
-        decoder_opts.append(
-            self.convert_opt(self.program_opts, "simple_pal", "--simple-pal")
-        )
-        decoder_opts.append(
-            self.convert_opt(self.program_opts, "show_ffts", "--show-ffts")
-        )
-        decoder_opts.append(
-            self.convert_opt(
-                self.program_opts, "transform_threshold", "--transform-threshold"
-            )
-        )
-        decoder_opts.append(
-            self.convert_opt(
-                self.program_opts, "transform_thresholds", "--transform-thresholds"
-            )
-        )
-
-        return decoder_opts
-
-    def get_luma_opts(self):
-        """Generate ld-chroma-decoder opts for luma."""
-        decoder_opts = []
-        decoder_opts.append(self.convert_opt(self.program_opts, "luma_nr", "--luma-nr"))
-
-        # ignore program opts for these
-        decoder_opts.append(["--chroma-nr", "0"])
-        decoder_opts.append(["--chroma-gain", "0"])
-        decoder_opts.append(["--chroma-phase", "1"])
-
-        return decoder_opts
-
-    def get_chroma_opts(self):
-        """Generate ld-chroma-decoder opts for chroma."""
-        decoder_opts = []
-
-        decoder_opts.append(
-            self.convert_opt(self.program_opts, "chroma_gain", "--chroma-gain")
-        )
-
-        decoder_opts.append(
-            self.convert_opt(self.program_opts, "chroma_nr", "--chroma-nr")
-        )
-        decoder_opts.append(
-            self.convert_opt(self.program_opts, "chroma_phase", "--chroma-phase")
-        )
-
-        # ignore program opts for these
-        decoder_opts.append(["--luma-nr", "0"])
-
-        return decoder_opts
-
-
-class FFmpegProfile:
-    def __init__(self, profiles, name):
-        self.name = name
-        self.profile = profiles.profiles[name]
-
-    def get_video_opts(self):
-        """Return FFmpeg video opts from profile."""
-        rt = []
-
-        if not all(key in self.profile for key in ("v_codec", "v_format", "container")):
-            raise Exception("profile is missing required data")
-
-        rt.append(["-c:v", self.profile["v_codec"]])
-
-        if "v_opts" in self.profile:
-            rt.append(self.profile["v_opts"])
-
-        rt.append(["-pixel_format", self.profile["v_format"]])
-
-        return rt
-
-    def get_video_filter_opts(self):
-        """Return FFmpeg video filter opts from profile."""
-        if "v_filter" in self.profile:
-            return "," + self.profile["v_filter"]
-
-        return ""
-
-    def get_audio_opts(self):
-        """Return FFmpeg audio opts from profile."""
-        rt = []
-
-        if "a_codec" in self.profile:
-            rt.append(["-c:a", self.profile["a_codec"]])
-
-        if "a_opts" in self.profile:
-            rt.append(self.profile["a_opts"])
-
-        return rt
-
-    def get_video_doublerate(self):
-        """Return FFmpeg double rate from profile."""
-        if "v_double_rate" in self.profile and self.profile["v_double_rate"]:
-            return True
-
-        return False
-
-    def get_video_format(self):
-        return self.profile["v_format"]
-
-    def get_container(self):
-        return self.profile["container"]
-
-
-class FFmpegProfiles:
-    def __init__(self, file_name):
-        self.names = []
-        self.names_luma = []
-        self.profiles = []
-
-        # profiles ending in _luma are considered luma profiles
-        try:
-            with open(file_name, "r") as file:
-                data = json.load(file)
-                self.names = [
-                    name
-                    for name in data["ffmpeg_profiles"].keys()
-                    if "_luma" not in name
-                ]
-                self.names_luma = [
-                    name for name in data["ffmpeg_profiles"].keys() if "_luma" in name
-                ]
-                self.profiles = data["ffmpeg_profiles"]
-        except:
-            raise Exception(file_name + " is not a valid json file")
-
-    def get_profile(self, name):
-        return FFmpegProfile(self, name)
-
-
-class FFmpegSettings:
-    def __init__(
-        self, program_opts, profile, profile_luma, tbc_json_data, video_system, timecode
-    ):
-        self.program_opts = program_opts
-        self.profile = profile
-        self.profile_luma = profile_luma
-        self.tbc_json_data = tbc_json_data
-        self.video_system = video_system
-        self.timecode = timecode
-
-    def get_rate_opt(self):
-        """Returns FFmpeg opts for rate."""
-        ffmpeg_opts = []
-
-        if self.video_system == VideoSystem.PAL:
-            rate = 25
-        elif (
-            self.video_system == VideoSystem.NTSC
-            or self.video_system == VideoSystem.PALM
-        ):
-            rate = 29.97
-
-        if self.profile.get_video_doublerate():
-            rate = rate * 2
-
-        ffmpeg_opts.append(["-r", str(rate)])
-
-        return ffmpeg_opts
-
-    def get_aspect_ratio_opt(self):
-        """Returns FFmpeg opts for aspect ratio."""
-        if (
-            (
-                "isWidescreen" in self.tbc_json_data["videoParameters"]
-                and self.tbc_json_data["videoParameters"]["isWidescreen"]
-            )
-            or self.program_opts.ffmpeg_force_anamorphic
-            or self.program_opts.letterbox
-        ):
-            return ["-aspect", "16:9"]
-
-        return ["-aspect", "4:3"]
-
-    def get_color_opts(self):
-        """Returns FFmpeg opts for color settings."""
-        ffmpeg_opts = []
-
-        if (
-            self.video_system == VideoSystem.PAL
-            or self.video_system == VideoSystem.PALM
-        ):
-            ffmpeg_opts.append(["-colorspace", "bt470bg"])
-            ffmpeg_opts.append(["-color_primaries", "bt470bg"])
-            ffmpeg_opts.append(["-color_trc", "bt709"])
-        elif self.video_system == VideoSystem.NTSC:
-            ffmpeg_opts.append(["-colorspace", "smpte170m"])
-            ffmpeg_opts.append(["-color_primaries", "smpte170m"])
-            ffmpeg_opts.append(["-color_trc", "bt709"])
-
-        return ffmpeg_opts
-
-    def get_audio_map_opts(self):
-        """Returns FFmpeg opts for audio mapping."""
-        ffmpeg_opts = []
-
-        audio_inputs = self.program_opts.ffmpeg_audio_file
-
-        offset = 2
-
-        if self.program_opts.luma_only:
-            offset = 1
-
-        if audio_inputs is not None:
-            for idx, audio_input in enumerate(audio_inputs):
-                ffmpeg_opts.append(["-map", str(idx + offset) + ":a"])
-
-        return ffmpeg_opts
-
-    def get_metadata_opts(self):
-        """Returns FFmpeg opts for metadata."""
-        ffmpeg_opts = []
-
-        metadata = self.program_opts.ffmpeg_metadata
-
-        # add video metadata
-        if metadata is not None:
-            for data in metadata:
-                ffmpeg_opts.append(["-metadata", data])
-
-        return ffmpeg_opts
-
-    def get_audio_metadata_opts(self):
-        """Returns FFmpeg opts for audio metadata."""
-        ffmpeg_opts = []
-
-        audio_titles = self.program_opts.ffmpeg_audio_title
-        audio_languages = self.program_opts.ffmpeg_audio_language
-
-        # add audio metadata only if luma only
-        if audio_titles is not None:
-            for idx, title in enumerate(audio_titles):
-                ffmpeg_opts.append(
-                    ["-metadata:s:a:" + str(idx), 'title="' + title + '"']
-                )
-
-        if audio_languages is not None:
-            for idx, language in enumerate(audio_languages):
-                ffmpeg_opts.append(
-                    ["-metadata:s:a:" + str(idx), 'language="' + language + '"']
-                )
-
-        return ffmpeg_opts
-
-    def get_audio_inputs_opts(self):
-        """Returns FFmpeg audio input opts."""
-        input_opts = []
-
-        tracks = self.program_opts.ffmpeg_audio_file
-        offsets = self.program_opts.ffmpeg_audio_offset
-
-        if tracks is not None:
-            for idx, track in enumerate(tracks):
-                # add offset if set
-                if offsets is not None and len(offsets) >= idx + 1:
-                    input_opts.append(["-itsoffset", offsets[idx]])
-                else:
-                    input_opts.append(["-itsoffset", "00:00:00.000"])
-
-                input_opts.append(["-i", track])
-
-        return input_opts
-
-    def get_timecode_opt(self):
-        return ["-timecode", self.timecode]
-
-    def get_verbosity(self):
-        if not self.program_opts.verbose:
-            return ["-hide_banner", "-loglevel", "error", "-stats"]
-
-        return "-hide_banner"
-
-    def get_overwrite_opt(self):
-        if self.program_opts.ffmpeg_overwrite:
-            return "-y"
-
-    def get_color_range_opt(self):
-        return ["-color_range", "tv"]
-
-    def get_thread_queue_size_opt(self):
-        return ["-thread_queue_size", str(self.program_opts.ffmpeg_thread_queue_size)]
-
-
-class DecodePipeline:
-    def __init__(self, dropout_correct_cmd=None, decoder_cmd=None, ffmpeg_cmd=None):
-        self.dropout_correct_cmd = dropout_correct_cmd
-        self.decoder_cmd = decoder_cmd
-        self.ffmpeg_cmd = ffmpeg_cmd
 
 
 class TBCVideoExport:
     def __init__(self):
-        self.check_paths()
-        self.ffmpeg_profiles = FFmpegProfiles(self.get_profile_file())
-        self.program_opts = self.parse_opts(self.ffmpeg_profiles)
+        self.ffmpeg_profiles = FFmpegProfiles(Files.get_profile_file())
+        self.program_opts = self.__parse_opts(self.ffmpeg_profiles)
 
-        self.files = InputFiles(self.program_opts.input, self.program_opts.input_json)
+        self.files = Files(
+            self.program_opts.input,
+            self.program_opts.output,
+            self.program_opts.input_json,
+            self.program_opts.skip_process_vbi
+        )
         self.files.check_files_exist()
 
-        self.video_system = self.get_video_system(self.files.tbc_json_data)
-        self.timecode = self.get_timecode(self.files.tbc_json_data)
+        # if user has forced a format
+        if self.program_opts.video_system is not None:
+            self.video_system = self.program_opts.video_system
+        else:
+            self.video_system = self.files.get_video_system()
 
-        self.ffmpeg_profile = self.ffmpeg_profiles.get_profile(
-            self.program_opts.ffmpeg_profile
-        )
-        self.ffmpeg_profile_luma = self.ffmpeg_profiles.get_profile(
-            self.program_opts.ffmpeg_profile_luma
-        )
+        if not self.program_opts.ffmpeg_skip_auto_pcm:
+            self.__add_pcm_audio()
 
-        self.decoder_settings = DecoderSettings(self.program_opts, self.video_system)
-        self.ffmpeg_settings = FFmpegSettings(
+        self.ldtools_wrapper = LDToolsWrapper(self.program_opts, self.video_system)
+        self.ffmpeg_wrapper = FFmpegWrapper(
             self.program_opts,
-            self.ffmpeg_profile,
-            self.ffmpeg_profile_luma,
-            self.files.tbc_json_data,
-            self.video_system,
-            self.timecode,
+            self.files,
+            self.ffmpeg_profiles,
+            self.video_system
         )
+
+        # default to using named pipes unless user asks not to
+        self.use_named_pipes = not self.program_opts.skip_named_pipes
 
     def run(self):
-        self.setup_pipes()
+        process_vbi_cmd = None
+        combined_pipeline = None
+        luma_pipeline = None
+        chroma_pipeline = None
 
-        luma_pipeline = self.get_luma_cmds()
-        chroma_pipeline = self.get_chroma_cmds()
+        try:
+            self.__setup_pipes()
 
-        luma_pipeline.ffmpeg_cmd = self.get_luma_ffmepg_cmd()
-        chroma_pipeline.ffmpeg_cmd = self.get_chroma_ffmpeg_cmd()
+            # set up commands
+            if not self.program_opts.skip_process_vbi:
+                process_vbi_cmd = self.ldtools_wrapper.get_process_vbi_cmd(self.files)
 
-        if self.program_opts.what_if:
-            self.print_cmds(luma_pipeline, chroma_pipeline)
-            return
-
-        if not self.program_opts.ffmpeg_overwrite:
-            self.check_file_overwrites()
-
-        # named pipes are only useful with chroma
-        if self.program_opts.luma_only:
-            self.run_cmds(luma_pipeline)
-        else:
-            if self.use_named_pipes:
-                try:
-                    self.create_pipes()
-                    self.run_named_pipe_cmds(luma_pipeline, chroma_pipeline)
-                finally:
-                    self.cleanup_pipes()
+            if self.files.is_combined_tbc:
+                combined_pipeline = self.ldtools_wrapper.get_combined_cmds(self.files)
+                combined_pipeline.ffmpeg_cmd = self.ffmpeg_wrapper.get_combined_ffmpeg_cmd(
+                    self.files
+                )
             else:
-                self.run_cmds(luma_pipeline)
-                self.run_cmds(chroma_pipeline)
+                luma_pipeline = self.ldtools_wrapper.get_luma_cmds(self.files, self.use_named_pipes)
 
-    def parse_opts(self, ffmpeg_profiles):
+                # we do not use ffmpeg for luma unless skipping named pipes, or luma only
+                if self.program_opts.luma_only or not self.use_named_pipes:
+                    luma_pipeline.ffmpeg_cmd = self.ffmpeg_wrapper.get_luma_ffmepg_cmd(self.files)
+
+                if not self.program_opts.luma_only:
+                    chroma_pipeline = self.ldtools_wrapper.get_chroma_cmds(
+                        self.files,
+                        self.use_named_pipes
+                    )
+                    chroma_pipeline.ffmpeg_cmd = self.ffmpeg_wrapper.get_chroma_ffmpeg_cmd(
+                        self.files,
+                        self.use_named_pipes
+                    )
+
+            if self.program_opts.what_if:
+                self.__print_pipelines(
+                    process_vbi_cmd,
+                    combined_pipeline,
+                    luma_pipeline,
+                    chroma_pipeline
+                )
+                return
+
+            if not self.program_opts.ffmpeg_overwrite:
+                self.files.check_file_overwrites(self.program_opts.luma_only, self.use_named_pipes)
+
+            # run commands
+            if not self.program_opts.skip_process_vbi:
+                self.__run_process_vbi(process_vbi_cmd)
+
+            if self.files.is_combined_tbc:
+                self.__run_cmds(combined_pipeline)
+            elif self.program_opts.luma_only:
+                self.__run_cmds(luma_pipeline)
+            elif self.use_named_pipes:
+                self.__create_pipes()
+                self.__run_named_pipe_cmds(luma_pipeline, chroma_pipeline)
+            else:
+                self.__run_cmds(luma_pipeline)
+                self.__run_cmds(chroma_pipeline)
+        finally:
+            self.__cleanup_pipes()
+
+    def __parse_opts(self, ffmpeg_profiles):
         parser = argparse.ArgumentParser(
             prog="tbc-video-export",
             description="vhs-decode video generation script",
@@ -534,6 +135,15 @@ class TBCVideoExport:
 
         # general / global arguments
         global_opts.add_argument("input", type=str, help="Name of the input tbc.")
+
+        global_opts.add_argument(
+            "-o",
+            "--output",
+            type=str,
+            default=".",
+            metavar="file_name",
+            help="Output directory. (default: current directory)"
+        )
 
         global_opts.add_argument(
             "-t",
@@ -635,6 +245,7 @@ class TBCVideoExport:
 
         decoder_opts.add_argument(
             "--first_active_field_line",
+            "--ffll",
             type=int,
             metavar="int",
             help="The first visible line of a field.\n"
@@ -644,6 +255,7 @@ class TBCVideoExport:
 
         decoder_opts.add_argument(
             "--last_active_field_line",
+            "--lfll",
             type=int,
             metavar="int",
             help="The last visible line of a field.\n"
@@ -653,6 +265,7 @@ class TBCVideoExport:
 
         decoder_opts.add_argument(
             "--first_active_frame_line",
+            "--ffrl",
             type=int,
             metavar="int",
             help="The first visible line of a field.\n"
@@ -662,6 +275,7 @@ class TBCVideoExport:
 
         decoder_opts.add_argument(
             "--last_active_frame_line",
+            "--lfrl",
             type=int,
             metavar="int",
             help="The last visible line of a field.\n"
@@ -693,7 +307,6 @@ class TBCVideoExport:
         decoder_opts.add_argument(
             "--chroma-gain",
             type=float,
-            default=1.0,
             metavar="float",
             help="Gain factor applied to chroma components.",
         )
@@ -701,7 +314,6 @@ class TBCVideoExport:
         decoder_opts.add_argument(
             "--chroma-phase",
             type=float,
-            default=0.0,
             metavar="float",
             help="Phase rotation applied to chroma components (degrees).",
         )
@@ -709,7 +321,6 @@ class TBCVideoExport:
         decoder_opts.add_argument(
             "--chroma-nr",
             type=float,
-            default=0.0,
             metavar="float",
             help="NTSC: Chroma noise reduction level in dB.",
         )
@@ -717,7 +328,6 @@ class TBCVideoExport:
         decoder_opts.add_argument(
             "--luma-nr",
             type=float,
-            default=1.0,
             metavar="float",
             help="Luma noise reduction level in dB.",
         )
@@ -732,7 +342,6 @@ class TBCVideoExport:
         decoder_opts.add_argument(
             "--transform-threshold",
             type=float,
-            default=0.4,
             metavar="float",
             help="Transform: Uniform similarity threshold in 'threshold' mode.",
         )
@@ -749,6 +358,13 @@ class TBCVideoExport:
             action="store_true",
             default=False,
             help="Transform: Overlay the input and output FFTs.",
+        )
+
+        decoder_opts.add_argument(
+            "--skip-process-vbi",
+            action="store_true",
+            default=False,
+            help="Skip running ld-process-vbi before export."
         )
 
         # ffmpeg arguments
@@ -805,9 +421,17 @@ class TBCVideoExport:
         )
 
         ffmpeg_opts.add_argument(
+            "--ffmpeg-skip-auto-pcm",
+            help="Skip adding PCM audio if available.",
+            action="store_true",
+            default=False,
+        )
+
+        ffmpeg_opts.add_argument(
             "--ffmpeg-audio-file",
             type=str,
             action="append",
+            default=[],
             metavar="file_name",
             help="Audio file to mux with generated video.",
         )
@@ -816,6 +440,7 @@ class TBCVideoExport:
             "--ffmpeg-audio-title",
             type=str,
             action="append",
+            default=[],
             metavar="title",
             help="Title of the audio track.",
         )
@@ -824,53 +449,84 @@ class TBCVideoExport:
             "--ffmpeg-audio-language",
             type=str,
             action="append",
+            default=[],
             metavar="language",
             help="Language of the audio track.",
+        )
+
+        ffmpeg_opts.add_argument(
+            "--ffmpeg-audio-format",
+            type=str,
+            action="append",
+            default=[],
+            metavar="format",
+            help="Format of the audio track.",
+        )
+
+        ffmpeg_opts.add_argument(
+            "--ffmpeg-audio-rate",
+            type=str,
+            action="append",
+            default=[],
+            metavar="rate",
+            help="Rate of the audio track.",
+        )
+
+        ffmpeg_opts.add_argument(
+            "--ffmpeg-audio-channels",
+            type=str,
+            action="append",
+            default=[],
+            metavar="channels",
+            help="Channel count of the audio track.",
         )
 
         ffmpeg_opts.add_argument(
             "--ffmpeg-audio-offset",
             type=str,
             action="append",
+            default=[],
             metavar="offset",
             help="Offset of the audio track. (default: 00:00:00.000)",
         )
 
         return parser.parse_args()
 
-    def flatten(self, A):
-        """Flatten list of lists. Skips None values."""
-        rt = []
-        for i in A:
-            if isinstance(i, list):
-                rt.extend(self.flatten(i))
-            elif i is not None:
-                rt.append(i)
-        return rt
-
-    def print_windows_error(self, err=None):
+    def __print_windows_error(self, err=None):
         """Print out windows related errors."""
         if err is None:
             err = win32api.GetLastError()
-        OSError(
+        raise OSError(
             win32api.FormatMessage(win32con.FORMAT_MESSAGE_FROM_SYSTEM, 0, err, 0, None)
         )
 
-    def cleanup_pipes(self):
+    def __cleanup_pipes(self):
         """Cleanup named pipes and any temp dirs."""
         try:
             if os.name == "posix":
-                os.unlink(self.pipe_input_luma)
-                os.unlink(self.pipe_input_chroma)
-                os.rmdir(self.pipe_tmp_dir)
+                # we suppress FileNotFoundError so other files can be cleaned up
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(self.files.pipes.input_luma)
+
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(self.files.pipes.input_chroma)
+
+                with contextlib.suppress(FileNotFoundError):
+                    os.rmdir(self.files.pipes.tmp_dir)
             elif os.name == "nt":
                 # cleanup should be handled by the pipe bridge thread
-                self.pipe_bridge_luma.join()
-                self.pipe_bridge_chroma.join()
-        except:
-            raise Exception("unable to cleanup")
+                if self.files.pipes.bridge_luma is not None:
+                    self.files.pipes.bridge_luma.join()
 
-    def setup_win_pipe_bridge(self, input_name, output_name):
+                if self.files.pipes.bridge_chroma is not None:
+                    self.files.pipes.bridge_chroma.join()
+        # we're exiting anyway, not sure this matters...
+        except PermissionError as e:
+            raise SystemExit("unable to cleanup named pipes due to permissions") from e
+        except RuntimeError as e:
+            raise SystemExit("unable to cleanup threads") from e
+
+    def __setup_win_pipe_bridge(self, input_name, output_name):
         input_pipe = win32pipe.CreateNamedPipe(
             input_name,
             win32pipe.PIPE_ACCESS_DUPLEX,
@@ -887,7 +543,7 @@ class TBCVideoExport:
         )
 
         if input_pipe == win32file.INVALID_HANDLE_VALUE:
-            self.print_windows_error()
+            self.__print_windows_error()
 
         output_pipe = win32pipe.CreateNamedPipe(
             output_name,
@@ -905,25 +561,25 @@ class TBCVideoExport:
         )
 
         if output_pipe == win32file.INVALID_HANDLE_VALUE:
-            self.print_windows_error()
+            self.__print_windows_error()
 
         if win32pipe.ConnectNamedPipe(input_pipe, None):
-            self.print_windows_error()
+            self.__print_windows_error()
 
         if win32pipe.ConnectNamedPipe(output_pipe, None):
-            self.print_windows_error()
+            self.__print_windows_error()
 
         while True:
             try:
                 read_hr, read_buf = win32file.ReadFile(input_pipe, 65536)
 
                 if read_hr in (winerror.ERROR_MORE_DATA, winerror.ERROR_IO_PENDING):
-                    self.print_windows_error(read_hr)
+                    self.__print_windows_error(read_hr)
 
-                write_hr, written = win32file.WriteFile(output_pipe, read_buf)
+                write_hr, _ = win32file.WriteFile(output_pipe, read_buf)
 
                 if write_hr:
-                    self.print_windows_error(write_hr)
+                    self.__print_windows_error(write_hr)
 
             except pywintypes.error:
                 if win32api.GetLastError() == winerror.ERROR_BROKEN_PIPE:
@@ -932,402 +588,286 @@ class TBCVideoExport:
                 raise
 
         if win32file.CloseHandle(input_pipe):
-            self.print_windows_error()
+            self.__print_windows_error()
         if win32file.CloseHandle(output_pipe):
-            self.print_windows_error()
+            self.__print_windows_error()
 
-    def setup_pipes(self):
-        """Config named pipes for FFmpeg."""
-        if not self.program_opts.skip_named_pipes:
-            try:
-                if os.name == "posix":
-                    self.use_named_pipes = True
+    def __setup_pipes(self):
+        """Config named pipes for FFmpeg.
+        This is only needed for separated tbc exports."""
+        try:
+            if os.name == "posix":
+                # we can use the same pipe for in/out on posix
+                self.files.pipes.tmp_dir = tempfile.mkdtemp(
+                    prefix="tbc-video-export-", suffix=""
+                )
+                self.files.pipes.input_luma = self.files.pipes.output_luma = os.path.join(
+                    self.files.pipes.tmp_dir, "luma"
+                )
+                self.files.pipes.input_chroma = self.files.pipes.output_chroma = os.path.join(
+                    self.files.pipes.tmp_dir, "chroma"
+                )
+            elif os.name == "nt":
+                # we must create a named piped for decoder output and bridge it with ffmpeg input
+                self.files.pipes.input_luma = r"\\.\pipe\tbc-video-export-luma-input"
+                self.files.pipes.output_luma = r"\\.\pipe\tbc-video-export-luma-output"
+                self.files.pipes.input_chroma = r"\\.\pipe\tbc-video-export-chroma-input"
+                self.files.pipes.output_chroma = r"\\.\pipe\tbc-video-export-chroma-output"
 
-                    # we can use the same pipe for in/out on posix
-                    self.pipe_tmp_dir = tempfile.mkdtemp(
-                        prefix="tbc-video-export", suffix=""
-                    )
-                    self.pipe_input_luma = self.pipe_output_luma = os.path.join(
-                        self.pipe_tmp_dir, "luma"
-                    )
-                    self.pipe_input_chroma = self.pipe_output_chroma = os.path.join(
-                        self.pipe_tmp_dir, "chroma"
-                    )
-                elif os.name == "nt":
-                    self.use_named_pipes = True
+                self.files.pipes.bridge_luma = None
+                self.files.pipes.bridge_chroma = None
+            else:
+                # disable named pipes on other os
+                self.use_named_pipes = False
+        except PermissionError as e:
+            raise SystemExit(
+                "unable to create pipes due to permissions, consider using --skip-named-pipes"
+            ) from e
 
-                    # we must create a named piped for decoder output and bridge it with ffmpeg input
-                    self.pipe_input_luma = r"\\.\pipe\tbc-video-export-luma-input"
-                    self.pipe_output_luma = r"\\.\pipe\tbc-video-export-luma-output"
-                    self.pipe_input_chroma = r"\\.\pipe\tbc-video-export-chroma-input"
-                    self.pipe_output_chroma = r"\\.\pipe\tbc-video-export-chroma-output"
-                else:
-                    raise Exception("named pipes not implemented for " + os.name)
-            except:
-                raise Exception("unable to setup pipes")
-        else:
-            self.use_named_pipes = False
-
-    def create_pipes(self):
+    def __create_pipes(self):
         """Create named pipes for FFmpeg."""
         try:
             if os.name == "posix":
-                os.mkfifo(self.pipe_input_luma)
-                os.mkfifo(self.pipe_input_chroma)
+                os.mkfifo(self.files.pipes.input_luma)
+                os.mkfifo(self.files.pipes.input_chroma)
             elif os.name == "nt":
-                self.pipe_bridge_luma = Thread(
-                    target=self.setup_win_pipe_bridge,
-                    args=(self.pipe_input_luma, self.pipe_output_luma),
+                self.files.pipes.bridge_luma = Thread(
+                    target=self.__setup_win_pipe_bridge,
+                    args=(self.files.pipes.input_luma, self.files.pipes.output_luma),
                 )
-                self.pipe_bridge_chroma = Thread(
-                    target=self.setup_win_pipe_bridge,
-                    args=(self.pipe_input_chroma, self.pipe_output_chroma),
+                self.files.pipes.bridge_chroma = Thread(
+                    target=self.__setup_win_pipe_bridge,
+                    args=(self.files.pipes.input_chroma, self.files.pipes.output_chroma),
                 )
 
-                self.pipe_bridge_luma.start()
-                self.pipe_bridge_chroma.start()
-            else:
-                raise Exception("named pipes not implemented for " + os.name)
-        except:
-            self.cleanup_pipes()
-            raise Exception("unable to create pipes")
+                self.files.pipes.bridge_luma.start()
+                self.files.pipes.bridge_chroma.start()
+        except PermissionError as e:
+            raise SystemExit(
+                "unable to create pipes due to permissions, consider using --skip-named-pipes"
+            ) from e
+        except RuntimeError as e:
+            raise SystemExit(
+                "unable to create pipe bridge threads, consider using --skip-named-pipes"
+            ) from e
 
-    def print_cmds(self, luma_pipeline, chroma_pipeline):
+    def __print_pipelines(self, *pipelines):
         """Print the full command arguments when using --what-if"""
-        print("luma:")
-        print(*luma_pipeline.dropout_correct_cmd)
-        print(*luma_pipeline.decoder_cmd)
 
-        if self.program_opts.luma_only or not self.use_named_pipes:
-            print(*luma_pipeline.ffmpeg_cmd)
+        for pipeline in pipelines:
+            if pipeline is not None:
+                # if given a cmd just print
+                if isinstance(pipeline, list):
+                    print(*pipeline)
+                else:
+                    print(*pipeline.dropout_correct_cmd)
+                    print(*pipeline.decoder_cmd)
 
-        print("---\n")
+                    if pipeline.ffmpeg_cmd is not None:
+                        print(*pipeline.ffmpeg_cmd)
 
-        if not self.program_opts.luma_only:
-            print("chroma:")
-            print(*chroma_pipeline.dropout_correct_cmd)
-            print(*chroma_pipeline.decoder_cmd)
-            print(*chroma_pipeline.ffmpeg_cmd)
-            print("---\n")
+                print()
 
-    def run_cmds(self, pipeline):
+    def __run_process_vbi(self, cmd):
+        """Run ld-process-vbi."""
+        with subprocess.Popen(cmd) as process:
+            process.wait()
+
+    def __run_cmds(self, pipeline):
         """Run ld-dropout-correct, ld-chroma-decoder and ffmpeg."""
-        dropout_correct = subprocess.Popen(
-            pipeline.dropout_correct_cmd, stdout=subprocess.PIPE
-        )
-        decoder = subprocess.Popen(
-            pipeline.decoder_cmd, stdin=dropout_correct.stdout, stdout=subprocess.PIPE
-        )
-        ffmpeg = subprocess.Popen(pipeline.ffmpeg_cmd, stdin=decoder.stdout)
+        with (
+            subprocess.Popen(
+                pipeline.dropout_correct_cmd, stdout=subprocess.PIPE
+            ) as dropout_correct,
+            subprocess.Popen(
+                pipeline.decoder_cmd, stdin=dropout_correct.stdout, stdout=subprocess.PIPE
+            ) as decoder,
+            subprocess.Popen(pipeline.ffmpeg_cmd, stdin=decoder.stdout) as ffmpeg
+        ):
+            ffmpeg.communicate()
 
-        ffmpeg.communicate()
-
-    def run_named_pipe_cmds(self, luma_pipeline, chroma_pipeline):
+    def __run_named_pipe_cmds(self, luma_pipeline, chroma_pipeline):
         """Run ld-dropout-correct, ld-chroma-decoder and ffmpeg using a combination
         of subprocess pipes and named pipes. This allows us to use multiple pipes to
         ffmpeg and prevents a two-step process of merging luma and chroma."""
-        # luma decoder procs
-        luma_dropout_correct = subprocess.Popen(
-            luma_pipeline.dropout_correct_cmd, stdout=subprocess.PIPE
-        )
-        luma_decoder = subprocess.Popen(
-            luma_pipeline.decoder_cmd, stdin=luma_dropout_correct.stdout
-        )
+        with (
+            # luma decoder procs
+            subprocess.Popen(
+                luma_pipeline.dropout_correct_cmd, stdout=subprocess.PIPE
+            ) as luma_dropout_correct,
+            subprocess.Popen(
+                luma_pipeline.decoder_cmd, stdin=luma_dropout_correct.stdout
+            ) as luma_decoder,
 
-        # chroma decoder procs
-        chroma_dropout_correct = subprocess.Popen(
-            chroma_pipeline.dropout_correct_cmd, stdout=subprocess.PIPE
-        )
-        chroma_decoder = subprocess.Popen(
-            chroma_pipeline.decoder_cmd, stdin=chroma_dropout_correct.stdout
-        )
+            # chroma decoder procs
+            subprocess.Popen(
+                chroma_pipeline.dropout_correct_cmd, stdout=subprocess.PIPE
+            ) as chroma_dropout_correct,
+            subprocess.Popen(
+                chroma_pipeline.decoder_cmd, stdin=chroma_dropout_correct.stdout
+            ) as chroma_decoder,
 
-        # ffmpeg proc
-        if self.program_opts.luma_only:
-            ffmpeg = subprocess.Popen(luma_pipeline.ffmpeg_cmd)
-            luma_decoder.communicate()
-        else:
-            ffmpeg = subprocess.Popen(chroma_pipeline.ffmpeg_cmd)
+            # ffmpeg proc
+            subprocess.Popen(chroma_pipeline.ffmpeg_cmd) as ffmpeg
+        ):
             luma_decoder.communicate()
             chroma_decoder.communicate()
 
-        ffmpeg.wait()
+            ffmpeg.wait()
 
-    def get_luma_cmds(self):
-        """Return ld-dropout-correct and ld-chroma-decode arguments for luma."""
-        dropout_correct_cmd = ["ld-dropout-correct"]
+    def __add_pcm_audio(self):
+        """Adds PCM audio to program_opts.ffmpeg_audio_* if available.
+        I'm not sure if these values can change, will update to read from
+        tbc json if required."""
+        if self.files.pcm_exists:
+            self.program_opts.ffmpeg_audio_file.insert(0, self.files.pcm)
+            self.program_opts.ffmpeg_audio_language.insert(0, None)
+            self.program_opts.ffmpeg_audio_title.insert(0, "PCM")
+            self.program_opts.ffmpeg_audio_format.insert(0, "s16le")
+            self.program_opts.ffmpeg_audio_rate.insert(0, "44.1k")
+            self.program_opts.ffmpeg_audio_channels.insert(0, "2")
 
-        if not self.program_opts.verbose:
-            dropout_correct_cmd.append("-q")
 
-        dropout_correct_cmd.append(
-            ["-i", self.files.tbc, "--output-json", os.devnull, "-"]
-        )
+class VideoSystem(Enum):
+    PAL = "pal"
+    PALM = "pal-m"
+    NTSC = "ntsc"
 
-        decoder_cmd = [
-            "ld-chroma-decoder",
-            self.decoder_settings.get_luma_opts(),
-            "-p",
-            "y4m",
-            self.decoder_settings.get_opts(),
-            "--input-json",
-            self.files.tbc_json,
-            "-",
-        ]
+    def __str__(self):
+        return self.value
 
-        # we just pipe into ffmpeg if b/w
-        if self.use_named_pipes and not self.program_opts.luma_only:
-            decoder_cmd.append(self.pipe_input_luma)
+
+class ChromaDecoder(Enum):
+    PAL2D = "pal2d"
+    TRANSFORM2D = "transform2d"
+    TRANSFORM3D = "transform3d"
+    MONO = "mono"
+    NTSC1D = "ntsc1d"
+    NTSC2D = "ntsc2d"
+    NTSC3D = "ntsc3d"
+    NTSC3DNOADAPT = "ntsc3dnoadapt"
+
+    def __str__(self):
+        return self.value
+
+
+class Files:
+    @dataclass
+    class Pipes:
+        tmp_dir: str = None
+        input_luma: str = None
+        input_chroma: str = None
+        output_luma: str = None
+        output_chroma: str = None
+        bridge_luma: Thread = None
+        bridge_chroma: Thread = None
+
+    def __init__(self, file, output_dir, input_json, skip_process_vbi):
+        self.path = pathlib.Path(file).parent
+        self.name = pathlib.Path(file).stem
+
+        # input files
+        self.tbc = os.path.join(self.path, self.name + ".tbc")
+        self.tbc_chroma = os.path.join(self.path, self.name + "_chroma.tbc")
+        self.pcm = os.path.join(self.path, self.name + ".pcm")
+
+        self.pipes = self.Pipes()
+        self.pcm_exists = False
+        self.is_combined_tbc = False
+
+        # output files
+        self.output_dir = output_dir
+        self.video_luma = None
+        self.video = None
+
+        self.tools = self.__get_tool_paths(skip_process_vbi)
+
+        if input_json is not None:
+            self.tbc_json = input_json
         else:
-            decoder_cmd.append("-")
+            self.tbc_json = os.path.join(self.path, self.name + ".tbc.json")
 
-        return DecodePipeline(
-            self.flatten(dropout_correct_cmd), self.flatten(decoder_cmd)
-        )
+        try:
+            with open(self.tbc_json, mode="r", encoding="utf-8") as json_file:
+                self.tbc_json_data = json.load(json_file)
+        except FileNotFoundError as e:
+            raise SystemExit("tbc json not found (" + self.tbc_json + ")") from e
+        except PermissionError as e:
+            raise SystemExit("permission denied opening tbc json (" + self.tbc_json + ")") from e
+        except json.JSONDecodeError as e:
+            raise SystemExit("unable to parse tbc json (" + self.tbc_json + ")") from e
 
-    def get_chroma_cmds(self):
-        """Return ld-dropout-correct and ld-chroma-decode arguments for chroma."""
-        dropout_correct_cmd = ["ld-dropout-correct"]
+        if not os.path.isdir(output_dir):
+            raise SystemExit("output directory does not exist (" + output_dir + ")")
 
-        if not self.program_opts.verbose:
-            dropout_correct_cmd.append("-q")
+    def get_output_path(self, filename):
+        return os.path.join(self.output_dir, filename)
 
-        dropout_correct_cmd.append(
-            [
-                "-i",
-                self.files.tbc_chroma,
-                "--input-json",
-                self.files.tbc_json,
-                "--output-json",
-                os.devnull,
-                "-",
-            ]
-        )
+    def check_files_exist(self):
+        # check for tbc json
+        if not os.path.isfile(self.tbc_json):
+            raise SystemExit("tbc json not found (" + self.tbc_json + ")")
 
-        decoder_cmd = [
-            "ld-chroma-decoder",
-            self.decoder_settings.get_chroma_opts(),
-            "-p",
-            "y4m",
-            self.decoder_settings.get_opts(),
-            "--input-json",
-            self.files.tbc_json,
-            "-",
-        ]
+        # check for chroma tbc file
+        if not os.path.isfile(self.tbc_chroma):
+            self.is_combined_tbc = True
 
-        if self.use_named_pipes:
-            decoder_cmd.append(self.pipe_input_chroma)
-        else:
-            decoder_cmd.append("-")
+        # check for tbc file
+        if not os.path.isfile(self.tbc):
+            raise SystemExit("tbc not found (" + self.tbc + ")")
 
-        return DecodePipeline(
-            self.flatten(dropout_correct_cmd), self.flatten(decoder_cmd)
-        )
+        # check for pcm file
+        if os.path.isfile(self.pcm):
+            self.pcm_exists = True
 
-    def get_luma_ffmepg_cmd(self):
-        """FFmpeg arguments for generating a luma-only video file."""
-        file = (
-            self.files.name
-            + "_luma."
-            + self.ffmpeg_settings.profile_luma.get_container()
-        )
-
-        ffmpeg_cmd = [
-            "ffmpeg",
-            self.ffmpeg_settings.get_verbosity(),
-            self.ffmpeg_settings.get_overwrite_opt(),
-            "-hwaccel",
-            "auto",
-            self.ffmpeg_settings.get_thread_queue_size_opt(),
-            "-i",
-            "-",
-        ]
-
-        if self.program_opts.luma_only:
-            ffmpeg_cmd.append(self.ffmpeg_settings.get_audio_inputs_opts())
-
-        ffmpeg_cmd.append(["-map", "0"])
-
-        if self.program_opts.luma_only:
-            ffmpeg_cmd.append(self.ffmpeg_settings.get_audio_map_opts())
-
-        ffmpeg_cmd.append(
-            [
-                self.ffmpeg_settings.get_timecode_opt(),
-                self.ffmpeg_settings.get_rate_opt(),
-                self.ffmpeg_settings.profile_luma.get_video_opts(),
-            ]
-        )
-
-        if self.program_opts.luma_only:
-            ffmpeg_cmd.append(
-                self.ffmpeg_settings.profile.get_audio_opts(),
-            )
-
-        ffmpeg_cmd.append(self.ffmpeg_settings.get_metadata_opts())
-
-        if self.program_opts.luma_only:
-            ffmpeg_cmd.append(self.ffmpeg_settings.get_audio_metadata_opts())
-
-        ffmpeg_cmd.append(["-pass", "1", file])
-
-        self.files.video_luma = file
-
-        return self.flatten(ffmpeg_cmd)
-
-    def get_chroma_ffmpeg_cmd(self):
-        """FFmpeg arguments for generating a chroma video file. This will work
-        with either a luma video file or multiple named pipes, depending on whether
-        usz_named_pipes is true."""
-        file = self.files.name + "." + self.ffmpeg_settings.profile.get_container()
-
-        ffmpeg_cmd = [
-            "ffmpeg",
-            self.ffmpeg_settings.get_verbosity(),
-            self.ffmpeg_settings.get_overwrite_opt(),
-            "-hwaccel",
-            "auto",
-            self.ffmpeg_settings.get_color_range_opt(),
-            self.ffmpeg_settings.get_thread_queue_size_opt(),
-            "-i",
-        ]
-
-        if self.use_named_pipes:
-            ffmpeg_cmd.append(self.pipe_output_luma)
-        else:
-            ffmpeg_cmd.append(self.files.video_luma)
-
-        ffmpeg_cmd.append(
-            [
-                self.ffmpeg_settings.get_thread_queue_size_opt(),
-                "-i",
-            ]
-        )
-
-        if self.use_named_pipes:
-            ffmpeg_cmd.append(self.pipe_output_chroma)
-        else:
-            ffmpeg_cmd.append("-")
-
-        ffmpeg_cmd.append(
-            [self.ffmpeg_settings.get_audio_inputs_opts(), "-filter_complex"]
-        )
-
-        # filters from existing scripts, can probably be tidied up
-        if self.use_named_pipes is not None:
-            ffmpeg_cmd.append(
-                [
-                    "[1:v]format="
-                    + self.ffmpeg_settings.profile.get_video_format()
-                    + "[chroma];"
-                    + "[0:v][chroma]mergeplanes=0x001112:"
-                    + self.ffmpeg_settings.profile.get_video_format()
-                    + ",setfield=tff"
-                    + self.ffmpeg_settings.profile.get_video_filter_opts()
-                    + "[output]",
-                ]
-            )
-        else:
-            ffmpeg_cmd.append(
-                [
-                    "[0]format=pix_fmts="
-                    + self.ffmpeg_settings.profile.get_video_format()
-                    + ",extractplanes=y[y];"
-                    "[1]format=pix_fmts="
-                    + self.ffmpeg_settings.profile.get_video_format()
-                    + ",extractplanes=u+v[u][v];"
-                    "[y][u][v]mergeplanes=0x001020:"
-                    + self.ffmpeg_settings.profile.get_video_format()
-                    + ",format=pix_fmts="
-                    + self.ffmpeg_settings.profile.get_video_format()
-                    + ",setfield=tff"
-                    + self.ffmpeg_settings.profile.get_video_filter_opts()
-                    + "[output]"
-                ]
-            )
-
-        ffmpeg_cmd.append(
-            [
-                "-map",
-                "[output]:v",
-                self.ffmpeg_settings.get_audio_map_opts(),
-                self.ffmpeg_settings.get_timecode_opt(),
-                self.ffmpeg_settings.get_rate_opt(),
-                self.ffmpeg_settings.profile.get_video_opts(),
-                self.ffmpeg_settings.get_aspect_ratio_opt(),
-                self.ffmpeg_settings.get_color_range_opt(),
-                self.ffmpeg_settings.get_color_opts(),
-                self.ffmpeg_settings.profile.get_audio_opts(),
-                self.ffmpeg_settings.get_metadata_opts(),
-                self.ffmpeg_settings.get_audio_metadata_opts(),
-                file,
-            ]
-        )
-
-        self.files.video = file
-
-        return self.flatten(ffmpeg_cmd)
-
-    def check_file_overwrites(self):
+    def check_file_overwrites(self, luma_only, use_named_pipes):
         """Check if files exist with named pipes off/on and b/w off/on."""
-        if self.use_named_pipes:
-            if self.program_opts.luma_only:
-                self.check_file_overwrite(self.files.video_luma)
-            else:
-                self.check_file_overwrite(self.files.video)
-        else:
-            if self.program_opts.luma_only:
-                self.check_file_overwrite(self.files.video_luma)
-            else:
-                self.check_file_overwrite(self.files.video_luma)
-                self.check_file_overwrite(self.files.video)
+        if luma_only or not use_named_pipes:
+            self.__check_file_overwrite(self.video_luma)
 
-    def check_file_overwrite(self, file):
-        """Check if a file exists and ask to run with overwrite."""
-        if os.path.isfile(file):
-            raise Exception(file + " exists, use --ffmpeg-overwrite or move them")
+        self.__check_file_overwrite(self.video)
 
-    def get_video_system(self, tbc_json_data):
+    def get_video_system(self):
         """Determine whether a TBC is PAL or NTSC."""
-
-        # if user has forced a format
-        if self.program_opts.video_system is not None:
-            return self.program_opts.video_system
 
         # search for PAL* or NTSC* in videoParameters.system or the existence
         # if isSourcePal keys
         if (
-            VideoSystem.PAL.value == tbc_json_data["videoParameters"]["system"].lower()
-            or "isSourcePal" in tbc_json_data["videoParameters"]
+            VideoSystem.PAL.value == self.tbc_json_data["videoParameters"]["system"].lower()
+            or "isSourcePal" in self.tbc_json_data["videoParameters"]
         ):
             return VideoSystem.PAL
-        elif (
-            VideoSystem.PALM.value == tbc_json_data["videoParameters"]["system"].lower()
-            or "isSourcePalM" in tbc_json_data["videoParameters"]
+
+        if (
+            VideoSystem.PALM.value == self.tbc_json_data["videoParameters"]["system"].lower()
+            or "isSourcePalM" in self.tbc_json_data["videoParameters"]
         ):
             return VideoSystem.PALM
-        elif (
-            VideoSystem.NTSC.value in tbc_json_data["videoParameters"]["system"].lower()
+
+        if (
+            VideoSystem.NTSC.value in self.tbc_json_data["videoParameters"]["system"].lower()
         ):
             return VideoSystem.NTSC
-        else:
-            raise Exception("could not read video system from " + json_file)
 
-    def get_timecode(self, tbc_json_data):
+        raise SystemExit("could not read video system from tbc json")
+
+    def get_timecode(self, video_system):
         """Attempt to read a VITC timecode for the first frame.
         Returns starting timecode if no VITC data found."""
 
         if (
-            "vitc" not in tbc_json_data["fields"][0]
-            or "vitcData" not in tbc_json_data["fields"][0]["vitc"]
+            "vitc" not in self.tbc_json_data["fields"][0]
+            or "vitcData" not in self.tbc_json_data["fields"][0]["vitc"]
         ):
             return "00:00:00:00"
 
         is_valid = True
-        is_30_frame = self.video_system is not VideoSystem.PAL
-        vitc_data = tbc_json_data["fields"][0]["vitc"]["vitcData"]
+        is_30_frame = video_system is not VideoSystem.PAL
+        vitc_data = self.tbc_json_data["fields"][0]["vitc"]["vitcData"]
 
         def decode_bcd(tens, units):
+            nonlocal is_valid
+
             if tens > 9:
                 is_valid = False
                 tens = 9
@@ -1354,12 +894,12 @@ class TBCVideoExport:
 
         if is_30_frame:
             is_drop_frame = (vitc_data[1] & 0x04) != 0
-            is_col_frame = (vitc_data[1] & 0x08) != 0
-            is_field_mark = (vitc_data[3] & 0x08) != 0
+            #is_col_frame = (vitc_data[1] & 0x08) != 0
+            #is_field_mark = (vitc_data[3] & 0x08) != 0
         else:
             is_drop_frame = False
-            is_col_frame = (vitc_data[1] & 0x08) != 0
-            is_field_mark = (vitc_data[7] & 0x08) != 0
+            #is_col_frame = (vitc_data[1] & 0x08) != 0
+            #is_field_mark = (vitc_data[7] & 0x08) != 0
 
         if not is_valid:
             return "00:00:00:00"
@@ -1371,7 +911,51 @@ class TBCVideoExport:
 
         return f"{hour:02d}:{minute:02d}:{second:02d}{sep}{frame:02d}"
 
-    def get_profile_file(self):
+    def __check_file_overwrite(self, file):
+        """Check if a file exists and ask to run with overwrite."""
+        if os.path.isfile(file):
+            raise SystemExit(file + " exists, use --ffmpeg-overwrite or move them")
+
+    def __get_tool_paths(self, skip_process_vbi):
+        """Get required tool paths from PATH or script path."""
+        tool_names = ["ld-dropout-correct", "ld-chroma-decoder", "ffmpeg"]
+        tools = {}
+
+        if not skip_process_vbi:
+            tool_names.append("ld-process-vbi")
+
+        for tool_name in tool_names:
+            binary = tool_name
+
+            if os.name == "nt":
+                binary += ".exe"
+
+            # check if tool exists in the same dir as script
+            script_path = Files.get_runtime_directory().with_name(binary).absolute()
+
+            if os.path.isfile(script_path):
+                tools[tool_name] = script_path
+            # check if tool exists in PATH or current dir
+            elif which(binary):
+                tools[tool_name] = binary
+
+            if not tool_name in tools:
+                raise SystemExit(tool_name + " not in PATH or script dir")
+
+        return tools
+
+    @staticmethod
+    def get_runtime_directory():
+        """Returns the runtime directory. When the script is built to a single
+        executable using PyInstaller __file__ is somewhere in TEMP, so the executable
+        location must be used instead."""
+        if getattr(sys, "frozen", False):
+            return pathlib.Path(sys.executable)
+
+        return pathlib.Path(__file__)
+
+    @staticmethod
+    def get_profile_file():
         """Returns name of json file to load profiles from. Checks for existence of
         a .custom file. Checks both . and the dir the script is run from."""
 
@@ -1382,7 +966,7 @@ class TBCVideoExport:
         if os.path.isfile(file_name_custom):
             return file_name_custom
 
-        path = pathlib.Path(__file__).with_name(file_name_custom).absolute()
+        path = Files.get_runtime_directory().with_name(file_name_custom).absolute()
 
         if os.path.isfile(path):
             return path
@@ -1391,24 +975,768 @@ class TBCVideoExport:
         if os.path.isfile(file_name_stock):
             return file_name_stock
 
-        path = pathlib.Path(__file__).with_name(file_name_stock).absolute()
+        path = Files.get_runtime_directory().with_name(file_name_stock).absolute()
 
         if os.path.isfile(path):
             return path
 
-        raise Exception("Unable to find profile config file")
+        raise SystemExit("Unable to find profile config file")
 
-    def check_paths(self):
-        """Ensure required binaries are in PATH."""
-        for tool in ["ld-dropout-correct", "ld-chroma-decoder", "ffmpeg"]:
-            if not which(tool):
-                raise Exception(tool + " not in PATH")
 
+class LDToolsWrapper:
+    def __init__(self, program_opts, video_system):
+        self.program_opts = program_opts
+        self.video_system = video_system
+
+    def get_luma_cmds(self, files, use_named_pipes):
+        """Return ld-dropout-correct and ld-chroma-decode arguments for luma."""
+        dropout_correct_cmd = [files.tools["ld-dropout-correct"]]
+
+        if not self.program_opts.verbose:
+            dropout_correct_cmd.append("-q")
+
+        dropout_correct_cmd.append(
+            ["-i", files.tbc, "--output-json", os.devnull, "-"]
+        )
+
+        decoder_cmd = [
+            files.tools["ld-chroma-decoder"],
+            self.__get_decoder_opts(skip_luma=False, skip_chroma=True),
+            "-p",
+            "y4m",
+            self.__get_chroma_decoder(is_luma=True),
+            self.__get_vbi_opts(),
+            self.__get_opts(),
+            "--input-json",
+            files.tbc_json,
+            "-",
+        ]
+
+        # we just pipe into ffmpeg if b/w
+        if use_named_pipes and not self.program_opts.luma_only:
+            decoder_cmd.append(files.pipes.input_luma)
+        else:
+            decoder_cmd.append("-")
+
+        return DecodePipeline(
+            flatten(dropout_correct_cmd), flatten(decoder_cmd)
+        )
+
+    def get_chroma_cmds(self, files, use_named_pipes):
+        """Return ld-dropout-correct and ld-chroma-decode arguments for chroma."""
+        dropout_correct_cmd = [files.tools["ld-dropout-correct"]]
+
+        if not self.program_opts.verbose:
+            dropout_correct_cmd.append("-q")
+
+        dropout_correct_cmd.append(
+            [
+                "-i",
+                files.tbc_chroma,
+                "--input-json",
+                files.tbc_json,
+                "--output-json",
+                os.devnull,
+                "-",
+            ]
+        )
+
+        decoder_cmd = [
+            files.tools["ld-chroma-decoder"],
+            self.__get_decoder_opts(skip_luma=True, skip_chroma=False),
+            "-p",
+            "y4m",
+            self.__get_chroma_decoder(is_luma=False),
+            self.__get_vbi_opts(),
+            self.__get_opts(),
+            "--input-json",
+            files.tbc_json,
+            "-",
+        ]
+
+        if use_named_pipes:
+            decoder_cmd.append(files.pipes.input_chroma)
+        else:
+            decoder_cmd.append("-")
+
+        return DecodePipeline(
+            flatten(dropout_correct_cmd), flatten(decoder_cmd)
+        )
+
+    def get_combined_cmds(self, files):
+        """Return ld-dropout-correct and ld-chroma-decode arguments for combined tbc decoding."""
+        dropout_correct_cmd = [files.tools["ld-dropout-correct"]]
+
+        if not self.program_opts.verbose:
+            dropout_correct_cmd.append("-q")
+
+        dropout_correct_cmd.append(
+            [
+                "-i",
+                files.tbc,
+                "--input-json",
+                files.tbc_json,
+                "--output-json",
+                os.devnull,
+                "-",
+            ]
+        )
+
+        decoder_cmd = [
+            files.tools["ld-chroma-decoder"],
+            self.__get_decoder_opts(skip_luma=False, skip_chroma=False),
+            "-p",
+            "y4m",
+            self.__get_chroma_decoder(is_luma=False),
+            self.__get_vbi_opts(),
+            self.__get_opts(),
+            "--input-json",
+            files.tbc_json,
+            "-",
+            "-"
+        ]
+
+        return DecodePipeline(
+            flatten(dropout_correct_cmd), flatten(decoder_cmd)
+        )
+
+    def get_process_vbi_cmd(self, files):
+        """Return ld-process-vbi arguments."""
+        process_vbi_cmd = [files.tools["ld-process-vbi"]]
+
+        if not self.program_opts.verbose:
+            process_vbi_cmd.append("-q")
+
+        process_vbi_cmd.append(
+            [
+                "-t",
+                str(self.program_opts.threads),
+                "--input-json",
+                files.tbc_json,
+                files.tbc
+            ]
+        )
+
+        return flatten(process_vbi_cmd)
+
+    def __get_chroma_decoder(self, is_luma):
+        """Get chroma decoder opts."""
+        decoder_opts = []
+
+        if is_luma:
+            decoder_opts.append(["-f", ChromaDecoder.MONO.value])
+        elif self.program_opts.chroma_decoder is None:
+            # set default chroma decoder if unset
+            if self.video_system in (VideoSystem.PAL, VideoSystem.PALM):
+                decoder_opts.append(["-f", ChromaDecoder.TRANSFORM2D.value])
+            elif self.video_system is VideoSystem.NTSC:
+                decoder_opts.append(["-f", ChromaDecoder.NTSC2D.value])
+        else:
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "chroma_decoder", "-f")
+            )
+
+        return decoder_opts
+
+    def __get_vbi_opts(self):
+        """Get VBI opts."""
+        decoder_opts = []
+
+        if self.video_system is VideoSystem.PAL:
+            # vbi is set, use preset line values
+            if self.program_opts.vbi:
+                decoder_opts.append(["--ffll", "2"])
+                decoder_opts.append(["--lfll", "308"])
+                decoder_opts.append(["--ffrl", "2"])
+                decoder_opts.append(["--lfrl", "620"])
+            elif self.program_opts.letterbox:
+                decoder_opts.append(["--ffll", "2"])
+                decoder_opts.append(["--lfll", "308"])
+                decoder_opts.append(["--ffrl", "118"])
+                decoder_opts.append(["--lfrl", "548"])
+        elif self.video_system in (VideoSystem.NTSC, VideoSystem.PALM):
+            # vbi is set, use preset line values
+            if self.program_opts.vbi:
+                decoder_opts.append(["--ffll", "1"])
+                decoder_opts.append(["--lfll", "259"])
+                decoder_opts.append(["--ffrl", "2"])
+                decoder_opts.append(["--lfrl", "525"])
+            elif self.program_opts.letterbox:
+                decoder_opts.append(["--ffll", "2"])
+                decoder_opts.append(["--lfll", "308"])
+                decoder_opts.append(["--ffrl", "118"])
+                decoder_opts.append(["--lfrl", "453"])
+
+        if not self.program_opts.vbi and not self.program_opts.letterbox:
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "first_active_field_line", "--ffll")
+            )
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "last_active_field_line", "--lfll")
+            )
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "first_active_frame_line", "--ffrl")
+            )
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "last_active_frame_line", "--lfrl")
+            )
+
+        return decoder_opts
+
+
+    def __get_opts(self):
+        """Generate ld-chroma-decoder opts."""
+        decoder_opts = []
+
+        if not self.program_opts.verbose:
+            decoder_opts.append("-q")
+
+        if self.video_system is VideoSystem.NTSC:
+            decoder_opts.append("--ntsc-phase-comp")
+
+        decoder_opts.append(self.__convert_opt(self.program_opts, "start", "-s"))
+        decoder_opts.append(self.__convert_opt(self.program_opts, "length", "-l"))
+        decoder_opts.append(self.__convert_opt(self.program_opts, "reverse", "-r"))
+        decoder_opts.append(self.__convert_opt(self.program_opts, "threads", "-t"))
+        decoder_opts.append(
+            self.__convert_opt(self.program_opts, "output_padding", "--pad")
+        )
+        decoder_opts.append(self.__convert_opt(self.program_opts, "offset", "-o"))
+        decoder_opts.append(
+            self.__convert_opt(self.program_opts, "simple_pal", "--simple-pal")
+        )
+        decoder_opts.append(
+            self.__convert_opt(self.program_opts, "show_ffts", "--show-ffts")
+        )
+        decoder_opts.append(
+            self.__convert_opt(
+                self.program_opts, "transform_threshold", "--transform-threshold"
+            )
+        )
+        decoder_opts.append(
+            self.__convert_opt(
+                self.program_opts, "transform_thresholds", "--transform-thresholds"
+            )
+        )
+
+        return decoder_opts
+
+    def __get_decoder_opts(self, skip_luma, skip_chroma):
+        """Generate ld-chroma-decoder opts."""
+        decoder_opts = []
+
+        if skip_luma:
+            # when skipping luma we want this set to 0
+            decoder_opts.append(["--luma-nr", "0"])
+        else:
+            decoder_opts.append(self.__convert_opt(self.program_opts, "luma_nr", "--luma-nr"))
+
+        if skip_chroma:
+            # when skipping chroma we want this set to 0
+            decoder_opts.append(["--chroma-gain", "0"])
+        else:
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "chroma_gain", "--chroma-gain")
+            )
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "chroma_nr", "--chroma-nr")
+            )
+            decoder_opts.append(
+                self.__convert_opt(self.program_opts, "chroma_phase", "--chroma-phase")
+            )
+
+        return decoder_opts
+
+    def __convert_opt(self, program_opts, program_opt_name, target_opt_name):
+        """Converts a program opt to a subprocess opt."""
+        rt = []
+        value = getattr(program_opts, program_opt_name)
+
+        if value is not None:
+            if isinstance(value, bool):
+                # only appends opt on true, fine for current use
+                if value is True:
+                    rt.append([target_opt_name])
+            else:
+                rt.append([target_opt_name, str(value)])
+
+        return rt
+
+class FFmpegProfile:
+    def __init__(self, profiles, name):
+        self.name = name
+        self.profile = profiles.profiles[name]
+
+    def get_video_opts(self):
+        """Return FFmpeg video opts from profile."""
+        rt = []
+
+        if not all(key in self.profile for key in ("v_codec", "v_format", "container")):
+            raise SystemExit("ffmpeg profile is missing required data")
+
+        rt.append(["-c:v", self.profile["v_codec"]])
+
+        if "v_opts" in self.profile:
+            rt.append(self.profile["v_opts"])
+
+        rt.append(["-pixel_format", self.profile["v_format"]])
+
+        return rt
+
+    def get_video_filter_opts(self):
+        """Return FFmpeg video filter opts from profile."""
+        if "v_filter" in self.profile:
+            return "," + self.profile["v_filter"]
+
+        return ""
+
+    def get_audio_opts(self):
+        """Return FFmpeg audio opts from profile."""
+        rt = []
+
+        if "a_codec" in self.profile:
+            rt.append(["-c:a", self.profile["a_codec"]])
+
+        if "a_opts" in self.profile:
+            rt.append(self.profile["a_opts"])
+
+        return rt
+
+    def get_video_doublerate(self):
+        """Return FFmpeg double rate from profile."""
+        if "v_double_rate" in self.profile and self.profile["v_double_rate"]:
+            return True
+
+        return False
+
+    def get_video_format(self):
+        return self.profile["v_format"]
+
+    def get_container(self):
+        return self.profile["container"]
+
+
+class FFmpegProfiles:
+    def __init__(self, file_name):
+        self.names = []
+        self.names_luma = []
+        self.profiles = []
+
+        # profiles ending in _luma are considered luma profiles
+        try:
+            with open(file_name, mode="r", encoding="utf-8") as file:
+                data = json.load(file)
+                self.names = [
+                    name
+                    for name in data["ffmpeg_profiles"].keys()
+                    if "_luma" not in name
+                ]
+                self.names_luma = [
+                    name for name in data["ffmpeg_profiles"].keys() if "_luma" in name
+                ]
+                self.profiles = data["ffmpeg_profiles"]
+        except FileNotFoundError as e:
+            raise SystemExit("profile json not found (" + file_name+ ")") from e
+        except PermissionError as e:
+            raise SystemExit("permission denied opening profile json (" + file_name + ")") from e
+        except json.JSONDecodeError as e:
+            raise SystemExit("unable to parse profile json (" + file_name + ")") from e
+
+    def get_profile(self, name):
+        return FFmpegProfile(self, name)
+
+
+class FFmpegWrapper:
+    def __init__(
+        self, program_opts, files, profiles, video_system
+    ):
+        self.program_opts = program_opts
+        self.files = files
+        self.video_system = video_system
+
+        self.profile = profiles.get_profile(
+            self.program_opts.ffmpeg_profile
+        )
+        self.profile_luma = profiles.get_profile(
+            self.program_opts.ffmpeg_profile_luma
+        )
+        self.timecode = self.files.get_timecode(self.video_system)
+
+    def get_luma_ffmepg_cmd(self, files):
+        """FFmpeg arguments for generating a luma-only video file."""
+        file_name = (
+            files.name
+            + "_luma."
+            + self.profile_luma.get_container()
+        )
+
+        file = files.get_output_path(file_name)
+
+        ffmpeg_cmd = [
+            files.tools["ffmpeg"],
+            self.__get_verbosity(),
+            self.__get_overwrite_opt(),
+            self.__get_threads(),
+            "-hwaccel",
+            "auto",
+            self.__get_thread_queue_size_opt(),
+            "-i",
+            "-",
+        ]
+
+        if self.program_opts.luma_only:
+            ffmpeg_cmd.append(self.__get_audio_inputs_opts())
+
+        ffmpeg_cmd.append(["-map", "0"])
+
+        if self.program_opts.luma_only:
+            ffmpeg_cmd.append(self.__get_audio_map_opts(1))
+
+        ffmpeg_cmd.append(
+            [
+                self.__get_timecode_opt(),
+                self.__get_rate_opt(),
+                self.profile_luma.get_video_opts(),
+                self.__get_attachment_opts()
+            ]
+        )
+
+        if self.program_opts.luma_only:
+            ffmpeg_cmd.append(
+                self.profile.get_audio_opts(),
+            )
+
+        ffmpeg_cmd.append(self.__get_metadata_opts())
+
+        if self.program_opts.luma_only:
+            ffmpeg_cmd.append(self.__get_audio_metadata_opts())
+
+        ffmpeg_cmd.append(["-pass", "1", file])
+
+        files.video_luma = file
+
+        return flatten(ffmpeg_cmd)
+
+    def get_chroma_ffmpeg_cmd(self, files, use_named_pipes):
+        """FFmpeg arguments for generating a chroma video file. This will work
+        with either a luma video file or multiple named pipes, depending on whether
+        use_named_pipes is true."""
+        file_name = files.name + "." + self.profile.get_container()
+        file = files.get_output_path(file_name)
+
+        ffmpeg_cmd = [
+            files.tools["ffmpeg"],
+            self.__get_verbosity(),
+            self.__get_overwrite_opt(),
+            self.__get_threads(),
+            "-hwaccel",
+            "auto",
+            self.__get_color_range_opt(),
+            self.__get_thread_queue_size_opt(),
+            "-i",
+        ]
+
+        if use_named_pipes:
+            ffmpeg_cmd.append(files.pipes.output_luma)
+        else:
+            ffmpeg_cmd.append(files.video_luma)
+
+        ffmpeg_cmd.append(
+            [
+                self.__get_thread_queue_size_opt(),
+                "-i",
+            ]
+        )
+
+        if use_named_pipes:
+            ffmpeg_cmd.append(files.pipes.output_chroma)
+        else:
+            ffmpeg_cmd.append("-")
+
+        ffmpeg_cmd.append(
+            [self.__get_audio_inputs_opts(), "-filter_complex"]
+        )
+
+        # filters from existing scripts, can probably be tidied up
+        if use_named_pipes is not None:
+            ffmpeg_cmd.append(
+                [
+                    "[1:v]format="
+                    + self.profile.get_video_format()
+                    + "[chroma];"
+                    + "[0:v][chroma]mergeplanes=0x001112:"
+                    + self.profile.get_video_format()
+                    + ",setfield=tff"
+                    + self.profile.get_video_filter_opts()
+                    + "[output]",
+                ]
+            )
+        else:
+            ffmpeg_cmd.append(
+                [
+                    "[0]format=pix_fmts="
+                    + self.profile.get_video_format()
+                    + ",extractplanes=y[y];"
+                    "[1]format=pix_fmts="
+                    + self.profile.get_video_format()
+                    + ",extractplanes=u+v[u][v];"
+                    "[y][u][v]mergeplanes=0x001020:"
+                    + self.profile.get_video_format()
+                    + ",format=pix_fmts="
+                    + self.profile.get_video_format()
+                    + ",setfield=tff"
+                    + self.profile.get_video_filter_opts()
+                    + "[output]"
+                ]
+            )
+
+        ffmpeg_cmd.append(
+            [
+                "-map",
+                "[output]:v",
+                self.__get_audio_map_opts(2),
+                self.__get_timecode_opt(),
+                self.__get_rate_opt(),
+                self.profile.get_video_opts(),
+                self.__get_aspect_ratio_opt(),
+                self.__get_color_range_opt(),
+                self.__get_color_opts(),
+                self.profile.get_audio_opts(),
+                self.__get_metadata_opts(),
+                self.__get_attachment_opts(),
+                self.__get_audio_metadata_opts(),
+                file,
+            ]
+        )
+
+        files.video = file
+
+        return flatten(ffmpeg_cmd)
+
+    def get_combined_ffmpeg_cmd(self, files):
+        """FFmpeg arguments for generating a video file from a combined tbc.
+        This is for use with cvbs-decoder and ld-decoder."""
+        file_name = files.name + "." + self.profile.get_container()
+        file = files.get_output_path(file_name)
+
+        ffmpeg_cmd = [
+            files.tools["ffmpeg"],
+            self.__get_verbosity(),
+            self.__get_overwrite_opt(),
+            self.__get_threads(),
+            "-hwaccel",
+            "auto",
+            self.__get_color_range_opt(),
+            self.__get_thread_queue_size_opt(),
+            "-i",
+            "-",
+            self.__get_audio_inputs_opts(),
+            "-map",
+            "0:v",
+            self.__get_audio_map_opts(1),
+            self.__get_timecode_opt(),
+            self.__get_rate_opt(),
+            self.profile.get_video_opts(),
+            self.__get_aspect_ratio_opt(),
+            self.__get_color_range_opt(),
+            self.__get_color_opts(),
+            self.profile.get_audio_opts(),
+            self.__get_metadata_opts(),
+            self.__get_attachment_opts(),
+            self.__get_audio_metadata_opts(),
+            file,
+        ]
+
+        files.video = file
+
+        return flatten(ffmpeg_cmd)
+
+    def __get_rate_opt(self):
+        """Returns FFmpeg opts for rate."""
+        ffmpeg_opts = []
+
+        if self.video_system == VideoSystem.PAL:
+            rate = 25
+        elif self.video_system in (VideoSystem.NTSC, VideoSystem.PALM):
+            rate = 29.97
+
+        if self.profile.get_video_doublerate():
+            rate = rate * 2
+
+        ffmpeg_opts.append(["-r", str(rate)])
+
+        return ffmpeg_opts
+
+    def __get_aspect_ratio_opt(self):
+        """Returns FFmpeg opts for aspect ratio."""
+        if (
+            (
+                "isWidescreen" in self.files.tbc_json_data["videoParameters"]
+                and self.files.tbc_json_data["videoParameters"]["isWidescreen"]
+            )
+            or self.program_opts.ffmpeg_force_anamorphic
+            or self.program_opts.letterbox
+        ):
+            return ["-aspect", "16:9"]
+
+        return ["-aspect", "4:3"]
+
+    def __get_color_opts(self):
+        """Returns FFmpeg opts for color settings."""
+        ffmpeg_opts = []
+
+        if self.video_system in (VideoSystem.PAL, VideoSystem.PALM):
+            ffmpeg_opts.append(["-colorspace", "bt470bg"])
+            ffmpeg_opts.append(["-color_primaries", "bt470bg"])
+            ffmpeg_opts.append(["-color_trc", "bt709"])
+        elif self.video_system == VideoSystem.NTSC:
+            ffmpeg_opts.append(["-colorspace", "smpte170m"])
+            ffmpeg_opts.append(["-color_primaries", "smpte170m"])
+            ffmpeg_opts.append(["-color_trc", "bt709"])
+
+        return ffmpeg_opts
+
+    def __get_audio_map_opts(self, offset):
+        """Returns FFmpeg opts for audio mapping."""
+        ffmpeg_opts = []
+
+        audio_inputs = self.program_opts.ffmpeg_audio_file
+
+        if audio_inputs is not None:
+            for idx, _ in enumerate(audio_inputs):
+                ffmpeg_opts.append(["-map", str(idx + offset) + ":a"])
+
+        return ffmpeg_opts
+
+    def __get_metadata_opts(self):
+        """Returns FFmpeg opts for metadata."""
+        ffmpeg_opts = []
+
+        metadata = self.program_opts.ffmpeg_metadata
+
+        # add video metadata
+        if metadata is not None:
+            for data in metadata:
+                ffmpeg_opts.append(["-metadata", data])
+
+        return ffmpeg_opts
+
+    def __get_attachment_opts(self):
+        """Returns FFmpeg opts for attachments.
+        Only available for MKV containers"""
+        ffmpeg_opts = []
+
+        if self.profile.get_container().lower() == "mkv":
+            # add tbc json
+            ffmpeg_opts.append([
+                "-attach",
+                self.files.tbc_json,
+                "-metadata:s:t",
+                "mimetype=application/json"
+            ])
+
+        return ffmpeg_opts
+
+
+    def __get_audio_metadata_opts(self):
+        """Returns FFmpeg opts for audio metadata."""
+        ffmpeg_opts = []
+
+        audio_titles = self.program_opts.ffmpeg_audio_title
+        audio_languages = self.program_opts.ffmpeg_audio_language
+
+        # add audio metadata only if luma only
+        if audio_titles is not None:
+            for idx, title in enumerate(audio_titles):
+                if title is not None:
+                    ffmpeg_opts.append(
+                        ["-metadata:s:a:" + str(idx), 'title="' + title + '"']
+                    )
+
+        if audio_languages is not None:
+            for idx, language in enumerate(audio_languages):
+                if language is not None:
+                    ffmpeg_opts.append(
+                        ["-metadata:s:a:" + str(idx), 'language="' + language + '"']
+                    )
+
+        return ffmpeg_opts
+
+    def __get_audio_inputs_opts(self):
+        """Returns FFmpeg audio input opts."""
+        input_opts = []
+
+        tracks = self.program_opts.ffmpeg_audio_file
+        offsets = self.program_opts.ffmpeg_audio_offset
+        formats = self.program_opts.ffmpeg_audio_format
+        rates = self.program_opts.ffmpeg_audio_rate
+        channels = self.program_opts.ffmpeg_audio_channels
+
+        if tracks is not None:
+            for idx, track in enumerate(tracks):
+                # add offset if set
+                if len(offsets) >= idx + 1 and offsets[idx] is not None:
+                    input_opts.append(["-itsoffset", offsets[idx]])
+                else:
+                    input_opts.append(["-itsoffset", "00:00:00.000"])
+
+                if len(formats) >= idx + 1 and formats[idx] is not None:
+                    input_opts.append(["-f", formats[idx]])
+
+                if len(rates) >= idx + 1 and rates[idx] is not None:
+                    input_opts.append(["-ar", rates[idx]])
+
+                if len(channels) >= idx + 1 and channels[idx] is not None:
+                    input_opts.append(["-ac", channels[idx]])
+
+                input_opts.append(["-i", track])
+
+        return input_opts
+
+    def __get_timecode_opt(self):
+        return ["-timecode", self.timecode]
+
+    def __get_verbosity(self):
+        if not self.program_opts.verbose:
+            return ["-hide_banner", "-loglevel", "error", "-stats"]
+
+        return "-hide_banner"
+
+    def __get_overwrite_opt(self):
+        if self.program_opts.ffmpeg_overwrite:
+            return "-y"
+        return None
+
+    def __get_color_range_opt(self):
+        return ["-color_range", "tv"]
+
+    def __get_thread_queue_size_opt(self):
+        return ["-thread_queue_size", str(self.program_opts.ffmpeg_thread_queue_size)]
+
+    def __get_threads(self):
+        return ["-threads", str(self.program_opts.threads)]
+
+
+class DecodePipeline:
+    def __init__(self, dropout_correct_cmd=None, decoder_cmd=None, ffmpeg_cmd=None):
+        self.dropout_correct_cmd = dropout_correct_cmd
+        self.decoder_cmd = decoder_cmd
+        self.ffmpeg_cmd = ffmpeg_cmd
+
+
+def flatten(arr):
+    """Flatten list of lists. Skips None values."""
+    rt = []
+    for i in arr:
+        if isinstance(i, list):
+            rt.extend(flatten(i))
+        elif i is not None:
+            rt.append(i)
+    return rt
 
 def main():
     tbc_video_export = TBCVideoExport()
     tbc_video_export.run()
-
 
 if __name__ == "__main__":
     main()
