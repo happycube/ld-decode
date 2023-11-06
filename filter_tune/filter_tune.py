@@ -165,11 +165,13 @@ def genDeemphFilter(mid_point, dBgain, Q):
     da, db = gen_high_shelf(mid_point, dBgain, Q, fs)
     return filtfft((db, da), blocklen, whole=False)
 
-def genHighpass(freq):
-    return filtfft(signal.butter(1,[freq / 20000000], btype="highpass"), blocklen, whole=False)    
+def genHighpass(freq, fs_hz):
+    nyq = fs_hz / 2.0
+    return filtfft(signal.butter(1,[freq / nyq], btype="highpass"), blocklen, whole=False)    
 
-def genLowpass(freq):
-    return filtfft(signal.butter(1,[freq / 20000000], btype="lowpass"), blocklen, whole=False)   
+def genLowpass(freq, fs_hz):
+    nyq = fs_hz / 2.0
+    return filtfft(signal.butter(1,[freq / nyq], btype="lowpass"), blocklen, whole=False)   
 
 #####
 
@@ -306,12 +308,12 @@ class VHStune(QDialog):
         self.deemphFilter = genDeemphFilter(self.filter_params["deemph_mid"]["value"],self.filter_params["deemph_gain"]["value"],self.filter_params["deemph_q"]["value"])
 
     def calcNLHPFilter(self):
-        self.NLHPFilter = genHighpass(self.filter_params["nonlinear_highpass_freq"]["value"])
+        self.NLHPFilter = genHighpass(self.filter_params["nonlinear_highpass_freq"]["value"], fs)
     
     def calcNLSVHSFilter(self):
-        self.NLSVHSLPFilter = genLowpass(self.filter_params["svhs_crossover_freq"]["value"])
-        self.NLSVHSHPFilter = genHighpass(self.filter_params["svhs_crossover_freq"]["value"])
-        self.NLSVHSLPBFilter = genLowpass(self.filter_params["svhs_lowpass_freq"]["value"])
+        self.NLSVHSLPFilter = genLowpass(self.filter_params["svhs_crossover_freq"]["value"], fs)
+        self.NLSVHSHPFilter = genHighpass(self.filter_params["svhs_crossover_freq"]["value"], fs)
+        self.NLSVHSLPBFilter = genLowpass(self.filter_params["svhs_lowpass_freq"]["value"], fs)
         #self.NLSVHSACFilter = genHighpass(200000)
 
     def applyNLSVHSFilter(self):
