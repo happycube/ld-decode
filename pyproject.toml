@@ -27,10 +27,11 @@ vhs-decode = "vhsdecode.main:main"
 cvbs-decode = "cvbsdecode.main:main"
 hifi-decode = "vhsdecode.hifi.main:main"
 
-[console_scripts]
+#[console_scripts]
 # TODO: These should maybe be made modules too
-ld-cut = "ld-cut"
-cx-expander = "cx-expander"
+#ld-cut = "ld-cut"
+#cx-expander = "cx-expander"
+#tbc-video-export = "tbc-video-export"
 
 [project.urls]
 Homepage = "https://www.domesday86.com"

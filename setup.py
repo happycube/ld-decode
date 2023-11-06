@@ -27,6 +27,13 @@ setup(
         "cvbsdecode",
         "vhsdecode/hifi",
     ],
+    # TODO: should be done in pyproject.toml but did not find any way
+    # of including without making them modules.
+    scripts=[
+        'tbc-video-export.py',
+        'ld-cut',
+        'cx-expander',
+    ],
     # scripts=[
     #    'cx-expander',
     #    'ld-cut',
