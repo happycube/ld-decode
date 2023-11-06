@@ -100,8 +100,11 @@ params["Type C"]["ire0_track_offset"] = [0, 0]
 params["Type C"]["outputZero"] = 256
 params["Type C"]["out_scale"] = np.double(0xC800 - 0x0400) / (100 - params["Type C"]["vsync_ire"])
 blocklen = 32768
-#fs = ((1 / 64) * 283.75) + (25 / 1000000)
-fs = 40000000
+fs = (((1 / 64) * 283.75) + (25 / 1000000)) * 8e6
+#fs = 40000000
+# 2560
+frame_width = 1135
+print("fs  = ", fs)
 
 def multicall(l = []):
     for c in l:
@@ -177,8 +180,11 @@ def genLowpass(freq, fs_hz):
 
 def readVHSFrame(f, nr, w, h):
     out = None
+    offset=(nr*(2*w*h)-1024)*4
+    #offset=0
     try:
-        out = np.fromfile(f,dtype=np.single,count=1638400,offset=(nr*(2*w*h)-1024)*4)
+        #1638400
+        out = np.fromfile(f,dtype=np.single,count=1638400,offset=offset)
     except:
         print("Failed to load VHS frame from tbc file")
     return out
@@ -290,14 +296,14 @@ class VHStune(QDialog):
         if fileName is not None and fileName[0] != '':
             self.proTBCFilename = fileName[0]
             fSize = os.path.getsize(self.proTBCFilename)
-            self.totalFrames = math.floor(fSize/(4*2*2560*313))
+            self.totalFrames = math.floor(fSize/(4*2*frame_width*313))
             self.frameSlider.setRange(1,self.totalFrames-2)
             self.frameSpin.setRange(1,self.totalFrames-2)
             self.updateImage()
 
     def loadImage(self):
-        self.refFieldA, self.refFieldB = readRefFrame(self.refTBCFilename, self.curFrameNr, 2560, 313, self.refOffset.value())
-        self.vhsFrameData = readVHSFrame(self.proTBCFilename, self.curFrameNr, 2560, 313)
+        self.refFieldA, self.refFieldB = readRefFrame(self.refTBCFilename, self.curFrameNr, frame_width, 313, self.refOffset.value())
+        self.vhsFrameData = readVHSFrame(self.proTBCFilename, self.curFrameNr, frame_width, 313)
         pos = 0
         self.fftData = []
         while pos < (len(self.vhsFrameData) - blocklen):
@@ -367,10 +373,12 @@ class VHStune(QDialog):
                 outImage = img[1024:31744]
             else:
                 outImage = np.append(outImage,img[1024:31744])
-        vhsFieldA = hz_to_output(outImage[0:801280], 0^int(self.swapTrackFieldChkBox.isChecked()), self.systemComboBox.currentText())
-        vhsFieldB = hz_to_output(outImage[801280:1602560], 1^int(self.swapTrackFieldChkBox.isChecked()), self.systemComboBox.currentText())
         height = 313
-        width = 2560
+        width = frame_width
+        field_samples = height * width
+
+        vhsFieldA = hz_to_output(outImage[0:field_samples], 0^int(self.swapTrackFieldChkBox.isChecked()), self.systemComboBox.currentText())
+        vhsFieldB = hz_to_output(outImage[field_samples:field_samples * 2], 1^int(self.swapTrackFieldChkBox.isChecked()), self.systemComboBox.currentText())
         outFieldA = None
         outFieldB = None
         if self.refFieldA is not None and self.refFieldB is not None:
@@ -387,9 +395,9 @@ class VHStune(QDialog):
             outFrame = np.empty((height*2,width),dtype=np.uint16)
             outFrame[::2,:] = outFieldA.reshape(height, width)
             outFrame[1::2,:] = outFieldB.reshape(height, width)
-        pixmap = QPixmap(QImage(outFrame.data, 2560, height*2, 2560*2, QImage.Format_Grayscale16))
+        pixmap = QPixmap(QImage(outFrame.data, frame_width, height*2, frame_width*2, QImage.Format_Grayscale16))
         if self.displayWidthSlider.value() != 100:
-            pixmap = pixmap.scaled(QSize(int(2560*(self.displayWidthSlider.value()/100.0)), height*2),transformMode=Qt.SmoothTransformation)
+            pixmap = pixmap.scaled(QSize(int(frame_width*(self.displayWidthSlider.value()/100.0)), height*2),transformMode=Qt.SmoothTransformation)
         if self.displayHeightSlider.value() != 1:
             pixmap = pixmap.scaled(QSize(pixmap.width(), height*2*self.displayHeightSlider.value()),transformMode=Qt.FastTransformation)
         self.dispLabel.setPixmap(pixmap)
@@ -494,7 +502,7 @@ class VHStune(QDialog):
 
 #        self.tbcWidth = QSpinBox()
 #        self.tbcWidth.setRange(1,10000)
-#        self.tbcWidth.setValue(2560)
+#        self.tbcWidth.setValue(frame_width)
 #        tbcWidthLabel = QLabel("TBC width:")
 #        tbcWidthLabel.setBuddy(self.tbcWidth)
 
