@@ -372,9 +372,10 @@ class FieldShared:
             if self.rf.options.export_raw_tbc:
                 return input.astype(np.single)
             else:
+                
                 return hz_to_output_array(
                     input,
-                    self.rf.DecoderParams["ire0"] + self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ int(self.isFirstField)],
+                    self.rf.DecoderParams["ire0"] + self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ (self.field_number % 2)],
                     self.rf.DecoderParams["hz_ire"],
                     self.rf.SysParams["outputZero"],
                     self.rf.DecoderParams["vsync_ire"],
@@ -387,7 +388,7 @@ class FieldShared:
             # Not sure if this will work.
             return np.single(input)
 
-        reduced = (input - self.rf.DecoderParams["ire0"] - self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ int(self.isFirstField)]) / self.rf.DecoderParams["hz_ire"]
+        reduced = (input - self.rf.DecoderParams["ire0"] - self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ (self.field_number % 2)]) / self.rf.DecoderParams["hz_ire"]
         reduced -= self.rf.DecoderParams["vsync_ire"]
 
         return np.uint16(
