@@ -16,6 +16,9 @@ from PyQt5.QtWidgets import (QAbstractItemView, QAbstractScrollArea, QApplicatio
                              QStyleFactory, QSizePolicy, QTableWidgetItem, QTextEdit, QVBoxLayout)
 from PyQt5.QtGui import (QBrush, QGuiApplication, QImage, QKeySequence, QKeyEvent, QPalette, QPixmap)
 
+from vhsdecode.utils import filtfft
+from vhsdecode.addons.FMdeemph import gen_high_shelf
+
 ## System params
 
 params = {}
@@ -104,7 +107,6 @@ fs = (((1 / 64) * 283.75) + (25 / 1000000)) * 8e6
 #fs = 40000000
 # 2560
 frame_width = 1135
-print("fs  = ", fs)
 
 def multicall(l = []):
     for c in l:
@@ -121,48 +123,6 @@ def hz_to_output(inp, phase=0, sys="VHS"):
         )
         + 0.5
     )
-
-def gen_high_shelf(f0, dbgain, qfactor, fs):
-    """Generate high shelving filter coeficcients (digital).
-    f0: The center frequency where the gain in decibel is at half the maximum value.
-       Normalized to sampling frequency, i.e output will be filter from 0 to 2pi.
-    dbgain: gain at the top of the shelf in decibels
-    qfactor: determines shape of filter TODO: Document better
-    fs: sampling frequency
-
-    TODO: Generate based on -3db
-    Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
-    """
-    a = 10 ** (dbgain / 40.0)
-    w0 = 2 * math.pi * (f0 / fs)
-    alpha = math.sin(w0) / (2 * qfactor)
-
-    cosw0 = math.cos(w0)
-    asquared = math.sqrt(a)
-
-    b0 = a * ((a + 1) + (a - 1) * cosw0 + 2 * asquared * alpha)
-    b1 = -2 * a * ((a - 1) + (a + 1) * cosw0)
-    b2 = a * ((a + 1) + (a - 1) * cosw0 - 2 * asquared * alpha)
-    a0 = (a + 1) - (a - 1) * cosw0 + 2 * asquared * alpha
-    a1 = 2 * ((a - 1) - (a + 1) * cosw0)
-    a2 = (a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha
-    return [b0, b1, b2], [a0, a1, a2]
-
-# This converts a regular B, A filter to an FFT of our selected block length
-# if Whole is false, output only up to and including the nyquist frequency (for use with rfft)
-def filtfft(filt, blocklen, whole=True):
-    # worN = blocklen if whole else (blocklen // 2) + 1
-    worN = blocklen
-    output_size = blocklen if whole else (blocklen // 2) + 1
-
-    # When not calculating the whole spectrum,
-    # we still need to include the nyquist value here to give the same result as with
-    # the whole freq range output.
-    # This requires scipy 1.5.0 or newer.
-    # return signal.freqz(filt[0], filt[1], worN, whole=whole, include_nyquist=True)[1]
-
-    # Using the old way for now.
-    return signal.freqz(filt[0], filt[1], worN, whole=True)[1][:output_size]
 
 def genDeemphFilter(mid_point, dBgain, Q):
     da, db = gen_high_shelf(mid_point, dBgain, Q, fs)
@@ -612,8 +572,8 @@ class VHStune(QDialog):
         else:
             QApplication.setPalette(self.originalPalette)
 
-if __name__ == '__main__':
 
+def main():
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     app = QApplication(sys.argv)
     vhsTune = VHStune()
@@ -622,3 +582,6 @@ if __name__ == '__main__':
     if pos.x() < 0 or pos.y() < 0:
         vhsTune.move(0,0)
     sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    main()

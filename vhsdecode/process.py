@@ -30,6 +30,11 @@ from vhsdecode.doc import DodOptions
 from vhsdecode.field_averages import FieldAverage
 from vhsdecode.load_params_json import override_params
 from vhsdecode.nonlinear_filter import sub_deemphasis
+from vhsdecode.compute_video_filters import (
+    gen_video_main_deemp_fft,
+    gen_video_lpf,
+    gen_nonlinear_bandpass,
+)
 
 
 def parent_system(system):
@@ -587,11 +592,17 @@ class VHSRFDecode(ldd.RFDecode):
         self.DecoderParams["ire0"] = self.SysParams["ire0"]
         self.DecoderParams["hz_ire"] = self.SysParams["hz_ire"]
         self.DecoderParams["vsync_ire"] = self.SysParams["vsync_ire"]
-        self.DecoderParams["track_ire0_offset"] = self.SysParams.get("track_ire0_offset", [0, 0])
+        self.DecoderParams["track_ire0_offset"] = self.SysParams.get(
+            "track_ire0_offset", [0, 0]
+        )
 
         export_raw_tbc = rf_options.get("export_raw_tbc", False)
         is_color_under = vhs_formats.is_color_under(tape_format)
-        write_chroma = is_color_under and not export_raw_tbc and not rf_options.get("skip_chroma", False)
+        write_chroma = (
+            is_color_under
+            and not export_raw_tbc
+            and not rf_options.get("skip_chroma", False)
+        )
 
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
         # can't be changed later.
@@ -897,26 +908,11 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         # Video (luma) main de-emphasis
-        db, da = FMDeEmphasisB(
-            self.freq_hz, DP["deemph_gain"], DP["deemph_mid"], DP.get("deemph_q", 1 / 2)
-        ).get()
+        filter_deemp = gen_video_main_deemp_fft(DP, self.freq_hz, self.blocklen)
 
-        filter_deemp = filtfft((db, da), self.blocklen, whole=False)
-
-        # db2, da2 = FMDeEmphasisB(
-        #     self.freq_hz, 1.5, 1e6, 3 / 4
-        # ).get()
-
-        # nlde_lower = (
-        #     lddu.filtfft((db2, da2), self.blocklen)
-        # )
-
-        video_lpf = sps.butter(
-            DP["video_lpf_order"], DP["video_lpf_freq"] / self.freq_hz_half, "low"
+        (video_lpf, filter_video_lpf) = gen_video_lpf(
+            DP, self.freq_hz_half, self.blocklen
         )
-        # SF["Fvideo_lpf"] = lddu.filtfft(video_lpf, self.blocklen)
-        filter_video_lpf = filtfft(video_lpf, self.blocklen, False)
-        SF["Fvideo_lpf"] = video_lpf
 
         # additional filters:  0.5mhz, used for sync detection.
         # Using an FIR filter here to get a known delay
@@ -957,30 +953,9 @@ class VHSRFDecode(ldd.RFDecode):
         # )
 
         if self.options.nldeemp or self.options.subdeemp:
-            upper_freq = DP.get("nonlinear_bandpass_upper", None)
-            if upper_freq:
-                SF["NLHighPassF"] = filtfft(
-                    sps.butter(
-                        1,
-                        [
-                            DP["nonlinear_highpass_freq"] / self.freq_hz_half,
-                            upper_freq / self.freq_hz_half,
-                        ],
-                        btype="bandpass",
-                    ),
-                    self.blocklen,
-                    whole=False,
-                )
-            else:
-                SF["NLHighPassF"] = filtfft(
-                    sps.butter(
-                        1,
-                        [DP["nonlinear_highpass_freq"] / self.freq_hz_half],
-                        btype="highpass",
-                    ),
-                    self.blocklen,
-                    whole=False,
-                )
+            SF["NLHighPassF"] = gen_nonlinear_bandpass(
+                DP, self.freq_hz_half, self.blocklen
+            )
 
         if (
             self.debug_plot
