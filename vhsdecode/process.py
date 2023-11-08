@@ -31,9 +31,10 @@ from vhsdecode.field_averages import FieldAverage
 from vhsdecode.load_params_json import override_params
 from vhsdecode.nonlinear_filter import sub_deemphasis
 from vhsdecode.compute_video_filters import (
-    gen_video_main_deemp_fft,
+    gen_video_main_deemp_fft_params,
     gen_video_lpf,
     gen_nonlinear_bandpass,
+    create_sub_emphasis_params,
 )
 
 
@@ -666,16 +667,11 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         #
-        self._sub_emphasis_params = namedtuple(
-            "SubEmphasisParams", "exponential_scaling scaling_1 scaling_2 deviation"
-        )(
-            self.DecoderParams.get("nonlinear_exp_scaling", 0.25),
-            self.DecoderParams.get("nonlinear_scaling_1", None),
-            self.DecoderParams.get("nonlinear_scaling_2", None),
-            self.SysParams.get(
-                "nonlinear_deviation",
-                self._sysparams_const.hz_ire * (100 + -self._sysparams_const.vsync_ire),
-            ),
+        self._sub_emphasis_params = create_sub_emphasis_params(
+            self.DecoderParams,
+            self.SysParams,
+            self._sysparams_const.hz_ire,
+            self._sysparams_const.vsync_ire,
         )
 
         self.debug_plot = debug_plot
@@ -908,7 +904,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         # Video (luma) main de-emphasis
-        filter_deemp = gen_video_main_deemp_fft(DP, self.freq_hz, self.blocklen)
+        filter_deemp = gen_video_main_deemp_fft_params(DP, self.freq_hz, self.blocklen)
 
         (video_lpf, filter_video_lpf) = gen_video_lpf(
             DP, self.freq_hz_half, self.blocklen

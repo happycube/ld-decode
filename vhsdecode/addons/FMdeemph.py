@@ -5,8 +5,10 @@
 """
 import math
 from scipy.signal import butter
+from numba import njit
 
 
+@njit(cache=True)
 def gen_high_shelf(f0, dbgain, qfactor, fs):
     """Generate high shelving filter coeficcients (digital).
     f0: The center frequency where the gain in decibel is at half the maximum value.
@@ -34,6 +36,7 @@ def gen_high_shelf(f0, dbgain, qfactor, fs):
     return [b0, b1, b2], [a0, a1, a2]
 
 
+@njit(cache=True)
 def gen_low_shelf(f0, dbgain, qfactor, fs):
     """Generate low shelving filter coeficcients (digital).
     f0: The center frequency where the gain in decibel is at half the maximum value.

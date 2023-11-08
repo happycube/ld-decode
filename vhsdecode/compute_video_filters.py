@@ -1,16 +1,42 @@
 import scipy.signal as sps
+from collections import namedtuple
+
 
 from vhsdecode.utils import filtfft
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 
 
-def gen_video_main_deemp_fft(rf_params, freq_hz, block_len):
+def create_sub_emphasis_params(rf_params, sys_params, hz_ire, vsync_ire):
+    return namedtuple(
+            "SubEmphasisParams", "exponential_scaling scaling_1 scaling_2 deviation"
+        )(
+            rf_params.get("nonlinear_exp_scaling", 0.25),
+            rf_params.get("nonlinear_scaling_1", None),
+            rf_params.get("nonlinear_scaling_2", None),
+            sys_params.get(
+                "nonlinear_deviation",
+                hz_ire * (100 + -vsync_ire),
+            ),
+        )
+
+def gen_video_main_deemp_fft_params(rf_params, freq_hz, block_len):
     """Generate real-value fft main video deemphasis filter from parameters"""
-    db, da = FMDeEmphasisB(
-        freq_hz,
+    return gen_video_main_deemp_fft(
         rf_params["deemph_gain"],
         rf_params["deemph_mid"],
         rf_params.get("deemph_q", 1 / 2),
+        freq_hz,
+        block_len,
+    )
+
+
+def gen_video_main_deemp_fft(gain, mid, Q, freq_hz, block_len):
+    """Generate real-value fft main video deemphasis filter from parameters"""
+    db, da = FMDeEmphasisB(
+        freq_hz,
+        gain,
+        mid,
+        Q,
     ).get()
 
     filter_deemp = filtfft((db, da), block_len, whole=False)
