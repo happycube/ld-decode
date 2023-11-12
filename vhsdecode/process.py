@@ -33,7 +33,7 @@ from vhsdecode.nonlinear_filter import sub_deemphasis
 from vhsdecode.compute_video_filters import (
     gen_video_main_deemp_fft_params,
     gen_video_lpf,
-    gen_nonlinear_bandpass,
+    gen_nonlinear_bandpass_params,
     create_sub_emphasis_params,
 )
 
@@ -949,7 +949,7 @@ class VHSRFDecode(ldd.RFDecode):
         # )
 
         if self.options.nldeemp or self.options.subdeemp:
-            SF["NLHighPassF"] = gen_nonlinear_bandpass(
+            SF["NLHighPassF"] = gen_nonlinear_bandpass_params(
                 DP, self.freq_hz_half, self.blocklen
             )
 

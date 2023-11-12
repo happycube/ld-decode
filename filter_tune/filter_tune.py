@@ -49,116 +49,10 @@ from vhsdecode.utils import filtfft
 from vhsdecode.addons.FMdeemph import gen_high_shelf
 from vhsdecode.formats import get_format_params
 from vhsdecode import compute_video_filters
+from vhsdecode.main import supported_tape_formats
 
-## System params
-
-params = {}
-params["VHS"] = {}
-params["VHS"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["VHS"]["hz_ire"] = 1e6 / (100 + (-params["VHS"]["vsync_ire"]))
-params["VHS"]["ire0"] = 4.8e6 - (params["VHS"]["hz_ire"] * 100)
-params["VHS"]["ire0_track_offset"] = [0, 0]
-params["VHS"]["outputZero"] = 256
-params["VHS"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["VHS"]["vsync_ire"]
-)
-params["VHS"]["nl_deviation"] = 0.4 * (100 / 0.7)
-params["VHSHQ"] = {}
-params["VHSHQ"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["VHSHQ"]["hz_ire"] = 1e6 / (100 + (-params["VHSHQ"]["vsync_ire"]))
-params["VHSHQ"]["ire0"] = 4.8e6 - (params["VHSHQ"]["hz_ire"] * 100)
-params["VHSHQ"]["ire0_track_offset"] = [7812.5, 0]
-params["VHSHQ"]["outputZero"] = 256
-params["VHSHQ"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["VHSHQ"]["vsync_ire"]
-)
-params["VHSHQ"]["nl_deviation"] = 0.4 * (100 / 0.7)
-params["SVHS"] = {}
-params["SVHS"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["SVHS"]["hz_ire"] = 1.6e6 / (100 + (-params["SVHS"]["vsync_ire"]))
-params["SVHS"]["ire0"] = 7e6 - (params["SVHS"]["hz_ire"] * 100)
-params["SVHS"]["ire0_track_offset"] = [7812.5, 0]
-params["SVHS"]["outputZero"] = 256
-params["SVHS"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["SVHS"]["vsync_ire"]
-)
-params["SVHS"]["nl_deviation"] = 0.4 * (100 / 0.7)
-params["BETAMAX"] = {}
-params["BETAMAX"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["BETAMAX"]["hz_ire"] = 1.4e6 / (100 + (-params["BETAMAX"]["vsync_ire"]))
-params["BETAMAX"]["ire0"] = 5.2e6 - (params["BETAMAX"]["hz_ire"] * 100)
-params["BETAMAX"]["ire0_track_offset"] = [0, 0]
-params["BETAMAX"]["outputZero"] = 256
-params["BETAMAX"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["BETAMAX"]["vsync_ire"]
-)
-params["VIDEO8"] = {}
-params["VIDEO8"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["VIDEO8"]["hz_ire"] = 1.2e6 / (100 + (-params["VIDEO8"]["vsync_ire"]))
-params["VIDEO8"]["ire0"] = 5.4e6 - (params["VIDEO8"]["hz_ire"] * 100)
-params["VIDEO8"]["ire0_track_offset"] = [0, 0]
-params["VIDEO8"]["outputZero"] = 256
-params["VIDEO8"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["VIDEO8"]["vsync_ire"]
-)
-params["HI8"] = {}
-params["HI8"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["HI8"]["hz_ire"] = 2e6 / (100 + (-params["HI8"]["vsync_ire"]))
-params["HI8"]["ire0"] = 7.7e6 - (params["HI8"]["hz_ire"] * 100)
-params["HI8"]["ire0_track_offset"] = [0, 0]
-params["HI8"]["outputZero"] = 256
-params["HI8"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["HI8"]["vsync_ire"]
-)
-params["UMATIC"] = {}
-params["UMATIC"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["UMATIC"]["hz_ire"] = 1600000 / 140.0
-params["UMATIC"]["ire0"] = 4257143
-params["UMATIC"]["ire0_track_offset"] = [0, 0]
-params["UMATIC"]["outputZero"] = 256
-params["UMATIC"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["UMATIC"]["vsync_ire"]
-)
-params["VCR"] = {}
-params["VCR"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["VCR"]["hz_ire"] = 1400000 / (100 + (-params["VCR"]["vsync_ire"]))
-params["VCR"]["ire0"] = 3.0e6 + (params["VCR"]["hz_ire"] * -params["VCR"]["vsync_ire"])
-params["VCR"]["ire0_track_offset"] = [0, 0]
-params["VCR"]["outputZero"] = 256
-params["VCR"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["VCR"]["vsync_ire"]
-)
-params["EIA-J"] = {}
-params["EIA-J"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["EIA-J"]["hz_ire"] = 1800000 / (100 + (-params["EIA-J"]["vsync_ire"]))
-params["EIA-J"]["ire0"] = 3.8e6 + (
-    params["EIA-J"]["hz_ire"] * -params["EIA-J"]["vsync_ire"]
-)
-params["EIA-J"]["ire0_track_offset"] = [0, 0]
-params["EIA-J"]["outputZero"] = 256
-params["EIA-J"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["EIA-J"]["vsync_ire"]
-)
-params["Type B"] = {}
-params["Type B"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["Type B"]["hz_ire"] = (8.9e6 - 7.4e6) / 143.0
-params["Type B"]["ire0"] = 7.40e6
-params["Type B"]["ire0_track_offset"] = [0, 0]
-params["Type B"]["outputZero"] = 256
-params["Type B"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["Type B"]["vsync_ire"]
-)
-params["Type C"] = {}
-params["Type C"]["vsync_ire"] = -0.3 * (100 / 0.7)
-params["Type C"]["hz_ire"] = 1740000 / 143.0
-params["Type C"]["ire0"] = 7.68e6
-params["Type C"]["ire0_track_offset"] = [0, 0]
-params["Type C"]["outputZero"] = 256
-params["Type C"]["out_scale"] = np.double(0xC800 - 0x0400) / (
-    100 - params["Type C"]["vsync_ire"]
-)
 BLOCK_LEN = 32768
-fs = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
+SAMPLE_RATE = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
 # fs = 40000000
 # 2560
 FRAME_WIDTH = 1135
@@ -180,20 +74,13 @@ def _hz_to_output(inp, sys_params, phase=0):
     reduced -= sys_params["vsync_ire"]
     out_scale = OUT_SCALE_DIVIDEND / (100 - sys_params["vsync_ire"])
     return np.uint16(
-        np.clip(
-            (reduced * out_scale) + sys_params["outputZero"], 0, 65535
-        )
-        + 0.5
+        np.clip((reduced * out_scale) + sys_params["outputZero"], 0, 65535) + 0.5
     )
 
 
-def hz_to_output(inp, phase=0, sys="VHS"):
-    return _hz_to_output(inp, params[sys], phase)
-
-
-def genDeemphFilter(mid_point, dBgain, Q):
-    da, db = gen_high_shelf(mid_point, dBgain, Q, fs)
-    return filtfft((db, da), BLOCK_LEN, whole=False)
+# def genDeemphFilter(mid_point, dBgain, Q, fs):
+#    da, db = gen_high_shelf(mid_point, dBgain, Q, fs)
+#    return filtfft((db, da), BLOCK_LEN, whole=False)
 
 
 def genHighpass(freq, fs_hz):
@@ -243,10 +130,11 @@ def readRefFrame(f, nr, w, h, offset=0):
 
 
 class FormatParams:
-    def __init__(self, system, tape_format, logger):
-        self.change_format(system, tape_format, logger)
+    def __init__(self, system, tape_format, fs, logger):
+        self.change_format(system, tape_format, fs, logger)
 
-    def change_format(self, system, tape_format, logger):
+    def change_format(self, system, tape_format, fs, logger):
+        self.fs = fs
         self.sys_params, self.rf_params = get_format_params(system, tape_format, logger)
         # TODO: THis default should be set elsewhere
         self.sys_params["track_ire0_offset"] = self.sys_params.get(
@@ -279,7 +167,7 @@ class VHStune(QDialog):
         )
         self._logger = logger
 
-        self._format_params = FormatParams("PAL", "VHS", logger)
+        self._format_params = FormatParams("PAL", "VHS", SAMPLE_RATE, logger)
 
         self.originalPalette = QApplication.palette()
 
@@ -311,7 +199,7 @@ class VHStune(QDialog):
         self.filter_params = {
             #          "deemph_enable": { "value": True, "step": None, "desc": "Enable deemphasis", "onchange": [ self.applyFilter, self.drawImage ] },
             "deemph_mid": {
-                "value": rf_params['deemph_mid'],
+                "value": rf_params["deemph_mid"],
                 "step": 5000,
                 "min": 10000,
                 "max": 4000000,
@@ -324,7 +212,7 @@ class VHStune(QDialog):
                 ],
             },
             "deemph_gain": {
-                "value": rf_params['deemph_gain'],
+                "value": rf_params["deemph_gain"],
                 "step": 0.5,
                 "min": -30,
                 "max": 30,
@@ -337,7 +225,7 @@ class VHStune(QDialog):
                 ],
             },
             "deemph_q": {
-                "value": rf_params['deemph_q'],
+                "value": rf_params["deemph_q"],
                 "step": 0.05,
                 "min": 0.05,
                 "max": 5,
@@ -367,6 +255,19 @@ class VHStune(QDialog):
                 "min": 10000,
                 "max": 4000000,
                 "desc": "Non-linear high-pass freq ({} Hz):",
+                "onchange": [
+                    self.calcNLHPFilter,
+                    self.applyNLDeemphFilterA,
+                    self.applyNLDeemphFilterB,
+                    self.drawImage,
+                ],
+            },
+            "nonlinear_bandpass_upper": {
+                "value": rf_params.get("nonlinear_bandpass_upper", None),
+                "step": 5000,
+                "min": 300000,
+                "max": 6000000,
+                "desc": "Non-linear bandpass upper freq ({} Hz):",
                 "onchange": [
                     self.calcNLHPFilter,
                     self.applyNLDeemphFilterA,
@@ -562,31 +463,38 @@ class VHStune(QDialog):
             pos += BLOCK_LEN - 2048
 
     def calcDeemphFilter(self):
-        self.deemphFilter = genDeemphFilter(
-            self.filter_params["deemph_mid"]["value"],
+        self.deemphFilter = compute_video_filters.gen_video_main_deemp_fft(
             self.filter_params["deemph_gain"]["value"],
+            self.filter_params["deemph_mid"]["value"],
             self.filter_params["deemph_q"]["value"],
+            self._format_params.fs,
+            BLOCK_LEN,
         )
 
     def calcNLHPFilter(self):
-        self.NLHPFilter = genHighpass(
-            self.filter_params["nonlinear_highpass_freq"]["value"], fs
+        self.NLHPFilter = compute_video_filters.gen_nonlinear_bandpass(
+            None,
+            self.filter_params["nonlinear_highpass_freq"]["value"],
+            self._format_params.fs / 2.0,
+            BLOCK_LEN,
         )
 
     def calcNLSVHSFilter(self):
         self.NLSVHSLPFilter = genLowpass(
-            self.filter_params["svhs_crossover_freq"]["value"], fs
+            self.filter_params["svhs_crossover_freq"]["value"], self._format_params.fs
         )
         self.NLSVHSHPFilter = genHighpass(
-            self.filter_params["svhs_crossover_freq"]["value"], fs
+            self.filter_params["svhs_crossover_freq"]["value"], self._format_params.fs
         )
         self.NLSVHSLPBFilter = genLowpass(
-            self.filter_params["svhs_lowpass_freq"]["value"], fs
+            self.filter_params["svhs_lowpass_freq"]["value"], self._format_params.fs
         )
         # self.NLSVHSACFilter = genHighpass(200000)
 
     def applyNLSVHSFilter(self):
         self.ProcessedSVHSFrame = []
+        deviation = self._format_params.sub_emphasis_params.deviation / 2.0
+
         for b in self.fftData:
             hf_part = npfft.irfft(
                 b * self.deemphFilter * self.NLSVHSHPFilter * self.NLSVHSLPBFilter
@@ -595,18 +503,12 @@ class VHStune(QDialog):
             # dc_part = npfft.irfft(b * self.deemphFilter * self.NLSVHSACFilter)
             hf_amp = (
                 abs(signal.hilbert(hf_part))
-                / (
-                    params[self.systemComboBox.currentText()]["nl_deviation"]
-                    * params[self.systemComboBox.currentText()]["hz_ire"]
-                )
+                / (deviation)
                 * self.filter_params["svhs_hf_in_level"]["value"]
             )
             lf_amp = (
                 abs(signal.hilbert(lf_part))
-                / (
-                    params[self.systemComboBox.currentText()]["nl_deviation"]
-                    * params[self.systemComboBox.currentText()]["hz_ire"]
-                )
+                / (deviation)
                 * self.filter_params["svhs_lf_in_level"]["value"]
             )
             hf_amp_scaled = 1.0 / (
@@ -633,9 +535,7 @@ class VHStune(QDialog):
             hf_part = npfft.irfft(b * self.deemphFilter * self.NLHPFilter)
             self.NLDeemphPart.append(hf_part)
             deviation = self._format_params.sub_emphasis_params.deviation / 2.0
-            self.NLDeemphAmplitude.append(
-                abs(signal.hilbert(hf_part)) / deviation
-            )
+            self.NLDeemphAmplitude.append(abs(signal.hilbert(hf_part)) / deviation)
 
     def applyNLDeemphFilterB(self):
         self.NLProcessed = []
@@ -681,12 +581,12 @@ class VHStune(QDialog):
             outImage[0:field_samples],
             self._format_params.sys_params,
             0 ^ int(self.swapTrackFieldChkBox.isChecked()),
-            #self.systemComboBox.currentText(),
+            # self.systemComboBox.currentText(),
         )
         vhsFieldB = _hz_to_output(
             outImage[field_samples : field_samples * 2],
             self._format_params.sys_params,
-            1 ^ int(self.swapTrackFieldChkBox.isChecked())
+            1 ^ int(self.swapTrackFieldChkBox.isChecked()),
         )
         outFieldA = None
         outFieldB = None
@@ -772,7 +672,9 @@ class VHStune(QDialog):
         self.rightLayout.setColumnStretch(0, 1)
 
     def _change_format(self):
-        self._format_params.change_format("PAL", self.systemComboBox.currentText(), self._logger)
+        self._format_params.change_format(
+            "PAL", self.systemComboBox.currentText(), self._logger
+        )
         self.drawImage()
 
     def createControlsGroupBox(self):
@@ -787,7 +689,10 @@ class VHStune(QDialog):
         layout.addWidget(openProTBCFileButton)
 
         self.systemComboBox = QComboBox()
-        self.systemComboBox.addItems(params.keys())
+        supported_tape_formats_list = list(supported_tape_formats)
+        index_of_vhs = supported_tape_formats_list.index("VHS")
+        self.systemComboBox.addItems(supported_tape_formats_list)
+        self.systemComboBox.setCurrentIndex(index_of_vhs)
         self.systemComboBox.currentIndexChanged.connect(self._change_format)
         layout.addWidget(self.systemComboBox)
 
@@ -869,10 +774,11 @@ class VHStune(QDialog):
                     lambda state, x=k: self.updateImage(True, x)
                 )
                 layout.addWidget(self.filter_params[k]["ctrl"])
-            else:
+            elif self.filter_params[k]["value"] is not None:
                 self.filter_params[k]["ctrl"] = QSlider(
                     Qt.Horizontal, self.filterGroupBox
                 )
+                self.filter_params[k]["ctrl"].setTracking(False)
                 self.filter_params[k]["ctrl"].setRange(
                     int(self.filter_params[k]["min"] / self.filter_params[k]["step"]),
                     int(self.filter_params[k]["max"] / self.filter_params[k]["step"]),
