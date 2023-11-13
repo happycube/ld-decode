@@ -29,7 +29,6 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QSlider,
     QSpinBox,
-    QStyleFactory,
     QSizePolicy,
     QTableWidgetItem,
     QTextEdit,
@@ -136,6 +135,7 @@ class FormatParams:
     def change_format(self, system, tape_format, fs, logger):
         self.fs = fs
         self.sys_params, self.rf_params = get_format_params(system, tape_format, logger)
+        self.tape_format = tape_format
         # TODO: THis default should be set elsewhere
         self.sys_params["track_ire0_offset"] = self.sys_params.get(
             "track_ire0_offset", [0, 0]
@@ -157,7 +157,7 @@ class VHStune(QDialog):
     curFrameNr = 1
     totalFrames = 2
 
-    def __init__(self, logger, parent=None):
+    def __init__(self, tape_format, logger, parent=None):
         super(VHStune, self).__init__(
             parent,
             Qt.Window
@@ -167,21 +167,23 @@ class VHStune(QDialog):
         )
         self._logger = logger
 
-        self._format_params = FormatParams("PAL", "VHS", SAMPLE_RATE, logger)
+        self._format_params = FormatParams("PAL", tape_format, SAMPLE_RATE, logger)
 
         self.originalPalette = QApplication.palette()
 
         self.makeFilterParams()
         self.createControlsGroupBox()
         self.createFilterGroupBox()
-        self.createStyleGroupBox()
         self.createRightArea()
 
         mainLayout = QGridLayout()
         leftLayout = QVBoxLayout()
+        leftLayout.addStrut(370)
+        # controls_area = QScrollArea(self.controlsGroupBox)
         leftLayout.addWidget(self.controlsGroupBox)
-        leftLayout.addWidget(self.filterGroupBox)
-        leftLayout.addWidget(self.styleGroupBox)
+        filters_area = QScrollArea()
+        filters_area.setWidget(self.filterGroupBox)
+        leftLayout.addWidget(filters_area)
         mainLayout.addLayout(leftLayout, 0, 0)
         mainLayout.addLayout(self.rightLayout, 0, 1)
         mainLayout.setRowStretch(0, 1)
@@ -198,6 +200,32 @@ class VHStune(QDialog):
         rf_params = self._format_params.rf_params
         self.filter_params = {
             #          "deemph_enable": { "value": True, "step": None, "desc": "Enable deemphasis", "onchange": [ self.applyFilter, self.drawImage ] },
+            "video_lpf_freq": {
+                "value": rf_params["video_lpf_freq"],
+                "step": 5000,
+                "min": 1000000,
+                "max": 8000000,
+                "desc": "Video low pass filter corner freq ({:.0f} Hz):",
+                "onchange": [
+                    self.calcDeemphFilter,
+                    self.applyDeemphFilter,
+                    self.applyNLSVHSFilter,
+                    self.drawImage,
+                ],
+            },
+            "video_lpf_order": {
+                "value": rf_params["video_lpf_order"],
+                "step": 1,
+                "min": 1,
+                "max": 4,
+                "desc": "Video low pass filter order ({:.2f}):",
+                "onchange": [
+                    self.calcDeemphFilter,
+                    self.applyDeemphFilter,
+                    self.applyNLSVHSFilter,
+                    self.drawImage,
+                ],
+            },
             "deemph_mid": {
                 "value": rf_params["deemph_mid"],
                 "step": 5000,
@@ -246,7 +274,7 @@ class VHStune(QDialog):
             "nonlinear_deemph_showonly": {
                 "value": False,
                 "step": None,
-                "desc": "Show only subtracted non-linear deemphasis part",
+                "desc": "Show only subtracted NL deemphasis part",
                 "onchange": [self.drawImage],
             },
             "nonlinear_highpass_freq": {
@@ -463,12 +491,22 @@ class VHStune(QDialog):
             pos += BLOCK_LEN - 2048
 
     def calcDeemphFilter(self):
-        self.deemphFilter = compute_video_filters.gen_video_main_deemp_fft(
-            self.filter_params["deemph_gain"]["value"],
-            self.filter_params["deemph_mid"]["value"],
-            self.filter_params["deemph_q"]["value"],
-            self._format_params.fs,
+        (_, lpf) = compute_video_filters.gen_video_lpf(
+            self.filter_params["video_lpf_freq"]["value"],
+            self.filter_params["video_lpf_order"]["value"],
+            self._format_params.fs / 2.0,
             BLOCK_LEN,
+        )
+
+        self.deemphFilter = (
+            compute_video_filters.gen_video_main_deemp_fft(
+                self.filter_params["deemph_gain"]["value"],
+                self.filter_params["deemph_mid"]["value"],
+                self.filter_params["deemph_q"]["value"],
+                self._format_params.fs,
+                BLOCK_LEN,
+            )
+            * lpf
         )
 
     def calcNLHPFilter(self):
@@ -627,15 +665,16 @@ class VHStune(QDialog):
                 transformMode=Qt.FastTransformation,
             )
         self.dispLabel.setPixmap(pixmap)
+        self.dispLabel.resize(pixmap.width(), pixmap.height())
 
     def createRightArea(self):
         self.rightLayout = QGridLayout()
         # scroll = QScrollArea()
         # scroll.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         self.dispLabel = QLabel()
-        self.dispLabel.setSizePolicy(
-            QSizePolicy.MinimumExpanding, QSizePolicy.MinimumExpanding
-        )
+        self.dispLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        # self._disp_label_layout = QVBoxLayout()
+        # self.dispLabel.setLayout(self._disp_label_layout)
         # scroll.setWidget(self.dispLabel)
         self.frameSlider = QSlider(Qt.Horizontal, self)
 
@@ -665,7 +704,10 @@ class VHStune(QDialog):
         btnLayout.addWidget(stepFwdBtn)
         btnLayout.addWidget(skipFwdBtn)
         # self.rightLayout.addWidget(scroll, 0, 0)
-        self.rightLayout.addWidget(self.dispLabel, 0, 0)
+        self._disp_scroll_area = QScrollArea()
+        self._disp_scroll_area.setWidget(self.dispLabel)
+
+        self.rightLayout.addWidget(self._disp_scroll_area, 0, 0)
         self.rightLayout.addWidget(self.frameSlider, 1, 0)
         self.rightLayout.addLayout(btnLayout, 2, 0)
         self.rightLayout.setRowStretch(0, 1)
@@ -690,7 +732,9 @@ class VHStune(QDialog):
 
         self.systemComboBox = QComboBox()
         supported_tape_formats_list = list(supported_tape_formats)
-        index_of_vhs = supported_tape_formats_list.index("VHS")
+        index_of_vhs = supported_tape_formats_list.index(
+            self._format_params.tape_format
+        )
         self.systemComboBox.addItems(supported_tape_formats_list)
         self.systemComboBox.setCurrentIndex(index_of_vhs)
         self.systemComboBox.currentIndexChanged.connect(self._change_format)
@@ -738,7 +782,8 @@ class VHStune(QDialog):
 
         self.displayWidthSlider = QSlider(Qt.Horizontal, self.controlsGroupBox)
         self.displayWidthSlider.setRange(1, 200)
-        self.displayWidthSlider.setValue(50)
+        self.displayWidthSlider.setValue(100)
+        self.displayWidthSlider.setTracking(False)
         self.displayWidthSlider.setTickPosition(QSlider.TicksBelow)
         self.displayWidthSlider.valueChanged.connect(self.drawImage)
 
@@ -751,6 +796,7 @@ class VHStune(QDialog):
         self.displayHeightSlider = QSlider(Qt.Horizontal, self.controlsGroupBox)
         self.displayHeightSlider.setRange(1, 5)
         self.displayHeightSlider.setValue(1)
+        self.displayHeightSlider.setTracking(False)
         self.displayHeightSlider.setTickPosition(QSlider.TicksBelow)
         self.displayHeightSlider.valueChanged.connect(self.drawImage)
 
@@ -799,44 +845,15 @@ class VHStune(QDialog):
         layout.addStretch(1)
         self.filterGroupBox.setLayout(layout)
 
-    def createStyleGroupBox(self):
-        self.styleGroupBox = QGroupBox("Style")
-        layout = QVBoxLayout()
-
-        styleComboBox = QComboBox()
-        styleComboBox.addItems(QStyleFactory.keys())
-
-        styleLabel = QLabel("&Style:")
-        styleLabel.setBuddy(styleComboBox)
-
-        self.useStylePaletteCheckBox = QCheckBox("&Use style's standard palette")
-        self.useStylePaletteCheckBox.setChecked(True)
-
-        styleComboBox.activated[str].connect(self.changeStyle)
-        self.useStylePaletteCheckBox.toggled.connect(self.changePalette)
-
-        layout.addWidget(styleLabel)
-        layout.addWidget(styleComboBox)
-        layout.addWidget(self.useStylePaletteCheckBox)
-
-        self.styleGroupBox.setLayout(layout)
-
-    def changeStyle(self, styleName):
-        QApplication.setStyle(QStyleFactory.create(styleName))
-        self.changePalette()
-
-    def changePalette(self):
-        if self.useStylePaletteCheckBox.isChecked():
-            QApplication.setPalette(QApplication.style().standardPalette())
-        else:
-            QApplication.setPalette(self.originalPalette)
-
 
 def main():
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     app = QApplication(sys.argv)
     logger = logging.getLogger("vhstune")
-    vhsTune = VHStune(logger)
+    tape_format = "VHS"
+    if len(sys.argv) > 1:
+        tape_format = sys.argv[1]
+    vhsTune = VHStune(tape_format, logger)
     vhsTune.show()
     pos = vhsTune.pos()
     if pos.x() < 0 or pos.y() < 0:

@@ -32,7 +32,7 @@ from vhsdecode.load_params_json import override_params
 from vhsdecode.nonlinear_filter import sub_deemphasis
 from vhsdecode.compute_video_filters import (
     gen_video_main_deemp_fft_params,
-    gen_video_lpf,
+    gen_video_lpf_params,
     gen_nonlinear_bandpass_params,
     create_sub_emphasis_params,
 )
@@ -906,7 +906,7 @@ class VHSRFDecode(ldd.RFDecode):
         # Video (luma) main de-emphasis
         filter_deemp = gen_video_main_deemp_fft_params(DP, self.freq_hz, self.blocklen)
 
-        (video_lpf, filter_video_lpf) = gen_video_lpf(
+        (video_lpf, filter_video_lpf) = gen_video_lpf_params(
             DP, self.freq_hz_half, self.blocklen
         )
 
@@ -1037,15 +1037,6 @@ class VHSRFDecode(ldd.RFDecode):
         # FM demodulator
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
 
-        if self._chroma_trap:
-            # applies the Subcarrier trap
-            demod = self.chromaTrap.work(demod)
-
-        # Disabled if sharpness level is zero (default).
-        if self._video_eq:
-            # applies the video EQ
-            demod = self._video_eq.filter_video(demod)
-
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and
         # replace the spikes with data from the diffed demod.
         if not self._disable_diff_demod:
@@ -1063,6 +1054,18 @@ class VHSRFDecode(ldd.RFDecode):
                 # more
                 if False:
                     demod = smooth_spikes(demod, check_value * 2.2)
+
+        # Disabled if sharpness level is zero (default).
+        # TODO: This should be done after the deemphasis steps
+        if self._video_eq:
+            # applies the video EQ
+            demod = self._video_eq.filter_video(demod)
+
+        # TODO: This should be done after the deemphasis steps
+        if self._chroma_trap:
+            # applies the Subcarrier trap
+            demod = self.chromaTrap.work(demod)
+        
         # applies main deemphasis filter
         demod_fft = npfft.rfft(demod)
         out_video_fft = demod_fft * self.Filters["FVideo"]
