@@ -183,26 +183,12 @@ RFParams_NTSC = {
 }
 
 # Settings for use with noisier disks
-RFParams_NTSC_lowband = {
+RFParams_NTSC_lowband = RFParams_NTSC.copy().update({
     # The audio notch filters are important with DD v3.0+ boards
-    "audio_notchwidth": 350000,
-    "audio_notchorder": 2,
-    "video_deemp": (120e-9, 320e-9),
     "video_bpf_low": 3800000,
     "video_bpf_high": 12500000,
-    "video_bpf_order": 4,
     "video_lpf_freq": 4200000,  # in mhz
-    "video_lpf_order": 6,  # butterworth filter order
-    # MTF filter
-    "MTF_basemult": 0.4,  # general ** level of the MTF filter for frame 0.
-    "MTF_poledist": 0.9,
-    "MTF_freq": 12.2,  # in mhz
-    # used to detect rot
-    "video_hpf_freq": 10000000,
-    "video_hpf_order": 4,
-    "audio_filterwidth": 150000,
-    "audio_filterorder": 512,
-}
+})
 
 RFParams_PAL = {
     # The audio notch filters are important with DD v3.0+ boards
@@ -226,27 +212,12 @@ RFParams_PAL = {
     "audio_filterorder": 900,
 }
 
-RFParams_PAL_lowband = {
-    # The audio notch filters are important with DD v3.0+ boards
-    "audio_notchwidth": 200000,
-    "audio_notchorder": 2,
-    "video_deemp": (100e-9, 400e-9),
-    # XXX: guessing here!
+RFParams_PAL_lowband = RFParams_PAL.copy().update({
     "video_bpf_low": 3200000,
     "video_bpf_high": 13000000,
     "video_bpf_order": 1,
     "video_lpf_freq": 4800000,
-    "video_lpf_order": 7,
-    # MTF filter
-    "MTF_basemult": 1.0,  # general ** level of the MTF filter for frame 0.
-    "MTF_poledist": 0.70,
-    "MTF_freq": 10,
-    # used to detect rot
-    "video_hpf_freq": 10000000,
-    "video_hpf_order": 4,
-    "audio_filterwidth": 100000,
-    "audio_filterorder": 900,
-}
+})
 
 
 class RFDecode:
@@ -841,13 +812,9 @@ class RFDecode:
 
             a2_fft = npfft.fft(a2_in)
             fft_out = a2_fft * self.audio[channel].audio2_filter
+            output = npfft.ifft(fft_out).real[: len(a2_in_real)] + center_freq
 
-            outputs.append(
-                (
-                    npfft.ifft(fft_out).real[: len(a2_in_real)]
-                )
-                + center_freq
-            )
+            outputs.append(output)
 
         return np.rec.array(outputs, names=["audio_left", "audio_right"])
 
@@ -1485,7 +1452,6 @@ class Field:
         self,
         rf,
         decode,
-        audio_offset=0,
         prevfield=None,
         initphase=False,
         fields_written=0,
@@ -1518,8 +1484,6 @@ class Field:
 
         self.dspicture = None
         self.dsaudio = None
-        self.audio_offset = audio_offset
-        self.audio_next_offset = audio_offset
 
         # On NTSC linecount rounds up to 263, and PAL 313
         self.outlinecount = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -2524,7 +2488,7 @@ class Field:
                 lineinfo,
                 self.rf,
                 self.linecount,
-                self.audio_offset,
+                0, # self.audio_offset,
                 audio,
                 audio_rv)
             )
@@ -3461,7 +3425,6 @@ class LDdecode:
         self.outwidth = self.rf.SysParams["outlinelen"]
 
         self.fdoffset = 0
-        self.audio_offset = 0
         self.mtf_level = 1
 
         self.fieldstack = [None, None]
@@ -3622,7 +3585,7 @@ class LDdecode:
             self.outfile_audio.write(audio)
 
     @profile
-    def decodefield(self, start, mtf_level, audio_offset, prevfield=None, initphase=False, redo=False, rv=None):
+    def decodefield(self, start, mtf_level, prevfield=None, initphase=False, redo=False, rv=None):
         """ returns field object if valid, and the offset to the next decode """
 
         if rv is None:
@@ -3649,10 +3612,11 @@ class LDdecode:
             # logger.info("Failed to demodulate data")
             return None, None
 
+        print(self.fields_written)
+
         f = self.FieldClass(
             self.rf,
             rawdecode,
-            audio_offset=audio_offset,
             prevfield=prevfield,
             initphase=initphase,
             fields_written=self.fields_written,
@@ -3705,7 +3669,7 @@ class LDdecode:
 
                 # Start new thread
                 self.threadreturn = {}
-                df_args = (redo, self.mtf_level, self.audio_offset, self.fieldstack[0], initphase, redo, self.threadreturn)
+                df_args = (redo, self.mtf_level, self.fieldstack[0], initphase, redo, self.threadreturn)
 
                 self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
                 # .run() does not actually run this in the background
@@ -3721,7 +3685,6 @@ class LDdecode:
                 self.decodethread = None
                 
                 f, offset = self.threadreturn['field'], self.threadreturn['offset']
-                #print(f, f.valid, f.readloc, offset)
             else: # assume first run
                 f = None
                 offset = 0
@@ -3730,20 +3693,16 @@ class LDdecode:
                 # Start new thread
                 self.threadreturn = {}
                 if f and f.valid:
-                    self.audio_offset = f.audio_next_offset
                     prevfield = f
                     toffset = self.fdoffset + offset
-                    # XXX: this is wrong somehow
-                    audio_offset = f.audio_next_offset
                 else:
                     prevfield = None
                     toffset = self.fdoffset
-                    audio_offset = self.audio_offset
 
                     if offset:
                         toffset += offset
 
-                df_args = (toffset, self.mtf_level, audio_offset, prevfield, initphase, False, self.threadreturn)
+                df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
 
                 self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
                 #elf.decodethread.run()
@@ -3813,7 +3772,6 @@ class LDdecode:
                         logger.warning("WARNING: Player skip detected, output will be corrupted")
 
                     self.fieldstack.insert(0, f)
-                    self.audio_offset = f.audio_next_offset
 
             if f is None and offset is None:
                 # EOF, probably
