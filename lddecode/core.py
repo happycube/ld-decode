@@ -44,6 +44,7 @@ except ImportError:
 # and ld-decode.  Probably should just bring all logging in here...
 logger = None
 
+# If profiling is not enabled, make it a pass-through function
 try:
     profile
 except:
@@ -312,9 +313,8 @@ class RFDecode:
                 self.DecoderParams = copy.deepcopy(RFParams_PAL)
 
         # Make (intentionally) mutable copies of HZ<->IRE levels
-        self.DecoderParams['ire0']   = self.SysParams['ire0']
-        self.DecoderParams['hz_ire'] = self.SysParams['hz_ire']
-        self.DecoderParams['vsync_ire'] = self.SysParams['vsync_ire']
+        for irekey in ['ire0', 'hz_ire', 'vsync_ire']:
+            self.DecoderParams[irekey] = self.SysParams[irekey]
 
         self.SysParams["analog_audio"] = has_analog_audio
         self.SysParams["AC3"] = extra_options.get("AC3", False)
@@ -329,7 +329,7 @@ class RFDecode:
 
         # note that deemp[0] is the t1 (high freuqency) coefficient, and 
         # deemp[1] is the t2 (low frequency) one.  These are passed in as
-        # mhz, but need to be converted to seconds.3
+        # microseconds, but need to be converted to seconds.
 
         deemp_low, deemp_high = extra_options.get("deemp_coeff", (0, 0))
         if deemp_low > 0:
@@ -376,26 +376,22 @@ class RFDecode:
 
         if self.SysParams['AC3']:
             apass = 288000 * .5
-            self.Filters['AC3_fir'] = [sps.firwin(257,
-            [
-                (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
-                (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
-            ], 
-            pass_zero=False), [1.0]]
 
-            self.Filters['AC3_fir'] = sps.butter(3,
-            [
-                (self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
-                (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half,
-            ], 
-            btype='bandpass')
+            # 
+            fpass = lambda apass: [(self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
+            (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half]
 
+            # Need to clean these up
+            # self.Filters['AC3_fir'] = [sps.firwin(257, fpass(apass), pass_zero=False), [1.0]]
+            # XXX Made into IIR for some reason, check commit history here
+            self.Filters['AC3_fir'] = sps.butter(3, fpass(apass), btype='bandpass')
 
             # This analog audio bandpass filter is an approximation of
             # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm, 
             # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
-            self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
+            # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
 
+            # empirically determined
             self.Filters['AC3_iir'] = sps.butter(3, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
 
             firfilt = filtfft(self.Filters['AC3_fir'], self.blocklen)
@@ -448,10 +444,20 @@ class RFDecode:
             np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase))
         )
 
-#        emp = filtfft(emphasis_iir(1/0.5e+6, 1/2.5e+6, self.freq_hz), self.blocklen)
-
-#        self.Filters["Fefm"] = coeffs * (emp ** 0.5) * 8
         self.Filters["Fefm"] = coeffs * 8
+
+    # Lambda-scale functions used to simplify following filter builders
+
+    # Split out the frequency list given to the filter builder
+    def freqrange(self, f1, f2): 
+        return [f1 / self.freq_hz_half, f2 / self.freq_hz_half]
+
+    # Like freqrange, but for notch filters
+    def notchrange(self, f, notchwidth, hz = False): 
+        return [
+            (f - notchwidth) / self.freq_hz_half if hz else self.freq_half,
+            (f + notchwidth) / self.freq_hz_half if hz else self.freq_half
+        ]
 
     def computevideofilters(self):
         self.Filters = {}
@@ -474,23 +480,15 @@ class RFDecode:
             self.freq_half + (self.freq_half - DP["MTF_freq"])
         ) / self.freq_half
 
-        MTF = sps.zpk2tf(
-            [],
-            [
-                polar2z(DP["MTF_poledist"], np.pi * MTF_polef_lo),
-                polar2z(DP["MTF_poledist"], np.pi * MTF_polef_hi),
-            ],
-            1,
-        )
+        to_z = lambda pole: polar2z(DP["MTF_poledist"], np.pi * pole)
+
+        MTF = sps.zpk2tf([], [to_z(MTF_polef_lo), to_z(MTF_polef_hi)], 1)
         SF["MTF"] = filtfft(MTF, self.blocklen)
 
         # The BPF filter, defined for each system in DecoderParams
         filt_rfvideo = sps.butter(
             DP["video_bpf_order"],
-            [
-                DP["video_bpf_low"] / self.freq_hz_half,
-                DP["video_bpf_high"] / self.freq_hz_half,
-            ],
+            self.freqrange(DP["video_bpf_low"], DP["video_bpf_high"]),
             btype="bandpass",
         )
         # Start building up the combined FFT filter using the BPF
@@ -500,19 +498,14 @@ class RFDecode:
         if SP["analog_audio"] and self.system == "NTSC":
             cut_left = sps.butter(
                 DP["audio_notchorder"],
-                [
-                    (SP["audio_lfreq"] - DP["audio_notchwidth"]) / self.freq_hz_half,
-                    (SP["audio_lfreq"] + DP["audio_notchwidth"]) / self.freq_hz_half,
-                ],
+                self.notchrange(SP["audio_lfreq"], DP['audio_notchwidth'], True),
                 btype="bandstop",
             )
             SF["Fcutl"] = filtfft(cut_left, self.blocklen)
+            
             cut_right = sps.butter(
                 DP["audio_notchorder"],
-                [
-                    (SP["audio_rfreq"] - DP["audio_notchwidth"]) / self.freq_hz_half,
-                    (SP["audio_rfreq"] + DP["audio_notchwidth"]) / self.freq_hz_half,
-                ],
+                self.notchrange(SP["audio_rfreq"], DP['audio_notchwidth'], True),
                 btype="bandstop",
             )
             SF["Fcutr"] = filtfft(cut_right, self.blocklen)
@@ -600,10 +593,7 @@ class RFDecode:
                 [
                     sps.firwin(
                         afilt_len,
-                        [
-                            (center_freq - apass) / self.freq_hz_half,
-                            (center_freq + apass) / self.freq_hz_half,
-                        ],
+                        self.notchrange(center_freq, apass, True),
                         pass_zero=False,
                     ),
                     1.0,
@@ -1464,11 +1454,6 @@ class Field:
 
         self.prevfield = prevfield
         self.fields_written = fields_written
-
-        # XXX: need a better way to prevent memory leaks than this
-        # For now don't let a previous frame keep it's prev frame
-        if prevfield is not None:
-            prevfield.prevfield = None
 
         self.rf = rf
         self.freq = self.rf.freq
@@ -3649,6 +3634,8 @@ class LDdecode:
             # logger.info("Bad data - jumping one second")
             rv['offset'] = f.nextfieldoffset
 
+        print(f'done {f.valid} {f.isFirstField} {start} {rv["offset"]}')
+
         return rv['field'], rv['offset']
 
     @profile
@@ -3662,10 +3649,9 @@ class LDdecode:
 
         while done is False:
             if redo:
+                print('redo')
                 # Drop existing thread
-                if self.decodethread:
-                    self.decodethread.join()
-                    self.decodethread = None
+                self.decodethread = None
 
                 # Start new thread
                 self.threadreturn = {}
@@ -3685,6 +3671,7 @@ class LDdecode:
                 self.decodethread = None
                 
                 f, offset = self.threadreturn['field'], self.threadreturn['offset']
+                print(f'offset: {offset}')
             else: # assume first run
                 f = None
                 offset = 0
@@ -3702,6 +3689,7 @@ class LDdecode:
                     if offset:
                         toffset += offset
 
+                print(self.fields_written, toffset, self.mtf_level)
                 df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
 
                 self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
@@ -3779,8 +3767,6 @@ class LDdecode:
 
             if self.decodethread and not self.decodethread.ident and not redo:
                 self.decodethread.start()
-            elif redo:
-                self.decodethread = None
 
         if f is None or f.valid is False:
             return None
