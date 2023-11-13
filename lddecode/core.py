@@ -455,8 +455,8 @@ class RFDecode:
     # Like freqrange, but for notch filters
     def notchrange(self, f, notchwidth, hz = False): 
         return [
-            (f - notchwidth) / self.freq_hz_half if hz else self.freq_half,
-            (f + notchwidth) / self.freq_hz_half if hz else self.freq_half
+            (f - notchwidth) / (self.freq_hz_half if hz else self.freq_half),
+            (f + notchwidth) / (self.freq_hz_half if hz else self.freq_half)
         ]
 
     def computevideofilters(self):
@@ -550,14 +550,7 @@ class RFDecode:
         SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * F0_5_fft
 
         SF["Fburst"] = filtfft(
-            sps.butter(
-                1,
-                [
-                    (SP["fsc_mhz"] - 0.1) / self.freq_half,
-                    (SP["fsc_mhz"] + 0.1) / self.freq_half,
-                ],
-                btype="bandpass",
-            ),
+            sps.butter(1, self.notchrange(SP["fsc_mhz"], 0.1), "bandpass"),
             self.blocklen,
         )
         SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"]
@@ -566,10 +559,7 @@ class RFDecode:
             SF["Fpilot"] = filtfft(
                 sps.butter(
                     1,
-                    [
-                        (SP["pilot_mhz"] - 0.1) / self.freq_half,
-                        (SP["pilot_mhz"] + 0.1) / self.freq_half,
-                    ],
+                    self.notchrange(SP["pilot_mhz"], 0.1),
                     btype="bandpass",
                 ),
                 self.blocklen,
@@ -1184,7 +1174,6 @@ class DemodCache:
                         "incomplete demodulated block placed on queue, block #%d", blocknum
                     )
                     self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
-                    self.lock.release()
                     continue
 
                 if item['request'] == self.block_status[blocknum]['request']:
@@ -3693,9 +3682,10 @@ class LDdecode:
                 df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
 
                 self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-                #elf.decodethread.run()
                 self.decodethread.start()
-                #self.decodethread.join()
+                # Enabling .join() here to disable threading makes it slower,
+                # but makes the output more deterministic
+                self.decodethread.join()
             
             # process previous run
             if f:

@@ -605,7 +605,7 @@ def get_git_info():
     return branch, commit
 
 
-# Essential standalone routines
+# Essential (or at least useful) standalone routines and lambdas
 
 pi = np.pi
 tau = np.pi * 2
@@ -997,6 +997,21 @@ def LRUupdate(l, k):
 
     l.insert(0, k)
 
+# Lambdas used to shorten filter-building functions
+
+# Split out the frequency list given to the filter builder
+freqrange = lambda f1, f2: [
+    f1 / self.freq_hz_half,
+    f2 / self.freq_hz_half,
+]
+
+# Like freqrange, but for notch filters
+notchrange = lambda f, notchwidth, hz: [
+    (f - notchwidth) / self.freq_hz_half if hz else self.freq_half,
+    (f + notchwidth) / self.freq_hz_half if hz else self.freq_half,
+]
+
+# numba jit functions, used to numba-ify parts of more complex functions
 
 @njit(cache=True,nogil=True)
 def nb_median(m):
