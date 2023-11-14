@@ -778,7 +778,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         if self._chroma_trap:
-            self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"])
+            self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"], ldd.logger)
 
         if self.useAGC:
             self.AGClevels = StackableMA(
