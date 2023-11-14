@@ -9,6 +9,7 @@ import scipy.signal as signal
 import os
 import sys
 import logging
+import json
 
 from PyQt5.QtCore import Qt, QByteArray, QCryptographicHash, QMetaType, QSize
 from PyQt5.QtWidgets import (
@@ -54,7 +55,7 @@ BLOCK_LEN = 32768
 SAMPLE_RATE = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
 # fs = 40000000
 # 2560
-FRAME_WIDTH = 1135
+# FRAME_WIDTH = 1135
 OUT_SCALE_DIVIDEND = np.double(0xC800 - 0x0400)
 
 
@@ -114,6 +115,8 @@ def readVHSFrame(f, nr, w, h):
 def readRefFrame(f, nr, w, h, offset=0):
     outa = None
     outb = None
+    if not f:
+        return None, None
     try:
         out_video = np.fromfile(
             f,
@@ -128,13 +131,41 @@ def readRefFrame(f, nr, w, h, offset=0):
     return outa, outb
 
 
+def read_json_params(file):
+    f = open(file)
+    json_data = json.load(f)
+
+    return json_data
+
+
+def metadata_from_json(json_data):
+    video_parameters = json_data["videoParameters"]
+    system = video_parameters["system"]
+    fs = video_parameters["sampleRate"]
+    field_width = video_parameters["fieldWidth"]
+    field_height = video_parameters["fieldHeight"]
+    if system is "PAL" and field_height < 312:
+        system = "MPAL"
+    return (system, fs, field_width, field_height)
+
+
 class FormatParams:
     def __init__(self, system, tape_format, fs, logger):
         self.change_format(system, tape_format, fs, logger)
 
+    def update_from_json(self, tape_format, json_data, logger):
+        (system, fs, field_width, field_height) = metadata_from_json(json_data)
+        self.change_format(system, tape_format, fs, logger)
+        self.field_lines = field_height
+        self.field_width = field_width
+
     def change_format(self, system, tape_format, fs, logger):
         self.fs = fs
+        self.system = system
         self.sys_params, self.rf_params = get_format_params(system, tape_format, logger)
+        self.field_lines = max(self.sys_params["field_lines"])
+        self.field_width = int(np.round(self.sys_params["line_period"] * (fs / 1e6)))
+
         self.tape_format = tape_format
         # TODO: THis default should be set elsewhere
         self.sys_params["track_ire0_offset"] = self.sys_params.get(
@@ -167,6 +198,7 @@ class VHStune(QDialog):
         )
         self._logger = logger
 
+        self.filter_params = None
         self._format_params = FormatParams("PAL", tape_format, SAMPLE_RATE, logger)
 
         self.originalPalette = QApplication.palette()
@@ -181,9 +213,9 @@ class VHStune(QDialog):
         leftLayout.addStrut(370)
         # controls_area = QScrollArea(self.controlsGroupBox)
         leftLayout.addWidget(self.controlsGroupBox)
-        filters_area = QScrollArea()
-        filters_area.setWidget(self.filterGroupBox)
-        leftLayout.addWidget(filters_area)
+        self.filters_area = QScrollArea()
+        self.filters_area.setWidget(self.filterGroupBox)
+        leftLayout.addWidget(self.filters_area)
         mainLayout.addLayout(leftLayout, 0, 0)
         mainLayout.addLayout(self.rightLayout, 0, 1)
         mainLayout.setRowStretch(0, 1)
@@ -196,8 +228,27 @@ class VHStune(QDialog):
 
         self.initFilters()
 
+    def _update_format(self):
+        self.makeFilterParams()
+        self.createFilterGroupBox()
+        self.filters_area.setWidget(self.filterGroupBox)
+        self.initFilters()
+        self.updateImage()
+
     def makeFilterParams(self):
         rf_params = self._format_params.rf_params
+
+        if self.filter_params is not None:
+            # Remove old controls
+            for k in self.filter_params.keys():
+                if self.filter_params[k]["step"] is None:
+                    self.filter_params[k]["ctrl"].disconnect()
+                    self.filter_params[k]["ctrl"].deleteLater()
+                elif self.filter_params[k]["value"] is not None:
+                    self.filter_params[k]["ctrl"].disconnect()
+                    self.filter_params[k]["ctrl"].deleteLater()
+                    self.filter_params[k]["label"].deleteLater()
+
         self.filter_params = {
             #          "deemph_enable": { "value": True, "step": None, "desc": "Enable deemphasis", "onchange": [ self.applyFilter, self.drawImage ] },
             "video_lpf_freq": {
@@ -442,7 +493,7 @@ class VHStune(QDialog):
                 self.filter_params[k]["label"].setText(
                     self.filter_params[k]["desc"].format(self.filter_params[k]["value"])
                 )
-            print(k)
+            # print(k)
             for p in self.filter_params[k]["onchange"]:
                 p()
         else:
@@ -468,21 +519,36 @@ class VHStune(QDialog):
         if fileName is not None and fileName[0] != "":
             self.proTBCFilename = fileName[0]
             fSize = os.path.getsize(self.proTBCFilename)
-            self.totalFrames = math.floor(fSize / (4 * 2 * FRAME_WIDTH * 313))
+            self.totalFrames = math.floor(
+                fSize
+                / (
+                    4
+                    * 2
+                    * self._format_params.field_width
+                    * self._format_params.field_lines
+                )
+            )
             self.frameSlider.setRange(1, self.totalFrames - 2)
             self.frameSpin.setRange(1, self.totalFrames - 2)
-            self.updateImage()
+            json_params = read_json_params(self.proTBCFilename + ".json")
+            self._format_params.update_from_json(
+                self.systemComboBox.currentText(), json_params, self._logger
+            )
+            self._update_format()
 
     def loadImage(self):
         self.refFieldA, self.refFieldB = readRefFrame(
             self.refTBCFilename,
             self.curFrameNr,
-            FRAME_WIDTH,
-            313,
+            self._format_params.field_width,
+            self._format_params.field_lines,
             self.refOffset.value(),
         )
         self.vhsFrameData = readVHSFrame(
-            self.proTBCFilename, self.curFrameNr, FRAME_WIDTH, 313
+            self.proTBCFilename,
+            self.curFrameNr,
+            self._format_params.field_width,
+            self._format_params.field_lines,
         )
         pos = 0
         self.fftData = []
@@ -611,8 +677,8 @@ class VHStune(QDialog):
                 outImage = img[1024:31744]
             else:
                 outImage = np.append(outImage, img[1024:31744])
-        height = 313
-        width = FRAME_WIDTH
+        height = self._format_params.field_lines
+        width = self._format_params.field_width
         field_samples = height * width
 
         vhsFieldA = _hz_to_output(
@@ -645,16 +711,19 @@ class VHStune(QDialog):
         pixmap = QPixmap(
             QImage(
                 outFrame.data,
-                FRAME_WIDTH,
+                self._format_params.field_width,
                 height * 2,
-                FRAME_WIDTH * 2,
+                self._format_params.field_width * 2,
                 QImage.Format_Grayscale16,
             )
         )
         if self.displayWidthSlider.value() != 100:
             pixmap = pixmap.scaled(
                 QSize(
-                    int(FRAME_WIDTH * (self.displayWidthSlider.value() / 100.0)),
+                    int(
+                        self._format_params.field_width
+                        * (self.displayWidthSlider.value() / 100.0)
+                    ),
                     height * 2,
                 ),
                 transformMode=Qt.SmoothTransformation,
@@ -715,9 +784,12 @@ class VHStune(QDialog):
 
     def _change_format(self):
         self._format_params.change_format(
-            "PAL", self.systemComboBox.currentText(), self._logger
+            self._format_params.system,
+            self.systemComboBox.currentText(),
+            self._format_params.fs,
+            self._logger,
         )
-        self.drawImage()
+        self._update_format()
 
     def createControlsGroupBox(self):
         self.controlsGroupBox = QGroupBox("Controls")
@@ -752,7 +824,7 @@ class VHStune(QDialog):
 
         #        self.tbcWidth = QSpinBox()
         #        self.tbcWidth.setRange(1,10000)
-        #        self.tbcWidth.setValue(FRAME_WIDTH)
+        #        self.tbcWidth.setValue(self._format_params.field_width)
         #        tbcWidthLabel = QLabel("TBC width:")
         #        tbcWidthLabel.setBuddy(self.tbcWidth)
 
@@ -761,7 +833,7 @@ class VHStune(QDialog):
 
         #        self.tbcHeight = QSpinBox()
         #        self.tbcHeight.setRange(1,10000)
-        #        self.tbcHeight.setValue(313)
+        #        self.tbcHeight.setValue(self._format_params.field_lines)
         #        tbcHeightLabel = QLabel("TBC height (field lines):")
         #        tbcHeightLabel.setBuddy(self.tbcHeight)
 
