@@ -341,6 +341,7 @@ class VHStune(QDialog):
                     self.drawImage,
                 ],
             },
+            # TODO: Not applied!!
             "nonlinear_bandpass_upper": {
                 "value": rf_params.get("nonlinear_bandpass_upper", None),
                 "step": 5000,
@@ -884,7 +885,7 @@ class VHStune(QDialog):
         self.filterGroupBox = QGroupBox("Filter settings")
         layout = QVBoxLayout()
 
-        for k in self.filter_params.keys():
+        for k in self.filter_params:
             if self.filter_params[k]["step"] is None:
                 self.filter_params[k]["ctrl"] = QCheckBox(self.filter_params[k]["desc"])
                 self.filter_params[k]["ctrl"].setChecked(self.filter_params[k]["value"])

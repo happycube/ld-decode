@@ -244,16 +244,13 @@ class VHSDecode(ldd.LDdecode):
         while done is False:
             if redo:
                 # Drop existing thread
-                if self.decodethread:
-                    self.decodethread.join()
-                    self.decodethread = None
+                self.decodethread = None
 
                 # Start new thread
                 self.threadreturn = {}
                 df_args = (
                     redo,
                     self.mtf_level,
-                    self.audio_offset,
                     self.fieldstack[0],
                     initphase,
                     redo,
@@ -276,7 +273,6 @@ class VHSDecode(ldd.LDdecode):
                 self.decodethread = None
 
                 f, offset = self.threadreturn["field"], self.threadreturn["offset"]
-                # print(f, f.valid, f.readloc, offset)
             else:  # assume first run
                 f = None
                 offset = 0
@@ -285,15 +281,11 @@ class VHSDecode(ldd.LDdecode):
                 # Start new thread
                 self.threadreturn = {}
                 if f and f.valid:
-                    self.audio_offset = f.audio_next_offset
                     prevfield = f
                     toffset = self.fdoffset + offset
-                    # XXX: this is wrong somehow
-                    audio_offset = f.audio_next_offset
                 else:
                     prevfield = None
                     toffset = self.fdoffset
-                    audio_offset = self.audio_offset
 
                     if offset:
                         toffset += offset
@@ -301,7 +293,6 @@ class VHSDecode(ldd.LDdecode):
                 df_args = (
                     toffset,
                     self.mtf_level,
-                    audio_offset,
                     prevfield,
                     initphase,
                     False,
@@ -311,9 +302,10 @@ class VHSDecode(ldd.LDdecode):
                 self.decodethread = threading.Thread(
                     target=self.decodefield, args=df_args
                 )
-                # elf.decodethread.run()
                 self.decodethread.start()
-                # self.decodethread.join()
+                # Enabling .join() here to disable threading makes it slower,
+                # but makes the output more deterministic
+                self.decodethread.join()
 
             # process previous run
             if f:
@@ -324,7 +316,7 @@ class VHSDecode(ldd.LDdecode):
 
             if f and f.valid:
                 picture, audio, efm = f.downscale(
-                    linesout=self.output_lines, final=True, audio=self.analog_audio
+                    linesout=self.output_lines, final=True, audio=self.analog_audio, lastfieldwritten=self.lastFieldWritten,
                 )
 
                 _ = self.computeMetrics(f, None, verbose=True)
@@ -377,7 +369,6 @@ class VHSDecode(ldd.LDdecode):
                 else:
                     done = True
                     self.fieldstack.insert(0, f)
-                    self.audio_offset = f.audio_next_offset
 
             if f is None and offset is None:
                 # EOF, probably
@@ -385,8 +376,6 @@ class VHSDecode(ldd.LDdecode):
 
             if self.decodethread and not self.decodethread.ident and not redo:
                 self.decodethread.start()
-            elif redo:
-                self.decodethread = None
 
         if f is None or f.valid is False:
             return None
@@ -409,6 +398,7 @@ class VHSDecode(ldd.LDdecode):
                 # If this is the first field to be written, don't write anything
                 return f
 
+            self.lastFieldWritten = (self.fields_written, f.readloc)
             self.writeout(self.lastvalidfield[f.isFirstField])
 
         return f
