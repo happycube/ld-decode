@@ -4177,7 +4177,7 @@ class LDdecode:
         self.roughseek(startfield)
 
         for fields in range(10):
-            f, offset = self.decodefield(self.fdoffset, 0, 0)
+            f, offset = self.decodefield(self.fdoffset, 0)
 
             if f is None:
                 # If given an invalid starting location (i.e. seeking to a frame in an already cut raw file),
