@@ -31,13 +31,13 @@ def fill_rfparams_video8_shared(rfparams):
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
     rfparams["video_bpf_low"] = 2100000
-    rfparams["video_bpf_high"] = 6600000
+    rfparams["video_bpf_high"] = 6900000
     # Band-pass filter order.
     # Order may be fine as is.
     rfparams["video_bpf_order"] = 1
     # Sharper upper cutoff to get rid of high-frequency junk.
-    rfparams["video_lpf_extra"] = 6710000
-    rfparams["video_lpf_extra_order"] = 3
+    rfparams["video_lpf_extra"] = 6810000
+    rfparams["video_lpf_extra_order"] = 2
 
     ## TODO: Maybe a Notch filter for audio freqs
     rfparams["video_hpf_extra"] = 2520000
@@ -55,7 +55,7 @@ def fill_rfparams_video8_shared(rfparams):
     # Used to reduce streaks due to amplitude loss on phase change around
     # sharp transitions.
     rfparams["boost_bpf_low"] = 5200000
-    rfparams["boost_bpf_high"] = 5800000
+    rfparams["boost_bpf_high"] = 6200000
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 0
 
