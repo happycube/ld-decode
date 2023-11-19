@@ -17,6 +17,12 @@ from numba import jit, njit
 import numpy as np
 import scipy.signal as sps
 
+# Try to make sure ffmpeg is available
+try:
+    import static_ffmpeg
+except ImportError:
+    pass
+
 # This runs a cubic scaler on a line.
 # originally from https://www.paulinternet.nl/?page=bicubic
 @njit(nogil=True, cache=True)
@@ -571,7 +577,8 @@ def get_version():
 
         fdata = fd.read()
         return fdata.strip() # remove trailing \n etc
-    except: # usually FileNotFoundError
+    except (FileNotFoundError, OSError):
+        # Just return 'unknown' if we fail to find anything.
         return "unknown"
 
 
@@ -605,7 +612,7 @@ def get_git_info():
     return branch, commit
 
 
-# Essential standalone routines
+# Essential (or at least useful) standalone routines and lambdas
 
 pi = np.pi
 tau = np.pi * 2
@@ -625,8 +632,9 @@ def emphasis_iir(t1, t2, fs):
 
     # Zero at t1, pole at t2
     tf_b, tf_a = sps.zpk2tf([-w1], [-w2], w2 / w1)
-    return sps.bilinear(tf_b, tf_a, fs)
+    rv = sps.bilinear(tf_b, tf_a, fs)
 
+    return rv
 
 # This converts a regular B, A filter to an FFT of our selected block length
 def filtfft(filt, blocklen):
@@ -996,6 +1004,21 @@ def LRUupdate(l, k):
 
     l.insert(0, k)
 
+# Lambdas used to shorten filter-building functions
+
+# Split out the frequency list given to the filter builder
+freqrange = lambda f1, f2: [
+    f1 / self.freq_hz_half,
+    f2 / self.freq_hz_half,
+]
+
+# Like freqrange, but for notch filters
+notchrange = lambda f, notchwidth, hz: [
+    (f - notchwidth) / self.freq_hz_half if hz else self.freq_half,
+    (f + notchwidth) / self.freq_hz_half if hz else self.freq_half,
+]
+
+# numba jit functions, used to numba-ify parts of more complex functions
 
 @njit(cache=True,nogil=True)
 def nb_median(m):
