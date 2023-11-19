@@ -1117,7 +1117,9 @@ class DemodCache:
                 if b not in self.blocks:
                     LRUupdate(self.lru, b)
 
-                    rawdata = self.loader(self.infile, b * self.blocksize, self.rf.blocklen)
+                    rawdata = self.loader(
+                        self.infile, b * self.blocksize, self.rf.blocklen
+                    )
 
                     if rawdata is None or len(rawdata) < self.rf.blocklen:
                         self.blocks[b] = None
@@ -1130,29 +1132,38 @@ class DemodCache:
                     reached_end = True
                     break
 
-                try:
-                    waiting = self.block_status[b]["waiting"]
-                except:
-                    waiting = False
+                waiting = (
+                    self.block_status[b].get("waiting", False)
+                    if b in self.block_status
+                    else False
+                )
 
-                try:
-                    # Until the block is actually ready, this comparison will hit an unknown key
-                    if not redo and not waiting and self.blocks[b]["request"] == self.block_status[b]['request']:
-                        continue
-                except:
-                    pass
+                # Until the block is actually ready, this comparison will hit an unknown key
+                if (
+                    not redo
+                    and not waiting
+                    and "request" in self.blocks[b]
+                    and "request" in self.block_status[b]
+                    and self.blocks[b]["request"] == self.block_status[b]["request"]
+                ):
+                    continue
 
                 if redo or not waiting:
                     queuelist.append(b)
                     need_blocks.append(b)
                 elif waiting:
                     need_blocks.append(b)
-               
+
                 if not prefetch:
                     self.waiting.add(b)
 
             for b in queuelist:
-                self.block_status[b] = {'MTF': MTF, 'waiting': True, 'request': self.request, 'prefetch': prefetch}
+                self.block_status[b] = {
+                    "MTF": MTF,
+                    "waiting": True,
+                    "request": self.request,
+                    "prefetch": prefetch,
+                }
                 self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
         self.q_out_event.clear()
@@ -2973,7 +2984,7 @@ class FieldPAL(Field):
                 # and on a bad disk, this value could be None...
                 if self.prevfield.phase_adjust[l] is not None:
                     prev_phaseadjust = self.prevfield.phase_adjust[l]
-            except:
+            except AttributeError:
                 pass
 
             rising, self.phase_adjust[l] = self.compute_line_bursts(
