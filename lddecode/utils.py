@@ -17,6 +17,12 @@ from numba import jit, njit
 import numpy as np
 import scipy.signal as sps
 
+# Try to make sure ffmpeg is available
+try:
+    import static_ffmpeg
+except ImportError:
+    pass
+
 # This runs a cubic scaler on a line.
 # originally from https://www.paulinternet.nl/?page=bicubic
 @njit(nogil=True, cache=True)
@@ -571,7 +577,8 @@ def get_version():
 
         fdata = fd.read()
         return fdata.strip() # remove trailing \n etc
-    except: # usually FileNotFoundError
+    except (FileNotFoundError, OSError):
+        # Just return 'unknown' if we fail to find anything.
         return "unknown"
 
 
