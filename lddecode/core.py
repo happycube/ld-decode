@@ -65,7 +65,7 @@ HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
 # These are invariant parameters for PAL and NTSC
 SysParams_NTSC = {
-    "fsc_mhz": (315.0 / 88.0),
+    "fsc_mhz": (315.0 / np.double(88.0)),
     "pilot_mhz": (315.0 / 88.0),
     "frame_lines": 525,
     "field_lines": (263, 262),
@@ -105,7 +105,7 @@ SysParams_NTSC = {
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.555(with a bar on top) usec
-SysParams_NTSC["line_period"] = 1 / (SysParams_NTSC["fsc_mhz"] / 227.5)
+SysParams_NTSC["line_period"] = 1 / (SysParams_NTSC["fsc_mhz"] / np.double(227.5))
 SysParams_NTSC["activeVideoUS"] = (9.45, SysParams_NTSC["line_period"] - 1.0)
 
 SysParams_NTSC["FPS"] = 1000000 / (525 * SysParams_NTSC["line_period"])
@@ -2456,6 +2456,7 @@ class Field:
         channel="demod",
         audio=0,
         final=False,
+        lastfieldwritten=None,
     ):
         if lineinfo is None:
             lineinfo = self.linelocs
@@ -2465,6 +2466,30 @@ class Field:
             # for video always output 263/313 lines
             linesout = self.outlinecount
 
+        if lastfieldwritten and audio > 16000:
+            # Compute field # and line count
+
+            rf_samples_per_field = self.rf.freq_hz / self.rf.SysParams['FPS'] / 2
+            read_gap = (self.readloc - lastfieldwritten[1]) / rf_samples_per_field
+            field_number = nb_round(lastfieldwritten[0] + read_gap)
+
+            linecount = sum(self.rf.SysParams["field_lines"]) * (field_number // 2)
+            if not self.isFirstField:
+                linecount += self.rf.SysParams["field_lines"][0]
+
+            # Now compute the # of audio samples that should be written, and then the 
+            # location of that relative to the current line
+            samples_per_line = (self.rf.SysParams['line_period'] / 1000000) / (1 / audio)
+
+            audsamp_count = linecount * samples_per_line
+            audsamp_offset = (np.floor(audsamp_count) + 1) - audsamp_count
+
+            # Finally convert to a time value
+            audio_offset = -audsamp_offset * (self.rf.SysParams['line_period'] / 10000000)
+
+        else:
+            audio_offset = 0
+
         audio_thread = None
         if audio != 0 and self.rf.decode_analog_audio:
             audio_rv = {}
@@ -2473,7 +2498,7 @@ class Field:
                 lineinfo,
                 self.rf,
                 self.linecount,
-                0, # self.audio_offset,
+                audio_offset,
                 audio,
                 audio_rv)
             )
@@ -3279,9 +3304,7 @@ class FieldNTSC(Field):
 
         self.burstmedian = self.calc_burstmedian()
 
-        # Now adjust 33 degrees to get the downscaled image onto I/Q color axis
-        # self.linelocs = np.array(self.linelocs3) + ((33/360.0) * (63.555555/227.5) * self.rf.freq)
-        # Now adjust 33 degrees (-90 - 33) for color decoding
+        # Now adjust the phase to get the downscaled image onto I/Q color axis
         shift33 = 84 * (np.pi / 180)
         self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
 
@@ -3344,6 +3367,7 @@ class LDdecode:
         self.outfile_json = None
 
         self.lastvalidfield = {False: None, True: None}
+        self.lastFieldWritten = None
 
         self.outfile_video = None
         self.outfile_audio = None
@@ -3597,8 +3621,6 @@ class LDdecode:
             # logger.info("Failed to demodulate data")
             return None, None
 
-        print(self.fields_written)
-
         f = self.FieldClass(
             self.rf,
             rawdecode,
@@ -3634,8 +3656,6 @@ class LDdecode:
             # logger.info("Bad data - jumping one second")
             rv['offset'] = f.nextfieldoffset
 
-        print(f'done {f.valid} {f.isFirstField} {start} {rv["offset"]}')
-
         return rv['field'], rv['offset']
 
     @profile
@@ -3649,7 +3669,6 @@ class LDdecode:
 
         while done is False:
             if redo:
-                print('redo')
                 # Drop existing thread
                 self.decodethread = None
 
@@ -3671,7 +3690,6 @@ class LDdecode:
                 self.decodethread = None
                 
                 f, offset = self.threadreturn['field'], self.threadreturn['offset']
-                print(f'offset: {offset}')
             else: # assume first run
                 f = None
                 offset = 0
@@ -3689,7 +3707,6 @@ class LDdecode:
                     if offset:
                         toffset += offset
 
-                print(self.fields_written, toffset, self.mtf_level)
                 df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
 
                 self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
@@ -3707,7 +3724,10 @@ class LDdecode:
 
             if f and f.valid:
                 picture, audio, efm = f.downscale(
-                    linesout=self.output_lines, final=True, audio=self.analog_audio
+                    linesout=self.output_lines, 
+                    final=True, 
+                    audio=self.analog_audio,
+                    lastfieldwritten=self.lastFieldWritten,
                 )
 
                 metrics = self.computeMetrics(f, None, verbose=True)
@@ -3790,6 +3810,7 @@ class LDdecode:
                 # If this is the first field to be written, don't write anything
                 return f
 
+            self.lastFieldWritten = (self.fields_written, f.readloc)
             self.writeout(self.lastvalidfield[f.isFirstField])
 
         return f
