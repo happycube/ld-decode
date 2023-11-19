@@ -577,7 +577,8 @@ def get_version():
 
         fdata = fd.read()
         return fdata.strip() # remove trailing \n etc
-    except: # usually FileNotFoundError
+    except (FileNotFoundError, OSError):
+        # Just return 'unknown' if we fail to find anything.
         return "unknown"
 
 
