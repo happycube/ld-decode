@@ -452,6 +452,8 @@ def main(args=None, use_gui=False):
 
         if f is None:
             done = True
+        else:
+            f.prevfield = None
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
             jsondumper.put(vhsd.build_json())

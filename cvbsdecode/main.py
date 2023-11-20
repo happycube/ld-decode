@@ -161,6 +161,8 @@ def main(args=None):
         if f is None:
             # or (args.ignoreleadout == False and vhsd.leadOut == True):
             done = True
+        else:
+            f.prevfield = None
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
             jsondumper.put(vhsd.build_json())
