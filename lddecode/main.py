@@ -274,7 +274,7 @@ def main(args=None):
         dest="audio_filterwidth",
         metavar="FREQ",
         type=parse_frequency,
-        default=None,
+        default=0,
         help="Analog audio filter width",
     )
 
@@ -302,21 +302,27 @@ def main(args=None):
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
         "audio_filterwidth": args.audio_filterwidth,
-        "AC3": args.AC3
+        "AC3": args.AC3,
+        "blackIRE": 0,
     }
 
-    if vid_standard == "NTSC" and args.NTSC_color_notch_filter:
-        extra_options["NTSC_ColorNotchFilter"] = True
+    if vid_standard == "NTSC":
+        if not args.ntscj:
+            extra_options["blackIRE"] = 7.5
 
-    if vid_standard == "PAL" and args.V4300D_notch_filter:
-        extra_options["PAL_V4300D_NotchFilter"] = True
+        if args.NTSC_color_notch_filter:
+            extra_options["NTSC_ColorNotchFilter"] = True
 
-    if vid_standard == "PAL" and args.V4300D_notch_filter:
-        extra_options["PAL_V4300D_NotchFilter"] = True
+    if vid_standard == "PAL":
+        if args.V4300D_notch_filter:
+            extra_options["PAL_V4300D_NotchFilter"] = True
 
-    if vid_standard == "PAL" and args.AC3:
-        print("ERROR: AC3 audio decoding is only supported for NTSC")
-        sys.exit(1)
+        if args.V4300D_notch_filter:
+            extra_options["PAL_V4300D_NotchFilter"] = True
+
+        if args.AC3:
+            print("ERROR: AC3 audio decoding is only possible in NTSC")
+            sys.exit(1)
 
     extra_options["write_db"] = ['base']
     if args.write_db or args.write_dbug:
@@ -373,11 +379,6 @@ def main(args=None):
         ldd.roughseek(args.start_fileloc, False)
     else:
         ldd.roughseek(firstframe * 2)
-
-    if vid_standard == "NTSC" and not args.ntscj:
-        ldd.blackIRE = 7.5
-
-    # print(ldd.blackIRE)
 
     if args.seek != -1:
         if ldd.seek(args.seek if firstframe == 0 else firstframe, args.seek) is None:
