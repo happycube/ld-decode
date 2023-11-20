@@ -3343,11 +3343,10 @@ class LDdecode:
             if analog_audio == 0:
                 self.has_analog_audio = False
 
-        self.outfile_json = None
-
         self.lastvalidfield = {False: None, True: None}
         self.lastFieldWritten = None
 
+        self.outfile_json = None
         self.outfile_video = None
         self.outfile_audio = None
         self.outfile_efm = None
@@ -3538,13 +3537,13 @@ class LDdecode:
             fftdata = np.fft.fft(blk)
             filtdata = np.fft.ifft(fftdata * self.rf.Filters['AC3']).real
             odata = self.AC3Collector.cut(filtdata)
-            odata = np.clip(odata / 64, -100, 100) 
+            odata = np.clip(odata / 64, -100, 100).astype(np.int8)
 
-            if self.outfile_ac3:
-                self.outfile_ac3.write(np.int8(odata))
+            if self.ac3:
+                self.outfile_ac3.write(odata)
 
-            if 'ac3' in self.write_db:
-                self.write_sqlite(fi, 'ac3', odata.tobytes())
+                if 'ac3' in self.write_db:
+                    self.write_sqlite(fi, 'ac3', odata.tobytes())
 
             blk = self.AC3Collector.get_block()
 
@@ -3659,13 +3658,8 @@ class LDdecode:
             # logger.info("Failed to demodulate data")
             return None, None
 
-        f = self.FieldClass(
-            self.rf,
-            rawdecode,
-            prevfield=prevfield,
-            initphase=initphase,
-            readloc=rawdecode["startloc"],
-        )
+        start = rawdecode["startloc"]
+        f = self.FieldClass(self.rf, rawdecode, prevfield, initphase, start)
 
         if self.use_profiler:
             if self.system == 'NTSC':
@@ -3827,8 +3821,8 @@ class LDdecode:
         if f is None or f.valid is False:
             return None
         
-        if f is not None and self.fname_out is not None:
-            # Only write a FirstField first
+        if self.fname_out is not None:
+            # Only start output with the first field
             if len(self.fieldinfo) == 0 and not f.isFirstField:
                 return f
 
@@ -3854,10 +3848,10 @@ class LDdecode:
         """ decode frame #/information from Philips code data on both fields """
 
         # CLV
-        self.isCLV = False
-        self.earlyCLV = False
-        self.clvMinutes = None
-        self.clvSeconds = None
+        self.isCLV       = False
+        self.earlyCLV    = False
+        self.clvMinutes  = None
+        self.clvSeconds  = None
         self.clvFrameNum = None
 
         def decodeBCD(bcd):
@@ -4090,8 +4084,8 @@ class LDdecode:
             if len(dropout_lines):
                 fi["dropOuts"] = {
                     "fieldLine": dropout_lines,
-                    "startx": dropout_starts,
-                    "endx": dropout_ends,
+                    "startx"   : dropout_starts,
+                    "endx"     : dropout_ends,
                 }
 
         # This is a bitmap, not a counter
@@ -4150,7 +4144,6 @@ class LDdecode:
                 try:
                     if self.isCLV and self.earlyCLV:  # early CLV
                         disk_TimeCode = f"{self.clvMinutes}:xx"
-                    # print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
                     elif self.isCLV and self.frameNumber is not None:
                         disk_TimeCode = "%d:%.2d.%.2d Frame #%d" % (
                             self.clvMinutes,
@@ -4159,7 +4152,6 @@ class LDdecode:
                             self.frameNumber,
                         )
                     elif self.frameNumber:
-                        # print("file frame %d CAV frame %d" % (rawloc, self.frameNumber), file=sys.stderr)
                         disk_Frame = f"{self.frameNumber}"
                     elif self.leadIn:
                         special = "Lead In"
