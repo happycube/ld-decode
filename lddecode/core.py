@@ -3529,8 +3529,10 @@ class LDdecode:
 
         return np.median(sync_hzs), np.median(ire0_hzs), np.mean(ire100_hzs)
 
-    def AC3filter(self, fi, rftbc):
+    def AC3filter(self, rftbc, fi=None):
         self.AC3Collector.add(rftbc)
+
+        output = None
 
         blk = self.AC3Collector.get_block()
         while blk is not None:
@@ -3539,13 +3541,18 @@ class LDdecode:
             odata = self.AC3Collector.cut(filtdata)
             odata = np.clip(odata / 64, -100, 100).astype(np.int8)
 
-            if self.ac3:
-                self.outfile_ac3.write(odata)
-
-                if 'ac3' in self.write_db:
-                    self.write_sqlite(fi, 'ac3', odata.tobytes())
+            if output is not None:
+                output = np.concatenate((output, odata))
+            else:
+                output = odata
 
             blk = self.AC3Collector.get_block()
+
+        if self.ac3:
+            self.outfile_ac3.write(output)
+
+            if 'ac3' in self.write_db:
+                self.write_sqlite(fi, 'ac3', output.tobytes())
 
     def write_sqlite(self, fi, dtype, data):
         if self.dbconn is None:
@@ -3616,7 +3623,7 @@ class LDdecode:
                 self.outfile_rftbc.write(rftbc)
 
             if self.outfile_ac3 or 'ac3' in self.write_db:
-                self.AC3filter(rftbc)
+                self.AC3filter(rftbc, fi)
 
             if self.pipe_rftbc:
                 self.pipe_rftbc.send(rftbc)
