@@ -3548,11 +3548,11 @@ class LDdecode:
 
             blk = self.AC3Collector.get_block()
 
-        if self.ac3:
+        if self.outfile_ac3:
             self.outfile_ac3.write(output)
 
-            if 'ac3' in self.write_db:
-                self.write_sqlite(fi, 'ac3', output.tobytes())
+        if 'ac3' in self.write_db:
+            self.write_sqlite(fi, 'ac3', output.tobytes())
 
     def write_sqlite(self, fi, dtype, data):
         if self.dbconn is None:
