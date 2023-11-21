@@ -3665,6 +3665,11 @@ class LDdecode:
         redo = None
 
         if len(self.fieldstack) >= 2:
+            # XXX: Need to cut off the previous field here, since otherwise
+            # it'll leak for now.
+            if self.fieldstack[-1]:
+                self.fieldstack[-1].prevfield = None
+
             self.fieldstack.pop(-1)
 
         while done is False:
