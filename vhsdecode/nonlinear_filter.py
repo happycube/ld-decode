@@ -30,7 +30,7 @@ def _sub_deemphasis_debug(
     return npfft.irfft(npfft.rfft(result))
 
 
-def sub_deemphasis(
+def sub_deemphasis_inner(
     out_video,
     out_video_fft,
     filters,
@@ -38,7 +38,7 @@ def sub_deemphasis(
     exponential_scale=0.33,
     linear_scale_1=None,
     linear_scale_2=None,
-    static_factor=0.0,
+    static_factor=None,
     debug_const_amplitude=False,
 ):
     """Apply non-linear de-emphasis filter to input signal
@@ -61,12 +61,15 @@ def sub_deemphasis(
 
     deviation /= 2
 
-    static_part = hf_part * (deviation * static_factor)
+    static_part = 0
+    if static_factor:
+        print("static factor: ", static_factor)
+        static_part = hf_part * static_factor
 
     # Get the instantaneous amplitude of the signal using the hilbert transform
     # and divide by the formats specified deviation so we get a amplitude compared to the specifications references.
     amplitude = abs(sps.hilbert(hf_part)) / deviation
-    amplitude = filter_simple(amplitude, filters["FEnvPost"])
+    amplitude = filter_simple(amplitude, filters["NLAmplitudeLPF"])
 
     if debug_const_amplitude:
         amplitude = debug_const_amplitude
@@ -83,7 +86,49 @@ def sub_deemphasis(
     hf_part *= 1 - amplitude
 
     # And subtract it from the output signal.
-    return out_video - hf_part - static_part
+    return (out_video - hf_part - static_part, hf_part + static_part, amplitude)
+
+
+def sub_deemphasis(
+    out_video,
+    out_video_fft,
+    filters,
+    deviation,
+    exponential_scale=0.33,
+    linear_scale_1=None,
+    linear_scale_2=None,
+    static_factor=None,
+    debug_const_amplitude=False,
+):
+    """Apply non-linear de-emphasis filter to input signal
+
+    Args:
+        out_video (_type_): Video signal to apply deemphasis to
+        out_video_fft (_type_): real-value fft of video signal
+        filters (_type_): _description_
+        deviation (_type_): Deviation the different input amplitudes used in the reference filter response curves are calculated against.
+        exponential_scale (float, optional): exponential scaling factor for amplitude. Defaults to 0.33.
+        linear_scale_1 (_type_, optional): linear scaling factor applied before exponential scaling. Defaults to None.
+        linear_scale_2 (_type_, optional): linear scaling factor applied before exponential scaling. Defaults to None.
+        debug_const_amplitude (bool, optional): Set constant amplitude instead of using video signal for testing response. Defaults to False.
+
+    Returns:
+        _type_: video signal with filtering applied
+    """
+    (ret, _, _) = sub_deemphasis_inner(
+        out_video,
+        out_video_fft,
+        filters,
+        deviation,
+        exponential_scale,
+        linear_scale_1,
+        linear_scale_2,
+        static_factor,
+        debug_const_amplitude,
+    )
+
+    # And subtract it from the output signal.
+    return ret
 
 
 def _gen_low_shelf_2(w0, gain, fs, is_db=False):

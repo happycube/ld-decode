@@ -34,7 +34,9 @@ from vhsdecode.compute_video_filters import (
     gen_video_main_deemp_fft_params,
     gen_video_lpf_params,
     gen_nonlinear_bandpass_params,
+    gen_nonlinear_amplitude_lpf,
     create_sub_emphasis_params,
+    NONLINEAR_AMP_LPF_FREQ_DEFAULT
 )
 
 
@@ -816,6 +818,9 @@ class VHSRFDecode(ldd.RFDecode):
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
+        
+        self.Filters["NLAmplitudeLPF"] = gen_nonlinear_amplitude_lpf(DP.get("nonlinear_amp_lpf_freq", NONLINEAR_AMP_LPF_FREQ_DEFAULT), self.freq_hz_half)
+
         # self.Filters["chroma_notch"] = sps.iirnotch(
         #            self.sys_params["fsc_mhz"] / self.freq_half, 1
         # )
@@ -994,6 +999,7 @@ class VHSRFDecode(ldd.RFDecode):
                 self._sub_emphasis_params.exponential_scaling,
                 self._sub_emphasis_params.scaling_1,
                 self._sub_emphasis_params.scaling_2,
+                self._sub_emphasis_params.static_factor,
             )
 
         del out_video_fft

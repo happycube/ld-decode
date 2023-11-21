@@ -50,6 +50,7 @@ from vhsdecode.addons.FMdeemph import gen_high_shelf
 from vhsdecode.formats import get_format_params
 from vhsdecode import compute_video_filters
 from vhsdecode.main import supported_tape_formats
+from vhsdecode.nonlinear_filter import sub_deemphasis_inner
 
 BLOCK_LEN = 32768
 SAMPLE_RATE = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
@@ -76,11 +77,6 @@ def _hz_to_output(inp, sys_params, phase=0):
     return np.uint16(
         np.clip((reduced * out_scale) + sys_params["outputZero"], 0, 65535) + 0.5
     )
-
-
-# def genDeemphFilter(mid_point, dBgain, Q, fs):
-#    da, db = gen_high_shelf(mid_point, dBgain, Q, fs)
-#    return filtfft((db, da), BLOCK_LEN, whole=False)
 
 
 def genHighpass(freq, fs_hz):
@@ -144,7 +140,7 @@ def metadata_from_json(json_data):
     fs = video_parameters["sampleRate"]
     field_width = video_parameters["fieldWidth"]
     field_height = video_parameters["fieldHeight"]
-    if system is "PAL" and field_height < 312:
+    if system == "PAL" and field_height < 312:
         system = "MPAL"
     return (system, fs, field_width, field_height)
 
@@ -180,6 +176,51 @@ class FormatParams:
         )
 
 
+class DeemphasisFilters:
+    def __init__(self):
+        self._filters = {}
+
+    @property
+    def filters(self):
+        return self._filters
+
+    def update_filters(self, filter_params, fs, block_len):
+        self.update_deemphasis(filter_params, fs, block_len)
+        self.update_nonlinear_deemphasis(filter_params, fs, block_len)
+
+    def update_deemphasis(self, filter_params, fs, block_len):
+        (_, lpf) = compute_video_filters.gen_video_lpf(
+            filter_params["video_lpf_freq"]["value"],
+            filter_params["video_lpf_order"]["value"],
+            fs / 2.0,
+            block_len,
+        )
+
+        self._filters["FVideo"] = (
+            compute_video_filters.gen_video_main_deemp_fft(
+                filter_params["deemph_gain"]["value"],
+                filter_params["deemph_mid"]["value"],
+                filter_params["deemph_q"]["value"],
+                fs,
+                block_len,
+            )
+            * lpf
+        )
+
+    def update_nonlinear_deemphasis(self, filter_params, fs, block_len):
+        self.filters["NLHighPassF"] = compute_video_filters.gen_nonlinear_bandpass(
+            None,
+            filter_params["nonlinear_highpass_freq"]["value"],
+            fs / 2.0,
+            block_len,
+        )
+        self.filters[
+            "NLAmplitudeLPF"
+        ] = compute_video_filters.gen_nonlinear_amplitude_lpf(
+            filter_params["nonlinear_amplitude_lpf"]["value"], fs / 2.0
+        )
+
+
 class VHStune(QDialog):
     refTBCFilename = ""
     proTBCFilename = ""
@@ -200,6 +241,7 @@ class VHStune(QDialog):
 
         self.filter_params = None
         self._format_params = FormatParams("PAL", tape_format, SAMPLE_RATE, logger)
+        self._deemphasis = DeemphasisFilters()
 
         self.originalPalette = QApplication.palette()
 
@@ -258,7 +300,7 @@ class VHStune(QDialog):
                 "max": 8000000,
                 "desc": "Video low pass filter corner freq ({:.0f} Hz):",
                 "onchange": [
-                    self.calcDeemphFilter,
+                    self.update_deemphasis,
                     self.applyDeemphFilter,
                     self.applyNLSVHSFilter,
                     self.drawImage,
@@ -271,7 +313,7 @@ class VHStune(QDialog):
                 "max": 4,
                 "desc": "Video low pass filter order ({:.2f}):",
                 "onchange": [
-                    self.calcDeemphFilter,
+                    self.update_deemphasis,
                     self.applyDeemphFilter,
                     self.applyNLSVHSFilter,
                     self.drawImage,
@@ -284,7 +326,7 @@ class VHStune(QDialog):
                 "max": 4000000,
                 "desc": "Deemphasis mid freq ({:.0f} Hz):",
                 "onchange": [
-                    self.calcDeemphFilter,
+                    self.update_deemphasis,
                     self.applyDeemphFilter,
                     self.applyNLSVHSFilter,
                     self.drawImage,
@@ -297,7 +339,7 @@ class VHStune(QDialog):
                 "max": 30,
                 "desc": "Deemphasis gain ({:.1f} dB):",
                 "onchange": [
-                    self.calcDeemphFilter,
+                    self.update_deemphasis,
                     self.applyDeemphFilter,
                     self.applyNLSVHSFilter,
                     self.drawImage,
@@ -310,7 +352,7 @@ class VHStune(QDialog):
                 "max": 5,
                 "desc": "Deemphasis Q ({:.2f}):",
                 "onchange": [
-                    self.calcDeemphFilter,
+                    self.update_deemphasis,
                     self.applyDeemphFilter,
                     self.applyNLSVHSFilter,
                     self.drawImage,
@@ -328,6 +370,12 @@ class VHStune(QDialog):
                 "desc": "Show only subtracted NL deemphasis part",
                 "onchange": [self.drawImage],
             },
+            "nonlinear_amplitude_showonly": {
+                "value": False,
+                "step": None,
+                "desc": "Show only subtracted NL detected amplitude part",
+                "onchange": [self.drawImage],
+            },
             "nonlinear_highpass_freq": {
                 "value": rf_params["nonlinear_highpass_freq"],
                 "step": 5000,
@@ -335,9 +383,8 @@ class VHStune(QDialog):
                 "max": 4000000,
                 "desc": "Non-linear high-pass freq ({} Hz):",
                 "onchange": [
-                    self.calcNLHPFilter,
+                    self.update_nl_deemphasis,
                     self.applyNLDeemphFilterA,
-                    self.applyNLDeemphFilterB,
                     self.drawImage,
                 ],
             },
@@ -349,9 +396,8 @@ class VHStune(QDialog):
                 "max": 6000000,
                 "desc": "Non-linear bandpass upper freq ({} Hz):",
                 "onchange": [
-                    self.calcNLHPFilter,
+                    self.update_nl_deemphasis,
                     self.applyNLDeemphFilterA,
-                    self.applyNLDeemphFilterB,
                     self.drawImage,
                 ],
             },
@@ -361,7 +407,11 @@ class VHStune(QDialog):
                 "min": 0.05,
                 "max": 2.0,
                 "desc": "Non-linear linear scale ({:.2f}):",
-                "onchange": [self.applyNLDeemphFilterB, self.drawImage],
+                "onchange": [
+                    self.update_nl_deemphasis,
+                    self.applyNLDeemphFilterA,
+                    self.drawImage,
+                ],
             },
             "nonlinear_linear_scale_b": {
                 "value": rf_params.get("nonlinear_scaling_2", 1.0),
@@ -369,7 +419,11 @@ class VHStune(QDialog):
                 "min": 0.01,
                 "max": 2.0,
                 "desc": "Non-linear linear scale B ({:.2f}):",
-                "onchange": [self.applyNLDeemphFilterB, self.drawImage],
+                "onchange": [
+                    self.update_nl_deemphasis,
+                    self.applyNLDeemphFilterA,
+                    self.drawImage,
+                ],
             },
             "nonlinear_exponential_scale": {
                 "value": rf_params.get("nonlinear_exp_scaling", 0.25),
@@ -377,7 +431,38 @@ class VHStune(QDialog):
                 "min": 0.05,
                 "max": 2,
                 "desc": "Non-linear exponential scale ({:.2f}):",
-                "onchange": [self.applyNLDeemphFilterB, self.drawImage],
+                "onchange": [
+                    self.update_nl_deemphasis,
+                    self.applyNLDeemphFilterA,
+                    self.drawImage,
+                ],
+            },
+            "nonlinear_static_factor": {
+                "value": rf_params.get("nonlinear_static_factor", 0.0),
+                "step": 0.001,
+                "min": 0.0,
+                "max": 1.0,
+                "desc": "Non-linear static factor ({:.2f}):",
+                "onchange": [
+                    self.update_nl_deemphasis,
+                    self.applyNLDeemphFilterA,
+                    self.drawImage,
+                ],
+            },
+            "nonlinear_amplitude_lpf": {
+                "value": rf_params.get(
+                    "nonlinear_amp_lpf_freq",
+                    compute_video_filters.NONLINEAR_AMP_LPF_FREQ_DEFAULT,
+                ),
+                "step": 5000,
+                "min": 50000,
+                "max": 6000000,
+                "desc": "NL deemp Amplitude detector low pass filter corner freq ({:.2f}):",
+                "onchange": [
+                    self.update_nl_deemphasis,
+                    self.applyNLDeemphFilterA,
+                    self.drawImage,
+                ],
             },
             "svhs_deemph_enable": {
                 "value": False,
@@ -444,8 +529,9 @@ class VHStune(QDialog):
         }
 
     def initFilters(self):
-        self.calcDeemphFilter()
-        self.calcNLHPFilter()
+        self._deemphasis.update_filters(
+            self.filter_params, self._format_params.fs, BLOCK_LEN
+        )
         self.calcNLSVHSFilter()
 
     def updateFrameNr(self, s):
@@ -499,9 +585,8 @@ class VHStune(QDialog):
                 p()
         else:
             self.loadImage()
-            self.applyNLDeemphFilterA()
-            self.applyNLDeemphFilterB()
             self.applyDeemphFilter()
+            self.applyNLDeemphFilterA()
             self.applyNLSVHSFilter()
             self.drawImage()
 
@@ -557,31 +642,14 @@ class VHStune(QDialog):
             self.fftData.append(npfft.rfft(self.vhsFrameData[pos : pos + BLOCK_LEN]))
             pos += BLOCK_LEN - 2048
 
-    def calcDeemphFilter(self):
-        (_, lpf) = compute_video_filters.gen_video_lpf(
-            self.filter_params["video_lpf_freq"]["value"],
-            self.filter_params["video_lpf_order"]["value"],
-            self._format_params.fs / 2.0,
-            BLOCK_LEN,
+    def update_deemphasis(self):
+        self._deemphasis.update_deemphasis(
+            self.filter_params, self._format_params.fs, BLOCK_LEN
         )
 
-        self.deemphFilter = (
-            compute_video_filters.gen_video_main_deemp_fft(
-                self.filter_params["deemph_gain"]["value"],
-                self.filter_params["deemph_mid"]["value"],
-                self.filter_params["deemph_q"]["value"],
-                self._format_params.fs,
-                BLOCK_LEN,
-            )
-            * lpf
-        )
-
-    def calcNLHPFilter(self):
-        self.NLHPFilter = compute_video_filters.gen_nonlinear_bandpass(
-            None,
-            self.filter_params["nonlinear_highpass_freq"]["value"],
-            self._format_params.fs / 2.0,
-            BLOCK_LEN,
+    def update_nl_deemphasis(self):
+        self._deemphasis.update_nonlinear_deemphasis(
+            self.filter_params, self._format_params.fs, BLOCK_LEN
         )
 
     def calcNLSVHSFilter(self):
@@ -602,10 +670,15 @@ class VHStune(QDialog):
 
         for b in self.fftData:
             hf_part = npfft.irfft(
-                b * self.deemphFilter * self.NLSVHSHPFilter * self.NLSVHSLPBFilter
+                b
+                * self._deemphasis.filters["FVideo"]
+                * self.NLSVHSHPFilter
+                * self.NLSVHSLPBFilter
             )
-            lf_part = npfft.irfft(b * self.deemphFilter * self.NLSVHSLPFilter)
-            # dc_part = npfft.irfft(b * self.deemphFilter * self.NLSVHSACFilter)
+            lf_part = npfft.irfft(
+                b * self._deemphasis.filters["FVideo"] * self.NLSVHSLPFilter
+            )
+            # dc_part = npfft.irfft(b * self._deemphasis.filters['FVideo'] * self.NLSVHSACFilter)
             hf_amp = (
                 abs(signal.hilbert(hf_part))
                 / (deviation)
@@ -636,30 +709,30 @@ class VHStune(QDialog):
     def applyNLDeemphFilterA(self):
         self.NLDeemphAmplitude = []
         self.NLDeemphPart = []
-        for b in self.fftData:
-            hf_part = npfft.irfft(b * self.deemphFilter * self.NLHPFilter)
-            self.NLDeemphPart.append(hf_part)
-            deviation = self._format_params.sub_emphasis_params.deviation / 2.0
-            self.NLDeemphAmplitude.append(abs(signal.hilbert(hf_part)) / deviation)
-
-    def applyNLDeemphFilterB(self):
         self.NLProcessed = []
-        for i in range(len(self.NLDeemphAmplitude)):
-            amplitude_scaled = (
-                self.NLDeemphAmplitude[i]
-                * self.filter_params["nonlinear_linear_scale"]["value"]
-            )
-            amplitude_scaled = np.power(
-                amplitude_scaled,
+
+        for b in self.fftData:
+            b_deemp = b * self._deemphasis.filters["FVideo"]
+            processed, extracted, amplitude = sub_deemphasis_inner(
+                npfft.irfft(b_deemp),
+                b_deemp,
+                self._deemphasis.filters,
+                self._format_params.sub_emphasis_params.deviation,
                 self.filter_params["nonlinear_exponential_scale"]["value"],
+                self.filter_params["nonlinear_linear_scale"]["value"],
+                self.filter_params["nonlinear_linear_scale_b"]["value"],
+                self.filter_params["nonlinear_static_factor"]["value"],
             )
-            amplitude_scaled *= self.filter_params["nonlinear_linear_scale_b"]["value"]
-            self.NLProcessed.append(self.NLDeemphPart[i] * (1 - amplitude_scaled))
+            self.NLDeemphAmplitude.append(amplitude)
+            self.NLDeemphPart.append(extracted)
+            self.NLProcessed.append(processed)
 
     def applyDeemphFilter(self):
         self.ProcessedFrame = []
         for b in self.fftData:
-            self.ProcessedFrame.append(npfft.irfft(b * self.deemphFilter).real)
+            self.ProcessedFrame.append(
+                npfft.irfft(b * self._deemphasis.filters["FVideo"]).real
+            )
 
     def drawImage(self):
         outImage = None
@@ -669,11 +742,20 @@ class VHStune(QDialog):
             else:
                 img = self.ProcessedFrame[i].copy()
             if self.filter_params["nonlinear_deemph_enable"]["value"] is True:
-                if self.filter_params["nonlinear_deemph_showonly"]["value"] is True:
+                if self.filter_params["nonlinear_amplitude_showonly"]["value"] is True:
+                    img.fill(
+                        self._format_params.sys_params["ire0"]
+                        - (self._format_params.sys_params["hz_ire"] * 40)
+                    )
+                    img += (
+                        self.NLDeemphAmplitude[i]
+                        * self._format_params.sub_emphasis_params.deviation
+                    )
+                elif self.filter_params["nonlinear_deemph_showonly"]["value"] is True:
                     img.fill(self._format_params.sys_params["ire0"])
-                    img += self.NLProcessed[i]
+                    img += self.NLDeemphPart[i]
                 else:
-                    img -= self.NLProcessed[i]
+                    img = self.NLProcessed[i]
             if outImage is None:
                 outImage = img[1024:31744]
             else:
