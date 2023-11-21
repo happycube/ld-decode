@@ -1475,6 +1475,10 @@ class Field:
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
 
+    def __del__(self):
+        if self.prevfield:
+            self.prevfield = None
+
     #@profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
