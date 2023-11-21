@@ -1475,10 +1475,6 @@ class Field:
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
 
-    def __del__(self):
-        if self.prevfield:
-            self.prevfield = None
-
     #@profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
@@ -3669,6 +3665,11 @@ class LDdecode:
         redo = None
 
         if len(self.fieldstack) >= 2:
+            # XXX: Need to cut off the previous field here, since otherwise
+            # it'll leak for now.
+            if self.fieldstack[-1]:
+                self.fieldstack[-1].prevfield = None
+
             self.fieldstack.pop(-1)
 
         while done is False:
