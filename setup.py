@@ -31,6 +31,7 @@ setup(
     # of including without making them modules.
     scripts=[
         'tbc-video-export.py',
+        'tbc-video-export.json',
         'ld-cut',
         'cx-expander',
     ],
