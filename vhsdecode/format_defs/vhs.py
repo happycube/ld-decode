@@ -196,7 +196,7 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
     RFParams_NTSC_VHS["video_bpf_low"] = 1500000
     RFParams_NTSC_VHS["video_bpf_high"] = 5300000
 
-    RFParams_NTSC_VHS["video_bpf_order"] = 1
+    RFParams_NTSC_VHS["video_bpf_order"] = 2
 
     RFParams_NTSC_VHS["video_lpf_extra"] = 6080000
     RFParams_NTSC_VHS["video_lpf_extra_order"] = 3

@@ -24,6 +24,7 @@ def _sub_deemphasis_debug(
         sub_emphasis_params.exponential_scaling,
         sub_emphasis_params.scaling_1,
         sub_emphasis_params.scaling_2,
+        sub_emphasis_params.static_factor,
         # debug_const_amplitude=const_amplitude,
     )
     # return result
@@ -63,7 +64,6 @@ def sub_deemphasis_inner(
 
     static_part = 0
     if static_factor:
-        print("static factor: ", static_factor)
         static_part = hf_part * static_factor
 
     # Get the instantaneous amplitude of the signal using the hilbert transform
@@ -173,11 +173,11 @@ class NLFilter:
         return data
 
 
-def _to_db(input):
+def to_db(input):
     return 20 * np.log10(input)
 
 
-def _from_db(input):
+def from_db(input):
     return pow(10, (input / 20))
 
 
@@ -217,6 +217,8 @@ def test_filter(filters, sample_rate, blocklen, deviation, sub_emphasis_params):
     import matplotlib.pyplot as plt
     from matplotlib import rc_context
 
+    from vhsdecode.filter_plot import SubEmphPlotter
+
     deviation = 2
 
     with rc_context(
@@ -225,7 +227,7 @@ def test_filter(filters, sample_rate, blocklen, deviation, sub_emphasis_params):
         fig, ax = plt.subplots(3, 1, sharex=False)
         hpf = filters["NLHighPassF"].real
         freqs = np.fft.rfftfreq(blocklen, 1.0 / sample_rate)
-        ax[0].plot(freqs, _to_db(hpf))
+        ax[0].plot(freqs, to_db(hpf))
         ax[0].axvline(200000)
         ax[0].axvline(500000)
 
@@ -300,65 +302,36 @@ def test_filter(filters, sample_rate, blocklen, deviation, sub_emphasis_params):
             ]
         )
 
+        plotter = SubEmphPlotter(blocklen, sample_rate, filters, ax[1])
+
         def _from_freq(freq):
             return (blocklen / (sample_rate)) * freq
 
-        ratio = blocklen / sample_rate
+        # w = plotter.chirp_signal
+        # w_fft = plotter.chirp_fft
 
-        t = np.linspace(0, ratio, blocklen)
-        w = sps.chirp(t, f0=1, f1=sample_rate / 2.0, t1=ratio, method="linear")
-        ax[1].plot(w)
-        w_fft = npfft.rfft(w)
+        plotter.plot_sub_emphasis(-20, ax[2], sub_emphasis_params)
 
-        hf_part = npfft.irfft(w_fft * filters["NLHighPassF"])
-        amplitude = abs(sps.hilbert(hf_part)) / (deviation / 2)
-        ax[1].plot(amplitude)
-        # ax[2].plot(freqs,_to_db(w_fft))
-        # ax[3].plot(freqs,_to_db(w_fft * hpf) - _to_db(w_fft))
+        plotter.plot_sub_emphasis(-15, ax[2], sub_emphasis_params)
+        plotter.plot_sub_emphasis(-10, ax[2], sub_emphasis_params)
+        plotter.plot_sub_emphasis(-6, ax[2], sub_emphasis_params)
+        plotter.plot_sub_emphasis(-3, ax[2], sub_emphasis_params, color="#000000")
 
-        w2 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(-20), sub_emphasis_params
-        )
-        ax[2].plot(freqs, _to_db(npfft.rfft(w2) / w_fft))
-
-        print("deviation", deviation)
-        # print("test, -6db", _from_db(-6), " round ", _to_db(_from_db(5)))
-
-        w3 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(-15), sub_emphasis_params
-        )
-        ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft))
-
-        w3 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(-10), sub_emphasis_params
-        )
-        ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft))
-
-        w3 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(-6), sub_emphasis_params
-        )
-        ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft))
-
-        w3 = _sub_deemphasis_debug(
-            w, w_fft, filters, deviation, _from_db(-3), sub_emphasis_params
-        )
-        ax[2].plot(freqs, _to_db(npfft.rfft(w3) / w_fft), color="#000000")
-
-        # w_a = w * _from_db(-3)
+        # w_a = w * from_db(-3)
         # w_a_fft = npfft.rfft(w_a)
 
         # w4 = limiter_filter(
         #    w_a, w_a_fft, filters, deviation,
         # )
-        # ax[2].plot(freqs, _to_db(npfft.rfft(w4) / w_a_fft), linestyle="dashed")
+        # ax[2].plot(freqs, to_db(npfft.rfft(w4) / w_a_fft), linestyle="dashed")
 
-        # w_b = w * _from_db(-20)
+        # w_b = w * from_db(-20)
         # w_b_fft = npfft.rfft(w_b)
 
         # w5 = limiter_filter(
         #    w_b, w_b_fft, filters, deviation
         # )
-        # ax[2].plot(freqs, _to_db(npfft.rfft(w5) / w_b_fft), linestyle="dashed")
+        # ax[2].plot(freqs, to_db(npfft.rfft(w5) / w_b_fft), linestyle="dashed")
 
         ##positions = _from_freq(betamax_full_deemp_db_v_freqs).astype(int)
 
@@ -368,13 +341,13 @@ def test_filter(filters, sample_rate, blocklen, deviation, sub_emphasis_params):
         for i in range(0, 3):
             ax[2].plot(video8_sub_emp_freqs, -(video8_sub_emp_db_v[i]))
 
-        # ax[2].plot(betamax_full_deemp_db_v_freqs, -betamax_full_deemp_db_v_625[3]  + _to_db(filters["FDeemp"][positions]))
+        # ax[2].plot(betamax_full_deemp_db_v_freqs, -betamax_full_deemp_db_v_625[3]  + to_db(filters["FDeemp"][positions]))
         # ax[2].plot(betamax_full_deemp_db_v_freqs, -betamax_full_deemp_db_v_625[2])
         # ax[2].plot(betamax_full_deemp_db_v_freqs, -betamax_full_deemp_db_v_625[1])
         # ax[2].plot(betamax_full_deemp_db_v_freqs, -betamax_full_deemp_db_v_625[0])
-        ax[2].plot(freqs, _to_db(filters["FDeemp"]), color="#FF0000")
+        ax[2].plot(freqs, to_db(filters["FDeemp"]), color="#FF0000")
         # ax[2].plot(betamax_full_deemp_db_v_freqs, betamax_full_deemp_db_v_625)
-        ax[2].axhline(_to_db(0.5))
+        ax[2].axhline(to_db(0.5))
         ax[2].axhline(-4.6)
         ax[2].axvline(200000)
 

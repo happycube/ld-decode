@@ -45,12 +45,17 @@ from PyQt5.QtGui import (
     QPixmap,
 )
 
+from matplotlib.backends.backend_qtagg import FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
+
 from vhsdecode.utils import filtfft
 from vhsdecode.addons.FMdeemph import gen_high_shelf
 from vhsdecode.formats import get_format_params
 from vhsdecode import compute_video_filters
 from vhsdecode.main import supported_tape_formats
 from vhsdecode.nonlinear_filter import sub_deemphasis_inner
+from vhsdecode.filter_plot import plot_filters, SubEmphPlotter
 
 BLOCK_LEN = 32768
 SAMPLE_RATE = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
@@ -145,6 +150,57 @@ def metadata_from_json(json_data):
     return (system, fs, field_width, field_height)
 
 
+def _gen_sub_emphasis_params_from_sliders(format_params, filter_params):
+    rf_params = {
+        "nonlinear_exp_scaling": filter_params["nonlinear_exponential_scale"]["value"],
+        "nonlinear_scaling_1": filter_params["nonlinear_linear_scale"]["value"],
+        "nonlinear_scaling_2": filter_params["nonlinear_linear_scale_b"]["value"],
+        "static_factor": filter_params["nonlinear_static_factor"]["value"],
+        "nonlinear_deviation": 2,
+    }
+
+    return compute_video_filters.create_sub_emphasis_params(
+        rf_params,
+        format_params.sys_params,
+        format_params.sys_params["hz_ire"],
+        format_params.sys_params["vsync_ire"],
+    )
+
+
+class FilterPlot:
+    def __init__(self, filters, filter_params, format_params, layout, parent):
+        self._canvas = None
+        self._canvas = FigureCanvas(Figure(figsize=(5, 3)))
+        layout.addWidget(self._canvas)
+        self._nav_toolbar = None
+        self._nav_toolbar = NavigationToolbar(self._canvas, parent)
+        layout.addWidget(self._nav_toolbar)
+
+        self.sub_emph_plotter = SubEmphPlotter(
+            filters.block_len, format_params.fs, filters.filters
+        )
+
+        self.update(filters, filter_params, format_params)
+
+    def update(self, filters, filter_params, format_params):
+        # self._static_ax = self._canvas.figure.subplots()
+        # t = np.linspace(0, 10, 501)
+        # self._static_ax.plot(t, np.tan(t), ".")
+        self._canvas.figure.clear()
+        sub_emphasis_params = _gen_sub_emphasis_params_from_sliders(
+            format_params, filter_params
+        )
+        plot_filters(
+            filters.filters,
+            filters.block_len,
+            format_params.fs,
+            self._canvas.figure,
+            self.sub_emph_plotter,
+            sub_emphasis_params,
+        )
+        self._canvas.draw()
+
+
 class FormatParams:
     def __init__(self, system, tape_format, fs, logger):
         self.change_format(system, tape_format, fs, logger)
@@ -184,7 +240,12 @@ class DeemphasisFilters:
     def filters(self):
         return self._filters
 
+    @property
+    def block_len(self):
+        return self._block_len
+
     def update_filters(self, filter_params, fs, block_len):
+        self._block_len = block_len
         self.update_deemphasis(filter_params, fs, block_len)
         self.update_nonlinear_deemphasis(filter_params, fs, block_len)
 
@@ -193,6 +254,14 @@ class DeemphasisFilters:
             filter_params["video_lpf_freq"]["value"],
             filter_params["video_lpf_order"]["value"],
             fs / 2.0,
+            block_len,
+        )
+
+        self._filters["FDeemp"] = compute_video_filters.gen_video_main_deemp_fft(
+            filter_params["deemph_gain"]["value"],
+            filter_params["deemph_mid"]["value"],
+            filter_params["deemph_q"]["value"],
+            fs,
             block_len,
         )
 
@@ -250,25 +319,35 @@ class VHStune(QDialog):
         self.createFilterGroupBox()
         self.createRightArea()
 
-        mainLayout = QGridLayout()
-        leftLayout = QVBoxLayout()
-        leftLayout.addStrut(370)
+        main_layout = QGridLayout()
+        left_layout = QVBoxLayout()
+        left_layout.addStrut(370)
         # controls_area = QScrollArea(self.controlsGroupBox)
-        leftLayout.addWidget(self.controlsGroupBox)
+        left_layout.addWidget(self.controlsGroupBox)
         self.filters_area = QScrollArea()
         self.filters_area.setWidget(self.filterGroupBox)
-        leftLayout.addWidget(self.filters_area)
-        mainLayout.addLayout(leftLayout, 0, 0)
-        mainLayout.addLayout(self.rightLayout, 0, 1)
-        mainLayout.setRowStretch(0, 1)
-        # mainLayout.setRowStretch(1, 1)
-        mainLayout.setColumnStretch(1, 1)
-        # mainLayout.setColumnStretch(1, 1)
-        self.setLayout(mainLayout)
+        left_layout.addWidget(self.filters_area)
+        main_layout.addLayout(left_layout, 0, 0)
+        main_layout.addLayout(self._right_layout, 0, 1)
+        self.plot_layout = QGridLayout()
+        main_layout.addLayout(self.plot_layout, 0, 2)
+        main_layout.setRowStretch(0, 1)
+        # main_layout.setRowStretch(1, 1)
+        main_layout.setColumnStretch(1, 1)
+        # main_layout.setColumnStretch(1, 1)
+        self.setLayout(main_layout)
 
         self.setWindowTitle(self.title)
 
         self.initFilters()
+
+        self._filter_plot = FilterPlot(
+            self._deemphasis,
+            self.filter_params,
+            self._format_params,
+            self.plot_layout,
+            self,
+        )
 
     def _update_format(self):
         self.makeFilterParams()
@@ -589,6 +668,7 @@ class VHStune(QDialog):
             self.applyNLDeemphFilterA()
             self.applyNLSVHSFilter()
             self.drawImage()
+            self.update_filter_plot()
 
     def openRefTBCFile(self):
         fileName = QFileDialog.getOpenFileName(
@@ -646,10 +726,17 @@ class VHStune(QDialog):
         self._deemphasis.update_deemphasis(
             self.filter_params, self._format_params.fs, BLOCK_LEN
         )
+        self.update_filter_plot()
 
     def update_nl_deemphasis(self):
         self._deemphasis.update_nonlinear_deemphasis(
             self.filter_params, self._format_params.fs, BLOCK_LEN
+        )
+        self.update_filter_plot()
+
+    def update_filter_plot(self):
+        self._filter_plot.update(
+            self._deemphasis, self.filter_params, self._format_params
         )
 
     def calcNLSVHSFilter(self):
@@ -820,7 +907,7 @@ class VHStune(QDialog):
         self.dispLabel.resize(pixmap.width(), pixmap.height())
 
     def createRightArea(self):
-        self.rightLayout = QGridLayout()
+        self._right_layout = QGridLayout()
         # scroll = QScrollArea()
         # scroll.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         self.dispLabel = QLabel()
@@ -855,15 +942,15 @@ class VHStune(QDialog):
         btnLayout.addWidget(stepBackBtn)
         btnLayout.addWidget(stepFwdBtn)
         btnLayout.addWidget(skipFwdBtn)
-        # self.rightLayout.addWidget(scroll, 0, 0)
+        # self._right_layout.addWidget(scroll, 0, 0)
         self._disp_scroll_area = QScrollArea()
         self._disp_scroll_area.setWidget(self.dispLabel)
 
-        self.rightLayout.addWidget(self._disp_scroll_area, 0, 0)
-        self.rightLayout.addWidget(self.frameSlider, 1, 0)
-        self.rightLayout.addLayout(btnLayout, 2, 0)
-        self.rightLayout.setRowStretch(0, 1)
-        self.rightLayout.setColumnStretch(0, 1)
+        self._right_layout.addWidget(self._disp_scroll_area, 0, 0)
+        self._right_layout.addWidget(self.frameSlider, 1, 0)
+        self._right_layout.addLayout(btnLayout, 2, 0)
+        self._right_layout.setRowStretch(0, 1)
+        self._right_layout.setColumnStretch(0, 1)
 
     def _change_format(self):
         self._format_params.change_format(
