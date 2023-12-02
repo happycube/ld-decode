@@ -3866,7 +3866,9 @@ class LDdecode:
             elif (l & 0xF00000) == 0xF00000:  # CAV frame
                 # Ignore the top bit of the first digit, used for PSC
                 try:
-                    return decodeBCD(l & 0x7FFFF)
+                    rv = decodeBCD(l & 0x7FFFF)
+                    self.isCLV = False
+                    return rv
                 except ValueError:
                     pass
             elif (l & 0x80F000) == 0x80E000:  # CLV picture #
@@ -4121,7 +4123,8 @@ class LDdecode:
                     if self.isCLV and self.earlyCLV:  # early CLV
                         disk_TimeCode = f"{self.clvMinutes}:xx"
                     # print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
-                    elif self.isCLV and self.frameNumber is not None:
+                    elif self.isCLV and self.frameNumber is not None and self.clvMinutes is not None:
+                        print(f'{self.clvMinutes} {self.clvMinutes is None}\n\n')
                         disk_TimeCode = "%d:%.2d.%.2d Frame #%d" % (
                             self.clvMinutes,
                             self.clvSeconds,
@@ -4142,7 +4145,7 @@ class LDdecode:
                         outstr = f"Frame {(self.fields_written//2)+1}/{int(self.est_frames)}: File Frame {int(rawloc)}: {disk_Type} "
                     else:
                         outstr = f"File Frame {int(rawloc)}: {disk_Type} "
-                    if self.isCLV:
+                    if self.isCLV and disk_TimeCode:
                         outstr += f"Timecode {disk_TimeCode} "
                     else:
                         outstr += f"Frame #{disk_Frame} "
@@ -4213,7 +4216,7 @@ class LDdecode:
 
                         return fnum, startfield, f.readloc
 
-        return None, None
+        return None, None, None
 
     def seek(self, startframe, target):
         """ Attempts to find frame target from file location startframe """
