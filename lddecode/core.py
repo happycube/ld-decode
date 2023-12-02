@@ -4139,7 +4139,7 @@ class LDdecode:
                     elif self.leadOut:
                         special = "Lead Out"
                     else:
-                        special = "Unknown"
+                        special = "Pulldown/Telecine Frame"
 
                     if self.est_frames is not None:
                         outstr = f"Frame {(self.fields_written//2)+1}/{int(self.est_frames)}: File Frame {int(rawloc)}: {disk_Type} "
@@ -4147,8 +4147,9 @@ class LDdecode:
                         outstr = f"File Frame {int(rawloc)}: {disk_Type} "
                     if self.isCLV and disk_TimeCode:
                         outstr += f"Timecode {disk_TimeCode} "
-                    else:
+                    elif disk_Frame:
                         outstr += f"Frame #{disk_Frame} "
+                        
 
                     if special is not None:
                         outstr += special
