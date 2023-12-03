@@ -5,7 +5,7 @@
 
 
 A fork of [LD-Decode](https://github.com/happycube/ld-decode), the decoding software powering the [Domesday86 Project](https://www.domesday86.com/).  
-This version has been modified to work with the differences found in the tracked RF drum head signals taken directly from colour-under format videotapes.
+This version has been modified to work with the differences found in the tracked RF drum head signals taken directly from colour-under & FM modualted composite format video tape.
 
 (Not to be confused with the TV Modulator/Demodulator pack or the **"antenna connectors"** on the back of the VCR!).
 
@@ -84,23 +84,23 @@ It also helps to make sure to re-lubricate metal and plastic moving joints cogs 
 ## An RF Capture Device
 
 
-Currently standardised is 2 methods but RF capture is not limited to these methods.
+Currently standardised is 2 hardware methods but RF capture is not limited to these methods.
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Hardware/DdD-Rev3-CX-White-Sony-ILCE-7RM3-2022.12.20-21.54.48.png" width="600" height="">
 
 
-## [Domesday Duplicator (DdD)](https://github.com/harrypm/DomesdayDuplicator#readme) (Method 01 - 300-350USD*)
+## [Domesday Duplicator (DdD)](https://github.com/happycube/ld-decode/wiki/Domesday-Duplicator) (Method 01 - 300-350USD*)
 
 
 Capture is done using an simple GUI application.
 
-[Linux Application](https://github.com/harrypm/DomesdayDuplicator#readme) / [Windows Application](https://github.com/TokugawaHeavyIndustries/DomesdayDuplicator-WinBuild/releases/) / [MacOS Application](https://github.com/harrypm/DomesdayDuplicator#macos-software-installation)
+[Linux Application](https://github.com/harrypm/DomesdayDuplicator#readme) / [Windows Application](https://github.com/vrunk11/DomesdayDuplicator/releases/tag/fix_1.1) / [MacOS Application](https://github.com/harrypm/DomesdayDuplicator#macos-software-installation)
 
 Originally geared towards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing tape RF data. It consists of a custom analogue to digital board with an amplifier, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
 
 **Note** Dont use USB storage or video devices on the same USB bus as the DdD, it will crash the capture!
 
-[How To Aquire?](https://docs.google.com/document/d/1liOpdM6z51AwM5jGLoUak6h9aJ0eY0fQduE5k4TcleU/edit?usp=sharing) / [How to Fabricate & Flash?](https://docs.google.com/document/d/1k2bPPwHPoG7xXpS1NCYEe3w_jD_ts0yRCp-2aQ6QoKY/edit?usp=sharing) / [More Information](https://www.domesday86.com/?page_id=978)
+[Ware to Buy? & More Info](https://github.com/happycube/ld-decode/wiki/Domesday-Duplicator)
 
 
 ## [CX Card & CXADC](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards) (Method 02 - 20-35USD)
@@ -116,7 +116,7 @@ While you can use any generic card with the correct chips, today we recommend th
 
 Sadly however at stock without any modifications CX Cards proform slightly worse then a DomesdayDuplicator with about a 3db signal to noise difference, and its internal digital gain can affect captures drastically.
 
-Currently the CX23883-39 based white variant cards have been consistently lower noise, these have also been easily upgraded to 40msps 8-bit with a drop-in crystal upgrade for use with formats like LaserDisc, but at stock with external amplification they are quite optimal for VHS & HiFi, but higher bandwidth formats like SVHS & ED Beta can benifit from crystal upgrades.
+Currently the CX23883-39 based white variant cards have been consistently lower noise, these have also been easily upgraded to 40msps 8-bit with a drop-in crystal upgrade for use with formats like LaserDisc, but at stock with external amplification they are quite optimal for VHS & HiFi, but higher bandwidth formats like SVHS & ED Beta can benifit from crystal upgrades and can also be used with external timing for syncronised capture of Video+HiFi+Linear signals.
 
 
 # Deployment of Capture Hardware
@@ -131,6 +131,8 @@ The setup process for RF capture involves running a short cable internally from 
 VCR ==> Head Drum ==> Amplification & Tracking ==> FM RF Test/Signal Points ==> FM RF Capture ==> Software Decoding ==> Lossless TBC Files ==> Audio/Video File Creation.
 
 ### Finding Test Points - There Names
+
+Decks follow this naming or close to it not every possible name is covered.
 
 **Video FM RF Signal:**
 
