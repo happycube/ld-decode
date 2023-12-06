@@ -17,21 +17,23 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-dec
 # [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
 
 
-**(S-)VHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M. **Fully Supported**
+**VHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M. **Generally well supported**
 
-**U-Matic Low Band** 625-line and 525-line - PAL and NTSC. **Fully Supported**
+**SVHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M. **Basic support**
 
-**U-Matic High Band** 625-line - PAL. **Supported**
+**U-Matic Low Band** 625-line and 525-line - PAL and NTSC. **Supported**
+
+**U-Matic High Band** 625-line - PAL. **Basic support**
 
 **Betamax** 625-line and 525-line - PAL & NTSC. **Suppported**
 
-**Video8 & Hi8** 625-line and 525-line - PAL & NTSC. **Working (Chroma Needs Work)**
+**Video8 & Hi8** 625-line and 525-line - PAL & NTSC. **Basic support**
 
-**1" Type C (SMPTE Type C)** 625-line and 525-line - PAL & NTSC. **Working** (More Samples Required!) 
+**1" Type C (SMPTE Type C)** 625-line and 525-line - PAL & NTSC. **Basic support** (More Samples Required!) 
 
-**EIAJ** 625-line - PAL. **Working** (NTSC Samples Required!) 
+**EIAJ** 625-line - PAL. **Supported** (NTSC Samples Required!) 
 
-**Philips VCR** 625-line - PAL. **Working**
+**Philips VCR** 625-line - PAL. **Supported**
 
 
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
@@ -144,6 +146,8 @@ Decks follow this naming or close to it not every possible name is covered.
 
 `HiFi`, `A.PB`, `A FM`, `A.PB.FM`, `Audio FM`, `A-Out`, `A ENV`, `HIFI Envelope`, `FM Mix Out`
 
+That a test points has this name doesn't automatically mean it will have the signal we want, especially when it comes to hi-fi audio, be sure to check with the service manual if possible.
+
 
 ## Parts for RF Tap
 
@@ -207,13 +211,13 @@ See building on MacOS page on [MacOS Build](https://github.com/oyvindln/vhs-deco
 
 
 VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest versions of Ubuntu, Debian and Linux Mint.
-Other distributions might have outdated (or even newer) versions of certain Python libraries or other dependencies, breaking compatibility.
+The tools should however be able to be built on other distrubutions too provided they have access somewhat recent versions to the needed dependencies, including at least python 3.8.
 
 There is a [Linux compatability doc](https://docs.google.com/document/d/132ycIMMNvdKvrNZSzbckXVEPQVLTnH_YX0Oh3lqtkkQ/edit) for various tested distributions of Linux.
 
-Its fully working on WSL2 20.04 & 22.04.1 LTS (Windows Subsystem for Linux) however issues with larger captures i.g 180gb+ may require expanding the default [virtual disk size](https://docs.microsoft.com/en-us/windows/wsl/vhd-size).
+Its fully working on WSL2 22.04.1 LTS (Windows Subsystem for Linux) however issues with larger captures i.g 180gb+ may require expanding the default [virtual disk size](https://docs.microsoft.com/en-us/windows/wsl/vhd-size).
 
-Other dependencies include Python 3.8+, numpy, scipy, cython, numba, pandas, Qt5, Cmake, and FFmpeg.
+Other dependencies include Python 3.8+, numpy, scipy, cython, numba, pandas, Qt5, qwt, Cmake, and FFmpeg.
 
 Some useful free tools to note for post processing are
 [StaxRip](https://github.com/staxrip/staxrip) & [Lossless Cut](https://github.com/mifi/lossless-cut) & of course [DaVinci Resolve](https://www.blackmagicdesign.com/uk/products/davinciresolve) - these give you basic editing to quickly handle uncompressed files across operating systems, and for Windows users an easy FFmpeg/AviSynth/Vapoursynth encoding and QTGMC de-interlacing experience, and full colour grading and post production ability.
