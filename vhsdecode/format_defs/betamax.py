@@ -5,14 +5,14 @@ def get_rfparams_pal_betamax(rfparams_pal):
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking, this is a bit random as of now.
-    rfparams["video_bpf_low"] = 1800000
-    rfparams["video_bpf_high"] = 5880000
+    rfparams["video_bpf_low"] = 1900000
+    rfparams["video_bpf_high"] = 6100000
     # Band-pass filter order.
     # Order may be fine as is.
     rfparams["video_bpf_order"] = 2
     # Sharper upper cutoff to get rid of high-frequency junk.
-    rfparams["video_lpf_extra"] = 6010000
-    rfparams["video_lpf_extra_order"] = 3
+    rfparams["video_lpf_extra"] = 6550000
+    rfparams["video_lpf_extra_order"] = 2
 
     rfparams["video_hpf_extra"] = 1320000
     rfparams["video_hpf_extra_order"] = 2
@@ -47,10 +47,10 @@ def get_rfparams_pal_betamax(rfparams_pal):
     # This should cover the area around reference white.
     # Used to reduce streaks due to amplitude loss on phase change around
     # sharp transitions.
-    rfparams["boost_bpf_low"] = 4200000
-    rfparams["boost_bpf_high"] = 5600000
+    rfparams["boost_bpf_low"] = 4450000
+    rfparams["boost_bpf_high"] = 5700000
     # Multiplier for the boosted signal to add in.
-    rfparams["boost_bpf_mult"] = 2
+    rfparams["boost_bpf_mult"] = 1
 
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
