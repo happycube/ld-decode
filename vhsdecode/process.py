@@ -38,6 +38,7 @@ from vhsdecode.compute_video_filters import (
     create_sub_emphasis_params,
     NONLINEAR_AMP_LPF_FREQ_DEFAULT
 )
+from vhsdecode.demodcache import DemodCacheTape
 
 
 def parent_system(system):
@@ -132,7 +133,7 @@ class VHSDecode(ldd.LDdecode):
         # Restore init functino now that superclass constructor is finished.
         ldd.DemodCache.__init__ = temp_init
 
-        self.demodcache = ldd.DemodCache(
+        self.demodcache = DemodCacheTape(
             self.rf,
             self.infile,
             self.freader,
@@ -327,7 +328,7 @@ class VHSDecode(ldd.LDdecode):
                 #    self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
                 #    self.bw_ratios = self.bw_ratios[-keep:]
 
-                redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
+                redo = f.needrerun
                 if redo:
                     redo = self.fdoffset - offset
 

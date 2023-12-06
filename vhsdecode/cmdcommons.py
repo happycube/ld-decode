@@ -48,7 +48,7 @@ def common_parser_gui(meta_title):
     return common_parser_gui_inner(meta_title)
 
 
-def common_parser_cli(meta_title, default_threads=4):
+def common_parser_cli(meta_title, default_threads=5):
     parser = argparse.ArgumentParser(description=meta_title)
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
     parser.add_argument(
