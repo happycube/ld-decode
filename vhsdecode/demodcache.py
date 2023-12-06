@@ -1,6 +1,7 @@
 import time
 from lddecode.core import DemodCache
 
+
 class DemodCacheTape(DemodCache):
     def __init__(self, *args, **kwargs):
         super(DemodCacheTape, self).__init__(*args, **kwargs)
@@ -30,13 +31,16 @@ class DemodCacheTape(DemodCache):
 
                 st = time.time()
                 output["demod"] = rf.demodblock(
-                    data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
+                    data=block["rawinput"],
+                    fftdata=fftdata,
+                    mtf_level=target_MTF,
+                    cut=True,
                 )
                 blockstime += time.time() - st
                 blocksrun += 1
 
                 output["request"] = request
-                output["MTF"] = 0 # Not used so just set to 0 for time.
+                output["MTF"] = 0  # Not used so just set to 0 for time.
 
                 self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":

@@ -36,7 +36,7 @@ from vhsdecode.compute_video_filters import (
     gen_nonlinear_bandpass_params,
     gen_nonlinear_amplitude_lpf,
     create_sub_emphasis_params,
-    NONLINEAR_AMP_LPF_FREQ_DEFAULT
+    NONLINEAR_AMP_LPF_FREQ_DEFAULT,
 )
 from vhsdecode.demodcache import DemodCacheTape
 
@@ -319,7 +319,10 @@ class VHSDecode(ldd.LDdecode):
 
             if f and f.valid:
                 picture, audio, efm = f.downscale(
-                    linesout=self.output_lines, final=True, audio=self.analog_audio, lastfieldwritten=self.lastFieldWritten,
+                    linesout=self.output_lines,
+                    final=True,
+                    audio=self.analog_audio,
+                    lastfieldwritten=self.lastFieldWritten,
                 )
 
                 _ = self.computeMetrics(f, None, verbose=True)
@@ -674,7 +677,9 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         if self._chroma_trap:
-            self.chromaTrap = ChromaSepClass(self.freq_hz, self.SysParams["fsc_mhz"], ldd.logger)
+            self.chromaTrap = ChromaSepClass(
+                self.freq_hz, self.SysParams["fsc_mhz"], ldd.logger
+            )
 
         if self.useAGC:
             self.AGClevels = StackableMA(
@@ -819,8 +824,10 @@ class VHSRFDecode(ldd.RFDecode):
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
         )
 
-        
-        self.Filters["NLAmplitudeLPF"] = gen_nonlinear_amplitude_lpf(DP.get("nonlinear_amp_lpf_freq", NONLINEAR_AMP_LPF_FREQ_DEFAULT), self.freq_hz_half)
+        self.Filters["NLAmplitudeLPF"] = gen_nonlinear_amplitude_lpf(
+            DP.get("nonlinear_amp_lpf_freq", NONLINEAR_AMP_LPF_FREQ_DEFAULT),
+            self.freq_hz_half,
+        )
 
         # self.Filters["chroma_notch"] = sps.iirnotch(
         #            self.sys_params["fsc_mhz"] / self.freq_half, 1
@@ -898,8 +905,13 @@ class VHSRFDecode(ldd.RFDecode):
         if data is None:
             data = npfft.ifft(indata_fft).real
 
+        if self.debug_plot and self.debug_plot.is_plot_requested("demodblock"):
+            # If we're doing a plot make a copy of the input to be able to plot it since we
+            # are modifying the data in place.
+            indata_fft_copy = indata_fft.copy()
+
         if self._notch is not None:
-            indata_fft = indata_fft * self.Filters["FVideoNotchF"]
+            indata_fft *= self.Filters["FVideoNotchF"]
 
         raw_filtered = npfft.ifft(
             indata_fft * self.Filters["RFVideoRaw"] * self.Filters["hilbert"]
@@ -917,21 +929,21 @@ class VHSRFDecode(ldd.RFDecode):
         env_mean = np.mean(env)
 
         # Applies RF filters
-        indata_fft_filt = indata_fft * self.Filters["RFVideo"]
+        indata_fft *= self.Filters["RFVideo"]
 
         # Boost high frequencies in areas where the signal is weak to reduce missed zero crossings
         # on sharp transitions. Using filtfilt to avoid phase issues.
         if len(np.where(env == 0)[0]) == 0:  # checks for zeroes on env
-            data_filtered = npfft.ifft(indata_fft_filt)
+            data_filtered = npfft.ifft(indata_fft)
             high_part = utils.filter_simple(data_filtered, self.Filters["RFTop"]) * (
                 (env_mean * 0.9) / env
             )
             del data_filtered
-            indata_fft_filt += npfft.fft(high_part * self._high_boost)
+            indata_fft += npfft.fft(high_part * self._high_boost)
         else:
             ldd.logger.warning("RF signal is weak. Is your deck tracking properly?")
 
-        hilbert = npfft.ifft(indata_fft_filt * self.Filters["hilbert"])
+        hilbert = npfft.ifft(indata_fft * self.Filters["hilbert"])
 
         # FM demodulator
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
@@ -964,7 +976,7 @@ class VHSRFDecode(ldd.RFDecode):
         if self._chroma_trap:
             # applies the Subcarrier trap
             demod = self.chromaTrap.work(demod)
-        
+
         # applies main deemphasis filter
         demod_fft = npfft.rfft(demod)
         out_video_fft = demod_fft * self.Filters["FVideo"]
@@ -1032,8 +1044,8 @@ class VHSRFDecode(ldd.RFDecode):
                 raw_data=data,
                 env=env,
                 env_mean=env_mean,
-                raw_fft=indata_fft,
-                filtered_fft=indata_fft_filt,
+                raw_fft=indata_fft_copy,
+                filtered_fft=indata_fft,
                 demod_video=demod,
                 filtered_video=out_video,
                 chroma=out_chroma,
