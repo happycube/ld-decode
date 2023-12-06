@@ -100,6 +100,8 @@ Originally geared towards capturing RF from Laserdisc players, it does however a
 
 **Note** Dont use USB storage or video devices on the same USB bus as the DdD, it will crash the capture!
 
+**Note** Several users have reported issues with dropped samples when using the ddd do capture on Windows, so as of now using it on Windows is not recommended.
+
 [Ware to Buy? & More Info](https://github.com/happycube/ld-decode/wiki/Domesday-Duplicator)
 
 
