@@ -3333,8 +3333,10 @@ class LDdecode:
         self.demodcache = None
 
         self.branch, self.commit = get_git_info()
-
-        self.infile = open(fname_in, "rb")
+        if fname_in == '-':
+            self.infile = sys.stdin
+        else:
+            self.infile = open(fname_in, "rb")
         self.freader = freader
 
         self.est_frames = est_frames
