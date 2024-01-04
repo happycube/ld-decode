@@ -197,7 +197,7 @@ class VHSDecode(ldd.LDdecode):
         if prevfi is not None:
             if prevfi["isFirstField"] == fi["isFirstField"]:
                 # logger.info('WARNING!  isFirstField stuck between fields')
-                if inrange(fi["diskLoc"] - prevfi["diskLoc"], 0.95, 1.05):
+                if lddu.inrange(fi["diskLoc"] - prevfi["diskLoc"], 0.95, 1.05):
                     decodeFaults |= 1
                     fi["isFirstField"] = not prevfi["isFirstField"]
                     fi["syncConf"] = 10
@@ -205,7 +205,7 @@ class VHSDecode(ldd.LDdecode):
                     # TODO: Do we want to handle this differently?
                     # Also check if this is done properly by calling function
                     # Not sure if it is at the moment..
-                    logger.error(
+                    ldd.logger.error(
                         "Possibly skipped field (Two fields with same isFirstField in a row), writing out an copy of last field to compensate.."
                     )
                     decodeFaults |= 4
