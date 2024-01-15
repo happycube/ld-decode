@@ -78,6 +78,9 @@ args = parser.parse_args()
 filename = args.infile
 outname = args.outfile
 
+if outname == '-':
+    outname = "/dev/stdout"
+
 vid_standard = "PAL" if args.pal else "NTSC"
 
 if args.pal and args.ntsc:
@@ -139,7 +142,7 @@ if makelds:
 elif makeldf:
     process, fd = ldf_pipe(outname, args.ldfcomp)
 else:
-    fd = open(args.outfile, "wb")
+    fd = open(outname, "wb")
 
 # print(startloc, endloc, startidx, endidx)
 
