@@ -25,6 +25,11 @@
 #include "jsonio.h"
 
 #include <limits>
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
+#include <charconv>
+#else
+#include <sstream>
+#endif
 
 // Recognise JSON space characters
 static bool isAsciiSpace(char c)
@@ -332,8 +337,13 @@ void JsonReader::readNumber(double &value)
         }
     }
 
-    // XXX In C++17 we could use std::from_chars instead, which is slightly more efficient
-    value = std::stod(buf);
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
+    // Use the faster C++17 method if available.
+    std::from_chars(buf.data(), buf.data() + buf.size(), value);
+#else
+    std::istringstream(buf) >> value;
+#endif
+
 
     // We've read one character beyond the end of the number (there's no way to
     // tell where the end is otherwise), so we must unget the last char
