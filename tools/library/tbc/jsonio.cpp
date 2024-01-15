@@ -24,7 +24,6 @@
 
 #include "jsonio.h"
 
-#include <cmath>
 #include <limits>
 
 // Recognise JSON space characters
@@ -46,10 +45,12 @@ JsonReader::JsonReader(std::istream &_input)
 
 void JsonReader::read(int &value)
 {
-    // Round to the nearest integer
-    double d;
-    readNumber(d);
-    value = static_cast<int>(std::lround(d));
+    readSignedInteger(value);
+}
+
+void JsonReader::read(qint64 &value)
+{
+    readSignedInteger(value);
 }
 
 void JsonReader::read(double &value)
@@ -347,6 +348,11 @@ JsonWriter::JsonWriter(std::ostream &_output)
 }
 
 void JsonWriter::write(int value)
+{
+    output << value;
+}
+
+void JsonWriter::write(qint64 value)
 {
     output << value;
 }
