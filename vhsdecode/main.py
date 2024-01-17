@@ -159,7 +159,7 @@ def main(args=None, use_gui=False):
         dest="cafc",
         action="store_true",
         default=False,
-        help="Enable downconverted chroma carrier AFC (Automatic freq. control), implies --recheck_phase",
+        help="Tries to detect the chroma carrier frequency on a field basis within some limit instead of using the default one for the format. Mainly useful for debug purposes and used on PAL betamax. implies --recheck_phase",
     )
     chroma_group.add_argument(
         "-T",

@@ -594,7 +594,9 @@ class VHSRFDecode(ldd.RFDecode):
             tape_format,
             rf_options.get("disable_comb", False) or is_secam(system),
             rf_options.get("nldeemp", False),
-            rf_options.get("subdeemp", False),
+            self.DecoderParams.get(
+                "use_sub_deemphasis", rf_options.get("subdeemp", False)
+            ),
             rf_options.get("disable_right_hsync", False),
             rf_options.get("disable_dc_offset", False),
             tape_format == "VHS" or tape_format == "VHSHQ",
