@@ -578,7 +578,6 @@ class VHSRFDecode(ldd.RFDecode):
                 "nldeemp",
                 "subdeemp",
                 "disable_right_hsync",
-                "sync_clip",
                 "disable_dc_offset",
                 "double_lpf",
                 "fallback_vsync",
@@ -597,7 +596,6 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("nldeemp", False),
             rf_options.get("subdeemp", False),
             rf_options.get("disable_right_hsync", False),
-            rf_options.get("sync_clip", False),
             rf_options.get("disable_dc_offset", False),
             tape_format == "VHS" or tape_format == "VHSHQ",
             # Always use this if we are decoding TYPEC since it doesn't have normal vsync.
