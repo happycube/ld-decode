@@ -240,6 +240,12 @@ Set up pipx
 
 (Alternatively, a [python virtual environment](https://docs.python.org/3/library/venv.html) can be used instead of using pipx)
 
+Install TBC-Video-Export
+
+    pipx install tbc-video-export
+
+(There is also [self contained builds](https://github.com/JuniorIsAJitterbug/tbc-video-export/releases) if install issues arise)
+
 Optional dependencies for GPU (Nvidia Cards) FLAC compression support:
 
     sudo apt install make ocl-icd-opencl-dev mono-runtime
