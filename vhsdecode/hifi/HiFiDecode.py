@@ -11,7 +11,6 @@ from typing import Tuple
 
 import numpy as np
 from numba import njit
-from pyhht.utils import inst_freq
 from scipy.signal import iirpeak, iirnotch
 from scipy.signal.signaltools import hilbert
 
@@ -52,11 +51,7 @@ class AFEBandPass:
         self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], self.samp_rate)
 
     def work(self, data):
-        try:
-            return self.filter_lo.lfilt(self.filter_hi.filtfilt(data))
-        except ValueError as e:
-            print('ERROR: Cannot decode because a read size mismatch. Maybe EOF reached')
-            sys.exit(1)
+        return self.filter_lo.lfilt(self.filter_hi.filtfilt(data))
 
 
 class LpFilter:
@@ -180,8 +175,7 @@ class FMdemod:
         self.offset = 0
 
     def hhtdeFM(self, data):
-        instf, t = inst_freq(data)
-        return np.add(np.multiply(instf, -self.samp_rate), self.samp_rate / 2)
+        return FMdemod.inst_freq(data, self.samp_rate)
 
     @staticmethod
     def htdeFM(data, samp_rate):
@@ -257,6 +251,10 @@ class LogCompander:
 
 def tau_as_freq(tau):
     return 1 / (2 * pi * tau)
+
+
+def discard_stereo(audioL, audioR, discard_size):
+    return audioL[discard_size:], audioR[discard_size:]
 
 
 class NoiseReduction:
@@ -381,7 +379,7 @@ class NoiseReduction:
     def stereo(self, audioL, audioR):
         expandL, expandR = self.lopassCompand(audioL, channel=0), self.lopassCompand(audioR, channel=1)
         nrL, nrR = self.noise_reduction_stereo(expandL, expandR)
-        finalL, finalR = nrL[self.discard_size:], nrR[self.discard_size:]
+        finalL, finalR = discard_stereo(nrL, nrR, self.discard_size)
         return list(map(list, zip(finalL, finalR)))
 
     def lopassCompand(self, audio, channel=0):
