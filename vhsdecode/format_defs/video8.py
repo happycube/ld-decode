@@ -46,7 +46,7 @@ def fill_rfparams_video8_shared(rfparams):
 
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 3500000
-    rfparams["video_lpf_order"] = 1
+    rfparams["video_lpf_order"] = 6
 
     # Video Y FM de-emphasis (1.25~1.35µs)
     rfparams["deemph_tau"] = 1.30e-6
@@ -101,8 +101,8 @@ def fill_rfparams_hi8_shared(rfparams):
     rfparams["video_hpf_extra_order"] = 3
 
     # Low-pass filter on Y after demodulation
-    rfparams["video_lpf_freq"] = 5500000
-    rfparams["video_lpf_order"] = 1
+    rfparams["video_lpf_freq"] = 6500000
+    rfparams["video_lpf_order"] = 6
 
     # Video Y FM de-emphasis
     rfparams["deemph_tau"] = 0.47e-6  # From spec
