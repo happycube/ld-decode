@@ -21,9 +21,9 @@ def fill_rfparams_video8_shared(rfparams):
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
     # 198943.67
-    rfparams["nonlinear_highpass_freq"] = 198943.67
+    rfparams["nonlinear_highpass_freq"] = 260000
     rfparams["nonlinear_exp_scaling"] = 0.53
-    rfparams["nonlinear_scaling_1"] = 0.73
+    rfparams["nonlinear_scaling_1"] = 0.45
     # rfparams["nonlinear_scaling_2"] = 0.65
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
