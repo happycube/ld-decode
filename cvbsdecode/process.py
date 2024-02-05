@@ -236,26 +236,46 @@ def hz_to_output_override(field, input):
     blank_levels = np.empty(field.outlinecount)
     sync_levels = np.empty(field.outlinecount)
     for i in range(0, field.outlinecount):
-        blank_levels[i] = np.median(input[i * field.outlinelen + 96:i * field.outlinelen + 164])
-        sync_levels[i]  = np.median(input[i * field.outlinelen + 12:i * field.outlinelen +  72])
+        blank_levels[i] = np.median(
+            input[i * field.outlinelen + 96 : i * field.outlinelen + 164]
+        )
+        sync_levels[i] = np.median(
+            input[i * field.outlinelen + 12 : i * field.outlinelen + 72]
+        )
 
-    field.rf.DecoderParams["agc_blank_level"] = np.median(blank_levels[(field.outlinecount // 3) * 2:])
-    field.rf.DecoderParams["agc_sync_level"]  = np.median( sync_levels[(field.outlinecount // 3) * 2:])
+    field.rf.DecoderParams["agc_blank_level"] = np.median(
+        blank_levels[(field.outlinecount // 3) * 2 :]
+    )
+    field.rf.DecoderParams["agc_sync_level"] = np.median(
+        sync_levels[(field.outlinecount // 3) * 2 :]
+    )
 
     reduced = input
 
-    reduced[0:6 * field.outlinelen + 130] = input[0:6 * field.outlinelen + 130] - np.median(blank_levels[7:12])
+    reduced[0 : 6 * field.outlinelen + 130] = input[
+        0 : 6 * field.outlinelen + 130
+    ] - np.median(blank_levels[7:12])
 
     for i in range(7, field.outlinecount - 5):
-        reduced[i * field.outlinelen + 130:(i + 1) * field.outlinelen + 130] -= np.linspace(np.median(blank_levels[i - 2:i + 3]), np.median(blank_levels[i - 1:i + 4]), num=field.outlinelen)
+        reduced[
+            i * field.outlinelen + 130 : (i + 1) * field.outlinelen + 130
+        ] -= np.linspace(
+            np.median(blank_levels[i - 2 : i + 3]),
+            np.median(blank_levels[i - 1 : i + 4]),
+            num=field.outlinelen,
+        )
 
-    reduced[(field.outlinecount - 5) * field.outlinelen + 130:] = input[(field.outlinecount - 5) * field.outlinelen + 130:] - np.median(blank_levels[field.outlinecount - 9:field.outlinecount - 5])
+    reduced[(field.outlinecount - 5) * field.outlinelen + 130 :] = input[
+        (field.outlinecount - 5) * field.outlinelen + 130 :
+    ] - np.median(blank_levels[field.outlinecount - 9 : field.outlinecount - 5])
 
     if field.rf.DecoderParams["agc_set_gain"] == 0.0:
         vsyncs = blank_levels - sync_levels
-        vsyncs = vsyncs[7:field.outlinecount - 5]
+        vsyncs = vsyncs[7 : field.outlinecount - 5]
         vsyncs.sort()
-        new_gain = np.mean(vsyncs[(vsyncs.size // 4):((vsyncs.size * 3) // 4)]) / (-field.rf.SysParams["vsync_ire"])
+        new_gain = np.mean(vsyncs[(vsyncs.size // 4) : ((vsyncs.size * 3) // 4)]) / (
+            -field.rf.SysParams["vsync_ire"]
+        )
         if field.rf.DecoderParams["agc_gain"] is None:
             field.rf.DecoderParams["agc_gain"] = new_gain
             field.rf.DecoderParams["lowest_agc_gain"] = new_gain
@@ -263,15 +283,31 @@ def hz_to_output_override(field, input):
             field.rf.DecoderParams["lowest_used_agc_gain"] = new_gain
             field.rf.DecoderParams["highest_used_agc_gain"] = new_gain
         else:
-            field.rf.DecoderParams["agc_gain"] = new_gain * field.rf.DecoderParams["agc_speed"] + field.rf.DecoderParams["agc_gain"] * (1.0 - field.rf.DecoderParams["agc_speed"])
-            field.rf.DecoderParams["lowest_agc_gain"] = min(field.rf.DecoderParams["lowest_agc_gain"], new_gain)
-            field.rf.DecoderParams["highest_agc_gain"] = max(field.rf.DecoderParams["highest_agc_gain"], new_gain)
-            field.rf.DecoderParams["lowest_used_agc_gain"] = min(field.rf.DecoderParams["lowest_used_agc_gain"], field.rf.DecoderParams["agc_gain"])
-            field.rf.DecoderParams["highest_used_agc_gain"] = max(field.rf.DecoderParams["highest_used_agc_gain"], field.rf.DecoderParams["agc_gain"])
+            field.rf.DecoderParams["agc_gain"] = new_gain * field.rf.DecoderParams[
+                "agc_speed"
+            ] + field.rf.DecoderParams["agc_gain"] * (
+                1.0 - field.rf.DecoderParams["agc_speed"]
+            )
+            field.rf.DecoderParams["lowest_agc_gain"] = min(
+                field.rf.DecoderParams["lowest_agc_gain"], new_gain
+            )
+            field.rf.DecoderParams["highest_agc_gain"] = max(
+                field.rf.DecoderParams["highest_agc_gain"], new_gain
+            )
+            field.rf.DecoderParams["lowest_used_agc_gain"] = min(
+                field.rf.DecoderParams["lowest_used_agc_gain"],
+                field.rf.DecoderParams["agc_gain"],
+            )
+            field.rf.DecoderParams["highest_used_agc_gain"] = max(
+                field.rf.DecoderParams["highest_used_agc_gain"],
+                field.rf.DecoderParams["agc_gain"],
+            )
     else:
         field.rf.DecoderParams["agc_gain"] = field.rf.DecoderParams["agc_set_gain"]
 
-    reduced /= (field.rf.DecoderParams["agc_gain"] * field.rf.DecoderParams["agc_gain_factor"])
+    reduced /= (
+        field.rf.DecoderParams["agc_gain"] * field.rf.DecoderParams["agc_gain_factor"]
+    )
     reduced -= field.rf.SysParams["vsync_ire"]
 
     return np.uint16(
@@ -315,7 +351,10 @@ class FieldPALCVBS(ldd.FieldPAL):
         return getpulses_override(self)
 
     def hz_to_output(self, input):
-        if self.rf.DecoderParams["clamp_agc"] is True and self.outlinecount * self.outlinelen == input.size:
+        if (
+            self.rf.DecoderParams["clamp_agc"] is True
+            and self.outlinecount * self.outlinelen == input.size
+        ):
             return hz_to_output_override(self, input)
         else:
             return super(FieldPALCVBS, self).hz_to_output(input)

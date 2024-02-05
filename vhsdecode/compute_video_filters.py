@@ -5,6 +5,11 @@ import scipy.signal as sps
 import sys
 from collections import namedtuple
 
+if sys.version_info[1] < 10:
+    from importlib_resources import files
+else:
+    # Need Python 3.10 for using namespace in files
+    from importlib.resources import files
 
 from vhsdecode.utils import filtfft
 from vhsdecode.addons.FMdeemph import FMDeEmphasisB, gen_low_shelf, gen_high_shelf
@@ -61,9 +66,16 @@ def gen_custom_video_filters(filter_list, freq_hz, block_len):
         match f["type"]:
             case "file":
                 try:
-                    ret *= np.loadtxt(osp.join(osp.dirname(__file__), "format_defs", f["filename"]+"-"+str(int(freq_hz))+".txt"), dtype=np.complex_)
+                    file_path = files("vhsdecode.format_defs").joinpath(
+                        f["filename"] + "-" + str(int(freq_hz)) + ".txt"
+                    )
+                    # file_path = osp.join(osp.dirname(__file__), "format_defs", f["filename"]+"-"+str(int(freq_hz))+".txt")
+                    ret *= np.loadtxt(file_path, dtype=np.complex_)
                 except:
-                    print(f"Warning: Cannot load filter from file for samplerate of {freq_hz} Hz!", file=sys.stderr)
+                    print(
+                        f"Warning: Cannot load filter from file for samplerate of {freq_hz} Hz!",
+                        file=sys.stderr,
+                    )
             case "highshelf":
                 db, da = gen_high_shelf(f["midfreq"], f["gain"], f["q"], freq_hz / 2.0)
                 ret *= filtfft((db, da), block_len, whole=False)
@@ -83,20 +95,32 @@ def gen_video_lpf(corner_freq, order, nyquist_hz, block_len):
 
 
 def supergauss(x, freq, order=1, centerfreq=0):
-    return np.exp(-2*np.power((2*(x-centerfreq)*(math.log(2.0)/2.0)**(1/(2*order)))/freq, 2*order))
+    return np.exp(
+        -2
+        * np.power(
+            (2 * (x - centerfreq) * (math.log(2.0) / 2.0) ** (1 / (2 * order))) / freq,
+            2 * order,
+        )
+    )
 
 
 def gen_video_lpf_params(rf_params, nyquist_hz, block_len):
     """Generate real-value fir and fft post-demodulation low pass filters from parameters"""
     if rf_params.get("video_lpf_supergauss", False):
-        return (None, supergauss(
-            np.linspace(0, nyquist_hz, block_len//2+1),
-            rf_params["video_lpf_freq"],
-            rf_params["video_lpf_order"]
-        ))
+        return (
+            None,
+            supergauss(
+                np.linspace(0, nyquist_hz, block_len // 2 + 1),
+                rf_params["video_lpf_freq"],
+                rf_params["video_lpf_order"],
+            ),
+        )
     else:
         return gen_video_lpf(
-            rf_params["video_lpf_freq"], rf_params["video_lpf_order"], nyquist_hz, block_len
+            rf_params["video_lpf_freq"],
+            rf_params["video_lpf_order"],
+            nyquist_hz,
+            block_len,
         )
 
 

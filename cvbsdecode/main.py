@@ -87,7 +87,9 @@ def main(args=None):
                 conflicts.append(outname + ext)
 
         if conflicts:
-            print("Existing decode files found, remove them or run command with --overwrite")
+            print(
+                "Existing decode files found, remove them or run command with --overwrite"
+            )
             for conflict in conflicts:
                 print("\t", conflict)
             sys.exit(1)
@@ -202,10 +204,26 @@ def main(args=None):
 
     if "lowest_agc_gain" in vhsd.rf.DecoderParams:
         print("Automatic gain control statistics:", file=sys.stderr)
-        print(" Lowest detected gain:  ", vhsd.rf.DecoderParams["lowest_agc_gain"], file=sys.stderr)
-        print(" Highest detected gain: ", vhsd.rf.DecoderParams["highest_agc_gain"], file=sys.stderr)
-        print(" Lowest used gain:      ", vhsd.rf.DecoderParams["lowest_used_agc_gain"], file=sys.stderr)
-        print(" Highest used gain:     ", vhsd.rf.DecoderParams["highest_used_agc_gain"], file=sys.stderr)
+        print(
+            " Lowest detected gain:  ",
+            vhsd.rf.DecoderParams["lowest_agc_gain"],
+            file=sys.stderr,
+        )
+        print(
+            " Highest detected gain: ",
+            vhsd.rf.DecoderParams["highest_agc_gain"],
+            file=sys.stderr,
+        )
+        print(
+            " Lowest used gain:      ",
+            vhsd.rf.DecoderParams["lowest_used_agc_gain"],
+            file=sys.stderr,
+        )
+        print(
+            " Highest used gain:     ",
+            vhsd.rf.DecoderParams["highest_used_agc_gain"],
+            file=sys.stderr,
+        )
     print("saving JSON and exiting")
     cleanup(outname)
     sys.exit(0)

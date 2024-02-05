@@ -865,7 +865,11 @@ class VHSRFDecode(ldd.RFDecode):
         self.Filters["RFVideo"] = abs(y_fm) * abs(y_fm_lowpass) * abs(y_fm_highpass)
 
         if DP.get("boost_rf_linear_0", None) is not None:
-            ramp = np.linspace(DP["boost_rf_linear_0"], DP["boost_rf_linear_20"] * (self.freq_hz_half / 20e6), self.blocklen // 2)
+            ramp = np.linspace(
+                DP["boost_rf_linear_0"],
+                DP["boost_rf_linear_20"] * (self.freq_hz_half / 20e6),
+                self.blocklen // 2,
+            )
             self.Filters["RFVideo"] *= np.concatenate((ramp, np.flip(ramp)))
 
         self.Filters["RFTop"] = sps.butter(
@@ -919,7 +923,9 @@ class VHSRFDecode(ldd.RFDecode):
 
         self.Filters["FDeemp"] = filter_deemp
 
-        self.Filters["FVideo"] = filter_deemp * filter_video_lpf * self.Filters["FCustomVideo"]
+        self.Filters["FVideo"] = (
+            filter_deemp * filter_video_lpf * self.Filters["FCustomVideo"]
+        )
 
         SF["FVideo05"] = filter_video_lpf * filter_deemp * filter_05
 
@@ -1019,9 +1025,9 @@ class VHSRFDecode(ldd.RFDecode):
         if len(np.where(env == 0)[0]) == 0:  # checks for zeroes on env
             if self._high_boost is not None:
                 data_filtered = npfft.ifft(indata_fft)
-                high_part = utils.filter_simple(data_filtered, self.Filters["RFTop"]) * (
-                    (env_mean * 0.9) / env
-                )
+                high_part = utils.filter_simple(
+                    data_filtered, self.Filters["RFTop"]
+                ) * ((env_mean * 0.9) / env)
                 del data_filtered
                 indata_fft += npfft.fft(high_part * self._high_boost)
                 print("wer das liest ist doof")
@@ -1124,6 +1130,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         if self.debug_plot and self.debug_plot.is_plot_requested("magdens"):
             from vhsdecode.debug_plot import plot_magnitude_density
+
             plot_magnitude_density(
                 raw_data=data[: self.blocklen],
                 filtered_data=npfft.ifft(indata_fft).real,
