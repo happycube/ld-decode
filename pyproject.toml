@@ -42,8 +42,5 @@ Homepage = "https://www.domesday86.com"
 write_to = "vhsdecode/_version.py"
 local_scheme = "no-local-version"
 
-[tool.setuptools.packages.find]
-where = ["vhsdecode"]
-
 [tool.setuptools.package-data]
 vhs_decode = ["*.txt"]
