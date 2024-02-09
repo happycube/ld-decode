@@ -37,7 +37,7 @@ from vhsdecode.compute_video_filters import (
     gen_nonlinear_amplitude_lpf,
     gen_custom_video_filters,
     create_sub_emphasis_params,
-    supergauss,
+    gen_video_lpf_supergauss_params,
     NONLINEAR_AMP_LPF_FREQ_DEFAULT,
 )
 from vhsdecode.demodcache import DemodCacheTape
@@ -886,10 +886,8 @@ class VHSRFDecode(ldd.RFDecode):
         filter_deemp = gen_video_main_deemp_fft_params(DP, self.freq_hz, self.blocklen)
 
         if DP.get("video_lpf_supergauss", False) is True:
-            filter_video_lpf = supergauss(
-                np.linspace(0, self.freq_hz_half, self.blocklen // 2 + 1),
-                DP["video_lpf_freq"],
-                DP["video_lpf_order"],
+            filter_video_lpf = gen_video_lpf_supergauss_params(
+                DP, self.freq_hz_half, self.blocklen
             )
         else:
             (_, filter_video_lpf) = gen_video_lpf_params(

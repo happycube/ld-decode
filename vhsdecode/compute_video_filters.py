@@ -94,6 +94,20 @@ def gen_video_lpf(corner_freq, order, nyquist_hz, block_len):
     return (video_lpf, abs(video_lpf_fft))
 
 
+def gen_video_lpf_supergauss(corner_freq, order, nyquist_hz, block_len):
+    return supergauss(
+        np.linspace(0, nyquist_hz, block_len // 2 + 1),
+        corner_freq,
+        order,
+    )
+
+
+def gen_video_lpf_supergauss_params(rf_params, nyquist_hz, block_len):
+    return gen_video_lpf_supergauss(
+        rf_params["video_lpf_freq"], rf_params["video_lpf_order"], nyquist_hz, block_len
+    )
+
+
 def supergauss(x, freq, order=1, centerfreq=0):
     return np.exp(
         -2

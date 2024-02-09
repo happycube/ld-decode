@@ -11,7 +11,16 @@ import sys
 import logging
 import json
 
-from PyQt5.QtCore import Qt, QByteArray, QCryptographicHash, QMetaType, QObject, QSize, QThread, pyqtSignal
+from PyQt5.QtCore import (
+    Qt,
+    QByteArray,
+    QCryptographicHash,
+    QMetaType,
+    QObject,
+    QSize,
+    QThread,
+    pyqtSignal,
+)
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QAbstractScrollArea,
@@ -178,20 +187,63 @@ class FilterPlot:
             "apply_main_deemphasis": False,
             "apply_custom_filters": True,
             "x": np.array([200000, 500000, 1000000, 2000000, 3000000, 5000000]),
-            "y": np.array([[1.73,  1.60,  1.04,  0.37,  0.07,  0.06], # Values directly from the spec
-                           [1.30,  0.73, -0.69, -1.75, -2.10, -2.02],
-                           [0.65, -1.09, -2.86, -4.16, -4.60, -4.43],
-                           [0.49, -2.35, -5.30, -7.14, -7.64, -7.34]])
+            "y": np.array(
+                [
+                    [
+                        1.73,
+                        1.60,
+                        1.04,
+                        0.37,
+                        0.07,
+                        0.06,
+                    ],  # Values directly from the spec
+                    [1.30, 0.73, -0.69, -1.75, -2.10, -2.02],
+                    [0.65, -1.09, -2.86, -4.16, -4.60, -4.43],
+                    [0.49, -2.35, -5.30, -7.14, -7.64, -7.34],
+                ]
+            ),
         },
         "SVHS_total": {
             "levels": [0, -10, -20, -30],
             "apply_main_deemphasis": True,
             "apply_custom_filters": True,
             "x": np.array([200000, 500000, 1000000, 2000000, 3000000, 5000000]),
-            "y": np.array([[ -3.47426288,  -8.65657528, -11.62615626, -13.24248314, -13.74555096, -13.86360561],  # Warning! These values could be wrong
-                           [ -3.90426288,  -9.52657528, -13.35615626, -15.36248314, -15.91555096, -15.94360561],
-                           [ -4.55426288, -11.34657528, -15.52615626, -17.77248314, -18.41555096, -18.35360561],
-                           [ -4.71426288, -12.60657528, -17.96615626, -20.75248314, -21.45555096, -21.26360561]])
+            "y": np.array(
+                [
+                    [
+                        -3.47426288,
+                        -8.65657528,
+                        -11.62615626,
+                        -13.24248314,
+                        -13.74555096,
+                        -13.86360561,
+                    ],  # Warning! These values could be wrong
+                    [
+                        -3.90426288,
+                        -9.52657528,
+                        -13.35615626,
+                        -15.36248314,
+                        -15.91555096,
+                        -15.94360561,
+                    ],
+                    [
+                        -4.55426288,
+                        -11.34657528,
+                        -15.52615626,
+                        -17.77248314,
+                        -18.41555096,
+                        -18.35360561,
+                    ],
+                    [
+                        -4.71426288,
+                        -12.60657528,
+                        -17.96615626,
+                        -20.75248314,
+                        -21.45555096,
+                        -21.26360561,
+                    ],
+                ]
+            ),
         },
     }
 
@@ -209,7 +261,7 @@ class FilterPlot:
 
         self.update(filters, filter_params, format_params)
 
-    def update(self, filters, filter_params, format_params, system = ""):
+    def update(self, filters, filter_params, format_params, system=""):
         # self._static_ax = self._canvas.figure.subplots()
         # t = np.linspace(0, 10, 501)
         # self._static_ax.plot(t, np.tan(t), ".")
@@ -288,7 +340,12 @@ class DeemphasisFilters:
 
     def update_deemphasis(self, filter_params, rf_params, fs, block_len):
         if filter_params["video_lpf_supergauss"]["value"]:
-            lpf = compute_video_filters.supergauss(np.linspace(0,fs/2,block_len//2+1), filter_params["video_lpf_freq"]["value"], filter_params["video_lpf_order"]["value"])
+            lpf = compute_video_filters.gen_video_lpf_supergauss(
+                filter_params["video_lpf_freq"]["value"],
+                filter_params["video_lpf_order"]["value"],
+                fs / 2,
+                block_len,
+            )
         else:
             (_, lpf) = compute_video_filters.gen_video_lpf(
                 filter_params["video_lpf_freq"]["value"],
@@ -316,18 +373,20 @@ class DeemphasisFilters:
             * lpf
         )
 
-        if filter_params["custom_video_filters"]["value"] and rf_params.get("video_custom_luma_filters", None) is not None:
-            self._filters["FCustomVideo"] = (
-                compute_video_filters.gen_custom_video_filters(
-                    rf_params["video_custom_luma_filters"],
-                    fs,
-                    block_len,
-                )
+        if (
+            filter_params["custom_video_filters"]["value"]
+            and rf_params.get("video_custom_luma_filters", None) is not None
+        ):
+            self._filters[
+                "FCustomVideo"
+            ] = compute_video_filters.gen_custom_video_filters(
+                rf_params["video_custom_luma_filters"],
+                fs,
+                block_len,
             )
             self._filters["FVideo"] *= self._filters["FCustomVideo"]
         else:
             self._filters["FCustomVideo"] = 1
-
 
     def update_nonlinear_deemphasis(self, filter_params, fs, block_len):
         bandpass = None
@@ -346,6 +405,7 @@ class DeemphasisFilters:
             filter_params["nonlinear_amplitude_lpf"]["value"], fs / 2.0
         )
 
+
 class WriteTBCWorker(QObject):
     finished = pyqtSignal()
     nextframe = pyqtSignal(int)
@@ -363,14 +423,15 @@ class WriteTBCWorker(QObject):
 
     def run(self):
         self.nextframe.emit(1)
-        for i in range(1,self.totalFrames-1):
+        for i in range(1, self.totalFrames - 1):
             if self.abortExport is True:
                 self.finished.emit()
                 return
             self.nextframe.emit(i)
-        self.nextframe.emit(self.totalFrames-2)
-        self.nextframe.emit(self.totalFrames-2)
+        self.nextframe.emit(self.totalFrames - 2)
+        self.nextframe.emit(self.totalFrames - 2)
         self.finished.emit()
+
 
 class VHStune(QDialog):
     refTBCFilename = ""
@@ -418,10 +479,10 @@ class VHStune(QDialog):
         img_plot_splitter = QSplitter(Qt.Horizontal)
         img_widget = QWidget()
         plot_widget = QWidget()
-        #main_layout.addLayout(self._right_layout, 0, 1)
+        # main_layout.addLayout(self._right_layout, 0, 1)
         img_widget.setLayout(self._right_layout)
         self.plot_layout = QGridLayout()
-        #main_layout.addLayout(self.plot_layout, 0, 2)
+        # main_layout.addLayout(self.plot_layout, 0, 2)
         plot_widget.setLayout(self.plot_layout)
         img_plot_splitter.addWidget(img_widget)
         img_plot_splitter.addWidget(plot_widget)
@@ -538,7 +599,7 @@ class VHStune(QDialog):
                 ],
             },
             "custom_video_filters": {
-                "value": (rf_params.get("video_custom_luma_filters", None)!=None),
+                "value": (rf_params.get("video_custom_luma_filters", None) != None),
                 "step": None,
                 "desc": "Enable custom linear filters",
                 "onchange": [
@@ -582,7 +643,7 @@ class VHStune(QDialog):
                 ],
             },
             "nonlinear_bandpass_order": {
-                "value":  rf_params.get("nonlinear_bandpass_order", 1),
+                "value": rf_params.get("nonlinear_bandpass_order", 1),
                 "step": 1,
                 "min": 1,
                 "max": 6,
@@ -696,7 +757,10 @@ class VHStune(QDialog):
 
     def initFilters(self):
         self._deemphasis.update_filters(
-            self.filter_params, self._format_params.rf_params, self._format_params.fs, BLOCK_LEN
+            self.filter_params,
+            self._format_params.rf_params,
+            self._format_params.fs,
+            BLOCK_LEN,
         )
 
     def updateFrameNr(self, s):
@@ -786,7 +850,7 @@ class VHStune(QDialog):
             )
             self._update_format()
 
-    def saveProTBCFrame(self,frameNr):
+    def saveProTBCFrame(self, frameNr):
         self.curFrameNr = frameNr
         self.frameSpin.setValue(self.curFrameNr)
         self.frameSlider.setValue(self.curFrameNr)
@@ -804,7 +868,10 @@ class VHStune(QDialog):
     def saveProTBCFile(self):
         if self.outfile_video is None:
             fileName = QFileDialog.getSaveFileName(
-                self, "Save processed tbc file", self.saveTBCFilename, "tbc files (*.tbc)"
+                self,
+                "Save processed tbc file",
+                self.saveTBCFilename,
+                "tbc files (*.tbc)",
             )
             if fileName is not None and fileName[0] != "":
                 self.outfile_video = open(fileName[0], "wb")
@@ -818,8 +885,12 @@ class VHStune(QDialog):
                 self.exportWorker.finished.connect(self.exportThread.quit)
                 self.exportWorker.finished.connect(self.exportWorker.deleteLater)
                 self.exportThread.finished.connect(self.exportThread.deleteLater)
-                self.exportWorker.nextframe.connect(self.saveProTBCFrame,Qt.BlockingQueuedConnection)
-                self.exportWorker.finished.connect(self.saveProTBCFinished,Qt.BlockingQueuedConnection)
+                self.exportWorker.nextframe.connect(
+                    self.saveProTBCFrame, Qt.BlockingQueuedConnection
+                )
+                self.exportWorker.finished.connect(
+                    self.saveProTBCFinished, Qt.BlockingQueuedConnection
+                )
                 self.exportThread.start()
                 self.saveProTBCFileButton.setText("Cancel TBC export")
         else:
@@ -849,7 +920,10 @@ class VHStune(QDialog):
 
     def update_deemphasis(self):
         self._deemphasis.update_deemphasis(
-            self.filter_params, self._format_params.rf_params, self._format_params.fs, BLOCK_LEN
+            self.filter_params,
+            self._format_params.rf_params,
+            self._format_params.fs,
+            BLOCK_LEN,
         )
         self.update_filter_plot()
 
@@ -861,7 +935,10 @@ class VHStune(QDialog):
 
     def update_filter_plot(self):
         self._filter_plot.update(
-            self._deemphasis, self.filter_params, self._format_params, self.systemComboBox.currentText()
+            self._deemphasis,
+            self.filter_params,
+            self._format_params,
+            self.systemComboBox.currentText(),
         )
 
     def apply_both_deemph_filters(self):

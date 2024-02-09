@@ -81,9 +81,16 @@ def main(args=None):
     except IOArgsException as e:
         parser.print_help()
         print(e)
-        print(f"ERROR: input file '{args.infile}' not found" if not test_input_file(args.infile) else "Input file: OK")
-        print(f"ERROR: output file '{args.outfile}' is not writable" if not test_output_file(
-            args.outfile) else "Output file: OK")
+        print(
+            f"ERROR: input file '{args.infile}' not found"
+            if not test_input_file(args.infile)
+            else "Input file: OK"
+        )
+        print(
+            f"ERROR: output file '{args.outfile}' is not writable"
+            if not test_output_file(args.outfile)
+            else "Output file: OK"
+        )
         sys.exit(1)
 
     system = select_system(args)
