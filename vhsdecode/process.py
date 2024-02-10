@@ -703,9 +703,9 @@ class VHSRFDecode(ldd.RFDecode):
                     self._notch / self._chroma_afc.getOutFreqHalf(), self._notch_q
                 )
 
-            self.Filters["FVideoNotchF"] = lddu.filtfft(
+            self.Filters["FVideoNotchF"] = abs(lddu.filtfft(
                 self.Filters["FVideoNotch"], self.blocklen
-            )
+            ))
         else:
             self.Filters["FVideoNotch"] = None, None
 

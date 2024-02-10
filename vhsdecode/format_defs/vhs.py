@@ -215,16 +215,16 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
-    RFParams_NTSC_VHS["video_bpf_low"] = 1500000
-    RFParams_NTSC_VHS["video_bpf_high"] = 5300000
+    RFParams_NTSC_VHS["video_bpf_low"] = 1400000
+    RFParams_NTSC_VHS["video_bpf_high"] = 5900000
 
-    RFParams_NTSC_VHS["video_bpf_order"] = 2
+    RFParams_NTSC_VHS["video_bpf_order"] = 1
 
-    RFParams_NTSC_VHS["video_lpf_extra"] = 6080000
-    RFParams_NTSC_VHS["video_lpf_extra_order"] = 3
+    RFParams_NTSC_VHS["video_lpf_extra"] = 5900000
+    RFParams_NTSC_VHS["video_lpf_extra_order"] = 20
 
-    RFParams_NTSC_VHS["video_hpf_extra"] = 1300000
-    RFParams_NTSC_VHS["video_hpf_extra_order"] = 2
+    RFParams_NTSC_VHS["video_hpf_extra"] = 1400000
+    RFParams_NTSC_VHS["video_hpf_extra_order"] = 14
 
     # Low-pass filter on Y after demodulation
     RFParams_NTSC_VHS["video_lpf_freq"] = 3000000
@@ -252,7 +252,11 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
 
     RFParams_NTSC_VHS["boost_bpf_low"] = 4100000
     RFParams_NTSC_VHS["boost_bpf_high"] = 5000000
-    RFParams_NTSC_VHS["boost_bpf_mult"] = 1
+    RFParams_NTSC_VHS["boost_bpf_mult"] = None
+
+    # Use linear ramp to boost RF
+    RFParams_NTSC_VHS["boost_rf_linear_0"] = 0
+    RFParams_NTSC_VHS["boost_rf_linear_20"] = 30
 
     fill_rfparams_vhs_shared(RFParams_NTSC_VHS)
 
