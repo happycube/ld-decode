@@ -816,18 +816,6 @@ class VHSRFDecode(ldd.RFDecode):
 
         SF["hilbert"] = lddu.build_hilbert(self.blocklen)
 
-        self.Filters["RFVideoRaw"] = lddu.filtfft(
-            sps.butter(
-                DP["video_bpf_order"],
-                [
-                    DP["video_bpf_low"] / self.freq_hz_half,
-                    DP["video_bpf_high"] / self.freq_hz_half,
-                ],
-                btype="bandpass",
-            ),
-            self.blocklen,
-        )
-
         self.Filters["EnvLowPass"] = sps.butter(
             1, [1.0 / self.freq_half], btype="lowpass"
         )
@@ -1011,9 +999,10 @@ class VHSRFDecode(ldd.RFDecode):
         if self._notch is not None:
             indata_fft *= self.Filters["FVideoNotchF"]
 
-        raw_filtered = npfft.ifft(
-            indata_fft * self.Filters["RFVideoRaw"] * self.Filters["hilbert"]
-        ).real
+        # Applies RF filters
+        indata_fft *= self.Filters["RFVideo"]
+
+        raw_filtered = npfft.ifft(indata_fft * self.Filters["hilbert"]).real
 
         # Calculate an evelope with signal strength using absolute of hilbert transform.
         # Roll this a bit to compensate for filter delay, value eyballed for now.
@@ -1025,9 +1014,6 @@ class VHSRFDecode(ldd.RFDecode):
         env = utils.filter_simple(raw_env, self.Filters["FEnvPost"]).astype(np.single)
         del raw_env
         env_mean = np.mean(env)
-
-        # Applies RF filters
-        indata_fft *= self.Filters["RFVideo"]
 
         # Boost high frequencies in areas where the signal is weak to reduce missed zero crossings
         # on sharp transitions. Using filtfilt to avoid phase issues.
