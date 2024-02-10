@@ -109,9 +109,21 @@ def plot_magnitude_density(
     ):
         fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
-        ax1.hist2d(raw_f, raw_m, bins=(256, 256), range=[[0,rfdecode.freq_hz//2],[0,len(raw_m)//16]], cmap=plt.cm.jet)
+        ax1.hist2d(
+            raw_f,
+            raw_m,
+            bins=(256, 256),
+            range=[[0, rfdecode.freq_hz // 2], [0, len(raw_m) // 16]],
+            cmap=plt.cm.jet,
+        )
         ax1.set_title("Raw data")
-        ax2.hist2d(fil_f, fil_m, bins=(256, 256), range=[[0,rfdecode.freq_hz//2],[0,len(fil_m)//16]], cmap=plt.cm.jet)
+        ax2.hist2d(
+            fil_f,
+            fil_m,
+            bins=(256, 256),
+            range=[[0, rfdecode.freq_hz // 2], [0, len(fil_m) // 16]],
+            cmap=plt.cm.jet,
+        )
         ax2.set_title("Filtered data")
 
         plt.show()
@@ -126,8 +138,9 @@ def plot_input_data(
     demod_video,
     filtered_video,
     chroma,
+    rf_filter,
     rfdecode,
-    plot_db=False,
+    plot_db=True,
     plot_demod_fft=False,
 ):
     import matplotlib.pyplot as plt
@@ -202,15 +215,25 @@ def plot_input_data(
                 color="#FF0000",
             )
         else:
-            fig2, ax4 = plt.subplots(1, 1)
+            fig2, ax4 = plt.subplots(1, 1, sharey=False)
+
+        ax4.sharey = False
         ax4.plot(
             freq_array, to_plot(raw_fft[:half_size]), color="#00FF00", label="Raw input"
         )
-        ax4.plot(
+        ax5 = ax4.twinx()
+        ax5.plot(
             freq_array,
-            to_plot(filtered_fft[:half_size]),
+            np.clip(to_plot(filtered_fft[:half_size]), -80, None),
             color="#FF0000",
             label="After rf filtering",
+        )
+        ax6 = ax4.twinx()
+        ax6.plot(
+            freq_array,
+            np.clip(to_plot(rf_filter[:half_size]), -100, None),
+            color="#0000FF",
+            label="rf filter",
         )
         ax4.set_xlabel("frequency")
         if plot_db:
@@ -226,29 +249,29 @@ def plot_input_data(
 
 
 def plot_luma_rf(rf, rf_luma_filter):
-#    import math
+    #    import math
     import matplotlib.pyplot as plt
     import numpy as np
 
-    x = np.linspace(0,40,rf_luma_filter.size)
+    x = np.linspace(0, 40, rf_luma_filter.size)
 
-    mag = 20*np.log10(np.absolute(rf_luma_filter))
+    mag = 20 * np.log10(np.absolute(rf_luma_filter))
     ph = np.angle(rf_luma_filter, deg=True)
 
     fig, ax1 = plt.subplots()
 
-    col = 'tab:red'
-    ax1.set_xlabel('Frequenzy (MHz)')
-    ax1.set_ylabel('Magnetude (dB)', color=col)
+    col = "tab:red"
+    ax1.set_xlabel("Frequenzy (MHz)")
+    ax1.set_ylabel("Magnetude (dB)", color=col)
     ax1.plot(x, mag, color=col)
-    ax1.tick_params(axis='y', labelcolor=col)
+    ax1.tick_params(axis="y", labelcolor=col)
 
     ax2 = ax1.twinx()
 
-    col = 'tab:green'
-    ax2.set_ylabel('Phase (°)', color=col)
+    col = "tab:green"
+    ax2.set_ylabel("Phase (°)", color=col)
     ax2.plot(x, ph, color=col)
-    ax2.tick_params(axis='y', labelcolor=col)
+    ax2.tick_params(axis="y", labelcolor=col)
 
     fig.tight_layout()
     plt.show()

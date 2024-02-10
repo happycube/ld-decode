@@ -38,6 +38,7 @@ from vhsdecode.compute_video_filters import (
     gen_custom_video_filters,
     create_sub_emphasis_params,
     gen_video_lpf_supergauss_params,
+    gen_bpf_supergauss,
     NONLINEAR_AMP_LPF_FREQ_DEFAULT,
 )
 from vhsdecode.demodcache import DemodCacheTape
@@ -703,9 +704,9 @@ class VHSRFDecode(ldd.RFDecode):
                     self._notch / self._chroma_afc.getOutFreqHalf(), self._notch_q
                 )
 
-            self.Filters["FVideoNotchF"] = abs(lddu.filtfft(
-                self.Filters["FVideoNotch"], self.blocklen
-            ))
+            self.Filters["FVideoNotchF"] = abs(
+                lddu.filtfft(self.Filters["FVideoNotch"], self.blocklen)
+            )
         else:
             self.Filters["FVideoNotch"] = None, None
 
@@ -863,6 +864,9 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         self.Filters["RFVideo"] = abs(y_fm) * abs(y_fm_lowpass) * abs(y_fm_highpass)
+        # self.Filters["RFVideo"] = gen_bpf_supergauss(DP["video_bpf_low"], DP["video_bpf_high"], DP["video_bpf_order"], self.freq_hz_half, self.blocklen)[:-1]
+
+        # self.Filters["RFVideo"] =  np.concatenate((self.Filters["RFVideo"], np.flip(self.Filters["RFVideo"])))
 
         if DP.get("boost_rf_linear_0", None) is not None:
             ramp = np.linspace(
@@ -1153,6 +1157,7 @@ class VHSRFDecode(ldd.RFDecode):
                 demod_video=demod,
                 filtered_video=out_video,
                 chroma=out_chroma,
+                rf_filter=self.Filters["RFVideo"],
                 rfdecode=self,
             )
 

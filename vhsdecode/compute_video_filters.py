@@ -108,6 +108,15 @@ def gen_video_lpf_supergauss_params(rf_params, nyquist_hz, block_len):
     )
 
 
+def gen_bpf_supergauss(freq_low, freq_high, order, nyquist_hz, block_len):
+    return supergauss(
+        np.linspace(0, nyquist_hz, block_len // 2 + 1),
+        freq_high - freq_low,
+        order,
+        (freq_high + freq_low) / 2.0,
+    )
+
+
 def supergauss(x, freq, order=1, centerfreq=0):
     return np.exp(
         -2
