@@ -250,6 +250,7 @@ Optional dependencies for GPU (Nvidia Cards) FLAC compression support:
 
     sudo apt install make ocl-icd-opencl-dev mono-runtime
 
+Also Requires FlaLDF [Download & Install via .deb for Linux](https://github.com/TokugawaHeavyIndustries/FlaLDF/releases/tag/v0.1b)
 
 ## Build VHS-Decode & LD-Tools Suite
 
