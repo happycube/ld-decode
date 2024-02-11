@@ -25,7 +25,7 @@
 #include "jsonio.h"
 
 #include <limits>
-#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || (__cplusplus >= 201703L && !defined(__clang__)))
 #include <charconv>
 #else
 #include <sstream>
@@ -337,8 +337,9 @@ void JsonReader::readNumber(double &value)
         }
     }
 
-#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || __cplusplus >= 201703L)
-    // Use the faster C++17 method if available.
+#if ((defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || (__cplusplus >= 201703L && !defined(__clang__)))
+    // Use the faster C++17 method if available. 
+    // (Skip if clang is detected since it was late to implement, and thus not available on macos yet.)
     std::from_chars(buf.data(), buf.data() + buf.size(), value);
 #else
     std::istringstream(buf) >> value;
