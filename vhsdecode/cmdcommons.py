@@ -66,6 +66,9 @@ def test_output_file(output_file: Optional[str]) -> bool:
         with open(output_file, "ab") as f:
             f.close()
             pass
+        # deletes output file if size is 0
+        if os.path.getsize(output_file) == 0:
+            os.remove(output_file)
     except FileNotFoundError:
         print(f"WARN: output file '{output_file}' not found")
         return False
