@@ -759,6 +759,9 @@ class VHSRFDecode(ldd.RFDecode):
 
         self._field_averages = FieldAverage()
 
+        # TODO: This should be managed elsewhere.
+        self._compute_linelocs_issues = False
+
     @property
     def sysparams_const(self):
         return self._sysparams_const
@@ -798,6 +801,14 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def field_averages(self):
         return self._field_averages
+
+    @property
+    def compute_linelocs_issues(self):
+        return self._compute_linelocs_issues
+
+    @compute_linelocs_issues.setter
+    def compute_linelocs_issues(self, value):
+        self._compute_linelocs_issues = value
 
     def computefilters(self):
         # Override the stuff used in lddecode to skip generating filters we don't use.

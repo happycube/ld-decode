@@ -530,11 +530,21 @@ class FieldShared:
         # (which is only the same thing on the top field of 525-line system signals)
         return self.getLine0(validpulses, meanlinelen), meanlinelen
 
+    @property
+    def compute_linelocs_issues(self):
+        return self._compute_linelocs_issues
+
     def compute_linelocs(self):
         has_levels = self.rf.resync.has_levels()
+
         # Skip vsync serration/level detect if we already have levels from a previous field and
         # the option is enabled.
-        do_level_detect = not self.rf.options.saved_levels or not has_levels
+        # Also run level detection if we encountered issues in this function in the previous field.
+        do_level_detect = (
+            not self.rf.options.saved_levels
+            or not has_levels
+            or self.rf.compute_linelocs_issues is True
+        )
         res, meanlinelen = self._try_get_pulses(do_level_detect)
         if (
             res == NO_PULSES_FOUND or res[0] == None or self.sync_confidence == 0
@@ -544,6 +554,8 @@ class FieldShared:
             # running the full level detection
             ldd.logger.debug("Search for pulses failed, re-checking levels")
             res, meanlinelen = self._try_get_pulses(True)
+
+        self.rf.compute_linelocs_issues = True
 
         if res == NO_PULSES_FOUND:
             ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
@@ -736,6 +748,13 @@ class FieldShared:
             nextfield = linelocs_filled[self.outlinecount - 7]
         else:
             nextfield = self.vblank_next - (self.inlinelen * 8)
+
+        if np.count_nonzero(rv_err) < 30:
+            self.rf.compute_linelocs_issues = False
+        elif self.rf.options.saved_levels:
+            ldd.logger.debug(
+                "Possible sync issues, re-running level detection on next field!"
+            )
 
         return rv_ll, rv_err, nextfield
 

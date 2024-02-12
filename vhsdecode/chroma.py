@@ -252,7 +252,7 @@ def process_chroma(
     # Video8 PAL: Track1 0, Track2 -90
 
     if track_phase is not None and chroma_rotation:
-        #if field.rf.field_number % 2 == track_phase:
+        # if field.rf.field_number % 2 == track_phase:
         if field.field_number % 2 == track_phase:
             phase_rotation = chroma_rotation[0]
         else:
@@ -365,6 +365,7 @@ def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False):
         not field.prevfield
         or ((field.readloc - field.prevfield.readloc) / rf.decoder.bytes_per_field)
         > 1.3
+        or rf.compute_linelocs_issues
     ):
         if rf.detect_track and not rf.needs_detect:
             ldd.logger.info(
@@ -649,10 +650,10 @@ def get_burstarea(field):
 
 
 def log_track_phase(track_phase, phase0_mean, phase1_mean, assumed_phase):
-    ldd.logger.info("Phase previously set: %i", track_phase)
-    ldd.logger.info("phase0 mean: %.02f", phase0_mean)
-    ldd.logger.info("phase1 mean: %.02f", phase1_mean)
-    ldd.logger.info("assumed_phase: %d", assumed_phase)
+    ldd.logger.debug("Phase previously set: %i", track_phase)
+    ldd.logger.debug("phase0 mean: %.02f", phase0_mean)
+    ldd.logger.debug("phase1 mean: %.02f", phase1_mean)
+    ldd.logger.debug("assumed_phase: %d", assumed_phase)
 
 
 def try_detect_track_betamax_pal(field):
