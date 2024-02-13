@@ -386,18 +386,15 @@ class FieldShared:
                     self.out_scale,
                 )
 
-        # Not sure what situations will cause input to not be a ndarray.
+        # This is reached when it's called with a single value to scale an ire value to an output from build_json
 
         if self.rf.options.export_raw_tbc:
-            # Not sure if this will work.
             return np.single(input)
 
+        # Since this is just used for converting a value for the whole file don't do the track compensation here. 
         reduced = (
             input
             - self.rf.DecoderParams["ire0"]
-            - self.rf.DecoderParams["track_ire0_offset"][
-                self.rf.track_phase ^ (self.field_number % 2)
-            ]
         ) / self.rf.DecoderParams["hz_ire"]
         reduced -= self.rf.DecoderParams["vsync_ire"]
 

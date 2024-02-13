@@ -100,6 +100,9 @@ def get_sysparams_pal_betamax(sysparams_pal):
         100 + (-sysparams["vsync_ire"])
     )
 
+    ### TODO: Enable when track detection is sorted properly.
+    # sysparams["track_ire0_offset"] = [0, -7812.5]
+
     return sysparams
 
 
@@ -234,6 +237,8 @@ def get_sysparams_ntsc_betamax(sysparams_ntsc):
     # tell the chroma decoder to boost it by a bit afterwards.
     sysparams["burst_abs_ref"] = 4000
 
+    # sysparams["track_ire0_offset"] = [-7867, 0]
+
     return sysparams
 
 
@@ -257,5 +262,7 @@ def get_sysparams_ntsc_betamax_hifi(sysparams_ntsc):
     # This has to be low enough to avoid clipping, so we have to
     # tell the chroma decoder to boost it by a bit afterwards.
     sysparams["burst_abs_ref"] = 4000
+
+    # sysparams["track_ire0_offset"] = [-7867, 0]
 
     return sysparams

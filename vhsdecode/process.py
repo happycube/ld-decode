@@ -622,7 +622,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("skip_hsync_refine", False),
             # hsync_refine_use_threshold - use detected level for hsync refine
             # TODO: This should be used for everything eventually but needs proper testing
-            tape_format == "BETAMAX" or tape_format == "BETAMAX_HIFI",
+            True,
             export_raw_tbc,
         )
 

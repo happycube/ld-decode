@@ -181,6 +181,8 @@ def get_sysparams_pal_video8(sysparams_pal):
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
     sysparams["burst_abs_ref"] = 9200
 
+    # sysparams["track_ire0_offset"] = [0, -7812.5]
+
     return sysparams
 
 
@@ -209,6 +211,8 @@ def get_sysparams_ntsc_video8(sysparams_ntsc):
     # Mean absolute value of color burst for Automatic Chroma Control.
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
     sysparams["burst_abs_ref"] = 4100
+
+    # sysparams["track_ire0_offset"] = [0, -7867]
 
     return sysparams
 

@@ -220,7 +220,7 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
 
     RFParams_NTSC_VHS["video_bpf_order"] = 1
 
-    RFParams_NTSC_VHS["video_lpf_extra"] = 5900000
+    RFParams_NTSC_VHS["video_lpf_extra"] = 5800000
     RFParams_NTSC_VHS["video_lpf_extra_order"] = 20
 
     RFParams_NTSC_VHS["video_hpf_extra"] = 1400000
@@ -298,7 +298,8 @@ def get_sysparams_ntsc_svhs(sysparams_ntsc):
     SysParams_NTSC_SVHS["ire0"] = 7e6 - (SysParams_NTSC_SVHS["hz_ire"] * 100)
 
     # One track has an offset of f_h/2
-    # SysParams_NTSC_SVHS["track_ire0_offset"] = [7867, 0]
+    # TODO: Test
+    # SysParams_NTSC_SVHS["track_ire0_offset"] = [0, 7867]
 
     return SysParams_NTSC_SVHS
 
@@ -307,7 +308,7 @@ def get_sysparams_ntsc_vhshq(sysparams_ntsc):
     SysParams_NTSC_VHSHQ = get_sysparams_ntsc_vhs(sysparams_ntsc)
 
     # One track has an offset of f_h/2
-    SysParams_NTSC_VHSHQ["track_ire0_offset"] = [7867, 0]
+    # SysParams_NTSC_VHSHQ["track_ire0_offset"] = [0, 7867]
 
     return SysParams_NTSC_VHSHQ
 
