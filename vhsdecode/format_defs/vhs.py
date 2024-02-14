@@ -227,10 +227,9 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
     RFParams_NTSC_VHS["video_hpf_extra_order"] = 14
 
     # Low-pass filter on Y after demodulation
-    RFParams_NTSC_VHS["video_lpf_freq"] = 3000000
-
-    # Order may be fine as is.
-    RFParams_NTSC_VHS["video_lpf_order"] = 6
+    RFParams_NTSC_VHS["video_lpf_supergauss"] = True
+    RFParams_NTSC_VHS["video_lpf_freq"] = 6600000
+    RFParams_NTSC_VHS["video_lpf_order"] = 9
 
     # NTSC color under carrier is 40H
     RFParams_NTSC_VHS["color_under_carrier"] = (525 * (30 / 1.001)) * 40
