@@ -969,7 +969,6 @@ class DemodCache:
         self.lock            = threading.Lock()
 
         self.blocks          = {}
-        self.block_status    = {}
 
         self.q_in            = Queue()
         self.q_out           = Queue()
@@ -1023,8 +1022,6 @@ class DemodCache:
             for k in self.lru[self.lrusize :]:
                 if k in self.blocks:
                     del self.blocks[k]
-                if k in self.block_status:
-                    del self.block_status[k]
 
         self.lru = self.lru[: self.lrusize]
 
@@ -1033,26 +1030,28 @@ class DemodCache:
         blocks_toredo = []
 
         with self.lock:
-            for k in self.block_status.keys():
+            for k in self.blocks.keys():
                 if k < first_block:
                     continue 
 
-                if prefetch_only and self.block_status[k]['prefetch'] == False:
+                if prefetch_only and self.blocks[k]['prefetch'] == False:
                     continue
 
-                if self.block_status[k]['prefetch'] == True:
+                if self.blocks[k]['prefetch'] == True:
                     blocks_toredo.append(k)
 
-                self.block_status[k] = {'MTF': -1, 'request': -1, 'waiting': False, 'prefetch': False}
+                self.blocks[k]['MTF']      = -1
+                self.blocks[k]['request']  = -1
+                self.blocks[k]['waiting']  = False
+                self.blocks[k]['prefetch'] = False
 
-            for k in self.blocks.keys():
-                if k < first_block or self.blocks[k] is None or 'demod' not in self.blocks[k]:
+                if 'demod' not in self.blocks[k]:
                     continue
 
                 if k not in blocks_toredo:
                     blocks_toredo.append(k)
 
-                del self.blocks[k]["demod"]
+                del self.blocks[k]['demod']
 
         return blocks_toredo
 
@@ -1138,19 +1137,16 @@ class DemodCache:
                     reached_end = True
                     break
 
-                waiting = (
-                    self.block_status[b].get("waiting", False)
-                    if b in self.block_status
-                    else False
-                )
+                waiting = False
+                if b in self.blocks:
+                    waiting = self.blocks[b].get("waiting", False)
 
                 # Until the block is actually ready, this comparison will hit an unknown key
                 if (
                     not redo
                     and not waiting
                     and "request" in self.blocks[b]
-                    and "request" in self.block_status[b]
-                    and self.blocks[b]["request"] == self.block_status[b]["request"]
+                    and "demod"   in self.blocks[b]
                 ):
                     continue
 
@@ -1164,12 +1160,10 @@ class DemodCache:
                     self.waiting.add(b)
 
             for b in queuelist:
-                self.block_status[b] = {
-                    "MTF": MTF,
-                    "waiting": True,
-                    "request": self.request,
-                    "prefetch": prefetch,
-                }
+                self.blocks[b]['MTF']      = MTF
+                self.blocks[b]['request']  = self.request
+                self.blocks[b]['waiting']  = True
+                self.blocks[b]['prefetch'] = prefetch
                 self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
         self.q_out_event.clear()
@@ -1193,13 +1187,12 @@ class DemodCache:
                     self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
                     continue
 
-                if item['request'] == self.block_status[blocknum]['request']:
+                if item['request'] == self.blocks[blocknum]['request']:
                     for k in item.keys():
                         self.blocks[blocknum][k] = item[k]
 
                     if 'demod' in item.keys():
-                        if self.block_status[blocknum]['waiting']:
-                            self.block_status[blocknum]['waiting'] = False
+                        self.blocks[blocknum]['waiting'] = False
 
                     if blocknum in self.waiting:
                         self.waiting.remove(blocknum)
