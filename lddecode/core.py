@@ -51,22 +51,18 @@ except:
     def profile(fn):
         return fn
 
+# This is the size of each block of data which is processed in
+# parallel.  The beginning and end are cut off so that there's
+# no distortion from the FFT and filtering.
+
 BLOCKSIZE = 32 * 1024
 
-def calclinelen(SP, mult, mhz):
-    if type(mhz) == str:
-        mhz = SP[mhz]
+# These are constant, system-level parameters for PAL and NTSC
 
-    return int(nb_round(SP["line_period"] * mhz * mult))
-
-
-# states for first field of validpulses (second field is pulse #)
-HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
-
-# These are invariant parameters for PAL and NTSC
 SysParams_NTSC = {
-    "fsc_mhz": (315.0 / np.double(88.0)),
-    "pilot_mhz": (315.0 / 88.0),
+    "fsc_mhz": 315.0 / np.double(88.0),
+    # NTSC LD doesn't have a pilot signal, so just recycle FSC
+    "pilot_mhz": 315.0 / np.double(88.0),
     "frame_lines": 525,
     "field_lines": (263, 262),
     "ire0": 8100000,
@@ -80,7 +76,6 @@ SysParams_NTSC = {
     # On AC3 disks, the right channel is replaced by a QPSK 2.88mhz channel
     "audio_rfreq_AC3": 2880000,
     "colorBurstUS": (5.3, 7.8),
-    "activeVideoUS": (9.45, 63.555 - 1.0),
     # Known-good area for computing black SNR - for NTSC pull from VSYNC
     # tuple: (line, beginning, length)
     "blacksnr_slice": (1, 10, 20),
@@ -91,7 +86,7 @@ SysParams_NTSC = {
     "hsyncPulseUS": 4.7,
     "eqPulseUS": 2.3,
     "vsyncPulseUS": 27.1,
-    # What 0 IRE/0V should be in digitaloutput
+    # What 0 IRE/0V should be in 16-bit digital output
     "outputZero": 1024,
     "fieldPhases": 4,
     # Likely locations of solid white in VITS on LD's (line, start, length)
@@ -102,6 +97,16 @@ SysParams_NTSC = {
     # (in case VITS white test areas are not present)
     "LD_VITS_code_slices": [(16, 12, 48, 85), (17, 12, 48, 85), (10, 13, 39, 85)],
 }
+
+# Calculate the exact line length for a given situation (such as
+# 4FSC)
+def calclinelen(SysParams, mult, mhz):
+    if type(mhz) == str:
+        mhz = SysParams[mhz]
+
+    return int(nb_round(SysParams["line_period"] * mhz * mult))
+
+# Compute dictionary entries for things tht use FSC, etc.
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.555(with a bar on top) usec
@@ -156,9 +161,7 @@ SysParams_PAL["outfreq"] = 4 * SysParams_PAL["fsc_mhz"]
 
 SysParams_PAL["vsync_ire"] = -0.3 * (100 / 0.7)
 
-# RFParams are tunable
-
-RFParams_NTSC = {
+FilterParams_NTSC = {
     # The audio notch filters are important with DD v3.0+ boards
     "audio_notchwidth": 350000,
     "audio_notchorder": 2,
@@ -184,14 +187,14 @@ RFParams_NTSC = {
 }
 
 # Settings for use with noisier disks
-RFParams_NTSC_lowband = RFParams_NTSC.copy().update({
+FilterParams_NTSC_lowband = FilterParams_NTSC.copy().update({
     # The audio notch filters are important with DD v3.0+ boards
     "video_bpf_low": 3800000,
     "video_bpf_high": 12500000,
     "video_lpf_freq": 4200000,  # in mhz
 })
 
-RFParams_PAL = {
+FilterParams_PAL = {
     # The audio notch filters are important with DD v3.0+ boards
     "audio_notchwidth": 200000,
     "audio_notchorder": 2,
@@ -213,7 +216,7 @@ RFParams_PAL = {
     "audio_filterorder": 900,
 }
 
-RFParams_PAL_lowband = RFParams_PAL.copy().update({
+FilterParams_PAL_lowband = FilterParams_PAL.copy().update({
     "video_bpf_low": 3200000,
     "video_bpf_high": 13000000,
     "video_bpf_order": 1,
@@ -254,19 +257,21 @@ class RFDecode:
 
     def __init__(
         self,
-        inputfreq=40,
-        system="NTSC",
-        blocklen=BLOCKSIZE,
-        decode_digital_audio=False,
-        decode_analog_audio=0,
-        has_analog_audio=True,
-        extra_options={},
+        inputfreq            = 40,
+        system               = "NTSC",
+        blocklen             = BLOCKSIZE,
+        decode_digital_audio = False,
+        decode_analog_audio  = 0,
+        has_analog_audio     = True,
+        extra_options        = {},
     ):
         """Initialize the RF decoder object.
 
-        inputfreq -- frequency of raw RF data (in Msps)
-        system    -- Which system is in use (PAL or NTSC)
-        blocklen  -- Block length for FFT processing
+        inputfreq            -- frequency of raw RF data (in Msps)
+                                WARNING: only tested at 40Msps w/other frequencies
+                                scaled to 40 in utils.py.
+        system               -- Which system is in use (PAL or NTSC)
+        blocklen             -- Block length for FFT processing
         decode_digital_audio -- Whether to apply EFM filtering
         decode_analog_audio  -- Whether or not to decode analog(ue) audio
         has_analog_audio     -- Whether or not analog(ue) audio channels are on the disk
@@ -279,12 +284,13 @@ class RFDecode:
 
         """
 
-        self.blocklen = blocklen
-        self.blockcut = 1024  # ???
+        self.blocklen     = blocklen
+        self.blockcut     = 1024 
         self.blockcut_end = 0
-        self.system = system
+        
+        self.system       = system
 
-        self.setupcount = 0
+        self.setupcount   = 0
 
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_NotchFilter = extra_options.get("PAL_V4300D_NotchFilter", False)
@@ -302,15 +308,15 @@ class RFDecode:
         if system == "NTSC":
             self.SysParams = copy.deepcopy(SysParams_NTSC)
             if lowband:
-                self.DecoderParams = copy.deepcopy(RFParams_NTSC_lowband)
+                self.DecoderParams = copy.deepcopy(FilterParams_NTSC_lowband)
             else:
-                self.DecoderParams = copy.deepcopy(RFParams_NTSC)
+                self.DecoderParams = copy.deepcopy(FilterParams_NTSC)
         elif system == "PAL":
             self.SysParams = copy.deepcopy(SysParams_PAL)
             if lowband:
-                self.DecoderParams = copy.deepcopy(RFParams_PAL_lowband)
+                self.DecoderParams = copy.deepcopy(FilterParams_PAL_lowband)
             else:
-                self.DecoderParams = copy.deepcopy(RFParams_PAL)
+                self.DecoderParams = copy.deepcopy(FilterParams_PAL)
 
         # Make (intentionally) mutable copies of HZ<->IRE levels
         for irekey in ['ire0', 'hz_ire', 'vsync_ire']:
@@ -329,7 +335,7 @@ class RFDecode:
 
         # note that deemp[0] is the t1 (high freuqency) coefficient, and 
         # deemp[1] is the t2 (low frequency) one.  These are passed in as
-        # microseconds, but need to be converted to seconds.
+        # microseconds, but are converted to seconds here.
 
         deemp_low, deemp_high = extra_options.get("deemp_coeff", (0, 0))
         if deemp_low > 0:
@@ -351,7 +357,7 @@ class RFDecode:
         self.hsync_tolerance = 0.4
 
         self.decode_digital_audio = decode_digital_audio
-        self.decode_analog_audio = decode_analog_audio
+        self.decode_analog_audio  = decode_analog_audio
 
         self.computefilters()
 
@@ -377,27 +383,22 @@ class RFDecode:
         if self.SysParams['AC3']:
             apass = 288000 * .5
 
-            # 
             fpass = lambda apass: [(self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
-            (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half]
-
-            # Need to clean these up
-            # self.Filters['AC3_fir'] = [sps.firwin(257, fpass(apass), pass_zero=False), [1.0]]
-            # XXX Made into IIR for some reason, check commit history here
-            self.Filters['AC3_fir'] = sps.butter(3, fpass(apass), btype='bandpass')
+                                   (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half]
 
             # This analog audio bandpass filter is an approximation of
             # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm, 
             # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
             # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
 
-            # empirically determined
-            self.Filters['AC3_iir'] = sps.butter(3, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
+            # However, the above didn't work, and we wound up with two IIR filters
+            self.Filters['AC3_bp1'] = sps.butter(3, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
+            self.Filters['AC3_bp2'] = sps.butter(3, fpass(apass), btype='bandpass')
 
-            firfilt = filtfft(self.Filters['AC3_fir'], self.blocklen)
-            iirfilt = filtfft(self.Filters['AC3_iir'], self.blocklen)
+            filt1 = filtfft(self.Filters['AC3_bp1'], self.blocklen)
+            filt2 = filtfft(self.Filters['AC3_bp2'], self.blocklen)
 
-            self.Filters['AC3'] = iirfilt * firfilt
+            self.Filters['AC3'] = filt1 * filt2
 
         self.computedelays()
 
@@ -494,7 +495,7 @@ class RFDecode:
         # Start building up the combined FFT filter using the BPF
         SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
 
-        # Notch filters for analog audio.  DdD captures on NTSC need this.
+        # Notch filters for analog audio RF.  DdD captures on NTSC need this.
         if SP["analog_audio"] and self.system == "NTSC":
             cut_left = sps.butter(
                 DP["audio_notchorder"],
@@ -545,7 +546,7 @@ class RFDecode:
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
-        SF["F05_offset"] = 32
+        SF["F05_offset"] = 32 # Reduced because filtfft is half-strength on FIR
         F0_5_fft = filtfft((F0_5, [1.0]), self.blocklen)
         SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * F0_5_fft
 
@@ -930,6 +931,11 @@ class RFDecode:
         return fakedecode, fakeoutput_emp
 
 
+''' The DemodCache class keeps track of each block of data, from the raw
+    input to the demodulated output.  This is threaded code and therefore
+    a bit of a mess, full of queues and locks and memory copies.
+'''
+
 class DemodCache:
     def __init__(
         self,
@@ -946,38 +952,38 @@ class DemodCache:
         self.rf = rf
         self.rf_args = rf_args
 
-        self.currentMTF = 1
-        self.MTF_tolerance = MTF_tolerance
+        self.currentMTF      = 1
+        self.MTF_tolerance   = MTF_tolerance
 
-        self.blocksize = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
+        self.blocksize       = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
 
         # Cache dictionary - key is block #, which holds data for that block
-        self.lrusize = cachesize
+        self.lrusize         = cachesize
 
         # should be in self.rf, but may not be computed yet
         self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
-        self.prefetch = int((self.bytes_per_field * 2) / self.blocksize) + 4
+        self.prefetch        = int((self.bytes_per_field * 2) / self.blocksize) + 4
 
-        self.lru = []
+        self.lru             = []
 
-        self.lock = threading.Lock()
-        self.blocks = {}
+        self.lock            = threading.Lock()
 
-        self.block_status = {}
+        self.blocks          = {}
+        self.block_status    = {}
 
-        self.q_in = Queue()
-        self.q_out = Queue()
-        self.waiting = set()
-        self.q_out_event = threading.Event()
+        self.q_in            = Queue()
+        self.q_out           = Queue()
+        self.waiting         = set()
+        self.q_out_event     = threading.Event()
 
-        self.threadpipes = []
-        self.threads = []
+        self.threadpipes     = []
+        self.threads         = []
 
-        self.request = 0
-        self.ended = False
+        self.request         = 0
+        self.ended           = False
 
-        self.deqeue_thread = threading.Thread(target=self.dequeue, daemon=True)
-        num_worker_threads = max(num_worker_threads - 1, 1)
+        self.deqeue_thread   = threading.Thread(target=self.dequeue, daemon=True)
+        num_worker_threads   = max(num_worker_threads - 1, 1)
 
         for i in range(num_worker_threads):
             t = threading.Thread(
@@ -1018,7 +1024,7 @@ class DemodCache:
                 if k in self.blocks:
                     del self.blocks[k]
                 if k in self.block_status:
-                    self.block_status[k]
+                    del self.block_status[k]
 
         self.lru = self.lru[: self.lrusize]
 
@@ -1435,6 +1441,9 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100, rv
 
     return output16, arange[-1] - frametime
 
+# XXX: bring this enum-like thing into Field
+# state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
+HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
 # The Field class contains common features used by NTSC and PAL
 class Field:
@@ -1683,9 +1692,6 @@ class Field:
         # ... and state length is set by the phase transition to set above (in H)
         state_length = None
 
-        # state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
-        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
-
         for p in pulses:
             spulse = None
 
@@ -1761,8 +1767,6 @@ class Field:
     @profile
     def refinepulses(self):
         self.LT = self.get_timings()
-
-        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
         i = 0
         valid_pulses = []
@@ -1850,8 +1854,6 @@ class Field:
             return None, None, None, None
 
         loc_presync = validpulses[firstblank - 1][1].start
-
-        HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
         pt = np.array([v[0] for v in validpulses[firstblank:]])
         pstart = np.array([v[1].start for v in validpulses[firstblank:]])
@@ -2421,11 +2423,10 @@ class Field:
 
         for l in np.where(self.linebad)[0]:
             prevgood = l - 1
-            nextgood = l + 1
-
             while prevgood >= 0 and self.linebad[prevgood]:
                 prevgood -= 1
 
+            nextgood = l + 1
             while nextgood < len(linelocs) and self.linebad[nextgood]:
                 nextgood += 1
 
@@ -2442,6 +2443,7 @@ class Field:
         for l in range(0, len(wow) - 1):
             wow[l] = self.get_linelen(l) / self.inlinelen
 
+        # smooth out wow in the sync area
         for l in range(self.lineoffset, self.lineoffset + 10):
             wow[l] = np.median(wow[l : l + 4])
 
@@ -2486,8 +2488,8 @@ class Field:
 
             # Finally convert to a time value
             audio_offset = -audsamp_offset * (self.rf.SysParams['line_period'] / 10000000)
-
         else:
+            # Either analog audio is disabled, or we're using hsync-locked sampling
             audio_offset = 0
 
         audio_thread = None
@@ -2507,8 +2509,6 @@ class Field:
         dsout = np.zeros((linesout * outwidth), dtype=np.double)
         # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
         lineoffset = self.lineoffset + 1
-
-        #print(lineinfo[linesout] - lineinfo[1])
 
         for l in range(lineoffset, linesout + lineoffset):
             if lineinfo[l + 1] > lineinfo[l]:
@@ -2711,8 +2711,6 @@ class Field:
         # filter out dropouts outside actual field
         iserr[:int(f.linelocs[f.lineoffset + 1])] = False
         iserr[int(f.linelocs[f.lineoffset + f.linecount + 1]):] = False
-
-        #print(iserr1.sum(), iserr2.sum(), iserr3.sum(), iserr_rf.sum(), iserr.sum())
 
         return iserr
 
