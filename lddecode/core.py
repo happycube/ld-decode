@@ -1120,6 +1120,7 @@ class DemodCache:
         with self.lock:
             for b in blocknums:
                 if b not in self.blocks:
+                    self.blocks[b] = None
                     LRUupdate(self.lru, b)
 
                     rawdata = self.loader(
@@ -1127,15 +1128,19 @@ class DemodCache:
                     )
 
                     if rawdata is None or len(rawdata) < self.rf.blocklen:
-                        self.blocks[b] = None
-                        return None
+                        continue
 
-                    self.blocks[b] = {}
-                    self.blocks[b]["rawinput"] = rawdata
+                    self.blocks[b] = {'MTF'     : -1, 
+                                    'request' : -1, 
+                                    'waiting' : False, 
+                                    'prefetch': False,
+                                    'rawinput': rawdata}
 
                 if self.blocks[b] is None:
-                    reached_end = True
-                    break
+                    if not prefetch:
+                        return None
+                        
+                    continue
 
                 waiting = False
                 if b in self.blocks:
@@ -1166,7 +1171,7 @@ class DemodCache:
                 self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
         self.q_out_event.clear()
-        return None if reached_end else need_blocks
+        return need_blocks
 
     def dequeue(self):
         # This is the thread's main loop - run until killed.
