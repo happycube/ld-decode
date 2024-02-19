@@ -1027,18 +1027,14 @@ class DemodCache:
 
     def flush_demod(self, first_block = 0, prefetch_only=False):
         """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
-        blocks_toredo = []
 
         with self.lock:
             for k in self.blocks.keys():
                 if k < first_block:
                     continue 
 
-                if prefetch_only and self.blocks[k]['prefetch'] == False:
+                if prefetch_only and not self.blocks[k]['prefetch']:
                     continue
-
-                if self.blocks[k]['prefetch'] == True:
-                    blocks_toredo.append(k)
 
                 self.blocks[k]['MTF']      = -1
                 self.blocks[k]['request']  = -1
@@ -1048,12 +1044,7 @@ class DemodCache:
                 if 'demod' not in self.blocks[k]:
                     continue
 
-                if k not in blocks_toredo:
-                    blocks_toredo.append(k)
-
                 del self.blocks[k]['demod']
-
-        return blocks_toredo
 
     def apply_newparams(self, newparams):
         for k in newparams.keys():
@@ -1066,9 +1057,6 @@ class DemodCache:
         self.rf.computefilters()
 
     def worker(self):
-        blocksrun = 0
-        blockstime = 0
-
         rf = RFDecode(**self.rf_args)
 
         while True:
@@ -1078,32 +1066,33 @@ class DemodCache:
                 return
 
             if item[0] == "DEMOD":
-                blocknum, block, target_MTF, request = item[1:]
+                with self.lock:
+                    blocknum = item[1]
+                    block    = self.blocks[blocknum]
+                    if not block['waiting'] or block['processing']:
+                        continue
 
-                output = {}
+                    target_MTF = block['MTF']
+                    request = block['request']
+                    block['processing'] = True
 
                 if "fft" not in block:
-                    output["fft"] = npfft.fft(block["rawinput"])
-                    fftdata = output["fft"]
-                else:
-                    fftdata = block["fft"]
+                    block["fft"] = npfft.fft(block["rawinput"])
 
-                if True or (
-                    "demod" not in block
-                    or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
-                ):
-                    st = time.time()
-                    output["demod"] = rf.demodblock(
-                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
-                    )
-                    blockstime += time.time() - st
-                    blocksrun += 1
+                fftdata = block["fft"]
 
-                    output["MTF"] = target_MTF
-                    output["request"] = request
+                demod = rf.demodblock(
+                    data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
+                )
 
-                # print(blocknum, output)
-                self.q_out.put((blocknum, output))
+                with self.lock:
+                    block['demod'] = demod
+                    block["demod_MTF"] = target_MTF
+                    block["demod_request"] = request
+                    block["demod_count"]   += 1
+                    block['processing'] = False
+
+                    self.q_out.put(blocknum)
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
@@ -1111,11 +1100,9 @@ class DemodCache:
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = []
         queuelist = []
-        reached_end = False
 
         if redo:
-            for b in self.flush_demod(prefetch_only=True):
-                continue
+            self.flush_demod(prefetch_only=True)
 
         with self.lock:
             for b in blocknums:
@@ -1134,6 +1121,8 @@ class DemodCache:
                                           'request' : -1, 
                                           'waiting' : False, 
                                           'prefetch': False,
+                                          'processing': False,
+                                          'demod_count': 0,
                                           'rawinput': rawdata}
 
                 if b not in self.blocks:
@@ -1158,7 +1147,7 @@ class DemodCache:
                 self.blocks[b]['request']  = self.request
                 self.blocks[b]['waiting']  = True
                 self.blocks[b]['prefetch'] = prefetch
-                self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
+                self.q_in.put(("DEMOD", b))
 
         self.q_out_event.clear()
         return need_blocks
@@ -1171,17 +1160,21 @@ class DemodCache:
                 return
 
             with self.lock:
-                blocknum, item = rv
+                blocknum = rv
+                item = self.blocks[blocknum]
+
+                #print(blocknum, item['demod_count'])
 
                 if "MTF" not in item or "demod" not in item:
                     # This shouldn't happen, but was observed by Simon on a decode
                     logger.error(
                         "incomplete demodulated block placed on queue, block #%d", blocknum
                     )
+                    print(item.keys(), item['demod_count'])
                     self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
                     continue
 
-                if item['request'] == self.blocks[blocknum]['request']:
+                if item['demod_request'] == self.blocks[blocknum]['request']:
                     for k in item.keys():
                         self.blocks[blocknum][k] = item[k]
 
