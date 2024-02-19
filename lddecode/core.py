@@ -1115,7 +1115,7 @@ class DemodCache:
 
         if redo:
             for b in self.flush_demod(prefetch_only=True):
-                queuelist.append(b)
+                continue
 
         with self.lock:
             for b in blocknums:
@@ -1152,9 +1152,8 @@ class DemodCache:
 
                 if redo or not waiting:
                     queuelist.append(b)
-                    need_blocks.append(b)
-                elif waiting:
-                    need_blocks.append(b)
+                
+                need_blocks.append(b)
 
                 if not prefetch:
                     self.waiting.add(b)
@@ -1205,7 +1204,7 @@ class DemodCache:
                         self.rf.blockcut : -self.rf.blockcut_end
                     ]
 
-    def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
+    def read(self, begin, length, MTF=0, getraw=False, forceredo=False):
         # transpose the cache by key, not block #
         t = {"input": [], "fft": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
@@ -1480,7 +1479,7 @@ class Field:
     #@profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
-        #print(self.readloc, self.linelocs1, self.nextfieldoffset)
+
         if self.linelocs1 is None:
             if self.nextfieldoffset is None:
                 self.nextfieldoffset = self.rf.linelen * 200
