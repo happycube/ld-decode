@@ -1120,7 +1120,6 @@ class DemodCache:
         with self.lock:
             for b in blocknums:
                 if b not in self.blocks:
-                    self.blocks[b] = None
                     LRUupdate(self.lru, b)
 
                     rawdata = self.loader(
@@ -1128,31 +1127,22 @@ class DemodCache:
                     )
 
                     if rawdata is None or len(rawdata) < self.rf.blocklen:
-                        continue
+                        if not prefetch:
+                            return None
+                    else:
+                        self.blocks[b] = {'MTF'   : -1, 
+                                          'request' : -1, 
+                                          'waiting' : False, 
+                                          'prefetch': False,
+                                          'rawinput': rawdata}
 
-                    self.blocks[b] = {'MTF'     : -1, 
-                                    'request' : -1, 
-                                    'waiting' : False, 
-                                    'prefetch': False,
-                                    'rawinput': rawdata}
-
-                if self.blocks[b] is None:
-                    if not prefetch:
-                        return None
-                        
+                if b not in self.blocks:
                     continue
 
-                waiting = False
-                if b in self.blocks:
-                    waiting = self.blocks[b].get("waiting", False)
+                waiting = self.blocks[b].get("waiting", False)
 
                 # Until the block is actually ready, this comparison will hit an unknown key
-                if (
-                    not redo
-                    and not waiting
-                    and "request" in self.blocks[b]
-                    and "demod"   in self.blocks[b]
-                ):
+                if not redo and not waiting and "demod" in self.blocks[b]:
                     continue
 
                 if redo or not waiting:
