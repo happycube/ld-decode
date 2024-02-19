@@ -328,6 +328,19 @@ def main(args=None):
     version = get_git_info()
     logger.debug("ld-decode branch " + version[0] + " build " + version[1])
 
+    DecoderParamsOverride = {}
+    if args.vbpf_low is not None:
+        DecoderParamsOverride["video_bpf_low"] = args.vbpf_low * 1000000
+
+    if args.vbpf_high is not None:
+        DecoderParamsOverride["video_bpf_high"] = args.vbpf_high * 1000000
+
+    if args.vlpf is not None:
+        DecoderParamsOverride["video_lpf_freq"] = args.vlpf * 1000000
+
+    if args.vlpf_order >= 1:
+        DecoderParamsOverride["video_lpf_order"] = args.vlpf_order
+
     ldd = LDdecode(
         filename,
         outname,
@@ -340,6 +353,7 @@ def main(args=None):
         doDOD=not args.nodod,
         threads=args.threads,
         extra_options=extra_options,
+        DecoderParamsOverride=DecoderParamsOverride,
     )
 
     signal.signal(signal.SIGINT, original_sigint_handler)
@@ -358,22 +372,6 @@ def main(args=None):
         if ldd.seek(args.seek if firstframe == 0 else firstframe, args.seek) is None:
             print("ERROR: Seeking failed", file=sys.stderr)
             sys.exit(1)
-
-    DecoderParamsOverride = {}
-    if args.vbpf_high is not None:
-        DecoderParamsOverride["video_bpf_high"] = args.vbpf_high * 1000000
-    
-    if args.vbpf_low is not None:
-        DecoderParamsOverride["video_bpf_low"]  = args.vbpf_low * 1000000
-
-    if args.vlpf is not None:
-        DecoderParamsOverride["video_lpf_freq"] = args.vlpf * 1000000
-
-    if args.vlpf_order >= 1:
-        DecoderParamsOverride["video_lpf_order"] = args.vlpf_order
-
-    if len(DecoderParamsOverride.keys()):
-        ldd.demodcache.setparams(DecoderParamsOverride)
 
     if args.verboseVITS:
         ldd.verboseVITS = True
