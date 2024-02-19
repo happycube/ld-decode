@@ -231,6 +231,14 @@ def main(args=None):
     )
 
     parser.add_argument(
+        "--video_bpf_low",
+        dest="vbpf_low",
+        metavar="FREQ",
+        type=parse_frequency,
+        default=None,
+        help="Video BPF high end frequency",
+    )
+    parser.add_argument(
         "--video_bpf_high",
         dest="vbpf_high",
         metavar="FREQ",
@@ -354,6 +362,9 @@ def main(args=None):
     DecoderParamsOverride = {}
     if args.vbpf_high is not None:
         DecoderParamsOverride["video_bpf_high"] = args.vbpf_high * 1000000
+    
+    if args.vbpf_low is not None:
+        DecoderParamsOverride["video_bpf_low"]  = args.vbpf_low * 1000000
 
     if args.vlpf is not None:
         DecoderParamsOverride["video_lpf_freq"] = args.vlpf * 1000000

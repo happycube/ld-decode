@@ -187,12 +187,10 @@ FilterParams_NTSC = {
 }
 
 # Settings for use with noisier disks
-FilterParams_NTSC_lowband = FilterParams_NTSC.copy().update({
-    # The audio notch filters are important with DD v3.0+ boards
-    "video_bpf_low": 3800000,
-    "video_bpf_high": 12500000,
-    "video_lpf_freq": 4200000,  # in mhz
-})
+RFParams_NTSC_lowband = RFParams_NTSC.copy()
+RFParams_NTSC_lowband['video_bpf_low']  = 3800000
+RFParams_NTSC_lowband['video_bpf_high'] = 12500000
+RFParams_NTSC_lowband['video_lpf_freq'] = 4200000
 
 FilterParams_PAL = {
     # The audio notch filters are important with DD v3.0+ boards
@@ -216,13 +214,12 @@ FilterParams_PAL = {
     "audio_filterorder": 900,
 }
 
-FilterParams_PAL_lowband = FilterParams_PAL.copy().update({
-    "video_bpf_low": 3200000,
-    "video_bpf_high": 13000000,
-    "video_bpf_order": 1,
-    "video_lpf_freq": 4800000,
-})
-
+# Settings for use with noisier disks
+RFParams_PAL_lowband = RFParams_PAL.copy()
+RFParams_PAL_lowband['video_bpf_low']   = 3200000
+RFParams_PAL_lowband['video_bpf_high']  = 13000000
+RFParams_PAL_lowband['video_bpf_order'] = 13000000
+RFParams_PAL_lowband['video_lpf_freq']  = 4800000
 
 class RFDecode:
     """The core RF decoding code.
