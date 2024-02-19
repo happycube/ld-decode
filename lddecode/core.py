@@ -957,14 +957,12 @@ class DemodCache:
 
         self.blocksize       = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
 
-        # Cache dictionary - key is block #, which holds data for that block
-        self.lrusize         = cachesize
-
         # should be in self.rf, but may not be computed yet
         self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
         self.prefetch        = int((self.bytes_per_field * 2) / self.blocksize) + 4
 
         self.lru             = []
+        self.lrusize         = cachesize + self.prefetch
 
         self.lock            = threading.Lock()
 
@@ -978,7 +976,7 @@ class DemodCache:
         self.threadpipes     = []
         self.threads         = []
 
-        self.request         = 0
+        self.request         = 1
         self.ended           = False
 
         self.deqeue_thread   = threading.Thread(target=self.dequeue, daemon=True)
@@ -1038,7 +1036,6 @@ class DemodCache:
 
                 self.blocks[k]['MTF']      = -1
                 self.blocks[k]['request']  = -1
-                self.blocks[k]['waiting']  = False
                 self.blocks[k]['prefetch'] = False
 
                 if 'demod' not in self.blocks[k]:
@@ -1069,12 +1066,12 @@ class DemodCache:
                 with self.lock:
                     blocknum = item[1]
                     block    = self.blocks[blocknum]
-                    if not block['waiting'] or block['processing']:
+                    if block['processing']:
                         continue
 
                     target_MTF = block['MTF']
                     request = block['request']
-                    block['processing'] = True
+                    block['processing'] = request
 
                 if "fft" not in block:
                     block["fft"] = npfft.fft(block["rawinput"])
@@ -1086,11 +1083,11 @@ class DemodCache:
                 )
 
                 with self.lock:
-                    block['demod'] = demod
-                    block["demod_MTF"] = target_MTF
+                    block['demod']         = demod
+                    block["demod_MTF"]     = target_MTF
                     block["demod_request"] = request
                     block["demod_count"]   += 1
-                    block['processing'] = False
+                    block['processing']    = 0
 
                     self.q_out.put(blocknum)
             elif item[0] == "NEWPARAMS":
@@ -1119,16 +1116,15 @@ class DemodCache:
                     else:
                         self.blocks[b] = {'MTF'   : -1, 
                                           'request' : -1, 
-                                          'waiting' : False, 
                                           'prefetch': False,
-                                          'processing': False,
+                                          'processing': 0,
                                           'demod_count': 0,
                                           'rawinput': rawdata}
 
                 if b not in self.blocks:
                     continue
 
-                waiting = self.blocks[b].get("waiting", False)
+                waiting = self.blocks[b]['request'] > 0
 
                 # Until the block is actually ready, this comparison will hit an unknown key
                 if not redo and not waiting and "demod" in self.blocks[b]:
@@ -1145,7 +1141,6 @@ class DemodCache:
             for b in queuelist:
                 self.blocks[b]['MTF']      = MTF
                 self.blocks[b]['request']  = self.request
-                self.blocks[b]['waiting']  = True
                 self.blocks[b]['prefetch'] = prefetch
                 self.q_in.put(("DEMOD", b))
 
@@ -1171,21 +1166,24 @@ class DemodCache:
                         "incomplete demodulated block placed on queue, block #%d", blocknum
                     )
                     print(item.keys(), item['demod_count'])
-                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
+                    self.q_in.put(("DEMOD", blocknum))
                     continue
 
+
+                #print(item['demod_count'], self.blocks[blocknum]['request'], item['demod_request'])
                 if item['demod_request'] == self.blocks[blocknum]['request']:
                     for k in item.keys():
                         self.blocks[blocknum][k] = item[k]
-
-                    if 'demod' in item.keys():
-                        self.blocks[blocknum]['waiting'] = False
 
                     if blocknum in self.waiting:
                         self.waiting.remove(blocknum)
 
                     if not len(self.waiting):
                         self.q_out_event.set()
+
+                    self.blocks[blocknum]['request'] = 0
+                else:
+                    self.q_in.put(("DEMOD", blocknum))
 
                 if "input" not in self.blocks[blocknum]:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
@@ -1220,7 +1218,7 @@ class DemodCache:
             return rv
 
         while need_blocks is not None and len(need_blocks):
-            self.q_out_event.wait(.01)
+            self.q_out_event.wait(1)
             need_blocks = self.doread(toread, MTF)
             if need_blocks:
                 self.q_out_event.clear()
