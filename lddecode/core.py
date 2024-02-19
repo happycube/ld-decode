@@ -15,8 +15,7 @@ import scipy.interpolate as spi
 import numba
 from numba import njit
 
-# Use standard numpy fft, since it's thread-safe
-import numpy.fft as npfft
+import scipy.fft as npfft
 
 # internal libraries
 
@@ -187,10 +186,10 @@ FilterParams_NTSC = {
 }
 
 # Settings for use with noisier disks
-RFParams_NTSC_lowband = RFParams_NTSC.copy()
-RFParams_NTSC_lowband['video_bpf_low']  = 3800000
-RFParams_NTSC_lowband['video_bpf_high'] = 12500000
-RFParams_NTSC_lowband['video_lpf_freq'] = 4200000
+FilterParams_NTSC_lowband = FilterParams_NTSC.copy()
+FilterParams_NTSC_lowband['video_bpf_low']  = 3800000
+FilterParams_NTSC_lowband['video_bpf_high'] = 12500000
+FilterParams_NTSC_lowband['video_lpf_freq'] = 4200000
 
 FilterParams_PAL = {
     # The audio notch filters are important with DD v3.0+ boards
@@ -215,11 +214,11 @@ FilterParams_PAL = {
 }
 
 # Settings for use with noisier disks
-RFParams_PAL_lowband = RFParams_PAL.copy()
-RFParams_PAL_lowband['video_bpf_low']   = 3200000
-RFParams_PAL_lowband['video_bpf_high']  = 13000000
-RFParams_PAL_lowband['video_bpf_order'] = 13000000
-RFParams_PAL_lowband['video_lpf_freq']  = 4800000
+FilterParams_PAL_lowband = FilterParams_PAL.copy()
+FilterParams_PAL_lowband['video_bpf_low']   = 3200000
+FilterParams_PAL_lowband['video_bpf_high']  = 13000000
+FilterParams_PAL_lowband['video_bpf_order'] = 13000000
+FilterParams_PAL_lowband['video_lpf_freq']  = 4800000
 
 class RFDecode:
     """The core RF decoding code.
@@ -254,13 +253,14 @@ class RFDecode:
 
     def __init__(
         self,
-        inputfreq            = 40,
-        system               = "NTSC",
-        blocklen             = BLOCKSIZE,
-        decode_digital_audio = False,
-        decode_analog_audio  = 0,
-        has_analog_audio     = True,
-        extra_options        = {},
+        inputfreq               = 40,
+        system                  = "NTSC",
+        blocklen                = BLOCKSIZE,
+        decode_digital_audio    = False,
+        decode_analog_audio     = 0,
+        has_analog_audio        = True,
+        extra_options           = {},
+        decoder_params_override = {},
     ):
         """Initialize the RF decoder object.
 
@@ -318,6 +318,9 @@ class RFDecode:
         # Make (intentionally) mutable copies of HZ<->IRE levels
         for irekey in ['ire0', 'hz_ire', 'vsync_ire']:
             self.DecoderParams[irekey] = self.SysParams[irekey]
+
+        for k in decoder_params_override.keys():
+            self.DecoderParams[k] = decoder_params_override[k]
 
         self.SysParams["analog_audio"] = has_analog_audio
         self.SysParams["AC3"] = extra_options.get("AC3", False)
@@ -1264,7 +1267,6 @@ class DemodCache:
         return rv
 
     def setparams(self, params):
-        # XXX: This should flush out the data, but right now this isn't used at all
         for p in self.threadpipes:
             p[0].send(("NEWPARAMS", params))
 
@@ -3314,6 +3316,7 @@ class LDdecode:
         threads=4,
         inputfreq=40,
         extra_options={},
+        DecoderParamsOverride={}
     ):
         global logger
         self.logger = _logger
@@ -3402,6 +3405,7 @@ class LDdecode:
             'has_analog_audio':self.has_analog_audio,
             'extra_options':extra_options,
             'blocklen': 32 * 1024,
+            'decoder_params_override': DecoderParamsOverride
         }
 
         self.rf = RFDecode(**self.rf_opts)
