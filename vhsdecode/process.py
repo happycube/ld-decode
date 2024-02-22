@@ -8,7 +8,11 @@ import scipy.signal as sps
 from collections import namedtuple
 
 import lddecode.core as ldd
-from lddecode.core import npfft
+
+# from lddecode.core import npfft
+# Use numpy fft rather than scipy fft as is imported in lddecode core as it seems to be slightly faster.
+import numpy.fft as npfft
+
 import lddecode.utils as lddu
 import vhsdecode.utils as utils
 from vhsdecode.utils import StackableMA, filtfft
