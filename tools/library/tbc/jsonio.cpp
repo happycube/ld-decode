@@ -25,7 +25,7 @@
 #include "jsonio.h"
 
 #include <limits>
-#if (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || ((defined(__GNUC__) && __GNUC__ >= 14 &&  __cplusplus >= 201703L))
+#if (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L) || ((defined(__GNUC__) && __GNUC__ >= 11 &&  __cplusplus >= 201703L))
 #define USE_CHARCONV
 #endif
 #ifdef USE_CHARCONV
