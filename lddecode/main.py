@@ -269,6 +269,13 @@ def main(args=None):
         default=None,
         help="Analog audio filter width",
     )
+    parser.add_argument(
+        "--use_profiler",
+        action="store_true",
+        default=False,
+        help="Enable line_profiler on select functions",
+    )
+
 
     args = parser.parse_args(args)
     # print(args)
@@ -295,6 +302,7 @@ def main(args=None):
         "MTF_offset": args.MTF_offset,
         "audio_filterwidth": args.audio_filterwidth,
         "AC3": args.AC3,
+        "use_profiler": args.use_profiler,
     }
 
     if vid_standard == "NTSC" and args.NTSC_color_notch_filter:

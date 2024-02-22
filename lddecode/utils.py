@@ -23,6 +23,13 @@ try:
 except ImportError:
     pass
 
+# If profiling is not enabled, make it a pass-through wrapper
+try:
+    profile
+except:
+    def profile(fn):
+        return fn
+
 # This runs a cubic scaler on a line.
 # originally from https://www.paulinternet.nl/?page=bicubic
 @njit(nogil=True, cache=True)
@@ -262,56 +269,20 @@ def unpack_data_4_40(indata, readlen, offset):
     # Could've used dtype argument to right_shift but numba didn't like that.
     #
     indatai16 = indata.astype(np.uint16)
-    unpacked[0::4] = (indatai16[0::5] << 2) | ((indata[1::5] >> 6) & 0x03)
+
+    unpacked[0::4] = ( indatai16[0::5] << 2)         | ((indata[1::5] >> 6) & 0x03)
     unpacked[1::4] = ((indatai16[1::5] & 0x3F) << 4) | ((indata[2::5] >> 4) & 0x0F)
     unpacked[2::4] = ((indatai16[2::5] & 0x0F) << 6) | ((indata[3::5] >> 2) & 0x3F)
     unpacked[3::4] = ((indatai16[3::5] & 0x03) << 8) | indata[4::5]
 
     # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
     rv_unsigned = unpacked[offset : offset + readlen]
-    rv_signed = np.left_shift(rv_unsigned - 512, 6).astype(np.int16)
-
-    # # Original implementation.
-    #  unpacked = np.zeros(readlen + 4, dtype=np.uint16)
-    # # we need to load the 8-bit data into the 16-bit unpacked for left_shift to work
-    # # correctly...
-    # unpacked[0::4] = indata[0::5]
-    # np.left_shift(unpacked[0::4], 2, out=unpacked[0::4])
-    # np.bitwise_or(
-    #     unpacked[0::4],
-    #     np.bitwise_and(np.right_shift(indata[1::5], 6), 0x03),
-    #     out=unpacked[0::4],
-    # )
-
-    # unpacked[1::4] = np.bitwise_and(indata[1::5], 0x3F)
-    # np.left_shift(unpacked[1::4], 4, out=unpacked[1::4])
-    # np.bitwise_or(
-    #     unpacked[1::4],
-    #     np.bitwise_and(np.right_shift(indata[2::5], 4), 0x0F),
-    #     out=unpacked[1::4],
-    # )
-
-    # unpacked[2::4] = np.bitwise_and(indata[2::5], 0x0F)
-    # np.left_shift(unpacked[2::4], 6, out=unpacked[2::4])
-    # np.bitwise_or(
-    #     unpacked[2::4],
-    #     np.bitwise_and(np.right_shift(indata[3::5], 2), 0x3F),
-    #     out=unpacked[2::4],
-    # )
-
-    # unpacked[3::4] = np.bitwise_and(indata[3::5], 0x03)
-    # np.left_shift(unpacked[3::4], 8, out=unpacked[3::4])
-    # np.bitwise_or(unpacked[3::4], indata[4::5], out=unpacked[3::4])
-
-    # # convert back to original DdD 16-bit format (signed 16-bit, left shifted)
-    # rv_unsigned = unpacked[offset : offset + readlen].copy()
-    # rv_signed = np.left_shift(rv_unsigned.astype(np.int16) - 512, 6)
+    rv_signed   = np.left_shift(rv_unsigned - 512, 6).astype(np.int16)
 
     return rv_signed
 
 
-# The bit twiddling is a bit more complex than I'd like... but eh.  I think
-# it's debugged now. ;)
+@profile
 def load_packed_data_4_40(infile, sample, readlen):
     """Load data from packed DdD format (4 x 10-bits packed in 5 bytes)"""
     start = (sample // 4) * 5
