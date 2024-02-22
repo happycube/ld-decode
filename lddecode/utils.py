@@ -1003,6 +1003,18 @@ notchrange = lambda f, notchwidth, hz: [
 def nb_median(m):
     return np.median(m)
 
+# Enabling nogil here kills performance - cache issues?
+@njit(cache=True,nogil=False)
+def nb_concatenate(m):
+    tlen = sum([len(i) for i in m])
+
+    out = np.empty(tlen, dtype=m[0].dtype)
+    pos = 0
+    for i in m:
+        out[pos : pos + len(i)] = i
+        pos += len(i)
+
+    return out
 
 @njit(cache=True,nogil=True)
 def nb_round(m):

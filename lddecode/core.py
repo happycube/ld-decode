@@ -27,7 +27,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt, n_ornotrange
+from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -1205,7 +1205,7 @@ class DemodCache:
     @profile
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block #
-        t = {"input": [], "fft": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
+        t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
         self.currentMTF = MTF
         if forceredo:
@@ -1480,7 +1480,7 @@ class Field:
 
         self.use_threads = use_threads
 
-    #@profile
+    @profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
         #print(self.readloc, self.linelocs1, self.nextfieldoffset)
@@ -3189,6 +3189,7 @@ class FieldNTSC(Field):
             # Should we warn here? (Provided this can actually occur.)
             return 0
 
+    @profile
     def compute_burst_offsets(self, linelocs):
         rising_sum = 0
         adjs = {}
@@ -3208,6 +3209,7 @@ class FieldNTSC(Field):
 
         return field14, adjs
 
+    @profile
     def refine_linelocs_burst(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2
@@ -3286,6 +3288,7 @@ class FieldNTSC(Field):
     def __init__(self, *args, **kwargs):
         super(FieldNTSC, self).__init__(*args, **kwargs)
 
+    @profile
     def process(self):
         super(FieldNTSC, self).process()
 
@@ -3733,6 +3736,8 @@ class LDdecode:
                 self.fieldstack.insert(0, None)
 
             if f and f.valid:
+                # Downscaling is time consuming, but currently things are
+                # blocking on the decode thread started above finishing
                 picture, audio, efm = f.downscale(
                     linesout=self.output_lines, 
                     final=True, 
