@@ -3,7 +3,7 @@
 
 mkdir build_appimage
 cd build_appimage
-cmake .. -DUSE_QT_VERSION=5 -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_PYTHON=OFF -DBUILD_LDF_READER=OFF
+cmake .. -DUSE_QT_VERSION=5 -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_PYTHON=OFF -DBUILD_LDF_READER=OFF -DCMAKE_BUILD_TYPE=Release
 make -j3
 # Full path needed due to python command
 make install DESTDIR="$PWD/AppDir"
