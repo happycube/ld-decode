@@ -12,8 +12,9 @@ wget -nc https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.t
 cp  ffmpeg ./AppDir/usr/bin/
 
 # Needs linuxdeploy-qt appimage alongside linuxdeploy one
-wget -nc https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20220822-1/linuxdeploy-x86_64.AppImage
+wget -nc https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 wget -nc https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+
 chmod +x linuxdeploy-x86_64.AppImage
 chmod +x linuxdeploy-plugin-qt-x86_64.AppImage
 ./linuxdeploy-x86_64.AppImage --plugin qt -d ../resources/dd86.desktop -i ../tools/ld-analyse/Graphics/64-analyse.png --appdir AppDir/ --output appimage --custom-apprun ../resources/AppRun
