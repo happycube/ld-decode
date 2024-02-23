@@ -1,0 +1,35 @@
+name: "Build Windows decode"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-decode:
+    name: Build vhs-decode (x86_64)
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Python module
+        run: |
+          pip install . setuptools Cython pyinstaller pyinstaller-versionfile -r ./requirements.txt
+          python setup.py build_ext --inplace
+
+      - name: Build Windows binary
+        run: |
+          python .\scripts\ci\build-windows-decode-bin.py
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhs-decode_windows_x86_64
+          path: dist/decode.exe
+          if-no-files-found: error

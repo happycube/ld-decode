@@ -1,0 +1,109 @@
+name: "Build Windows tools"
+
+on:
+  workflow_dispatch:
+
+env:
+  # other tools to be bundled
+  FFMPEG_FILE: "ffmpeg-6.1.1-full_build.zip"
+  FFMPEG_PATH: "ffmpeg-6.1.1-full_build"
+  FFMPEG_URL: "https://github.com/GyanD/codexffmpeg/releases/download/6.1.1/ffmpeg-6.1.1-full_build.zip"
+  FLAC_FILE: "flac-1.4.3-win.zip"
+  FLAC_PATH: "flac-1.4.3-win"
+  FLAC_URL: "https://ftp.osuosl.org/pub/xiph/releases/flac/flac-1.4.3-win.zip"
+  FLALDF_FILE: "FlaLDF-v0.1-2-win-x64.zip"
+  FLALDF_PATH: "flaldf"
+  FLALDF_URL: "https://github.com/TokugawaHeavyIndustries/FlaLDF/releases/download/v0.1b/FlaLDF-v0.1-2-win-x64.zip"
+
+jobs:
+  build-tbc-tools:
+    name: Build tbc-tools (x86_64)
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: lukka/get-cmake@latest
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: "fba75d09065fcc76a25dcf386b1d00d33f5175af"
+
+      - name: Run CMake
+        uses: lukka/run-cmake@v10
+        with:
+          configurePreset: vcpkg
+          configurePresetAdditionalArgs: "['-G Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DUSE_QT_VERSION=6', '-DBUILD_PYTHON=false', '-DVCPKG_APPLOCAL_DEPS=ON']"
+          buildPreset: vcpkg
+          buildPresetAdditionalArgs: "['--config Release']"
+
+      - name: Create release directory
+        run: New-Item -ItemType Directory -Path release
+
+      - name: Copy binaries to release directory
+        run: Get-ChildItem -Recurse -Path build\tools\* -Include *.exe, *.dll | Copy-Item -Destination release\
+
+      - name: Copy Qt plugins to release directory
+        run: Copy-Item -Recurse -Exclude *.pdb -Path build\vcpkg_installed\x64-windows\Qt6\plugins\* -Destination release\
+
+      - name: Copy license files to release directory
+        run: |
+          New-Item -ItemType Directory -Path release\LICENSES
+          "brotli", `
+          "bzip2", `
+          "double-conversion", `
+          "fftw3", `
+          "freetype", `
+          "getopt-win32", `
+          "harfbuzz", `
+          "icu", `
+          "libpng", `
+          "openssl", `
+          "pcre2", `
+          "qtbase", `
+          "qwt", `
+          "zlib", `
+          "zstd" | ForEach-Object { Copy-Item -Path build\vcpkg_installed\x64-windows\share\$($_)\copyright -Destination release\LICENSES\copyright-$($_) }
+          Rename-Item -Path release\LICENSES\copyright-qtbase -NewName copyright-qt6
+
+      - name: Copy scripts to release directory
+        run: Copy-Item .\scripts\Windows\*.bat -Destination release\
+
+      - name: Download and copy FFmpeg to release directory
+        run: |
+          Invoke-WebRequest "${{ env.FFMPEG_URL }}" -OutFile ffmpeg.zip
+          Expand-Archive .\ffmpeg.zip -DestinationPath .
+          Copy-Item -Path .\${{ env.FFMPEG_PATH}}\bin\ffmpeg.exe -Destination release\
+          Copy-Item -Path .\${{ env.FFMPEG_PATH}}\LICENSE -Destination release\LICENSES\copyright-ffmpeg
+
+      - name: Download and copy FLAC to release directory
+        run: |
+          Invoke-WebRequest "${{ env.FLAC_URL }}" -OutFile flac.zip
+          Expand-Archive .\flac.zip -DestinationPath .
+          Copy-Item -Path .\${{ env.FLAC_PATH }}\Win64\* -Destination release\
+          Copy-Item -Path .\${{ env.FLAC_PATH }}\COPYING.GPL -Destination release\LICENSES\copyright-flac
+
+      - name: Download and copy FlaLDF to release directory
+        run: |
+          Invoke-WebRequest "${{ env.FLALDF_URL }}" -OutFile flaldf.zip
+          New-Item -ItemType Directory -Path ${{ env.FLALDF_PATH }}
+          Expand-Archive .\flaldf.zip -DestinationPath .\${{ env.FLALDF_PATH }}\
+          Copy-Item -Path .\${{ env.FLALDF_PATH }}\* -Destination release\
+
+      # uncomment to compress release directory
+      # this is not required when releasing as an artifact
+      #- name: Create release archive
+      #  run: |
+      #    Rename-Item -Path .\release -NewName .\tbc-tools
+      #    Compress-Archive -Path .\tbc-tools -DestinationPath tbc-tools.zip
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tbc-tools_windows_x86_64
+          path: release
+          if-no-files-found: error

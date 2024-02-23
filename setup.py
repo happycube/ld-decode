@@ -31,6 +31,7 @@ setup(
     scripts=[
         'ld-cut',
         'cx-expander',
+        'decode.py',
     ],
     # scripts=[
     #    'cx-expander',

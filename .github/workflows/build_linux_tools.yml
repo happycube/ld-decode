@@ -1,0 +1,87 @@
+name: "Build Linux tools"
+
+on:
+  workflow_dispatch:
+
+env:
+  FLALDF_FILE: "FlaLDF-v0.1-2-linux-x64.tar.gz"
+  FLALDF_URL: "https://github.com/TokugawaHeavyIndustries/FlaLDF/releases/download/v0.1b/FlaLDF-v0.1-2-linux-x64.tar.gz"
+
+  APPIMAGE_FILE: "linuxdeploy-x86_64.AppImage"
+  APPIMAGE_URL: "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+  APPIMAGE_PLUGIN_FILE: "linuxdeploy-plugin-appimage-x86_64.AppImage"
+  APPIMAGE_PLUGIN_URL: "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage"
+  APPIMAGE_QT_FILE: "linuxdeploy-plugin-qt-x86_64.AppImage"
+  APPIMAGE_QT_URL: "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+
+jobs:
+  build-tbc-tools:
+    name: Build tbc-tools (x86_64)
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup environment
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: >-
+            git make cmake pkg-config openssl
+            qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev
+            ffmpeg libavformat-dev libavcodec-dev libavutil-dev
+          version: 1.0
+
+      - name: Create release directory
+        run: mkdir release/
+
+      - name: Build
+        run: |
+          cmake -B _build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DUSE_QT_VERSION=5 \
+          -DBUILD_PYTHON=false
+
+          cmake --build _build
+          cmake --install _build --prefix AppDir/usr
+
+      - name: Download linuxdeploy and build AppImage
+        run: |
+          curl -LJO ${{ env.APPIMAGE_URL }}
+          curl -LJO ${{ env.APPIMAGE_PLUGIN_URL }}
+          curl -LJO ${{ env.APPIMAGE_QT_URL }}
+
+          chmod +x ${{ env.APPIMAGE_FILE }} ${{ env.APPIMAGE_PLUGIN_FILE }} ${{ env.APPIMAGE_QT_FILE }}
+
+          ./${{ env.APPIMAGE_FILE }} \
+          --plugin qt \
+          --desktop-file resources/appimage/tools/tbc-tools.desktop \
+          --icon-file assets/icons/vhs-decode.png \
+          --appdir AppDir/ \
+          --output appimage \
+          --custom-apprun resources/appimage/tools/AppRun
+
+          cp tbc-tools-x86_64.AppImage release/
+
+      - name: Download FlaLDF
+        run: |
+          curl -LJO ${{ env.FLALDF_URL }}
+          tar -xvf ${{ env.FLALDF_FILE }}
+          cp flaldf release/
+
+      - name: Copy scripts
+        run: find scripts -executable -exec cp {} release/ \;
+
+      # uncomment to compress release directory
+      # this is not required when releasing as an artifact
+      #- name: Create release archive
+      #  run: tar -cvjSf tbc-tools.tar.bz2 --transform s/release/tbc-tools/ release/
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tbc-tools_linux_x86_64
+          path: release
+          if-no-files-found: error
