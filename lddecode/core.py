@@ -1198,8 +1198,14 @@ class DemodCache:
                     ]
 
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
-        # transpose the cache by key, not block #
-        t = {"input": [], "fft": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
+        # transpose the cache by key, not block
+        # This is a list of entries in the output from the threaded
+        # demodblock function that if they exist is to be merged together
+        # to form contigous arrays for further processing. This excludes "fft"
+        # as while that is contained in the output, it is only there so
+        # it can be re-used case mtf checking fails and is not used later and
+        # thus does not need to be concatenated.
+        t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
         self.currentMTF = MTF
         if forceredo:
