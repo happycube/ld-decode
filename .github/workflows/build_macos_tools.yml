@@ -1,0 +1,84 @@
+name: "Build macOS tools"
+
+on:
+  workflow_dispatch:
+
+env:
+  FLALDF_FILE: "FlaLDF-v0.1-2-macos-x64.tar.gz"
+  FLALDF_URL: "https://github.com/TokugawaHeavyIndustries/FlaLDF/releases/download/v0.1b/FlaLDF-v0.1-2-macos-x64.tar.gz"
+
+jobs:
+  build-tbc-tools:
+    strategy:
+      matrix:
+        os: [macos-12, macos-14]
+        include:
+          - os: macos-12
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+
+    name: Build tbc-tools (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install dependencies
+        run: brew install create-dmg cmake pkg-config qt qwt ffmpeg fftw
+
+      - name: Build
+        run: |
+          cmake -B _build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DUSE_QT_VERSION=6 \
+          -DBUILD_PYTHON=false
+
+          cmake --build _build
+          cmake --install _build --prefix dist
+
+      - name: Create app structure
+        run: |
+          mkdir -p dist/tbc-tools.app/Contents/{Resources,MacOS}
+
+          cp resources/macos/tools/Info.plist dist/tbc-tools.app/Contents/
+          cp assets/icons/tbc-tools.icns dist/tbc-tools.app/Contents/Resources/
+          cp -r dist/bin/* dist/tbc-tools.app/Contents/MacOS/
+
+      - if: matrix.arch == 'x86_64'
+        name: Download FlaLDF
+        run: |
+          curl -LJO ${{ env.FLALDF_URL }}
+          tar -xvf ${{ env.FLALDF_FILE }}
+          cp flaldf dist/tbc-tools.app/Contents/MacOS/
+
+      - name: Copy scripts
+        run: find scripts -perm +111 -type f -exec cp {} dist/tbc-tools.app/Contents/MacOS/ \;
+
+      - name: Copy dependencies
+        run: macdeployqt dist/tbc-tools.app -libpath=/usr/local/lib/
+
+      - name: Build DMG file
+        run: >-
+          create-dmg
+          --volname "tbc-tools"
+          --volicon "assets/icons/tbc-tools.icns"
+          --window-pos 200 128
+          --window-size 600 300
+          --icon-size 100
+          --icon "tbc-tools.app" 172 120
+          --app-drop-link 425 128
+          --skip-jenkins
+          --hide-extension "tbc-tools.app"
+          "tbc-tools.dmg"
+          "dist/tbc-tools.app"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tbc-tools_macos_${{ matrix.arch }}
+          path: tbc-tools.dmg
+          if-no-files-found: error

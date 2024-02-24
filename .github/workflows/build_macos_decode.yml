@@ -1,0 +1,62 @@
+name: "Build macOS decode"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-decode:
+    strategy:
+      matrix:
+        os: [macos-12, macos-14]
+        include:
+          - os: macos-12
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+
+    name: Build vhs-decode (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: brew install create-dmg
+
+      - name: Build Python module
+        run: |
+          pip3 install . setuptools Cython pyinstaller -r ./requirements.txt
+          python3 setup.py build_ext --inplace
+
+      - name: Build binary
+        run: |
+          python3 scripts/ci/build-macos-decode-bin.py
+
+      - name: Build DMG file
+        run: >-
+          create-dmg
+          --volname "vhs-decode"
+          --volicon "assets/icons/vhs-decode.icns"
+          --window-pos 200 128
+          --window-size 600 300
+          --icon-size 100
+          --icon "vhs-decode.app" 172 120
+          --app-drop-link 425 128
+          --skip-jenkins
+          --hide-extension "vhs-decode.app"
+          "vhs-decode.dmg"
+          "dist/vhs-decode.app"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhs-decode_macos_${{ matrix.arch }}
+          path: vhs-decode.dmg
+          if-no-files-found: error

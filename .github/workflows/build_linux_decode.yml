@@ -1,0 +1,36 @@
+name: "Build Linux decode"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-decode:
+    name: Build vhs-decode (x86_64)
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create AppImage
+        run: |
+          pip3 install python-appimage
+          mkdir _build_appimage
+
+          cp assets/icons/vhs-decode.png _build_appimage/
+          cp resources/appimage/decode/entrypoint.sh _build_appimage/
+          cp resources/appimage/decode/vhs-decode.desktop _build_appimage/
+          cp resources/appimage/decode/vhs-decode.appdata.xml _build_appimage/
+
+          echo ${{ github.workspace }} > _build_appimage/requirements.txt
+
+          python-appimage build app -p 3.12 _build_appimage
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vhs-decode_linux_x86_64
+          path: vhs-decode-x86_64.AppImage
+          if-no-files-found: error

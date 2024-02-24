@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=vhs-decode
+Exec=vhs-decode-x86_64.AppImage %f
+Terminal=false
+Icon=vhs-decode
+Type=Application
+Categories=AudioVideo;Video;

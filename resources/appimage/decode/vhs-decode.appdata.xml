@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>vhs-decode</id>
+    <metadata_license>MIT</metadata_license>
+    <project_license>GPL-3.0</project_license>
+    <name>vhs-decode</name>
+    <summary>Software defined VHS decoder.</summary>
+    <description>
+        <p> A relocated Python {{ python-fullversion }} installation containing
+            the vhs-decode package and running from an AppImage.
+        </p>
+    </description>
+    <launchable type="desktop-id">vhs-decode.desktop</launchable>
+    <url type="homepage">https://github.com/oyvindln/vhs-decode</url>
+    <provides>
+        <binary>python{{ python-version }}</binary>
+    </provides>
+</component>
