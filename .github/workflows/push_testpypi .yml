@@ -1,0 +1,84 @@
+name: "Push to TestPyPI"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-wheel:
+    strategy:
+      matrix:
+        python_version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    name: Build ${{ matrix.python_version }} wheel (x86_64)
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Build wheel
+        run: |
+          pip${{ matrix.python_version }} install build
+          python${{ matrix.python_version }} -m build --wheel
+
+      - name: Store the wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: python${{ matrix.python_version }}_wheel
+          path: dist/
+          if-no-files-found: error
+
+  create-sdist:
+    name: Create source distribution
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create the sdist
+        run: |
+          pip3 install build
+          python3 -m build --sdist
+
+      - name: Store the sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: source_dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-to-testpypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-20.04
+
+    needs:
+      - build-wheel
+      - create-sdist
+
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/vhs-decode
+
+    permissions:
+      id-token: write # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - name: Download all the artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish packages to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
