@@ -1025,36 +1025,6 @@ class DemodCache:
 
         self.lru = self.lru[: self.lrusize]
 
-    def flush_demod(self, first_block = 0, prefetch_only=False):
-        """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
-        blocks_toredo = []
-
-        with self.lock:
-            for k in self.blocks.keys():
-                if k < first_block:
-                    continue 
-
-                if prefetch_only and self.blocks[k]['prefetch'] == False:
-                    continue
-
-                if self.blocks[k]['prefetch'] == True:
-                    blocks_toredo.append(k)
-
-                self.blocks[k]['MTF']      = -1
-                self.blocks[k]['request']  = -1
-                self.blocks[k]['waiting']  = False
-                self.blocks[k]['prefetch'] = False
-
-                if 'demod' not in self.blocks[k]:
-                    continue
-
-                if k not in blocks_toredo:
-                    blocks_toredo.append(k)
-
-                del self.blocks[k]['demod']
-
-        return blocks_toredo
-
     def apply_newparams(self, newparams):
         for k in newparams.keys():
             if k in self.rf.SysParams:
@@ -1113,11 +1083,11 @@ class DemodCache:
         queuelist = []
         reached_end = False
 
-        if redo:
-            for b in self.flush_demod(prefetch_only=True):
-                queuelist.append(b)
-
         with self.lock:
+            if redo:
+                for b in self.flush_demod(blocknums):
+                    queuelist.append(b)
+
             for b in blocknums:
                 if b not in self.blocks:
                     LRUupdate(self.lru, b)
@@ -1169,6 +1139,28 @@ class DemodCache:
         self.q_out_event.clear()
         return None if reached_end else need_blocks
 
+    def flush_demod(self, blocknums):
+        """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
+        blocks_toredo = []
+
+        for k in self.blocks.keys():
+            if k not in blocknums:
+                continue 
+
+            self.blocks[k]['MTF']      = -1
+            self.blocks[k]['request']  = -1
+            self.blocks[k]['waiting']  = False
+
+            if 'demod' not in self.blocks[k]:
+                continue
+
+            if k not in blocks_toredo:
+                blocks_toredo.append(k)
+
+            del self.blocks[k]['demod']
+
+        return blocks_toredo
+
     def dequeue(self):
         # This is the thread's main loop - run until killed.
         while True:
@@ -1206,8 +1198,14 @@ class DemodCache:
                     ]
 
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
-        # transpose the cache by key, not block #
-        t = {"input": [], "fft": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
+        # transpose the cache by key, not block
+        # This is a list of entries in the output from the threaded
+        # demodblock function that if they exist is to be merged together
+        # to form contigous arrays for further processing. This excludes "fft"
+        # as while that is contained in the output, it is only there so
+        # it can be re-used case mtf checking fails and is not used later and
+        # thus does not need to be concatenated.
+        t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
         self.currentMTF = MTF
         if forceredo:
@@ -3671,15 +3669,7 @@ class LDdecode:
                 # Drop existing thread
                 self.decodethread = None
 
-                # Start new thread
-                self.threadreturn = {}
-                df_args = (redo, self.mtf_level, self.fieldstack[0], initphase, redo, self.threadreturn)
-
-                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-                # .run() does not actually run this in the background
-                self.decodethread.run()
-                f, offset = self.threadreturn['field'], self.threadreturn['offset']
-                self.decodethread = None
+                f, offset = self.decodefield(redo, self.mtf_level, self.fieldstack[0], initphase, redo)
 
                 # Only allow one redo, no matter what
                 done = True
@@ -3693,26 +3683,22 @@ class LDdecode:
                 f = None
                 offset = 0
 
-            if True:
-                # Start new thread
-                self.threadreturn = {}
-                if f and f.valid:
-                    prevfield = f
-                    toffset = self.fdoffset + offset
-                else:
-                    prevfield = None
-                    toffset = self.fdoffset
+            # Start new thread
+            self.threadreturn = {}
+            if f and f.valid:
+                prevfield = f
+                toffset = self.fdoffset + offset
+            else:
+                prevfield = None
+                toffset = self.fdoffset
 
-                    if offset:
-                        toffset += offset
+                if offset:
+                    toffset += offset
 
-                df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
+            df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
 
-                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-                self.decodethread.start()
-                # Enabling .join() here to disable threading makes it slower,
-                # but makes the output more deterministic
-                self.decodethread.join()
+            self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+            self.decodethread.start()
             
             # process previous run
             if f:
@@ -3769,7 +3755,6 @@ class LDdecode:
                             self.rf.DecoderParams["vsync_ire"] = vsync_ire
 
                 if adjusted is False and redo:
-                    self.demodcache.flush_demod()
                     adjusted = True
                     self.fdoffset = redo
                 else:
