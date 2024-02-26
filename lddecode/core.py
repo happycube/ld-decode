@@ -3777,7 +3777,7 @@ class LDdecode:
                     fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
                     minlength = (f.inlinelen * self.output_lines) - 2
                     if ((f.sync_confidence < 50) and (fieldlength < minlength)):
-                        logger.warning("WARNING: Player skip detected, output will be corrupted")
+                        logger.warning("WARNING: Player skip detected, check output in this area")
 
                     self.fieldstack.insert(0, f)
 
