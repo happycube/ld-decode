@@ -838,9 +838,17 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         if DP.get("video_bpf_supergauss", False):
-            self.Filters["RFVideo"] = gen_bpf_supergauss(DP["video_bpf_low"], DP["video_bpf_high"], DP["video_bpf_order"], self.freq_hz_half, self.blocklen)[:-1]
+            self.Filters["RFVideo"] = gen_bpf_supergauss(
+                DP["video_bpf_low"],
+                DP["video_bpf_high"],
+                DP["video_bpf_order"],
+                self.freq_hz_half,
+                self.blocklen,
+            )[:-1]
             # Mirror to negative frequencies
-            self.Filters["RFVideo"] = np.concatenate((self.Filters["RFVideo"], np.flip(self.Filters["RFVideo"])))
+            self.Filters["RFVideo"] = np.concatenate(
+                (self.Filters["RFVideo"], np.flip(self.Filters["RFVideo"]))
+            )
         else:
             # Filter for rf before demodulating.
             y_fm = lddu.filtfft(

@@ -22,9 +22,12 @@ def fill_rfparams_vhs_shared(rfparams):
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
-    rfparams["nonlinear_highpass_freq"] = 600000
+    rfparams["nonlinear_highpass_freq"] = 820000
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
+
+    rfparams["nonlinear_scaling_1"] = 0.1
+    rfparams["nonlinear_exp_scaling"] = 0.12
 
 
 def fill_rfparams_svhs_shared(rfparams):
@@ -76,6 +79,7 @@ def fill_rfparams_svhs_shared(rfparams):
     rfparams["nonlinear_highpass_freq"] = 320000
     rfparams["nonlinear_amp_lpf_freq"] = 590000
     rfparams["nonlinear_exp_scaling"] = 0.23
+    rfparams["nonlinear_scaling_1"] = None
     rfparams["nonlinear_scaling_2"] = 0.72
     rfparams["nonlinear_logistic_mid"] = 0.2
     rfparams["nonlinear_logistic_rate"] = 14.0
