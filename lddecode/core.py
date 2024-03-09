@@ -1255,7 +1255,7 @@ class DemodCache:
 
         rv = {}
         for k in t.keys():
-            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
+            rv[k] = nb_concatenate(t[k]) if len(t[k]) else None
 
         if rv["audio"] is not None:
             rv["audio_phase1"] = rv["audio"]
@@ -2078,6 +2078,7 @@ class Field:
             return line0loc_local, self.vblank_next, isFirstField_local
         elif line0loc_prev is not None:
             new_sync_confidence = np.max(conf_prev - 10, 0)
+            new_sync_confidence = max(new_sync_confidence, 10)
             self.sync_confidence = min(self.sync_confidence, new_sync_confidence)
             return line0loc_prev, self.vblank_next, isFirstField_prev
         elif line0loc_next is not None:
@@ -3790,9 +3791,10 @@ class LDdecode:
                 else:
                     done = True
                     fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
-                    minlength = (f.inlinelen * self.output_lines) - 2
-                    if ((f.sync_confidence < 50) and (fieldlength < minlength)):
-                        logger.warning("WARNING: Player skip detected, output will be corrupted")
+                    fieldlength /= f.inlinelen
+                    if ((f.sync_confidence < 50) and not 
+                         inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
+                        logger.warning("WARNING: Possible player skip detected - check output")
 
                     self.fieldstack.insert(0, f)
 
