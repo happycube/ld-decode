@@ -17,7 +17,7 @@ wget -nc https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/
 
 chmod +x linuxdeploy-x86_64.AppImage
 chmod +x linuxdeploy-plugin-qt-x86_64.AppImage
-./linuxdeploy-x86_64.AppImage --plugin qt -d ../resources/dd86.desktop -i ../tools/ld-analyse/Graphics/64-analyse.png --appdir AppDir/ --output appimage --custom-apprun ../resources/AppRun
+./linuxdeploy-x86_64.AppImage --plugin qt -d ../../../dd86.desktop -i ../../../../tools/ld-analyse/Graphics/64-analyse.png --appdir AppDir/ --output appimage --custom-apprun ../AppRun
 
 ###
 #does not re-copy desktop file?
