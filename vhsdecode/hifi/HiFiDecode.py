@@ -35,18 +35,10 @@ class AFEBandPass:
         self.samp_rate = sample_rate
         self.filter_params = filters_params
 
-        iir_lo = firdes_lowpass(
-            self.samp_rate,
-            self.filter_params.cutoff,
-            700e3
-        )
-        iir_hi = firdes_highpass(
-            self.samp_rate,
-            self.filter_params.FDC,
-            700e3
-        )
+        iir_lo = firdes_lowpass(self.samp_rate, self.filter_params.cutoff, 700e3)
+        iir_hi = firdes_highpass(self.samp_rate, self.filter_params.FDC, 700e3)
 
-        #filter_plot(iir_lo[0], iir_lo[1], self.samp_rate, type="lopass", title="Front lopass")
+        # filter_plot(iir_lo[0], iir_lo[1], self.samp_rate, type="lopass", title="Front lopass")
         self.filter_lo = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate)
         self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], self.samp_rate)
 
@@ -59,11 +51,7 @@ class LpFilter:
         self.samp_rate = sample_rate
         self.cut = cut
 
-        iir_lo = firdes_lowpass(
-            self.samp_rate,
-            self.cut,
-            transition
-        )
+        iir_lo = firdes_lowpass(self.samp_rate, self.cut, transition)
         self.filter = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate)
 
     def work(self, data):
@@ -79,14 +67,18 @@ class AFEParamsVHS:
     def VCODeviation(self):
         return self.maxVCODeviation
 
+
 @dataclass
 class AFEParamsHi8:
     def __init__(self):
         self.maxVCODeviation = 100e3
+        self.LCarrierRef = 1.5e6
+        self.RCarrierRef = 1.7e6
 
     @property
     def VCODeviation(self):
         return self.maxVCODeviation
+
 
 @dataclass
 class AFEParamsPALVHS(AFEParamsVHS):
@@ -110,9 +102,14 @@ class AFEParamsNTSCVHS(AFEParamsVHS):
 class AFEParamsNTSCHi8(AFEParamsHi8):
     def __init__(self):
         super().__init__()
-        self.LCarrierRef = 1.5e6
-        self.RCarrierRef = 1.7e6
         self.Hfreq = 15.750e3
+
+
+@dataclass
+class AFEParamsPALHi8(AFEParamsHi8):
+    def __init__(self):
+        super().__init__()
+        self.Hfreq = 15.625e3
 
 
 class AFEFilterable:
@@ -124,46 +121,38 @@ class AFEFilterable:
         QR = self.filter_params.RCarrierRef / (4 * self.filter_params.maxVCODeviation)
         if channel == 0:
             iir_front_peak = iirpeak(
-                self.filter_params.LCarrierRef,
-                QL,
-                fs=self.samp_rate
+                self.filter_params.LCarrierRef, QL, fs=self.samp_rate
             )
             iir_notch_other = iirnotch(
-                self.filter_params.RCarrierRef,
-                QR,
-                fs=self.samp_rate
+                self.filter_params.RCarrierRef, QR, fs=self.samp_rate
             )
             iir_notch_image = iirnotch(
-                self.filter_params.LCarrierRef - d,
-                QR,
-                fs=self.samp_rate
+                self.filter_params.LCarrierRef - d, QR, fs=self.samp_rate
             )
         else:
             iir_front_peak = iirpeak(
-                self.filter_params.RCarrierRef,
-                QR,
-                fs=self.samp_rate
+                self.filter_params.RCarrierRef, QR, fs=self.samp_rate
             )
             iir_notch_other = iirnotch(
-                self.filter_params.LCarrierRef,
-                QL,
-                fs=self.samp_rate
+                self.filter_params.LCarrierRef, QL, fs=self.samp_rate
             )
             iir_notch_image = iirnotch(
-                self.filter_params.RCarrierRef - d,
-                QL,
-                fs=self.samp_rate
+                self.filter_params.RCarrierRef - d, QL, fs=self.samp_rate
             )
 
-        self.filter_reject_other = FiltersClass(iir_notch_other[0], iir_notch_other[1], self.samp_rate)
-        self.filter_band = FiltersClass(iir_front_peak[0], iir_front_peak[1], self.samp_rate)
-        self.filter_reject_image = FiltersClass(iir_notch_image[0], iir_notch_image[1], self.samp_rate)
+        self.filter_reject_other = FiltersClass(
+            iir_notch_other[0], iir_notch_other[1], self.samp_rate
+        )
+        self.filter_band = FiltersClass(
+            iir_front_peak[0], iir_front_peak[1], self.samp_rate
+        )
+        self.filter_reject_image = FiltersClass(
+            iir_notch_image[0], iir_notch_image[1], self.samp_rate
+        )
 
     def work(self, data):
         return self.filter_band.lfilt(
-            self.filter_reject_other.lfilt(
-                self.filter_reject_image.lfilt(data)
-            )
+            self.filter_reject_other.lfilt(self.filter_reject_image.lfilt(data))
         )
 
 
@@ -196,8 +185,9 @@ class FMdemod:
     @staticmethod
     def unwrap_hilbert(analytic_signal: np.array, sample_rate: int):
         instantaneous_phase = FMdemod.unwrap(np.angle(analytic_signal))
-        instantaneous_frequency = (np.diff(instantaneous_phase) /
-                                   (2.0 * pi) * sample_rate)
+        instantaneous_frequency = (
+            np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
+        )
         return instantaneous_frequency
 
     @staticmethod
@@ -205,22 +195,12 @@ class FMdemod:
         return FMdemod.unwrap_hilbert(hilbert(signal.real), sample_rate)
 
     def work(self, data):
-
         if self.type == 2:
-            return np.add(
-                self.htdeFM(data, self.samp_rate),
-                -self.offset
-            )
+            return np.add(self.htdeFM(data, self.samp_rate), -self.offset)
         elif self.type == 1:
-            return np.add(
-                self.hhtdeFM(data),
-                -self.offset
-            )
+            return np.add(self.hhtdeFM(data), -self.offset)
         else:
-            return np.add(
-                FMdemod.inst_freq(data, self.samp_rate),
-                -self.offset
-            )
+            return np.add(FMdemod.inst_freq(data, self.samp_rate), -self.offset)
 
 
 def getDeemph(tau, sample_rate):
@@ -230,9 +210,8 @@ def getDeemph(tau, sample_rate):
 
 
 class LogCompander:
-
     @staticmethod
-    def log3_2(x : float) -> float:
+    def log3_2(x: float) -> float:
         return log(x) / log(1.5)
 
     @staticmethod
@@ -245,7 +224,7 @@ class LogCompander:
     def expand(x: float) -> float:
         x = max(min(x, 1), -1)
         x0 = abs(x)
-        y0 = (- pow(2, (1 - x0)) * (pow(2, x0) - pow(3, x0)))
+        y0 = -pow(2, (1 - x0)) * (pow(2, x0) - pow(3, x0))
         return y0 if x >= 0 else -y0
 
 
@@ -258,11 +237,13 @@ def discard_stereo(audioL, audioR, discard_size):
 
 
 class NoiseReduction:
-
-    def __init__(self, notch_freq: float,
-                 side_gain: float,
-                 discard_size: int = 0,
-                 audio_rate: int = 192000):
+    def __init__(
+        self,
+        notch_freq: float,
+        side_gain: float,
+        discard_size: int = 0,
+        audio_rate: int = 192000,
+    ):
         self.audio_rate = audio_rate
         self.discard_size = discard_size
         self.hfreq = notch_freq
@@ -293,30 +274,55 @@ class NoiseReduction:
         self.finalLo_cut = 20e3
         self.finalLo_transition = 10e3
 
-        env_hi_trans = tau_as_freq(self.NR_weighting_T2) - tau_as_freq(self.NR_weighting_T1)
-        env_iirb, env_iira = firdes_highpass(self.audio_rate, tau_as_freq(self.NR_weighting_T2), env_hi_trans)
+        env_hi_trans = tau_as_freq(self.NR_weighting_T2) - tau_as_freq(
+            self.NR_weighting_T1
+        )
+        env_iirb, env_iira = firdes_highpass(
+            self.audio_rate, tau_as_freq(self.NR_weighting_T2), env_hi_trans
+        )
         self.envelopeHighpassL = FiltersClass(env_iirb, env_iira, self.audio_rate)
         self.envelopeHighpassR = FiltersClass(env_iirb, env_iira, self.audio_rate)
 
-        envv_iirb, envv_iira = firdes_lowpass(self.audio_rate, self.NR_finalLo_cut, self.NR_finalLo_transition)
+        envv_iirb, envv_iira = firdes_lowpass(
+            self.audio_rate, self.NR_finalLo_cut, self.NR_finalLo_transition
+        )
         self.envelopeVoicepassL = FiltersClass(envv_iirb, envv_iira, self.audio_rate)
         self.envelopeVoicepassR = FiltersClass(envv_iirb, envv_iira, self.audio_rate)
 
-        loenv_iirb, loenv_iira = firdes_lowpass(self.audio_rate, self.NR_weighting_attack_Lo_cut, self.NR_weighting_attack_Lo_transition)
-        self.envelope_attack_LowpassL = FiltersClass(loenv_iirb, loenv_iira, self.audio_rate)
-        self.envelope_attack_LowpassR = FiltersClass(loenv_iirb, loenv_iira, self.audio_rate)
+        loenv_iirb, loenv_iira = firdes_lowpass(
+            self.audio_rate,
+            self.NR_weighting_attack_Lo_cut,
+            self.NR_weighting_attack_Lo_transition,
+        )
+        self.envelope_attack_LowpassL = FiltersClass(
+            loenv_iirb, loenv_iira, self.audio_rate
+        )
+        self.envelope_attack_LowpassR = FiltersClass(
+            loenv_iirb, loenv_iira, self.audio_rate
+        )
 
-        loenvr_iirb, loenvr_iira = firdes_lowpass(self.audio_rate, self.NR_weighting_release_Lo_cut, self.NR_weighting_release_Lo_transition)
-        self.envelope_release_LowpassL = FiltersClass(loenvr_iirb, loenvr_iira, self.audio_rate)
-        self.envelope_release_LowpassR = FiltersClass(loenvr_iirb, loenvr_iira, self.audio_rate)
+        loenvr_iirb, loenvr_iira = firdes_lowpass(
+            self.audio_rate,
+            self.NR_weighting_release_Lo_cut,
+            self.NR_weighting_release_Lo_transition,
+        )
+        self.envelope_release_LowpassL = FiltersClass(
+            loenvr_iirb, loenvr_iira, self.audio_rate
+        )
+        self.envelope_release_LowpassR = FiltersClass(
+            loenvr_iirb, loenvr_iira, self.audio_rate
+        )
 
         self.audio_bassL = LpFilter(self.audio_rate, cut=220, transition=2000)
         self.audio_bassR = LpFilter(self.audio_rate, cut=220, transition=2000)
         self.audio_presenceL = LpFilter(self.audio_rate, cut=2000, transition=8000)
         self.audio_presenceR = LpFilter(self.audio_rate, cut=2000, transition=8000)
-        self.finalLoL = LpFilter(self.audio_rate, cut=self.finalLo_cut, transition=self.finalLo_transition)
-        self.finalLoR = LpFilter(self.audio_rate, cut=self.finalLo_cut, transition=self.finalLo_transition)
-
+        self.finalLoL = LpFilter(
+            self.audio_rate, cut=self.finalLo_cut, transition=self.finalLo_transition
+        )
+        self.finalLoR = LpFilter(
+            self.audio_rate, cut=self.finalLo_cut, transition=self.finalLo_transition
+        )
 
     @staticmethod
     def cancelDC(c, dc):
@@ -330,25 +336,43 @@ class NoiseReduction:
     def audio_notch(samp_rate: int, freq: float, audio):
         cancel_shift = int(round(samp_rate / (2 * freq)))
         shift = audio[:-cancel_shift]
-        return np.add(audio, np.pad(shift, (cancel_shift, 0), 'wrap')) / 2
+        return np.add(audio, np.pad(shift, (cancel_shift, 0), "wrap")) / 2
 
     @staticmethod
     def audio_notch_stereo(samp_rate: int, freq: float, audioL, audioR):
-        return NoiseReduction.audio_notch(samp_rate, freq, audioL), NoiseReduction.audio_notch(samp_rate, freq, audioR)
+        return NoiseReduction.audio_notch(
+            samp_rate, freq, audioL
+        ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
 
     def rs_envelope(self, raw_data, channel=0):
-        data = np.array([LogCompander.expand(x) for x in raw_data], dtype='float64')
-        hi_part = self.envelopeHighpassL.lfilt(data) if channel == 0 else self.envelopeHighpassR.lfilt(data)
+        data = np.array([LogCompander.expand(x) for x in raw_data], dtype="float64")
+        hi_part = (
+            self.envelopeHighpassL.lfilt(data)
+            if channel == 0
+            else self.envelopeHighpassR.lfilt(data)
+        )
         lo_part = data - hi_part
-        env_part = self.envelopeVoicepassL.lfilt(hi_part + lo_part / 2) if channel == 0 else self.envelopeVoicepassR.lfilt(hi_part + lo_part / 2)
+        env_part = (
+            self.envelopeVoicepassL.lfilt(hi_part + lo_part / 2)
+            if channel == 0
+            else self.envelopeVoicepassR.lfilt(hi_part + lo_part / 2)
+        )
         return np.abs(env_part)
 
     def noise_reduction(self, audio, comb, channel=0):
         # takes the RMS envelope of each audio channel
         audio_env = self.rs_envelope(comb, channel)
 
-        rsaC = self.envelope_attack_LowpassL.lfilt(audio_env) if channel == 0 else self.envelope_attack_LowpassR.lfilt(audio_env)
-        rsrC = self.envelope_release_LowpassL.lfilt(audio_env) if channel == 0 else self.envelope_release_LowpassR.lfilt(audio_env)
+        rsaC = (
+            self.envelope_attack_LowpassL.lfilt(audio_env)
+            if channel == 0
+            else self.envelope_attack_LowpassR.lfilt(audio_env)
+        )
+        rsrC = (
+            self.envelope_release_LowpassL.lfilt(audio_env)
+            if channel == 0
+            else self.envelope_release_LowpassR.lfilt(audio_env)
+        )
 
         releasing_idx = np.where(rsaC < rsrC)
         rsC = rsaC
@@ -365,25 +389,39 @@ class NoiseReduction:
         # applies second part of noise reduction
         nr = np.multiply(gated, gate)
 
-        bass_enhance = self.audio_bassL.work(nr) if channel == 0 else self.audio_bassR.work(nr)
-        mid_bass = self.audio_presenceL.work(nr) if channel == 0 else self.audio_presenceR.work(nr)
+        bass_enhance = (
+            self.audio_bassL.work(nr) if channel == 0 else self.audio_bassR.work(nr)
+        )
+        mid_bass = (
+            self.audio_presenceL.work(nr)
+            if channel == 0
+            else self.audio_presenceR.work(nr)
+        )
         mid_enhance = mid_bass - bass_enhance
 
         return (nr + mid_enhance + bass_enhance / 2) * 2 / 3
 
     def noise_reduction_stereo(self, audioL, audioR):
         # applies notch filter at Hfreq
-        combL, combR = NoiseReduction.audio_notch_stereo(self.audio_rate, self.hfreq, audioL, audioR)
-        return self.noise_reduction(audioL, combL, channel=0), self.noise_reduction(audioR, combR, channel=1)
+        combL, combR = NoiseReduction.audio_notch_stereo(
+            self.audio_rate, self.hfreq, audioL, audioR
+        )
+        return self.noise_reduction(audioL, combL, channel=0), self.noise_reduction(
+            audioR, combR, channel=1
+        )
 
     def stereo(self, audioL, audioR):
-        expandL, expandR = self.lopassCompand(audioL, channel=0), self.lopassCompand(audioR, channel=1)
+        expandL, expandR = self.lopassCompand(audioL, channel=0), self.lopassCompand(
+            audioR, channel=1
+        )
         nrL, nrR = self.noise_reduction_stereo(expandL, expandR)
         finalL, finalR = discard_stereo(nrL, nrR, self.discard_size)
         return list(map(list, zip(finalL, finalR)))
 
     def lopassCompand(self, audio, channel=0):
-        audioX = self.finalLoL.work(audio) if channel == 0 else self.finalLoR.work(audio)
+        audioX = (
+            self.finalLoL.work(audio) if channel == 0 else self.finalLoR.work(audio)
+        )
         return audioX
 
 
@@ -392,7 +430,7 @@ class HiFiDecode:
         if options is None:
             options = dict()
         self.options = options
-        self.sample_rate: int = options['input_rate']
+        self.sample_rate: int = options["input_rate"]
         self.options = options
         self.if_rate: int = 8388608
         self.audio_rate: int = 192000
@@ -400,21 +438,25 @@ class HiFiDecode:
         # main deemphasis time constant
         self.tau = 56e-6
 
-        self.ifresample_numerator, \
-        self.ifresample_denominator, \
-        self.audioRes_numerator, \
-        self.audioRes_denominator = self.getResamplingRatios()
+        (
+            self.ifresample_numerator,
+            self.ifresample_denominator,
+            self.audioRes_numerator,
+            self.audioRes_denominator,
+        ) = self.getResamplingRatios()
 
         # block overlap and edge discard
         self.blocks_second: int = 8
         self.block_size: int = int(self.sample_rate / self.blocks_second)
         self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
         self.block_overlap_audio: int = int(self.audio_rate / 5e2)
-        audio_final_rate = ((self.options['audio_rate'] / self.audio_rate) *
-                            (self.audioRes_numerator / self.audioRes_denominator))
+        audio_final_rate = (self.options["audio_rate"] / self.audio_rate) * (
+            self.audioRes_numerator / self.audioRes_denominator
+        )
         self.block_overlap: int = round(
-            self.block_overlap_audio * self.ifresample_denominator /
-            (self.ifresample_numerator * audio_final_rate)
+            self.block_overlap_audio
+            * self.ifresample_denominator
+            / (self.ifresample_numerator * audio_final_rate)
         )
 
         # start of filter design stuff
@@ -424,22 +466,28 @@ class HiFiDecode:
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
 
-        a_iirb, a_iira = firdes_lowpass(self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10)
+        a_iirb, a_iira = firdes_lowpass(
+            self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
+        )
         self.preAudioResampleL = FiltersClass(a_iirb, a_iira, self.if_rate)
         self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate)
 
-        #filter_plot(envv_iirb, envv_iira, self.audio_rate, type="bandpass", title="audio_filter")
+        # filter_plot(envv_iirb, envv_iira, self.audio_rate, type="bandpass", title="audio_filter")
 
-        if options['format'] == 'vhs':
-            if options['standard'] == 'p':
+        if options["format"] == "vhs":
+            if options["standard"] == "p":
                 self.afe_params = AFEParamsPALVHS()
                 self.standard = AFEParamsPALVHS()
             else:
                 self.afe_params = AFEParamsNTSCVHS()
                 self.standard = AFEParamsNTSCVHS()
         else:
-            self.afe_params = AFEParamsNTSCHi8()
-            self.standard = AFEParamsNTSCHi8()
+            if options["standard"] == "p":
+                self.afe_params = AFEParamsPALHi8()
+                self.standard = AFEParamsPALHi8()
+            else:
+                self.afe_params = AFEParamsNTSCHi8()
+                self.standard = AFEParamsNTSCHi8()
 
         self.afeL, self.afeR, self.fmL, self.fmR = self.afeParams(self.afe_params)
         self.devL, self.devR = 0, 0
@@ -449,23 +497,34 @@ class HiFiDecode:
         self.stereo_executor = ThreadPoolExecutor(2)
         self.stereo_queue = list()
 
-        if self.options['grc']:
-            print(f'Set gnuradio sample rate at {self.if_rate} Hz, type float')
+        if self.options["grc"]:
+            print(f"Set gnuradio sample rate at {self.if_rate} Hz, type float")
             if ZMQ_AVAILABLE:
                 self.grc = ZMQSend()
             else:
-                print("ZMQ library is not available, please install the zmq python library to use this feature!")
+                print(
+                    "ZMQ library is not available, please install the zmq python library to use this feature!"
+                )
 
     def getResamplingRatios(self):
         samplerate2ifrate = self.if_rate / self.sample_rate
         self.ifresample_numerator = Fraction(samplerate2ifrate).numerator
         self.ifresample_denominator = Fraction(samplerate2ifrate).denominator
-        assert self.ifresample_numerator > 0, f'IF resampling numerator got 0; sample_rate {self.sample_rate}'
-        assert self.ifresample_denominator > 0, f'IF resampling denominator got 0; sample_rate {self.sample_rate}'
+        assert (
+            self.ifresample_numerator > 0
+        ), f"IF resampling numerator got 0; sample_rate {self.sample_rate}"
+        assert (
+            self.ifresample_denominator > 0
+        ), f"IF resampling denominator got 0; sample_rate {self.sample_rate}"
         audiorate2ifrate = self.audio_rate / self.if_rate
         self.audioRes_numerator = Fraction(audiorate2ifrate).numerator
         self.audioRes_denominator = Fraction(audiorate2ifrate).denominator
-        return self.ifresample_numerator, self.ifresample_denominator, self.audioRes_numerator, self.audioRes_denominator
+        return (
+            self.ifresample_numerator,
+            self.ifresample_denominator,
+            self.audioRes_numerator,
+            self.audioRes_denominator,
+        )
 
     def updateDemod(self):
         self.afeL, self.afeR, self.fmL, self.fmR = self.afeParams(self.afe_params)
@@ -477,24 +536,30 @@ class HiFiDecode:
         self.updateAFE(newLC, newRC)
 
     def updateAFE(self, newLC, newRC):
-        self.afe_params.LCarrierRef = \
+        self.afe_params.LCarrierRef = (
             max(
                 min(newLC, self.standard.LCarrierRef + 10e3),
-                self.standard.LCarrierRef - 10e3
-            ) if self.options['format'] == 'vhs' else newLC
-        self.afe_params.RCarrierRef = \
+                self.standard.LCarrierRef - 10e3,
+            )
+            if self.options["format"] == "vhs"
+            else newLC
+        )
+        self.afe_params.RCarrierRef = (
             max(
                 min(newRC, self.standard.RCarrierRef + 10e3),
-                self.standard.RCarrierRef - 10e3
-            ) if self.options['format'] == 'vhs' else newRC
+                self.standard.RCarrierRef - 10e3,
+            )
+            if self.options["format"] == "vhs"
+            else newRC
+        )
 
     def afeParams(self, standard):
         afeL = AFEFilterable(standard, self.if_rate, 0)
         afeR = AFEFilterable(standard, self.if_rate, 1)
-        if self.options['preview']:
+        if self.options["preview"]:
             fmL = FMdemod(self.if_rate, standard.LCarrierRef, 1)
             fmR = FMdemod(self.if_rate, standard.RCarrierRef, 1)
-        elif self.options['original']:
+        elif self.options["original"]:
             fmL = FMdemod(self.if_rate, standard.LCarrierRef, 2)
             fmR = FMdemod(self.if_rate, standard.RCarrierRef, 2)
         else:
@@ -507,15 +572,11 @@ class HiFiDecode:
         filterL = self.afeL.work(data)
         filterR = self.afeR.work(data)
 
-        if self.options['grc'] and ZMQ_AVAILABLE:
+        if self.options["grc"] and ZMQ_AVAILABLE:
             self.grc.send(filterL + filterR)
 
-        self.stereo_queue.append(
-            self.stereo_executor.submit(self.fmL.work, (filterL))
-        )
-        self.stereo_queue.append(
-            self.stereo_executor.submit(self.fmR.work, (filterR))
-        )
+        self.stereo_queue.append(self.stereo_executor.submit(self.fmL.work, (filterL)))
+        self.stereo_queue.append(self.stereo_executor.submit(self.fmR.work, (filterR)))
 
         ifL = self.stereo_queue[0].result()
         ifR = self.stereo_queue[1].result()
@@ -525,10 +586,18 @@ class HiFiDecode:
         deemphR = self.deemphR.lfilt(ifR)
         preAudioResampleL = self.preAudioResampleL.lfilt(ifL)
         preAudioResampleR = self.preAudioResampleR.lfilt(ifR)
-        audioL = samplerate_resample(deemphL, self.audioRes_numerator, self.audioRes_denominator)
-        audioR = samplerate_resample(deemphR, self.audioRes_numerator, self.audioRes_denominator)
-        preL = samplerate_resample(preAudioResampleL, self.audioRes_numerator, self.audioRes_denominator)
-        preR = samplerate_resample(preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator)
+        audioL = samplerate_resample(
+            deemphL, self.audioRes_numerator, self.audioRes_denominator
+        )
+        audioR = samplerate_resample(
+            deemphR, self.audioRes_numerator, self.audioRes_denominator
+        )
+        preL = samplerate_resample(
+            preAudioResampleL, self.audioRes_numerator, self.audioRes_denominator
+        )
+        preR = samplerate_resample(
+            preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator
+        )
 
         dcL = np.mean(audioL)
         dcR = np.mean(audioR)
@@ -569,10 +638,14 @@ class HiFiDecode:
         return HiFiDecode.cancelDC(L, dcL), HiFiDecode.cancelDC(R, dcR)
 
     def guessBiases(self, blocks):
-        meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(window_average=len(blocks))
+        meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
+            window_average=len(blocks)
+        )
         for block in blocks:
             lo_data = self.lopassRF.work(block)
-            data = samplerate_resample(lo_data, self.ifresample_numerator, self.ifresample_denominator)
+            data = samplerate_resample(
+                lo_data, self.ifresample_numerator, self.ifresample_denominator
+            )
             dcL, dcR, audioL, audioR, preL, preR = self.demodblock(data)
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
@@ -582,12 +655,16 @@ class HiFiDecode:
     def carrierOffsets(self, standard, cL, cR):
         return standard.LCarrierRef - cL, standard.RCarrierRef - cR
 
-    def block_decode(self, raw_data: np.array, block_count: int = 0) -> Tuple[int, np.array, np.array]:
+    def block_decode(
+        self, raw_data: np.array, block_count: int = 0
+    ) -> Tuple[int, np.array, np.array]:
         lo_data = self.lopassRF.work(raw_data)
-        data = samplerate_resample(lo_data, self.ifresample_numerator, self.ifresample_denominator)
+        data = samplerate_resample(
+            lo_data, self.ifresample_numerator, self.ifresample_denominator
+        )
         dcL, dcR, audioL, audioR, preL, preR = self.demodblock(data)
 
-        if self.options['auto_fine_tune']:
+        if self.options["auto_fine_tune"]:
             self.devL, self.devR = self.carrierOffsets(self.afe_params, dcL, dcR)
             self.updateStandard(self.devL, self.devR)
             self.updateDemod()
