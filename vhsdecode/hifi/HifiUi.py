@@ -1,8 +1,23 @@
 import os.path
 import sys
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QDial, QCheckBox, \
-    QComboBox, QPushButton, QLineEdit, QFileDialog, QDesktopWidget, QDialog, QMessageBox
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QDial,
+    QCheckBox,
+    QComboBox,
+    QPushButton,
+    QLineEdit,
+    QFileDialog,
+    QDesktopWidget,
+    QDialog,
+    QMessageBox,
+)
 from PyQt5 import QtGui, QtCore
 from vhsdecode.hifi.HiFiDecode import DEFAULT_NR_GAIN_
 
@@ -55,11 +70,15 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "gain": values.volume,
         "input_file": values.input_file,
         "output_file": values.output_file,
-        "mode": "s" if values.audio_mode == "Stereo"
-        else "l" if values.audio_mode == "L"
-        else "r" if values.audio_mode == "R"
-        else "mpx" if values.audio_mode == "Stereo MPX"
-        else "sum"
+        "mode": "s"
+        if values.audio_mode == "Stereo"
+        else "l"
+        if values.audio_mode == "L"
+        else "r"
+        if values.audio_mode == "R"
+        else "mpx"
+        if values.audio_mode == "Stereo MPX"
+        else "sum",
     }
     return decode_options
 
@@ -73,7 +92,7 @@ class InputDialog(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle('Input Dialog')
+        self.setWindowTitle("Input Dialog")
 
         layout = QVBoxLayout()
 
@@ -82,8 +101,8 @@ class InputDialog(QDialog):
         self.input_line.setText(str(self.value))
         if self.validator is not None:
             self.input_line.setValidator(self.validator)
-        ok_button = QPushButton('Accept', self)
-        cancel_button = QPushButton('Cancel', self)
+        ok_button = QPushButton("Accept", self)
+        cancel_button = QPushButton("Cancel", self)
         button_layout = QHBoxLayout()
         button_layout.addWidget(ok_button)
         button_layout.addWidget(cancel_button)
@@ -97,7 +116,8 @@ class InputDialog(QDialog):
 
         self.setLayout(layout)
 
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QDialog {
                 background-color: #333;
                 color: #eee;
@@ -115,7 +135,8 @@ class InputDialog(QDialog):
             QLabel {
                 color: #eee;
             }
-        """)
+        """
+        )
 
         # Set dialog size
         self.setFixedWidth(int(self.sizeHint().width()))
@@ -130,8 +151,12 @@ class InputDialog(QDialog):
 
 
 class HifiUi(QMainWindow):
-    def __init__(self, params: MainUIParameters, title: str = "HiFi Main Controls",
-                 main_layout_callback=None):
+    def __init__(
+        self,
+        params: MainUIParameters,
+        title: str = "HiFi Main Controls",
+        main_layout_callback=None,
+    ):
         super(HifiUi, self).__init__()
 
         # 0 stop, 1 play, 2 pause
@@ -156,16 +181,24 @@ class HifiUi(QMainWindow):
         self.volume_dial = QDial(self)
         self.volume_dial.setRange(0, 100)
         self.volume_textbox = QLineEdit(self)
-        self.volume_textbox.setValidator(QtGui.QDoubleValidator())  # Only allow float input
-        self.volume_textbox.setMaxLength(5)  # Set a reasonable maximum length for display
+        self.volume_textbox.setValidator(
+            QtGui.QDoubleValidator()
+        )  # Only allow float input
+        self.volume_textbox.setMaxLength(
+            5
+        )  # Set a reasonable maximum length for display
 
         # Sidechain gain dial and numeric textbox
         sidechain_label = QLabel("NR Gain:")
         self.sidechain_dial = QDial(self)
         self.sidechain_dial.setRange(0, 100)
         self.sidechain_textbox = QLineEdit(self)
-        self.sidechain_textbox.setValidator(QtGui.QDoubleValidator())  # Only allow float input
-        self.sidechain_textbox.setMaxLength(5)  # Set a reasonable maximum length for display
+        self.sidechain_textbox.setValidator(
+            QtGui.QDoubleValidator()
+        )  # Only allow float input
+        self.sidechain_textbox.setMaxLength(
+            5
+        )  # Set a reasonable maximum length for display
 
         # Add widgets to the upper layout
         upper_layout.addWidget(volume_label)
@@ -224,12 +257,14 @@ class HifiUi(QMainWindow):
         input_samplerate_label = QLabel("Input Sample Rate MHz:")
         self.input_samplerate_combo = QComboBox(self)
         self.input_samplerate_combo.addItems(
-            ["DdD (40.0)",
-             "cxadc (28.64)",
-             "cxadc3 (35.8)",
-             "10cxadc (14.32)",
-             "10cxadc3 (17.9)",
-             "Other"]
+            [
+                "DdD (40.0)",
+                "cxadc (28.64)",
+                "cxadc3 (35.8)",
+                "10cxadc (14.32)",
+                "10cxadc3 (17.9)",
+                "Other",
+            ]
         )
         self._input_combo_rates = [
             40.0,
@@ -241,7 +276,9 @@ class HifiUi(QMainWindow):
         self.input_sample_rate = self._input_combo_rates[0]
         input_samplerate_layout.addWidget(input_samplerate_label)
         input_samplerate_layout.addWidget(self.input_samplerate_combo)
-        self.input_samplerate_combo.currentIndexChanged.connect(self.on_input_samplerate_changed)
+        self.input_samplerate_combo.currentIndexChanged.connect(
+            self.on_input_samplerate_changed
+        )
 
         middle_layout.addLayout(input_samplerate_layout)
         middle_layout.addLayout(standard_layout)
@@ -257,7 +294,11 @@ class HifiUi(QMainWindow):
         self.play_button = QPushButton("▶", self)  # Play symbol
         self.pause_button = QPushButton("||", self)  # Pause symbol
         self.stop_button = QPushButton("■", self)  # Stop symbol
-        max_button_height = max(self.play_button.sizeHint().height(), self.pause_button.sizeHint().height(), self.stop_button.sizeHint().height())
+        max_button_height = max(
+            self.play_button.sizeHint().height(),
+            self.pause_button.sizeHint().height(),
+            self.stop_button.sizeHint().height(),
+        )
         self.play_button.setFixedHeight(max_button_height)
         self.pause_button.setFixedHeight(max_button_height)
         self.stop_button.setFixedHeight(max_button_height)
@@ -269,13 +310,16 @@ class HifiUi(QMainWindow):
         self.volume_dial.valueChanged.connect(self.on_volume_changed)
         self.volume_textbox.editingFinished.connect(self.on_volume_textbox_changed)
         self.sidechain_dial.valueChanged.connect(self.on_sidechain_gain_changed)
-        self.sidechain_textbox.editingFinished.connect(self.on_sidechain_textbox_changed)
+        self.sidechain_textbox.editingFinished.connect(
+            self.on_sidechain_textbox_changed
+        )
         self.play_button.clicked.connect(self.on_play_clicked)
         self.pause_button.clicked.connect(self.on_pause_clicked)
         self.stop_button.clicked.connect(self.on_stop_clicked)
 
         # Apply dark theme with improved text visibility
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QMainWindow {
                 background-color: #333;
                 color: #eee;
@@ -299,7 +343,8 @@ class HifiUi(QMainWindow):
             QLabel {
                 color: #eee;
             }
-        """)
+        """
+        )
         self.change_button_color(self.stop_button, "#eee")
         # disables maximize button
         self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowMaximizeButtonHint)
@@ -308,7 +353,7 @@ class HifiUi(QMainWindow):
         # sets fixed height
         self.setFixedHeight(self.sizeHint().height())
         # sets defaut window icon
-        self.setWindowIcon(QIcon.fromTheme('document-open'))
+        self.setWindowIcon(QIcon.fromTheme("document-open"))
         self.center_on_screen()
         self.setValues(params)
 
@@ -338,7 +383,7 @@ class HifiUi(QMainWindow):
         # Set the window position to the center of the screen
         self.move(
             int(screen_center.x() - self.width() / 2),
-            int((screen_center.y() - self.height()) * 3 / 4)
+            int((screen_center.y() - self.height()) * 3 / 4),
         )
 
     def setValues(self, values: MainUIParameters):
@@ -349,13 +394,19 @@ class HifiUi(QMainWindow):
         self.noise_reduction_checkbox.setChecked(values.noise_reduction)
         self.automatic_fine_tuning_checkbox.setChecked(values.automatic_fine_tuning)
         self.sample_rate_combo.setCurrentText(str(values.audio_sample_rate))
-        self.sample_rate_combo.setCurrentIndex(self.sample_rate_combo.findText(str(values.audio_sample_rate)))
+        self.sample_rate_combo.setCurrentIndex(
+            self.sample_rate_combo.findText(str(values.audio_sample_rate))
+        )
         self.standard_combo.setCurrentText(values.standard)
-        self.standard_combo.setCurrentIndex(self.standard_combo.findText(values.standard))
+        self.standard_combo.setCurrentIndex(
+            self.standard_combo.findText(values.standard)
+        )
         self.format_combo.setCurrentText(values.format)
         self.format_combo.setCurrentIndex(self.format_combo.findText(values.format))
         self.audio_mode_combo.setCurrentText(values.audio_mode)
-        self.audio_mode_combo.setCurrentIndex(self.audio_mode_combo.findText(values.audio_mode))
+        self.audio_mode_combo.setCurrentIndex(
+            self.audio_mode_combo.findText(values.audio_mode)
+        )
 
         self.input_sample_rate = values.input_sample_rate / 1e6
         found_rate = False
@@ -365,7 +416,9 @@ class HifiUi(QMainWindow):
                 found_rate = True
                 break
         if not found_rate:
-            self.input_samplerate_combo.setCurrentText(f'Other ({values.input_sample_rate / 1e6:.2f})')
+            self.input_samplerate_combo.setCurrentText(
+                f"Other ({values.input_sample_rate / 1e6:.2f})"
+            )
 
         self.input_file = values.input_file
         self.output_file = values.output_file
@@ -410,20 +463,25 @@ class HifiUi(QMainWindow):
             pass
 
     def change_button_color(self, button, color):
-        button.setStyleSheet("""
+        button.setStyleSheet(
+            """
             QPushButton {
                 background-color: %s;
                 color: #000;
             }
-        """ % color)
+        """
+            % color
+        )
 
     def default_button_color(self, button):
-        button.setStyleSheet("""
+        button.setStyleSheet(
+            """
             QPushButton {
                 background-color: #555;
                 color: #eee;
             }
-        """)
+        """
+        )
 
     def on_play_clicked(self):
         print("▶ Play command issued.")
@@ -431,15 +489,16 @@ class HifiUi(QMainWindow):
         if os.path.exists(self.output_file) and self.transport_state == 0:
             message_box = QMessageBox(
                 QMessageBox.Question,
-                'File Exists',
-                'Overwrite existing file?',
+                "File Exists",
+                "Overwrite existing file?",
                 buttons=QMessageBox.Yes | QMessageBox.No,
-                parent=self
+                parent=self,
             )
             message_box.setIcon(QMessageBox.Warning)
             message_box.setDefaultButton(QMessageBox.No)
             # dark mode
-            message_box.setStyleSheet("""
+            message_box.setStyleSheet(
+                """
                 QMessageBox {
                     background-color: #333;
                     color: #eee;
@@ -448,7 +507,8 @@ class HifiUi(QMainWindow):
                     background-color: #555;
                     color: #eee;
                 }
-            """)
+            """
+            )
             message_box.exec_()
             overwrite = message_box.standardButton(message_box.clickedButton())
 
@@ -460,13 +520,13 @@ class HifiUi(QMainWindow):
         self.change_button_color(self.play_button, "#0f0")
         self.default_button_color(self.pause_button)
         self.default_button_color(self.stop_button)
-        self.setWindowIcon(QIcon.fromTheme('document-save'))
+        self.setWindowIcon(QIcon.fromTheme("document-save"))
 
     def on_pause_clicked(self):
         self.change_button_color(self.pause_button, "#eee")
         self.default_button_color(self.play_button)
         self.default_button_color(self.stop_button)
-        self.setWindowIcon(QIcon.fromTheme('document-open'))
+        self.setWindowIcon(QIcon.fromTheme("document-open"))
         print("|| Pause command issued.")
         self._transport_state = 2
 
@@ -479,32 +539,34 @@ class HifiUi(QMainWindow):
 
     def on_input_samplerate_changed(self):
         print("Input sample rate changed.")
-        if 'Other' in self.input_samplerate_combo.currentText():
+        if "Other" in self.input_samplerate_combo.currentText():
             input_dialog = InputDialog(
-                prompt='Input Sample Rate (MHz)',
+                prompt="Input Sample Rate (MHz)",
                 value=self.input_sample_rate,
-                validator=QtGui.QDoubleValidator()
+                validator=QtGui.QDoubleValidator(),
             )
             value: float = input_dialog.get_input_value()
             if value is not None:
-                new_other_text = f'Other ({value})'
-                self.input_samplerate_combo.setItemText(self.input_samplerate_combo.currentIndex(), new_other_text)
+                new_other_text = f"Other ({value})"
+                self.input_samplerate_combo.setItemText(
+                    self.input_samplerate_combo.currentIndex(), new_other_text
+                )
                 self.input_samplerate_combo.setCurrentText(value)
                 self.input_sample_rate = value
         else:
-            self.input_sample_rate = self._input_combo_rates[self.input_samplerate_combo.currentIndex()]
+            self.input_sample_rate = self._input_combo_rates[
+                self.input_samplerate_combo.currentIndex()
+            ]
 
-    def generic_message_box(self, title:str, message:str, type:QMessageBox.Icon=QMessageBox.Information):
-        message_box = QMessageBox(
-            type,
-            title,
-            message,
-            parent=self
-        )
+    def generic_message_box(
+        self, title: str, message: str, type: QMessageBox.Icon = QMessageBox.Information
+    ):
+        message_box = QMessageBox(type, title, message, parent=self)
         message_box.setIcon(type)
         message_box.setDefaultButton(QMessageBox.Ok)
         # dark mode
-        message_box.setStyleSheet("""
+        message_box.setStyleSheet(
+            """
             QMessageBox {
                 background-color: #333;
                 color: #eee;
@@ -513,20 +575,25 @@ class HifiUi(QMainWindow):
                 background-color: #555;
                 color: #eee;
             }
-        """)
+        """
+        )
         message_box.exec_()
 
-    def on_decode_finished(self, decoded_filename: str = 'input stream'):
-        self.setWindowIcon(QIcon.fromTheme('document-open'))
+    def on_decode_finished(self, decoded_filename: str = "input stream"):
+        self.setWindowIcon(QIcon.fromTheme("document-open"))
         # alerts user that decode is finished
         self.generic_message_box(
-            "Decode Finished",
-            f'Decode of {decoded_filename} finished.'
+            "Decode Finished", f"Decode of {decoded_filename} finished."
         )
 
 
 class FileOutputDialogUI(HifiUi):
-    def __init__(self, params: MainUIParameters, title: str = "HiFi File Output", main_layout_callback=None):
+    def __init__(
+        self,
+        params: MainUIParameters,
+        title: str = "HiFi File Output",
+        main_layout_callback=None,
+    ):
         super(FileOutputDialogUI, self).__init__(params, title, self._layout_callback)
 
     def _layout_callback(self, main_layout):
@@ -540,10 +607,13 @@ class FileOutputDialogUI(HifiUi):
         self.file_output_layout.addWidget(self.file_output_textbox)
         self.file_output_layout.addWidget(self.file_output_button)
         self.main_layout.addLayout(self.file_output_layout)
-        #sets browse button height to match text box height
-        self.file_output_button.setFixedHeight(self.file_output_textbox.sizeHint().height())
-        self.file_output_textbox.setFixedHeight(self.file_output_textbox.sizeHint().height())
-
+        # sets browse button height to match text box height
+        self.file_output_button.setFixedHeight(
+            self.file_output_textbox.sizeHint().height()
+        )
+        self.file_output_textbox.setFixedHeight(
+            self.file_output_textbox.sizeHint().height()
+        )
 
     def on_file_output_button_clicked(self):
         options = QFileDialog.Options()
@@ -552,8 +622,9 @@ class FileOutputDialogUI(HifiUi):
         if os.path.isdir(os.path.dirname(self.file_output_textbox.text())):
             qdialog.setDirectory(os.path.dirname(self.file_output_textbox.text()))
 
-        file_name, _ = qdialog.getOpenFileName(self, "Open File", "", "All Files (*);;FLAC (*.flac)",
-                                                   options=options)
+        file_name, _ = qdialog.getOpenFileName(
+            self, "Open File", "", "All Files (*);;FLAC (*.flac)", options=options
+        )
         if file_name:
             self.file_output_textbox.setText(file_name)
         print("Output file browse button clicked.")
@@ -567,13 +638,18 @@ class FileOutputDialogUI(HifiUi):
         super(FileOutputDialogUI, self).setValues(values)
         self.file_output_textbox.setText(values.output_file)
 
-    def on_decode_finished(self, decoded_filename: str = 'input stream'):
+    def on_decode_finished(self, decoded_filename: str = "input stream"):
         decoded_filename = os.path.basename(self.file_output_textbox.text())
         super(FileOutputDialogUI, self).on_decode_finished(decoded_filename)
 
 
 class FileIODialogUI(HifiUi):
-    def __init__(self, params: MainUIParameters, title: str = "HiFi File Input/Output", main_layout_callback=None):
+    def __init__(
+        self,
+        params: MainUIParameters,
+        title: str = "HiFi File Input/Output",
+        main_layout_callback=None,
+    ):
         super(FileIODialogUI, self).__init__(params, title, self._layout_callback)
 
     def _layout_callback(self, main_layout):
@@ -587,9 +663,13 @@ class FileIODialogUI(HifiUi):
         self.file_input_layout.addWidget(self.file_input_textbox)
         self.file_input_layout.addWidget(self.file_input_button)
         self.main_layout.addLayout(self.file_input_layout)
-        #sets browse button height to match text box height
-        self.file_input_button.setFixedHeight(self.file_input_textbox.sizeHint().height())
-        self.file_input_textbox.setFixedHeight(self.file_input_textbox.sizeHint().height())
+        # sets browse button height to match text box height
+        self.file_input_button.setFixedHeight(
+            self.file_input_textbox.sizeHint().height()
+        )
+        self.file_input_textbox.setFixedHeight(
+            self.file_input_textbox.sizeHint().height()
+        )
 
         # Add file output widgets
         self.file_output_label = QLabel("Output file:")
@@ -601,11 +681,18 @@ class FileIODialogUI(HifiUi):
         self.file_output_layout.addWidget(self.file_output_textbox)
         self.file_output_layout.addWidget(self.file_output_button)
         self.main_layout.addLayout(self.file_output_layout)
-        #sets browse button height to match text box height
-        self.file_output_button.setFixedHeight(self.file_output_textbox.sizeHint().height())
-        self.file_output_textbox.setFixedHeight(self.file_output_textbox.sizeHint().height())
+        # sets browse button height to match text box height
+        self.file_output_button.setFixedHeight(
+            self.file_output_textbox.sizeHint().height()
+        )
+        self.file_output_textbox.setFixedHeight(
+            self.file_output_textbox.sizeHint().height()
+        )
         # sets file input and output text boxes to same width
-        max_label_width = max(self.file_input_label.sizeHint().width(), self.file_output_label.sizeHint().width())
+        max_label_width = max(
+            self.file_input_label.sizeHint().width(),
+            self.file_output_label.sizeHint().width(),
+        )
         self.file_input_label.setMinimumWidth(max_label_width)
         self.file_output_label.setMinimumWidth(max_label_width)
 
@@ -616,8 +703,8 @@ class FileIODialogUI(HifiUi):
         if os.path.isdir(os.path.dirname(self.file_input_textbox.text())):
             qdialog.setDirectory(os.path.dirname(self.file_input_textbox.text()))
         file_name, _ = qdialog.getOpenFileName(
-            self, "Open File", "", "All Files (*);;FLAC (*.flac)",
-            options=options)
+            self, "Open File", "", "All Files (*);;FLAC (*.flac)", options=options
+        )
 
         if os.path.exists(file_name):
             self.file_input_textbox.setText(file_name)
@@ -625,8 +712,13 @@ class FileIODialogUI(HifiUi):
 
     def on_file_output_button_clicked(self):
         options = QFileDialog.Options()
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save File", "", "All Files (*);;FLAC (*.flac);; WAV (*.wav)",
-                                                   options=options)
+        file_name, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save File",
+            "",
+            "All Files (*);;FLAC (*.flac);; WAV (*.wav)",
+            options=options,
+        )
 
         if os.path.isdir(os.path.dirname(file_name)):
             self.file_output_textbox.setText(file_name)
@@ -643,12 +735,12 @@ class FileIODialogUI(HifiUi):
         self.file_input_textbox.setText(values.input_file)
         self.file_output_textbox.setText(values.output_file)
 
-    def on_decode_finished(self, decoded_filename: str = 'input stream'):
+    def on_decode_finished(self, decoded_filename: str = "input stream"):
         decoded_filename = os.path.basename(self.file_input_textbox.text())
         super(FileIODialogUI, self).on_decode_finished(decoded_filename)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     params = MainUIParameters()
     window = FileIODialogUI(params)

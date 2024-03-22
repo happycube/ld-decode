@@ -2,7 +2,7 @@ import sys
 
 
 class TimeProgressBar:
-    def __init__(self, max, time, w=40, label='Progress'):
+    def __init__(self, max, time, w=40, label="Progress"):
         self.max = max
         self.w = w
         self.label = label
@@ -16,4 +16,3 @@ class TimeProgressBar:
             sys.stdout.write("#" * c)
             sys.stdout.write(" " * d)
             sys.stdout.write("] %.02f%%\n" % (v * 100.0 / self.max))
-

@@ -18,17 +18,33 @@ from vhsdecode.cmdcommons import (
     select_system,
     get_basics,
     test_input_file,
-    test_output_file
+    test_output_file,
 )
-from vhsdecode.hifi.HiFiDecode import HiFiDecode, NoiseReduction, DEFAULT_NR_GAIN_, discard_stereo
+from vhsdecode.hifi.HiFiDecode import (
+    HiFiDecode,
+    NoiseReduction,
+    DEFAULT_NR_GAIN_,
+    discard_stereo,
+)
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 import io
-import sounddevice as sd
+
+try:
+    import sounddevice as sd
+
+    SOUNDDEVICE_AVAILABLE = True
+except ImportError:
+    SOUNDDEVICE_AVAILABLE = False
 
 try:
     from PyQt5.QtWidgets import QApplication, QMessageBox
-    from vhsdecode.hifi.HifiUi import ui_parameters_to_decode_options, decode_options_to_ui_parameters, \
-        FileIODialogUI, FileOutputDialogUI
+    from vhsdecode.hifi.HifiUi import (
+        ui_parameters_to_decode_options,
+        decode_options_to_ui_parameters,
+        FileIODialogUI,
+        FileOutputDialogUI,
+    )
+
     HIFI_UI = True
 except ImportError:
     HIFI_UI = False
@@ -101,7 +117,11 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--h8", dest="H8", action="store_true", default=False, help="Video8/Hi8, 8mm tape format"
+    "--h8",
+    dest="H8",
+    action="store_true",
+    default=False,
+    help="Video8/Hi8, 8mm tape format",
 )
 
 parser.add_argument(
@@ -124,27 +144,32 @@ parser.add_argument(
     "--audio_mode",
     dest="mode",
     type=str,
-    default='s',
-    help="Audio mode (s: stereo, mpx: stereo with mpx, l: left channel, r: right channel, sum: mono sum)"
+    default="s",
+    help="Audio mode (s: stereo, mpx: stereo with mpx, l: left channel, r: right channel, sum: mono sum)",
 )
 
 
 def test_if_ffmpeg_is_installed():
     shell_command = ["ffmpeg", "-version"]
     try:
-        p = subprocess.Popen(shell_command, shell=False,
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE,
-                             universal_newlines=False)
+        p = subprocess.Popen(
+            shell_command,
+            shell=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=False,
+        )
         # prints ffmpeg version and closes the process
-        stdout_as_string = p.stdout.read().decode('utf-8')
-        version = stdout_as_string.split('\n')[0]
+        stdout_as_string = p.stdout.read().decode("utf-8")
+        version = stdout_as_string.split("\n")[0]
         print(f"Found {version}")
         p.communicate()
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print("WARN: ffmpeg not installed (or not in PATH), please install it to speed up file reading")
+        print(
+            "WARN: ffmpeg not installed (or not in PATH), please install it to speed up file reading"
+        )
         return False
 
 
@@ -156,7 +181,7 @@ class BufferedInputStream(io.RawIOBase):
     def read(self, size=-1):
         data = self.buffer.read(size * 2)
         if not data:
-            return b''
+            return b""
 
         self._pos += len(data)
         return data
@@ -190,12 +215,15 @@ class BufferedInputStream(io.RawIOBase):
 # executes ffmpeg and reads stdout as a file
 class FfmpegFileReader(BufferedInputStream):
     def __init__(self, file_path):
-        shell_command = ["ffmpeg", '-i', file_path, '-f', 's16le', 'pipe:1']
-        p = subprocess.Popen(shell_command, shell=False,
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE,
-                             universal_newlines=False)
+        shell_command = ["ffmpeg", "-i", file_path, "-f", "s16le", "pipe:1"]
+        p = subprocess.Popen(
+            shell_command,
+            shell=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=False,
+        )
         self.buffer = p.stdout
         self._pos: int = 0
 
@@ -220,11 +248,18 @@ class UnseekableSoundFile(sf.SoundFile):
     def close(self):
         pass
 
-    def read(self, samples, frames=-1, dtype='float64', always_2d=False,
-             fill_value=None, out=None):
+    def read(
+        self,
+        samples,
+        frames=-1,
+        dtype="float64",
+        always_2d=False,
+        fill_value=None,
+        out=None,
+    ):
         data = self.file_path.read(samples)
         if not data:
-            return b''
+            return b""
         assert len(data) % 2 == 0, "data is misaligned"
         out = np.asarray(np.frombuffer(data, dtype=np.int16), dtype=dtype)
         return out
@@ -233,14 +268,24 @@ class UnseekableSoundFile(sf.SoundFile):
         data = self.file_path.read(blocksize - overlap)
         assert len(data) % 2 == 0, "data is misaligned"
         out = np.asarray(np.frombuffer(data, dtype=np.int16), dtype=dtype)
-        self._overlap = np.copy(out[-overlap:]) if np.size(self._overlap) == 0 else self._overlap
+        self._overlap = (
+            np.copy(out[-overlap:]) if np.size(self._overlap) == 0 else self._overlap
+        )
         result = np.concatenate((self._overlap, out))
         self._overlap = np.copy(out[-overlap:])
         return result
 
     # yields infinite generator for _read_next_chunk
-    def blocks(self, blocksize=None, overlap=0, frames=-1, dtype='float64',
-               always_2d=False, fill_value=None, out=None):
+    def blocks(
+        self,
+        blocksize=None,
+        overlap=0,
+        frames=-1,
+        dtype="float64",
+        always_2d=False,
+        fill_value=None,
+        out=None,
+    ):
         while True:
             yield self._read_next_chunk(blocksize, overlap, dtype)
 
@@ -248,12 +293,12 @@ class UnseekableSoundFile(sf.SoundFile):
 class UnSigned16BitFileReader(io.RawIOBase):
     def __init__(self, file_path):
         self.file_path = file_path
-        self.file = open(file_path, 'rb')
+        self.file = open(file_path, "rb")
 
     def read(self, size=-1):
         data = self.file.read(size)
         if not data:
-            return b''
+            return b""
 
         # Converts unsigned 16-bit to signed 16-bit
         samples = np.frombuffer(data, dtype=np.uint16)
@@ -369,9 +414,9 @@ def log_decode(start_time: datetime, frames: int, decode_options: dict):
     audio_time_format: str = seconds_to_str(audio_time)
 
     print(
-        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x)\n" +
-        f"- Audio position: {str(audio_time_format)[:-3]}\n" +
-        f"- Wall time     : {str(elapsed_time_format)[:-3]}"
+        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x)\n"
+        + f"- Audio position: {str(audio_time_format)[:-3]}\n"
+        + f"- Wall time     : {str(elapsed_time_format)[:-3]}"
     )
 
 
@@ -379,17 +424,22 @@ def gain_adjust(audio: np.array, gain: float) -> np.array:
     return np.multiply(audio, gain)
 
 
-def prepare_stereo(l_raw: np.array, r_raw: np.array, noise_reduction: NoiseReduction, decode_options: dict):
-    if decode_options['mode'] == 'mpx':
+def prepare_stereo(
+    l_raw: np.array,
+    r_raw: np.array,
+    noise_reduction: NoiseReduction,
+    decode_options: dict,
+):
+    if decode_options["mode"] == "mpx":
         l = np.multiply(np.add(l_raw, r_raw), 0.5)
         r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
-    elif decode_options['mode'] == 'l':
+    elif decode_options["mode"] == "l":
         l = l_raw
         r = l_raw
-    elif decode_options['mode'] == 'r':
+    elif decode_options["mode"] == "r":
         l = r_raw
         r = r_raw
-    elif decode_options['mode'] == 'sum':
+    elif decode_options["mode"] == "sum":
         l = np.multiply(np.add(l_raw, r_raw), 0.5)
         r = np.multiply(np.add(l_raw, r_raw), 0.5)
     else:
@@ -399,29 +449,39 @@ def prepare_stereo(l_raw: np.array, r_raw: np.array, noise_reduction: NoiseReduc
     if decode_options["noise_reduction"]:
         stereo = noise_reduction.stereo(
             gain_adjust(l, decode_options["gain"]),
-            gain_adjust(r, decode_options["gain"])
+            gain_adjust(r, decode_options["gain"]),
         )
     else:
         l, r = discard_stereo(l, r, noise_reduction.discard_size)
-        stereo = list(map(
-            list,
-            zip(gain_adjust(l, decode_options["gain"]),
-                gain_adjust(r, decode_options["gain"]))
-        ))
+        stereo = list(
+            map(
+                list,
+                zip(
+                    gain_adjust(l, decode_options["gain"]),
+                    gain_adjust(r, decode_options["gain"]),
+                ),
+            )
+        )
     return stereo
 
 
-def post_process(audioL: np.array, audioR: np.array, audio_rate: int, decode_options: dict):
-    left_audio = samplerate_resample(audioL,
-                                     decode_options["audio_rate"],
-                                     audio_rate,
-                                     "sinc_fastest") \
-        if decode_options["audio_rate"] != audio_rate else audioL
-    right_audio = samplerate_resample(audioR,
-                                      decode_options["audio_rate"],
-                                      audio_rate,
-                                      "sinc_fastest") \
-        if decode_options["audio_rate"] != audio_rate else audioR
+def post_process(
+    audioL: np.array, audioR: np.array, audio_rate: int, decode_options: dict
+):
+    left_audio = (
+        samplerate_resample(
+            audioL, decode_options["audio_rate"], audio_rate, "sinc_fastest"
+        )
+        if decode_options["audio_rate"] != audio_rate
+        else audioL
+    )
+    right_audio = (
+        samplerate_resample(
+            audioR, decode_options["audio_rate"], audio_rate, "sinc_fastest"
+        )
+        if decode_options["audio_rate"] != audio_rate
+        else audioR
+    )
 
     return left_audio, right_audio
 
@@ -464,7 +524,7 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
         decoder.notchFreq,
         decode_options["nr_side_gain"],
         decoder.audioDiscard,
-        audio_rate=decode_options["audio_rate"]
+        audio_rate=decode_options["audio_rate"],
     )
     stereo_play_buffer = list()
 
@@ -479,8 +539,12 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                 current_block, audioL, audioR = decoder.block_decode(
                     block, block_count=current_block
                 )
-                left_audio, right_audio = post_process(audioL, audioR, decoder.audioRate, decode_options)
-                stereo = prepare_stereo(left_audio, right_audio, noise_reduction, decode_options)
+                left_audio, right_audio = post_process(
+                    audioL, audioR, decoder.audioRate, decode_options
+                )
+                stereo = prepare_stereo(
+                    left_audio, right_audio, noise_reduction, decode_options
+                )
 
                 if decode_options["auto_fine_tune"]:
                     log_bias(decoder)
@@ -490,11 +554,23 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                 try:
                     w.write(stereo)
                     if decode_options["preview"]:
-                        if len(stereo_play_buffer) > decode_options["audio_rate"] * 5:
-                            sd.wait()
-                            sd.play(stereo_play_buffer, decode_options["audio_rate"], blocking=False)
-                            stereo_play_buffer = list()
-                        stereo_play_buffer += stereo
+                        if SOUNDDEVICE_AVAILABLE:
+                            if (
+                                len(stereo_play_buffer)
+                                > decode_options["audio_rate"] * 5
+                            ):
+                                sd.wait()
+                                sd.play(
+                                    stereo_play_buffer,
+                                    decode_options["audio_rate"],
+                                    blocking=False,
+                                )
+                                stereo_play_buffer = list()
+                            stereo_play_buffer += stereo
+                        else:
+                            print(
+                                "Import of sounddevice failed, preview is not available!"
+                            )
                 except ValueError:
                     pass
                 if ui_t is not None:
@@ -511,9 +587,12 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
         print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 
-def decode_parallel(decoders: List[HiFiDecode],
-                    decode_options: dict,
-                    threads: int = 8, ui_t: Optional[AppWindow] = None):
+def decode_parallel(
+    decoders: List[HiFiDecode],
+    decode_options: dict,
+    threads: int = 8,
+    ui_t: Optional[AppWindow] = None,
+):
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
     start_time = datetime.now()
@@ -523,7 +602,7 @@ def decode_parallel(decoders: List[HiFiDecode],
         decoders[0].notchFreq,
         decode_options["nr_side_gain"],
         decoders[0].audioDiscard,
-        audio_rate=decode_options["audio_rate"]
+        audio_rate=decode_options["audio_rate"],
     )
     futures_queue = list()
     executor = ThreadPoolExecutor(threads)
@@ -536,10 +615,7 @@ def decode_parallel(decoders: List[HiFiDecode],
                 decoder = decoders[current_block % threads]
                 if len(block) > 0:
                     futures_queue.append(
-                        executor.submit(
-                            decoder.block_decode,
-                            block, current_block
-                        )
+                        executor.submit(decoder.block_decode, block, current_block)
                     )
                 else:
                     break
@@ -553,15 +629,26 @@ def decode_parallel(decoders: List[HiFiDecode],
                 while len(futures_queue) > threads:
                     future = futures_queue.pop(0)
                     blocknum, audioL, audioR = future.result()
-                    left_audio, right_audio = post_process(audioL, audioR, decoder.audioRate, decode_options)
-                    stereo = prepare_stereo(left_audio, right_audio, noise_reduction, decode_options)
+                    left_audio, right_audio = post_process(
+                        audioL, audioR, decoder.audioRate, decode_options
+                    )
+                    stereo = prepare_stereo(
+                        left_audio, right_audio, noise_reduction, decode_options
+                    )
                     log_decode(start_time, f.tell(), decode_options)
                     try:
                         w.write(stereo)
                         if decode_options["preview"]:
-                            if len(stereo_play_buffer) > decode_options["audio_rate"] * 5:
+                            if (
+                                len(stereo_play_buffer)
+                                > decode_options["audio_rate"] * 5
+                            ):
                                 sd.wait()
-                                sd.play(stereo_play_buffer, decode_options["audio_rate"], blocking=False)
+                                sd.play(
+                                    stereo_play_buffer,
+                                    decode_options["audio_rate"],
+                                    blocking=False,
+                                )
                                 stereo_play_buffer = list()
                             stereo_play_buffer += stereo
                     except ValueError:
@@ -580,8 +667,12 @@ def decode_parallel(decoders: List[HiFiDecode],
             while len(futures_queue) > 0:
                 future = futures_queue.pop(0)
                 blocknum, audioL, audioR = future.result()
-                left_audio, right_audio = post_process(audioL, audioR, decoder.audioRate, decode_options)
-                stereo = prepare_stereo(left_audio, right_audio, noise_reduction, decode_options)
+                left_audio, right_audio = post_process(
+                    audioL, audioR, decoder.audioRate, decode_options
+                )
+                stereo = prepare_stereo(
+                    left_audio, right_audio, noise_reduction, decode_options
+                )
                 try:
                     w.write(stereo)
                 except ValueError:
@@ -641,12 +732,10 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
             for i in range(0, args.threads):
                 decoders.append(HiFiDecode(decode_options))
                 decoders[i].updateAFE(LCRef, RCRef)
-            decode_parallel(
-                decoders, decode_options, threads=args.threads, ui_t=ui_t
-            )
+            decode_parallel(decoders, decode_options, threads=args.threads, ui_t=ui_t)
         else:
             decode(decoder, decode_options, ui_t=ui_t)
-        print('Decode finished successfully')
+        print("Decode finished successfully")
         return 0
     else:
         print("No sample rate specified")
@@ -670,8 +759,8 @@ def main() -> int:
 
     print("Initializing ...")
 
-    real_mode = 's' if not args.H8 else 'mpx'
-    real_mode = args.mode if args.mode in ['l', 'r', 'sum'] else real_mode
+    real_mode = "s" if not args.H8 else "mpx"
+    real_mode = args.mode if args.mode in ["l", "r", "sum"] else real_mode
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
@@ -687,7 +776,7 @@ def main() -> int:
         "gain": args.gain,
         "input_file": filename,
         "output_file": outname,
-        "mode": real_mode
+        "mode": real_mode,
     }
 
     if decode_options["format"] == "vhs":
@@ -698,7 +787,9 @@ def main() -> int:
         print("NTSC Hi8 format selected")
 
     if args.UI and not HIFI_UI:
-        print("PyQt5 is not installed, can not use graphical UI, falling back to command line interface..")
+        print(
+            "PyQt5 is not installed, can not use graphical UI, falling back to command line interface.."
+        )
 
     if args.UI and HIFI_UI:
         ui_t = AppWindow(sys.argv, decode_options)
@@ -709,22 +800,26 @@ def main() -> int:
                     print("Starting decode...")
                     options = ui_parameters_to_decode_options(ui_t.window.getValues())
                     # change to output file directory
-                    if os.path.dirname(options["output_file"]) != '':
+                    if os.path.dirname(options["output_file"]) != "":
                         os.chdir(os.path.dirname(options["output_file"]))
 
                     # test input and output files
-                    if test_input_file(options["input_file"]) and test_output_file(options["output_file"]):
+                    if test_input_file(options["input_file"]) and test_output_file(
+                        options["output_file"]
+                    ):
                         decoder_state = run_decoder(args, options, ui_t=ui_t)
                         ui_t.window.transport_state = 0
                         ui_t.window.on_decode_finished()
                     else:
                         message = None
-                        if not test_input_file(options['input_file']):
+                        if not test_input_file(options["input_file"]):
                             message = f"Input file '{options['input_file']}' not found"
-                        elif not test_output_file(options['output_file']):
+                        elif not test_output_file(options["output_file"]):
                             message = f"Output file '{options['output_file']}' cannot be created nor overwritten"
 
-                        ui_t.window.generic_message_box("I/O Error", message, QMessageBox.Critical)
+                        ui_t.window.generic_message_box(
+                            "I/O Error", message, QMessageBox.Critical
+                        )
                         ui_t.window.on_stop_clicked()
 
                 ui_t.app.processEvents()
@@ -739,7 +834,11 @@ def main() -> int:
             return run_decoder(args, decode_options)
         else:
             parser.print_help()
-            print("ERROR: input file not found" if not test_input_file(filename) else f"ERROR: output file '{outname}' cannot be created nor overwritten")
+            print(
+                "ERROR: input file not found"
+                if not test_input_file(filename)
+                else f"ERROR: output file '{outname}' cannot be created nor overwritten"
+            )
             return 1
 
 
