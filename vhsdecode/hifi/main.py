@@ -33,7 +33,7 @@ try:
     import sounddevice as sd
 
     SOUNDDEVICE_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     SOUNDDEVICE_AVAILABLE = False
 
 try:
