@@ -43,6 +43,7 @@ from vhsdecode.compute_video_filters import (
     create_sub_emphasis_params,
     gen_video_lpf_supergauss_params,
     gen_bpf_supergauss,
+    gen_fm_audio_notch_params,
     NONLINEAR_AMP_LPF_FREQ_DEFAULT,
 )
 from vhsdecode.demodcache import DemodCacheTape
@@ -601,6 +602,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "skip_hsync_refine",
                 "hsync_refine_use_threshold",
                 "export_raw_tbc",
+                "fm_audio_notch",
             ],
         )(
             self.iretohz(100) * 2,
@@ -628,6 +630,7 @@ class VHSRFDecode(ldd.RFDecode):
             # TODO: This should be used for everything eventually but needs proper testing
             True,
             export_raw_tbc,
+            rf_options.get("fm_audio_notch", 0),
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -882,6 +885,26 @@ class VHSRFDecode(ldd.RFDecode):
             )
 
             self.Filters["RFVideo"] = abs(y_fm) * abs(y_fm_lowpass) * abs(y_fm_highpass)
+
+        if self.options.fm_audio_notch != 0:
+            if "fm_audio_channel_0_freq" in DP and "fm_audio_channel_1_freq" in DP:
+                # Optionally enable double notch filter on fm audio channel frequencies.
+                # This is mainly useful on VHS (and possibly PAL betamax with hifi?)
+                # The hifi carriers on vhs are depth-multiplexed and read by a different head
+                # but they still sometimes are picked up strongly enough by the video heads to
+                # interfere with the video signal. The carrier for the upper channel especially since
+                # it sits high enough that it it overlaps with the lower video sideband.
+                # On formats where audio and video share the same heads (8mm, betamax NTSC hifi) the audio and
+                # video bands are set up to be separatated more cleanly but for vhs cutting off the video sideband
+                # above the audio carrier cuts off too much so use this approach instead and only if needed.
+                audio_fm_notch_filter = gen_fm_audio_notch_params(
+                    DP, self.options.fm_audio_notch, self.freq_hz_half, self.blocklen
+                )
+                self.Filters["RFVideo"] *= abs(audio_fm_notch_filter)
+            else:
+                ldd.logger.warning(
+                    "Audio frequencies are not specified for this format, audio fm notch filters not enabled!"
+                )
 
         if DP.get("boost_rf_linear_0", None) is not None:
             ramp = np.linspace(

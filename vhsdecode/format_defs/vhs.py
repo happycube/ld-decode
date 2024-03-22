@@ -147,6 +147,11 @@ def get_rfparams_pal_vhs(rfparams_pal):
 
     RFParams_PAL_VHS["chroma_rotation"] = PAL_ROTATION
 
+    # Frequency of fm audio channels - used for notch filter
+    # TODO: sync between hifi and vhs decode.
+    RFParams_PAL_VHS["fm_audio_channel_0_freq"] = 1400000
+    RFParams_PAL_VHS["fm_audio_channel_1_freq"] = 1800000
+
     fill_rfparams_vhs_shared(RFParams_PAL_VHS)
 
     return RFParams_PAL_VHS
@@ -260,6 +265,11 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
     # Use linear ramp to boost RF
     RFParams_NTSC_VHS["boost_rf_linear_0"] = 0
     RFParams_NTSC_VHS["boost_rf_linear_20"] = 30
+
+
+    # Frequency of fm audio channels - used for notch filter
+    RFParams_NTSC_VHS["fm_audio_channel_0_freq"] = 1300000
+    RFParams_NTSC_VHS["fm_audio_channel_1_freq"] = 1700000
 
     fill_rfparams_vhs_shared(RFParams_NTSC_VHS)
 

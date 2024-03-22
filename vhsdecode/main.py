@@ -111,6 +111,16 @@ def main(args=None, use_gui=False):
         default=False,
         help="Disable diff demod",
     )
+    luma_group.add_argument(
+        "--fm_audio_notch",
+        dest="fm_audio_notch",
+        action="store",
+        metavar="Q",
+        nargs="?",
+        default=0,
+        const=10,
+        help="Enable notch filter on FM audio frequencies to filter out wave-like pattern from interference, mainly useful on VHS. Optional argument to specify Q factor (filter width)",
+    )
     if not use_gui:
         luma_group.add_argument(
             "--noclamp",
@@ -290,8 +300,16 @@ def main(args=None, use_gui=False):
     except IOArgsException as e:
         parser.print_help()
         print(e)
-        print(f"ERROR: input file '{args.infile}' not found" if not test_input_file(args.infile) else "Input file: OK")
-        print(f"ERROR: output file '{args.outfile}' is not writable" if not test_output_file(args.outfile) else "Output file: OK")
+        print(
+            f"ERROR: input file '{args.infile}' not found"
+            if not test_input_file(args.infile)
+            else "Input file: OK"
+        )
+        print(
+            f"ERROR: output file '{args.outfile}' is not writable"
+            if not test_output_file(args.outfile)
+            else "Output file: OK"
+        )
         sys.exit(1)
 
     if not args.overwrite:
@@ -345,6 +363,7 @@ def main(args=None, use_gui=False):
     rf_options["recheck_phase"] = args.recheck_phase
     rf_options["high_boost"] = args.high_boost
     rf_options["disable_diff_demod"] = args.disable_diff_demod
+    rf_options["fm_audio_notch"] = args.fm_audio_notch
     rf_options["disable_dc_offset"] = not args.enable_dc_offset
     rf_options["disable_comb"] = args.disable_comb
     rf_options["skip_chroma"] = args.skip_chroma
