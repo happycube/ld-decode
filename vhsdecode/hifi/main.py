@@ -772,6 +772,7 @@ def main() -> int:
         "standard": "p" if system == "PAL" else "n",
         "format": "vhs" if not args.H8 else "h8",
         "preview": args.preview,
+        "preview_available": SOUNDDEVICE_AVAILABLE,
         "original": args.original,
         "noise_reduction": args.noise_reduction == "on" if not args.preview else False,
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
