@@ -639,18 +639,23 @@ def decode_parallel(
                     try:
                         w.write(stereo)
                         if decode_options["preview"]:
-                            if (
-                                len(stereo_play_buffer)
-                                > decode_options["audio_rate"] * 5
-                            ):
-                                sd.wait()
-                                sd.play(
-                                    stereo_play_buffer,
-                                    decode_options["audio_rate"],
-                                    blocking=False,
+                            if SOUNDDEVICE_AVAILABLE:
+                                if (
+                                    len(stereo_play_buffer)
+                                    > decode_options["audio_rate"] * 5
+                                ):
+                                    sd.wait()
+                                    sd.play(
+                                        stereo_play_buffer,
+                                        decode_options["audio_rate"],
+                                        blocking=False,
+                                    )
+                                    stereo_play_buffer = list()
+                                stereo_play_buffer += stereo
+                            else:
+                                print(
+                                    "Import of sounddevice failed, preview is not available!"
                                 )
-                                stereo_play_buffer = list()
-                            stereo_play_buffer += stereo
                     except ValueError:
                         pass
 
