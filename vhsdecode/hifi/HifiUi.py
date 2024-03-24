@@ -51,6 +51,7 @@ class MainUIParameters:
         self.automatic_fine_tuning: bool = True
         self.grc = False
         self.preview: bool = False
+        self.preview_available: bool = True
         self.audio_sample_rate: int = 44100
         self.standard: str = "PAL"
         self.format: str = "VHS"
@@ -66,6 +67,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.sidechain_gain = decode_options["nr_side_gain"] / 100.0
     values.noise_reduction = decode_options["noise_reduction"]
     values.automatic_fine_tuning = decode_options["auto_fine_tune"]
+    values.preview_available = decode_options["preview_available"]
     values.audio_sample_rate = decode_options["audio_rate"]
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
@@ -237,6 +239,7 @@ class HifiUi(QMainWindow):
         self.noise_reduction_checkbox = QCheckBox("Noise reduction")
         self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
         self.preview_checkbox = QCheckBox("Preview")
+        self.preview_checkbox.setCheckable(params.preview_available)
         middle_layout.addWidget(self.noise_reduction_checkbox)
         middle_layout.addWidget(self.automatic_fine_tuning_checkbox)
         middle_layout.addWidget(self.preview_checkbox)
