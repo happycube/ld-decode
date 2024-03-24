@@ -37,7 +37,11 @@ except (ImportError, OSError):
     SOUNDDEVICE_AVAILABLE = False
 
 try:
-    from PyQt5.QtWidgets import QApplication, QMessageBox
+    try:
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+    except ImportError:
+        from PyQt5.QtWidgets import QApplication, QMessageBox
+
     from vhsdecode.hifi.HifiUi import (
         ui_parameters_to_decode_options,
         decode_options_to_ui_parameters,
@@ -788,7 +792,7 @@ def main() -> int:
 
     if args.UI and not HIFI_UI:
         print(
-            "PyQt5 is not installed, can not use graphical UI, falling back to command line interface.."
+            "PyQt5/PyQt6 is not installed, can not use graphical UI, falling back to command line interface.."
         )
 
     if args.UI and HIFI_UI:
@@ -818,7 +822,7 @@ def main() -> int:
                             message = f"Output file '{options['output_file']}' cannot be created nor overwritten"
 
                         ui_t.window.generic_message_box(
-                            "I/O Error", message, QMessageBox.Critical
+                            "I/O Error", message, QMessageBox.Icon.Critical
                         )
                         ui_t.window.on_stop_clicked()
 
