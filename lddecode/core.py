@@ -27,7 +27,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt, n_ornotrange
+from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -43,7 +43,7 @@ except ImportError:
 # and ld-decode.  Probably should just bring all logging in here...
 logger = None
 
-# If profiling is not enabled, make it a pass-through function
+# If profiling is not enabled, make it a pass-through wrapper
 try:
     profile
 except:
@@ -981,8 +981,8 @@ class DemodCache:
         self.request         = 0
         self.ended           = False
 
-        self.deqeue_thread   = threading.Thread(target=self.dequeue, daemon=True)
-        num_worker_threads   = max(num_worker_threads - 1, 1)
+        self.deqeue_thread      = threading.Thread(target=self.dequeue, daemon=True)
+        self.num_worker_threads = num_worker_threads
 
         for i in range(num_worker_threads):
             t = threading.Thread(
@@ -1035,13 +1035,18 @@ class DemodCache:
 
         self.rf.computefilters()
 
-    def worker(self):
+    def worker(self, return_on_empty=False):
+        ''' return_on_empty is used when running non-threaded so this can be
+            directly called '''
         blocksrun = 0
         blockstime = 0
 
         rf = self.rf #RFDecode(**self.rf_args)
 
         while True:
+            if return_on_empty and self.q_in.qsize() == 0:
+                return
+
             item = self.q_in.get()
 
             if item is None or item[0] == "END":
@@ -1077,7 +1082,7 @@ class DemodCache:
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
-
+    @profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = []
         queuelist = []
@@ -1197,6 +1202,7 @@ class DemodCache:
                         self.rf.blockcut : -self.rf.blockcut_end
                     ]
 
+    @profile
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block
         # This is a list of entries in the output from the threaded
@@ -1231,6 +1237,9 @@ class DemodCache:
             return rv
 
         while need_blocks is not None and len(need_blocks):
+            if self.num_worker_threads == 0:
+                self.worker(return_on_empty=True)
+
             self.q_out_event.wait(.01)
             need_blocks = self.doread(toread, MTF)
             if need_blocks:
@@ -1252,7 +1261,7 @@ class DemodCache:
 
         rv = {}
         for k in t.keys():
-            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
+            rv[k] = nb_concatenate(t[k]) if len(t[k]) else None
 
         if rv["audio"] is not None:
             rv["audio_phase1"] = rv["audio"]
@@ -1445,6 +1454,7 @@ class Field:
         initphase=False,
         fields_written=0,
         readloc=0,
+        use_threads=True
     ):
         self.rawdata = decode["input"]
         self.data = decode
@@ -1474,7 +1484,9 @@ class Field:
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
 
-    #@profile
+        self.use_threads = use_threads
+
+    @profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
         #print(self.readloc, self.linelocs1, self.nextfieldoffset)
@@ -2072,6 +2084,7 @@ class Field:
             return line0loc_local, self.vblank_next, isFirstField_local
         elif line0loc_prev is not None:
             new_sync_confidence = np.max(conf_prev - 10, 0)
+            new_sync_confidence = max(new_sync_confidence, 10)
             self.sync_confidence = min(self.sync_confidence, new_sync_confidence)
             return line0loc_prev, self.vblank_next, isFirstField_prev
         elif line0loc_next is not None:
@@ -2485,7 +2498,7 @@ class Field:
         audio_thread = None
         if audio != 0 and self.rf.decode_analog_audio:
             audio_rv = {}
-            audio_thread = threading.Thread(target=downscale_audio, args=(
+            dsa_args = (
                 self.data["audio"],
                 lineinfo,
                 self.rf,
@@ -2493,8 +2506,13 @@ class Field:
                 audio_offset,
                 audio,
                 audio_rv)
-            )
-            audio_thread.start()
+            
+            if self.use_threads:
+                audio_thread = threading.Thread(target=downscale_audio, args=dsa_args)
+                audio_thread.start()
+            else:
+                # return values will still be in audio_rv later
+                downscale_audio(*dsa_args)
 
         dsout = np.zeros((linesout * outwidth), dtype=np.double)
         # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
@@ -2532,8 +2550,10 @@ class Field:
             dsout = self.hz_to_output(dsout)
             self.dspicture = dsout
 
-        if audio_thread:
-            audio_thread.join()
+        if audio != 0 and self.rf.decode_analog_audio:
+            if audio_thread:
+                audio_thread.join()
+
             self.dsaudio = audio_rv["dsaudio"]
             self.audio_next_offset = audio_rv["audio_next_offset"]
 
@@ -3176,6 +3196,7 @@ class FieldNTSC(Field):
             # Should we warn here? (Provided this can actually occur.)
             return 0
 
+    @profile
     def compute_burst_offsets(self, linelocs):
         rising_sum = 0
         adjs = {}
@@ -3195,6 +3216,7 @@ class FieldNTSC(Field):
 
         return field14, adjs
 
+    @profile
     def refine_linelocs_burst(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2
@@ -3273,6 +3295,7 @@ class FieldNTSC(Field):
     def __init__(self, *args, **kwargs):
         super(FieldNTSC, self).__init__(*args, **kwargs)
 
+    @profile
     def process(self):
         super(FieldNTSC, self).process()
 
@@ -3344,6 +3367,8 @@ class LDdecode:
             self.lpf.add_function(Field.process)
             self.lpf.add_function(Field.compute_linelocs)
             self.lpf.add_function(Field.getpulses)
+            self.lpf.add_function(DemodCache.read)
+            #self.lpf.add_function(self.decodefield)
 
         self.analog_audio = int(analog_audio)
         self.digital_audio = digital_audio
@@ -3478,6 +3503,9 @@ class LDdecode:
             setattr(self, outfiles, None)
 
         self.demodcache.end()
+
+        if self.use_profiler:
+            self.lpf.print_stats()
 
     def roughseek(self, location, isField=True):
         self.prevPhaseID = None
@@ -3652,9 +3680,12 @@ class LDdecode:
 
     @profile
     def readfield(self, initphase=False):
-        done = False
+        done     = False
         adjusted = False
-        redo = None
+        redo     = None
+        df_args  = None
+        f        = None
+        offset   = 0
 
         if len(self.fieldstack) >= 2:
             # XXX: Need to cut off the previous field here, since otherwise
@@ -3674,15 +3705,16 @@ class LDdecode:
                 # Only allow one redo, no matter what
                 done = True
                 redo = None
-            elif self.decodethread and self.decodethread.ident:
-                self.decodethread.join()
-                self.decodethread = None
-                
-                f, offset = self.threadreturn['field'], self.threadreturn['offset']
-            else: # assume first run
-                f = None
-                offset = 0
+            else:
+                if self.decodethread and self.decodethread.ident:
+                    self.decodethread.join()
+                    self.decodethread = None
 
+                # In non-threaded mode self.threadreturn was filled earlier...
+                # ... but if the first call, this is empty
+                if len(self.threadreturn) > 0:
+                    f, offset = self.threadreturn['field'], self.threadreturn['offset']
+            
             # Start new thread
             self.threadreturn = {}
             if f and f.valid:
@@ -3697,8 +3729,11 @@ class LDdecode:
 
             df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
 
-            self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-            self.decodethread.start()
+            if self.numthreads != 0:
+                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+                self.decodethread.start()
+            else:
+                self.decodefield(*df_args)
             
             # process previous run
             if f:
@@ -3708,6 +3743,8 @@ class LDdecode:
                 self.fieldstack.insert(0, None)
 
             if f and f.valid:
+                # Downscaling is time consuming, but currently things are
+                # blocking on the decode thread started above finishing
                 picture, audio, efm = f.downscale(
                     linesout=self.output_lines, 
                     final=True, 
@@ -3760,9 +3797,10 @@ class LDdecode:
                 else:
                     done = True
                     fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
-                    minlength = (f.inlinelen * self.output_lines) - 2
-                    if ((f.sync_confidence < 50) and (fieldlength < minlength)):
-                        logger.warning("WARNING: Player skip detected, output will be corrupted")
+                    fieldlength /= f.inlinelen
+                    if ((f.sync_confidence < 50) and not 
+                         inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
+                        logger.warning("WARNING: Possible player skip detected - check output")
 
                     self.fieldstack.insert(0, f)
 
