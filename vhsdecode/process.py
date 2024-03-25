@@ -312,8 +312,16 @@ class VHSDecode(ldd.LDdecode):
         done = False
         adjusted = False
         redo = None
+        df_args = None
+        f = None
+        offset = 0
 
         if len(self.fieldstack) >= 2:
+            ## Done in main files
+            # XXX: Need to cut off the previous field here, since otherwise
+            # it'll leak for now.
+            # if self.fieldstack[-1]:
+            #    self.fieldstack[-1].prevfield = None
             self.fieldstack.pop(-1)
 
         while done is False:
@@ -321,66 +329,51 @@ class VHSDecode(ldd.LDdecode):
                 # Drop existing thread
                 self.decodethread = None
 
-                # Start new thread
-                self.threadreturn = {}
-                df_args = (
-                    redo,
-                    self.mtf_level,
-                    self.fieldstack[0],
-                    initphase,
-                    redo,
-                    self.threadreturn,
+                f, offset = self.decodefield(
+                    redo, self.mtf_level, self.fieldstack[0], initphase, redo
                 )
-
-                self.decodethread = threading.Thread(
-                    target=self.decodefield, args=df_args
-                )
-                # .run() does not actually run this in the background
-                self.decodethread.run()
-                f, offset = self.threadreturn["field"], self.threadreturn["offset"]
-                self.decodethread = None
 
                 # Only allow one redo, no matter what
                 done = True
                 redo = None
-            elif self.decodethread and self.decodethread.ident:
-                self.decodethread.join()
-                self.decodethread = None
 
-                f, offset = self.threadreturn["field"], self.threadreturn["offset"]
-            else:  # assume first run
-                f = None
-                offset = 0
+            else:
+                if self.decodethread and self.decodethread.ident:
+                    self.decodethread.join()
+                    self.decodethread = None
 
-            if True:
-                # Start new thread
-                self.threadreturn = {}
-                if f and f.valid:
-                    prevfield = f
-                    toffset = self.fdoffset + offset
-                else:
-                    prevfield = None
-                    toffset = self.fdoffset
+                # In non-threaded mode self.threadreturn was filled earlier...
+                # ... but if the first call, this is empty
+                # if len(self.threadreturn) > 0:
+                #    f, offset = self.threadreturn['field'], self.threadreturn['offset']
 
-                    if offset:
-                        toffset += offset
+            # Start new thread
+            self.threadreturn = {}
+            if f and f.valid:
+                prevfield = f
+                toffset = self.fdoffset + offset
+            else:
+                prevfield = None
+                toffset = self.fdoffset
 
-                df_args = (
-                    toffset,
-                    self.mtf_level,
-                    prevfield,
-                    initphase,
-                    False,
-                    self.threadreturn,
-                )
+                if offset:
+                    toffset += offset
 
-                self.decodethread = threading.Thread(
-                    target=self.decodefield, args=df_args
-                )
-                self.decodethread.start()
-                # Enabling .join() here to disable threading makes it slower,
-                # but makes the output more deterministic
-                self.decodethread.join()
+            df_args = (
+                toffset,
+                self.mtf_level,
+                prevfield,
+                initphase,
+                False,
+                self.threadreturn,
+            )
+
+            # THis doesn't actually seem to do anything in the background so disable for now.
+            # if self.numthreads != 0:
+            #    self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+            #    self.decodethread.start()
+            # else:
+            self.decodefield(*df_args)
 
             # process previous run
             if f:

@@ -6,7 +6,7 @@ class DemodCacheTape(DemodCache):
     def __init__(self, *args, **kwargs):
         super(DemodCacheTape, self).__init__(*args, **kwargs)
 
-    def worker(self):
+    def worker(self, return_on_empty=False):
         """Override to skip mtf stuff since that's laserdisc specific."""
         blocksrun = 0
         blockstime = 0
@@ -14,6 +14,9 @@ class DemodCacheTape(DemodCache):
         rf = self.rf
 
         while True:
+            if return_on_empty and self.q_in.qsize() == 0:
+                return
+
             item = self.q_in.get()
 
             if item is None or item[0] == "END":
