@@ -37,7 +37,11 @@ except (ImportError, OSError):
     SOUNDDEVICE_AVAILABLE = False
 
 try:
-    from PyQt5.QtWidgets import QApplication, QMessageBox
+    try:
+        from PyQt6.QtWidgets import QApplication, QMessageBox
+    except ImportError:
+        from PyQt5.QtWidgets import QApplication, QMessageBox
+
     from vhsdecode.hifi.HifiUi import (
         ui_parameters_to_decode_options,
         decode_options_to_ui_parameters,
@@ -639,18 +643,23 @@ def decode_parallel(
                     try:
                         w.write(stereo)
                         if decode_options["preview"]:
-                            if (
-                                len(stereo_play_buffer)
-                                > decode_options["audio_rate"] * 5
-                            ):
-                                sd.wait()
-                                sd.play(
-                                    stereo_play_buffer,
-                                    decode_options["audio_rate"],
-                                    blocking=False,
+                            if SOUNDDEVICE_AVAILABLE:
+                                if (
+                                    len(stereo_play_buffer)
+                                    > decode_options["audio_rate"] * 5
+                                ):
+                                    sd.wait()
+                                    sd.play(
+                                        stereo_play_buffer,
+                                        decode_options["audio_rate"],
+                                        blocking=False,
+                                    )
+                                    stereo_play_buffer = list()
+                                stereo_play_buffer += stereo
+                            else:
+                                print(
+                                    "Import of sounddevice failed, preview is not available!"
                                 )
-                                stereo_play_buffer = list()
-                            stereo_play_buffer += stereo
                     except ValueError:
                         pass
 
@@ -767,6 +776,7 @@ def main() -> int:
         "standard": "p" if system == "PAL" else "n",
         "format": "vhs" if not args.H8 else "h8",
         "preview": args.preview,
+        "preview_available": SOUNDDEVICE_AVAILABLE,
         "original": args.original,
         "noise_reduction": args.noise_reduction == "on" if not args.preview else False,
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
@@ -788,7 +798,7 @@ def main() -> int:
 
     if args.UI and not HIFI_UI:
         print(
-            "PyQt5 is not installed, can not use graphical UI, falling back to command line interface.."
+            "PyQt5/PyQt6 is not installed, can not use graphical UI, falling back to command line interface.."
         )
 
     if args.UI and HIFI_UI:
@@ -818,7 +828,7 @@ def main() -> int:
                             message = f"Output file '{options['output_file']}' cannot be created nor overwritten"
 
                         ui_t.window.generic_message_box(
-                            "I/O Error", message, QMessageBox.Critical
+                            "I/O Error", message, QMessageBox.Icon.Critical
                         )
                         ui_t.window.on_stop_clicked()
 

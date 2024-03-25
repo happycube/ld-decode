@@ -1,24 +1,45 @@
 import os.path
 import sys
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QDial,
-    QCheckBox,
-    QComboBox,
-    QPushButton,
-    QLineEdit,
-    QFileDialog,
-    QDesktopWidget,
-    QDialog,
-    QMessageBox,
-)
-from PyQt5 import QtGui, QtCore
+
+try:
+    from PyQt6.QtGui import QIcon
+    from PyQt6.QtWidgets import (
+        QApplication,
+        QMainWindow,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QDial,
+        QCheckBox,
+        QComboBox,
+        QPushButton,
+        QLineEdit,
+        QFileDialog,
+        QDialog,
+        QMessageBox,
+    )
+    from PyQt6 import QtGui, QtCore
+except ImportError:
+    from PyQt5.QtGui import QIcon
+    from PyQt5.QtWidgets import (
+        QApplication,
+        QMainWindow,
+        QWidget,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QDial,
+        QCheckBox,
+        QComboBox,
+        QPushButton,
+        QLineEdit,
+        QFileDialog,
+        QDialog,
+        QMessageBox,
+    )
+    from PyQt5 import QtGui, QtCore
+
 from vhsdecode.hifi.HiFiDecode import DEFAULT_NR_GAIN_
 
 
@@ -30,6 +51,7 @@ class MainUIParameters:
         self.automatic_fine_tuning: bool = True
         self.grc = False
         self.preview: bool = False
+        self.preview_available: bool = True
         self.audio_sample_rate: int = 44100
         self.standard: str = "PAL"
         self.format: str = "VHS"
@@ -45,6 +67,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.sidechain_gain = decode_options["nr_side_gain"] / 100.0
     values.noise_reduction = decode_options["noise_reduction"]
     values.automatic_fine_tuning = decode_options["auto_fine_tune"]
+    values.preview_available = decode_options["preview_available"]
     values.audio_sample_rate = decode_options["audio_rate"]
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
@@ -143,7 +166,7 @@ class InputDialog(QDialog):
         self.setFixedHeight(self.sizeHint().height())
 
     def get_input_value(self):
-        result = self.exec_()  # Ejecutar el diálogo de entrada
+        result = self.exec()  # Ejecutar el diálogo de entrada
         if result == QDialog.Accepted:
             return self.input_line.text()
         else:
@@ -216,6 +239,7 @@ class HifiUi(QMainWindow):
         self.noise_reduction_checkbox = QCheckBox("Noise reduction")
         self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
         self.preview_checkbox = QCheckBox("Preview")
+        self.preview_checkbox.setCheckable(params.preview_available)
         middle_layout.addWidget(self.noise_reduction_checkbox)
         middle_layout.addWidget(self.automatic_fine_tuning_checkbox)
         middle_layout.addWidget(self.preview_checkbox)
@@ -347,7 +371,7 @@ class HifiUi(QMainWindow):
         )
         self.change_button_color(self.stop_button, "#eee")
         # disables maximize button
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowMaximizeButtonHint)
+        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowType.WindowMaximizeButtonHint)
         # disables resize
         self.setFixedWidth(int(self.sizeHint().width() * 3 / 4))
         # sets fixed height
@@ -375,7 +399,7 @@ class HifiUi(QMainWindow):
 
     def center_on_screen(self):
         # Get the screen geometry
-        screen_geometry = QDesktopWidget().screenGeometry()
+        screen_geometry = self.screen().availableGeometry()
 
         # Calculate the center of the screen
         screen_center = screen_geometry.center()
@@ -488,14 +512,14 @@ class HifiUi(QMainWindow):
         # checks if destination file exists and prompts user to overwrite
         if os.path.exists(self.output_file) and self.transport_state == 0:
             message_box = QMessageBox(
-                QMessageBox.Question,
+                QMessageBox.Icon.Question,
                 "File Exists",
                 "Overwrite existing file?",
-                buttons=QMessageBox.Yes | QMessageBox.No,
+                buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 parent=self,
             )
-            message_box.setIcon(QMessageBox.Warning)
-            message_box.setDefaultButton(QMessageBox.No)
+            message_box.setIcon(QMessageBox.Icon.Warning)
+            message_box.setDefaultButton(QMessageBox.StandardButton.No)
             # dark mode
             message_box.setStyleSheet(
                 """
@@ -509,10 +533,10 @@ class HifiUi(QMainWindow):
                 }
             """
             )
-            message_box.exec_()
+            message_box.exec()
             overwrite = message_box.standardButton(message_box.clickedButton())
 
-            if overwrite == QMessageBox.No:
+            if overwrite == QMessageBox.StandardButton.No:
                 print("Overwrite cancelled.")
                 return
 
@@ -559,11 +583,11 @@ class HifiUi(QMainWindow):
             ]
 
     def generic_message_box(
-        self, title: str, message: str, type: QMessageBox.Icon = QMessageBox.Information
+        self, title: str, message: str, type: QMessageBox.Icon = QMessageBox.Icon.Information
     ):
         message_box = QMessageBox(type, title, message, parent=self)
         message_box.setIcon(type)
-        message_box.setDefaultButton(QMessageBox.Ok)
+        message_box.setDefaultButton(QMessageBox.StandardButton.Ok)
         # dark mode
         message_box.setStyleSheet(
             """
@@ -577,7 +601,7 @@ class HifiUi(QMainWindow):
             }
         """
         )
-        message_box.exec_()
+        message_box.exec()
 
     def on_decode_finished(self, decoded_filename: str = "input stream"):
         self.setWindowIcon(QIcon.fromTheme("document-open"))
@@ -616,14 +640,13 @@ class FileOutputDialogUI(HifiUi):
         )
 
     def on_file_output_button_clicked(self):
-        options = QFileDialog.Options()
         qdialog = QFileDialog(self)
-        qdialog.setFileMode(QFileDialog.AnyFile)
+        qdialog.setFileMode(QFileDialog.FileMode.AnyFile)
         if os.path.isdir(os.path.dirname(self.file_output_textbox.text())):
             qdialog.setDirectory(os.path.dirname(self.file_output_textbox.text()))
 
         file_name, _ = qdialog.getOpenFileName(
-            self, "Open File", "", "All Files (*);;FLAC (*.flac)", options=options
+            self, "Open File", "", "All Files (*);;FLAC (*.flac)"
         )
         if file_name:
             self.file_output_textbox.setText(file_name)
@@ -697,13 +720,12 @@ class FileIODialogUI(HifiUi):
         self.file_output_label.setMinimumWidth(max_label_width)
 
     def on_file_input_button_clicked(self):
-        options = QFileDialog.Options()
         qdialog = QFileDialog(self)
-        qdialog.setFileMode(QFileDialog.AnyFile)
+        qdialog.setFileMode(QFileDialog.FileMode.AnyFile)
         if os.path.isdir(os.path.dirname(self.file_input_textbox.text())):
             qdialog.setDirectory(os.path.dirname(self.file_input_textbox.text()))
         file_name, _ = qdialog.getOpenFileName(
-            self, "Open File", "", "All Files (*);;FLAC (*.flac)", options=options
+            self, "Open File", "", "All Files (*);;FLAC (*.flac)"
         )
 
         if os.path.exists(file_name):
@@ -711,13 +733,11 @@ class FileIODialogUI(HifiUi):
         print("Input browse button clicked.")
 
     def on_file_output_button_clicked(self):
-        options = QFileDialog.Options()
         file_name, _ = QFileDialog.getSaveFileName(
             self,
             "Save File",
             "",
             "All Files (*);;FLAC (*.flac);; WAV (*.wav)",
-            options=options,
         )
 
         if os.path.isdir(os.path.dirname(file_name)):
@@ -745,4 +765,4 @@ if __name__ == "__main__":
     params = MainUIParameters()
     window = FileIODialogUI(params)
     window.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

@@ -32,7 +32,7 @@ jobs:
 
       - name: Build Python module
         run: |
-          pip3 install . setuptools Cython pyinstaller -r ./requirements.txt
+          pip3 install ".[hifi_gui_qt6,hifi_gnuradio]" setuptools Cython pyinstaller -r ./requirements.txt
           python3 setup.py build_ext --inplace
 
       - name: Build binary
