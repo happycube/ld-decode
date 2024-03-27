@@ -344,8 +344,8 @@ class VHSDecode(ldd.LDdecode):
 
                 # In non-threaded mode self.threadreturn was filled earlier...
                 # ... but if the first call, this is empty
-                # if len(self.threadreturn) > 0:
-                #    f, offset = self.threadreturn['field'], self.threadreturn['offset']
+                if len(self.threadreturn) > 0:
+                    f, offset = self.threadreturn["field"], self.threadreturn["offset"]
 
             # Start new thread
             self.threadreturn = {}
