@@ -18,6 +18,7 @@ from vhsdecode.chroma import (
     try_detect_track_ntsc,
     try_detect_track_betamax_pal,
 )
+from vhsdecode.formats import parent_system
 
 from vhsdecode.debug_plot import plot_data_and_pulses
 
@@ -103,6 +104,11 @@ def field_class_from_formats(system: str, tape_format: str):
         field_class = FieldMPALVHS
     elif system == "MESECAM" and tape_format == "VHS":
         field_class = FieldMESECAMVHS
+    elif system == "405":
+        if tape_format == "BETAMAX":
+            field_class = FieldPALTypeC
+        else:
+            raise Exception("405 line not implemented for format!", format)
 
     if not field_class:
         raise Exception("Unknown video system!", system)
@@ -253,6 +259,7 @@ def get_line0_fallback(
             > (lt_vsync[1] * 10)
             else None
         )
+
         return line_0, last_lineloc, True
     else:
         return None, None, None
@@ -367,7 +374,11 @@ class FieldShared:
                 ldd.logger.debug("readloc loc didn't advance.")
         else:
             self.field_number = 0
+
         super(FieldShared, self).process()
+
+        if self.rf.color_system == "405":
+            self.linecount = 203 if self.isFirstField else 202
 
     def hz_to_output(self, input):
         if type(input) == np.ndarray:
@@ -391,11 +402,10 @@ class FieldShared:
         if self.rf.options.export_raw_tbc:
             return np.single(input)
 
-        # Since this is just used for converting a value for the whole file don't do the track compensation here. 
-        reduced = (
-            input
-            - self.rf.DecoderParams["ire0"]
-        ) / self.rf.DecoderParams["hz_ire"]
+        # Since this is just used for converting a value for the whole file don't do the track compensation here.
+        reduced = (input - self.rf.DecoderParams["ire0"]) / self.rf.DecoderParams[
+            "hz_ire"
+        ]
         reduced -= self.rf.DecoderParams["vsync_ire"]
 
         return np.uint16(
@@ -576,12 +586,16 @@ class FieldShared:
                     not self.prevfield.isFirstField if self.prevfield else True
                 )
                 self.sync_confidence = 10
-        # Not sure if this is used for video.
+
+        # TODO: This is set here for NTSC, but in the PAL base class for PAL in process() it seems..
+        # For 405-line it's done in fieldTypeC.process as of now to override that.
+        # TODO: This will cause problem with the skipdetected part in valid_pulses_to_linelocs
         self.linecount = 263 if self.isFirstField else 262
 
         # Number of lines to actually process.  This is set so that the entire following
         # VSYNC is processed
         proclines = self.outlinecount + self.lineoffset + 10
+
         if self.rf.system == "PAL":
             proclines += 3
 

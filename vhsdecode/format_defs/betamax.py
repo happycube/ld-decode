@@ -266,3 +266,26 @@ def get_sysparams_ntsc_betamax_hifi(sysparams_ntsc):
     # sysparams["track_ire0_offset"] = [-7867, 0]
 
     return sysparams
+
+
+def get_sysparams_405line_betamax(sysparams_pal):
+    """Get system params for PAL Betamax"""
+    sysparams = get_sysparams_pal_betamax(sysparams_pal)
+    sysparams["frame_lines"] = 405
+    sysparams["field_lines"] = (202, 203)
+    sysparams["line_period"] = 98.765
+    # start, length of active video.
+    sysparams["activeVideoUS"] = (16.5, 98.765 - 1.75)
+    sysparams["firstFieldH"] = (1, 0.5)  # TODO: find out if correct
+    # "blacksnr_slice": (22, 12, 50),
+    sysparams["numPulses"]: 6  # number of equalization pulses per section
+    sysparams["hsyncPulseUS"] = sysparams["line_period"] / 10.0
+    sysparams["eqPulseUS"] = sysparams["line_period"] / 10.0
+    sysparams["vsyncPulseUS"] = 4 * sysparams["line_period"] / 10.0
+
+    return sysparams
+
+
+def get_rfparams_405line_betamax(rfparams_pal):
+    rfparams = get_rfparams_pal_betamax(rfparams_pal)
+    return rfparams

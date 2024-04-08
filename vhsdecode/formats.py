@@ -21,8 +21,45 @@ MAX_WOW = 1.06
 SysParams_NTSC["analog_audio"] = False
 SysParams_PAL["analog_audio"] = False
 
+
+def get_sys_params_405():
+    """Get sys params for 405 line 25 fps system based on PAL parameters
+
+    Returns:
+        dict: dict of params for 405-line 25 fps.
+    """
+
+    # TODO: Find sensible output sample rate
+
+    sys_params_405 = {**SysParams_PAL}
+    sys_params_405["frame_lines"] = 405
+    sys_params_405["field_lines"] = (202, 203)
+    sys_params_405["line_period"] = 98.765
+    # start, length of active video.
+    sys_params_405["activeVideoUS"] = (16.5, 98.765 - 1.75)
+    # sysparams['firstFieldH'] = (1, 0.5) # TODO: find out if correct
+    # "blacksnr_slice": (22, 12, 50),
+    sys_params_405["numPulses"]: 6  # number of equalization pulses per section
+    sys_params_405["hsyncPulseUS"] = sys_params_405["line_period"] / 10.0
+    sys_params_405["eqPulseUS"] = sys_params_405["line_period"] / 10.0
+    sys_params_405["vsyncPulseUS"] = 4 * sys_params_405["line_period"] / 10.0
+
+    return sys_params_405
+
+
 def is_color_under(tape_format: str):
     return tape_format not in ["TYPEC", "TYPEB"]
+
+
+def parent_system(system):
+    """Returns 'PAL' for 625 line systems and 405 line, and 'NTSC' for 525-line systems"""
+    if system == "MPAL":
+        parent_system = "NTSC"
+    elif system == "MESECAM" or system == "SECAM" or system == "405":
+        parent_system = "PAL"
+    else:
+        parent_system = system
+    return parent_system
 
 
 def get_format_params(system: str, tape_format: str, logger):
@@ -272,5 +309,17 @@ def get_format_params(system: str, tape_format: str, logger):
         return get_sysparams_mesecam_vhs(SysParams_PAL), get_rfparams_mesecam_vhs(
             FilterParams_PAL
         )
+    elif system == "405":
+        if tape_format == "BETAMAX":
+            from vhsdecode.format_defs.betamax import (
+                get_rfparams_405line_betamax,
+                get_sysparams_405line_betamax,
+            )
+
+            return get_sysparams_405line_betamax(
+                SysParams_PAL
+            ), get_rfparams_405line_betamax(FilterParams_PAL)
+        else:
+            raise Exception("Tape format not supported for 405 line yet", tape_format)
     else:
         raise Exception("Unknown video system! ", system)

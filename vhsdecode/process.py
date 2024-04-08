@@ -49,17 +49,6 @@ from vhsdecode.compute_video_filters import (
 from vhsdecode.demodcache import DemodCacheTape
 
 
-def parent_system(system):
-    """Returns 'PAL' for 625 line systems and 'NTSC' for 525-line systems"""
-    if system == "MPAL":
-        parent_system = "NTSC"
-    elif system == "MESECAM" or system == "SECAM":
-        parent_system = "PAL"
-    else:
-        parent_system = system
-    return parent_system
-
-
 def is_secam(system: str):
     return system == "SECAM" or system == "MESECAM"
 
@@ -108,13 +97,18 @@ class VHSDecode(ldd.LDdecode):
         temp_init = ldd.DemodCache.__init__
         ldd.DemodCache.__init__ = _demodcache_dummy
 
+        if system == "405":
+            sys_params_pal_temp = ldd.SysParams_PAL.copy()
+            # If we are using 405-line we need to override this so the superclasses are initialized with the right values.
+            ldd.SysParams_PAL = vhs_formats.get_sys_params_405()
+
         super(VHSDecode, self).__init__(
             fname_in,
             fname_out,
             freader,
             logger,
             analog_audio=False,
-            system=parent_system(system),
+            system=vhs_formats.parent_system(system),
             doDOD=doDOD,
             threads=threads,
             inputfreq=inputfreq,
@@ -132,6 +126,9 @@ class VHSDecode(ldd.LDdecode):
             extra_options=extra_options,
             debug_plot=debug_plot,
         )
+
+        if system == '405':
+           SysParams_PAL = sys_params_pal_temp
 
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -155,6 +152,11 @@ class VHSDecode(ldd.LDdecode):
             self.outfile_chroma = None
 
         self.debug_plot = debug_plot
+
+        # Needs to be overridden since this is overwritten for 405-line.
+        # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
+        # Not modified as of now but may be tweaked for 405-line later
+        # self.outwidth = self.rf.SysParams["outlinelen"]
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice, psnr=False):
@@ -488,7 +490,7 @@ class VHSRFDecode(ldd.RFDecode):
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(
             inputfreq,
-            parent_system(system),
+            vhs_formats.parent_system(system),
             decode_analog_audio=False,
             has_analog_audio=False,
             extra_options=extra_options,
@@ -571,6 +573,7 @@ class VHSRFDecode(ldd.RFDecode):
             is_color_under
             and not export_raw_tbc
             and not rf_options.get("skip_chroma", False)
+            and not (system == "405")
         )
 
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
@@ -612,7 +615,8 @@ class VHSRFDecode(ldd.RFDecode):
             # which output not quite standard vsync.
             rf_options.get("fallback_vsync", False)
             or tape_format == "TYPEC"
-            or tape_format == "EIAJ",
+            or tape_format == "EIAJ"
+            or system == "405",
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,
