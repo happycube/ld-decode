@@ -579,6 +579,7 @@ class VHSRFDecode(ldd.RFDecode):
         # No idea if this is a common pythonic way to accomplish it but this gives us values that
         # can't be changed later.
         # first depends on IRE/Hz so has to be set after that is properly set.
+        # TODO: May want to split this up eventually
         self._options = namedtuple(
             "Options",
             [
@@ -599,6 +600,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "hsync_refine_use_threshold",
                 "export_raw_tbc",
                 "fm_audio_notch",
+                "chroma_offset",
             ],
         )(
             self.iretohz(100) * 2,
@@ -628,6 +630,7 @@ class VHSRFDecode(ldd.RFDecode):
             True,
             export_raw_tbc,
             rf_options.get("fm_audio_notch", 0),
+            int(self.DecoderParams.get("chroma_offset", 5) * (self.freq / 40.0)),
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -1161,7 +1164,7 @@ class VHSRFDecode(ldd.RFDecode):
                 self.blocklen,
                 self.Filters["FVideoNotch"],
                 self._notch,
-                move=int(10 * (self.freq / 40))
+                move=int(self.options.chroma_offset)
                 # TODO: Do we need to tweak move elsewhere too?
                 # if cafc is enabled, this filtering will be done after TBC
             )

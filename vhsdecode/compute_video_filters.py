@@ -93,7 +93,7 @@ def gen_video_lpf(corner_freq, order, nyquist_hz, block_len):
         sps.sosfreqz(video_lpf_b, block_len, whole=True)[1][: block_len // 2 + 1]
     )
 
-    return (video_lpf, abs(video_lpf_fft))
+    return (video_lpf, video_lpf_fft)
 
 
 def gen_video_lpf_supergauss(corner_freq, order, nyquist_hz, block_len):
@@ -105,6 +105,7 @@ def gen_video_lpf_supergauss(corner_freq, order, nyquist_hz, block_len):
 
 
 def gen_video_lpf_supergauss_params(rf_params, nyquist_hz, block_len):
+    ## TODO: This generates a filter at half the corner frequency!
     return gen_video_lpf_supergauss(
         rf_params["video_lpf_freq"], rf_params["video_lpf_order"], nyquist_hz, block_len
     )
