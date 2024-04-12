@@ -55,20 +55,24 @@ except ImportError:
 
 
 parser, _ = common_parser_cli(
-    "Extracts audio from raw VHS HiFi FM capture",
+    "Extracts audio from RAW HiFi FM RF captures",
     default_threads=round(cpu_count() / 2),
 )
 
 parser.add_argument(
-    "--audio_rate",
+    "--ar", "--audio_rate",
     dest="rate",
     type=int,
-    default=44100,
-    help="Output sample rate in Hz (default 44100)",
+    default=48000,
+    help="Output sample rate in Hz (default 48000)",
 )
 
 parser.add_argument(
-    "--bg", dest="BG", action="store_true", default=False, help="Do carrier bias guess"
+    "--bg", "--bias_guess",
+    dest="BG", 
+    action="store_true", 
+    default=False, 
+    help="Do carrier bias guess"
 )
 
 parser.add_argument(
@@ -121,11 +125,11 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--h8",
-    dest="H8",
+    "--8mm",
+    dest="8mm",
     action="store_true",
     default=False,
-    help="Video8/Hi8, 8mm tape format",
+    help="Sony Video8/Hi8, 8mm tape formats",
 )
 
 parser.add_argument(
@@ -137,11 +141,11 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--ui",
+    "--ui", "--gui"
     dest="UI",
     action="store_true",
     default=False,
-    help="Opens hifi-ui",
+    help="Opens hifi-decode GUI graphical user interface",
 )
 
 parser.add_argument(
@@ -319,7 +323,7 @@ class UnSigned16BitFileReader(io.RawIOBase):
 
 # This part is what opens the file
 # The samplerate here could be anything
-def as_soundfile(pathR, sample_rate=44100):
+def as_soundfile(pathR, sample_rate=48000):
     path = pathR.lower()
     if ".raw" in path or ".s16" in path:
         return sf.SoundFile(
@@ -768,13 +772,13 @@ def main() -> int:
 
     print("Initializing ...")
 
-    real_mode = "s" if not args.H8 else "mpx"
+    real_mode = "s" if not args.8mm else "mpx"
     real_mode = args.mode if args.mode in ["l", "r", "sum"] else real_mode
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
         "standard": "p" if system == "PAL" else "n",
-        "format": "vhs" if not args.H8 else "h8",
+        "format": "vhs" if not args.8mm else "8mm",
         "preview": args.preview,
         "preview_available": SOUNDDEVICE_AVAILABLE,
         "original": args.original,
