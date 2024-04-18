@@ -7,6 +7,40 @@ cimport numpy as np
 import math
 
 
+cpdef complex[:] diff_center(complex[:] input_array):
+    """Center diff of array"""
+    assert len(input_array) > 4
+    cdef complex[:] output_array = np.zeros_like(input_array)
+    output_array[0] = input_array[1] * 0.5
+    output_array[-1] = -input_array[-2] * 0.5
+    for i in range(1, len(input_array) - 1):
+        output_array[i] = -(0.5 * input_array[i - 1]) + (0.5 * input_array[i + 1])
+
+    return output_array
+
+
+cpdef complex[:] diff_forward(complex[:] input_array):
+    """Return the forward diff on the input array with 2 accuracy - not used currently"""
+    assert len(input_array) > 4
+    cdef complex[:] output_array = np.zeros_like(input_array)
+    output_array[0] = 0
+    output_array[2] = input_array[1] - input_array[0]
+    #output_array[-1] = input_array[-2] - input_array[-1]
+    #output_array[-1] = -input_array[-2] * 0.5
+    #for i in range(1, len(input_array) - 1):
+    #    output_array[i] = (-0.5*input_array[i + 1]) + (2 * input_array[i]) + (-1.5 * input_array[i - 1])
+
+    #
+    for i in range(2, len(input_array) - 1):
+        output_array[i] = (1.5*input_array[i]) - (2 * input_array[i - 1]) + (0.5 * input_array[i - 2])
+
+    #for i in range(1, len(input_array)):
+    #    output_array[i] = input_array[i] - input_array[i - 1]
+
+
+    return output_array
+
+
 def unwrap_hilbert(double complex[:] hilbert, cython.double freq_hz):
     cdef cython.double pi = math.pi
     cdef cython.double tau = math.tau

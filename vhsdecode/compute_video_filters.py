@@ -87,13 +87,12 @@ def gen_custom_video_filters(filter_list, freq_hz, block_len):
 
 def gen_video_lpf(corner_freq, order, nyquist_hz, block_len):
     """Generate real-value fir and fft post-demodulation low pass filters from parameters"""
-    video_lpf = sps.butter(order, corner_freq / nyquist_hz, "lowpass")
     video_lpf_b = sps.butter(order, corner_freq / nyquist_hz, "lowpass", output="sos")
     video_lpf_fft = abs(
         sps.sosfreqz(video_lpf_b, block_len, whole=True)[1][: block_len // 2 + 1]
     )
 
-    return (video_lpf, video_lpf_fft)
+    return (video_lpf_b, video_lpf_fft)
 
 
 def gen_video_lpf_supergauss(corner_freq, order, nyquist_hz, block_len):
@@ -195,8 +194,8 @@ def gen_nonlinear_bandpass(upper_freq, lower_freq, order, nyquist_hz, block_len)
 
 
 def gen_fm_audio_notch_params(rf_params, notch_q, nyquist_hz, block_len):
-    """ Generate dual notch filter for fm audio frequencies specified in rf_params
-        assumes these keys exist.
+    """Generate dual notch filter for fm audio frequencies specified in rf_params
+    assumes these keys exist.
     """
     return gen_fft_notch(
         rf_params["fm_audio_channel_0_freq"], notch_q, nyquist_hz, block_len

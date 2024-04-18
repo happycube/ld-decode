@@ -127,8 +127,8 @@ class VHSDecode(ldd.LDdecode):
             debug_plot=debug_plot,
         )
 
-        if system == '405':
-           SysParams_PAL = sys_params_pal_temp
+        if system == "405":
+            SysParams_PAL = sys_params_pal_temp
 
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -854,37 +854,62 @@ class VHSRFDecode(ldd.RFDecode):
             )
         else:
             # Filter for rf before demodulating.
-            y_fm = lddu.filtfft(
-                sps.butter(
-                    DP["video_bpf_order"],
-                    [
-                        DP["video_bpf_low"] / self.freq_hz_half,
-                        DP["video_bpf_high"] / self.freq_hz_half,
-                    ],
-                    btype="bandpass",
-                ),
-                self.blocklen,
-            )
+            # Only use bpf if order defined - otherwise skip
+            if DP.get("video_bpf_order", None):
+                print("order exists")
+                y_fm = lddu.filtfft(
+                    sps.butter(
+                        DP["video_bpf_order"],
+                        [
+                            DP["video_bpf_low"] / self.freq_hz_half,
+                            DP["video_bpf_high"] / self.freq_hz_half,
+                        ],
+                        btype="bandpass",
+                    ),
+                    self.blocklen,
+                )
+            else:
+                y_fm = None
 
-            y_fm_lowpass = lddu.filtfft(
+            # Gen fft filter from sos filter
+            # TODO: Move this elsewhere
+            def sosfiltfft(filter_value, block_len):
+                return sps.sosfreqz(filter_value, block_len, whole=True)[1]
+
+            y_fm_lowpass = sosfiltfft(
                 sps.butter(
                     DP["video_lpf_extra_order"],
                     [DP["video_lpf_extra"] / self.freq_hz_half],
                     btype="lowpass",
+                    output="sos",
                 ),
                 self.blocklen,
             )
 
-            y_fm_highpass = lddu.filtfft(
+            y_fm_highpass = sosfiltfft(
                 sps.butter(
                     DP["video_hpf_extra_order"],
                     [DP["video_hpf_extra"] / self.freq_hz_half],
                     btype="highpass",
+                    output="sos",
                 ),
                 self.blocklen,
             )
 
-            self.Filters["RFVideo"] = abs(y_fm) * abs(y_fm_lowpass) * abs(y_fm_highpass)
+            if y_fm is not None:
+                # Only use this if defined
+                self.Filters["RFVideo"] = (
+                    abs(y_fm) * abs(y_fm_lowpass) * abs(y_fm_highpass)
+                )
+            else:
+                self.Filters["RFVideo"] = abs(y_fm_lowpass) * abs(y_fm_highpass)
+
+        # b, a = ([1, -1], [1])
+        # rf_eq = filtfft((b, a), self.blocklen)
+        # self.Filters["rf_eq"] = b, a
+        # self.Filters["rf_eq_fft"] = abs(rf_eq)
+
+        # self.Filters["RFVideo"] *= abs(rf_eq)
 
         if self.options.fm_audio_notch != 0:
             if "fm_audio_channel_0_freq" in DP and "fm_audio_channel_1_freq" in DP:
@@ -1084,7 +1109,7 @@ class VHSRFDecode(ldd.RFDecode):
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
 
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and
-        # replace the spikes with data from the diffed demod.
+        # replace the spikes with data from the diffed demod. (Which in practice is an extra EQed signal)
         if not self._disable_diff_demod:
             check_value = self.options.diff_demod_check_value
 
