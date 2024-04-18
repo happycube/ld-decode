@@ -224,15 +224,16 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
-    RFParams_NTSC_VHS["video_bpf_low"] = 1400000
-    RFParams_NTSC_VHS["video_bpf_high"] = 5900000
+    RFParams_NTSC_VHS["video_bpf_low"] = 1000000
+    RFParams_NTSC_VHS["video_bpf_high"] = 5200000
 
-    RFParams_NTSC_VHS["video_bpf_order"] = None
+    RFParams_NTSC_VHS["video_bpf_order"] = 6
+    RFParams_NTSC_VHS["video_bpf_supergauss"] = True
 
-    RFParams_NTSC_VHS["video_lpf_extra"] = 5150000
+    RFParams_NTSC_VHS["video_lpf_extra"] = 5350000
     RFParams_NTSC_VHS["video_lpf_extra_order"] = 25
 
-    RFParams_NTSC_VHS["video_hpf_extra"] = 1300000
+    RFParams_NTSC_VHS["video_hpf_extra"] = 500000
     RFParams_NTSC_VHS["video_hpf_extra_order"] = 20
 
     # Low-pass filter on Y after demodulation
@@ -258,13 +259,17 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
     # Video Y FM de-emphasis (1.25~1.35µs)
     RFParams_NTSC_VHS["deemph_tau"] = 1.30e-6
 
-    RFParams_NTSC_VHS["boost_bpf_low"] = 3100000
-    RFParams_NTSC_VHS["boost_bpf_high"] = 5000000
-    RFParams_NTSC_VHS["boost_bpf_mult"] = 2.3
+    RFParams_NTSC_VHS["boost_bpf_low"] = 4500000
+    RFParams_NTSC_VHS["boost_bpf_high"] = 5400000
+    RFParams_NTSC_VHS["boost_bpf_mult"] = None
 
     # Use linear ramp to boost RF
-    RFParams_NTSC_VHS["boost_rf_linear_0"] = 0
+    # Lower number attenuates lower freqs more giving a "softer" look with less ringing but potentially less detail
+    RFParams_NTSC_VHS["boost_rf_linear_0"] = 0.21
+    # This param doesn't really seem to matter.
     RFParams_NTSC_VHS["boost_rf_linear_20"] = 8
+    # Double up ramp filter to more closely mimic VHS EQ
+    RFParams_NTSC_VHS["boost_rf_linear_double"] = True
 
     # Frequency of fm audio channels - used for notch filter
     RFParams_NTSC_VHS["fm_audio_channel_0_freq"] = 1300000

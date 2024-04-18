@@ -938,6 +938,8 @@ class VHSRFDecode(ldd.RFDecode):
                 self.blocklen // 2,
             )
             self.Filters["RFVideo"] *= np.concatenate((ramp, np.flip(ramp)))
+            if DP.get("boost_rf_linear_double", False):
+                self.Filters["RFVideo"] *= np.concatenate((ramp, np.flip(ramp)))
 
         self.Filters["RFTop"] = sps.butter(
             1,
