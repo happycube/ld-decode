@@ -126,10 +126,10 @@ parser.add_argument(
 
 parser.add_argument(
     "--8mm",
-    dest="8mm",
+    dest="format_8mm",
     action="store_true",
     default=False,
-    help="Sony Video8/Hi8, 8mm tape formats",
+    help="Use settings for Video8 and Hi8 tape formats.",
 )
 
 parser.add_argument(
@@ -141,7 +141,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--ui", "--gui"
+    "--gui",
     dest="UI",
     action="store_true",
     default=False,
@@ -772,13 +772,13 @@ def main() -> int:
 
     print("Initializing ...")
 
-    real_mode = "s" if not args.8mm else "mpx"
+    real_mode = "s" if not args.format_8mm else "mpx"
     real_mode = args.mode if args.mode in ["l", "r", "sum"] else real_mode
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
         "standard": "p" if system == "PAL" else "n",
-        "format": "vhs" if not args.8mm else "8mm",
+        "format": "vhs" if not args.format_8mm else "8mm",
         "preview": args.preview,
         "preview_available": SOUNDDEVICE_AVAILABLE,
         "original": args.original,
@@ -793,13 +793,6 @@ def main() -> int:
         "mode": real_mode,
     }
 
-    if decode_options["format"] == "vhs":
-        print("PAL VHS format selected") if system == "PAL" else print(
-            "NTSC VHS format selected"
-        )
-    else:
-        print("NTSC Hi8 format selected")
-
     if args.UI and not HIFI_UI:
         print(
             "PyQt5/PyQt6 is not installed, can not use graphical UI, falling back to command line interface.."
@@ -813,6 +806,9 @@ def main() -> int:
                 if ui_t.window.transport_state == 1:
                     print("Starting decode...")
                     options = ui_parameters_to_decode_options(ui_t.window.getValues())
+
+                    print("options", options)
+
                     # change to output file directory
                     if os.path.dirname(options["output_file"]) != "":
                         os.chdir(os.path.dirname(options["output_file"]))
@@ -845,6 +841,14 @@ def main() -> int:
         return decoder_state
     else:
         if test_input_file(filename) and test_output_file(outname):
+            if decode_options["format"] == "vhs":
+                print("PAL VHS format selected") if system == "PAL" else print(
+                    "NTSC VHS format selected"
+                )
+            else:
+                print("NTSC Hi8 format selected")
+
+
             return run_decoder(args, decode_options)
         else:
             parser.print_help()
