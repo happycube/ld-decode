@@ -50,7 +50,7 @@ def main(args=None, use_gui=False):
     import vhsdecode.formats as f
 
     parser, debug_group = common_parser(
-        "Extracts video from raw rf captures of colour-under tapes", use_gui=use_gui
+        "Extracts video from RAW RF captures of colour-under & composite modulated tapes", use_gui=use_gui
     )
     if not use_gui:
         parser.add_argument(
