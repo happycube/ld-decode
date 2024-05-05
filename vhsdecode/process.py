@@ -856,7 +856,6 @@ class VHSRFDecode(ldd.RFDecode):
             # Filter for rf before demodulating.
             # Only use bpf if order defined - otherwise skip
             if DP.get("video_bpf_order", None):
-                print("order exists")
                 y_fm = lddu.filtfft(
                     sps.butter(
                         DP["video_bpf_order"],

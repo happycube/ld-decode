@@ -93,20 +93,22 @@ def get_rfparams_pal_vhs(rfparams_pal):
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
-    RFParams_PAL_VHS["video_bpf_low"] = 2200000
-    RFParams_PAL_VHS["video_bpf_high"] = 5680000
+    RFParams_PAL_VHS["video_bpf_low"] = 1300000
+    RFParams_PAL_VHS["video_bpf_high"] = 5780000
     # Band-pass filter order.
     # Order may be fine as is.
-    RFParams_PAL_VHS["video_bpf_order"] = 1
+    RFParams_PAL_VHS["video_bpf_order"] = None
     # Sharper upper cutoff to get rid of high-frequency junk.
-    RFParams_PAL_VHS["video_lpf_extra"] = 6010000
-    RFParams_PAL_VHS["video_lpf_extra_order"] = 3
+    RFParams_PAL_VHS["video_lpf_extra"] = 5710000
+    RFParams_PAL_VHS["video_lpf_extra_order"] = 20
 
-    RFParams_PAL_VHS["video_hpf_extra"] = 1520000
-    RFParams_PAL_VHS["video_hpf_extra_order"] = 1
+    RFParams_PAL_VHS["video_bpf_supergauss"] = False
+
+    RFParams_PAL_VHS["video_hpf_extra"] = 1320000
+    RFParams_PAL_VHS["video_hpf_extra_order"] = 12
 
     # Low-pass filter on Y after demodulation
-    RFParams_PAL_VHS["video_lpf_freq"] = 3200000
+    RFParams_PAL_VHS["video_lpf_freq"] = 3400000
     RFParams_PAL_VHS["video_lpf_order"] = 6
 
     # PAL color under carrier is 40H + 1953
@@ -137,7 +139,16 @@ def get_rfparams_pal_vhs(rfparams_pal):
     RFParams_PAL_VHS["boost_bpf_low"] = 4200000
     RFParams_PAL_VHS["boost_bpf_high"] = 5600000
     # Multiplier for the boosted signal to add in.
-    RFParams_PAL_VHS["boost_bpf_mult"] = 2
+    RFParams_PAL_VHS["boost_bpf_mult"] = None
+
+    # Use linear ramp to boost RF
+    # Lower number attenuates lower freqs more giving a "softer" look with less ringing but potentially less detail
+    RFParams_PAL_VHS["boost_rf_linear_0"] = 0.15
+    # This param doesn't really seem to matter.
+    RFParams_PAL_VHS["boost_rf_linear_20"] = 3
+    #Double up ramp filter to more closely mimic VHS EQ
+    RFParams_PAL_VHS["boost_rf_linear_double"] = True
+
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
@@ -225,7 +236,7 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
     RFParams_NTSC_VHS["video_bpf_low"] = 1000000
-    RFParams_NTSC_VHS["video_bpf_high"] = 5200000
+    RFParams_NTSC_VHS["video_bpf_high"] = 5400000
 
     RFParams_NTSC_VHS["video_bpf_order"] = 6
     RFParams_NTSC_VHS["video_bpf_supergauss"] = True
