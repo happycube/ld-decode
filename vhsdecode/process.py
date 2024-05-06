@@ -903,6 +903,19 @@ class VHSRFDecode(ldd.RFDecode):
             else:
                 self.Filters["RFVideo"] = abs(y_fm_lowpass) * abs(y_fm_highpass)
 
+        if DP.get("video_rf_peak_freq", False):
+            # Add optional rf peaking filter
+            from vhsdecode.addons.biquad import peaking
+
+            peaking_filter = lddu.filtfft(peaking(
+                DP["video_rf_peak_freq"] / self.freq_hz_half,
+                DP.get("video_rf_peak_gain", 3),
+                BW=DP.get("video_rf_peak_bandwidth", 2.5e6) / self.freq_hz_half,
+                type="constantq",
+            ), self.blocklen)
+            self.Filters["RFVideo"] *= abs(peaking_filter)
+
+
         # b, a = ([1, -1], [1])
         # rf_eq = filtfft((b, a), self.blocklen)
         # self.Filters["rf_eq"] = b, a

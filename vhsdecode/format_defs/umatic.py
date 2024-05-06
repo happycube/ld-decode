@@ -4,9 +4,9 @@ def get_rfparams_pal_umatic(RFParams_PAL):
     # These need tweaking.
     RFParams_PAL_UMATIC["video_bpf_low"] = 1400000
     RFParams_PAL_UMATIC["video_bpf_high"] = 7000000
-    RFParams_PAL_UMATIC["video_bpf_order"] = 1
-    RFParams_PAL_UMATIC["video_lpf_extra"] = 7000000
-    RFParams_PAL_UMATIC["video_lpf_extra_order"] = 8
+    RFParams_PAL_UMATIC["video_bpf_order"] = None
+    RFParams_PAL_UMATIC["video_lpf_extra"] = 6800000
+    RFParams_PAL_UMATIC["video_lpf_extra_order"] = 14
     RFParams_PAL_UMATIC["video_hpf_extra"] = 1400000
     RFParams_PAL_UMATIC["video_hpf_extra_order"] = 14
     RFParams_PAL_UMATIC["video_lpf_freq"] = 4200000
@@ -28,6 +28,11 @@ def get_rfparams_pal_umatic(RFParams_PAL):
     # it's eyeballed based on graph and output.
     RFParams_PAL_UMATIC["deemph_mid"] = 500000
     RFParams_PAL_UMATIC["deemph_gain"] = 10.8
+
+    # Use linear ramp to boost RF
+    RFParams_PAL_UMATIC["boost_rf_linear_0"] = 0.5
+    RFParams_PAL_UMATIC["boost_rf_linear_20"] = 3
+
 
     # This has not really been stress-tested due to lack of crummy umatic samples.
     RFParams_PAL_UMATIC["boost_bpf_low"] = 5000000
@@ -131,7 +136,7 @@ def get_rfparams_ntsc_umatic(rfparams_ntsc):
 
     RFParams_NTSC_UMATIC["video_bpf_low"] = 1400000
     RFParams_NTSC_UMATIC["video_bpf_high"] = 6500000
-    RFParams_NTSC_UMATIC["video_bpf_order"] = 1
+    RFParams_NTSC_UMATIC["video_bpf_order"] = None
     RFParams_NTSC_UMATIC["video_lpf_extra"] = 6500000
     RFParams_NTSC_UMATIC["video_lpf_extra_order"] = 8
     RFParams_NTSC_UMATIC["video_hpf_extra"] = 1400000
@@ -153,6 +158,11 @@ def get_rfparams_ntsc_umatic(rfparams_ntsc):
 
     RFParams_NTSC_UMATIC["deemph_mid"] = 500000
     RFParams_NTSC_UMATIC["deemph_gain"] = 10.8
+
+    # Use linear ramp to boost RF
+    RFParams_NTSC_UMATIC["boost_rf_linear_0"] = 0.5
+    RFParams_NTSC_UMATIC["boost_rf_linear_20"] = 3
+
 
     # This has not really been stress-tested due to lack of crummy umatic samples.
     RFParams_NTSC_UMATIC["boost_bpf_low"] = 5000000
