@@ -10,51 +10,100 @@ import os
 import sys
 import logging
 import json
+try:
+    QT_VERSION = 6
 
-from PyQt5.QtCore import (
-    Qt,
-    QByteArray,
-    QCryptographicHash,
-    QMetaType,
-    QObject,
-    QSize,
-    QThread,
-    pyqtSignal,
-)
-from PyQt5.QtWidgets import (
-    QAbstractItemView,
-    QAbstractScrollArea,
-    QApplication,
-    QCheckBox,
-    QComboBox,
-    QDialog,
-    QFileDialog,
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QMessageBox,
-    QPushButton,
-    QRadioButton,
-    QScrollArea,
-    QSlider,
-    QSpinBox,
-    QSplitter,
-    QSizePolicy,
-    QTableWidgetItem,
-    QTextEdit,
-    QVBoxLayout,
-    QWidget,
-)
-from PyQt5.QtGui import (
-    QBrush,
-    QGuiApplication,
-    QImage,
-    QKeySequence,
-    QKeyEvent,
-    QPalette,
-    QPixmap,
-)
+    from PyQt6.QtCore import (
+        Qt,
+        QByteArray,
+        QCryptographicHash,
+        QMetaType,
+        QObject,
+        QSize,
+        QThread,
+        pyqtSignal,
+    )
+    from PyQt6.QtWidgets import (
+        QAbstractItemView,
+        QAbstractScrollArea,
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QDialog,
+        QFileDialog,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QMessageBox,
+        QPushButton,
+        QRadioButton,
+        QScrollArea,
+        QSlider,
+        QSpinBox,
+        QSplitter,
+        QSizePolicy,
+        QTableWidgetItem,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
+    from PyQt6.QtGui import (
+        QBrush,
+        QGuiApplication,
+        QImage,
+        QKeySequence,
+        QKeyEvent,
+        QPalette,
+        QPixmap,
+    )
+except ImportError:
+    QT_VERSION = 5
+
+    from PyQt5.QtCore import (
+        Qt,
+        QByteArray,
+        QCryptographicHash,
+        QMetaType,
+        QObject,
+        QSize,
+        QThread,
+        pyqtSignal,
+    )
+    from PyQt5.QtWidgets import (
+        QAbstractItemView,
+        QAbstractScrollArea,
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QDialog,
+        QFileDialog,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QMessageBox,
+        QPushButton,
+        QRadioButton,
+        QScrollArea,
+        QSlider,
+        QSpinBox,
+        QSplitter,
+        QSizePolicy,
+        QTableWidgetItem,
+        QTextEdit,
+        QVBoxLayout,
+        QWidget,
+    )
+    from PyQt5.QtGui import (
+        QBrush,
+        QGuiApplication,
+        QImage,
+        QKeySequence,
+        QKeyEvent,
+        QPalette,
+        QPixmap,
+    )
 
 from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -449,10 +498,10 @@ class VHStune(QDialog):
     def __init__(self, tape_format, logger, parent=None):
         super(VHStune, self).__init__(
             parent,
-            Qt.Window
-            | Qt.WindowMinimizeButtonHint
-            | Qt.WindowMaximizeButtonHint
-            | Qt.WindowCloseButtonHint,
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint,
         )
         self._logger = logger
 
@@ -476,7 +525,7 @@ class VHStune(QDialog):
         self.filters_area.setWidget(self.filterGroupBox)
         left_layout.addWidget(self.filters_area)
         main_layout.addLayout(left_layout, 0, 0)
-        img_plot_splitter = QSplitter(Qt.Horizontal)
+        img_plot_splitter = QSplitter(Qt.Orientation.Horizontal)
         img_widget = QWidget()
         plot_widget = QWidget()
         # main_layout.addLayout(self._right_layout, 0, 1)
@@ -1038,7 +1087,7 @@ class VHStune(QDialog):
                 self._format_params.field_width,
                 height * 2,
                 self._format_params.field_width * 2,
-                QImage.Format_Grayscale16,
+                QImage.Format.Format_Grayscale16,
             )
         )
         if self.displayWidthSlider.value() != 100:
@@ -1050,12 +1099,12 @@ class VHStune(QDialog):
                     ),
                     height * 2,
                 ),
-                transformMode=Qt.SmoothTransformation,
+                transformMode=Qt.TransformationMode.SmoothTransformation,
             )
         if self.displayHeightSlider.value() != 1:
             pixmap = pixmap.scaled(
                 QSize(pixmap.width(), height * 2 * self.displayHeightSlider.value()),
-                transformMode=Qt.FastTransformation,
+                transformMode=Qt.TransformationMode.FastTransformation,
             )
         self.dispLabel.setPixmap(pixmap)
         self.dispLabel.resize(pixmap.width(), pixmap.height())
@@ -1063,13 +1112,13 @@ class VHStune(QDialog):
     def createRightArea(self):
         self._right_layout = QGridLayout()
         # scroll = QScrollArea()
-        # scroll.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+        # scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
         self.dispLabel = QLabel()
-        self.dispLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.dispLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         # self._disp_label_layout = QVBoxLayout()
         # self.dispLabel.setLayout(self._disp_label_layout)
         # scroll.setWidget(self.dispLabel)
-        self.frameSlider = QSlider(Qt.Horizontal, self)
+        self.frameSlider = QSlider(Qt.Orientation.Horizontal, self)
 
         self.frameSlider.setRange(1, 1)
         self.frameSlider.setValue(1)
@@ -1168,22 +1217,22 @@ class VHStune(QDialog):
         #        layout.addWidget(self.tbcHeight)
 
         self.swapTrackFieldChkBox = QCheckBox("Swap track / field (invert track phase)")
-        self.swapTrackFieldChkBox.setCheckState(0)
+        self.swapTrackFieldChkBox.setCheckState(Qt.CheckState.Unchecked)
         self.swapTrackFieldChkBox.stateChanged.connect(self.drawImage)
 
         layout.addWidget(self.swapTrackFieldChkBox)
 
         self.showFieldsChkBox = QCheckBox("Show fields separated")
-        self.showFieldsChkBox.setCheckState(0)
+        self.showFieldsChkBox.setCheckState(Qt.CheckState.Unchecked)
         self.showFieldsChkBox.stateChanged.connect(self.updateImage)
 
         layout.addWidget(self.showFieldsChkBox)
 
-        self.displayWidthSlider = QSlider(Qt.Horizontal, self.controlsGroupBox)
+        self.displayWidthSlider = QSlider(Qt.Orientation.Horizontal, self.controlsGroupBox)
         self.displayWidthSlider.setRange(1, 200)
         self.displayWidthSlider.setValue(100)
         self.displayWidthSlider.setTracking(False)
-        self.displayWidthSlider.setTickPosition(QSlider.TicksBelow)
+        self.displayWidthSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.displayWidthSlider.valueChanged.connect(self.drawImage)
 
         displayWidthLabel = QLabel("Display width (in percent):")
@@ -1192,11 +1241,11 @@ class VHStune(QDialog):
         layout.addWidget(displayWidthLabel)
         layout.addWidget(self.displayWidthSlider)
 
-        self.displayHeightSlider = QSlider(Qt.Horizontal, self.controlsGroupBox)
+        self.displayHeightSlider = QSlider(Qt.Orientation.Horizontal, self.controlsGroupBox)
         self.displayHeightSlider.setRange(1, 5)
         self.displayHeightSlider.setValue(1)
         self.displayHeightSlider.setTracking(False)
-        self.displayHeightSlider.setTickPosition(QSlider.TicksBelow)
+        self.displayHeightSlider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.displayHeightSlider.valueChanged.connect(self.drawImage)
 
         displayHeightLabel = QLabel("Display height (factor):")
@@ -1221,7 +1270,7 @@ class VHStune(QDialog):
                 layout.addWidget(self.filter_params[k]["ctrl"])
             elif self.filter_params[k]["value"] is not None:
                 self.filter_params[k]["ctrl"] = QSlider(
-                    Qt.Horizontal, self.filterGroupBox
+                    Qt.Orientation.Horizontal, self.filterGroupBox
                 )
                 self.filter_params[k]["ctrl"].setTracking(False)
                 self.filter_params[k]["ctrl"].setRange(
@@ -1246,7 +1295,8 @@ class VHStune(QDialog):
 
 
 def main():
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    if QT_VERSION == 5:
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     app = QApplication(sys.argv)
     logger = logging.getLogger("vhstune")
     tape_format = "VHS"
@@ -1257,7 +1307,7 @@ def main():
     pos = vhsTune.pos()
     if pos.x() < 0 or pos.y() < 0:
         vhsTune.move(0, 0)
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
