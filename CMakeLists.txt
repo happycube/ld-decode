@@ -198,3 +198,4 @@ if(BUILD_PYTHON)
 endif()
 
 install(PROGRAMS gen_chroma_vid.sh TYPE BIN)
+install(PROGRAMS scripts/ld-compress TYPE BIN)
