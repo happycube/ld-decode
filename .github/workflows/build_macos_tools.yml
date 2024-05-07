@@ -56,7 +56,7 @@ jobs:
           cp flaldf dist/tbc-tools.app/Contents/MacOS/
 
       - name: Copy scripts
-        run: find scripts -perm +111 -type f -exec cp {} dist/tbc-tools.app/Contents/MacOS/ \;
+        run: find scripts scripts/linux -maxdepth 1 -perm +111 -type f -exec cp {} dist/tbc-tools.app/Contents/MacOS/ \;
 
       - name: Copy dependencies
         run: macdeployqt dist/tbc-tools.app -libpath=/usr/local/lib/

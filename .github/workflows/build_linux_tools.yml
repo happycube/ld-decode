@@ -72,16 +72,14 @@ jobs:
           cp flaldf release/
 
       - name: Copy scripts
-        run: find scripts -executable -exec cp {} release/ \;
+        run: find scripts scripts/linux -maxdepth 1 -type f -executable -exec cp {} release/ \;
 
-      # uncomment to compress release directory
-      # this is not required when releasing as an artifact
-      #- name: Create release archive
-      #  run: tar -cvjSf tbc-tools.tar.bz2 --transform s/release/tbc-tools/ release/
+      - name: Create release archive
+        run: tar -cvjSf tbc-tools.tar.bz2 --transform s/release/tbc-tools/ release/
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: tbc-tools_linux_x86_64
-          path: release
+          path: tbc-tools.tar.bz2
           if-no-files-found: error
