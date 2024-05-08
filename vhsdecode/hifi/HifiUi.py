@@ -93,15 +93,19 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "gain": values.volume,
         "input_file": values.input_file,
         "output_file": values.output_file,
-        "mode": "s"
-        if values.audio_mode == "Stereo"
-        else "l"
-        if values.audio_mode == "L"
-        else "r"
-        if values.audio_mode == "R"
-        else "mpx"
-        if values.audio_mode == "Stereo MPX"
-        else "sum",
+        "mode": (
+            "s"
+            if values.audio_mode == "Stereo"
+            else (
+                "l"
+                if values.audio_mode == "L"
+                else (
+                    "r"
+                    if values.audio_mode == "R"
+                    else "mpx" if values.audio_mode == "Stereo MPX" else "sum"
+                )
+            )
+        ),
     }
     return decode_options
 
@@ -283,9 +287,7 @@ class HifiUi(QMainWindow):
         self.input_samplerate_combo.addItems(
             [
                 "DdD (40.0)",
-                "Clockgen (10.0)"
-                "RTLSDR (8.0)"
-                "cxadc (28.64)",
+                "Clockgen (10.0)" "RTLSDR (8.0)" "cxadc (28.64)",
                 "cxadc3 (35.8)",
                 "10cxadc (14.32)",
                 "10cxadc3 (17.9)",
@@ -375,7 +377,9 @@ class HifiUi(QMainWindow):
         )
         self.change_button_color(self.stop_button, "#eee")
         # disables maximize button
-        self.setWindowFlags(self.windowFlags() & ~QtCore.Qt.WindowType.WindowMaximizeButtonHint)
+        self.setWindowFlags(
+            self.windowFlags() & ~QtCore.Qt.WindowType.WindowMaximizeButtonHint
+        )
         # disables resize
         self.setFixedWidth(int(self.sizeHint().width() * 3 / 4))
         # sets fixed height
@@ -587,7 +591,10 @@ class HifiUi(QMainWindow):
             ]
 
     def generic_message_box(
-        self, title: str, message: str, type: QMessageBox.Icon = QMessageBox.Icon.Information
+        self,
+        title: str,
+        message: str,
+        type: QMessageBox.Icon = QMessageBox.Icon.Information,
     ):
         message_box = QMessageBox(type, title, message, parent=self)
         message_box.setIcon(type)

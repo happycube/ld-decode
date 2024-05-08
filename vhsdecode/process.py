@@ -91,6 +91,7 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
     ):
+
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
         # and not create extra threads.
         # This is kinda hacky and should be sorted in a better way ideally.
@@ -907,14 +908,16 @@ class VHSRFDecode(ldd.RFDecode):
             # Add optional rf peaking filter
             from vhsdecode.addons.biquad import peaking
 
-            peaking_filter = lddu.filtfft(peaking(
-                DP["video_rf_peak_freq"] / self.freq_hz_half,
-                DP.get("video_rf_peak_gain", 3),
-                BW=DP.get("video_rf_peak_bandwidth", 2.5e6) / self.freq_hz_half,
-                type="constantq",
-            ), self.blocklen)
+            peaking_filter = lddu.filtfft(
+                peaking(
+                    DP["video_rf_peak_freq"] / self.freq_hz_half,
+                    DP.get("video_rf_peak_gain", 3),
+                    BW=DP.get("video_rf_peak_bandwidth", 2.5e6) / self.freq_hz_half,
+                    type="constantq",
+                ),
+                self.blocklen,
+            )
             self.Filters["RFVideo"] *= abs(peaking_filter)
-
 
         # b, a = ([1, -1], [1])
         # rf_eq = filtfft((b, a), self.blocklen)
@@ -1203,7 +1206,7 @@ class VHSRFDecode(ldd.RFDecode):
                 self.blocklen,
                 self.Filters["FVideoNotch"],
                 self._notch,
-                move=int(self.options.chroma_offset)
+                move=int(self.options.chroma_offset),
                 # TODO: Do we need to tweak move elsewhere too?
                 # if cafc is enabled, this filtering will be done after TBC
             )

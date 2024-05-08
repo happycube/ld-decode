@@ -412,7 +412,8 @@ def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
     ax3.plot(
         freqs,
         rf.Filters["FVideo"][:blocklen_half].imag,
-        label="Deemphasis + lpf phase", color="#990000",
+        label="Deemphasis + lpf phase",
+        color="#990000",
     )
     ax2.legend()
     ax3.legend()

@@ -60,7 +60,8 @@ parser, _ = common_parser_cli(
 )
 
 parser.add_argument(
-    "--ar", "--audio_rate",
+    "--ar",
+    "--audio_rate",
     dest="rate",
     type=int,
     default=48000,
@@ -68,11 +69,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--bg", "--bias_guess",
-    dest="BG", 
-    action="store_true", 
-    default=False, 
-    help="Do carrier bias guess"
+    "--bg",
+    "--bias_guess",
+    dest="BG",
+    action="store_true",
+    default=False,
+    help="Do carrier bias guess",
 )
 
 parser.add_argument(
@@ -842,12 +844,13 @@ def main() -> int:
     else:
         if test_input_file(filename) and test_output_file(outname):
             if decode_options["format"] == "vhs":
-                print("PAL VHS format selected") if system == "PAL" else print(
-                    "NTSC VHS format selected"
+                (
+                    print("PAL VHS format selected")
+                    if system == "PAL"
+                    else print("NTSC VHS format selected")
                 )
             else:
                 print("NTSC Hi8 format selected")
-
 
             return run_decoder(args, decode_options)
         else:

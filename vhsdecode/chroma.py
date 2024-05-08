@@ -263,9 +263,11 @@ def process_chroma(
         lineoffset,
         linesout,
         outwidth,
-        field.rf.chroma_afc.getChromaHet()
-        if (field.rf.do_cafc and not disable_tracking_cafc)
-        else field.rf.chroma_heterodyne,
+        (
+            field.rf.chroma_afc.getChromaHet()
+            if (field.rf.do_cafc and not disable_tracking_cafc)
+            else field.rf.chroma_heterodyne
+        ),
         phase_rotation,
         starting_phase,
     )
