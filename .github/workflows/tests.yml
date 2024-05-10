@@ -1,7 +1,7 @@
 name: Tests
 
 on:
-  workflow_dispatch:
+  push:
   pull_request:
   release:
 
@@ -24,7 +24,7 @@ jobs:
         sudo apt-get update
         # Based on: https://github.com/happycube/ld-decode/wiki/Installation
         # Added: cmake libqt5opengl5-dev libqt5svg5-dev
-        sudo apt-get install -y --no-install-recommends git cmake make python3-distutils python3-numpy python3-scipy python3-matplotlib cython3 libqt5opengl5-dev libqt5svg5-dev libqwt-qt5-dev libfftw3-dev python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg
+        sudo apt-get install -y --no-install-recommends git cmake make python3-setuptools python3-numpy python3-scipy python3-matplotlib git libqt5opengl5-dev libqt5svg5-dev libqwt-qt5-dev libfftw3-dev python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg
 
     - name: Set up build dir
       timeout-minutes: 1
@@ -65,7 +65,7 @@ jobs:
         sudo apt-get update
         # Based on: https://github.com/happycube/ld-decode/wiki/Installation
         # Added: cmake qt6-base-dev libgl-dev (needed by QtGui)
-        sudo apt-get install -y --no-install-recommends git cmake make python3-distutils python3-numpy python3-scipy python3-matplotlib qt6-base-dev libgl-dev libfftw3-dev python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg cython3
+        sudo apt-get install -y --no-install-recommends git cmake make python3-distutils python3-numpy python3-scipy python3-matplotlib qt6-base-dev libgl-dev libfftw3-dev python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg
 
     - name: Set up build dir
       timeout-minutes: 1
