@@ -86,7 +86,7 @@ def main(args=None, use_gui=False):
         type=str.lower,
         dest="tape_speed",
         metavar="tape_speed",
-        default="SP",
+        default="sp",
         choices=TAPE_SPEEDS.keys(),
         help="Tape speed selection for adjusting format parameters. SP (default), LP, SLP, EP, and VP. Only supported for some formats. SLP and EP refers to the same speed.",
     )

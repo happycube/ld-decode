@@ -352,7 +352,8 @@ class FormatParams:
     def change_format(self, system, tape_format, fs, logger):
         self.fs = fs
         self.system = system
-        self.sys_params, self.rf_params = get_format_params(system, tape_format, logger)
+        # TODO: tape speed
+        self.sys_params, self.rf_params = get_format_params(system, tape_format, 0, logger)
         self.field_lines = max(self.sys_params["field_lines"])
         self.field_width = int(np.round(self.sys_params["line_period"] * (fs / 1e6)))
 

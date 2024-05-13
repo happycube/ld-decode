@@ -1,4 +1,3 @@
-
 from setuptools import setup
 from Cython.Build import cythonize
 import numpy
@@ -29,9 +28,9 @@ setup(
     # TODO: should be done in pyproject.toml but did not find any way
     # of including without making them modules.
     scripts=[
-        'ld-cut',
-        'cx-expander',
-        'decode.py',
+        "ld-cut",
+        "cx-expander",
+        "decode.py",
     ],
     # scripts=[
     #    'cx-expander',
