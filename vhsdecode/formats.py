@@ -21,6 +21,12 @@ MAX_WOW = 1.06
 SysParams_NTSC["analog_audio"] = False
 SysParams_PAL["analog_audio"] = False
 
+TAPE_SPEEDS = {"sp": 0, "lp": 1, "ep": 2, "slp": 2, "vp": 3}
+
+
+def parse_tape_speed(tape_speed: str) -> int:
+    return TAPE_SPEEDS.get(tape_speed.lower(), 0)
+
 
 def get_sys_params_405():
     """Get sys params for 405 line 25 fps system based on PAL parameters
@@ -47,11 +53,11 @@ def get_sys_params_405():
     return sys_params_405
 
 
-def is_color_under(tape_format: str):
+def is_color_under(tape_format: str) -> str:
     return tape_format not in ["TYPEC", "TYPEB"]
 
 
-def parent_system(system):
+def parent_system(system: str) -> str:
     """Returns 'PAL' for 625 line systems and 405 line, and 'NTSC' for 525-line systems"""
     if system == "MPAL":
         parent_system = "NTSC"
@@ -62,12 +68,15 @@ def parent_system(system):
     return parent_system
 
 
-def get_format_params(system: str, tape_format: str, logger):
+def get_format_params(system: str, tape_format: str, tape_speed: int, logger) -> dict:
     """Get format parameters based on video system and tape format.
     Will raise an exception if the system is not one of PAL, NTSC and MPAL
     """
     # We base the parameters off the original laserdisc ones and override the ones
     # we need.
+
+    assert (tape_speed <= 4, "Tape speed was > 4!")
+
     if system == "PAL":
         if tape_format == "UMATIC":
             from vhsdecode.format_defs.umatic import (
@@ -187,9 +196,9 @@ def get_format_params(system: str, tape_format: str, logger):
                 get_sysparams_pal_vhs,
             )
 
-            return get_sysparams_pal_vhs(SysParams_PAL), get_rfparams_pal_vhs(
-                FilterParams_PAL
-            )
+            return get_sysparams_pal_vhs(
+                SysParams_PAL, tape_speed
+            ), get_rfparams_pal_vhs(FilterParams_PAL, tape_speed)
     elif system == "NTSC":
         if tape_format == "UMATIC":
             from vhsdecode.format_defs.umatic import (
@@ -282,9 +291,9 @@ def get_format_params(system: str, tape_format: str, logger):
                 get_sysparams_ntsc_vhs,
             )
 
-            return get_sysparams_ntsc_vhs(SysParams_NTSC), get_rfparams_ntsc_vhs(
-                FilterParams_NTSC
-            )
+            return get_sysparams_ntsc_vhs(
+                SysParams_NTSC, tape_speed
+            ), get_rfparams_ntsc_vhs(FilterParams_NTSC, tape_speed)
     elif system == "MPAL":
         if tape_format != "VHS":
             logger.warning('Tape format "%s" not supported for MPAL yet', tape_format)
@@ -293,9 +302,9 @@ def get_format_params(system: str, tape_format: str, logger):
             get_sysparams_mpal_vhs,
         )
 
-        return get_sysparams_mpal_vhs(SysParams_NTSC), get_rfparams_mpal_vhs(
-            FilterParams_NTSC
-        )
+        return get_sysparams_mpal_vhs(
+            SysParams_NTSC, tape_speed
+        ), get_rfparams_mpal_vhs(FilterParams_NTSC, tape_speed)
     elif system == "MESECAM":
         if tape_format != "VHS":
             logger.warning(
@@ -306,9 +315,9 @@ def get_format_params(system: str, tape_format: str, logger):
             get_sysparams_mesecam_vhs,
         )
 
-        return get_sysparams_mesecam_vhs(SysParams_PAL), get_rfparams_mesecam_vhs(
-            FilterParams_PAL
-        )
+        return get_sysparams_mesecam_vhs(
+            SysParams_PAL, tape_speed
+        ), get_rfparams_mesecam_vhs(FilterParams_PAL, tape_speed)
     elif system == "405":
         if tape_format == "BETAMAX":
             from vhsdecode.format_defs.betamax import (

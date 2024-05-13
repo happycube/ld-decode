@@ -27,6 +27,7 @@ from vhsdecode.cmdcommons import (
     test_input_file,
     test_output_file,
 )
+from vhsdecode.formats import TAPE_SPEEDS
 
 supported_tape_formats = {
     "VHS",
@@ -78,6 +79,16 @@ def main(args=None, use_gui=False):
         default="VHS",
         choices=supported_tape_formats,
         help="Tape format, currently VHS (Default), VHSHQ, SVHS, UMATIC, UMATIC_HI, BETAMAX, BETAMAX_HIFI, VIDEO8, HI8 ,EIAJ, VCR, VCR_LP, TYPEC and TYPEB, are supported",
+    )
+    parser.add_argument(
+        "--ts",
+        "--tape_speed",
+        type=str.lower,
+        dest="tape_speed",
+        metavar="tape_speed",
+        default="SP",
+        choices=TAPE_SPEEDS.keys(),
+        help="Tape speed selection for adjusting format parameters. SP (default), LP, SLP, EP, and VP. Only supported for some formats. SLP and EP refers to the same speed.",
     )
     parser.add_argument(
         "--params_file",
@@ -378,6 +389,7 @@ def main(args=None, use_gui=False):
     rf_options["saved_levels"] = args.saved_levels
     rf_options["skip_hsync_refine"] = args.skip_hsync_refine
     rf_options["export_raw_tbc"] = args.export_raw_tbc
+    rf_options["tape_speed"] = args.tape_speed
 
     extra_options = get_extra_options(args, not use_gui)
     extra_options["params_file"] = args.params_file

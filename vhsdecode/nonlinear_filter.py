@@ -86,7 +86,7 @@ def sub_deemphasis_inner(
         amplitude *= linear_scale_2
 
     if logistic_rate is not None and logistic_rate > 0:
-        amplitude *= (1 / (1 + np.e**(-logistic_rate * (amplitude - logistic_mid))))
+        amplitude *= 1 / (1 + np.e ** (-logistic_rate * (amplitude - logistic_mid)))
 
     # Scale the band-pass filtered signal by one minus the resulting referenc
     # e.g this means it get scaled more at lower amplitudes.

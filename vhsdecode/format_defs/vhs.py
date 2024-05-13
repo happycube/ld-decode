@@ -4,7 +4,7 @@ PAL_ROTATION = [0, -1]
 NTSC_ROTATION = [-1, 1]
 
 
-def fill_rfparams_vhs_shared(rfparams):
+def fill_rfparams_vhs_shared(rfparams: dict, tape_speed: int = 0) -> None:
     """Fill in parameters that are shared between systems for VHS"""
 
     # PAL and NTSC uses the same main de-emphasis
@@ -16,9 +16,9 @@ def fill_rfparams_vhs_shared(rfparams):
 
     rfparams["deemph_mid"] = 273755.82  # sqrt(gain_factor)/(2*pi*r*c)
     rfparams["deemph_gain"] = 13.9794  # 20*log10(gain_factor)
-    rfparams[
-        "deemph_q"
-    ] = 0.462088186  # 1/sqrt(sqrt(gain_factor) + 1/sqrt(gain_factor) + 2)
+    rfparams["deemph_q"] = (
+        0.462088186  # 1/sqrt(sqrt(gain_factor) + 1/sqrt(gain_factor) + 2)
+    )
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
@@ -28,9 +28,10 @@ def fill_rfparams_vhs_shared(rfparams):
 
     rfparams["nonlinear_scaling_1"] = 0.1
     rfparams["nonlinear_exp_scaling"] = 0.12
+    rfparams["use_sub_deemphasis"] = [False, True, True, True][tape_speed]
 
 
-def fill_rfparams_svhs_shared(rfparams):
+def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     """Fill in parameters that are shared between systems for Super VHS
     SVHS uses the same luma frequencies for NTSC and PAL
     """
@@ -86,7 +87,7 @@ def fill_rfparams_svhs_shared(rfparams):
     rfparams["use_sub_deemphasis"] = True
 
 
-def get_rfparams_pal_vhs(rfparams_pal):
+def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
     """Get RF params for PAL VHS"""
 
     RFParams_PAL_VHS = {**rfparams_pal}
@@ -146,9 +147,8 @@ def get_rfparams_pal_vhs(rfparams_pal):
     RFParams_PAL_VHS["boost_rf_linear_0"] = 0.15
     # This param doesn't really seem to matter.
     RFParams_PAL_VHS["boost_rf_linear_20"] = 3
-    #Double up ramp filter to more closely mimic VHS EQ
+    # Double up ramp filter to more closely mimic VHS EQ
     RFParams_PAL_VHS["boost_rf_linear_double"] = True
-
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
@@ -163,12 +163,12 @@ def get_rfparams_pal_vhs(rfparams_pal):
     RFParams_PAL_VHS["fm_audio_channel_0_freq"] = 1400000
     RFParams_PAL_VHS["fm_audio_channel_1_freq"] = 1800000
 
-    fill_rfparams_vhs_shared(RFParams_PAL_VHS)
+    fill_rfparams_vhs_shared(RFParams_PAL_VHS, tape_speed)
 
     return RFParams_PAL_VHS
 
 
-def get_sysparams_pal_vhs(sysparams_pal):
+def get_sysparams_pal_vhs(sysparams_pal: dict, tape_speed: int = 0) -> dict:
     """Get system params for PAL VHS"""
 
     SysParams_PAL_VHS = {**sysparams_pal}
@@ -219,7 +219,7 @@ def get_sysparams_pal_svhs(sysparams_pal):
     return SysParams_PAL_SVHS
 
 
-def get_sysparams_pal_vhshq(sysparams_pal):
+def get_sysparams_pal_vhshq(sysparams_pal: dict, tape_speed: int) -> dict:
     SysParams_PAL_VHSHQ = get_sysparams_pal_vhs(sysparams_pal)
 
     # One track has an offset of f_h/2
@@ -228,7 +228,7 @@ def get_sysparams_pal_vhshq(sysparams_pal):
     return SysParams_PAL_VHSHQ
 
 
-def get_rfparams_ntsc_vhs(rfparams_ntsc):
+def get_rfparams_ntsc_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
     """Get RF params for NTSC VHS"""
 
     RFParams_NTSC_VHS = {**rfparams_ntsc}
@@ -286,12 +286,12 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc):
     RFParams_NTSC_VHS["fm_audio_channel_0_freq"] = 1300000
     RFParams_NTSC_VHS["fm_audio_channel_1_freq"] = 1700000
 
-    fill_rfparams_vhs_shared(RFParams_NTSC_VHS)
+    fill_rfparams_vhs_shared(RFParams_NTSC_VHS, tape_speed)
 
     return RFParams_NTSC_VHS
 
 
-def get_sysparams_ntsc_vhs(sysparams_ntsc):
+def get_sysparams_ntsc_vhs(sysparams_ntsc: dict, tape_speed: int = 0) -> dict:
     SysParams_NTSC_VHS = {**sysparams_ntsc}
 
     # frequency/ire IRE change pr frequency (Is this labeled correctly?)
@@ -332,8 +332,8 @@ def get_sysparams_ntsc_svhs(sysparams_ntsc):
     return SysParams_NTSC_SVHS
 
 
-def get_sysparams_ntsc_vhshq(sysparams_ntsc):
-    SysParams_NTSC_VHSHQ = get_sysparams_ntsc_vhs(sysparams_ntsc)
+def get_sysparams_ntsc_vhshq(sysparams_ntsc: dict, tape_speed: int = 0) -> dict:
+    SysParams_NTSC_VHSHQ = get_sysparams_ntsc_vhs(sysparams_ntsc, tape_speed)
 
     # One track has an offset of f_h/2
     # SysParams_NTSC_VHSHQ["track_ire0_offset"] = [0, 7867]
@@ -341,8 +341,8 @@ def get_sysparams_ntsc_vhshq(sysparams_ntsc):
     return SysParams_NTSC_VHSHQ
 
 
-def get_rfparams_mpal_vhs(rfparams_ntsc):
-    params = get_rfparams_ntsc_vhs(rfparams_ntsc)
+def get_rfparams_mpal_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
+    params = get_rfparams_ntsc_vhs(rfparams_ntsc, tape_speed)
     # Same as NTSC other than color carrier
     params["color_under_carrier"] = 631.337e3
     params["chroma_rotation"] = PAL_ROTATION
@@ -350,10 +350,10 @@ def get_rfparams_mpal_vhs(rfparams_ntsc):
     return params
 
 
-def get_sysparams_mpal_vhs(sysparams_ntsc):
+def get_sysparams_mpal_vhs(sysparams_ntsc: dict, tape_speed: int = 0) -> dict:
     from lddecode.core import calclinelen
 
-    params = get_sysparams_ntsc_vhs(sysparams_ntsc)
+    params = get_sysparams_ntsc_vhs(sysparams_ntsc, tape_speed)
     # PAL-M sysparams override (From JVC Video technical guide)
     # Slightly different frequency from NTSC
     params["fsc_mhz"] = 3.575611888111
@@ -371,8 +371,8 @@ def get_sysparams_mpal_vhs(sysparams_ntsc):
     return params
 
 
-def get_rfparams_mesecam_vhs(rfparams_pal):
-    params = get_rfparams_pal_vhs(rfparams_pal)
+def get_rfparams_mesecam_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
+    params = get_rfparams_pal_vhs(rfparams_pal, tape_speed)
 
     # Average of the two carriers specified, need to check if this works correctly
     # and calculate exact value
@@ -382,11 +382,11 @@ def get_rfparams_mesecam_vhs(rfparams_pal):
     return params
 
 
-def get_sysparams_mesecam_vhs(sysparams_pal):
+def get_sysparams_mesecam_vhs(sysparams_pal: dict, tape_speed: int = 0) -> dict:
     """Get system params for MESECAM VHS"""
 
     # This will be the same as PAL other than chroma
-    sysparams = get_sysparams_pal_vhs(sysparams_pal)
+    sysparams = get_sysparams_pal_vhs(sysparams_pal, tape_speed)
 
     # FSC specified in Panasonic NV-F55/95 handbook, need to check if this is correct
     # This differs from normal SECAM, possibly it's done like this to put the upconverted

@@ -19,7 +19,7 @@ def plot_filters(
     figure,
     sub_emph_plotter=None,
     sub_emphasis_params=None,
-    sub_emphasis_reference=None
+    sub_emphasis_reference=None,
 ):
     import matplotlib.pyplot as plt
 
@@ -37,11 +37,29 @@ def plot_filters(
     ax[2].set_ylim([-40, 30])
 
     if sub_emph_plotter and sub_emphasis_params:
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2',  '#7f7f7f', '#bcbd22', '#17becf']
+        colors = [
+            "#1f77b4",
+            "#ff7f0e",
+            "#2ca02c",
+            "#d62728",
+            "#9467bd",
+            "#8c564b",
+            "#e377c2",
+            "#7f7f7f",
+            "#bcbd22",
+            "#17becf",
+        ]
         for idx, db in enumerate(sub_emphasis_levels):
-            sub_emph_plotter.plot_sub_emphasis(db, ax[1], sub_emphasis_params, color = colors[idx % 10])
+            sub_emph_plotter.plot_sub_emphasis(
+                db, ax[1], sub_emphasis_params, color=colors[idx % 10]
+            )
             if sub_emphasis_reference is not None:
-                ax[1].scatter(sub_emphasis_reference["x"], sub_emphasis_reference["y"][idx], color = colors[idx % 10], marker = "x")
+                ax[1].scatter(
+                    sub_emphasis_reference["x"],
+                    sub_emphasis_reference["y"][idx],
+                    color=colors[idx % 10],
+                    marker="x",
+                )
 
 
 class SubEmphPlotter:
@@ -60,7 +78,7 @@ class SubEmphPlotter:
             debug_ax.plot(self.chirp_signal)
         self.chirp_fft = npfft.rfft(self.chirp_signal)
 
-        #self.hf_part = npfft.irfft(self.chirp_fft * filters["NLHighPassF"])
+        # self.hf_part = npfft.irfft(self.chirp_fft * filters["NLHighPassF"])
 
         if debug_ax is not None:
             amplitude = abs(sps.hilbert(self.hf_part)) / (self.deviation / 2)

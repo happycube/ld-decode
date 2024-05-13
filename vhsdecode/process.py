@@ -552,7 +552,10 @@ class VHSRFDecode(ldd.RFDecode):
         self.last_raw_loc = None
 
         self.SysParams, self.DecoderParams = vhs_formats.get_format_params(
-            system, tape_format, ldd.logger
+            system,
+            tape_format,
+            vhs_formats.parse_tape_speed(rf_options.get("tape_speed", "sp")),
+            ldd.logger,
         )
 
         params_file = extra_options.get("params_file", None)
@@ -608,9 +611,8 @@ class VHSRFDecode(ldd.RFDecode):
             tape_format,
             rf_options.get("disable_comb", False) or is_secam(system),
             rf_options.get("nldeemp", False),
-            self.DecoderParams.get(
-                "use_sub_deemphasis", rf_options.get("subdeemp", False)
-            ),
+            self.DecoderParams.get("use_sub_deemphasis", False)
+            or rf_options.get("subdeemp", False),
             rf_options.get("disable_right_hsync", False),
             rf_options.get("disable_dc_offset", False),
             # Always use this if we are decoding TYPEC since it doesn't have normal vsync.

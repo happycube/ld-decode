@@ -33,7 +33,6 @@ def get_rfparams_pal_umatic(RFParams_PAL):
     RFParams_PAL_UMATIC["boost_rf_linear_0"] = 0.5
     RFParams_PAL_UMATIC["boost_rf_linear_20"] = 3
 
-
     # This has not really been stress-tested due to lack of crummy umatic samples.
     RFParams_PAL_UMATIC["boost_bpf_low"] = 5000000
     RFParams_PAL_UMATIC["boost_bpf_high"] = 5800000
@@ -162,7 +161,6 @@ def get_rfparams_ntsc_umatic(rfparams_ntsc):
     # Use linear ramp to boost RF
     RFParams_NTSC_UMATIC["boost_rf_linear_0"] = 0.5
     RFParams_NTSC_UMATIC["boost_rf_linear_20"] = 3
-
 
     # This has not really been stress-tested due to lack of crummy umatic samples.
     RFParams_NTSC_UMATIC["boost_bpf_low"] = 5000000

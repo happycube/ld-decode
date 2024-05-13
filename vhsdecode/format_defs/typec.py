@@ -119,6 +119,7 @@ def get_sysparams_pal_typec(sysparams_PAL):
 
     return SysParams_PAL_TYPEC
 
+
 def get_rfparams_ntsc_typeb(RFParams_NTSC):
     # Freqs seem shared with typec so re-using those for now.
     return get_rfparams_ntsc_typec(RFParams_NTSC)
@@ -180,7 +181,7 @@ def get_sysparams_pal_typeb(sysparams_PAL):
     # NTSC and NTSC "regular-band" use the same frequencies, but
     # not sure if PAL sync being -43 and ntsc being -40 makes
     # a difference on these parameters.
-    SysParams_PAL_TYPEB["hz_ire"] = (8.9e6-7.4e6) / 143.0
+    SysParams_PAL_TYPEB["hz_ire"] = (8.9e6 - 7.4e6) / 143.0
     SysParams_PAL_TYPEB["ire0"] = 7.40e6
     SysParams_PAL_TYPEB["burst_abs_ref"] = 5000
 

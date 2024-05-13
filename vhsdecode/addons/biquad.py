@@ -420,7 +420,7 @@ def peaking(Wn, dBgain, Q=None, BW=None, type="half", analog=False, output="ba")
     Prescribed Nyquist-Frequency Gain"
 
     """
-    
+
     if Q is None and BW is None:
         BW = 1  # octave
 

@@ -56,7 +56,9 @@ class ChromaSepClass:
         if use_samplerate:
             self.method = samplerate_resample
         else:
-            logger.warning("Cannot find samplerate, processing will be significantly slower with --ct active. Consider installing the python samplerate library.")
+            logger.warning(
+                "Cannot find samplerate, processing will be significantly slower with --ct active. Consider installing the python samplerate library."
+            )
             self.method = signal_resample
 
     # It resamples the luminance data to self.multiplier * fsc

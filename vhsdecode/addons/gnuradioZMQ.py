@@ -2,8 +2,10 @@
     It provides a way to pipe a float32 stream to GNU Radio
     For measurements and addons
 """
+
 try:
     import zmq
+
     ZMQ_AVAILABLE = True
 except ImportError:
     ZMQ_AVAILABLE = False
@@ -14,7 +16,7 @@ import numpy as np
 class ZMQSend:
     def __init__(self, port=5555):
         self.pid = os.getpid()
-        print('Initializing ZMQSend (REP) at pid %d, port %d' % (self.pid, port))
+        print("Initializing ZMQSend (REP) at pid %d, port %d" % (self.pid, port))
         self.port = port
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
@@ -22,8 +24,12 @@ class ZMQSend:
 
     def chekcpid(self):
         pid = os.getpid()
-        assert pid == self.pid, \
-            "You cannot call send from another thread: expected %d found %d" % (self.pid, pid)
+        assert (
+            pid == self.pid
+        ), "You cannot call send from another thread: expected %d found %d" % (
+            self.pid,
+            pid,
+        )
 
     def send(self, data):
         self.chekcpid()
@@ -42,7 +48,7 @@ class ZMQSend:
 class ZMQReceive:
     def __init__(self, port=5555):
         self.pid = os.getpid()
-        print('Initializing ZMQReceive (REQ) at pid %d, port %d' % (self.pid, port))
+        print("Initializing ZMQReceive (REQ) at pid %d, port %d" % (self.pid, port))
         self.port = port
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
@@ -50,8 +56,12 @@ class ZMQReceive:
 
     def chekcpid(self):
         pid = os.getpid()
-        assert pid == self.pid, \
-            "You cannot call receive from another thread: expected %d found %d" % (self.pid, pid)
+        assert (
+            pid == self.pid
+        ), "You cannot call receive from another thread: expected %d found %d" % (
+            self.pid,
+            pid,
+        )
 
     def receive(self, samples):
         self.chekcpid()
@@ -61,16 +71,15 @@ class ZMQReceive:
         read_size = 0
         while read_size < samples:
             try:
-                #print('asking for data')
-                self.socket.send_string('0', encoding='ascii')
+                # print('asking for data')
+                self.socket.send_string("0", encoding="ascii")
                 byte_stream = self.socket.recv()
                 floats = np.append(floats, np.fromstring(byte_stream, dtype=np.float32))
                 read_size = len(floats)
-                #print('received data %d' % read_size)
+                # print('received data %d' % read_size)
                 reads += 1
             except zmq.error.ZMQError as e:
-                print('Got ZMQ error, %s' % e)
+                print("Got ZMQ error, %s" % e)
                 break
-        #print('got data, after %d reads' % reads)
+        # print('got data, after %d reads' % reads)
         return floats
-

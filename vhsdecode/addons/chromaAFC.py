@@ -355,9 +355,7 @@ class ChromaAFC:
             fine_tune_threshold = (
                 self.fh
                 if self.tape_format == "UMATIC"
-                else self.fh / 2
-                if self.tape_format == "BETAMAX"
-                else self.fh / 4
+                else self.fh / 2 if self.tape_format == "BETAMAX" else self.fh / 4
             )
 
             carrier_freq = self.fineTune(peak_freq, fine_tune_threshold)

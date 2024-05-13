@@ -27,7 +27,7 @@ def sizeof_fmt(num: int, suffix: str = "B") -> str:
 
 # checks if the input file can be read
 def test_input_file(input_file: Optional[str]) -> bool:
-    if input_file == '-':
+    if input_file == "-":
         return True
 
     if input_file is DEFAULT_INPUT_FILENAME:
@@ -48,7 +48,9 @@ def test_input_file(input_file: Optional[str]) -> bool:
 def test_output_file(output_file: Optional[str]) -> bool:
 
     # checks for free space on the output file directory
-    output_file_dir = '.' if os.path.dirname(output_file) == '' else os.path.dirname(output_file)
+    output_file_dir = (
+        "." if os.path.dirname(output_file) == "" else os.path.dirname(output_file)
+    )
     if not os.access(output_file_dir, os.W_OK):
         print(f"Error: output file directory '{output_file_dir}' is not writable")
         return False
@@ -58,7 +60,9 @@ def test_output_file(output_file: Optional[str]) -> bool:
         statvfs = os.statvfs(output_file_dir)
         free_space = statvfs.f_frsize * statvfs.f_bavail
         if free_space < 1024 * 1024 * 1024:
-            print(f"WARN: output file directory {output_file_dir} has {sizeof_fmt(free_space)} free space")
+            print(
+                f"WARN: output file directory {output_file_dir} has {sizeof_fmt(free_space)} free space"
+            )
     except AttributeError:
         pass
 
@@ -143,18 +147,18 @@ def common_parser_cli(meta_title, default_threads=DEFAULT_THREADS + 1):
         metavar="infile",
         type=str,
         help="source file",
-        nargs='?',
+        nargs="?",
         default=DEFAULT_INPUT_FILENAME,
-        action=TestInputFile
+        action=TestInputFile,
     )
     parser.add_argument(
         "outfile",
         metavar="outfile",
         type=str,
         help="base name for destination files",
-        nargs='?',
+        nargs="?",
         default=DEFAULT_OUTPUT_FILENAME,
-        action=TestOutputFile
+        action=TestOutputFile,
     )
     # help="Disable AGC (deprecated, already disabled by default)
     parser.add_argument(
@@ -349,15 +353,19 @@ def select_sample_freq(args):
     sample_freq = (
         CXADC_FREQ
         if args.cxadc
-        else CXADC_FREQ_HIGH
-        if args.cxadc3
-        else CXADC_TENBIT_FREQ
-        if args.cxadc_tenbit
-        else CXADC_TENBIT_FREQ_HIGH
-        if args.cxadc3_tenbit
-        else args.inputfreq
-        if args.inputfreq is not None
-        else DDD_FREQ
+        else (
+            CXADC_FREQ_HIGH
+            if args.cxadc3
+            else (
+                CXADC_TENBIT_FREQ
+                if args.cxadc_tenbit
+                else (
+                    CXADC_TENBIT_FREQ_HIGH
+                    if args.cxadc3_tenbit
+                    else args.inputfreq if args.inputfreq is not None else DDD_FREQ
+                )
+            )
+        )
     )
     return sample_freq
 
@@ -397,7 +405,7 @@ class IOArgsException(Exception):
 
 def get_basics(args):
     can_io = test_io(args.infile, args.outfile)
-    if not 'UI' in args:
+    if not "UI" in args:
         if not can_io:
             raise IOArgsException("Input/output file error")
     return args.infile, args.outfile, args.start, args.length
