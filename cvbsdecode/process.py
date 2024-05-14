@@ -13,7 +13,7 @@ from lddecode.utils import inrange
 import vhsdecode.formats as vhs_formats
 import vhsdecode.sync as sync
 from vhsdecode.addons.chromasep import ChromaSepClass
-from vhsdecode.process import parent_system
+from vhsdecode.formats import parent_system
 
 # from vhsdecode.process import getpulses_override as vhs_getpulses_override
 # from vhsdecode.addons.vsyncserration import VsyncSerration
