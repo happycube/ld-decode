@@ -68,6 +68,7 @@ def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     # Use linear ramp to boost RF
     rfparams["boost_rf_linear_0"] = 0.5
     rfparams["boost_rf_linear_20"] = 100
+    rfparams["boost_rf_linear_double"] = False
 
     # SVHS uses the emphasis curve from VHS + an additional sub-emphasis filter
     # The latter isn't properly implemented yet but
