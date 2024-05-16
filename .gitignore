@@ -4,6 +4,7 @@
 # Odd Python stuff
 numpy
 scipy
+*.egg-info
 
 # Python build results
 /MANIFEST
@@ -86,3 +87,9 @@ ui_*.h
 # vscode related thingss
 .vscode/
 .theia/
+
+# cython build artifacts
+vhsdecode/*.c
+
+# auto-generated version file
+vhsdecode/_version.py
