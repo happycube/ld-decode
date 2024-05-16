@@ -589,9 +589,7 @@ class CVBSDecodeInner(ldd.RFDecode):
         self.last_raw_loc = None
 
         # Then we override the laserdisc parameters.
-        self.SysParams, self.DecoderParams = vhs_formats.get_format_params(
-            system, "UMATIC", ldd.logger
-        )
+        self.SysParams, self.DecoderParams = vhs_formats.get_cvbs_params(system)
 
         # Make (intentionally) mutable copies of HZ<->IRE levels
         # (NOTE: used by upstream functions, we use a namedtuple to keep const values already)

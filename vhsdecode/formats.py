@@ -68,6 +68,21 @@ def parent_system(system: str) -> str:
     return parent_system
 
 
+def get_cvbs_params(system: str) -> dict:
+    from vhsdecode.format_defs import cvbs
+
+    if parent_system(system) == "PAL":
+        return cvbs.get_sys_params_pal(SysParams_PAL), cvbs.get_filter_params_pal(
+            FilterParams_PAL
+        )
+    elif parent_system(system) == "NTSC":
+        return cvbs.get_sys_params_ntsc(SysParams_NTSC), cvbs.get_filter_params_pal(
+            FilterParams_NTSC
+        )
+    else:
+        raise Exception("Unknown video system! ", system)
+
+
 def get_format_params(system: str, tape_format: str, tape_speed: int, logger) -> dict:
     """Get format parameters based on video system and tape format.
     Will raise an exception if the system is not one of PAL, NTSC and MPAL
