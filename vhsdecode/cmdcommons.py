@@ -63,7 +63,7 @@ def test_output_file(output_file: Optional[str]) -> bool:
             print(
                 f"WARN: output file directory {output_file_dir} has {sizeof_fmt(free_space)} free space"
             )
-    except AttributeError:
+    except (AttributeError, BlockingIOError):
         pass
 
     try:
