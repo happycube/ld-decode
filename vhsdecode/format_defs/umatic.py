@@ -13,7 +13,7 @@ def get_rfparams_pal_umatic(RFParams_PAL):
     RFParams_PAL_UMATIC["video_lpf_order"] = 6
     # 685546 ± 200
     RFParams_PAL_UMATIC["color_under_carrier"] = (625 * 25) * (351 / 8)
-    RFParams_PAL_UMATIC["chroma_bpf_upper"] = 1400000
+    RFParams_PAL_UMATIC["chroma_bpf_upper"] = 1500000
 
     # Video EQ after FM demod (PAL UMATIC) (based on NTSC one, needs tweak)
     RFParams_PAL_UMATIC["video_eq"] = {

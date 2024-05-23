@@ -455,9 +455,9 @@ class ChromaAFC:
     def get_chroma_bandpass(self):
         freq_hz_half = self.demod_rate / 2
         return sps.butter(
-            2,
+            4,
             [
-                50000 / freq_hz_half,
+                60000 / freq_hz_half,
                 self.cc_freq_mhz * 1e6 * self.bpf_under_ratio / freq_hz_half,
             ],
             btype="bandpass",

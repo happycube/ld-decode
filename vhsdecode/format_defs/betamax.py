@@ -33,7 +33,7 @@ def get_rfparams_pal_betamax(rfparams_pal):
 
     # Upper frequency of bandpass to filter out chroma from the rf signal.
     # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1300000
+    rfparams["chroma_bpf_upper"] = 1600000
 
     # Video EQ after FM demod (PAL VHS)
     rfparams["video_eq"] = {
