@@ -142,6 +142,7 @@ def plot_input_data(
     rfdecode,
     plot_db=True,
     plot_demod_fft=False,
+    plot_chroma_fft=False,
 ):
     import matplotlib.pyplot as plt
     from matplotlib import rc_context
@@ -213,6 +214,21 @@ def plot_input_data(
                 freq_array,
                 to_db_power(abs(np.fft.rfft(filtered_video))),
                 color="#FF0000",
+            )
+        elif plot_chroma_fft:
+            fig2, (ax4, ax5) = plt.subplots(2, 1, sharex=True, sharey=False)
+            # ax5 = fig2.add_subplot(2, 1, 2)
+            ax5.plot(
+                freq_array,
+                to_plot(raw_fft[:half_size]),
+                color="#00FF00",
+                label="Raw input",
+            )
+            ax5.plot(
+                freq_array,
+                to_db_power(abs(np.fft.rfft(chroma))),
+                color="#FF0000",
+                label="Filtered chroma",
             )
         else:
             fig2, ax4 = plt.subplots(1, 1, sharey=False)
@@ -419,3 +435,29 @@ def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
     ax3.legend()
     plt.show()
     sys.exit()
+
+
+def plot_final_chroma_field(input_chroma, final_chroma) -> None:
+    import math
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import scipy.signal as sps
+
+    import matplotlib.pyplot as plt
+    from matplotlib import rc_context
+    import numpy as np
+
+    with rc_context(
+        {"figure.figsize": (14, 10), "figure.constrained_layout.use": True}
+    ):
+        fig, (ax1, ax2) = plt.subplots(2, 1)  # , sharex=True)
+
+        ax1.plot(input_chroma)
+        ax1.plot(final_chroma, color="#AA0000")
+        ax2.plot(to_db_power(np.fft.rfft(input_chroma)))
+        ax2.plot(to_db_power(np.fft.rfft(final_chroma)), color="#AA0000")
+
+        ax1.legend()
+        ax2.legend()
+        plt.show()
+        sys.exit()

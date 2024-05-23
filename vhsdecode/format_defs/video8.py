@@ -62,7 +62,7 @@ def fill_rfparams_video8_shared(rfparams):
 
     # Upper frequency of bandpass to filter out chroma from the rf signal.
     # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1200000
+    rfparams["chroma_bpf_upper"] = 1400000
 
 
 def fill_rfparams_hi8_shared(rfparams):
@@ -132,7 +132,7 @@ def fill_rfparams_hi8_shared(rfparams):
 
     # Upper frequency of bandpass to filter out chroma from the rf signal.
     # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1200000
+    rfparams["chroma_bpf_upper"] = 1400000
 
 
 def fill_chroma_params_pal(rfparams):

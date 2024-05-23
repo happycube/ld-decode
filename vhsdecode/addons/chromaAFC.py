@@ -5,6 +5,7 @@ from scipy.fftpack import fft, fftfreq
 import lddecode.core as ldd
 from scipy.signal import argrelextrema
 from vhsdecode.linear_filter import FiltersClass
+from vhsdecode import compute_video_filters
 
 twopi = 2 * np.pi
 
@@ -478,15 +479,29 @@ class ChromaAFC:
     # Mostly to filter out the higher-frequency wave that results from signal mixing.
     # Needs tweaking.
     # Note: order will be doubled since we use filtfilt.
-    def get_chroma_bandpass_final(self):
+    def get_chroma_bandpass_non_fft(self):
+        # Non fft version just used for non-color under formats
+        # to pick out chroma for burst detection at the moment.
         return sps.butter(
-            1,
+            6,
             [
                 (self.fsc_mhz - 0.64) / self.out_frequency_half,
                 (self.fsc_mhz + 0.54) / self.out_frequency_half,
             ],
             btype="bandpass",
             output="sos",
+        )
+
+    def get_chroma_bandpass_final(self, block_len):
+        color_under_mhz = self.color_under / 1e6
+        return compute_video_filters.gen_bpf_supergauss(
+            # TODO: Need to check whether these values are
+            # quite what we want for all formats.
+            self.fsc_mhz - 0.64,
+            self.fsc_mhz + 0.54,
+            16,
+            self.out_frequency_half,
+            block_len,
         )
 
     def get_narrowband_bandpass(self):

@@ -690,7 +690,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.Filters["FVideoBurst"] = (
             self._chroma_afc.get_chroma_bandpass()
             if self._options.color_under
-            else self._chroma_afc.get_chroma_bandpass_final()
+            else self._chroma_afc.get_chroma_bandpass_non_fft()
         )
 
         if self.options.chroma_deemphasis_filter:
@@ -724,7 +724,12 @@ class VHSRFDecode(ldd.RFDecode):
 
         # The following filters are for post-TBC:
         # The output sample rate is 4fsc
-        self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final()
+        out_size = self.SysParams["outlinelen"] * (
+            (self.SysParams["frame_lines"] // 2) + 1
+        )
+        self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final(
+            out_size
+        )
         if is_color_under:
             self.Filters["FBurstNarrow"] = self._chroma_afc.get_burst_narrow()
             self.chroma_heterodyne = self._chroma_afc.getChromaHet()
@@ -1239,6 +1244,7 @@ class VHSRFDecode(ldd.RFDecode):
                 chroma=out_chroma,
                 rf_filter=self.Filters["RFVideo"],
                 rfdecode=self,
+                plot_chroma_fft=False,
             )
 
         if self.options.export_raw_tbc:

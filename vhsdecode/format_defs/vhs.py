@@ -118,7 +118,7 @@ def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
 
     # Upper frequency of bandpass to filter out chroma from the rf signal.
     # For vhs decks it's typically a bit more than 2x cc
-    RFParams_PAL_VHS["chroma_bpf_upper"] = 1200000
+    RFParams_PAL_VHS["chroma_bpf_upper"] = 1300000
 
     # Video EQ after FM demod (PAL VHS)
     RFParams_PAL_VHS["video_eq"] = {
@@ -259,7 +259,7 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
     RFParams_NTSC_VHS["chroma_rotation"] = NTSC_ROTATION
 
     # Upper frequency of bandpass to filter out chroma from the rf signal.
-    RFParams_NTSC_VHS["chroma_bpf_upper"] = 1400000
+    RFParams_NTSC_VHS["chroma_bpf_upper"] = 1200000
 
     RFParams_NTSC_VHS["luma_carrier"] = 455.0 * ((525 * (30 / 1.001)) / 2.0)
 
