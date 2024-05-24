@@ -10,18 +10,6 @@ import scipy.signal as sps
 
 from numba import njit
 
-# Use PyFFTW's faster FFT implementation if available
-# We can use this here safely since this is ran in the main thread
-# for now.
-try:
-    import pyfftw.interfaces.numpy_fft as np_fft
-    import pyfftw.interfaces
-
-    pyfftw.interfaces.cache.enable()
-    pyfftw.interfaces.cache.set_keepalive_time(10)
-except ImportError:
-    import numpy.fft as np_fft
-
 
 @njit(cache=True)
 def needs_recheck(sum_0: float, sum_1: float):
@@ -289,7 +277,13 @@ def process_chroma(
     # frequencies. We only want the difference wave which is at the correct color
     # carrier frequency here.
     # We do however want to be careful to avoid filtering out too much of the sideband.
-    uphet = np_fft.irfft(np_fft.rfft(uphet) * field.rf.Filters["FChromaFinal"])
+    uphet = utils.filter_simple(uphet, field.rf.Filters["FChromaFinal"])
+
+    # FFT filter way to use a supergauss filter to more sharply cut out the upper harmonic
+    # This may be a better approach but slows down things a bit much so not using for now
+    # orig_len = len(uphet)
+    # uphet = np_fft.irfft(np_fft.rfft(uphet) * field.rf.Filters["FChromaFinal"], n=orig_len)
+
     if do_chroma_deemphasis:
         b, a = field.rf.Filters["chroma_deemphasis"]
         uphet = sps.lfilter(b, a, uphet)

@@ -690,7 +690,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.Filters["FVideoBurst"] = (
             self._chroma_afc.get_chroma_bandpass()
             if self._options.color_under
-            else self._chroma_afc.get_chroma_bandpass_non_fft()
+            else self._chroma_afc.get_chroma_bandpass_final()
         )
 
         if self.options.chroma_deemphasis_filter:
@@ -727,11 +727,9 @@ class VHSRFDecode(ldd.RFDecode):
         out_size = self.SysParams["outlinelen"] * (
             (self.SysParams["frame_lines"] // 2) + 1
         )
-        self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final(
-            out_size
-        )
+        self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final()
+
         if is_color_under:
-            self.Filters["FBurstNarrow"] = self._chroma_afc.get_burst_narrow()
             self.chroma_heterodyne = self._chroma_afc.getChromaHet()
             self.fsc_wave, self.fsc_cos_wave = self._chroma_afc.getFSCWaves()
 

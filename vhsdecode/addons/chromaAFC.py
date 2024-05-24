@@ -464,45 +464,47 @@ class ChromaAFC:
             output="sos",
         )
 
-    def get_burst_narrow(self):
-        return sps.butter(
-            2,
-            [
-                self.cc_freq_mhz - 0.2 / self.out_frequency_half,
-                self.cc_freq_mhz + 0.2 / self.out_frequency_half,
-            ],
-            btype="bandpass",
-            output="sos",
-        )
+    # def get_burst_narrow(self):
+    #     return sps.butter(
+    #        2,
+    #        [
+    #            self.cc_freq_mhz - 0.2 / self.out_frequency_half,
+    #            self.cc_freq_mhz + 0.2 / self.out_frequency_half,
+    #        ],
+    #        btype="bandpass",
+    #        output="sos",
+    #    )
 
     # Final band-pass filter for chroma output.
     # Mostly to filter out the higher-frequency wave that results from signal mixing.
     # Needs tweaking.
     # Note: order will be doubled since we use filtfilt.
-    def get_chroma_bandpass_non_fft(self):
+    def get_chroma_bandpass_final(self):
         # Non fft version just used for non-color under formats
         # to pick out chroma for burst detection at the moment.
+        lower = (self.color_under / 1e6) * 1
+        upper = (self.color_under / 1e6) * 0.85
         return sps.butter(
-            6,
+            4,
             [
-                (self.fsc_mhz - 0.64) / self.out_frequency_half,
-                (self.fsc_mhz + 0.54) / self.out_frequency_half,
+                (self.fsc_mhz - lower) / self.out_frequency_half,
+                (self.fsc_mhz + upper) / self.out_frequency_half,
             ],
             btype="bandpass",
             output="sos",
         )
 
-    def get_chroma_bandpass_final(self, block_len):
-        color_under_mhz = self.color_under / 1e6
-        return compute_video_filters.gen_bpf_supergauss(
-            # TODO: Need to check whether these values are
-            # quite what we want for all formats.
-            self.fsc_mhz - 0.64,
-            self.fsc_mhz + 0.54,
-            16,
-            self.out_frequency_half,
-            block_len,
-        )
+    # def get_chroma_bandpass_final_fft(self, block_len):
+    #    color_under_mhz = self.color_under / 1e6
+    #    return compute_video_filters.gen_bpf_supergauss(
+    #        # TODO: Need to check whether these values are
+    #        # quite what we want for all formats.
+    #        self.fsc_mhz - 0.64,
+    #        self.fsc_mhz + 0.64,
+    #        8,
+    #        self.out_frequency_half,
+    #        block_len,
+    #    )
 
     def get_narrowband_bandpass(self):
         min_f, max_f = self.get_band_tolerance()
