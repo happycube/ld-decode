@@ -228,11 +228,7 @@ Some useful free tools to note for post processing are
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
-    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-default libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-setuptools make cython3 cmake pipx
-
-For Ubuntu 22.04 that is:
-
-    sudo apt install clang python3-setuptools python3-numpy python3-scipy python3-matplotlib git qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev python3-tk python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg openssl pv python3-setuptools pkg-config make cython3 cmake pipx
+    sudo apt install git qtbase5-dev libqwt-qt5-dev libfftw3-dev libavformat-dev libavcodec-dev libavutil-dev ffmpeg pv pkg-config make cmake pipx
 
 Set up pipx
 
@@ -266,7 +262,7 @@ Install VHS-Decode:
 
 Build and install vhs-decode via pipx
 
-    pipx install .
+    pipx install .[hifi_gui_qt6]
 
 Compile and Install ld-tools suite: (Required)
 
