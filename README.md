@@ -228,7 +228,11 @@ Some useful free tools to note for post processing are
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
-    sudo apt install git qtbase5-dev libqwt-qt5-dev libfftw3-dev libavformat-dev libavcodec-dev libavutil-dev ffmpeg pv pkg-config make cmake pipx
+    sudo apt install git qtbase5-dev libqwt-qt5-dev libfftw3-dev libavformat-dev libavcodec-dev libavutil-dev ffmpeg pv pkg-config make cmake pipx g++ python3-dev
+
+Ubuntu 22.04/Linux mint 21/debian may also need this library installed if one wants to use the gui version of hifi-decode
+
+    sudo apt install libxcb-cursor0
 
 Set up pipx
 
@@ -271,7 +275,6 @@ Compile and Install ld-tools suite: (Required)
     cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5
     make -j4
     sudo make install
-   
 
 Go back to the main directory with 
 
