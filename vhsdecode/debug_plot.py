@@ -74,8 +74,18 @@ def plot_data_and_pulses(
 
         if extra_lines is not None:
             ax_number += 1
-            for extra_line in extra_lines:
-                ax[ax_number].axvline(extra_line, color="#0000FF")
+            colors = [
+                "#FF0000",
+                "#00FF00",
+                "#0000FF",
+                "#FF0000",
+                "#FFFF00",
+                "#000000",
+                "#00FFFF",
+                "#888888",
+            ]
+            for extra_line, color in zip(extra_lines, colors):
+                ax[ax_number].axvline(extra_line, color=color)
 
         # to_right_edge = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"]) + (
         #    2.25 * (self.rf.freq / 40.0)
