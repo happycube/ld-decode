@@ -936,10 +936,10 @@ class VHStune(QDialog):
                 self.exportWorker.finished.connect(self.exportWorker.deleteLater)
                 self.exportThread.finished.connect(self.exportThread.deleteLater)
                 self.exportWorker.nextframe.connect(
-                    self.saveProTBCFrame, Qt.BlockingQueuedConnection
+                    self.saveProTBCFrame, Qt.ConnectionType.BlockingQueuedConnection
                 )
                 self.exportWorker.finished.connect(
-                    self.saveProTBCFinished, Qt.BlockingQueuedConnection
+                    self.saveProTBCFinished, Qt.ConnectionType.BlockingQueuedConnection
                 )
                 self.exportThread.start()
                 self.saveProTBCFileButton.setText("Cancel TBC export")
