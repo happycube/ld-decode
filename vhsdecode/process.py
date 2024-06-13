@@ -47,6 +47,7 @@ from vhsdecode.compute_video_filters import (
     NONLINEAR_AMP_LPF_FREQ_DEFAULT,
 )
 from vhsdecode.demodcache import DemodCacheTape
+from vhsd_rust import sum_as_string
 
 
 def is_secam(system: str):
@@ -1128,11 +1129,16 @@ class VHSRFDecode(ldd.RFDecode):
         hilbert = npfft.ifft(indata_fft * self.Filters["hilbert"])
 
         # FM demodulator
+        #test1 = np.angle(hilbert)
+        #from vhsd_rust import complex_angle_py
+        #test2 = hilbert
+        #print(test1 - test2)
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
 
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and
         # replace the spikes with data from the diffed demod. (Which in practice is an extra EQed signal)
-        if not self._disable_diff_demod:
+        if False:
+        #not self._disable_diff_demod:
             check_value = self.options.diff_demod_check_value
 
             if np.max(demod[20:-20]) > check_value:

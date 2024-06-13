@@ -2,6 +2,7 @@
 requires = ["setuptools>=61", "setuptools_scm>=6.2", "wheel", "Cython", "numpy"]
 # requires = ["setuptools>=61", "wheel", "Cython", "numpy"]
 # build-backend = "setuptools.build_meta"
+build-backend = "maturin"
 
 [project]
 name = "vhs_decode"
@@ -12,6 +13,7 @@ keywords = ["laserdisc", "vhs", "video", "tape", "decoder"]
 license = {file = "LICENSE"}
 classifiers = [
     "Topic :: Multimedia :: Video",
+    "Programming Language :: Rust",
 ]
 dependencies = [
     "numpy>=1.22","numba>=0.58.1","scipy>=1.10.1","samplerate", "static-ffmpeg", "cython", "soundfile", "sounddevice", "importlib_resources >= 5.0; python_version < '3.10'", "matplotlib"
