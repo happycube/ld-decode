@@ -178,6 +178,15 @@ class ZCTest(unittest.TestCase):
         # ax2.axvline(zc3)
         # plt.show()
 
+class RustNumpyMath(unittest.TestCase):
+    def test_rust_angle(self):
+        from vhsd_rust import complex_angle_py
+        loaded = np.load("hilbert_data.npz")
+        complex_hilbert_data = loaded["data"]
+        a = np.angle(complex_hilbert_data)
+        b = complex_angle_py(complex_hilbert_data)
+        assert((a == b).all())
+
 
 if __name__ == "__main__":
     unittest.main()

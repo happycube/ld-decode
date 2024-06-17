@@ -1133,6 +1133,7 @@ class VHSRFDecode(ldd.RFDecode):
         #from vhsd_rust import complex_angle_py
         #test2 = hilbert
         #print(test1 - test2)
+        #np.savez_compressed("hilbert_data", data=hilbert)
         demod = unwrap_hilbert(hilbert, self.freq_hz).real
 
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and

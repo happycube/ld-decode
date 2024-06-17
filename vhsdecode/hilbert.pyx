@@ -5,6 +5,7 @@ import numpy as np
 cimport numpy as np
 #from math import pi, tau
 import math
+from vhsd_rust import complex_angle_py
 
 
 cpdef complex[:] diff_center(complex[:] input_array):
@@ -55,10 +56,10 @@ cdef double[:] diff_forward(double[:] input_array):
     return output_array
 
 # 
-def unwrap_hilbert(double complex[:] hilbert, cython.double freq_hz):
+def unwrap_hilbert(hilbert, cython.double freq_hz):
     cdef cython.double pi = math.pi
     cdef cython.double tau = math.tau
-    cdef double[:] tangles = np.angle(hilbert)
+    cdef double[:] tangles = complex_angle_py(hilbert)
     # np.ediff1d(tangles, to_begin=0)
     tangles = diff_forward_inplace(tangles)
     cdef np.ndarray tdangles2
