@@ -212,6 +212,8 @@ def get_rfparams_ntsc_betamax_hifi(rfparams_ntsc):
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 3000000
     rfparams["video_lpf_order"] = 6
+    rfparams["chroma_bpf_upper"] = 1100000
+    rfparams["chroma_bpf_order"] = 8
 
     return rfparams
 

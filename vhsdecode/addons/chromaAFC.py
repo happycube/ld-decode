@@ -19,6 +19,7 @@ class ChromaAFC:
         under_ratio,
         sys_params,
         color_under_carrier_f,
+        chroma_bandpass_order=4,
         linearize=False,
         plot=False,
         tape_format="VHS",
@@ -38,6 +39,7 @@ class ChromaAFC:
         self.out_sample_rate_mhz = self.fsc_mhz * 4
         self.samp_rate = self.out_sample_rate_mhz * 1e6
         self.bpf_under_ratio = under_ratio
+        self._chroma_bandpass_order = chroma_bandpass_order
         self.out_frequency_half = self.out_sample_rate_mhz / 2
         self.fieldlen = sys_params["outlinelen"] * max(sys_params["field_lines"])
         self.samples = np.arange(self.fieldlen)
@@ -455,7 +457,7 @@ class ChromaAFC:
     def get_chroma_bandpass(self):
         freq_hz_half = self.demod_rate / 2
         return sps.butter(
-            4,
+            self._chroma_bandpass_order,
             [
                 60000 / freq_hz_half,
                 self.cc_freq_mhz * 1e6 * self.bpf_under_ratio / freq_hz_half,
@@ -479,11 +481,16 @@ class ChromaAFC:
     # Mostly to filter out the higher-frequency wave that results from signal mixing.
     # Needs tweaking.
     # Note: order will be doubled since we use filtfilt.
-    def get_chroma_bandpass_final(self):
-        # Non fft version just used for non-color under formats
-        # to pick out chroma for burst detection at the moment.
-        lower = (self.color_under / 1e6) * 1
-        upper = (self.color_under / 1e6) * 0.85
+    def get_chroma_bandpass_final(self, color_under_format=True):
+        if color_under_format:
+            lower = (self.color_under / 1e6) * 1
+            upper = (self.color_under / 1e6) * 0.85
+        else:
+            # Using a narrow filter atm as this is just used for
+            # picking out burst signal in this case.
+            lower = 0.1
+            upper = 0.1
+
         return sps.butter(
             4,
             [

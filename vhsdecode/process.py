@@ -684,6 +684,7 @@ class VHSRFDecode(ldd.RFDecode):
             DP["chroma_bpf_upper"] / DP["color_under_carrier"],
             self.SysParams,
             self.DecoderParams["color_under_carrier"],
+            self.DecoderParams.get("chroma_bpf_order", 4),
             tape_format=tape_format,
             do_cafc=self._do_cafc,
         )
@@ -691,7 +692,7 @@ class VHSRFDecode(ldd.RFDecode):
         self.Filters["FVideoBurst"] = (
             self._chroma_afc.get_chroma_bandpass()
             if self._options.color_under
-            else self._chroma_afc.get_chroma_bandpass_final()
+            else self._chroma_afc.get_chroma_bandpass_final(False)
         )
 
         if self.options.chroma_deemphasis_filter:
@@ -728,7 +729,9 @@ class VHSRFDecode(ldd.RFDecode):
         out_size = self.SysParams["outlinelen"] * (
             (self.SysParams["frame_lines"] // 2) + 1
         )
-        self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final()
+        self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final(
+            self._options.color_under
+        )
 
         if is_color_under:
             self.chroma_heterodyne = self._chroma_afc.getChromaHet()
@@ -1249,7 +1252,7 @@ class VHSRFDecode(ldd.RFDecode):
                 chroma=out_chroma,
                 rf_filter=self.Filters["RFVideo"],
                 rfdecode=self,
-                plot_chroma_fft=False,
+                plot_chroma_fft=True,
             )
 
         if self.options.export_raw_tbc:
