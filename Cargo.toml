@@ -1,0 +1,15 @@
+[package]
+name = "vhs-decode"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+pyo3 = { version = "0.21.2", features = ["extension-module"] }
+numpy = "0.21"
+#ndarray = { version = "0.15.6", features = ["rayon"]}
+
+[lib]
+name = "vhsd_rust"
+# "cdylib" is necessary to produce a shared library for Python to import from.
+crate-type = ["cdylib"]
