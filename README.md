@@ -18,7 +18,7 @@ You will find self-contained binary bundled ready-to-use packages of current and
 > vhs-decode is not limited to VHS and supports many tape media formats!
 
 > [!IMPORTANT]  
-> The decoders and tools are CLI - Commandline Interface, only ld-analyse & hifi-decode have a graphical GUI interface.
+> The decoders and tools are CLI - Commandline Interface, only ld-analyse & hifi-decode have a GUI - Graphical User Interface.
 
 
 # Documentation
