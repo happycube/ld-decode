@@ -669,6 +669,9 @@
    <property name="text">
     <string>Save JSON</string>
    </property>
+   <property name="shortcut">
+    <string>Ctrl+J</string>
+   </property>
   </action>
   <action name="actionWhite_SNR_analysis">
    <property name="text">
