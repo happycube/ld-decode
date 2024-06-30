@@ -50,8 +50,13 @@ void VideoParametersDialog::setVideoParameters(const LdDecodeMetaData::VideoPara
     // Transfer values to the dialogue
     ui->blackLevelSpinBox->setValue(videoParameters.black16bIre);
     ui->whiteLevelSpinBox->setValue(videoParameters.white16bIre);
+
     ui->activeVideoWidthSpinBox->setValue(videoParameters.activeVideoEnd - videoParameters.activeVideoStart);
     ui->activeVideoStartSpinBox->setValue(videoParameters.activeVideoStart);
+    ui->activeVideoWidthSpinBox->setMaximum(videoParameters.fieldWidth - videoParameters.activeVideoStart);
+    ui->activeVideoStartSpinBox->setMaximum(videoParameters.fieldWidth - 1);
+    ui->activeVideoStartSpinBox->setMinimum(videoParameters.colourBurstEnd);
+
     if (videoParameters.isWidescreen) ui->aspectRatio169RadioButton->setChecked(true);
     else ui->aspectRatio43RadioButton->setChecked(true);
 
@@ -104,6 +109,8 @@ void VideoParametersDialog::on_activeVideoStartSpinBox_valueChanged(int value)
 {
     int adjustAmount = videoParameters.activeVideoStart - value;
     videoParameters.activeVideoStart = value;
+    // prevent the width from going over the actual field width
+    ui->activeVideoWidthSpinBox->setMaximum(videoParameters.fieldWidth - value - 1);
     videoParameters.activeVideoEnd = value + ui->activeVideoWidthSpinBox->value();
     updateDialog();
     emit videoParametersChanged(videoParameters);

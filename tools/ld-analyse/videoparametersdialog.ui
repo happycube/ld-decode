@@ -136,10 +136,10 @@
       <string></string>
      </property>
      <property name="minimum">
-      <number>16</number>
+      <number>0</number>
      </property>
      <property name="maximum">
-      <number>200</number>
+      <number>1134</number>
      </property>
      <property name="singleStep">
       <number>1</number>
@@ -173,7 +173,7 @@
       <number>1</number>
      </property>
      <property name="maximum">
-      <number>1000</number>
+      <number>1135</number>
      </property>
      <property name="singleStep">
       <number>1</number>
