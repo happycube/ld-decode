@@ -601,7 +601,7 @@
     <string>Save frame as PNG...</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+S</string>
+    <string>Ctrl+F</string>
    </property>
   </action>
   <action name="actionVITS_Metrics">
@@ -668,6 +668,9 @@
   <action name="actionSave_JSON">
    <property name="text">
     <string>Save JSON</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
    </property>
   </action>
   <action name="actionWhite_SNR_analysis">
