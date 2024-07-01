@@ -20,6 +20,47 @@
    <property name="horizontalSpacing">
     <number>12</number>
    </property>
+   <item row="0" column="0">
+    <widget class="QLabel" name="blackLevelLabel">
+     <property name="text">
+      <string>Black level:</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="1">
+    <widget class="QSpinBox" name="blackLevelSpinBox">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="minimumSize">
+      <size>
+       <width>70</width>
+       <height>30</height>
+      </size>
+     </property>
+     <property name="prefix">
+      <string>0x</string>
+     </property>
+     <property name="maximum">
+      <number>32767</number>
+     </property>
+     <property name="singleStep">
+      <number>256</number>
+     </property>
+     <property name="value">
+      <number>16384</number>
+     </property>
+     <property name="displayIntegerBase">
+      <number>16</number>
+     </property>
+    </widget>
+   </item>
    <item row="0" column="2">
     <widget class="QPushButton" name="blackLevelResetButton">
      <property name="minimumSize">
@@ -33,10 +74,23 @@
      </property>
     </widget>
    </item>
-   <item row="0" column="0">
-    <widget class="QLabel" name="blackLevelLabel">
+   <item row="0" column="3">
+    <widget class="QPushButton" name="blackLevelAltResetButton">
+     <property name="minimumSize">
+      <size>
+       <width>100</width>
+       <height>0</height>
+      </size>
+     </property>
      <property name="text">
-      <string>Black level:</string>
+      <string>Reset NTSC-J</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="0">
+    <widget class="QLabel" name="whiteLevelLabel">
+     <property name="text">
+      <string>White level:</string>
      </property>
      <property name="alignment">
       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -77,44 +131,26 @@
      </property>
     </widget>
    </item>
-   <item row="4" column="0">
-    <widget class="QLabel" name="aspectRatioLabel">
-     <property name="text">
-      <string>Display aspect ratio:</string>
+   <item row="1" column="2">
+    <widget class="QPushButton" name="whiteLevelResetButton">
+     <property name="minimumSize">
+      <size>
+       <width>100</width>
+       <height>0</height>
+      </size>
      </property>
-     <property name="alignment">
-      <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+     <property name="text">
+      <string>Reset</string>
      </property>
     </widget>
    </item>
-   <item row="0" column="1">
-    <widget class="QSpinBox" name="blackLevelSpinBox">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
+   <item row="2" column="0">
+    <widget class="QLabel" name="activeVideoStartlLabel">
+     <property name="text">
+      <string>Active video start:</string>
      </property>
-     <property name="minimumSize">
-      <size>
-       <width>70</width>
-       <height>30</height>
-      </size>
-     </property>
-     <property name="prefix">
-      <string>0x</string>
-     </property>
-     <property name="maximum">
-      <number>32767</number>
-     </property>
-     <property name="singleStep">
-      <number>256</number>
-     </property>
-     <property name="value">
-      <number>16384</number>
-     </property>
-     <property name="displayIntegerBase">
-      <number>16</number>
+     <property name="alignment">
+      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
      </property>
     </widget>
    </item>
@@ -136,10 +172,10 @@
       <string></string>
      </property>
      <property name="minimum">
-      <number>16</number>
+      <number>0</number>
      </property>
      <property name="maximum">
-      <number>200</number>
+      <number>1134</number>
      </property>
      <property name="singleStep">
       <number>1</number>
@@ -149,6 +185,29 @@
      </property>
      <property name="displayIntegerBase">
       <number>10</number>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="2">
+    <widget class="QPushButton" name="activeVideoStartResetButton">
+     <property name="minimumSize">
+      <size>
+       <width>100</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="text">
+      <string>Reset</string>
+     </property>
+    </widget>
+   </item>
+   <item row="3" column="0">
+    <widget class="QLabel" name="activeVideoWidthlLabel">
+     <property name="text">
+      <string>Active video width:</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
      </property>
     </widget>
    </item>
@@ -173,7 +232,7 @@
       <number>1</number>
      </property>
      <property name="maximum">
-      <number>1000</number>
+      <number>1135</number>
      </property>
      <property name="singleStep">
       <number>1</number>
@@ -183,65 +242,6 @@
      </property>
      <property name="displayIntegerBase">
       <number>10</number>
-     </property>
-    </widget>
-   </item>
-   <item row="1" column="2">
-    <widget class="QPushButton" name="whiteLevelResetButton">
-     <property name="minimumSize">
-      <size>
-       <width>100</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="text">
-      <string>Reset</string>
-     </property>
-    </widget>
-   </item>
-   <item row="0" column="3">
-    <widget class="QPushButton" name="blackLevelAltResetButton">
-     <property name="minimumSize">
-      <size>
-       <width>100</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="text">
-      <string>Reset NTSC-J</string>
-     </property>
-    </widget>
-   </item>
-   <item row="1" column="0">
-    <widget class="QLabel" name="whiteLevelLabel">
-     <property name="text">
-      <string>White level:</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-     </property>
-    </widget>
-   </item>
-   <item row="2" column="2">
-    <widget class="QPushButton" name="activeVideoStartResetButton">
-     <property name="minimumSize">
-      <size>
-       <width>100</width>
-       <height>0</height>
-      </size>
-     </property>
-     <property name="text">
-      <string>Reset</string>
-     </property>
-    </widget>
-   </item>
-   <item row="2" column="0">
-    <widget class="QLabel" name="activeVideoStartlLabel">
-     <property name="text">
-      <string>Active video start:</string>
-     </property>
-     <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
      </property>
     </widget>
    </item>
@@ -258,13 +258,13 @@
      </property>
     </widget>
    </item>
-   <item row="3" column="0">
-    <widget class="QLabel" name="activeVideoWidthlLabel">
+   <item row="4" column="0">
+    <widget class="QLabel" name="aspectRatioLabel">
      <property name="text">
-      <string>Active video width:</string>
+      <string>Display aspect ratio:</string>
      </property>
      <property name="alignment">
-      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
      </property>
     </widget>
    </item>
