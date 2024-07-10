@@ -92,6 +92,12 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate(
                                          "main", "Do not use differential dropout detection on low source pixels"));
     parser.addOption(noDiffDodOption);
+	
+	    // Option to disable differential dropout detection
+    QCommandLineOption noMapOption(QStringList() << "no-map",
+                                        QCoreApplication::translate(
+                                         "main", "Disable mapping requirement"));
+    parser.addOption(noMapOption);
 
     // Option to passthrough dropouts present in every source
     QCommandLineOption passthroughOption(QStringList() << "passthrough",
@@ -116,6 +122,7 @@ int main(int argc, char *argv[])
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
     bool noDiffDod = parser.isSet(noDiffDodOption);
+    bool noMap = parser.isSet(noMapOption);
     bool passThrough = parser.isSet(passthroughOption);
 
     // Get the arguments from the parser
@@ -304,11 +311,18 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        if (!videoParameters.isMapped) {
-            qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source videos and try again";
+        if (!videoParameters.isMapped && !noMap) {
+            qInfo() << "Source video" << i << "has not been mapped - run ld-discmap on all source videos and try again or use option \"no-map\"";
             qInfo() << "Disc stacking relies on accurate VBI frame numbering to match source frames together";
             return 1;
         }
+		else if(noMap)
+		{
+			if(!videoParameters.isMapped)
+			{
+				qInfo() << "Source video" << i << "has not been mapped - be carefull using option no-map";
+			}
+		}
     }
 
     // Perform the disc stacking processes ----------------------------------------------------------------------------
