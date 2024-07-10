@@ -41,7 +41,7 @@ class StackingPool : public QObject
 public:
     explicit StackingPool(QString _outputFilename, QString _outputJsonFilename,
                            qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                           bool _reverse, bool _noDiffDod, bool _passThrough, QObject *parent = nullptr);
+                           qint32 _mode, qint32 _smartTreshold, bool _reverse, bool _noDiffDod, bool _passThrough, QObject *parent = nullptr);
 
     bool process();
 
@@ -61,6 +61,8 @@ private:
     QString outputFilename;
     QString outputJsonFilename;
     qint32 maxThreads;
+    qint32 mode;
+    qint32 smartTreshold;
     bool reverse;
     bool noDiffDod;
     bool passThrough;

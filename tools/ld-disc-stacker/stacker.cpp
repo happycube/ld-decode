@@ -40,6 +40,8 @@ void Stacker::run()
     QVector<SourceVideo::Data> secondSourceField;
     QVector<LdDecodeMetaData::Field> firstFieldMetadata;
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
+	qint32 mode;
+	qint32 smartTreshold;
     bool reverse;
     bool noDiffDod;
     bool passThrough;
@@ -49,7 +51,7 @@ void Stacker::run()
         // Get the next field to process from the input file
         if (!stackingPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
-                                       videoParameters, reverse, noDiffDod, passThrough,
+                                       videoParameters, mode, smartTreshold, reverse, noDiffDod, passThrough,
                                        availableSourcesForFrame)) {
             // No more input fields -- exit
             break;
@@ -67,7 +69,7 @@ void Stacker::run()
         // Return the processed fields
         stackingPool.setOutputFrame(frameNumber, outputFirstField, outputSecondField,
                                     firstFieldSeqNo[0], secondFieldSeqNo[0],
-                                    outputFirstFieldDropOuts, outputSecondFieldDropOuts);
+                                    outputFirstFieldDropOuts, outputSecondFieldDropOuts, mode, smartTreshold);
     }
 }
 
@@ -78,7 +80,9 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
                                       QVector<qint32> availableSourcesForFrame,
                                       bool noDiffDod, bool passThrough,
                                       SourceVideo::Data &outputField,
-                                      DropOuts &dropOuts)
+                                      DropOuts &dropOuts,
+                                      qint32 mode,
+                                      qint32 smartTreshold)
 {
     quint16 prevGoodValue = videoParameters.black16bIre;
     bool forceDropout = false;
@@ -152,7 +156,7 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
                     if (forceDropout) dropOuts.append(x, x, y + 1);
                 } else {
                     // More than 2 values available - store the median in the output field
-                    outputField[(videoParameters.fieldWidth * y) + x] = median(inputValues);
+                    outputField[(videoParameters.fieldWidth * y) + x] = stackMode(inputValues, mode, smartTreshold);
                     prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
                     if (forceDropout) dropOuts.append(x, x, y + 1);
                 }
@@ -169,6 +173,50 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
             }
         }
     }
+}
+
+// Method to find the median of a vector of quint16s
+quint16 Stacker::stackMode(QVector<quint16> elements, qint32 mode, qint32 smartTreshold)
+{
+    qint32 noOfElements = elements.size();
+	qint32 result = 0;
+	qint32 median = 0;
+	qint32 nbSelected = 0;
+	
+	if(mode == 0)
+	{
+		for(int i=0; i < noOfElements;i++)
+		{
+			result += elements[i];
+		}
+		result = (result / noOfElements);
+	}
+	else if(mode == 1)
+	{
+		result = median(elements);
+	}
+	else if(mode == 2)
+	{
+		median = median(elements);
+		for(int i=0; i < noOfElements;i++)
+		{
+			if(elements[i] < (median + smartTreshold) &&  elements[i] > (median - smartTreshold))
+			{
+				nbSelected++;
+				result += elements[i];
+			}
+		}
+		if(nbSelected == 0)
+		{
+			result = median;			
+		}
+		else
+		{
+			result = (result / nbSelected);
+		}
+	}
+
+    return static_cast<quint16>(result);
 }
 
 // Method to find the median of a vector of quint16s

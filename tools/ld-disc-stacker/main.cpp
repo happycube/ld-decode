@@ -86,14 +86,27 @@ int main(int argc, char *argv[])
                                          "main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
+	
+    // Option to select the number of threads (-t)
+    QCommandLineOption modeOption(QStringList() << "m" << "mode",
+                                        QCoreApplication::translate(
+                                         "main", "Specify the stacking mode to use (default is 2) 0 = mean / 1 = median / 2 = smart"),
+    parser.addOption(modeOption);
+	
+	// Option to select the number of threads (-t)
+    QCommandLineOption smartTresholdOption(QStringList() << "st" << "smart-treshold",
+                                        QCoreApplication::translate(
+                                         "main", "Specify the range of value in 8 bit (0~128) for selecting sample where the distance to the median didnt exceed the selected value for applying mean (default is 15)"),
+                                        QCoreApplication::translate("main", "number"));
+    parser.addOption(smartTresholdOption);
 
     // Option to disable differential dropout detection
     QCommandLineOption noDiffDodOption(QStringList() << "no-diffdod",
                                         QCoreApplication::translate(
                                          "main", "Do not use differential dropout detection on low source pixels"));
     parser.addOption(noDiffDodOption);
-	
-	    // Option to disable differential dropout detection
+    
+    // Option to disable differential dropout detection
     QCommandLineOption noMapOption(QStringList() << "no-map",
                                         QCoreApplication::translate(
                                          "main", "Disable mapping requirement"));
@@ -124,6 +137,28 @@ int main(int argc, char *argv[])
     bool noDiffDod = parser.isSet(noDiffDodOption);
     bool noMap = parser.isSet(noMapOption);
     bool passThrough = parser.isSet(passthroughOption);
+	
+    // Get the arguments from the parser
+	qint32 mode = 2;
+	if (parser.isSet(modeOption)) {
+        mode = parser.value(modeOption).toInt();
+
+        if (mode > 2 || mode < 0) {
+            qInfo() << "Specified mode (" << mode << ") is unknown using 2 (smart) instead";
+            mode = 2;
+        }
+    }
+	
+    // Get the arguments from the parser
+	qint32 smartTreshold = (15*256);
+	if (parser.isSet(smartTresholdOption)) {
+        smartTreshold = (parser.value(smartTresholdOption).toInt()*256);
+
+        if (smartTreshold > 128 || smartTreshold < 0) {
+            qInfo() << "Specified treshold (" << (smartTreshold/256) << ") is out off range using 15 instead";
+			smartTreshold = (15*256);
+        }
+    }
 
     // Get the arguments from the parser
     qint32 maxThreads = QThread::idealThreadCount();
@@ -161,6 +196,8 @@ int main(int argc, char *argv[])
         // Warn if only 2 sources are used
         if (positionalArguments.count() == 3) {
             qInfo() << "Only 2 input sources specified - stack will be only based on averaging (3 or more sources are recommended)";
+            qInfo() << "switching back to mode 0 (mean)";
+            mode = 0;
         }
     } else {
         // Quit with error
@@ -329,7 +366,7 @@ int main(int argc, char *argv[])
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
     StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos, reverse, noDiffDod, passThrough);
+                                ldDecodeMetaData, sourceVideos, mode, smartTreshold, reverse, noDiffDod, passThrough);
     if (!stackingPool.process()) result = 1;
 
     // Close open source video files
