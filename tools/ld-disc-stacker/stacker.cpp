@@ -63,13 +63,13 @@ void Stacker::run()
         DropOuts outputFirstFieldDropOuts;
         DropOuts outputSecondFieldDropOuts;
 
-        stackField(frameNumber, firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputFirstField, outputFirstFieldDropOuts);
-        stackField(frameNumber, secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputSecondField, outputSecondFieldDropOuts);
+        stackField(frameNumber, firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputFirstField, outputFirstFieldDropOuts, mode, smartTreshold);
+        stackField(frameNumber, secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputSecondField, outputSecondFieldDropOuts, mode, smartTreshold);
 
         // Return the processed fields
         stackingPool.setOutputFrame(frameNumber, outputFirstField, outputSecondField,
                                     firstFieldSeqNo[0], secondFieldSeqNo[0],
-                                    outputFirstFieldDropOuts, outputSecondFieldDropOuts, mode, smartTreshold);
+                                    outputFirstFieldDropOuts, outputSecondFieldDropOuts);
     }
 }
 
@@ -175,7 +175,7 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
     }
 }
 
-// Method to find the median of a vector of quint16s
+// Method to stack a vector of quint16s using a selected mode
 quint16 Stacker::stackMode(QVector<quint16> elements, qint32 mode, qint32 smartTreshold)
 {
     qint32 noOfElements = elements.size();
@@ -183,7 +183,7 @@ quint16 Stacker::stackMode(QVector<quint16> elements, qint32 mode, qint32 smartT
 	qint32 median = 0;
 	qint32 nbSelected = 0;
 	
-	if(mode == 0)
+	if(mode == 0)//mean mode
 	{
 		for(int i=0; i < noOfElements;i++)
 		{
@@ -191,13 +191,14 @@ quint16 Stacker::stackMode(QVector<quint16> elements, qint32 mode, qint32 smartT
 		}
 		result = (result / noOfElements);
 	}
-	else if(mode == 1)
+	else if(mode == 1)//median mode
 	{
-		result = median(elements);
+		result = Stacker::median(elements);
 	}
-	else if(mode == 2)
+	else if(mode == 2)//smart mode
 	{
-		median = median(elements);
+		median = Stacker::median(elements);
+		//count number of sample withing treshold distance to the median and sum
 		for(int i=0; i < noOfElements;i++)
 		{
 			if(elements[i] < (median + smartTreshold) &&  elements[i] > (median - smartTreshold))
@@ -206,10 +207,12 @@ quint16 Stacker::stackMode(QVector<quint16> elements, qint32 mode, qint32 smartT
 				result += elements[i];
 			}
 		}
+		//select median if all other source are out of the treshold range
 		if(nbSelected == 0)
 		{
 			result = median;			
 		}
+		//mean averaging of selected sample
 		else
 		{
 			result = (result / nbSelected);

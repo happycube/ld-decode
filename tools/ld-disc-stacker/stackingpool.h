@@ -50,7 +50,7 @@ public:
                        QVector<qint32> &firstFieldNumber, QVector<SourceVideo::Data> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
                        QVector<qint32> &secondFieldNumber, QVector<SourceVideo::Data> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
-                       bool& _reverse, bool &_noDiffDod, bool &_passThrough, QVector<qint32> &availableSourcesForFrame);
+                       qint32& _mode, qint32& _smartTreshold, bool& _reverse, bool &_noDiffDod, bool &_passThrough, QVector<qint32> &availableSourcesForFrame);
 
     bool setOutputFrame(qint32 frameNumber,
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,

@@ -53,8 +53,9 @@ private:
 
     void stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters,
                     QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame, bool noDiffDod, bool passThrough,
-                    SourceVideo::Data &outputField, DropOuts &dropOuts);
+                    SourceVideo::Data &outputField, DropOuts &dropOuts, qint32 mode, qint32 smartTreshold);
     quint16 median(QVector<quint16> v);
+	quint16 stackMode(QVector<quint16> elements, qint32 mode, qint32 smartTreshold);
     bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);
     QVector<quint16> diffDod(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos);
 };
