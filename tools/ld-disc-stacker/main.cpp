@@ -90,7 +90,8 @@ int main(int argc, char *argv[])
     // Option to select the number of threads (-t)
     QCommandLineOption modeOption(QStringList() << "m" << "mode",
                                         QCoreApplication::translate(
-                                         "main", "Specify the stacking mode to use (default is 2) 0 = mean / 1 = median / 2 = smart"));
+                                         "main", "Specify the stacking mode to use (default is 2) 0 = mean / 1 = median / 2 = smart"),
+										 QCoreApplication::translate("main", "number"));
     parser.addOption(modeOption);
 	
 	// Option to select the number of threads (-t)
