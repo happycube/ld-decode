@@ -2620,7 +2620,7 @@ class Field:
 
         if valid:
             bitset = [z[1] for z in zc]
-            linecode = 0
+            linecode = np.int64(0)
 
             for b in range(0, 24, 4):
                 linecode *= 0x10
