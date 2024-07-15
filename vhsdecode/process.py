@@ -1,8 +1,6 @@
-import math
 import os
 import time
 import numpy as np
-import threading
 import traceback
 import scipy.signal as sps
 from collections import namedtuple
@@ -20,8 +18,6 @@ from vhsdecode.chroma import demod_chroma_filt
 
 import vhsdecode.formats as vhs_formats
 
-from vhsdecode.addons.FMdeemph import FMDeEmphasis
-from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.addons.resync import Resync
 from vhsdecode.addons.chromaAFC import ChromaAFC
@@ -934,7 +930,8 @@ class VHSRFDecode(ldd.RFDecode):
 
         # self.Filters["RFVideo"] *= abs(rf_eq)
 
-        if self.options.fm_audio_notch != 0:
+        # Make sure this is an int in case it could be passed in as a string via the gui.
+        if int(self.options.fm_audio_notch) > 0:
             if "fm_audio_channel_0_freq" in DP and "fm_audio_channel_1_freq" in DP:
                 # Optionally enable double notch filter on fm audio channel frequencies.
                 # This is mainly useful on VHS (and possibly PAL betamax with hifi?)

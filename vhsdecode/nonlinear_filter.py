@@ -2,7 +2,6 @@ import numpy.fft as npfft
 
 import scipy.signal as sps
 import numpy as np
-import lddecode.utils as lddu
 import math
 from vhsdecode.utils import filter_simple
 

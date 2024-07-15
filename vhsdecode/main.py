@@ -131,6 +131,7 @@ def main(args=None, use_gui=False):
         nargs="?",
         default=0,
         const=10,
+        type=float,
         help="Enable notch filter on FM audio frequencies to filter out wave-like pattern from interference, mainly useful on VHS. Optional argument to specify Q factor (filter width)",
     )
     if not use_gui:
