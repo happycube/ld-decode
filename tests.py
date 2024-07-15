@@ -189,6 +189,20 @@ class RustNumpyMath(unittest.TestCase):
         b = complex_angle_py(complex_hilbert_data)
         assert (a == b).all()
 
+    def test_rust_unwrap(self):
+        from vhsd_rust import unwrap_angles
+
+        # phase = [0.0, 0.78539816, 1.57079633, 5.49778714, 6.28318531]
+
+        loaded = np.load("hilbert_data.npz")
+        # complex_hilbert_data = loaded["data"]
+        data = np.angle(loaded["data"])
+        a = np.unwrap(data)
+        b = unwrap_angles(np.array(data))
+
+        # print(a - b)
+        assert np.isclose(b, a, atol=1e-15, rtol=1e-13).all()
+
     def test_rust_diff(self):
         from vhsdecode.hilbert import diff_forward
         from vhsd_rust import diff_forward_in_place

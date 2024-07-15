@@ -1,6 +1,10 @@
+mod ported;
+
 use numpy::ndarray::{Array1, ArrayView1, ArrayViewMut1, Zip};
 use numpy::{Complex64, IntoPyArray, PyArray1, PyReadonlyArray1, PyReadwriteArray1};
 use pyo3::prelude::*;
+
+use ported::unwrap_angles_impl;
 
 fn complex_angle(input_array: ArrayView1<'_, Complex64>) -> Array1<f64> {
     // Replicate the np.angle function for 1-dimensional input
@@ -11,28 +15,6 @@ fn complex_angle(input_array: ArrayView1<'_, Complex64>) -> Array1<f64> {
         .for_each(|i, &j| {
             *i = j.im.atan2(j.re);
         });
-    output_array
-}
-
-fn unwrap_angles_impl(input_array: ArrayView1<'_, f64>) -> Array1<f64> {
-    let mut output_array = input_array.to_owned(); //Array1::<f64>::zeros(input_array.len());
-    let discont = std::f64::consts::PI; // period / 2
-    let period = std::f64::consts::TAU;
-
-    for i in 1..output_array.len() {
-        let diff = output_array[i] - output_array[i - 1];
-        if diff.abs() > discont {
-            let dd = (diff / period).round_ties_even();
-            println!("dd = {:?}", dd);
-            assert!(dd != 0.0);
-            //let dd = dd * sign()
-            // TODO
-            output_array[i] -= period * dd;
-        }
-    }
-
-    //unimplemented!();
-
     output_array
 }
 
