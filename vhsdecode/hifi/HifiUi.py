@@ -288,7 +288,7 @@ class HifiUi(QMainWindow):
             [
                 "DdD (40.0)",
                 "Clockgen (10.0)",
-                "RTLSDR (8.0)", 
+                "RTLSDR (8.0)",
                 "cxadc (28.64)",
                 "cxadc3 (35.8)",
                 "10cxadc (14.32)",
