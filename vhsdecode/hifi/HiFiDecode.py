@@ -2,7 +2,6 @@
 # It could also do Beta HiFi, CED, LD and other stereo AFM variants,
 # It has an interpretation of the noise reduction method described on IEC60774-2/1999
 
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from fractions import Fraction

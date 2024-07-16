@@ -245,7 +245,7 @@ class VHSDecode(ldd.LDdecode):
 
                     self.logger.status(outstr)
                 except Exception:
-                    logger.warning("file frame %d : VBI decoding error", rawloc)
+                    ldd.logger.warning("file frame %d : VBI decoding error", rawloc)
                     traceback.print_exc()
 
         return fi, False
@@ -406,11 +406,11 @@ class VHSDecode(ldd.LDdecode):
 
                     actualwhiteIRE = f.rf.hztoire(ire100_hz)
 
-                    sync_ire_diff = nb_abs(
+                    sync_ire_diff = lddu.nb_abs(
                         self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"]
                     )
-                    whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
-                    ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
+                    whitediff = lddu.nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
+                    ire0_diff = lddu.nb_abs(self.rf.hztoire(ire0_hz))
 
                     acceptable_diff = 2 if self.fields_written else 0.5
 
@@ -419,7 +419,7 @@ class VHSDecode(ldd.LDdecode):
                         vsync_ire = (sync_hz - ire0_hz) / hz_ire
 
                         if vsync_ire > -20:
-                            logger.warning(
+                            ldd.logger.warning(
                                 "At field #{0}, Auto-level detection malfunction (vsync IRE computed at {1}, nominal ~= -40), possible disk skipping".format(
                                     len(self.fieldinfo), np.round(vsync_ire, 2)
                                 )

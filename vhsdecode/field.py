@@ -1,5 +1,4 @@
 import numpy as np
-from numba import njit
 
 import lddecode.core as ldd
 import lddecode.utils as lddu
@@ -18,7 +17,6 @@ from vhsdecode.chroma import (
     try_detect_track_ntsc,
     try_detect_track_betamax_pal,
 )
-from vhsdecode.formats import parent_system
 
 from vhsdecode.debug_plot import plot_data_and_pulses
 
