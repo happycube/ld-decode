@@ -153,12 +153,16 @@ int main(int argc, char *argv[])
     // Get the arguments from the parser
 	qint32 smartTreshold = (15*256);
 	if (parser.isSet(smartTresholdOption)) {
-        smartTreshold = (parser.value(smartTresholdOption).toInt()*256);
+        smartTreshold = parser.value(smartTresholdOption).toInt();
 
         if (smartTreshold > 128 || smartTreshold < 0) {
             qInfo() << "Specified treshold (" << (smartTreshold/256) << ") is out off range using 15 instead";
-			smartTreshold = (15*256);
+			smartTreshold = (smartTreshold*256);
         }
+		else
+		{
+			smartTreshold = (15*256);
+		}
     }
 
     // Get the arguments from the parser
