@@ -55,7 +55,9 @@ private:
                     QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame, bool noDiffDod, bool passThrough,
                     SourceVideo::Data &outputField, DropOuts &dropOuts, qint32 mode, qint32 smartTreshold);
     quint16 median(QVector<quint16> v);
-	quint16 stackMode(QVector<quint16> elements, qint32 mode, qint32 smartTreshold);
+    qint32 mean(QVector<quint16> v);
+    quint16 closest(QVector<quint16> v,qint32 target);
+	quint16 stackMode(QVector<quint16> elements, QVector<quint16> elementsN, QVector<quint16> elementsS, QVector<quint16> elementsE, QVector<quint16> elementsW,qint32 mode, qint32 smartTreshold);
     bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);
     QVector<quint16> diffDod(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos);
 };

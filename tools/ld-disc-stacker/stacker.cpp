@@ -92,6 +92,10 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
         for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
             for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.fieldWidth; x++) {
                 // Get input values from the input sources (which are not marked as dropouts)
+                QVector<quint16> inputValuesN;//Nort neighbor pixel
+                QVector<quint16> inputValuesS;//South neighbor pixel
+                QVector<quint16> inputValuesE;//East neighbor pixel
+                QVector<quint16> inputValuesW;//West neighbor pixel
                 QVector<quint16> inputValues;
                 for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
                     // Include the source's pixel data if it's not marked as a dropout
@@ -100,6 +104,28 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
                         inputValues.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x]);
                     }
                 }
+				if(mode == 2 && !(availableSourcesForFrame.size() % 2))//get surounding pixels if we have even number of sample 
+				{
+					for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
+						// Include the source's pixel data if it's not marked as a dropout
+						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (y - 1) > 0) {
+							// Pixel is valid
+							inputValuesN.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * (y - 1)) + x]);
+						}
+						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (y + 1) < videoParameters.fieldHeight) {
+							// Pixel is valid
+							inputValuesS.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * (y + 1)) + x]);
+						}
+						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (x + 1) < videoParameters.fieldWidth) {
+							// Pixel is valid
+							inputValuesE.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x + 1]);
+						}
+						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (x - 1) > 0) {
+							// Pixel is valid
+							inputValuesW.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x - 1]);
+						}
+					}
+				}
 
                 // If passThrough is set, the output is always marked as a dropout if all input values are dropouts
                 // (regardless of the diffDOD process result).
@@ -131,6 +157,21 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
                     } else {
                         qInfo().nospace() << "Frame #" << frameNumber << ": DiffDOD failed, no values recovered for field location (" << x << ", " << y << ")";
                     }
+					if(mode == 2 && !(availableSourcesForFrame.size() % 2))
+					{
+						// Perform differential dropout detection to recover ld-decode false positive pixels
+						inputValuesN = diffDod(inputValuesN, videoParameters, x);
+						inputValuesS = diffDod(inputValuesS, videoParameters, x);
+						if((x + 1) < videoParameters.fieldWidth)
+						{
+							inputValuesE = diffDod(inputValuesE, videoParameters, x + 1);
+						}
+						if((x - 1) > 0)
+						{
+							inputValuesW = diffDod(inputValuesW, videoParameters, x - 1);
+						}
+						
+					}
                 }
 
                 // Stack with intelligence:
@@ -147,16 +188,9 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
                     outputField[(videoParameters.fieldWidth * y) + x] = inputValues[0];
                     prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
                     if (forceDropout) dropOuts.append(x, x, y + 1);
-                } else if (inputValues.size() == 2) {
-                    // 2 values available - average and copy to output
-                    // Use floating point for accuracy
-                    double avg = (static_cast<double>(inputValues[0]) + static_cast<double>(inputValues[1])) / 2.0;
-                    outputField[(videoParameters.fieldWidth * y) + x] = static_cast<quint16>(avg);
-                    prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
-                    if (forceDropout) dropOuts.append(x, x, y + 1);
                 } else {
-                    // More than 2 values available - store the median in the output field
-                    outputField[(videoParameters.fieldWidth * y) + x] = stackMode(inputValues, mode, smartTreshold);
+                    //2 or more values available - store the result in the output field
+                    outputField[(videoParameters.fieldWidth * y) + x] = stackMode(inputValues, inputValuesN, inputValuesS, inputValuesE, inputValuesW, mode, smartTreshold);
                     prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
                     if (forceDropout) dropOuts.append(x, x, y + 1);
                 }
@@ -176,46 +210,117 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
 }
 
 // Method to stack a vector of quint16s using a selected mode
-quint16 Stacker::stackMode(QVector<quint16> elements, qint32 mode, qint32 smartTreshold)
+quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN, QVector<quint16> elementsS, QVector<quint16> elementsE, QVector<quint16> elementsW, qint32 mode, qint32 smartTreshold)
 {
     qint32 noOfElements = elements.size();
-	qint32 result = 0;
-	qint32 median = 0;
 	qint32 nbSelected = 0;
+	quint32 result = 0;
+	//qint32 median = 0;
+	QVector<quint16> closestList;
+	
+	//neighbor pixel
+	quint32 resultN = 0;
+	quint32 resultS = 0;
+	quint32 resultE = 0;
+	quint32 resultW = 0;
+	quint32 resultNeighbor = 0;
+	
+	qint32 nbNeighbor = 0;
+	
+	if(noOfElements < 3 && mode == 1)
+	{
+		mode = 0;
+	}
 	
 	if(mode == 0)//mean mode
 	{
-		for(int i=0; i < noOfElements;i++)
-		{
-			result += elements[i];
-		}
-		result = (result / noOfElements);
+		result = Stacker::mean(elements);
 	}
 	else if(mode == 1)//median mode
 	{
 		result = Stacker::median(elements);
 	}
-	else if(mode == 2)//smart mode
+	else if(mode == 3)//neighbor mode
 	{
-		median = Stacker::median(elements);
-		//count number of sample withing treshold distance to the median and sum
-		for(int i=0; i < noOfElements;i++)
+		(noOfElements > 2)     ? result  = Stacker::median(elements)  : result  = Stacker::mean(elements);
+		(elementsN.size() > 2) ? resultN = Stacker::median(elementsN) : resultN = Stacker::mean(elementsN);
+		(elementsS.size() > 2) ? resultS = Stacker::median(elementsS) : resultS = Stacker::mean(elementsS);
+		(elementsE.size() > 2) ? resultE = Stacker::median(elementsE) : resultE = Stacker::mean(elementsE);
+		(elementsW.size() > 2) ? resultW = Stacker::median(elementsW) : resultW = Stacker::mean(elementsW);
+		
+		//check number of neighbor available and prepare for mean
+		(resultN != -1) ? nbNeighbor++ : resultN = 0;
+		(resultS != -1) ? nbNeighbor++ : resultS = 0;
+		(resultE != -1) ? nbNeighbor++ : resultE = 0;
+		(resultW != -1) ? nbNeighbor++ : resultW = 0;
+		
+		if(nbNeighbor > 0)
 		{
-			if(elements[i] < (median + smartTreshold) &&  elements[i] > (median - smartTreshold))
-			{
-				nbSelected++;
-				result += elements[i];
-			}
+			closestList.append(Stacker::closest(elements, resultN));
+			closestList.append(Stacker::closest(elements, resultS));
+			closestList.append(Stacker::closest(elements, resultE));
+			closestList.append(Stacker::closest(elements, resultW));
+			
+			resultNeighbor = Stacker::closest(closestList, result);//get the closest value to the median/mean based on closest value to a neighbor
+			result = (result + resultNeighbor) / 2;// get the mean between (median/mean) and the closest value to neighbor
 		}
-		//select median if all other source are out of the treshold range
-		if(nbSelected == 0)
+		return result;
+	}
+	else//smart mode
+	{
+		(noOfElements > 2)     ? result  = Stacker::median(elements)  : result  = Stacker::mean(elements);
+		(elementsN.size() > 2) ? resultN = Stacker::median(elementsN) : resultN = Stacker::mean(elementsN);
+		(elementsS.size() > 2) ? resultS = Stacker::median(elementsS) : resultS = Stacker::mean(elementsS);
+		(elementsE.size() > 2) ? resultE = Stacker::median(elementsE) : resultE = Stacker::mean(elementsE);
+		(elementsW.size() > 2) ? resultW = Stacker::median(elementsW) : resultW = Stacker::mean(elementsW);
+		
+		//check number of neighbor available and prepare for mean
+		(resultN != -1) ? nbNeighbor++ : resultN = 0;
+		(resultS != -1) ? nbNeighbor++ : resultS = 0;
+		(resultE != -1) ? nbNeighbor++ : resultE = 0;
+		(resultW != -1) ? nbNeighbor++ : resultW = 0;
+		
+		if(nbNeighbor > 0)
 		{
-			result = median;			
+			closestList.append(Stacker::closest(elements, resultN));
+			closestList.append(Stacker::closest(elements, resultS));
+			closestList.append(Stacker::closest(elements, resultE));
+			closestList.append(Stacker::closest(elements, resultW));
+			
+			resultNeighbor = Stacker::closest(closestList, result);//get the closest value to the median/mean based on closest value to a neighbor
 		}
-		//mean averaging of selected sample
 		else
 		{
-			result = (result / nbSelected);
+			resultNeighbor = result;
+		}
+		
+		if(noOfElements > 2)//using median + mean
+		{
+			result = 0;
+			//count number of sample withing treshold distance to the median and sum
+			for(int i=0; i < noOfElements;i++)
+			{
+				if((elements[i] < (resultNeighbor + smartTreshold)) && (elements[i] > (resultNeighbor - smartTreshold)))
+				{
+					nbSelected++;
+					result += elements[i];
+				}
+			}
+			//qInfo() << "selected " << nbSelected << "/" + noOfElements << " samples";
+			//select median if all other source are out of the treshold range
+			if(nbSelected == 0)
+			{
+				result = resultNeighbor;			
+			}
+			//mean averaging of selected sample
+			else
+			{
+				result = (result / nbSelected);
+			}
+		}
+		else//using surounding sample
+		{
+			result = (result + resultNeighbor) / 2;// get the mean between (median/mean) and the closest value to neighbor
 		}
 	}
 
@@ -247,6 +352,55 @@ quint16 Stacker::median(QVector<quint16> elements)
         // Value at index (N/2)th is the median
         return static_cast<quint16>(elements[noOfElements / 2]);
     }
+}
+
+// Method to find the median of a vector of quint16s
+qint32 Stacker::mean(QVector<quint16> elements)
+{
+	quint32 result = 0;
+    qint32 noOfElements = elements.size();
+	
+	if(noOfElements > 1)
+	{
+		//compute mean of all values
+		for(int i=0; i < noOfElements;i++)
+		{
+			if(noOfElements > 1)
+			{
+				result += elements[i];
+			}
+		}
+		return (result / noOfElements);
+	}
+	else if(noOfElements == 1)
+	{
+		return elements[0];
+	}
+	else
+	{
+		return -1;
+	}
+	
+}
+
+// Method to find the closest value to a target
+quint16 Stacker::closest(QVector<quint16> elements, qint32 target)
+{
+    qint32 noOfElements = elements.size();
+	qint32 closest = elements[0];
+	
+	if(noOfElements > 1)
+	{
+		for(int i=1;i < noOfElements;i++)
+		{
+			if(abs(target - elements[i]) < abs(target - closest))
+			{
+				closest = elements[i];
+			}
+		}
+	}
+	
+	return closest;
 }
 
 // Method returns true if specified pixel is a dropout

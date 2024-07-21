@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
     // Option to select the number of threads (-t)
     QCommandLineOption modeOption(QStringList() << "m" << "mode",
                                         QCoreApplication::translate(
-                                         "main", "Specify the stacking mode to use (default is 2) 0 = mean / 1 = median / 2 = smart"),
+                                         "main", "Specify the stacking mode to use (default is 2) 0 = mean / 1 = median / 2 = smart / 3 = neighbor"),
 										 QCoreApplication::translate("main", "number"));
     parser.addOption(modeOption);
 	
@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
 	if (parser.isSet(modeOption)) {
         mode = parser.value(modeOption).toInt();
 
-        if (mode > 2 || mode < 0) {
+        if (mode > 3 || mode < 0) {
             qInfo() << "Specified mode (" << mode << ") is unknown using 2 (smart) instead";
             mode = 2;
         }
@@ -201,8 +201,6 @@ int main(int argc, char *argv[])
         // Warn if only 2 sources are used
         if (positionalArguments.count() == 3) {
             qInfo() << "Only 2 input sources specified - stack will be only based on averaging (3 or more sources are recommended)";
-            qInfo() << "switching back to mode 0 (mean)";
-            mode = 0;
         }
     } else {
         // Quit with error
