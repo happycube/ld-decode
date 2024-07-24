@@ -141,28 +141,33 @@ QByteArray OutputWriter::getStreamHeader() const
     str << " H" << outputHeight;
 
     // Frame rate
-    if (videoParameters.isSourcePal) {
+    if (videoParameters.system == PAL) {
         str << " F25:1";
     } else {
         str << " F30000:1001";
     }
 
     // Field order
-    str << " It";
+    if (videoParameters.firstActiveFrameLine % 2 ^ topPadLines % 2) {
+        str << " Ib";
+    } else {
+        str << " It";
+    }
 
     // Pixel aspect ratio
-    // XXX Can this be computed, in case the width has been adjusted?
-    if (videoParameters.isSourcePal) {
+    // Follows EBU R92 and SMPTE RP 187 except that values are scaled from
+    // BT.601 sampling (13.5 MHz) to 4fSC
+    if (videoParameters.system == PAL) {
         if (videoParameters.isWidescreen) {
-            str << " A512:461"; // (16 / 9) * (576 / 922)
+            str << " A865:779"; // (16 / 9) * (576 / (702 * 4*fSC / 13.5))
         } else {
-            str << " A384:461"; // (4 / 3) * (576 / 922)
+            str << " A259:311"; // (4 / 3) * (576 / (702 * 4*fSC / 13.5))
         }
     } else {
         if (videoParameters.isWidescreen) {
-            str << " A194:171"; // (16 / 9) * (485 / 760)
+            str << " A25:22"; // (16 / 9) * (480 / (708 * 4*fSC / 13.5))
         } else {
-            str << " A97:114";  // (4 / 3) * (485 / 760)
+            str << " A352:413"; // (4 / 3) * (480 / (708 * 4*fSC / 13.5))
         }
     }
 

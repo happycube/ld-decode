@@ -3,7 +3,7 @@
     configuration.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2018-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -52,12 +52,14 @@ public:
     // Get and set methods - windows
     void setMainWindowGeometry(QByteArray mainWindowGeometry);
     QByteArray getMainWindowGeometry(void);
-    void setMainWindowScaleFactor(qreal mainWindowScaleFactor);
-    qreal getMainWindowScaleFactor(void);
+    void setMainWindowScaleFactor(double mainWindowScaleFactor);
+    double getMainWindowScaleFactor(void);
     void setVbiDialogGeometry(QByteArray vbiDialogGeometry);
     QByteArray getVbiDialogGeometry(void);
     void setOscilloscopeDialogGeometry(QByteArray oscilloscopeDialogGeometry);
     QByteArray getOscilloscopeDialogGeometry(void);
+    void setVectorscopeDialogGeometry(QByteArray vectorscopeDialogGeometry);
+    QByteArray getVectorscopeDialogGeometry(void);
     void setDropoutAnalysisDialogGeometry(QByteArray dropoutAnalysisDialogGeometry);
     QByteArray getDropoutAnalysisDialogGeometry(void);
     void setVisibleDropoutAnalysisDialogGeometry(QByteArray visibleDropoutDialogGeometry);
@@ -68,6 +70,8 @@ public:
     QByteArray getWhiteSnrAnalysisDialogGeometry(void);
     void setClosedCaptionDialogGeometry(QByteArray closedCaptionDialogGeometry);
     QByteArray getClosedCaptionDialogGeometry(void);
+    void setVideoParametersDialogGeometry(QByteArray videoParametersConfigDialogGeometry);
+    QByteArray getVideoParametersDialogGeometry(void);
     void setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry);
     QByteArray getChromaDecoderConfigDialogGeometry(void);
 
@@ -87,14 +91,16 @@ private:
     // Window geometry and settings
     struct Windows {
         QByteArray mainWindowGeometry;
-        qreal mainWindowScaleFactor;
+        double mainWindowScaleFactor;
         QByteArray vbiDialogGeometry;
         QByteArray oscilloscopeDialogGeometry;
+        QByteArray vectorscopeDialogGeometry;
         QByteArray dropoutAnalysisDialogGeometry;
         QByteArray visibleDropoutAnalysisDialogGeometry;
         QByteArray blackSnrAnalysisDialogGeometry;
         QByteArray whiteSnrAnalysisDialogGeometry;
         QByteArray closedCaptionDialogGeometry;
+        QByteArray videoParametersDialogGeometry;
         QByteArray chromaDecoderConfigDialogGeometry;
     };
 

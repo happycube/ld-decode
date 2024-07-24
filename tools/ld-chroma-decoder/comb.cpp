@@ -32,14 +32,13 @@
 #include "firfilter.h"
 
 #include "deemp.h"
+#include "firfilter.h"
 
-#include <QScopedPointer>
+#include <algorithm>
 #include <cmath>
-
-// Definitions of static constexpr data members, for compatibility with
-// pre-C++17 compilers
-constexpr qint32 Comb::MAX_WIDTH;
-constexpr qint32 Comb::MAX_HEIGHT;
+#include <memory>
+#include <utility>
+#include <vector>
 
 // Indexes for the candidates considered in 3D adaptive mode
 enum CandidateIndex : qint32 {
@@ -131,9 +130,11 @@ void Comb::updateConfiguration(const LdDecodeMetaData::VideoParameters &_videoPa
     // Range check the video start
     if (videoParameters.activeVideoStart < 16) qCritical() << "Comb::Comb(): activeVideoStart must be > 16!";
 
-    if (videoParameters.sampleRate / videoParameters.fsc != 4)
+    // Check the sample rate is close to 4 * fSC.
+    // Older versions of ld-decode used integer approximations, so this needs
+    // to be an approximate comparison.
+    if (fabs((videoParameters.sampleRate / videoParameters.fSC) - 4.0) > 1.0e-6)
     {
-        // Decoder assumes 4fsc sample rate at the moment.
         qCritical() << "Data is not in 4fsc sample rate, color decoding will not work properly!";
     }
 
@@ -192,10 +193,9 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
     // Buffers for the next, current and previous frame.
     // Because we only need three of these, we allocate them upfront then
     // rotate the pointers below.
-    QScopedPointer<FrameBuffer> nextFrameBuffer, currentFrameBuffer, previousFrameBuffer;
-    nextFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
-    currentFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
-    previousFrameBuffer.reset(new FrameBuffer(videoParameters, configuration));
+    auto nextFrameBuffer = std::make_unique<FrameBuffer>(videoParameters, configuration);
+    auto currentFrameBuffer = std::make_unique<FrameBuffer>(videoParameters, configuration);
+    auto previousFrameBuffer = std::make_unique<FrameBuffer>(videoParameters, configuration);
 
     // Decode each pair of fields into a frame.
     // To support 3D operation, where we need to see three input frames at a time,
@@ -207,10 +207,10 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
 
         // Rotate the buffers
         {
-            QScopedPointer<FrameBuffer> recycle(previousFrameBuffer.take());
-            previousFrameBuffer.reset(currentFrameBuffer.take());
-            currentFrameBuffer.reset(nextFrameBuffer.take());
-            nextFrameBuffer.reset(recycle.take());
+            auto recycle = std::move(previousFrameBuffer);
+            previousFrameBuffer = std::move(currentFrameBuffer);
+            currentFrameBuffer = std::move(nextFrameBuffer);
+            nextFrameBuffer = std::move(recycle);
         }
 
         // If there's another input field, bring it into nextFrameBuffer
@@ -242,14 +242,12 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         // Demodulate chroma giving I/Q
         if (configuration.phaseCompensation) {
             currentFrameBuffer->splitIQlocked();
-            currentFrameBuffer->filterIQFull();
         } else {
             currentFrameBuffer->splitIQ();
             // Extract Y from baseband and I/Q
             currentFrameBuffer->adjustY();
-            // Post-filter I/Q
-            if (configuration.colorlpf) currentFrameBuffer->filterIQ();
         }
+        currentFrameBuffer->filterIQ();
 
         // Apply noise reduction
         currentFrameBuffer->doCNR();
@@ -727,9 +725,8 @@ namespace {
 
     // Rotate the burst angle to get the correct values.
     // We do the 33 degree rotation here to avoid computing it for every pixel.
-    // TODO: additionally we need to rotate another ~10 degrees to get the correct hue, find out why.
-    constexpr double ROTATE_SIN = 0.6819983600624985;
-    constexpr double ROTATE_COS = 0.7313537016191705;
+    constexpr double ROTATE_SIN = 0.5446390350150271;
+    constexpr double ROTATE_COS = 0.838670567945424;
 
     BurstInfo detectBurst(const quint16* lineData,
                           const LdDecodeMetaData::VideoParameters& videoParameters)
@@ -833,62 +830,23 @@ void Comb::FrameBuffer::splitIQ()
 // Filter the IQ from the component frame
 void Comb::FrameBuffer::filterIQ()
 {
-    auto iFilter(f_colorlpi);
-    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
+    auto iqFilter = makeFIRFilter(c_colorlp_b);
+
+    // Temporary output buffer for the filter
+    const int width = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
+    std::vector<double> tempBuf(width);
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        double *I = componentFrame->u(lineNumber);
-        double *Q = componentFrame->v(lineNumber);
+        double *I = componentFrame->u(lineNumber) + videoParameters.activeVideoStart;
+        double *Q = componentFrame->v(lineNumber) + videoParameters.activeVideoStart;
 
-        iFilter.clear();
-        qFilter.clear();
+        // Apply filter to I
+        iqFilter.apply(I, tempBuf.data(), width);
+        std::copy(tempBuf.begin(), tempBuf.end(), I);
 
-        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
-
-        double filti = 0, filtq = 0;
-
-        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qint32 phase = h % 4;
-
-            switch (phase) {
-                case 0: filti = iFilter.feed(I[h]); break;
-                case 1: filtq = qFilter.feed(Q[h]); break;
-                case 2: filti = iFilter.feed(I[h]); break;
-                case 3: filtq = qFilter.feed(Q[h]); break;
-                default: break;
-            }
-
-            I[h - qoffset] = filti;
-            Q[h - qoffset] = filtq;
-        }
-    }
-}
-
-
-// Filter the full set of I and Q values from the input buffer.
-void Comb::FrameBuffer::filterIQFull()
-{
-    auto iFilter(f_colorlpi);
-    auto qFilter(configuration.colorlpf_hq ? f_colorlpi : f_colorlpq);
-
-    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        double *I = componentFrame->u(lineNumber);
-        double *Q = componentFrame->v(lineNumber);
-
-        iFilter.clear();
-        qFilter.clear();
-
-        qint32 qoffset = configuration.colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
-
-        double filti = 0, filtq = 0;
-
-        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            filti = iFilter.feed(I[h]);
-            filtq = qFilter.feed(Q[h]);
-
-            I[h - qoffset] = filti;
-            Q[h - qoffset] = filtq;
-        }
+        // Apply filter to Q
+        iqFilter.apply(Q, tempBuf.data(), width);
+        std::copy(tempBuf.begin(), tempBuf.end(), Q);
     }
 }
 

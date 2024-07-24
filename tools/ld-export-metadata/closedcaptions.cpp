@@ -37,12 +37,17 @@ using std::set;
 using std::vector;
 
 // Generate an SCC format timestamp based on the field index
-QString generateTimeStamp(qint32 fieldIndex)
+QString generateTimeStamp(qint32 fieldIndex, VideoSystem system)
 {
-    // Set some constants for the timecode calculations
-    double fieldsPerSecond = 29.97 * 2.0;
-    double fieldsPerMinute = fieldsPerSecond * 60;
-    double fieldsPerHour = fieldsPerMinute * 60;
+    // Convert to a 0-based count of frames
+    double frameIndex = static_cast<double>((fieldIndex - 1) / 2);
+
+    // Set some constants for the timecode calculations.
+    // We are generating non-drop timecode (:ff not ;ff), so
+    // the clock actually counts at 29.97 FPS.
+    const double framesPerSecond = (system == PAL) ? 25.0 : 29.97;
+    const double framesPerMinute = framesPerSecond * 60.0;
+    const double framesPerHour = framesPerMinute * 60.0;
 
     // Since the subtitle is relative to the video we
     // can simply calculate the timecode from the sequential
@@ -54,19 +59,19 @@ QString generateTimeStamp(qint32 fieldIndex)
     // frame-number/CLV timecode; as both are useful depending on
     // the use-case?
     //
-    qint32 hh = static_cast<qint32>((fieldIndex / fieldsPerHour));
-    qint32 mm = static_cast<qint32>((fieldIndex / fieldsPerMinute)) % 60;
-    qint32 ss = (fieldIndex % static_cast<qint32>(fieldsPerMinute)) / fieldsPerSecond;
-    qint32 ff = fieldIndex % static_cast<qint32>(fieldsPerMinute) % static_cast<qint32>(fieldsPerSecond);
-
-    // Output is expecting fields, not frames, so approximate it
-    ff = ff / 2;
+    const qint32 hh = static_cast<qint32>(frameIndex / framesPerHour);
+    frameIndex -= static_cast<double>(hh) * framesPerHour;
+    const qint32 mm = static_cast<qint32>(frameIndex / framesPerMinute);
+    frameIndex -= static_cast<double>(mm) * framesPerMinute;
+    const qint32 ss = static_cast<qint32>(frameIndex / framesPerSecond);
+    frameIndex -= static_cast<double>(ss) * framesPerSecond;
+    const qint32 ff = static_cast<qint32>(frameIndex);
 
     // Create the timestamp
-    return QString("%1").arg(hh, 2, 10, QLatin1Char('0')) + ":" +
-                              QString("%1").arg(mm, 2, 10, QLatin1Char('0')) + ":" +
-                              QString("%1").arg(ss, 2, 10, QLatin1Char('0')) + ";" +
-                              QString("%1").arg(ff, 2, 10, QLatin1Char('0'));
+    return QString("%1:%2:%3:%4").arg(hh, 2, 10, QLatin1Char('0'))
+                                 .arg(mm, 2, 10, QLatin1Char('0'))
+                                 .arg(ss, 2, 10, QLatin1Char('0'))
+                                 .arg(ff, 2, 10, QLatin1Char('0'));
 }
 
 // Sanity check the CC data byte and set to -1 if it probably is invalid
@@ -97,12 +102,6 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
 {
     const auto videoParameters = metaData.getVideoParameters();
 
-    // Only NTSC discs can contain closed captions; so perform a basic sanity check
-    if (videoParameters.isSourcePal) {
-        qInfo() << "Video source is PAL which cannot contain closed captions";
-        return false;
-    }
-
     // Open the output file
     QFile file(fileName);
     if (!file.open(QFile::WriteOnly | QFile::Text)) {
@@ -122,8 +121,8 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
     QString debugCaption;
     for (qint32 fieldIndex = 1; fieldIndex <= videoParameters.numberOfSequentialFields; fieldIndex++) {
         // Get the CC data bytes from the field
-        qint32 data0 = sanityCheckData(metaData.getFieldNtsc(fieldIndex).ccData0);
-        qint32 data1 = sanityCheckData(metaData.getFieldNtsc(fieldIndex).ccData1);
+        qint32 data0 = sanityCheckData(metaData.getFieldClosedCaption(fieldIndex).data0);
+        qint32 data1 = sanityCheckData(metaData.getFieldClosedCaption(fieldIndex).data1);
 
         // Sometimes random data is passed through; so this sanity check makes sure
         // each new caption starts with data0 = 0x14 which (according to wikipedia)
@@ -145,7 +144,7 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
                     // Start of new caption
 
                     // Output a timecode followed by a tab character (in SCC format)
-                    QString timeStamp = generateTimeStamp(fieldIndex);
+                    QString timeStamp = generateTimeStamp(fieldIndex, videoParameters.system);
                     stream << "\n\n" << timeStamp << "\t";
                     debugCaption = "writeClosedCaptions(): Caption data at " + timeStamp + " : [";
 

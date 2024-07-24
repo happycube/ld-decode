@@ -3,7 +3,7 @@
     stackingpool.cpp
 
     ld-disc-stacker - Disc stacking for ld-decode
-    Copyright (C) 2020 Simon Inns
+    Copyright (C) 2020-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -103,6 +103,10 @@ private:
     qint32 convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qint32 sourceNumber);
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
     bool writeOutputField(const SourceVideo::Data &fieldData);
+    void correctPhaseIDs();
+    template<int field>
+    void replaceFieldMetaData(qint32 frameNumber);
+    LdDecodeMetaData &correctMetaData();
 };
 
 #endif // STACKINGPOOL_H

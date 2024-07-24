@@ -3,7 +3,7 @@
     visibledropoutanalysisdialog.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2018-2021 Simon Inns
+    Copyright (C) 2018-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -52,7 +52,7 @@ public:
     ~VisibleDropOutAnalysisDialog();
 
     void startUpdate(qint32 _numberOfFrames);
-    void addDataPoint(qint32 frameNumber, qreal doLength);
+    void addDataPoint(qint32 frameNumber, double doLength);
     void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 

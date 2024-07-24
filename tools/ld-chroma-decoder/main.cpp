@@ -4,7 +4,7 @@
 
     ld-chroma-decoder - Colourisation filter for ld-decode
     Copyright (C) 2018-2020 Simon Inns
-    Copyright (C) 2019-2021 Adam Sampson
+    Copyright (C) 2019-2022 Adam Sampson
     Copyright (C) 2021 Chad Page
     Copyright (C) 2021 Phillip Blucas
 
@@ -29,9 +29,9 @@
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
-#include <QScopedPointer>
 #include <QThread>
 #include <fstream>
+#include <memory>
 
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
@@ -97,6 +97,8 @@ static bool loadTransformThresholds(QCommandLineParser &parser, QCommandLineOpti
 
 int main(int argc, char *argv[])
 {
+    //set 'binary mode' for stdin and stdout on windows
+    setBinaryMode();
     // Install the local debug message handler
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
@@ -235,6 +237,11 @@ int main(int argc, char *argv[])
                                     QCoreApplication::translate("main", "number"));
     parser.addOption(lumaNROption);
 
+    // Option to use phase compensating decoder
+    QCommandLineOption ntscPhaseCompOption(QStringList() << "ntsc-phase-comp",
+                                           QCoreApplication::translate("main", "NTSC: Adjust phase per-line using burst phase"));
+    parser.addOption(ntscPhaseCompOption);
+
     // -- PAL decoder options --
 
     // Option to use Simple PAL UV filter
@@ -242,21 +249,15 @@ int main(int argc, char *argv[])
                                            QCoreApplication::translate("main", "Transform: Use 1D UV filter (default 2D)"));
     parser.addOption(simplePALOption);
 
-    // Option to select the Transform PAL filter mode
-    QCommandLineOption transformModeOption(QStringList() << "transform-mode",
-                                           QCoreApplication::translate("main", "Transform: Filter mode to use (level, threshold; default threshold)"),
-                                           QCoreApplication::translate("main", "mode"));
-    parser.addOption(transformModeOption);
-
     // Option to select the Transform PAL threshold
     QCommandLineOption transformThresholdOption(QStringList() << "transform-threshold",
-                                                QCoreApplication::translate("main", "Transform: Uniform similarity threshold in 'threshold' mode (default 0.4)"),
+                                                QCoreApplication::translate("main", "Transform: Uniform similarity threshold (default 0.4)"),
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
 
     // Option to select the Transform PAL thresholds file
     QCommandLineOption transformThresholdsOption(QStringList() << "transform-thresholds",
-                                                 QCoreApplication::translate("main", "Transform: File containing per-bin similarity thresholds in 'threshold' mode"),
+                                                 QCoreApplication::translate("main", "Transform: File containing per-bin similarity thresholds"),
                                                  QCoreApplication::translate("main", "file"));
     parser.addOption(transformThresholdsOption);
 
@@ -264,11 +265,6 @@ int main(int argc, char *argv[])
     QCommandLineOption showFFTsOption(QStringList() << "show-ffts",
                                       QCoreApplication::translate("main", "Transform: Overlay the input and output FFTs"));
     parser.addOption(showFFTsOption);
-
-    // Option to use phase compensating decoder
-    QCommandLineOption ntscPhaseComp(QStringList() << "ntsc-phase-comp",
-                                      QCoreApplication::translate("main", "Use NTSC QADM decoder taking burst phase into account (BETA)"));
-    parser.addOption(ntscPhaseComp);
 
     // -- Positional arguments --
 
@@ -397,18 +393,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (parser.isSet(transformModeOption)) {
-        const QString name = parser.value(transformModeOption);
-
-        if (name == "level") {
-            palConfig.transformMode = TransformPal::levelMode;
-        } else if (name == "threshold") {
-            palConfig.transformMode = TransformPal::thresholdMode;
-        } else {
-            // Quit with error
-            qCritical() << "Unknown Transform mode" << name;
-            return -1;
-        }
+    if (parser.isSet(ntscPhaseCompOption)) {
+        combConfig.phaseCompensation = true;
     }
 
     if (parser.isSet(simplePALOption)) {
@@ -425,10 +411,6 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (parser.isSet(ntscPhaseComp)) {
-        combConfig.phaseCompensation = true;
-    }
-    
     LdDecodeMetaData::LineParameters lineParameters;
     if (parser.isSet(firstFieldLineOption)) {
         lineParameters.firstActiveFieldLine = parser.value(firstFieldLineOption).toInt();
@@ -471,10 +453,10 @@ int main(int argc, char *argv[])
     QString decoderName;
     if (parser.isSet(decoderOption)) {
         decoderName = parser.value(decoderOption);
-    } else if (metaData.getVideoParameters().isSourcePal) {
-        decoderName = "pal2d";
-    } else {
+    } else if (metaData.getVideoParameters().system == NTSC) {
         decoderName = "ntsc2d";
+    } else {
+        decoderName = "pal2d";
     }
 
     // Require ntsc3d if the map overlay is selected
@@ -490,36 +472,36 @@ int main(int argc, char *argv[])
     }
 
     // Select the decoder
-    QScopedPointer<Decoder> decoder;
+    std::unique_ptr<Decoder> decoder;
     if (decoderName == "pal2d") {
-        decoder.reset(new PalDecoder(palConfig));
+        decoder = std::make_unique<PalDecoder>(palConfig);
     } else if (decoderName == "transform2d") {
         palConfig.chromaFilter = PalColour::transform2DFilter;
         if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
             return -1;
         }
-        decoder.reset(new PalDecoder(palConfig));
+        decoder = std::make_unique<PalDecoder>(palConfig);
     } else if (decoderName == "transform3d") {
         palConfig.chromaFilter = PalColour::transform3DFilter;
         if (!loadTransformThresholds(parser, transformThresholdsOption, palConfig)) {
             return -1;
         }
-        decoder.reset(new PalDecoder(palConfig));
+        decoder = std::make_unique<PalDecoder>(palConfig);
     } else if (decoderName == "ntsc1d") {
         combConfig.chromaFilter = Comb::ntsc1DFilter;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "ntsc2d") {
         combConfig.chromaFilter = Comb::ntsc2DCombFilter;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "ntsc3d") {
         combConfig.chromaFilter = Comb::ntsc3DCombFilter;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "ntsc3dnoadapt") {
         combConfig.chromaFilter = Comb::ntsc3DCombFilter;
         combConfig.adaptive = false;
-        decoder.reset(new NtscDecoder(combConfig));
+        decoder = std::make_unique<NtscDecoder>(combConfig);
     } else if (decoderName == "mono") {
-        decoder.reset(new MonoDecoder);
+        decoder = std::make_unique<MonoDecoder>();
     } else {
         qCritical() << "Unknown decoder" << decoderName;
         return -1;
