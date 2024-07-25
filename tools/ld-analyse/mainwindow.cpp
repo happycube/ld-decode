@@ -56,8 +56,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     vbiStatus.hide();
     timeCodeStatus.hide();
 
-    // Set the initial frame number
-    currentFrameNumber = 1;
+    // Set the initial field/frame number
+    setCurrentFrame(1);
 
     // Connect to the scan line changed signal from the oscilloscope dialogue
     connect(oscilloscopeDialog, &OscilloscopeDialog::scopeCoordsChanged, this, &MainWindow::scopeCoordsChangedSignalHandler);
@@ -140,13 +140,13 @@ MainWindow::~MainWindow()
 // Enable or disable all the GUI controls
 void MainWindow::setGuiEnabled(bool enabled)
 {
-    // Enable the frame controls
-    ui->frameNumberSpinBox->setEnabled(enabled);
+    // Enable the field/frame controls
+    ui->posNumberSpinBox->setEnabled(enabled);
     ui->previousPushButton->setEnabled(enabled);
     ui->nextPushButton->setEnabled(enabled);
-    ui->startFramePushButton->setEnabled(enabled);
-    ui->endFramePushButton->setEnabled(enabled);
-    ui->frameHorizontalSlider->setEnabled(enabled);
+    ui->startPushButton->setEnabled(enabled);
+    ui->endPushButton->setEnabled(enabled);
+    ui->posHorizontalSlider->setEnabled(enabled);
     ui->mediaControl_frame->setEnabled(enabled);
 
     // Enable menu options
@@ -180,21 +180,16 @@ void MainWindow::setGuiEnabled(bool enabled)
     ui->originalSizePushButton->setEnabled(enabled);
 }
 
-// Method to update the GUI when a file is loaded
-void MainWindow::updateGuiLoaded()
+void MainWindow::resetGui()
 {
-    // Enable the GUI controls
-    setGuiEnabled(true);
+    ui->posNumberSpinBox->setMinimum(1);
+    ui->posHorizontalSlider->setMinimum(1);
 
-    // Update the current frame number
-    currentFrameNumber = 1;
-    ui->frameNumberSpinBox->setMinimum(1);
-    ui->frameNumberSpinBox->setMaximum(tbcSource.getNumberOfFrames());
-    ui->frameNumberSpinBox->setValue(1);
-    ui->frameHorizontalSlider->setMinimum(1);
-    ui->frameHorizontalSlider->setMaximum(tbcSource.getNumberOfFrames());
-    ui->frameHorizontalSlider->setPageStep(tbcSource.getNumberOfFrames() / 100);
-    ui->frameHorizontalSlider->setValue(1);
+    ui->posNumberSpinBox->setValue(1);
+    ui->posHorizontalSlider->setValue(1);
+    ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+
+    setViewValues();
 
     // Allow the next and previous frame buttons to auto-repeat
     ui->previousPushButton->setAutoRepeat(true);
@@ -206,7 +201,6 @@ void MainWindow::updateGuiLoaded()
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
-    ui->dropoutsPushButton->setText(tr("Dropouts Off"));
     displayAspectRatio = false;
     updateAspectPushButton();
     updateSourcesPushButton();
@@ -220,16 +214,43 @@ void MainWindow::updateGuiLoaded()
     ui->zoomOutPushButton->setAutoRepeatDelay(500);
     ui->zoomOutPushButton->setAutoRepeatInterval(100);
 
+    ui->stretchFieldButton->setText(tr("2:1"));
+    tbcSource.setStretchField(true);
+
+    // Update the video parameters dialogue
+    videoParametersDialog->setVideoParameters(tbcSource.getVideoParameters());
+
+    // Update the chroma decoder configuration dialogue
+    chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
+                                                tbcSource.getNtscConfiguration(), tbcSource.getOutputConfiguration());
+}
+
+// Method to update the GUI when a file is loaded
+void MainWindow::updateGuiLoaded()
+{
+    // Enable the GUI controls
+    setGuiEnabled(true);
+
     // Update the status bar
     QString statusText;
     statusText += tbcSource.getSystemDescription();
     statusText += " source loaded with ";
-    statusText += QString::number(tbcSource.getNumberOfFrames());
-    statusText += " sequential frames available";
+
+    if (tbcSource.getFieldViewEnabled()) {
+        statusText += QString::number(tbcSource.getNumberOfFields());
+        statusText += " fields available";
+    } else {
+        statusText += QString::number(tbcSource.getNumberOfFrames());
+        statusText += " sequential frames available";
+    }
+
     sourceVideoStatus.setText(statusText);
 
-    // Load and show the current frame
-    showFrame();
+    // Update source mode button
+    updateSourcesPushButton();
+
+    // Load and show the current image
+    showImage();
 
     // Update the video parameters dialogue
     videoParametersDialog->setVideoParameters(tbcSource.getVideoParameters());
@@ -251,19 +272,17 @@ void MainWindow::updateGuiUnloaded()
     // Disable the GUI controls
     setGuiEnabled(false);
 
-    // Update the current frame number
-    currentFrameNumber = 1;
-    ui->frameNumberSpinBox->setValue(currentFrameNumber);
-    currentFrameNumber = 1;
-    ui->frameHorizontalSlider->setValue(currentFrameNumber);
-    currentFrameNumber = 1;
+    // Update the current field/frame number
+    setCurrentFrame(1);
+    ui->posNumberSpinBox->setValue(1);
+    ui->posHorizontalSlider->setValue(1);
 
     // Set the window title
     this->setWindowTitle(tr("ld-analyse"));
 
     // Set the status bar text
     sourceVideoStatus.setText(tr("No source video file loaded"));
-    fieldNumberStatus.setText(tr(" -  Fields: ./."));
+    fieldNumberStatus.setText(tr("- Fields: ./."));
     vbiStatus.hide();
     timeCodeStatus.hide();
 
@@ -275,8 +294,8 @@ void MainWindow::updateGuiUnloaded()
     updateSourcesPushButton();
     ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
 
-    // Hide the displayed frame
-    hideFrame();
+    // Hide the displayed image
+    hideImage();
 
     // Hide graphs
     blackSnrAnalysisDialog->hide();
@@ -303,8 +322,6 @@ void MainWindow::updateAspectPushButton()
 // Update the source selection button
 void MainWindow::updateSourcesPushButton()
 {
-    ui->sourcesPushButton->setEnabled(tbcSource.getSourceMode() != TbcSource::ONE_SOURCE);
-
     switch (tbcSource.getSourceMode()) {
     case TbcSource::ONE_SOURCE:
         ui->sourcesPushButton->setText(tr("One Source"));
@@ -323,15 +340,22 @@ void MainWindow::updateSourcesPushButton()
 
 // Frame display methods ----------------------------------------------------------------------------------------------
 
-// Update the UI and displays when currentFrameNumber has changed
-void MainWindow::showFrame()
+// Update the UI and displays when currentFrameNumber or currentFieldNumber has changed
+void MainWindow::showImage()
 {
-    // Load the frame
-    tbcSource.loadFrame(currentFrameNumber);
+    tbcSource.load(currentFrameNumber, currentFieldNumber);
 
     // Show the field numbers
-    fieldNumberStatus.setText(" -  Fields: " + QString::number(tbcSource.getFirstFieldNumber()) + "/" +
-                              QString::number(tbcSource.getSecondFieldNumber()));
+    if (tbcSource.getViewMode() == TbcSource::ViewMode::FIELD_VIEW) {
+        fieldNumberStatus.setText(QString(" - Field:  %1 (%2/2) - Frame: %3")
+                                  .arg(currentFieldNumber)
+                                  .arg(currentFieldNumber % 2 ? 1 : 2)
+                                  .arg(currentFrameNumber));
+    } else {
+        fieldNumberStatus.setText(QString(" - Fields: %1/%2")
+                                  .arg(tbcSource.getFirstFieldNumber())
+                                  .arg(tbcSource.getSecondFieldNumber()));
+    }
 
     // Show VBI position in the status bar, if available
     if (tbcSource.getIsFrameVbiValid()) {
@@ -388,12 +412,12 @@ void MainWindow::showFrame()
     }
 
     // Add the QImage to the QLabel in the dialogue
-    ui->frameViewerLabel->clear();
-    ui->frameViewerLabel->setScaledContents(false);
-    ui->frameViewerLabel->setAlignment(Qt::AlignCenter);
+    ui->imageViewerLabel->clear();
+    ui->imageViewerLabel->setScaledContents(false);
+    ui->imageViewerLabel->setAlignment(Qt::AlignCenter);
 
-    // Update the frame views
-    updateFrame();
+    // Update the field/frame image
+    updateImage();
 
     // Update the closed caption dialog
     closedCaptionDialog->addData(currentFrameNumber, tbcSource.getCcData0(), tbcSource.getCcData1());
@@ -404,11 +428,11 @@ void MainWindow::showFrame()
     #endif
 }
 
-// Redraw all the GUI elements that depend on the decoded frame
-void MainWindow::updateFrame()
+// Redraw all the GUI elements that depend on the decoded field/frame
+void MainWindow::updateImage()
 {
-    // Update the main frame viewer
-    updateFrameViewer();
+    // Update the image viewer
+    updateImageViewer();
 
     // If the scope dialogues are open, update them
     if (oscilloscopeDialog->isVisible()) {
@@ -435,15 +459,15 @@ qint32 MainWindow::getAspectAdjustment() {
     }
 }
 
-// Redraw the frame viewer (for example, when scaleFactor has been changed)
-void MainWindow::updateFrameViewer()
+// Redraw the viewer (for example, when scaleFactor has been changed)
+void MainWindow::updateImageViewer()
 {
-    QImage frameImage = tbcSource.getFrameImage();
+    QImage image = tbcSource.getImage();
 
     if (ui->mouseModePushButton->isChecked()) {
         // Create a painter object
         QPainter imagePainter;
-        imagePainter.begin(&frameImage);
+        imagePainter.begin(&image);
 
         // Draw lines to indicate the current scope position
         imagePainter.setPen(QColor(0, 255, 0, 127));
@@ -454,7 +478,7 @@ void MainWindow::updateFrameViewer()
         imagePainter.end();
     }
 
-    QPixmap pixmap = QPixmap::fromImage(frameImage);
+    QPixmap pixmap = QPixmap::fromImage(image);
 
     // Get the aspect ratio adjustment if required
     qint32 adjustment = getAspectAdjustment();
@@ -463,7 +487,7 @@ void MainWindow::updateFrameViewer()
     if (!pixmap.isNull()) {
         const int width = static_cast<int>(scaleFactor * (pixmap.size().width() + adjustment));
         const int height = static_cast<int>(scaleFactor * pixmap.size().height());
-        ui->frameViewerLabel->setPixmap(pixmap.scaled(width, height,
+        ui->imageViewerLabel->setPixmap(pixmap.scaled(width, height,
                                                       Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
     }
 
@@ -479,10 +503,10 @@ void MainWindow::updateFrameViewer()
     #endif
 }
 
-// Method to hide the current frame
-void MainWindow::hideFrame()
+// Method to hide the current image
+void MainWindow::hideImage()
 {
-    ui->frameViewerLabel->clear();
+    ui->imageViewerLabel->clear();
 }
 
 // Misc private methods -----------------------------------------------------------------------------------------------
@@ -516,6 +540,85 @@ void MainWindow::updateVectorscopeDialogue()
 {
     // Update the vectorscope dialogue
     vectorscopeDialog->showTraceImage(tbcSource.getComponentFrame(), tbcSource.getVideoParameters());
+}
+
+// Method to set the view (field/frame) values
+void MainWindow::setViewValues()
+{
+    qint32 currentNumber, maximum;
+    QString buttonLabel, spinLabel;
+
+    if (tbcSource.getFieldViewEnabled()) {
+        currentNumber = currentFieldNumber;
+        maximum = tbcSource.getNumberOfFields();
+        spinLabel = QString("Field #:");
+        buttonLabel = QString("Field View");
+
+        ui->stretchFieldButton->setEnabled(true);
+    } else {
+        currentNumber = currentFrameNumber;
+        maximum = tbcSource.getNumberOfFrames();
+        spinLabel = QString("Frame #:");
+
+        ui->stretchFieldButton->setEnabled(false);
+
+        if (tbcSource.getSplitViewEnabled()) {
+            buttonLabel = QString("Split View");
+        } else {
+            buttonLabel = QString("Frame View");
+        }
+    }
+
+    ui->posNumberSpinBox->setMaximum(maximum);
+    ui->posNumberSpinBox->setValue(currentNumber);
+    ui->posHorizontalSlider->setMaximum(maximum);
+    ui->posHorizontalSlider->setPageStep(maximum / 100);
+    ui->posHorizontalSlider->setValue(currentNumber);
+
+    ui->viewPushButton->setText(buttonLabel);
+    ui->posNumberSpinBoxLabel->setText(spinLabel);
+    ui->posNumberSpinBoxLabel->repaint();
+}
+
+// Set the current frame, field is updated based on frame number
+void MainWindow::setCurrentFrame(qint32 number)
+{
+    if (number == currentFrameNumber) return;
+
+    currentFrameNumber = number;
+    currentFieldNumber = (number * 2) - 1;
+
+    sanitizeCurrentPosition();
+    showImage();
+}
+
+// Set the current field, frame is updated based on field number
+void MainWindow::setCurrentField(qint32 number)
+{
+    if (number == currentFieldNumber) return;
+
+    currentFieldNumber = number;
+    currentFrameNumber = std::ceil((double)number / 2);
+
+    sanitizeCurrentPosition();
+    showImage();
+}
+
+void MainWindow::sanitizeCurrentPosition()
+{
+    if (currentFrameNumber > tbcSource.getNumberOfFrames() || currentFieldNumber > tbcSource.getNumberOfFields()) {
+        currentFrameNumber = tbcSource.getNumberOfFrames();
+        currentFieldNumber = tbcSource.getNumberOfFields();
+    }
+
+    if (currentFrameNumber == 0)
+    {
+        currentFrameNumber = 1;
+    }
+
+    if (currentFieldNumber == 0) {
+        currentFieldNumber = 1;
+    }
 }
 
 // Menu bar signal handlers -------------------------------------------------------------------------------------------
@@ -633,9 +736,23 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getPngDirectory();
 
-    if (tbcSource.getSystem() == PAL) filenameSuggestion += tr("/frame_pal_");
-    else if (tbcSource.getSystem() == PAL_M) filenameSuggestion += tr("/frame_palm_");
-    else filenameSuggestion += tr("/frame_ntsc_");
+    switch (tbcSource.getViewMode()) {
+        case TbcSource::ViewMode::FRAME_VIEW:
+            filenameSuggestion += tr("/frame_");
+            break;
+
+        case TbcSource::ViewMode::SPLIT_VIEW:
+            filenameSuggestion += tr("/fields_");
+            break;
+
+        case TbcSource::ViewMode::FIELD_VIEW:
+            filenameSuggestion += tr("/field_");
+            break;
+    }
+
+    if (tbcSource.getSystem() == PAL) filenameSuggestion += tr("pal_");
+    else if (tbcSource.getSystem() == PAL_M) filenameSuggestion += tr("palm_");
+    else filenameSuggestion += tr("ntsc_");
 
     if (!tbcSource.getChromaDecoder()) filenameSuggestion += tr("source_");
     else filenameSuggestion += tr("chroma_");
@@ -645,7 +762,13 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         else filenameSuggestion += tr("ar43_");
     }
 
-    filenameSuggestion += QString::number(currentFrameNumber) + "_" + tbcSource.getCurrentSourceFilename().split("/").last() + tr(".png");
+    if (tbcSource.getViewMode() == TbcSource::ViewMode::FIELD_VIEW) {
+        filenameSuggestion += QString::number(currentFieldNumber);
+    } else {
+        filenameSuggestion += QString::number(currentFrameNumber);
+    }
+
+    filenameSuggestion += "_" + tbcSource.getCurrentSourceFilename().split("/").last() + tr(".png");
 
     QString pngFilename = QFileDialog::getSaveFileName(this,
                 tr("Save PNG file"),
@@ -658,7 +781,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
 
         // Generate QImage for the current frame
-        QImage imageToSave = tbcSource.getFrameImage();
+        QImage imageToSave = tbcSource.getImage();
 
         // Get the aspect ratio adjustment, and scale the image if needed
         qint32 adjustment = getAspectAdjustment();
@@ -706,14 +829,14 @@ void MainWindow::on_actionZoom_1x_triggered()
 void MainWindow::on_actionZoom_2x_triggered()
 {
     scaleFactor = 2.0;
-    updateFrameViewer();
+    updateImageViewer();
 }
 
 // 3:1 zoom menu option
 void MainWindow::on_actionZoom_3x_triggered()
 {
     scaleFactor = 3.0;
-    updateFrameViewer();
+    updateImageViewer();
 }
 
 // Show closed captions
@@ -736,71 +859,114 @@ void MainWindow::on_actionChroma_decoder_configuration_triggered()
 
 // Media control frame signal handlers --------------------------------------------------------------------------------
 
-// Previous frame button has been clicked
+// Previous field/frame button has been clicked
 void MainWindow::on_previousPushButton_clicked()
 {
-    currentFrameNumber--;
-    if (currentFrameNumber < 1) {
-        currentFrameNumber = 1;
+    qint32 currentNumber;
+    if (tbcSource.getFieldViewEnabled()) {
+        setCurrentField(currentFieldNumber - 1);
+        currentNumber = currentFieldNumber;
     } else {
-        ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        ui->frameHorizontalSlider->setValue(currentFrameNumber);
+        setCurrentFrame(currentFrameNumber - 1);
+        currentNumber = currentFrameNumber;
     }
+
+    ui->posNumberSpinBox->setValue(currentNumber);
+    ui->posHorizontalSlider->setValue(currentNumber);
 }
 
-// Next frame button has been clicked
+// Next field/frame button has been clicked
 void MainWindow::on_nextPushButton_clicked()
 {
-    currentFrameNumber++;
-    if (currentFrameNumber > tbcSource.getNumberOfFrames()) {
-        currentFrameNumber = tbcSource.getNumberOfFrames();
+    qint32 currentNumber;
+    if (tbcSource.getFieldViewEnabled()) {
+        setCurrentField(currentFieldNumber + 1);
+        currentNumber = currentFieldNumber;
     } else {
-        ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        ui->frameHorizontalSlider->setValue(currentFrameNumber);
+        setCurrentFrame(currentFrameNumber + 1);
+        currentNumber = currentFrameNumber;
     }
+
+    ui->posNumberSpinBox->setValue(currentNumber);
+    ui->posHorizontalSlider->setValue(currentNumber);
 }
 
 // Skip to the next chapter (note: this button was repurposed from 'end frame')
-void MainWindow::on_endFramePushButton_clicked()
+void MainWindow::on_endPushButton_clicked()
 {
-    currentFrameNumber = tbcSource.startOfNextChapter(currentFrameNumber);
-    ui->frameNumberSpinBox->setValue(currentFrameNumber);
-    ui->frameHorizontalSlider->setValue(currentFrameNumber);
+    setCurrentFrame(tbcSource.startOfNextChapter(currentFrameNumber));
+    auto uiNumber = currentFrameNumber;
+
+    if (tbcSource.getFieldViewEnabled()) {
+        uiNumber = currentFieldNumber;
+    }
+
+    ui->posNumberSpinBox->setValue(uiNumber);
+    ui->posHorizontalSlider->setValue(uiNumber);
 }
 
 // Skip to the start of chapter (note: this button was repurposed from 'start frame')
-void MainWindow::on_startFramePushButton_clicked()
+void MainWindow::on_startPushButton_clicked()
 {
-    currentFrameNumber = tbcSource.startOfChapter(currentFrameNumber);
-    ui->frameNumberSpinBox->setValue(currentFrameNumber);
-    ui->frameHorizontalSlider->setValue(currentFrameNumber);
+    setCurrentFrame(tbcSource.startOfChapter(currentFrameNumber));
+    auto uiNumber = currentFrameNumber;
+
+    if (tbcSource.getFieldViewEnabled()) {
+        uiNumber = currentFieldNumber;
+    }
+
+    ui->posNumberSpinBox->setValue(uiNumber);
+    ui->posHorizontalSlider->setValue(uiNumber);
 }
 
-// Frame number spin box editing has finished
-void MainWindow::on_frameNumberSpinBox_editingFinished()
+// Field/Frame number spin box editing has finished
+void MainWindow::on_posNumberSpinBox_editingFinished()
 {
-    if (ui->frameNumberSpinBox->value() != currentFrameNumber) {
-        if (ui->frameNumberSpinBox->value() < 1) ui->frameNumberSpinBox->setValue(1);
-        if (ui->frameNumberSpinBox->value() > tbcSource.getNumberOfFrames()) ui->frameNumberSpinBox->setValue(tbcSource.getNumberOfFrames());
-        currentFrameNumber = ui->frameNumberSpinBox->value();
-        ui->frameHorizontalSlider->setValue(currentFrameNumber);
-        showFrame();
+    qint32 currentNumber;
+    qint32 totalNumber;
+
+    if (tbcSource.getFieldViewEnabled()) {
+        currentNumber = currentFieldNumber;
+        totalNumber = tbcSource.getNumberOfFields();
+    } else {
+        currentNumber = currentFrameNumber;
+        totalNumber = tbcSource.getNumberOfFrames();
+    }
+
+    if (ui->posNumberSpinBox->value() != currentNumber) {
+        if (ui->posNumberSpinBox->value() < 1) ui->posNumberSpinBox->setValue(1);
+        if (ui->posNumberSpinBox->value() > totalNumber) ui->posNumberSpinBox->setValue(totalNumber);
+
+        if (tbcSource.getFieldViewEnabled()) {
+            setCurrentField(ui->posNumberSpinBox->value());
+            currentNumber = currentFieldNumber;
+        } else {
+            setCurrentFrame(ui->posNumberSpinBox->value());
+            currentNumber = currentFrameNumber;
+        }
+
+        ui->posHorizontalSlider->setValue(currentNumber);
     }
 }
 
-// Frame slider value has changed
-void MainWindow::on_frameHorizontalSlider_valueChanged(int value)
+// Field/frame slider value has changed
+void MainWindow::on_posHorizontalSlider_valueChanged(int value)
 {
-    (void)value;
     if (!tbcSource.getIsSourceLoaded()) return;
+    qint32 currentNumber;
 
-    currentFrameNumber = ui->frameHorizontalSlider->value();
+    if (tbcSource.getFieldViewEnabled()) {
+        setCurrentField(ui->posHorizontalSlider->value());
+        currentNumber = currentFieldNumber;
+    } else {
+        setCurrentFrame(ui->posHorizontalSlider->value());
+        currentNumber = currentFrameNumber;
+    }
 
-    // If the spinbox is enabled, we can update the current frame number
-    // otherwisew we just ignore this
-    if (ui->frameNumberSpinBox->isEnabled()) {
-        ui->frameNumberSpinBox->setValue(currentFrameNumber);
-        showFrame();
+    // If the spinbox is enabled, we can update the current field/frame number
+    // otherwise we just ignore this
+    if (ui->posNumberSpinBox->isEnabled()) {
+        ui->posNumberSpinBox->setValue(currentNumber);
     }
 }
 
@@ -817,8 +983,8 @@ void MainWindow::on_videoPushButton_clicked()
         ui->videoPushButton->setText(tr("Chroma"));
     }
 
-    // Show the current frame
-    showFrame();
+    // Show the current image
+    showImage();
 }
 
 // Aspect ratio button clicked
@@ -829,8 +995,8 @@ void MainWindow::on_aspectPushButton_clicked()
     // Update the button text
     updateAspectPushButton();
 
-    // Update the frame viewer (the scopes don't depend on this)
-    updateFrameViewer();
+    // Update the image viewer (the scopes don't depend on this)
+    updateImageViewer();
 }
 
 // Show/hide dropouts button clicked
@@ -844,8 +1010,8 @@ void MainWindow::on_dropoutsPushButton_clicked()
         ui->dropoutsPushButton->setText(tr("Dropouts On"));
     }
 
-    // Show the current frame (why isn't this option passed?)
-    showFrame();
+    // Show the current image (why isn't this option passed?)
+    showImage();
 }
 
 // Source selection button clicked
@@ -869,8 +1035,44 @@ void MainWindow::on_sourcesPushButton_clicked()
     // Update the button
     updateSourcesPushButton();
 
-    // Show the current frame
-    showFrame();
+    // Show the current image
+    showImage();
+}
+
+// Frame/Field view button clicked
+void MainWindow::on_viewPushButton_clicked()
+{
+    switch (tbcSource.getViewMode()) {
+        case TbcSource::ViewMode::FRAME_VIEW:
+            qDebug() << "Changing to SPLIT_VIEW mode";
+
+            // Set split mode
+            tbcSource.setViewMode(TbcSource::ViewMode::SPLIT_VIEW);
+            //ui->fieldOrderPushButton->setEnabled(false);
+            break;
+
+        case TbcSource::ViewMode::SPLIT_VIEW:
+            qDebug() << "Changing to FIELD_VIEW mode";
+
+            // Set field mode
+            tbcSource.setViewMode(TbcSource::ViewMode::FIELD_VIEW);
+            //ui->fieldOrderPushButton->setEnabled(false);
+            break;
+
+        case TbcSource::ViewMode::FIELD_VIEW:
+            qDebug() << "Changing to FRAME_VIEW mode";
+
+            // Set frame mode
+            tbcSource.setViewMode(TbcSource::ViewMode::FRAME_VIEW);
+            //ui->fieldOrderPushButton->setEnabled(true);
+            break;
+    }
+
+    setViewValues();
+    updateGuiLoaded();
+
+    // Show the current image
+    showImage();
 }
 
 // Normal/Reverse field order button clicked
@@ -880,18 +1082,20 @@ void MainWindow::on_fieldOrderPushButton_clicked()
         tbcSource.setFieldOrder(false);
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
+        resetGui();
         updateGuiLoaded();
         ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
     } else {
         tbcSource.setFieldOrder(true);
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
+        resetGui();
         updateGuiLoaded();
         ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
     }
 
-    // Show the current frame
-    showFrame();
+    // Show the current image
+    showImage();
 }
 
 // Zoom in
@@ -902,7 +1106,7 @@ void MainWindow::on_zoomInPushButton_clicked()
         scaleFactor *= factor;
     }
 
-    updateFrameViewer();
+    updateImageViewer();
 }
 
 // Zoom out
@@ -913,14 +1117,28 @@ void MainWindow::on_zoomOutPushButton_clicked()
         scaleFactor *= factor;
     }
 
-    updateFrameViewer();
+    updateImageViewer();
 }
 
 // Original size 1:1 zoom
 void MainWindow::on_originalSizePushButton_clicked()
 {
     scaleFactor = 1.0;
-    updateFrameViewer();
+    updateImageViewer();
+}
+
+// Field stretch mode
+void MainWindow::on_stretchFieldButton_clicked()
+{
+    if (tbcSource.getStretchField()) {
+        tbcSource.setStretchField(false);
+        ui->stretchFieldButton->setText(tr("1:1"));
+    } else {
+        tbcSource.setStretchField(true);
+        ui->stretchFieldButton->setText(tr("2:1"));
+    }
+
+    updateImageViewer();
 }
 
 // Mouse mode button clicked
@@ -934,8 +1152,8 @@ void MainWindow::on_mouseModePushButton_clicked()
         }
     }
 
-    // Update the frame viewer to display/hide the indicator line
-    updateFrameViewer();
+    // Update the image viewer to display/hide the indicator line
+    updateImageViewer();
 }
 
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
@@ -952,8 +1170,8 @@ void MainWindow::scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord)
         updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
 
-        // Update the frame viewer
-        updateFrameViewer();
+        // Update the image viewer
+        updateImageViewer();
     }
 }
 
@@ -974,7 +1192,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
     if (!tbcSource.getIsSourceLoaded()) return;
 
     // Get the mouse position relative to our scene
-    QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
+    QPoint origin = ui->imageViewerLabel->mapFromGlobal(QCursor::pos());
 
     // Check that the mouse click is within bounds of the current picture
     qint32 oX = origin.x();
@@ -982,8 +1200,8 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 
     if (oX + 1 >= 0 &&
             oY >= 0 &&
-            oX + 1 <= ui->frameViewerLabel->width() &&
-            oY <= ui->frameViewerLabel->height()) {
+            oX + 1 <= ui->imageViewerLabel->width() &&
+            oY <= ui->imageViewerLabel->height()) {
 
         mouseScanLineSelect(oX, oY);
         event->accept();
@@ -996,7 +1214,7 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event)
     if (!tbcSource.getIsSourceLoaded()) return;
 
     // Get the mouse position relative to our scene
-    QPoint origin = ui->frameViewerLabel->mapFromGlobal(QCursor::pos());
+    QPoint origin = ui->imageViewerLabel->mapFromGlobal(QCursor::pos());
 
     // Check that the mouse click is within bounds of the current picture
     qint32 oX = origin.x();
@@ -1004,8 +1222,8 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event)
 
     if (oX + 1 >= 0 &&
             oY >= 0 &&
-            oX + 1 <= ui->frameViewerLabel->width() &&
-            oY <= ui->frameViewerLabel->height()) {
+            oX + 1 <= ui->imageViewerLabel->width() &&
+            oY <= ui->imageViewerLabel->height()) {
 
         mouseScanLineSelect(oX, oY);
         event->accept();
@@ -1016,29 +1234,29 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event)
 void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
 {
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    QPixmap frameViewerPixmap = ui->frameViewerLabel->pixmap();
+    QPixmap imageViewerPixmap = ui->imageViewerLabel->pixmap();
 #elif QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
-    QPixmap frameViewerPixmap = ui->frameViewerLabel->pixmap(Qt::ReturnByValue);
+    QPixmap imageViewerPixmap = ui->imageViewerLabel->pixmap(Qt::ReturnByValue);
 #else
-    QPixmap frameViewerPixmap = *(ui->frameViewerLabel->pixmap());
+    QPixmap imageViewerPixmap = *(ui->imageViewerLabel->pixmap());
 #endif
 
     // X calc
-    double offsetX = ((static_cast<double>(ui->frameViewerLabel->width()) -
-                       static_cast<double>(frameViewerPixmap.width())) / 2.0);
+    double offsetX = ((static_cast<double>(ui->imageViewerLabel->width()) -
+                       static_cast<double>(imageViewerPixmap.width())) / 2.0);
 
     double unscaledXR = (static_cast<double>(tbcSource.getFrameWidth()) /
-                         static_cast<double>(frameViewerPixmap.width())) * static_cast<double>(oX - offsetX);
+                         static_cast<double>(imageViewerPixmap.width())) * static_cast<double>(oX - offsetX);
     qint32 unscaledX = static_cast<qint32>(unscaledXR);
     if (unscaledX > tbcSource.getFrameWidth() - 1) unscaledX = tbcSource.getFrameWidth() - 1;
     if (unscaledX < 0) unscaledX = 0;
 
     // Y Calc
-    double offsetY = ((static_cast<double>(ui->frameViewerLabel->height()) -
-                       static_cast<double>(frameViewerPixmap.height())) / 2.0);
+    double offsetY = ((static_cast<double>(ui->imageViewerLabel->height()) -
+                       static_cast<double>(imageViewerPixmap.height())) / 2.0);
 
     double unscaledYR = (static_cast<double>(tbcSource.getFrameHeight()) /
-                         static_cast<double>(frameViewerPixmap.height())) * static_cast<double>(oY - offsetY);
+                         static_cast<double>(imageViewerPixmap.height())) * static_cast<double>(oY - offsetY);
     qint32 unscaledY = static_cast<qint32>(unscaledYR);
     if (unscaledY > tbcSource.getFrameHeight()) unscaledY = tbcSource.getFrameHeight();
     if (unscaledY < 1) unscaledY = 1;
@@ -1052,8 +1270,8 @@ void MainWindow::mouseScanLineSelect(qint32 oX, qint32 oY)
         updateOscilloscopeDialogue();
         oscilloscopeDialog->show();
 
-        // Update the frame viewer
-        updateFrameViewer();
+        // Update the image viewer
+        updateImageViewer();
     }
 }
 
@@ -1069,8 +1287,8 @@ void MainWindow::videoParametersChangedSignalHandler(const LdDecodeMetaData::Vid
     // Update the aspect button's label
     updateAspectPushButton();
 
-    // Update the frame views
-    updateFrame();
+    // Update the image viewer
+    updateImage();
 }
 
 // Handle configuration changed signal from the chroma decoder configuration dialogue
@@ -1081,8 +1299,8 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
                                      chromaDecoderConfigDialog->getNtscConfiguration(),
                                      chromaDecoderConfigDialog->getOutputConfiguration());
 
-    // Update the frame views
-    updateFrame();
+    // Update the image viewer
+    updateImage();
 }
 
 // TbcSource class signal handlers ------------------------------------------------------------------------------------
@@ -1138,6 +1356,7 @@ void MainWindow::on_finishedLoading(bool success)
         whiteSnrAnalysisDialog->finishUpdate(currentFrameNumber);
 
         // Update the GUI
+        resetGui();
         updateGuiLoaded();
 
         // Set the main window title
