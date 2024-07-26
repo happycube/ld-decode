@@ -172,11 +172,11 @@ On CX White Cards you use the S-Video Luma pin for the RF input, but a BNC can b
 
 [Hardware Installation Guide](https://github.com/oyvindln/vhs-decode/wiki/Hardware-Installation-Guide) Goes over the install steps for VHS Decks to Sony 8mm camcorders.
 
-If you want to still use live playback or are using lower signal decks adding an 10uf (3.3uf to 100uf range) capacitor to the test point or amplifier can stop dropouts and improve signal level, avoiding dropouts.
+Adding an 10uf (0.1uf to 100uf range) capacitor to the test point or amplifier is recommended can help improve signal integrity (a handful VCRs have this on the test point already).
 
 Center is Signal, Outer is Ground, this goes for jacks and for coaxial cable in genaral.
 
-The Negative leg (shorter) goes on test/signal point, Positive leg (longer) on cable to connector/probe
+The Positive leg (longer) goes on test/signal point, Negative leg (shorter) on cable to connector/probe
 
 While type and voltage does not matter much its best to use new/tested capacitors.
 
