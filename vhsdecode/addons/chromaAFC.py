@@ -5,7 +5,6 @@ from scipy.fftpack import fft, fftfreq
 import lddecode.core as ldd
 from scipy.signal import argrelextrema
 from vhsdecode.linear_filter import FiltersClass
-from vhsdecode import compute_video_filters
 
 twopi = 2 * np.pi
 

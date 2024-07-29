@@ -1,8 +1,6 @@
-import math
 import os
 import time
 import numpy as np
-import threading
 import traceback
 import scipy.signal as sps
 from collections import namedtuple
@@ -20,8 +18,6 @@ from vhsdecode.chroma import demod_chroma_filt
 
 import vhsdecode.formats as vhs_formats
 
-from vhsdecode.addons.FMdeemph import FMDeEmphasis
-from vhsdecode.addons.FMdeemph import FMDeEmphasisB
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.addons.resync import Resync
 from vhsdecode.addons.chromaAFC import ChromaAFC
@@ -249,7 +245,7 @@ class VHSDecode(ldd.LDdecode):
 
                     self.logger.status(outstr)
                 except Exception:
-                    logger.warning("file frame %d : VBI decoding error", rawloc)
+                    ldd.logger.warning("file frame %d : VBI decoding error", rawloc)
                     traceback.print_exc()
 
         return fi, False
@@ -410,11 +406,11 @@ class VHSDecode(ldd.LDdecode):
 
                     actualwhiteIRE = f.rf.hztoire(ire100_hz)
 
-                    sync_ire_diff = nb_abs(
+                    sync_ire_diff = lddu.nb_abs(
                         self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"]
                     )
-                    whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
-                    ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
+                    whitediff = lddu.nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
+                    ire0_diff = lddu.nb_abs(self.rf.hztoire(ire0_hz))
 
                     acceptable_diff = 2 if self.fields_written else 0.5
 
@@ -423,7 +419,7 @@ class VHSDecode(ldd.LDdecode):
                         vsync_ire = (sync_hz - ire0_hz) / hz_ire
 
                         if vsync_ire > -20:
-                            logger.warning(
+                            ldd.logger.warning(
                                 "At field #{0}, Auto-level detection malfunction (vsync IRE computed at {1}, nominal ~= -40), possible disk skipping".format(
                                     len(self.fieldinfo), np.round(vsync_ire, 2)
                                 )
@@ -934,7 +930,8 @@ class VHSRFDecode(ldd.RFDecode):
 
         # self.Filters["RFVideo"] *= abs(rf_eq)
 
-        if self.options.fm_audio_notch != 0:
+        # Make sure this is an int in case it could be passed in as a string via the gui.
+        if int(self.options.fm_audio_notch) > 0:
             if "fm_audio_channel_0_freq" in DP and "fm_audio_channel_1_freq" in DP:
                 # Optionally enable double notch filter on fm audio channel frequencies.
                 # This is mainly useful on VHS (and possibly PAL betamax with hifi?)
