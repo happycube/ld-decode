@@ -1133,7 +1133,7 @@ class VHSRFDecode(ldd.RFDecode):
         # test2 = hilbert
         # print(test1 - test2)
         # np.savez_compressed("hilbert_data", data=hilbert)
-        demod = unwrap_hilbert(hilbert, self.freq_hz).real
+        demod = unwrap_hilbert(hilbert, self.freq_hz)
 
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and
         # replace the spikes with data from the diffed demod. (Which in practice is an extra EQed signal)

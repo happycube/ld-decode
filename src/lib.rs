@@ -1,5 +1,7 @@
 mod ported;
 
+use std::f64::consts;
+
 use numpy::ndarray::{Array1, ArrayView1, ArrayViewMut1, Zip};
 use numpy::{Complex64, IntoPyArray, PyArray1, PyReadonlyArray1, PyReadwriteArray1};
 use pyo3::prelude::*;
@@ -28,6 +30,44 @@ fn diff_forward_in_place_impl(mut input_array: ArrayViewMut1<'_, f64>) {
     input_array[0] = 0.0;
 }
 
+fn remove_jumps_and_scale(data: ArrayViewMut1<'_, f64>, freq: f64) {
+    for i in data {
+        // Further constrain values so they lie within 0..TAU as was done in the
+        // original impl
+        // TODO: could maybe do this in a more efficient way.
+        while *i < 0.0 {
+            *i += consts::TAU;
+        }
+        while *i > consts::TAU {
+            *i -= consts::TAU;
+        }
+        // Scale the output so the demodulated output values corresponds to the specified frequencies.
+        *i *= freq / consts::TAU;
+    }
+}
+
+fn unwrap_hilbert_impl(input_array: ArrayView1<'_, Complex64>, freq: f64) -> Array1<f64> {
+    // Demodulate complex luminance data that has had the hilbert transofm done to it to output
+    // scaled to the set frequency range.
+
+    // We compute the instantaneous angle of the input data
+    let mut tangles = complex_angle(input_array);
+    // and then find the difference between these angles to get the instantaneous frequency
+    diff_forward_in_place_impl(tangles.view_mut());
+    // Ensure unwrapping goes the right way
+    // Not needed since this is always set to 0 by the diff function.
+    /* if tangles[0] < -std::f64::consts::PI {
+        tangles[0] += std::f64::consts::TAU;
+    }*/
+
+    // We then unwrap the resulting angles to get a coherent signal.
+    let mut tdangles2 = unwrap_angles_impl(tangles.view());
+    // Finally remove outliers and scale the signal.
+    remove_jumps_and_scale(tdangles2.view_mut(), freq);
+
+    tdangles2
+}
+
 #[pyfunction]
 fn complex_angle_py<'py>(
     py: Python<'py>,
@@ -54,6 +94,17 @@ fn diff_forward_in_place<'py>(py: Python<'py>, mut input_array: PyReadwriteArray
     py.allow_threads(|| diff_forward_in_place_impl(input_array));
 }
 
+#[pyfunction]
+fn unwrap_hilbert<'py>(
+    py: Python<'py>,
+    input_array: PyReadonlyArray1<'py, Complex64>,
+    freq: f64,
+) -> Bound<'py, PyArray1<f64>> {
+    let input_array = input_array.as_array();
+    let output_array = py.allow_threads(|| unwrap_hilbert_impl(input_array, freq));
+    output_array.into_pyarray_bound(py)
+}
+
 /// A Python module implemented in Rust. The name of this function must match
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
@@ -62,5 +113,6 @@ fn vhsd_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(complex_angle_py, m)?)?;
     m.add_function(wrap_pyfunction!(unwrap_angles, m)?)?;
     m.add_function(wrap_pyfunction!(diff_forward_in_place, m)?)?;
+    m.add_function(wrap_pyfunction!(unwrap_hilbert, m)?)?;
     Ok(())
 }
