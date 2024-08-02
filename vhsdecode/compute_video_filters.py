@@ -208,3 +208,38 @@ def gen_fft_notch(notch_freq, notch_q, nyquist_hz, block_len):
     return filtfft(
         sps.iirnotch(notch_freq / nyquist_hz, notch_q), block_len, whole=True
     )
+
+
+def gen_ramp_filter(
+    start_freq_hz: float,
+    boost_start: float,
+    # max_freq_hz: float,
+    boost_max: float,
+    nyquist_freq_hz: float,
+    block_len: int,
+) -> np.ndarray:
+
+    max_freq_hz = 20e6
+
+    zero_ratio = int((start_freq_hz / nyquist_freq_hz) * (block_len // 2))
+
+    zero_part = np.zeros(int(zero_ratio))
+    ramp_part = np.linspace(
+        boost_start,
+        boost_max * (nyquist_freq_hz / max_freq_hz),
+        (block_len // 2) - zero_ratio,
+    )
+    ramp = np.concatenate((zero_part, ramp_part))
+    output = np.concatenate((ramp, np.flip(ramp)))
+    return output
+
+
+def gen_ramp_filter_params(rf_params, nyquist_freq_hz, block_len):
+    return gen_ramp_filter(
+        rf_params.get("start_rf_linear", 0),
+        rf_params.get("boost_rf_linear_0", 0),
+        # rf_params.get("max_rf_linear", 20e6),
+        rf_params.get("boost_rf_linear_20", 1),
+        nyquist_freq_hz,
+        block_len,
+    )
