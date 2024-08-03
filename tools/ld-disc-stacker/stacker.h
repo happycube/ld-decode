@@ -54,12 +54,13 @@ private:
     void stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters,
                     QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame, bool noDiffDod, bool passThrough,
                     SourceVideo::Data &outputField, DropOuts &dropOuts, qint32 mode, qint32 smartTreshold);
-    quint16 median(QVector<quint16> v);
-    qint32 mean(QVector<quint16> v);
-    quint16 closest(QVector<quint16> v,qint32 target);
-	quint16 stackMode(QVector<quint16> elements, QVector<quint16> elementsN, QVector<quint16> elementsS, QVector<quint16> elementsE, QVector<quint16> elementsW,qint32 mode, qint32 smartTreshold);
-    bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);
-    QVector<quint16> diffDod(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos);
+	void getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableSourcesForFrame, QVector<SourceVideo::Data>& inputFields, QVector<QVector<quint16>>& tmpField, LdDecodeMetaData::VideoParameters& videoParameters, QVector<LdDecodeMetaData::Field>& fieldMetadata, QVector<quint16>& sample, QVector<quint16>& sampleN, QVector<quint16>& sampleS, QVector<quint16>& sampleE, QVector<quint16>& sampleW, bool noDiffDod);
+    quint16 median(QVector<quint16>& v);
+    qint32 mean(QVector<quint16>& v);
+    quint16 closest(QVector<quint16>& v,qint32 target);
+	quint16 stackMode(QVector<quint16>& elements, QVector<quint16>& elementsN, QVector<quint16>& elementsS, QVector<quint16>& elementsE, QVector<quint16>& elementsW,qint32 mode, qint32 smartTreshold);
+    bool isDropout(DropOuts& dropOuts, qint32 fieldX, qint32 fieldY);
+    QVector<quint16> diffDod(QVector<quint16>& inputValues, LdDecodeMetaData::VideoParameters& videoParameters, qint32 xPos);
 };
 
 #endif // STACKER_H

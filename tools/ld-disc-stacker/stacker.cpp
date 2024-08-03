@@ -86,43 +86,59 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
 {
     quint16 prevGoodValue = videoParameters.black16bIre;
     bool forceDropout = false;
+	quint16 pixelValue = 0;
+	QVector<quint16> valuesN;//North neighbor pixel
+    QVector<quint16> valuesS;//South neighbor pixel
+    QVector<quint16> valuesE;//East neighbor pixel
+    QVector<quint16> valuesW;//West neighbor pixel
+	
+    QVector<quint16> inputValues;
+    QVector<QVector<quint16>> tmpField(videoParameters.fieldHeight * videoParameters.fieldWidth);
 
     if (availableSourcesForFrame.size() > 0) {
         // Sources available - process field
         for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
-            for (qint32 x = videoParameters.colourBurstStart; x < videoParameters.fieldWidth; x++) {
-                // Get input values from the input sources (which are not marked as dropouts)
-                QVector<quint16> inputValuesN;//Nort neighbor pixel
-                QVector<quint16> inputValuesS;//South neighbor pixel
-                QVector<quint16> inputValuesE;//East neighbor pixel
-                QVector<quint16> inputValuesW;//West neighbor pixel
-                QVector<quint16> inputValues;
-                for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
-                    // Include the source's pixel data if it's not marked as a dropout
-                    if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y)) {
-                        // Pixel is valid
-                        inputValues.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x]);
-                    }
-                }
-				if(mode == 2 && !(availableSourcesForFrame.size() % 2))//get surounding pixels if we have even number of sample 
+            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
+				valuesN.clear();
+				valuesS.clear();
+				valuesE.clear();
+				valuesW.clear();
+				inputValues.clear();
+				// Get input values from the input sources (which are not marked as dropouts)
+				if(mode >= 2)//get surounding pixels
 				{
-					for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
+					Stacker::getProcessedSample(x, y, availableSourcesForFrame, inputFields, tmpField, videoParameters, fieldMetadata, inputValues, valuesN, valuesS, valuesE, valuesW, noDiffDod);
+				}
+				else// get only pixel 1 by 1
+				{
+					for (qint32 i = 0; i < availableSourcesForFrame.size(); i++){
+						//read pixel
+						pixelValue = inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x];
 						// Include the source's pixel data if it's not marked as a dropout
-						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (y - 1) > 0) {
+						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && noDiffDod) {
 							// Pixel is valid
-							inputValuesN.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * (y - 1)) + x]);
+							inputValues.append(pixelValue);
 						}
-						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (y + 1) < videoParameters.fieldHeight) {
-							// Pixel is valid
-							inputValuesS.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * (y + 1)) + x]);
+						else if((pixelValue > 0) && (!noDiffDod))
+						{
+							inputValues.append(pixelValue);
 						}
-						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (x + 1) < videoParameters.fieldWidth) {
-							// Pixel is valid
-							inputValuesE.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x + 1]);
+					}
+					// If all possible input values are dropouts (and noDiffDod is false) and there are more than 3 input sources...
+					// Take the available values (marked as dropouts) and perform a diffDOD to try and determine if the dropout markings
+					// are false positives.
+					if ((inputValues.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+						// Perform differential dropout detection to recover ld-decode false positive pixels
+						inputValues = diffDod(inputValues, videoParameters, x);
+						
+						if (inputValues.size() > 0) {
+							qInfo().nospace() << "Frame #" << frameNumber << ": DiffDOD recovered " << inputValues.size() <<
+												 " values: " << inputValues << " for field location (" << x << ", " << y << ")";
+						} else if(x > videoParameters.colourBurstStart){
+							qInfo().nospace() << "Frame #" << frameNumber << ": DiffDOD failed, no values recovered for field location (" << x << ", " << y << ")";
 						}
-						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && (x - 1) > 0) {
-							// Pixel is valid
-							inputValuesW.append(inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x - 1]);
+						else{
+							qInfo().nospace() << "Frame #" << frameNumber << ": Values 0 recovered for field location (" << x << ", " << y << ")";
 						}
 					}
 				}
@@ -136,44 +152,7 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
                         qInfo().nospace() << "Frame #" << frameNumber << ": All sources for field location (" << x << ", " << y << ") are marked as dropout, passing through";
                     }
                 }
-
-                // If all possible input values are dropouts (and noDiffDod is false) and there are more than 3 input sources...
-                // Take the available values (marked as dropouts) and perform a diffDOD to try and determine if the dropout markings
-                // are false positives.
-                if ((inputValues.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
-                    // Clear the current input values and recreate the list including marked dropouts
-                    inputValues.clear();
-                    for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
-                        quint16 pixelValue = inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x];
-                        if (pixelValue > 0) inputValues.append(pixelValue);
-                    }
-
-                    // Perform differential dropout detection to recover ld-decode false positive pixels
-                    inputValues = diffDod(inputValues, videoParameters, x);
-
-                    if (inputValues.size() > 0) {
-                        qInfo().nospace() << "Frame #" << frameNumber << ": DiffDOD recovered " << inputValues.size() <<
-                                             " values: " << inputValues << " for field location (" << x << ", " << y << ")";
-                    } else {
-                        qInfo().nospace() << "Frame #" << frameNumber << ": DiffDOD failed, no values recovered for field location (" << x << ", " << y << ")";
-                    }
-					if(mode == 2 && !(availableSourcesForFrame.size() % 2))
-					{
-						// Perform differential dropout detection to recover ld-decode false positive pixels
-						inputValuesN = diffDod(inputValuesN, videoParameters, x);
-						inputValuesS = diffDod(inputValuesS, videoParameters, x);
-						if((x + 1) < videoParameters.fieldWidth)
-						{
-							inputValuesE = diffDod(inputValuesE, videoParameters, x + 1);
-						}
-						if((x - 1) > 0)
-						{
-							inputValuesW = diffDod(inputValuesW, videoParameters, x - 1);
-						}
-						
-					}
-                }
-
+				
                 // Stack with intelligence:
                 // If there are 3 or more sources - median (with central average for non-odd source sets)
                 // If there are 2 sources - average
@@ -190,8 +169,9 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
                     if (forceDropout) dropOuts.append(x, x, y + 1);
                 } else {
                     //2 or more values available - store the result in the output field
-                    outputField[(videoParameters.fieldWidth * y) + x] = stackMode(inputValues, inputValuesN, inputValuesS, inputValuesE, inputValuesW, mode, smartTreshold);
+                    outputField[(videoParameters.fieldWidth * y) + x] = stackMode(inputValues, valuesN, valuesS, valuesE, valuesW, mode, smartTreshold);
                     prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
+					tmpField[(videoParameters.fieldWidth * y) + x] = QVector<quint16>{prevGoodValue};
                     if (forceDropout) dropOuts.append(x, x, y + 1);
                 }
             }
@@ -210,27 +190,22 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
 }
 
 // Method to stack a vector of quint16s using a selected mode
-quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN, QVector<quint16> elementsS, QVector<quint16> elementsE, QVector<quint16> elementsW, qint32 mode, qint32 smartTreshold)
+quint16 Stacker::stackMode(QVector<quint16>& elements, QVector<quint16>& elementsN, QVector<quint16>& elementsS, QVector<quint16>& elementsE, QVector<quint16>& elementsW, qint32 mode, qint32 smartTreshold)
 {
-    qint32 noOfElements = elements.size();
+    qint32 nbOfElements = elements.size();
 	qint32 nbSelected = 0;
 	quint32 result = 0;
 	//qint32 median = 0;
 	QVector<quint16> closestList;
 	
 	//neighbor pixel
-	quint32 resultN = 0;
-	quint32 resultS = 0;
-	quint32 resultE = 0;
-	quint32 resultW = 0;
+	qint32 resultN = 0;
+	qint32 resultS = 0;
+	qint32 resultE = 0;
+	qint32 resultW = 0;
 	quint32 resultNeighbor = 0;
 	
 	qint32 nbNeighbor = 0;
-	
-	if(noOfElements < 3 && mode == 1)
-	{
-		mode = 0;
-	}
 	
 	if(mode == 0)//mean mode
 	{
@@ -242,11 +217,13 @@ quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN
 	}
 	else if(mode == 3)//neighbor mode
 	{
-		(noOfElements > 2)     ? result  = Stacker::median(elements)  : result  = Stacker::mean(elements);
-		(elementsN.size() > 2) ? resultN = Stacker::median(elementsN) : resultN = Stacker::mean(elementsN);
-		(elementsS.size() > 2) ? resultS = Stacker::median(elementsS) : resultS = Stacker::mean(elementsS);
-		(elementsE.size() > 2) ? resultE = Stacker::median(elementsE) : resultE = Stacker::mean(elementsE);
-		(elementsW.size() > 2) ? resultW = Stacker::median(elementsW) : resultW = Stacker::mean(elementsW);
+		result = Stacker::median(elements);
+		//pixel already processed
+		(elementsN.size() > 1) ? resultN = elementsN[0] : -1;
+		(elementsW.size() > 1) ? resultN = elementsN[0] : -1;
+		//pixel that cant be reused yet
+		(elementsS.size() > 1) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
+		(elementsE.size() > 1) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
 		
 		//check number of neighbor available and prepare for mean
 		(resultN != -1) ? nbNeighbor++ : resultN = 0;
@@ -268,11 +245,13 @@ quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN
 	}
 	else//smart mode
 	{
-		(noOfElements > 2)     ? result  = Stacker::median(elements)  : result  = Stacker::mean(elements);
-		(elementsN.size() > 2) ? resultN = Stacker::median(elementsN) : resultN = Stacker::mean(elementsN);
-		(elementsS.size() > 2) ? resultS = Stacker::median(elementsS) : resultS = Stacker::mean(elementsS);
-		(elementsE.size() > 2) ? resultE = Stacker::median(elementsE) : resultE = Stacker::mean(elementsE);
-		(elementsW.size() > 2) ? resultW = Stacker::median(elementsW) : resultW = Stacker::mean(elementsW);
+		result = Stacker::median(elements);
+		//pixel already processed
+		(elementsN.size() > 1) ? resultN = elementsN[0] : -1;
+		(elementsW.size() > 1) ? resultN = elementsN[0] : -1;
+		//pixel that cant be reused yet
+		(elementsS.size() > 1) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
+		(elementsE.size() > 1) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
 		
 		//check number of neighbor available and prepare for mean
 		(resultN != -1) ? nbNeighbor++ : resultN = 0;
@@ -282,6 +261,7 @@ quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN
 		
 		if(nbNeighbor > 0)
 		{
+			//closest value to a neighbor
 			closestList.append(Stacker::closest(elements, resultN));
 			closestList.append(Stacker::closest(elements, resultS));
 			closestList.append(Stacker::closest(elements, resultE));
@@ -294,11 +274,11 @@ quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN
 			resultNeighbor = result;
 		}
 		
-		if(noOfElements > 2)//using median + mean
+		if(nbOfElements > 2)//using median + mean
 		{
 			result = 0;
 			//count number of sample withing treshold distance to the median and sum
-			for(int i=0; i < noOfElements;i++)
+			for(int i=0; i < nbOfElements;i++)
 			{
 				if((elements[i] < (resultNeighbor + smartTreshold)) && (elements[i] > (resultNeighbor - smartTreshold)))
 				{
@@ -306,7 +286,6 @@ quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN
 					result += elements[i];
 				}
 			}
-			//qInfo() << "selected " << nbSelected << "/" + noOfElements << " samples";
 			//select median if all other source are out of the treshold range
 			if(nbSelected == 0)
 			{
@@ -328,7 +307,7 @@ quint16 Stacker::stackMode(QVector<quint16> elements, QVector<quint16> elementsN
 }
 
 // Method to find the median of a vector of quint16s
-quint16 Stacker::median(QVector<quint16> elements)
+quint16 Stacker::median(QVector<quint16>& elements)
 {
     qint32 noOfElements = elements.size();
 
@@ -355,24 +334,24 @@ quint16 Stacker::median(QVector<quint16> elements)
 }
 
 // Method to find the median of a vector of quint16s
-qint32 Stacker::mean(QVector<quint16> elements)
+qint32 Stacker::mean(QVector<quint16>& elements)
 {
 	quint32 result = 0;
-    qint32 noOfElements = elements.size();
+    qint32 nbElements = elements.size();
 	
-	if(noOfElements > 1)
+	if(nbElements > 1)
 	{
 		//compute mean of all values
-		for(int i=0; i < noOfElements;i++)
+		for(int i=0; i < nbElements;i++)
 		{
-			if(noOfElements > 1)
+			if(nbElements > 1)
 			{
 				result += elements[i];
 			}
 		}
-		return (result / noOfElements);
+		return (result / nbElements);
 	}
-	else if(noOfElements == 1)
+	else if(nbElements == 1)
 	{
 		return elements[0];
 	}
@@ -384,7 +363,7 @@ qint32 Stacker::mean(QVector<quint16> elements)
 }
 
 // Method to find the closest value to a target
-quint16 Stacker::closest(QVector<quint16> elements, qint32 target)
+quint16 Stacker::closest(QVector<quint16>& elements, qint32 target)
 {
     qint32 noOfElements = elements.size();
 	qint32 closest = elements[0];
@@ -403,8 +382,234 @@ quint16 Stacker::closest(QVector<quint16> elements, qint32 target)
 	return closest;
 }
 
+// get value that are unprocessed and reuse processed one for mode >= 2
+void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableSourcesForFrame, QVector<SourceVideo::Data>& inputFields, QVector<QVector<quint16>>& tmpField, LdDecodeMetaData::VideoParameters& videoParameters, QVector<LdDecodeMetaData::Field>& fieldMetadata, QVector<quint16>& sample, QVector<quint16>& sampleN, QVector<quint16>& sampleS, QVector<quint16>& sampleE, QVector<quint16>& sampleW, bool noDiffDod)
+{
+	quint16 pixelValue = 0;
+	qint32 source = 0;
+	qint32 fieldWidth = videoParameters.fieldWidth;
+	qint32 fieldHeight = videoParameters.fieldHeight;
+	for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
+		source = availableSourcesForFrame[i];
+		if(y == 0)
+		{
+			if(x == 0)//read value + east + south
+			{
+				//read new value
+				pixelValue = inputFields[source][(fieldWidth * y) + x];
+				if (!isDropout(fieldMetadata[source].dropOuts, x, y) && noDiffDod) {
+					// Pixel is valid
+					sample.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sample.append(pixelValue);
+				}
+				pixelValue = inputFields[source][(fieldWidth * y) + x + 1];
+				if (!isDropout(fieldMetadata[source].dropOuts, x+1, y) && noDiffDod) {
+					// Pixel is valid
+					sampleE.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleE.append(pixelValue);
+				}
+				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
+				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+					// Pixel is valid
+					sampleS.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleS.append(pixelValue);
+				}
+			}
+			else if(x == fieldWidth -1)//read south value  
+			{
+				//read new value
+				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
+				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+					// Pixel is valid
+					sampleS.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleS.append(pixelValue);
+				}
+			}
+			else//read east + south
+			{
+				//read new value
+				pixelValue = inputFields[source][(fieldWidth * y) + x + 1];
+				if (!isDropout(fieldMetadata[source].dropOuts, x+1, y) && noDiffDod) {
+					// Pixel is valid
+					sampleE.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleE.append(pixelValue);
+				}
+				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
+				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+					// Pixel is valid
+					sampleS.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleS.append(pixelValue);
+				}
+			}
+		}
+		else if(y != fieldHeight -1)//read south value
+		{
+			if(x == 0)//get neighbor value except on left
+			{
+				//read new value
+				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
+				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+					// Pixel is valid
+					sampleS.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleS.append(pixelValue);
+				}
+			}
+			if(x == fieldWidth -1)//get neighbor value except on right
+			{
+				//read new value
+				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
+				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+					// Pixel is valid
+					sampleS.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleS.append(pixelValue);
+				}
+			}
+			else
+			{
+				//read new value
+				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
+				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+					// Pixel is valid
+					sampleS.append(pixelValue);
+				}
+				else if((pixelValue > 0) && (!noDiffDod))
+				{
+					sampleS.append(pixelValue);
+				}
+			}
+		}
+	}
+	// If all possible input values are dropouts (and noDiffDod is false) and there are more than 3 input sources...
+	// Take the available values (marked as dropouts) and perform a diffDOD to try and determine if the dropout markings
+	// are false positives.
+	if(y == 0)
+	{
+		if(x == 0)//read value + east + south
+		{
+			if(!noDiffDod)
+			{
+				if ((sample.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+					sample = diffDod(sample, videoParameters, x);
+				}
+				if ((sampleE.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+					sampleE = diffDod(sample, videoParameters, x);
+				}
+				if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+					sampleS = diffDod(sample, videoParameters, x);
+				}		
+			}
+			tmpField[(fieldWidth * y) + x] = sample;
+			tmpField[(fieldWidth * y) + x + 1] = sampleE;
+			tmpField[(fieldWidth * (y+1)) + x] = sampleS;
+		}
+		else if(x == fieldWidth -1)//read south value  
+		{
+			if(!noDiffDod)
+			{
+				if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+					sampleS = diffDod(sample, videoParameters, x);
+				}
+			}
+			tmpField[(fieldWidth * (y+1)) + x] = sampleS;
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleW = tmpField[(fieldWidth * y) + x - 1];
+		}
+		else//read east + south
+		{
+			if(!noDiffDod)
+			{
+				if ((sampleE.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+					sampleE = diffDod(sample, videoParameters, x);
+				}
+				if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+					sampleS = diffDod(sampleS, videoParameters, x);
+				}
+			}
+			tmpField[(fieldWidth * y) + x + 1] = sampleE;
+			tmpField[(fieldWidth * (y+1)) + x] = sampleS;
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleW = tmpField[(fieldWidth * y) + x - 1];
+		}
+	}
+	else if(y != fieldHeight -1)//read south value
+	{
+		if(!noDiffDod)
+		{
+			if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+				sampleS = diffDod(sample, videoParameters, x);
+			}
+		}
+		tmpField[(fieldWidth * (y+1)) + x] = sampleS;
+		if(x == 0)
+		{
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleE = tmpField[(fieldWidth * y) + x + 1];
+			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+		}
+		else if (x == fieldWidth -1)
+		{
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleW = tmpField[(fieldWidth * y) + x - 1];
+			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+		}
+		else
+		{
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleW = tmpField[(fieldWidth * y) + x - 1];
+			sampleE = tmpField[(fieldWidth * y) + x + 1];
+			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+		}
+	}
+	else//all value already processsed : reuse value
+	{
+		if(x == 0)
+		{
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleE = tmpField[(fieldWidth * y) + x + 1];
+			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+		}
+		if(x == fieldWidth -1)
+		{
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleW = tmpField[(fieldWidth * y) + x - 1];
+			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+		}
+		else
+		{
+			sample = tmpField[(fieldWidth * y) + x];
+			sampleW = tmpField[(fieldWidth * y) + x - 1];
+			sampleE = tmpField[(fieldWidth * y) + x + 1];
+			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+		}
+	}
+}
+
 // Method returns true if specified pixel is a dropout
-bool Stacker::isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY)
+bool Stacker::isDropout(DropOuts& dropOuts, qint32 fieldX, qint32 fieldY)
 {
     for (qint32 i = 0; i < dropOuts.size(); i++) {
         if ((dropOuts.fieldLine(i) - 1) == fieldY) {
@@ -421,19 +626,16 @@ bool Stacker::isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY)
 // might cause an increase in errors for really noisy frames (where the DOs are in the same place in
 // multiple sources).  Another possible disadvantage is that diffDOD might pass through master plate errors
 // which, whilst not technically errors, may be undesirable.
-QVector<quint16> Stacker::diffDod(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos)
+QVector<quint16> Stacker::diffDod(QVector<quint16>& inputValues, LdDecodeMetaData::VideoParameters& videoParameters, qint32 xPos)
 {
     QVector<quint16> outputValues;
 
     // Check that we have at least 3 input values
     if (inputValues.size() < 3) {
-        qDebug() << "diffDOD: Only received" << inputValues.size() << "input values, exiting";
-        return outputValues;
-    }
-
-    // Check that we are in the colour burst or visible line area
-    if (xPos < videoParameters.colourBurstStart) {
-        qDebug() << "diffDOD: Pixel not in colourburst or visible area";
+		/*if(xPos > videoParameters.colourBurstStart)
+		{ 
+			qDebug() << "diffDOD: Only received" << inputValues.size() << "input values, exiting at position :" << xPos;
+		}*/
         return outputValues;
     }
 
