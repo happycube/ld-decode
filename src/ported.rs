@@ -32,11 +32,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Ported from numpy code hence copyright notice/BSD license
 
-use numpy::ndarray::{Array1, ArrayView1};
+use numpy::ndarray::{Array1, ArrayView1, ArrayViewMut1};
 
 pub fn unwrap_angles_impl(input_array: ArrayView1<'_, f64>) -> Array1<f64> {
+    let mut output_array = input_array.to_owned();
+    unwrap_angles_in_place(output_array.view_mut());
+    output_array
+}
+
+pub fn unwrap_angles_in_place(mut output_array: ArrayViewMut1<'_, f64>) {
     // Port of numpy unwrap function using default parameters and a 1d double precision floating point array
-    let mut output_array = input_array.to_owned(); //Array1::<f64>::zeros(input_array.len());
     let discont = std::f64::consts::PI; // period / 2
     let period = std::f64::consts::TAU;
     let interval_high = discont; // period / 2
@@ -47,6 +52,8 @@ pub fn unwrap_angles_impl(input_array: ArrayView1<'_, f64>) -> Array1<f64> {
     // TODO: performance seems to be a tad slower than numpy even though we're doing this in one pass
     // while numpy does several loops and array copies.
     // Will need to see if it can get auto-vectorized properly which it might not be yet - so may need some rework to optimize better.
+    // NOTE: Skipping first element here - since we know it's going to be 0 anyway we don't bother putting in extra code for it
+    // simplifying the code.
     for i in 1..output_array.len() {
         let diff = output_array[i] - output_array[i - 1];
         // Note - rem_euclid has diff behavoiur to python mod if both args are negative but
@@ -64,6 +71,4 @@ pub fn unwrap_angles_impl(input_array: ArrayView1<'_, f64>) -> Array1<f64> {
 
         output_array[i] += correct;
     }
-
-    output_array
 }

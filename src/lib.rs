@@ -6,7 +6,7 @@ use numpy::ndarray::{Array1, ArrayView1, ArrayViewMut1, Zip};
 use numpy::{Complex64, IntoPyArray, PyArray1, PyReadonlyArray1, PyReadwriteArray1};
 use pyo3::prelude::*;
 
-use ported::unwrap_angles_impl;
+use ported::{unwrap_angles_impl, unwrap_angles_in_place};
 
 fn complex_angle(input_array: ArrayView1<'_, Complex64>) -> Array1<f64> {
     // Replicate the np.angle function for 1-dimensional input
@@ -61,11 +61,11 @@ fn unwrap_hilbert_impl(input_array: ArrayView1<'_, Complex64>, freq: f64) -> Arr
     }*/
 
     // We then unwrap the resulting angles to get a coherent signal.
-    let mut tdangles2 = unwrap_angles_impl(tangles.view());
+    unwrap_angles_in_place(tangles.view_mut());
     // Finally remove outliers and scale the signal.
-    remove_jumps_and_scale(tdangles2.view_mut(), freq);
+    remove_jumps_and_scale(tangles.view_mut(), freq);
 
-    tdangles2
+    tangles
 }
 
 #[pyfunction]
