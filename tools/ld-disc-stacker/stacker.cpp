@@ -86,24 +86,21 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
 {
     quint16 prevGoodValue = videoParameters.black16bIre;
     bool forceDropout = false;
+	bool sampleIsDropout = false;
+	bool isAllDropout = true;
 	quint16 pixelValue = 0;
-	QVector<quint16> valuesN;//North neighbor pixel
-    QVector<quint16> valuesS;//South neighbor pixel
-    QVector<quint16> valuesE;//East neighbor pixel
-    QVector<quint16> valuesW;//West neighbor pixel
-	
-    QVector<quint16> inputValues;
     QVector<QVector<quint16>> tmpField(videoParameters.fieldHeight * videoParameters.fieldWidth);
 
     if (availableSourcesForFrame.size() > 0) {
         // Sources available - process field
         for (qint32 y = 0; y < videoParameters.fieldHeight; y++) {
             for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-				valuesN.clear();
-				valuesS.clear();
-				valuesE.clear();
-				valuesW.clear();
-				inputValues.clear();
+				QVector<quint16> valuesN;//North neighbor pixel
+				QVector<quint16> valuesS;//South neighbor pixel
+				QVector<quint16> valuesE;//East neighbor pixel
+				QVector<quint16> valuesW;//West neighbor pixel
+				
+				QVector<quint16> inputValues;
 				// Get input values from the input sources (which are not marked as dropouts)
 				if(mode >= 2)//get surounding pixels
 				{
@@ -114,8 +111,9 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
 					for (qint32 i = 0; i < availableSourcesForFrame.size(); i++){
 						//read pixel
 						pixelValue = inputFields[availableSourcesForFrame[i]][(videoParameters.fieldWidth * y) + x];
+						sampleIsDropout = isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y);
 						// Include the source's pixel data if it's not marked as a dropout
-						if (!isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y) && noDiffDod) {
+						if (!sampleIsDropout && noDiffDod) {
 							// Pixel is valid
 							inputValues.append(pixelValue);
 						}
@@ -123,11 +121,27 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
 						{
 							inputValues.append(pixelValue);
 						}
+						
+						if(!sampleIsDropout)
+						{
+							isAllDropout = false;
+						}
 					}
+					
+					// If passThrough is set, the output is always marked as a dropout if all input values are dropouts
+					// (regardless of the diffDOD process result).
+					forceDropout = false;
+					if ((availableSourcesForFrame.size() > 0) && (passThrough)) {
+						if (inputValues.size() == 0) {
+							forceDropout = true;
+							qInfo().nospace() << "Frame #" << frameNumber << ": All sources for field location (" << x << ", " << y << ") are marked as dropout, passing through";
+						}
+					}
+					
 					// If all possible input values are dropouts (and noDiffDod is false) and there are more than 3 input sources...
 					// Take the available values (marked as dropouts) and perform a diffDOD to try and determine if the dropout markings
 					// are false positives.
-					if ((inputValues.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+					if (isAllDropout && (availableSourcesForFrame.size() >= 3) && !noDiffDod) {
 						// Perform differential dropout detection to recover ld-decode false positive pixels
 						inputValues = diffDod(inputValues, videoParameters, x);
 						
@@ -142,16 +156,6 @@ void Stacker::stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFie
 						}
 					}
 				}
-
-                // If passThrough is set, the output is always marked as a dropout if all input values are dropouts
-                // (regardless of the diffDOD process result).
-                forceDropout = false;
-                if ((availableSourcesForFrame.size() > 0) && (passThrough)) {
-                    if (inputValues.size() == 0) {
-                        forceDropout = true;
-                        qInfo().nospace() << "Frame #" << frameNumber << ": All sources for field location (" << x << ", " << y << ") are marked as dropout, passing through";
-                    }
-                }
 				
                 // Stack with intelligence:
                 // If there are 3 or more sources - median (with central average for non-odd source sets)
@@ -245,13 +249,11 @@ quint16 Stacker::stackMode(QVector<quint16>& elements, QVector<quint16>& element
 	}
 	else//smart mode
 	{
-		result = Stacker::median(elements);
-		//pixel already processed
-		(elementsN.size() > 1) ? resultN = elementsN[0] : -1;
-		(elementsW.size() > 1) ? resultN = elementsN[0] : -1;
-		//pixel that cant be reused yet
-		(elementsS.size() > 1) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
-		(elementsE.size() > 1) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
+		(nbOfElements > 2)     ? result  = Stacker::median(elements)  : result  = Stacker::mean(elements);
+		(elementsN.size() > 2) ? resultN = Stacker::median(elementsN) : resultN = Stacker::mean(elementsN);
+		(elementsS.size() > 2) ? resultS = Stacker::median(elementsS) : resultS = Stacker::mean(elementsS);
+		(elementsE.size() > 2) ? resultE = Stacker::median(elementsE) : resultE = Stacker::mean(elementsE);
+		(elementsW.size() > 2) ? resultW = Stacker::median(elementsW) : resultW = Stacker::mean(elementsW);
 		
 		//check number of neighbor available and prepare for mean
 		(resultN != -1) ? nbNeighbor++ : resultN = 0;
@@ -261,7 +263,6 @@ quint16 Stacker::stackMode(QVector<quint16>& elements, QVector<quint16>& element
 		
 		if(nbNeighbor > 0)
 		{
-			//closest value to a neighbor
 			closestList.append(Stacker::closest(elements, resultN));
 			closestList.append(Stacker::closest(elements, resultS));
 			closestList.append(Stacker::closest(elements, resultE));
@@ -286,6 +287,7 @@ quint16 Stacker::stackMode(QVector<quint16>& elements, QVector<quint16>& element
 					result += elements[i];
 				}
 			}
+			//qInfo() << "selected " << nbSelected << "/" + noOfElements << " samples";
 			//select median if all other source are out of the treshold range
 			if(nbSelected == 0)
 			{
@@ -389,6 +391,8 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 	qint32 source = 0;
 	qint32 fieldWidth = videoParameters.fieldWidth;
 	qint32 fieldHeight = videoParameters.fieldHeight;
+	bool sampleIsDropout = false;
+	bool isAllDropout = true;
 	for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
 		source = availableSourcesForFrame[i];
 		if(y == 0)
@@ -397,7 +401,8 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 			{
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * y) + x];
-				if (!isDropout(fieldMetadata[source].dropOuts, x, y) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sample.append(pixelValue);
 				}
@@ -405,8 +410,15 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sample.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 				pixelValue = inputFields[source][(fieldWidth * y) + x + 1];
-				if (!isDropout(fieldMetadata[source].dropOuts, x+1, y) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x+1, y);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleE.append(pixelValue);
 				}
@@ -414,8 +426,15 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleE.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
-				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -423,12 +442,19 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleS.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 			}
 			else if(x == fieldWidth -1)//read south value  
 			{
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
-				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -436,12 +462,19 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleS.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 			}
 			else//read east + south
 			{
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * y) + x + 1];
-				if (!isDropout(fieldMetadata[source].dropOuts, x+1, y) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x+1, y);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleE.append(pixelValue);
 				}
@@ -449,8 +482,15 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleE.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
-				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -458,6 +498,12 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleS.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 			}
 		}
 		else if(y != fieldHeight -1)//read south value
@@ -466,7 +512,8 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 			{
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
-				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -474,12 +521,19 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleS.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 			}
 			if(x == fieldWidth -1)//get neighbor value except on right
 			{
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
-				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -487,12 +541,19 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleS.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 			}
 			else
 			{
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
-				if (!isDropout(fieldMetadata[source].dropOuts, x, y+1) && noDiffDod) {
+				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
+				if (!sampleIsDropout && noDiffDod) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -500,6 +561,12 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 				{
 					sampleS.append(pixelValue);
 				}
+				
+				if(!sampleIsDropout)
+				{
+					isAllDropout = false;
+				}
+				
 			}
 		}
 	}
@@ -512,13 +579,13 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 		{
 			if(!noDiffDod)
 			{
-				if ((sample.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+				if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
 					sample = diffDod(sample, videoParameters, x);
 				}
-				if ((sampleE.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+				if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
 					sampleE = diffDod(sample, videoParameters, x);
 				}
-				if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+				if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
 					sampleS = diffDod(sample, videoParameters, x);
 				}		
 			}
@@ -530,7 +597,7 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 		{
 			if(!noDiffDod)
 			{
-				if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+				if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
 					sampleS = diffDod(sample, videoParameters, x);
 				}
 			}
@@ -542,10 +609,10 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 		{
 			if(!noDiffDod)
 			{
-				if ((sampleE.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+				if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
 					sampleE = diffDod(sample, videoParameters, x);
 				}
-				if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+				if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
 					sampleS = diffDod(sampleS, videoParameters, x);
 				}
 			}
@@ -559,7 +626,7 @@ void Stacker::getProcessedSample(qint32 x, qint32 y, QVector<qint32>& availableS
 	{
 		if(!noDiffDod)
 		{
-			if ((sampleS.size() == 0) && (availableSourcesForFrame.size() >= 3) && (noDiffDod == false)) {
+			if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
 				sampleS = diffDod(sample, videoParameters, x);
 			}
 		}
