@@ -27,9 +27,9 @@
 
 StackingPool::StackingPool(QString _outputFilename, QString _outputJsonFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                             qint32 _mode, qint32 _smartTreshold, bool _reverse, bool _noDiffDod, bool _passThrough, QObject *parent)
+                             qint32 _mode, qint32 _smartTreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _verbose, QObject *parent)
     : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
-      maxThreads(_maxThreads), mode(_mode), smartTreshold(_smartTreshold), reverse(_reverse), noDiffDod(_noDiffDod), passThrough(_passThrough),
+      maxThreads(_maxThreads), mode(_mode), smartTreshold(_smartTreshold), reverse(_reverse), noDiffDod(_noDiffDod), passThrough(_passThrough), verbose(_verbose),
       abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
 }
@@ -107,7 +107,7 @@ bool StackingPool::process()
     }
 
     // Show the processing speed to the user
-    double totalSecs = (static_cast<double>(totalTimer.elapsed()) / 1000.0);
+    const double totalSecs = (static_cast<double>(totalTimer.elapsed()) / 1000.0);
     qInfo() << "Disc stacking complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
                lastFrameNumber / totalSecs << "FPS )";
 
@@ -144,8 +144,8 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     // Determine the number of sources available (included padded sources)
     qint32 numberOfSources = sourceVideos.size();
 
-    qDebug().nospace() << "Processing sequential frame number #" <<
-                          frameNumber << " from " << numberOfSources << " possible source(s)";
+    if(verbose){qDebug().nospace() << "Processing sequential frame number #" <<
+                          frameNumber << " from " << numberOfSources << " possible source(s)";}
 
     // Prepare the vectors
     firstFieldNumber.resize(numberOfSources);
@@ -169,8 +169,8 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
             // No need to perform VBI frame number mapping on the first source
             firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(frameNumber);
             secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(frameNumber);
-            qDebug().nospace() << "Source #0 fields are " <<
-                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+            if(verbose){qDebug().nospace() << "Source #0 fields are " <<
+                                  firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];}
         } else if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
             // Use VBI frame number mapping to get the same frame from the
             // current additional source
@@ -181,15 +181,15 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
                 firstFieldNumber[sourceNo] = -1;
                 secondFieldNumber[sourceNo] = -1;
 
-                qDebug().nospace() << "Source #" << sourceNo << " does not contain VBI frame number " << currentVbiFrame;
+                if(verbose){qDebug().nospace() << "Source #" << sourceNo << " does not contain VBI frame number " << currentVbiFrame;}
             } else {
                 firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(currentSourceFrameNumber);
                 secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(currentSourceFrameNumber);
 
-                qDebug().nospace() << "Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
-                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];
+                if(verbose){qDebug().nospace() << "Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+                            " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];}
             }
-        } else {
+        } else if(verbose){
             qDebug().nospace() << "Source #" << sourceNo << " does not contain a usable frame";
         }
 
@@ -425,7 +425,7 @@ QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
                 // Ensure the frame is not a padded field (i.e. missing)
                 if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == false && ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == false) {
                     availableSourcesForFrame.append(sourceNo);
-                } else {
+                } else if(verbose){
                     if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == true) qDebug() << "First field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
                     if (ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == true) qDebug() << "Second field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
                 }
@@ -433,7 +433,7 @@ QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
         }
     }
 
-    if (availableSourcesForFrame.size() != sourceVideos.size()) {
+    if (availableSourcesForFrame.size() != sourceVideos.size() && verbose) {
         if (availableSourcesForFrame.size() > 0) {
             qDebug() << "VBI Frame number" << vbiFrameNumber << "has only" << availableSourcesForFrame.size() << "available sources";
         } else {

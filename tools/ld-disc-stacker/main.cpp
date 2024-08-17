@@ -62,7 +62,12 @@ int main(int argc, char *argv[])
 
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
-
+	
+	// Option to show more info during stacking
+    QCommandLineOption verboseOption(QStringList() << "V" << "verbose",
+                                       QCoreApplication::translate("main", "Show more info during stacking"));
+    parser.addOption(verboseOption);
+	
     // Option to specify a different JSON input file
     QCommandLineOption inputJsonOption(QStringList() << "input-json",
                                        QCoreApplication::translate("main", "Specify the input JSON file for the first input file (default input.json)"),
@@ -90,7 +95,7 @@ int main(int argc, char *argv[])
     // Option to select the number of threads (-t)
     QCommandLineOption modeOption(QStringList() << "m" << "mode",
                                         QCoreApplication::translate(
-                                         "main", "Specify the stacking mode to use (default is 2) 0 = mean / 1 = median / 2 = smart / 3 = neighbor"),
+                                         "main", "Specify the stacking mode to use (default is 3) 0 = mean / 1 = median / 2 = smart mean / 3 = smart neighbor / 4 = neighbor"),
 										 QCoreApplication::translate("main", "number"));
     parser.addOption(modeOption);
 	
@@ -135,18 +140,19 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool reverse = parser.isSet(setReverseOption);
+    bool verbose = parser.isSet(verboseOption);
     bool noDiffDod = parser.isSet(noDiffDodOption);
     bool noMap = parser.isSet(noMapOption);
     bool passThrough = parser.isSet(passthroughOption);
 	
     // Get the arguments from the parser
-	qint32 mode = 2;
+	qint32 mode = 3;
 	if (parser.isSet(modeOption)) {
         mode = parser.value(modeOption).toInt();
 
-        if (mode > 3 || mode < 0) {
-            qInfo() << "Specified mode (" << mode << ") is unknown using 2 (smart) instead";
-            mode = 2;
+        if (mode > 4 || mode < 0) {
+            qInfo() << "Specified mode (" << mode << ") is unknown using 3 (smart neighbor) instead";
+            mode = 3;
         }
     }
 	
@@ -156,12 +162,12 @@ int main(int argc, char *argv[])
         smartTreshold = parser.value(smartTresholdOption).toInt();
 
         if (smartTreshold > 128 || smartTreshold < 0) {
-            qInfo() << "Specified treshold (" << (smartTreshold/256) << ") is out off range using 15 instead";
-			smartTreshold = (smartTreshold*256);
+            qInfo() << "Specified treshold (" << (smartTreshold) << ") is out off range using 15 instead";
+			smartTreshold = (15*256);
         }
 		else
 		{
-			smartTreshold = (15*256);
+			smartTreshold = (smartTreshold*256);
 		}
     }
 
@@ -369,7 +375,7 @@ int main(int argc, char *argv[])
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
     StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos, mode, smartTreshold, reverse, noDiffDod, passThrough);
+                                ldDecodeMetaData, sourceVideos, mode, smartTreshold, reverse, noDiffDod, passThrough, verbose);
     if (!stackingPool.process()) result = 1;
 
     // Close open source video files
