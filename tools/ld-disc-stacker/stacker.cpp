@@ -253,11 +253,12 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 		}
 		case 3://smart neighbor mode
 		{
-			(nbOfElements > 2)     ? result  = Stacker::median(elements)  : result  = Stacker::mean(elements);
-			(elementsN.size() > 2) ? resultN = Stacker::median(elementsN) : resultN = Stacker::mean(elementsN);
-			(elementsS.size() > 2) ? resultS = Stacker::median(elementsS) : resultS = Stacker::mean(elementsS);
-			(elementsE.size() > 2) ? resultE = Stacker::median(elementsE) : resultE = Stacker::mean(elementsE);
-			(elementsW.size() > 2) ? resultW = Stacker::median(elementsW) : resultW = Stacker::mean(elementsW);
+			const qint32 median = Stacker::median(elements);
+			
+			(elementsN.size() > 1) ? resultN = Stacker::median(elementsN) : (elementsN.size() > 0 ? resultN = elementsN[0] : resultN = -1);
+			(elementsS.size() > 1) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
+			(elementsE.size() > 1) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
+			(elementsW.size() > 1) ? resultW = Stacker::median(elementsW) : (elementsW.size() > 0 ? resultW = elementsW[0] : resultW = -1);
 			
 			//check number of neighbor available and prepare for mean
 			(resultN != -1) ? nbNeighbor++ : resultN = 0;
@@ -268,12 +269,12 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 			if(nbNeighbor > 0)
 			{
 				//closest value to a neighbor					
-				closestList.append(Stacker::closest(elements, resultN));
-				closestList.append(Stacker::closest(elements, resultS));
-				closestList.append(Stacker::closest(elements, resultE));
-				closestList.append(Stacker::closest(elements, resultW));
+				if(resultN > 0){closestList.append(Stacker::closest(elements, resultN));}
+				if(resultS > 0){closestList.append(Stacker::closest(elements, resultS));}
+				if(resultE > 0){closestList.append(Stacker::closest(elements, resultE));}
+				if(resultW > 0){closestList.append(Stacker::closest(elements, resultW));}
 				
-				resultNeighbor = Stacker::closest(closestList, result);//get the closest value to the median/mean based on closest value to a neighbor
+				resultNeighbor = Stacker::closest(closestList, median);//get the closest value to the median/mean based on closest value to a neighbor
 			}
 			else
 			{
@@ -313,12 +314,12 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 		case 4://neighbor mode
 		{
 			const qint32 median = Stacker::median(elements);
-			//pixel already processed
-			(elementsN.size() > 1) ? resultN = elementsN[0] : -1;
-			(elementsW.size() > 1) ? resultN = elementsN[0] : -1;
-			//pixel that cant be reused yet
+			
+			(elementsN.size() > 1) ? resultN = Stacker::median(elementsN) : (elementsN.size() > 0 ? resultN = elementsN[0] : resultN = -1);
 			(elementsS.size() > 1) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
 			(elementsE.size() > 1) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
+			(elementsW.size() > 1) ? resultW = Stacker::median(elementsW) : (elementsW.size() > 0 ? resultW = elementsW[0] : resultW = -1);
+
 			
 			//check number of neighbor available and prepare for mean
 			(resultN != -1) ? nbNeighbor++ : resultN = 0;
@@ -328,12 +329,12 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 			
 			if(nbNeighbor > 0)
 			{
-				closestList.append(Stacker::closest(elements, resultN));
-				closestList.append(Stacker::closest(elements, resultS));
-				closestList.append(Stacker::closest(elements, resultE));
-				closestList.append(Stacker::closest(elements, resultW));
+				if(resultN > 0){closestList.append(Stacker::closest(elements, resultN));}
+				if(resultS > 0){closestList.append(Stacker::closest(elements, resultS));}
+				if(resultE > 0){closestList.append(Stacker::closest(elements, resultE));}
+				if(resultW > 0){closestList.append(Stacker::closest(elements, resultW));}
 				
-				result = Stacker::closest(closestList, result);//get the closest value to the median/mean based on closest value to a neighbor
+				result = Stacker::closest(closestList, median);//get the closest value to the median/mean based on closest value to a neighbor
 				
 				if(nbOfElements > 2)
 				{
