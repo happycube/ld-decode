@@ -774,8 +774,7 @@ def main() -> int:
 
     print("Initializing ...")
 
-    real_mode = "s" if not args.format_8mm else "mpx"
-    real_mode = args.mode if args.mode in ["l", "r", "sum"] else real_mode
+    real_mode = "s" if not args.mode else args.mode
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
@@ -845,12 +844,13 @@ def main() -> int:
         if test_input_file(filename) and test_output_file(outname):
             if decode_options["format"] == "vhs":
                 (
-                    print("PAL VHS format selected")
+                    print(f"PAL VHS format selected, Audio mode is {real_mode}")
                     if system == "PAL"
-                    else print("NTSC VHS format selected")
+                    else print(f"NTSC VHS format selected, Audio mode is {real_mode}")
                 )
             else:
-                print("NTSC Hi8 format selected")
+                print(f"NTSC Hi8 format selected, Audio mode is {real_mode}")
+
 
             return run_decoder(args, decode_options)
         else:

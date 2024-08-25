@@ -101,7 +101,7 @@ def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
     # Order may be fine as is.
     RFParams_PAL_VHS["video_bpf_order"] = None
     # Sharper upper cutoff to get rid of high-frequency junk.
-    RFParams_PAL_VHS["video_lpf_extra"] = 5710000
+    RFParams_PAL_VHS["video_lpf_extra"] = 5910000
     RFParams_PAL_VHS["video_lpf_extra_order"] = 20
 
     RFParams_PAL_VHS["video_bpf_supergauss"] = False
@@ -145,11 +145,17 @@ def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
 
     # Use linear ramp to boost RF
     # Lower number attenuates lower freqs more giving a "softer" look with less ringing but potentially less detail
-    RFParams_PAL_VHS["boost_rf_linear_0"] = 0.15
+    RFParams_PAL_VHS["boost_rf_linear_0"] = 0
     # This param doesn't really seem to matter.
-    RFParams_PAL_VHS["boost_rf_linear_20"] = 3
+    RFParams_PAL_VHS["boost_rf_linear_20"] = 1
     # Double up ramp filter to more closely mimic VHS EQ
-    RFParams_PAL_VHS["boost_rf_linear_double"] = True
+    RFParams_PAL_VHS["boost_rf_linear_double"] = False
+
+    RFParams_PAL_VHS["start_rf_linear"] = RFParams_PAL_VHS["color_under_carrier"]
+
+    RFParams_PAL_VHS["video_rf_peak_freq"] = 4700000
+    RFParams_PAL_VHS["video_rf_peak_gain"] = 4
+    RFParams_PAL_VHS["video_rf_peak_bandwidth"] = 1.5e7
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.

@@ -171,7 +171,7 @@ class InputDialog(QDialog):
 
     def get_input_value(self):
         result = self.exec()  # Ejecutar el diálogo de entrada
-        if result == QDialog.Accepted:
+        if result == QDialog.accepted:
             return self.input_line.text()
         else:
             return None
