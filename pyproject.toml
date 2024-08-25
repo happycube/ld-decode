@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "setuptools_scm>=6.2", "wheel", "Cython", "numpy", "maturin"]
+requires = ["setuptools>=61", "setuptools_scm>=6.2", "wheel", "Cython", "numpy", "maturin>=1.4,<2.0"]
 # requires = ["setuptools>=61", "wheel", "Cython", "numpy"]
 # build-backend = "setuptools.build_meta"
 build-backend = "maturin"
