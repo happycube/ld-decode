@@ -57,12 +57,23 @@ int main(int argc, char *argv[])
                 "\n"
                 "(c)2020-2022 Simon Inns\n"
                 "2024 updated by Vrunk11\n"
-                "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
-    parser.addHelpOption();
+                "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode"
+				"\n"
+				"For more info on stacking mode, use --help-mode");
+    //parser.addHelpOption();
     parser.addVersionOption();
 
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
+	
+	QCommandLineOption HelpOption(QStringList() << "?" << "h" << "help",
+                                       QCoreApplication::translate("main", "Displays help on commandline options."));
+	parser.addOption(HelpOption);
+	
+	// Option to show more info during stacking
+    QCommandLineOption helpModeOption(QStringList() << "help-mode",
+                                       QCoreApplication::translate("main", "Show info about stacking mode"));
+    parser.addOption(helpModeOption);
 	
 	// Option to show more info during stacking
     QCommandLineOption verboseOption(QStringList() << "V" << "verbose",
@@ -93,19 +104,19 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
 	
-    // Option to select the number of threads (-t)
+    // Option to select the stacking mode (-m)
     QCommandLineOption modeOption(QStringList() << "m" << "mode",
                                         QCoreApplication::translate(
                                          "main", "Specify the stacking mode to use (default is 3) 0 = mean / 1 = median / 2 = smart mean / 3 = smart neighbor / 4 = neighbor"),
 										 QCoreApplication::translate("main", "number"));
     parser.addOption(modeOption);
 	
-	// Option to select the number of threads (-t)
-    QCommandLineOption smartTresholdOption(QStringList() << "st" << "smart-treshold",
+	// Option to select the smart-threshold (-st)
+    QCommandLineOption smartThresholdOption(QStringList() << "st" << "smart-threshold",
                                         QCoreApplication::translate(
                                          "main", "Specify the range of value in 8 bit (0~128) for selecting sample where the distance to the median didnt exceed the selected value for applying mean (default is 15)"),
                                         QCoreApplication::translate("main", "number"));
-    parser.addOption(smartTresholdOption);
+    parser.addOption(smartThresholdOption);
 
     // Option to disable differential dropout detection
     QCommandLineOption noDiffDodOption(QStringList() << "no-diffdod",
@@ -135,6 +146,32 @@ int main(int argc, char *argv[])
 
     // Process the command line options and arguments given by the user -----------------------------------------------
     parser.process(a);
+	
+	// show info about stacking mode
+	if (parser.isSet(helpModeOption)) {
+		qInfo() << "ld-disc-stacker - Disc stacking for ld-decode\n";
+        qInfo() << "(c)2020-2022 Simon Inns";
+        qInfo() << "2024 updated by Vrunk11";
+        qInfo() << "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode";
+		qInfo() << "For more info on stacking mode, use --help-mode\n";
+		qInfo() << "Mode:\n";
+		qInfo() << "(0) mean            : average all samples not marked as dropouts using mean\n";
+		qInfo() << "(1) median          : find the median from samples not marked as dropout\n";
+		qInfo() << "(2) smart mean      : find the median from samples not marked as dropout then average all value within (median + smartThreshold) or (median - smart Threshold) using mean\n";
+		qInfo() << "(3) smart neighbor  : find the median for every surroundings pixel not marked as dropout then find the closest sample to the surrounding median value for each neighbor";
+		qInfo() << "                      then take the closest value to the median of the current sample from the different closest value found";
+		qInfo()	<< "                      then average all value within (selectedSample + smartThreshold) or (selectedSample - smart threshold) using mean";
+		qInfo()	<< "                      when only 2 sources are available, it take the closest sample to the neighbor\n";
+		qInfo() << "(4) neighbor        : find the median for every surroundings pixel not marked as dropout then find the closest sample to the surrounding median value for each neighbor";
+		qInfo() << "                      then take the closest value to the median of the current sample from the different closest value found then average the selected sample with the median";
+		qInfo()	<< "                      when only 2 sources are available, it take the closest sample to the neighbor";
+		return 0; // Exit after showing detailed help
+	}
+	
+	// Check for help options first
+	if (parser.isSet(HelpOption)) {
+		parser.showHelp(); // This will exit the application
+	}
 
     // Standard logging options
     processStandardDebugOptions(parser);
@@ -158,17 +195,17 @@ int main(int argc, char *argv[])
     }
 	
     // Get the arguments from the parser
-	qint32 smartTreshold = (15*256);
-	if (parser.isSet(smartTresholdOption)) {
-        smartTreshold = parser.value(smartTresholdOption).toInt();
+	qint32 smartThreshold = (15*256);
+	if (parser.isSet(smartThresholdOption)) {
+        smartThreshold = parser.value(smartThresholdOption).toInt();
 
-        if (smartTreshold > 128 || smartTreshold < 0) {
-            qInfo() << "Specified treshold (" << (smartTreshold) << ") is out off range using 15 instead";
-			smartTreshold = (15*256);
+        if (smartThreshold > 128 || smartThreshold < 0) {
+            qInfo() << "Specified threshold (" << (smartThreshold) << ") is out off range using 15 instead";
+			smartThreshold = (15*256);
         }
 		else
 		{
-			smartTreshold = (smartTreshold*256);
+			smartThreshold = (smartThreshold*256);
 		}
     }
 
@@ -376,7 +413,7 @@ int main(int argc, char *argv[])
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
     StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos, mode, smartTreshold, reverse, noDiffDod, passThrough, verbose);
+                                ldDecodeMetaData, sourceVideos, mode, smartThreshold, reverse, noDiffDod, passThrough, verbose);
     if (!stackingPool.process()) result = 1;
 
     // Close open source video files

@@ -27,9 +27,9 @@
 
 StackingPool::StackingPool(QString _outputFilename, QString _outputJsonFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                             qint32 _mode, qint32 _smartTreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _verbose, QObject *parent)
+                             qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _verbose, QObject *parent)
     : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
-      maxThreads(_maxThreads), mode(_mode), smartTreshold(_smartTreshold), reverse(_reverse), noDiffDod(_noDiffDod), passThrough(_passThrough), verbose(_verbose),
+      maxThreads(_maxThreads), mode(_mode), smartThreshold(_smartThreshold), reverse(_reverse), noDiffDod(_noDiffDod), passThrough(_passThrough), verbose(_verbose),
       abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
 }
@@ -128,7 +128,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
                                   QVector<qint32>& firstFieldNumber, QVector<SourceVideo::Data>& firstFieldVideoData, QVector<LdDecodeMetaData::Field>& firstFieldMetadata,
                                   QVector<qint32>& secondFieldNumber, QVector<SourceVideo::Data>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
-                                  qint32& _mode, qint32& _smartTreshold, bool& _reverse, bool& _noDiffDod, bool& _passThrough,
+                                  qint32& _mode, qint32& _smartThreshold, bool& _reverse, bool& _noDiffDod, bool& _passThrough,
                                   QVector<qint32>& availableSourcesForFrame)
 {
     QMutexLocker locker(&inputMutex);
@@ -220,7 +220,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
 
     // Set the other miscellaneous parameters
     _mode = mode;
-    _smartTreshold = smartTreshold;
+    _smartThreshold = smartThreshold;
     _reverse = reverse;
     _noDiffDod = noDiffDod;
     _passThrough = passThrough;

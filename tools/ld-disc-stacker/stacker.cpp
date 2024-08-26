@@ -41,7 +41,7 @@ void Stacker::run()
     QVector<LdDecodeMetaData::Field> firstFieldMetadata;
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
 	qint32 mode;
-	qint32 smartTreshold;
+	qint32 smartThreshold;
     bool reverse;
     bool noDiffDod;
     bool passThrough;
@@ -52,7 +52,7 @@ void Stacker::run()
         // Get the next field to process from the input file
         if (!stackingPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
-                                       videoParameters, mode, smartTreshold, reverse, noDiffDod, passThrough,
+                                       videoParameters, mode, smartThreshold, reverse, noDiffDod, passThrough,
                                        availableSourcesForFrame)) {
             // No more input fields -- exit
             break;
@@ -64,8 +64,8 @@ void Stacker::run()
         DropOuts outputFirstFieldDropOuts;
         DropOuts outputSecondFieldDropOuts;
 
-        stackField(frameNumber, firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputFirstField, outputFirstFieldDropOuts, mode, smartTreshold, verbose);
-        stackField(frameNumber, secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputSecondField, outputSecondFieldDropOuts, mode, smartTreshold, verbose);
+        stackField(frameNumber, firstSourceField, videoParameters[0], firstFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputFirstField, outputFirstFieldDropOuts, mode, smartThreshold, verbose);
+        stackField(frameNumber, secondSourceField, videoParameters[0], secondFieldMetadata, availableSourcesForFrame, noDiffDod, passThrough, outputSecondField, outputSecondFieldDropOuts, mode, smartThreshold, verbose);
 
         // Return the processed fields
         stackingPool.setOutputFrame(frameNumber, outputFirstField, outputSecondField,
@@ -83,12 +83,11 @@ void Stacker::stackField(const qint32 frameNumber,const QVector<SourceVideo::Dat
                                       SourceVideo::Data &outputField,
                                       DropOuts &dropOuts,
                                       const qint32& mode,
-                                      const qint32& smartTreshold,
+                                      const qint32& smartThreshold,
 									  const bool& verbose)
 {
     quint16 prevGoodValue = videoParameters.black16bIre;
     bool forceDropout = false;
-	bool isAllDropout = true;
     QVector<QVector<quint16>> tmpField(videoParameters.fieldHeight * videoParameters.fieldWidth);
 	
     if (availableSourcesForFrame.size() > 0) {
@@ -99,12 +98,13 @@ void Stacker::stackField(const qint32 frameNumber,const QVector<SourceVideo::Dat
 				QVector<quint16> valuesS;//South neighbor pixel
 				QVector<quint16> valuesE;//East neighbor pixel
 				QVector<quint16> valuesW;//West neighbor pixel
+				QVector<bool> isAllDropout = {true,true,true,true,true};//is neighbor pixel all dropout : current = [0] / N = [1] / S = [2] / E = [3] / W = [4]
 				
 				QVector<quint16> inputValues;
 				// Get input values from the input sources (which are not marked as dropouts)
 				if(mode >= 3)//get surounding pixels
 				{
-					Stacker::getProcessedSample(x, y, availableSourcesForFrame, inputFields, tmpField, videoParameters, fieldMetadata, inputValues, valuesN, valuesS, valuesE, valuesW, noDiffDod, verbose);
+					Stacker::getProcessedSample(x, y, availableSourcesForFrame, inputFields, tmpField, videoParameters, fieldMetadata, inputValues, valuesN, valuesS, valuesE, valuesW, isAllDropout, noDiffDod, verbose);
 				}
 				else// get only pixel 1 by 1
 				{
@@ -125,18 +125,18 @@ void Stacker::stackField(const qint32 frameNumber,const QVector<SourceVideo::Dat
 						
 						if(!sampleIsDropout)
 						{
-							isAllDropout = false;
+							isAllDropout[0] = false;
 						}
 					}
 					
 					// If all possible input values are dropouts (and noDiffDod is false) and there are more than 3 input sources...
 					// Take the available values (marked as dropouts) and perform a diffDOD to try and determine if the dropout markings
 					// are false positives.
-					if (isAllDropout && (availableSourcesForFrame.size() >= 3) && !noDiffDod) {
+					if (isAllDropout[0] && (availableSourcesForFrame.size() >= 3) && !noDiffDod) {
 						// Perform differential dropout detection to recover ld-decode false positive pixels
 						if(x > videoParameters.colourBurstStart)
 						{
-							inputValues = diffDod(inputValues, videoParameters, x, verbose);
+							inputValues = diffDod(inputValues, videoParameters, verbose);
 							
 							if(verbose)
 							{
@@ -158,9 +158,15 @@ void Stacker::stackField(const qint32 frameNumber,const QVector<SourceVideo::Dat
 				// (regardless of the diffDOD process result).
 				forceDropout = false;
 				if ((availableSourcesForFrame.size() > 0) && (passThrough)) {
-					if (inputValues.size() == 0) {
-						forceDropout = true;
-						qInfo().nospace() << "Frame #" << frameNumber << ": All sources for field location (" << x << ", " << y << ") are marked as dropout, passing through";
+					if(x > videoParameters.colourBurstStart)
+					{
+						if (inputValues.size() == 0) {
+							forceDropout = true;
+							if(verbose)
+							{
+								qInfo().nospace() << "Frame #" << frameNumber << ": All sources for field location (" << x << ", " << y << ") are marked as dropout, passing through";
+							}
+						}
 					}
 				}
 				
@@ -180,7 +186,7 @@ void Stacker::stackField(const qint32 frameNumber,const QVector<SourceVideo::Dat
                     if (forceDropout) dropOuts.append(x, x, y + 1);
                 } else {
                     //2 or more values available - store the result in the output field
-                    outputField[(videoParameters.fieldWidth * y) + x] = stackMode(inputValues, valuesN, valuesS, valuesE, valuesW, mode, smartTreshold);
+                    outputField[(videoParameters.fieldWidth * y) + x] = stackMode(inputValues, valuesN, valuesS, valuesE, valuesW, isAllDropout, mode, smartThreshold);
                     prevGoodValue = outputField[(videoParameters.fieldWidth * y) + x];
 					tmpField[(videoParameters.fieldWidth * y) + x] = QVector<quint16>{prevGoodValue};
                     if (forceDropout) dropOuts.append(x, x, y + 1);
@@ -200,8 +206,8 @@ void Stacker::stackField(const qint32 frameNumber,const QVector<SourceVideo::Dat
     }
 }
 
-// Method to stack a vector of quint16s using a selected mode
-quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint16>& elementsN, const QVector<quint16>& elementsS, const QVector<quint16>& elementsE, const QVector<quint16>& elementsW, const qint32& mode, const qint32& smartTreshold)
+// Method to stack a vector of quint16 using a selected mode
+quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint16>& elementsN, const QVector<quint16>& elementsS, const QVector<quint16>& elementsE, const QVector<quint16>& elementsW, const QVector<bool>& isAllDropout, const qint32& mode, const qint32& smartThreshold)
 {
     const qint32 nbOfElements = elements.size();
 	qint32 nbSelected = 0;
@@ -231,16 +237,16 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 		case 2://smart mean mode
 		{
 			const qint32 median = Stacker::median(elements);
-			//count number of sample withing treshold distance to the median and sum
+			//count number of sample withing threshold distance to the median and sum
 			for(int i=0; i < nbOfElements;i++)
 			{
-				if(elements[i] < (median + smartTreshold) &&  elements[i] > (median - smartTreshold))
+				if(elements[i] < (median + smartThreshold) &&  elements[i] > (median - smartThreshold))
 				{
 					nbSelected++;
 					result += elements[i];
 				}
 			}
-			//select median if all other source are out of the treshold range
+			//select median if all other source are out of the threshold range
 			if(nbSelected == 0)
 			{
 				result = median;			
@@ -255,10 +261,14 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 		{
 			const qint32 median = Stacker::median(elements);
 			
-			(elementsN.size() > 1) ? resultN = Stacker::median(elementsN) : (elementsN.size() > 0 ? resultN = elementsN[0] : resultN = -1);
-			(elementsS.size() > 1) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
-			(elementsE.size() > 1) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
-			(elementsW.size() > 1) ? resultW = Stacker::median(elementsW) : (elementsW.size() > 0 ? resultW = elementsW[0] : resultW = -1);
+			((elementsN.size() > 1) && isAllDropout[1]) ? resultN = Stacker::median(elementsN) : (elementsN.size() > 0 ? resultN = elementsN[0] : resultN = -1);
+			((elementsS.size() > 1) && isAllDropout[2]) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
+			
+			if(!isAllDropout[0] || (isAllDropout[1] && isAllDropout[2]))
+			{
+				((elementsE.size() > 1) && isAllDropout[3]) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
+				((elementsW.size() > 1) && isAllDropout[4]) ? resultW = Stacker::median(elementsW) : (elementsW.size() > 0 ? resultW = elementsW[0] : resultW = -1);
+			}
 			
 			//check number of neighbor available and prepare for mean
 			(resultN != -1) ? nbNeighbor++ : resultN = 0;
@@ -284,17 +294,17 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 			if(nbOfElements > 2)//using median + mean
 			{
 				result = 0;
-				//count number of sample withing treshold distance to the median and sum
+				//count number of sample withing threshold distance to the median and sum
 				for(int i=0; i < nbOfElements;i++)
 				{
-					if((elements[i] < (resultNeighbor + smartTreshold)) && (elements[i] > (resultNeighbor - smartTreshold)))
+					if((elements[i] < (resultNeighbor + smartThreshold)) && (elements[i] > (resultNeighbor - smartThreshold)))
 					{
 						nbSelected++;
 						result += elements[i];
 					}
 				}
 				
-				//select median if all other source are out of the treshold range
+				//select median if all other source are out of the threshold range
 				if(nbSelected == 0)
 				{
 					result = resultNeighbor;			
@@ -315,10 +325,14 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 		{
 			const qint32 median = Stacker::median(elements);
 			
-			(elementsN.size() > 1) ? resultN = Stacker::median(elementsN) : (elementsN.size() > 0 ? resultN = elementsN[0] : resultN = -1);
-			(elementsS.size() > 1) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
-			(elementsE.size() > 1) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
-			(elementsW.size() > 1) ? resultW = Stacker::median(elementsW) : (elementsW.size() > 0 ? resultW = elementsW[0] : resultW = -1);
+			((elementsN.size() > 1) && isAllDropout[1]) ? resultN = Stacker::median(elementsN) : (elementsN.size() > 0 ? resultN = elementsN[0] : resultN = -1);
+			((elementsS.size() > 1) && isAllDropout[2]) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
+			
+			if(!isAllDropout[0] || (isAllDropout[1] && isAllDropout[2]))
+			{
+				((elementsE.size() > 1) && isAllDropout[3]) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
+				((elementsW.size() > 1) && isAllDropout[4]) ? resultW = Stacker::median(elementsW) : (elementsW.size() > 0 ? resultW = elementsW[0] : resultW = -1);
+			}
 
 			
 			//check number of neighbor available and prepare for mean
@@ -411,12 +425,13 @@ inline qint32 Stacker::mean(const QVector<quint16>& elements)
 // Method to find the closest value to a target
 inline quint16 Stacker::closest(const QVector<quint16>& elements, const qint32 target)
 {
-    const qint32 noOfElements = elements.size();
-	qint32 closest = elements[0];
+    const qint32 nbOfElements = elements.size();
+	qint32 closest = 0;
 	
-	if(noOfElements > 1)
+	if(nbOfElements > 0)
 	{
-		for(int i=1;i < noOfElements;i++)
+		closest = elements[0];
+		for(int i=1;i < nbOfElements;i++)
 		{
 			if(abs(target - elements[i]) < abs(target - closest))
 			{
@@ -429,14 +444,13 @@ inline quint16 Stacker::closest(const QVector<quint16>& elements, const qint32 t
 }
 
 // get value that are unprocessed and reuse processed one for mode >= 3
-void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<qint32>& availableSourcesForFrame, const QVector<SourceVideo::Data>& inputFields, QVector<QVector<quint16>>& tmpField, const LdDecodeMetaData::VideoParameters& videoParameters, const QVector<LdDecodeMetaData::Field>& fieldMetadata, QVector<quint16>& sample, QVector<quint16>& sampleN, QVector<quint16>& sampleS, QVector<quint16>& sampleE, QVector<quint16>& sampleW, const bool& noDiffDod, const bool& verbose)
+void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<qint32>& availableSourcesForFrame, const QVector<SourceVideo::Data>& inputFields, QVector<QVector<quint16>>& tmpField, const LdDecodeMetaData::VideoParameters& videoParameters, const QVector<LdDecodeMetaData::Field>& fieldMetadata, QVector<quint16>& sample, QVector<quint16>& sampleN, QVector<quint16>& sampleS, QVector<quint16>& sampleE, QVector<quint16>& sampleW, QVector<bool>& isAllDropout, const bool& noDiffDod, const bool& verbose)
 {
 	quint16 pixelValue = 0;
 	qint32 source = 0;
 	qint32 fieldWidth = videoParameters.fieldWidth;
 	qint32 fieldHeight = videoParameters.fieldHeight;
 	bool sampleIsDropout = false;
-	bool isAllDropout = true;
 	for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
 		source = availableSourcesForFrame[i];
 		if(y == 0)
@@ -457,7 +471,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[0] = false;
 				}
 				
 				pixelValue = inputFields[source][(fieldWidth * y) + x + 1];
@@ -473,7 +487,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[3] = false;//E = [3]
 				}
 				
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
@@ -489,7 +503,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[2] = false;//S = [2]
 				}
 			}
 			else if(x == fieldWidth -1)//read south value  
@@ -508,7 +522,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[2] = false;//S = [2]
 				}
 			}
 			else//read east + south
@@ -527,7 +541,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[3] = false;//E = [3]
 				}
 				
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
@@ -543,7 +557,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[2] = false;//S = [2]
 				}
 			}
 		}
@@ -565,7 +579,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[2] = false;//S = [2]
 				}
 			}
 			if(x == fieldWidth -1)//get neighbor value except on right
@@ -584,7 +598,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[2] = false;//S = [2]
 				}
 			}
 			else
@@ -603,7 +617,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				if(!sampleIsDropout)
 				{
-					isAllDropout = false;
+					isAllDropout[2] = false;//S = [2]
 				}
 			}
 		}
@@ -619,14 +633,14 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			{
 				if(x > videoParameters.colourBurstStart)
 				{
-					if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
-						sample = diffDod(sample, videoParameters, x, verbose);
+					if (isAllDropout[0] && (availableSourcesForFrame.size() >= 3)) {
+						sample = diffDod(sample, videoParameters, verbose);
 					}
-					if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
-						sampleE = diffDod(sample, videoParameters, x, verbose);
+					if (isAllDropout[3] && (availableSourcesForFrame.size() >= 3)) {
+						sampleE = diffDod(sampleE, videoParameters, verbose);
 					}
-					if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
-						sampleS = diffDod(sample, videoParameters, x, verbose);
+					if (isAllDropout[2] && (availableSourcesForFrame.size() >= 3)) {
+						sampleS = diffDod(sampleS, videoParameters, verbose);
 					}
 				}
 			}
@@ -640,14 +654,15 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			{
 				if(x > videoParameters.colourBurstStart)
 				{
-					if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
-						sampleS = diffDod(sample, videoParameters, x, verbose);
+					if (isAllDropout[2] && (availableSourcesForFrame.size() >= 3)) {
+						sampleS = diffDod(sampleS, videoParameters, verbose);
 					}
 				}
 			}
 			tmpField[(fieldWidth * (y+1)) + x] = sampleS;
 			sample = tmpField[(fieldWidth * y) + x];
 			sampleW = tmpField[(fieldWidth * y) + x - 1];
+			isAllDropout[4] = haveAllDropout(fieldMetadata,x-1,y);
 		}
 		else//read east + south
 		{
@@ -655,11 +670,11 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			{
 				if(x > videoParameters.colourBurstStart)
 				{
-					if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
-						sampleE = diffDod(sample, videoParameters, x, verbose);
+					if (isAllDropout[3] && (availableSourcesForFrame.size() >= 3)) {
+						sampleE = diffDod(sampleE, videoParameters, verbose);
 					}
-					if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
-						sampleS = diffDod(sampleS, videoParameters, x, verbose);
+					if (isAllDropout[2] && (availableSourcesForFrame.size() >= 3)) {
+						sampleS = diffDod(sampleS, videoParameters, verbose);
 					}
 				}
 			}
@@ -667,6 +682,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			tmpField[(fieldWidth * (y+1)) + x] = sampleS;
 			sample = tmpField[(fieldWidth * y) + x];
 			sampleW = tmpField[(fieldWidth * y) + x - 1];
+			isAllDropout[4] = haveAllDropout(fieldMetadata,x-1,y);
 		}
 	}
 	else if(y != fieldHeight -1)//read south value
@@ -675,8 +691,8 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 		{
 			if(x > videoParameters.colourBurstStart)
 			{
-				if (isAllDropout && (availableSourcesForFrame.size() >= 3)) {
-					sampleS = diffDod(sample, videoParameters, x, verbose);
+				if (isAllDropout[2] && (availableSourcesForFrame.size() >= 3)) {
+					sampleS = diffDod(sampleS, videoParameters, verbose);
 				}
 			}
 		}
@@ -686,12 +702,16 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			sample = tmpField[(fieldWidth * y) + x];
 			sampleE = tmpField[(fieldWidth * y) + x + 1];
 			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+			isAllDropout[1] = haveAllDropout(fieldMetadata,x,y-1);
+			isAllDropout[3] = haveAllDropout(fieldMetadata,x+1,y);
 		}
 		else if (x == fieldWidth -1)
 		{
 			sample = tmpField[(fieldWidth * y) + x];
 			sampleW = tmpField[(fieldWidth * y) + x - 1];
 			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+			isAllDropout[1] = haveAllDropout(fieldMetadata,x,y-1);
+			isAllDropout[4] = haveAllDropout(fieldMetadata,x-1,y);
 		}
 		else
 		{
@@ -699,6 +719,9 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			sampleW = tmpField[(fieldWidth * y) + x - 1];
 			sampleE = tmpField[(fieldWidth * y) + x + 1];
 			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+			isAllDropout[1] = haveAllDropout(fieldMetadata,x,y-1);
+			isAllDropout[3] = haveAllDropout(fieldMetadata,x+1,y);
+			isAllDropout[4] = haveAllDropout(fieldMetadata,x-1,y);
 		}
 	}
 	else//all value already processsed : reuse value
@@ -708,12 +731,16 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			sample = tmpField[(fieldWidth * y) + x];
 			sampleE = tmpField[(fieldWidth * y) + x + 1];
 			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+			isAllDropout[1] = haveAllDropout(fieldMetadata,x,y-1);
+			isAllDropout[3] = haveAllDropout(fieldMetadata,x+1,y);
 		}
 		if(x == fieldWidth -1)
 		{
 			sample = tmpField[(fieldWidth * y) + x];
 			sampleW = tmpField[(fieldWidth * y) + x - 1];
 			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+			isAllDropout[1] = haveAllDropout(fieldMetadata,x,y-1);
+			isAllDropout[4] = haveAllDropout(fieldMetadata,x-1,y);
 		}
 		else
 		{
@@ -721,12 +748,15 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 			sampleW = tmpField[(fieldWidth * y) + x - 1];
 			sampleE = tmpField[(fieldWidth * y) + x + 1];
 			sampleN = tmpField[(fieldWidth * (y-1)) + x];
+			isAllDropout[1] = haveAllDropout(fieldMetadata,x,y-1);
+			isAllDropout[3] = haveAllDropout(fieldMetadata,x+1,y);
+			isAllDropout[4] = haveAllDropout(fieldMetadata,x-1,y);
 		}
 	}
 }
 
 // Method returns true if specified pixel is a dropout
-bool Stacker::isDropout(const DropOuts& dropOuts, const qint32 fieldX, const qint32 fieldY)
+inline bool Stacker::isDropout(const DropOuts& dropOuts, const qint32 fieldX, const qint32 fieldY)
 {
     for (qint32 i = 0; i < dropOuts.size(); i++) {
         if ((dropOuts.fieldLine(i) - 1) == fieldY) {
@@ -738,12 +768,24 @@ bool Stacker::isDropout(const DropOuts& dropOuts, const qint32 fieldX, const qin
     return false;
 }
 
+// Method returns true if specified pixel is a dropout
+inline bool Stacker::haveAllDropout(const QVector<LdDecodeMetaData::Field>& fieldMetadata, const qint32 x, const qint32 y)
+{
+	const qint32 size = fieldMetadata.size();
+    for (qint32 i = 0; i < size; i++) {
+		if(!isDropout(fieldMetadata[i].dropOuts,x,y))
+            return false;
+    }
+
+    return true;
+}
+
 // Use differential dropout detection to remove suspected dropout error
 // values from inputValues to produce the set of output values.  This generally improves everything, but
 // might cause an increase in errors for really noisy frames (where the DOs are in the same place in
 // multiple sources).  Another possible disadvantage is that diffDOD might pass through master plate errors
 // which, whilst not technically errors, may be undesirable.
-QVector<quint16> Stacker::diffDod(const QVector<quint16>& inputValues, const LdDecodeMetaData::VideoParameters& videoParameters, const qint32 xPos, const bool& verbose)
+QVector<quint16> Stacker::diffDod(const QVector<quint16>& inputValues, const LdDecodeMetaData::VideoParameters& videoParameters, const bool& verbose)
 {
     QVector<quint16> outputValues;
 
