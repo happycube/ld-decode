@@ -40,8 +40,8 @@ void Stacker::run()
     QVector<SourceVideo::Data> secondSourceField;
     QVector<LdDecodeMetaData::Field> firstFieldMetadata;
     QVector<LdDecodeMetaData::Field> secondFieldMetadata;
-	qint32 mode;
-	qint32 smartThreshold;
+    qint32 mode;
+    qint32 smartThreshold;
     bool reverse;
     bool noDiffDod;
     bool passThrough;
@@ -114,7 +114,7 @@ void Stacker::stackField(const qint32 frameNumber,const QVector<SourceVideo::Dat
 						const bool sampleIsDropout = isDropout(fieldMetadata[availableSourcesForFrame[i]].dropOuts, x, y);
 						
 						// Include the source's pixel data if it's not marked as a dropout
-						if (!sampleIsDropout && noDiffDod) {
+						if (!sampleIsDropout) {
 							// Pixel is valid
 							inputValues.append(pixelValue);
 						}
@@ -264,7 +264,7 @@ quint16 Stacker::stackMode(const QVector<quint16>& elements, const QVector<quint
 			((elementsN.size() > 1) && isAllDropout[1]) ? resultN = Stacker::median(elementsN) : (elementsN.size() > 0 ? resultN = elementsN[0] : resultN = -1);
 			((elementsS.size() > 1) && isAllDropout[2]) ? resultS = Stacker::median(elementsS) : (elementsS.size() > 0 ? resultS = elementsS[0] : resultS = -1);
 			
-			if(!isAllDropout[0] || (isAllDropout[1] && isAllDropout[2]))
+			if(!isAllDropout[0])
 			{
 				((elementsE.size() > 1) && isAllDropout[3]) ? resultE = Stacker::median(elementsE) : (elementsE.size() > 0 ? resultE = elementsE[0] : resultE = -1);
 				((elementsW.size() > 1) && isAllDropout[4]) ? resultW = Stacker::median(elementsW) : (elementsW.size() > 0 ? resultW = elementsW[0] : resultW = -1);
@@ -450,7 +450,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 	qint32 source = 0;
 	qint32 fieldWidth = videoParameters.fieldWidth;
 	qint32 fieldHeight = videoParameters.fieldHeight;
-	bool sampleIsDropout = false;
+	bool sampleIsDropout = true;
 	for (qint32 i = 0; i < availableSourcesForFrame.size(); i++) {
 		source = availableSourcesForFrame[i];
 		if(y == 0)
@@ -460,7 +460,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * y) + x];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sample.append(pixelValue);
 				}
@@ -476,7 +476,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				pixelValue = inputFields[source][(fieldWidth * y) + x + 1];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x+1, y);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleE.append(pixelValue);
 				}
@@ -492,7 +492,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -511,7 +511,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -530,7 +530,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * y) + x + 1];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x+1, y);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleE.append(pixelValue);
 				}
@@ -546,7 +546,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -568,7 +568,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -587,7 +587,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
@@ -606,7 +606,7 @@ void Stacker::getProcessedSample(const qint32 x, const qint32 y, const QVector<q
 				//read new value
 				pixelValue = inputFields[source][(fieldWidth * (y+1)) + x];
 				sampleIsDropout = isDropout(fieldMetadata[source].dropOuts, x, y+1);
-				if (!sampleIsDropout && noDiffDod) {
+				if (!sampleIsDropout) {
 					// Pixel is valid
 					sampleS.append(pixelValue);
 				}
