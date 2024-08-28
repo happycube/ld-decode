@@ -849,7 +849,10 @@ def main() -> int:
                     else print(f"NTSC VHS format selected, Audio mode is {real_mode}")
                 )
             else:
-                print(f"NTSC Hi8 format selected, Audio mode is {real_mode}")
+                if system == "PAL":
+                    print(f"PAL Hi8 format selected, Audio mode is {real_mode}")
+                else:
+                    print(f"NTSC Hi8 format selected, Audio mode is {real_mode}")
 
 
             return run_decoder(args, decode_options)
