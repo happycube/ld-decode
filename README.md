@@ -554,15 +554,13 @@ Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
 Changes the colour or TV system to NTSC, PAL, PAL-M, NTSC-J, or [MESECAM](https://github.com/oyvindln/vhs-decode/wiki/Decoding-SECAM-&-MESECAM) respectively.
 Please note that, as of this writing, support for PAL-M is **experimental**.
 
-`-n` = NTSC
+`--system` followed by the TV System 
 
-`-p` = PAL
+For example `--system NTSC`
 
-`--pm` = PAL-M
+Or `PAL`, `PAL-M`, `NTSC-J or `MESECAM`
 
-`--NTSCJ` = NTSC-J
-
-`--MESECAM` = MESECAM (requires extra GNUradio script for decoding colour currently)
+MESECAM (requires extra GNUradio script for decoding colour after the TBCs currently)
 
 
 # [Time & Location Control](https://github.com/oyvindln/vhs-decode/wiki/Command-List#time--location-control)
