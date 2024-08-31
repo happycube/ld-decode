@@ -383,9 +383,19 @@ class FieldShared:
             if self.rf.options.export_raw_tbc:
                 return input.astype(np.single)
             else:
+                ire0 = self.rf.DecoderParams["ire0"]
+                if self.rf.options.ire0_adjust and input.size == self.outlinecount * self.outlinelen:
+                    blank_levels = np.empty(self.outlinecount)
+                    for i in range(0, self.outlinecount):
+                        blank_levels[i] = np.median(
+                            input[i * self.outlinelen + self.ire0_backporch[0] : i * self.outlinelen + self.ire0_backporch[1]]
+                        )
+                    blank_levels = np.sort(blank_levels)
+                    ire0 = np.mean(blank_levels[int(self.outlinecount / 3) : int(self.outlinecount * 2 / 3)])
+                    ldd.logger.debug("calculated ire0: %.02f", ire0)
                 return hz_to_output_array(
                     input,
-                    self.rf.DecoderParams["ire0"]
+                    ire0
                     + self.rf.DecoderParams["track_ire0_offset"][
                         self.rf.track_phase ^ (self.field_number % 2)
                     ],
@@ -1079,6 +1089,7 @@ class FieldShared:
 class FieldPALShared(FieldShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALShared, self).__init__(*args, **kwargs)
+        self.ire0_backporch = (96, 160)
 
     def refine_linelocs_pilot(self, linelocs=None):
         """Override this as most regular band tape formats does not use have a pilot burst.
@@ -1101,6 +1112,7 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCShared, self).__init__(*args, **kwargs)
         self.fieldPhaseID = 0
+        self.ire0_backporch = (74, 124)
 
     def refine_linelocs_burst(self, linelocs=None):
         """Override this as it's LD specific
