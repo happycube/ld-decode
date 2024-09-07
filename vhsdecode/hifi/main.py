@@ -154,8 +154,11 @@ parser.add_argument(
     "--audio_mode",
     dest="mode",
     type=str,
-    default="s",
-    help="Audio mode (s: stereo, mpx: stereo with mpx, l: left channel, r: right channel, sum: mono sum)",
+    help=(
+        "Audio mode (s: stereo, mpx: stereo with mpx, l: left channel, r: right channel, sum: mono sum) - "
+        "defaults to s other than on 8mm which defaults to mpx."
+        " 8mm mono is not auto detected currently so has to be manually specified as l."
+    ),
 )
 
 
@@ -774,7 +777,11 @@ def main() -> int:
 
     print("Initializing ...")
 
-    real_mode = "s" if not args.mode else args.mode
+    # 8mm AFM uses a mono channel, or L-R/L+R rather than L/R channels
+    # The spec defines a dual audio mode but not sure if it was ever used.
+    default_mode = "s" if not args.format_8mm else "mpx"
+
+    real_mode = default_mode if not args.mode else args.mode
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
@@ -796,7 +803,10 @@ def main() -> int:
 
     if args.UI and not HIFI_UI:
         print(
-            "PyQt5/PyQt6 is not installed, can not use graphical UI, falling back to command line interface.."
+            (
+                "PyQt5/PyQt6 is not installed, can not use graphical UI,"
+                " falling back to command line interface.."
+            )
         )
 
     if args.UI and HIFI_UI:
@@ -853,7 +863,6 @@ def main() -> int:
                     print(f"PAL Hi8 format selected, Audio mode is {real_mode}")
                 else:
                     print(f"NTSC Hi8 format selected, Audio mode is {real_mode}")
-
 
             return run_decoder(args, decode_options)
         else:
