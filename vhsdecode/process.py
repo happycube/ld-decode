@@ -569,6 +569,7 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         export_raw_tbc = rf_options.get("export_raw_tbc", False)
+        ire0_adjust = rf_options.get("ire0_adjust", False)
         is_color_under = vhs_formats.is_color_under(tape_format)
         write_chroma = (
             is_color_under
@@ -602,6 +603,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "export_raw_tbc",
                 "fm_audio_notch",
                 "chroma_offset",
+                "ire0_adjust",
             ],
         )(
             self.iretohz(100) * 2,
@@ -631,6 +633,7 @@ class VHSRFDecode(ldd.RFDecode):
             export_raw_tbc,
             rf_options.get("fm_audio_notch", 0),
             int(self.DecoderParams.get("chroma_offset", 5) * (self.freq / 40.0)),
+            ire0_adjust,
         )
 
         # As agc can alter these sysParams values, store a copy to then

@@ -109,6 +109,13 @@ def main(args=None, use_gui=False):
         help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
     )
     luma_group.add_argument(
+        "--ire0_adjust",
+        dest="ire0_adjust",
+        action="store_true",
+        default=False,
+        help="Automatic adjust of ire0 based blanking level",
+    )
+    luma_group.add_argument(
         "--high_boost",
         metavar="High frequency boost multiplier",
         type=float,
@@ -391,6 +398,7 @@ def main(args=None, use_gui=False):
     rf_options["skip_hsync_refine"] = args.skip_hsync_refine
     rf_options["export_raw_tbc"] = args.export_raw_tbc
     rf_options["tape_speed"] = args.tape_speed
+    rf_options["ire0_adjust"] = args.ire0_adjust
 
     extra_options = get_extra_options(args, not use_gui)
     extra_options["params_file"] = args.params_file

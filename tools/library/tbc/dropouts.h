@@ -47,7 +47,7 @@ public:
     void reserve(int size);
     void resize(qint32 size);
     void clear();
-    void concatenate();
+    void concatenate(const bool verbose=true);
 
     // Return the number of dropouts
     qint32 size() const {
