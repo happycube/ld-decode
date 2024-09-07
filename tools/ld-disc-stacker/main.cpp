@@ -185,7 +185,7 @@ int main(int argc, char *argv[])
 	
     // Get the arguments from the parser
 	qint32 mode = 3;
-	if (parser.isSet(modeOption)) {
+    if (parser.isSet(modeOption)) {
         mode = parser.value(modeOption).toInt();
 
         if (mode > 4 || mode < 0) {
