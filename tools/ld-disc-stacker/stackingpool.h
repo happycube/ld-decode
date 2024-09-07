@@ -41,7 +41,7 @@ class StackingPool : public QObject
 public:
     explicit StackingPool(QString _outputFilename, QString _outputJsonFilename,
                            qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                           bool _reverse, bool _noDiffDod, bool _passThrough, QObject *parent = nullptr);
+                           qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _verbose, QObject *parent = nullptr);
 
     bool process();
 
@@ -50,17 +50,20 @@ public:
                        QVector<qint32> &firstFieldNumber, QVector<SourceVideo::Data> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
                        QVector<qint32> &secondFieldNumber, QVector<SourceVideo::Data> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
-                       bool& _reverse, bool &_noDiffDod, bool &_passThrough, QVector<qint32> &availableSourcesForFrame);
+                       qint32& _mode, qint32& _smartThreshold, bool& _reverse, bool &_noDiffDod, bool &_passThrough, QVector<qint32> &availableSourcesForFrame);
 
     bool setOutputFrame(qint32 frameNumber,
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
                         DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts);
+	const bool verbose;
 
 private:
     QString outputFilename;
     QString outputJsonFilename;
     qint32 maxThreads;
+    qint32 mode;
+    qint32 smartThreshold;
     bool reverse;
     bool noDiffDod;
     bool passThrough;

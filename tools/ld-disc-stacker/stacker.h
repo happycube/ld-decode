@@ -51,12 +51,17 @@ private:
     StackingPool& stackingPool;
     QVector<LdDecodeMetaData::VideoParameters> videoParameters;
 
-    void stackField(qint32 frameNumber, QVector<SourceVideo::Data> inputFields, LdDecodeMetaData::VideoParameters videoParameters,
-                    QVector<LdDecodeMetaData::Field> fieldMetadata, QVector<qint32> availableSourcesForFrame, bool noDiffDod, bool passThrough,
-                    SourceVideo::Data &outputField, DropOuts &dropOuts);
-    quint16 median(QVector<quint16> v);
-    bool isDropout(DropOuts dropOuts, qint32 fieldX, qint32 fieldY);
-    QVector<quint16> diffDod(QVector<quint16> inputValues, LdDecodeMetaData::VideoParameters videoParameters, qint32 xPos);
+    void stackField(const qint32 frameNumber,const QVector<SourceVideo::Data>& inputFields,const LdDecodeMetaData::VideoParameters& videoParameters,
+                    const QVector<LdDecodeMetaData::Field>& fieldMetadata,const QVector<qint32> availableSourcesForFrame,const bool& noDiffDod,const bool& passThrough,
+                    SourceVideo::Data &outputField, DropOuts &dropOuts,const qint32& mode,const qint32& smartThreshold,const bool& verbose);
+	void getProcessedSample(const qint32 x, const qint32 y, const QVector<qint32>& availableSourcesForFrame, const QVector<SourceVideo::Data>& inputFields, QVector<QVector<quint16>>& tmpField, const LdDecodeMetaData::VideoParameters& videoParameters, const QVector<LdDecodeMetaData::Field>& fieldMetadata, QVector<quint16>& sample, QVector<quint16>& sampleN, QVector<quint16>& sampleS, QVector<quint16>& sampleE, QVector<quint16>& sampleW, QVector<bool>& isAllDropout, const bool& noDiffDod, const bool& verbose);
+    inline quint16 median(QVector<quint16> v);
+    inline qint32 mean(const QVector<quint16>& v);
+    inline quint16 closest(const QVector<quint16>& v,const qint32 target);
+	quint16 stackMode(const QVector<quint16>& elements, const QVector<quint16>& elementsN,const QVector<quint16>& elementsS,const QVector<quint16>& elementsE, const QVector<quint16>& elementsW,const QVector<bool>& isAllDropout, const qint32& mode, const qint32& smartThreshold);
+    inline bool isDropout(const DropOuts& dropOuts, const qint32 fieldX, const qint32 fieldY);
+	inline bool haveAllDropout(const QVector<LdDecodeMetaData::Field>& fieldMetadata, const qint32 x, const qint32 y);
+    QVector<quint16> diffDod(const QVector<quint16>& inputValues,const LdDecodeMetaData::VideoParameters& videoParameters,const bool& verbose);
 };
 
 #endif // STACKER_H

@@ -89,7 +89,7 @@ void DropOuts::clear()
 
 // TODO: Sort the DOs by fieldLine otherwise this won't work correctly unless the
 // caller is aware of the restriction (used in ld-diffdod only at the moment)
-void DropOuts::concatenate()
+void DropOuts::concatenate(const bool verbose)
 {
     qint32 sizeAtStart = m_startx.size();
 
@@ -120,7 +120,7 @@ void DropOuts::concatenate()
         i++;
     }
 
-    qDebug() << "Concatenated dropouts: was" << sizeAtStart << "now" << m_startx.size() << "dropouts";
+    if(verbose){qDebug() << "Concatenated dropouts: was" << sizeAtStart << "now" << m_startx.size() << "dropouts";}
 }
 
 // Custom debug streaming operator
