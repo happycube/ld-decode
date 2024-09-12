@@ -75,11 +75,11 @@ jobs:
         run: find scripts scripts/linux -maxdepth 1 -type f -executable -exec cp {} release/ \;
 
       - name: Create release archive
-        run: tar -cvjSf tbc-tools.tar.bz2 --transform s/release/tbc-tools/ release/
+        run: tar -cvJSf tbc-tools.tar.xz --transform s/release/tbc-tools/ release/
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: tbc-tools_linux_x86_64
-          path: tbc-tools.tar.bz2
+          path: tbc-tools.tar.xz
           if-no-files-found: error
