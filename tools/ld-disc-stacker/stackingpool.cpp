@@ -27,9 +27,9 @@
 
 StackingPool::StackingPool(QString _outputFilename, QString _outputJsonFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                             qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _verbose, QObject *parent)
+                             qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _integrityCheck, bool _verbose, QObject *parent)
     : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
-      maxThreads(_maxThreads), mode(_mode), smartThreshold(_smartThreshold), reverse(_reverse), noDiffDod(_noDiffDod), passThrough(_passThrough), verbose(_verbose),
+      maxThreads(_maxThreads), mode(_mode), smartThreshold(_smartThreshold), reverse(_reverse), noDiffDod(_noDiffDod), passThrough(_passThrough), integrityCheck(_integrityCheck), verbose(_verbose),
       abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
 }
@@ -83,6 +83,7 @@ bool StackingPool::process()
     inputFrameNumber = 1;
     outputFrameNumber = 1;
     lastFrameNumber = ldDecodeMetaData[0]->getNumberOfFrames();
+	skippedFrame = 0;
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
@@ -110,7 +111,10 @@ bool StackingPool::process()
     const double totalSecs = (static_cast<double>(totalTimer.elapsed()) / 1000.0);
     qInfo() << "Disc stacking complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
                lastFrameNumber / totalSecs << "FPS )";
-
+	if(integrityCheck)
+	{
+		qInfo() << "Stacking found " << skippedFrame << "corrupted frame";
+	}
     qInfo() << "Creating JSON metadata file for stacked TBC...";
     correctMetaData().write(outputJsonFilename);
 
@@ -217,6 +221,26 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     } else {
         availableSourcesForFrame.append(0);
     }
+	
+	if(integrityCheck)
+	{
+		const QVector<qint32> availableSourcesForFrameTmp = availableSourcesForFrame;
+		const int size = availableSourcesForFrameTmp.size();
+		for(int i; i < size;i++)
+		{
+			
+			if(!isIntegrityOk(firstFieldVideoData[availableSourcesForFrameTmp[i]],videoParameters[0]))
+			{
+				availableSourcesForFrame.remove(i);
+				skippedFrame++;
+			}
+			else if(!isIntegrityOk(secondFieldVideoData[availableSourcesForFrameTmp[i]],videoParameters[0]))
+			{
+				availableSourcesForFrame.remove(i);
+				skippedFrame++;
+			}
+		}
+	}
 
     // Set the other miscellaneous parameters
     _mode = mode;
@@ -287,7 +311,7 @@ bool StackingPool::setOutputFrame(qint32 frameNumber,
         ldDecodeMetaData[0]->updateFieldDropOuts(outputFrame.secondTargetFieldDropOuts, outputFrame.secondFieldSeqNo);
 
         // Show debug
-        qDebug().nospace() << "Processed frame " << outputFrameNumber;
+        qInfo().nospace() << "Processed frame " << outputFrameNumber;
 
         if (outputFrameNumber % 100 == 0) {
             qInfo() << "Processed and written frame" << outputFrameNumber;
@@ -401,6 +425,27 @@ qint32 StackingPool::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qi
 {
     // Offset the VBI frame number to get the sequential source frame number
     return vbiFrameNumber - sourceMinimumVbiFrame[sourceNumber] + 1;
+}
+
+bool StackingPool::isIntegrityOk(const SourceVideo::Data& inputFields,const LdDecodeMetaData::VideoParameters& videoParameters)
+{
+	qint32 count = 0;
+	for (qint32 y = 0; y < videoParameters.fieldHeight; y++) 
+	{
+		if(inputFields[(videoParameters.fieldWidth * y) + 4] > (videoParameters.black16bIre - (10 * 256)))
+		{
+			count++;
+		}
+		else
+		{
+			count = 0;
+		}
+		if(count == 3)
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 // Method that returns a vector of the sources that contain data for the required VBI frame number

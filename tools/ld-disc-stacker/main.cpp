@@ -135,6 +135,12 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate(
                                          "main", "Pass-through dropouts present on every source"));
     parser.addOption(passthroughOption);
+    
+    // Option to check integrity off every source and remove bad frame
+    QCommandLineOption integrityOption(QStringList() << "it" << "integrity",
+                                        QCoreApplication::translate(
+                                         "main", "Check if frames contain skip or sample drop and discard bad source for specific frame"));
+    parser.addOption(integrityOption);
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("inputs", QCoreApplication::translate(
@@ -182,6 +188,7 @@ int main(int argc, char *argv[])
     bool noDiffDod = parser.isSet(noDiffDodOption);
     bool noMap = parser.isSet(noMapOption);
     bool passThrough = parser.isSet(passthroughOption);
+    bool integrityCheck = parser.isSet(integrityOption);
 	
     // Get the arguments from the parser
 	qint32 mode = 3;
@@ -413,7 +420,7 @@ int main(int argc, char *argv[])
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
     StackingPool stackingPool(outputFilename, outputJsonFilename, maxThreads,
-                                ldDecodeMetaData, sourceVideos, mode, smartThreshold, reverse, noDiffDod, passThrough, verbose);
+                                ldDecodeMetaData, sourceVideos, mode, smartThreshold, reverse, noDiffDod, passThrough, integrityCheck, verbose);
     if (!stackingPool.process()) result = 1;
 
     // Close open source video files
