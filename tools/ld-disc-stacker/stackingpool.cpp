@@ -83,7 +83,7 @@ bool StackingPool::process()
     inputFrameNumber = 1;
     outputFrameNumber = 1;
     lastFrameNumber = ldDecodeMetaData[0]->getNumberOfFrames();
-	skippedFrame = 0;
+    skippedFrame = 0;
     totalTimer.start();
 
     // Start a vector of decoding threads to process the video
@@ -111,10 +111,10 @@ bool StackingPool::process()
     const double totalSecs = (static_cast<double>(totalTimer.elapsed()) / 1000.0);
     qInfo() << "Disc stacking complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
                lastFrameNumber / totalSecs << "FPS )";
-	if(integrityCheck)
-	{
-		qInfo() << "Stacking found " << skippedFrame << "corrupted frame";
-	}
+    if(integrityCheck)
+    {
+        qInfo() << "Stacking found " << skippedFrame << "corrupted frame";
+    }
     qInfo() << "Creating JSON metadata file for stacked TBC...";
     correctMetaData().write(outputJsonFilename);
 
@@ -221,26 +221,28 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     } else {
         availableSourcesForFrame.append(0);
     }
-	
-	if(integrityCheck)
-	{
-		const QVector<qint32> availableSourcesForFrameTmp = availableSourcesForFrame;
-		const int size = availableSourcesForFrameTmp.size();
-		for(int i; i < size;i++)
-		{
-			
-			if(!isIntegrityOk(firstFieldVideoData[availableSourcesForFrameTmp[i]],videoParameters[0]))
-			{
-				availableSourcesForFrame.remove(i);
-				skippedFrame++;
-			}
-			else if(!isIntegrityOk(secondFieldVideoData[availableSourcesForFrameTmp[i]],videoParameters[0]))
-			{
-				availableSourcesForFrame.remove(i);
-				skippedFrame++;
-			}
-		}
-	}
+    
+    if(integrityCheck)
+    {
+        const QVector<qint32> availableSourcesForFrameTmp = availableSourcesForFrame;
+        const int size = availableSourcesForFrameTmp.size();
+        for(int i; i < size;i++)
+        {
+            
+            if(!isIntegrityOk(firstFieldVideoData[availableSourcesForFrameTmp[i]],videoParameters[0]))
+            {
+                availableSourcesForFrame.remove(i);
+                skippedFrame++;
+                qInfo() << "found corrupted data at output frame : " << frameNumber << " from source (" << availableSourcesForFrameTmp[i] << ") field 1";
+            }
+            else if(!isIntegrityOk(secondFieldVideoData[availableSourcesForFrameTmp[i]],videoParameters[0]))
+            {
+                availableSourcesForFrame.remove(i);
+                skippedFrame++;
+                qInfo() << "found corrupted data at output frame : " << frameNumber << " from source (" << availableSourcesForFrameTmp[i] << ") field 2";
+            }
+        }
+    }
 
     // Set the other miscellaneous parameters
     _mode = mode;
@@ -311,7 +313,7 @@ bool StackingPool::setOutputFrame(qint32 frameNumber,
         ldDecodeMetaData[0]->updateFieldDropOuts(outputFrame.secondTargetFieldDropOuts, outputFrame.secondFieldSeqNo);
 
         // Show debug
-        qInfo().nospace() << "Processed frame " << outputFrameNumber;
+        qDebug().nospace() << "Processed frame " << outputFrameNumber;
 
         if (outputFrameNumber % 100 == 0) {
             qInfo() << "Processed and written frame" << outputFrameNumber;
@@ -429,23 +431,23 @@ qint32 StackingPool::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qi
 
 bool StackingPool::isIntegrityOk(const SourceVideo::Data& inputFields,const LdDecodeMetaData::VideoParameters& videoParameters)
 {
-	qint32 count = 0;
-	for (qint32 y = 0; y < videoParameters.fieldHeight; y++) 
-	{
-		if(inputFields[(videoParameters.fieldWidth * y) + 4] > (videoParameters.black16bIre - (10 * 256)))
-		{
-			count++;
-		}
-		else
-		{
-			count = 0;
-		}
-		if(count == 3)
-		{
-			return false;
-		}
-	}
-	return true;
+    qint32 count = 0;
+    for (qint32 y = 0; y < videoParameters.fieldHeight; y++) 
+    {
+        if(inputFields[(videoParameters.fieldWidth * y) + 4] > (videoParameters.black16bIre - (10 * 256)))
+        {
+            count++;
+        }
+        else
+        {
+            count = 0;
+        }
+        if(count == 3)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 // Method that returns a vector of the sources that contain data for the required VBI frame number

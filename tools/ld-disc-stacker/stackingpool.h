@@ -56,7 +56,7 @@ public:
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
                         DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts);
-	const bool verbose;
+    const bool verbose;
 
 private:
     QString outputFilename;
@@ -67,9 +67,9 @@ private:
     bool reverse;
     bool noDiffDod;
     bool passThrough;
-	bool integrityCheck;
+    bool integrityCheck;
     QElapsedTimer totalTimer;
-	qint32 skippedFrame;
+    qint32 skippedFrame;
 
     // Atomic abort flag shared by worker threads; workers watch this, and shut
     // down as soon as possible if it becomes true
@@ -109,7 +109,7 @@ private:
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
     bool writeOutputField(const SourceVideo::Data &fieldData);
     void correctPhaseIDs();
-	bool isIntegrityOk(const SourceVideo::Data& inputFields,const LdDecodeMetaData::VideoParameters& videoParameters);
+    bool isIntegrityOk(const SourceVideo::Data& inputFields,const LdDecodeMetaData::VideoParameters& videoParameters);
     template<int field>
     void replaceFieldMetaData(qint32 frameNumber);
     LdDecodeMetaData &correctMetaData();
