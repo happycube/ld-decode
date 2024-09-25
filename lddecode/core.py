@@ -5,29 +5,29 @@ import sys
 import threading
 import time
 import types
+import warnings
 
 from queue import Queue
 
 # standard numeric/scientific libraries
 import numpy as np
+import scipy.fft as npfft
 import scipy.signal as sps
 import scipy.interpolate as spi
 import numba
 from numba import njit
 
-import scipy.fft as npfft
-
 # internal libraries
 
 from . import efm_pll
 from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
-from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
+from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, n_orgt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate
+from .utils import Pulse, nb_std, n_ornotrange, nb_concatenate
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -223,8 +223,8 @@ FilterParams_PAL_lowband['video_lpf_freq']  = 4800000
 class RFDecode:
     """The core RF decoding code.
 
-    This decoder uses FFT overlap-save processing(1) to allow for parallel processing and combination of
-    operations.
+    This decoder uses FFT overlap-save processing(1) to allow for parallel processing and 
+    combination of operations.
 
     Video filter signal path:
     - FFT/iFFT stage 1: RF BPF (i.e. 3.5-13.5mhz NTSC) * hilbert filter
@@ -282,9 +282,9 @@ class RFDecode:
         """
 
         self.blocklen     = blocklen
-        self.blockcut     = 1024 
+        self.blockcut     = 1024
         self.blockcut_end = 0
-        
+
         self.system       = system
 
         self.setupcount   = 0
@@ -333,7 +333,7 @@ class RFDecode:
 
         deemp = list(self.DecoderParams["video_deemp"])
 
-        # note that deemp[0] is the t1 (high freuqency) coefficient, and 
+        # note that deemp[0] is the t1 (high freuqency) coefficient, and
         # deemp[1] is the t2 (low frequency) one.  These are passed in as
         # microseconds, but are converted to seconds here.
 
@@ -352,8 +352,8 @@ class RFDecode:
 
         # How much horizontal sync position can deviate from previous/expected position
         # and still be interpreted as a horizontal sync pulse.
-        # Too high tolerance may result in false positive sync pulses, too low may end up missing them.
-        # Tapes will need a wider tolerance than laserdiscs due to head switch etc.
+        # Too high tolerance may result in false positive sync pulses, too low may end up missing 
+        # them.  (Tapes will need a wider tolerance than laserdiscs due to head switch etc.)
         self.hsync_tolerance = 0.4
 
         self.decode_digital_audio = decode_digital_audio
@@ -387,7 +387,7 @@ class RFDecode:
                                    (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half]
 
             # This analog audio bandpass filter is an approximation of
-            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm, 
+            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm,
             # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
             # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
 
@@ -426,11 +426,12 @@ class RFDecode:
         )
         phase = [p * 1.25 for p in phase]
 
-        """Compute filter coefficients for the given FFTFilter."""
+        # Compute filter coefficients for the given FFTFilter.
         # Anything above the highest frequency is left as zero.
         coeffs = np.zeros(self.blocklen, dtype=complex)
 
-        # Generate the frequency-domain coefficients by cubic interpolation between the equaliser values.
+        # Generate the frequency-domain coefficients by cubic interpolation between the 
+        # equaliser values.
         a_interp = spi.interp1d(freqs, amp, kind="cubic")
         p_interp = spi.interp1d(freqs, phase, kind="cubic")
 
@@ -1630,7 +1631,6 @@ class Field:
                 hlens.append(p.len)
 
         LT = {}
-        LT = {}
         if len(hlens) > 0:
             LT["hsync_median"] = np.median(hlens)
         else:
@@ -1640,7 +1640,6 @@ class Field:
         hsync_max = LT["hsync_median"] + self.usectoinpx(0.5)
 
         LT["hsync"] = (hsync_min, hsync_max)
-
         LT["hsync_offset"] = LT["hsync_median"] - hsync_typical
 
         # ??? - replace self.usectoinpx with local timings?
@@ -1753,16 +1752,11 @@ class Field:
 
             # Quality check
             if spulse is not None:
-                good = (
-                    self.pulse_qualitycheck(validpulses[-1], spulse)
-                    if len(validpulses)
-                    else False
-                )
-
+                good = validpulses and self.pulse_qualitycheck(validpulses[-1], spulse)
                 validpulses.append((spulse[0], spulse[1], good))
 
             if done:
-                return done, validpulses
+                break
 
         return done, validpulses
 
@@ -1777,30 +1771,22 @@ class Field:
         while i < len(self.rawpulses):
             curpulse = self.rawpulses[i]
             if inrange(curpulse.len, *self.LT["hsync"]):
-                good = (
-                    self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse))
-                    if len(valid_pulses)
-                    else False
-                )
+                good = valid_pulses and self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse))
                 valid_pulses.append((HSYNC, curpulse, good))
-                i += 1
             elif (
                 i > 2
                 and inrange(self.rawpulses[i].len, *self.LT["eq"])
-                and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC)
+                and (valid_pulses and valid_pulses[-1][0] == HSYNC)
             ):
-                # print(i, self.rawpulses[i])
                 done, vblank_pulses = self.run_vblank_state_machine(
                     self.rawpulses[i - 2 : i + 24], self.LT
                 )
                 if done:
                     [valid_pulses.append(p) for p in vblank_pulses[2:]]
-                    i += len(vblank_pulses) - 2
+                    i += len(vblank_pulses) - 3 # account for i += 1 at end of loop
                     num_vblanks += 1
-                else:
-                    i += 1
-            else:
-                i += 1
+
+            i += 1
 
         return valid_pulses
 
@@ -2916,7 +2902,7 @@ class FieldPAL(Field):
             peakloc = np.argmax(np.abs(pilots))
 
             zc_base = calczc(pilots, peakloc, 0)
-            if zc_base is not None:
+            if zc_base:
                 zc = (zc_base - lsoffset) / plen[l]
             else:
                 zc = zcs[-1] if len(zcs) else 0
@@ -3468,6 +3454,15 @@ class LDdecode:
         self.isCLV = False
         self.frameNumber = None
 
+        # CLV
+        self.isCLV = False
+        self.earlyCLV = False
+        self.clvMinutes = None
+        self.clvSeconds = None
+        self.clvFrameNum = None
+
+        self.prevPhaseID = None
+
         self.autoMTF = True
         self.useAGC = extra_options.get("useAGC", True)
 
@@ -3512,8 +3507,6 @@ class LDdecode:
             self.lpf.print_stats()
 
     def roughseek(self, location, isField=True):
-        self.prevPhaseID = None
-
         self.fdoffset = location
         if isField:
             self.fdoffset *= self.bytes_per_field
@@ -3844,24 +3837,17 @@ class LDdecode:
     def decodeFrameNumber(self, f1, f2):
         """ decode frame #/information from Philips code data on both fields """
 
-        # CLV
-        self.isCLV = False
-        self.earlyCLV = False
-        self.clvMinutes = None
-        self.clvSeconds = None
-        self.clvFrameNum = None
-
         def decodeBCD(bcd):
             """Read a BCD-encoded number.
             Raise ValueError if any of the digits aren't valid BCD."""
 
-            if bcd == 0:
+            if not bcd:
                 return 0
-            else:
-                digit = bcd & 0xF
-                if digit > 9:
-                    raise ValueError("Non-decimal BCD digit")
-                return (10 * decodeBCD(bcd >> 4)) + digit
+
+            digit = bcd & 0xF
+            if digit > 9:
+                raise ValueError("Non-decimal BCD digit")
+            return (10 * decodeBCD(bcd >> 4)) + digit
 
         leadoutCount = 0
 
@@ -3913,9 +3899,9 @@ class LDdecode:
                     return (
                         (minute_seconds + self.clvSeconds) * self.clvfps
                     ) + self.clvFrameNum
-                else:
-                    self.earlyCLV = True
-                    return minute_seconds
+
+                self.earlyCLV = True
+                return minute_seconds
 
         return None  # seeking won't work w/minutes only
 
@@ -3991,13 +3977,12 @@ class LDdecode:
         return metrics
 
     def computeMetrics(self, f, fp=None, verbose=False):
-        system = f.rf.system
         if self.verboseVITS:
             verbose = True
 
         metrics = {}
 
-        if system == "NTSC":
+        if f.rf.system == "NTSC":
             self.computeMetricsNTSC(metrics, f, fp)
         else:
             self.computeMetricsPAL(metrics, f, fp)
@@ -4052,12 +4037,7 @@ class LDdecode:
             if k not in metrics:
                 continue
 
-            if "Ratio" in k:
-                digits = 4
-            elif "Burst" in k:
-                digits = 3
-            else:
-                digits = 1
+            digits = 4 if 'Ratio' in k else 3 if 'Burst' in k else 1
             rounded = roundfloat(metrics[k], places=digits)
             if np.isfinite(rounded):
                 metrics_rounded[k] = rounded
@@ -4067,10 +4047,10 @@ class LDdecode:
     @profile
     def buildmetadata(self, f, check_phase=True):
         """ returns field information JSON and whether or not a backfill field is needed """
-        prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
+        prevfi = self.fieldinfo[-1] if self.fieldinfo else None
 
         fi = {
-            "isFirstField": True if f.isFirstField else False,
+            "isFirstField": f.isFirstField,
             "syncConf": f.compute_syncconf(),
             "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
@@ -4088,7 +4068,7 @@ class LDdecode:
                 }
 
         # This is a bitmap, not a counter
-        decodeFaults = 0
+        decode_faults = 0
 
         fi["fieldPhaseID"] = f.fieldPhaseID
 
@@ -4105,21 +4085,21 @@ class LDdecode:
                         len(self.fieldinfo), prevfi["fieldPhaseID"], fi["fieldPhaseID"]
                     )
                 )
-                decodeFaults |= 2
+                decode_faults |= 2
 
             if prevfi["isFirstField"] == fi["isFirstField"]:
                 # logger.info('WARNING!  isFirstField stuck between fields')
                 if inrange(fi["diskLoc"] - prevfi["diskLoc"], 0.95, 1.05):
-                    decodeFaults |= 1
+                    decode_faults |= 1
                     fi["isFirstField"] = not prevfi["isFirstField"]
                     fi["syncConf"] = 10
                 else:
                     logger.error("Skipped field")
-                    decodeFaults |= 4
+                    decode_faults |= 4
                     fi["syncConf"] = 0
                     return fi, True
 
-        fi["decodeFaults"] = decodeFaults
+        fi["decodeFaults"] = decode_faults
         fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
 
         fi["vbi"] = {"vbiData": [int(lc) for lc in f.linecode if lc is not None]}
@@ -4129,7 +4109,7 @@ class LDdecode:
             self.firstfield = f
         else:
             # use a stored first field, in case we start with a second field
-            if self.firstfield is not None:
+            if self.firstfield:
                 # process VBI frame info data
                 self.frameNumber = self.decodeFrameNumber(self.firstfield, f)
 
@@ -4170,7 +4150,6 @@ class LDdecode:
                     elif disk_Frame:
                         outstr += f"Frame #{disk_Frame} "
                         
-
                     if special is not None:
                         outstr += special
 
@@ -4194,9 +4173,9 @@ class LDdecode:
         return fi, False
 
     def seek_getframenr(self, startfield):
-        """ Reads from file location startfield, returns first VBI frame # or None on failure and revised startfield """
+        """ Reads from file location startfield, returns first VBI frame # or None on failure and revised startfield
 
-        """ Note that if startfield is not 0, and the read fails, it will automatically retry
+            Note that if startfield is not 0, and the read fails, it will automatically retry
             at file location 0
         """
 
@@ -4205,7 +4184,7 @@ class LDdecode:
 
         self.roughseek(startfield)
 
-        for fields in range(10):
+        for _ in range(10):
             f, offset = self.decodefield(self.fdoffset, 0)
 
             if f is None:
@@ -4215,7 +4194,7 @@ class LDdecode:
                     startfield = 0
                     self.roughseek(startfield)
                 else:
-                    return None, startfield
+                    return None, startfield, None
             elif not f.valid:
                 self.fdoffset += offset
             else:
@@ -4230,8 +4209,9 @@ class LDdecode:
 
                     if self.earlyCLV:
                         logger.error("Cannot seek in early CLV disks w/o timecode")
-                        return None, startfield
-                    elif fnum is not None:
+                        return None, startfield, None
+                    
+                    if fnum is not None:
                         rawloc = np.floor((f.readloc / self.bytes_per_field) / 2)
                         logger.info("seeking: file loc %d frame # %d", rawloc, fnum)
 
@@ -4244,21 +4224,19 @@ class LDdecode:
         logger.info("Beginning seek")
 
         if not sys.warnoptions:
-            import warnings
-
             warnings.simplefilter("ignore")
 
         curfield = startframe * 2
 
-        for retries in range(3):
+        for _ in range(3):
             fnr, curfield, readloc = self.seek_getframenr(curfield)
             if fnr is None:
                 return None
 
-            cur = int((readloc / self.bytes_per_field))
             if fnr == target:
                 logger.info("Finished seek")
                 print("Finished seeking, starting at frame", fnr, file=sys.stderr)
+                cur = int((readloc / self.bytes_per_field))
                 self.roughseek(cur)
                 return cur
 
