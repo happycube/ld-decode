@@ -198,23 +198,50 @@ def _fallback_vsync_loc_means(
     Returns:
         [type]: a list of vsync locations in the list of pulses and a list of mean values
     """
-    vsync_locs = []
-    vsync_means = []
+
+    # ## Old impl
+    # vsync_locs = []
+    # vsync_means = []
+
+    # for i, p in enumerate(pulses):
+    #    if p.len > min_len and p.len < max_len:
+    #        vsync_locs.append(i)
+    #        vsync_means.append(
+    #            np.mean(
+    #                demod_05[
+    #                    int(p.start + mean_pos_offset) : int(
+    #                        p.start + p.len - mean_pos_offset
+    #                    )
+    #                ]
+    #            )
+    #        )
 
     mean_pos_offset = sample_freq_mhz
 
-    for i, p in enumerate(pulses):
-        if p.len > min_len and p.len < max_len:
-            vsync_locs.append(i)
-            vsync_means.append(
-                np.mean(
-                    demod_05[
-                        int(p.start + mean_pos_offset) : int(
-                            p.start + p.len - mean_pos_offset
-                        )
-                    ]
+    ir_pulses = [
+        (i, ir_pulse)
+        for (i, ir_pulse) in enumerate(pulses)
+        if (ir_pulse.len < max_len and ir_pulse.len > min_len)
+    ]
+
+    def pulse_mean(locs_and_pulses):
+        loc, pulse = locs_and_pulses
+        return loc, np.mean(
+            demod_05[
+                int(pulse.start + mean_pos_offset) : int(
+                    pulse.start + pulse.len - mean_pos_offset
                 )
+            ]
+        )
+
+    vsync_locs, vsync_means = list(
+        zip(
+            *map(
+                pulse_mean,
+                ir_pulses,
             )
+        )
+    )
 
     return vsync_locs, vsync_means
 
