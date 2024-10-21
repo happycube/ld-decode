@@ -41,7 +41,7 @@ class StackingPool : public QObject
 public:
     explicit StackingPool(QString _outputFilename, QString _outputJsonFilename,
                            qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
-                           qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _verbose, QObject *parent = nullptr);
+                           qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _integrityCheck, bool _verbose, QObject *parent = nullptr);
 
     bool process();
 
@@ -56,7 +56,7 @@ public:
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
                         DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts);
-	const bool verbose;
+    const bool verbose;
 
 private:
     QString outputFilename;
@@ -67,7 +67,9 @@ private:
     bool reverse;
     bool noDiffDod;
     bool passThrough;
+    bool integrityCheck;
     QElapsedTimer totalTimer;
+    qint32 skippedFrame;
 
     // Atomic abort flag shared by worker threads; workers watch this, and shut
     // down as soon as possible if it becomes true
@@ -107,6 +109,7 @@ private:
     QVector<qint32> getAvailableSourcesForFrame(qint32 vbiFrameNumber);
     bool writeOutputField(const SourceVideo::Data &fieldData);
     void correctPhaseIDs();
+    bool isIntegrityOk(const SourceVideo::Data& inputFields,const LdDecodeMetaData::VideoParameters& videoParameters);
     template<int field>
     void replaceFieldMetaData(qint32 frameNumber);
     LdDecodeMetaData &correctMetaData();
