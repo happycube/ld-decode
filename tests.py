@@ -115,9 +115,9 @@ def test_sync(filename, num_pulses=None, blank_approx=None, sync_approx=None):
     measured_sync, measured_blank = rfdecoder.resync._field_state.pull_levels()
 
     if blank_approx:
-        math.isclose(measured_blank, blank_approx)
+        assert math.isclose(measured_blank, blank_approx)
     if sync_approx:
-        math.isclose(measured_sync, sync_approx)
+        assert math.isclose(measured_sync, sync_approx)
 
     return True
 

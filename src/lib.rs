@@ -1,12 +1,15 @@
 mod ported;
+mod levels;
 
 use std::f64::consts;
 
 use numpy::ndarray::{Array1, ArrayView1, ArrayViewMut1, Zip};
 use numpy::{Complex64, IntoPyArray, PyArray1, PyReadonlyArray1, PyReadwriteArray1};
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 use ported::{unwrap_angles_impl, unwrap_angles_in_place};
+use levels::fallback_vsync_loc_means_impl;
 
 fn complex_angle(input_array: ArrayView1<'_, Complex64>) -> Array1<f64> {
     // Replicate the np.angle function for 1-dimensional input
@@ -105,6 +108,21 @@ fn unwrap_hilbert<'py>(
     output_array.into_pyarray_bound(py)
 }
 
+#[pyfunction]
+fn fallback_vsync_loc_means<'py>(
+    py: Python<'py>,
+    demod_05: PyReadonlyArray1<'py, f64>,
+    pulses: Bound<'py, PyList>,
+    sample_freq_mhz: f64,
+    min_len: f64,
+    max_len: f64,
+) -> (Bound<'py, PyList>, Bound<'py, PyList>){
+    let demod_05 = demod_05.as_array();
+    //let output_list = py.allow_threads(|| fallback_vsync_loc_means_impl(demod_05, freq));
+    //output_array.into_pyarray_bound(py)
+    fallback_vsync_loc_means_impl(py, demod_05, pulses, sample_freq_mhz, min_len, max_len)
+}
+
 /// A Python module implemented in Rust. The name of this function must match
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
@@ -114,5 +132,6 @@ fn vhsd_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(unwrap_angles, m)?)?;
     m.add_function(wrap_pyfunction!(diff_forward_in_place, m)?)?;
     m.add_function(wrap_pyfunction!(unwrap_hilbert, m)?)?;
+    m.add_function(wrap_pyfunction!(fallback_vsync_loc_means, m)?)?;
     Ok(())
 }
