@@ -224,6 +224,10 @@ def _fallback_vsync_loc_means(
         if (ir_pulse.len < max_len and ir_pulse.len > min_len)
     ]
 
+    # Bail out if we didn't find matching pulses.
+    if not ir_pulses:
+        return [], []
+
     def pulse_mean(locs_and_pulses):
         loc, pulse = locs_and_pulses
         return loc, np.mean(
