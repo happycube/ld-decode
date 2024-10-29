@@ -15,10 +15,143 @@ import vhsdecode.sync as sync
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.formats import parent_system
 
-# from vhsdecode.process import getpulses_override as vhs_getpulses_override
-# from vhsdecode.addons.vsyncserration import VsyncSerration
-
 from lddecode.core import npfft
+
+
+class FieldCVBSShared:
+    def compute_linelocs(self):
+        # Override to avoid mooving backwards if hitting lastline < proclines condition.
+        # TODO: make shared function etc for vhs and cvbs and push some improvements
+        # upstream.
+        self.rawpulses = self.getpulses()
+        if self.rawpulses is None or len(self.rawpulses) == 0:
+            if self.fields_written:
+                ldd.logger.error("Unable to find any sync pulses, skipping one field")
+                return None, None, None
+            else:
+                ldd.logger.error("Unable to find any sync pulses, skipping one second")
+                return None, None, int(self.rf.freq_hz)
+
+        self.validpulses = validpulses = self.refinepulses()
+        meanlinelen = self.computeLineLen(validpulses)
+        line0loc, lastlineloc, self.isFirstField = self.getLine0(
+            validpulses, meanlinelen
+        )
+        self.linecount = 263 if self.isFirstField else 262
+
+        # Number of lines to actually process.  This is set so that the entire following
+        # VSYNC is processed
+        proclines = self.outlinecount + self.lineoffset + 10
+        if self.rf.system == "PAL":
+            proclines += 3
+
+        # It's possible for getLine0 to return None for lastlineloc
+        if lastlineloc is not None:
+            numlines = (lastlineloc - line0loc) / self.inlinelen
+            self.skipdetected = numlines < (self.linecount - 5)
+        else:
+            self.skipdetected = False
+
+        if line0loc is None:
+            if self.initphase is False:
+                ldd.logger.error("Unable to determine start of field - dropping field")
+            return None, None, self.inlinelen * 200
+
+        # If we don't have enough data at the end, move onto the next field
+        lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
+        if lastline < proclines:
+            ldd.logger.error(
+                "Missing data at the end of field, possibly dropped samples skipping a little."
+            )
+            # Make sore to not move backwards here
+            return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
+
+        linelocs_dict, _ = sync.valid_pulses_to_linelocs(
+            validpulses,
+            line0loc,
+            self.skipdetected,
+            meanlinelen,
+            self.linecount,
+            self.rf.hsync_tolerance,
+            lastlineloc,
+        )
+
+        rv_err = np.full(proclines, False)
+
+        # Convert dictionary into array, then fill in gaps
+        linelocs = np.asarray(
+            [
+                linelocs_dict[l] if l in linelocs_dict else -1
+                for l in range(0, proclines)
+            ]
+        )
+        linelocs_filled = linelocs.copy()
+
+        self.linelocs0 = linelocs.copy()
+
+        if linelocs_filled[0] < 0:
+            next_valid = None
+            for i in range(0, self.outlinecount + 1):
+                if linelocs[i] > 0:
+                    next_valid = i
+                    break
+
+            if next_valid is None:
+                return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
+
+            linelocs_filled[0] = linelocs_filled[next_valid] - (
+                next_valid * meanlinelen
+            )
+
+            if linelocs_filled[0] < self.inlinelen:
+                return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
+
+        for l in range(1, proclines):
+            if linelocs_filled[l] < 0:
+                rv_err[l] = True
+
+                prev_valid = None
+                next_valid = None
+
+                for i in range(l, -1, -1):
+                    if linelocs[i] > 0:
+                        prev_valid = i
+                        break
+                for i in range(l, self.outlinecount + 1):
+                    if linelocs[i] > 0:
+                        next_valid = i
+                        break
+
+                # print(l, prev_valid, next_valid)
+
+                if prev_valid is None:
+                    avglen = self.inlinelen
+                    linelocs_filled[l] = linelocs[next_valid] - (
+                        avglen * (next_valid - l)
+                    )
+                elif next_valid is not None:
+                    avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (
+                        next_valid - prev_valid
+                    )
+                    linelocs_filled[l] = linelocs[prev_valid] + (
+                        avglen * (l - prev_valid)
+                    )
+                else:
+                    avglen = self.inlinelen
+                    linelocs_filled[l] = linelocs[prev_valid] + (
+                        avglen * (l - prev_valid)
+                    )
+
+        # *finally* done :)
+
+        rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
+
+        if self.vblank_next is None:
+            nextfield = linelocs_filled[self.outlinecount - 7]
+        else:
+            nextfield = self.vblank_next - (self.inlinelen * 8)
+
+        return rv_ll, rv_err, nextfield
 
 
 def chroma_to_u16(chroma):
@@ -318,7 +451,7 @@ def hz_to_output_override(field, input):
     )
 
 
-class FieldPALCVBS(ldd.FieldPAL):
+class FieldPALCVBS(FieldCVBSShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALCVBS, self).__init__(*args, **kwargs)
 
@@ -371,7 +504,7 @@ class FieldPALCVBS(ldd.FieldPAL):
         return None
 
 
-class FieldNTSCCVBS(ldd.FieldNTSC):
+class FieldNTSCCVBS(FieldCVBSShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCCVBS, self).__init__(*args, **kwargs)
 
@@ -581,7 +714,7 @@ class CVBSDecodeInner(ldd.RFDecode):
         self._chroma_trap = rf_options.get("chroma_trap", False)
         self.notch = rf_options.get("notch", None)
         self.notch_q = rf_options.get("notch_q", 10.0)
-        self.auto_sync = rf_options.get("auto_sync", False)
+        self.auto_sync = rf_options.get("auto_sync", True)
 
         self.hsync_tolerance = 0.8
 
