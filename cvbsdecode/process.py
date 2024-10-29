@@ -714,7 +714,7 @@ class CVBSDecodeInner(ldd.RFDecode):
         self._chroma_trap = rf_options.get("chroma_trap", False)
         self.notch = rf_options.get("notch", None)
         self.notch_q = rf_options.get("notch_q", 10.0)
-        self.auto_sync = rf_options.get("auto_sync", False)
+        self.auto_sync = rf_options.get("auto_sync", True)
 
         self.hsync_tolerance = 0.8
 

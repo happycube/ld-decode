@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import sys
 import signal
@@ -33,10 +34,15 @@ def main(args=None):
     parser.add_argument(
         "-A",
         "--auto_sync",
-        dest="auto_sync",
+        action="store_const",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--no_auto_sync",
+        dest="no_auto_sync",
         action="store_true",
         default=False,
-        help="Enable auto sync level detection.",
+        help="Disable auto sync level detection.",
     )
     parser.add_argument(
         "-C",
@@ -119,7 +125,7 @@ def main(args=None):
         sys.exit(1)
 
     rf_options = get_rf_options(args)
-    rf_options["auto_sync"] = args.auto_sync
+    rf_options["auto_sync"] = not args.no_auto_sync
     rf_options["clamp_agc"] = args.clamp_agc
     rf_options["agc_speed"] = args.agc_speed
     rf_options["agc_gain_factor"] = args.agc_gain_factor
