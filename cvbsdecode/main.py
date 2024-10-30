@@ -34,7 +34,7 @@ def main(args=None):
     parser.add_argument(
         "-A",
         "--auto_sync",
-        action="store_const",
+        action="store_true",
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
