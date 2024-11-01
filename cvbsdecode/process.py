@@ -51,6 +51,7 @@ class FieldCVBSShared:
             self.skipdetected = numlines < (self.linecount - 5)
         else:
             self.skipdetected = False
+            lastlineloc = 0
 
         if line0loc is None:
             if self.initphase is False:
