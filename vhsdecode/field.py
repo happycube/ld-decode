@@ -264,7 +264,7 @@ def get_line0_fallback(
 
 
 def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len):
-    """Look though raw_pulses for a set valid vertical sync pulse seires.
+    """Look though raw_pulses for a set valid vertical sync pulse series.
     num_pulses_half: number of equalization pulses per section / 2
     """
     done = False
@@ -653,7 +653,7 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        linelocs_dict, _ = sync.valid_pulses_to_linelocs(
+        linelocs, _ = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
             self.skipdetected,
@@ -661,17 +661,13 @@ class FieldShared:
             self.linecount,
             self.rf.hsync_tolerance,
             lastlineloc_or_0,
+            proclines,
         )
 
         rv_err = np.full(proclines, False)
 
         # Convert dictionary into array, then fill in gaps
-        linelocs = np.asarray(
-            [
-                linelocs_dict[l] if l in linelocs_dict else -1
-                for l in range(0, proclines)
-            ]
-        )
+        linelocs
         linelocs_filled = linelocs.copy()
 
         self.linelocs0 = linelocs.copy()

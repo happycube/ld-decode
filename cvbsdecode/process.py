@@ -67,7 +67,7 @@ class FieldCVBSShared:
             # Make sore to not move backwards here
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        linelocs_dict, _ = sync.valid_pulses_to_linelocs(
+        linelocs, _ = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
             self.skipdetected,
@@ -75,17 +75,11 @@ class FieldCVBSShared:
             self.linecount,
             self.rf.hsync_tolerance,
             lastlineloc,
+            proclines,
         )
 
         rv_err = np.full(proclines, False)
 
-        # Convert dictionary into array, then fill in gaps
-        linelocs = np.asarray(
-            [
-                linelocs_dict[l] if l in linelocs_dict else -1
-                for l in range(0, proclines)
-            ]
-        )
         linelocs_filled = linelocs.copy()
 
         self.linelocs0 = linelocs.copy()

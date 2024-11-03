@@ -144,6 +144,7 @@ def valid_pulses_to_linelocs(
     int linecount,
     double hsync_tolerance,
     int lastlineloc,
+    int proclines,
 ):
     """Goes through the list of detected sync pulses that seem to be valid,
     and maps the start locations to a line number and throws out ones that do not seem to match or are out of place.
@@ -156,6 +157,7 @@ def valid_pulses_to_linelocs(
         linecount (int): Number of lines in the field
         hsync_tolerance (float): How much a sync pulse can deviate from normal before being discarded.
         lastlineloc (float): Start location of the last line
+        lastlineloc (int): Total number of lines to process
 
     Returns:
         [type]: Two dicts, one containing a list of linelocs mapped to line numbers, and one containing the distance between the line start and expected line start.
@@ -164,19 +166,27 @@ def valid_pulses_to_linelocs(
     cdef double lineloc
     cdef int rlineloc
     cdef double lineloc_distance
+    cdef int line_skip_detected
 
     # Lists to fill
-    # TODO: Could probably use arrays here instead of converting to arrays later.
-    linelocs_dict = {}
-    linelocs_dist = {}
+    cdef np.ndarray[np.int32_t, ndim=1] line_locations = np.full(proclines, -1, dtype=np.int32)
+    cdef np.ndarray[np.float64_t, ndim=1] line_distances = np.full(proclines, 0, dtype=np.float64)
+    expected_next_line = proclines + 1
+
     for p in validpulses:
         # Calculate what line number the pulse corresponds closest too.
         lineloc = (p[1].start - line0loc) / meanlinelen
         rlineloc = round(lineloc)
         lineloc_distance = abs(lineloc - rlineloc)
 
+        # handle case where rounding jumpes over a line and causes a gap
+        if rlineloc > expected_next_line:
+            line_skip_detected = True
+        else:
+            line_skip_detected = False
+
         # TODO doc
-        if skip_detected:
+        if skip_detected or line_skip_detected:
             lineloc_end = linecount - ((lastlineloc - p[1].start) / meanlinelen)
             rlineloc_end = round(lineloc_end)
             lineloc_end_distance = abs(lineloc_end - rlineloc_end)
@@ -186,9 +196,13 @@ def valid_pulses_to_linelocs(
                 rlineloc = rlineloc_end
                 lineloc_distance = lineloc_end_distance
 
+        # skip lines that won't be returned
+        if rlineloc < 0 or rlineloc >= proclines:
+            continue
+
         # only record if it's closer to the (probable) beginning of the line
         if lineloc_distance > hsync_tolerance or (
-            rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]
+            line_locations[rlineloc] != -1 and lineloc_distance > line_distances[rlineloc]
         ):
             continue
 
@@ -198,10 +212,13 @@ def valid_pulses_to_linelocs(
             if p[0] > 0 or (p[0] == 0 and rlineloc < 10):
                 continue
 
-        linelocs_dict[rlineloc] = p[1].start
-        linelocs_dist[rlineloc] = lineloc_distance
+        expected_next_line = rlineloc + 1
 
-    return linelocs_dict, linelocs_dist
+        #print(rlineloc, lineloc, p)
+        line_locations[rlineloc] = p[1].start
+        line_distances[rlineloc] = lineloc_distance
+
+    return line_locations, line_distances
 
 def refine_linelocs_hsync(field, np.ndarray linebad, double hsync_threshold):
     """Refine the line start locations using horizontal sync data."""
