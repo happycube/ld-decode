@@ -662,6 +662,7 @@ class FieldShared:
             self.rf.hsync_tolerance,
             lastlineloc_or_0,
             proclines,
+            1.5
         )
 
         rv_err = np.full(proclines, False)

@@ -145,6 +145,7 @@ def valid_pulses_to_linelocs(
     double hsync_tolerance,
     int lastlineloc,
     int proclines,
+    double gap_detection_threshold,
 ):
     """Goes through the list of detected sync pulses that seem to be valid,
     and maps the start locations to a line number and throws out ones that do not seem to match or are out of place.
@@ -157,7 +158,8 @@ def valid_pulses_to_linelocs(
         linecount (int): Number of lines in the field
         hsync_tolerance (float): How much a sync pulse can deviate from normal before being discarded.
         lastlineloc (float): Start location of the last line
-        lastlineloc (int): Total number of lines to process
+        proclines (int): Total number of lines to process
+        gap_detection_threshold (float): Threshold to check for skipped hsync pulses
 
     Returns:
         [type]: Two dicts, one containing a list of linelocs mapped to line numbers, and one containing the distance between the line start and expected line start.
@@ -166,12 +168,12 @@ def valid_pulses_to_linelocs(
     cdef double lineloc
     cdef int rlineloc
     cdef double lineloc_distance
-    cdef int line_skip_detected
+    cdef bint line_skip_detected
 
     # Lists to fill
-    cdef np.ndarray[np.int32_t, ndim=1] line_locations = np.full(proclines, -1, dtype=np.int32)
-    cdef np.ndarray[np.float64_t, ndim=1] line_distances = np.full(proclines, 0, dtype=np.float64)
-    expected_next_line = proclines + 1
+    cdef np.ndarray[np.int32_t, ndim=1] line_locations = np.full(proclines+1, -1, dtype=np.int32)
+    cdef np.ndarray[np.float64_t, ndim=1] line_distances = np.full(proclines+1, 0, dtype=np.float64)
+    cdef int expected_next_line = proclines + 1
 
     for p in validpulses:
         # Calculate what line number the pulse corresponds closest too.
@@ -214,9 +216,65 @@ def valid_pulses_to_linelocs(
 
         expected_next_line = rlineloc + 1
 
-        #print(rlineloc, lineloc, p)
         line_locations[rlineloc] = p[1].start
         line_distances[rlineloc] = lineloc_distance
+
+    # if a line is missing in the list above attempt to assign or estimate a pulse for the line
+    cdef int previous_line = -1
+    cdef float distance
+    cdef float new_distance
+    cdef int nearest_line
+    cdef double estimated_location
+    cdef int nearest_pulse
+
+    for i in range(0, proclines):
+        if (
+            # line_location_missing
+            line_locations[i] == -1 or 
+
+            # line_hsync_gap_detected
+            (
+               previous_line > -1 and 
+               line_locations[i] - previous_line > meanlinelen * gap_detection_threshold
+            )
+        ):
+            distance = -1
+            nearest_line = 0
+
+            # search from the beginning for the closest populated line
+            for j in range(0, proclines):
+                new_distance = abs(j - i)
+
+                if i != j and line_locations[j] != -1:
+                    if distance < 0 or new_distance < distance:
+                        distance = new_distance
+                        nearest_line = j
+                    else:
+                        break # already found the nearest line
+
+            # estimate the pulse location based on the nearest populated line
+            estimated_location = line_locations[nearest_line] + meanlinelen * (i - nearest_line)
+
+            # check if a pulse exists that is closer than the estimate within half of a pulse length
+            distance = meanlinelen / 2
+            nearest_pulse = -1
+
+            for p in validpulses:
+                new_distance = abs(p[1].start - estimated_location)
+                if distance > new_distance:
+                    new_distance = distance
+                    nearest_pulse = p[1].start
+                elif nearest_pulse != -1:
+                    break; # already found the nearest pulse
+
+            if nearest_pulse != -1:
+                # use the pulse near this line's estimated position
+                line_locations[i] = nearest_pulse
+            else:
+                # use the derived position
+                line_locations[i] = estimated_location
+ 
+        previous_line = line_locations[i]
 
     return line_locations, line_distances
 
