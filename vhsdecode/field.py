@@ -653,7 +653,7 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        linelocs, _ = sync.valid_pulses_to_linelocs(
+        linelocs, lineloc_errs, _ = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
             self.skipdetected,
@@ -665,90 +665,7 @@ class FieldShared:
             1.5
         )
 
-        rv_err = np.full(proclines, False)
-
-        # Convert dictionary into array, then fill in gaps
-        linelocs
-        linelocs_filled = linelocs.copy()
-
         self.linelocs0 = linelocs.copy()
-
-        if linelocs_filled[0] < 0:
-            next_valid = None
-            for i in range(0, self.outlinecount + 1):
-                if linelocs[i] > 0:
-                    next_valid = i
-                    break
-
-            if next_valid is None:
-                # If we don't find anything valid, guess something to avoid dropping fields
-                prev_line0 = (
-                    np.int64(self.prevfield.linelocs0[0])
-                    if self.prevfield is not None
-                    else 0
-                )
-
-                if prev_line0 > 0:
-                    linelocs_filled = self.prevfield.linelocs0 - prev_line0 + line0loc
-                else:
-                    linelocs_filled[0] = line0loc
-                linelocs = linelocs_filled
-                ldd.logger.warning(
-                    "no valid lines found! Guessing or using values for previous field so result will probably be garbled!"
-                )
-                rv_err[1:] = True
-            else:
-                linelocs_filled[0] = linelocs_filled[next_valid] - (
-                    next_valid * meanlinelen
-                )
-
-            if linelocs_filled[0] < self.inlinelen:
-                ldd.logger.info(
-                    "linelocs_filled[0] too short! (%s) should be at least %s. Skipping a bit...",
-                    linelocs_filled[0],
-                    self.inlinelen,
-                )
-                # Skip a bit if no line positions were filled (which causes following code to fail for now).
-                # Amount may need tweaking.
-                return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
-
-        for l in range(1, proclines):
-            if linelocs_filled[l] < 0:
-                rv_err[l] = True
-
-                prev_valid = None
-                next_valid = None
-
-                for i in range(l, -1, -1):
-                    if linelocs[i] > 0:
-                        prev_valid = i
-                        break
-                for i in range(l, self.outlinecount + 1):
-                    if linelocs[i] > 0:
-                        next_valid = i
-                        break
-
-                if prev_valid is None:
-                    avglen = self.inlinelen
-                    linelocs_filled[l] = linelocs[next_valid] - (
-                        avglen * (next_valid - l)
-                    )
-                elif next_valid is not None:
-                    avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (
-                        next_valid - prev_valid
-                    )
-                    linelocs_filled[l] = linelocs[prev_valid] + (
-                        avglen * (l - prev_valid)
-                    )
-                else:
-                    avglen = self.inlinelen
-                    linelocs_filled[l] = linelocs[prev_valid] + (
-                        avglen * (l - prev_valid)
-                    )
-
-        # *finally* done :)
-
-        rv_ll = np.asarray([linelocs_filled[l] for l in range(0, proclines)])
 
         # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
 
@@ -761,18 +678,18 @@ class FieldShared:
             )
 
         if self.vblank_next is None:
-            nextfield = linelocs_filled[self.outlinecount - 7]
+            nextfield = linelocs[self.outlinecount - 7]
         else:
             nextfield = self.vblank_next - (self.inlinelen * 8)
 
-        if np.count_nonzero(rv_err) < 30:
+        if np.count_nonzero(lineloc_errs) < 30:
             self.rf.compute_linelocs_issues = False
         elif self.rf.options.saved_levels:
             ldd.logger.debug(
                 "Possible sync issues, re-running level detection on next field!"
             )
 
-        return rv_ll, rv_err, nextfield
+        return linelocs, lineloc_errs, nextfield
 
     def refine_linelocs_hsync(self):
         if not self.rf.options.skip_hsync_refine:
