@@ -226,7 +226,6 @@ def valid_pulses_to_linelocs(
         line_locations[index] = p[1].start
         line_distances[index] = lineloc_distance
 
-
     # if a line is missing, attempt to assign or estimate a pulse for the line
     cdef int previous_line = -1
     cdef float distance
@@ -234,8 +233,14 @@ def valid_pulses_to_linelocs(
     cdef int nearest_line
     cdef double estimated_location
     cdef int nearest_pulse
+    cdef int start_index
 
-    for i in range(line0loc_index, line0loc_index+proclines):
+    if (line_locations[line0loc_index] == -1):
+        start_index = min(first_line_index, line0loc_index - 1)
+    else:
+        start_index = line0loc_index - 1
+
+    for i in range(start_index, line0loc_index+proclines):
         if (
             # line_location_missing
             line_locations[i] == -1 or 
@@ -263,15 +268,14 @@ def valid_pulses_to_linelocs(
             # estimate the pulse location based on the nearest populated line
             estimated_location = line_locations[nearest_line] + meanlinelen * (i - nearest_line)
 
-            # check if a pulse exists that is closer than the estimate within half of a pulse length
-            # TODO use standard deviation to determine threshold
-            distance = meanlinelen / 1.9
+            # check if a pulse exists that is closer than the estimate within the gap detection threshold
+            distance = meanlinelen / gap_detection_threshold
             nearest_pulse = -1
 
             for p in validpulses:
                 new_distance = abs(p[1].start - estimated_location)
                 if distance > new_distance:
-                    new_distance = distance
+                    distance = new_distance
                     nearest_pulse = p[1].start
                 elif nearest_pulse != -1:
                     break; # already found the nearest pulse

@@ -76,7 +76,7 @@ class FieldCVBSShared:
             self.rf.hsync_tolerance,
             lastlineloc,
             proclines,
-            1.8
+            1.9
         )
 
         rv_err = np.full(proclines, False)

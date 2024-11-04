@@ -662,7 +662,7 @@ class FieldShared:
             self.rf.hsync_tolerance,
             lastlineloc_or_0,
             proclines,
-            1.5
+            1.9
         )
 
         self.linelocs0 = linelocs.copy()
