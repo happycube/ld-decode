@@ -67,7 +67,7 @@ class FieldCVBSShared:
             # Make sore to not move backwards here
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        linelocs, lineloc_errs, _ = sync.valid_pulses_to_linelocs(
+        linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
             self.skipdetected,

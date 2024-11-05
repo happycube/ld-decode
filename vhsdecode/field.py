@@ -653,7 +653,7 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
-        linelocs, lineloc_errs, _ = sync.valid_pulses_to_linelocs(
+        linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
             validpulses,
             line0loc,
             self.skipdetected,
@@ -664,6 +664,10 @@ class FieldShared:
             proclines,
             1.9
         )
+
+        # not a full field, skip over to the last detected pulse
+        if linelocs[proclines-1] == -1:
+            return None, None, last_validpulse
 
         self.linelocs0 = linelocs.copy()
 

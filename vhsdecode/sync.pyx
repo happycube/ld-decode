@@ -173,6 +173,7 @@ def valid_pulses_to_linelocs(
     cdef int line0loc_index = proclines
     cdef int first_line_index = line_locations_size - 1
     cdef int last_line_index = 0
+    cdef int last_pulse = 0
 
     # Lists to fill
     cdef np.ndarray[np.int32_t, ndim=1] line_locations = np.full(line_locations_size, -1, dtype=np.int32)
@@ -222,6 +223,9 @@ def valid_pulses_to_linelocs(
                 continue
 
         expected_next_line = rlineloc + 1
+
+        if last_pulse < p[1].start:
+            last_pulse = p[1].start
 
         line_locations[index] = p[1].start
         line_distances[index] = lineloc_distance
@@ -283,14 +287,19 @@ def valid_pulses_to_linelocs(
             if nearest_pulse != -1:
                 # use the pulse near this line's estimated position
                 line_locations[i] = nearest_pulse
-            else:
-                # use the derived position
+            elif estimated_location <= last_pulse:
+                # use the estimated position
                 line_location_errs[i] = 1
                 line_locations[i] = estimated_location
+            else:
+                # Not enough actual pulses to complete the field
+                break
  
         previous_line = line_locations[i]
 
-    return line_locations[line0loc_index:line0loc_index+proclines], line_location_errs[line0loc_index:line0loc_index+proclines], line_distances[line0loc_index:line0loc_index+proclines]
+    last_valid_line_location = max(last_pulse, line0loc, line_locations[line0loc_index+proclines])
+
+    return line_locations[line0loc_index:line0loc_index+proclines], line_location_errs[line0loc_index:line0loc_index+proclines], last_valid_line_location
 
 def refine_linelocs_hsync(field, np.ndarray linebad, double hsync_threshold):
     """Refine the line start locations using horizontal sync data."""
