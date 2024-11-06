@@ -168,20 +168,20 @@ def valid_pulses_to_linelocs(
     cdef double lineloc
     cdef int rlineloc
     cdef double lineloc_distance
-
-    cdef int line_locations_size = proclines*3+1
-    cdef int line0loc_index = proclines
-    cdef int first_line_index = line_locations_size - 1
+    cdef int last_valid_pulse = 0
+    cdef int first_line_index = proclines-1
     cdef int last_line_index = 0
-    cdef int last_pulse = 0
 
     # Lists to fill
-    cdef np.ndarray[np.int32_t, ndim=1] line_locations = np.full(line_locations_size, -1, dtype=np.int32)
-    cdef np.ndarray[np.int32_t, ndim=1] line_location_errs = np.full(line_locations_size, 0, dtype=np.int32)
-    cdef np.ndarray[np.float64_t, ndim=1] line_distances = np.full(line_locations_size, 0, dtype=np.float64)
-    cdef int expected_next_line = proclines + 1
+    cdef np.ndarray[np.int32_t, ndim=1] line_locations = np.full(proclines, -1, dtype=np.int32)
+    cdef np.ndarray[np.int32_t, ndim=1] line_location_errs = np.full(proclines, 0, dtype=np.int32)
+    cdef np.ndarray[np.float64_t, ndim=1] line_distances = np.full(proclines, 0, dtype=np.float64)
 
-    # try to roughly assign lines to each pulse
+    # assign lines to each pulse using line location 0 as an initial offset
+    # whats the most likly next line
+    # base this on mean line length and the actual length between the previous line and current line
+    # next line should be some mixture of the distance between last line, current line. and the mean line len
+
     for p in validpulses:
         # Calculate what line number the pulse corresponds closest too.
         lineloc = (p[1].start - line0loc) / meanlinelen
@@ -199,16 +199,14 @@ def valid_pulses_to_linelocs(
                 rlineloc = rlineloc_end
                 lineloc_distance = lineloc_end_distance
 
-        index = rlineloc+line0loc_index
-
         # skip lines that won't be returned
-        if index < 0 or index >= line_locations_size:
+        if rlineloc < 0 or rlineloc >= proclines:
             continue
 
-        if index < first_line_index:
-            first_line_index = index
-        if index > last_line_index:
-            last_line_index = index
+        if rlineloc < first_line_index:
+            first_line_index = rlineloc
+        if rlineloc > last_line_index:
+            last_line_index = rlineloc
 
         # only record if it's closer to the (probable) beginning of the line
         if lineloc_distance > hsync_tolerance or (
@@ -224,35 +222,29 @@ def valid_pulses_to_linelocs(
 
         expected_next_line = rlineloc + 1
 
-        if last_pulse < p[1].start:
-            last_pulse = p[1].start
+        if last_valid_pulse < p[1].start:
+            last_valid_pulse = p[1].start
 
-        line_locations[index] = p[1].start
-        line_distances[index] = lineloc_distance
+        line_locations[rlineloc] = p[1].start
+        line_distances[rlineloc] = lineloc_distance
 
-    # if a line is missing, attempt to assign or estimate a pulse for the line
+    # if a line is missing, attempt to assign or estimate where a pulse should be for the line
     cdef int previous_line = -1
     cdef float distance
     cdef float new_distance
     cdef int nearest_line
     cdef double estimated_location
     cdef int nearest_pulse
-    cdef int start_index
 
-    if (line_locations[line0loc_index] == -1):
-        start_index = min(first_line_index, line0loc_index - 1)
-    else:
-        start_index = line0loc_index - 1
-
-    for i in range(start_index, line0loc_index+proclines):
+    for i in range(0, proclines):
         if (
             # line_location_missing
             line_locations[i] == -1 or 
 
             # line_hsync_gap_detected
             (
-               previous_line > -1 and 
-               line_locations[i] - previous_line > meanlinelen * gap_detection_threshold
+                previous_line > -1 and
+                line_locations[i] - previous_line > meanlinelen * gap_detection_threshold
             )
         ):
             distance = -1
@@ -287,7 +279,7 @@ def valid_pulses_to_linelocs(
             if nearest_pulse != -1:
                 # use the pulse near this line's estimated position
                 line_locations[i] = nearest_pulse
-            elif estimated_location <= last_pulse:
+            elif estimated_location <= validpulses[-1][1].start:
                 # use the estimated position
                 line_location_errs[i] = 1
                 line_locations[i] = estimated_location
@@ -297,9 +289,9 @@ def valid_pulses_to_linelocs(
  
         previous_line = line_locations[i]
 
-    last_valid_line_location = max(last_pulse, line0loc, line_locations[line0loc_index+proclines])
+    last_valid_line_location = max(line0loc, last_valid_pulse, line_locations[proclines-1])
 
-    return line_locations[line0loc_index:line0loc_index+proclines], line_location_errs[line0loc_index:line0loc_index+proclines], last_valid_line_location
+    return line_locations, line_location_errs, last_valid_line_location
 
 def refine_linelocs_hsync(field, np.ndarray linebad, double hsync_threshold):
     """Refine the line start locations using horizontal sync data."""
