@@ -662,6 +662,8 @@ class FieldShared:
             self.rf.hsync_tolerance,
             lastlineloc_or_0,
             proclines,
+            self.getBlankLength(self.isFirstField),
+            self.getBlankLength(not self.isFirstField),
             1.9
         )
 

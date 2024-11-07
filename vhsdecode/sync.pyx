@@ -145,6 +145,8 @@ def valid_pulses_to_linelocs(
     double hsync_tolerance,
     int lastlineloc,
     int proclines,
+    int vblanklen1,
+    int vblanklen2,
     double gap_detection_threshold,
 ):
     """Goes through the list of detected sync pulses that seem to be valid,
@@ -159,6 +161,8 @@ def valid_pulses_to_linelocs(
         hsync_tolerance (float): How much a sync pulse can deviate from normal before being discarded.
         lastlineloc (float): Start location of the last line
         proclines (int): Total number of lines to process
+        vblanklen1 (int): Number of lines in first vsync
+        vblanklen2 (int): Number of lines in second vsync
         gap_detection_threshold (float): Threshold to check for skipped hsync pulses
 
     Returns:
@@ -177,11 +181,7 @@ def valid_pulses_to_linelocs(
     cdef np.ndarray[np.int32_t, ndim=1] line_location_errs = np.full(proclines, 0, dtype=np.int32)
     cdef np.ndarray[np.float64_t, ndim=1] line_distances = np.full(proclines, 0, dtype=np.float64)
 
-    # assign lines to each pulse using line location 0 as an initial offset
-    # whats the most likly next line
-    # base this on mean line length and the actual length between the previous line and current line
-    # next line should be some mixture of the distance between last line, current line. and the mean line len
-
+    # assign hsync pulses only based on line0
     for p in validpulses:
         # Calculate what line number the pulse corresponds closest too.
         lineloc = (p[1].start - line0loc) / meanlinelen
@@ -199,36 +199,36 @@ def valid_pulses_to_linelocs(
                 rlineloc = rlineloc_end
                 lineloc_distance = lineloc_end_distance
 
-        # skip lines that won't be returned
-        if rlineloc < 0 or rlineloc >= proclines:
+        if (
+            # skip vblanking pulses in this step, will refine below
+            p[0] > 0 or (rlineloc > 0 and rlineloc <= vblanklen1) or
+
+            # skip lines that won't be returned
+            rlineloc < 0 or rlineloc >= proclines or
+
+            # only record if it's closer to the (probable) beginning of the line
+            lineloc_distance > hsync_tolerance or 
+            (line_locations[rlineloc] != -1 and lineloc_distance > line_distances[rlineloc])
+        ):
             continue
 
         if rlineloc < first_line_index:
             first_line_index = rlineloc
         if rlineloc > last_line_index:
             last_line_index = rlineloc
-
-        # only record if it's closer to the (probable) beginning of the line
-        if lineloc_distance > hsync_tolerance or (
-            line_locations[rlineloc] != -1 and lineloc_distance > line_distances[rlineloc]
-        ):
-            continue
-
-        # also skip non-regular lines (non-hsync) that don't seem to be in valid order (p[2])
-        # (or hsync lines in the vblank area)
-        if rlineloc > 0 and not p[2]:
-            if p[0] > 0 or (p[0] == 0 and rlineloc < 10):
-                continue
-
-        expected_next_line = rlineloc + 1
-
         if last_valid_pulse < p[1].start:
             last_valid_pulse = p[1].start
+
+        expected_next_line = rlineloc + 1
 
         line_locations[rlineloc] = p[1].start
         line_distances[rlineloc] = lineloc_distance
 
-    # if a line is missing, attempt to assign or estimate where a pulse should be for the line
+    # fill in the first vblank
+    for i in range(0, vblanklen1):
+        line_locations[i] = line0loc + meanlinelen * i
+
+    # refine the hsync lines
     cdef int previous_line = -1
     cdef float distance
     cdef float new_distance
@@ -285,11 +285,16 @@ def valid_pulses_to_linelocs(
                 line_locations[i] = estimated_location
             else:
                 # Not enough actual pulses to complete the field
+                last_valid_pulse = validpulses[-1][1].start
                 break
  
         previous_line = line_locations[i]
+    
+    # fill in the second vblank
+    for i in range(0, vblanklen2):
+        line_locations[i+linecount] = line_locations[linecount] + meanlinelen * i
 
-    last_valid_line_location = max(line0loc, last_valid_pulse, line_locations[proclines-1])
+    last_valid_line_location = max(line0loc, last_valid_pulse)
 
     return line_locations, line_location_errs, last_valid_line_location
 
