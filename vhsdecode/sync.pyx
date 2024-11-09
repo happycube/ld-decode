@@ -368,8 +368,8 @@ def valid_pulses_to_linelocs(
             rlineloc < 0 or rlineloc >= proclines
 
             # only record if it's closer to the (probable) beginning of the line
-            # or lineloc_distance > hsync_tolerance or
-            # (line_locations[rlineloc] != -1 and lineloc_distance > line_distances[rlineloc])
+            or lineloc_distance > hsync_tolerance or
+            (line_locations[rlineloc] != -1 and lineloc_distance > line_distances[rlineloc])
         ):
             continue
 
@@ -419,7 +419,7 @@ def valid_pulses_to_linelocs(
             # line_hsync_gap_detected
             or (
                 previous_line > -1 and
-                line_locations[i] - previous_line > meanlinelen * 1.3
+                line_locations[i] - previous_line > meanlinelen * 1.2
             )
         ):
             distance = -1
@@ -440,7 +440,7 @@ def valid_pulses_to_linelocs(
             estimated_location = line_locations[nearest_line] + meanlinelen * (i - nearest_line)
 
             # check if a pulse exists that is closer than the estimate within the gap detection threshold
-            distance = meanlinelen / 3
+            distance = meanlinelen / 2
             nearest_pulse = -1
 
             for p in validpulses:
