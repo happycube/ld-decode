@@ -543,7 +543,35 @@ class FieldShared:
         # line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
         # NOTE: This seems to get the position of the last normal vsync before the vertical blanking interval rather than line0
         # (which is only the same thing on the top field of 525-line system signals)
-        return self.getLine0(validpulses, meanlinelen), meanlinelen
+
+        if hasattr(self.prevfield, "isFirstField"):
+            prev_first_field = 1 if self.prevfield.isFirstField else 0
+        else:
+            prev_first_field = -1
+
+        if hasattr(self.prevfield, "readloc") and hasattr(self.prevfield, "first_hsync_loc"):
+            last_field_offset = self.prevfield.readloc - self.readloc
+            prev_first_hsync_loc = self.prevfield.first_hsync_loc
+        else:
+            last_field_offset = -1
+            prev_first_hsync_loc = -1
+
+        self.first_hsync_loc, self.vblank_next, self.isFirstField = sync.get_first_hsync_loc(
+            validpulses, 
+            meanlinelen, 
+            self.rf.SysParams["frame_lines"],
+            8.5, # num vblank lines
+            last_field_offset,
+            prev_first_field,
+            prev_first_hsync_loc
+        )
+
+        if self.vblank_next == -1:
+            self.vblank_next = None
+
+        #self.getLine0(validpulses, meanlinelen)
+        
+        return self.first_hsync_loc, meanlinelen
 
     @property
     def compute_linelocs_issues(self):
@@ -560,7 +588,7 @@ class FieldShared:
             or not has_levels
             or self.rf.compute_linelocs_issues is True
         )
-        res, meanlinelen = self._try_get_pulses(do_level_detect)
+        res = self._try_get_pulses(do_level_detect)
         if (
             res == NO_PULSES_FOUND or res[0] == None or self.sync_confidence == 0
         ) and not do_level_detect:
@@ -568,7 +596,7 @@ class FieldShared:
             # and level detection was skipped, try again
             # running the full level detection
             ldd.logger.debug("Search for pulses failed, re-checking levels")
-            res, meanlinelen = self._try_get_pulses(True)
+            res = self._try_get_pulses(True)
 
         self.rf.compute_linelocs_issues = True
 
@@ -576,25 +604,25 @@ class FieldShared:
             ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
             return None, None, int(self.rf.freq_hz / 10)
 
-        line0loc, lastlineloc, self.isFirstField = res
+        first_hsync_loc, meanlinelen = res
         validpulses = self.validpulses
 
-        if self.rf.options.fallback_vsync and (
-            not line0loc or self.sync_confidence == 0
-        ):
-            self.sync_confidence = 0
-            line0loc_t, lastlineloc_t, is_first_field_t = self._get_line0_fallback(
-                validpulses
-            )
-            if line0loc_t:
-                ldd.logger.debug("Using fallback vsync, signal may be non-standard.")
-                line0loc = line0loc_t
-                lastlineloc = lastlineloc_t
-                self.isFirstField = (
-                    not self.prevfield.isFirstField if self.prevfield else True
-                )
-                self.sync_confidence = 10
-
+        #if self.rf.options.fallback_vsync and (
+        #    not first_hsync_loc or self.sync_confidence == 0
+        #):
+        #    self.sync_confidence = 0
+        #    line0loc_t, lastlineloc_t, is_first_field_t = self._get_line0_fallback(
+        #        validpulses
+        #    )
+        #    if line0loc_t:
+        #        ldd.logger.debug("Using fallback vsync, signal may be non-standard.")
+        #        line0loc = line0loc_t
+        #        lastlineloc = lastlineloc_t
+        #        self.isFirstField = (
+        #            not self.prevfield.isFirstField if self.prevfield else True
+        #        )
+        #        self.sync_confidence = 10
+#
         # TODO: This is set here for NTSC, but in the PAL base class for PAL in process() it seems..
         # For 405-line it's done in fieldTypeC.process as of now to override that.
         # TODO: This will cause problem with the skipdetected part in valid_pulses_to_linelocs
@@ -607,18 +635,6 @@ class FieldShared:
         if self.rf.system == "PAL":
             proclines += 3
 
-        lastlineloc_or_0 = lastlineloc
-
-        # It's possible for getLine0 to return None for lastlineloc
-        if lastlineloc is not None:
-            numlines = (lastlineloc - line0loc) / self.inlinelen
-            self.skipdetected = numlines < (self.linecount - 5)
-        else:
-            # Make sure we set this to 0 and not None for numba
-            # to be able to compile valid_pulses_to_linelocs correctly.
-            lastlineloc_or_0 = 0.0
-            self.skipdetected = False
-
         if self.rf.debug_plot and self.rf.debug_plot.is_plot_requested("raw_pulses"):
             plot_data_and_pulses(
                 self.data["video"]["demod"],
@@ -627,10 +643,12 @@ class FieldShared:
             )
         # threshold=self.rf.resync.last_pulse_threshold
 
-        if line0loc is None:
+        if first_hsync_loc is None:
             if self.initphase is False:
                 ldd.logger.error("Unable to determine start of field - dropping field")
             return None, None, self.inlinelen * 100
+
+        line0loc = first_hsync_loc - meanlinelen * 10
 
         # If we don't have enough data at the end, move onto the next field
         lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
@@ -638,7 +656,7 @@ class FieldShared:
             plot_data_and_pulses(
                 self.data["video"]["demod"],
                 raw_pulses=self.rawpulses,
-                extra_lines=[line0loc, lastlineloc_or_0],
+                extra_lines=[line0loc],
             )
 
         if lastline < proclines:
@@ -655,20 +673,17 @@ class FieldShared:
 
         linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
             validpulses,
-            line0loc,
-            self.skipdetected,
+            first_hsync_loc,
+            10,
             meanlinelen,
-            self.linecount,
             self.rf.hsync_tolerance,
-            lastlineloc_or_0,
             proclines,
-            self.getBlankLength(self.isFirstField),
-            self.getBlankLength(not self.isFirstField),
             1.9
         )
 
         # not a full field, skip over to the last detected pulse
         if linelocs[proclines-1] == -1:
+            print("not a full field")
             return None, None, last_validpulse
 
         self.linelocs0 = linelocs.copy()
@@ -681,6 +696,7 @@ class FieldShared:
                 raw_pulses=self.rawpulses,
                 linelocs=linelocs,
                 pulses=validpulses,
+                extra_lines=[line0loc, first_hsync_loc, self.vblank_next, last_validpulse]
             )
 
         if self.vblank_next is None:
@@ -964,6 +980,8 @@ class FieldShared:
         return wow
 
     def fix_badlines(self, linelocs_in, linelocs_backup_in=None):
+        # No longer needed. Bad line locations are fixed in sync.pyx
+        return linelocs_in
         """Go through the list of lines marked bad and guess something for the lineloc based on
         previous/next good lines"""
         # Overridden to add some further logic.
