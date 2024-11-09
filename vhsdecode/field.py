@@ -534,7 +534,7 @@ class FieldShared:
         self.rawpulses = self.rf.resync.get_pulses(self, check_levels)
         # self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
-            return NO_PULSES_FOUND, None
+            return NO_PULSES_FOUND
 
         self.validpulses = validpulses = self.refinepulses()
         meanlinelen = self.computeLineLen(validpulses)
