@@ -303,14 +303,12 @@ def get_first_hsync_loc(
         LAST_VBLANK_EQ_2_END
     ]
 
-    # check all possible known distances bewteen vblanking pulses and average the differences to derive the hsync_start_line
-    for first_index in pulse_indexes:
-        # only check unchecked pulses
-        for second_index in range(first_index, len(pulse_indexes)):
-            # dont check the same pulse
-            if first_index == second_index:
-                continue
+    print()
 
+    # check all possible known distances bewteen vblanking pulses and average the differences to derive the hsync_start_line
+    for first_index in range(0, len(pulse_indexes)):
+        # only care about distances one way, so no need to check the other direction
+        for second_index in range(first_index+1, len(pulse_indexes)):
             first_pulse = vblank_pulses[first_index]
             second_pulse = vblank_pulses[second_index]
             first_line = vblank_lines[first_index]
