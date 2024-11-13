@@ -556,11 +556,13 @@ class FieldShared:
             last_field_offset = -1
             prev_first_hsync_loc = -1
 
-        self.first_hsync_loc, self.vblank_next, self.isFirstField = sync.get_first_hsync_loc(
+        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField = sync.get_first_hsync_loc(
             validpulses, 
             meanlinelen, 
-            self.rf.SysParams["frame_lines"],
-            8.5, # num vblank lines
+            1 if self.rf.system == "NTSC" else 0,
+            self.rf.SysParams["field_lines"],
+            self.rf.SysParams["firstFieldH"],
+            self.rf.SysParams["numPulses"],
             last_field_offset,
             prev_first_field,
             prev_first_hsync_loc
@@ -571,7 +573,7 @@ class FieldShared:
 
         #self.getLine0(validpulses, meanlinelen)
         
-        return self.first_hsync_loc, meanlinelen
+        return line0loc, self.first_hsync_loc, self.first_hsync_loc_line, meanlinelen
 
     @property
     def compute_linelocs_issues(self):
@@ -604,7 +606,7 @@ class FieldShared:
             ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
             return None, None, int(self.rf.freq_hz / 10)
 
-        first_hsync_loc, meanlinelen = res
+        line0loc, first_hsync_loc, first_hsync_loc_line, meanlinelen = res
         validpulses = self.validpulses
 
         #if self.rf.options.fallback_vsync and (
@@ -648,8 +650,6 @@ class FieldShared:
                 ldd.logger.error("Unable to determine start of field - dropping field")
             return None, None, self.inlinelen * 100
 
-        line0loc = first_hsync_loc - meanlinelen * 10
-
         # If we don't have enough data at the end, move onto the next field
         lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
         if self.rf.debug_plot and self.rf.debug_plot.is_plot_requested("raw_pulses"):
@@ -674,7 +674,7 @@ class FieldShared:
         linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
             validpulses,
             first_hsync_loc,
-            10,
+            first_hsync_loc_line,
             meanlinelen,
             self.rf.hsync_tolerance,
             proclines,

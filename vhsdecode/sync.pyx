@@ -139,8 +139,10 @@ def calczc(double[:] data, Py_ssize_t _start_offset, double target, Py_ssize_t c
 def get_first_hsync_loc(
     validpulses,
     double meanlinelen,
-    double frame_lines,
-    double vblank_line_count,
+    bint is_ntsc,
+    field_lines,
+    first_field_h,
+    int num_eq_pulses,
     int last_field_offset,
     int prev_first_field,
     int prev_first_hsync_loc
@@ -150,8 +152,8 @@ def get_first_hsync_loc(
        * first_hsync_loc: Location of the first hsync pulse (first line after the vblanking)
        * next_field: Location of the next field (last line + 1 after this field)
        * first_field: True if this is the first field
-    """
-    cdef np.ndarray[np.int32_t, ndim=1] field_order_lengths = np.full(4, -1, dtype=np.int32)
+    """    
+    cdef np.ndarray[np.float64_t, ndim=1] field_order_lengths = np.full(4, -1, dtype=np.float64)
     cdef np.ndarray[np.int32_t, ndim=1] vblank_pulses = np.full(8, -1, dtype=np.int32)
     cdef np.ndarray[np.float64_t, ndim=1] vblank_lines = np.full(8, -1, dtype=np.float64)
 
@@ -177,7 +179,7 @@ def get_first_hsync_loc(
             # hsync -> [eq 1]
             if last_pulse[0] == 0 and p[0] > 0:
                 vblank_pulses[0 + group] = p[1].start
-                field_order_lengths[0 + field_group] = round((p[1].start - last_pulse[1].start) / meanlinelen * 2)
+                field_order_lengths[0 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
 
             # eq 1 -> [vsync]
             if last_pulse[0] == 1 and p[0] == 2:
@@ -190,7 +192,7 @@ def get_first_hsync_loc(
             # [eq 2] -> hsync
             if last_pulse[0] > 0 and p[0] == 0:
                 vblank_pulses[3 + group] = last_pulse[1].start
-                field_order_lengths[1 + field_group] = round((p[1].start - last_pulse[1].start) / meanlinelen * 2)
+                field_order_lengths[1 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
 
                 # if there are more than two blanking intervals in this data
                 # record only the first and last
@@ -203,16 +205,39 @@ def get_first_hsync_loc(
     # ********************************************************************
     # determine if this is the first or second field based on pulse length
     # ********************************************************************
+
+    cdef int FIRST_HSYNC_LENGTH = 0
+    cdef int FIRST_EQPL2_LENGTH = 1
+    cdef int LAST_HSYNC_LENGTH = 2
+    cdef int LAST_EQPL2_LENGTH = 3
+
+    cdef np.ndarray[np.float64_t, ndim=1] first_field_lengths = np.full(4, -1, dtype=np.float64)
+    cdef np.ndarray[np.float64_t, ndim=1] second_field_lengths = np.full(4, -1, dtype=np.float64)
+
+    if is_ntsc:
+        first_field_lengths[FIRST_HSYNC_LENGTH] = 1
+        first_field_lengths[FIRST_EQPL2_LENGTH] = .5
+        first_field_lengths[LAST_HSYNC_LENGTH] = .5
+        first_field_lengths[LAST_EQPL2_LENGTH] = 1
+
+        second_field_lengths[FIRST_HSYNC_LENGTH] = .5
+        second_field_lengths[FIRST_EQPL2_LENGTH] = 1
+        second_field_lengths[LAST_HSYNC_LENGTH] = 1
+        second_field_lengths[LAST_EQPL2_LENGTH] = .5
+    else:
+        first_field_lengths[FIRST_HSYNC_LENGTH] = .5
+        first_field_lengths[FIRST_EQPL2_LENGTH] = .5
+        first_field_lengths[LAST_HSYNC_LENGTH] = 1
+        first_field_lengths[LAST_EQPL2_LENGTH] = 1
+
+        second_field_lengths[FIRST_HSYNC_LENGTH] = 1
+        second_field_lengths[FIRST_EQPL2_LENGTH] = 1
+        second_field_lengths[LAST_HSYNC_LENGTH] = .5
+        second_field_lengths[LAST_EQPL2_LENGTH] = .5
+
     cdef int field_boundaries_consensus = 0
     cdef int field_boundaries_detected = 0
 
-    # TODO: This is for NTSC. Is this different for other formats?
-    first_field_lengths = [
-        2, 1, 1, 2
-    ]
-    second_field_lengths = [
-        1, 2, 2, 1
-    ]
     for i in range(0, 3):
         if field_order_lengths[i] == first_field_lengths[i]:
             field_boundaries_consensus += 1
@@ -235,44 +260,47 @@ def get_first_hsync_loc(
     else:
         first_field = False
 
-    #print(
-    #    "prev first field:", prev_first_field, 
-    #    "field boundry consensus:", field_boundaries_consensus,
-    #    "field boundries detected:", field_boundaries_detected, 
-    #    field_order_lengths, 
-    #    "curr first field:", first_field
-    #)
+    # print(
+    #     "prev first field:", prev_first_field, 
+    #     "field boundry consensus:", field_boundaries_consensus,
+    #     "field boundries detected:", field_boundaries_detected, 
+    #     field_order_lengths, 
+    #     "curr first field:", first_field
+    # )
        
     # ***********************************************************
     # calculate the expected line locations for each vblank pulse
     # ***********************************************************
     cdef double line0loc_line = 0
+    cdef double vsync_section_lines = num_eq_pulses / 2
+
+    # start of the last eq pulse before the first hsync pulse
+    cdef double vblank_line_count = vsync_section_lines * 3 - .5
     cdef double hsync_start_line
 
-    # TODO: This is for NTSC. Is this different for other formats?
     if first_field:
-        vblank_lines[FIRST_VBLANK_EQ_1_START] = line0loc_line + 1
-        vblank_lines[FIRST_VBLANK_VSYNC_START] = vblank_lines[FIRST_VBLANK_EQ_1_START] + 3
-        vblank_lines[FIRST_VBLANK_VSYNC_END] = vblank_lines[FIRST_VBLANK_VSYNC_START] + 3
+        vblank_lines[FIRST_VBLANK_EQ_1_START] = line0loc_line + first_field_lengths[FIRST_HSYNC_LENGTH]
+        vblank_lines[FIRST_VBLANK_VSYNC_START] = vblank_lines[FIRST_VBLANK_EQ_1_START] + vsync_section_lines
+        vblank_lines[FIRST_VBLANK_VSYNC_END] = vblank_lines[FIRST_VBLANK_VSYNC_START] + vsync_section_lines + .5
         vblank_lines[FIRST_VBLANK_EQ_2_END] = vblank_lines[FIRST_VBLANK_EQ_1_START] + vblank_line_count
 
-        hsync_start_line = vblank_lines[FIRST_VBLANK_EQ_2_END] + .5
+        hsync_start_line = vblank_lines[FIRST_VBLANK_EQ_2_END] + first_field_lengths[FIRST_EQPL2_LENGTH]
 
-        vblank_lines[LAST_VBLANK_EQ_1_START] = frame_lines / 2 + 1
-        vblank_lines[LAST_VBLANK_VSYNC_START] = vblank_lines[LAST_VBLANK_EQ_1_START] + 3
-        vblank_lines[LAST_VBLANK_VSYNC_END] = vblank_lines[LAST_VBLANK_VSYNC_START] + 3
+        vblank_lines[LAST_VBLANK_EQ_1_START] = field_lines[0] + first_field_lengths[LAST_HSYNC_LENGTH]
+        vblank_lines[LAST_VBLANK_VSYNC_START] = vblank_lines[LAST_VBLANK_EQ_1_START] + vsync_section_lines
+        vblank_lines[LAST_VBLANK_VSYNC_END] = vblank_lines[LAST_VBLANK_VSYNC_START] + vsync_section_lines
         vblank_lines[LAST_VBLANK_EQ_2_END] = vblank_lines[LAST_VBLANK_EQ_1_START] + vblank_line_count
     else:
-        vblank_lines[FIRST_VBLANK_EQ_1_START] = line0loc_line + .5
-        vblank_lines[FIRST_VBLANK_VSYNC_START] = vblank_lines[FIRST_VBLANK_EQ_1_START] + 3
-        vblank_lines[FIRST_VBLANK_VSYNC_END] = vblank_lines[FIRST_VBLANK_VSYNC_START] + 3
+        vblank_lines[FIRST_VBLANK_EQ_1_START] = line0loc_line + second_field_lengths[FIRST_HSYNC_LENGTH]
+        vblank_lines[FIRST_VBLANK_VSYNC_START] = vblank_lines[FIRST_VBLANK_EQ_1_START] + vsync_section_lines
+        vblank_lines[FIRST_VBLANK_VSYNC_END] = vblank_lines[FIRST_VBLANK_VSYNC_START] + vsync_section_lines + .5
         vblank_lines[FIRST_VBLANK_EQ_2_END] = vblank_lines[FIRST_VBLANK_EQ_1_START] + vblank_line_count
 
-        hsync_start_line = vblank_lines[FIRST_VBLANK_EQ_2_END] + 1
+        hsync_start_line = vblank_lines[FIRST_VBLANK_EQ_2_END] + second_field_lengths[FIRST_EQPL2_LENGTH]
 
-        vblank_lines[LAST_VBLANK_EQ_1_START] = frame_lines / 2 + .5
-        vblank_lines[LAST_VBLANK_VSYNC_START] = vblank_lines[LAST_VBLANK_EQ_1_START] + 3
-        vblank_lines[LAST_VBLANK_VSYNC_END] = vblank_lines[LAST_VBLANK_VSYNC_START] + 3
+        vblank_lines[LAST_VBLANK_EQ_1_START] = field_lines[1] + second_field_lengths[LAST_HSYNC_LENGTH]
+        vblank_lines[LAST_VBLANK_VSYNC_START] = vblank_lines[LAST_VBLANK_EQ_1_START] + vsync_section_lines
+        vblank_lines[LAST_VBLANK_VSYNC_END] = vblank_lines[LAST_VBLANK_VSYNC_START] + vsync_section_lines + .5
         vblank_lines[LAST_VBLANK_EQ_2_END] = vblank_lines[LAST_VBLANK_EQ_1_START] + vblank_line_count
 
     # find the location of the first hsync pulse using the vsync and line0loc
@@ -288,6 +316,7 @@ def get_first_hsync_loc(
     #   (i.e. pulse right after the first vblanking interval)
     # **********************************************************************************
     cdef double first_hsync_loc = -1
+    cdef double line0loc = -1
     cdef double delta = 0
     cdef int valid_location_count = 0
     cdef double offset = 0
@@ -302,8 +331,6 @@ def get_first_hsync_loc(
         LAST_VBLANK_VSYNC_END,
         LAST_VBLANK_EQ_2_END
     ]
-
-    print()
 
     # check all possible known distances bewteen vblanking pulses and average the differences to derive the hsync_start_line
     for first_index in range(0, len(pulse_indexes)):
@@ -347,15 +374,25 @@ def get_first_hsync_loc(
             first_hsync_loc += pulse + meanlinelen * delta
             valid_location_count += 1
 
+    # print(vblank_lines, vblank_pulses)
+
     # ******************************************************************************
     # Take the mean of the known vblanking locations to derive the first hsync pulse
     # ******************************************************************************
     if valid_location_count > 0:
         offset /= valid_location_count
         first_hsync_loc = round((first_hsync_loc + offset) / valid_location_count)
+        line0loc = first_hsync_loc - meanlinelen * hsync_start_line
     else:
         # no sync pulses found
-        return None, last_pulse, first_field
+        return None, None, hsync_start_line, last_pulse, first_field
+
+    # print(
+    #     "next field",
+    #     vblank_pulses[LAST_VBLANK_EQ_1_START], 
+    #     first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line),
+    #     #validpulses[-1][1].start
+    # )
 
     next_field = max(first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line), vblank_pulses[LAST_VBLANK_EQ_1_START])
 
@@ -363,7 +400,7 @@ def get_first_hsync_loc(
 
     # print(prev_hsync_loc_from_0, vblank_pulses[LAST_VBLANK_EQ_1_START], first_hsync_loc)
 
-    return first_hsync_loc, next_field, first_field
+    return line0loc, first_hsync_loc, hsync_start_line, next_field, first_field
     
 def valid_pulses_to_linelocs(
     validpulses,
