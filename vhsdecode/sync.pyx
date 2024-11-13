@@ -148,7 +148,9 @@ def get_first_hsync_loc(
 ):
     """
     Returns: 
+       * line0loc: Location of line 0 (last hsync pulse of the previous field)
        * first_hsync_loc: Location of the first hsync pulse (first line after the vblanking)
+       * hsync_start_line: Line where the first hsync pulse is found
        * next_field: Location of the next field (last line + 1 after this field)
        * first_field: True if this is the first field
     """    

@@ -561,7 +561,6 @@ class FieldShared:
             meanlinelen, 
             1 if self.rf.system == "NTSC" else 0,
             self.rf.SysParams["field_lines"],
-            self.rf.SysParams["firstFieldH"],
             self.rf.SysParams["numPulses"],
             last_field_offset,
             prev_first_field,
@@ -609,22 +608,19 @@ class FieldShared:
         line0loc, first_hsync_loc, first_hsync_loc_line, meanlinelen = res
         validpulses = self.validpulses
 
-        #if self.rf.options.fallback_vsync and (
-        #    not first_hsync_loc or self.sync_confidence == 0
-        #):
-        #    self.sync_confidence = 0
-        #    line0loc_t, lastlineloc_t, is_first_field_t = self._get_line0_fallback(
-        #        validpulses
-        #    )
-        #    if line0loc_t:
-        #        ldd.logger.debug("Using fallback vsync, signal may be non-standard.")
-        #        line0loc = line0loc_t
-        #        lastlineloc = lastlineloc_t
-        #        self.isFirstField = (
-        #            not self.prevfield.isFirstField if self.prevfield else True
-        #        )
-        #        self.sync_confidence = 10
-#
+        if self.rf.options.fallback_vsync and (
+            not first_hsync_loc or self.sync_confidence == 0
+        ):
+            self.sync_confidence = 0
+            line0loc_t, lastlineloc_t, is_first_field_t = self._get_line0_fallback(
+                validpulses
+            )
+            if line0loc_t:
+                ldd.logger.debug("Using fallback vsync, signal may be non-standard.")
+                line0loc = line0loc_t
+                first_hsync_loc = line0loc_t + meanlinelen * first_hsync_loc_line
+                self.sync_confidence = 10
+
         # TODO: This is set here for NTSC, but in the PAL base class for PAL in process() it seems..
         # For 405-line it's done in fieldTypeC.process as of now to override that.
         # TODO: This will cause problem with the skipdetected part in valid_pulses_to_linelocs
@@ -633,9 +629,6 @@ class FieldShared:
         # Number of lines to actually process.  This is set so that the entire following
         # VSYNC is processed
         proclines = self.outlinecount + self.lineoffset + 10
-
-        if self.rf.system == "PAL":
-            proclines += 3
 
         if self.rf.debug_plot and self.rf.debug_plot.is_plot_requested("raw_pulses"):
             plot_data_and_pulses(
