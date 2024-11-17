@@ -550,21 +550,30 @@ class FieldShared:
             prev_first_field = -1
 
         if hasattr(self.prevfield, "readloc") and hasattr(self.prevfield, "first_hsync_loc"):
-            last_field_offset = self.prevfield.readloc - self.readloc
-            prev_first_hsync_loc = self.prevfield.first_hsync_loc
-        else:
-            last_field_offset = -1
-            prev_first_hsync_loc = -1
+            self.last_field_offset = self.prevfield.readloc - self.readloc
+            self.prev_first_hsync_loc = self.prevfield.first_hsync_loc
+            self.prev_hsync_diff = self.prevfield.prev_hsync_diff
 
-        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField = sync.get_first_hsync_loc(
+        elif hasattr(self.prevfield, "prev_first_hsync_loc"):
+            self.last_field_offset = self.prevfield.last_field_offset
+            self.prev_first_hsync_loc = self.prevfield.prev_first_hsync_loc
+            self.prev_hsync_diff = self.prevfield.prev_hsync_diff
+            
+        else:
+            self.last_field_offset = -1
+            self.prev_first_hsync_loc = -1
+            self.prev_hsync_diff = -1
+
+        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, self.prev_hsync_diff = sync.get_first_hsync_loc(
             validpulses, 
             meanlinelen, 
             1 if self.rf.system == "NTSC" else 0,
             self.rf.SysParams["field_lines"],
             self.rf.SysParams["numPulses"],
-            last_field_offset,
             prev_first_field,
-            prev_first_hsync_loc
+            self.last_field_offset,
+            self.prev_first_hsync_loc,
+            self.prev_hsync_diff
         )
 
         if self.vblank_next == -1:
