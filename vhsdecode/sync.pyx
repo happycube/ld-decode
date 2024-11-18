@@ -242,27 +242,38 @@ def get_first_hsync_loc(
     cdef int field_boundaries_consensus = 0
     cdef int field_boundaries_detected = 0
 
-    for i in range(0, 3):
-        if field_order_lengths[i] == first_field_lengths[i]:
+    for i in range(0, len(field_order_lengths)):
+        field_length = field_order_lengths[i]
+
+        if field_length == first_field_lengths[i]:
             field_boundaries_consensus += 1
             field_boundaries_detected += 1
-        
-        if field_order_lengths[i] == second_field_lengths[i]:
+
+        elif field_length == second_field_lengths[i]:
             field_boundaries_detected += 1
 
-    if prev_first_field == 0:
-        field_boundaries_consensus += 1
-        field_boundaries_detected += 1
+    # override previous first field, if consensus is sure about field order
+    if field_boundaries_detected == len(field_order_lengths):
+        if field_boundaries_consensus / field_boundaries_detected == 1:
+            first_field = True
+        elif field_boundaries_consensus / field_boundaries_detected == 0:
+            first_field = False
+
+    # use opposite of previous field
+    elif prev_first_field == 0:
+        first_field = True
     elif prev_first_field == 1:
-        field_boundaries_detected += 1
-    
-    # get a consensus if this is the first field or not
-    if field_boundaries_detected == 0:
-        first_field = True
-    elif (round(field_boundaries_consensus / field_boundaries_detected) == 1):
-        first_field = True
-    else:
         first_field = False
+
+    # guess the field order if no previous field exists
+    elif prev_first_field == -1:
+        if field_boundaries_detected > 0:
+            if round(field_boundaries_consensus / field_boundaries_detected) == 1:
+                first_field = True
+            else:
+                first_field = False
+        else:
+            first_field = True
 
     # print(
     #     "prev first field:", prev_first_field, 
@@ -394,7 +405,7 @@ def get_first_hsync_loc(
         valid_location_count += 1
 
         # validate the estimated hsync location with any existing vsync pulses
-        for i in range(0,3):
+        for i in range(0, len(vblank_pulses)):
             res = calc_sync_from_known_distances(
                 vblank_pulses[i],
                 estimated_hsync_loc,
@@ -417,22 +428,16 @@ def get_first_hsync_loc(
         prev_hsync_diff = (first_hsync_loc - estimated_hsync_loc) / meanlinelen
     else:
         # no sync pulses found
-        return None, None, hsync_start_line, last_pulse, first_field, prev_hsync_diff
+        return None, None, hsync_start_line, None, first_field, prev_hsync_diff
+
+    next_field = first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line)
 
     # print(
     #     "next field",
     #     vblank_pulses[LAST_VBLANK_EQ_1_START], 
-    #     first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line),
-    #     #validpulses[-1][1].start
+    #     validpulses[-1][1].start,
+    #     next_field
     # )
-
-    # increment to the next vblanking, or to the next pulse
-    if vblank_pulses[LAST_VBLANK_EQ_1_START] > -1:
-        next_field = vblank_pulses[LAST_VBLANK_EQ_1_START]
-    else:
-        last_valid_pulse = validpulses[-1][1].start
-        calculated_field_end = first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line)
-        next_field = min(last_valid_pulse, calculated_field_end)
 
     return line0loc, first_hsync_loc, hsync_start_line, next_field, first_field, prev_hsync_diff
     
@@ -540,7 +545,7 @@ def valid_pulses_to_linelocs(
             nearest_line = 0
 
             # search from the beginning for the closest populated line
-            for j in range(first_line_index, last_line_index):
+            for j in range(first_line_index, last_line_index+1):
                 new_distance = abs(j - i)
 
                 if i != j and line_locations[j] != -1:
