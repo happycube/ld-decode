@@ -454,8 +454,8 @@ def get_first_hsync_loc(
     
 def valid_pulses_to_linelocs(
     validpulses,
-    int first_hsync_loc,
-    int hsync_start_line,
+    int reference_pulse,
+    int reference_line,
     double meanlinelen,
     double hsync_tolerance,
     int proclines,
@@ -466,8 +466,8 @@ def valid_pulses_to_linelocs(
 
     Args:
         validpulses ([type]): List of sync pulses
-        first_hsync_loc (int): Start location of the first hsync pulse
-        hsync_start_line (int): Line that the first hsync pulse represents
+        reference_pulse (int): Sample location of the reference pulse
+        reference_line (int): Line that the reference pulse represents
         meanlinelen (float): Average line length
         hsync_tolerance (float): How much a sync pulse can deviate from normal before being discarded.
         proclines (int): Total number of lines to process
@@ -491,7 +491,7 @@ def valid_pulses_to_linelocs(
     # assign pulses to lines based on the first hsync pulse in this field
     for p in validpulses:
         # Calculate what line number the pulse corresponds closest too.
-        lineloc = (p[1].start - first_hsync_loc) / meanlinelen + hsync_start_line
+        lineloc = (p[1].start - reference_pulse) / meanlinelen + reference_line
         rlineloc = round(lineloc)
         lineloc_distance = abs(lineloc - rlineloc)
 
@@ -529,19 +529,19 @@ def valid_pulses_to_linelocs(
 
     # fill in the first and last vsyncs with estimated line locations
     # we don't care about refining these lines
-    cdef int hsync_start_line_rounded = round(hsync_start_line)
-    for i in range(0, hsync_start_line_rounded):
-        estimated_location = line_locations[hsync_start_line_rounded] - meanlinelen * (hsync_start_line_rounded - i)
+    cdef int reference_line_rounded = round(reference_line)
+    for i in range(0, reference_line_rounded):
+        estimated_location = line_locations[reference_line_rounded] - meanlinelen * (reference_line_rounded - i)
         if estimated_location >= 0:
             line_locations[i] = estimated_location
 
-    for i in range(proclines - hsync_start_line_rounded, proclines):
-        estimated_location = line_locations[hsync_start_line_rounded] + meanlinelen * (i - hsync_start_line_rounded)
+    for i in range(proclines - reference_line_rounded, proclines):
+        estimated_location = line_locations[reference_line_rounded] + meanlinelen * (i - reference_line_rounded)
         if estimated_location <= validpulses[-1][1].start:
             line_locations[i] = estimated_location
 
     # check for gaps in remaining lines
-    for i in range(hsync_start_line_rounded + 1, proclines - hsync_start_line_rounded):
+    for i in range(reference_line_rounded + 1, proclines - reference_line_rounded):
         if (
             # line_location_missing
             line_locations[i] == -1
