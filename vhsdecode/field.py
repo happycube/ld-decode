@@ -549,32 +549,31 @@ class FieldShared:
         else:
             prev_first_field = -1
 
-        if hasattr(self.prevfield, "readloc") and hasattr(self.prevfield, "first_hsync_loc"):
-            self.last_field_offset = self.prevfield.readloc - self.readloc
-            self.prev_first_hsync_loc = self.prevfield.first_hsync_loc
-            self.prev_hsync_diff = self.prevfield.prev_hsync_diff
+        if not hasattr(self.rf, "prev_first_hsync_loc"):
+            self.rf.prev_first_hsync_readloc = -1
+            self.rf.prev_first_hsync_loc =  -1
+            self.rf.prev_first_hsync_first_field = prev_first_field
+            self.rf.prev_first_hsync_diff =  -1
 
-        elif hasattr(self.prevfield, "prev_first_hsync_loc"):
-            self.last_field_offset = self.prevfield.last_field_offset
-            self.prev_first_hsync_loc = self.prevfield.prev_first_hsync_loc
-            self.prev_hsync_diff = self.prevfield.prev_hsync_diff
-            
-        else:
-            self.last_field_offset = -1
-            self.prev_first_hsync_loc = -1
-            self.prev_hsync_diff = -1
+        prev_first_hsync_offset = self.rf.prev_first_hsync_readloc - self.readloc
 
-        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, self.prev_hsync_diff = sync.get_first_hsync_loc(
+        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, prev_hsync_diff = sync.get_first_hsync_loc(
             validpulses, 
             meanlinelen, 
             1 if self.rf.system == "NTSC" else 0,
             self.rf.SysParams["field_lines"],
             self.rf.SysParams["numPulses"],
             prev_first_field,
-            self.last_field_offset,
-            self.prev_first_hsync_loc,
-            self.prev_hsync_diff
+            prev_first_hsync_offset,
+            self.rf.prev_first_hsync_loc,
+            self.rf.prev_first_hsync_diff
         )
+
+        if self.first_hsync_loc != None:
+            self.rf.prev_first_hsync_readloc = self.readloc
+            self.rf.prev_first_hsync_loc = self.first_hsync_loc
+            self.rf.prev_first_hsync_first_field = self.isFirstField
+            self.rf.prev_first_hsync_diff = prev_hsync_diff
 
         if self.vblank_next == -1:
             self.vblank_next = None

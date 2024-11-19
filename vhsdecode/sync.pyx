@@ -353,8 +353,13 @@ def get_first_hsync_loc(
     cdef double line0loc = -1
     cdef int valid_location_count = 0
     cdef double offset = 0
-    cdef int estimated_hsync_loc = round((last_field_offset + prev_first_hsync_loc) + meanlinelen * previous_field_lines)
     cdef double prev_offset_lines = -last_field_offset / meanlinelen
+
+    cdef int estimated_hsync_loc = round(
+        (last_field_offset + prev_first_hsync_loc) +
+        meanlinelen * previous_field_lines +
+        meanlinelen * prev_hsync_diff
+    )
 
     pulse_indexes = [
         FIRST_VBLANK_EQ_1_START,
@@ -383,8 +388,14 @@ def get_first_hsync_loc(
 
     # estimate the hsync location based on the previous valid field using read offsets
     if (
-        # if there is a previous hsync location
-        prev_first_hsync_loc != -1 and 
+        # if there are pulses in this field
+        last_pulse != None and
+
+        # and estimated hsync is within this field
+        estimated_hsync_loc > 0 and estimated_hsync_loc < last_pulse[1].start and
+
+        # and the previous hsync location is before the current field
+        prev_first_hsync_loc > 0 and
 
         # and there are enough lines in the previous field to be a valid field
         prev_offset_lines >= previous_field_lines and (
@@ -401,7 +412,7 @@ def get_first_hsync_loc(
         # offset--prev--------------------0-------curr--------------------total
         #         ^-------------------------------^
     
-        first_hsync_loc += estimated_hsync_loc + meanlinelen * prev_hsync_diff
+        first_hsync_loc += estimated_hsync_loc
         valid_location_count += 1
 
         # validate the estimated hsync location with any existing vsync pulses
