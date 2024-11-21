@@ -692,12 +692,24 @@ class FieldShared:
         # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
 
         if self.rf.debug_plot and self.rf.debug_plot.is_plot_requested("line_locs"):
+            line0loc_plot = -1 if line0loc == None else line0loc
+            first_hsync_loc_plot = -1 if first_hsync_loc == None else first_hsync_loc
+            vblank_next_plot = -1 if self.vblank_next == None else self.vblank_next
+            last_validpulse_plot = -1 if last_validpulse == None else last_validpulse
+
+            print(
+                "line0loc", line0loc_plot,
+                "first_hsync_loc", first_hsync_loc_plot,
+                "vblank_next", vblank_next_plot,
+                "last_validpulse", last_validpulse_plot,
+            )
+
             plot_data_and_pulses(
                 self.data["video"]["demod"],
                 raw_pulses=self.rawpulses,
                 linelocs=linelocs,
                 pulses=validpulses,
-                extra_lines=[line0loc, first_hsync_loc, self.vblank_next, last_validpulse]
+                extra_lines=[line0loc_plot, first_hsync_loc_plot, vblank_next_plot, last_validpulse_plot]
             )
 
         if self.vblank_next is None:

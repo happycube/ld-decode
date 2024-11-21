@@ -177,6 +177,7 @@ def get_first_hsync_loc(
 
     cdef int group = 0
     cdef int field_group = 0
+    cdef int samples_remaining = 0
 
     for p in validpulses:
         if last_pulse != None and p[2]:
@@ -186,23 +187,33 @@ def get_first_hsync_loc(
                 field_order_lengths[0 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
 
             # eq 1 -> [vsync]
-            if last_pulse[0] == 1 and p[0] == 2:
+            elif last_pulse[0] == 1 and p[0] == 2:
                 vblank_pulses[1 + group] = p[1].start
 
             # [vsync] -> eq 2
-            if last_pulse[0] == 2 and p[0] == 3:
+            elif last_pulse[0] == 2 and p[0] == 3:
                 vblank_pulses[2 + group] = last_pulse[1].start
                 
             # [eq 2] -> hsync
-            if last_pulse[0] > 0 and p[0] == 0:
+            elif last_pulse[0] > 0 and p[0] == 0:
                 vblank_pulses[3 + group] = last_pulse[1].start
                 field_order_lengths[1 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
 
                 # if there are more than two blanking intervals in this data
                 # record only the first and last
-                if group == 0:
-                    group = 4
-                    field_group = 2
+
+            # increment to the next group if there are not enough pulses to contain a second vblank
+            if prev_first_field == 1:
+                samples_remaining = round(field_lines[1] * meanlinelen)
+            elif prev_first_field == 0:
+                samples_remaining = round(field_lines[0] * meanlinelen)
+            
+            if (
+                group == 0 and 
+               (field_order_lengths[1] != -1 or p[1].start + samples_remaining > validpulses[-1][1].start)
+            ):
+                group = 4
+                field_group = 2
 
         last_pulse = p
 
@@ -253,11 +264,16 @@ def get_first_hsync_loc(
             field_boundaries_detected += 1
 
     # override previous first field, if consensus is sure about field order
-    if field_boundaries_detected == len(field_order_lengths):
-        if field_boundaries_consensus / field_boundaries_detected == 1:
-            first_field = True
-        elif field_boundaries_consensus / field_boundaries_detected == 0:
-            first_field = False
+    if (
+        field_boundaries_detected == len(field_order_lengths) and 
+        field_boundaries_consensus / field_boundaries_detected == 1
+    ):
+        first_field = True
+    elif (
+        field_boundaries_detected == len(field_order_lengths) and 
+        field_boundaries_consensus / field_boundaries_detected == 0
+    ):
+        first_field = False
 
     # use opposite of previous field
     elif prev_first_field == 0:
@@ -427,6 +443,19 @@ def get_first_hsync_loc(
             first_hsync_loc += res[1]
             valid_location_count += res[2]
 
+    # use any sync pulses, if nothing is found
+    #if valid_location_count == 0:
+    #    for i in range(0, 4):
+    #        res = calc_sync_from_known_distances(
+    #            vblank_pulses[i],
+    #            vblank_pulses[i],
+    #            vblank_lines[i],
+    #            vblank_lines[i],
+    #        )
+    #        offset += res[0]
+    #        first_hsync_loc += res[1]
+    #        valid_location_count += res[2]
+
     # print(vblank_lines, vblank_pulses)
 
     # ******************************************************************************
@@ -439,6 +468,7 @@ def get_first_hsync_loc(
         prev_hsync_diff = (first_hsync_loc - estimated_hsync_loc) / meanlinelen
     else:
         # no sync pulses found
+        # print("no sync pulses found")
         return None, None, hsync_start_line, None, first_field, prev_hsync_diff
 
     next_field = first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line)
@@ -530,7 +560,7 @@ def valid_pulses_to_linelocs(
     # fill in the first and last vsyncs with estimated line locations
     # we don't care about refining these lines
     cdef int reference_line_rounded = round(reference_line)
-    for i in range(0, reference_line_rounded):
+    for i in range(0, reference_line_rounded + 1):
         estimated_location = line_locations[reference_line_rounded] - meanlinelen * (reference_line_rounded - i)
         if estimated_location >= 0:
             line_locations[i] = estimated_location
@@ -541,13 +571,15 @@ def valid_pulses_to_linelocs(
             line_locations[i] = estimated_location
 
     # check for gaps in remaining lines
-    for i in range(reference_line_rounded + 1, proclines - reference_line_rounded):
+    for i in range(0, proclines):
         if (
             # line_location_missing
             line_locations[i] == -1
 
             # line_hsync_gap_detected
             or (
+                i > reference_line_rounded + 1 and
+                i <= proclines - reference_line_rounded and
                 previous_line > -1 and
                 line_locations[i] - previous_line > meanlinelen * 1.2
             )
