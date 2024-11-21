@@ -88,7 +88,11 @@ def field_class_from_formats(system: str, tape_format: str):
             field_class = FieldNTSCTypeC
         elif tape_format == "SVHS":
             field_class = FieldNTSCSVHS
-        elif tape_format == "BETAMAX" or tape_format == "BETAMAX_HIFI":
+        elif (
+            tape_format == "BETAMAX"
+            or tape_format == "BETAMAX_HIFI"
+            or tape_format == "SUPERBETA"
+        ):
             field_class = FieldNTSCBetamax
         elif tape_format == "VIDEO8" or tape_format == "HI8":
             field_class = FieldNTSCVideo8
@@ -384,14 +388,25 @@ class FieldShared:
                 return input.astype(np.single)
             else:
                 ire0 = self.rf.DecoderParams["ire0"]
-                if self.rf.options.ire0_adjust and input.size == self.outlinecount * self.outlinelen:
+                if (
+                    self.rf.options.ire0_adjust
+                    and input.size == self.outlinecount * self.outlinelen
+                ):
                     blank_levels = np.empty(self.outlinecount)
                     for i in range(0, self.outlinecount):
                         blank_levels[i] = np.median(
-                            input[i * self.outlinelen + self.ire0_backporch[0] : i * self.outlinelen + self.ire0_backporch[1]]
+                            input[
+                                i * self.outlinelen
+                                + self.ire0_backporch[0] : i * self.outlinelen
+                                + self.ire0_backporch[1]
+                            ]
                         )
                     blank_levels = np.sort(blank_levels)
-                    ire0 = np.mean(blank_levels[int(self.outlinecount / 3) : int(self.outlinecount * 2 / 3)])
+                    ire0 = np.mean(
+                        blank_levels[
+                            int(self.outlinecount / 3) : int(self.outlinecount * 2 / 3)
+                        ]
+                    )
                     ldd.logger.debug("calculated ire0: %.02f", ire0)
                 return hz_to_output_array(
                     input,
