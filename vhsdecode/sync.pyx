@@ -174,43 +174,42 @@ def get_first_hsync_loc(
     # get the vblanking pulses and assign them to either the first or second vblanking group
     # **************************************************************************************
     last_pulse = None
-
+    cdef int last_vsync_pulse = -1
     cdef int group = 0
     cdef int field_group = 0
-    cdef int samples_remaining = 0
 
     for p in validpulses:
         if last_pulse != None and p[2]:
             # hsync -> [eq 1]
             if last_pulse[0] == 0 and p[0] > 0:
                 vblank_pulses[0 + group] = p[1].start
+                last_vsync_pulse = p[1].start
                 field_order_lengths[0 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
 
             # eq 1 -> [vsync]
             elif last_pulse[0] == 1 and p[0] == 2:
                 vblank_pulses[1 + group] = p[1].start
+                last_vsync_pulse = p[1].start
 
             # [vsync] -> eq 2
             elif last_pulse[0] == 2 and p[0] == 3:
                 vblank_pulses[2 + group] = last_pulse[1].start
+                last_vsync_pulse = p[1].start
                 
             # [eq 2] -> hsync
             elif last_pulse[0] > 0 and p[0] == 0:
                 vblank_pulses[3 + group] = last_pulse[1].start
+                last_vsync_pulse = p[1].start
                 field_order_lengths[1 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
 
                 # if there are more than two blanking intervals in this data
                 # record only the first and last
-
-            # increment to the next group if there are not enough pulses to contain a second vblank
-            if prev_first_field == 1:
-                samples_remaining = round(field_lines[1] * meanlinelen)
-            elif prev_first_field == 0:
-                samples_remaining = round(field_lines[0] * meanlinelen)
             
             if (
-                group == 0 and 
-               (field_order_lengths[1] != -1 or p[1].start + samples_remaining > validpulses[-1][1].start)
+                group == 0 and (
+                    field_order_lengths[1] != -1 or 
+                    (last_vsync_pulse != -1 and last_vsync_pulse + (num_eq_pulses * 2 * 3) * meanlinelen < p[1].start)
+                )
             ):
                 group = 4
                 field_group = 2
@@ -369,13 +368,6 @@ def get_first_hsync_loc(
     cdef double line0loc = -1
     cdef int valid_location_count = 0
     cdef double offset = 0
-    cdef double prev_offset_lines = -last_field_offset / meanlinelen
-
-    cdef int estimated_hsync_loc = round(
-        (last_field_offset + prev_first_hsync_loc) +
-        meanlinelen * previous_field_lines +
-        meanlinelen * prev_hsync_diff
-    )
 
     pulse_indexes = [
         FIRST_VBLANK_EQ_1_START,
@@ -402,13 +394,21 @@ def get_first_hsync_loc(
             first_hsync_loc += res[1]
             valid_location_count += res[2]
 
+    cdef double prev_offset_lines = -last_field_offset / meanlinelen
+
+    cdef int estimated_hsync_loc = round(
+        (last_field_offset + prev_first_hsync_loc)
+        + meanlinelen * previous_field_lines
+    )
+    cdef int estimated_hsync_with_offset = round(estimated_hsync_loc + meanlinelen * prev_hsync_diff)
+
     # estimate the hsync location based on the previous valid field using read offsets
     if (
         # if there are pulses in this field
         last_pulse != None and
 
         # and estimated hsync is within this field
-        estimated_hsync_loc > 0 and estimated_hsync_loc < last_pulse[1].start and
+        estimated_hsync_with_offset > 0 and estimated_hsync_with_offset < last_pulse[1].start and
 
         # and the previous hsync location is before the current field
         prev_first_hsync_loc > 0 and
@@ -428,14 +428,14 @@ def get_first_hsync_loc(
         # offset--prev--------------------0-------curr--------------------total
         #         ^-------------------------------^
     
-        first_hsync_loc += estimated_hsync_loc
+        first_hsync_loc += estimated_hsync_with_offset
         valid_location_count += 1
 
         # validate the estimated hsync location with any existing vsync pulses
         for i in range(0, len(vblank_pulses)):
             res = calc_sync_from_known_distances(
                 vblank_pulses[i],
-                estimated_hsync_loc,
+                estimated_hsync_with_offset,
                 vblank_lines[i],
                 hsync_start_line
             )
