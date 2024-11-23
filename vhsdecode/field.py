@@ -544,39 +544,43 @@ class FieldShared:
         # NOTE: This seems to get the position of the last normal vsync before the vertical blanking interval rather than line0
         # (which is only the same thing on the top field of 525-line system signals)
 
-        if hasattr(self.prevfield, "isFirstField"):
-            prev_first_field = 1 if self.prevfield.isFirstField else 0
-        else:
-            prev_first_field = -1
-
+        # fill in empty values, when decoding starts
         if not hasattr(self.rf, "prev_first_hsync_loc"):
             self.rf.prev_first_hsync_readloc = -1
-            self.rf.prev_first_hsync_loc =  -1
-            self.rf.prev_first_hsync_first_field = prev_first_field
-            self.rf.prev_first_hsync_diff =  -1
+            self.rf.prev_first_hsync_loc = -1
+            self.rf.prev_first_hsync_diff = -1
 
-        prev_first_hsync_offset = self.rf.prev_first_hsync_readloc - self.readloc
+            if hasattr(self.prevfield, "isFirstField"):
+                self.rf.prev_first_field = 1 if self.prevfield.isFirstField else 0
+            else:
+                self.rf.prev_first_field = -1
 
+        # only calculate when we have a previous hsync pulse to use
+        if self.rf.prev_first_hsync_readloc != -1:
+            prev_first_hsync_offset = self.rf.prev_first_hsync_readloc - self.readloc
+        else:
+            prev_first_hsync_offset = 0
+
+        # find the location of the first hsync pulse (first line of video after the vsync pulses)
         line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, prev_hsync_diff = sync.get_first_hsync_loc(
             validpulses, 
             meanlinelen, 
             1 if self.rf.system == "NTSC" else 0,
             self.rf.SysParams["field_lines"],
             self.rf.SysParams["numPulses"],
-            prev_first_field,
+            self.rf.prev_first_field,
             prev_first_hsync_offset,
             self.rf.prev_first_hsync_loc,
             self.rf.prev_first_hsync_diff
         )
 
+        # save the current hsync pulse location to the previous hsync pulse
         if self.first_hsync_loc != None:
             self.rf.prev_first_hsync_readloc = self.readloc
             self.rf.prev_first_hsync_loc = self.first_hsync_loc
-            self.rf.prev_first_hsync_first_field = self.isFirstField
             self.rf.prev_first_hsync_diff = prev_hsync_diff
 
-        if self.vblank_next == -1:
-            self.vblank_next = None
+        self.rf.prev_first_field = self.isFirstField
 
         #self.getLine0(validpulses, meanlinelen)
         

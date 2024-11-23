@@ -180,6 +180,16 @@ def get_first_hsync_loc(
 
     for p in validpulses:
         if last_pulse != None and p[2]:
+            if (
+                # move to the next vsync pulse group if we're currently on the first vsync interval
+                group == 0 and
+
+                # and the next vsync is close to the expected location of the next field
+                last_vsync_pulse != -1 and last_vsync_pulse + (field_lines[0] - 20) * meanlinelen < p[1].start
+            ):
+                group = 4
+                field_group = 2
+
             # hsync -> [eq 1]
             if last_pulse[0] == 0 and p[0] > 0:
                 vblank_pulses[0 + group] = p[1].start
@@ -201,18 +211,6 @@ def get_first_hsync_loc(
                 vblank_pulses[3 + group] = last_pulse[1].start
                 last_vsync_pulse = p[1].start
                 field_order_lengths[1 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
-
-                # if there are more than two blanking intervals in this data
-                # record only the first and last
-            
-            if (
-                group == 0 and (
-                    field_order_lengths[1] != -1 or 
-                    (last_vsync_pulse != -1 and last_vsync_pulse + (num_eq_pulses * 2 * 3) * meanlinelen < p[1].start)
-                )
-            ):
-                group = 4
-                field_group = 2
 
         last_pulse = p
 
@@ -262,34 +260,29 @@ def get_first_hsync_loc(
         elif field_length == second_field_lengths[i]:
             field_boundaries_detected += 1
 
+    # guess the field order if no previous field exists
+    if prev_first_field == -1:
+        if field_boundaries_detected == 0 or round(field_boundaries_consensus / field_boundaries_detected) == 1:
+            first_field = True
+        else:
+            first_field = False
+    
     # override previous first field, if consensus is sure about field order
-    if (
-        field_boundaries_detected == len(field_order_lengths) and 
+    elif (
+        field_boundaries_detected >= len(field_order_lengths) / 2 and
         field_boundaries_consensus / field_boundaries_detected == 1
     ):
         first_field = True
     elif (
-        field_boundaries_detected == len(field_order_lengths) and 
+        field_boundaries_detected >= len(field_order_lengths) / 2 and
         field_boundaries_consensus / field_boundaries_detected == 0
     ):
         first_field = False
-
+    
     # use opposite of previous field
-    elif prev_first_field == 0:
-        first_field = True
-    elif prev_first_field == 1:
-        first_field = False
-
-    # guess the field order if no previous field exists
-    elif prev_first_field == -1:
-        if field_boundaries_detected > 0:
-            if round(field_boundaries_consensus / field_boundaries_detected) == 1:
-                first_field = True
-            else:
-                first_field = False
-        else:
-            first_field = True
-
+    else:
+        first_field = not prev_first_field
+        
     # print(
     #     "prev first field:", prev_first_field, 
     #     "field boundry consensus:", field_boundaries_consensus,
@@ -619,13 +612,15 @@ def valid_pulses_to_linelocs(
                 line_locations[i] = nearest_pulse
             else:
                 # use the estimated position
-                # print(i, "using estimated pulse", estimated_location)
-                line_location_errs[i] = 1
+                # print(i, "using estimated pulse", estimated_location).
                 line_locations[i] = estimated_location
+
+                # uncomment to fill any guessed lines with the previous field values
+                # line_location_errs[i] = 1
  
         previous_line = line_locations[i]
 
-    return line_locations, line_location_errs, max(last_valid_pulse, line_locations[-1])
+    return line_locations, line_location_errs, line_locations[-1]
 
 # Rounds a line number to it's nearest line at intervals of .5 lines
 def round_nearest_line_loc(double line_number):
