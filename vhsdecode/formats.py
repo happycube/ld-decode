@@ -90,7 +90,7 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
     # We base the parameters off the original laserdisc ones and override the ones
     # we need.
 
-    assert (tape_speed <= 4, "Tape speed was > 4!")
+    assert tape_speed <= 4, "Tape speed was > 4!"
 
     if system == "PAL":
         if tape_format == "UMATIC":
@@ -260,6 +260,15 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             return get_sysparams_ntsc_betamax_hifi(
                 SysParams_NTSC
             ), get_rfparams_ntsc_betamax_hifi(FilterParams_NTSC)
+        elif tape_format == "SUPERBETA":
+            from vhsdecode.format_defs.betamax import (
+                get_rfparams_ntsc_super_betamax,
+                get_sysparams_ntsc_super_betamax,
+            )
+
+            return get_sysparams_ntsc_super_betamax(
+                SysParams_NTSC
+            ), get_rfparams_ntsc_super_betamax(FilterParams_NTSC)
         elif tape_format == "VIDEO8":
             from vhsdecode.format_defs.video8 import (
                 get_rfparams_ntsc_video8,
