@@ -555,11 +555,11 @@ class FieldShared:
             else:
                 self.rf.prev_first_field = -1
 
-        # only calculate when we have a previous hsync pulse to use
+        # calculate in terms of lines to prevent integer overflow when seeking ahead large amounts
         if self.rf.prev_first_hsync_readloc != -1:
-            prev_first_hsync_offset = self.rf.prev_first_hsync_readloc - self.readloc
+            prev_first_hsync_offset_lines = (self.rf.prev_first_hsync_readloc - self.readloc) / meanlinelen
         else:
-            prev_first_hsync_offset = 0
+            prev_first_hsync_offset_lines = 0
 
         # find the location of the first hsync pulse (first line of video after the vsync pulses)
         line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, prev_hsync_diff = sync.get_first_hsync_loc(
@@ -569,7 +569,7 @@ class FieldShared:
             self.rf.SysParams["field_lines"],
             self.rf.SysParams["numPulses"],
             self.rf.prev_first_field,
-            prev_first_hsync_offset,
+            prev_first_hsync_offset_lines,
             self.rf.prev_first_hsync_loc,
             self.rf.prev_first_hsync_diff
         )
