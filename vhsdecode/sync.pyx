@@ -390,20 +390,11 @@ def get_first_hsync_loc(
         ) * meanlinelen
     )
 
-    cdef int estimated_hsync_with_offset
-    # use the difference from the previous hsync if within .5 lines
-    if prev_hsync_diff <= .5 and prev_hsync_diff >= -.5:
-        estimated_hsync_with_offset = round(estimated_hsync_loc + meanlinelen * prev_hsync_diff)
-    else:
-        estimated_hsync_with_offset = estimated_hsync_loc
-
     # estimate the hsync location based on the previous valid field using read offsets
+    cdef int estimated_hsync_with_offset
     if (
         # if there are no valid sync distances
         valid_location_count == 0 and
-
-        # and estimated hsync is within this field
-        estimated_hsync_with_offset > 0 and
 
         # and the previous hsync location is before the current field
         prev_first_hsync_loc > 0
@@ -412,21 +403,30 @@ def get_first_hsync_loc(
         # |-------|-----------------------|-------|-----------------------|
         # offset--prev--------------------0-------curr--------------------total
         #         ^-------------------------------^
-    
-        first_hsync_loc += estimated_hsync_with_offset
-        valid_location_count += 1
 
-        # validate the estimated hsync location with any existing vsync pulses
-        for i in range(0, len(vblank_pulses)):
-            res = calc_sync_from_known_distances(
-                vblank_pulses[i],
-                estimated_hsync_with_offset,
-                vblank_lines[i],
-                hsync_start_line
-            )
-            offset += res[0]
-            first_hsync_loc += res[1]
-            valid_location_count += res[2]
+        # use the difference from the previous hsync if within .5 lines
+        if prev_hsync_diff <= .5 and prev_hsync_diff >= -.5:
+            # TODO: determine when to add or subtract the prev_hsync_diff
+            #       maybe this can be based on difference in tape speed, add if slower, subtract if faster
+            estimated_hsync_with_offset = round(estimated_hsync_loc + meanlinelen * prev_hsync_diff)
+        else:
+            estimated_hsync_with_offset = estimated_hsync_loc
+
+        if estimated_hsync_with_offset > 0:
+            first_hsync_loc += estimated_hsync_with_offset
+            valid_location_count += 1
+    
+            # validate the estimated hsync location with any existing vsync pulses
+            for i in range(0, len(vblank_pulses)):
+                res = calc_sync_from_known_distances(
+                    vblank_pulses[i],
+                    estimated_hsync_with_offset,
+                    vblank_lines[i],
+                    hsync_start_line
+                )
+                offset += res[0]
+                first_hsync_loc += res[1]
+                valid_location_count += res[2]
 
     # use any sync pulses, if nothing is found
     #if valid_location_count == 0:
