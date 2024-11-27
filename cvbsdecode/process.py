@@ -66,9 +66,16 @@ class FieldCVBSShared:
             )
             # Make sore to not move backwards here
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
+        
+        validpulses_arr = np.asarray(
+            [
+                p[1].start
+                for p in validpulses
+            ], dtype=np.int32
+        )
 
         linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
-            validpulses,
+            validpulses_arr,
             line0loc,
             0,
             meanlinelen,

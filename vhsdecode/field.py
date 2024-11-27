@@ -635,7 +635,6 @@ class FieldShared:
 
         # TODO: This is set here for NTSC, but in the PAL base class for PAL in process() it seems..
         # For 405-line it's done in fieldTypeC.process as of now to override that.
-        # TODO: This will cause problem with the skipdetected part in valid_pulses_to_linelocs
         self.linecount = 263 if self.isFirstField else 262
 
         # Number of lines to actually process.  This is set so that the entire following
@@ -676,9 +675,16 @@ class FieldShared:
                 )
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
+        
+        validpulses_arr = np.asarray(
+            [
+                p[1].start
+                for p in validpulses
+            ], dtype=np.int32
+        )
 
         linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
-            validpulses,
+            validpulses_arr,
             first_hsync_loc,
             first_hsync_loc_line,
             meanlinelen,
