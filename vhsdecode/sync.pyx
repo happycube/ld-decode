@@ -41,6 +41,9 @@ cdef c_median(np.ndarray data):
 cdef bint is_out_of_range(double[:] data, double min, double max) nogil:
     """Check if data stays between min and max, returns fals if not."""
     cdef Py_ssize_t i
+    if len(data) == 0:
+        return True
+
     for i in range(0, len(data)):
         if data[i] < min or data[i] > max:
             return True
@@ -453,15 +456,14 @@ def get_first_hsync_loc(
         prev_hsync_diff = (first_hsync_loc - estimated_hsync_loc) / meanlinelen
     else:
         # no sync pulses found
-        # print("no sync pulses found")
+        print("no sync pulses found")
         return None, None, hsync_start_line, None, first_field, prev_hsync_diff
 
     next_field = first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line)
 
     # print(
     #     "next field",
-    #     vblank_pulses[LAST_VBLANK_EQ_1_START], 
-    #     validpulses[-1][1].start,
+    #     first_hsync_loc,
     #     next_field
     # )
 

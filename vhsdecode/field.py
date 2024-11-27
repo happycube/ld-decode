@@ -656,7 +656,8 @@ class FieldShared:
             return None, None, self.inlinelen * 100
 
         # If we don't have enough data at the end, move onto the next field
-        lastline = (self.rawpulses[-1].start - line0loc) / meanlinelen
+        lastline = (len(self.data["input"]) - line0loc) / meanlinelen - 1
+
         if self.rf.debug_plot and self.rf.debug_plot.is_plot_requested("raw_pulses"):
             plot_data_and_pulses(
                 self.data["video"]["demod"],
