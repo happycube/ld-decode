@@ -540,10 +540,6 @@ class FieldShared:
         meanlinelen = self.computeLineLen(validpulses)
         self.meanlinelen = meanlinelen
 
-        # line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses)
-        # NOTE: This seems to get the position of the last normal vsync before the vertical blanking interval rather than line0
-        # (which is only the same thing on the top field of 525-line system signals)
-
         # fill in empty values, when decoding starts
         if not hasattr(self.rf, "prev_first_hsync_loc"):
             self.rf.prev_first_hsync_readloc = -1
@@ -562,7 +558,8 @@ class FieldShared:
             prev_first_hsync_offset_lines = 0
 
         # find the location of the first hsync pulse (first line of video after the vsync pulses)
-        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, prev_hsync_diff = sync.get_first_hsync_loc(
+        # this function relies on the pulse type (hsync, vsync, eq pulse) being accurate in validpulses
+        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, prev_hsync_diff, vblank_pulses = sync.get_first_hsync_loc(
             validpulses, 
             meanlinelen, 
             1 if self.rf.system == "NTSC" else 0,
@@ -584,7 +581,7 @@ class FieldShared:
 
         #self.getLine0(validpulses, meanlinelen)
         
-        return line0loc, self.first_hsync_loc, self.first_hsync_loc_line, meanlinelen
+        return line0loc, self.first_hsync_loc, self.first_hsync_loc_line, meanlinelen, vblank_pulses
 
     @property
     def compute_linelocs_issues(self):
@@ -617,7 +614,7 @@ class FieldShared:
             ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
             return None, None, int(self.rf.freq_hz / 10)
 
-        line0loc, first_hsync_loc, first_hsync_loc_line, meanlinelen = res
+        line0loc, first_hsync_loc, first_hsync_loc_line, meanlinelen, vblank_pulses = res
         validpulses = self.validpulses
 
         if self.rf.options.fallback_vsync and (
@@ -676,12 +673,12 @@ class FieldShared:
                 ldd.logger.info("lastline < proclines , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
         
-        validpulses_arr = np.asarray(
+        validpulses_arr = np.sort(np.asarray(
             [
                 p[1].start
                 for p in validpulses
             ], dtype=np.int32
-        )
+        ))
 
         linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
             validpulses_arr,
@@ -693,11 +690,6 @@ class FieldShared:
             1.9
         )
 
-        # not a full field, skip over to the last detected pulse
-        if linelocs[proclines-1] == -1:
-            print("not a full field")
-            return None, None, last_validpulse
-
         self.linelocs0 = linelocs.copy()
 
         # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
@@ -706,13 +698,11 @@ class FieldShared:
             line0loc_plot = -1 if line0loc == None else line0loc
             first_hsync_loc_plot = -1 if first_hsync_loc == None else first_hsync_loc
             vblank_next_plot = -1 if self.vblank_next == None else self.vblank_next
-            last_validpulse_plot = -1 if last_validpulse == None else last_validpulse
 
             print(
                 "line0loc", line0loc_plot,
                 "first_hsync_loc", first_hsync_loc_plot,
-                "vblank_next", vblank_next_plot,
-                "last_validpulse", last_validpulse_plot,
+                "vblank_next", vblank_next_plot
             )
 
             plot_data_and_pulses(
@@ -720,7 +710,8 @@ class FieldShared:
                 raw_pulses=self.rawpulses,
                 linelocs=linelocs,
                 pulses=validpulses,
-                extra_lines=[line0loc_plot, first_hsync_loc_plot, vblank_next_plot, last_validpulse_plot]
+                vblank_lines=vblank_pulses,
+                extra_lines=[line0loc_plot, first_hsync_loc_plot, vblank_next_plot]
             )
 
         if self.vblank_next is None:
