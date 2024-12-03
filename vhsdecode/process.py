@@ -614,7 +614,13 @@ class VHSRFDecode(ldd.RFDecode):
             or rf_options.get("subdeemp", False),
             rf_options.get("disable_right_hsync", False),
             rf_options.get("disable_dc_offset", False),
-            rf_options.get("fallback_vsync", False),
+            # Always use this if we are decoding TYPEC since it doesn't have normal vsync.
+            # also enable by default with EIAJ since that was typically used with a primitive sync gen
+            # which output not quite standard vsync.
+            rf_options.get("fallback_vsync", False)
+            or tape_format == "TYPEC"
+            or tape_format == "EIAJ"
+            or system == "405",
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,
