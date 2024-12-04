@@ -557,19 +557,25 @@ class FieldShared:
         else:
             prev_first_hsync_offset_lines = 0
 
+        fallback_line0loc = None
+        if self.rf.options.fallback_vsync:
+            fallback_line0loc, _, _ = self._get_line0_fallback(validpulses)
+        if fallback_line0loc == None:
+            fallback_line0loc = -1
+
         # find the location of the first hsync pulse (first line of video after the vsync pulses)
         # this function relies on the pulse type (hsync, vsync, eq pulse) being accurate in validpulses
         line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, prev_hsync_diff, vblank_pulses = sync.get_first_hsync_loc(
             validpulses, 
             meanlinelen, 
             1 if self.rf.system == "NTSC" else 0,
-            self.rf.options.fallback_vsync,
             self.rf.SysParams["field_lines"],
             self.rf.SysParams["numPulses"],
             self.rf.prev_first_field,
             prev_first_hsync_offset_lines,
             self.rf.prev_first_hsync_loc,
-            self.rf.prev_first_hsync_diff
+            self.rf.prev_first_hsync_diff,
+            fallback_line0loc
         )
 
         # save the current hsync pulse location to the previous hsync pulse
