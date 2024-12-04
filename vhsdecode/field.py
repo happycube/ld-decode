@@ -563,6 +563,7 @@ class FieldShared:
             validpulses, 
             meanlinelen, 
             1 if self.rf.system == "NTSC" else 0,
+            self.rf.options.fallback_vsync,
             self.rf.SysParams["field_lines"],
             self.rf.SysParams["numPulses"],
             self.rf.prev_first_field,
