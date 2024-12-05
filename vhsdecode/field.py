@@ -532,8 +532,12 @@ class FieldShared:
 
     def _try_get_pulses(self, check_levels):
         self.rawpulses = self.rf.resync.get_pulses(self, check_levels)
-        # self.rawpulses = self.getpulses()
-        if self.rawpulses is None or len(self.rawpulses) == 0:
+
+        if (
+            self.rawpulses is None or 
+            # when no pulses are found and there has not been a previous sync location and fallback vsync is not enabled
+            (len(self.rawpulses) == 0 and (not hasattr(self.rf, "prev_first_hsync_loc") or self.rf.options.fallback_vsync))
+        ):
             return NO_PULSES_FOUND
 
         self.validpulses = validpulses = self.refinepulses()
