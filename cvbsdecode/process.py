@@ -66,93 +66,32 @@ class FieldCVBSShared:
             )
             # Make sore to not move backwards here
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
-
-        linelocs_dict, _ = sync.valid_pulses_to_linelocs(
-            validpulses,
-            line0loc,
-            self.skipdetected,
-            meanlinelen,
-            self.linecount,
-            self.rf.hsync_tolerance,
-            lastlineloc,
-        )
-
-        rv_err = np.full(proclines, False)
-
-        # Convert dictionary into array, then fill in gaps
-        linelocs = np.asarray(
+        
+        validpulses_arr = np.sort(np.asarray(
             [
-                linelocs_dict[l] if l in linelocs_dict else -1
-                for l in range(0, proclines)
-            ]
+                p[1].start
+                for p in validpulses
+            ], dtype=np.int32
+        ))
+
+        linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(
+            validpulses_arr,
+            line0loc,
+            0,
+            meanlinelen,
+            self.rf.hsync_tolerance,
+            proclines,
+            1.9
         )
-        linelocs_filled = linelocs.copy()
 
         self.linelocs0 = linelocs.copy()
 
-        if linelocs_filled[0] < 0:
-            next_valid = None
-            for i in range(0, self.outlinecount + 1):
-                if linelocs[i] > 0:
-                    next_valid = i
-                    break
-
-            if next_valid is None:
-                return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
-
-            linelocs_filled[0] = linelocs_filled[next_valid] - (
-                next_valid * meanlinelen
-            )
-
-            if linelocs_filled[0] < self.inlinelen:
-                return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
-
-        for l in range(1, proclines):
-            if linelocs_filled[l] < 0:
-                rv_err[l] = True
-
-                prev_valid = None
-                next_valid = None
-
-                for i in range(l, -1, -1):
-                    if linelocs[i] > 0:
-                        prev_valid = i
-                        break
-                for i in range(l, self.outlinecount + 1):
-                    if linelocs[i] > 0:
-                        next_valid = i
-                        break
-
-                # print(l, prev_valid, next_valid)
-
-                if prev_valid is None:
-                    avglen = self.inlinelen
-                    linelocs_filled[l] = linelocs[next_valid] - (
-                        avglen * (next_valid - l)
-                    )
-                elif next_valid is not None:
-                    avglen = (linelocs[next_valid] - linelocs[prev_valid]) / (
-                        next_valid - prev_valid
-                    )
-                    linelocs_filled[l] = linelocs[prev_valid] + (
-                        avglen * (l - prev_valid)
-                    )
-                else:
-                    avglen = self.inlinelen
-                    linelocs_filled[l] = linelocs[prev_valid] + (
-                        avglen * (l - prev_valid)
-                    )
-
-        # *finally* done :)
-
-        rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
-
         if self.vblank_next is None:
-            nextfield = linelocs_filled[self.outlinecount - 7]
+            nextfield = linelocs[self.outlinecount - 7]
         else:
             nextfield = self.vblank_next - (self.inlinelen * 8)
 
-        return rv_ll, rv_err, nextfield
+        return linelocs, lineloc_errs, nextfield
 
 
 def chroma_to_u16(chroma):
