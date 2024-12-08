@@ -92,6 +92,11 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
 
     assert tape_speed <= 4, "Tape speed was > 4!"
 
+    # TBC/JSON uses "PAL-M" instead of "MPAL".
+    # For later: define color systems codename (i.e. refer to it as "PAL-M" only)
+    if system == "PAL-M":
+        system = "MPAL"
+    
     if system == "PAL":
         if tape_format == "UMATIC":
             from vhsdecode.format_defs.umatic import (
