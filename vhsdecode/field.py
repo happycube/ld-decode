@@ -577,7 +577,7 @@ class FieldShared:
             prev_first_hsync_offset_lines = 0
 
         fallback_line0loc = None
-        if self.rf.options.fallback_vsync:
+        if self.rf.options.fallback_vsync and hasattr(self, "lt_vsync") and self.lt_vsync is not None:
             fallback_line0loc, _, _ = self._get_line0_fallback(validpulses)
         if fallback_line0loc == None:
             fallback_line0loc = -1
