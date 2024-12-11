@@ -274,11 +274,11 @@ def get_first_hsync_loc(
     
     # override previous first field, if consensus is sure about field order
     if (
-        # if fallback vsync is enabled, need a full field consensus to overide field order
+        # if fallback vsync is enabled or we are previously synced, need a full field consensus to overide field order
         field_boundaries_detected == field_order_lengths_len or
 
         # otherwise, need more than half a consensus
-        (fallback_line0loc == -1 and field_boundaries_detected >= field_order_lengths_len / 2)
+        (fallback_line0loc == -1 and prev_first_hsync_loc < 0 and field_boundaries_detected >= field_order_lengths_len / 2)
     ):
         if field_boundaries_consensus / field_boundaries_detected == 1:
             first_field = True
@@ -451,19 +451,21 @@ def get_first_hsync_loc(
 
         # print("using fallback")
 
-    # otherwise, sync on the vblank with the most valid locations
-    elif (last_vblank_first_hsync_loc != -1 and last_vblank_valid_location_count > first_vblank_valid_location_count):
-        first_hsync_loc = last_vblank_first_hsync_loc
-        valid_location_count = last_vblank_valid_location_count
-        offset = last_vblank_offset
-
-        # print("using last vblank interval")
-    else:
-        first_hsync_loc = first_vblank_first_hsync_loc
-        valid_location_count = first_vblank_valid_location_count
-        offset = first_vblank_offset
-
-        # print("using first vblank interval")
+    # otherwise, if there is no estimated hsync (not yet synced), try to sync on any detected vblank
+    elif prev_first_hsync_loc <= 0:
+        # use the vblank that has the most valid locations
+        if last_vblank_first_hsync_loc != -1 and last_vblank_valid_location_count > first_vblank_valid_location_count:
+            first_hsync_loc = last_vblank_first_hsync_loc
+            valid_location_count = last_vblank_valid_location_count
+            offset = last_vblank_offset
+    
+            # print("using last vblank interval")
+        else:
+            first_hsync_loc = first_vblank_first_hsync_loc
+            valid_location_count = first_vblank_valid_location_count
+            offset = first_vblank_offset
+    
+            # print("using first vblank interval")
 
     # ********************************************************************************
     # estimate the hsync location based on the previous valid field using read offsets
@@ -510,7 +512,9 @@ def get_first_hsync_loc(
         first_hsync_loc += estimated_hsync_with_offset
         valid_location_count += 1
         used_estimated_hsync = 1
-    
+
+        # print("using estimated hsync")
+
         # validate the estimated hsync location with any existing vsync pulses
         #for i in range(0, len(pulse_indexes)):
         #    res = calc_sync_from_known_distances(
@@ -594,6 +598,22 @@ def get_first_hsync_loc(
         #    vblank_lines[i] = round(first_hsync_loc + meanlinelen * (vblank_lines[i] - hsync_start_line))
         #print("calc vblank", [x for x in vblank_lines[:8]])
         #print("next field", next_field)
+        #
+        ## estimated hsync locations
+        #print(
+        #    "first vblank hsync",
+        #    first_vblank_hsync_estimate,
+        #    "last vblank hsync",
+        #    last_vblank_hsync_estimate,
+        #    "estimated hsync",
+        #    estimated_hsync_loc,
+        #    "fallback hsync",
+        #    fallback_line0loc
+        #)
+        #print(
+        #    "actual hsync loc",
+        #    first_hsync_loc
+        #)
         #print()
 
         return line0loc, first_hsync_loc, hsync_start_line, next_field, first_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
