@@ -451,21 +451,36 @@ def get_first_hsync_loc(
 
         # print("using fallback")
 
-    # otherwise, if there is no estimated hsync (not yet synced), try to sync on any detected vblank
-    elif prev_first_hsync_loc <= 0:
-        # use the vblank that has the most valid locations
-        if last_vblank_first_hsync_loc != -1 and last_vblank_valid_location_count > first_vblank_valid_location_count:
-            first_hsync_loc = last_vblank_first_hsync_loc
-            valid_location_count = last_vblank_valid_location_count
-            offset = last_vblank_offset
+    # otherwise sync on only one vblank
+    # this will happen when on the very beginning or end of a recording
+    elif (
+        # sure about this vblank
+        first_vblank_valid_location_count == 6 or 
+
+        # or not synced yet and first vblank has more valid locations
+        (prev_first_hsync_loc <= 0 and 
+        first_vblank_valid_location_count != -1 and first_vblank_valid_location_count > last_vblank_valid_location_count)
+    ):
+        first_hsync_loc = first_vblank_first_hsync_loc
+        valid_location_count = first_vblank_valid_location_count
+        offset = first_vblank_offset
     
-            # print("using last vblank interval")
-        else:
-            first_hsync_loc = first_vblank_first_hsync_loc
-            valid_location_count = first_vblank_valid_location_count
-            offset = first_vblank_offset
+        # print("using first vblank interval")
+
+    elif (
+        # sure about this vblank
+        last_vblank_valid_location_count == 6 or
+
+        # or not synced yet and last vblank has more valid locations
+        (prev_first_hsync_loc <= 0 and 
+        last_vblank_first_hsync_loc != -1 and last_vblank_valid_location_count > first_vblank_valid_location_count)
+    ):
+        first_hsync_loc = last_vblank_first_hsync_loc
+        valid_location_count = last_vblank_valid_location_count
+        offset = last_vblank_offset
     
-            # print("using first vblank interval")
+        # print("using last vblank interval")
+
 
     # ********************************************************************************
     # estimate the hsync location based on the previous valid field using read offsets
