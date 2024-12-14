@@ -643,19 +643,6 @@ class FieldShared:
         line0loc, first_hsync_loc, first_hsync_loc_line, meanlinelen, vblank_pulses = res
         validpulses = self.validpulses
 
-        if self.rf.options.fallback_vsync and (
-            not first_hsync_loc or self.sync_confidence == 0
-        ):
-            self.sync_confidence = 0
-            line0loc_t, lastlineloc_t, is_first_field_t = self._get_line0_fallback(
-                validpulses
-            )
-            if line0loc_t:
-                ldd.logger.debug("Using fallback vsync, signal may be non-standard.")
-                line0loc = line0loc_t
-                first_hsync_loc = line0loc_t + meanlinelen * first_hsync_loc_line
-                self.sync_confidence = 10
-
         # TODO: This is set here for NTSC, but in the PAL base class for PAL in process() it seems..
         # For 405-line it's done in fieldTypeC.process as of now to override that.
         self.linecount = 263 if self.isFirstField else 262
