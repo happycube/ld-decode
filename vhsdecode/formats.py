@@ -96,7 +96,7 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
     # For later: define color systems codename (i.e. refer to it as "PAL-M" only)
     if system == "PAL-M":
         system = "MPAL"
-    
+
     if system == "PAL":
         if tape_format == "UMATIC":
             from vhsdecode.format_defs.umatic import (
@@ -131,9 +131,9 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
                 get_sysparams_pal_vhshq,
             )
 
-            return get_sysparams_pal_vhshq(SysParams_PAL), get_rfparams_pal_vhs(
-                FilterParams_PAL
-            )
+            return get_sysparams_pal_vhshq(
+                SysParams_PAL, tape_speed
+            ), get_rfparams_pal_vhs(FilterParams_PAL, tape_speed)
         elif tape_format == "SVHS":
             from vhsdecode.format_defs.vhs import (
                 get_rfparams_pal_svhs,
@@ -235,9 +235,9 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
                 get_sysparams_ntsc_vhshq,
             )
 
-            return get_sysparams_ntsc_vhshq(SysParams_NTSC), get_rfparams_ntsc_vhs(
-                FilterParams_NTSC
-            )
+            return get_sysparams_ntsc_vhshq(
+                SysParams_NTSC, tape_speed
+            ), get_rfparams_ntsc_vhs(FilterParams_NTSC, tape_speed)
         elif tape_format == "SVHS":
             from vhsdecode.format_defs.vhs import (
                 get_rfparams_ntsc_svhs,
