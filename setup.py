@@ -1,5 +1,10 @@
 from setuptools import setup
+from distutils.extension import Extension
 from Cython.Build import cythonize
+
+import Cython.Compiler.Options
+Cython.Compiler.Options.annotate = True
+
 import numpy
 
 setup(
@@ -41,7 +46,29 @@ setup(
     #    'cvbs-decode',
     #    'hifi-decode',
     # ],
-    ext_modules=cythonize(["vhsdecode/*.pyx"], language_level=3),
+    ext_modules=cythonize([
+        Extension(
+            "vhsdecode.sync",
+            ["vhsdecode/sync.pyx"],
+            language_level=3,
+            extra_compile_args=["-O3", "-march=native", "-fprofile-generate"],
+            extra_link_args=["-O3", "-flto", "-fprofile-generate"]
+        ),
+        Extension(
+            "vhsdecode.hilbert",
+            ["vhsdecode/hilbert.pyx"],
+            language_level=3,
+            extra_compile_args=["-O3", "-march=native", "-fprofile-generate"],
+            extra_link_args=["-O3", "-flto", "-fprofile-generate"]
+        ),
+        Extension(
+            "vhsdecode.linear_filter",
+            ["vhsdecode/linear_filter.pyx"],
+            language_level=3,
+            extra_compile_args=["-O3", "-march=native", "-fprofile-generate"],
+            extra_link_args=["-O3", "-flto", "-fprofile-generate"]
+        )
+    ]),
     # Needed for using numpy in cython.
     include_dirs=[numpy.get_include()],
     # These are just the minimal runtime dependencies for the Python scripts --
