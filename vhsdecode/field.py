@@ -696,7 +696,6 @@ class FieldShared:
             1.9
         )
 
-        lineloc_errs = np.full(proclines, 0, dtype=np.int32)
         self.linelocs0 = linelocs.copy()
 
         # ldd.logger.info("line0loc %s %s", int(line0loc), int(self.meanlinelen))
@@ -743,10 +742,7 @@ class FieldShared:
                 else self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
             )
 
-            linelocs_refined, linebad = sync.refine_linelocs_hsync(self, self.linebad, threshold)
-            self.linebad = linebad
-
-            return linelocs_refined
+            return sync.refine_linelocs_hsync(self, self.linebad, threshold)
         else:
             return self.linelocs1.copy()
 

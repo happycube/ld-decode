@@ -73,7 +73,7 @@ cdef double c_max(double[::1] data) nogil:
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cdef bint is_out_of_range(double[:] data, double min, double max) nogil:
+cdef bint is_out_of_range(double[::1] data, double min, double max) nogil:
     """Check if data stays between min and max, returns fals if not."""
     cdef Py_ssize_t i
     cdef Py_ssize_t data_len = len(data)
@@ -179,7 +179,7 @@ cdef double calczc(double[::1] data, Py_ssize_t _start_offset, double target, Py
         rev_zc = calczc_do(copy_reversed(data), 0, target, count, edge)
 
         if isnan(rev_zc):
-            return rev_zc
+            return NONE_DOUBLE
 
         return _start_offset - rev_zc
 
@@ -201,9 +201,9 @@ cdef struct s_sync_distance_output:
 
 @cython.cdivision(True)
 cdef inline void calc_sync_from_known_distances(
-    s_sync_distance_input *sync_distance_input,
-    s_sync_distance_output *sync_distance_output,
-)nogil :
+    s_sync_distance_input *sync_distance_input, 
+    s_sync_distance_output *sync_distance_output
+) nogil:
     sync_distance_output.distance_offset = 0
     sync_distance_output.hsync_loc = 0
     sync_distance_output.valid_locations = 0
@@ -796,7 +796,7 @@ def valid_pulses_to_linelocs(
         ], dtype=np.int32, order='c'
     ))
     cdef int[::1] line_locations = np.empty((proclines), dtype=np.int32, order='c')
-    cdef int[::1] line_location_errs = np.empty((proclines), dtype=np.int32, order='c')
+    cdef int[::1] line_location_errs = np.full(proclines, 0, dtype=np.int32, order='c')
 
     cdef Py_ssize_t i
     cdef Py_ssize_t j
@@ -841,8 +841,8 @@ def valid_pulses_to_linelocs(
                 line_locations[i] = current_pulse
                 current_pulse_index += 1
             # else:
-            #     print(i, "using estimated pulse", line_locations[i])
-            #     uncomment to fill any guessed lines with the previous field values
+            #     # print(i, "using estimated pulse", line_locations[i])
+            #     # fill any guessed lines with the previous field values
             #     line_location_errs[i] = 1
 
     return line_locations, line_location_errs, current_pulse
@@ -856,14 +856,13 @@ cdef inline float round_nearest_line_loc(float line_number) nogil:
     return <int> (round(half_line * round(line_number / half_line) * 10)) / 10
 
 @cython.boundscheck(False)
-def refine_linelocs_hsync(field, np.ndarray linebad_in, double hsync_threshold):
+def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
     """Refine the line start locations using horizontal sync data."""
 
     # Original used a copy here which resulted in a list.
     # Use an array instead for efficiency.
     cdef double[::1] linelocs_original = np.asarray(field.linelocs1, dtype=np.float64)
     cdef double[::1] linelocs_refined = np.array(linelocs_original, dtype=np.float64, copy=True)
-    cdef int[::1] linebad = np.asarray(linebad_in, dtype=np.int32)
 
     # Lookup these values here instead of doing it on every loop iteration.
     cdef double[::1] demod_05 = np.array(field.data["video"]["demod_05"], dtype=np.float64, order='c')
@@ -1051,4 +1050,4 @@ def refine_linelocs_hsync(field, np.ndarray linebad_in, double hsync_threshold):
                 linebad[i] = False
                 linelocs_refined[i] = refined_from_right_lineloc
 
-    return linelocs_refined, linebad
+    return linelocs_refined
