@@ -743,7 +743,10 @@ class FieldShared:
                 else self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
             )
 
-            return sync.refine_linelocs_hsync(self, self.linebad, threshold)
+            linelocs_refined, linebad = sync.refine_linelocs_hsync(self, self.linebad, threshold)
+            self.linebad = linebad
+
+            return linelocs_refined
         else:
             return self.linelocs1.copy()
 

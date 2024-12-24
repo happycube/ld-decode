@@ -1,11 +1,16 @@
 import cython
 import numpy as np
-cimport numpy as cnp
-import math
+cimport numpy as np
 import lddecode.utils as lddu
+
 from libc.math cimport isnan, NAN, round, abs
+from libc.stdlib cimport malloc, free
 
 cdef Py_ssize_t NONE_INT = -1
+cdef double NONE_DOUBLE = NAN
+
+cdef inline double is_none_double(double a) nogil:
+    return isnan(a)
 
 cdef inline int round_to_int(double a) nogil:
     return <int> round(a)
@@ -16,14 +21,17 @@ cdef inline double c_abs(double a) nogil:
 cdef bint inrange(double a, double mi, double ma) nogil:
     return (a >= mi) & (a <= ma)
 
+@cython.cdivision
 def pulse_qualitycheck(prev_pulse, pulse, int in_line_len):
     cdef double linelen
     cdef (double, double) exprange
     cdef bint inorder
+    cdef int prev_pulse_type = prev_pulse[0]
+    cdef int pulse_type = pulse[0]
 
-    if prev_pulse[0] > 0 and pulse[0] > 0:
+    if prev_pulse_type > 0 and pulse_type > 0:
         exprange = (0.4, 0.6)
-    elif prev_pulse[0] == 0 and pulse[0] == 0:
+    elif prev_pulse_type == 0 and pulse_type == 0:
         exprange = (0.9, 1.1)
     else:  # transition to/from regular hsyncs can be .5 or 1H
         exprange = (0.4, 1.1)
@@ -51,13 +59,28 @@ cdef double c_median(double[::1] data) nogil:
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
+cdef double c_max(double[::1] data) nogil:
+    cdef Py_ssize_t data_len = len(data)
+
+    # TODO check
+    cdef double result = NONE_DOUBLE
+
+    for i in range(data_len):
+        if data[i] > result:
+            result = data[i]
+
+    return result
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
 cdef bint is_out_of_range(double[:] data, double min, double max) nogil:
     """Check if data stays between min and max, returns fals if not."""
     cdef Py_ssize_t i
-    if len(data) == 0:
+    cdef Py_ssize_t data_len = len(data)
+    if data_len == 0:
         return True
 
-    for i in range(0, len(data)):
+    for i in range(data_len):
         if data[i] < min or data[i] > max:
             return True
 
@@ -65,7 +88,7 @@ cdef bint is_out_of_range(double[:] data, double min, double max) nogil:
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cdef Py_ssize_t calczc_findfirst(double[:] data, double target, bint rising) nogil:
+cdef Py_ssize_t calczc_findfirst(double[::1] data, double target, bint rising) nogil:
     """Find the index where data first crosses target, in the specified direction.
        returns NONE_INT if no crossing is found.
     """
@@ -83,7 +106,8 @@ cdef Py_ssize_t calczc_findfirst(double[:] data, double target, bint rising) nog
 
         return NONE_INT
 
-cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, int edge=0, Py_ssize_t count=10) nogil:
+@cython.cdivision
+cdef double calczc_do(double[::1] data, Py_ssize_t _start_offset, double target, Py_ssize_t count=10, int edge=0) nogil:
     """Find the index where data first crosses target in the specified direction, and then try to estimate
     the exact crossing point between the samples.
     Will fail if the start point is already past the threshold in the requested direction.
@@ -99,10 +123,10 @@ cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, i
 
     if edge == 1:
         if data[_start_offset] > target:
-            return NAN
+            return NONE_DOUBLE
     elif edge == -1:
         if data[_start_offset] < target:
-            return NAN
+            return NONE_DOUBLE
 
     cdef Py_ssize_t loc = calczc_findfirst(
         data[start_offset : start_offset + icount], target, edge == 1
@@ -111,7 +135,7 @@ cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, i
     # Need to use some proxy value instead of None here
     # if we want to avoid python interaction as there isn't an Option type in cython.
     if loc is NONE_INT:
-        return NAN
+        return NONE_DOUBLE
 
     cdef Py_ssize_t x = start_offset + loc
     cdef double a = data[x - 1] - target
@@ -128,8 +152,19 @@ cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, i
 
     return x - 1 + y
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef double[::1] copy_reversed(double[::1] arr):
+    cdef Py_ssize_t arr_len = len(arr)
+    cdef double[::1] reversed = np.empty((arr_len), dtype=np.float64)
 
-def calczc(double[:] data, Py_ssize_t _start_offset, double target, Py_ssize_t count=10, bint reverse=False, int edge=0):
+    cdef Py_ssize_t i
+    for i in range(arr_len):
+        reversed[arr_len - i] = arr[i]
+
+    return reversed
+
+cdef double calczc(double[::1] data, Py_ssize_t _start_offset, double target, Py_ssize_t count=10, bint reverse=False, int edge=0):
     """ Calculate where data first crosses target in the direction specified by edge.
     edge:  -1 falling, 0 either, 1 rising
     count: How many samples to check
@@ -140,17 +175,15 @@ def calczc(double[:] data, Py_ssize_t _start_offset, double target, Py_ssize_t c
     # supplying the slice of data to look in.
 
     if reverse:
-        # Instead of actually implementing this in reverse, use numpy to flip data
-        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, count)
+        # Instead of actually implementing this in reverse, flip data
+        rev_zc = calczc_do(copy_reversed(data), 0, target, count, edge)
+
         if isnan(rev_zc):
-            return None
+            return rev_zc
 
         return _start_offset - rev_zc
 
-    res = calczc_do(data, _start_offset, target, edge, count)
-    if isnan(res):
-        return None
-    return res
+    return calczc_do(data, _start_offset, target, count, edge)
 
 cdef struct s_sync_distance_input:
     float meanlinelen,
@@ -239,9 +272,9 @@ def get_first_hsync_loc(
     # Convert the incoming python objects to simple arrays for performance
     # ********************************************************************
     cdef Py_ssize_t validpulses_len = len(validpulses)
-    cdef int[::1] validpulses_type = np.full(validpulses_len, -1, dtype=np.int32, order='c')
-    cdef int[::1] validpulses_start = np.full(validpulses_len, -1, dtype=np.int32, order='c')
-    cdef int[::1] validpulses_valid = np.full(validpulses_len, -1, dtype=np.int32, order='c')
+    cdef int *validpulses_type = <int *> malloc(validpulses_len * sizeof(int))
+    cdef int *validpulses_start = <int *> malloc(validpulses_len * sizeof(int))
+    cdef int *validpulses_valid = <int *> malloc(validpulses_len * sizeof(int))
     
     for i in range(validpulses_len):
         validpulses_type[i] = validpulses[i][0]
@@ -249,7 +282,7 @@ def get_first_hsync_loc(
         validpulses_valid[i] = validpulses[i][2]
 
     cdef int field_lines_len = len(field_lines_in)
-    cdef int[::1] field_lines = np.full(validpulses_len, -1, dtype=np.int32, order='c')
+    cdef int *field_lines = <int *> malloc(field_lines_len * sizeof(int))
     for i in range(field_lines_len):
         field_lines[i] = field_lines_in[i]
 
@@ -438,7 +471,7 @@ def get_first_hsync_loc(
     # check the vblanking area at the end for valid locations
     # *******************************************************
     cdef float last_vblank_first_hsync_loc = -1
-    cdef int    last_vblank_valid_location_count = 0
+    cdef int   last_vblank_valid_location_count = 0
     cdef float last_vblank_offset = 0
     cdef Py_ssize_t last_vblank_pulse_indexes_len = 4
     cdef Py_ssize_t *last_vblank_pulse_indexes = [
@@ -708,15 +741,26 @@ def get_first_hsync_loc(
         #)
         #print()
 
+        free(validpulses_type)
+        free(validpulses_start)
+        free(validpulses_valid)
+        free(field_lines)
+
         return line0loc, first_hsync_loc, hsync_start_line, next_field, first_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
 
     # no sync pulses found
     # print("no sync pulses found")
+
+    free(validpulses_type)
+    free(validpulses_start)
+    free(validpulses_valid)
+    free(field_lines)
     return None, None, hsync_start_line, None, first_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.cdivision
 def valid_pulses_to_linelocs(
     validpulses_in,
     int reference_pulse,
@@ -745,14 +789,14 @@ def valid_pulses_to_linelocs(
     """
 
     # Lists to fill
-    cdef cnp.int32_t[::1] validpulses = np.sort(np.asarray(
+    cdef int[::1] validpulses = np.sort(np.asarray(
         [
             p[1].start
             for p in validpulses_in
         ], dtype=np.int32, order='c'
     ))
-    cdef cnp.int32_t[::1] line_locations = np.full(proclines, -1, dtype=np.int32, order='c')
-    cdef cnp.int32_t[::1] line_location_errs = np.full(proclines, 0, dtype=np.int32, order='c')
+    cdef int[::1] line_locations = np.empty((proclines), dtype=np.int32, order='c')
+    cdef int[::1] line_location_errs = np.empty((proclines), dtype=np.int32, order='c')
 
     cdef Py_ssize_t i
     cdef Py_ssize_t j
@@ -811,16 +855,18 @@ cdef inline float round_nearest_line_loc(float line_number) nogil:
     cdef float half_line = 0.5
     return <int> (round(half_line * round(line_number / half_line) * 10)) / 10
 
-def refine_linelocs_hsync(field, cnp.ndarray linebad, double hsync_threshold):
+@cython.boundscheck(False)
+def refine_linelocs_hsync(field, np.ndarray linebad_in, double hsync_threshold):
     """Refine the line start locations using horizontal sync data."""
 
     # Original used a copy here which resulted in a list.
     # Use an array instead for efficiency.
-    cdef cnp.ndarray[cnp.float64_t, ndim=1] linelocs_original = np.asarray(field.linelocs1, dtype=np.float64)
-    cdef cnp.ndarray[cnp.float64_t, ndim=1] linelocs_refined = np.array(linelocs_original, dtype=np.float64, copy=True)
+    cdef double[::1] linelocs_original = np.asarray(field.linelocs1, dtype=np.float64)
+    cdef double[::1] linelocs_refined = np.array(linelocs_original, dtype=np.float64, copy=True)
+    cdef int[::1] linebad = np.asarray(linebad_in, dtype=np.int32)
 
     # Lookup these values here instead of doing it on every loop iteration.
-    cdef double[::1] demod_05 = np.array(field.data["video"]["demod_05"], dtype=np.float64, copy=True, order='c')
+    cdef double[::1] demod_05 = np.array(field.data["video"]["demod_05"], dtype=np.float64, order='c')
     rf = field.rf
     cdef int normal_hsync_length = field.usectoinpx(rf.SysParams["hsyncPulseUS"])
     cdef int one_usec = rf.freq
@@ -841,168 +887,168 @@ def refine_linelocs_hsync(field, cnp.ndarray linebad, double hsync_threshold):
     cdef int ll1
     cdef Py_ssize_t i
     cdef double[::1] hsync_area
+    cdef double[::1] back_porch
+    cdef double zc
+    cdef double zc2
+    cdef double right_cross
 
-    for i in range(len(linelocs_original)):
-        # skip VSYNC lines, since they handle the pulses differently
-        if inrange(i, 3, 6) or (is_pal and inrange(i, 1, 2)):
-            linebad[i] = True
-            continue
-
-        # refine beginning of hsync
-
-        # start looking 1 usec back
-        ll1 = round_to_int(linelocs_original[i]) - one_usec
-        # and locate the next time the half point between hsync and 0 is crossed.
-        zc = calczc(
-            demod_05,
-            ll1,
-            zc_threshold,
-            reverse=False,
-            count=one_usec * 2,
-        )
-
-        right_cross = None
-
-        if not disable_right_hsync:
-            right_cross = calczc(
-                demod_05,
-                ll1 + (normal_hsync_length) - one_usec,
-                zc_threshold,
-                reverse=False,
-                count=round_to_int(one_usec * 3),
-                edge=1,
-            )
-        right_cross_refined = False
-
-        # If the crossing exists, we can check if the hsync pulse looks normal and
-        # refine it.
-        if zc is not None and not linebad[i]:
-            linelocs_refined[i] = zc
-
-            # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-            # TODO: Use correct values for NTSC/PAL here
-            hsync_area = demod_05[
-                round_to_int(zc - (one_usec * 0.75)) : round_to_int(zc + (one_usec * 3.5))
-            ]
-            back_porch = demod_05[
-                round_to_int(zc + one_usec * 3.5) : round_to_int(zc + (one_usec * 8))
-            ]
-            if is_out_of_range(hsync_area, ire_n_55, ire_110): # or is_out_of_range(back_porch, ire_n_55, ire_110):
-                # don't use the computed value here if it's bad
+    with nogil:
+        for i in range(len(linelocs_original)):
+            # skip VSYNC lines, since they handle the pulses differently
+            if inrange(i, 3, 6) or (is_pal and inrange(i, 1, 2)):
                 linebad[i] = True
-                linelocs_refined[i] = linelocs_original[i]
-            else:
+                continue
 
-                if np.amax(hsync_area) < ire_30:
-                    porch_level = c_median(
-                        demod_05[round_to_int(zc + (one_usec * 8)) : round_to_int(zc + (one_usec * 9))]
-                    )
-                else:
-                    if prev_porch_level > 0:
-                        porch_level = prev_porch_level
-                    else:
-                        porch_level = c_median(
-                            demod_05[round_to_int(zc - (one_usec * 1.0)) : round_to_int(zc - (one_usec * 0.5))]
-                        )
-                sync_level = c_median(
-                    demod_05[round_to_int(zc + (one_usec * 1)) : round_to_int(zc + (one_usec * 2.5))]
-                )
+            # refine beginning of hsync
 
-                # Re-calculate the crossing point using the mid point between the measured sync
-                # and porch levels
-                zc2 = calczc(
+            # start looking 1 usec back
+            ll1 = round_to_int(linelocs_original[i]) - one_usec
+            # and locate the next time the half point between hsync and 0 is crossed.
+            zc = NONE_DOUBLE
+            zc = calczc_do(
+                demod_05,
+                ll1,
+                zc_threshold,
+                count=one_usec * 2,
+            )
+
+            right_cross = NONE_DOUBLE
+            if not disable_right_hsync:
+                right_cross = calczc_do(
                     demod_05,
-                    ll1,
-                    (porch_level + sync_level) / 2,
-                    reverse=False,
-                    count=400,
+                    ll1 + (normal_hsync_length) - one_usec,
+                    zc_threshold,
+                    count=round_to_int(one_usec * 3),
+                    edge=1,
                 )
+            right_cross_refined = False
 
-                # any wild variation here indicates a failure
-                if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
-                    linelocs_refined[i] = zc2
-                    prev_porch_level = porch_level
+            # If the crossing exists, we can check if the hsync pulse looks normal and
+            # refine it.
+            if not is_none_double(zc) and not linebad[i]:
+                linelocs_refined[i] = zc
+
+                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                # TODO: Use correct values for NTSC/PAL here
+                hsync_area = demod_05[
+                    round_to_int(zc - (one_usec * 0.75)) : round_to_int(zc + (one_usec * 3.5))
+                ]
+                back_porch = demod_05[
+                    round_to_int(zc + one_usec * 3.5) : round_to_int(zc + (one_usec * 8))
+                ]
+                if is_out_of_range(hsync_area, ire_n_55, ire_110): # or is_out_of_range(back_porch, ire_n_55, ire_110):
+                    # don't use the computed value here if it's bad
+                    linebad[i] = True
+                    linelocs_refined[i] = linelocs_original[i]
                 else:
-                    # Give up
-                    # front_porch_level = c_median(
-                    #     demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
-                    # )
 
-                    if prev_porch_level > 0:
-                        # Try again with a earlier measurement porch.
-                        zc2 = calczc(
-                            demod_05,
-                            ll1,
-                            (prev_porch_level + sync_level) / 2,
-                            reverse=False,
-                            count=400,
+                    if c_max(hsync_area) < ire_30:
+                        porch_level = c_median(
+                            demod_05[round_to_int(zc + (one_usec * 8)) : round_to_int(zc + (one_usec * 9))]
                         )
-                        if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
-                            linelocs_refined[i] = zc2
+                    else:
+                        if prev_porch_level > 0:
+                            porch_level = prev_porch_level
                         else:
-                            linebad[i] = True
+                            porch_level = c_median(
+                                demod_05[round_to_int(zc - (one_usec * 1.0)) : round_to_int(zc - (one_usec * 0.5))]
+                            )
+                    sync_level = c_median(
+                        demod_05[round_to_int(zc + (one_usec * 1)) : round_to_int(zc + (one_usec * 2.5))]
+                    )
+
+                    # Re-calculate the crossing point using the mid point between the measured sync
+                    # and porch levels
+                    zc2 = calczc_do(
+                        demod_05,
+                        ll1,
+                        (porch_level + sync_level) / 2,
+                        count=400,
+                    )
+
+                    # any wild variation here indicates a failure
+                    if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2):
+                        linelocs_refined[i] = zc2
+                        prev_porch_level = porch_level
                     else:
                         # Give up
-                        linebad[i] = True
-        else:
-            linebad[i] = True
+                        # front_porch_level = c_median(
+                        #     demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
+                        # )
 
-        # Check right cross
-        if right_cross is not None:
-            zc2 = None
+                        if prev_porch_level > 0:
+                            # Try again with a earlier measurement porch.
+                            zc2 = calczc_do(
+                                demod_05,
+                                ll1,
+                                (prev_porch_level + sync_level) / 2,
+                                count=400,
+                            )
+                            if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2):
+                                linelocs_refined[i] = zc2
+                            else:
+                                linebad[i] = True
+                        else:
+                            # Give up
+                            linebad[i] = True
+            else:
+                linebad[i] = True
 
-            zc_fr = right_cross - normal_hsync_length
+            # Check right cross
+            if not is_none_double(right_cross):
+                zc2 = NONE_DOUBLE
 
-            # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-            # NOTE: This is more than hsync area, might wanna also check max levels of level in hsync
-            hsync_area = demod_05[
-                round_to_int(zc_fr - (one_usec * 0.75)) : round_to_int(zc_fr + (one_usec * 8))
-            ]
+                zc_fr = right_cross - normal_hsync_length
 
-            if not is_out_of_range(hsync_area, ire_n_55, ire_30):
+                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                # NOTE: This is more than hsync area, might wanna also check max levels of level in hsync
+                hsync_area = demod_05[
+                    round_to_int(zc_fr - (one_usec * 0.75)) : round_to_int(zc_fr + (one_usec * 8))
+                ]
 
-                porch_level = c_median(
-                    demod_05[round_to_int(zc_fr + normal_hsync_length + (one_usec * 1)) : round_to_int(zc_fr + normal_hsync_length + (one_usec * 2))]
-                )
+                if not is_out_of_range(hsync_area, ire_n_55, ire_30):
 
-                sync_level = c_median(
-                    demod_05[
-                        round_to_int(zc_fr + (one_usec * 1)) : round_to_int(zc_fr + (one_usec * 2.5))
-                    ]
-                )
+                    porch_level = c_median(
+                        demod_05[round_to_int(zc_fr + normal_hsync_length + (one_usec * 1)) : round_to_int(zc_fr + normal_hsync_length + (one_usec * 2))]
+                    )
 
-                # Re-calculate the crossing point using the mid point between the measured sync
-                # and porch levels
-                zc2 = calczc(
-                    demod_05,
-                    ll1 + normal_hsync_length - one_usec,
-                    (porch_level + sync_level) / 2,
-                    reverse=False,
-                    count=400,
-                )
+                    sync_level = c_median(
+                        demod_05[
+                            round_to_int(zc_fr + (one_usec * 1)) : round_to_int(zc_fr + (one_usec * 2.5))
+                        ]
+                    )
 
-                # any wild variation here indicates a failure
-                if zc2 is not None and abs(zc2 - right_cross) < (one_usec / 2):
-                    # TODO: Magic value here, this seem to give be approximately correct results
-                    # but may not be ideal for all inputs.
-                    # Value based on default sample rate so scale if it's different.
-                    refined_from_right_lineloc = right_cross - normal_hsync_length + (2.25 * (sample_rate_mhz / 40.0))
-                    # Don't use if it deviates too much which could indicate a false positive or non-standard hsync length.
-                    if abs(refined_from_right_lineloc - linelocs_refined[i]) < (one_usec * 2):
-                        right_cross = zc2
-                        right_cross_refined = True
-                        prev_porch_level = porch_level
+                    # Re-calculate the crossing point using the mid point between the measured sync
+                    # and porch levels
+                    zc2 = calczc_do(
+                        demod_05,
+                        ll1 + normal_hsync_length - one_usec,
+                        (porch_level + sync_level) / 2,
+                        count=400,
+                    )
 
-        if linebad[i]:
-            linelocs_refined[i] = linelocs_original[
-                i
-            ]  # don't use the computed value here if it's bad
+                    # any wild variation here indicates a failure
+                    if not is_none_double(zc2) and c_abs(zc2 - right_cross) < (one_usec / 2):
+                        # TODO: Magic value here, this seem to give be approximately correct results
+                        # but may not be ideal for all inputs.
+                        # Value based on default sample rate so scale if it's different.
+                        refined_from_right_lineloc = right_cross - normal_hsync_length + (2.25 * (sample_rate_mhz / 40.0))
+                        # Don't use if it deviates too much which could indicate a false positive or non-standard hsync length.
+                        if c_abs(refined_from_right_lineloc - linelocs_refined[i]) < (one_usec * 2):
+                            right_cross = zc2
+                            right_cross_refined = True
+                            prev_porch_level = porch_level
 
-        if right_cross is not None and right_cross_refined:
-            # If we get a good result from calculating hsync start from the
-            # right side of the hsync pulse, we use that as it's less likely
-            # to be messed up by overshoot.
-            linebad[i] = False
-            linelocs_refined[i] = refined_from_right_lineloc
+            if linebad[i]:
+                linelocs_refined[i] = linelocs_original[
+                    i
+                ]  # don't use the computed value here if it's bad
 
-    return linelocs_refined
+            if not is_none_double(right_cross) and right_cross_refined:
+                # If we get a good result from calculating hsync start from the
+                # right side of the hsync pulse, we use that as it's less likely
+                # to be messed up by overshoot.
+                linebad[i] = False
+                linelocs_refined[i] = refined_from_right_lineloc
+
+    return linelocs_refined, linebad
