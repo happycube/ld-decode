@@ -26,7 +26,9 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-dec
 
 **U-Matic High Band** 625-line - PAL. **Basic support**
 
-**Betamax** 625-line and 525-line - PAL & NTSC. **Suppported**
+**Betamax** 625-line and 525-line - PAL & NTSC. **Supported**
+
+**SuperBeta** 625-line and 525-line - PAL & NTSC. **Preliminary support**
 
 **Video8 & Hi8** 625-line and 525-line - PAL & NTSC. **Basic support**
 
@@ -36,7 +38,7 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-dec
 
 **EIAJ** 625-line - PAL. **Supported** (NTSC Samples Required!) 
 
-**Philips VCR** 625-line - PAL. **Supported**
+**Philips VCR** & **Philips VCR "LP"**  625-line - PAL. **Supported**
 
 
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
@@ -121,15 +123,15 @@ Built and geared torwards capturing RF from Laserdisc players, it does however a
 ## [CX Card & CXADC](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards) (20-120USD)
 
 
-Capture & Config uses simple command-line arguments and parameters [CXADC](https://github.com/happycube/cxadc-linux3)
+Capture & Config uses simple command-line arguments and parameters to oprate the [CXADC](https://github.com/happycube/cxadc-linux3) driver.
 
 The most cost-effective approach is using a video capture cards based on a Conexant CX23880/1/2/3 PCI chipset. 
 
-Today with a modified Linux driver, these cards can be forced to output RAW signal data that can be captured to file, instead of decoding video normally as they otherwise would.
+Today with a modified Linux driver, these cards can be forced to output RAW signal data that can be captured to file, instead of decoding video normally as they otherwise would, there is also a [Windows Driver](https://github.com/JuniorIsAJitterbug/cxadc-win) that's in-development.
 
 While you can use any generic card with the correct chips, today we recommend the ‘‘New’’ Chinese variants that can be found on AliExpress that have integrated Asmedia or ITE 1x PCIE bridge chips allowing modern systems to use them, and consistent performance.
 
-These cards combined with a [dedicated amplifier](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards#external-amplification) and some basic to advanced mods become amazing archival tools and was the first turn-key workflow with [the clockgen mod](https://github.com/oyvindln/vhs-decode/wiki/Clockgen-Mod) enabling Video + HiFi RF + Baseband (linear or deck decoded hifi) to be captured in perfect hardware sync! 
+These cards combined with a [dedicated amplifier](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards#external-amplification) & [the clockgen mod](https://github.com/oyvindln/vhs-decode/wiki/Clockgen-Mod) enabling Video + HiFi RF + Baseband (Baseband = linear or deck decoded hifi audio) to be captured in perfect hardware sync, a highly reliable turn-key "one run and done" capturing workflow for a wide range of videotape formats.
 
 [Where to Buy? & More Info](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards)
 
@@ -271,7 +273,7 @@ Install TBC-Video-Export
 
     pipx install tbc-video-export
 
-(There is also [self contained builds](https://github.com/JuniorIsAJitterbug/tbc-video-export/releases) if install issues arise)
+(There is also [self-contained builds](https://github.com/JuniorIsAJitterbug/tbc-video-export/releases) if install issues arise)
 
 Optional dependencies for GPU (Nvidia Cards) FLAC compression support:
 
@@ -309,12 +311,16 @@ Go back to the main directory with
 
     cd .. 
 
-To update do `git pull` while inside of the vhs-decode directory.
-To update to the latest git version of vhs-decode/ld-decode/hi-fi decode, run `pipx install .` inside the vhs-decode directory after running `git pull`
+
+## How to Update
+
+
+To update your local repository enter `git pull` into the terminal while inside the vhs-decode directory, and then do `pipx install .[hifi_gui_qt6] --force` it will overwrite your pervious installation and deploy the current version of the decoders.
+
 To update the tools to the latest version, the steps under "Compile and Install ld-tools suite: (Required)" has to be re-ran after a `git pull`. The tools are not updated very often.
 
 > [!NOTE]  
-> debian/ubuntu does not have a qt6 version of qwt in repositories as of yet so you have to inform the build script to use Qt5 if both qt5 and qt6 are installed with -DUSE_QT_VERSION=5 as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
+> debian/ubuntu does not have a qt6 version of qwt in repositories as of yet, so you have to inform the build script to use Qt5 if both qt5 and qt6 are installed with `-DUSE_QT_VERSION=5` as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
 
 
 # Usage
@@ -330,6 +336,7 @@ You dont actaully type `<` and `>` on your input & output files.
 
 
 ## Basic CX Card Setup & RF Capture
+
 
 * Ensure system is powered off
 * Physically Install CX Card
@@ -425,7 +432,7 @@ Decode your captured tape to `.tbc` by using:
 
 Basic Usage Example:
 
-    vhs-decode --debug --pal --threads 8 --tape_format VHS --cxadc CX-White-2022.10.25.u8 my-first-decode-2022.10.25
+    vhs-decode --debug --frequency 28.6 --pal --threads 8 --tape_format VHS  CX-White-2022.10.25.u8 my-first-decode-2022.10.25
 
 After decoding process your tapes VBI data with:
 
@@ -475,8 +482,8 @@ For archival to web use we have a wide range of pre-made FFmpeg profiles defined
 
 > [!WARNING]  
 > - Odysee uploads the provided web AVC files are ideal.
-> - Vimeo uploads de-interlace the FFV1 export it re-encodes pregressive SD quite well. 
-> - YouTube de-interlace and upscale to 2880x2176p (anything below the 4k bracket is destoryed by compression.)
+> - Vimeo uploads de-interlace the FFV1 export it re-encodes progressive SD quite well. 
+> - YouTube de-interlace and upscale to 2880x2176p (anything below the 4k bracket is destroyed by compression.)
 
 
 The stock profiles for web use the BDWIF deinterlacer, but QTGMC is always recommended give the [de-interlacing guide](https://github.com/oyvindln/vhs-decode/wiki/Deinterlacing) a read for more details.
@@ -529,10 +536,10 @@ Software decoding provides the full signal frame, recovery software can be used 
 
 [Tape-based Arcade Games!](https://vhs.thenvm.org/resources/)
 
-[Ruxpin TV Teddy](https://github.com/oyvindln/vhs-decode/blob/vhs_decode/tools/ruxpin-decode/readme.pdf) (Extra audio in visable frame)
+[Ruxpin TV Teddy](https://github.com/oyvindln/vhs-decode/blob/vhs_decode/tools/ruxpin-decode/readme.pdf) (Extra audio in visible frame)
 
 
-### Generate an video output with the top VBI area:
+### Generate a video output with the top VBI area:
 
 
 This creates a scaled `720x608 PAL` or `720x508 NTSC` (IMX/D10) video file. 
@@ -545,47 +552,38 @@ Linux, MacOS & Windows:
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/Jennings-With-VBI.png" width="600" height="">
 
 
-## Terminal Arguments
+# Terminal Arguments
 
 
-VHS-Decode supports various arguments to change how captured tape recordings are processed. These vary slightly between formats like VHS & Umatic but the basic oprations remain the same.
+The decoder's support various arguments to change how captured tape recordings are processed. 
 
-The list below is a short list for common/daily usage but does not cover all the abilities and new or advanced command arguments possible so please read the [complete and upto-date command list](https://github.com/oyvindln/vhs-decode/wiki/Command-List) on the wiki as commands may change or be deprecated, so its always good to check this list for any updates.
+These vary slightly between formats like VHS & Umatic, but the basic arguments remain the same.
+
+The list below is a short list for common/daily usage but does not cover all the abilities and new or advanced command arguments possible, so please read the [complete and upto-date command list](https://github.com/oyvindln/vhs-decode/wiki/Command-List) on the wiki as commands may change or be deprecated, so its always good to check this list for any updates or specific issues you're trying to correct. 
 
 
-## Sample Rate Comamnds
+## Sample Rate Commands
+
 
 > [!CAUTION]  
-> This is a mandatory setting for the decoders to work properly.
+> This is a mandatory setting for the decoders to work.
 
 By default, this is set to 40 Mhz (40msps) (the sample rate used internally and by the Domesday Duplicator) at 16 bits.
 
 The decoder is 8/16 bit agnostic so as long as sample rate is defined, it will decode it same for 10-bit packed captures and if its FLAC compressed.
 
-`-f`  Adjusts sampling frequency in integer units.
+`-f` Adjusts sampling frequency in integer units.
 
-Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc`
+Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc` 
 
-###  CXADC Specific Sample Rate Commands
-
-
-> [!NOTE]  
-> These are just shorthand arguments for there respective samplerate option.
-
-`--cxadc`    28.6 MHz/8-bit  (8fsc) (Recommended for stock card capture)
-
-`--cxadc3`   35.8 MHz/8-bit  (10fsc) (Not recommended for capture due to up-sampling)
-
-`--10cxadc`  14.3 MHz/16-bit (4fsc) (Not recommended for capture due to under-sampling)
-
-`--10cxadc3` 17.9 MHz/16-bit (5fsc) (Not recommended for capture due to under-sampling)
+In the case of stock CX Card use `-f 28.6` for example or [legacy CXADC designers](https://github.com/oyvindln/vhs-decode/wiki/Command-List#cxadc-sample-rates-stock).
 
 
 ## TV System Commands
 
 
 > [!CAUTION]  
-> This is a mandatory setting for the decoders to work properly.
+> This is a mandatory setting for the decoders to work as intended.
 
 Changes the [TV System](https://github.com/oyvindln/vhs-decode/wiki/TV-Systems) (line system & respective, colour system if any) to your required regional media format. 
 
@@ -596,26 +594,44 @@ Changes the [TV System](https://github.com/oyvindln/vhs-decode/wiki/TV-Systems) 
 
 `--system` followed by the TV System 
 
-
 Options are: `NTSC`, `PAL`, `PAL-M`, `NTSC-J` & `MESECAM`
 
 For example: `--system NTSC`
 
 
-# Tape Format Commands
+## Tape Format Commands
 
 
 > [!CAUTION]  
 > This is a mandatory setting for the decoders to work properly.
 
 
-`-tf` or `--tape_format` sets the format of media you wish to decode.
+`--tf` or `--tape_format` sets the format of media you wish to decode.
 
-Current Options are `VHS` (Default), `VHSHQ`, `SVHS`, `UMATIC`, `UMATIC_HI`, `BETAMAX`, `BETAMAX_HIFI`, `VIDEO8`, `HI8` ,`EIAJ`, `VCR`, `VCR_LP`, `TYPEC` & `TYPEB`.
+Current Options are `VHS` (Default), `VHSHQ`, `SVHS`, `UMATIC`, `UMATIC_HI`, `BETAMAX`, `BETAMAX_HIFI`, `SUPERBETA`, `VIDEO8`, `HI8` ,`EIAJ`, `VCR`, `VCR_LP`, `TYPEC` & `TYPEB`.
 
 Example: `--tape_format vhs` 
 
-# [Time & Location Control](https://github.com/oyvindln/vhs-decode/wiki/Command-List#time--location-control)
+
+## Tape Speed Commands
+
+
+> [!WARNING]  
+> This is not a mandatory setting for the decoders to work properly, but can make a "visual" difference in decoding results. 
+
+`--ts` or `--tape_speed` sets the tape speed of media you wish to decode. 
+
+Tape speed adjusts the format parameters slightly so will not always make a difference, but it can make one for LP tapes for example. 
+
+`SP` (default), `LP`, `SLP`, `EP`, and `VP`. Only supported for some formats such as but not limited to (S)VHS & Sony 8mm. 
+
+Example: `--tape_speed LP` 
+
+> [!NOTE]  
+> SLP and EP refers to the same speed.
+
+
+## [Time & Location Control](https://github.com/oyvindln/vhs-decode/wiki/Command-List#time--location-control)
 
 
 These commands are used for jumping ahead in a file or for defining limits.
@@ -629,7 +645,8 @@ Useful to recover decoding after a crash, or for limiting process time by produc
 
 `-t` Defines the number of processing threads to use during demodulation, decode cant use more then 6-8 threads per decode currently so using 8 threads is the practical limit as its mostly a single core task.
 
-(note: upon crashing, vhs-decode automatically dumps the last known sample location in the terminal output)
+> [!CAUTION]  
+> Upon crashing, vhs-decode automatically dumps the last known sample location in the terminal output.
 
 
 ## [Time Base Correction & Visuals Control](https://github.com/oyvindln/vhs-decode/wiki/Command-List#decode-tbc---time-base-correction-control)
@@ -686,21 +703,17 @@ Both the luminance and chrominance channels are separate data files, essentially
 # Join us!
 
 
-[Discord](https://discord.gg/pVVrrxd)
+- [Discord](https://discord.gg/pVVrrxd)
 
-[Reddit](https://www.reddit.com/r/vhsdecode/)
-
-[VideoHelp Forum](https://forum.videohelp.com/threads/394168-Current-status-of-ld-decode-vhs-decode-(true-backup-of-RF-signals)#post2558660)
-
-[Facebook](https://www.facebook.com/groups/2070493199906024)
+- [Reddit](https://www.reddit.com/r/vhsdecode/)
 
 
 # More Documentation
 
 
-[VHS-Decode Wiki](https://github.com/oyvindln/vhs-decode/wiki)
+- [VHS-Decode Wiki](https://github.com/oyvindln/vhs-decode/wiki)
 
-[Google Doc Documentation](https://docs.google.com/document/d/1ZzR3gbW6iSVSNP0qoDIS0ExeRecKehlTQ0EJyx2g568/edit?usp=sharing)
+- [Extra Documentation](https://github.com/oyvindln/vhs-decode/wiki/Documents)
 
 ## *If in doubt - feel free to read the docs/wiki again, if its not there then ask!*
 
