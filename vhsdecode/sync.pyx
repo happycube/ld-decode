@@ -203,7 +203,7 @@ cdef struct s_sync_distance_output:
 cdef inline void calc_sync_from_known_distances(
     s_sync_distance_input *sync_distance_input, 
     s_sync_distance_output *sync_distance_output
-) nogil:
+) nogil noexcept:
     sync_distance_output.distance_offset = 0
     sync_distance_output.hsync_loc = 0
     sync_distance_output.valid_locations = 0
