@@ -187,12 +187,12 @@ cdef double calczc(double[::1] data, Py_ssize_t _start_offset, double target, Py
 
 cdef struct s_sync_distance_input:
     double meanlinelen,
-    float VSYNC_TOLERANCE_LINES,
-    float hsync_start_line,
+    double VSYNC_TOLERANCE_LINES,
+    double hsync_start_line,
     int first_pulse,
     int second_pulse,
-    float first_line,
-    float second_line
+    double first_line,
+    double second_line
 
 cdef struct s_sync_distance_output:
     double distance_offset
@@ -200,10 +200,11 @@ cdef struct s_sync_distance_output:
     int valid_locations
 
 @cython.cdivision(True)
+@cython.exceptval(check=False)
 cdef inline void calc_sync_from_known_distances(
     s_sync_distance_input *sync_distance_input, 
     s_sync_distance_output *sync_distance_output
-) noexcept nogil:
+) nogil:
     sync_distance_output.distance_offset = 0
     sync_distance_output.hsync_loc = 0
     sync_distance_output.valid_locations = 0
@@ -252,12 +253,12 @@ def get_first_hsync_loc(
     """
     cdef Py_ssize_t i
 
-    cdef float VSYNC_TOLERANCE_LINES = .5
+    cdef double VSYNC_TOLERANCE_LINES = .5
 
     cdef Py_ssize_t field_order_lengths_len = 4
-    cdef float *field_order_lengths = [-1, -1, -1, -1]
+    cdef double *field_order_lengths = [-1, -1, -1, -1]
     cdef int *vblank_pulses = [-1, -1, -1, -1, -1, -1, -1, -1]
-    cdef float *vblank_lines = [-1, -1, -1, -1, -1, -1, -1, -1]
+    cdef double *vblank_lines = [-1, -1, -1, -1, -1, -1, -1, -1]
 
     cdef int FIRST_VBLANK_EQ_1_START = 0
     cdef int FIRST_VBLANK_VSYNC_START = 1
@@ -333,8 +334,8 @@ def get_first_hsync_loc(
     cdef Py_ssize_t LAST_HSYNC_LENGTH = 2
     cdef Py_ssize_t LAST_EQPL2_LENGTH = 3
 
-    cdef float *first_field_lengths = [-1, -1, -1, -1]
-    cdef float *second_field_lengths = [-1, -1, -1, -1]
+    cdef double *first_field_lengths = [-1, -1, -1, -1]
+    cdef double *second_field_lengths = [-1, -1, -1, -1]
 
     if is_ntsc:
         first_field_lengths[FIRST_HSYNC_LENGTH] = 1
@@ -357,9 +358,9 @@ def get_first_hsync_loc(
         second_field_lengths[LAST_HSYNC_LENGTH] = .5
         second_field_lengths[LAST_EQPL2_LENGTH] = .5
 
-    cdef int field_boundaries_consensus = 0
-    cdef Py_ssize_t field_boundaries_detected = 0
-    cdef float field_length
+    cdef double field_boundaries_consensus = 0
+    cdef double field_boundaries_detected = 0
+    cdef double field_length
     for i in range(0, field_order_lengths_len):
         field_length = field_order_lengths[i]
 
@@ -396,11 +397,11 @@ def get_first_hsync_loc(
     # ***********************************************************
     # calculate the expected line locations for each vblank pulse
     # ***********************************************************
-    cdef float line0loc_line = 0
-    cdef float vsync_section_lines = num_eq_pulses / 2
-    cdef float hsync_start_line
-    cdef float current_field_lines
-    cdef float previous_field_lines
+    cdef double line0loc_line = 0
+    cdef double vsync_section_lines = num_eq_pulses / 2
+    cdef double hsync_start_line
+    cdef double current_field_lines
+    cdef double previous_field_lines
 
     if first_field:
         current_field_lengths = first_field_lengths
@@ -440,7 +441,7 @@ def get_first_hsync_loc(
     # *************************************************************
     # check the vblanking area at the beginning for valid locations
     # *************************************************************
-    cdef double first_vblank_first_hsync_loc = -1
+    cdef double first_vblank_first_hsync_loc = 0
     cdef int    first_vblank_valid_location_count = 0
     cdef double first_vblank_offset = 0
     cdef Py_ssize_t first_vblank_pulse_indexes_len = 4
@@ -470,7 +471,7 @@ def get_first_hsync_loc(
     # *******************************************************
     # check the vblanking area at the end for valid locations
     # *******************************************************
-    cdef double last_vblank_first_hsync_loc = -1
+    cdef double last_vblank_first_hsync_loc = 0
     cdef int   last_vblank_valid_location_count = 0
     cdef double last_vblank_offset = 0
     cdef Py_ssize_t last_vblank_pulse_indexes_len = 4
@@ -497,7 +498,7 @@ def get_first_hsync_loc(
             last_vblank_first_hsync_loc += sync_distance_output.hsync_loc
             last_vblank_valid_location_count += sync_distance_output.valid_locations
 
-    cdef double first_hsync_loc = -1
+    cdef double first_hsync_loc = 0
     cdef int valid_location_count = 0
     cdef double offset = 0
     
@@ -509,8 +510,8 @@ def get_first_hsync_loc(
     
     # if both vblanks have estimated hsync start locations
     if (
-        first_vblank_first_hsync_loc != -1 and 
-        last_vblank_first_hsync_loc != -1 and
+        first_vblank_valid_location_count != 0 and 
+        last_vblank_valid_location_count != 0 and
         # and the estimated starting locations are the same
         first_vblank_hsync_estimate < last_vblank_hsync_estimate + VSYNC_TOLERANCE_LINES * meanlinelen and
         first_vblank_hsync_estimate > last_vblank_hsync_estimate - VSYNC_TOLERANCE_LINES * meanlinelen
@@ -556,7 +557,7 @@ def get_first_hsync_loc(
 
         # or not synced yet and first vblank has more valid locations
         (prev_first_hsync_loc <= 0 and 
-        first_vblank_valid_location_count != -1 and first_vblank_valid_location_count > last_vblank_valid_location_count)
+        first_vblank_valid_location_count != 0 and first_vblank_valid_location_count > last_vblank_valid_location_count)
     ):
         first_hsync_loc = first_vblank_first_hsync_loc
         valid_location_count = first_vblank_valid_location_count
@@ -570,7 +571,7 @@ def get_first_hsync_loc(
 
         # or not synced yet and last vblank has more valid locations
         (prev_first_hsync_loc <= 0 and 
-        last_vblank_first_hsync_loc != -1 and last_vblank_valid_location_count > first_vblank_valid_location_count)
+        last_vblank_valid_location_count != 0 and last_vblank_valid_location_count > first_vblank_valid_location_count)
     ):
         first_hsync_loc = last_vblank_first_hsync_loc
         valid_location_count = last_vblank_valid_location_count
@@ -705,7 +706,7 @@ def get_first_hsync_loc(
         next_field = first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line)
 
         ## vsync debugging
-        # field order
+        ## field order
         #print(
         #    "prev first field:", prev_first_field, 
         #    "field boundry consensus:", field_boundaries_consensus,
@@ -851,9 +852,8 @@ def valid_pulses_to_linelocs(
 @cython.cfunc
 @cython.inline
 @cython.cdivision(True)
-cdef inline float round_nearest_line_loc(float line_number) nogil:
-    cdef float half_line = 0.5
-    return <int> (round(half_line * round(line_number / half_line) * 10)) / 10
+cdef inline double round_nearest_line_loc(double line_number) nogil:
+    return round(0.5 * round(line_number / 0.5) * 10) / 10
 
 @cython.boundscheck(False)
 def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
