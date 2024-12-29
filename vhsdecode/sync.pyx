@@ -36,7 +36,7 @@ def pulse_qualitycheck(prev_pulse, pulse, int in_line_len):
     else:  # transition to/from regular hsyncs can be .5 or 1H
         exprange = (0.4, 1.1)
 
-    linelen = (pulse[1].start - prev_pulse[1].start) / in_line_len
+    linelen = (pulse[1].start - prev_pulse[1].start) / <double> in_line_len
     inorder = inrange(linelen, exprange[0], exprange[1])
 
     return inorder
@@ -387,7 +387,7 @@ def get_first_hsync_loc(
         field_boundaries_detected == field_order_lengths_len or
 
         # otherwise, need more than half a consensus
-        (fallback_line0loc == -1 and prev_first_hsync_loc < 0 and field_boundaries_detected >= field_order_lengths_len / 2)
+        (fallback_line0loc == -1 and prev_first_hsync_loc < 0 and field_boundaries_detected >= field_order_lengths_len / 2.0)
     ):
         if field_boundaries_consensus / field_boundaries_detected == 1:
             first_field = True
@@ -398,7 +398,7 @@ def get_first_hsync_loc(
     # calculate the expected line locations for each vblank pulse
     # ***********************************************************
     cdef double line0loc_line = 0
-    cdef double vsync_section_lines = num_eq_pulses / 2
+    cdef double vsync_section_lines = num_eq_pulses / 2.0
     cdef double hsync_start_line
     cdef double current_field_lines
     cdef double previous_field_lines
@@ -853,7 +853,7 @@ def valid_pulses_to_linelocs(
 @cython.inline
 @cython.cdivision(True)
 cdef inline double round_nearest_line_loc(double line_number) nogil:
-    return round(0.5 * round(line_number / 0.5) * 10) / 10
+    return round(0.5 * round(line_number / 0.5) * 10) / 10.0
 
 @cython.boundscheck(False)
 def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
@@ -872,7 +872,7 @@ def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
     cdef float sample_rate_mhz = rf.freq
     cdef bint is_pal = rf.system == "PAL"
     cdef bint disable_right_hsync = rf.options.disable_right_hsync
-    cdef double zc_threshold = hsync_threshold #rf.iretohz(rf.SysParams["vsync_ire"] / 2)
+    cdef double zc_threshold = hsync_threshold #rf.iretohz(rf.SysParams["vsync_ire"] / 2.0)
     cdef double ire_30 = rf.iretohz(30)
     cdef double ire_n_55 = rf.iretohz(-55)
     cdef double ire_110 = rf.iretohz(110)
@@ -961,12 +961,12 @@ def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
                     zc2 = calczc_do(
                         demod_05,
                         ll1,
-                        (porch_level + sync_level) / 2,
+                        (porch_level + sync_level) / 2.0,
                         count=400,
                     )
 
                     # any wild variation here indicates a failure
-                    if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2):
+                    if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2.0):
                         linelocs_refined[i] = zc2
                         prev_porch_level = porch_level
                     else:
@@ -980,10 +980,10 @@ def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
                             zc2 = calczc_do(
                                 demod_05,
                                 ll1,
-                                (prev_porch_level + sync_level) / 2,
+                                (prev_porch_level + sync_level) / 2.0,
                                 count=400,
                             )
-                            if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2):
+                            if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2.0):
                                 linelocs_refined[i] = zc2
                             else:
                                 linebad[i] = True
@@ -1022,12 +1022,12 @@ def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
                     zc2 = calczc_do(
                         demod_05,
                         ll1 + normal_hsync_length - one_usec,
-                        (porch_level + sync_level) / 2,
+                        (porch_level + sync_level) / 2.0,
                         count=400,
                     )
 
                     # any wild variation here indicates a failure
-                    if not is_none_double(zc2) and c_abs(zc2 - right_cross) < (one_usec / 2):
+                    if not is_none_double(zc2) and c_abs(zc2 - right_cross) < (one_usec / 2.0):
                         # TODO: Magic value here, this seem to give be approximately correct results
                         # but may not be ideal for all inputs.
                         # Value based on default sample rate so scale if it's different.
