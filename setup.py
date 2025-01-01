@@ -51,22 +51,22 @@ setup(
             "vhsdecode.sync",
             ["vhsdecode/sync.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-march=native", "-fprofile-generate"],
-            extra_link_args=["-O3", "-flto", "-fprofile-generate"]
+            extra_compile_args=["-O3", "-march=native"],
+            extra_link_args=["-O3", "-flto"]
         ),
         Extension(
             "vhsdecode.hilbert",
             ["vhsdecode/hilbert.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-march=native", "-fprofile-generate"],
-            extra_link_args=["-O3", "-flto", "-fprofile-generate"]
+            extra_compile_args=["-O3", "-march=native"],
+            extra_link_args=["-O3", "-flto"]
         ),
         Extension(
             "vhsdecode.linear_filter",
             ["vhsdecode/linear_filter.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-march=native", "-fprofile-generate"],
-            extra_link_args=["-O3", "-flto", "-fprofile-generate"]
+            extra_compile_args=["-O3", "-march=native"],
+            extra_link_args=["-O3", "-flto"]
         )
     ]),
     # Needed for using numpy in cython.
