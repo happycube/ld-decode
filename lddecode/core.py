@@ -27,7 +27,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate
+from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate, gen_bpf_supergauss
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -446,6 +446,7 @@ class RFDecode:
         )
 
         self.Filters["Fefm"] = coeffs * 8
+        self.Filters["Fefm"] *= gen_bpf_supergauss(20000, 1600000, 60, 20000000, 32768)
 
     # Lambda-scale functions used to simplify following filter builders
 
