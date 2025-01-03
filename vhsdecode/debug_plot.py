@@ -21,6 +21,7 @@ def plot_data_and_pulses(
     linelocs=None,
     pulses=None,
     extra_lines=None,
+    vblank_lines=None,
     threshold=None,
 ):
     import matplotlib.pyplot as plt
@@ -39,6 +40,8 @@ def plot_data_and_pulses(
         if pulses is not None:
             plots += 1
         if extra_lines is not None:
+            plots += 1
+        if vblank_lines is not None:
             plots += 1
 
         plots = max(2, plots)
@@ -70,6 +73,12 @@ def plot_data_and_pulses(
             ax_number += 1
             ax[ax_number].set_title("Calculated line locations")
             for ll in linelocs:
+                ax[ax_number].axvline(ll)
+
+        if vblank_lines is not None:
+            ax_number += 1
+            ax[ax_number].set_title("V-blanking Pulses")
+            for ll in vblank_lines:
                 ax[ax_number].axvline(ll)
 
         if extra_lines is not None:
