@@ -2,8 +2,9 @@ from setuptools import setup
 from distutils.extension import Extension
 from Cython.Build import cythonize
 
-import Cython.Compiler.Options
-Cython.Compiler.Options.annotate = True
+# Uncomment to view C code generated from Cython files
+# import Cython.Compiler.Options
+# Cython.Compiler.Options.annotate = True
 
 import numpy
 
@@ -51,21 +52,21 @@ setup(
             "vhsdecode.sync",
             ["vhsdecode/sync.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-march=native"],
+            extra_compile_args=["-O3", "-flto"],
             extra_link_args=["-O3", "-flto"]
         ),
         Extension(
             "vhsdecode.hilbert",
             ["vhsdecode/hilbert.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-march=native"],
+            extra_compile_args=["-O3", "-flto"],
             extra_link_args=["-O3", "-flto"]
         ),
         Extension(
             "vhsdecode.linear_filter",
             ["vhsdecode/linear_filter.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-march=native"],
+            extra_compile_args=["-O3", "-flto"],
             extra_link_args=["-O3", "-flto"]
         )
     ]),
