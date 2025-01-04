@@ -691,6 +691,27 @@ def calczc(data, _start_offset, target, edge=0, count=10, reverse=False):
     return calczc_do(data, _start_offset, target, edge, count)
 
 
+# copied from vhs-decode
+
+def gen_bpf_supergauss(freq_low, freq_high, order, nyquist_hz, block_len):
+    sg = supergauss(
+        np.linspace(0, nyquist_hz, block_len // 2 + 1),
+        freq_high - freq_low,
+        order,
+        (freq_high + freq_low) / 2.0,
+    )[:-1]
+
+    return np.concatenate([sg, np.flip(sg)])
+
+def supergauss(x, freq, order=1, centerfreq=0):
+    return np.exp(
+        -2
+        * np.power(
+            (2 * (x - centerfreq) * (math.log(2.0) / 2.0) ** (1 / (2 * order))) / freq,
+            2 * order,
+        )
+    )
+
 # Shamelessly based on https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
 # ... and intended for real FFT, but seems fine with complex as well ;)
 def build_hilbert(fft_size):
