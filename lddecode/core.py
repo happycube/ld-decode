@@ -39,8 +39,11 @@ except ImportError:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
 
-# XXX: This is a hack so that logging is treated the same way in both this
-# and ld-decode.  Probably should just bring all logging in here...
+# Uncomment (and add to) to get full traces of numpy warnings
+#import warnings
+#warnings.filterwarnings('error', "Mean of empty slice.")
+
+# This allows ld-decode to set up one logger for the entire program
 logger = None
 
 # If profiling is not enabled, make it a pass-through wrapper
@@ -166,10 +169,10 @@ FilterParams_NTSC = {
     "audio_notchorder": 2,
     "video_deemp": (120e-9, 320e-9),
     # This BPF is similar but not *quite* identical to what Pioneer did
-    "video_bpf_low": 3400000,
+    "video_bpf_low": 3700000,
     "video_bpf_high": 13800000,
     "video_bpf_order": 4,
-    # This can easily be pushed up to 4.5mhz or even a bit higher.
+    # This can easily be pushed up to 4.5mhz or even a bit higher on most disks.
     # A sharp 4.8-5.0 is probably the maximum before the audio carriers bleed into 0IRE.
     "video_lpf_freq": 4500000,  # in mhz
     "video_lpf_order": 6,  # butterworth filter order
@@ -3567,7 +3570,14 @@ class LDdecode:
                 sync_hzs.append(nb_median(field.data["video"]["demod_05"][lsa]) / adj)
                 ire0_hzs.append(nb_median(field.data["video"]["demod_05"][lsb]) / adj)
 
-        return np.median(sync_hzs), np.median(ire0_hzs), np.mean(ire100_hzs)
+        # if any of the levels are missing, use the default levels
+        vsync_hz   = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"])
+
+        m_synchz   = np.median(sync_hzs)   if len(sync_hzs)   else vsync_hz
+        m_ire0hz   = np.median(ire0_hzs)   if len(ire0_hzs)   else self.rf.iretohz(0)
+        m_ire100hz = np.median(ire100_hzs) if len(ire100_hzs) else self.rf.iretohz(100)
+
+        return m_synchz, m_ire0hz, m_ire100hz
 
     def AC3filter(self, rftbc):
         self.AC3Collector.add(rftbc)
