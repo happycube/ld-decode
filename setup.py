@@ -1,4 +1,5 @@
 from setuptools import setup
+import distutils.ccompiler
 from distutils.extension import Extension
 from Cython.Build import cythonize
 
@@ -7,6 +8,15 @@ from Cython.Build import cythonize
 # Cython.Compiler.Options.annotate = True
 
 import numpy
+
+compiler = distutils.ccompiler.new_compiler()
+
+if compiler.compiler_type == "unix":
+    extra_compile_args=["-O3", "-flto"]
+    extra_link_args=["-O3", "-flto"]
+else:
+    extra_compile_args=[]
+    extra_link_args=[]
 
 setup(
     # name='ld-decode',
@@ -52,22 +62,22 @@ setup(
             "vhsdecode.sync",
             ["vhsdecode/sync.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-flto"],
-            extra_link_args=["-O3", "-flto"]
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args
         ),
         Extension(
             "vhsdecode.hilbert",
             ["vhsdecode/hilbert.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-flto"],
-            extra_link_args=["-O3", "-flto"]
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args
         ),
         Extension(
             "vhsdecode.linear_filter",
             ["vhsdecode/linear_filter.pyx"],
             language_level=3,
-            extra_compile_args=["-O3", "-flto"],
-            extra_link_args=["-O3", "-flto"]
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args
         )
     ]),
     # Needed for using numpy in cython.
