@@ -28,15 +28,8 @@ option(USE_QWT
 if(MSVC)
     add_compile_options(/permissive-)
 else()
-    add_compile_options(-O3 -flto)
-    add_link_options(-O3 -flto)
-endif()
-
-# Only use native architecture for local builds
-if(NOT CMAKE_BUILD_TYPE MATCHES "Release")
-    add_compile_options(-march=native)
-    add_link_options(-march=native)
-    message(WARNING "Adding -march=native to compile flags. This build will be architecture specific to this machine. Use a Release build if you intend on publishing this binary.")
+    add_compile_options(-O3)
+    add_link_options(-O3)
 endif()
 
 set(USE_QT_VERSION "" CACHE STRING

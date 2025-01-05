@@ -334,7 +334,7 @@ Compile and Install ld-tools suite: (Required)
 
     mkdir build2
     cd build2
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5
+    CXXFLAGS="-march=native" CFLAGS="-march=native" cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5
     make -j4
     sudo make install
 
