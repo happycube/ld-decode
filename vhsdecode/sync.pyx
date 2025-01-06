@@ -1,50 +1,86 @@
 import cython
 import numpy as np
 cimport numpy as np
-import math
 import lddecode.utils as lddu
-from libc.math cimport isnan, NAN
+
+from libc.math cimport isnan, NAN, round, abs
+from libc.stdlib cimport malloc, free
 
 cdef Py_ssize_t NONE_INT = -1
+cdef double NONE_DOUBLE = NAN
 
-cdef round_to_int(double a):
-    return int(round(a))
+cdef inline double is_none_double(double a) nogil:
+    return isnan(a)
 
-cdef bint inrange(double a, double mi, double ma):
+cdef inline int round_to_int(double a) nogil:
+    return <int> round(a)
+
+cdef inline double c_abs(double a) nogil:
+    return a * -1 if a < 0 else a
+
+cdef bint inrange(double a, double mi, double ma) nogil:
     return (a >= mi) & (a <= ma)
 
+@cython.cdivision
 def pulse_qualitycheck(prev_pulse, pulse, int in_line_len):
     cdef double linelen
     cdef (double, double) exprange
     cdef bint inorder
+    cdef int prev_pulse_type = prev_pulse[0]
+    cdef int pulse_type = pulse[0]
 
-    if prev_pulse[0] > 0 and pulse[0] > 0:
+    if prev_pulse_type > 0 and pulse_type > 0:
         exprange = (0.4, 0.6)
-    elif prev_pulse[0] == 0 and pulse[0] == 0:
+    elif prev_pulse_type == 0 and pulse_type == 0:
         exprange = (0.9, 1.1)
     else:  # transition to/from regular hsyncs can be .5 or 1H
         exprange = (0.4, 1.1)
 
-    linelen = (pulse[1].start - prev_pulse[1].start) / in_line_len
+    linelen = (pulse[1].start - prev_pulse[1].start) / <double> in_line_len
     inorder = inrange(linelen, exprange[0], exprange[1])
 
     return inorder
 
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.cdivision
+cdef double c_median(double[::1] data) nogil:
+    cdef Py_ssize_t data_len = len(data)
+    cdef double result = 0
+    cdef Py_ssize_t i
+    
+    for i in range(data_len):
+        result += data[i]
 
-cdef c_median(np.ndarray data):
-    # TODO: For whatever reason the numba variant is massively faster than
-    # calling np.median via cython.
-    return lddu.nb_median(data)
+    if data_len > 0:
+        return result / data_len
+    else:
+        return 0
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cdef bint is_out_of_range(double[:] data, double min, double max) nogil:
+cdef double c_max(double[::1] data) nogil:
+    cdef Py_ssize_t data_len = len(data)
+
+    # TODO check
+    cdef double result = NONE_DOUBLE
+
+    for i in range(data_len):
+        if data[i] > result:
+            result = data[i]
+
+    return result
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+cdef bint is_out_of_range(double[::1] data, double min, double max) nogil:
     """Check if data stays between min and max, returns fals if not."""
     cdef Py_ssize_t i
-    if len(data) == 0:
+    cdef Py_ssize_t data_len = len(data)
+    if data_len == 0:
         return True
 
-    for i in range(0, len(data)):
+    for i in range(data_len):
         if data[i] < min or data[i] > max:
             return True
 
@@ -52,7 +88,7 @@ cdef bint is_out_of_range(double[:] data, double min, double max) nogil:
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
-cdef Py_ssize_t calczc_findfirst(double[:] data, double target, bint rising) nogil:
+cdef Py_ssize_t calczc_findfirst(double[::1] data, double target, bint rising) nogil:
     """Find the index where data first crosses target, in the specified direction.
        returns NONE_INT if no crossing is found.
     """
@@ -70,7 +106,8 @@ cdef Py_ssize_t calczc_findfirst(double[:] data, double target, bint rising) nog
 
         return NONE_INT
 
-cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, int edge=0, Py_ssize_t count=10) nogil:
+@cython.cdivision
+cdef double calczc_do(double[::1] data, Py_ssize_t _start_offset, double target, Py_ssize_t count=10, int edge=0) nogil:
     """Find the index where data first crosses target in the specified direction, and then try to estimate
     the exact crossing point between the samples.
     Will fail if the start point is already past the threshold in the requested direction.
@@ -86,10 +123,10 @@ cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, i
 
     if edge == 1:
         if data[_start_offset] > target:
-            return NAN
+            return NONE_DOUBLE
     elif edge == -1:
         if data[_start_offset] < target:
-            return NAN
+            return NONE_DOUBLE
 
     cdef Py_ssize_t loc = calczc_findfirst(
         data[start_offset : start_offset + icount], target, edge == 1
@@ -98,7 +135,7 @@ cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, i
     # Need to use some proxy value instead of None here
     # if we want to avoid python interaction as there isn't an Option type in cython.
     if loc is NONE_INT:
-        return NAN
+        return NONE_DOUBLE
 
     cdef Py_ssize_t x = start_offset + loc
     cdef double a = data[x - 1] - target
@@ -115,8 +152,19 @@ cdef double calczc_do(double[:] data, Py_ssize_t _start_offset, double target, i
 
     return x - 1 + y
 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef double[::1] copy_reversed(double[::1] arr):
+    cdef Py_ssize_t arr_len = len(arr)
+    cdef double[::1] reversed = np.empty((arr_len), dtype=np.float64)
 
-def calczc(double[:] data, Py_ssize_t _start_offset, double target, Py_ssize_t count=10, bint reverse=False, int edge=0):
+    cdef Py_ssize_t i
+    for i in range(arr_len):
+        reversed[arr_len - i] = arr[i]
+
+    return reversed
+
+cdef double calczc(double[::1] data, Py_ssize_t _start_offset, double target, Py_ssize_t count=10, bint reverse=False, int edge=0):
     """ Calculate where data first crosses target in the direction specified by edge.
     edge:  -1 falling, 0 either, 1 rising
     count: How many samples to check
@@ -127,25 +175,67 @@ def calczc(double[:] data, Py_ssize_t _start_offset, double target, Py_ssize_t c
     # supplying the slice of data to look in.
 
     if reverse:
-        # Instead of actually implementing this in reverse, use numpy to flip data
-        rev_zc = calczc_do(data[_start_offset::-1], 0, target, edge, count)
+        # Instead of actually implementing this in reverse, flip data
+        rev_zc = calczc_do(copy_reversed(data), 0, target, count, edge)
+
         if isnan(rev_zc):
-            return None
+            return NONE_DOUBLE
 
         return _start_offset - rev_zc
 
-    res = calczc_do(data, _start_offset, target, edge, count)
-    if isnan(res):
-        return None
-    return res
+    return calczc_do(data, _start_offset, target, count, edge)
+
+cdef struct s_sync_distance_input:
+    double meanlinelen,
+    double VSYNC_TOLERANCE_LINES,
+    double hsync_start_line,
+    int first_pulse,
+    int second_pulse,
+    double first_line,
+    double second_line
+
+cdef struct s_sync_distance_output:
+    double distance_offset
+    double hsync_loc
+    int valid_locations
+
+@cython.cdivision(True)
+@cython.exceptval(check=False)
+cdef inline void calc_sync_from_known_distances(
+    s_sync_distance_input *sync_distance_input, 
+    s_sync_distance_output *sync_distance_output
+) nogil:
+    sync_distance_output.distance_offset = 0
+    sync_distance_output.hsync_loc = 0
+    sync_distance_output.valid_locations = 0
+
+    cdef double actual_lines
+    cdef double expected_lines
+    cdef double actual_lines_rounded
+
+    # skip any pulses that are missing
+    if sync_distance_input.first_pulse != -1 and sync_distance_input.second_pulse != -1 and sync_distance_input.meanlinelen != 0:
+        actual_lines = (sync_distance_input.first_pulse - sync_distance_input.second_pulse) / sync_distance_input.meanlinelen
+        expected_lines = sync_distance_input.first_line - sync_distance_input.second_line
+        actual_lines_rounded = round_nearest_line_loc(actual_lines)
+
+        if (
+            actual_lines < expected_lines + sync_distance_input.VSYNC_TOLERANCE_LINES and 
+            actual_lines > expected_lines - sync_distance_input.VSYNC_TOLERANCE_LINES
+        ):
+            sync_distance_output.distance_offset = actual_lines - expected_lines
+            sync_distance_output.hsync_loc = sync_distance_input.second_pulse + sync_distance_input.meanlinelen * (sync_distance_input.hsync_start_line - sync_distance_input.second_line)
+            sync_distance_output.valid_locations = 1
+            # print("syncing on distance", expected_lines - actual_lines, sync_distance_input.first_line, sync_distance_input.second_line)
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.cdivision(True)
 def get_first_hsync_loc(
     validpulses,
     double meanlinelen,
     bint is_ntsc,
-    field_lines,
+    field_lines_in,
     int num_eq_pulses,
     int prev_first_field,
     double last_field_offset_lines,
@@ -161,10 +251,11 @@ def get_first_hsync_loc(
        * next_field: Location of the next field (last line + 1 after this field)
        * first_field: True if this is the first field
     """
-    cdef int i
+    cdef Py_ssize_t i
+
     cdef double VSYNC_TOLERANCE_LINES = .5
 
-    cdef int field_order_lengths_len = 4
+    cdef Py_ssize_t field_order_lengths_len = 4
     cdef double *field_order_lengths = [-1, -1, -1, -1]
     cdef int *vblank_pulses = [-1, -1, -1, -1, -1, -1, -1, -1]
     cdef double *vblank_lines = [-1, -1, -1, -1, -1, -1, -1, -1]
@@ -178,52 +269,70 @@ def get_first_hsync_loc(
     cdef int LAST_VBLANK_VSYNC_END = 6
     cdef int LAST_VBLANK_EQ_2_END = 7
 
+    # ********************************************************************
+    # Convert the incoming python objects to simple arrays for performance
+    # ********************************************************************
+    cdef Py_ssize_t validpulses_len = len(validpulses)
+    cdef int *validpulses_type = <int *> malloc(validpulses_len * sizeof(int))
+    cdef int *validpulses_start = <int *> malloc(validpulses_len * sizeof(int))
+    cdef int *validpulses_valid = <int *> malloc(validpulses_len * sizeof(int))
+    
+    for i in range(validpulses_len):
+        validpulses_type[i] = validpulses[i][0]
+        validpulses_start[i] = validpulses[i][1].start
+        validpulses_valid[i] = validpulses[i][2]
+
+    cdef int field_lines_len = len(field_lines_in)
+    cdef int *field_lines = <int *> malloc(field_lines_len * sizeof(int))
+    for i in range(field_lines_len):
+        field_lines[i] = field_lines_in[i]
+
     # **************************************************************************************
     # get the vblanking pulses and assign them to either the first or second vblanking group
     # **************************************************************************************
-    last_pulse = None
+    cdef Py_ssize_t last_pulse = -1
     cdef int group = 0
     cdef int field_group = 0
 
-    for p in validpulses:
-        if last_pulse != None and p[2]:
+    for i in range(validpulses_len):
+        if last_pulse != -1 and validpulses_valid[i]:
             if (
                 # move to the next vsync pulse group if we're currently on the first vsync interval
                 group == 0 and
 
                 # and the next vsync is close to the expected location of the next field
-                p[1].start > validpulses[0][1].start + field_lines[0] * meanlinelen
+                validpulses_start[i] > validpulses_start[0] + field_lines[0] * meanlinelen
             ):
                 group = 4
                 field_group = 2
 
             # hsync -> [eq 1]
-            if last_pulse[0] == 0 and p[0] > 0:
-                vblank_pulses[0 + group] = p[1].start
-                field_order_lengths[0 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
+            if validpulses_type[last_pulse] == 0 and validpulses_type[i] > 0:
+                vblank_pulses[0 + group] = validpulses_start[i]
+                field_order_lengths[0 + field_group] = round_nearest_line_loc((validpulses_start[i] - validpulses_start[last_pulse]) / meanlinelen)
 
             # eq 1 -> [vsync]
-            elif last_pulse[0] == 1 and p[0] == 2:
-                vblank_pulses[1 + group] = p[1].start
+            elif validpulses_type[last_pulse] == 1 and validpulses_type[i] == 2:
+                vblank_pulses[1 + group] = validpulses_start[i]
 
             # [vsync] -> eq 2
-            elif last_pulse[0] == 2 and p[0] == 3:
-                vblank_pulses[2 + group] = p[1].start
+            elif validpulses_type[last_pulse] == 2 and validpulses_type[i] == 3:
+                vblank_pulses[2 + group] = validpulses_start[i]
                 
             # [eq 2] -> hsync
-            elif last_pulse[0] > 0 and p[0] == 0:
-                vblank_pulses[3 + group] = last_pulse[1].start
-                field_order_lengths[1 + field_group] = round_nearest_line_loc((p[1].start - last_pulse[1].start) / meanlinelen)
+            elif validpulses_type[last_pulse] > 0 and validpulses_type[i] == 0:
+                vblank_pulses[3 + group] = validpulses_start[last_pulse]
+                field_order_lengths[1 + field_group] = round_nearest_line_loc((validpulses_start[i] - validpulses_start[last_pulse]) / meanlinelen)
 
-        last_pulse = p
+        last_pulse = i
 
     # ********************************************************************
     # determine if this is the first or second field based on pulse length
     # ********************************************************************
-    cdef int FIRST_HSYNC_LENGTH = 0
-    cdef int FIRST_EQPL2_LENGTH = 1
-    cdef int LAST_HSYNC_LENGTH = 2
-    cdef int LAST_EQPL2_LENGTH = 3
+    cdef Py_ssize_t FIRST_HSYNC_LENGTH = 0
+    cdef Py_ssize_t FIRST_EQPL2_LENGTH = 1
+    cdef Py_ssize_t LAST_HSYNC_LENGTH = 2
+    cdef Py_ssize_t LAST_EQPL2_LENGTH = 3
 
     cdef double *first_field_lengths = [-1, -1, -1, -1]
     cdef double *second_field_lengths = [-1, -1, -1, -1]
@@ -249,9 +358,9 @@ def get_first_hsync_loc(
         second_field_lengths[LAST_HSYNC_LENGTH] = .5
         second_field_lengths[LAST_EQPL2_LENGTH] = .5
 
-    cdef int field_boundaries_consensus = 0
-    cdef int field_boundaries_detected = 0
-
+    cdef double field_boundaries_consensus = 0
+    cdef double field_boundaries_detected = 0
+    cdef double field_length
     for i in range(0, field_order_lengths_len):
         field_length = field_order_lengths[i]
 
@@ -278,7 +387,7 @@ def get_first_hsync_loc(
         field_boundaries_detected == field_order_lengths_len or
 
         # otherwise, need more than half a consensus
-        (fallback_line0loc == -1 and prev_first_hsync_loc < 0 and field_boundaries_detected >= field_order_lengths_len / 2)
+        (fallback_line0loc == -1 and prev_first_hsync_loc < 0 and field_boundaries_detected >= field_order_lengths_len / 2.0)
     ):
         if field_boundaries_consensus / field_boundaries_detected == 1:
             first_field = True
@@ -289,7 +398,7 @@ def get_first_hsync_loc(
     # calculate the expected line locations for each vblank pulse
     # ***********************************************************
     cdef double line0loc_line = 0
-    cdef double vsync_section_lines = num_eq_pulses / 2
+    cdef double vsync_section_lines = num_eq_pulses / 2.0
     cdef double hsync_start_line
     cdef double current_field_lines
     cdef double previous_field_lines
@@ -319,47 +428,24 @@ def get_first_hsync_loc(
     # Use the vsync pulses and their expected lines to derive first hsync pulse location
     #   (i.e. pulse right after the first vblanking interval)
     # **********************************************************************************
-    def calc_sync_from_known_distances(
-        int first_pulse,
-        int second_pulse,
-        double first_line,
-        double second_line
-    ):
-        cdef distance_offset = 0
-        cdef double hsync_loc = 0
-        cdef int valid_locations = 0
-        cdef double actual_lines
-        cdef double expected_lines
-        cdef double actual_lines_rounded
+    cdef s_sync_distance_input sync_distance_input
+    sync_distance_input.meanlinelen = meanlinelen
+    sync_distance_input.VSYNC_TOLERANCE_LINES = VSYNC_TOLERANCE_LINES
+    sync_distance_input.hsync_start_line = hsync_start_line
 
-        # skip any pulses that are missing
-        if first_pulse != -1 and second_pulse != -1:
-            actual_lines = (first_pulse - second_pulse) / meanlinelen
-            expected_lines = first_line - second_line
-            actual_lines_rounded = round_nearest_line_loc(actual_lines)
+    cdef s_sync_distance_output sync_distance_output
 
-            if (
-                actual_lines < expected_lines + VSYNC_TOLERANCE_LINES and 
-                actual_lines > expected_lines - VSYNC_TOLERANCE_LINES
-            ):
-                distance_offset = actual_lines - expected_lines
-                hsync_loc = second_pulse + meanlinelen * (hsync_start_line - second_line)
-                valid_locations = 1
-                # print("syncing on distance", expected_lines - actual_lines, first_line, second_line)
-
-        return distance_offset, hsync_loc, valid_locations
-
-    cdef int first_index
-    cdef int second_index
+    cdef Py_ssize_t first_index
+    cdef Py_ssize_t second_index
 
     # *************************************************************
     # check the vblanking area at the beginning for valid locations
     # *************************************************************
-    cdef double first_vblank_first_hsync_loc = -1
+    cdef double first_vblank_first_hsync_loc = 0
     cdef int    first_vblank_valid_location_count = 0
     cdef double first_vblank_offset = 0
-    cdef int first_vblank_pulse_indexes_len = 4
-    cdef int *first_vblank_pulse_indexes = [
+    cdef Py_ssize_t first_vblank_pulse_indexes_len = 4
+    cdef Py_ssize_t *first_vblank_pulse_indexes = [
         FIRST_VBLANK_EQ_1_START,
         FIRST_VBLANK_VSYNC_START,
         FIRST_VBLANK_VSYNC_END,
@@ -368,24 +454,28 @@ def get_first_hsync_loc(
 
     for first_index in range(0, first_vblank_pulse_indexes_len):
         for second_index in range(first_index+1, first_vblank_pulse_indexes_len):
-            res = calc_sync_from_known_distances(
-                vblank_pulses[first_vblank_pulse_indexes[first_index]],
-                vblank_pulses[first_vblank_pulse_indexes[second_index]],
-                vblank_lines[first_vblank_pulse_indexes[first_index]],
-                vblank_lines[first_vblank_pulse_indexes[second_index]]
+            sync_distance_input.first_pulse = vblank_pulses[first_vblank_pulse_indexes[first_index]]
+            sync_distance_input.second_pulse = vblank_pulses[first_vblank_pulse_indexes[second_index]]
+            sync_distance_input.first_line = vblank_lines[first_vblank_pulse_indexes[first_index]]
+            sync_distance_input.second_line = vblank_lines[first_vblank_pulse_indexes[second_index]]
+
+            calc_sync_from_known_distances(
+                &sync_distance_input,
+                &sync_distance_output
             )
-            first_vblank_offset += res[0]
-            first_vblank_first_hsync_loc += res[1]
-            first_vblank_valid_location_count += res[2]
+
+            first_vblank_offset += sync_distance_output.distance_offset
+            first_vblank_first_hsync_loc += sync_distance_output.hsync_loc
+            first_vblank_valid_location_count += sync_distance_output.valid_locations
 
     # *******************************************************
     # check the vblanking area at the end for valid locations
     # *******************************************************
-    cdef double last_vblank_first_hsync_loc = -1
-    cdef int    last_vblank_valid_location_count = 0
+    cdef double last_vblank_first_hsync_loc = 0
+    cdef int   last_vblank_valid_location_count = 0
     cdef double last_vblank_offset = 0
-    cdef int last_vblank_pulse_indexes_len = 4
-    cdef int *last_vblank_pulse_indexes = [
+    cdef Py_ssize_t last_vblank_pulse_indexes_len = 4
+    cdef Py_ssize_t *last_vblank_pulse_indexes = [
         LAST_VBLANK_EQ_1_START,
         LAST_VBLANK_VSYNC_START,
         LAST_VBLANK_VSYNC_END,
@@ -394,17 +484,21 @@ def get_first_hsync_loc(
 
     for first_index in range(0, last_vblank_pulse_indexes_len):
         for second_index in range(first_index+1, last_vblank_pulse_indexes_len):
-            res = calc_sync_from_known_distances(
-                vblank_pulses[last_vblank_pulse_indexes[first_index]],
-                vblank_pulses[last_vblank_pulse_indexes[second_index]],
-                vblank_lines[last_vblank_pulse_indexes[first_index]],
-                vblank_lines[last_vblank_pulse_indexes[second_index]]
-            )
-            last_vblank_offset += res[0]
-            last_vblank_first_hsync_loc += res[1]
-            last_vblank_valid_location_count += res[2]
+            sync_distance_input.first_pulse = vblank_pulses[last_vblank_pulse_indexes[first_index]]
+            sync_distance_input.second_pulse = vblank_pulses[last_vblank_pulse_indexes[second_index]]
+            sync_distance_input.first_line = vblank_lines[last_vblank_pulse_indexes[first_index]]
+            sync_distance_input.second_line = vblank_lines[last_vblank_pulse_indexes[second_index]]
 
-    cdef double first_hsync_loc = -1
+            calc_sync_from_known_distances(
+                &sync_distance_input,
+                &sync_distance_output
+            )
+
+            last_vblank_offset += sync_distance_output.distance_offset
+            last_vblank_first_hsync_loc += sync_distance_output.hsync_loc
+            last_vblank_valid_location_count += sync_distance_output.valid_locations
+
+    cdef double first_hsync_loc = 0
     cdef int valid_location_count = 0
     cdef double offset = 0
     
@@ -416,8 +510,8 @@ def get_first_hsync_loc(
     
     # if both vblanks have estimated hsync start locations
     if (
-        first_vblank_first_hsync_loc != -1 and 
-        last_vblank_first_hsync_loc != -1 and
+        first_vblank_valid_location_count != 0 and 
+        last_vblank_valid_location_count != 0 and
         # and the estimated starting locations are the same
         first_vblank_hsync_estimate < last_vblank_hsync_estimate + VSYNC_TOLERANCE_LINES * meanlinelen and
         first_vblank_hsync_estimate > last_vblank_hsync_estimate - VSYNC_TOLERANCE_LINES * meanlinelen
@@ -431,15 +525,19 @@ def get_first_hsync_loc(
         # sync accross the two vblanks
         for first_index in range(0, first_vblank_pulse_indexes_len):
             for second_index in range(0, last_vblank_pulse_indexes_len):
-                res = calc_sync_from_known_distances(
-                    vblank_pulses[first_vblank_pulse_indexes[first_index]],
-                    vblank_pulses[last_vblank_pulse_indexes[second_index]],
-                    vblank_lines[first_vblank_pulse_indexes[first_index]],
-                    vblank_lines[last_vblank_pulse_indexes[second_index]]
+                sync_distance_input.first_pulse = vblank_pulses[first_vblank_pulse_indexes[first_index]]
+                sync_distance_input.second_pulse = vblank_pulses[last_vblank_pulse_indexes[second_index]]
+                sync_distance_input.first_line = vblank_lines[first_vblank_pulse_indexes[first_index]]
+                sync_distance_input.second_line = vblank_lines[last_vblank_pulse_indexes[second_index]]
+
+                calc_sync_from_known_distances(
+                    &sync_distance_input,
+                    &sync_distance_output
                 )
-                offset += res[0]
-                first_hsync_loc += res[1]
-                valid_location_count += res[2]
+
+                offset += sync_distance_output.distance_offset
+                first_hsync_loc += sync_distance_output.hsync_loc
+                valid_location_count += sync_distance_output.valid_locations
     
         # print("using both vblank intervals")
 
@@ -459,7 +557,7 @@ def get_first_hsync_loc(
 
         # or not synced yet and first vblank has more valid locations
         (prev_first_hsync_loc <= 0 and 
-        first_vblank_valid_location_count != -1 and first_vblank_valid_location_count > last_vblank_valid_location_count)
+        first_vblank_valid_location_count != 0 and first_vblank_valid_location_count > last_vblank_valid_location_count)
     ):
         first_hsync_loc = first_vblank_first_hsync_loc
         valid_location_count = first_vblank_valid_location_count
@@ -473,7 +571,7 @@ def get_first_hsync_loc(
 
         # or not synced yet and last vblank has more valid locations
         (prev_first_hsync_loc <= 0 and 
-        last_vblank_first_hsync_loc != -1 and last_vblank_valid_location_count > first_vblank_valid_location_count)
+        last_vblank_valid_location_count != 0 and last_vblank_valid_location_count > first_vblank_valid_location_count)
     ):
         first_hsync_loc = last_vblank_first_hsync_loc
         valid_location_count = last_vblank_valid_location_count
@@ -488,7 +586,7 @@ def get_first_hsync_loc(
     # TODO: not sure why this is, it should always be the previous field lines for all formats
     cdef double estimated_hsync_field_lines = previous_field_lines if is_ntsc else current_field_lines 
 
-    cdef int estimated_hsync_loc = round(
+    cdef int estimated_hsync_loc = round_to_int(
         (
             last_field_offset_lines + 
             estimated_hsync_field_lines +
@@ -514,7 +612,7 @@ def get_first_hsync_loc(
         if prev_hsync_diff <= .5 and prev_hsync_diff >= -.5:
             # TODO: determine when to add or subtract the prev_hsync_diff
             #       maybe this can be based on difference in tape speed, add if slower, subtract if faster
-            estimated_hsync_with_offset = round(estimated_hsync_loc + meanlinelen * prev_hsync_diff)
+            estimated_hsync_with_offset = round_to_int(estimated_hsync_loc + meanlinelen * prev_hsync_diff)
         else:
             estimated_hsync_with_offset = estimated_hsync_loc
         
@@ -522,7 +620,7 @@ def get_first_hsync_loc(
         # we are not synced here, but continue to return a sync location to 
         # avoid dropping video and getting out of sync with audio
         if estimated_hsync_with_offset <= 0:
-            estimated_hsync_with_offset = validpulses[0][1].start if len(validpulses) else 0
+            estimated_hsync_with_offset = validpulses_start[0] if validpulses_len > 0 else 0
 
         first_hsync_loc += estimated_hsync_with_offset
         valid_location_count += 1
@@ -532,38 +630,48 @@ def get_first_hsync_loc(
 
         # validate the estimated hsync location with any existing vsync pulses
         #for i in range(0, len(pulse_indexes)):
-        #    res = calc_sync_from_known_distances(
-        #        vblank_pulses[pulse_indexes[i]],
-        #        estimated_hsync_with_offset,
-        #        vblank_lines[pulse_indexes[i]],
-        #        hsync_start_line
+        #    sync_distance_input.first_pulse = vblank_pulses[pulse_indexes[i]]
+        #    sync_distance_input.second_pulse = estimated_hsync_with_offset
+        #    sync_distance_input.first_line = vblank_lines[pulse_indexes[i]]
+        #    sync_distance_input.second_line = hsync_start_line
+        #
+        #    calc_sync_from_known_distances(
+        #        &sync_distance_input,
+        #        &sync_distance_output
         #    )
-        #    offset += res[0]
-        #    first_hsync_loc += res[1]
-        #    valid_location_count += res[2]
+        #
+        #    offset += sync_distance_output.distance_offset
+        #    first_hsync_loc += sync_distance_output.hsync_loc
+        #    valid_location_count += sync_distance_output.valid_locations
         
 
     # use any sync pulses, if nothing is found
     #if valid_location_count == 0:
     #    for i in range(0, 4):
+    #        sync_distance_input.first_pulse = vblank_pulses[i]
+    #        sync_distance_input.second_pulse = vblank_pulses[i]
+    #        sync_distance_input.first_line = vblank_lines[i]
+    #        sync_distance_input.second_line = vblank_lines[i]
+    #
     #        res = calc_sync_from_known_distances(
-    #            vblank_pulses[i],
-    #            vblank_pulses[i],
-    #            vblank_lines[i],
-    #            vblank_lines[i],
+    #            &sync_distance_input,
+    #            &sync_distance_output
     #        )
-    #        offset += res[0]
-    #        first_hsync_loc += res[1]
-    #        valid_location_count += res[2]
+    #
+    #        offset += sync_distance_output.distance_offset
+    #        first_hsync_loc += sync_distance_output.hsync_loc
+    #        valid_location_count += sync_distance_output.valid_locations
 
     # ******************************************************************************
     # Take the mean of the known vblanking locations to derive the first hsync pulse
     # ******************************************************************************
-    cdef int hsync_offset = 0
+    cdef double hsync_offset = 0
     cdef int hsync_count = 0
     cdef double lineloc
     cdef double line0loc
     cdef int rlineloc
+    cdef double next_field
+    cdef int pulse_loc
     if valid_location_count > 0:
         offset /= valid_location_count
         first_hsync_loc = round((first_hsync_loc + offset) / valid_location_count)
@@ -576,15 +684,18 @@ def get_first_hsync_loc(
         # ****************************************************************
         # Align estimated start with hsync pulses to prevent skipped lines
         # ****************************************************************
-        for p in validpulses:
-            lineloc = (p[1].start - first_hsync_loc) / meanlinelen + hsync_start_line
-            rlineloc = round(lineloc)
+        for i in range(validpulses_len):
+            if validpulses_type[i] != 0 or not validpulses_valid[i]:
+                continue
+
+            lineloc = (validpulses_start[i] - first_hsync_loc) / meanlinelen + hsync_start_line
+            rlineloc = round_to_int(lineloc)
 
             if rlineloc > current_field_lines:
                 break
 
-            if rlineloc >= hsync_start_line and p[0] == 0 and p[2]:
-                hsync_offset += first_hsync_loc + meanlinelen * (rlineloc - hsync_start_line) - p[1].start
+            if rlineloc >= hsync_start_line:
+                hsync_offset += first_hsync_loc + meanlinelen * (rlineloc - hsync_start_line) - validpulses_start[i]
                 hsync_count += 1
 
         if hsync_count > 0:
@@ -595,7 +706,7 @@ def get_first_hsync_loc(
         next_field = first_hsync_loc + meanlinelen * (vblank_lines[LAST_VBLANK_EQ_1_START] - hsync_start_line)
 
         ## vsync debugging
-        # field order
+        ## field order
         #print(
         #    "prev first field:", prev_first_field, 
         #    "field boundry consensus:", field_boundaries_consensus,
@@ -610,7 +721,7 @@ def get_first_hsync_loc(
         #
         ## calculated vs actual vsync pulses
         #for i in range(0, 8):
-        #    vblank_lines[i] = round(first_hsync_loc + meanlinelen * (vblank_lines[i] - hsync_start_line))
+        #    vblank_lines[i] = round_to_int(first_hsync_loc + meanlinelen * (vblank_lines[i] - hsync_start_line))
         #print("calc vblank", [x for x in vblank_lines[:8]])
         #print("next field", next_field)
         #
@@ -631,17 +742,28 @@ def get_first_hsync_loc(
         #)
         #print()
 
+        free(validpulses_type)
+        free(validpulses_start)
+        free(validpulses_valid)
+        free(field_lines)
+
         return line0loc, first_hsync_loc, hsync_start_line, next_field, first_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
 
     # no sync pulses found
     # print("no sync pulses found")
+
+    free(validpulses_type)
+    free(validpulses_start)
+    free(validpulses_valid)
+    free(field_lines)
     return None, None, hsync_start_line, None, first_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
+@cython.cdivision
 def valid_pulses_to_linelocs(
-    np.ndarray[np.int32_t, ndim=1]  validpulses,
+    validpulses_in,
     int reference_pulse,
     int reference_line,
     double meanlinelen,
@@ -656,10 +778,10 @@ def valid_pulses_to_linelocs(
         validpulses ([int]): List of sync pulses
         reference_pulse (int): Sample location of the reference pulse
         reference_line (int): Line that the reference pulse represents
-        meanlinelen (float): Average line length
-        hsync_tolerance (float): How much a sync pulse can deviate from normal before being discarded.
+        meanlinelen (double): Average line length
+        hsync_tolerance (double): How much a sync pulse can deviate from normal before being discarded.
         proclines (int): Total number of lines to process
-        gap_detection_threshold (float): Threshold to check for skipped hsync pulses
+        gap_detection_threshold (double): Threshold to check for skipped hsync pulses
 
     Returns:
         * line_locations: locations for each field line where in the index is the line number and the value is the start of the pulse
@@ -668,39 +790,47 @@ def valid_pulses_to_linelocs(
     """
 
     # Lists to fill
-    cdef np.ndarray[np.int32_t, ndim=1] line_locations = np.full(proclines, -1, dtype=np.int32)
-    cdef np.ndarray[np.int32_t, ndim=1] line_location_errs = np.full(proclines, 0, dtype=np.int32)
+    cdef int[::1] validpulses = np.sort(np.asarray(
+        [
+            p[1].start
+            for p in validpulses_in
+        ], dtype=np.int32, order='c'
+    ))
+    cdef int[::1] line_locations = np.empty((proclines), dtype=np.int32, order='c')
+    cdef int[::1] line_location_errs = np.full(proclines, 0, dtype=np.int32, order='c')
 
-    cdef int i
-    cdef int j
+    cdef Py_ssize_t i
+    cdef Py_ssize_t j
     
     # refine the line locations to pulses
-    cdef float current_distance
-    cdef float next_distance
-    cdef float min_distance
+    cdef double current_distance
+    cdef double next_distance
+    cdef double min_distance
     cdef int current_pulse
-    cdef int current_pulse_index = 0
+
+    cdef Py_ssize_t current_pulse_index = 0
+    cdef Py_ssize_t validpulses_len = len(validpulses)
 
     for i in range(0, proclines):
         # estimate the line locations based on the mean line length
-        line_locations[i] = round(reference_pulse + meanlinelen * (i - reference_line))
+        line_locations[i] = round_to_int(reference_pulse + meanlinelen * (i - reference_line))
 
         # search for the closest pulse, pulse locations are assumed to be sorted
-        if current_pulse_index < len(validpulses):
-            current_distance = abs(validpulses[current_pulse_index] - line_locations[i])
+        if current_pulse_index < validpulses_len:
+            current_distance = c_abs(validpulses[current_pulse_index] - line_locations[i])
             next_distance = -1
             current_pulse = -1
             min_distance = meanlinelen / 1.5
             j = current_pulse_index
 
-            while j < len(validpulses) - 1:
+            while j < validpulses_len - 1:
                 if current_distance <= min_distance:
                     min_distance = current_distance
                     current_pulse_index = j
                     current_pulse = validpulses[j]
     
                 # if the distance starts to increase, we've moved past where the pulse should be
-                next_distance = abs(validpulses[j+1] - line_locations[i])
+                next_distance = c_abs(validpulses[j+1] - line_locations[i])
                 if next_distance > current_distance:
                     break
     
@@ -712,33 +842,37 @@ def valid_pulses_to_linelocs(
                 line_locations[i] = current_pulse
                 current_pulse_index += 1
             # else:
-            #     print(i, "using estimated pulse", line_locations[i])
-            #     uncomment to fill any guessed lines with the previous field values
+            #     # print(i, "using estimated pulse", line_locations[i])
+            #     # fill any guessed lines with the previous field values
             #     line_location_errs[i] = 1
 
     return line_locations, line_location_errs, current_pulse
 
 # Rounds a line number to it's nearest line at intervals of .5 lines
-def round_nearest_line_loc(double line_number):
-    return round(0.5 * round(line_number / 0.5), 1)
+@cython.cfunc
+@cython.inline
+@cython.cdivision(True)
+cdef inline double round_nearest_line_loc(double line_number) nogil:
+    return round(0.5 * round(line_number / 0.5) * 10) / 10.0
 
-def refine_linelocs_hsync(field, np.ndarray linebad, double hsync_threshold):
+@cython.boundscheck(False)
+def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
     """Refine the line start locations using horizontal sync data."""
 
     # Original used a copy here which resulted in a list.
     # Use an array instead for efficiency.
-    cdef np.ndarray[np.float64_t, ndim=1] linelocs_original = np.asarray(field.linelocs1, dtype=np.float64)
-    cdef np.ndarray[np.float64_t, ndim=1] linelocs_refined = np.array(linelocs_original, dtype=np.float64, copy=True)
+    cdef double[::1] linelocs_original = np.asarray(field.linelocs1, dtype=np.float64)
+    cdef double[::1] linelocs_refined = np.array(linelocs_original, dtype=np.float64, copy=True)
 
     # Lookup these values here instead of doing it on every loop iteration.
-    cdef np.ndarray[np.float64_t, ndim=1] demod_05 = field.data["video"]["demod_05"]
+    cdef double[::1] demod_05 = np.array(field.data["video"]["demod_05"], dtype=np.float64, order='c')
     rf = field.rf
     cdef int normal_hsync_length = field.usectoinpx(rf.SysParams["hsyncPulseUS"])
     cdef int one_usec = rf.freq
     cdef float sample_rate_mhz = rf.freq
     cdef bint is_pal = rf.system == "PAL"
     cdef bint disable_right_hsync = rf.options.disable_right_hsync
-    cdef double zc_threshold = hsync_threshold #rf.iretohz(rf.SysParams["vsync_ire"] / 2)
+    cdef double zc_threshold = hsync_threshold #rf.iretohz(rf.SysParams["vsync_ire"] / 2.0)
     cdef double ire_30 = rf.iretohz(30)
     cdef double ire_n_55 = rf.iretohz(-55)
     cdef double ire_110 = rf.iretohz(110)
@@ -750,170 +884,170 @@ def refine_linelocs_hsync(field, np.ndarray linebad, double hsync_threshold):
     cdef double prev_porch_level = -1
     cdef double sync_level
     cdef int ll1
-    cdef int i
-    cdef np.ndarray[np.float64_t, ndim=1] hsync_area
+    cdef Py_ssize_t i
+    cdef double[::1] hsync_area
+    cdef double[::1] back_porch
+    cdef double zc
+    cdef double zc2
+    cdef double right_cross
 
-    for i in range(len(linelocs_original)):
-        # skip VSYNC lines, since they handle the pulses differently
-        if inrange(i, 3, 6) or (is_pal and inrange(i, 1, 2)):
-            linebad[i] = True
-            continue
-
-        # refine beginning of hsync
-
-        # start looking 1 usec back
-        ll1 = round(linelocs_original[i]) - one_usec
-        # and locate the next time the half point between hsync and 0 is crossed.
-        zc = calczc(
-            demod_05,
-            ll1,
-            zc_threshold,
-            reverse=False,
-            count=one_usec * 2,
-        )
-
-        right_cross = None
-
-        if not disable_right_hsync:
-            right_cross = calczc(
-                demod_05,
-                ll1 + (normal_hsync_length) - one_usec,
-                zc_threshold,
-                reverse=False,
-                count=round_to_int(one_usec * 3),
-                edge=1,
-            )
-        right_cross_refined = False
-
-        # If the crossing exists, we can check if the hsync pulse looks normal and
-        # refine it.
-        if zc is not None and not linebad[i]:
-            linelocs_refined[i] = zc
-
-            # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-            # TODO: Use correct values for NTSC/PAL here
-            hsync_area = demod_05[
-                round_to_int(zc - (one_usec * 0.75)) : round_to_int(zc + (one_usec * 3.5))
-            ]
-            back_porch = demod_05[
-                round_to_int(zc + one_usec * 3.5) : round_to_int(zc + (one_usec * 8))
-            ]
-            if is_out_of_range(hsync_area, ire_n_55, ire_110): # or is_out_of_range(back_porch, ire_n_55, ire_110):
-                # don't use the computed value here if it's bad
+    with nogil:
+        for i in range(len(linelocs_original)):
+            # skip VSYNC lines, since they handle the pulses differently
+            if inrange(i, 3, 6) or (is_pal and inrange(i, 1, 2)):
                 linebad[i] = True
-                linelocs_refined[i] = linelocs_original[i]
-            else:
+                continue
 
-                if np.amax(hsync_area) < ire_30:
-                    porch_level = c_median(
-                        demod_05[round_to_int(zc + (one_usec * 8)) : round_to_int(zc + (one_usec * 9))]
-                    )
-                else:
-                    if prev_porch_level > 0:
-                        porch_level = prev_porch_level
-                    else:
-                        porch_level = c_median(
-                            demod_05[round_to_int(zc - (one_usec * 1.0)) : round_to_int(zc - (one_usec * 0.5))]
-                        )
-                sync_level = c_median(
-                    demod_05[round_to_int(zc + (one_usec * 1)) : round_to_int(zc + (one_usec * 2.5))]
-                )
+            # refine beginning of hsync
 
-                # Re-calculate the crossing point using the mid point between the measured sync
-                # and porch levels
-                zc2 = calczc(
+            # start looking 1 usec back
+            ll1 = round_to_int(linelocs_original[i]) - one_usec
+            # and locate the next time the half point between hsync and 0 is crossed.
+            zc = NONE_DOUBLE
+            zc = calczc_do(
+                demod_05,
+                ll1,
+                zc_threshold,
+                count=one_usec * 2,
+            )
+
+            right_cross = NONE_DOUBLE
+            if not disable_right_hsync:
+                right_cross = calczc_do(
                     demod_05,
-                    ll1,
-                    (porch_level + sync_level) / 2,
-                    reverse=False,
-                    count=400,
+                    ll1 + (normal_hsync_length) - one_usec,
+                    zc_threshold,
+                    count=round_to_int(one_usec * 3),
+                    edge=1,
                 )
+            right_cross_refined = False
 
-                # any wild variation here indicates a failure
-                if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
-                    linelocs_refined[i] = zc2
-                    prev_porch_level = porch_level
+            # If the crossing exists, we can check if the hsync pulse looks normal and
+            # refine it.
+            if not is_none_double(zc) and not linebad[i]:
+                linelocs_refined[i] = zc
+
+                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                # TODO: Use correct values for NTSC/PAL here
+                hsync_area = demod_05[
+                    round_to_int(zc - (one_usec * 0.75)) : round_to_int(zc + (one_usec * 3.5))
+                ]
+                back_porch = demod_05[
+                    round_to_int(zc + one_usec * 3.5) : round_to_int(zc + (one_usec * 8))
+                ]
+                if is_out_of_range(hsync_area, ire_n_55, ire_110): # or is_out_of_range(back_porch, ire_n_55, ire_110):
+                    # don't use the computed value here if it's bad
+                    linebad[i] = True
+                    linelocs_refined[i] = linelocs_original[i]
                 else:
-                    # Give up
-                    # front_porch_level = c_median(
-                    #     demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
-                    # )
 
-                    if prev_porch_level > 0:
-                        # Try again with a earlier measurement porch.
-                        zc2 = calczc(
-                            demod_05,
-                            ll1,
-                            (prev_porch_level + sync_level) / 2,
-                            reverse=False,
-                            count=400,
+                    if c_max(hsync_area) < ire_30:
+                        porch_level = c_median(
+                            demod_05[round_to_int(zc + (one_usec * 8)) : round_to_int(zc + (one_usec * 9))]
                         )
-                        if zc2 is not None and abs(zc2 - zc) < (one_usec / 2):
-                            linelocs_refined[i] = zc2
+                    else:
+                        if prev_porch_level > 0:
+                            porch_level = prev_porch_level
                         else:
-                            linebad[i] = True
+                            porch_level = c_median(
+                                demod_05[round_to_int(zc - (one_usec * 1.0)) : round_to_int(zc - (one_usec * 0.5))]
+                            )
+                    sync_level = c_median(
+                        demod_05[round_to_int(zc + (one_usec * 1)) : round_to_int(zc + (one_usec * 2.5))]
+                    )
+
+                    # Re-calculate the crossing point using the mid point between the measured sync
+                    # and porch levels
+                    zc2 = calczc_do(
+                        demod_05,
+                        ll1,
+                        (porch_level + sync_level) / 2.0,
+                        count=400,
+                    )
+
+                    # any wild variation here indicates a failure
+                    if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2.0):
+                        linelocs_refined[i] = zc2
+                        prev_porch_level = porch_level
                     else:
                         # Give up
-                        linebad[i] = True
-        else:
-            linebad[i] = True
+                        # front_porch_level = c_median(
+                        #     demod_05[int(zc - (one_usec * 1.0)) : int(zc - (one_usec * 0.5))]
+                        # )
 
-        # Check right cross
-        if right_cross is not None:
-            zc2 = None
+                        if prev_porch_level > 0:
+                            # Try again with a earlier measurement porch.
+                            zc2 = calczc_do(
+                                demod_05,
+                                ll1,
+                                (prev_porch_level + sync_level) / 2.0,
+                                count=400,
+                            )
+                            if not is_none_double(zc2) and c_abs(zc2 - zc) < (one_usec / 2.0):
+                                linelocs_refined[i] = zc2
+                            else:
+                                linebad[i] = True
+                        else:
+                            # Give up
+                            linebad[i] = True
+            else:
+                linebad[i] = True
 
-            zc_fr = right_cross - normal_hsync_length
+            # Check right cross
+            if not is_none_double(right_cross):
+                zc2 = NONE_DOUBLE
 
-            # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-            # NOTE: This is more than hsync area, might wanna also check max levels of level in hsync
-            hsync_area = demod_05[
-                round_to_int(zc_fr - (one_usec * 0.75)) : round_to_int(zc_fr + (one_usec * 8))
-            ]
+                zc_fr = right_cross - normal_hsync_length
 
-            if not is_out_of_range(hsync_area, ire_n_55, ire_30):
+                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
+                # NOTE: This is more than hsync area, might wanna also check max levels of level in hsync
+                hsync_area = demod_05[
+                    round_to_int(zc_fr - (one_usec * 0.75)) : round_to_int(zc_fr + (one_usec * 8))
+                ]
 
-                porch_level = c_median(
-                    demod_05[round_to_int(zc_fr + normal_hsync_length + (one_usec * 1)) : round_to_int(zc_fr + normal_hsync_length + (one_usec * 2))]
-                )
+                if not is_out_of_range(hsync_area, ire_n_55, ire_30):
 
-                sync_level = c_median(
-                    demod_05[
-                        round_to_int(zc_fr + (one_usec * 1)) : round_to_int(zc_fr + (one_usec * 2.5))
-                    ]
-                )
+                    porch_level = c_median(
+                        demod_05[round_to_int(zc_fr + normal_hsync_length + (one_usec * 1)) : round_to_int(zc_fr + normal_hsync_length + (one_usec * 2))]
+                    )
 
-                # Re-calculate the crossing point using the mid point between the measured sync
-                # and porch levels
-                zc2 = calczc(
-                    demod_05,
-                    ll1 + normal_hsync_length - one_usec,
-                    (porch_level + sync_level) / 2,
-                    reverse=False,
-                    count=400,
-                )
+                    sync_level = c_median(
+                        demod_05[
+                            round_to_int(zc_fr + (one_usec * 1)) : round_to_int(zc_fr + (one_usec * 2.5))
+                        ]
+                    )
 
-                # any wild variation here indicates a failure
-                if zc2 is not None and abs(zc2 - right_cross) < (one_usec / 2):
-                    # TODO: Magic value here, this seem to give be approximately correct results
-                    # but may not be ideal for all inputs.
-                    # Value based on default sample rate so scale if it's different.
-                    refined_from_right_lineloc = right_cross - normal_hsync_length + (2.25 * (sample_rate_mhz / 40.0))
-                    # Don't use if it deviates too much which could indicate a false positive or non-standard hsync length.
-                    if abs(refined_from_right_lineloc - linelocs_refined[i]) < (one_usec * 2):
-                        right_cross = zc2
-                        right_cross_refined = True
-                        prev_porch_level = porch_level
+                    # Re-calculate the crossing point using the mid point between the measured sync
+                    # and porch levels
+                    zc2 = calczc_do(
+                        demod_05,
+                        ll1 + normal_hsync_length - one_usec,
+                        (porch_level + sync_level) / 2.0,
+                        count=400,
+                    )
 
-        if linebad[i]:
-            linelocs_refined[i] = linelocs_original[
-                i
-            ]  # don't use the computed value here if it's bad
+                    # any wild variation here indicates a failure
+                    if not is_none_double(zc2) and c_abs(zc2 - right_cross) < (one_usec / 2.0):
+                        # TODO: Magic value here, this seem to give be approximately correct results
+                        # but may not be ideal for all inputs.
+                        # Value based on default sample rate so scale if it's different.
+                        refined_from_right_lineloc = right_cross - normal_hsync_length + (2.25 * (sample_rate_mhz / 40.0))
+                        # Don't use if it deviates too much which could indicate a false positive or non-standard hsync length.
+                        if c_abs(refined_from_right_lineloc - linelocs_refined[i]) < (one_usec * 2):
+                            right_cross = zc2
+                            right_cross_refined = True
+                            prev_porch_level = porch_level
 
-        if right_cross is not None and right_cross_refined:
-            # If we get a good result from calculating hsync start from the
-            # right side of the hsync pulse, we use that as it's less likely
-            # to be messed up by overshoot.
-            linebad[i] = False
-            linelocs_refined[i] = refined_from_right_lineloc
+            if linebad[i]:
+                linelocs_refined[i] = linelocs_original[
+                    i
+                ]  # don't use the computed value here if it's bad
+
+            if not is_none_double(right_cross) and right_cross_refined:
+                # If we get a good result from calculating hsync start from the
+                # right side of the hsync pulse, we use that as it's less likely
+                # to be messed up by overshoot.
+                linebad[i] = False
+                linelocs_refined[i] = refined_from_right_lineloc
 
     return linelocs_refined
