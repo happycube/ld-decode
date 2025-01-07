@@ -1,14 +1,17 @@
-![vhs-decode logo](docs/vhs-decode_logo_256px.png)
+<img src="assets/icons/Cross-Platform-VHS-Decode-Trasparent.png" width="300" height="">
 
 
 # VHS-Decode (It does more than VHS now!)
 
 
 A fork of [LD-Decode](https://github.com/happycube/ld-decode), the decoding software powering the [Domesday86 Project](https://www.domesday86.com/).  
-This version has been modified to work with the differences found in the tracked RF drum head signals taken directly from colour-under & FM modulated composite videotape formats.
+
+This version has been modified to work with the differences found in FM RF signals taken directly from colour-under & composite FM modulated videotape formats, captured directly from the heads pre-amplification & tracking stage before any internal video/hifi processing. 
+
+------
 
 > [!CAUTION]
-> Not to be confused with the TV Modulator/Demodulator pack or the **"antenna connectors"** on the back of the VCR!
+> FM RF Archival captures and capturing is not to be confused with the TV Modulator/Demodulator pack's signals i.g the **"antenna connectors"** on the back of a VCR!
 
 <img src="assets/images/DdD-EBU-Colour-Bar-PAL-VHS-SP.png" width="" height="">
 
