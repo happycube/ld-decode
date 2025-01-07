@@ -37,14 +37,14 @@ public:
     bool decodeLines(const SourceVideo::Data& line16Data, const SourceVideo::Data& line17Data,
                      const SourceVideo::Data& line18Data,
                      const LdDecodeMetaData::VideoParameters& videoParameters,
-                     LdDecodeMetaData::Field& fieldMetadata);
+                     LdDecodeMetaData::Field& fieldMetadata, bool bMarkParseErrors);
     bool decodeLine(qint32 lineIndex, const SourceVideo::Data& lineData,
                     const LdDecodeMetaData::VideoParameters& videoParameters,
-                    LdDecodeMetaData::Field& fieldMetadata);
+                    LdDecodeMetaData::Field& fieldMetadata, bool bMarkParseErrors);
 
 private:
     qint32 manchesterDecoder(const SourceVideo::Data& lineData, qint32 zcPoint,
-                             LdDecodeMetaData::VideoParameters videoParameters);
+                             LdDecodeMetaData::VideoParameters videoParameters, bool bMarkParseErrors);
 };
 
 #endif // BIPHASECODE_H

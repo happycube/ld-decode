@@ -71,6 +71,11 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate("main", "filename"));
     parser.addOption(outputJsonOption);
 
+    // Option to differentiate parse errors and black lines (-m)
+    QCommandLineOption markParseErrors(QStringList() << "m" << "mark-parse-errors",
+                                       QCoreApplication::translate("main", "Differentiate between Manchester parse errors (-1) and black lines (0)"));
+    parser.addOption(markParseErrors);
+
     // Option to disable JSON back-up (-n)
     QCommandLineOption showNoBackupOption(QStringList() << "n" << "nobackup",
                                        QCoreApplication::translate("main", "Do not create a backup of the input JSON metadata"));
@@ -93,6 +98,7 @@ int main(int argc, char *argv[])
 
     // Get the options from the parser
     bool noBackup = parser.isSet(showNoBackupOption);
+    bool bMarkParseErrors = parser.isSet(markParseErrors);
 
     qint32 maxThreads = QThread::idealThreadCount();
     if (parser.isSet(threadsOption)) {
@@ -145,7 +151,7 @@ int main(int argc, char *argv[])
 
     // Perform the processing
     qInfo() << "Beginning VBI processing...";
-    DecoderPool decoderPool(inputFilename, outputJsonFilename, maxThreads, metaData);
+    DecoderPool decoderPool(inputFilename, outputJsonFilename, maxThreads, metaData, bMarkParseErrors);
     if (!decoderPool.process()) return 1;
 
     // Quit with success

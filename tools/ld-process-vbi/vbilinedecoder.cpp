@@ -41,6 +41,7 @@ VbiLineDecoder::VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QO
 void VbiLineDecoder::run()
 {
     qint32 fieldNumber;
+    bool markParseErrors;
 
     // Input data buffers
     SourceVideo::Data sourceFieldData;
@@ -49,7 +50,7 @@ void VbiLineDecoder::run()
 
     while (!abort) {
         // Get the next field to process from the input file
-        if (!decoderPool.getInputField(fieldNumber, sourceFieldData, fieldMetadata, videoParameters)) {
+        if (!decoderPool.getInputField(fieldNumber, sourceFieldData, fieldMetadata, videoParameters, markParseErrors)) {
             // No more input fields -- exit
             break;
         }
@@ -67,7 +68,7 @@ void VbiLineDecoder::run()
         biphaseCode.decodeLines(getFieldLine(sourceFieldData, 16, videoParameters),
                                 getFieldLine(sourceFieldData, 17, videoParameters),
                                 getFieldLine(sourceFieldData, 18, videoParameters),
-                                videoParameters, fieldMetadata);
+                                videoParameters, fieldMetadata, markParseErrors);
 
         // Process NTSC specific data if source type is NTSC
         if (videoParameters.system == NTSC) {

@@ -25,9 +25,9 @@
 #include "decoderpool.h"
 
 DecoderPool::DecoderPool(QString _inputFilename, QString _outputJsonFilename,
-                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)
+                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData, bool markParseErrors)
     : inputFilename(_inputFilename), outputJsonFilename(_outputJsonFilename),
-      maxThreads(_maxThreads), ldDecodeMetaData(_ldDecodeMetaData)
+      maxThreads(_maxThreads), ldDecodeMetaData(_ldDecodeMetaData), markParseErrors(markParseErrors)
 {
 }
 
@@ -101,7 +101,8 @@ bool DecoderPool::process()
 // Returns true if a field was returned, false if the end of the input has been
 // reached.
 bool DecoderPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVideoData,
-                                LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters)
+                                LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters,
+                                bool &markParseErrors)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -120,6 +121,7 @@ bool DecoderPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVid
     fieldVideoData = sourceVideo.getVideoField(fieldNumber, VbiLineDecoder::startFieldLine, VbiLineDecoder::endFieldLine);
     fieldMetadata = ldDecodeMetaData.getField(fieldNumber);
     videoParameters = ldDecodeMetaData.getVideoParameters();
+    markParseErrors = this->markParseErrors;
 
     return true;
 }

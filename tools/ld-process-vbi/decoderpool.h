@@ -39,11 +39,11 @@ class DecoderPool
 public:
     // Public methods
     explicit DecoderPool(QString _inputFilename, QString _outputJsonFilename,
-                        qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData);
+                        qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData, bool markParseErrors);
     bool process();
 
     // Member functions used by worker threads
-    bool getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters);
+    bool getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters, bool &markParseErrors);
     bool setOutputField(qint32 fieldNumber, const LdDecodeMetaData::Field& fieldMetadata);
 
 private:
@@ -66,6 +66,9 @@ private:
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;
     QFile targetJson;
+
+    // whether to differentiate between parse errors and black lines
+    bool markParseErrors;
 };
 
 #endif // DECODERPOOL_H

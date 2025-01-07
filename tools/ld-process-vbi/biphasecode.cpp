@@ -30,13 +30,14 @@
 bool BiphaseCode::decodeLines(const SourceVideo::Data& line16Data, const SourceVideo::Data& line17Data,
                               const SourceVideo::Data& line18Data,
                               const LdDecodeMetaData::VideoParameters& videoParameters,
-                              LdDecodeMetaData::Field& fieldMetadata)
+                              LdDecodeMetaData::Field& fieldMetadata,
+                              bool bMarkParseErrors)
 {
     // Decode all three lines
     bool success = false;
-    success |= decodeLine(0, line16Data, videoParameters, fieldMetadata);
-    success |= decodeLine(1, line17Data, videoParameters, fieldMetadata);
-    success |= decodeLine(2, line18Data, videoParameters, fieldMetadata);
+    success |= decodeLine(0, line16Data, videoParameters, fieldMetadata, bMarkParseErrors);
+    success |= decodeLine(1, line17Data, videoParameters, fieldMetadata, bMarkParseErrors);
+    success |= decodeLine(2, line18Data, videoParameters, fieldMetadata, bMarkParseErrors);
     if (!success) {
         qDebug() << "VbiLineDecoder::process(): No biphase VBI present";
     }
@@ -51,19 +52,21 @@ bool BiphaseCode::decodeLines(const SourceVideo::Data& line16Data, const SourceV
 // Return true if decoding was successful, false otherwise.
 bool BiphaseCode::decodeLine(qint32 lineIndex, const SourceVideo::Data& lineData,
                                 const LdDecodeMetaData::VideoParameters& videoParameters,
-                                LdDecodeMetaData::Field& fieldMetadata)
+                                LdDecodeMetaData::Field& fieldMetadata,
+                                bool bMarkParseErrors)
 {
     // Determine the 16-bit zero-crossing point
     qint32 zcPoint = (videoParameters.white16bIre + videoParameters.black16bIre) / 2;
 
-    fieldMetadata.vbi.vbiData[lineIndex] = manchesterDecoder(lineData, zcPoint, videoParameters);
+    fieldMetadata.vbi.vbiData[lineIndex] = manchesterDecoder(lineData, zcPoint, videoParameters, bMarkParseErrors);
 
     return (fieldMetadata.vbi.vbiData[lineIndex] != 0);
 }
 
 // Private method to read a 24-bit biphase coded signal (manchester code) from a field line
 qint32 BiphaseCode::manchesterDecoder(const SourceVideo::Data &lineData, qint32 zcPoint,
-                                         LdDecodeMetaData::VideoParameters videoParameters)
+                                         LdDecodeMetaData::VideoParameters videoParameters,
+                                         bool bMarkParseErrors)
 {
     qint32 result = 0;
     QVector<bool> manchesterData = getTransitionMap(lineData, zcPoint);
@@ -115,8 +118,18 @@ qint32 BiphaseCode::manchesterDecoder(const SourceVideo::Data &lineData, qint32 
 
     // We must have 24-bits if the decode was successful
     if (decodeCount != 24) {
-        if (decodeCount != 0) qDebug() << "BiphaseCode::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
+
         result = 0;
+
+        if (decodeCount != 0) {
+            qDebug() << "BiphaseCode::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
+            if (bMarkParseErrors) {
+                // -1 is a good choice to indicate a parse error because it does not conflict with 0 (black line) or >0 (successfully parsed data)
+                // differentiating between parse errors and black lines is useful because if parse errors are known, they can be autofixed by studying the surrounding picture number cadence
+                result = -1;
+            }
+        }
+
     }
 
     return result;
