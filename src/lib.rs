@@ -1,5 +1,6 @@
-mod ported;
+mod filters;
 mod levels;
+mod ported;
 
 use std::f64::consts;
 
@@ -8,8 +9,9 @@ use numpy::{Complex64, IntoPyArray, PyArray1, PyReadonlyArray1, PyReadwriteArray
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-use ported::{unwrap_angles_impl, unwrap_angles_in_place};
+use filters::{sos_filtfilt, sos_filtfilt_f32};
 use levels::fallback_vsync_loc_means_impl;
+use ported::{unwrap_angles_impl, unwrap_angles_in_place};
 
 fn complex_angle(input_array: ArrayView1<'_, Complex64>) -> Array1<f64> {
     // Replicate the np.angle function for 1-dimensional input
@@ -116,11 +118,37 @@ fn fallback_vsync_loc_means<'py>(
     sample_freq_mhz: f64,
     min_len: f64,
     max_len: f64,
-) -> (Bound<'py, PyList>, Bound<'py, PyList>){
+) -> (Bound<'py, PyList>, Bound<'py, PyList>) {
     let demod_05 = demod_05.as_array();
     //let output_list = py.allow_threads(|| fallback_vsync_loc_means_impl(demod_05, freq));
     //output_array.into_pyarray_bound(py)
     fallback_vsync_loc_means_impl(py, demod_05, pulses, sample_freq_mhz, min_len, max_len)
+}
+
+#[pyfunction]
+fn sosfiltfilt<'py>(
+    py: Python<'py>,
+    order: u32,
+    sos_filter: PyReadonlyArray1<'py, f64>,
+    input_array: PyReadonlyArray1<'py, f64>,
+) -> Bound<'py, PyArray1<f64>> {
+    let sos_filter = sos_filter.as_array();
+    let input_array = input_array.as_array();
+    let output_array = py.allow_threads(|| sos_filtfilt(order, sos_filter, input_array));
+    output_array.into_pyarray_bound(py)
+}
+
+#[pyfunction]
+fn sosfiltfilt_f32<'py>(
+    py: Python<'py>,
+    order: u32,
+    sos_filter: PyReadonlyArray1<'py, f64>,
+    input_array: PyReadonlyArray1<'py, f32>,
+) -> Bound<'py, PyArray1<f32>> {
+    let sos_filter = sos_filter.as_array();
+    let input_array = input_array.as_array();
+    let output_array = py.allow_threads(|| sos_filtfilt_f32(order, sos_filter, input_array));
+    output_array.into_pyarray_bound(py)
 }
 
 /// A Python module implemented in Rust. The name of this function must match
@@ -133,5 +161,7 @@ fn vhsd_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(diff_forward_in_place, m)?)?;
     m.add_function(wrap_pyfunction!(unwrap_hilbert, m)?)?;
     m.add_function(wrap_pyfunction!(fallback_vsync_loc_means, m)?)?;
+    m.add_function(wrap_pyfunction!(sosfiltfilt, m)?)?;
+    m.add_function(wrap_pyfunction!(sosfiltfilt_f32, m)?)?;
     Ok(())
 }

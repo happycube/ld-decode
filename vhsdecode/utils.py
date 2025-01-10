@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.signal as signal
 from numba import njit
-
+from vhsdecode.rust_utils import sosfiltfilt_rust
 
 def gen_wave_at_frequency(frequency, sample_frequency, num_samples, gen_func=np.sin):
     """Generate a sine wave with the specified parameters."""
@@ -18,8 +18,8 @@ def gen_compl_wave_at_frequency(frequency, sample_frequency, num_samples):
 
 
 def filter_simple(data, filter_coeffs):
-    return signal.sosfiltfilt(filter_coeffs, data, padlen=150)
-
+    #return signal.sosfiltfilt(filter_coeffs, data)
+    return sosfiltfilt_rust(filter_coeffs, data)
 
 @njit(cache=True)
 def get_line(data, line_length, line):
