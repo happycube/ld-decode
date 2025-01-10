@@ -27,6 +27,9 @@ option(USE_QWT
 # Needed for ezpwd as it uses alternative operators
 if(MSVC)
     add_compile_options(/permissive-)
+else()
+    add_compile_options(-O3)
+    add_link_options(-O3)
 endif()
 
 set(USE_QT_VERSION "" CACHE STRING
