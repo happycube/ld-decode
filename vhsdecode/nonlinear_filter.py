@@ -72,14 +72,14 @@ def sub_deemphasis_inner(
     # Get the instantaneous amplitude of the signal using the hilbert transform
     # and divide by the formats specified deviation so we get a amplitude compared to the specifications references.
     amplitude = abs(sps.hilbert(hf_part)) / deviation
-    amplitude = filter_simple(amplitude, filters["NLAmplitudeLPF"])
-
+    # Clip the value after filtering to make sure we don't go negative
+    amplitude = np.clip(filter_simple(amplitude, filters["NLAmplitudeLPF"]), 0, None)
     if debug_const_amplitude:
         amplitude = debug_const_amplitude
 
     if linear_scale_1 is not None:
         amplitude *= linear_scale_1
-    # Scale the amplitude by a exponential factore (typically less than 1 so it ends up being a root function of osrts)
+    # Scale the amplitude by a exponential factore (typically less than 1 so it ends up being a root function of sorts)
     amplitude = np.power(amplitude, exponential_scale)
     if linear_scale_2 is not None:
         amplitude *= linear_scale_2

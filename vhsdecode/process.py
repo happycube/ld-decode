@@ -1121,7 +1121,7 @@ class VHSRFDecode(ldd.RFDecode):
         # on sharp transitions. Using filtfilt to avoid phase issues.
         if len(np.where(env == 0)[0]) == 0:  # checks for zeroes on env
             if self._high_boost is not None:
-                data_filtered = npfft.ifft(indata_fft)
+                data_filtered = npfft.ifft(indata_fft).real
                 high_part = utils.filter_simple(
                     data_filtered, self.Filters["RFTop"]
                 ) * ((env_mean * 0.9) / env)
