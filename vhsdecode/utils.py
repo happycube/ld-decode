@@ -18,7 +18,7 @@ def gen_compl_wave_at_frequency(frequency, sample_frequency, num_samples):
 
 
 def filter_simple(data, filter_coeffs):
-    return signal.sosfiltfilt(filter_coeffs, data, padlen=150)
+    return signal.sosfiltfilt(filter_coeffs, data, padlen=70)
 
 
 @njit(cache=True)
