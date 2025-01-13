@@ -2,8 +2,6 @@ mod filters;
 mod levels;
 mod ported;
 
-use std::f64::consts;
-
 use numpy::ndarray::{Array1, ArrayView1, ArrayViewMut1, Zip};
 use numpy::{Complex64, IntoPyArray, PyArray1, PyReadonlyArray1, PyReadwriteArray1};
 use pyo3::prelude::*;
@@ -11,7 +9,94 @@ use pyo3::types::PyList;
 
 use filters::{sos_filtfilt, sos_filtfilt_f32};
 use levels::fallback_vsync_loc_means_impl;
-use ported::{unwrap_angles_impl, unwrap_angles_in_place};
+use ported::unwrap_angles_impl;
+
+// https://mazzo.li/posts/vectorized-atan2.html
+#[inline(always)]
+fn atan_approx(x: f32) -> f32 {
+    const A1: f32 = 0.99997726f32;
+    const A3: f32 = -0.33262347f32;
+    const A5: f32 = 0.19354346f32;
+    const A7: f32 = -0.11643287f32;
+    const A9: f32 = 0.05265332f32;
+    const A11: f32 = -0.01172120f32;
+
+    let x_sq = x * x;
+    x * (A1 + x_sq * (A3 + x_sq * (A5 + x_sq * (A7 + x_sq * (A9 + x_sq * A11)))))
+}
+
+#[inline(always)]
+fn atan2f_fast(y: f32, x: f32) -> f32 {
+    use std::f32::consts::FRAC_PI_2;
+    use std::f32::consts::PI;
+
+    let x = x + f32::MIN_POSITIVE.copysign(x);
+    let swap = x.abs() < y.abs();
+    let atan_input = if swap { x } else { y } / if swap { y } else { x };
+    let mut res = atan_approx(atan_input);
+    let tmp = if atan_input >= 0.0f32 {
+        FRAC_PI_2
+    } else {
+        -FRAC_PI_2
+    };
+    res = if swap { tmp - res } else { res };
+    match (x >= 0f32, y >= 0f32) {
+        (true, true) => res,
+        (false, true) => PI + res,
+        (false, false) => -PI + res,
+        (true, false) => res,
+    }
+}
+
+#[inline(always)]
+fn hilbert_two(a: Complex64, b: Complex64, freq: f32) -> f32 {
+    use std::f32::consts::TAU;
+
+    let a = atan2f_fast(a.im as f32, a.re as f32);
+    let b = atan2f_fast(b.im as f32, b.re as f32);
+    let diff = b - a;
+    let diff = diff;
+    let diff = diff - (diff / TAU).floor() * TAU;
+    diff * freq / TAU
+}
+
+#[inline(always)]
+fn hilbert_more(a: &[Complex64; 8], b: &[Complex64; 8], out: &mut [f64; 8], freq: f32) {
+    for i in 0..8 {
+        out[i] = hilbert_two(a[i], b[i], freq) as f64;
+    }
+}
+
+#[inline(never)]
+fn hilbert_all(input_slice: &[Complex64], output_slice: &mut [f64], freq: f32) {
+    let len = input_slice.len();
+    assert_ne!(len, 0);
+
+    let big_chunks = (len - 1) / 8;
+    for i in 0..big_chunks {
+        let prevs_slice = &input_slice[i * 8..(i + 1) * 8];
+        let currs_slice = &input_slice[i * 8 + 1..(i + 1) * 8 + 1];
+        let outs_slice = &mut output_slice[i * 8 + 1..(i + 1) * 8 + 1];
+        let prevs = <&[Complex64; 8]>::try_from(prevs_slice).unwrap();
+        let currs = <&[Complex64; 8]>::try_from(currs_slice).unwrap();
+        let outs = <&mut [f64; 8]>::try_from(outs_slice).unwrap();
+        hilbert_more(prevs, currs, outs, freq);
+    }
+    for i in big_chunks * 8..len - 1 {
+        output_slice[i + 1] = hilbert_two(input_slice[i], input_slice[i + 1], freq) as f64;
+    }
+}
+
+fn unwrap_hilbert_impl(input_array: ArrayView1<'_, Complex64>, freq: f64) -> Array1<f64> {
+    let mut output_array = Array1::<f64>::zeros(input_array.len());
+
+    let input_slice = input_array.as_slice().unwrap();
+    let output_slice = output_array.as_slice_mut().unwrap();
+
+    hilbert_all(input_slice, output_slice, freq as f32);
+
+    output_array
+}
 
 fn complex_angle(input_array: ArrayView1<'_, Complex64>) -> Array1<f64> {
     // Replicate the np.angle function for 1-dimensional input
@@ -33,44 +118,6 @@ fn diff_forward_in_place_impl(mut input_array: ArrayViewMut1<'_, f64>) {
     }
     input_array[1] -= input_array[0];
     input_array[0] = 0.0;
-}
-
-fn remove_jumps_and_scale(data: ArrayViewMut1<'_, f64>, freq: f64) {
-    for i in data {
-        // Further constrain values so they lie within 0..TAU as was done in the
-        // original impl
-        // TODO: could maybe do this in a more efficient way.
-        while *i < 0.0 {
-            *i += consts::TAU;
-        }
-        while *i > consts::TAU {
-            *i -= consts::TAU;
-        }
-        // Scale the output so the demodulated output values corresponds to the specified frequencies.
-        *i *= freq / consts::TAU;
-    }
-}
-
-fn unwrap_hilbert_impl(input_array: ArrayView1<'_, Complex64>, freq: f64) -> Array1<f64> {
-    // Demodulate complex luminance data that has had the hilbert transofm done to it to output
-    // scaled to the set frequency range.
-
-    // We compute the instantaneous angle of the input data
-    let mut tangles = complex_angle(input_array);
-    // and then find the difference between these angles to get the instantaneous frequency
-    diff_forward_in_place_impl(tangles.view_mut());
-    // Ensure unwrapping goes the right way
-    // Not needed since this is always set to 0 by the diff function.
-    /* if tangles[0] < -std::f64::consts::PI {
-        tangles[0] += std::f64::consts::TAU;
-    }*/
-
-    // We then unwrap the resulting angles to get a coherent signal.
-    unwrap_angles_in_place(tangles.view_mut());
-    // Finally remove outliers and scale the signal.
-    remove_jumps_and_scale(tangles.view_mut(), freq);
-
-    tangles
 }
 
 #[pyfunction]
