@@ -1,8 +1,7 @@
 [build-system]
-requires = ["setuptools>=61", "setuptools_scm>=6.2", "wheel", "Cython", "numpy", "maturin>=1.4,<2.0"]
+requires = ["setuptools>=61", "setuptools-rust", "setuptools_scm>=6.2", "wheel", "Cython", "numpy"]
 # requires = ["setuptools>=61", "wheel", "Cython", "numpy"]
-# build-backend = "setuptools.build_meta"
-build-backend = "maturin"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "vhs_decode"
@@ -16,7 +15,7 @@ classifiers = [
     "Programming Language :: Rust",
 ]
 dependencies = [
-    "setuptools>=61", "numpy>=1.22","numba>=0.58.1","scipy>=1.10.1","samplerate", "static-ffmpeg", "cython", "soundfile", "sounddevice", "importlib_resources >= 5.0; python_version < '3.10'", "matplotlib"
+    "numpy>=1.22","numba>=0.58.1","scipy>=1.10.1","samplerate", "static-ffmpeg", "cython", "soundfile", "sounddevice", "importlib_resources >= 5.0; python_version < '3.10'", "matplotlib"
 ]
 dynamic = ["version"]
 # version = "0.2.1dev0"
@@ -48,5 +47,6 @@ local_scheme = "no-local-version"
 [tool.setuptools.package-data]
 vhs_decode = ["*.txt"]
 
-[tool.maturin]
-python-packages = ["vhsdecode", "lddecode", "cvbsdecode"]
+[[tool.setuptools-rust.ext-modules]]
+# Private Rust extension module to be nested into the Python package
+target = "vhsd_rust"
