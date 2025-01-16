@@ -55,7 +55,6 @@ fn hilbert_two(a: Complex64, b: Complex64, freq: f32) -> f32 {
     let a = atan2f_fast(a.im as f32, a.re as f32);
     let b = atan2f_fast(b.im as f32, b.re as f32);
     let diff = b - a;
-    let diff = diff;
     let diff = diff - (diff / TAU).floor() * TAU;
     diff * freq / TAU
 }
@@ -127,7 +126,7 @@ fn complex_angle_py<'py>(
 ) -> Bound<'py, PyArray1<f64>> {
     let input_array = input_array.as_array();
     let output_array = py.allow_threads(|| complex_angle(input_array));
-    output_array.into_pyarray_bound(py)
+    output_array.into_pyarray(py)
 }
 
 #[pyfunction]
@@ -137,7 +136,7 @@ fn unwrap_angles<'py>(
 ) -> Bound<'py, PyArray1<f64>> {
     let input_array = input_array.as_array();
     let output_array = py.allow_threads(|| unwrap_angles_impl(input_array));
-    output_array.into_pyarray_bound(py)
+    output_array.into_pyarray(py)
 }
 
 #[pyfunction]
@@ -154,7 +153,7 @@ fn unwrap_hilbert<'py>(
 ) -> Bound<'py, PyArray1<f64>> {
     let input_array = input_array.as_array();
     let output_array = py.allow_threads(|| unwrap_hilbert_impl(input_array, freq));
-    output_array.into_pyarray_bound(py)
+    output_array.into_pyarray(py)
 }
 
 #[pyfunction]
@@ -182,7 +181,7 @@ fn sosfiltfilt<'py>(
     let sos_filter = sos_filter.as_array();
     let input_array = input_array.as_array();
     let output_array = py.allow_threads(|| sos_filtfilt(order, sos_filter, input_array));
-    output_array.into_pyarray_bound(py)
+    output_array.into_pyarray(py)
 }
 
 #[pyfunction]
@@ -195,7 +194,7 @@ fn sosfiltfilt_f32<'py>(
     let sos_filter = sos_filter.as_array();
     let input_array = input_array.as_array();
     let output_array = py.allow_threads(|| sos_filtfilt_f32(order, sos_filter, input_array));
-    output_array.into_pyarray_bound(py)
+    output_array.into_pyarray(py)
 }
 
 /// A Python module implemented in Rust. The name of this function must match

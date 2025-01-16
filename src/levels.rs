@@ -22,8 +22,8 @@ pub fn fallback_vsync_loc_means_impl<'a>(
     min_len: f64,
     max_len: f64,
 ) -> (Bound<'a, PyList>, Bound<'a, PyList>) {
-    let vsync_locs = PyList::empty_bound(py);
-    let vsync_means = PyList::empty_bound(py);
+    let vsync_locs = PyList::empty(py);
+    let vsync_means = PyList::empty(py);
 
     let mean_pos_offset = sample_freq_mhz;
 
