@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vhs_decode"
 description = "Software Decoder for raw rf captures of laserdisc, vhs and other analog video formats"
-readme = "README.md"
+readme = "README_pypi.md"
 requires-python = ">=3.8"
 keywords = ["laserdisc", "vhs", "video", "tape", "decoder"]
 license = {file = "LICENSE"}
