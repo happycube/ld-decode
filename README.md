@@ -11,7 +11,7 @@ This version has been modified to work with the differences found in FM RF signa
 ------
 
 > [!CAUTION]
-> FM RF Archival captures and capturing is not to be confused with the TV Modulator/Demodulator pack's signals i.g the **"antenna connectors"** on the back of a VCR!
+> FM RF Archival captures and capturing is not to be confused with the TV Modulator/Demodulator pack's signals, i.e the **"antenna connectors"** on the back of a VCR!
 
 <img src="assets/images/DdD-EBU-Colour-Bar-PAL-VHS-SP.png" width="" height="">
 
@@ -32,17 +32,17 @@ SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-dec
 
 **Betamax** 625-line and 525-line - PAL & NTSC. **Supported**
 
-**SuperBeta** 625-line and 525-line - PAL & NTSC. **Preliminary support**
+**SuperBeta** 525-line - NTSC. **Preliminary support** (Pal samples needed)
 
 **Video8 & Hi8** 625-line and 525-line - PAL & NTSC. **Basic support**
 
 **1" Type C (SMPTE Type C)** 625-line and 525-line - PAL & NTSC. **Basic support** (More Samples Required!) 
 
-**1" Type B (SMPTE Type B)** 625-line and 525-line - PAL & NTSC. **Basic support** (More Samples Required!)
+**1" Type B (SMPTE Type B)** 625-line and 525-line - PAL & NTSC. **Preliminary support** (More Samples Required!)
 
-**EIAJ** 625-line - PAL. **Supported** (NTSC Samples Required!) 
+**EIAJ** 625-line - PAL. **Basic support** (NTSC Samples Required!) 
 
-**Philips VCR** & **Philips VCR "LP"**  625-line - PAL. **Supported**
+**Philips VCR** & **Philips VCR "LP"**  625-line - PAL. **Basic support**
 
 
 # [FAQ - Frequently Asked Questions](https://github.com/oyvindln/vhs-decode/wiki/FAQ)
@@ -70,7 +70,7 @@ Test samples & signals can be digitally generated using [HackTV](https://github.
 # [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage) & [RTL-SDR Decode](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR)
 
 
-Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) which provides decoding for VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or FLAC compressed RF captures of HiFi FM signals and outputs standard 24-bit 44.1-192khz FLAC stereo audio files. 
+Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) which provides basic decoding support for VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or FLAC compressed RF captures of HiFi FM signals and outputs standard 24-bit 44.1-192khz FLAC stereo audio files. The decoding quality is not yet up to the standard of the output from the conventional vcr decoding circuitry.
 
 [RTLSDR capture & decoding](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR) (cross plafrom as its 100% GNURadio based) can run in realtime on most systems (1~3 sec delay) and provide live playback, Alongside 8msps RF files and a 48khz 24-bit FLAC file of the decoded audio.
 
@@ -83,14 +83,13 @@ Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com
 
 Preferably somewhat calibrated and in excellent mechanical and head condition, prosumer metal track decks are preferable as they were built generally better in terms of mechnical stability than cheaper later consumer decks that use more plastics. 
 
-However, the only **crtical requirement** is avalible test points or a head amplifyer that is easy to tap into, this goes for any and all tape formats any later 90s prosumer HiFi deck for VHS as an example can provide visually identical results top a top end SVHS deck with FM RF capture and decoding, it levels the playing field. 
-
-
-> [!TIP]
-> SVHS tapes can be RF captured on standard VHS HiFi decks.
+However, the only **crtical requirement** is avalible test points or a head amplifier that is easy to tap into, this goes for any and all tape formats. Since the rest of the circuitry is bypassed much of the difference between the vcr model lineup outside of head count/hifi capability is also skipped and thus a good condition 90s HiFi vcr can give equally good results as a top of the line SVHS vcr.
 
 > [!TIP]
-> SVHS NTSC Decks - Currently inflated, but you can import PAL decks with NTSC support for 1/3rd the price though this only applys if conventional refrence SVHS captures are required.
+> SVHS tapes can be RF captured on some newer standard VHS HiFi decks. 
+
+> [!TIP]
+> Since we bypass the decoding circuitry, it is not required that the VCR supports the TV system for the tape to be decoded correctly. The VCR does however need to be able to play the tape at the right speed - so one would be able to decode a PAL-M tape playing back in a american market NTSC VCR but not a standard PAL recording as NTSC only VCRs will normally not play those at the correct speed.
 
 > [!IMPORTANT]  
 > - Please read the [Cleaning & Servicing Guide](https://github.com/oyvindln/vhs-decode/wiki/Cleaning-&-Servicing-Guide).
@@ -115,7 +114,7 @@ Capture is done using an intuative GUI application.
 
 [Linux / Windows / MacOS](https://github.com/harrypm/DomesdayDuplicator/wiki/Software-Setup-User-Guide#installing-the-software)
 
-Built and geared torwards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing many forms of tape FM RF signals. It consists of a custom analogue to digital board with an amplifier, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
+Built and geared torwards capturing RF from Laserdisc plaiers, it does however also work perfectly well for digitizing many forms of tape FM RF signals. It consists of a custom analogue to digital board with an amplifier, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
 
 > [!WARNING]  
 > Don't use USB storage or video devices on the same USB bus as the DdD, it will crash the capture!
@@ -151,12 +150,12 @@ The setup process for RF capture involves running a short cable internally from 
 
 This cable is then routed to an added BNC jack at back of your metal/plastic VCR chassis or cable threaded out a vent, this allows direct access to the FM RF signals conveniently & reliably, we call this a `Tap Point` or `RF Tap` respectively for some decks and camcorders however DuPont conectors (2.54mm headders) and ribbon jigs can be used, but can be less mechanically safe/secure in some setups.
 
-Adding an [amplifyer](https://github.com/oyvindln/vhs-decode/wiki/Amplificaiton-R&D) in-between your RF Tap and your Bulkheads or cabled connection to an ADC solution can drastically improve the proformance of lower signal level output machines, and reduce/eliminate issues such as crosshatching from too much signal draw on the internal head amplifyer, this also removes most needs to change any capture device gain levels.
+Adding an [amplifier](https://github.com/oyvindln/vhs-decode/wiki/Amplificaiton-R&D) in-between your RF Tap and your Bulkheads or cabled connection to an ADC solution can drastically improve the proformance of lower signal level output machines, and reduce/eliminate issues such as crosshatching from too much signal draw on the internal head amplifier, this also removes most needs to change any capture device gain levels.
 
 
 ````
 - VCR Unit ==> Head Drum ==> RAW Signal From Heads ==> Amplification & Tracking IC ==> Tracked FM RF signals ==> 
-- FM RF Test/Signal Points ==> Amplifyer ==> FM RF Capture ==> 
+- FM RF Test/Signal Points ==> Amplifier ==> FM RF Capture ==> 
 - Software Decoding ==> Lossless 4fsc TBC Files ==> YUV Conversion ==> Standard Audio/Video Files.
 ````
 
@@ -218,7 +217,7 @@ Adding a 10uf (0.1uf to 100uf range) capacitor to the test point or amplifier is
 
 Center is Signal, Outer is Ground, this goes for jacks and for coaxial cable in general.
 
-For an electrolytic capacitor Positive leg (longer) goes on test/signal point, Negative leg (shorter) on cable to connector/probe. 
+For an polarized electrolytic capacitor Positive leg (longer) goes on test/signal point, Negative leg (shorter) on cable to connector/probe. 
 
 However, this does not matter for Ceramic which are bidirectional & recommend today.
 
@@ -242,7 +241,7 @@ While type and voltage does not matter drastically it's best to use new/tested c
 # Dependencies & Installation - Software
 
 
-VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest versions of Ubuntu, Debian, Linux Mint & Windows 10, and has user testing on current versions of MacOS.
+VHS-Decode, as with LD-Decode, has been developed and tested on machines running the latest versions of Ubuntu, Debian, Linux Mint & Windows 10/11, and has user testing on current versions of MacOS.
 
 The tools should however be able to be built on other distributions too provided they have access somewhat recent versions to the needed dependencies, including at least python 3.8.
 
@@ -275,7 +274,7 @@ The decode suite can also be built & run natively on Windows 10/11 or built insi
 
 [MacOS Setup & Usage Docs](https://github.com/oyvindln/vhs-decode/wiki/MacOS-Build)
 
-Currently, MacOS builds while supported and deployable these are not directly verifyed and tested by the developers of ld-decode or vhs-decode due ot lack of owning physical Apple M1 or newer hardware.
+Currently, MacOS builds while supported and deployable these are not directly verified and tested by the developers of ld-decode or vhs-decode due ot lack of owning physical Apple M1 or newer hardware.
 
 
 </details>
@@ -377,7 +376,7 @@ You dont actaully type `<` and `>` on your input & output files.
 
 Here's the full [RF Capture Guide](https://github.com/oyvindln/vhs-decode/wiki/RF-Capture-Guide)
 
-But to get started here is a simplifyed guide:
+But to get started here is a simplified guide:
 
 
 <details closed>
