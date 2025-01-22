@@ -114,7 +114,7 @@ Capture is done using an intuative GUI application.
 
 [Linux / Windows / MacOS](https://github.com/harrypm/DomesdayDuplicator/wiki/Software-Setup-User-Guide#installing-the-software)
 
-Built and geared torwards capturing RF from Laserdisc plaiers, it does however also work perfectly well for digitizing many forms of tape FM RF signals. It consists of a custom analogue to digital board with an amplifier, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
+Built and geared torwards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing many forms of tape FM RF signals. It consists of a custom analogue to digital board with an amplifier, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
 
 > [!WARNING]  
 > Don't use USB storage or video devices on the same USB bus as the DdD, it will crash the capture!
