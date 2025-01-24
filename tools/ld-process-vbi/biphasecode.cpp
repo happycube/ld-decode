@@ -115,8 +115,16 @@ qint32 BiphaseCode::manchesterDecoder(const SourceVideo::Data &lineData, qint32 
 
     // We must have 24-bits if the decode was successful
     if (decodeCount != 24) {
-        if (decodeCount != 0) qDebug() << "BiphaseCode::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
+
         result = 0;
+
+        if (decodeCount != 0) {
+            qDebug() << "BiphaseCode::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
+			// -1 is a good choice to indicate a parse error because it does not conflict with 0 (black line) or >0 (successfully parsed data)
+			// differentiating between parse errors and black lines is useful because if parse errors are known, they can be autofixed by studying the surrounding picture number cadence
+			result = -1;
+        }
+
     }
 
     return result;
