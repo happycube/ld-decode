@@ -260,18 +260,19 @@ class NoiseReduction:
         self.NR_weighting_release_Lo_transition = 1e3
 
         # this is set to avoid high frequency noise to interfere with the NR envelope tracking
-        self.NR_finalLo_cut = 19e3
-        self.NR_finalLo_transition = 10e3
+        self.NR_Lo_cut = 19e3
+        self.NR_Lo_transition = 10e3
 
+        self.nrWeightedLowpassL = LpFilter(
+            self.audio_rate, cut=self.NR_Lo_cut, transition=self.NR_Lo_transition
+        )
+        self.nrWeightedLowpassR = LpFilter(
+            self.audio_rate, cut=self.NR_Lo_cut, transition=self.NR_Lo_transition
+        )
+
+        # weighted filter for envelope detector
         self.NR_weighting_T1 = 240e-6
         self.NR_weighting_T2 = 24e-6
-
-        # main deemphasis time constant
-        self.tau = 56e-6
-
-        # final audio bandwidth limiter
-        self.finalLo_cut = 20e3
-        self.finalLo_transition = 10e3
 
         env_iirb, env_iira = gen_high_shelf(
             tau_as_freq(self.NR_weighting_T2),
@@ -282,15 +283,25 @@ class NoiseReduction:
         scale_factor = 10 ** (-6 / 20)
         env_iirb = [x * scale_factor for x in env_iirb]
 
-        self.envelopeHighpassL = FiltersClass(env_iirb, env_iira, self.audio_rate)
-        self.envelopeHighpassR = FiltersClass(env_iirb, env_iira, self.audio_rate)
+        self.nrWeightedHighpassL = FiltersClass(env_iirb, env_iira, self.audio_rate)
+        self.nrWeightedHighpassR = FiltersClass(env_iirb, env_iira, self.audio_rate)
 
-        envv_iirb, envv_iira = firdes_lowpass(
-            self.audio_rate, self.NR_finalLo_cut, self.NR_finalLo_transition
+        # deemphasis filter for output audio
+        self.NR_deemphasis_T2 = 56e-6
+
+        deemph_b, deemph_a = gen_low_shelf(
+            tau_as_freq(self.NR_deemphasis_T2),
+            6,
+            0.707,
+            self.audio_rate
         )
-        self.envelopeVoicepassL = FiltersClass(envv_iirb, envv_iira, self.audio_rate)
-        self.envelopeVoicepassR = FiltersClass(envv_iirb, envv_iira, self.audio_rate)
+        scale_factor = 10 ** (-6 / 20)
+        deemph_b = [x * scale_factor for x in deemph_b]
 
+        self.nrDeemphasisLowpassL = FiltersClass(deemph_b, deemph_a, self.audio_rate)
+        self.nrDeemphasisLowpassR = FiltersClass(deemph_b, deemph_a, self.audio_rate)
+
+        # expander attack
         loenv_iirb, loenv_iira = firdes_lowpass(
             self.audio_rate,
             self.NR_weighting_attack_Lo_cut,
@@ -303,6 +314,7 @@ class NoiseReduction:
             loenv_iirb, loenv_iira, self.audio_rate
         )
 
+        # expander release
         loenvr_iirb, loenvr_iira = firdes_lowpass(
             self.audio_rate,
             self.NR_weighting_release_Lo_cut,
@@ -313,17 +325,6 @@ class NoiseReduction:
         )
         self.envelope_release_LowpassR = FiltersClass(
             loenvr_iirb, loenvr_iira, self.audio_rate
-        )
-
-        self.audio_bassL = LpFilter(self.audio_rate, cut=220, transition=2000)
-        self.audio_bassR = LpFilter(self.audio_rate, cut=220, transition=2000)
-        self.audio_presenceL = LpFilter(self.audio_rate, cut=2000, transition=8000)
-        self.audio_presenceR = LpFilter(self.audio_rate, cut=2000, transition=8000)
-        self.finalLoL = LpFilter(
-            self.audio_rate, cut=self.finalLo_cut, transition=self.finalLo_transition
-        )
-        self.finalLoR = LpFilter(
-            self.audio_rate, cut=self.finalLo_cut, transition=self.finalLo_transition
         )
 
     @staticmethod
@@ -347,23 +348,31 @@ class NoiseReduction:
         ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
 
     def rs_envelope(self, raw_data, channel=0):
-        data = np.array([LogCompander.expand(x) for x in raw_data], dtype="float64")
-        hi_part = (
-            self.envelopeHighpassL.lfilt(data)
-            if channel == 0
-            else self.envelopeHighpassR.lfilt(data)
+        # prevent high frequency noise from interfering with envelope detector
+        low_pass = (
+            self.nrWeightedLowpassL.work(raw_data)
+            if channel == 0 
+            else self.nrWeightedLowpassR.work(raw_data)
         )
-        lo_part = data - hi_part
-        env_part = (
-            self.envelopeVoicepassL.lfilt(hi_part + lo_part / 2)
-            if channel == 0
-            else self.envelopeVoicepassR.lfilt(hi_part + lo_part / 2)
-        )
-        return np.abs(env_part)
 
-    def noise_reduction(self, audio, comb, channel=0):
+        # high pass weighted input to envelope detector
+        weighted_high_pass = (
+            self.nrWeightedHighpassL.lfilt(low_pass)
+            if channel == 0
+            else self.nrWeightedHighpassR.lfilt(low_pass)
+        )
+        envelope = np.array([LogCompander.expand(x) for x in weighted_high_pass], dtype="float64")
+        return np.abs(envelope)
+
+    def noise_reduction(self, pre, channel=0):
         # takes the RMS envelope of each audio channel
-        audio_env = self.rs_envelope(comb, channel)
+        audio_env = self.rs_envelope(pre, channel)
+
+        audio = (
+            self.nrDeemphasisLowpassL.filtfilt(pre)
+            if channel == 0
+            else self.nrDeemphasisLowpassR.filtfilt(pre)
+        )
 
         rsaC = (
             self.envelope_attack_LowpassL.lfilt(audio_env)
@@ -383,38 +392,21 @@ class NoiseReduction:
 
         # computes a sidechain signal to apply noise reduction
         gate = np.clip(rsC * self.NR_envelope_gain, a_min=0.0, a_max=1.0)
-        rev_gate = 1.0 - gate
 
-        # applies noise reduction (notch at hfreq)
-        gated = np.add(np.multiply(gate, audio), np.multiply(rev_gate, comb))
-
-        # applies second part of noise reduction
-        nr = np.multiply(gated, gate)
+        # applies noise reduction
+        nr = np.multiply(audio, gate)
 
         return nr
 
     def noise_reduction_stereo(self, audioL, audioR):
-        # applies notch filter at Hfreq
-        combL, combR = NoiseReduction.audio_notch_stereo(
-            self.audio_rate, self.hfreq, audioL, audioR
-        )
-        return self.noise_reduction(audioL, combL, channel=0), self.noise_reduction(
-            audioR, combR, channel=1
+        return self.noise_reduction(audioL, channel=0), self.noise_reduction(
+            audioR, channel=1
         )
 
     def stereo(self, audioL, audioR):
-        expandL, expandR = self.lopassCompand(audioL, channel=0), self.lopassCompand(
-            audioR, channel=1
-        )
-        nrL, nrR = self.noise_reduction_stereo(expandL, expandR)
+        nrL, nrR = self.noise_reduction_stereo(audioL, audioR)
         finalL, finalR = discard_stereo(nrL, nrR, self.discard_size)
         return list(map(list, zip(finalL, finalR)))
-
-    def lopassCompand(self, audio, channel=0):
-        audioX = (
-            self.finalLoL.work(audio) if channel == 0 else self.finalLoR.work(audio)
-        )
-        return audioX
 
 
 class HiFiDecode:
@@ -426,9 +418,6 @@ class HiFiDecode:
         self.options = options
         self.if_rate: int = 8388608
         self.audio_rate: int = 192000
-
-        # main deemphasis time constant
-        self.tau = 56e-6
 
         (
             self.ifresample_numerator,
@@ -451,18 +440,6 @@ class HiFiDecode:
             / (self.ifresample_numerator * audio_final_rate)
         )
 
-        deemph_b, deemph_a = gen_low_shelf(
-            tau_as_freq(self.tau),
-            -6,
-            0.707,
-            self.audio_rate
-        )
-        scale_factor = 10 ** (6 / 20)
-        deemph_b = [x * scale_factor for x in deemph_b]
-
-        # start of filter design stuff
-        self.deemphL = FiltersClass(deemph_b, deemph_a, self.audio_rate)
-        self.deemphR = FiltersClass(deemph_b, deemph_a, self.audio_rate)
         self.lopassRF = AFEBandPass(AFEParamsFront(), self.sample_rate)
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
@@ -591,17 +568,11 @@ class HiFiDecode:
         preR = samplerate_resample(
             preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator
         )
-        audioL = samplerate_resample(
-            preL, self.audioRes_numerator, self.audioRes_denominator
-        )
-        audioR = samplerate_resample(
-            preR, self.audioRes_numerator, self.audioRes_denominator
-        )
 
-        dcL = np.mean(audioL)
-        dcR = np.mean(audioR)
+        dcL = np.mean(preL)
+        dcR = np.mean(preR)
 
-        return dcL, dcR, self.deemphL.lfilt(preL), self.deemphR.lfilt(preR), preL, preR
+        return dcL, dcR, preL, preR
 
     @property
     def blockSize(self) -> int:
@@ -645,7 +616,7 @@ class HiFiDecode:
             data = samplerate_resample(
                 lo_data, self.ifresample_numerator, self.ifresample_denominator
             )
-            dcL, dcR, audioL, audioR, preL, preR = self.demodblock(data)
+            dcL, dcR, preL, preR = self.demodblock(data)
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
 
@@ -661,7 +632,7 @@ class HiFiDecode:
         data = samplerate_resample(
             lo_data, self.ifresample_numerator, self.ifresample_denominator
         )
-        dcL, dcR, audioL, audioR, preL, preR = self.demodblock(data)
+        dcL, dcR, preL, preR = self.demodblock(data)
 
         if self.options["auto_fine_tune"]:
             self.devL, self.devR = self.carrierOffsets(self.afe_params, dcL, dcR)
@@ -669,8 +640,8 @@ class HiFiDecode:
             self.updateDemod()
 
         clip = AFEParamsPALVHS().VCODeviation
-        audioL, audioR = HiFiDecode.cancelDCpair(audioL, audioR, dcL, dcR)
-        audioL /= clip
-        audioR /= clip
+        preL, preR = HiFiDecode.cancelDCpair(preL, preR, dcL, dcR)
+        preL /= clip
+        preR /= clip
 
-        return block_count, audioL, audioR
+        return block_count, preL, preR
