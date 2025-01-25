@@ -19,7 +19,8 @@ from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
 
-DEFAULT_NR_GAIN_ = 66
+DEFAULT_NR_GAIN_ = 24
+DEFAULT_EXPANDER_LOG_STRENGTH = 2
 
 
 @dataclass
@@ -230,7 +231,7 @@ class NoiseReduction:
         # noise reduction envelope tracking constants (this ones might need tweaking)
         self.NR_envelope_gain = side_gain
         # strength of the logarithmic function used to expand the signal
-        self.NR_envelope_log_strength = 16
+        self.NR_envelope_log_strength = DEFAULT_EXPANDER_LOG_STRENGTH
 
         # values in seconds
         NRenv_attack = 4e-3
@@ -382,6 +383,9 @@ class NoiseReduction:
             rsC[id] = rsrC[id]
 
         # computes a sidechain signal to apply noise reduction
+        # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
+        #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
+        #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
         gate = np.clip(rsC * self.NR_envelope_gain, a_min=0.0, a_max=1.0)
 
         # applies noise reduction
