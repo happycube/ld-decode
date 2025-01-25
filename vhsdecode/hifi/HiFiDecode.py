@@ -207,26 +207,6 @@ def getDeemph(tau, sample_rate):
     iir_b, iir_a = deemph.get()
     return FiltersClass(iir_b, iir_a, sample_rate)
 
-
-class LogCompander:
-    @staticmethod
-    def log3_2(x: float) -> float:
-        return log(x) / log(1.5)
-
-    @staticmethod
-    def compress(x: float) -> float:
-        x = max(min(x, 1), -1)
-        y0 = LogCompander.log3_2((abs(x) + 2) / 2)
-        return y0 if x >= 0 else -y0
-
-    @staticmethod
-    def expand(x: float) -> float:
-        x = max(min(x, 1), -1)
-        x0 = abs(x)
-        y0 = -pow(2, (1 - x0)) * (pow(2, x0) - pow(3, x0))
-        return y0 if x >= 0 else -y0
-
-
 def tau_as_freq(tau):
     return 1 / (2 * pi * tau)
 
@@ -249,6 +229,8 @@ class NoiseReduction:
 
         # noise reduction envelope tracking constants (this ones might need tweaking)
         self.NR_envelope_gain = side_gain
+        # strength of the logarithmic function used to expand the signal
+        self.NR_envelope_log_strength = 16
 
         # values in seconds
         NRenv_attack = 4e-3
@@ -273,29 +255,32 @@ class NoiseReduction:
         # weighted filter for envelope detector
         self.NR_weighting_T1 = 240e-6
         self.NR_weighting_T2 = 24e-6
+        self.NR_weighting_gain = 6
 
         env_iirb, env_iira = gen_high_shelf(
             tau_as_freq(self.NR_weighting_T2),
-            6,
+            self.NR_weighting_gain,
             0.707,
             self.audio_rate
         )
-        scale_factor = 10 ** (-6 / 20)
+        scale_factor = 10 ** (-self.NR_weighting_gain / 20)
         env_iirb = [x * scale_factor for x in env_iirb]
 
         self.nrWeightedHighpassL = FiltersClass(env_iirb, env_iira, self.audio_rate)
         self.nrWeightedHighpassR = FiltersClass(env_iirb, env_iira, self.audio_rate)
 
         # deemphasis filter for output audio
+        self.NR_deemphasis_T1 = 240e-6
         self.NR_deemphasis_T2 = 56e-6
+        self.NR_deemphasis_gain = 6
 
         deemph_b, deemph_a = gen_low_shelf(
             tau_as_freq(self.NR_deemphasis_T2),
-            6,
+            self.NR_deemphasis_gain,
             0.707,
             self.audio_rate
         )
-        scale_factor = 10 ** (-6 / 20)
+        scale_factor = 10 ** (-self.NR_deemphasis_gain / 20)
         deemph_b = [x * scale_factor for x in deemph_b]
 
         self.nrDeemphasisLowpassL = FiltersClass(deemph_b, deemph_a, self.audio_rate)
@@ -346,6 +331,12 @@ class NoiseReduction:
         return NoiseReduction.audio_notch(
             samp_rate, freq, audioL
         ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
+    
+    @staticmethod
+    def expand(log_strength, signal):
+        # detect the envelope and use logarithmic expansion
+        levels = np.clip(np.abs(signal), None, 1)
+        return np.divide(np.power(log_strength, levels) - 1, log_strength)
 
     def rs_envelope(self, raw_data, channel=0):
         # prevent high frequency noise from interfering with envelope detector
@@ -361,8 +352,8 @@ class NoiseReduction:
             if channel == 0
             else self.nrWeightedHighpassR.lfilt(low_pass)
         )
-        envelope = np.array([LogCompander.expand(x) for x in weighted_high_pass], dtype="float64")
-        return np.abs(envelope)
+
+        return NoiseReduction.expand(self.NR_envelope_log_strength, weighted_high_pass)
 
     def noise_reduction(self, pre, channel=0):
         # takes the RMS envelope of each audio channel
