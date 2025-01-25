@@ -14,7 +14,7 @@ from scipy.signal import iirpeak, iirnotch
 from scipy.signal.signaltools import hilbert
 
 from lddecode.utils import unwrap_hilbert
-from vhsdecode.addons.FMdeemph import FMDeEmphasisC
+from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_low_shelf, gen_high_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
@@ -273,12 +273,15 @@ class NoiseReduction:
         self.finalLo_cut = 20e3
         self.finalLo_transition = 10e3
 
-        env_hi_trans = tau_as_freq(self.NR_weighting_T2) - tau_as_freq(
-            self.NR_weighting_T1
+        env_iirb, env_iira = gen_high_shelf(
+            tau_as_freq(self.NR_weighting_T2),
+            6,
+            0.707,
+            self.audio_rate
         )
-        env_iirb, env_iira = firdes_highpass(
-            self.audio_rate, tau_as_freq(self.NR_weighting_T2), env_hi_trans
-        )
+        scale_factor = 10 ** (-6 / 20)
+        env_iirb = [x * scale_factor for x in env_iirb]
+
         self.envelopeHighpassL = FiltersClass(env_iirb, env_iira, self.audio_rate)
         self.envelopeHighpassR = FiltersClass(env_iirb, env_iira, self.audio_rate)
 
@@ -388,17 +391,7 @@ class NoiseReduction:
         # applies second part of noise reduction
         nr = np.multiply(gated, gate)
 
-        bass_enhance = (
-            self.audio_bassL.work(nr) if channel == 0 else self.audio_bassR.work(nr)
-        )
-        mid_bass = (
-            self.audio_presenceL.work(nr)
-            if channel == 0
-            else self.audio_presenceR.work(nr)
-        )
-        mid_enhance = mid_bass - bass_enhance
-
-        return (nr + mid_enhance + bass_enhance / 2) * 2 / 3
+        return nr
 
     def noise_reduction_stereo(self, audioL, audioR):
         # applies notch filter at Hfreq
@@ -458,9 +451,18 @@ class HiFiDecode:
             / (self.ifresample_numerator * audio_final_rate)
         )
 
+        deemph_b, deemph_a = gen_low_shelf(
+            tau_as_freq(self.tau),
+            -6,
+            0.707,
+            self.audio_rate
+        )
+        scale_factor = 10 ** (6 / 20)
+        deemph_b = [x * scale_factor for x in deemph_b]
+
         # start of filter design stuff
-        self.deemphL = getDeemph(self.tau, self.if_rate)
-        self.deemphR = getDeemph(self.tau, self.if_rate)
+        self.deemphL = FiltersClass(deemph_b, deemph_a, self.audio_rate)
+        self.deemphR = FiltersClass(deemph_b, deemph_a, self.audio_rate)
         self.lopassRF = AFEBandPass(AFEParamsFront(), self.sample_rate)
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
@@ -581,27 +583,25 @@ class HiFiDecode:
         ifR = self.stereo_queue[1].result()
 
         self.stereo_queue.clear()
-        deemphL = self.deemphL.lfilt(ifL)
-        deemphR = self.deemphR.lfilt(ifR)
         preAudioResampleL = self.preAudioResampleL.lfilt(ifL)
         preAudioResampleR = self.preAudioResampleR.lfilt(ifR)
-        audioL = samplerate_resample(
-            deemphL, self.audioRes_numerator, self.audioRes_denominator
-        )
-        audioR = samplerate_resample(
-            deemphR, self.audioRes_numerator, self.audioRes_denominator
-        )
         preL = samplerate_resample(
             preAudioResampleL, self.audioRes_numerator, self.audioRes_denominator
         )
         preR = samplerate_resample(
             preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator
         )
+        audioL = samplerate_resample(
+            preL, self.audioRes_numerator, self.audioRes_denominator
+        )
+        audioR = samplerate_resample(
+            preR, self.audioRes_numerator, self.audioRes_denominator
+        )
 
         dcL = np.mean(audioL)
         dcR = np.mean(audioR)
 
-        return dcL, dcR, (audioL + preL) / 2, (audioR + preR) / 2, preL, preR
+        return dcL, dcR, self.deemphL.lfilt(preL), self.deemphR.lfilt(preR), preL, preR
 
     @property
     def blockSize(self) -> int:
