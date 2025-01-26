@@ -23,7 +23,7 @@ from vhsdecode.cmdcommons import (
 from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
     NoiseReduction,
-    DEFAULT_NR_GAIN_,
+    DEFAULT_NR_ENVELOPE_GAIN,
     discard_stereo,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
@@ -113,8 +113,8 @@ parser.add_argument(
     "--NR_sidechain_gain",
     dest="NR_side_gain",
     type=float,
-    default=DEFAULT_NR_GAIN_,
-    help=f"Sets the noise reduction envelope tracking sidechain gain (default is {DEFAULT_NR_GAIN_}). "
+    default=DEFAULT_NR_ENVELOPE_GAIN,
+    help=f"Sets the noise reduction envelope tracking sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
     f"Range (20~100): 100 being a hard gate effect",
 )
 
