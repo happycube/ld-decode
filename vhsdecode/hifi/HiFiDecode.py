@@ -255,6 +255,7 @@ def build_shelf_filter(direction, t1_low, t2_high, db_per_octave, audio_rate):
     
     return b, a
 
+
 class NoiseReduction:
     def __init__(
         self,

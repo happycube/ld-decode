@@ -50,7 +50,8 @@ try:
     )
 
     HIFI_UI = True
-except ImportError:
+except ImportError as e:
+    print(e)
     HIFI_UI = False
 
 

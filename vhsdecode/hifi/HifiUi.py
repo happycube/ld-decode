@@ -40,7 +40,7 @@ except ImportError:
     )
     from PyQt5 import QtGui, QtCore
 
-from vhsdecode.hifi.HiFiDecode import DEFAULT_NR_GAIN_
+from vhsdecode.hifi.HiFiDecode import DEFAULT_NR_ENVELOPE_GAIN as DEFAULT_NR_GAIN_
 
 
 class MainUIParameters:
