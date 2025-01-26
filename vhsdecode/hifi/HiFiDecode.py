@@ -5,7 +5,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi
+from math import log, pi, sqrt
 from typing import Tuple
 
 import numpy as np
@@ -19,7 +19,11 @@ from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
 
-DEFAULT_NR_GAIN_ = 24
+# lower increases expander strength and decreases overall gain
+DEFAULT_NR_ENVELOPE_GAIN = 24
+# increase gain to compensate for deemphasis gain loss
+DEFAULT_NR_DEEMPHASIS_GAIN = 1.2
+# increase to increase the logarithmic slope for the 1:2 expander
 DEFAULT_EXPANDER_LOG_STRENGTH = 2
 
 
@@ -215,6 +219,41 @@ def tau_as_freq(tau):
 def discard_stereo(audioL, audioR, discard_size):
     return audioL[discard_size:], audioR[discard_size:]
 
+# Creates a low or high pass shelving filter from two time constants and a db/octave gain
+# Where:
+#   * T1 is the low shelf frequency
+#   * T2 is the high shelf frequency
+#   * db/octave is the slope of the shelf at db/octave
+#
+#   ------\ T1
+#          \
+#           \ center
+#            \
+#          T2 \________
+#
+def build_shelf_filter(direction, t1_low, t2_high, db_per_octave, audio_rate):
+    t1_f = tau_as_freq(t1_low)
+    t2_f = tau_as_freq(t2_high)
+
+    # find center of the frequencies
+    center_f = sqrt(t2_f * t1_f)
+    # center_f = (t2_f + t1_f) / 2
+    # using distances between the two frequencies, calculate the gain needed to fulfill the db/octave slope
+    gain = log(t2_f/t1_f, 2) * db_per_octave
+
+    filter_function = gen_high_shelf if direction == "high" else gen_low_shelf
+    b, a = filter_function(
+        center_f,
+        gain,
+        0.707, # Q shouldn't cause much spiking beyond the desired gain
+        audio_rate
+    )
+
+    # scale the filter such that the top of the shelf is at 0db gain
+    scale_factor = 10 ** (-gain / 20)
+    b = [x * scale_factor for x in b]
+    
+    return b, a
 
 class NoiseReduction:
     def __init__(
@@ -234,8 +273,8 @@ class NoiseReduction:
         self.NR_envelope_log_strength = DEFAULT_EXPANDER_LOG_STRENGTH
 
         # values in seconds
-        NRenv_attack = 4e-3
-        NRenv_release = 80e-3
+        NRenv_attack = 3e-3
+        NRenv_release = 70e-3
 
         self.NR_weighting_attack_Lo_cut = tau_as_freq(NRenv_attack)
         self.NR_weighting_attack_Lo_transition = 1e3
@@ -256,16 +295,15 @@ class NoiseReduction:
         # weighted filter for envelope detector
         self.NR_weighting_T1 = 240e-6
         self.NR_weighting_T2 = 24e-6
-        self.NR_weighting_gain = 6
+        self.NR_weighting_db_per_octave = 2.1
 
-        env_iirb, env_iira = gen_high_shelf(
-            tau_as_freq(self.NR_weighting_T2),
-            self.NR_weighting_gain,
-            0.707,
+        env_iirb, env_iira = build_shelf_filter(
+            "high", 
+            self.NR_weighting_T1, 
+            self.NR_weighting_T2, 
+            self.NR_weighting_db_per_octave,
             self.audio_rate
         )
-        scale_factor = 10 ** (-self.NR_weighting_gain / 20)
-        env_iirb = [x * scale_factor for x in env_iirb]
 
         self.nrWeightedHighpassL = FiltersClass(env_iirb, env_iira, self.audio_rate)
         self.nrWeightedHighpassR = FiltersClass(env_iirb, env_iira, self.audio_rate)
@@ -273,16 +311,15 @@ class NoiseReduction:
         # deemphasis filter for output audio
         self.NR_deemphasis_T1 = 240e-6
         self.NR_deemphasis_T2 = 56e-6
-        self.NR_deemphasis_gain = 6
+        self.NR_deemphasis_db_per_octave = 6.8
 
-        deemph_b, deemph_a = gen_low_shelf(
-            tau_as_freq(self.NR_deemphasis_T2),
-            self.NR_deemphasis_gain,
-            0.707,
+        deemph_b, deemph_a = build_shelf_filter(
+            "low", 
+            self.NR_deemphasis_T1,
+            self.NR_deemphasis_T2,
+            self.NR_deemphasis_db_per_octave,
             self.audio_rate
         )
-        scale_factor = 10 ** (-self.NR_deemphasis_gain / 20)
-        deemph_b = [x * scale_factor for x in deemph_b]
 
         self.nrDeemphasisLowpassL = FiltersClass(deemph_b, deemph_a, self.audio_rate)
         self.nrDeemphasisLowpassR = FiltersClass(deemph_b, deemph_a, self.audio_rate)
@@ -360,12 +397,6 @@ class NoiseReduction:
         # takes the RMS envelope of each audio channel
         audio_env = self.rs_envelope(pre, channel)
 
-        audio = (
-            self.nrDeemphasisLowpassL.filtfilt(pre)
-            if channel == 0
-            else self.nrDeemphasisLowpassR.filtfilt(pre)
-        )
-
         rsaC = (
             self.envelope_attack_LowpassL.lfilt(audio_env)
             if channel == 0
@@ -388,8 +419,15 @@ class NoiseReduction:
         #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
         gate = np.clip(rsC * self.NR_envelope_gain, a_min=0.0, a_max=1.0)
 
+        audio = (
+            self.nrDeemphasisLowpassL.lfilt(pre)
+            if channel == 0
+            else self.nrDeemphasisLowpassR.lfilt(pre)
+        )
+        audio_with_gain = np.clip(audio * DEFAULT_NR_DEEMPHASIS_GAIN, a_min=-1.0, a_max=1.0)
+
         # applies noise reduction
-        nr = np.multiply(audio, gate)
+        nr = np.multiply(audio_with_gain, gate)
 
         return nr
 
