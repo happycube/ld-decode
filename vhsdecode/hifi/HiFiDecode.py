@@ -16,7 +16,7 @@ from scipy.signal.signaltools import hilbert
 from noisereduce.spectralgate.nonstationary import SpectralGateNonStationary
 
 from lddecode.utils import unwrap_hilbert
-from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_low_shelf, gen_high_shelf
+from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
@@ -244,12 +244,12 @@ def build_shelf_filter(direction, t1_low, t2_high, db_per_octave, audio_rate):
     # using distances between the two frequencies, calculate the gain needed to fulfill the db/octave slope
     gain = log(t2_f/t1_f, 2) * db_per_octave
 
-    filter_function = gen_high_shelf if direction == "high" else gen_low_shelf
-    b, a = filter_function(
+    b, a = gen_shelf(
         center_f,
         gain,
-        0.707, # Q shouldn't cause much spiking beyond the desired gain
-        audio_rate
+        audio_rate,
+        direction,
+        qfactor=0.707 # Q shouldn't cause much spiking beyond the desired gain
     )
 
     # scale the filter such that the top of the shelf is at 0db gain
