@@ -13,6 +13,8 @@ from numba import njit
 from scipy.signal import iirpeak, iirnotch
 from scipy.signal.signaltools import hilbert
 
+from noisereduce.spectralgate.nonstationary import SpectralGateNonStationary
+
 from lddecode.utils import unwrap_hilbert
 from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_low_shelf, gen_high_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
@@ -20,12 +22,13 @@ from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
 
 # lower increases expander strength and decreases overall gain
-DEFAULT_NR_ENVELOPE_GAIN = 24
+DEFAULT_NR_ENVELOPE_GAIN = 26
 # increase gain to compensate for deemphasis gain loss
 DEFAULT_NR_DEEMPHASIS_GAIN = 1.2
 # increase to increase the logarithmic slope for the 1:2 expander
 DEFAULT_EXPANDER_LOG_STRENGTH = 2
 
+BLOCKS_PER_SECOND = 8
 
 @dataclass
 class AFEParamsFront:
@@ -255,6 +258,74 @@ def build_shelf_filter(direction, t1_low, t2_high, db_per_octave, audio_rate):
     
     return b, a
 
+class SpectralNoiseReduction():
+    def __init__(
+        self,
+        audio_rate,
+        nr_reduction_amount
+    ):
+        self.chunk_size=int(audio_rate / BLOCKS_PER_SECOND)
+        self.chunk_count = BLOCKS_PER_SECOND
+        self.padding=int(self.chunk_size)
+        self.nr_reduction_amount = nr_reduction_amount
+
+        self.denoise_params = {
+            "y": np.empty(1),
+            "sr": audio_rate,
+            "chunk_size": self.chunk_size,
+            "padding": self.padding,
+            "prop_decrease": self.nr_reduction_amount,
+            "n_fft": 2048,
+            "win_length": None,
+            "hop_length": None,
+            "time_constant_s": (self.chunk_size * self.chunk_count / 2) / audio_rate, #(self.chunk_size * (self.chunk_count - 1)) / audio_rate,
+            "freq_mask_smooth_hz": 500,
+            "time_mask_smooth_ms": 50,
+            "thresh_n_mult_nonstationary": 2,
+            "sigmoid_slope_nonstationary": 10,
+            "tmp_folder": None,
+            "use_tqdm": False,
+            "n_jobs": 1
+        }
+
+        self.spectral_gate_left = SpectralGateNonStationary(**self.denoise_params)
+        self.spectral_gate_right = SpectralGateNonStationary(**self.denoise_params)
+
+        self.chunks_left = []
+        self.chunks_right = []
+
+        for i in range(self.chunk_count):
+            self.chunks_left.append(np.zeros(self.chunk_size))
+            self.chunks_right.append(np.zeros(self.chunk_size))
+
+    def _get_chunk(self, audio, chunks):
+        chunk = np.zeros((1, self.padding * 2 + self.chunk_size * self.chunk_count))
+        
+        chunks.pop(0)
+        chunks.append(audio)
+
+        for i in range(self.chunk_count):
+            chunk[:, self.padding + self.chunk_size*i : self.padding + self.chunk_size*(i+1)] = chunks[i]
+
+        return chunk
+    
+    def _trim_chunk(self, nr):
+        last_chunk = self.chunk_size * (self.chunk_count-1) + self.padding
+
+        return nr[0][last_chunk:last_chunk+self.chunk_size]
+    
+    def _nr_channel(self, audio, gate_instance, chunk_instance):
+        chunk = self._get_chunk(audio, chunk_instance)
+        nr = gate_instance.spectral_gating_nonstationary(chunk)
+        trimmed = self._trim_chunk(nr)
+
+        return trimmed
+
+    def nr_left(self, audio):        
+        return self._nr_channel(audio, self.spectral_gate_left, self.chunks_left)
+                
+    def nr_right(self, audio):
+        return self._nr_channel(audio, self.spectral_gate_right, self.chunks_right)
 
 class NoiseReduction:
     def __init__(
@@ -267,6 +338,8 @@ class NoiseReduction:
         self.audio_rate = audio_rate
         self.discard_size = discard_size
         self.hfreq = notch_freq
+        self.spectral_nr_amount = 0.4
+        self.spectral_nr = SpectralNoiseReduction(audio_rate, self.spectral_nr_amount)
 
         # noise reduction envelope tracking constants (this ones might need tweaking)
         self.NR_envelope_gain = side_gain
@@ -420,12 +493,21 @@ class NoiseReduction:
         #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
         gate = np.clip(rsC * self.NR_envelope_gain, a_min=0.0, a_max=1.0)
 
-        audio = (
-            self.nrDeemphasisLowpassL.lfilt(pre)
+        audio_with_spectral_nr = (
+            self.spectral_nr.nr_left(pre)
             if channel == 0
-            else self.nrDeemphasisLowpassR.lfilt(pre)
+            else self.spectral_nr.nr_right(pre)
         )
-        audio_with_gain = np.clip(audio * DEFAULT_NR_DEEMPHASIS_GAIN, a_min=-1.0, a_max=1.0)
+
+        audio_with_deemphasis = (
+            self.nrDeemphasisLowpassL.lfilt(audio_with_spectral_nr)
+            if channel == 0
+            else self.nrDeemphasisLowpassR.lfilt(audio_with_spectral_nr)
+        )
+
+        make_up_gain = (DEFAULT_NR_DEEMPHASIS_GAIN + self.spectral_nr_amount * 1.6)
+
+        audio_with_gain = np.clip(audio_with_deemphasis * make_up_gain, a_min=-1.0, a_max=1.0)
 
         # applies noise reduction
         nr = np.multiply(audio_with_gain, gate)
@@ -461,7 +543,7 @@ class HiFiDecode:
         ) = self.getResamplingRatios()
 
         # block overlap and edge discard
-        self.blocks_second: int = 8
+        self.blocks_second: int = BLOCKS_PER_SECOND
         self.block_size: int = int(self.sample_rate / self.blocks_second)
         self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
         self.block_overlap_audio: int = int(self.audio_rate / 5e2)
