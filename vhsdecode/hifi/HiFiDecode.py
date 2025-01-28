@@ -24,9 +24,9 @@ from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, Stack
 # lower increases expander strength and decreases overall gain
 DEFAULT_NR_ENVELOPE_GAIN = 26
 # increase gain to compensate for deemphasis gain loss
-DEFAULT_NR_DEEMPHASIS_GAIN = 1.2
+DEFAULT_NR_DEEMPHASIS_GAIN = 1.1
 # increase to increase the logarithmic slope for the 1:2 expander
-DEFAULT_EXPANDER_LOG_STRENGTH = 2
+DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 
 BLOCKS_PER_SECOND = 8
 
@@ -234,22 +234,24 @@ def discard_stereo(audioL, audioR, discard_size):
 #            \
 #          T2 \________
 #
-def build_shelf_filter(direction, t1_low, t2_high, db_per_octave, audio_rate):
+def build_shelf_filter(direction, t1_low, t2_high, db_per_octave, bandwidth, audio_rate):
     t1_f = tau_as_freq(t1_low)
     t2_f = tau_as_freq(t2_high)
 
     # find center of the frequencies
     center_f = sqrt(t2_f * t1_f)
-    # center_f = (t2_f + t1_f) / 2
-    # using distances between the two frequencies, calculate the gain needed to fulfill the db/octave slope
+    # calculate how many octaves exist between the center and outer frequencies
+    # bandwidth = log(t2_f/center_f, 2)
+
+    # calculate total gain between the two frequencies based db per octave
     gain = log(t2_f/t1_f, 2) * db_per_octave
 
     b, a = gen_shelf(
         center_f,
         gain,
-        audio_rate,
         direction,
-        qfactor=0.707 # Q shouldn't cause much spiking beyond the desired gain
+        audio_rate,
+        bandwidth=bandwidth
     )
 
     # scale the filter such that the top of the shelf is at 0db gain
@@ -275,7 +277,7 @@ class SpectralNoiseReduction():
             "chunk_size": self.chunk_size,
             "padding": self.padding,
             "prop_decrease": self.nr_reduction_amount,
-            "n_fft": 2048,
+            "n_fft": 1024,
             "win_length": None,
             "hop_length": None,
             "time_constant_s": (self.chunk_size * self.chunk_count / 2) / audio_rate, #(self.chunk_size * (self.chunk_count - 1)) / audio_rate,
@@ -369,13 +371,14 @@ class NoiseReduction:
         # weighted filter for envelope detector
         self.NR_weighting_T1 = 240e-6
         self.NR_weighting_T2 = 24e-6
-        self.NR_weighting_db_per_octave = 2.1
+        self.NR_weighting_db_per_octave = 2.2
 
         env_iirb, env_iira = build_shelf_filter(
             "high", 
             self.NR_weighting_T1, 
             self.NR_weighting_T2, 
             self.NR_weighting_db_per_octave,
+            1.85,
             self.audio_rate
         )
 
@@ -385,13 +388,14 @@ class NoiseReduction:
         # deemphasis filter for output audio
         self.NR_deemphasis_T1 = 240e-6
         self.NR_deemphasis_T2 = 56e-6
-        self.NR_deemphasis_db_per_octave = 6.8
+        self.NR_deemphasis_db_per_octave = 6.6
 
         deemph_b, deemph_a = build_shelf_filter(
             "low", 
             self.NR_deemphasis_T1,
             self.NR_deemphasis_T2,
             self.NR_deemphasis_db_per_octave,
+            1.75,
             self.audio_rate
         )
 
@@ -448,7 +452,7 @@ class NoiseReduction:
     def expand(log_strength, signal):
         # detect the envelope and use logarithmic expansion
         levels = np.clip(np.abs(signal), None, 1)
-        return np.divide(np.power(log_strength, levels) - 1, log_strength)
+        return np.power(levels, log_strength)
 
     def rs_envelope(self, raw_data, channel=0):
         # prevent high frequency noise from interfering with envelope detector
