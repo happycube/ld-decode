@@ -307,19 +307,20 @@ class SpectralNoiseReduction():
         chunks.append(audio)
 
         for i in range(self.chunk_count):
-            chunk[:, self.padding + self.chunk_size*i : self.padding + self.chunk_size*(i+1)] = chunks[i]
+            position = self.padding + self.chunk_size*i
+            chunk[:, position : position + len(chunks[i])] = chunks[i]
 
         return chunk
     
-    def _trim_chunk(self, nr):
+    def _trim_chunk(self, nr, audio_len):
         last_chunk = self.chunk_size * (self.chunk_count-1) + self.padding
 
-        return nr[0][last_chunk:last_chunk+self.chunk_size]
+        return nr[0][last_chunk:last_chunk+audio_len]
     
     def _nr_channel(self, audio, gate_instance, chunk_instance):
         chunk = self._get_chunk(audio, chunk_instance)
         nr = gate_instance.spectral_gating_nonstationary(chunk)
-        trimmed = self._trim_chunk(nr)
+        trimmed = self._trim_chunk(nr, len(audio))
 
         return trimmed
 
@@ -683,10 +684,10 @@ class HiFiDecode:
         preAudioResampleL = self.preAudioResampleL.lfilt(ifL)
         preAudioResampleR = self.preAudioResampleR.lfilt(ifR)
         preL = samplerate_resample(
-            preAudioResampleL, self.audioRes_numerator, self.audioRes_denominator
+            preAudioResampleL, self.audioRes_numerator, self.audioRes_denominator, converter_type="sinc_fastest"
         )
         preR = samplerate_resample(
-            preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator
+            preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator, converter_type="sinc_fastest"
         )
 
         dcL = np.mean(preL)
