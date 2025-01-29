@@ -452,112 +452,145 @@ def log_decode(start_time: datetime, frames: int, decode_options: dict):
         + f"- Wall time     : {str(elapsed_time_format)[:-3]}"
     )
 
+class PostProcessor:
+    def __init__(
+        self,
+        decode_options: dict,
+        decoder: HiFiDecode,
+    ):
+        self.decode_options = decode_options
+        self.decoder = decoder
 
-def mix_for_mode(
-    l_raw: np.array,
-    r_raw: np.array,
-    mode: str
-) -> tuple[np.array, np.array]:
-    if mode == "mpx":
-        l = np.multiply(np.add(l_raw, r_raw), 0.5)
-        r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
-    elif mode == "l":
-        l = l_raw
-        r = l_raw
-    elif mode == "r":
-        l = r_raw
-        r = r_raw
-    elif mode == "sum":
-        l = np.multiply(np.add(l_raw, r_raw), 0.5)
-        r = np.multiply(np.add(l_raw, r_raw), 0.5)
-    else:
-        l = l_raw
-        r = r_raw
+        self.stereo_executor_queue = list()
+        self.stereo_executor = ThreadPoolExecutor(2)
 
-    return l, r
-
-def adjust_gain(
-    l: np.array,
-    r: np.array,
-    gain: float
-) -> tuple[np.array, np.array]:
-    return np.multiply(l, gain), np.multiply(r, gain)
-
-def apply_noise_reduction(
-    l: np.array,
-    r: np.array,
-    noise_reduction: NoiseReduction,
-) -> tuple[np.array, np.array]:
-    return noise_reduction.noise_reduction_stereo(l, r)
-
-def resample_to_audio_rate(
-    l: np.array,
-    r: np.array,
-    in_audio_rate: int,
-    out_audio_rate: int,
-    resampler_quality: str
-) -> tuple[np.array, np.array]:
-    if resampler_quality == "low":
-        converter_type = "sinc_fastest"
-    elif resampler_quality == "medium":
-        converter_type = "sinc_medium"
-    elif resampler_quality == "high":
-        converter_type = "sinc_best"
-
-    return (samplerate_resample(l, out_audio_rate, in_audio_rate, converter_type), 
-            samplerate_resample(r, out_audio_rate, in_audio_rate, converter_type))
-
-def discard_overlap(
-    l: np.array,
-    r: np.array,
-    audio_block_size: int,
-    audio_discard_size: int,
-    audio_sample_rate: int,
-    final_sample_rate: int
-) -> tuple[np.array, np.array]:
-    # discard overlapped audio, and account for samples lost during sinc resampling
-    sample_rate_ratio = final_sample_rate / audio_sample_rate
-    audio_block_size = audio_block_size * sample_rate_ratio
-    #audio_discard_size = audio_discard_size * sample_rate_ratio
-
-    offsetL = round(len(l) - audio_block_size + audio_discard_size)
-    offsetR = round(len(r) - audio_block_size + audio_discard_size)
-
-    print(sample_rate_ratio, audio_block_size, audio_discard_size, len(l), offsetL)
-    return l[offsetL:], r[offsetR:]
-
-def merge_to_stereo(audioL: np.array, audioR: np.array) -> np.array:
-    return list(
-        map(
-            list,
-            zip(
-                audioL,
-                audioR
-            ),
+        self.noise_reduction = NoiseReduction(
+            decoder.notchFreq,
+            decode_options["nr_side_gain"],
+            decoder.audioDiscard,
+            audio_rate=decode_options["audio_rate"],
+            spectral_nr_amount=decode_options["spectral_nr_amount"]
         )
-    )
 
-def post_process(
-    l: np.array,
-    r: np.array,
-    decode_options: dict,
-    decoder: HiFiDecode,
-    noise_reduction: NoiseReduction
-) -> np.array:
-    l, r = mix_for_mode(l, r, decode_options["mode"])
+    def _mix_for_mode(
+        self,
+        l_raw: np.array,
+        r_raw: np.array,
+        mode: str
+    ) -> tuple[np.array, np.array]:
+        if mode == "mpx":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
+        elif mode == "l":
+            l = l_raw
+            r = l_raw
+        elif mode == "r":
+            l = r_raw
+            r = r_raw
+        elif mode == "sum":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.add(l_raw, r_raw), 0.5)
+        else:
+            l = l_raw
+            r = r_raw
+    
+        return l, r
+    
+    def _adjust_gain(
+        self,
+        l: np.array,
+        r: np.array,
+        gain: float
+    ) -> tuple[np.array, np.array]:
+        return np.multiply(l, gain), np.multiply(r, gain)
+    
+    def _apply_noise_reduction(
+        self,
+        l: np.array,
+        r: np.array,
+    ) -> tuple[np.array, np.array]:
+        return self.noise_reduction.noise_reduction_stereo(l, r)
+    
+    def _resample_to_audio_rate(
+        self,
+        l: np.array,
+        r: np.array,
+        in_audio_rate: int,
+        out_audio_rate: int,
+        resampler_quality: str
+    ) -> tuple[np.array, np.array]:
+        if resampler_quality == "low":
+            converter_type = "sinc_fastest"
+        elif resampler_quality == "medium":
+            converter_type = "sinc_medium"
+        elif resampler_quality == "high":
+            converter_type = "sinc_best"
 
-    if decode_options["audio_rate"] != decoder.audioRate: 
-        l, r = resample_to_audio_rate(l, r, decoder.audioRate, decode_options["audio_rate"], decode_options["resampler_quality"])
+        self.stereo_executor_queue.append(self.stereo_executor.submit(
+            samplerate_resample,
+            l, out_audio_rate, in_audio_rate, converter_type
+        ))
+        self.stereo_executor_queue.append(self.stereo_executor.submit(
+            samplerate_resample,
+            r, out_audio_rate, in_audio_rate, converter_type
+        ))
 
-    if decode_options["gain"] != 1:
-        l, r = adjust_gain(l, r, decode_options["gain"])
+        l = self.stereo_executor_queue[0].result()
+        r = self.stereo_executor_queue[1].result()
 
-    if decode_options["noise_reduction"]:
-        l, r = apply_noise_reduction(l, r, noise_reduction)
-
-    l, r = discard_overlap(l, r, decoder.blockAudioSize, decoder.audioDiscard, decoder.audioRate, decode_options["audio_rate"])
-    stereo = merge_to_stereo(l, r)
-    return stereo
+        self.stereo_executor_queue.clear()
+    
+        return (l, r)
+    
+    def _discard_overlap(
+        self,
+        l: np.array,
+        r: np.array,
+        audio_block_size: int,
+        audio_discard_size: int,
+        audio_sample_rate: int,
+        final_sample_rate: int
+    ) -> tuple[np.array, np.array]:
+        # discard overlapped audio, and account for samples lost during sinc resampling
+        sample_rate_ratio = final_sample_rate / audio_sample_rate
+        audio_block_size = audio_block_size * sample_rate_ratio
+        #audio_discard_size = audio_discard_size * sample_rate_ratio
+    
+        offsetL = round(len(l) - audio_block_size + audio_discard_size)
+        offsetR = round(len(r) - audio_block_size + audio_discard_size)
+    
+        return l[offsetL:], r[offsetR:]
+    
+    def _merge_to_stereo(self, audioL: np.array, audioR: np.array) -> np.array:
+        return list(
+            map(
+                list,
+                zip(
+                    audioL,
+                    audioR
+                ),
+            )
+        )
+    
+    def post_process(
+        self,
+        l: np.array,
+        r: np.array,
+    ) -> np.array:
+        l, r = self._mix_for_mode(l, r, self.decode_options["mode"])
+    
+        if self.decode_options["audio_rate"] != self.decoder.audioRate: 
+            l, r = self._resample_to_audio_rate(l, r, self.decoder.audioRate, self.decode_options["audio_rate"], self.decode_options["resampler_quality"])
+    
+        if self.decode_options["gain"] != 1:
+            l, r = self._adjust_gain(l, r, self.decode_options["gain"])
+    
+        if self.decode_options["noise_reduction"]:
+            l, r = self._apply_noise_reduction(l, r)
+    
+        l, r = self._discard_overlap(l, r, self.decoder.blockAudioSize, self.decoder.audioDiscard, self.decoder.audioRate, self.decode_options["audio_rate"])
+        stereo = self._merge_to_stereo(l, r)
+        return stereo
 
 class AppWindow:
     def __init__(self, argv, decode_options):
@@ -593,12 +626,9 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
     start_time = datetime.now()
-    noise_reduction = NoiseReduction(
-        decoder.notchFreq,
-        decode_options["nr_side_gain"],
-        decoder.audioDiscard,
-        audio_rate=decode_options["audio_rate"],
-        spectral_nr_amount=decode_options["spectral_nr_amount"]
+    post_processor = PostProcessor(
+        decode_options,
+        decoder
     )
     stereo_play_buffer = list()
 
@@ -615,7 +645,7 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                     block, block_count=current_block
                 )
 
-                stereo = post_process(l, r, decode_options, decoder, noise_reduction)
+                stereo = post_processor.post_process(l, r)
 
                 if decode_options["auto_fine_tune"]:
                     log_bias(decoder)
@@ -669,12 +699,9 @@ def decode_parallel(
     start_time = datetime.now()
     block_size = decoders[0].blockSize
     read_overlap = decoders[0].readOverlap
-    noise_reduction = NoiseReduction(
-        decoders[0].notchFreq,
-        decode_options["nr_side_gain"],
-        decoders[0].audioDiscard,
-        audio_rate=decode_options["audio_rate"],
-        spectral_nr_amount=decode_options["spectral_nr_amount"]
+    post_processor = PostProcessor(
+        decode_options,
+        decoders[0]
     )
     futures_queue = list()
     executor = ThreadPoolExecutor(threads)
@@ -701,7 +728,7 @@ def decode_parallel(
                 while len(futures_queue) > threads:
                     future = futures_queue.pop(0)
                     blocknum, l, r = future.result()
-                    stereo = post_process(l, r, decode_options, decoder, noise_reduction)
+                    stereo = post_processor.post_process(l, r)
 
                     log_decode(start_time, f.tell(), decode_options)
                     try:
@@ -740,7 +767,7 @@ def decode_parallel(
             while len(futures_queue) > 0:
                 future = futures_queue.pop(0)
                 blocknum, l, r = future.result()
-                stereo = post_process(l, r, decode_options, decoder, noise_reduction)
+                stereo = post_processor.post_process(l, r)
                 try:
                     w.write(stereo)
                 except ValueError:

@@ -30,7 +30,7 @@ DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT=0.4
 
-BLOCKS_PER_SECOND = 8
+BLOCKS_PER_SECOND = 2
 
 @dataclass
 class AFEParamsFront:
@@ -697,7 +697,7 @@ class HiFiDecode:
 
         preL = self.stereo_queue[0].result()
         preR = self.stereo_queue[1].result()
-        
+
         self.stereo_queue.clear()
 
         dcL = np.mean(preL)
