@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import subprocess
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 from datetime import datetime, timedelta
 import os
 import sys
 from typing import List, Optional
+import signal
 
 import numpy as np
 import soundfile as sf
@@ -22,9 +23,10 @@ from vhsdecode.cmdcommons import (
 )
 from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
+    SpectralNoiseReduction,
     NoiseReduction,
     DEFAULT_NR_ENVELOPE_GAIN,
-    discard_stereo,
+    DEFAULT_SPECTRAL_NR_AMOUNT
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 import io
@@ -54,6 +56,7 @@ except ImportError as e:
     print(e)
     HIFI_UI = False
 
+DEFAULT_RESAMPLER_QUALITY = "high"
 
 parser, _ = common_parser_cli(
     "Extracts audio from RAW HiFi FM RF captures",
@@ -99,7 +102,7 @@ parser.add_argument(
     dest="noise_reduction",
     type=str.lower,
     default="on",
-    help="Set noise reduction on/off",
+    help="Set noise reduction block (deemphasis and expansion) on/off",
 )
 
 parser.add_argument(
@@ -115,8 +118,26 @@ parser.add_argument(
     dest="NR_side_gain",
     type=float,
     default=DEFAULT_NR_ENVELOPE_GAIN,
-    help=f"Sets the noise reduction envelope tracking sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
-    f"Range (20~100): 100 being a hard gate effect",
+    help=f"Sets the noise reduction expander sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
+    f"Range (20~100): Higher values increase the effect of the expander",
+)
+
+parser.add_argument(
+    "--NR_spectral_amount",
+    dest="spectral_nr_amount",
+    type=float,
+    default=DEFAULT_SPECTRAL_NR_AMOUNT,
+    help=f"Sets the amount of broadband spectral noise reduction to apply. (default is {DEFAULT_SPECTRAL_NR_AMOUNT}). "
+    f"Range (0~1): 0 being off, 1 being full spectral noise reduction",
+)
+
+parser.add_argument(
+    "--resampler_quality",
+    dest="resampler_quality",
+    type=str,
+    default=DEFAULT_RESAMPLER_QUALITY,
+    help=f"Sets quality of resampling to use in the audio chain. (default is {DEFAULT_RESAMPLER_QUALITY}). "
+    f"Range (low, medium, high): low being faster, and high having best quality",
 )
 
 parser.add_argument(
@@ -162,6 +183,21 @@ parser.add_argument(
     ),
 )
 
+signal_count = 0
+main_pid = os.getpid()
+def signal_handler(sig, frame):
+    global signal_count
+    global main_pid
+
+    is_main_thread = main_pid == os.getpid()
+    if signal_count >= 3:
+        if is_main_thread: print("Ctrl-C was pressed three times, stopping immediately...")
+        sys.exit(1)
+    if signal_count == 0:
+        if is_main_thread: print("Ctrl-C was pressed, stopping decode...")
+    signal_count += 1
+
+signal.signal(signal.SIGINT, signal_handler)
 
 def test_if_ffmpeg_is_installed():
     shell_command = ["ffmpeg", "-version"]
@@ -433,72 +469,219 @@ def log_decode(start_time: datetime, frames: int, decode_options: dict):
         + f"- Wall time     : {str(elapsed_time_format)[:-3]}"
     )
 
+class PostProcessor:
+    def __init__(
+        self,
+        executor: ProcessPoolExecutor,
+        decode_options: dict,
+        decoder: HiFiDecode,
+    ):
+        self.executor_queue = list()
+        self.executor = executor
 
-def gain_adjust(audio: np.array, gain: float) -> np.array:
-    return np.multiply(audio, gain)
-
-
-def prepare_stereo(
-    l_raw: np.array,
-    r_raw: np.array,
-    noise_reduction: NoiseReduction,
-    decode_options: dict,
-):
-    if decode_options["mode"] == "mpx":
-        l = np.multiply(np.add(l_raw, r_raw), 0.5)
-        r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
-    elif decode_options["mode"] == "l":
-        l = l_raw
-        r = l_raw
-    elif decode_options["mode"] == "r":
-        l = r_raw
-        r = r_raw
-    elif decode_options["mode"] == "sum":
-        l = np.multiply(np.add(l_raw, r_raw), 0.5)
-        r = np.multiply(np.add(l_raw, r_raw), 0.5)
-    else:
-        l = l_raw
-        r = r_raw
-
-    if decode_options["noise_reduction"]:
-        stereo = noise_reduction.stereo(
-            gain_adjust(l, decode_options["gain"]),
-            gain_adjust(r, decode_options["gain"]),
+        self.spectral_nr_l = SpectralNoiseReduction(
+            audio_rate=decode_options["audio_rate"],
+            nr_reduction_amount=decode_options["spectral_nr_amount"]
         )
-    else:
-        l, r = discard_stereo(l, r, noise_reduction.discard_size)
-        stereo = list(
+        self.spectral_nr_r = SpectralNoiseReduction(
+            audio_rate=decode_options["audio_rate"],
+            nr_reduction_amount=decode_options["spectral_nr_amount"]
+        )
+
+        self.noise_reduction_l = NoiseReduction(
+            decoder.notchFreq,
+            decode_options["nr_side_gain"],
+            decoder.audioDiscard,
+            audio_rate=decode_options["audio_rate"]
+        )
+        self.noise_reduction_r = NoiseReduction(
+            decoder.notchFreq,
+            decode_options["nr_side_gain"],
+            decoder.audioDiscard,
+            audio_rate=decode_options["audio_rate"]
+        )
+
+        if decode_options["resampler_quality"] == "low":
+            self.resampler_converter_type = "sinc_fastest"
+        elif decode_options["resampler_quality"] == "medium":
+            self.resampler_converter_type = "sinc_medium"
+        elif decode_options["resampler_quality"] == "high":
+            self.resampler_converter_type = "sinc_best"
+
+        common_params = {
+            "resample_audio_rate": decode_options["audio_rate"],
+            "decoder_audio_rate": decoder.audioRate,
+            "resampler_converter_type": self.resampler_converter_type,
+            "gain": decode_options["gain"],
+            "use_noise_reduction": decode_options["noise_reduction"],
+            "decoder_audio_block_size": decoder.blockAudioSize,
+            "decoder_audio_discard_size": decoder.audioDiscard,
+            "decode_mode": decode_options["mode"],
+            "spectral_nr_amount": decode_options["spectral_nr_amount"]
+        }
+
+        self.l_params = common_params.copy()
+        self.l_params["noise_reduction"] = self.noise_reduction_l
+        self.l_params["spectral_nr"] = self.spectral_nr_l
+
+        self.r_params = common_params.copy()
+        self.r_params["noise_reduction"] = self.noise_reduction_r
+        self.r_params["spectral_nr"] = self.spectral_nr_r
+
+    @staticmethod
+    def mix_for_mode_stereo(
+        l_raw: np.array,
+        r_raw: np.array,
+        params
+    ) -> tuple[np.array, np.array]:
+        if params["decode_mode"] == "mpx":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
+        elif params["decode_mode"] == "l":
+            l = l_raw
+            r = l_raw
+        elif params["decode_mode"] == "r":
+            l = r_raw
+            r = r_raw
+        elif params["decode_mode"] == "sum":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.add(l_raw, r_raw), 0.5)
+        else:
+            l = l_raw
+            r = r_raw
+    
+        return l, r
+        
+    @staticmethod
+    def adjust_gain(
+        audio: np.array,
+        params: dict
+    ) -> tuple[np.array, np.array]:
+        if params["gain"] != 1:
+            return np.multiply(audio, params["gain"])
+        else:
+            return audio
+    
+    @staticmethod
+    def resample_to_audio_rate(
+        audio: np.array,
+        params: dict
+    ) -> tuple[np.array, np.array]:
+        if params["resample_audio_rate"] != params["decoder_audio_rate"]: 
+            return samplerate_resample(audio, params["resample_audio_rate"], params["decoder_audio_rate"], params["resampler_converter_type"])
+        else:
+            return audio
+
+    @staticmethod
+    def apply_spectral_noise_reduction(
+        audio: np.array,
+        params: dict,
+    ) -> tuple[np.array, np.array]:
+        if params["spectral_nr_amount"] > 0:
+            return params["spectral_nr"].spectral_nr(audio)
+        else:
+            return audio
+
+    @staticmethod
+    def apply_noise_reduction(
+        pre: np.array,
+        de_noise: np.array,
+        params: dict,
+    ) -> tuple[np.array, np.array]:
+        if params["use_noise_reduction"]:
+            return params["noise_reduction"].noise_reduction(pre, de_noise)
+        else:
+            return de_noise
+
+    @staticmethod
+    def discard_overlap(
+        audio: np.array,
+        params: dict
+    ) -> np.array:
+        # discard overlapped audio, and account for samples lost during sinc resampling
+        sample_rate_ratio = params["resample_audio_rate"] / params["decoder_audio_rate"]
+        audio_block_size = params["decoder_audio_block_size"] * sample_rate_ratio
+    
+        offset = round(len(audio) - audio_block_size + params["decoder_audio_discard_size"])
+    
+        return audio[offset:]
+
+    @staticmethod
+    def merge_to_stereo(audioL: np.array, audioR: np.array) -> np.array:
+        return list(
             map(
                 list,
                 zip(
-                    gain_adjust(l, decode_options["gain"]),
-                    gain_adjust(r, decode_options["gain"]),
+                    audioL,
+                    audioR
                 ),
             )
         )
-    return stereo
 
+    @staticmethod
+    def work(
+        audio: np.array,
+        params: dict,
+    ) -> tuple[np.array, np.array]:
+        audio = PostProcessor.resample_to_audio_rate(audio, params)
+        audio = PostProcessor.adjust_gain(audio, params)
+        spectral_nr = PostProcessor.apply_spectral_noise_reduction(audio, params)
 
-def post_process(
-    audioL: np.array, audioR: np.array, audio_rate: int, decode_options: dict
-):
-    left_audio = (
-        samplerate_resample(
-            audioL, decode_options["audio_rate"], audio_rate, "sinc_fastest"
-        )
-        if decode_options["audio_rate"] != audio_rate
-        else audioL
-    )
-    right_audio = (
-        samplerate_resample(
-            audioR, decode_options["audio_rate"], audio_rate, "sinc_fastest"
-        )
-        if decode_options["audio_rate"] != audio_rate
-        else audioR
-    )
+        return audio, spectral_nr
+    
+    def apply_expander_mix_to_stereo(
+        self,
+        l_pre: np.array,
+        l_de_noise: np.array,
+        r_pre: np.array,
+        r_de_noise: np.array,
+    ) -> np.array:
+        l = PostProcessor.apply_noise_reduction(l_pre, l_de_noise, self.l_params)
+        r = PostProcessor.apply_noise_reduction(r_pre, r_de_noise, self.r_params)
+        l = PostProcessor.discard_overlap(l, self.l_params)
+        r = PostProcessor.discard_overlap(r, self.r_params)
 
-    return left_audio, right_audio
+        return PostProcessor.merge_to_stereo(l, r)
 
+    def _pop_from_executor(self):
+        channel_pair = self.executor_queue.pop(0)
+        l_pre, l_de_noise = channel_pair[0].result()
+        r_pre, r_de_noise = channel_pair[1].result()
+
+        return l_pre, l_de_noise, r_pre, r_de_noise
+
+    def submit(
+        self,
+        l: np.array,
+        r: np.array,
+    ): 
+        l, r = PostProcessor.mix_for_mode_stereo(l, r, self.l_params)
+
+        self.executor_queue.append((
+            self.executor.submit(PostProcessor.work, l, self.l_params),
+            self.executor.submit(PostProcessor.work, r, self.r_params)
+        ))
+           
+    def read(self):
+        while len(self.executor_queue) > 0:
+            if self.executor_queue[0][0].done() and self.executor_queue[0][1].done():
+                l_pre, l_de_noise, r_pre, r_de_noise = self._pop_from_executor()
+
+                yield self.apply_expander_mix_to_stereo(
+                    l_pre, l_de_noise,
+                    r_pre, r_de_noise
+                )
+            else:
+                break     
+
+    def flush(self):
+        while len(self.executor_queue) > 0:
+            l_pre, l_de_noise, r_pre, r_de_noise = self._pop_from_executor()
+
+            yield self.apply_expander_mix_to_stereo(
+                l_pre, l_de_noise,
+                r_pre, r_de_noise
+            )
 
 class AppWindow:
     def __init__(self, argv, decode_options):
@@ -534,72 +717,82 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
     start_time = datetime.now()
-    noise_reduction = NoiseReduction(
-        decoder.notchFreq,
-        decode_options["nr_side_gain"],
-        decoder.audioDiscard,
-        audio_rate=decode_options["audio_rate"],
-    )
     stereo_play_buffer = list()
 
-    with as_outputfile(output_file, decode_options["audio_rate"]) as w:
-        with as_soundfile(input_file) as f:
-            progressB = TimeProgressBar(f.frames, f.frames)
-            current_block = 0
-            for block in f.blocks(
-                blocksize=decoder.blockSize, overlap=decoder.readOverlap
-            ):
-                progressB.print(f.tell())
-                current_block, audioL, audioR = decoder.block_decode(
-                    block, block_count=current_block
-                )
-                left_audio, right_audio = post_process(
-                    audioL, audioR, decoder.audioRate, decode_options
-                )
-                stereo = prepare_stereo(
-                    left_audio, right_audio, noise_reduction, decode_options
-                )
-
-                if decode_options["auto_fine_tune"]:
-                    log_bias(decoder)
-
-                current_block += 1
-                log_decode(start_time, f.tell(), decode_options)
+    with ProcessPoolExecutor(1) as executor:
+        post_processor = PostProcessor(
+            executor,
+            decode_options,
+            decoder
+        )
+        with as_outputfile(output_file, decode_options["audio_rate"]) as w:
+            with as_soundfile(input_file) as f:
+                progressB = TimeProgressBar(f.frames, f.frames)
+                current_block = 0
                 try:
-                    w.write(stereo)
-                    if decode_options["preview"]:
-                        if SOUNDDEVICE_AVAILABLE:
-                            if (
-                                len(stereo_play_buffer)
-                                > decode_options["audio_rate"] * 5
-                            ):
-                                sd.wait()
-                                sd.play(
-                                    stereo_play_buffer,
-                                    decode_options["audio_rate"],
-                                    blocking=False,
-                                )
-                                stereo_play_buffer = list()
-                            stereo_play_buffer += stereo
-                        else:
-                            print(
-                                "Import of sounddevice failed, preview is not available!"
-                            )
-                except ValueError:
+                    print(f"Starting decode...")
+                    for block in f.blocks(
+                        blocksize=decoder.blockSize, overlap=decoder.readOverlap
+                    ):
+                        if signal_count > 0: break
+
+                        progressB.print(f.tell())
+        
+                        current_block, l, r = decoder.block_decode(
+                            block, block_count=current_block
+                        )
+        
+                        if decode_options["auto_fine_tune"]:
+                            log_bias(decoder)
+        
+                        current_block += 1
+        
+                        post_processor.submit(l, r)
+                        for stereo in post_processor.read():
+                            log_decode(start_time, f.tell(), decode_options)
+                            try:
+                                w.write(stereo)
+                                if decode_options["preview"]:
+                                    if SOUNDDEVICE_AVAILABLE:
+                                        if (
+                                            len(stereo_play_buffer)
+                                            > decode_options["audio_rate"] * 5
+                                        ):
+                                            sd.wait()
+                                            sd.play(
+                                                stereo_play_buffer,
+                                                decode_options["audio_rate"],
+                                                blocking=False,
+                                            )
+                                            stereo_play_buffer = list()
+                                        stereo_play_buffer += stereo
+                                    else:
+                                        print(
+                                            "Import of sounddevice failed, preview is not available!"
+                                        )
+                            except ValueError:
+                                pass
+                            if ui_t is not None:
+                                ui_t.app.processEvents()
+                                if ui_t.window.transport_state == 0:
+                                    break
+                                elif ui_t.window.transport_state == 2:
+                                    while ui_t.window.transport_state == 2:
+                                        ui_t.app.processEvents()
+                                        time.sleep(0.01)
+                except KeyboardInterrupt:
                     pass
-                if ui_t is not None:
-                    ui_t.app.processEvents()
-                    if ui_t.window.transport_state == 0:
-                        break
-                    elif ui_t.window.transport_state == 2:
-                        while ui_t.window.transport_state == 2:
-                            ui_t.app.processEvents()
-                            time.sleep(0.01)
-
-        elapsed_time = datetime.now() - start_time
-        dt_string = elapsed_time.total_seconds()
-        print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
-
+    
+                print("Emptying the decode queue ...")
+                for stereo in post_processor.flush():
+                    try:
+                        w.write(stereo)
+                    except ValueError:
+                        pass
+    
+            elapsed_time = datetime.now() - start_time
+            dt_string = elapsed_time.total_seconds()
+            print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 def decode_parallel(
     decoders: List[HiFiDecode],
@@ -612,94 +805,93 @@ def decode_parallel(
     start_time = datetime.now()
     block_size = decoders[0].blockSize
     read_overlap = decoders[0].readOverlap
-    noise_reduction = NoiseReduction(
-        decoders[0].notchFreq,
-        decode_options["nr_side_gain"],
-        decoders[0].audioDiscard,
-        audio_rate=decode_options["audio_rate"],
-    )
     futures_queue = list()
-    executor = ThreadPoolExecutor(threads)
     current_block = 0
     stereo_play_buffer = list()
-    with as_outputfile(output_file, decode_options["audio_rate"]) as w:
-        with as_soundfile(input_file) as f:
-            progressB = TimeProgressBar(f.frames, f.frames)
-            for block in f.blocks(blocksize=block_size, overlap=read_overlap):
-                decoder = decoders[current_block % threads]
-                if len(block) > 0:
-                    futures_queue.append(
-                        executor.submit(decoder.block_decode, block, current_block)
-                    )
-                else:
-                    break
 
-                if decode_options["auto_fine_tune"]:
-                    log_bias(decoder)
-
-                current_block += 1
-                progressB.print(f.tell())
-
-                while len(futures_queue) > threads:
+    with ProcessPoolExecutor(threads) as executor:
+        post_processor = PostProcessor(
+            executor,
+            decode_options,
+            decoders[0]
+        )
+        with as_outputfile(output_file, decode_options["audio_rate"]) as w:
+            with as_soundfile(input_file) as f:
+                progressB = TimeProgressBar(f.frames, f.frames)
+                try:
+                    print(f"Starting decode...")
+                    for block in f.blocks(blocksize=block_size, overlap=read_overlap):
+                        decoder = decoders[current_block % threads]
+                        if len(block) > 0:
+                            futures_queue.append(
+                                executor.submit(HiFiDecode.block_decode_worker, decoder, block, current_block)
+                            )
+                        else:
+                            break
+        
+                        if decode_options["auto_fine_tune"]:
+                            log_bias(decoder)
+        
+                        current_block += 1
+                        progressB.print(f.tell())
+        
+                        while len(futures_queue) > threads:
+                            future = futures_queue.pop(0)
+                            blocknum, l, r = future.result()
+        
+                            post_processor.submit(l, r)
+                            for stereo in post_processor.read():
+                                log_decode(start_time, f.tell(), decode_options)
+        
+                                try:
+                                    w.write(stereo)
+                                    if decode_options["preview"]:
+                                        if SOUNDDEVICE_AVAILABLE:
+                                            if (
+                                                len(stereo_play_buffer)
+                                                > decode_options["audio_rate"] * 5
+                                            ):
+                                                sd.wait()
+                                                sd.play(
+                                                    stereo_play_buffer,
+                                                    decode_options["audio_rate"],
+                                                    blocking=False,
+                                                )
+                                                stereo_play_buffer = list()
+                                            stereo_play_buffer += stereo
+                                        else:
+                                            print(
+                                                "Import of sounddevice failed, preview is not available!"
+                                            )
+                                except ValueError:
+                                    pass
+        
+                        if ui_t is not None:
+                            ui_t.app.processEvents()
+                            if ui_t.window.transport_state == 0:
+                                break
+                            elif ui_t.window.transport_state == 2:
+                                while ui_t.window.transport_state == 2:
+                                    ui_t.app.processEvents()
+                                    time.sleep(0.01)
+                except KeyboardInterrupt:
+                    pass
+    
+                print("Emptying the decode queue ...")
+                while len(futures_queue) > 0:
                     future = futures_queue.pop(0)
-                    blocknum, audioL, audioR = future.result()
-                    left_audio, right_audio = post_process(
-                        audioL, audioR, decoder.audioRate, decode_options
-                    )
-                    stereo = prepare_stereo(
-                        left_audio, right_audio, noise_reduction, decode_options
-                    )
-                    log_decode(start_time, f.tell(), decode_options)
+                    blocknum, l, r = future.result()
+                    post_processor.submit(l, r)
+    
+                for stereo in post_processor.flush():
                     try:
                         w.write(stereo)
-                        if decode_options["preview"]:
-                            if SOUNDDEVICE_AVAILABLE:
-                                if (
-                                    len(stereo_play_buffer)
-                                    > decode_options["audio_rate"] * 5
-                                ):
-                                    sd.wait()
-                                    sd.play(
-                                        stereo_play_buffer,
-                                        decode_options["audio_rate"],
-                                        blocking=False,
-                                    )
-                                    stereo_play_buffer = list()
-                                stereo_play_buffer += stereo
-                            else:
-                                print(
-                                    "Import of sounddevice failed, preview is not available!"
-                                )
                     except ValueError:
                         pass
-
-                if ui_t is not None:
-                    ui_t.app.processEvents()
-                    if ui_t.window.transport_state == 0:
-                        break
-                    elif ui_t.window.transport_state == 2:
-                        while ui_t.window.transport_state == 2:
-                            ui_t.app.processEvents()
-                            time.sleep(0.01)
-
-            print("Emptying the decode queue ...")
-            while len(futures_queue) > 0:
-                future = futures_queue.pop(0)
-                blocknum, audioL, audioR = future.result()
-                left_audio, right_audio = post_process(
-                    audioL, audioR, decoder.audioRate, decode_options
-                )
-                stereo = prepare_stereo(
-                    left_audio, right_audio, noise_reduction, decode_options
-                )
-                try:
-                    w.write(stereo)
-                except ValueError:
-                    pass
-
-        elapsed_time = datetime.now() - start_time
-        dt_string = elapsed_time.total_seconds()
-        print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
+    
+            elapsed_time = datetime.now() - start_time
+            dt_string = elapsed_time.total_seconds()
+            print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 
 def guess_bias(decoder, input_file, block_size, blocks_limits=10):
@@ -735,7 +927,6 @@ def log_bias(decoder: HiFiDecode):
 
 
 def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
-    print("Starting decode...")
     sample_freq = decode_options["input_rate"]
     filename = decode_options["input_file"]
 
@@ -784,6 +975,15 @@ def main() -> int:
 
     real_mode = default_mode if not args.mode else args.mode
 
+    if (
+        args.resampler_quality == "low" or 
+        args.resampler_quality == "medium" or 
+        args.resampler_quality == "high"
+    ):
+        resampler_quality = args.resampler_quality
+    else:
+        resampler_quality = DEFAULT_RESAMPLER_QUALITY
+
     decode_options = {
         "input_rate": sample_freq * 1e6,
         "standard": "p" if system == "PAL" else "n",
@@ -791,7 +991,9 @@ def main() -> int:
         "preview": args.preview,
         "preview_available": SOUNDDEVICE_AVAILABLE,
         "original": args.original,
-        "noise_reduction": args.noise_reduction == "on" if not args.preview else False,
+        "resampler_quality": resampler_quality if not args.preview else "low",
+        "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
+        "noise_reduction": args.noise_reduction == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "nr_side_gain": args.NR_side_gain,
         "grc": args.GRC,

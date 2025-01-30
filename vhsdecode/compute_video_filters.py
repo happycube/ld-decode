@@ -12,7 +12,7 @@ else:
     from importlib.resources import files
 
 from vhsdecode.utils import filtfft
-from vhsdecode.addons.FMdeemph import FMDeEmphasisB, gen_low_shelf, gen_high_shelf
+from vhsdecode.addons.FMdeemph import FMDeEmphasisB, gen_shelf
 
 NONLINEAR_AMP_LPF_FREQ_DEFAULT = 700000
 NONLINEAR_STATIC_FACTOR_DEFAULT = None
@@ -77,10 +77,10 @@ def gen_custom_video_filters(filter_list, freq_hz, block_len):
                         file=sys.stderr,
                     )
             case "highshelf":
-                db, da = gen_high_shelf(f["midfreq"], f["gain"], f["q"], freq_hz / 2.0)
+                db, da = gen_shelf(f["midfreq"], f["gain"], "high", freq_hz / 2.0, qfactor=f["q"])
                 ret *= filtfft((db, da), block_len, whole=False)
             case "lowshelf":
-                db, da = gen_low_shelf(f["midfreq"], f["gain"], f["q"], freq_hz / 2.0)
+                db, da = gen_shelf(f["midfreq"], f["gain"], "low", freq_hz / 2.0, qfactor=f["q"])
                 ret *= filtfft((db, da), block_len, whole=False)
     return ret
 

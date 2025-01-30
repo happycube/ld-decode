@@ -110,7 +110,6 @@ from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as Navigation
 from matplotlib.figure import Figure
 
 from vhsdecode.utils import filtfft
-from vhsdecode.addons.FMdeemph import gen_high_shelf
 from vhsdecode.formats import get_format_params
 from vhsdecode import compute_video_filters
 from vhsdecode.main import supported_tape_formats
