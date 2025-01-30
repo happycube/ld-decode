@@ -55,7 +55,7 @@ except ImportError as e:
     print(e)
     HIFI_UI = False
 
-DEFAULT_RESAMPLER_QUALITY = "medium"
+DEFAULT_RESAMPLER_QUALITY = "high"
 
 parser, _ = common_parser_cli(
     "Extracts audio from RAW HiFi FM RF captures",
@@ -101,7 +101,7 @@ parser.add_argument(
     dest="noise_reduction",
     type=str.lower,
     default="on",
-    help="Set noise reduction on/off",
+    help="Set noise reduction block (deemphasis and expansion) on/off",
 )
 
 parser.add_argument(
@@ -117,8 +117,8 @@ parser.add_argument(
     dest="NR_side_gain",
     type=float,
     default=DEFAULT_NR_ENVELOPE_GAIN,
-    help=f"Sets the noise reduction envelope tracking sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
-    f"Range (20~100): 100 being a hard gate effect",
+    help=f"Sets the noise reduction expander sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
+    f"Range (20~100): Higher values increase the effect of the expander",
 )
 
 parser.add_argument(
