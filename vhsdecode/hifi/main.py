@@ -184,14 +184,17 @@ parser.add_argument(
 )
 
 signal_count = 0
+exit_requested = False
 main_pid = os.getpid()
 def signal_handler(sig, frame):
     global signal_count
     global main_pid
+    global exit_requested
 
+    exit_requested = True
     is_main_thread = main_pid == os.getpid()
-    if signal_count >= 3:
-        if is_main_thread: print("Ctrl-C was pressed three times, stopping immediately...")
+    if signal_count >= 1:
+        if is_main_thread: print("Ctrl-C was pressed again, stopping immediately...")
         sys.exit(1)
     if signal_count == 0:
         if is_main_thread: print("Ctrl-C was pressed, stopping decode...")
@@ -735,7 +738,8 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                     for block in f.blocks(
                         blocksize=decoder.blockSize, overlap=decoder.readOverlap
                     ):
-                        if signal_count > 0: break
+                        if exit_requested:
+                            break
 
                         progressB.print(f.tell())
         
@@ -822,6 +826,9 @@ def decode_parallel(
                 try:
                     print(f"Starting decode...")
                     for block in f.blocks(blocksize=block_size, overlap=read_overlap):
+                        if exit_requested:
+                            break
+                        
                         decoder = decoders[current_block % threads]
                         if len(block) > 0:
                             futures_queue.append(
