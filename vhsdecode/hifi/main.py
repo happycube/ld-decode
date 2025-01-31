@@ -26,7 +26,8 @@ from vhsdecode.hifi.HiFiDecode import (
     SpectralNoiseReduction,
     NoiseReduction,
     DEFAULT_NR_ENVELOPE_GAIN,
-    DEFAULT_SPECTRAL_NR_AMOUNT
+    DEFAULT_SPECTRAL_NR_AMOUNT,
+    DEFAULT_RESAMPLER_QUALITY
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 import io
@@ -56,7 +57,6 @@ except ImportError as e:
     print(e)
     HIFI_UI = False
 
-DEFAULT_RESAMPLER_QUALITY = "high"
 
 parser, _ = common_parser_cli(
     "Extracts audio from RAW HiFi FM RF captures",
@@ -510,12 +510,12 @@ class PostProcessor:
             audio_rate=decode_options["audio_rate"]
         )
 
-        if decode_options["resampler_quality"] == "medium":
-            self.resampler_converter_type = "sinc_medium"
-        elif decode_options["resampler_quality"] == "low":
-            self.resampler_converter_type = "sinc_fastest"
-        else:
+        if decode_options["resampler_quality"] == "high":
             self.resampler_converter_type = "sinc_best"
+        elif decode_options["resampler_quality"] == "medium":
+            self.resampler_converter_type = "sinc_medium"
+        else: # low
+            self.resampler_converter_type = "sinc_fastest"
 
         common_params = {
             "resample_audio_rate": decode_options["audio_rate"],

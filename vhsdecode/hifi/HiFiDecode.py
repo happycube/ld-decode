@@ -30,6 +30,8 @@ DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 
+DEFAULT_RESAMPLER_QUALITY = "high"
+
 BLOCKS_PER_SECOND = 2
 
 @dataclass
@@ -519,15 +521,13 @@ class HiFiDecode:
         self.preAudioResampleL = FiltersClass(a_iirb, a_iira, self.if_rate)
         self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate)
 
-        if self.options["resampler_quality"] == "medium":
-            self.if_resampler_converter = "linear"
-            self.audio_resampler_converter = "sinc_fastest"
-
-        elif self.options["resampler_quality"] == "high":
+        if self.options["resampler_quality"] == "high":
             self.if_resampler_converter = "linear"
             self.audio_resampler_converter = "sinc_medium"
-
-        else:
+        elif self.options["resampler_quality"] == "medium":
+            self.if_resampler_converter = "linear"
+            self.audio_resampler_converter = "sinc_fastest"
+        else: # low
             self.if_resampler_converter = "linear"
             self.audio_resampler_converter = "linear"
 

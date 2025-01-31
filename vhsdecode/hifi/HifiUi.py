@@ -40,13 +40,17 @@ except ImportError:
     )
     from PyQt5 import QtGui, QtCore
 
-from vhsdecode.hifi.HiFiDecode import DEFAULT_NR_ENVELOPE_GAIN as DEFAULT_NR_GAIN_, DEFAULT_SPECTRAL_NR_AMOUNT
+from vhsdecode.hifi.HiFiDecode import (
+    DEFAULT_NR_ENVELOPE_GAIN,
+    DEFAULT_SPECTRAL_NR_AMOUNT,
+    DEFAULT_RESAMPLER_QUALITY
+)
 
 
 class MainUIParameters:
     def __init__(self):
         self.volume: float = 1.0
-        self.sidechain_gain: float = DEFAULT_NR_GAIN_ / 100.0
+        self.sidechain_gain: float = DEFAULT_NR_ENVELOPE_GAIN / 100.0
         self.noise_reduction: bool = True
         self.automatic_fine_tuning: bool = True
         self.grc = False
@@ -60,7 +64,7 @@ class MainUIParameters:
         self.input_file: str = ""
         self.output_file: str = ""
         self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
-        self.resampler_quality = None
+        self.resampler_quality = DEFAULT_RESAMPLER_QUALITY
 
 
 def decode_options_to_ui_parameters(decode_options):
