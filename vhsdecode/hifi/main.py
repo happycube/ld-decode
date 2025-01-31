@@ -193,8 +193,8 @@ def signal_handler(sig, frame):
 
     exit_requested = True
     is_main_thread = main_pid == os.getpid()
-    if signal_count >= 3:
-        if is_main_thread: print("Ctrl-C was pressed three times, stopping immediately...")
+    if signal_count >= 1:
+        if is_main_thread: print("Ctrl-C was pressed again, stopping immediately...")
         sys.exit(1)
     if signal_count == 0:
         if is_main_thread: print("Ctrl-C was pressed, stopping decode...")
