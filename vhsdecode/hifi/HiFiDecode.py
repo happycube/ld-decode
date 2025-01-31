@@ -28,7 +28,7 @@ DEFAULT_NR_DEEMPHASIS_GAIN = 1
 # sets logarithmic slope for the 1:2 expander
 DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
-DEFAULT_SPECTRAL_NR_AMOUNT=0.4
+DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 
 BLOCKS_PER_SECOND = 2
 
@@ -528,7 +528,6 @@ class HiFiDecode:
             self.audio_resampler_converter = "sinc_medium"
 
         else:
-        #if self.options["resampler_quality"] == "low":
             self.if_resampler_converter = "linear"
             self.audio_resampler_converter = "linear"
 

@@ -40,7 +40,7 @@ except ImportError:
     )
     from PyQt5 import QtGui, QtCore
 
-from vhsdecode.hifi.HiFiDecode import DEFAULT_NR_ENVELOPE_GAIN as DEFAULT_NR_GAIN_
+from vhsdecode.hifi.HiFiDecode import DEFAULT_NR_ENVELOPE_GAIN as DEFAULT_NR_GAIN_, DEFAULT_SPECTRAL_NR_AMOUNT
 
 
 class MainUIParameters:
@@ -59,6 +59,8 @@ class MainUIParameters:
         self.input_sample_rate: float = 40.0
         self.input_file: str = ""
         self.output_file: str = ""
+        self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
+        self.resampler_quality = None
 
 
 def decode_options_to_ui_parameters(decode_options):
@@ -75,6 +77,8 @@ def decode_options_to_ui_parameters(decode_options):
     values.input_sample_rate = decode_options["input_rate"]
     values.input_file = decode_options["input_file"]
     values.output_file = decode_options["output_file"]
+    values.spectral_nr_amount = decode_options["spectral_nr_amount"]
+    values.resampler_quality = decode_options["resampler_quality"]
     return values
 
 
@@ -93,6 +97,8 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "gain": values.volume,
         "input_file": values.input_file,
         "output_file": values.output_file,
+        "spectral_nr_amount": values.spectral_nr_amount,
+        "resampler_quality": values.resampler_quality,
         "mode": (
             "s"
             if values.audio_mode == "Stereo"

@@ -469,6 +469,7 @@ def log_decode(start_time: datetime, frames: int, decode_options: dict):
         + f"- Wall time     : {str(elapsed_time_format)[:-3]}"
     )
 
+
 class PostProcessor:
     def __init__(
         self,
@@ -501,11 +502,11 @@ class PostProcessor:
             audio_rate=decode_options["audio_rate"]
         )
 
-        if decode_options["resampler_quality"] == "low":
-            self.resampler_converter_type = "sinc_fastest"
-        elif decode_options["resampler_quality"] == "medium":
+        if decode_options["resampler_quality"] == "medium":
             self.resampler_converter_type = "sinc_medium"
-        elif decode_options["resampler_quality"] == "high":
+        elif decode_options["resampler_quality"] == "low":
+            self.resampler_converter_type = "sinc_fastest"
+        else:
             self.resampler_converter_type = "sinc_best"
 
         common_params = {
