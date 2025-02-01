@@ -500,13 +500,11 @@ class PostProcessor:
         self.noise_reduction_l = NoiseReduction(
             decoder.notchFreq,
             decode_options["nr_side_gain"],
-            decoder.audioDiscard,
             audio_rate=decode_options["audio_rate"]
         )
         self.noise_reduction_r = NoiseReduction(
             decoder.notchFreq,
             decode_options["nr_side_gain"],
-            decoder.audioDiscard,
             audio_rate=decode_options["audio_rate"]
         )
 
@@ -605,15 +603,26 @@ class PostProcessor:
     @staticmethod
     def discard_overlap(
         audio: np.array,
+        block_num: int,
+        is_last_block: bool,
         params: dict
     ) -> np.array:
         # discard overlapped audio, and account for samples lost during sinc resampling
         sample_rate_ratio = params["resample_audio_rate"] / params["decoder_audio_rate"]
         audio_block_size = params["decoder_audio_block_size"] * sample_rate_ratio
     
-        offset = round(len(audio) - audio_block_size + params["decoder_audio_discard_size"])
-    
-        return audio[offset:]
+        total_overlap = round(len(audio) - audio_block_size + params["decoder_audio_discard_size"])
+        overlap_start = total_overlap - round(total_overlap / 20)
+        overlap_end = overlap_start - total_overlap + len(audio)
+        
+        if block_num == 0:
+            # don't trim the start when at the first block
+            overlap_start = 0
+        if is_last_block:
+            # don't trim the end when at the last block
+            overlap_end = len(audio)
+
+        return audio[overlap_start:overlap_end]
 
     @staticmethod
     def merge_to_stereo(audioL: np.array, audioR: np.array) -> np.array:
@@ -644,52 +653,60 @@ class PostProcessor:
         l_de_noise: np.array,
         r_pre: np.array,
         r_de_noise: np.array,
+        block_num: int,
+        is_last_block: bool
     ) -> np.array:
         l = PostProcessor.apply_noise_reduction(l_pre, l_de_noise, self.l_params)
         r = PostProcessor.apply_noise_reduction(r_pre, r_de_noise, self.r_params)
-        l = PostProcessor.discard_overlap(l, self.l_params)
-        r = PostProcessor.discard_overlap(r, self.r_params)
+        l = PostProcessor.discard_overlap(l, block_num, is_last_block, self.l_params)
+        r = PostProcessor.discard_overlap(r, block_num, is_last_block, self.r_params)
 
         return PostProcessor.merge_to_stereo(l, r)
 
     def _pop_from_executor(self):
-        channel_pair = self.executor_queue.pop(0)
-        l_pre, l_de_noise = channel_pair[0].result()
-        r_pre, r_de_noise = channel_pair[1].result()
+        l_future, r_future, block_num = self.executor_queue.pop(0)
+        l_pre, l_de_noise = l_future.result()
+        r_pre, r_de_noise = r_future.result()
 
-        return l_pre, l_de_noise, r_pre, r_de_noise
+        return l_pre, l_de_noise, r_pre, r_de_noise, block_num
 
     def submit(
         self,
         l: np.array,
         r: np.array,
+        block_num: int,
     ): 
         l, r = PostProcessor.mix_for_mode_stereo(l, r, self.l_params)
 
         self.executor_queue.append((
             self.executor.submit(PostProcessor.work, l, self.l_params),
-            self.executor.submit(PostProcessor.work, r, self.r_params)
+            self.executor.submit(PostProcessor.work, r, self.r_params),
+            block_num,
         ))
            
     def read(self):
         while len(self.executor_queue) > 0:
             if self.executor_queue[0][0].done() and self.executor_queue[0][1].done():
-                l_pre, l_de_noise, r_pre, r_de_noise = self._pop_from_executor()
+                l_pre, l_de_noise, r_pre, r_de_noise, block_num = self._pop_from_executor()
 
                 yield self.apply_expander_mix_to_stereo(
                     l_pre, l_de_noise,
-                    r_pre, r_de_noise
+                    r_pre, r_de_noise,
+                    block_num,
+                    False
                 )
             else:
                 break     
 
     def flush(self):
         while len(self.executor_queue) > 0:
-            l_pre, l_de_noise, r_pre, r_de_noise = self._pop_from_executor()
+            l_pre, l_de_noise, r_pre, r_de_noise, block_num = self._pop_from_executor()
 
             yield self.apply_expander_mix_to_stereo(
                 l_pre, l_de_noise,
-                r_pre, r_de_noise
+                r_pre, r_de_noise,
+                block_num,
+                len(self.executor_queue) == 0
             )
 
 class AppWindow:
@@ -755,9 +772,9 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                         if decode_options["auto_fine_tune"]:
                             log_bias(decoder)
         
+                        post_processor.submit(l, r, current_block)
+
                         current_block += 1
-        
-                        post_processor.submit(l, r)
                         for stereo in post_processor.read():
                             log_decode(start_time, f.tell(), decode_options)
                             try:
@@ -852,7 +869,7 @@ def decode_parallel(
                             future = futures_queue.pop(0)
                             blocknum, l, r = future.result()
         
-                            post_processor.submit(l, r)
+                            post_processor.submit(l, r, blocknum)
                             for stereo in post_processor.read():
                                 log_decode(start_time, f.tell(), decode_options)
         
@@ -894,7 +911,7 @@ def decode_parallel(
                 while len(futures_queue) > 0:
                     future = futures_queue.pop(0)
                     blocknum, l, r = future.result()
-                    post_processor.submit(l, r)
+                    post_processor.submit(l, r, blocknum)
     
                 for stereo in post_processor.flush():
                     try:
