@@ -549,10 +549,16 @@ class RFDecode:
 
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
+        
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
         SF["F05_offset"] = 32 # Reduced because filtfft is half-strength on FIR
         F0_5_fft = filtfft((F0_5, [1.0]), self.blocklen)
         SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * F0_5_fft
+
+        Fburst = sps.firwin(65, self.notchrange(SP["fsc_mhz"], 0.1), pass_zero=False)
+        SF["F05_offset"] = 32 # Reduced because filtfft is half-strength on FIR
+        SF["Fburst"] = filtfft((Fburst, [1.0]), self.blocklen)
+        SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"]
 
         SF["Fburst"] = filtfft(
             sps.butter(1, self.notchrange(SP["fsc_mhz"], 0.1), "bandpass"),
@@ -1094,7 +1100,7 @@ class DemodCache:
 
         with self.lock:
             if redo:
-                for b in self.flush_demod(blocknums):
+                for b in self.flush_demod():
                     queuelist.append(b)
 
             for b in blocknums:
@@ -1148,14 +1154,11 @@ class DemodCache:
         self.q_out_event.clear()
         return None if reached_end else need_blocks
 
-    def flush_demod(self, blocknums):
+    def flush_demod(self):
         """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
         blocks_toredo = []
 
         for k in self.blocks.keys():
-            if k not in blocknums:
-                continue 
-
             self.blocks[k]['MTF']      = -1
             self.blocks[k]['request']  = -1
             self.blocks[k]['waiting']  = False
@@ -2862,7 +2865,7 @@ class Field:
             return None, None
 
         burstarea = burstarea - nb_mean(burstarea)
-        threshold = 5 * self.rf.DecoderParams["hz_ire"]
+        threshold = rms(burstarea)
 
         burstarea_demod = self.data["video"]["demod"][s + bstart : s + bend]
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
@@ -3652,7 +3655,7 @@ class LDdecode:
         if rawdecode is None:
             # logger.info("Failed to demodulate data")
             return None, None
-
+        
         f = self.FieldClass(
             self.rf,
             rawdecode,
