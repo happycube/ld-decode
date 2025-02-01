@@ -552,18 +552,14 @@ class RFDecode:
         
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
         SF["F05_offset"] = 32 # Reduced because filtfft is half-strength on FIR
+
         F0_5_fft = filtfft((F0_5, [1.0]), self.blocklen)
         SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * F0_5_fft
 
-        Fburst = sps.firwin(65, self.notchrange(SP["fsc_mhz"], 0.1), pass_zero=False)
-        SF["F05_offset"] = 32 # Reduced because filtfft is half-strength on FIR
-        SF["Fburst"] = filtfft((Fburst, [1.0]), self.blocklen)
-        SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"]
+        Fburst = sps.firwin(81, self.notchrange(SP["fsc_mhz"], 0.2), pass_zero=False)
+        SF["FVideoBurst_offset"] = 40
 
-        SF["Fburst"] = filtfft(
-            sps.butter(1, self.notchrange(SP["fsc_mhz"], 0.1), "bandpass"),
-            self.blocklen,
-        )
+        SF["Fburst"] = filtfft((Fburst, [1.0]), self.blocklen)
         SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"]
 
         if self.system == "PAL":
@@ -710,6 +706,7 @@ class RFDecode:
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         out_videoburst = npfft.ifft(demod_fft * self.Filters["FVideoBurst"]).real
+        out_videoburst = np.roll(out_videoburst, -self.Filters["FVideoBurst_offset"])
 
         if self.system == "PAL":
             out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
@@ -2854,10 +2851,11 @@ class Field:
         fsc_mhz_inv = 1 / self.rf.SysParams["fsc_mhz"]
 
         # compute approximate burst beginning/end
-        bstime = 25 * fsc_mhz_inv  # approx start of burst in usecs
+        bstime = 21 * fsc_mhz_inv  # approx start of core burst in usecs
+        betime = 28 * fsc_mhz_inv  # approx end of core burst in usecs
 
         bstart = int(bstime * lfreq)
-        bend   = int(8.8 * lfreq)
+        bend   = int(betime * lfreq)
 
         # copy and get the mean of the burst area to factor out wow/flutter
         burstarea = self.data["video"]["demod_burst"][s + bstart : s + bend]
@@ -3319,13 +3317,15 @@ class FieldNTSC(Field):
         ]
 
         self.linelocs3 = self.refine_linelocs_burst(self.linelocs2)
-        self.linelocs3 = self.fix_badlines(self.linelocs3, self.linelocs2)
+        self.linelocs4 = self.refine_linelocs_burst(self.linelocs3)
+        self.linelocs4 = self.fix_badlines(self.linelocs4, self.linelocs2)
 
         self.burstmedian = self.calc_burstmedian()
 
         # Now adjust the phase to get the downscaled image onto I/Q color axis
-        shift33 = 84 * (np.pi / 180)
-        self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
+        # (This should be 33 but this is what makes it line up)
+        shift33 = 78 * (np.pi / 180)
+        self.linelocs = self.apply_offsets(self.linelocs4, -shift33 - 0)
 
         self.wowfactor = self.computewow(self.linelocs)
 
