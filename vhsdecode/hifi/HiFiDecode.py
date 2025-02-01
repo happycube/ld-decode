@@ -5,12 +5,14 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi, sqrt
+from math import log, pi, sqrt, ceil, floor
 from typing import Tuple
+import sys
 
 import numpy as np
 from numba import njit
-from scipy.signal import iirpeak, iirnotch
+from scipy.signal import iirpeak, iirnotch, butter, spectrogram, find_peaks
+from scipy.interpolate import interp1d
 from scipy.signal.signaltools import hilbert
 
 from noisereduce.spectralgate.nonstationary import SpectralGateNonStationary
@@ -20,6 +22,8 @@ from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
+
+import matplotlib.pyplot as plt
 
 # lower increases expander strength and decreases overall gain
 DEFAULT_NR_ENVELOPE_GAIN = 22
@@ -68,6 +72,9 @@ class LpFilter:
 
     def work(self, data):
         return self.filter.lfilt(data)
+    
+    def filtfilt(self, data):
+        return self.filter.filtfilt(data)
 
 
 @dataclass
@@ -330,12 +337,10 @@ class NoiseReduction:
         self,
         notch_freq: float,
         side_gain: float,
-        discard_size: int = 0,
         audio_rate: int = 192000,
         spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT,
     ):
         self.audio_rate = audio_rate
-        self.discard_size = discard_size
         self.hfreq = notch_freq
 
         # noise reduction envelope tracking constants (this ones might need tweaking)
@@ -486,9 +491,11 @@ class HiFiDecode:
         self.sample_rate: int = options["input_rate"]
         self.options = options
         self.rfBandPassParams = AFEParamsFront()
-        # downsamples the if signal to fit within the nyquist cutoff
-        self.if_rate: int = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
         self.audio_rate: int = 192000
+        # downsamples the if signal to fit within the nyquist cutoff but within an integer ratio of the audio rate
+        min_if_rate = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
+        if_rate_audio_ratio = ceil(min_if_rate / self.audio_rate)
+        self.if_rate: int = if_rate_audio_ratio * self.audio_rate
 
         (
             self.ifresample_numerator,
@@ -501,7 +508,7 @@ class HiFiDecode:
         self.blocks_second: int = BLOCKS_PER_SECOND
         self.block_size: int = int(self.sample_rate / self.blocks_second)
         self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
-        self.block_overlap_audio: int = int(self.audio_rate / 5e2)
+        self.block_overlap_audio: int = int(self.audio_rate / 6e2)
         audio_final_rate = (self.options["audio_rate"] / self.audio_rate) * (
             self.audioRes_numerator / self.audioRes_denominator
         )
@@ -535,18 +542,30 @@ class HiFiDecode:
 
         if options["format"] == "vhs":
             if options["standard"] == "p":
+                self.field_rate = 50
                 self.afe_params = AFEParamsPALVHS()
                 self.standard = AFEParamsPALVHS()
             else:
+                self.field_rate = 59.94
                 self.afe_params = AFEParamsNTSCVHS()
                 self.standard = AFEParamsNTSCVHS()
         else:
             if options["standard"] == "p":
+                self.field_rate = 50
                 self.afe_params = AFEParamsPALHi8()
                 self.standard = AFEParamsPALHi8()
             else:
+                self.field_rate = 59.94
                 self.afe_params = AFEParamsNTSCHi8()
                 self.standard = AFEParamsNTSCHi8()
+
+        self.headswitch_hz = self.field_rate
+        self.headswitch_drift_hz = self.field_rate * 0.1 # +- 10% drift
+        self.headswitch_cutoff_freq = 40000 # filter cutoff frequency for peak detection
+        self.headswitch_interpolation_padding = 30e-6 # maximum in seconds to widen the interpolation based on the strength of the peak
+
+        hs_b, hs_a = butter(5, self.headswitch_cutoff_freq / (0.5 * self.audio_rate), btype='highpass')
+        self.headswitchDetectionHighpass = FiltersClass(hs_b, hs_a, self.audio_rate)
 
         self.afeL, self.afeR, self.fmL, self.fmR = self.afeParams(self.afe_params)
         self.devL, self.devR = 0, 0
@@ -622,6 +641,80 @@ class HiFiDecode:
             fmR = FMdemod(self.if_rate, standard.RCarrierRef, 0)
 
         return afeL, afeR, fmL, fmR
+
+
+    def interpolate_boundaries(self, audio, boundaries):
+        interpolated_signal = np.copy(audio)
+
+        # setup interpolator input by copying and removing any samples that are peaks
+        time = np.arange(len(interpolated_signal), dtype=float)
+        interpolator_in = np.copy(audio)
+
+        for (start, end) in boundaries:
+            time[start:end] = np.nan
+            interpolator_in[start:end] = np.nan
+
+        time = time[np.logical_not(np.isnan(time))]
+        interpolator_in = interpolator_in[np.logical_not(np.isnan(interpolator_in))]
+
+        # interpolate the gap where the peak was removed
+        interpolator = interp1d(time, interpolator_in, kind="linear", copy=False, assume_sorted=True)
+
+        for (start, end) in boundaries:
+            # sample and hold inteerpolation if boundaries are beyond this chunk
+            if start < 0:
+                interpolated_signal[0:end] = interpolated_signal[end]
+            elif end > len(audio):
+                interpolated_signal[start:len(audio)] = interpolated_signal[start]
+            else:
+                for i in range(start, end):
+                    interpolated_signal[i] = interpolator(i)
+    
+        return interpolated_signal
+
+    def detect_peaks(self, audio, min_distance_hz):
+        # remove audible frequencies to avoid detecting them as peaks
+        filtered_signal = self.headswitchDetectionHighpass.filtfilt(audio)
+        # remove filter impulse response
+        filtered_signal[0:20] = 0
+        filtered_signal[-20:] = 0
+        filtered_signal_peaks = abs(filtered_signal)
+        
+        # peaks should align roughly to the frame rate of the video system
+        # account for small drifts in the head switching pulse (shows up as the sliding dot on video)
+        peak_distance_seconds = 1 / min_distance_hz
+        peak_locs, peak_properties = find_peaks(filtered_signal_peaks, distance=peak_distance_seconds * self.audio_rate, width=1)
+
+        peaks = zip(peak_properties["left_ips"], peak_properties["right_ips"], peak_properties["prominences"])
+        #self.debug_peak_detection(audio, filtered_signal, filtered_signal_peaks, peak_locs, self.audio_rate)
+        
+        return peaks
+    
+    def calc_headswitch_boundaries(self, peaks):
+        peak_boundaries = []
+
+        # scale the peak width depending on how much the peak stands out from the base signal
+        # use light scaling for headswtich peaks since they are usually very brief
+        padding_samples = round(self.headswitch_interpolation_padding * self.audio_rate)
+        for (peak_start, peak_end, peak_prominence) in peaks:
+            width_padding = peak_prominence * padding_samples
+            # start and end peak at its bases
+            start = floor(peak_start - width_padding)
+            end = ceil(peak_end + width_padding)
+
+            peak_boundaries.append((start, end))
+
+        # merge overlapping or duplicate boundaries
+        peak_boundaries.sort(key=lambda x: x[0])
+        merged = []
+        
+        for boundary in peak_boundaries:
+            if not merged or merged[-1][1] < boundary[0]:
+                merged.append(boundary)
+            else:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], boundary[1]))
+        
+        return merged
 
     def demodblock(self, data):
         filterL = self.afeL.work(data)
@@ -727,4 +820,64 @@ class HiFiDecode:
         preL /= clip
         preR /= clip
 
+        headswitch_min_peak_distance = self.headswitch_hz + self.headswitch_drift_hz
+        headswitch_boundaries = self.calc_headswitch_boundaries([
+            *self.detect_peaks(preL, headswitch_min_peak_distance),
+            *self.detect_peaks(preR, headswitch_min_peak_distance)
+        ])
+
+        preL = self.interpolate_boundaries(preL, headswitch_boundaries)
+        preR = self.interpolate_boundaries(preR, headswitch_boundaries)
+
         return block_count, preL, preR
+    
+    def debug_peak_detection(self, audio, filtered_signal, filtered_signal_peaks, peak_locs, fs):
+        t = np.arange(0, len(audio)) / fs  # 10 ms of signal (plenty of time for the pulse)
+        fft_signal = np.fft.fft(audio)
+        fft_freqs = np.fft.fftfreq(len(t), 1/fs)
+        
+        # Only keep the positive half of the frequency spectrum
+        positive_freqs = fft_freqs[:len(t)//2]
+        positive_fft_signal = np.abs(fft_signal[:len(t)//2])
+        
+        # Perform the FFT on the filtered signal
+        fft_filtered_signal = np.fft.fft(filtered_signal)
+        positive_fft_filtered_signal = np.abs(fft_filtered_signal[:len(t)//2])
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(positive_freqs, positive_fft_signal, label='Original Signal Spectrum')
+        plt.plot(positive_freqs, positive_fft_filtered_signal, label='Filtered Signal Spectrum', color='orange')
+        plt.title("Frequency Spectrum")
+        plt.xlabel('Frequency [Hz]')
+        plt.ylabel('Magnitude')
+        plt.legend()
+
+        plt.figure(figsize=(10, 6))
+        plt.subplot(3, 1, 1)
+        plt.plot(t, audio, label='Original Signal')
+        plt.title("Original Signal")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
+        
+        plt.subplot(3, 1, 2)
+        plt.plot(t, filtered_signal, label='Filtered Signal', color='green')
+        plt.title("Filtered Signal")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
+        
+        plt.subplot(3, 1, 3)
+        plt.plot(t, filtered_signal_peaks, label='Filtered Signal Absolute Value', color='green')
+        plt.plot(t[peak_locs], filtered_signal_peaks[peak_locs], 'rx', label='Detected Points')
+        plt.title("Filtered Signal with head switch points")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
+        
+        plt.tight_layout()
+
+        print(f"Detected pulse peaks at indices: {peak_locs}")
+
+        plt.show()
+        sys.exit(0)
