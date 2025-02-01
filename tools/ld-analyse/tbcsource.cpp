@@ -109,21 +109,35 @@ QString TbcSource::getLastIOError()
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
 void TbcSource::setHighlightDropouts(bool _state)
 {
-    invalidateFrameCache();
+    invalidateImageCache();
     dropoutsOn = _state;
 }
 
 // Method to set the chroma decoder mode (true = on)
 void TbcSource::setChromaDecoder(bool _state)
 {
-    invalidateFrameCache();
+    invalidateImageCache();
     chromaOn = _state;
+}
+
+// Method to set the view mode
+void TbcSource::setViewMode(ViewMode _viewMode)
+{
+    invalidateImageCache();
+    viewMode = _viewMode;
+}
+
+// Method to set stretch field mode (true = on)
+void TbcSource::setStretchField(bool _stretch)
+{
+    invalidateImageCache();
+    stretchFieldOn = _stretch;
 }
 
 // Method to set the field order (true = reversed, false = normal)
 void TbcSource::setFieldOrder(bool _state)
 {
-    invalidateFrameCache();
+    invalidateImageCache();
     reverseFoOn = _state;
 
     if (reverseFoOn) ldDecodeMetaData.setIsFirstFieldFirst(false);
@@ -140,6 +154,36 @@ bool TbcSource::getHighlightDropouts()
 bool TbcSource::getChromaDecoder()
 {
     return chromaOn;
+}
+
+// Method to get the view mode
+TbcSource::ViewMode TbcSource::getViewMode()
+{
+    return viewMode;
+}
+
+// Method to determine if frame view is enabled
+bool TbcSource::getFrameViewEnabled()
+{
+    return viewMode == ViewMode::FRAME_VIEW;
+}
+
+// Method to determine if field view is enabled
+bool TbcSource::getFieldViewEnabled()
+{
+    return viewMode == ViewMode::FIELD_VIEW;
+}
+
+// Method to determine if split view is enabled
+bool TbcSource::getSplitViewEnabled()
+{
+    return viewMode == ViewMode::SPLIT_VIEW;
+}
+
+// Method to get the state of the stretch field mode
+bool TbcSource::getStretchField()
+{
+    return stretchFieldOn;
 }
 
 // Method to get the field order
@@ -159,18 +203,20 @@ void TbcSource::setSourceMode(TbcSource::SourceMode _sourceMode)
 {
     if (sourceMode == ONE_SOURCE) return;
 
-    invalidateFrameCache();
+    invalidateImageCache();
     sourceMode = _sourceMode;
 }
 
-// Load the metadata for a frame
-void TbcSource::loadFrame(qint32 frameNumber)
+// Load the metadata for a field/frame
+void TbcSource::load(qint32 frameNumber, qint32 fieldNumber)
 {
+    loadedFieldNumber = fieldNumber;
+
     // If there's no source, or we've already loaded that frame, nothing to do
     if (!sourceReady || loadedFrameNumber == frameNumber) return;
     loadedFrameNumber = frameNumber;
     inputFieldsValid = false;
-    invalidateFrameCache();
+    invalidateImageCache();
 
     // Get the required field numbers
     firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
@@ -187,7 +233,7 @@ void TbcSource::loadFrame(qint32 frameNumber)
             firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
             secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
         }
-        qDebug() << "TbcSource::loadFrame(): Jumping back one frame due to error";
+        qDebug() << "TbcSource::load(): Jumping back one frame due to error";
     }
 
     // Get the field metadata
@@ -195,50 +241,93 @@ void TbcSource::loadFrame(qint32 frameNumber)
     secondField = ldDecodeMetaData.getField(secondFieldNumber);
 }
 
-// Method to get a QImage from a frame number
-QImage TbcSource::getFrameImage()
+// Method to get a QImage from a field or frame number
+QImage TbcSource::getImage()
 {
-    if (loadedFrameNumber == -1) return QImage();
+    if ((getFieldViewEnabled() ? loadedFieldNumber : loadedFrameNumber) == -1) return QImage();
 
     // Check cached QImage
-    if (frameCacheValid) return frameCache;
+    if (!getFieldViewEnabled() && cacheValid) {
+        return cache;
+    }
 
-    // Get a QImage for the frame
-    QImage frameImage = generateQImage();
+    // Get a QImage for the output
+    auto outputImage = generateQImage();
 
     // Highlight dropouts
     if (dropoutsOn) {
         // Create a painter object
-        QPainter imagePainter;
-        imagePainter.begin(&frameImage);
+        QPainter imagePainter(&outputImage);
 
-        // Draw the drop out data for the first field
-        imagePainter.setPen(Qt::red);
-        for (qint32 dropOutIndex = 0; dropOutIndex < firstField.dropOuts.size(); dropOutIndex++) {
-            qint32 startx = firstField.dropOuts.startx(dropOutIndex);
-            qint32 endx = firstField.dropOuts.endx(dropOutIndex);
-            qint32 fieldLine = firstField.dropOuts.fieldLine(dropOutIndex);
+        // Get the metadata for the video parameters
+        LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
-            imagePainter.drawLine(startx, ((fieldLine - 1) * 2), endx, ((fieldLine - 1) * 2));
-        }
+        // Calculate the frame height
+        const auto frameHeight = (videoParameters.fieldHeight * 2) - 1;
+        const auto fieldN = getFieldViewEnabled() ? 1 : 2;
 
-        // Draw the drop out data for the second field
-        imagePainter.setPen(Qt::blue);
-        for (qint32 dropOutIndex = 0; dropOutIndex < secondField.dropOuts.size(); dropOutIndex++) {
-            qint32 startx = secondField.dropOuts.startx(dropOutIndex);
-            qint32 endx = secondField.dropOuts.endx(dropOutIndex);
-            qint32 fieldLine = secondField.dropOuts.fieldLine(dropOutIndex);
+        // This will run once for field view and twice for frame/split view
+        for (auto i = 0; i < fieldN; i++) {
+            auto currentField = (loadedFieldNumber + i) % 2 ? &firstField : &secondField;
+            imagePainter.setPen((loadedFieldNumber + i) % 2 ? Qt::red : Qt::blue);
 
-            imagePainter.drawLine(startx, ((fieldLine - 1) * 2) + 1, endx, ((fieldLine - 1) * 2) + 1);
+            // Draw the drop out data for the current field
+            for (auto dropOutIndex = 0; dropOutIndex < currentField->dropOuts.size(); dropOutIndex++) {
+                const auto startx = currentField->dropOuts.startx(dropOutIndex);
+                const auto endx = currentField->dropOuts.endx(dropOutIndex);
+                const auto fieldLine = currentField->dropOuts.fieldLine(dropOutIndex);
+
+                switch (getViewMode()) {
+                    case ViewMode::FRAME_VIEW: {
+                        qint32 lineY;
+                        if (i == 0) { // Field 1
+                            lineY = (fieldLine - 1) * 2;
+                        } else { // Field 2
+                            lineY = (fieldLine * 2) - 1;
+                        }
+
+                        imagePainter.drawLine(startx, lineY, endx, lineY);
+                        break;
+                    }
+
+                    case ViewMode::SPLIT_VIEW: {
+                        qint32 lineY;
+                        if (i == 0) { // Field 1
+                            lineY = fieldLine - 1;
+                        } else { // Field 2
+                            lineY = fieldLine + (frameHeight / 2);
+                        }
+
+                        imagePainter.drawLine(startx, lineY, endx, lineY);
+                        break;
+                    }
+
+                    case ViewMode::FIELD_VIEW: {
+                        // Draw line off-center if 1:1, else double lines
+                        if (getStretchField()) {
+                            qint32 lineY = fieldLine - 1;
+
+                            imagePainter.drawLine(startx, lineY * 2, endx, lineY * 2);
+                            imagePainter.drawLine(startx, lineY * 2 + 1, endx, lineY * 2 + 1);
+                        } else {
+                            qint32 lineY = fieldLine - 1 + (frameHeight / 4);
+
+                            imagePainter.drawLine(startx, lineY, endx, lineY);
+                        }
+                        break;
+                    }
+                }
+            }
         }
 
         // End the painter object
         imagePainter.end();
     }
 
-    frameCache = frameImage;
-    frameCacheValid = true;
-    return frameImage;
+    cache = outputImage;
+    cacheValid = true;
+
+    return outputImage;
 }
 
 // Method to get the number of available frames
@@ -360,7 +449,7 @@ const LdDecodeMetaData::VideoParameters &TbcSource::getVideoParameters()
 // Update the VideoParameters for the current source
 void TbcSource::setVideoParameters(const LdDecodeMetaData::VideoParameters &videoParameters)
 {
-    invalidateFrameCache();
+    invalidateImageCache();
 
     // Update the metadata
     ldDecodeMetaData.setVideoParameters(videoParameters);
@@ -369,17 +458,69 @@ void TbcSource::setVideoParameters(const LdDecodeMetaData::VideoParameters &vide
     configureChromaDecoder();
 }
 
-// Get scan line data from the frame
+// Get scan line data from the field/frame
 TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 {
     if (loadedFrameNumber == -1) return ScanLineData();
 
     ScanLineData scanLineData;
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+    auto frameLine = 0;
+    bool isFirstField = true;
+    const auto fieldHeight = videoParameters.fieldHeight;
+
+    switch (getViewMode()) {
+        case ViewMode::FRAME_VIEW: {
+            frameLine = scanLine;
+            isFirstField = (scanLine % 2) == 0;
+            break;
+        }
+
+        case ViewMode::SPLIT_VIEW: {
+            if (scanLine <= fieldHeight) { // Field 1
+                frameLine = (scanLine * 2) - 1;
+                isFirstField = true;
+            } else { // Field 2
+                frameLine = (scanLine - fieldHeight) * 2;
+                isFirstField = false;
+            }
+            break;
+        }
+
+        case ViewMode::FIELD_VIEW: {
+            isFirstField = loadedFieldNumber % 2 != 0;
+
+            // Ensure frameLine accounts for fields and duplicated lines
+            if (getStretchField()) {
+                frameLine = scanLine;
+
+                if (scanLine % 2 == 0 && isFirstField && frameLine > 1) { // Field 1
+                    frameLine--;
+                } else { // Field 2
+                    frameLine++;
+                }
+
+                break;
+            }
+
+            // Return if coords in unused area
+            const auto frameHeight = (videoParameters.fieldHeight * 2) - 1;
+            const auto offset = frameHeight / 4;
+            const auto newHeight = offset + videoParameters.fieldHeight;
+
+            if (scanLine < offset || scanLine > newHeight) {
+                return ScanLineData();
+            }
+
+            frameLine = (scanLine - offset) * 2;
+
+            break;
+        }
+    }
 
     // Set the system and line number
     scanLineData.systemDescription = ldDecodeMetaData.getVideoSystemDescription();
-    scanLineData.lineNumber = LineNumber::fromFrame1(scanLine, videoParameters.system);
+    scanLineData.lineNumber = LineNumber::fromFrame1(frameLine, videoParameters.system);
     const LineNumber &lineNumber = scanLineData.lineNumber;
 
     // Set the video parameters
@@ -392,15 +533,13 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     scanLineData.activeVideoEnd = videoParameters.activeVideoEnd;
 
     // Is this line part of the active region?
-    scanLineData.isActiveLine = (scanLine - 1) >= videoParameters.firstActiveFrameLine
-                                && (scanLine -1) < videoParameters.lastActiveFrameLine;
+    scanLineData.isActiveLine = (frameLine - 1) >= videoParameters.firstActiveFrameLine
+                                && (frameLine -1) < videoParameters.lastActiveFrameLine;
 
     // Get the field video and dropout data
-    const SourceVideo::Data &fieldData = lineNumber.isFirstField() ? inputFields[inputStartIndex].data
-                                                                   : inputFields[inputStartIndex + 1].data;
+    const SourceVideo::Data &fieldData = isFirstField ? inputFields[inputStartIndex].data : inputFields[inputStartIndex + 1].data;
     const ComponentFrame &componentFrame = getComponentFrame();
-    DropOuts &dropouts = lineNumber.isFirstField() ? firstField.dropOuts
-                                                   : secondField.dropOuts;
+    DropOuts &dropouts = isFirstField ? firstField.dropOuts : secondField.dropOuts;
 
     scanLineData.composite.resize(videoParameters.fieldWidth);
     scanLineData.luma.resize(videoParameters.fieldWidth);
@@ -411,7 +550,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
         scanLineData.composite[xPosition] = fieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition];
 
         // Get the decoded luma value for the current pixel (only computed in the active region)
-        scanLineData.luma[xPosition] = static_cast<qint32>(componentFrame.y(scanLine - 1)[xPosition]);
+        scanLineData.luma[xPosition] = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
 
         scanLineData.isDropout[xPosition] = false;
         for (qint32 doCount = 0; doCount < dropouts.size(); doCount++) {
@@ -516,7 +655,7 @@ void TbcSource::setChromaConfiguration(const PalColour::Configuration &_palConfi
                                        const Comb::Configuration &_ntscConfiguration,
                                        const OutputWriter::Configuration &_outputConfiguration)
 {
-    invalidateFrameCache();
+    invalidateImageCache();
 
     palConfiguration = _palConfiguration;
     ntscConfiguration = _ntscConfiguration;
@@ -593,25 +732,27 @@ void TbcSource::resetState()
     // Default frame image options
     chromaOn = false;
     dropoutsOn = false;
+    viewMode = ViewMode::FRAME_VIEW;
     reverseFoOn = false;
     sourceReady = false;
     sourceMode = ONE_SOURCE;
 
     // Cache state
     loadedFrameNumber = -1;
+    loadedFieldNumber = -1;
     inputFieldsValid = false;
     decodedFrameValid = false;
-    frameCacheValid = false;
+    cacheValid = false;
 }
 
-// Mark any cached data for the current frame as invalid
-void TbcSource::invalidateFrameCache()
+// Mark any cached data for the current field/frame as invalid
+void TbcSource::invalidateImageCache()
 {
     // Note this includes the input fields, because the number of fields we
     // load depends on the decoder parameters
     inputFieldsValid = false;
     decodedFrameValid = false;
-    frameCacheValid = false;
+    cacheValid = false;
 }
 
 // Configure the chroma decoder for its settings and the VideoParameters
@@ -708,21 +849,34 @@ QImage TbcSource::generateQImage()
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Calculate the frame height
-    qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+    const qint32 frameHeight = (videoParameters.fieldHeight * 2) - 1;
+    const qint32 frameWidth = videoParameters.fieldWidth;
 
-    // Show debug information
+    // Set the frame image
+    auto outputImage = QImage(frameWidth, frameHeight, QImage::Format_RGB32);
+
+    // Fill the QImage with black
+    outputImage.fill(Qt::black);
+
+    // Create RGB32 data and set h/w + offstes
+    QVector<QRgb> rgbData;
+    qint32 inputHeight, inputWidth, inputOffset, outputOffset;
+
     if (chromaOn) {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << loadedFrameNumber <<
-                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
-    } else {
-        qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << loadedFrameNumber <<
-                    " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
-    }
+        // Show debug information
+        if (getFieldViewEnabled()) {
+            qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field " << loadedFieldNumber <<
+                        " (" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << ")";
+        } else {
+            qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << loadedFrameNumber <<
+                        " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
+        }
 
-    // Create a QImage
-    QImage frameImage = QImage(videoParameters.fieldWidth, frameHeight, QImage::Format_RGB888);
+        inputHeight = videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine;
+        inputWidth = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
+        inputOffset = videoParameters.firstActiveFrameLine;
+        outputOffset = videoParameters.activeVideoStart;
 
-    if (chromaOn) {
         // Chroma decode the current frame
         decodeFrame();
 
@@ -730,26 +884,29 @@ QImage TbcSource::generateQImage()
         OutputFrame outputFrame;
         outputWriter.convert(componentFrames[0], outputFrame);
 
-        // Get a pointer to the RGB data
-        const quint16 *rgbPointer = outputFrame.data();
+        const auto rgb48Ptr = reinterpret_cast<quint16 *>(outputFrame.data());
 
-        // Fill the QImage with black
-        frameImage.fill(Qt::black);
-
-        // Copy the RGB16-16-16 data into the RGB888 QImage
-        const qint32 activeHeight = videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine;
-        const qint32 activeWidth = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
-        for (qint32 y = 0; y < activeHeight; y++) {
-            const quint16 *inputLine = rgbPointer + (y * activeWidth * 3);
-            uchar *outputLine = frameImage.scanLine(y + videoParameters.firstActiveFrameLine)
-                                + (videoParameters.activeVideoStart * 3);
-
-            // Take just the MSB of the RGB input data
-            for (qint32 i = 0; i < activeWidth * 3; i++) {
-                *outputLine++ = static_cast<uchar>((*inputLine++) / 256);
-            }
+        // Create RGB32 from RGB48
+        for (auto i = 0; i < inputHeight * inputWidth * 3; i += 3) {
+            rgbData.push_back(qRgb(static_cast<qint32>(rgb48Ptr[i + 0] / 256),
+                                   static_cast<qint32>(rgb48Ptr[i + 1] / 256),
+                                   static_cast<qint32>(rgb48Ptr[i + 2] / 256)));
         }
     } else {
+        // Show debug information
+        if (getFieldViewEnabled()) {
+            qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from field " << loadedFieldNumber <<
+                        " (" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << ")";
+        } else {
+            qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << loadedFrameNumber <<
+                        " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
+        }
+
+        inputHeight = frameHeight;
+        inputWidth = frameWidth;
+        inputOffset = 0;
+        outputOffset = 0;
+
         // Load SourceFields for the current frame
         loadInputFields();
 
@@ -757,27 +914,65 @@ QImage TbcSource::generateQImage()
         const quint16 *firstFieldPointer = inputFields[inputStartIndex].data.data();
         const quint16 *secondFieldPointer = inputFields[inputStartIndex + 1].data.data();
 
-        // Copy the raw 16-bit grayscale data into the RGB888 QImage
-        for (qint32 y = 0; y < frameHeight; y++) {
-            for (qint32 x = 0; x < videoParameters.fieldWidth; x++) {
-                // Take just the MSB of the input data
-                qint32 pixelOffset = (videoParameters.fieldWidth * (y / 2)) + x;
-                uchar pixelValue;
-                if (y % 2) {
-                    pixelValue = static_cast<uchar>(secondFieldPointer[pixelOffset] / 256);
-                } else {
-                    pixelValue = static_cast<uchar>(firstFieldPointer[pixelOffset] / 256);
+        // Create RGB32 from Gray16
+        for (auto y = 0; y < inputHeight; y++) {
+            for (auto n = 0; n < 2; n++) {
+                for (auto x = 0; x < inputWidth; x++) {
+                    auto *ptr = n % 2 == 0 ? firstFieldPointer : secondFieldPointer;
+                    auto value = static_cast<qint32>(ptr[(y * inputWidth) + x] / 256);
+                    rgbData.push_back(qRgb(value, value, value));
                 }
-
-                qint32 xpp = x * 3;
-                *(frameImage.scanLine(y) + xpp + 0) = static_cast<uchar>(pixelValue); // R
-                *(frameImage.scanLine(y) + xpp + 1) = static_cast<uchar>(pixelValue); // G
-                *(frameImage.scanLine(y) + xpp + 2) = static_cast<uchar>(pixelValue); // B
             }
         }
     }
 
-    return frameImage;
+    // Copy RGB data to QImage
+    switch (getViewMode()) {
+        case ViewMode::FRAME_VIEW: {
+            for (auto y = 0; y < inputHeight; y++) {
+                auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine(y + inputOffset));
+                std::copy_n(&rgbData[y * inputWidth], inputWidth, &outputLine[outputOffset]);
+            }
+            break;
+        }
+
+        case ViewMode::SPLIT_VIEW: {
+            for (auto fieldN = 0; fieldN < 2; fieldN++) {
+                const auto startOffset = (inputOffset / 2) * (fieldN + 1);
+                const auto yOffset = startOffset + (fieldN * inputHeight / 2) + fieldN;
+
+                for (auto y = fieldN, fieldY = 0; y < inputHeight; y += 2, fieldY++) {
+                    auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine(yOffset + fieldY));
+                    std::copy_n(&rgbData[y * inputWidth], inputWidth , &outputLine[outputOffset]);
+                }
+            }
+            break;
+        }
+
+        case ViewMode::FIELD_VIEW: {
+            auto startingY = ((inputHeight - inputOffset) / 4) - 1;
+            auto fieldHeight = startingY + (inputHeight / 2);
+            auto fieldY = loadedFieldNumber % 2 ? 0 : 1;
+
+            if (getStretchField()) {
+                startingY = 0;
+                fieldHeight = inputHeight - 1;
+            }
+
+            for (auto y = startingY; y < inputHeight; y++) {
+                auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine(y + inputOffset));
+                std::copy_n(&rgbData[fieldY * inputWidth], inputWidth, &outputLine[outputOffset]);
+
+                // Only increment fieldY every other iteration, or if field stretch disabled
+                if (!getStretchField() || y % 2) {
+                    fieldY += 2;
+                }
+            }
+            break;
+        }
+    }
+
+    return outputImage;
 }
 
 // Generate the data points for the Drop-out and SNR analysis graphs, and the chapter map.

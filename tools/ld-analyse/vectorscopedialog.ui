@@ -55,6 +55,56 @@
      </property>
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
+       <widget class="QLabel" name="fieldSelectLabel">
+        <property name="text">
+         <string>Field:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="fieldSelectAllRadioButton">
+        <property name="text">
+         <string>All</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">fieldSelectButtonGroup</string>
+        </attribute>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="fieldSelectFirstRadioButton">
+        <property name="text">
+         <string>Field 1</string>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">fieldSelectButtonGroup</string>
+        </attribute>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="fieldSelectSecondRadioButton">
+        <property name="text">
+         <string>Field 2</string>
+        </property>
+        <attribute name="buttonGroup">
+         <string notr="true">fieldSelectButtonGroup</string>
+        </attribute>
+       </widget>
+      </item>
+      <item>
+       <spacer name="verticalSpacer">
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
        <widget class="QCheckBox" name="defocusCheckBox">
         <property name="toolTip">
          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Blur the display to make small points more visible&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -65,7 +115,17 @@
        </widget>
       </item>
       <item>
-       <spacer name="verticalSpacer">
+       <widget class="QCheckBox" name="blendColorCheckBox">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Blend overlapping data points&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="text">
+         <string>Blend colors</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="verticalSpacer_2">
         <property name="orientation">
          <enum>Qt::Vertical</enum>
         </property>
@@ -125,6 +185,7 @@
  <resources/>
  <connections/>
  <buttongroups>
+  <buttongroup name="fieldSelectButtonGroup"/>
   <buttongroup name="graticuleButtonGroup"/>
  </buttongroups>
 </ui>

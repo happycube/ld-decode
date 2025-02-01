@@ -1,4 +1,4 @@
-﻿/************************************************************************
+/************************************************************************
 
     vectorscopedialog.cpp
 
@@ -31,6 +31,7 @@
 
 #include "componentframe.h"
 #include "lddecodemetadata.h"
+#include "tbcsource.h"
 
 namespace Ui {
 class VectorscopeDialog;
@@ -51,12 +52,15 @@ signals:
 
 private slots:
     void on_defocusCheckBox_clicked();
+    void on_blendColorCheckBox_clicked();
     void on_graticuleButtonGroup_buttonClicked(QAbstractButton *button);
+    void on_fieldSelectButtonGroup_buttonClicked(QAbstractButton *button);
 
 private:
     Ui::VectorscopeDialog *ui;
 
-    QImage getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters);
+    QImage getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
+                         const TbcSource::ViewMode &viewMode, const bool firstField = false);
 };
 
 #endif // VECTORSCOPEDIALOG_H

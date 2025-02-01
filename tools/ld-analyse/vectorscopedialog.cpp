@@ -1,4 +1,4 @@
-﻿/************************************************************************
+/************************************************************************
 
     vectorscopedialog.cpp
 
@@ -38,6 +38,9 @@ VectorscopeDialog::VectorscopeDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
+
+    ui->fieldSelectFirstRadioButton->setStyleSheet("color: green;");
+    ui->fieldSelectSecondRadioButton->setStyleSheet("color: red;");
 }
 
 VectorscopeDialog::~VectorscopeDialog()
@@ -49,8 +52,22 @@ void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, con
 {
     qDebug() << "VectorscopeDialog::showTraceImage(): Called";
 
+    // Get field to display
+    auto viewMode = TbcSource::ViewMode::FIELD_VIEW;
+    auto firstField = true;
+
+    if (ui->fieldSelectAllRadioButton->isChecked()) {
+        viewMode = TbcSource::ViewMode::FRAME_VIEW;
+    } else if(ui->fieldSelectFirstRadioButton->isChecked()) {
+        viewMode = TbcSource::ViewMode::FIELD_VIEW;
+        firstField = true;
+    } else if(ui->fieldSelectSecondRadioButton->isChecked()) {
+        viewMode = TbcSource::ViewMode::FIELD_VIEW;
+        firstField = false;
+    }
+
     // Draw the image
-    QImage traceImage = getTraceImage(componentFrame, videoParameters);
+    QImage traceImage = getTraceImage(componentFrame, videoParameters, viewMode, firstField);
 
     // Add the QImage to the QLabel in the dialogue
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -64,7 +81,8 @@ void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, con
     #endif
 }
 
-QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters)
+QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
+                                        const TbcSource::ViewMode &viewMode, const bool firstField)
 {
     // Scope size and scale
     constexpr qint32 SIZE = 1024;
@@ -81,28 +99,54 @@ QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, co
     // Attach the scope image to the painter
     scopePainter.begin(&scopeImage);
 
+    // Blend the field colors
+    if (ui->blendColorCheckBox->isChecked()) {
+        scopePainter.setCompositionMode(QPainter::CompositionMode_Plus);
+    }
+
     // Initialise a cheap, predictable random number generator, for defocussing
     std::minstd_rand randomEngine(12345);
     std::normal_distribution<double> normalDist(0.0, 100.0);
 
-    // For each sample in the active area, plot its U/V values on the chart
-    scopePainter.setPen(Qt::green);
     bool defocus = ui->defocusCheckBox->isChecked();
-    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
-        const auto &uLine = componentFrame.u(lineNumber);
-        const auto &vLine = componentFrame.v(lineNumber);
+    qint32 fieldCount = 2, lineOffset = 0;
+    QColor color = Qt::green;
 
-        for (qint32 xPosition = videoParameters.activeVideoStart; xPosition < videoParameters.activeVideoEnd; xPosition++) {
-            // If defocussing, add a random (but normally-distributed) value to U/V
-            double uOffset = defocus ? normalDist(randomEngine) : 0.0;
-            double vOffset = defocus ? normalDist(randomEngine) : 0.0;
+    if (viewMode == TbcSource::ViewMode::FIELD_VIEW) {
+        fieldCount = 1;
+        lineOffset = firstField ? 0 : 1;
+    }
 
-            // On a real vectorscope, U is positive to the right, and V is positive *upwards*
-            qint32 x = HALF_SIZE + (static_cast<qint32>(uLine[xPosition] + uOffset) / SCALE);
-            qint32 y = HALF_SIZE - (static_cast<qint32>(vLine[xPosition] + vOffset) / SCALE);
-
-            scopePainter.drawPoint(x, y);
+    for (auto f = 0; f < fieldCount; f++) {
+        if ((viewMode == TbcSource::ViewMode::FRAME_VIEW &&
+             ui->blendColorCheckBox->isChecked() && f != 0) ||
+            (viewMode == TbcSource::ViewMode::FIELD_VIEW && !firstField)) {
+                // Set color to red on second field, or if blend enabled in frame mode
+                color = Qt::red;
         }
+
+        scopePainter.setPen(color);
+
+        // For each sample in the active area, plot its U/V values on the chart
+        for (qint32 lineNumber = videoParameters.firstActiveFrameLine + lineOffset; lineNumber < videoParameters.lastActiveFrameLine; lineNumber += 2) {
+            const auto &uLine = componentFrame.u(lineNumber);
+            const auto &vLine = componentFrame.v(lineNumber);
+
+            for (qint32 xPosition = videoParameters.activeVideoStart; xPosition < videoParameters.activeVideoEnd; xPosition++) {
+                // If defocussing, add a random (but normally-distributed) value to U/V
+                double uOffset = defocus ? normalDist(randomEngine) : 0.0;
+                double vOffset = defocus ? normalDist(randomEngine) : 0.0;
+
+                // On a real vectorscope, U is positive to the right, and V is positive *upwards*
+                qint32 x = HALF_SIZE + (static_cast<qint32>(uLine[xPosition] + uOffset) / SCALE);
+                qint32 y = HALF_SIZE - (static_cast<qint32>(vLine[xPosition] + vOffset) / SCALE);
+
+                scopePainter.drawPoint(x, y);
+            }
+        }
+
+        // Increment lineOffset for next pass in frame view
+        lineOffset += 1;
     }
 
     // Overlay the graticule, unless it's disabled
@@ -176,8 +220,18 @@ void VectorscopeDialog::on_defocusCheckBox_clicked()
     emit scopeChanged();
 }
 
+void VectorscopeDialog::on_blendColorCheckBox_clicked()
+{
+    emit scopeChanged();
+}
+
 void VectorscopeDialog::on_graticuleButtonGroup_buttonClicked(QAbstractButton *button)
 {
     (void) button;
+    emit scopeChanged();
+}
+
+void VectorscopeDialog::on_fieldSelectButtonGroup_buttonClicked(QAbstractButton *button)
+{
     emit scopeChanged();
 }
