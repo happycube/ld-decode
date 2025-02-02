@@ -615,9 +615,9 @@ class PostProcessor:
         overlap_start = total_overlap - round(total_overlap / 20)
         overlap_end = overlap_start - total_overlap + len(audio)
         
-        if block_num == 0:
-            # don't trim the start when at the first block
-            overlap_start = 0
+        #if block_num == 0:
+        #    # don't trim the start when at the first block
+        #    overlap_start = 0
         if is_last_block:
             # don't trim the end when at the last block
             overlap_end = len(audio)

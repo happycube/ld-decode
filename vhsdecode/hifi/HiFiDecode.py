@@ -26,7 +26,7 @@ from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, Stack
 import matplotlib.pyplot as plt
 
 # lower increases expander strength and decreases overall gain
-DEFAULT_NR_ENVELOPE_GAIN = 22
+DEFAULT_NR_ENVELOPE_GAIN = 24
 # increase gain to compensate for deemphasis gain loss
 DEFAULT_NR_DEEMPHASIS_GAIN = 1
 # sets logarithmic slope for the 1:2 expander
@@ -386,7 +386,7 @@ class NoiseReduction:
         # deemphasis filter for output audio
         self.NR_deemphasis_T1 = 240e-6
         self.NR_deemphasis_T2 = 56e-6
-        self.NR_deemphasis_db_per_octave = 6.6
+        self.NR_deemphasis_db_per_octave = 6.5
 
         deemph_b, deemph_a = build_shelf_filter(
             "low", 
@@ -474,7 +474,7 @@ class NoiseReduction:
 
         audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise)
 
-        make_up_gain = (DEFAULT_NR_DEEMPHASIS_GAIN + self.spectral_nr_amount * 1.3)
+        make_up_gain = (DEFAULT_NR_DEEMPHASIS_GAIN + self.spectral_nr_amount * 1.1)
         audio_with_gain = np.clip(audio_with_deemphasis * make_up_gain, a_min=-1.0, a_max=1.0)
 
         # applies noise reduction
@@ -529,10 +529,10 @@ class HiFiDecode:
         self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate)
 
         if self.options["resampler_quality"] == "high":
-            self.if_resampler_converter = "linear"
+            self.if_resampler_converter = "sinc_medium"
             self.audio_resampler_converter = "sinc_medium"
         elif self.options["resampler_quality"] == "medium":
-            self.if_resampler_converter = "linear"
+            self.if_resampler_converter = "sinc_fastest"
             self.audio_resampler_converter = "sinc_fastest"
         else: # low
             self.if_resampler_converter = "linear"
@@ -559,13 +559,18 @@ class HiFiDecode:
                 self.afe_params = AFEParamsNTSCHi8()
                 self.standard = AFEParamsNTSCHi8()
 
-        self.headswitch_hz = self.field_rate
-        self.headswitch_drift_hz = self.field_rate * 0.1 # +- 10% drift
+        self.headswitch_passes = 2
+        self.headswitch_signal_rate = self.audio_rate
+        self.headswitch_hz = self.field_rate # frequency used to fit peaks to the expected headswitching interval
+        self.headswitch_drift_hz = self.field_rate * 0.1 # +- 10% drift is normal
         self.headswitch_cutoff_freq = 40000 # filter cutoff frequency for peak detection
-        self.headswitch_interpolation_padding = 30e-6 # maximum in seconds to widen the interpolation based on the strength of the peak
+        # maximum seconds to widen the interpolation based on the strength of the peak
+        #   setting too low prevents interpolation from covering the whole pulse
+        #   setting too high causes audible artifacts where the interpolation occurs
+        self.headswitch_interpolation_padding = 35e-6
 
-        hs_b, hs_a = butter(5, self.headswitch_cutoff_freq / (0.5 * self.audio_rate), btype='highpass')
-        self.headswitchDetectionHighpass = FiltersClass(hs_b, hs_a, self.audio_rate)
+        hs_b, hs_a = butter(5, self.headswitch_cutoff_freq / (0.5 * self.headswitch_signal_rate), btype='highpass')
+        self.headswitchDetectionHighpass = FiltersClass(hs_b, hs_a, self.headswitch_signal_rate)
 
         self.afeL, self.afeR, self.fmL, self.fmR = self.afeParams(self.afe_params)
         self.devL, self.devR = 0, 0
@@ -683,10 +688,10 @@ class HiFiDecode:
         # peaks should align roughly to the frame rate of the video system
         # account for small drifts in the head switching pulse (shows up as the sliding dot on video)
         peak_distance_seconds = 1 / min_distance_hz
-        peak_locs, peak_properties = find_peaks(filtered_signal_peaks, distance=peak_distance_seconds * self.audio_rate, width=1)
+        peak_locs, peak_properties = find_peaks(filtered_signal_peaks, distance=peak_distance_seconds * self.headswitch_signal_rate, width=1)
 
         peaks = zip(peak_properties["left_ips"], peak_properties["right_ips"], peak_properties["prominences"])
-        #self.debug_peak_detection(audio, filtered_signal, filtered_signal_peaks, peak_locs, self.audio_rate)
+        #self.debug_peak_detection(audio, filtered_signal, filtered_signal_peaks, peak_locs, self.headswitch_signal_rate)
         
         return peaks
     
@@ -695,7 +700,7 @@ class HiFiDecode:
 
         # scale the peak width depending on how much the peak stands out from the base signal
         # use light scaling for headswtich peaks since they are usually very brief
-        padding_samples = round(self.headswitch_interpolation_padding * self.audio_rate)
+        padding_samples = round(self.headswitch_interpolation_padding * self.headswitch_signal_rate)
         for (peak_start, peak_end, peak_prominence) in peaks:
             width_padding = peak_prominence * padding_samples
             # start and end peak at its bases
@@ -804,7 +809,11 @@ class HiFiDecode:
     def block_decode(
         self, raw_data: np.array, block_count: int = 0
     ) -> Tuple[int, np.array, np.array]:
-        lo_data = self.lopassRF.work(raw_data)
+        if self.if_resampler_converter == "linear":
+            lo_data = self.lopassRF.work(raw_data)
+        else:
+            lo_data = raw_data
+
         data = samplerate_resample(
             lo_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
@@ -820,14 +829,17 @@ class HiFiDecode:
         preL /= clip
         preR /= clip
 
-        headswitch_min_peak_distance = self.headswitch_hz + self.headswitch_drift_hz
-        headswitch_boundaries = self.calc_headswitch_boundaries([
-            *self.detect_peaks(preL, headswitch_min_peak_distance),
-            *self.detect_peaks(preR, headswitch_min_peak_distance)
-        ])
-
-        preL = self.interpolate_boundaries(preL, headswitch_boundaries)
-        preR = self.interpolate_boundaries(preR, headswitch_boundaries)
+        for _ in range(self.headswitch_passes):
+            headswitch_min_peak_distance = self.headswitch_hz + self.headswitch_drift_hz
+    
+            headswitch_peaks = [
+                *self.detect_peaks(preL, headswitch_min_peak_distance),
+                *self.detect_peaks(preR, headswitch_min_peak_distance)
+            ]
+            interpolation_boundaries = self.calc_headswitch_boundaries(headswitch_peaks)
+    
+            preL = self.interpolate_boundaries(preL, interpolation_boundaries)
+            preR = self.interpolate_boundaries(preR, interpolation_boundaries)
 
         return block_count, preL, preR
     
