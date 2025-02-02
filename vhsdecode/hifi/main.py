@@ -370,7 +370,8 @@ class UnSigned16BitFileReader(io.RawIOBase):
 # The samplerate here could be anything
 def as_soundfile(pathR, sample_rate=48000):
     path = pathR.lower()
-    if ".raw" in path or ".s16" in path:
+    extension = pathR.lower().split(".")[-1]
+    if "raw" == extension or "s16" == extension:
         return sf.SoundFile(
             pathR,
             "r",
@@ -380,7 +381,7 @@ def as_soundfile(pathR, sample_rate=48000):
             subtype="PCM_16",
             endian="LITTLE",
         )
-    elif ".u8" in path or ".r8" in path:
+    elif "u8" == extension or "r8" == extension:
         return sf.SoundFile(
             pathR,
             "r",
@@ -390,7 +391,7 @@ def as_soundfile(pathR, sample_rate=48000):
             subtype="PCM_U8",
             endian="LITTLE",
         )
-    elif ".s8" in path:
+    elif "s8" == extension:
         return sf.SoundFile(
             pathR,
             "r",
@@ -400,7 +401,7 @@ def as_soundfile(pathR, sample_rate=48000):
             subtype="PCM_S8",
             endian="LITTLE",
         )
-    elif ".u16" in path or ".r16" in path:
+    elif "u16" == extension or "r16" == extension:
         return sf.SoundFile(
             UnSigned16BitFileReader(pathR),
             "r",
@@ -410,7 +411,7 @@ def as_soundfile(pathR, sample_rate=48000):
             subtype="PCM_16",
             endian="LITTLE",
         )
-    elif ".flac" in path or ".ldf" in path or ".hifi" in path:
+    elif "flac" == extension or "ldf" == extension or "hifi" == extension:
         return sf.SoundFile(
             pathR,
             "r",

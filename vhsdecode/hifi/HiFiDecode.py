@@ -647,8 +647,11 @@ class HiFiDecode:
 
         return afeL, afeR, fmL, fmR
 
-
-    def interpolate_boundaries(self, audio, boundaries):
+    def interpolate_boundaries(
+        self,
+        audio: np.array,
+        boundaries: list[Tuple[int, int]]
+    ) -> np.array:
         interpolated_signal = np.copy(audio)
 
         # setup interpolator input by copying and removing any samples that are peaks
@@ -695,8 +698,11 @@ class HiFiDecode:
         
         return peaks
     
-    def calc_headswitch_boundaries(self, peaks):
-        peak_boundaries = []
+    def calc_headswitch_boundaries(
+        self,
+        peaks: list[Tuple[int, int, float]]
+    ) -> list[Tuple[int, int]]:
+        peak_boundaries = list()
 
         # scale the peak width depending on how much the peak stands out from the base signal
         # use light scaling for headswtich peaks since they are usually very brief
@@ -711,7 +717,7 @@ class HiFiDecode:
 
         # merge overlapping or duplicate boundaries
         peak_boundaries.sort(key=lambda x: x[0])
-        merged = []
+        merged = list()
         
         for boundary in peak_boundaries:
             if not merged or merged[-1][1] < boundary[0]:
