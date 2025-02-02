@@ -26,11 +26,11 @@ from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, Stack
 import matplotlib.pyplot as plt
 
 # lower increases expander strength and decreases overall gain
-DEFAULT_NR_ENVELOPE_GAIN = 24
+DEFAULT_NR_ENVELOPE_GAIN = 22
 # increase gain to compensate for deemphasis gain loss
-DEFAULT_NR_DEEMPHASIS_GAIN = 1.1
+DEFAULT_NR_DEEMPHASIS_GAIN = 1
 # sets logarithmic slope for the 1:2 expander
-DEFAULT_EXPANDER_LOG_STRENGTH = 1.3
+DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 
@@ -386,7 +386,7 @@ class NoiseReduction:
         # deemphasis filter for output audio
         self.NR_deemphasis_T1 = 240e-6
         self.NR_deemphasis_T2 = 56e-6
-        self.NR_deemphasis_db_per_octave = 6.5
+        self.NR_deemphasis_db_per_octave = 6.6
 
         deemph_b, deemph_a = build_shelf_filter(
             "low", 
@@ -474,7 +474,7 @@ class NoiseReduction:
 
         audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise)
 
-        make_up_gain = (DEFAULT_NR_DEEMPHASIS_GAIN + self.spectral_nr_amount * 1.1)
+        make_up_gain = (DEFAULT_NR_DEEMPHASIS_GAIN + self.spectral_nr_amount * 1.3)
         audio_with_gain = np.clip(audio_with_deemphasis * make_up_gain, a_min=-1.0, a_max=1.0)
 
         # applies noise reduction
