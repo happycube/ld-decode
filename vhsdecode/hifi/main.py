@@ -604,7 +604,6 @@ class PostProcessor:
     @staticmethod
     def discard_overlap(
         audio: np.array,
-        block_num: int,
         is_last_block: bool,
         params: dict
     ) -> np.array:
@@ -616,9 +615,6 @@ class PostProcessor:
         overlap_start = total_overlap - round(total_overlap / 20)
         overlap_end = overlap_start - total_overlap + len(audio)
         
-        #if block_num == 0:
-        #    # don't trim the start when at the first block
-        #    overlap_start = 0
         if is_last_block:
             # don't trim the end when at the last block
             overlap_end = len(audio)
@@ -654,46 +650,42 @@ class PostProcessor:
         l_de_noise: np.array,
         r_pre: np.array,
         r_de_noise: np.array,
-        block_num: int,
         is_last_block: bool
     ) -> np.array:
         l = PostProcessor.apply_noise_reduction(l_pre, l_de_noise, self.l_params)
         r = PostProcessor.apply_noise_reduction(r_pre, r_de_noise, self.r_params)
-        l = PostProcessor.discard_overlap(l, block_num, is_last_block, self.l_params)
-        r = PostProcessor.discard_overlap(r, block_num, is_last_block, self.r_params)
+        l = PostProcessor.discard_overlap(l, is_last_block, self.l_params)
+        r = PostProcessor.discard_overlap(r, is_last_block, self.r_params)
 
         return PostProcessor.merge_to_stereo(l, r)
 
     def _pop_from_executor(self):
-        l_future, r_future, block_num = self.executor_queue.pop(0)
+        l_future, r_future = self.executor_queue.pop(0)
         l_pre, l_de_noise = l_future.result()
         r_pre, r_de_noise = r_future.result()
 
-        return l_pre, l_de_noise, r_pre, r_de_noise, block_num
+        return l_pre, l_de_noise, r_pre, r_de_noise
 
     def submit(
         self,
         l: np.array,
         r: np.array,
-        block_num: int,
     ): 
         l, r = PostProcessor.mix_for_mode_stereo(l, r, self.l_params)
 
         self.executor_queue.append((
             self.executor.submit(PostProcessor.work, l, self.l_params),
             self.executor.submit(PostProcessor.work, r, self.r_params),
-            block_num,
         ))
            
     def read(self):
         while len(self.executor_queue) > 0:
             if self.executor_queue[0][0].done() and self.executor_queue[0][1].done():
-                l_pre, l_de_noise, r_pre, r_de_noise, block_num = self._pop_from_executor()
+                l_pre, l_de_noise, r_pre, r_de_noise = self._pop_from_executor()
 
                 yield self.apply_expander_mix_to_stereo(
                     l_pre, l_de_noise,
                     r_pre, r_de_noise,
-                    block_num,
                     False
                 )
             else:
@@ -701,12 +693,11 @@ class PostProcessor:
 
     def flush(self):
         while len(self.executor_queue) > 0:
-            l_pre, l_de_noise, r_pre, r_de_noise, block_num = self._pop_from_executor()
+            l_pre, l_de_noise, r_pre, r_de_noise = self._pop_from_executor()
 
             yield self.apply_expander_mix_to_stereo(
                 l_pre, l_de_noise,
                 r_pre, r_de_noise,
-                block_num,
                 len(self.executor_queue) == 0
             )
 
@@ -870,7 +861,7 @@ def decode_parallel(
                             future = futures_queue.pop(0)
                             blocknum, l, r = future.result()
         
-                            post_processor.submit(l, r, blocknum)
+                            post_processor.submit(l, r)
                             for stereo in post_processor.read():
                                 log_decode(start_time, f.tell(), decode_options)
         
@@ -912,7 +903,7 @@ def decode_parallel(
                 while len(futures_queue) > 0:
                     future = futures_queue.pop(0)
                     blocknum, l, r = future.result()
-                    post_processor.submit(l, r, blocknum)
+                    post_processor.submit(l, r)
     
                 for stereo in post_processor.flush():
                     try:
