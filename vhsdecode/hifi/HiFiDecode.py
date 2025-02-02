@@ -666,7 +666,7 @@ class HiFiDecode:
         interpolator_in = interpolator_in[np.logical_not(np.isnan(interpolator_in))]
 
         # interpolate the gap where the peak was removed
-        interpolator = interp1d(time, interpolator_in, kind="linear", copy=False, assume_sorted=True)
+        interpolator = interp1d(time, interpolator_in, kind="linear", copy=False, assume_sorted=True, fill_value="extrapolate")
 
         for (start, end) in boundaries:
             # sample and hold inteerpolation if boundaries are beyond this chunk
