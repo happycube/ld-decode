@@ -3208,10 +3208,17 @@ class FieldNTSC(Field):
         adjs = {}
 
         for l in range(0, 266):
-            rising, phase_adjust = self.compute_line_bursts(linelocs, l)
+            prev_phaseadjust = self.phase_adjust_median
+
+            if prev_phaseadjust == 0 and self.prevfield:
+                prev_phaseadjust = self.prevfield.phase_adjust_median
+
+            rising, phase_adjust = self.compute_line_bursts(linelocs, l, prev_phaseadjust)
             if rising is None:
                 continue
 
+            # For adjustments, 1/2 the phase_adjust value is used for better results
+            # (todo: recheck)
             adjs[l] = phase_adjust / 2
 
             even_line = not (l % 2)
@@ -3219,6 +3226,9 @@ class FieldNTSC(Field):
 
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
         field14 = rising_sum > (len(adjs.keys()) // 4)
+
+        # store the full phase adjustment value here so things line up next time
+        self.phase_adjust_median = np.median([adjs[a] for a in adjs]) * 2
 
         return field14, adjs
 
@@ -3301,6 +3311,8 @@ class FieldNTSC(Field):
     def __init__(self, *args, **kwargs):
         super(FieldNTSC, self).__init__(*args, **kwargs)
 
+        self.phase_adjust_median = 0
+
     @profile
     def process(self):
         super(FieldNTSC, self).process()
@@ -3317,8 +3329,7 @@ class FieldNTSC(Field):
         ]
 
         self.linelocs3 = self.refine_linelocs_burst(self.linelocs2)
-        self.linelocs4 = self.refine_linelocs_burst(self.linelocs3)
-        self.linelocs4 = self.fix_badlines(self.linelocs4, self.linelocs2)
+        self.linelocs4 = self.fix_badlines(self.linelocs3, self.linelocs2)
 
         self.burstmedian = self.calc_burstmedian()
 
