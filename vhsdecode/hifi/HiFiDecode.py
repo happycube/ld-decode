@@ -28,9 +28,9 @@ import matplotlib.pyplot as plt
 # lower increases expander strength and decreases overall gain
 DEFAULT_NR_ENVELOPE_GAIN = 24
 # increase gain to compensate for deemphasis gain loss
-DEFAULT_NR_DEEMPHASIS_GAIN = 1
+DEFAULT_NR_DEEMPHASIS_GAIN = 1.1
 # sets logarithmic slope for the 1:2 expander
-DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
+DEFAULT_EXPANDER_LOG_STRENGTH = 1.3
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 

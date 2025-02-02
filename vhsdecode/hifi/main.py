@@ -764,7 +764,7 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                         if decode_options["auto_fine_tune"]:
                             log_bias(decoder)
         
-                        post_processor.submit(l, r, current_block)
+                        post_processor.submit(l, r)
 
                         current_block += 1
                         for stereo in post_processor.read():
