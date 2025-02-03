@@ -10,7 +10,7 @@ import sys
 
 import numpy as np
 from numba import njit
-from scipy.signal import iirpeak, iirnotch, butter, spectrogram, find_peaks
+from scipy.signal import filtfilt, iirpeak, iirnotch, butter, spectrogram, find_peaks
 from scipy.interpolate import interp1d
 from scipy.signal.signaltools import hilbert
 
@@ -334,13 +334,11 @@ class SpectralNoiseReduction():
 class NoiseReduction:
     def __init__(
         self,
-        notch_freq: float,
         side_gain: float,
         audio_rate: int = 192000,
         spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT,
     ):
         self.audio_rate = audio_rate
-        self.hfreq = notch_freq
 
         # noise reduction envelope tracking constants (this ones might need tweaking)
         self.NR_envelope_gain = side_gain
@@ -417,14 +415,6 @@ class NoiseReduction:
         self.envelope_release_Lowpass = FiltersClass(
             loenvr_iirb, loenvr_iira, self.audio_rate
         )
-
-    @staticmethod
-    def cancelDC(c, dc):
-        return c - dc
-
-    @staticmethod
-    def cancelDCpair(L, R, dcL, dcR):
-        return NoiseReduction.cancelDC(L, dcL), NoiseReduction.cancelDC(R, dcR)
 
     @staticmethod
     def audio_notch(samp_rate: int, freq: float, audio):
@@ -570,9 +560,7 @@ class HiFiDecode:
         # time range to look for neighboring noise when a head switch event is detected
         # this helps to determine the correct width of the interpolation
         self.headswitch_interpolation_neighbor_range = 200e-6
-
         hs_b, hs_a = butter(3, self.headswitch_cutoff_freq / (0.5 * self.headswitch_signal_rate), btype='highpass')
-        self.headswitchDetectionHighpass = FiltersClass(hs_b, hs_a, self.headswitch_signal_rate)
 
         self.afeL, self.afeR, self.fmL, self.fmR = self.afeParams(self.afe_params)
         self.devL, self.devR = 0, 0
@@ -586,6 +574,21 @@ class HiFiDecode:
                 print(
                     "ZMQ library is not available, please install the zmq python library to use this feature!"
                 )
+
+        self.audio_process_params = {
+            "audioRes_numerator": self.audioRes_numerator,
+            "audioRes_denominator": self.audioRes_denominator,
+            "audio_resampler_converter": self.audio_resampler_converter,
+            "headswitch_passes": self.headswitch_passes,
+            "headswitch_signal_rate": self.headswitch_signal_rate,
+            "headswitch_hz": self.headswitch_hz,
+            "headswitch_drift_hz": self.headswitch_drift_hz,
+            "headswitch_cutoff_freq": self.headswitch_cutoff_freq,
+            "headswitch_interpolation_padding": self.headswitch_interpolation_padding,
+            "headswitch_interpolation_neighbor_range": self.headswitch_interpolation_neighbor_range,
+            "hs_b": hs_b,
+            "hs_a": hs_a
+        }
 
     def getResamplingRatios(self):
         samplerate2ifrate = self.if_rate / self.sample_rate
@@ -661,8 +664,8 @@ class HiFiDecode:
     
         return smoothed_data
 
-    def interpolate_boundaries(
-        self,
+    @staticmethod
+    def headswitch_interpolate_boundaries(
         audio: np.array,
         boundaries: list[Tuple[int, int]]
     ) -> np.array:
@@ -706,9 +709,13 @@ class HiFiDecode:
 
         return signal_mean, signal_std_dev
 
-    def detect_peaks(self, audio):
+    @staticmethod
+    def headswitch_detect_peaks(
+        audio: np.array,
+        audio_process_params: dict,
+    ) -> Tuple[list[Tuple[float, float, float, float]], np.array, np.array]:
         # remove audible frequencies to avoid detecting them as peaks
-        filtered_signal = self.headswitchDetectionHighpass.filtfilt(audio)
+        filtered_signal = filtfilt(audio_process_params["hs_b"], audio_process_params["hs_a"], audio)
         # remove filter impulse response
         filtered_signal[0:20] = 0
         filtered_signal[-20:] = 0
@@ -717,10 +724,10 @@ class HiFiDecode:
         # detect the peaks that align with the headswitching speed
         # peaks should align roughly to the frame rate of the video system
         # account for small drifts in the head switching pulse (shows up as the sliding dot on video)
-        peak_distance_seconds = 1 / (self.headswitch_hz + self.headswitch_drift_hz)
+        peak_distance_seconds = 1 / (audio_process_params["headswitch_hz"] + audio_process_params["headswitch_drift_hz"])
         peak_centers, peak_center_props = find_peaks(
             filtered_signal_abs, 
-            distance=peak_distance_seconds * self.headswitch_signal_rate,
+            distance=peak_distance_seconds * audio_process_params["headswitch_signal_rate"],
             width=1
         )
 
@@ -736,7 +743,7 @@ class HiFiDecode:
 
         # a neighboring peak theshold based on stadard deviation
         neighbor_threshold = filtered_signal_mean + filtered_signal_std_dev
-        neighbor_search_width = round(self.headswitch_interpolation_neighbor_range * self.headswitch_signal_rate)
+        neighbor_search_width = round(audio_process_params["headswitch_interpolation_neighbor_range"] * audio_process_params["headswitch_signal_rate"])
 
         # search around the center peak for any neighboring noise that is above the threshold
         for (peak_center, peak_start, peak_end, peak_prominence) in peaks.copy():
@@ -762,15 +769,16 @@ class HiFiDecode:
 
         return peaks, filtered_signal, filtered_signal_abs
     
-    def calc_headswitch_boundaries(
-        self,
-        peaks: list[tuple[int, int, int, float]]
-    ) -> list[tuple[int, int]]:
+    @staticmethod
+    def headswitch_calc_boundaries(
+        peaks: list[tuple[int, int, int, float]],
+        audio_process_params: dict
+    ) -> list[Tuple[int, int]]:
         peak_boundaries = list()
 
         # scale the peak width depending on how much the peak stands out from the base signal
         # use light scaling for headswtich peaks since they are usually very brief
-        padding_samples = round(self.headswitch_interpolation_padding * self.headswitch_signal_rate)
+        padding_samples = round(audio_process_params["headswitch_interpolation_padding"] * audio_process_params["headswitch_signal_rate"])
         for (peak_center, peak_start, peak_end, peak_prominence) in peaks:
             width_padding = peak_prominence * padding_samples
             # start and end peak at its bases
@@ -782,16 +790,16 @@ class HiFiDecode:
         # merge overlapping or duplicate boundaries
         peak_boundaries.sort(key=lambda x: x[0])
         merged = list()
-        
+
         for boundary in peak_boundaries:
             if not merged or merged[-1][1] < boundary[0]:
                 merged.append(boundary)
             else:
                 merged[-1] = (merged[-1][0], max(merged[-1][1], boundary[1]))
-        
+
         return merged
 
-    def demodblock(self, data):
+    def demodblock(self, data: np.array) -> Tuple[np.array, np.array]:
         filterL = self.afeL.work(data)
         filterR = self.afeR.work(data)
 
@@ -809,13 +817,7 @@ class HiFiDecode:
             preAudioResampleL = ifL
             preAudioResampleR = ifR
 
-        preL = samplerate_resample(preAudioResampleL, self.audioRes_numerator, self.audioRes_denominator, converter_type=self.audio_resampler_converter)
-        preR = samplerate_resample(preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator, converter_type=self.audio_resampler_converter)
-
-        dcL = np.mean(preL)
-        dcR = np.mean(preR)
-
-        return dcL, dcR, preL, preR
+        return preAudioResampleL, preAudioResampleR
 
     @property
     def blockSize(self) -> int:
@@ -845,15 +847,6 @@ class HiFiDecode:
     def notchFreq(self) -> float:
         return self.standard.Hfreq
 
-    @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
-    def cancelDC(c: np.array, dc: np.array):
-        return c - dc
-
-    @staticmethod
-    def cancelDCpair(L, R, dcL, dcR):
-        return HiFiDecode.cancelDC(L, dcL), HiFiDecode.cancelDC(R, dcR)
-
     def guessBiases(self, blocks):
         meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
             window_average=len(blocks)
@@ -863,7 +856,7 @@ class HiFiDecode:
             data = samplerate_resample(
                 lo_data, self.ifresample_numerator, self.ifresample_denominator
             )
-            dcL, dcR, preL, preR = self.demodblock(data)
+            preL, preR = self.demodblock(data)
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
 
@@ -875,28 +868,39 @@ class HiFiDecode:
     @staticmethod
     def block_decode_worker(decoder, block, current_block):
         return decoder.block_decode(block, current_block)
-    
-    def remove_headswitching_noise(self, preL: np.array, preR: np.array) -> Tuple[np.array, np.array]:
-        for _ in range(self.headswitch_passes):
-            peaksL, filtered_signal_L, filtered_signal_abs_L = self.detect_peaks(preL)
-            peaksR, filtered_signal_R, filtered_signal_abs_R = self.detect_peaks(preR)
-    
-            interpolation_boundaries_L = self.calc_headswitch_boundaries(peaksL)
-            interpolation_boundaries_R = self.calc_headswitch_boundaries(peaksR)
-    
-            preL_interpolated = self.interpolate_boundaries(preL, interpolation_boundaries_L)
-            preR_interpolated = self.interpolate_boundaries(preR, interpolation_boundaries_R)
 
-            ## uncomment to debug head switching pulse detection
-            #self.debug_peak_interpolation(preL, filtered_signal_L, filtered_signal_abs_L, peaksL, interpolation_boundaries_L, preL_interpolated)
-            #self.debug_peak_interpolation(preR, filtered_signal_R, filtered_signal_abs_R, peaksR, interpolation_boundaries_R, preR_interpolated)
-            #plt.show()
-            #sys.exit(0)
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def cancelDC(audio: np.array) -> Tuple[np.array, float]:
+        dc = np.mean(audio)
+        return audio - dc, dc
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def clip(audio: np.array, clip: float) -> np.array:
+        return audio / clip
+    
+    @staticmethod
+    def headswitch_remove_noise(audio: np.array, audio_process_params: dict) -> np.array:
+        for _ in range(audio_process_params["headswitch_passes"]):
+            peaks, filtered_signal, filtered_signal_abs = HiFiDecode.headswitch_detect_peaks(audio, audio_process_params)
+            interpolation_boundaries = HiFiDecode.headswitch_calc_boundaries(peaks, audio_process_params)
+            audio_interpolated = HiFiDecode.headswitch_interpolate_boundaries(audio, interpolation_boundaries)
 
-            preL = preL_interpolated
-            preR = preR_interpolated
+            # uncomment to debug head switching pulse detection
+            # HiFiDecode.debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, audio_interpolated)
+            # plt.show()
+            # sys.exit(0)
+        return audio_interpolated
 
-        return preL, preR
+    @staticmethod
+    def audio_process(audio: np.array, audio_process_params: dict) -> Tuple[np.array, float]:
+        audio = samplerate_resample(audio, audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
+        audio, dc = HiFiDecode.cancelDC(audio)
+        audio = HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
+        audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
+
+        return audio, dc
 
     def block_decode(
         self, raw_data: np.array, block_count: int = 0
@@ -909,24 +913,27 @@ class HiFiDecode:
         data = samplerate_resample(
             lo_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
-        dcL, dcR, preL, preR = self.demodblock(data)
+        preL, preR = self.demodblock(data)
+        
+        # with ProcessPoolExecutor(2) as stereo_executor:
+        #     audioL_future = stereo_executor.submit(HiFiDecode.audio_process, preL, self.audio_process_params)
+        #     audioR_future = stereo_executor.submit(HiFiDecode.audio_process, preR, self.audio_process_params)
+        #     preL, dcL = audioL_future.result()
+        #     preR, dcR = audioR_future.result()
+
+        preL, dcL = HiFiDecode.audio_process(preL, self.audio_process_params)
+        preR, dcR = HiFiDecode.audio_process(preR, self.audio_process_params)
 
         if self.options["auto_fine_tune"]:
             self.devL, self.devR = self.carrierOffsets(self.afe_params, dcL, dcR)
             self.updateStandard(self.devL, self.devR)
             self.updateDemod()
 
-        clip = AFEParamsPALVHS().VCODeviation
-        preL, preR = HiFiDecode.cancelDCpair(preL, preR, dcL, dcR)
-        preL /= clip
-        preR /= clip
-
-        preL, preR = self.remove_headswitching_noise(preL, preR)
-
         return block_count, preL, preR
     
-    def debug_peak_interpolation(self, audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, preL_interpolated):
-        fs = self.headswitch_signal_rate
+    @staticmethod
+    def debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, interpolated, headswitch_signal_rate):
+        fs = headswitch_signal_rate
         t = np.arange(0, len(audio)) / fs
         fft_signal = np.fft.fft(audio)
         fft_freqs = np.fft.fftfreq(len(t), 1/fs)
@@ -978,7 +985,7 @@ class HiFiDecode:
         plt.legend()
 
         plt.subplot(4, 1, 3)
-        plt.plot(t, preL_interpolated, label='Interpolated audio', color='green')
+        plt.plot(t, interpolated, label='Interpolated audio', color='green')
         plt.title("Interpolated Audio")
         plt.xlabel('Time [s]')
         plt.ylabel('Amplitude')
