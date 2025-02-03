@@ -8,6 +8,7 @@ import os
 import sys
 from typing import List, Optional
 import signal
+from numba import njit
 
 import numpy as np
 import soundfile as sf
@@ -499,12 +500,10 @@ class PostProcessor:
         )
 
         self.noise_reduction_l = NoiseReduction(
-            decoder.notchFreq,
             decode_options["nr_side_gain"],
             audio_rate=decode_options["audio_rate"]
         )
         self.noise_reduction_r = NoiseReduction(
-            decoder.notchFreq,
             decode_options["nr_side_gain"],
             audio_rate=decode_options["audio_rate"]
         )
@@ -540,7 +539,7 @@ class PostProcessor:
     def mix_for_mode_stereo(
         l_raw: np.array,
         r_raw: np.array,
-        params
+        params: dict
     ) -> tuple[np.array, np.array]:
         if params["decode_mode"] == "mpx":
             l = np.multiply(np.add(l_raw, r_raw), 0.5)
@@ -563,10 +562,10 @@ class PostProcessor:
     @staticmethod
     def adjust_gain(
         audio: np.array,
-        params: dict
-    ) -> tuple[np.array, np.array]:
-        if params["gain"] != 1:
-            return np.multiply(audio, params["gain"])
+        gain: float
+    ) -> np.array:
+        if gain != 1:
+            return np.multiply(audio, gain)
         else:
             return audio
     
@@ -602,16 +601,20 @@ class PostProcessor:
             return de_noise
 
     @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
     def discard_overlap(
         audio: np.array,
         is_last_block: bool,
-        params: dict
+        resample_audio_rate: int,
+        decoder_audio_rate: int,
+        decoder_audio_block_size: int,
+        decoder_audio_discard_size: int
     ) -> np.array:
         # discard overlapped audio, and account for samples lost during sinc resampling
-        sample_rate_ratio = params["resample_audio_rate"] / params["decoder_audio_rate"]
-        audio_block_size = params["decoder_audio_block_size"] * sample_rate_ratio
+        sample_rate_ratio = resample_audio_rate / decoder_audio_rate
+        audio_block_size = decoder_audio_block_size * sample_rate_ratio
     
-        total_overlap = round(len(audio) - audio_block_size + params["decoder_audio_discard_size"])
+        total_overlap = round(len(audio) - audio_block_size + decoder_audio_discard_size)
         overlap_start = total_overlap - round(total_overlap / 20)
         overlap_end = overlap_start - total_overlap + len(audio)
         
@@ -622,6 +625,7 @@ class PostProcessor:
         return audio[overlap_start:overlap_end]
 
     @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
     def merge_to_stereo(audioL: np.array, audioR: np.array) -> np.array:
         return list(
             map(
@@ -639,7 +643,7 @@ class PostProcessor:
         params: dict,
     ) -> tuple[np.array, np.array]:
         audio = PostProcessor.resample_to_audio_rate(audio, params)
-        audio = PostProcessor.adjust_gain(audio, params)
+        audio = PostProcessor.adjust_gain(audio, params["gain"])
         spectral_nr = PostProcessor.apply_spectral_noise_reduction(audio, params)
 
         return audio, spectral_nr
@@ -654,8 +658,8 @@ class PostProcessor:
     ) -> np.array:
         l = PostProcessor.apply_noise_reduction(l_pre, l_de_noise, self.l_params)
         r = PostProcessor.apply_noise_reduction(r_pre, r_de_noise, self.r_params)
-        l = PostProcessor.discard_overlap(l, is_last_block, self.l_params)
-        r = PostProcessor.discard_overlap(r, is_last_block, self.r_params)
+        l = PostProcessor.discard_overlap(l, is_last_block, self.l_params["resample_audio_rate"], self.l_params["decoder_audio_rate"], self.l_params["decoder_audio_block_size"], self.l_params["decoder_audio_discard_size"])
+        r = PostProcessor.discard_overlap(r, is_last_block, self.r_params["resample_audio_rate"], self.l_params["decoder_audio_rate"], self.l_params["decoder_audio_block_size"], self.l_params["decoder_audio_discard_size"])
 
         return PostProcessor.merge_to_stereo(l, r)
 
