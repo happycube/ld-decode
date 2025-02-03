@@ -2,7 +2,6 @@
 # It could also do Beta HiFi, CED, LD and other stereo AFM variants,
 # It has an interpretation of the noise reduction method described on IEC60774-2/1999
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from fractions import Fraction
 from math import log, pi, sqrt, ceil, floor
@@ -563,13 +562,16 @@ class HiFiDecode:
         self.headswitch_signal_rate = self.audio_rate
         self.headswitch_hz = self.field_rate # frequency used to fit peaks to the expected headswitching interval
         self.headswitch_drift_hz = self.field_rate * 0.1 # +- 10% drift is normal
-        self.headswitch_cutoff_freq = 40000 # filter cutoff frequency for peak detection
+        self.headswitch_cutoff_freq = 25000 # filter cutoff frequency for peak detection
         # maximum seconds to widen the interpolation based on the strength of the peak
         #   setting too low prevents interpolation from covering the whole pulse
         #   setting too high causes audible artifacts where the interpolation occurs
         self.headswitch_interpolation_padding = 35e-6
+        # time range to look for neighboring noise when a head switch event is detected
+        # this helps to determine the correct width of the interpolation
+        self.headswitch_interpolation_neighbor_range = 200e-6
 
-        hs_b, hs_a = butter(5, self.headswitch_cutoff_freq / (0.5 * self.headswitch_signal_rate), btype='highpass')
+        hs_b, hs_a = butter(3, self.headswitch_cutoff_freq / (0.5 * self.headswitch_signal_rate), btype='highpass')
         self.headswitchDetectionHighpass = FiltersClass(hs_b, hs_a, self.headswitch_signal_rate)
 
         self.afeL, self.afeR, self.fmL, self.fmR = self.afeParams(self.afe_params)
@@ -646,6 +648,18 @@ class HiFiDecode:
             fmR = FMdemod(self.if_rate, standard.RCarrierRef, 0)
 
         return afeL, afeR, fmL, fmR
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def smooth(data: np.array, half_window: int) -> np.array:
+        smoothed_data = data.copy()
+    
+        for i in range(len(data)):
+            start = max(0, i - half_window)
+            end = min(len(data), i + half_window + 1)
+            smoothed_data[i] = np.mean(data[start:end])  # Apply moving average
+    
+        return smoothed_data
 
     def interpolate_boundaries(
         self,
@@ -669,45 +683,95 @@ class HiFiDecode:
         interpolator = interp1d(time, interpolator_in, kind="linear", copy=False, assume_sorted=True, fill_value="extrapolate")
 
         for (start, end) in boundaries:
+            smoothing_size = 1 + end - start
+
             # sample and hold inteerpolation if boundaries are beyond this chunk
             if start < 0:
                 interpolated_signal[0:end] = interpolated_signal[end]
             elif end > len(audio):
                 interpolated_signal[start:len(audio)] = interpolated_signal[start]
             else:
-                for i in range(start, end):
-                    interpolated_signal[i] = interpolator(i)
+                for i in range(start, end): interpolated_signal[i] = interpolator(i)
+                # smooth linear interpolation
+                interpolated_signal[start-smoothing_size:end+smoothing_size] = HiFiDecode.smooth(interpolated_signal[start-smoothing_size:end+smoothing_size], ceil(smoothing_size / 4))
     
         return interpolated_signal
 
-    def detect_peaks(self, audio, min_distance_hz):
+
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def mean_stddev(signal: np.array) -> tuple[float, float]:
+        signal_mean = np.mean(signal)
+        signal_std_dev = sqrt(np.mean(np.abs(signal - signal_mean)**2))
+
+        return signal_mean, signal_std_dev
+
+    def detect_peaks(self, audio):
         # remove audible frequencies to avoid detecting them as peaks
         filtered_signal = self.headswitchDetectionHighpass.filtfilt(audio)
         # remove filter impulse response
         filtered_signal[0:20] = 0
         filtered_signal[-20:] = 0
-        filtered_signal_peaks = abs(filtered_signal)
-        
+        filtered_signal_abs = abs(filtered_signal)
+
+        # detect the peaks that align with the headswitching speed
         # peaks should align roughly to the frame rate of the video system
         # account for small drifts in the head switching pulse (shows up as the sliding dot on video)
-        peak_distance_seconds = 1 / min_distance_hz
-        peak_locs, peak_properties = find_peaks(filtered_signal_peaks, distance=peak_distance_seconds * self.headswitch_signal_rate, width=1)
+        peak_distance_seconds = 1 / (self.headswitch_hz + self.headswitch_drift_hz)
+        peak_centers, peak_center_props = find_peaks(
+            filtered_signal_abs, 
+            distance=peak_distance_seconds * self.headswitch_signal_rate,
+            width=1
+        )
 
-        peaks = zip(peak_properties["left_ips"], peak_properties["right_ips"], peak_properties["prominences"])
-        #self.debug_peak_detection(audio, filtered_signal, filtered_signal_peaks, peak_locs, self.headswitch_signal_rate)
-        
-        return peaks
+        peaks = list(zip(
+            peak_centers, 
+            peak_center_props["left_ips"], 
+            peak_center_props["right_ips"], 
+            peak_center_props["prominences"]
+        ))
+
+        # using the head switching points, detect neighboring peaks around the headswitching pulse area
+        filtered_signal_mean, filtered_signal_std_dev = HiFiDecode.mean_stddev(filtered_signal)
+
+        # a neighboring peak theshold based on stadard deviation
+        neighbor_threshold = filtered_signal_mean + filtered_signal_std_dev
+        neighbor_search_width = round(self.headswitch_interpolation_neighbor_range * self.headswitch_signal_rate)
+
+        # search around the center peak for any neighboring noise that is above the threshold
+        for (peak_center, peak_start, peak_end, peak_prominence) in peaks.copy():
+            start_neighbor = max(0, floor(peak_start - neighbor_search_width))
+            end_neighbor = min(ceil(peak_end + neighbor_search_width), len(filtered_signal_abs))
+
+            # search for neighboring peaks and add to the list
+            neighbor_peak_centers, neighbor_peak_props = find_peaks(
+                filtered_signal_abs[start_neighbor:end_neighbor],
+                threshold = neighbor_threshold,
+                prominence=0.25,
+                distance=1,
+                width=1
+            )
+
+            for peak_log_neighbor_idx in range(len(neighbor_peak_centers)):
+                peaks.append((
+                    neighbor_peak_centers[peak_log_neighbor_idx] + start_neighbor,
+                    neighbor_peak_props["left_ips"][peak_log_neighbor_idx] + start_neighbor,
+                    neighbor_peak_props["right_ips"][peak_log_neighbor_idx] + start_neighbor,
+                    neighbor_peak_props["prominences"][peak_log_neighbor_idx]
+                ))
+
+        return peaks, filtered_signal, filtered_signal_abs
     
     def calc_headswitch_boundaries(
         self,
-        peaks: list[Tuple[int, int, float]]
-    ) -> list[Tuple[int, int]]:
+        peaks: list[tuple[int, int, int, float]]
+    ) -> list[tuple[int, int]]:
         peak_boundaries = list()
 
         # scale the peak width depending on how much the peak stands out from the base signal
         # use light scaling for headswtich peaks since they are usually very brief
         padding_samples = round(self.headswitch_interpolation_padding * self.headswitch_signal_rate)
-        for (peak_start, peak_end, peak_prominence) in peaks:
+        for (peak_center, peak_start, peak_end, peak_prominence) in peaks:
             width_padding = peak_prominence * padding_samples
             # start and end peak at its bases
             start = floor(peak_start - width_padding)
@@ -811,6 +875,28 @@ class HiFiDecode:
     @staticmethod
     def block_decode_worker(decoder, block, current_block):
         return decoder.block_decode(block, current_block)
+    
+    def remove_headswitching_noise(self, preL: np.array, preR: np.array) -> Tuple[np.array, np.array]:
+        for _ in range(self.headswitch_passes):
+            peaksL, filtered_signal_L, filtered_signal_abs_L = self.detect_peaks(preL)
+            peaksR, filtered_signal_R, filtered_signal_abs_R = self.detect_peaks(preR)
+    
+            interpolation_boundaries_L = self.calc_headswitch_boundaries(peaksL)
+            interpolation_boundaries_R = self.calc_headswitch_boundaries(peaksR)
+    
+            preL_interpolated = self.interpolate_boundaries(preL, interpolation_boundaries_L)
+            preR_interpolated = self.interpolate_boundaries(preR, interpolation_boundaries_R)
+
+            ## uncomment to debug head switching pulse detection
+            #self.debug_peak_interpolation(preL, filtered_signal_L, filtered_signal_abs_L, peaksL, interpolation_boundaries_L, preL_interpolated)
+            #self.debug_peak_interpolation(preR, filtered_signal_R, filtered_signal_abs_R, peaksR, interpolation_boundaries_R, preR_interpolated)
+            #plt.show()
+            #sys.exit(0)
+
+            preL = preL_interpolated
+            preR = preR_interpolated
+
+        return preL, preR
 
     def block_decode(
         self, raw_data: np.array, block_count: int = 0
@@ -835,22 +921,13 @@ class HiFiDecode:
         preL /= clip
         preR /= clip
 
-        for _ in range(self.headswitch_passes):
-            headswitch_min_peak_distance = self.headswitch_hz + self.headswitch_drift_hz
-    
-            headswitch_peaks = [
-                *self.detect_peaks(preL, headswitch_min_peak_distance),
-                *self.detect_peaks(preR, headswitch_min_peak_distance)
-            ]
-            interpolation_boundaries = self.calc_headswitch_boundaries(headswitch_peaks)
-    
-            preL = self.interpolate_boundaries(preL, interpolation_boundaries)
-            preR = self.interpolate_boundaries(preR, interpolation_boundaries)
+        preL, preR = self.remove_headswitching_noise(preL, preR)
 
         return block_count, preL, preR
     
-    def debug_peak_detection(self, audio, filtered_signal, filtered_signal_peaks, peak_locs, fs):
-        t = np.arange(0, len(audio)) / fs  # 10 ms of signal (plenty of time for the pulse)
+    def debug_peak_interpolation(self, audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, preL_interpolated):
+        fs = self.headswitch_signal_rate
+        t = np.arange(0, len(audio)) / fs
         fft_signal = np.fft.fft(audio)
         fft_freqs = np.fft.fftfreq(len(t), 1/fs)
         
@@ -861,7 +938,7 @@ class HiFiDecode:
         # Perform the FFT on the filtered signal
         fft_filtered_signal = np.fft.fft(filtered_signal)
         positive_fft_filtered_signal = np.abs(fft_filtered_signal[:len(t)//2])
-
+        
         plt.figure(figsize=(10, 6))
         plt.plot(positive_freqs, positive_fft_signal, label='Original Signal Spectrum')
         plt.plot(positive_freqs, positive_fft_filtered_signal, label='Filtered Signal Spectrum', color='orange')
@@ -871,31 +948,46 @@ class HiFiDecode:
         plt.legend()
 
         plt.figure(figsize=(10, 6))
-        plt.subplot(3, 1, 1)
-        plt.plot(t, audio, label='Original Signal')
-        plt.title("Original Signal")
-        plt.xlabel('Time [s]')
-        plt.ylabel('Amplitude')
-        plt.legend()
         
-        plt.subplot(3, 1, 2)
+        plt.subplot(4, 1, 1)
         plt.plot(t, filtered_signal, label='Filtered Signal', color='green')
         plt.title("Filtered Signal")
         plt.xlabel('Time [s]')
         plt.ylabel('Amplitude')
         plt.legend()
+
+        peak_centers = [round(x[0]) for x in peaks]
+        peak_starts = [round(x[1]) for x in peaks]
+        peak_ends = [round(x[2]) for x in peaks]
+        peak_prominences = [x[3] for x in peaks]
+
+        interpolation_starts = [start for start, end in interpolation_boundaries]
+        interpolation_ends = [end for start, end in interpolation_boundaries]
         
-        plt.subplot(3, 1, 3)
-        plt.plot(t, filtered_signal_peaks, label='Filtered Signal Absolute Value', color='green')
-        plt.plot(t[peak_locs], filtered_signal_peaks[peak_locs], 'rx', label='Detected Points')
+        plt.subplot(4, 1, 2)
+        plt.plot(t, filtered_signal_abs, label='Filtered Signal Absolute Value', color='black')
+        plt.plot(t[interpolation_starts], filtered_signal_abs[interpolation_starts], 'r+', label='Interpolation Start')
+        plt.plot(t[peak_starts], filtered_signal_abs[peak_starts], 'b+', label='Start')
+        plt.plot(t[peak_centers], peak_prominences, 'gx', label='Prominence')
+        plt.plot(t[peak_centers], filtered_signal_abs[peak_centers], 'go', label='Center')
+        plt.plot(t[peak_ends], filtered_signal_abs[peak_ends], 'bx', label='End')
+        plt.plot(t[interpolation_ends], filtered_signal_abs[interpolation_ends], 'rx', label='Interpolation End')
         plt.title("Filtered Signal with head switch points")
         plt.xlabel('Time [s]')
         plt.ylabel('Amplitude')
         plt.legend()
-        
-        plt.tight_layout()
 
-        print(f"Detected pulse peaks at indices: {peak_locs}")
+        plt.subplot(4, 1, 3)
+        plt.plot(t, preL_interpolated, label='Interpolated audio', color='green')
+        plt.title("Interpolated Audio")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
 
-        plt.show()
-        sys.exit(0)
+
+        plt.subplot(4, 1, 4)
+        plt.plot(t, audio, label='Original Signal')
+        plt.title("Original Signal")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
