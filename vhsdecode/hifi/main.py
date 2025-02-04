@@ -410,7 +410,7 @@ def as_soundfile(pathR, sample_rate=48000):
             subtype="PCM_16",
             endian="LITTLE",
         )
-    elif ".flac" in path:
+    elif ".flac" in path or ".ldf" in path or ".hifi" in path:
         return sf.SoundFile(
             pathR,
             "r",
