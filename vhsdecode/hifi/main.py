@@ -317,16 +317,55 @@ class UnseekableSoundFile(sf.SoundFile):
         assert len(data) % 2 == 0, "data is misaligned"
         out = np.asarray(np.frombuffer(data, dtype=np.int16), dtype=dtype)
         return out
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def _handle_overlap(
+        data,
+        overlap_data: np.array,
+        overlap_size: int,
+        out_dtype: np.number
+    ) -> tuple[np.array,np.array]:
+        out_int16 = np.frombuffer(data, dtype=np.int16)
+        
+        #out = np.asarray(out_int16, dtype=out_dtype)
+        #new_overlap = out[-overlap_size:]
+        #new_overlap = new_overlap.astype(np.int16)
+        #
+        #if np.size(overlap_data) == 0:
+        #    overlap_data = new_overlap
+        #
+        #return (np.concatenate((overlap_data, out)), new_overlap)
+
+        # offset array copying logic implemented without numpy seems a bit faster
+        out_int16_len = np.size(out_int16)
+        new_overlap = np.empty(overlap_size, dtype=np.int16)
+        result = np.empty(overlap_size + out_int16_len, dtype=np.float64)
+        
+        # copy the overlapping data into result
+        overlap_offset = out_int16_len - overlap_size
+        if np.size(overlap_data) == 0:
+            for i in range(overlap_size):
+                overlap_value = out_int16[i + overlap_offset]
+                
+                new_overlap[i] = overlap_value
+                result[i] = overlap_value
+        else:
+            for i in range(overlap_size):
+                new_overlap[i] = out_int16[i + overlap_offset]
+                result[i] = overlap_data[i]
+
+        # copy the remaining data
+        for i in range(out_int16_len):
+            result[i+overlap_size] = out_int16[i]
+
+        return result, new_overlap
 
     def _read_next_chunk(self, blocksize, overlap, dtype) -> np.array:
         data = self.file_path.read(blocksize - overlap)
         assert len(data) % 2 == 0, "data is misaligned"
-        out = np.asarray(np.frombuffer(data, dtype=np.int16), dtype=dtype)
-        self._overlap = (
-            np.copy(out[-overlap:]) if np.size(self._overlap) == 0 else self._overlap
-        )
-        result = np.concatenate((self._overlap, out))
-        self._overlap = np.copy(out[-overlap:])
+
+        result, self._overlap = UnseekableSoundFile._handle_overlap(data, self._overlap, overlap, dtype)
         return result
 
     # yields infinite generator for _read_next_chunk
@@ -341,7 +380,7 @@ class UnseekableSoundFile(sf.SoundFile):
         out=None,
     ):
         while True:
-            yield self._read_next_chunk(blocksize, overlap, dtype)
+            yield self._read_next_chunk(blocksize, overlap, np.dtype(dtype))
 
 
 class UnSigned16BitFileReader(io.RawIOBase):

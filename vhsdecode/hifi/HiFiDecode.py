@@ -500,7 +500,7 @@ class HiFiDecode:
 
         # trim off peaks at edges of if
         self.pre_trim = 50
-        self.block_overlap_audio: int = int(self.audio_rate / (1e2 + self.pre_trim * 2))
+        self.block_overlap_audio: int = int(self.audio_rate / (4e2 + self.pre_trim * 2))
         audio_final_rate = (self.options["audio_rate"] / self.audio_rate) * (
             self.audioRes_numerator / self.audioRes_denominator
         )
