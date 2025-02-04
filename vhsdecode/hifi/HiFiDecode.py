@@ -481,10 +481,10 @@ class HiFiDecode:
         self.options = options
         self.rfBandPassParams = AFEParamsFront()
         self.audio_rate: int = 192000
-        # downsamples the if signal to fit within the nyquist cutoff but within an integer ratio of the audio rate
+        # downsamples the if signal to fit within the nyquist cutoff within an integer ratio of the audio rate
         min_if_rate = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
-        if_rate_audio_ratio = ceil(min_if_rate / self.audio_rate)
-        self.if_rate: int = if_rate_audio_ratio * self.audio_rate
+        self.if_rate_audio_ratio = ceil(min_if_rate / self.audio_rate)
+        self.if_rate: int = self.if_rate_audio_ratio * self.audio_rate
 
         (
             self.ifresample_numerator,
@@ -497,7 +497,10 @@ class HiFiDecode:
         self.blocks_second: int = BLOCKS_PER_SECOND
         self.block_size: int = int(self.sample_rate / self.blocks_second)
         self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
-        self.block_overlap_audio: int = int(self.audio_rate / 6e2)
+
+        # trim off peaks at edges of if
+        self.pre_trim = 50
+        self.block_overlap_audio: int = int(self.audio_rate / (1e2 + self.pre_trim * 2))
         audio_final_rate = (self.options["audio_rate"] / self.audio_rate) * (
             self.audioRes_numerator / self.audioRes_denominator
         )
@@ -576,6 +579,7 @@ class HiFiDecode:
                 )
 
         self.audio_process_params = {
+            "pre_trim": self.pre_trim,
             "audioRes_numerator": self.audioRes_numerator,
             "audioRes_denominator": self.audioRes_denominator,
             "audio_resampler_converter": self.audio_resampler_converter,
@@ -716,9 +720,6 @@ class HiFiDecode:
     ) -> Tuple[list[Tuple[float, float, float, float]], np.array, np.array]:
         # remove audible frequencies to avoid detecting them as peaks
         filtered_signal = filtfilt(audio_process_params["hs_b"], audio_process_params["hs_a"], audio)
-        # remove filter impulse response
-        filtered_signal[0:20] = 0
-        filtered_signal[-20:] = 0
         filtered_signal_abs = abs(filtered_signal)
 
         # detect the peaks that align with the headswitching speed
@@ -888,7 +889,7 @@ class HiFiDecode:
             audio_interpolated = HiFiDecode.headswitch_interpolate_boundaries(audio, interpolation_boundaries)
 
             # uncomment to debug head switching pulse detection
-            # HiFiDecode.debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, audio_interpolated)
+            # HiFiDecode.debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, audio_interpolated, audio_process_params["headswitch_signal_rate"])
             # plt.show()
             # sys.exit(0)
         return audio_interpolated
@@ -914,6 +915,12 @@ class HiFiDecode:
             lo_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
         preL, preR = self.demodblock(data)
+
+        # remove peaks at edges of demodulated audio
+        trim = self.if_rate_audio_ratio * self.pre_trim
+        preL = preL[trim:-trim]
+        preR = preR[trim:-trim]
+
         
         # with ProcessPoolExecutor(2) as stereo_executor:
         #     audioL_future = stereo_executor.submit(HiFiDecode.audio_process, preL, self.audio_process_params)
