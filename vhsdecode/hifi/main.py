@@ -339,6 +339,7 @@ class UnseekableSoundFile(sf.SoundFile):
 
         # offset array copying logic implemented without numpy seems a bit faster
         out_int16_len = np.size(out_int16)
+        overlap_size = min(overlap_size, out_int16_len)
         new_overlap = np.empty(overlap_size, dtype=np.int16)
         result = np.empty(overlap_size + out_int16_len, dtype=np.float64)
         
