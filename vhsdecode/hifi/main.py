@@ -877,15 +877,17 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
             dt_string = elapsed_time.total_seconds()
             print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
-def write_soundfile(conn, output_file, audio_rate):
-    with as_outputfile(output_file, audio_rate) as w:
-        while True:
-            stereo = conn.recv_bytes()
-            if len(stereo) == 0:
-                w.flush()
-                break
+def write_soundfile_process(conn, output_file, audio_rate):
+    with ThreadPoolExecutor(1) as write_executor:
+        with as_outputfile(output_file, audio_rate) as w:
+            while True:
+                stereo = conn.recv_bytes()
+                if len(stereo) == 0:
+                    write_executor.submit(w.flush)
+                    write_executor.shutdown(wait=True)
+                    break
 
-            w.buffer_write(stereo, dtype='float32')
+                write_executor.submit(w.buffer_write, stereo, dtype='float32')
 
 def decode_parallel(
     decoders: List[HiFiDecode],
@@ -904,7 +906,7 @@ def decode_parallel(
     total_samples_decoded = 0
 
     output_parent_conn, output_child_conn = Pipe()
-    output_file_process = Process(target=write_soundfile, args=(output_child_conn, output_file, decode_options["audio_rate"]))
+    output_file_process = Process(target=write_soundfile_process, args=(output_child_conn, output_file, decode_options["audio_rate"]))
     output_file_process.start()
 
     with ProcessPoolExecutor(threads) as executor:
@@ -988,8 +990,8 @@ def decode_parallel(
             for stereo in post_processor.flush():
                 try:
                     output_parent_conn.send_bytes(stereo)
-
                     total_samples_decoded += len(stereo)
+
                     log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
                 except ValueError:
                     pass
