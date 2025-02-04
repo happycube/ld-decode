@@ -936,7 +936,7 @@ class HiFiDecode:
             self.updateStandard(self.devL, self.devR)
             self.updateDemod()
 
-        return block_count, preL, preR
+        return preL, preR
     
     @staticmethod
     def debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, interpolated, headswitch_signal_rate):
