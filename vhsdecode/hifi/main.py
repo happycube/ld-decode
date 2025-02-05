@@ -884,6 +884,7 @@ def decode_parallel(
         threads,
         decoders[0]
     )
+    decoders_queued = 0
     with as_soundfile(input_file) as f:
         progressB = TimeProgressBar(f.frames, f.frames)
         try:
@@ -893,11 +894,14 @@ def decode_parallel(
                     break
 
                 # read completed data from decoders pool
-                while not decoder_out_queue.empty():
+                # keep queues saturated but don't overfill
+                while decoders_queued > threads * 1.5 or not decoder_out_queue.empty():
+                    decoders_queued -= 1
                     block_num, l, r = decoder_out_queue.get()
                     post_processor.submit(block_num, l, r, False)
 
                 decoder_in_queue.put_nowait((current_block, block))
+                decoders_queued += 1
                 current_block += 1
 
                 # send to post processor
