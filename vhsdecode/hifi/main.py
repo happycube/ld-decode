@@ -197,13 +197,12 @@ def signal_handler(sig, frame):
     is_main_thread = main_pid == os.getpid()
     if signal_count >= 1:
         if is_main_thread:
-            print("")
-            print("Ctrl-C was pressed again, stopping immediately...")
+            # prevent reentrant calls https://stackoverflow.com/a/75368797
+            os.write(sys.stdout.fileno(), b"\nCtrl-C was pressed again, stopping immediately...\n")
         sys.exit(1)
     if signal_count == 0:
         if is_main_thread:
-            print("")
-            print("Ctrl-C was pressed, stopping decode...")
+            os.write(sys.stdout.fileno(), b"\nCtrl-C was pressed, stopping decode...\n")
     signal_count += 1
 
 signal.signal(signal.SIGINT, signal_handler)

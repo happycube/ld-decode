@@ -26,8 +26,6 @@ import matplotlib.pyplot as plt
 
 # lower increases expander strength and decreases overall gain
 DEFAULT_NR_ENVELOPE_GAIN = 22
-# increase gain to compensate for deemphasis gain loss
-DEFAULT_NR_DEEMPHASIS_GAIN = 1
 # sets logarithmic slope for the 1:2 expander
 DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
@@ -429,11 +427,32 @@ class NoiseReduction:
         ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
     
     @staticmethod
-    def expand(log_strength, signal):
+    @njit(cache=True, fastmath=True, nogil=True)
+    def expand(log_strength: float, signal: np.array) -> np.array:
         # detect the envelope and use logarithmic expansion
         levels = np.clip(np.abs(signal), None, 1)
         return np.power(levels, log_strength)
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def get_attacks_and_releases(attack: np.array, release: np.array) -> np.array:
+        releasing_idx = np.where(attack < release)
+        rsC = attack
+        for id in releasing_idx:
+            rsC[id] = release[id]
 
+        return rsC
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def apply_gate(rsC: np.array, audio: np.array, nr_env_gain: float) -> np.array:
+        # computes a sidechain signal to apply noise reduction
+        # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
+        #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
+        #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
+        gate = np.clip(rsC * nr_env_gain, a_min=0.0, a_max=1.0)
+        return np.multiply(audio, gate)
+    
     def rs_envelope(self, raw_data):
         # prevent high frequency noise from interfering with envelope detector
         low_pass = self.nrWeightedLowpass.work(raw_data)
@@ -446,30 +465,13 @@ class NoiseReduction:
     def noise_reduction(self, pre, de_noise):
         # takes the RMS envelope of each audio channel
         audio_env = self.rs_envelope(pre)
-
-        rsaC = self.envelope_attack_Lowpass.lfilt(audio_env)
-        rsrC = self.envelope_release_Lowpass.lfilt(audio_env)
-
-        releasing_idx = np.where(rsaC < rsrC)
-        rsC = rsaC
-        for id in releasing_idx:
-            rsC[id] = rsrC[id]
-
-        # computes a sidechain signal to apply noise reduction
-        # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
-        #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
-        #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
-        gate = np.clip(rsC * self.NR_envelope_gain, a_min=0.0, a_max=1.0)
-
         audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise)
 
-        make_up_gain = (DEFAULT_NR_DEEMPHASIS_GAIN + self.spectral_nr_amount * 1.3)
-        audio_with_gain = np.clip(audio_with_deemphasis * make_up_gain, a_min=-1.0, a_max=1.0)
+        attack = self.envelope_attack_Lowpass.lfilt(audio_env)
+        release = self.envelope_release_Lowpass.lfilt(audio_env)
+        rsC = NoiseReduction.get_attacks_and_releases(attack, release)
 
-        # applies noise reduction
-        nr = np.multiply(audio_with_gain, gate)
-
-        return nr
+        return NoiseReduction.apply_gate(rsC, audio_with_deemphasis, self.NR_envelope_gain)
 
 
 class HiFiDecode:
