@@ -2,7 +2,7 @@
 import subprocess
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, Process
+from multiprocessing import cpu_count, Pipe, Queue, Process, Manager
 from datetime import datetime, timedelta
 import os
 import sys
@@ -550,20 +550,21 @@ class PostProcessor:
         self.decoder_audio_discard_size = decoder.audioDiscard
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.nr_side_gain = decode_options["nr_side_gain"]
-
-        self.nr_worker_l_in = Queue()
-        self.nr_worker_l_out = Queue()
-        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, args=(self.nr_worker_l_in, self.nr_worker_l_out, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        
+        manager = Manager()
+        self.nr_worker_l_in = manager.Queue()
+        self.nr_worker_l_out = manager.Queue()
+        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(self.nr_worker_l_in, self.nr_worker_l_out, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
 
-        self.nr_worker_r_in = Queue()
-        self.nr_worker_r_out = Queue()
-        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, args=(self.nr_worker_r_in, self.nr_worker_r_out, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_r_in = manager.Queue()
+        self.nr_worker_r_out = manager.Queue()
+        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(self.nr_worker_r_in, self.nr_worker_r_out, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
 
-        self.discard_merge_worker_in = Queue()
+        self.discard_merge_worker_in = manager.Queue()
         self.discard_merge_worker_out_parent, discard_merge_worker_out_child = Pipe()
-        self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, args=(self.discard_merge_worker_in, discard_merge_worker_out_child, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
+        self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, name="HiFiDecode Stereo Merge", args=(self.discard_merge_worker_in, discard_merge_worker_out_child, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
         self.discard_merge_worker_process.start()
 
     @staticmethod
@@ -584,20 +585,19 @@ class PostProcessor:
             audio_rate=final_audio_rate
         )
 
-        with ThreadPoolExecutor(1) as executor:
-            while True:
-                blocknum, pre = in_queue.get()
+        while True:
+            blocknum, pre = in_queue.get()
 
-                audio = (
-                    spectral_nr.spectral_nr(pre)
-                    if spectral_nr_amount > 0 else
-                    pre
-                )
+            audio = (
+                spectral_nr.spectral_nr(pre)
+                if spectral_nr_amount > 0 else
+                pre
+            )
 
-                if use_noise_reduction:
-                    audio = noise_reduction.noise_reduction(pre, audio)
+            if use_noise_reduction:
+                audio = noise_reduction.noise_reduction(pre, audio)
 
-                executor.submit(out_queue.put, (blocknum, audio))
+            out_queue.put_nowait((blocknum, audio))
 
     @staticmethod
     def discard_merge_worker(in_queue, out_conn, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size):
@@ -659,14 +659,14 @@ class PostProcessor:
         is_last_block: bool
     ) -> np.array:
         # needs to happen sequentially and in a thread since the noise reduction classes are stateful
-        self.nr_worker_l_in.put((block_num_in, l_in))
-        self.nr_worker_r_in.put((block_num_in, r_in))
+        self.nr_worker_l_in.put_nowait((block_num_in, l_in))
+        self.nr_worker_r_in.put_nowait((block_num_in, r_in))
 
         l_block_num, l = self.nr_worker_l_out.get()
         r_block_num, r = self.nr_worker_r_out.get()
         assert l_block_num == r_block_num, "Noise reduction processes are out of sync!"
 
-        self.discard_merge_worker_in.put((l, r, is_last_block))
+        self.discard_merge_worker_in.put_nowait((l, r, is_last_block))
         stereo = self.discard_merge_worker_out_parent.recv_bytes()
 
         return stereo
@@ -822,16 +822,20 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
         print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 
-def decoder_process_worker(in_queue, out_queue, decoder, auto_fine_tune):
-    with ThreadPoolExecutor(1) as write_executor:
-        while True:
-            block_num, block = in_queue.get()
+def decoder_process_worker(in_queue, out_queue, decoder_id, decoder, auto_fine_tune):
+    while True:
+        data = in_queue.get()
+        if isinstance(data, int):
+            out_queue.put_nowait(decoder_id)
+            break
 
-            l, r = decoder.block_decode(np.asarray(block))
-            if auto_fine_tune:
-                log_bias(decoder)
-    
-            write_executor.submit(out_queue.put, (block_num, l, r))
+        block_num, block = data
+
+        l, r = decoder.block_decode(np.asarray(block))
+        if auto_fine_tune:
+            log_bias(decoder)
+
+        out_queue.put_nowait((block_num, l, r))
 
 def write_soundfile_process_worker(conn, output_file, audio_rate):
     with ThreadPoolExecutor(1) as write_executor:
@@ -865,13 +869,14 @@ def decode_parallel(
     decoder_in_queue = Queue()
     decoder_out_queue = Queue()
 
-    for decoder in decoders:
-        decoder_process = Process(target=decoder_process_worker, args=(decoder_in_queue, decoder_out_queue, decoder, decode_options["auto_fine_tune"]))
+    for i in range(len(decoders)):
+        decoder = decoders[i]
+        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(decoder_in_queue, decoder_out_queue, i, decoder, decode_options["auto_fine_tune"]))
         decoder_process.start()
         decoder_processes.append(decoder_process)
 
     output_parent_conn, output_child_conn = Pipe()
-    output_file_process = Process(target=write_soundfile_process_worker, args=(output_child_conn, output_file, decode_options["audio_rate"]))
+    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file, decode_options["audio_rate"]))
     output_file_process.start()
 
     post_processor = PostProcessor(
@@ -892,7 +897,8 @@ def decode_parallel(
                     block_num, l, r = decoder_out_queue.get()
                     post_processor.submit(block_num, l, r, False)
 
-                decoder_in_queue.put((current_block, block))
+                decoder_in_queue.put_nowait((current_block, block))
+                current_block += 1
 
                 # send to post processor
                 for stereo in post_processor.read():
@@ -931,7 +937,6 @@ def decode_parallel(
                             while ui_t.window.transport_state == 2:
                                 ui_t.app.processEvents()
                                 time.sleep(0.01)
-                current_block += 1
                 progressB.print(f.tell())
         except KeyboardInterrupt:
             pass
@@ -939,18 +944,26 @@ def decode_parallel(
         print("Decode finishing up. Emptying the queue")
         print("")
 
-    read_block = -1
-    while read_block < current_block - 1:
-        block_num, l, r = decoder_out_queue.get()
+    # signal the decoders to shutdown
+    decoders_running = set()
+    for i in range(len(decoder_processes)):
+        decoder_in_queue.put_nowait(i)
+        decoders_running.add(i)
 
+    while len(decoders_running) > 0 or not decoder_out_queue.empty():
+        data = decoder_out_queue.get()
+        if isinstance(data, int):
+            decoders_running.remove(data)
+            continue
+
+        block_num, l, r = data
         post_processor.submit(block_num, l, r, block_num == current_block - 1)
-        read_block = block_num
 
         for stereo in post_processor.read():
             output_parent_conn.send_bytes(stereo)
             total_samples_decoded += len(stereo) / 8
 
-            log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
+            log_decode(start_time, f.tell(), total_samples_decoded, decode_options)       
 
     for stereo in post_processor.flush():
         try:
