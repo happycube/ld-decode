@@ -32,8 +32,8 @@ DEFAULT_NR_DEEMPHASIS_GAIN = 1
 DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
-
 DEFAULT_RESAMPLER_QUALITY = "high"
+DEFAULT_FINAL_AUDIO_RATE = 48000
 
 BLOCKS_PER_SECOND = 2
 
@@ -478,9 +478,11 @@ class HiFiDecode:
             options = dict()
         self.options = options
         self.sample_rate: int = options["input_rate"]
-        self.options = options
         self.rfBandPassParams = AFEParamsFront()
         self.audio_rate: int = 192000
+        self.audio_final_rate: int = options["audio_rate"]
+        self.decode_mode = options["mode"]
+        self.gain = options["gain"]
         # downsamples the if signal to fit within the nyquist cutoff within an integer ratio of the audio rate
         min_if_rate = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
         self.if_rate_audio_ratio = ceil(min_if_rate / self.audio_rate)
@@ -491,6 +493,8 @@ class HiFiDecode:
             self.ifresample_denominator,
             self.audioRes_numerator,
             self.audioRes_denominator,
+            self.audioFinal_numerator,
+            self.audioFinal_denominator
         ) = self.getResamplingRatios()
 
         # block overlap and edge discard
@@ -523,12 +527,15 @@ class HiFiDecode:
         if self.options["resampler_quality"] == "high":
             self.if_resampler_converter = "sinc_medium"
             self.audio_resampler_converter = "sinc_medium"
+            self.audio_final_resampler_converter = "sinc_best"
         elif self.options["resampler_quality"] == "medium":
             self.if_resampler_converter = "sinc_fastest"
             self.audio_resampler_converter = "sinc_fastest"
+            self.audio_final_resampler_converter = "sinc_medium"
         else: # low
             self.if_resampler_converter = "linear"
             self.audio_resampler_converter = "linear"
+            self.audio_final_resampler_converter = "sinc_fastest"
 
         # filter_plot(envv_iirb, envv_iira, self.audio_rate, type="bandpass", title="audio_filter")
 
@@ -580,9 +587,16 @@ class HiFiDecode:
 
         self.audio_process_params = {
             "pre_trim": self.pre_trim,
+            "gain": self.gain,
+            "decode_mode": self.decode_mode,
+            "audio_rate": self.audio_rate,
             "audioRes_numerator": self.audioRes_numerator,
             "audioRes_denominator": self.audioRes_denominator,
             "audio_resampler_converter": self.audio_resampler_converter,
+            "audio_final_rate": self.audio_final_rate,
+            "audioFinal_numerator": self.audioFinal_numerator,
+            "audioFinal_denominator": self.audioFinal_denominator,
+            "audio_final_resampler_converter": self.audio_final_resampler_converter,
             "headswitch_passes": self.headswitch_passes,
             "headswitch_signal_rate": self.headswitch_signal_rate,
             "headswitch_hz": self.headswitch_hz,
@@ -604,14 +618,21 @@ class HiFiDecode:
         assert (
             self.ifresample_denominator > 0
         ), f"IF resampling denominator got 0; sample_rate {self.sample_rate}"
+
         audiorate2ifrate = self.audio_rate / self.if_rate
         self.audioRes_numerator = Fraction(audiorate2ifrate).numerator
         self.audioRes_denominator = Fraction(audiorate2ifrate).denominator
+
+        audiorate2FinalAudioRate = self.audio_final_rate / self.audio_rate
+        self.audioFinal_numerator = Fraction(audiorate2FinalAudioRate).numerator
+        self.audioFinal_denominator = Fraction(audiorate2FinalAudioRate).denominator
         return (
             self.ifresample_numerator,
             self.ifresample_denominator,
             self.audioRes_numerator,
             self.audioRes_denominator,
+            self.audioFinal_numerator,
+            self.audioFinal_denominator
         )
 
     def updateDemod(self):
@@ -893,6 +914,37 @@ class HiFiDecode:
             # plt.show()
             # sys.exit(0)
         return audio_interpolated
+    
+    @staticmethod
+    def mix_for_mode_stereo(
+        l_raw: np.array,
+        r_raw: np.array,
+        decode_mode: str
+    ) -> tuple[np.array, np.array]:
+        if decode_mode == "mpx":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
+        elif decode_mode == "l":
+            l = l_raw
+            r = l_raw
+        elif decode_mode == "r":
+            l = r_raw
+            r = r_raw
+        elif decode_mode == "sum":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.add(l_raw, r_raw), 0.5)
+        else:
+            l = l_raw
+            r = r_raw
+    
+        return l, r
+
+    @staticmethod
+    def adjust_gain(
+        audio: np.array,
+        gain: float
+    ) -> np.array:
+        return np.multiply(audio, gain)
 
     @staticmethod
     def audio_process(audio: np.array, audio_process_params: dict) -> Tuple[np.array, float]:
@@ -900,6 +952,9 @@ class HiFiDecode:
         audio, dc = HiFiDecode.cancelDC(audio)
         audio = HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
         audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
+
+        if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
+            audio = samplerate_resample(audio, audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
 
         return audio, dc
 
@@ -930,6 +985,12 @@ class HiFiDecode:
 
         preL, dcL = HiFiDecode.audio_process(preL, self.audio_process_params)
         preR, dcR = HiFiDecode.audio_process(preR, self.audio_process_params)
+
+        preL, preR = HiFiDecode.mix_for_mode_stereo(preL, preR, self.audio_process_params["decode_mode"])
+
+        if self.audio_process_params["gain"] != 1:
+            preL = HiFiDecode.adjust_gain(preL, self.audio_process_params["gain"])
+            preR = HiFiDecode.adjust_gain(preR, self.audio_process_params["gain"])
 
         if self.options["auto_fine_tune"]:
             self.devL, self.devR = self.carrierOffsets(self.afe_params, dcL, dcR)
