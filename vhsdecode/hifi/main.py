@@ -384,8 +384,14 @@ class UnseekableSoundFile(sf.SoundFile):
         fill_value=None,
         out=None,
     ):
+        current_block = self._read_next_chunk(blocksize, overlap, np.dtype(dtype))
         while True:
-            yield self._read_next_chunk(blocksize, overlap, np.dtype(dtype))
+            next_block = self._read_next_chunk(blocksize, overlap, np.dtype(dtype))
+            is_last_block = len(next_block) == 0
+
+            yield (current_block, is_last_block)
+
+            current_block = next_block
 
 
 class UnSigned16BitFileReader(io.RawIOBase):
@@ -755,7 +761,7 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
             current_block = 0
             try:
                 print(f"Starting decode...")
-                for block in f.blocks(
+                for block, is_last_block in f.blocks(
                     blocksize=decoder.blockSize, overlap=decoder.readOverlap
                 ):
                     if exit_requested:
@@ -768,7 +774,7 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                     if decode_options["auto_fine_tune"]:
                         log_bias(decoder)
     
-                    post_processor.submit(current_block, l, r, False)
+                    post_processor.submit(current_block, l, r, is_last_block)
 
                     current_block += 1
                     for stereo in post_processor.read():
@@ -806,6 +812,9 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                                 while ui_t.window.transport_state == 2:
                                     ui_t.app.processEvents()
                                     time.sleep(0.01)
+
+                    if is_last_block:
+                        break
             except KeyboardInterrupt:
                 pass
                 print("Emptying the decode queue ...")
@@ -889,8 +898,8 @@ def decode_parallel(
         progressB = TimeProgressBar(f.frames, f.frames)
         try:
             print(f"Starting decode...")
-            for block in f.blocks(blocksize=block_size, overlap=read_overlap):
-                if exit_requested or len(block) == 0:
+            for block, is_last_block in f.blocks(blocksize=block_size, overlap=read_overlap):
+                if exit_requested:
                     break
 
                 # read completed data from decoders pool
@@ -898,7 +907,7 @@ def decode_parallel(
                 while decoders_queued > threads * 1.5 or not decoder_out_queue.empty():
                     decoders_queued -= 1
                     block_num, l, r = decoder_out_queue.get()
-                    post_processor.submit(block_num, l, r, False)
+                    post_processor.submit(block_num, l, r, is_last_block)
 
                 decoder_in_queue.put_nowait((current_block, block))
                 decoders_queued += 1
@@ -942,6 +951,9 @@ def decode_parallel(
                                 ui_t.app.processEvents()
                                 time.sleep(0.01)
                 progressB.print(f.tell())
+                  
+                if is_last_block:
+                    break
         except KeyboardInterrupt:
             pass
         print("")
