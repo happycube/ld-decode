@@ -11,6 +11,7 @@ from typing import List, Optional
 import signal
 from numba import njit, prange
 from collections import deque
+import atexit
 
 import numpy as np
 import soundfile as sf
@@ -424,21 +425,32 @@ class AsyncSoundFile():
     async def _read_blocks(
         self,
         block_params,
+        cond
     ):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         blocks_generator = self._soundfile.blocks(**block_params)
 
+        current_block = await loop.run_in_executor(None, next, blocks_generator)
         while True:
             # read from the input asynchronously filling the cache as quickly as possible
             if len(self._blocks_buffer) < self._blocks_buffer_size:
-                block = await loop.run_in_executor(None, next, blocks_generator)
+                try:
+                    next_block = await loop.run_in_executor(None, next, blocks_generator)
+                    is_last_block = len(next_block) == 0
+                except StopIteration:
+                    is_last_block = True
 
-                self._blocks_buffer.append(block)
-                if len(block) == 0:
+                async with cond:
+                    self._blocks_buffer.append((current_block, is_last_block))
+                    cond.notify_all()
+
+                if is_last_block:
                     break
+
+                current_block = next_block
             else:
-                # Wait a bit until some data has loaded
-                await asyncio.sleep(0.1)
+                # Wait until the buffer has space
+                await asyncio.sleep(0.05)
     
     async def blocks_async( 
         self,
@@ -459,18 +471,21 @@ class AsyncSoundFile():
            "out": None,
         }
 
-        asyncio.create_task(self._read_blocks(block_params))
+        cond = asyncio.Condition()
+        asyncio.create_task(self._read_blocks(block_params, cond))
 
         while True:
             if len(self._blocks_buffer) > 0:
-                data = self._blocks_buffer.popleft()
-                yield data
+                async with cond:
+                    block, is_last_block = self._blocks_buffer.popleft()
 
-                if len(data) == 0:
+                yield block, is_last_block
+
+                if is_last_block:
                     break
             else:
-                # Wait a bit until some data has loaded
-                await asyncio.sleep(0.1)
+                async with cond:
+                    await cond.wait()
 
     def tell(self):
         return self._soundfile.tell()
@@ -604,6 +619,7 @@ class PostProcessor:
     ):
         self.submit_thread_executor_queue = list()
         self.submit_thread_executor = ThreadPoolExecutor(1) # must only be one thread to enforce sequential processing
+        atexit.register(self.submit_thread_executor.shutdown)
         self.next_block = 0
         self.block_queue = []
         self.max_queued_messages = max_queued_messages
@@ -621,16 +637,19 @@ class PostProcessor:
         self.nr_worker_l_out = manager.Queue()
         self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(self.nr_worker_l_in, self.nr_worker_l_out, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
+        atexit.register(self.nr_worker_l.terminate)
 
         self.nr_worker_r_in = manager.Queue()
         self.nr_worker_r_out = manager.Queue()
         self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(self.nr_worker_r_in, self.nr_worker_r_out, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
+        atexit.register(self.nr_worker_r.terminate)
 
         self.discard_merge_worker_in = manager.Queue()
         self.discard_merge_worker_out_parent, discard_merge_worker_out_child = Pipe()
         self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, name="HiFiDecode Stereo Merge", args=(self.discard_merge_worker_in, discard_merge_worker_out_child, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
         self.discard_merge_worker_process.start()
+        atexit.register(self.discard_merge_worker_process.terminate)
 
     @staticmethod
     def noise_reduction_worker(
@@ -984,12 +1003,15 @@ async def decode_parallel(
         decoder = decoders[i]
         decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(decoder_in_queue, decoder_out_queue, i, decoder, decode_options["auto_fine_tune"]))
         decoder_process.start()
+        atexit.register(decoder_process.terminate)
         decoder_processes.append(decoder_process)
 
     output_thread_executor = ThreadPoolExecutor(1)
+    atexit.register(output_thread_executor.shutdown)
     output_child_conn, output_parent_conn = Pipe(duplex=False)
     output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file, decode_options["audio_rate"]))
     output_file_process.start()
+    atexit.register(output_file_process.terminate)
 
     post_processor = PostProcessor(
         decode_options,
@@ -1004,9 +1026,7 @@ async def decode_parallel(
             progressB = TimeProgressBar(f.frames, f.frames)
             try:
                 print(f"Starting decode...")
-                async for block in f.blocks_async(blocksize=block_size, overlap=read_overlap):
-                    is_last_block = f.tell() == f.frames
-    
+                async for block, is_last_block in f.blocks_async(blocksize=block_size, overlap=read_overlap):   
                     if exit_requested:
                         break
     
