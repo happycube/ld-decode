@@ -421,29 +421,41 @@ class AsyncSoundFile():
         self._blocks_buffer = deque()
         self._blocks_buffer_size = async_buffer_size
 
+    def _have_more_data(self):
+        return len(self._blocks_buffer) > 0
+
+    def _need_more_data(self):
+        return len(self._blocks_buffer) < self._blocks_buffer_size
+    
+    def _get_next_block(self, blocks_generator):
+        try:
+            block = next(blocks_generator)
+        except StopIteration:
+            block = []
+        return block
+
     # read blocks in the background
     async def _read_blocks(
         self,
         block_params,
-        cond
+        have_data_event,
+        need_data_event
     ):
         loop = asyncio.get_running_loop()
         blocks_generator = self._soundfile.blocks(**block_params)
 
         while True:
+            await need_data_event.wait()
+            need_data_event.clear()
+
             # read from the input asynchronously filling the cache as quickly as possible
-            if len(self._blocks_buffer) < self._blocks_buffer_size:
-                block = await loop.run_in_executor(None, next, blocks_generator)
-
-                async with cond:
-                    self._blocks_buffer.append(block)
-                    cond.notify_all()
-
+            while self._need_more_data():
+                block = await loop.run_in_executor(None, self._get_next_block, blocks_generator)
+                self._blocks_buffer.append(block)
+                have_data_event.set()
+    
                 if len(block) == 0: # nothing more to read
-                    break
-            else:
-                # Wait until the buffer has space
-                await asyncio.sleep(0.05)
+                    return
     
     async def blocks_async( 
         self,
@@ -463,22 +475,24 @@ class AsyncSoundFile():
            "fill_value": fill_value,
            "out": None,
         }
+        have_data_event = asyncio.Event()
+        need_data_event = asyncio.Event()
+        need_data_event.set()
 
-        cond = asyncio.Condition()
-        asyncio.create_task(self._read_blocks(block_params, cond))
+        asyncio.create_task(self._read_blocks(block_params, have_data_event, need_data_event))
 
         while True:
-            if len(self._blocks_buffer) > 0:
-                async with cond:
-                    block = self._blocks_buffer.popleft()
-    
-                yield block
+            await have_data_event.wait()
+            have_data_event.clear()
 
+            # read as much data as possible
+            while self._have_more_data():
+                block = self._blocks_buffer.popleft()
+                yield block
+                need_data_event.set()
+    
                 if len(block) == 0: # nothing more to read
-                    break
-            else:
-                async with cond:
-                    await cond.wait()
+                    return
 
     def tell(self):
         return self._soundfile.tell()
