@@ -430,24 +430,17 @@ class AsyncSoundFile():
         loop = asyncio.get_running_loop()
         blocks_generator = self._soundfile.blocks(**block_params)
 
-        current_block = await loop.run_in_executor(None, next, blocks_generator)
         while True:
             # read from the input asynchronously filling the cache as quickly as possible
             if len(self._blocks_buffer) < self._blocks_buffer_size:
-                try:
-                    next_block = await loop.run_in_executor(None, next, blocks_generator)
-                    is_last_block = len(next_block) == 0
-                except StopIteration:
-                    is_last_block = True
+                block = await loop.run_in_executor(None, next, blocks_generator)
 
                 async with cond:
-                    self._blocks_buffer.append((current_block, is_last_block))
+                    self._blocks_buffer.append(block)
                     cond.notify_all()
 
-                if is_last_block:
+                if len(block) == 0: # nothing more to read
                     break
-
-                current_block = next_block
             else:
                 # Wait until the buffer has space
                 await asyncio.sleep(0.05)
@@ -477,11 +470,11 @@ class AsyncSoundFile():
         while True:
             if len(self._blocks_buffer) > 0:
                 async with cond:
-                    block, is_last_block = self._blocks_buffer.popleft()
+                    block = self._blocks_buffer.popleft()
+    
+                yield block
 
-                yield block, is_last_block
-
-                if is_last_block:
+                if len(block) == 0: # nothing more to read
                     break
             else:
                 async with cond:
@@ -893,8 +886,9 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                         blocksize=decoder.blockSize, overlap=decoder.readOverlap
                     ):
                         is_last_block = f.tell() == f.frames
+                        done = len(block) == 0
     
-                        if exit_requested or len(block) == 0:
+                        if exit_requested or done:
                             break
     
                         progressB.print(f.tell())
@@ -1026,8 +1020,9 @@ async def decode_parallel(
             progressB = TimeProgressBar(f.frames, f.frames)
             try:
                 print(f"Starting decode...")
-                async for block, is_last_block in f.blocks_async(blocksize=block_size, overlap=read_overlap):   
-                    if exit_requested:
+                async for block in f.blocks_async(blocksize=block_size, overlap=read_overlap):
+                    done = len(block) == 0
+                    if exit_requested or done:
                         break
     
                     # read completed data from decoders pool
@@ -1035,7 +1030,7 @@ async def decode_parallel(
                     while decoders_queued > threads * 1.5 or not decoder_out_queue.empty():
                         decoders_queued -= 1
                         block_num, l, r = decoder_out_queue.get()
-                        post_processor.submit(block_num, l, r, is_last_block)
+                        post_processor.submit(block_num, l, r, False)
     
                     decoder_in_queue.put_nowait((current_block, block))
                     decoders_queued += 1
@@ -1069,9 +1064,6 @@ async def decode_parallel(
                                 time.sleep(0.01)
     
                     progressB.print(f.tell())
-                      
-                    if is_last_block:
-                        break
             except KeyboardInterrupt:
                 pass
 
