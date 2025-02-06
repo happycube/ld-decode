@@ -857,22 +857,23 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                                             decode_options["audio_rate"],
                                             blocking=False,
                                         )
-                                        stereo_play_buffer = list()
-                                    stereo_play_buffer += stereo
+                                        stereo_play_buffer = []
+                                    stereo_play_buffer = np.concatenate((stereo_play_buffer, np.frombuffer(stereo, dtype=np.float32)))
                                 else:
                                     print(
                                         "Import of sounddevice failed, preview is not available!"
                                     )
                         except ValueError:
                             pass
-                        if ui_t is not None:
-                            ui_t.app.processEvents()
-                            if ui_t.window.transport_state == 0:
-                                break
-                            elif ui_t.window.transport_state == 2:
-                                while ui_t.window.transport_state == 2:
-                                    ui_t.app.processEvents()
-                                    time.sleep(0.01)
+
+                    if ui_t is not None:
+                        ui_t.app.processEvents()
+                        if ui_t.window.transport_state == 0:
+                            break
+                        elif ui_t.window.transport_state == 2:
+                            while ui_t.window.transport_state == 2:
+                                ui_t.app.processEvents()
+                                time.sleep(0.01)
 
                     if is_last_block:
                         break
@@ -999,8 +1000,8 @@ async def decode_parallel(
                                         decode_options["audio_rate"],
                                         blocking=False,
                                     )
-                                    stereo_play_buffer = list()
-                                stereo_play_buffer += stereo
+                                    stereo_play_buffer = []
+                                stereo_play_buffer = np.concatenate((stereo_play_buffer, np.frombuffer(stereo, dtype=np.float32)))
                             else:
                                 print(
                                     "Import of sounddevice failed, preview is not available!"
@@ -1008,14 +1009,15 @@ async def decode_parallel(
                     except ValueError:
                         pass
 
-                    if ui_t is not None:
-                        ui_t.app.processEvents()
-                        if ui_t.window.transport_state == 0:
-                            break
-                        elif ui_t.window.transport_state == 2:
-                            while ui_t.window.transport_state == 2:
-                                ui_t.app.processEvents()
-                                time.sleep(0.01)
+                if ui_t is not None:
+                    ui_t.app.processEvents()
+                    if ui_t.window.transport_state == 0:
+                        break
+                    elif ui_t.window.transport_state == 2:
+                        while ui_t.window.transport_state == 2:
+                            ui_t.app.processEvents()
+                            time.sleep(0.01)
+
                 progressB.print(f.tell())
                   
                 if is_last_block:
