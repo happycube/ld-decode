@@ -929,8 +929,8 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
                         pass
                 elapsed_time = datetime.now() - start_time
 
-        dt_string = elapsed_time.total_seconds()
-        print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
+    dt_string = elapsed_time.total_seconds()
+    print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 
 def decoder_process_worker(in_queue, out_queue, decoder_id, decoder, auto_fine_tune):
@@ -1055,50 +1055,50 @@ async def decode_parallel(
             except KeyboardInterrupt:
                 pass
 
-        print("")
-        print("Decode finishing up. Emptying the queue")
-        print("")
-
-        # signal the decoders to shutdown
-        decoders_running = set()
-        for i in range(len(decoder_processes)):
-            decoder_in_queue.put_nowait(i)
-            decoders_running.add(i)
+            print("")
+            print("Decode finishing up. Emptying the queue")
+            print("")
     
-        while len(decoders_running) > 0 or not decoder_out_queue.empty():
-            data = decoder_out_queue.get()
-            if isinstance(data, int):
-                decoders_running.remove(data)
-                continue
-    
-            block_num, l, r = data
-            post_processor.submit(block_num, l, r, block_num == current_block - 1)
-    
-            for stereo in post_processor.read():
-                output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
-                total_samples_decoded += len(stereo) / 8
-    
-                log_decode(start_time, f.tell(), total_samples_decoded, decode_options)       
-    
-        for stereo in post_processor.flush():
-            try:
-                output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
-                total_samples_decoded += len(stereo) / 8
-    
-                log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
-            except ValueError:
-                pass
-    
-        for i in range(threads):
-            process = decoder_processes[i]
-            process.terminate()
-    
-        output_thread_executor.submit(output_parent_conn.send_bytes, b"").result()
-        output_file_process.join()
-    
-        elapsed_time = datetime.now() - start_time
-        dt_string = elapsed_time.total_seconds()
-        print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
+            # signal the decoders to shutdown
+            decoders_running = set()
+            for i in range(len(decoder_processes)):
+                decoder_in_queue.put_nowait(i)
+                decoders_running.add(i)
+        
+            while len(decoders_running) > 0 or not decoder_out_queue.empty():
+                data = decoder_out_queue.get()
+                if isinstance(data, int):
+                    decoders_running.remove(data)
+                    continue
+        
+                block_num, l, r = data
+                post_processor.submit(block_num, l, r, block_num == current_block - 1)
+        
+                for stereo in post_processor.read():
+                    output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
+                    total_samples_decoded += len(stereo) / 8
+        
+                    log_decode(start_time, f.tell(), total_samples_decoded, decode_options)       
+        
+            for stereo in post_processor.flush():
+                try:
+                    output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
+                    total_samples_decoded += len(stereo) / 8
+        
+                    log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
+                except ValueError:
+                    pass
+        
+            for i in range(threads):
+                process = decoder_processes[i]
+                process.terminate()
+        
+            output_thread_executor.submit(output_parent_conn.send_bytes, b"").result()
+            output_file_process.join()
+        
+    elapsed_time = datetime.now() - start_time
+    dt_string = elapsed_time.total_seconds()
+    print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 
 def guess_bias(decoder, input_file, block_size, blocks_limits=10):
