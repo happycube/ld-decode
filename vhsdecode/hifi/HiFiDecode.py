@@ -516,15 +516,8 @@ class HiFiDecode:
             / (self.ifresample_numerator * audio_final_rate)
         )
         
-        self.lopassRF = AFEBandPass(self.rfBandPassParams, self.sample_rate)
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
-
-        a_iirb, a_iira = firdes_lowpass(
-            self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
-        )
-        self.preAudioResampleL = FiltersClass(a_iirb, a_iira, self.if_rate)
-        self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate)
 
         if self.options["resampler_quality"] == "high":
             self.if_resampler_converter = "sinc_medium"
@@ -535,8 +528,8 @@ class HiFiDecode:
             self.audio_resampler_converter = "sinc_fastest"
             self.audio_final_resampler_converter = "sinc_medium"
         else: # low
-            self.if_resampler_converter = "linear"
-            self.audio_resampler_converter = "linear"
+            self.if_resampler_converter = "sinc_fastest"
+            self.audio_resampler_converter = "sinc_fastest"
             self.audio_final_resampler_converter = "sinc_fastest"
 
         # filter_plot(envv_iirb, envv_iira, self.audio_rate, type="bandpass", title="audio_filter")
@@ -834,14 +827,7 @@ class HiFiDecode:
         ifL = self.fmL.work(filterL)
         ifR = self.fmR.work(filterR)
 
-        if self.audio_resampler_converter == "linear":
-            preAudioResampleL = self.preAudioResampleL.lfilt(ifL)
-            preAudioResampleR = self.preAudioResampleR.lfilt(ifR)
-        else:
-            preAudioResampleL = ifL
-            preAudioResampleR = ifR
-
-        return preAudioResampleL, preAudioResampleR
+        return ifL, ifR
 
     @property
     def blockSize(self) -> int:
@@ -963,13 +949,8 @@ class HiFiDecode:
     def block_decode(
         self, raw_data: np.array, block_count: int = 0
     ) -> Tuple[int, np.array, np.array]:
-        if self.if_resampler_converter == "linear":
-            lo_data = self.lopassRF.work(raw_data)
-        else:
-            lo_data = raw_data
-
         data = samplerate_resample(
-            lo_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
+            raw_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
         preL, preR = self.demodblock(data)
 
