@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 import subprocess
 import time
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count, Pipe, Queue, Process, Manager
 from datetime import datetime, timedelta
 import os
 import sys
+import asyncio
 from typing import List, Optional
 import signal
 from numba import njit, prange
+from collections import deque
 
 import numpy as np
 import soundfile as sf
@@ -384,14 +386,8 @@ class UnseekableSoundFile(sf.SoundFile):
         fill_value=None,
         out=None,
     ):
-        current_block = self._read_next_chunk(blocksize, overlap, np.dtype(dtype))
         while True:
-            next_block = self._read_next_chunk(blocksize, overlap, np.dtype(dtype))
-            is_last_block = len(next_block) == 0
-
-            yield (current_block, is_last_block)
-
-            current_block = next_block
+            yield self._read_next_chunk(blocksize, overlap, np.dtype(dtype))
 
 
 class UnSigned16BitFileReader(io.RawIOBase):
@@ -415,6 +411,69 @@ class UnSigned16BitFileReader(io.RawIOBase):
 
     def close(self):
         self.file.close()
+
+class AsyncSoundFile():
+    def __init__(self, soundfile: sf.SoundFile, async_buffer_size):
+        self._soundfile = soundfile
+        self.frames = soundfile.frames
+
+        self._blocks_buffer = deque()
+        self._blocks_buffer_size = async_buffer_size
+
+    # read blocks in the background
+    async def _read_blocks(
+        self,
+        block_params,
+    ):
+        loop = asyncio.get_event_loop()
+        blocks_generator = self._soundfile.blocks(**block_params)
+
+        while True:
+            # read from the input asynchronously filling the cache as quickly as possible
+            if len(self._blocks_buffer) < self._blocks_buffer_size:
+                block = await loop.run_in_executor(None, next, blocks_generator)
+
+                self._blocks_buffer.append(block)
+                if len(block) == 0:
+                    break
+            else:
+                # Wait a bit until some data has loaded
+                await asyncio.sleep(0.1)
+    
+    async def blocks_async( 
+        self,
+        blocksize=None,
+        overlap=0,
+        frames=-1,
+        dtype="float64",
+        always_2d=False,
+        fill_value=None,
+    ):
+        block_params = {
+           "blocksize": blocksize,
+           "overlap": overlap,
+           "frames": frames,
+           "dtype": dtype,
+           "always_2d": always_2d,
+           "fill_value": fill_value,
+           "out": None,
+        }
+
+        asyncio.create_task(self._read_blocks(block_params))
+
+        while True:
+            if len(self._blocks_buffer) > 0:
+                data = self._blocks_buffer.popleft()
+                yield data
+
+                if len(data) == 0:
+                    break
+            else:
+                # Wait a bit until some data has loaded
+                await asyncio.sleep(0.1)
+
+    def tell(self):
+        return self._soundfile.tell()
 
 
 # This part is what opens the file
@@ -761,10 +820,12 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
             current_block = 0
             try:
                 print(f"Starting decode...")
-                for block, is_last_block in f.blocks(
+                for block in f.blocks(
                     blocksize=decoder.blockSize, overlap=decoder.readOverlap
                 ):
-                    if exit_requested:
+                    is_last_block = f.tell() == f.frames
+
+                    if exit_requested or len(block) == 0:
                         break
 
                     progressB.print(f.tell())
@@ -858,7 +919,7 @@ def write_soundfile_process_worker(conn, output_file, audio_rate):
 
                 write_executor.submit(w.buffer_write, stereo, dtype='float32')
 
-def decode_parallel(
+async def decode_parallel(
     decoders: List[HiFiDecode],
     decode_options: dict,
     threads: int = 8,
@@ -884,7 +945,8 @@ def decode_parallel(
         decoder_process.start()
         decoder_processes.append(decoder_process)
 
-    output_parent_conn, output_child_conn = Pipe()
+    output_thread_executor = ThreadPoolExecutor(1)
+    output_child_conn, output_parent_conn = Pipe(duplex=False)
     output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file, decode_options["audio_rate"]))
     output_file_process.start()
 
@@ -894,11 +956,15 @@ def decode_parallel(
         decoders[0]
     )
     decoders_queued = 0
-    with as_soundfile(input_file) as f:
+    with as_soundfile(input_file) as sf:
+        f = AsyncSoundFile(sf, threads)
+
         progressB = TimeProgressBar(f.frames, f.frames)
         try:
             print(f"Starting decode...")
-            for block, is_last_block in f.blocks(blocksize=block_size, overlap=read_overlap):
+            async for block in f.blocks_async(blocksize=block_size, overlap=read_overlap):
+                is_last_block = f.tell() == f.frames
+
                 if exit_requested:
                     break
 
@@ -916,7 +982,7 @@ def decode_parallel(
                 # send to post processor
                 for stereo in post_processor.read():
                     try:
-                        output_parent_conn.send_bytes(stereo)
+                        output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
                         total_samples_decoded += len(stereo) / 8
 
                         log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
@@ -956,50 +1022,51 @@ def decode_parallel(
                     break
         except KeyboardInterrupt:
             pass
+
         print("")
         print("Decode finishing up. Emptying the queue")
         print("")
 
-    # signal the decoders to shutdown
-    decoders_running = set()
-    for i in range(len(decoder_processes)):
-        decoder_in_queue.put_nowait(i)
-        decoders_running.add(i)
-
-    while len(decoders_running) > 0 or not decoder_out_queue.empty():
-        data = decoder_out_queue.get()
-        if isinstance(data, int):
-            decoders_running.remove(data)
-            continue
-
-        block_num, l, r = data
-        post_processor.submit(block_num, l, r, block_num == current_block - 1)
-
-        for stereo in post_processor.read():
-            output_parent_conn.send_bytes(stereo)
-            total_samples_decoded += len(stereo) / 8
-
-            log_decode(start_time, f.tell(), total_samples_decoded, decode_options)       
-
-    for stereo in post_processor.flush():
-        try:
-            output_parent_conn.send_bytes(stereo)
-            total_samples_decoded += len(stereo) / 8
-
-            log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
-        except ValueError:
-            pass
-
-    for i in range(threads):
-        process = decoder_processes[i]
-        process.terminate()
-        output_parent_conn.send_bytes(b"")
-
-    output_file_process.join()
-
-    elapsed_time = datetime.now() - start_time
-    dt_string = elapsed_time.total_seconds()
-    print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
+        # signal the decoders to shutdown
+        decoders_running = set()
+        for i in range(len(decoder_processes)):
+            decoder_in_queue.put_nowait(i)
+            decoders_running.add(i)
+    
+        while len(decoders_running) > 0 or not decoder_out_queue.empty():
+            data = decoder_out_queue.get()
+            if isinstance(data, int):
+                decoders_running.remove(data)
+                continue
+    
+            block_num, l, r = data
+            post_processor.submit(block_num, l, r, block_num == current_block - 1)
+    
+            for stereo in post_processor.read():
+                output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
+                total_samples_decoded += len(stereo) / 8
+    
+                log_decode(start_time, f.tell(), total_samples_decoded, decode_options)       
+    
+        for stereo in post_processor.flush():
+            try:
+                output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
+                total_samples_decoded += len(stereo) / 8
+    
+                log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
+            except ValueError:
+                pass
+    
+        for i in range(threads):
+            process = decoder_processes[i]
+            process.terminate()
+    
+        output_thread_executor.submit(output_parent_conn.send_bytes, b"").result()
+        output_file_process.join()
+    
+        elapsed_time = datetime.now() - start_time
+        dt_string = elapsed_time.total_seconds()
+        print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 
 def guess_bias(decoder, input_file, block_size, blocks_limits=10):
@@ -1050,7 +1117,12 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
             for i in range(0, args.threads):
                 decoders.append(HiFiDecode(decode_options))
                 decoders[i].updateAFE(LCRef, RCRef)
-            decode_parallel(decoders, decode_options, threads=args.threads, ui_t=ui_t)
+
+            # one thread to continuously read in the blocks, one thread for processing what was read
+            with ThreadPoolExecutor(int(args.threads/2)) as async_executor:
+                loop = asyncio.get_event_loop()
+                loop.set_default_executor(async_executor)
+                loop.run_until_complete(decode_parallel(decoders, decode_options, threads=args.threads, ui_t=ui_t))
         else:
             decode(decoder, decode_options, ui_t=ui_t)
         print("Decode finished successfully")
