@@ -2,15 +2,17 @@
 # It could also do Beta HiFi, CED, LD and other stereo AFM variants,
 # It has an interpretation of the noise reduction method described on IEC60774-2/1999
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi, sqrt
+from math import log, pi, sqrt, ceil, floor
 from typing import Tuple
+from numpy.typing import NDArray
+import sys
 
 import numpy as np
 from numba import njit
-from scipy.signal import iirpeak, iirnotch
+from scipy.signal import lfilter_zi, filtfilt, lfilter, iirpeak, iirnotch, butter, spectrogram, find_peaks
+from scipy.interpolate import interp1d
 from scipy.signal.signaltools import hilbert
 
 from noisereduce.spectralgate.nonstationary import SpectralGateNonStationary
@@ -19,16 +21,19 @@ from lddecode.utils import unwrap_hilbert
 from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
-from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
+from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
+
+import matplotlib.pyplot as plt
 
 # lower increases expander strength and decreases overall gain
 DEFAULT_NR_ENVELOPE_GAIN = 22
-# increase gain to compensate for deemphasis gain loss
-DEFAULT_NR_DEEMPHASIS_GAIN = 1
 # sets logarithmic slope for the 1:2 expander
 DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
+DEFAULT_RESAMPLER_QUALITY = "high"
+DEFAULT_FINAL_AUDIO_RATE = 48000
+REAL_DTYPE=np.float32
 
 BLOCKS_PER_SECOND = 2
 
@@ -39,6 +44,23 @@ class AFEParamsFront:
         self.FDC = 1e6
         self.transition_width = 700e3
 
+# assembles the current filter design on a pipe-able filter
+class FiltersClass:
+    def __init__(self, iir_b, iir_a, samp_rate, dtype=REAL_DTYPE):
+        self.iir_b, self.iir_a = iir_b.astype(dtype), iir_a.astype(dtype)
+        self.z = lfilter_zi(self.iir_b, self.iir_a)
+        self.samp_rate = samp_rate
+
+    def rate(self):
+        return self.samp_rate
+
+    def filtfilt(self, data):
+        output = filtfilt(self.iir_b, self.iir_a, data)
+        return output
+
+    def lfilt(self, data):
+        output, self.z = lfilter(self.iir_b, self.iir_a, data, zi=self.z)
+        return output
 
 class AFEBandPass:
     def __init__(self, filters_params, sample_rate):
@@ -66,6 +88,9 @@ class LpFilter:
 
     def work(self, data):
         return self.filter.lfilt(data)
+    
+    def filtfilt(self, data):
+        return self.filter.filtfilt(data)
 
 
 @dataclass
@@ -168,10 +193,9 @@ class AFEFilterable:
 
 class FMdemod:
     def __init__(self, sample_rate, carrier_freerun, type=0):
-        self.samp_rate = sample_rate
+        self.samp_rate = REAL_DTYPE(sample_rate)
         self.type = type
         self.carrier = carrier_freerun
-        self.offset = 0
 
     def hhtdeFM(self, data):
         return FMdemod.inst_freq(data, self.samp_rate)
@@ -190,10 +214,10 @@ class FMdemod:
         ph_correct = ddmod - dd
         to_zero_locations = np.where(np.abs(dd) < discont)
         ph_correct[to_zero_locations] = 0
-        return p[1] + np.cumsum(ph_correct)
+        return p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
     @staticmethod
-    def unwrap_hilbert(analytic_signal: np.array, sample_rate: int):
+    def unwrap_hilbert(analytic_signal: np.array, sample_rate: REAL_DTYPE):
         instantaneous_phase = FMdemod.unwrap(np.angle(analytic_signal))
         instantaneous_frequency = (
             np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
@@ -201,22 +225,17 @@ class FMdemod:
         return instantaneous_frequency
 
     @staticmethod
-    def inst_freq(signal: np.ndarray, sample_rate: int):
+    def inst_freq(signal: np.ndarray, sample_rate: REAL_DTYPE):
         return FMdemod.unwrap_hilbert(hilbert(signal.real), sample_rate)
 
     def work(self, data):
         if self.type == 2:
-            return np.add(self.htdeFM(data, self.samp_rate), -self.offset)
+            return self.htdeFM(data, self.samp_rate)
         elif self.type == 1:
-            return np.add(self.hhtdeFM(data), -self.offset)
+            return self.hhtdeFM(data)
         else:
-            return np.add(FMdemod.inst_freq(data, self.samp_rate), -self.offset)
+            return FMdemod.inst_freq(data, self.samp_rate)
 
-
-def getDeemph(tau, sample_rate):
-    deemph = FMDeEmphasisC(sample_rate, tau)
-    iir_b, iir_a = deemph.get()
-    return FiltersClass(iir_b, iir_a, sample_rate)
 
 def tau_as_freq(tau):
     return 1 / (2 * pi * tau)
@@ -298,7 +317,7 @@ class SpectralNoiseReduction():
             self.chunks.append(np.zeros(self.chunk_size))
 
     def _get_chunk(self, audio, chunks):
-        chunk = np.zeros((1, self.padding * 2 + self.chunk_size * self.chunk_count))
+        chunk = np.zeros((1, self.padding * 2 + self.chunk_size * self.chunk_count), dtype=REAL_DTYPE)
         
         chunks.pop(0)
         chunks.append(audio)
@@ -326,15 +345,11 @@ class SpectralNoiseReduction():
 class NoiseReduction:
     def __init__(
         self,
-        notch_freq: float,
         side_gain: float,
-        discard_size: int = 0,
         audio_rate: int = 192000,
         spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT,
     ):
         self.audio_rate = audio_rate
-        self.discard_size = discard_size
-        self.hfreq = notch_freq
 
         # noise reduction envelope tracking constants (this ones might need tweaking)
         self.NR_envelope_gain = side_gain
@@ -374,7 +389,7 @@ class NoiseReduction:
             self.audio_rate
         )
 
-        self.nrWeightedHighpass = FiltersClass(env_iirb, env_iira, self.audio_rate)
+        self.nrWeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira), self.audio_rate)
 
         # deemphasis filter for output audio
         self.NR_deemphasis_T1 = 240e-6
@@ -390,7 +405,7 @@ class NoiseReduction:
             self.audio_rate
         )
 
-        self.nrDeemphasisLowpass = FiltersClass(deemph_b, deemph_a, self.audio_rate)
+        self.nrDeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a), self.audio_rate)
 
         # expander attack
         loenv_iirb, loenv_iira = firdes_lowpass(
@@ -413,14 +428,6 @@ class NoiseReduction:
         )
 
     @staticmethod
-    def cancelDC(c, dc):
-        return c - dc
-
-    @staticmethod
-    def cancelDCpair(L, R, dcL, dcR):
-        return NoiseReduction.cancelDC(L, dcL), NoiseReduction.cancelDC(R, dcR)
-
-    @staticmethod
     def audio_notch(samp_rate: int, freq: float, audio):
         cancel_shift = int(round(samp_rate / (2 * freq)))
         shift = audio[:-cancel_shift]
@@ -433,11 +440,33 @@ class NoiseReduction:
         ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
     
     @staticmethod
-    def expand(log_strength, signal):
+    @njit(cache=True, fastmath=True, nogil=True)
+    def expand(log_strength: float, signal: np.array) -> np.array:
         # detect the envelope and use logarithmic expansion
-        levels = np.clip(np.abs(signal), None, 1)
-        return np.power(levels, log_strength)
+        rectified = np.abs(signal)
+        levels = np.clip(rectified, 0.0, 1.0)
+        return np.power(levels, REAL_DTYPE(log_strength))
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def get_attacks_and_releases(attack: np.array, release: np.array) -> np.array:
+        releasing_idx = np.where(attack < release)
+        rsC = attack
+        for id in releasing_idx:
+            rsC[id] = release[id]
 
+        return rsC
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def apply_gate(rsC: np.array, audio: np.array, nr_env_gain: float) -> np.array:
+        # computes a sidechain signal to apply noise reduction
+        # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
+        #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
+        #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
+        gate = np.clip(rsC * nr_env_gain, a_min=0.0, a_max=1.0)
+        return np.multiply(audio, gate)
+    
     def rs_envelope(self, raw_data):
         # prevent high frequency noise from interfering with envelope detector
         low_pass = self.nrWeightedLowpass.work(raw_data)
@@ -450,30 +479,13 @@ class NoiseReduction:
     def noise_reduction(self, pre, de_noise):
         # takes the RMS envelope of each audio channel
         audio_env = self.rs_envelope(pre)
-
-        rsaC = self.envelope_attack_Lowpass.lfilt(audio_env)
-        rsrC = self.envelope_release_Lowpass.lfilt(audio_env)
-
-        releasing_idx = np.where(rsaC < rsrC)
-        rsC = rsaC
-        for id in releasing_idx:
-            rsC[id] = rsrC[id]
-
-        # computes a sidechain signal to apply noise reduction
-        # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
-        #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
-        #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
-        gate = np.clip(rsC * self.NR_envelope_gain, a_min=0.0, a_max=1.0)
-
         audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise)
 
-        make_up_gain = (DEFAULT_NR_DEEMPHASIS_GAIN + self.spectral_nr_amount * 1.3)
-        audio_with_gain = np.clip(audio_with_deemphasis * make_up_gain, a_min=-1.0, a_max=1.0)
+        attack = self.envelope_attack_Lowpass.lfilt(audio_env)
+        release = self.envelope_release_Lowpass.lfilt(audio_env)
+        rsC = NoiseReduction.get_attacks_and_releases(attack, release)
 
-        # applies noise reduction
-        nr = np.multiply(audio_with_gain, gate)
-
-        return nr
+        return NoiseReduction.apply_gate(rsC, audio_with_deemphasis, self.NR_envelope_gain)
 
 
 class HiFiDecode:
@@ -482,24 +494,33 @@ class HiFiDecode:
             options = dict()
         self.options = options
         self.sample_rate: int = options["input_rate"]
-        self.options = options
         self.rfBandPassParams = AFEParamsFront()
-        # downsamples the if signal to fit within the nyquist cutoff
-        self.if_rate: int = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
         self.audio_rate: int = 192000
+        self.audio_final_rate: int = options["audio_rate"]
+        self.decode_mode = options["mode"]
+        self.gain = options["gain"]
+        # downsamples the if signal to fit within the nyquist cutoff within an integer ratio of the audio rate
+        min_if_rate = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
+        self.if_rate_audio_ratio = ceil(min_if_rate / self.audio_rate)
+        self.if_rate: int = self.if_rate_audio_ratio * self.audio_rate
 
         (
             self.ifresample_numerator,
             self.ifresample_denominator,
             self.audioRes_numerator,
             self.audioRes_denominator,
+            self.audioFinal_numerator,
+            self.audioFinal_denominator
         ) = self.getResamplingRatios()
 
         # block overlap and edge discard
         self.blocks_second: int = BLOCKS_PER_SECOND
         self.block_size: int = int(self.sample_rate / self.blocks_second)
         self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
-        self.block_overlap_audio: int = int(self.audio_rate / 5e2)
+
+        # trim off peaks at edges of if
+        self.pre_trim = 50
+        self.block_overlap_audio: int = int(self.audio_rate / (4e2 + self.pre_trim * 2))
         audio_final_rate = (self.options["audio_rate"] / self.audio_rate) * (
             self.audioRes_numerator / self.audioRes_denominator
         )
@@ -509,44 +530,56 @@ class HiFiDecode:
             / (self.ifresample_numerator * audio_final_rate)
         )
         
-        self.lopassRF = AFEBandPass(self.rfBandPassParams, self.sample_rate)
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
 
-        a_iirb, a_iira = firdes_lowpass(
-            self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
-        )
-        self.preAudioResampleL = FiltersClass(a_iirb, a_iira, self.if_rate)
-        self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate)
-
-        if self.options["resampler_quality"] == "medium":
-            self.if_resampler_converter = "linear"
-            self.audio_resampler_converter = "sinc_fastest"
-
-        elif self.options["resampler_quality"] == "high":
-            self.if_resampler_converter = "linear"
+        if self.options["resampler_quality"] == "high":
+            self.if_resampler_converter = "sinc_medium"
             self.audio_resampler_converter = "sinc_medium"
-
-        else:
-            self.if_resampler_converter = "linear"
-            self.audio_resampler_converter = "linear"
+            self.audio_final_resampler_converter = "sinc_best"
+        elif self.options["resampler_quality"] == "medium":
+            self.if_resampler_converter = "sinc_fastest"
+            self.audio_resampler_converter = "sinc_fastest"
+            self.audio_final_resampler_converter = "sinc_medium"
+        else: # low
+            self.if_resampler_converter = "sinc_fastest"
+            self.audio_resampler_converter = "sinc_fastest"
+            self.audio_final_resampler_converter = "sinc_fastest"
 
         # filter_plot(envv_iirb, envv_iira, self.audio_rate, type="bandpass", title="audio_filter")
 
         if options["format"] == "vhs":
             if options["standard"] == "p":
+                self.field_rate = 50
                 self.afe_params = AFEParamsPALVHS()
                 self.standard = AFEParamsPALVHS()
             else:
+                self.field_rate = 59.94
                 self.afe_params = AFEParamsNTSCVHS()
                 self.standard = AFEParamsNTSCVHS()
         else:
             if options["standard"] == "p":
+                self.field_rate = 50
                 self.afe_params = AFEParamsPALHi8()
                 self.standard = AFEParamsPALHi8()
             else:
+                self.field_rate = 59.94
                 self.afe_params = AFEParamsNTSCHi8()
                 self.standard = AFEParamsNTSCHi8()
+
+        self.headswitch_passes = 2
+        self.headswitch_signal_rate = self.audio_rate
+        self.headswitch_hz = self.field_rate # frequency used to fit peaks to the expected headswitching interval
+        self.headswitch_drift_hz = self.field_rate * 0.1 # +- 10% drift is normal
+        self.headswitch_cutoff_freq = 25000 # filter cutoff frequency for peak detection
+        # maximum seconds to widen the interpolation based on the strength of the peak
+        #   setting too low prevents interpolation from covering the whole pulse
+        #   setting too high causes audible artifacts where the interpolation occurs
+        self.headswitch_interpolation_padding = 35e-6
+        # time range to look for neighboring noise when a head switch event is detected
+        # this helps to determine the correct width of the interpolation
+        self.headswitch_interpolation_neighbor_range = 200e-6
+        hs_b, hs_a = butter(3, self.headswitch_cutoff_freq / (0.5 * self.headswitch_signal_rate), btype='highpass')
 
         self.afeL, self.afeR, self.fmL, self.fmR = self.afeParams(self.afe_params)
         self.devL, self.devR = 0, 0
@@ -561,6 +594,29 @@ class HiFiDecode:
                     "ZMQ library is not available, please install the zmq python library to use this feature!"
                 )
 
+        self.audio_process_params = {
+            "pre_trim": self.pre_trim,
+            "gain": self.gain,
+            "decode_mode": self.decode_mode,
+            "audio_rate": self.audio_rate,
+            "audioRes_numerator": self.audioRes_numerator,
+            "audioRes_denominator": self.audioRes_denominator,
+            "audio_resampler_converter": self.audio_resampler_converter,
+            "audio_final_rate": self.audio_final_rate,
+            "audioFinal_numerator": self.audioFinal_numerator,
+            "audioFinal_denominator": self.audioFinal_denominator,
+            "audio_final_resampler_converter": self.audio_final_resampler_converter,
+            "headswitch_passes": self.headswitch_passes,
+            "headswitch_signal_rate": self.headswitch_signal_rate,
+            "headswitch_hz": self.headswitch_hz,
+            "headswitch_drift_hz": self.headswitch_drift_hz,
+            "headswitch_cutoff_freq": self.headswitch_cutoff_freq,
+            "headswitch_interpolation_padding": self.headswitch_interpolation_padding,
+            "headswitch_interpolation_neighbor_range": self.headswitch_interpolation_neighbor_range,
+            "hs_b": hs_b,
+            "hs_a": hs_a
+        }
+
     def getResamplingRatios(self):
         samplerate2ifrate = self.if_rate / self.sample_rate
         self.ifresample_numerator = Fraction(samplerate2ifrate).numerator
@@ -571,14 +627,21 @@ class HiFiDecode:
         assert (
             self.ifresample_denominator > 0
         ), f"IF resampling denominator got 0; sample_rate {self.sample_rate}"
+
         audiorate2ifrate = self.audio_rate / self.if_rate
         self.audioRes_numerator = Fraction(audiorate2ifrate).numerator
         self.audioRes_denominator = Fraction(audiorate2ifrate).denominator
+
+        audiorate2FinalAudioRate = self.audio_final_rate / self.audio_rate
+        self.audioFinal_numerator = Fraction(audiorate2FinalAudioRate).numerator
+        self.audioFinal_denominator = Fraction(audiorate2FinalAudioRate).denominator
         return (
             self.ifresample_numerator,
             self.ifresample_denominator,
             self.audioRes_numerator,
             self.audioRes_denominator,
+            self.audioFinal_numerator,
+            self.audioFinal_denominator
         )
 
     def updateDemod(self):
@@ -622,8 +685,152 @@ class HiFiDecode:
             fmR = FMdemod(self.if_rate, standard.RCarrierRef, 0)
 
         return afeL, afeR, fmL, fmR
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def smooth(data: np.array, half_window: int) -> np.array:
+        smoothed_data = data.copy()
+    
+        for i in range(len(data)):
+            start = max(0, i - half_window)
+            end = min(len(data), i + half_window + 1)
+            smoothed_data[i] = np.mean(data[start:end])  # Apply moving average
+    
+        return smoothed_data
 
-    def demodblock(self, data):
+    @staticmethod
+    def headswitch_interpolate_boundaries(
+        audio: np.array,
+        boundaries: list[Tuple[int, int]]
+    ) -> np.array:
+        interpolated_signal = np.copy(audio)
+
+        # setup interpolator input by copying and removing any samples that are peaks
+        time = np.arange(len(interpolated_signal), dtype=float)
+        interpolator_in = np.copy(audio)
+
+        for (start, end) in boundaries:
+            time[start:end] = np.nan
+            interpolator_in[start:end] = np.nan
+
+        time = time[np.logical_not(np.isnan(time))]
+        interpolator_in = interpolator_in[np.logical_not(np.isnan(interpolator_in))]
+
+        # interpolate the gap where the peak was removed
+        interpolator = interp1d(time, interpolator_in, kind="linear", copy=False, assume_sorted=True, fill_value="extrapolate")
+
+        for (start, end) in boundaries:
+            smoothing_size = 1 + end - start
+
+            # sample and hold inteerpolation if boundaries are beyond this chunk
+            if start < 0:
+                interpolated_signal[0:end] = interpolated_signal[end]
+            elif end > len(audio):
+                interpolated_signal[start:len(audio)] = interpolated_signal[start]
+            else:
+                for i in range(start, end): interpolated_signal[i] = interpolator(i)
+                # smooth linear interpolation
+                interpolated_signal[start-smoothing_size:end+smoothing_size] = HiFiDecode.smooth(interpolated_signal[start-smoothing_size:end+smoothing_size], ceil(smoothing_size / 4))
+    
+        return interpolated_signal
+
+
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def mean_stddev(signal: np.array) -> tuple[float, float]:
+        signal_mean = np.mean(signal)
+        signal_std_dev = sqrt(np.mean(np.abs(signal - signal_mean)**2))
+
+        return signal_mean, signal_std_dev
+
+    @staticmethod
+    def headswitch_detect_peaks(
+        audio: np.array,
+        audio_process_params: dict,
+    ) -> Tuple[list[Tuple[float, float, float, float]], np.array, np.array]:
+        # remove audible frequencies to avoid detecting them as peaks
+        filtered_signal = filtfilt(audio_process_params["hs_b"], audio_process_params["hs_a"], audio)
+        filtered_signal_abs = abs(filtered_signal)
+
+        # detect the peaks that align with the headswitching speed
+        # peaks should align roughly to the frame rate of the video system
+        # account for small drifts in the head switching pulse (shows up as the sliding dot on video)
+        peak_distance_seconds = 1 / (audio_process_params["headswitch_hz"] + audio_process_params["headswitch_drift_hz"])
+        peak_centers, peak_center_props = find_peaks(
+            filtered_signal_abs, 
+            distance=peak_distance_seconds * audio_process_params["headswitch_signal_rate"],
+            width=1
+        )
+
+        peaks = list(zip(
+            peak_centers, 
+            peak_center_props["left_ips"], 
+            peak_center_props["right_ips"], 
+            peak_center_props["prominences"]
+        ))
+
+        # using the head switching points, detect neighboring peaks around the headswitching pulse area
+        filtered_signal_mean, filtered_signal_std_dev = HiFiDecode.mean_stddev(filtered_signal)
+
+        # a neighboring peak theshold based on stadard deviation
+        neighbor_threshold = filtered_signal_mean + filtered_signal_std_dev
+        neighbor_search_width = round(audio_process_params["headswitch_interpolation_neighbor_range"] * audio_process_params["headswitch_signal_rate"])
+
+        # search around the center peak for any neighboring noise that is above the threshold
+        for (peak_center, peak_start, peak_end, peak_prominence) in peaks.copy():
+            start_neighbor = max(0, floor(peak_start - neighbor_search_width))
+            end_neighbor = min(ceil(peak_end + neighbor_search_width), len(filtered_signal_abs))
+
+            # search for neighboring peaks and add to the list
+            neighbor_peak_centers, neighbor_peak_props = find_peaks(
+                filtered_signal_abs[start_neighbor:end_neighbor],
+                threshold = neighbor_threshold,
+                prominence=0.25,
+                distance=1,
+                width=1
+            )
+
+            for peak_log_neighbor_idx in range(len(neighbor_peak_centers)):
+                peaks.append((
+                    neighbor_peak_centers[peak_log_neighbor_idx] + start_neighbor,
+                    neighbor_peak_props["left_ips"][peak_log_neighbor_idx] + start_neighbor,
+                    neighbor_peak_props["right_ips"][peak_log_neighbor_idx] + start_neighbor,
+                    neighbor_peak_props["prominences"][peak_log_neighbor_idx]
+                ))
+
+        return peaks, filtered_signal, filtered_signal_abs
+    
+    @staticmethod
+    def headswitch_calc_boundaries(
+        peaks: list[tuple[int, int, int, float]],
+        audio_process_params: dict
+    ) -> list[Tuple[int, int]]:
+        peak_boundaries = list()
+
+        # scale the peak width depending on how much the peak stands out from the base signal
+        # use light scaling for headswtich peaks since they are usually very brief
+        padding_samples = round(audio_process_params["headswitch_interpolation_padding"] * audio_process_params["headswitch_signal_rate"])
+        for (peak_center, peak_start, peak_end, peak_prominence) in peaks:
+            width_padding = peak_prominence * padding_samples
+            # start and end peak at its bases
+            start = floor(peak_start - width_padding)
+            end = ceil(peak_end + width_padding)
+
+            peak_boundaries.append((start, end))
+
+        # merge overlapping or duplicate boundaries
+        peak_boundaries.sort(key=lambda x: x[0])
+        merged = list()
+
+        for boundary in peak_boundaries:
+            if not merged or merged[-1][1] < boundary[0]:
+                merged.append(boundary)
+            else:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], boundary[1]))
+
+        return merged
+
+    def demodblock(self, data: np.array) -> Tuple[np.array, np.array]:
         filterL = self.afeL.work(data)
         filterR = self.afeR.work(data)
 
@@ -634,20 +841,7 @@ class HiFiDecode:
         ifL = self.fmL.work(filterL)
         ifR = self.fmR.work(filterR)
 
-        if self.audio_resampler_converter == "linear":
-            preAudioResampleL = self.preAudioResampleL.lfilt(ifL)
-            preAudioResampleR = self.preAudioResampleR.lfilt(ifR)
-        else:
-            preAudioResampleL = ifL
-            preAudioResampleR = ifR
-
-        preL = samplerate_resample(preAudioResampleL, self.audioRes_numerator, self.audioRes_denominator, converter_type=self.audio_resampler_converter)
-        preR = samplerate_resample(preAudioResampleR, self.audioRes_numerator, self.audioRes_denominator, converter_type=self.audio_resampler_converter)
-
-        dcL = np.mean(preL)
-        dcR = np.mean(preR)
-
-        return dcL, dcR, preL, preR
+        return ifL, ifR
 
     @property
     def blockSize(self) -> int:
@@ -677,15 +871,6 @@ class HiFiDecode:
     def notchFreq(self) -> float:
         return self.standard.Hfreq
 
-    @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
-    def cancelDC(c: np.array, dc: np.array):
-        return c - dc
-
-    @staticmethod
-    def cancelDCpair(L, R, dcL, dcR):
-        return HiFiDecode.cancelDC(L, dcL), HiFiDecode.cancelDC(R, dcR)
-
     def guessBiases(self, blocks):
         meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
             window_average=len(blocks)
@@ -695,7 +880,7 @@ class HiFiDecode:
             data = samplerate_resample(
                 lo_data, self.ifresample_numerator, self.ifresample_denominator
             )
-            dcL, dcR, preL, preR = self.demodblock(data)
+            preL, preR = self.demodblock(data)
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
 
@@ -708,23 +893,178 @@ class HiFiDecode:
     def block_decode_worker(decoder, block, current_block):
         return decoder.block_decode(block, current_block)
 
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def cancelDC(audio: np.array) -> Tuple[np.array, float]:
+        dc = REAL_DTYPE(np.mean(audio))
+        return audio - dc, dc
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def clip(audio: np.array, clip: float) -> np.array:
+        return audio / REAL_DTYPE(clip)
+    
+    @staticmethod
+    def headswitch_remove_noise(audio: np.array, audio_process_params: dict) -> np.array:
+        for _ in range(audio_process_params["headswitch_passes"]):
+            peaks, filtered_signal, filtered_signal_abs = HiFiDecode.headswitch_detect_peaks(audio, audio_process_params)
+            interpolation_boundaries = HiFiDecode.headswitch_calc_boundaries(peaks, audio_process_params)
+            audio_interpolated = HiFiDecode.headswitch_interpolate_boundaries(audio, interpolation_boundaries)
+
+            # uncomment to debug head switching pulse detection
+            # HiFiDecode.debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, audio_interpolated, audio_process_params["headswitch_signal_rate"])
+            # plt.show()
+            # sys.exit(0)
+        return audio_interpolated
+    
+    @staticmethod
+    def mix_for_mode_stereo(
+        l_raw: np.array,
+        r_raw: np.array,
+        decode_mode: str
+    ) -> tuple[np.array, np.array]:
+        if decode_mode == "mpx":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
+        elif decode_mode == "l":
+            l = l_raw
+            r = l_raw
+        elif decode_mode == "r":
+            l = r_raw
+            r = r_raw
+        elif decode_mode == "sum":
+            l = np.multiply(np.add(l_raw, r_raw), 0.5)
+            r = np.multiply(np.add(l_raw, r_raw), 0.5)
+        else:
+            l = l_raw
+            r = r_raw
+    
+        return l, r
+
+    @staticmethod
+    def adjust_gain(
+        audio: np.array,
+        gain: float
+    ) -> np.array:
+        return np.multiply(audio, gain)
+
+    @staticmethod
+    def audio_process(audio: np.array, audio_process_params: dict) -> Tuple[np.array, float]:
+        audio = samplerate_resample(audio, audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
+        audio, dc = HiFiDecode.cancelDC(audio)
+        audio = HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
+        audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
+
+        if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
+            audio = samplerate_resample(audio, audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
+
+        return audio, dc
+
     def block_decode(
-        self, raw_data: np.array, block_count: int = 0
-    ) -> Tuple[int, np.array, np.array]:
-        lo_data = self.lopassRF.work(raw_data)
+        self,
+        raw_data: NDArray[np.int16]
+    ) -> Tuple[int, NDArray[REAL_DTYPE], NDArray[REAL_DTYPE]]:
+        raw_data.astype(REAL_DTYPE, copy=False)
         data = samplerate_resample(
-            lo_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
+            raw_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
-        dcL, dcR, preL, preR = self.demodblock(data)
+        # uses complex numbers so data comes out as float64
+        preL, preR = self.demodblock(data)
+
+        # remove peaks at edges of demodulated audio
+        trim = self.if_rate_audio_ratio * self.pre_trim
+        preL = preL[trim:-trim]
+        preR = preR[trim:-trim]
+
+        # with ProcessPoolExecutor(2) as stereo_executor:
+        #     audioL_future = stereo_executor.submit(HiFiDecode.audio_process, preL, self.audio_process_params)
+        #     audioR_future = stereo_executor.submit(HiFiDecode.audio_process, preR, self.audio_process_params)
+        #     preL, dcL = audioL_future.result()
+        #     preR, dcR = audioR_future.result()
+
+        preL, dcL = HiFiDecode.audio_process(preL, self.audio_process_params)
+        preR, dcR = HiFiDecode.audio_process(preR, self.audio_process_params)
+
+        preL, preR = HiFiDecode.mix_for_mode_stereo(preL, preR, self.audio_process_params["decode_mode"])
+
+        if self.audio_process_params["gain"] != 1:
+            preL = HiFiDecode.adjust_gain(preL, self.audio_process_params["gain"])
+            preR = HiFiDecode.adjust_gain(preR, self.audio_process_params["gain"])
 
         if self.options["auto_fine_tune"]:
             self.devL, self.devR = self.carrierOffsets(self.afe_params, dcL, dcR)
             self.updateStandard(self.devL, self.devR)
             self.updateDemod()
 
-        clip = AFEParamsPALVHS().VCODeviation
-        preL, preR = HiFiDecode.cancelDCpair(preL, preR, dcL, dcR)
-        preL /= clip
-        preR /= clip
+        assert preL.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {preL.dtype}"
+        assert preR.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {preR.dtype}"
 
-        return block_count, preL, preR
+        return preL, preR
+    
+    @staticmethod
+    def debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, interpolated, headswitch_signal_rate):
+        fs = headswitch_signal_rate
+        t = np.arange(0, len(audio)) / fs
+        fft_signal = np.fft.fft(audio)
+        fft_freqs = np.fft.fftfreq(len(t), 1/fs)
+        
+        # Only keep the positive half of the frequency spectrum
+        positive_freqs = fft_freqs[:len(t)//2]
+        positive_fft_signal = np.abs(fft_signal[:len(t)//2])
+        
+        # Perform the FFT on the filtered signal
+        fft_filtered_signal = np.fft.fft(filtered_signal)
+        positive_fft_filtered_signal = np.abs(fft_filtered_signal[:len(t)//2])
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(positive_freqs, positive_fft_signal, label='Original Signal Spectrum')
+        plt.plot(positive_freqs, positive_fft_filtered_signal, label='Filtered Signal Spectrum', color='orange')
+        plt.title("Frequency Spectrum")
+        plt.xlabel('Frequency [Hz]')
+        plt.ylabel('Magnitude')
+        plt.legend()
+
+        plt.figure(figsize=(10, 6))
+        
+        plt.subplot(4, 1, 1)
+        plt.plot(t, filtered_signal, label='Filtered Signal', color='green')
+        plt.title("Filtered Signal")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
+
+        peak_centers = [round(x[0]) for x in peaks]
+        peak_starts = [round(x[1]) for x in peaks]
+        peak_ends = [round(x[2]) for x in peaks]
+        peak_prominences = [x[3] for x in peaks]
+
+        interpolation_starts = [start for start, end in interpolation_boundaries]
+        interpolation_ends = [end for start, end in interpolation_boundaries]
+        
+        plt.subplot(4, 1, 2)
+        plt.plot(t, filtered_signal_abs, label='Filtered Signal Absolute Value', color='black')
+        plt.plot(t[interpolation_starts], filtered_signal_abs[interpolation_starts], 'r+', label='Interpolation Start')
+        plt.plot(t[peak_starts], filtered_signal_abs[peak_starts], 'b+', label='Start')
+        plt.plot(t[peak_centers], peak_prominences, 'gx', label='Prominence')
+        plt.plot(t[peak_centers], filtered_signal_abs[peak_centers], 'go', label='Center')
+        plt.plot(t[peak_ends], filtered_signal_abs[peak_ends], 'bx', label='End')
+        plt.plot(t[interpolation_ends], filtered_signal_abs[interpolation_ends], 'rx', label='Interpolation End')
+        plt.title("Filtered Signal with head switch points")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
+
+        plt.subplot(4, 1, 3)
+        plt.plot(t, interpolated, label='Interpolated audio', color='green')
+        plt.title("Interpolated Audio")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
+
+
+        plt.subplot(4, 1, 4)
+        plt.plot(t, audio, label='Original Signal')
+        plt.title("Original Signal")
+        plt.xlabel('Time [s]')
+        plt.ylabel('Amplitude')
+        plt.legend()
