@@ -32,7 +32,8 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_NR_ENVELOPE_GAIN,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
-    DEFAULT_FINAL_AUDIO_RATE
+    DEFAULT_FINAL_AUDIO_RATE,
+    REAL_DTYPE
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 import io
@@ -339,20 +340,20 @@ class UnseekableSoundFile(sf.SoundFile):
         #new_overlap = out[-overlap_size:]
         #new_overlap = new_overlap.astype(np.int16)
         #
-        #if np.size(overlap_data) == 0:
+        #if len(overlap_data) == 0:
         #    overlap_data = new_overlap
         #
         #return (np.concatenate((overlap_data, out)), new_overlap)
 
         # offset array copying logic implemented without numpy seems a bit faster
-        out_int16_len = np.size(out_int16)
+        out_int16_len = len(out_int16)
         overlap_size = min(overlap_size, out_int16_len)
         new_overlap = np.empty(overlap_size, dtype=np.int16)
-        result = np.empty(overlap_size + out_int16_len, dtype=np.float64)
+        result = np.empty(overlap_size + out_int16_len, dtype=out_dtype)
         
         # copy the overlapping data into result
         overlap_offset = out_int16_len - overlap_size
-        if np.size(overlap_data) == 0:
+        if len(overlap_data) == 0:
             for i in range(overlap_size):
                 overlap_value = out_int16[i + overlap_offset]
                 
@@ -698,6 +699,8 @@ class PostProcessor:
 
                 overlap_start, overlap_end = PostProcessor.get_overlap(len(l), is_last_block, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size)
                 stereo = PostProcessor.stereo_interleave(l, r, overlap_start, overlap_end)
+                
+                assert stereo.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format"
 
                 executor.submit(out_conn.send_bytes, stereo)
 

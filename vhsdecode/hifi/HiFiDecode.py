@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from fractions import Fraction
 from math import log, pi, sqrt, ceil, floor
 from typing import Tuple
+from numpy.typing import NDArray
 import sys
 
 import numpy as np
 from numba import njit
-from scipy.signal import filtfilt, iirpeak, iirnotch, butter, spectrogram, find_peaks
+from scipy.signal import lfilter_zi, filtfilt, lfilter, iirpeak, iirnotch, butter, spectrogram, find_peaks
 from scipy.interpolate import interp1d
 from scipy.signal.signaltools import hilbert
 
@@ -20,7 +21,7 @@ from lddecode.utils import unwrap_hilbert
 from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
-from vhsdecode.utils import firdes_lowpass, firdes_highpass, FiltersClass, StackableMA
+from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
 
 import matplotlib.pyplot as plt
 
@@ -32,6 +33,7 @@ DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 DEFAULT_RESAMPLER_QUALITY = "high"
 DEFAULT_FINAL_AUDIO_RATE = 48000
+REAL_DTYPE=np.float32
 
 BLOCKS_PER_SECOND = 2
 
@@ -42,6 +44,23 @@ class AFEParamsFront:
         self.FDC = 1e6
         self.transition_width = 700e3
 
+# assembles the current filter design on a pipe-able filter
+class FiltersClass:
+    def __init__(self, iir_b, iir_a, samp_rate, dtype=REAL_DTYPE):
+        self.iir_b, self.iir_a = iir_b.astype(dtype), iir_a.astype(dtype)
+        self.z = lfilter_zi(self.iir_b, self.iir_a)
+        self.samp_rate = samp_rate
+
+    def rate(self):
+        return self.samp_rate
+
+    def filtfilt(self, data):
+        output = filtfilt(self.iir_b, self.iir_a, data)
+        return output
+
+    def lfilt(self, data):
+        output, self.z = lfilter(self.iir_b, self.iir_a, data, zi=self.z)
+        return output
 
 class AFEBandPass:
     def __init__(self, filters_params, sample_rate):
@@ -174,10 +193,9 @@ class AFEFilterable:
 
 class FMdemod:
     def __init__(self, sample_rate, carrier_freerun, type=0):
-        self.samp_rate = sample_rate
+        self.samp_rate = REAL_DTYPE(sample_rate)
         self.type = type
         self.carrier = carrier_freerun
-        self.offset = 0
 
     def hhtdeFM(self, data):
         return FMdemod.inst_freq(data, self.samp_rate)
@@ -196,10 +214,10 @@ class FMdemod:
         ph_correct = ddmod - dd
         to_zero_locations = np.where(np.abs(dd) < discont)
         ph_correct[to_zero_locations] = 0
-        return p[1] + np.cumsum(ph_correct)
+        return p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
     @staticmethod
-    def unwrap_hilbert(analytic_signal: np.array, sample_rate: int):
+    def unwrap_hilbert(analytic_signal: np.array, sample_rate: REAL_DTYPE):
         instantaneous_phase = FMdemod.unwrap(np.angle(analytic_signal))
         instantaneous_frequency = (
             np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
@@ -207,22 +225,17 @@ class FMdemod:
         return instantaneous_frequency
 
     @staticmethod
-    def inst_freq(signal: np.ndarray, sample_rate: int):
+    def inst_freq(signal: np.ndarray, sample_rate: REAL_DTYPE):
         return FMdemod.unwrap_hilbert(hilbert(signal.real), sample_rate)
 
     def work(self, data):
         if self.type == 2:
-            return np.add(self.htdeFM(data, self.samp_rate), -self.offset)
+            return self.htdeFM(data, self.samp_rate)
         elif self.type == 1:
-            return np.add(self.hhtdeFM(data), -self.offset)
+            return self.hhtdeFM(data)
         else:
-            return np.add(FMdemod.inst_freq(data, self.samp_rate), -self.offset)
+            return FMdemod.inst_freq(data, self.samp_rate)
 
-
-def getDeemph(tau, sample_rate):
-    deemph = FMDeEmphasisC(sample_rate, tau)
-    iir_b, iir_a = deemph.get()
-    return FiltersClass(iir_b, iir_a, sample_rate)
 
 def tau_as_freq(tau):
     return 1 / (2 * pi * tau)
@@ -304,7 +317,7 @@ class SpectralNoiseReduction():
             self.chunks.append(np.zeros(self.chunk_size))
 
     def _get_chunk(self, audio, chunks):
-        chunk = np.zeros((1, self.padding * 2 + self.chunk_size * self.chunk_count))
+        chunk = np.zeros((1, self.padding * 2 + self.chunk_size * self.chunk_count), dtype=REAL_DTYPE)
         
         chunks.pop(0)
         chunks.append(audio)
@@ -376,7 +389,7 @@ class NoiseReduction:
             self.audio_rate
         )
 
-        self.nrWeightedHighpass = FiltersClass(env_iirb, env_iira, self.audio_rate)
+        self.nrWeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira), self.audio_rate)
 
         # deemphasis filter for output audio
         self.NR_deemphasis_T1 = 240e-6
@@ -392,7 +405,7 @@ class NoiseReduction:
             self.audio_rate
         )
 
-        self.nrDeemphasisLowpass = FiltersClass(deemph_b, deemph_a, self.audio_rate)
+        self.nrDeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a), self.audio_rate)
 
         # expander attack
         loenv_iirb, loenv_iira = firdes_lowpass(
@@ -430,8 +443,9 @@ class NoiseReduction:
     @njit(cache=True, fastmath=True, nogil=True)
     def expand(log_strength: float, signal: np.array) -> np.array:
         # detect the envelope and use logarithmic expansion
-        levels = np.clip(np.abs(signal), None, 1)
-        return np.power(levels, log_strength)
+        rectified = np.abs(signal)
+        levels = np.clip(rectified, 0.0, 1.0)
+        return np.power(levels, REAL_DTYPE(log_strength))
     
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
@@ -947,11 +961,14 @@ class HiFiDecode:
         return audio, dc
 
     def block_decode(
-        self, raw_data: np.array, block_count: int = 0
-    ) -> Tuple[int, np.array, np.array]:
+        self,
+        raw_data: NDArray[np.int16]
+    ) -> Tuple[int, NDArray[REAL_DTYPE], NDArray[REAL_DTYPE]]:
+        raw_data.astype(REAL_DTYPE, copy=False)
         data = samplerate_resample(
             raw_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
+        # uses complex numbers so data comes out as float64
         preL, preR = self.demodblock(data)
 
         # remove peaks at edges of demodulated audio
@@ -959,7 +976,6 @@ class HiFiDecode:
         preL = preL[trim:-trim]
         preR = preR[trim:-trim]
 
-        
         # with ProcessPoolExecutor(2) as stereo_executor:
         #     audioL_future = stereo_executor.submit(HiFiDecode.audio_process, preL, self.audio_process_params)
         #     audioR_future = stereo_executor.submit(HiFiDecode.audio_process, preR, self.audio_process_params)
@@ -979,6 +995,9 @@ class HiFiDecode:
             self.devL, self.devR = self.carrierOffsets(self.afe_params, dcL, dcR)
             self.updateStandard(self.devL, self.devR)
             self.updateDemod()
+
+        assert preL.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format"
+        assert preR.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format"
 
         return preL, preR
     
