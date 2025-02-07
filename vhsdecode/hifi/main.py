@@ -700,7 +700,7 @@ class PostProcessor:
                 overlap_start, overlap_end = PostProcessor.get_overlap(len(l), is_last_block, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size)
                 stereo = PostProcessor.stereo_interleave(l, r, overlap_start, overlap_end)
                 
-                assert stereo.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format"
+                assert stereo.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {stereo.dtype}"
 
                 executor.submit(out_conn.send_bytes, stereo)
 
@@ -758,7 +758,7 @@ class PostProcessor:
 
         l_block_num, l = self.nr_worker_l_out.get()
         r_block_num, r = self.nr_worker_r_out.get()
-        assert l_block_num == r_block_num, "Noise reduction processes are out of sync!"
+        assert l_block_num == r_block_num, "Noise reduction processes are out of sync! Channels will be out od sync."
 
         self.discard_merge_worker_in.put_nowait((l, r, is_last_block))
         stereo = self.discard_merge_worker_out_parent.recv_bytes()

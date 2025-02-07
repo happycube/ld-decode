@@ -896,13 +896,13 @@ class HiFiDecode:
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
     def cancelDC(audio: np.array) -> Tuple[np.array, float]:
-        dc = np.mean(audio)
+        dc = REAL_DTYPE(np.mean(audio))
         return audio - dc, dc
     
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
     def clip(audio: np.array, clip: float) -> np.array:
-        return audio / clip
+        return audio / REAL_DTYPE(clip)
     
     @staticmethod
     def headswitch_remove_noise(audio: np.array, audio_process_params: dict) -> np.array:
@@ -996,8 +996,8 @@ class HiFiDecode:
             self.updateStandard(self.devL, self.devR)
             self.updateDemod()
 
-        assert preL.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format"
-        assert preR.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format"
+        assert preL.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {preL.dtype}"
+        assert preR.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {preR.dtype}"
 
         return preL, preR
     
