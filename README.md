@@ -355,6 +355,9 @@ To update the tools to the latest version, the steps under "Compile and Install 
 > [!NOTE]  
 > debian/ubuntu does not have a qt6 version of qwt in repositories as of yet, so you have to inform the build script to use Qt5 if both qt5 and qt6 are installed with `-DUSE_QT_VERSION=5` as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
 
+> [!NOTE]  
+> `pip install -r requirements.txt` May need to be run for the suite to build properly after major updates.  
+
 
 # Usage
 
