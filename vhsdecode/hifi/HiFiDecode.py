@@ -876,9 +876,8 @@ class HiFiDecode:
             window_average=len(blocks)
         )
         for block in blocks:
-            lo_data = self.lopassRF.work(block)
             data = samplerate_resample(
-                lo_data, self.ifresample_numerator, self.ifresample_denominator
+                block, self.ifresample_numerator, self.ifresample_denominator, self.if_resampler_converter
             )
             preL, preR = self.demodblock(data)
             meanL.push(np.mean(preL))
