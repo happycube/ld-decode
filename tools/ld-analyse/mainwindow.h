@@ -88,18 +88,20 @@ private slots:
     // Media control frame handlers
     void on_previousPushButton_clicked();
     void on_nextPushButton_clicked();
-    void on_endFramePushButton_clicked();
-    void on_startFramePushButton_clicked();
-    void on_frameNumberSpinBox_editingFinished();
-    void on_frameHorizontalSlider_valueChanged(int value);
+    void on_endPushButton_clicked();
+    void on_startPushButton_clicked();
+    void on_posNumberSpinBox_editingFinished();
+    void on_posHorizontalSlider_valueChanged(int value);
     void on_videoPushButton_clicked();
     void on_aspectPushButton_clicked();
     void on_dropoutsPushButton_clicked();
     void on_sourcesPushButton_clicked();
+    void on_viewPushButton_clicked();
     void on_fieldOrderPushButton_clicked();
     void on_zoomInPushButton_clicked();
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
+    void on_stretchFieldButton_clicked();
     void on_mouseModePushButton_clicked();
 
     // Miscellaneous handlers
@@ -142,24 +144,29 @@ private:
     bool displayAspectRatio;
     qint32 lastScopeLine;
     qint32 lastScopeDot;
-    qint32 currentFrameNumber;
+    qint32 currentFieldNumber, currentFrameNumber;
     double scaleFactor;
     QPalette buttonPalette;
     QString lastFilename;
 
     // Update GUI methods
     void setGuiEnabled(bool enabled);
+    void resetGui();
     void updateGuiLoaded();
     void updateGuiUnloaded();
     void updateAspectPushButton();
     void updateSourcesPushButton();
+    void setViewValues();
+    void setCurrentFrame(qint32 frame);
+    void setCurrentField(qint32 field);
+    void sanitizeCurrentPosition();
 
-    // Frame display methods
-    void showFrame();
-    void updateFrame();
+    // Image display methods
+    void showImage();
+    void updateImage();
     qint32 getAspectAdjustment();
-    void updateFrameViewer();
-    void hideFrame();
+    void updateImageViewer();
+    void hideImage();
 
     // TBC source signal handlers
     void loadTbcFile(QString inputFileName);

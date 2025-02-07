@@ -77,10 +77,25 @@ public:
 
     void setHighlightDropouts(bool _state);
     void setChromaDecoder(bool _state);
+    void setFieldView(bool _state);
     void setFieldOrder(bool _state);
     bool getHighlightDropouts();
     bool getChromaDecoder();
     bool getFieldOrder();
+
+    enum ViewMode {
+        FRAME_VIEW,
+        SPLIT_VIEW,
+        FIELD_VIEW,
+    };
+    void setViewMode(ViewMode viewMode);
+    void setStretchField(bool _stretch);
+
+    ViewMode getViewMode();
+    bool getFrameViewEnabled();
+    bool getFieldViewEnabled();
+    bool getSplitViewEnabled();
+    bool getStretchField();
 
     enum SourceMode {
         ONE_SOURCE,
@@ -91,9 +106,9 @@ public:
     SourceMode getSourceMode();
     void setSourceMode(SourceMode sourceMode);
 
-    void loadFrame(qint32 frameNumber);
+    void load(qint32 frameNumber, qint32 fieldNumber);
 
-    QImage getFrameImage();
+    QImage getImage();
     qint32 getNumberOfFrames();
     qint32 getNumberOfFields();
     bool getIsWidescreen();
@@ -156,10 +171,12 @@ private:
     QVector<double> dropoutGraphData;
     QVector<double> visibleDropoutGraphData;
 
-    // Frame image options
+    // Image options
     bool chromaOn;
     bool dropoutsOn;
     bool reverseFoOn;
+    bool stretchFieldOn;
+    ViewMode viewMode;
 
     // Source globals
     SourceVideo sourceVideo;
@@ -187,7 +204,7 @@ private:
     // Metadata for the loaded frame
     qint32 firstFieldNumber, secondFieldNumber;
     LdDecodeMetaData::Field firstField, secondField;
-    qint32 loadedFrameNumber;
+    qint32 loadedFieldNumber, loadedFrameNumber;
 
     // Source fields needed to decode the loaded frame
     QVector<SourceField> inputFields;
@@ -200,8 +217,8 @@ private:
     bool decodedFrameValid;
 
     // RGB image data for the loaded frame
-    QImage frameCache;
-    bool frameCacheValid;
+    QImage cache;
+    bool cacheValid;
 
     // Chroma decoder configuration
     PalColour::Configuration palConfiguration;
@@ -212,11 +229,13 @@ private:
     QVector<qint32> chapterMap;
 
     void resetState();
-    void invalidateFrameCache();
+    void invalidateImageCache();
     void configureChromaDecoder();
     void loadInputFields();
     void decodeFrame();
     QImage generateQImage();
+    QImage generateChromaImage();
+    QImage generateMonoImage();
     void generateData();
     bool startBackgroundLoad(QString sourceFilename);
     bool startBackgroundSave(QString jsonFilename);

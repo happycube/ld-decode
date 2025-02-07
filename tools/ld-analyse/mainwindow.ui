@@ -58,7 +58,7 @@
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_2">
           <item>
-           <widget class="QLabel" name="frameViewerLabel">
+           <widget class="QLabel" name="imageViewerLabel">
             <property name="text">
              <string>Image goes here</string>
             </property>
@@ -87,7 +87,7 @@
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_3">
          <item>
-          <widget class="QSlider" name="frameHorizontalSlider">
+          <widget class="QSlider" name="posHorizontalSlider">
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
            </property>
@@ -96,14 +96,20 @@
          <item>
           <layout class="QHBoxLayout" name="horizontalLayout_3">
            <item>
-            <widget class="QLabel" name="label_17">
+            <widget class="QLabel" name="posNumberSpinBoxLabel">
+             <property name="minimumSize">
+              <size>
+               <width>60</width>
+               <height>0</height>
+              </size>
+             </property>
              <property name="text">
               <string>Frame #:</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QSpinBox" name="frameNumberSpinBox">
+            <widget class="QSpinBox" name="posNumberSpinBox">
              <property name="toolTip">
               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enter a frame number and press &amp;lt;Enter&amp;gt; to go to a frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
              </property>
@@ -113,10 +119,16 @@
              <property name="value">
               <number>79999</number>
              </property>
+             <property name="maximumSize">
+              <size>
+               <width>120</width>
+               <height>50</height>
+              </size>
+             </property>
             </widget>
            </item>
            <item>
-            <widget class="QPushButton" name="startFramePushButton">
+            <widget class="QPushButton" name="startPushButton">
              <property name="minimumSize">
               <size>
                <width>30</width>
@@ -194,7 +206,7 @@
             </widget>
            </item>
            <item>
-            <widget class="QPushButton" name="endFramePushButton">
+            <widget class="QPushButton" name="endPushButton">
              <property name="minimumSize">
               <size>
                <width>30</width>
@@ -314,6 +326,22 @@
             </widget>
            </item>
            <item>
+            <widget class="QPushButton" name="stretchFieldButton">
+             <property name="minimumSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="toolTip">
+              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Stretch field to frame height&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             </property>
+             <property name="text">
+              <string>2:1</string>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QPushButton" name="mouseModePushButton">
              <property name="minimumSize">
               <size>
@@ -416,6 +444,22 @@
              </property>
              <property name="text">
               <string>Y+C Sources</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="viewPushButton">
+             <property name="minimumSize">
+              <size>
+               <width>100</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="toolTip">
+              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Toggle views&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             </property>
+             <property name="text">
+              <string>Field View</string>
              </property>
             </widget>
            </item>
