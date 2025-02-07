@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import subprocess
+import resource
 import time
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count, Pipe, Queue, Process, Manager
@@ -990,6 +991,26 @@ def write_soundfile_process_worker(conn, output_file, audio_rate):
 
                 write_executor.submit(w.buffer_write, stereo, dtype='float32')
 
+def check_resource_limits():
+    resources = {
+        'CPU time': resource.RLIMIT_CPU,
+        'File size': resource.RLIMIT_FSIZE,
+        'Data segment size': resource.RLIMIT_DATA,
+        'Stack size': resource.RLIMIT_STACK,
+        'Core file size': resource.RLIMIT_CORE,
+        'Resident set size': resource.RLIMIT_RSS,
+        'Number of processes': resource.RLIMIT_NPROC,
+        'Number of open files': resource.RLIMIT_NOFILE,
+        'Total amount of memory': resource.RLIMIT_AS
+    }
+
+    for name, res in resources.items():
+        soft, hard = resource.getrlimit(res)
+        try:
+            resource.setrlimit(res, (soft, hard))
+        except OSError as e:
+            print(f"WARNING: Resource limit exceeded for {name}: {e}")
+
 async def decode_parallel(
     decoders: List[HiFiDecode],
     decode_options: dict,
@@ -1041,6 +1062,8 @@ async def decode_parallel(
                     done = len(block) == 0
                     if exit_requested or done:
                         break
+
+                    check_resource_limits()
     
                     # read completed data from decoders pool
                     # keep queues saturated but don't overfill
