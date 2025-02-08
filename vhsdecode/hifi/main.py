@@ -2,7 +2,7 @@
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, Process
+from multiprocessing import cpu_count, Pipe, Queue, Process, BoundedSemaphore
 from multiprocessing.shared_memory import SharedMemory
 from datetime import datetime, timedelta
 import os
@@ -965,24 +965,43 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
     print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
 class DecoderSharedMemory(SharedMemory):
-    def __init__(self, size, dtype=REAL_DTYPE):
-        self.byte_size = size * np.dtype(dtype).itemsize
+    def __init__(self, size, name, dtype=REAL_DTYPE):
+        self.float_item_size = np.dtype(dtype).itemsize
+        self.byte_size = size * self.float_item_size
         self.float_size = size
 
-        super().__init__(size=self.byte_size, create=True)
+        super().__init__(size=self.byte_size, name=name, create=True)
         self.nd_buffer = np.ndarray(self.float_size, dtype=dtype, buffer=self.buf)
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=False)
-    def _copy_data(src, dst, offset, length):
+    def _copy_data(src: np.array, dst: np.array, offset:int, length: int):
         for i in range(length):
             dst[i+offset] = src[i]
+
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=False)
+    def _copy_data_src_offset(src: np.array, dst: np.array, src_offset: int, length: int):
+        for i in range(length):
+            dst[i] = src[i+src_offset]
     
     def write_block(self, block):
         DecoderSharedMemory._copy_data(block, self.nd_buffer, 0, len(block))
 
     def read_block(self, block_len):
         return self.nd_buffer[0:block_len]
+
+    def write_stereo(self, stereo):
+        float_length = int(len(stereo)/self.float_item_size)
+        stereo_nd = np.ndarray(float_length, dtype=REAL_DTYPE, buffer=stereo)
+        DecoderSharedMemory._copy_data(stereo_nd, self.nd_buffer, 0, float_length)
+
+    def read_stereo(self, length):
+        float_length = int(length/self.float_item_size)
+        #stereo = np.ndarray(float_length, dtype=REAL_DTYPE)
+        #DecoderSharedMemory._copy_data(self.nd_buffer, stereo, 0, float_length)
+        stereo = self.nd_buffer[0:float_length].copy()
+        return stereo
 
     def write_channels(self, l, r):
         channel_length = len(l)
@@ -997,6 +1016,11 @@ class DecoderSharedMemory(SharedMemory):
 
         l_out = self.nd_buffer[l_start:l_end].copy()
         r_out = self.nd_buffer[r_start:r_end].copy()
+
+        #l_out = np.ndarray(channel_length, dtype=REAL_DTYPE)
+        #r_out = np.ndarray(channel_length, dtype=REAL_DTYPE)
+        #DecoderSharedMemory._copy_data_src_offset(self.nd_buffer, l_out, 0, channel_length)
+        #DecoderSharedMemory._copy_data_src_offset(self.nd_buffer, r_out, channel_length, channel_length)
 
         return l_out, r_out
 
@@ -1028,17 +1052,25 @@ def decoder_process_worker(
         out_queue.put((decoder_id, block_num, channel_length))
 
 
-def write_soundfile_process_worker(conn, output_file, audio_rate):
+def write_soundfile_process_worker(
+    conn,
+    output_buffer: DecoderSharedMemory,
+    output_file_lock,
+    output_file: str,
+    audio_rate: int
+):
     with ThreadPoolExecutor(1) as write_executor:
         with as_outputfile(output_file, audio_rate) as w:
             while True:
-                stereo = conn.recv_bytes()
-                if len(stereo) == 0:
+                length = conn.recv()
+                if length == 0:
                     write_executor.submit(w.flush)
                     write_executor.shutdown(wait=True)
                     break
 
-                write_executor.submit(w.buffer_write, stereo, dtype='float32')
+                stereo = output_buffer.read_stereo(length)
+                output_file_lock.release()
+                write_executor.submit(w.buffer_write, stereo, dtype="float32")
 
 
 async def decode_parallel(
@@ -1064,7 +1096,7 @@ async def decode_parallel(
     for i in range(len(decoders)):
         decoder = decoders[i]
         in_queue = Queue()
-        buffer = DecoderSharedMemory(block_size)
+        buffer = DecoderSharedMemory(block_size, f"HiFiDecode Decoder Thread Shared Memory {i}")
         atexit.register(buffer.close)
         atexit.register(buffer.unlink)
         decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(i, decoder, decode_options["auto_fine_tune"], in_queue, decoder_out_queue, buffer))
@@ -1075,11 +1107,12 @@ async def decode_parallel(
         decoder_in_queues.append(in_queue)
         decoder_buffers.append(buffer)
 
-    output_thread_executor = ThreadPoolExecutor(1)
-    atexit.register(output_thread_executor.shutdown)
-
     output_child_conn, output_parent_conn = Pipe(duplex=False)
-    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file, decode_options["audio_rate"]))
+    output_file_buffer = DecoderSharedMemory(block_size, f"HiFiDecode Soundfile Encoder Shared Memory")
+    output_file_lock = BoundedSemaphore()
+    atexit.register(output_file_buffer.close)
+    atexit.register(output_file_buffer.unlink)
+    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file_buffer, output_file_lock, output_file, decode_options["audio_rate"]))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
 
@@ -1101,6 +1134,8 @@ async def decode_parallel(
                     done = len(block) == 0
                     if exit_requested or done:
                         break
+
+                    assert len(decoders_running.intersection(decoders_idle)) == 0, "Warning, a decoder process is both idle and active"
     
                     # read completed data from decoders pool
                     # block if all decoders are running
@@ -1117,7 +1152,7 @@ async def decode_parallel(
                         decoders_running.remove(decoder_id)
                         decoders_idle.add(decoder_id)
 
-                    # submit this block to the idle decoder
+                    # submit this block to an idle decoder
                     decoder_id = decoders_idle.pop()
 
                     buffer = decoder_buffers[decoder_id]
@@ -1132,7 +1167,10 @@ async def decode_parallel(
                     # maybe can be put in an async loop...
                     for stereo in post_processor.read():
                         try:
-                            output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
+                            output_file_lock.acquire()
+                            output_file_buffer.write_stereo(stereo)
+                            output_parent_conn.send(len(stereo))
+
                             total_samples_decoded += len(stereo) / 8
     
                             log_decode(start_time, f.tell(), total_samples_decoded, decode_options, len(decoders_running))
@@ -1173,7 +1211,7 @@ async def decode_parallel(
                 decoder_id, block_num, channel_length = decoder_out_queue.get()
 
                 # copy the data from the decoder's buffer
-                buffer = decoder_buffers[decoder_id]
+                buffer: DecoderSharedMemory = decoder_buffers[decoder_id]
                 l, r = buffer.read_channels(channel_length)
 
                 # send the result to the post processor and mark this decoder as idle
@@ -1181,25 +1219,32 @@ async def decode_parallel(
                 decoders_running.remove(decoder_id)
         
                 for stereo in post_processor.read():
-                    output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
+                    output_file_lock.acquire()
+                    output_file_buffer.write_stereo(stereo)
+                    output_parent_conn.send(len(stereo))
+
                     total_samples_decoded += len(stereo) / 8
         
                     log_decode(start_time, f.tell(), total_samples_decoded, decode_options, len(decoders_running))
         
             for stereo in post_processor.flush():
                 try:
-                    output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
+                    output_file_lock.acquire()
+                    output_file_buffer.write_stereo(stereo)
+                    output_parent_conn.send(len(stereo))
+
                     total_samples_decoded += len(stereo) / 8
         
                     log_decode(start_time, f.tell(), total_samples_decoded, decode_options, len(decoders_running))
                 except ValueError:
                     pass
         
+            output_parent_conn.send(0)
+
             for i in range(threads):
                 process = decoder_processes[i]
                 process.terminate()
         
-            output_thread_executor.submit(output_parent_conn.send_bytes, b"").result()
             output_file_process.join()
         
     elapsed_time = datetime.now() - start_time
