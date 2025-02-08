@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import subprocess
-import resource
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, Process, Manager
+from multiprocessing import cpu_count, Pipe, Queue, Process
 from multiprocessing.shared_memory import SharedMemory
 from datetime import datetime, timedelta
 import os
@@ -17,7 +16,6 @@ import atexit
 
 import numpy as np
 import soundfile as sf
-from vhsdecode.addons.chromasep import samplerate_resample
 
 from vhsdecode.cmdcommons import (
     common_parser_cli,
@@ -600,7 +598,7 @@ def seconds_to_str(seconds: float) -> str:
     return str(timedelta(seconds=seconds))
 
 
-def log_decode(start_time: datetime, frames: int, audio_samples: int, decode_options: dict):
+def log_decode(start_time: datetime, frames: int, audio_samples: int, decode_options: dict, process_count: int = 1):
     elapsed_time: timedelta = datetime.now() - start_time
 
     input_time: float = frames / (2 * decode_options["input_rate"])
@@ -613,7 +611,7 @@ def log_decode(start_time: datetime, frames: int, audio_samples: int, decode_opt
     elapsed_time_format: str = seconds_to_str(elapsed_time.total_seconds())
 
     print(
-        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x)\n"
+        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x), {process_count} running processes\n"
         + f"- Input position: {str(input_time_format)[:-3]}\n"
         + f"- Audio position: {str(audio_time_format)[:-3]}\n"
         + f"- Wall time     : {str(elapsed_time_format)[:-3]}"
@@ -631,6 +629,7 @@ class PostProcessor:
         self.submit_thread_executor = ThreadPoolExecutor(1) # must only be one thread to enforce sequential processing
         atexit.register(self.submit_thread_executor.shutdown)
         self.next_block = 0
+        self.last_block_submitted = -1
         self.block_queue = []
         self.max_queued_messages = max_queued_messages
 
@@ -773,6 +772,7 @@ class PostProcessor:
         r_in: np.array,
         is_last_block: bool
     ):
+        assert self.last_block_submitted < block_num_in, "Warning, block was repeated"
         self.block_queue.append((block_num_in, l_in, r_in))
 
         # process noise reduction in order
@@ -787,6 +787,7 @@ class PostProcessor:
                 future = self.submit_thread_executor.submit(self.process_audio_worker, block_num, l, r, is_last_block)
                 self.submit_thread_executor_queue.append(future)
                 self.next_block += 1
+                self.last_block_submitted = block_num
 
     def read(self):
         while len(self.submit_thread_executor_queue) >= self.max_queued_messages or (len(self.submit_thread_executor_queue) > 0 and self.submit_thread_executor_queue[0].done()):
@@ -972,26 +973,21 @@ class DecoderSharedMemory(SharedMemory):
         self.nd_buffer = np.ndarray(self.float_size, dtype=dtype, buffer=self.buf)
 
     @staticmethod
+    @njit(cache=True, fastmath=True, nogil=False)
     def _copy_data(src, dst, offset, length):
         for i in range(length):
             dst[i+offset] = src[i]
     
     def write_block(self, block):
-        #DecoderSharedMemory._copy_data(block, self.buf, 0, len(block.data))
-        self.nd_buffer[0:len(block)] = block
+        DecoderSharedMemory._copy_data(block, self.nd_buffer, 0, len(block))
 
     def read_block(self, block_len):
-        #DecoderSharedMemory._copy_data(block, self.buf, 0, len(block.data))
         return self.nd_buffer[0:block_len]
 
     def write_channels(self, l, r):
-        l_start = 0
-        l_end = len(l)
-        r_start = l_end
-        r_end = l_end + len(r)
-
-        self.nd_buffer[l_start : l_end] = l
-        self.nd_buffer[r_start : r_end] = r
+        channel_length = len(l)
+        DecoderSharedMemory._copy_data(l, self.nd_buffer, 0, channel_length)
+        DecoderSharedMemory._copy_data(r, self.nd_buffer, channel_length, channel_length)
 
     def read_channels(self, channel_length):
         l_start = 0
@@ -999,7 +995,10 @@ class DecoderSharedMemory(SharedMemory):
         r_start = l_end
         r_end = r_start + channel_length
 
-        return self.nd_buffer[l_start:l_end].copy(), self.nd_buffer[r_start:r_end].copy()
+        l_out = self.nd_buffer[l_start:l_end].copy()
+        r_out = self.nd_buffer[r_start:r_end].copy()
+
+        return l_out, r_out
 
 
 def decoder_process_worker(
@@ -1127,8 +1126,6 @@ async def decode_parallel(
                     decoder_in_queues[decoder_id].put((current_block, len(block)))
                     decoders_running.add(decoder_id)
 
-                    print(decoders_idle, decoders_running, len(decoders_running), threads)
-
                     current_block += 1
     
                     # send any completed data to post processor
@@ -1138,7 +1135,7 @@ async def decode_parallel(
                             output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
                             total_samples_decoded += len(stereo) / 8
     
-                            log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
+                            log_decode(start_time, f.tell(), total_samples_decoded, decode_options, len(decoders_running))
     
                             if decode_options["preview"]:
                                 if SOUNDDEVICE_AVAILABLE:
@@ -1187,14 +1184,14 @@ async def decode_parallel(
                     output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
                     total_samples_decoded += len(stereo) / 8
         
-                    log_decode(start_time, f.tell(), total_samples_decoded, decode_options)       
+                    log_decode(start_time, f.tell(), total_samples_decoded, decode_options, len(decoders_running))
         
             for stereo in post_processor.flush():
                 try:
                     output_thread_executor.submit(output_parent_conn.send_bytes, stereo)
                     total_samples_decoded += len(stereo) / 8
         
-                    log_decode(start_time, f.tell(), total_samples_decoded, decode_options)
+                    log_decode(start_time, f.tell(), total_samples_decoded, decode_options, len(decoders_running))
                 except ValueError:
                     pass
         
