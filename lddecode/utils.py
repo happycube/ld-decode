@@ -632,22 +632,22 @@ def sqsum(cmplx):
 @njit(cache=True,nogil=True)
 def calczc_findfirst(data, target, rising):
     if rising:
-        for i in range(0, len(data)):
-            if data[i] >= target:
+        for i in range(1, len(data)):
+            if data[i - 1] < target and data[i] >= target:
                 return i
 
         return None
     else:
-        for i in range(0, len(data)):
-            if data[i] <= target:
+        for i in range(1, len(data)):
+            if data[i - 1] > target and data[i] <= target:
                 return i
 
         return None
 
 
 @njit(cache=True,nogil=True)
-def calczc_do(data, _start_offset, target, edge=0, count=10):
-    start_offset = max(1, int(_start_offset))
+def calczc_do(data, _start_offset, target, edge=0, count=16):
+    start_offset = int(_start_offset)
     icount = int(count + 1)
 
     if edge == 0:  # capture rising or falling edge
@@ -678,7 +678,7 @@ def calczc_do(data, _start_offset, target, edge=0, count=10):
     return x - 1 + y
 
 
-def calczc(data, _start_offset, target, edge=0, count=10, reverse=False):
+def calczc(data, _start_offset, target, edge=0, count=16, reverse=False):
     """ edge:  -1 falling, 0 either, 1 rising """
     if reverse:
         # Instead of actually implementing this in reverse, use numpy to flip data
