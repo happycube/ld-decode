@@ -1051,6 +1051,10 @@ def decoder_process_worker(
         # tell the parent thread that this is done
         out_queue.put((decoder_id, block_num, channel_length))
 
+def send_to_write_soundfile_process_worker(output_file_lock, output_file_buffer, output_parent_conn, stereo):
+    output_file_lock.acquire()
+    output_file_buffer.write_stereo(stereo)
+    output_parent_conn.send(len(stereo))
 
 def write_soundfile_process_worker(
     conn,
@@ -1115,6 +1119,8 @@ async def decode_parallel(
     output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file_buffer, output_file_lock, output_file, decode_options["audio_rate"]))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
+    output_file_send_executor = ThreadPoolExecutor(1)
+    atexit.register(output_file_send_executor.shutdown)
 
     post_processor = PostProcessor(
         decode_options,
@@ -1144,8 +1150,7 @@ async def decode_parallel(
                         decoder_id, block_num, channel_length = decoder_out_queue.get()
 
                         # copy the data from the decoder's buffer
-                        buffer = decoder_buffers[decoder_id]
-                        l, r = buffer.read_channels(channel_length)
+                        l, r = decoder_buffers[decoder_id].read_channels(channel_length)
 
                         # send the result to the post processor and mark this decoder as idle
                         post_processor.submit(block_num, l, r, False)
@@ -1155,21 +1160,17 @@ async def decode_parallel(
                     # submit this block to an idle decoder
                     decoder_id = decoders_idle.pop()
 
-                    buffer = decoder_buffers[decoder_id]
-                    buffer.write_block(block)
-
+                    decoder_buffers[decoder_id].write_block(block)
                     decoder_in_queues[decoder_id].put((current_block, len(block)))
-                    decoders_running.add(decoder_id)
 
+                    decoders_running.add(decoder_id)
                     current_block += 1
     
                     # send any completed data to post processor
                     # maybe can be put in an async loop...
                     for stereo in post_processor.read():
                         try:
-                            output_file_lock.acquire()
-                            output_file_buffer.write_stereo(stereo)
-                            output_parent_conn.send(len(stereo))
+                            output_file_send_executor.submit(send_to_write_soundfile_process_worker, output_file_lock, output_file_buffer, output_parent_conn, stereo)
 
                             total_samples_decoded += len(stereo) / 8
     
@@ -1219,9 +1220,7 @@ async def decode_parallel(
                 decoders_running.remove(decoder_id)
         
                 for stereo in post_processor.read():
-                    output_file_lock.acquire()
-                    output_file_buffer.write_stereo(stereo)
-                    output_parent_conn.send(len(stereo))
+                    output_file_send_executor.submit(send_to_write_soundfile_process_worker, output_file_lock, output_file_buffer, output_parent_conn, stereo)
 
                     total_samples_decoded += len(stereo) / 8
         
@@ -1229,9 +1228,7 @@ async def decode_parallel(
         
             for stereo in post_processor.flush():
                 try:
-                    output_file_lock.acquire()
-                    output_file_buffer.write_stereo(stereo)
-                    output_parent_conn.send(len(stereo))
+                    output_file_send_executor.submit(send_to_write_soundfile_process_worker, output_file_lock, output_file_buffer, output_parent_conn, stereo)
 
                     total_samples_decoded += len(stereo) / 8
         
@@ -1244,7 +1241,8 @@ async def decode_parallel(
             for i in range(threads):
                 process = decoder_processes[i]
                 process.terminate()
-        
+
+            output_file_send_executor.shutdown()
             output_file_process.join()
         
     elapsed_time = datetime.now() - start_time
