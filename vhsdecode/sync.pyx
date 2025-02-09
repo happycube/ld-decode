@@ -828,7 +828,7 @@ def valid_pulses_to_linelocs(
             current_distance_from_pulse_to_line = c_abs(validpulses[current_pulse_index] - line_locations[line_index])
 
             # start by setting this to the max allowed value so the loop will break if the next pulse is further away
-            smallest_distance_observed_between_pulse_and_line = max_allowed_distance_between_pulse_and_line
+            smallest_distance_observed_from_pulse_to_line = max_allowed_distance_between_pulse_and_line
 
             # reset the best fit variables
             next_observed_distance_between_pulse_and_line = -1
