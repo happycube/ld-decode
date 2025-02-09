@@ -955,14 +955,14 @@ class AppWindow:
     def app(self):
         return self._app
 
-class SoundFileProcess():
+class SoundDeviceProcess():
     def __init__(self, sample_rate):
         self._sample_rate = sample_rate
 
     def __enter__(self):
         self._play_parent_conn, self._play_child_conn = Pipe()
         self._thread_executor = ThreadPoolExecutor(1)
-        self._process = Process(target=SoundFileProcess.play_worker, args=(self._play_child_conn, self._sample_rate))
+        self._process = Process(target=SoundDeviceProcess.play_worker, args=(self._play_child_conn, self._sample_rate))
         self._process.start()
         return self
 
@@ -985,20 +985,20 @@ class SoundFileProcess():
 
     @staticmethod
     def play_worker(conn, sample_rate):
-        stereo_buffer = []
+        output_stream = None
         while True:
             stereo = conn.recv_bytes()
-            stereo_buffer = np.concatenate((stereo_buffer, np.frombuffer(stereo, dtype=np.float32)))
-
-            if (len(stereo_buffer) >= sample_rate * 5):
-                sd.wait()
-                sd.play(
-                    SoundFileProcess.build_stereo(stereo_buffer),
-                    sample_rate,
-                    mapping=[1,2],
-                    blocking=False,
+            if output_stream == None:
+                output_stream = sd.OutputStream(
+                    samplerate=sample_rate,
+                    channels=2
                 )
-                stereo_buffer = []
+                output_stream.start()
+
+            interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
+            interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo)
+            stacked = SoundDeviceProcess.build_stereo(interleaved)
+            output_stream.write(stacked)
     
     def play(self, stereo):
         self._thread_executor.submit(self._play_parent_conn.send_bytes, stereo)
@@ -1016,7 +1016,7 @@ def decode(decoder, decode_options, ui_t: Optional[AppWindow] = None):
         1,
         decoder
     )
-    with SoundFileProcess(decode_options["audio_rate"]) as player:
+    with SoundDeviceProcess(decode_options["audio_rate"]) as player:
         with as_outputfile(output_file, decode_options["audio_rate"]) as w:
             with as_soundfile(input_file) as f:
                 progressB = TimeProgressBar(f.frames, f.frames)
@@ -1195,7 +1195,7 @@ async def decode_parallel(
     )
     decoders_running = set()
     decoders_idle = set(range(threads))
-    with SoundFileProcess(decode_options["audio_rate"]) as player:
+    with SoundDeviceProcess(decode_options["audio_rate"]) as player:
         with as_soundfile(input_file) as sf:
             f = AsyncSoundFile(sf, threads)
     
