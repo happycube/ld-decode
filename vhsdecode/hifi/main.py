@@ -2,7 +2,7 @@
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, Process, Lock, set_start_method
+from multiprocessing import cpu_count, Pipe, Queue, Process, Lock, set_start_method, parent_process
 from threading import Lock as ThreadLock
 from multiprocessing.shared_memory import SharedMemory
 from datetime import datetime, timedelta
@@ -618,14 +618,27 @@ def log_decode(start_time: datetime, frames: int, audio_samples: int, decode_opt
         + f"- Wall time     : {str(elapsed_time_format)[:-3]}"
     )
 
-class DecoderSharedMemory(SharedMemory):
-    def __init__(self, size, name, dtype=REAL_DTYPE):
-        self.float_item_size = np.dtype(dtype).itemsize
-        self.byte_size = size * self.float_item_size
-        self.float_size = size
+class DecoderSharedMemory():
+    def __init__(self, name, dtype=REAL_DTYPE):        
+        self.shared_memory = SharedMemory(name=name)
 
-        super().__init__(size=self.byte_size, name=name, create=True)
-        self.nd_buffer = np.ndarray(self.float_size, dtype=dtype, buffer=self.buf)
+        self.size = self.shared_memory.size
+        self.buf = self.shared_memory.buf
+        self.name = self.shared_memory.name
+        self.close = self.shared_memory.close
+        self.unlink = self.shared_memory.unlink
+
+        self.float_item_size = np.dtype(dtype).itemsize
+        self.float_size = int(self.size / self.float_item_size)
+
+        self.nd_buffer = np.ndarray(self.float_size, dtype=dtype, buffer=self.buf)  
+
+    @staticmethod
+    def get_shared_memory(size, name, dtype=REAL_DTYPE):
+        float_item_size = np.dtype(dtype).itemsize
+        byte_size = size * float_item_size
+
+        return SharedMemory(size=byte_size, name=name, create=True).name
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=False)
@@ -700,28 +713,31 @@ class PostProcessor:
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.nr_side_gain = decode_options["nr_side_gain"]
         
-        self.nr_worker_l_shared_memory = DecoderSharedMemory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction L Shared Memory")
+        self.nr_worker_l_shared_memory_name = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction L Shared Memory")
+        self.nr_worker_l_shared_memory = DecoderSharedMemory(self.nr_worker_l_shared_memory_name)
         self.nr_worker_l_lock = ThreadLock()
         self.nr_worker_l_parent, nr_worker_l_child = Pipe()
-        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(nr_worker_l_child, self.nr_worker_l_shared_memory, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(nr_worker_l_child, self.nr_worker_l_shared_memory_name, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
         atexit.register(self.nr_worker_l.terminate)
         atexit.register(self.nr_worker_l_shared_memory.close)
         atexit.register(self.nr_worker_l_shared_memory.unlink)
 
-        self.nr_worker_r_shared_memory = DecoderSharedMemory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction R Shared Memory")
+        self.nr_worker_r_shared_memory_name = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction R Shared Memory")
+        self.nr_worker_r_shared_memory = DecoderSharedMemory(self.nr_worker_r_shared_memory_name)
         self.nr_worker_r_lock = ThreadLock()
         self.nr_worker_r_parent, nr_worker_r_child = Pipe()
-        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(nr_worker_r_child, self.nr_worker_r_shared_memory, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(nr_worker_r_child, self.nr_worker_r_shared_memory_name, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
         atexit.register(self.nr_worker_r.terminate)
         atexit.register(self.nr_worker_r_shared_memory.close)
         atexit.register(self.nr_worker_r_shared_memory.unlink)
 
-        self.discard_merge_worker_shared_memory = DecoderSharedMemory(self.decoder_audio_block_size * 2, "HiFiDecode Stereo Merge Shared Memory")
+        self.discard_merge_worker_shared_memory_name = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size * 2, "HiFiDecode Stereo Merge Shared Memory")
+        self.discard_merge_worker_shared_memory = DecoderSharedMemory(self.discard_merge_worker_shared_memory_name)
         self.discard_merge_worker_lock = ThreadLock()
         self.discard_merge_worker_parent, discard_merge_worker_child = Pipe()
-        self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, name="HiFiDecode Stereo Merge", args=(discard_merge_worker_child, self.discard_merge_worker_shared_memory, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
+        self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, name="HiFiDecode Stereo Merge", args=(discard_merge_worker_child, self.discard_merge_worker_shared_memory_name, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
         self.discard_merge_worker_process.start()
         atexit.register(self.discard_merge_worker_process.terminate)
         atexit.register(self.discard_merge_worker_shared_memory.close)
@@ -730,12 +746,13 @@ class PostProcessor:
     @staticmethod
     def noise_reduction_worker(
         conn,
-        shared_memory: DecoderSharedMemory,
+        shared_memory_name,
         spectral_nr_amount,
         use_noise_reduction,
         nr_side_gain,
         final_audio_rate,
     ):
+        shared_memory = DecoderSharedMemory(shared_memory_name)
         spectral_nr = SpectralNoiseReduction(
             audio_rate=final_audio_rate,
             nr_reduction_amount=spectral_nr_amount
@@ -763,7 +780,8 @@ class PostProcessor:
             conn.send((blocknum, audio_length))
 
     @staticmethod
-    def discard_merge_worker(conn, shared_memory: DecoderSharedMemory, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size):
+    def discard_merge_worker(conn, shared_memory_name, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size):
+        shared_memory = DecoderSharedMemory(shared_memory_name)
         while True:
             is_last_block, channel_length = conn.recv()
 
@@ -1075,8 +1093,9 @@ def decoder_process_worker(
     auto_fine_tune: bool,
     in_conn,
     out_queue: Queue,
-    buffer: DecoderSharedMemory
+    buffer_name: str
 ):
+    buffer = DecoderSharedMemory(buffer_name)
     while True:
         # get a new block to decode from the parent thread
         block_num, block_len = in_conn.recv()
@@ -1102,11 +1121,12 @@ def send_to_write_soundfile_process_worker(output_file_lock, output_file_buffer,
 
 def write_soundfile_process_worker(
     conn,
-    output_buffer: DecoderSharedMemory,
+    output_buffer_name: str,
     output_file_lock,
     output_file: str,
     audio_rate: int
 ):
+    output_buffer = DecoderSharedMemory(output_buffer_name)
     with ThreadPoolExecutor(1) as write_executor:
         with as_outputfile(output_file, audio_rate) as w:
             while True:
@@ -1144,10 +1164,11 @@ async def decode_parallel(
     for i in range(len(decoders)):
         decoder = decoders[i]
         decoder_in_conn_parent, decoder_in_conn_child  = Pipe(duplex=False)
-        buffer = DecoderSharedMemory(block_size, f"HiFiDecode Decoder Thread Shared Memory {i}")
+        buffer_name = DecoderSharedMemory.get_shared_memory(block_size, f"HiFiDecode Decoder Thread Shared Memory {i}")
+        buffer = DecoderSharedMemory(buffer_name)
         atexit.register(buffer.close)
         atexit.register(buffer.unlink)
-        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(i, decoder, decode_options["auto_fine_tune"], decoder_in_conn_parent, decoder_out_queue, buffer))
+        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(i, decoder, decode_options["auto_fine_tune"], decoder_in_conn_parent, decoder_out_queue, buffer_name))
         decoder_process.start()
 
         atexit.register(decoder_process.terminate)
@@ -1156,11 +1177,12 @@ async def decode_parallel(
         decoder_buffers.append(buffer)
 
     output_child_conn, output_parent_conn = Pipe(duplex=False)
-    output_file_buffer = DecoderSharedMemory(block_size, f"HiFiDecode Soundfile Encoder Shared Memory")
+    output_file_buffer_name = DecoderSharedMemory.get_shared_memory(block_size, f"HiFiDecode Soundfile Encoder Shared Memory")
+    output_file_buffer = DecoderSharedMemory(output_file_buffer_name)
     output_file_lock = Lock()
     atexit.register(output_file_buffer.close)
     atexit.register(output_file_buffer.unlink)
-    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file_buffer, output_file_lock, output_file, decode_options["audio_rate"]))
+    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file_buffer_name, output_file_lock, output_file, decode_options["audio_rate"]))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
     output_file_send_executor = ThreadPoolExecutor(1)
@@ -1343,6 +1365,7 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
                 decoders.append(HiFiDecode(decode_options))
                 decoders[i].updateAFE(LCRef, RCRef)
 
+            #set_start_method("spawn")
             # one thread to continuously read in the blocks, one thread for processing what was read
             with ThreadPoolExecutor(int(args.threads/2)) as async_executor:
                 loop = asyncio.get_event_loop()
