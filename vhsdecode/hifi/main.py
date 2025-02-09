@@ -139,6 +139,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--head_switching_interpolation",
+    dest="head_switching_interpolation",
+    type=str.lower,
+    help=f"Enables head switching noise interpolation. (defaults to \"on\" for VHS, \"off\" for Video8 and Hi8)."
+)
+
+parser.add_argument(
     "--resampler_quality",
     dest="resampler_quality",
     type=str,
@@ -1403,6 +1410,13 @@ def main() -> int:
 
     real_mode = default_mode if not args.mode else args.mode
 
+    default_head_switching_interpolation = "on" if not args.format_8mm else "off"
+    head_switching_interpolation = (
+        default_head_switching_interpolation
+        if not args.head_switching_interpolation else
+        args.head_switching_interpolation
+    )
+
     if (
         args.resampler_quality == "low" or 
         args.resampler_quality == "medium" or 
@@ -1421,6 +1435,7 @@ def main() -> int:
         "original": args.original,
         "resampler_quality": resampler_quality if not args.preview else "low",
         "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
+        "head_switching_interpolation": head_switching_interpolation == "on",
         "noise_reduction": args.noise_reduction == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "nr_side_gain": args.NR_side_gain,

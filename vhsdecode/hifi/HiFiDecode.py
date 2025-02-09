@@ -567,6 +567,7 @@ class HiFiDecode:
                 self.afe_params = AFEParamsNTSCHi8()
                 self.standard = AFEParamsNTSCHi8()
 
+        self.headswitch_interpolation_enabled = self.options["head_switching_interpolation"]
         self.headswitch_passes = 2
         self.headswitch_signal_rate = self.audio_rate
         self.headswitch_hz = self.field_rate # frequency used to fit peaks to the expected headswitching interval
@@ -606,6 +607,7 @@ class HiFiDecode:
             "audioFinal_numerator": self.audioFinal_numerator,
             "audioFinal_denominator": self.audioFinal_denominator,
             "audio_final_resampler_converter": self.audio_final_resampler_converter,
+            "headswitch_interpolation_enabled": self.headswitch_interpolation_enabled,
             "headswitch_passes": self.headswitch_passes,
             "headswitch_signal_rate": self.headswitch_signal_rate,
             "headswitch_hz": self.headswitch_hz,
@@ -952,7 +954,9 @@ class HiFiDecode:
         audio = samplerate_resample(audio, audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
         audio, dc = HiFiDecode.cancelDC(audio)
         audio = HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
-        audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
+
+        if audio_process_params["headswitch_interpolation_enabled"]:
+            audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
 
         if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
             audio = samplerate_resample(audio, audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
