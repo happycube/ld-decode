@@ -2,7 +2,8 @@
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, Process, BoundedSemaphore
+from multiprocessing import cpu_count, Pipe, Queue, Process, Lock, set_start_method
+from threading import Lock as ThreadLock
 from multiprocessing.shared_memory import SharedMemory
 from datetime import datetime, timedelta
 import os
@@ -682,11 +683,8 @@ class PostProcessor:
         decoder: HiFiDecode,
     ):
         self.submit_thread_executor_queue = list()
-        self.submit_thread_executor = ThreadPoolExecutor(max(1, (int(max_queued_messages/8))))
+        self.submit_thread_executor = ThreadPoolExecutor(1)
         atexit.register(self.submit_thread_executor.shutdown)
-
-        self.audio_process_executor = ThreadPoolExecutor(max(3, (int(max_queued_messages/8))))
-        atexit.register(self.audio_process_executor.shutdown)
 
         self.next_block = 0
         self.last_block_submitted = -1
@@ -703,7 +701,7 @@ class PostProcessor:
         self.nr_side_gain = decode_options["nr_side_gain"]
         
         self.nr_worker_l_shared_memory = DecoderSharedMemory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction L Shared Memory")
-        self.nr_worker_l_lock = BoundedSemaphore()
+        self.nr_worker_l_lock = ThreadLock()
         self.nr_worker_l_parent, nr_worker_l_child = Pipe()
         self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(nr_worker_l_child, self.nr_worker_l_shared_memory, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
@@ -712,7 +710,7 @@ class PostProcessor:
         atexit.register(self.nr_worker_l_shared_memory.unlink)
 
         self.nr_worker_r_shared_memory = DecoderSharedMemory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction R Shared Memory")
-        self.nr_worker_r_lock = BoundedSemaphore()
+        self.nr_worker_r_lock = ThreadLock()
         self.nr_worker_r_parent, nr_worker_r_child = Pipe()
         self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(nr_worker_r_child, self.nr_worker_r_shared_memory, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
@@ -721,7 +719,7 @@ class PostProcessor:
         atexit.register(self.nr_worker_r_shared_memory.unlink)
 
         self.discard_merge_worker_shared_memory = DecoderSharedMemory(self.decoder_audio_block_size * 2, "HiFiDecode Stereo Merge Shared Memory")
-        self.discard_merge_worker_lock = BoundedSemaphore()
+        self.discard_merge_worker_lock = ThreadLock()
         self.discard_merge_worker_parent, discard_merge_worker_child = Pipe()
         self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, name="HiFiDecode Stereo Merge", args=(discard_merge_worker_child, self.discard_merge_worker_shared_memory, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
         self.discard_merge_worker_process.start()
@@ -820,39 +818,6 @@ class PostProcessor:
             stereo[(i * 2) + 1] = audioR[i + overlap_start]
             
         return stereo
-    
-    @staticmethod
-    def nr_worker_thread(
-        block_num_in,
-        audio_in,
-        nr_worker_parent,
-        nr_worker_shared_memory,
-        nr_worker_shared_lock,
-    ):
-        # needs to happen sequentially and in a thread since the noise reduction classes are stateful
-        nr_worker_shared_lock.acquire()
-        nr_worker_shared_memory.write_block(audio_in)
-
-        nr_worker_parent.send((block_num_in, len(audio_in)))
-        block_num, length = nr_worker_parent.recv()
-
-        # wait till the audio is written
-        audio_out = nr_worker_shared_memory.read_block(length).copy()
-        nr_worker_shared_lock.release()
-
-        return block_num, audio_out
-    
-    def discard_merge_worker_thread(self, l, r, is_last_block):
-        self.discard_merge_worker_lock.acquire()
-        self.discard_merge_worker_shared_memory.write_channels(l, r)
-        self.discard_merge_worker_parent.send((is_last_block, len(l)))
-
-        stereo_length = self.discard_merge_worker_parent.recv()
-        stereo = self.discard_merge_worker_shared_memory.read_stereo(stereo_length)
-
-        self.discard_merge_worker_lock.release()
-
-        return stereo
         
     def process_audio_worker(
         self,
@@ -863,18 +828,36 @@ class PostProcessor:
     ) -> np.array:
         # thread theses calls to avoid blocking on memory reads and writes
         if self.spectral_nr_amount > 0 or self.use_noise_reduction:
-            l_nr_future = self.audio_process_executor.submit(PostProcessor.nr_worker_thread, block_num_in, l, self.nr_worker_l_parent, self.nr_worker_l_shared_memory, self.nr_worker_l_lock)
-            r_nr_future = self.audio_process_executor.submit(PostProcessor.nr_worker_thread, block_num_in, r, self.nr_worker_r_parent, self.nr_worker_r_shared_memory, self.nr_worker_r_lock)
-    
-            l_block_num, l = l_nr_future.result()
-            r_block_num, r = r_nr_future.result()
+            self.nr_worker_l_lock.acquire()
+            self.nr_worker_l_shared_memory.write_block(l)
+            self.nr_worker_l_parent.send((block_num_in, len(l)))
+
+            self.nr_worker_r_lock.acquire()
+            self.nr_worker_r_shared_memory.write_block(r)
+            self.nr_worker_r_parent.send((block_num_in, len(r)))
+
+            l_block_num, l_length = self.nr_worker_l_parent.recv()
+            l = self.nr_worker_l_shared_memory.read_block(l_length).copy()
+            self.nr_worker_l_lock.release()
+
+            r_block_num, r_length = self.nr_worker_r_parent.recv()
+            r = self.nr_worker_r_shared_memory.read_block(r_length).copy()
+            self.nr_worker_r_lock.release()
 
             assert l_block_num == r_block_num, "Noise reduction processes are out of sync! Channels will be out od sync."
         else:
             l_block_num = block_num_in
             r_block_num = block_num_in
 
-        stereo = self.audio_process_executor.submit(self.discard_merge_worker_thread, l, r, is_last_block).result()
+        self.discard_merge_worker_lock.acquire()
+        self.discard_merge_worker_shared_memory.write_channels(l, r)
+        self.discard_merge_worker_parent.send((is_last_block, len(l)))
+
+        stereo_length = self.discard_merge_worker_parent.recv()
+        stereo = self.discard_merge_worker_shared_memory.read_stereo(stereo_length)
+
+        self.discard_merge_worker_lock.release()
+
         return stereo, l_block_num
 
     def submit(
@@ -1090,13 +1073,13 @@ def decoder_process_worker(
     decoder_id: int,
     decoder: HiFiDecode,
     auto_fine_tune: bool,
-    in_queue: Queue,
+    in_conn,
     out_queue: Queue,
     buffer: DecoderSharedMemory
 ):
     while True:
         # get a new block to decode from the parent thread
-        block_num, block_len = in_queue.get()
+        block_num, block_len = in_conn.recv()
         # shutdown message
         if block_num == -1:
             break
@@ -1154,27 +1137,27 @@ async def decode_parallel(
 
     # spin up the decoders
     decoder_processes: list[Process] = []
+    decoder_in_conns: list = []
     decoder_out_queue: Queue = Queue()
-    decoder_in_queues: list[Queue] = []
     decoder_buffers: list[DecoderSharedMemory] = []
 
     for i in range(len(decoders)):
         decoder = decoders[i]
-        in_queue = Queue()
+        decoder_in_conn_parent, decoder_in_conn_child  = Pipe(duplex=False)
         buffer = DecoderSharedMemory(block_size, f"HiFiDecode Decoder Thread Shared Memory {i}")
         atexit.register(buffer.close)
         atexit.register(buffer.unlink)
-        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(i, decoder, decode_options["auto_fine_tune"], in_queue, decoder_out_queue, buffer))
+        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(i, decoder, decode_options["auto_fine_tune"], decoder_in_conn_parent, decoder_out_queue, buffer))
         decoder_process.start()
 
         atexit.register(decoder_process.terminate)
         decoder_processes.append(decoder_process)
-        decoder_in_queues.append(in_queue)
+        decoder_in_conns.append(decoder_in_conn_child)
         decoder_buffers.append(buffer)
 
     output_child_conn, output_parent_conn = Pipe(duplex=False)
     output_file_buffer = DecoderSharedMemory(block_size, f"HiFiDecode Soundfile Encoder Shared Memory")
-    output_file_lock = BoundedSemaphore()
+    output_file_lock = Lock()
     atexit.register(output_file_buffer.close)
     atexit.register(output_file_buffer.unlink)
     output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file_buffer, output_file_lock, output_file, decode_options["audio_rate"]))
@@ -1222,7 +1205,7 @@ async def decode_parallel(
                     decoder_id = decoders_idle.pop()
 
                     decoder_buffers[decoder_id].write_block(block)
-                    decoder_in_queues[decoder_id].put((current_block, len(block)))
+                    decoder_in_conns[decoder_id].send((current_block, len(block)))
 
                     decoders_running.add(decoder_id)
                     current_block += 1
@@ -1266,7 +1249,7 @@ async def decode_parallel(
     
             # signal the decoders to shutdown
             for i in decoders_running:
-                decoder_in_queues[i].put((-1, 0))
+                decoder_in_conns[i].send((-1, 0))
         
             while len(decoders_running) > 0 or not decoder_out_queue.empty():
                 # get the next decoder that is done
