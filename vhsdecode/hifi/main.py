@@ -14,6 +14,8 @@ import signal
 from numba import njit, prange
 from collections import deque
 import atexit
+from random import SystemRandom
+import string
 
 import numpy as np
 import soundfile as sf
@@ -644,6 +646,9 @@ class DecoderSharedMemory():
     def get_shared_memory(size, name, dtype=REAL_DTYPE):
         float_item_size = np.dtype(dtype).itemsize
         byte_size = size * float_item_size
+        # allow more than one instance to run at a time
+        system_random = SystemRandom()
+        name += "_" + ''.join(system_random.choice(string.ascii_lowercase + string.digits) for _ in range(8))
 
         # this instance must be saved in a variable that persists on both processes
         # Windows will remove the shared memory if it garbage collects the handle in any of the processes it is open in
@@ -1189,7 +1194,7 @@ async def decode_parallel(
         decoder_buffers.append(buffer)
 
     output_child_conn, output_parent_conn = Pipe(duplex=False)
-    output_file_buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, f"HiFiDecode Soundfile Encoder Shared Memory")
+    output_file_buffer_instance = DecoderSharedMemory.get_shared_memory(decoder.blockAudioSize * 2, f"HiFiDecode Soundfile Encoder Shared Memory")
     output_file_buffer = DecoderSharedMemory(output_file_buffer_instance.name)
     output_file_lock = Lock()
     atexit.register(output_file_buffer.close)
