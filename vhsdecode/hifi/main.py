@@ -1365,9 +1365,9 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
                 decoders.append(HiFiDecode(decode_options))
                 decoders[i].updateAFE(LCRef, RCRef)
 
-            #set_start_method("spawn")
+            # set_start_method("spawn")
             # one thread to continuously read in the blocks, one thread for processing what was read
-            with ThreadPoolExecutor(int(args.threads/2)) as async_executor:
+            with ThreadPoolExecutor(1) as async_executor:
                 loop = asyncio.get_event_loop()
                 loop.set_default_executor(async_executor)
                 loop.run_until_complete(decode_parallel(decoders, decode_options, threads=args.threads, ui_t=ui_t))
