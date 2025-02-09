@@ -2,7 +2,7 @@
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, Process, Lock, set_start_method, parent_process
+from multiprocessing import cpu_count, Pipe, Queue, Process, Lock, freeze_support, current_process
 from threading import Lock as ThreadLock
 from multiprocessing.shared_memory import SharedMemory
 from datetime import datetime, timedelta
@@ -199,28 +199,6 @@ parser.add_argument(
         " 8mm mono is not auto detected currently so has to be manually specified as l."
     ),
 )
-
-signal_count = 0
-exit_requested = False
-main_pid = os.getpid()
-def signal_handler(sig, frame):
-    global signal_count
-    global main_pid
-    global exit_requested
-
-    exit_requested = True
-    is_main_thread = main_pid == os.getpid()
-    if signal_count >= 1:
-        if is_main_thread:
-            # prevent reentrant calls https://stackoverflow.com/a/75368797
-            os.write(sys.stdout.fileno(), b"\nCtrl-C was pressed again, stopping immediately...\n")
-        sys.exit(1)
-    if signal_count == 0:
-        if is_main_thread:
-            os.write(sys.stdout.fileno(), b"\nCtrl-C was pressed, stopping decode...\n")
-    signal_count += 1
-
-signal.signal(signal.SIGINT, signal_handler)
 
 def test_if_ffmpeg_is_installed():
     shell_command = ["ffmpeg", "-version"]
@@ -779,38 +757,44 @@ class PostProcessor:
         )
 
         while True:
-            blocknum, pre_length = conn.recv()
-            pre = shared_memory.read_block(pre_length)
-            
-            audio = (
-                spectral_nr.spectral_nr(pre)
-                if spectral_nr_amount > 0 else
-                pre
-            )
-
-            if use_noise_reduction:
-                audio = noise_reduction.noise_reduction(pre, audio)
-
-            audio_length = len(audio)
-            shared_memory.write_block(audio)
-            conn.send((blocknum, audio_length))
+            try:
+                blocknum, pre_length = conn.recv()
+                pre = shared_memory.read_block(pre_length)
+                
+                audio = (
+                    spectral_nr.spectral_nr(pre)
+                    if spectral_nr_amount > 0 else
+                    pre
+                )
+    
+                if use_noise_reduction:
+                    audio = noise_reduction.noise_reduction(pre, audio)
+    
+                audio_length = len(audio)
+                shared_memory.write_block(audio)
+                conn.send((blocknum, audio_length))
+            except InterruptedError:
+                pass
 
     @staticmethod
     def discard_merge_worker(conn, shared_memory_name, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size):
         shared_memory = DecoderSharedMemory(shared_memory_name)
         while True:
-            is_last_block, channel_length = conn.recv()
-
-            l, r = shared_memory.read_channels(channel_length)
-
-            overlap_start, overlap_end = PostProcessor.get_overlap(len(l), is_last_block, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size)
-            stereo = PostProcessor.stereo_interleave(l, r, overlap_start, overlap_end)
-            
-            assert stereo.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {stereo.dtype}"
-
-            shared_memory.write_stereo(stereo)
-
-            conn.send(len(stereo))
+            try:
+                is_last_block, channel_length = conn.recv()
+    
+                l, r = shared_memory.read_channels(channel_length)
+    
+                overlap_start, overlap_end = PostProcessor.get_overlap(len(l), is_last_block, audio_rate, decoder_audio_rate, decoder_audio_block_size, decoder_audio_discard_size)
+                stereo = PostProcessor.stereo_interleave(l, r, overlap_start, overlap_end)
+                
+                assert stereo.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {stereo.dtype}"
+    
+                shared_memory.write_stereo(stereo)
+    
+                conn.send(len(stereo))
+            except InterruptedError:
+                pass
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
@@ -870,11 +854,25 @@ class PostProcessor:
             self.nr_worker_r_shared_memory.write_block(r)
             self.nr_worker_r_parent.send((block_num_in, len(r)))
 
-            l_block_num, l_length = self.nr_worker_l_parent.recv()
+            while True:
+                try:
+                    l_block_num, l_length = self.nr_worker_l_parent.recv()
+                    break
+                except InterruptedError:
+                    # retry if a signal is received
+                    continue
+
             l = self.nr_worker_l_shared_memory.read_block(l_length).copy()
             self.nr_worker_l_lock.release()
 
-            r_block_num, r_length = self.nr_worker_r_parent.recv()
+            while True:
+                try:
+                    r_block_num, r_length = self.nr_worker_r_parent.recv()
+                    break
+                except InterruptedError:
+                    # retry if a signal is received
+                    continue
+
             r = self.nr_worker_r_shared_memory.read_block(r_length).copy()
             self.nr_worker_r_lock.release()
 
@@ -887,7 +885,14 @@ class PostProcessor:
         self.discard_merge_worker_shared_memory.write_channels(l, r)
         self.discard_merge_worker_parent.send((is_last_block, len(l)))
 
-        stereo_length = self.discard_merge_worker_parent.recv()
+        while True:
+            try:
+                stereo_length = self.discard_merge_worker_parent.recv()
+                break
+            except InterruptedError:
+                # retry if a signal is received
+                continue
+
         stereo = self.discard_merge_worker_shared_memory.read_stereo(stereo_length)
 
         self.discard_merge_worker_lock.release()
@@ -1003,18 +1008,21 @@ class SoundDeviceProcess():
     def play_worker(conn, sample_rate):
         output_stream = None
         while True:
-            stereo = conn.recv_bytes()
-            if output_stream == None:
-                output_stream = sd.OutputStream(
-                    samplerate=sample_rate,
-                    channels=2
-                )
-                output_stream.start()
-
-            interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
-            interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo)
-            stacked = SoundDeviceProcess.build_stereo(interleaved)
-            output_stream.write(stacked)
+            try:
+                stereo = conn.recv_bytes()
+                if output_stream == None:
+                    output_stream = sd.OutputStream(
+                        samplerate=sample_rate,
+                        channels=2
+                    )
+                    output_stream.start()
+    
+                interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
+                interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo)
+                stacked = SoundDeviceProcess.build_stereo(interleaved)
+                output_stream.write(stacked)
+            except InterruptedError:
+                pass
     
     def play(self, stereo):
         self._thread_executor.submit(self._play_parent_conn.send_bytes, stereo)
@@ -1113,22 +1121,25 @@ def decoder_process_worker(
 ):
     buffer = DecoderSharedMemory(buffer_name)
     while True:
-        # get a new block to decode from the parent thread
-        block_num, block_len = in_conn.recv()
-        # shutdown message
-        if block_num == -1:
-            break
-
-        l, r = decoder.block_decode(buffer.read_block(block_len))
-        if auto_fine_tune:
-            log_bias(decoder)
-
-        # copy the decoded output into the shared memory
-        channel_length = len(l)
-        buffer.write_channels(l, r)
-
-        # tell the parent thread that this is done
-        out_queue.put((decoder_id, block_num, channel_length))
+        try:
+            # get a new block to decode from the parent thread
+            block_num, block_len = in_conn.recv()
+            # shutdown message
+            if block_num == -1:
+                break
+    
+            l, r = decoder.block_decode(buffer.read_block(block_len))
+            if auto_fine_tune:
+                log_bias(decoder)
+    
+            # copy the decoded output into the shared memory
+            channel_length = len(l)
+            buffer.write_channels(l, r)
+    
+            # tell the parent thread that this is done
+            out_queue.put((decoder_id, block_num, channel_length))
+        except InterruptedError:
+            pass
 
 def send_to_write_soundfile_process_worker(output_file_lock, output_file_buffer, output_parent_conn, stereo):
     output_file_lock.acquire()
@@ -1146,15 +1157,18 @@ def write_soundfile_process_worker(
     with ThreadPoolExecutor(1) as write_executor:
         with as_outputfile(output_file, audio_rate) as w:
             while True:
-                length = conn.recv()
-                if length == 0:
-                    write_executor.submit(w.flush)
-                    write_executor.shutdown(wait=True)
-                    break
-
-                stereo = output_buffer.read_stereo(length)
-                output_file_lock.release()
-                write_executor.submit(w.buffer_write, stereo, dtype="float32")
+                try:
+                    length = conn.recv()
+                    if length == 0:
+                        write_executor.submit(w.flush)
+                        write_executor.shutdown(wait=True)
+                        break
+    
+                    stereo = output_buffer.read_stereo(length)
+                    output_file_lock.release()
+                    write_executor.submit(w.buffer_write, stereo, dtype="float32")
+                except InterruptedError:
+                    pass
 
 
 async def decode_parallel(
@@ -1524,6 +1538,41 @@ def main() -> int:
             )
             return 1
 
+signal_count = 0
+exit_requested = False
+main_pid = os.getpid()
+NUM_SIGINT_BEFORE_FORCE_EXIT = 1
+def parent_signal_handler(sig, frame):
+    global signal_count
+    global main_pid
+    global exit_requested
+
+    exit_requested = True
+    is_main_thread = main_pid == os.getpid()
+    if signal_count >= NUM_SIGINT_BEFORE_FORCE_EXIT:
+        if is_main_thread:
+            # prevent reentrant calls https://stackoverflow.com/a/75368797
+            os.write(sys.stdout.fileno(), b"\nCtrl-C was pressed again, stopping immediately...\n")
+        sys.exit(1)
+    if signal_count == 0:
+        if is_main_thread:
+            os.write(sys.stdout.fileno(), b"\nCtrl-C was pressed, stopping decode...\n")
+    signal_count += 1
+
+def child_signal_handler(sig, frame):
+    global signal_count
+    global exit_requested
+
+    exit_requested = True
+    if signal_count >= NUM_SIGINT_BEFORE_FORCE_EXIT:
+        sys.exit(1)
+    signal_count += 1
+
+if current_process().name == 'MainProcess':
+    signal.signal(signal.SIGINT, parent_signal_handler)
+else:
+    signal.signal(signal.SIGINT, child_signal_handler)
 
 if __name__ == "__main__":
+    freeze_support()
     sys.exit(main())
