@@ -39,6 +39,7 @@ def main(argv):
         hifimain()
     else:
         print_options()
+        print(f"Instead got: {to_run}")
 
 
 if __name__ == "__main__":
