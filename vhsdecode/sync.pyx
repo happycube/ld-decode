@@ -816,36 +816,36 @@ def valid_pulses_to_linelocs(
     # * Each line will always increment by +- max_distance_between_pulse_and_line
     # * If there isn't a pulse within this distance, then the line gets an estimated pulse
     # * It's important that pulses do not get assigned to lines twice
-    
+
     max_allowed_distance_between_pulse_and_line = meanlinelen / 1.5
     for line_index in range(0, proclines):
         # Start by setting this line's sample location to the expected location relative to the reference line
         line_locations[line_index] = round_to_int(reference_pulse + meanlinelen * (line_index - reference_line))
 
-        # if we have pulses left to assign, find the closest pulse that falls within the expected line and +- max_allowed_distance_between_pulse_and_line
+        # search for the closest pulse, pulse locations are assumed to be sorted
         if current_pulse_index < validpulses_len:
-
             # start the search using the distance between the current pulse and the expected line location
             current_distance_from_pulse_to_line = c_abs(validpulses[current_pulse_index] - line_locations[line_index])
-            
+
             # start by setting this to the max allowed value so the loop will break if the next pulse is further away
             smallest_distance_observed_between_pulse_and_line = max_allowed_distance_between_pulse_and_line
-            
+
             # reset the best fit variables
             next_observed_distance_between_pulse_and_line = -1
             current_pulse_sample_location = -1
+            
             # start iteration at the pulse that hasn't been assigned yet
             pulse_search_index = current_pulse_index
-            
+
             while pulse_search_index < validpulses_len - 1:
-                if current_distance_from_pulse_to_line <= smallest_distance_observed_between_pulse_and_line:
-                    smallest_distance_observed_between_pulse_and_line = current_distance_from_pulse_to_line
+                if current_distance_from_pulse_to_line <= smallest_distance_observed_from_pulse_to_line:
+                    smallest_distance_observed_from_pulse_to_line = current_distance_from_pulse_to_line
 
                     current_pulse_index = pulse_search_index
                     current_pulse_sample_location = validpulses[pulse_search_index]
-
+    
                 # peek ahead to the next pulse to measure the distance
-                next_observed_distance_between_pulse_and_line = c_abs(validpulses[pulse_search_index+1] - line_locations[i])
+                next_observed_distance_between_pulse_and_line = c_abs(validpulses[pulse_search_index+1] - line_locations[line_index])
                 if next_observed_distance_between_pulse_and_line > current_distance_from_pulse_to_line:
                     # if the next pulse is greater than the current distance, we have already found the closest pulse
                     break
@@ -853,15 +853,13 @@ def valid_pulses_to_linelocs(
                     # if the distance is not greater, continue searching
                     current_distance_from_pulse_to_line = next_observed_distance_between_pulse_and_line
                     pulse_search_index += 1
-
+            
             # if we found a pulse that was close enough (i.e. +- max_distance_between_pulse_and_line),
             # the set this line to the pulse's location, replacing the estimated location that was already set above
             # otherwise, keep the estimated location
             if current_pulse_sample_location != -1:
                 # print(line_index, "using nearest pulse", current_pulse_sample_location)
                 line_locations[line_index] = current_pulse_sample_location
-
-                # increment so we don't reuse this pulse
                 current_pulse_index += 1
             # else:
             #     # print(line_index, "using estimated pulse", line_locations[line_index])
