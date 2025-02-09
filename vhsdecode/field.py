@@ -230,20 +230,18 @@ def get_line0_fallback(
     Try a more primitive way of locating line 0 if the normal approach fails.
     This doesn't actually fine line 0, rather it locates the approx position of the last vsync before vertical blanking
     as the later code is designed to work off of that.
-    Currently we basically just look for the first "long" pulse that could be start of vsync pulses in
-    e.g a 240p/280p signal (that is, a pulse that is at least vsync pulse length.)
+    It is searched for in this order:
+     -Find the start of long vsync pulses
+     -Find the end of long vsync pulses
+     -Find the end of short-distance eq pulses
+     -Find the start of short-distance eq pulses
+     -Just look for the first "long" pulse that could be start of vsync pulses in
+      e.g a 240p/280p signal (that is, a pulse that is at least vsync pulse length.)
     """
     DEBUG_PLOT = False
 
     PULSE_START = 0
     PULSE_LEN = 1
-
-    # TODO: get max len from field.
-    long_pulses = list(
-        filter(
-            lambda p: inrange(p[PULSE_LEN], lt_vsync[0], lt_vsync[1] * 10), raw_pulses
-        )
-    )
 
     filtered_pulses = [raw_pulses[0]]
     i = 1
@@ -271,33 +269,87 @@ def get_line0_fallback(
                 filtered_pulses.append(raw_pulses[i])
             i += 1
         i += 1
-    filtered_pulses.append(raw_pulses[i])
-    filtered_pulses.append(raw_pulses[i+1])
+    while i < len(raw_pulses):
+        filtered_pulses.append(raw_pulses[i])
+        i += 1
 
     line_0 = None
     line_0_backup = None
 
+    first_field = -1
+    first_field_confidence = -1
+
     SHORT_PULSE_MAX = 0.2*linelen
     LONG_PULSE_MIN = 0.35*linelen
 
-    # First try: Find beginning of blanking
-    i = 2
+    # First try: Find end of long sync pulses
+    i = 10
     while line_0 is None and i < (len(filtered_pulses)-2):
         disPPspp = (filtered_pulses[i-1].start - filtered_pulses[i-2].start)/linelen
-        dispPSpp = (filtered_pulses[i].start - filtered_pulses[i-1].start)/linelen
-        disppSPp = (filtered_pulses[i+1].start - filtered_pulses[i].start)/linelen
+        dispPSpp = (filtered_pulses[i  ].start - filtered_pulses[i-1].start)/linelen
+        disppSPp = (filtered_pulses[i+1].start - filtered_pulses[i  ].start)/linelen
         disppsPP = (filtered_pulses[i+2].start - filtered_pulses[i+1].start)/linelen
 
         if (
-            abs(disPPspp-1.0) < 0.06 and abs(dispPSpp-1.0) < 0.06 and
+            abs(disPPspp-0.5) < 0.06 and abs(dispPSpp-0.5) < 0.06 and
             abs(disppSPp-0.5) < 0.06 and abs(disppsPP-0.5) < 0.06 and
-            filtered_pulses[i-2].len < SHORT_PULSE_MAX and
-            filtered_pulses[i-1].len < SHORT_PULSE_MAX and
+            filtered_pulses[i-2].len > LONG_PULSE_MIN and
+            filtered_pulses[i-1].len > LONG_PULSE_MIN and
             filtered_pulses[i  ].len < SHORT_PULSE_MAX and
             filtered_pulses[i+1].len < SHORT_PULSE_MAX and
             filtered_pulses[i+2].len < SHORT_PULSE_MAX
            ):
-            line_0 = filtered_pulses[i].start
+            # we measure the distance of three pulses in previous field to start of long pulses
+            # to check if this is first or second field
+            # as there may be broken sync pulses we scan backwards
+            measured_linelen = (disPPspp + dispPSpp + disppSPp + disppsPP) * (linelen/2)
+            line_offset = None
+            phase_cnt = [0,0,0]
+            for d in range(10,min(i,30)+1):
+                pp = np.array([(filtered_pulses[i-2].start-filtered_pulses[i-d  ].start)/measured_linelen,
+                               (filtered_pulses[i-2].start-filtered_pulses[i-d+1].start)/measured_linelen,
+                               (filtered_pulses[i-2].start-filtered_pulses[i-d+2].start)/measured_linelen])
+                # PAL:  for start of first field all values should be 1, for second field all should be 0
+                # NTSC: for start of first field all values should be 0, for second field all should be 1
+                pps = np.sum(np.mod(np.round(pp*2),2))
+                if pps == 0:
+                    phase_cnt[0] += 1
+                elif pps == 3:
+                    phase_cnt[1] += 1
+                else:
+                    phase_cnt[2] += 1
+                if sum(phase_cnt[0:2]) >= 5:
+                    break
+            phase = np.argmax(phase_cnt)
+            if phase == 0:
+                # we need to differ between 625 and 525 line
+                if frame_lines == 625:
+                    first_field = 0
+                    line_offset = 5.0
+                else:
+                    first_field = 1
+                    line_offset = 6.0
+                first_field_confidence = (phase_cnt[0]*100 // sum(phase_cnt))
+            elif phase == 1:
+                # we need to differ between 625 and 525 line
+                if frame_lines == 625:
+                    first_field = 1
+                    line_offset = 4.5
+                else:
+                    first_field = 0
+                    line_offset = 5.5
+                first_field_confidence = (phase_cnt[1]*100 // sum(phase_cnt))
+
+            if line_offset is not None:
+                # in case we cannot find a matching pulse, we can still use this prediction
+                line_0_est = filtered_pulses[i-2].start - line_offset*measured_linelen
+                if line_0_backup is None:
+                    line_0_backup = line_0_est
+                # find pulse
+                for j in range(max(0,i-16),i-4):
+                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.05:
+                        line_0 = filtered_pulses[j].start
+                        break
         i += 1
 
     # Second try: Find beginng of long sync pulses
@@ -322,20 +374,31 @@ def get_line0_fallback(
             # as there may be broken syncs we scan backwards
             measured_linelen = (disPPspp + dispPSpp + disppSPp + disppsPP) * (linelen/2)
             line_offset = None
+            phase_cnt = [0,0,0]
             for d in range(10,min(i,25)+1):
                 pp = np.array([(filtered_pulses[i-2].start-filtered_pulses[i-d  ].start)/measured_linelen,
                                (filtered_pulses[i-2].start-filtered_pulses[i-d+1].start)/measured_linelen,
                                (filtered_pulses[i-2].start-filtered_pulses[i-d+2].start)/measured_linelen])
                 # for start of first field all values should be 0, for second field all should be 1
                 pps = np.sum(np.mod(np.round(pp*2),2))
-
                 if pps == 0:
-                    line_offset = 2.0
-                    break
+                    phase_cnt[0] += 1
                 elif pps == 3:
-                    # we need to differ between 625 and 525 line
-                    line_offset = 1.5 if frame_lines == 625 else 2.5
+                    phase_cnt[1] += 1
+                else:
+                    phase_cnt[2] += 1
+                if sum(phase_cnt[0:2]) >= 5:
                     break
+            phase = np.argmax(phase_cnt)
+            if phase == 0:
+                # we need to differ between 625 and 525 line
+                line_offset = 2.0 if frame_lines == 625 else 3.0
+                first_field = 1
+                first_field_confidence = (phase_cnt[0]*100 // sum(phase_cnt))
+            elif phase == 1:
+                line_offset = 2.5 if frame_lines == 625 else 2.5
+                first_field = 0
+                first_field_confidence = (phase_cnt[1]*100 // sum(phase_cnt))
 
             if line_offset is not None:
                 # in case we cannot find a matching pulse, we can still use this prediction
@@ -344,70 +407,22 @@ def get_line0_fallback(
                     line_0_backup = line_0_est
                 # find pulse
                 for j in range(max(0,i-10),i-3):
-                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.1:
+                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.05:
                         line_0 = filtered_pulses[j].start
                         break
         i += 1
 
-    # Third try: Find end of long sync pulses
+    # Third try: Find end of blanking
     i = 10
     while (line_0 is None or line_0 > (linelen*(frame_lines-1)/2)) and i < (len(filtered_pulses)-2):
+        disPpspp = (filtered_pulses[i-2].start - filtered_pulses[i-3].start)/linelen
         disPPspp = (filtered_pulses[i-1].start - filtered_pulses[i-2].start)/linelen
         dispPSpp = (filtered_pulses[i  ].start - filtered_pulses[i-1].start)/linelen
         disppSPp = (filtered_pulses[i+1].start - filtered_pulses[i  ].start)/linelen
         disppsPP = (filtered_pulses[i+2].start - filtered_pulses[i+1].start)/linelen
 
         if (
-            abs(disPPspp-0.5) < 0.06 and abs(dispPSpp-0.5) < 0.06 and
-            abs(disppSPp-0.5) < 0.06 and abs(disppsPP-0.5) < 0.06 and
-            filtered_pulses[i-2].len > LONG_PULSE_MIN and
-            filtered_pulses[i-1].len > LONG_PULSE_MIN and
-            filtered_pulses[i  ].len < SHORT_PULSE_MAX and
-            filtered_pulses[i+1].len < SHORT_PULSE_MAX and
-            filtered_pulses[i+2].len < SHORT_PULSE_MAX
-           ):
-            # we measure the distance of three pulses in previous field to start of long pulses
-            # to check if this is first or second field
-            # as there may be broken sync pulses we scan backwards
-            measured_linelen = (disPPspp + dispPSpp + disppSPp + disppsPP) * (linelen/2)
-            line_offset = None
-            for d in range(10,min(i,30)+1):
-                pp = np.array([(filtered_pulses[i-2].start-filtered_pulses[i-d  ].start)/measured_linelen,
-                               (filtered_pulses[i-2].start-filtered_pulses[i-d+1].start)/measured_linelen,
-                               (filtered_pulses[i-2].start-filtered_pulses[i-d+2].start)/measured_linelen])
-                # PAL:  for start of first field all values should be 1, for second field all should be 0
-                # NTSC: for start of first field all values should be 0, for second field all should be 1
-                pps = np.sum(np.mod(np.round(pp*2),2))
-
-                if pps == 0:
-                    line_offset = 4.0 if frame_lines == 625 else 5.0
-                    break
-                elif pps == 3:
-                    # we need to differ between 625 and 525 line
-                    line_offset = 4.5 if frame_lines == 625 else 5.5
-                    break
-
-            if line_offset is not None:
-                # in case we cannot find a matching pulse, we can still use this prediction
-                line_0_est = filtered_pulses[i-2].start - line_offset*measured_linelen
-                if line_0_backup is None:
-                    line_0_backup = line_0_est
-                # find pulse
-                for j in range(max(0,i-16),i-4):
-                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.1:
-                        line_0 = filtered_pulses[j].start
-                        break
-        i += 1
-
-    # Fourth try: Find end of blanking
-    i = 10
-    while (line_0 is None or line_0 > (linelen*(frame_lines-1)/2)) and i < (len(filtered_pulses)-2):
-        disPPspp = (filtered_pulses[i-1].start - filtered_pulses[i-2].start)/linelen
-        dispPSpp = (filtered_pulses[i  ].start - filtered_pulses[i-1].start)/linelen
-        disppSPp = (filtered_pulses[i+1].start - filtered_pulses[i  ].start)/linelen
-        disppsPP = (filtered_pulses[i+2].start - filtered_pulses[i+1].start)/linelen
-
-        if (
+            abs(disPpspp-0.5) < 0.06 and
             abs(disPPspp-0.5) < 0.06 and abs(dispPSpp-0.5) < 0.06 and
             abs(disppSPp-1.0) < 0.06 and abs(disppsPP-1.0) < 0.06 and
             filtered_pulses[i-2].len < SHORT_PULSE_MAX and
@@ -419,33 +434,108 @@ def get_line0_fallback(
             # we measure the distance of three pulses in previous field to start of long pulses
             # to check if this is first or second field
             # as there may be broken sync pulses we scan backwards
-            measured_linelen = (disPPspp + dispPSpp + disppSPp + disppsPP) * (linelen/2)
-            if frame_lines == 625 and i+19 < len(filtered_pulses):
-                # for pal if we only have the end of the vsync, we can only check for the first active line
-                # VITS may break this, also very dark images or dropouts. This is last resort
-                line22_avg = np.mean(demod_05[filtered_pulses[i+16].start+filtered_pulses[i+16].len+40:filtered_pulses[i+17].start-40])
-                line22_std = np.std( demod_05[filtered_pulses[i+16].start+filtered_pulses[i+16].len+40:filtered_pulses[i+17].start-40])
-                line23_avg = np.mean(demod_05[filtered_pulses[i+17].start+filtered_pulses[i+17].len+(linelen//2):filtered_pulses[i+18].start-40])
-                line23_std = np.std( demod_05[filtered_pulses[i+17].start+filtered_pulses[i+17].len+(linelen//2):filtered_pulses[i+18].start-40])
-                line24_avg = np.mean(demod_05[filtered_pulses[i+18].start+filtered_pulses[i+18].len+40:filtered_pulses[i+19].start-40])
-                line24_std = np.std( demod_05[filtered_pulses[i+18].start+filtered_pulses[i+18].len+40:filtered_pulses[i+19].start-40])
-                if line23_avg > line24_avg or abs(line23_avg-line24_avg) < abs(line22_avg-line23_avg) or line23_std/line22_std > 2 * line23_std/line24_std:
-                    line_offset = 7.0
-                else:
-                    line_offset = 6.0
-            else:
-                line_offset = 8.0
+            measured_linelen = (disPPspp + dispPSpp + disppSPp + disppsPP) * (linelen/3.0)
+            line_offset = None
+            eq_pulse_len = (filtered_pulses[i-2].len+filtered_pulses[i-1].len)/2.0
+            hsync_pulse_len = (filtered_pulses[i+1].len+filtered_pulses[i+2].len)/2.0
 
+            if hsync_pulse_len/eq_pulse_len > 1.75:
+                if filtered_pulses[i].len < eq_pulse_len * 1.25:
+                    if frame_lines == 625:
+                        line_offset = 7.0
+                    else:
+                        line_offset = 8.0
+                    first_field = 0
+                    first_field_confidence = 80 if filtered_pulses[i].len < eq_pulse_len * 1.1 else 60
+                elif filtered_pulses[i].len > hsync_pulse_len * 0.75:
+                    if frame_lines == 625:
+                        line_offset = 7.0
+                    else:
+                        line_offset = 9.0
+                    first_field = 1
+                    first_field_confidence = 80 if filtered_pulses[i].len > hsync_pulse_len * 0.9 else 60
             if line_offset is not None:
                 # in case we cannot find a matching pulse, we can still use this prediction
                 line_0_est = filtered_pulses[i-2].start - line_offset*measured_linelen
                 if line_0_backup is None:
                     line_0_backup = line_0_est
                 # find pulse
-                for j in range(max(0,i-16),i-4):
-                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.1:
+                for j in range(max(0,i-20),i-4):
+                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.05:
                         line_0 = filtered_pulses[j].start
                         break
+        i += 1
+
+    # Fourth try: Find beginning of blanking
+    i = 2
+    while (line_0 is None or line_0 > (linelen*(frame_lines-1)/2)) and i < (len(filtered_pulses)-3):
+        disPPspp = (filtered_pulses[i-1].start - filtered_pulses[i-2].start)/linelen
+        dispPSpp = (filtered_pulses[i  ].start - filtered_pulses[i-1].start)/linelen
+        disppSPp = (filtered_pulses[i+1].start - filtered_pulses[i  ].start)/linelen
+        disppsPP = (filtered_pulses[i+2].start - filtered_pulses[i+1].start)/linelen
+        disppspP = (filtered_pulses[i+3].start - filtered_pulses[i+2].start)/linelen
+
+        if (
+            abs(disPPspp-1.0) < 0.06 and abs(dispPSpp-1.0) < 0.06 and
+            abs(disppSPp-0.5) < 0.06 and abs(disppsPP-0.5) < 0.06 and
+            abs(disppspP-0.5) < 0.06 and
+            filtered_pulses[i-2].len < SHORT_PULSE_MAX and
+            filtered_pulses[i-1].len < SHORT_PULSE_MAX and
+            filtered_pulses[i  ].len < SHORT_PULSE_MAX and
+            filtered_pulses[i+1].len < SHORT_PULSE_MAX and
+            filtered_pulses[i+2].len < SHORT_PULSE_MAX
+           ):
+            hsync_pulse_len = (filtered_pulses[i-2].len+filtered_pulses[i-1].len)/2.0
+            eq_pulse_len = (filtered_pulses[i+1].len+filtered_pulses[i+2].len)/2.0
+
+            if hsync_pulse_len/eq_pulse_len > 1.75:
+                if filtered_pulses[i].len < eq_pulse_len * 1.25:
+                    line_0 = filtered_pulses[i-1].start
+                    if frame_lines == 625:
+                        first_field = 0
+                    else:
+                        first_field = 1
+                    first_field_confidence = 60 if filtered_pulses[i].len < eq_pulse_len * 1.1 else 40
+                elif filtered_pulses[i].len > hsync_pulse_len * 0.75:
+                    line_0 = filtered_pulses[i].start
+                    if frame_lines == 625:
+                        first_field = 0
+                    else:
+                        first_field = 1
+                    first_field_confidence = 60 if filtered_pulses[i].len > hsync_pulse_len * 0.9 else 40
+
+            # the pulse duration was not clear, we need to check contents
+            # the interval between the first pulses half a line apart is either active or not
+            if line_0 is None:
+                lineP_avg = np.mean(demod_05[filtered_pulses[i-1].start+filtered_pulses[i-1].len+40:filtered_pulses[i  ].start-40])
+                lineP_std = np.std( demod_05[filtered_pulses[i-1].start+filtered_pulses[i-1].len+40:filtered_pulses[i  ].start-40])
+                lineI_avg = np.mean(demod_05[filtered_pulses[i  ].start+filtered_pulses[i  ].len+40:filtered_pulses[i+1].start-40])
+                lineI_std = np.std( demod_05[filtered_pulses[i  ].start+filtered_pulses[i  ].len+40:filtered_pulses[i+1].start-40])
+                lineN_avg = np.mean(demod_05[filtered_pulses[i+1].start+filtered_pulses[i+1].len+40:filtered_pulses[i+2].start-40])
+                lineN_std = np.std( demod_05[filtered_pulses[i+1].start+filtered_pulses[i+1].len+40:filtered_pulses[i+2].start-40])
+
+                if (
+                    abs(lineP_avg-lineI_avg)/(lineP_avg+lineI_avg) < 0.05 and
+                    abs(lineP_avg-lineN_avg)/(lineP_avg+lineN_avg) > 0.15 and
+                    abs(lineP_std-lineI_std)*2 < abs(lineP_std-lineN_std)
+                   ):
+                    line_0 = filtered_pulses[i-1].start
+                    if frame_lines == 625:
+                        first_field = 0
+                    else:
+                        first_field = 1
+                    first_field_confidence = 20
+                elif (
+                    abs(lineP_avg-lineI_avg)/(lineP_avg+lineI_avg) > 0.15 and
+                    abs(lineP_avg-lineN_avg)/(lineP_avg+lineN_avg) > 0.15 and
+                    lineI_std*2 > lineP_std
+                   ):
+                    line_0 = filtered_pulses[i].start
+                    if frame_lines == 625:
+                        first_field = 0
+                    else:
+                        first_field = 1
+                    first_field_confidence = 20
         i += 1
 
     if line_0 is None and line_0_backup is not None:
@@ -453,11 +543,21 @@ def get_line0_fallback(
             "WARNING, line0 hsync not found, guessing something, result may be garbled."
         )
         line_0 = line_0_backup
+        first_field_confidence -= 20
 
     if line_0 is not None:
         if DEBUG_PLOT:
             debug_plot_line0_fallback(demod_05, long_pulses, filtered_pulses, raw_pulses, line_0, None)
-        return line_0, None, True
+        return line_0, None, True, first_field, first_field_confidence
+
+    # 5th try: just find the last hsync in front of a long block
+
+    # TODO: get max len from field.
+    long_pulses = list(
+        filter(
+            lambda p: inrange(p[PULSE_LEN], lt_vsync[0], lt_vsync[1] * 10), raw_pulses
+        )
+    )
 
     if long_pulses:
         # Offset from start of first vsync to first line
@@ -498,11 +598,11 @@ def get_line0_fallback(
         )
         if DEBUG_PLOT:
             debug_plot_line0_fallback(demod_05, long_pulses, filtered_pulses, raw_pulses, line_0, last_lineloc)
-        return line_0, last_lineloc, True
+        return line_0, last_lineloc, True, -1, -1
     else:
         if DEBUG_PLOT:
             debug_plot_line0_fallback(demod_05, long_pulses, filtered_pulses, raw_pulses, None, None)
-        return None, None, None
+        return None, None, None, None, None
 
 
 def _run_vblank_state_machine(raw_pulses, line_timings, num_pulses, in_line_len):
@@ -817,9 +917,11 @@ class FieldShared:
 
         fallback_line0loc = None
         if self.rf.options.fallback_vsync and hasattr(self, "lt_vsync") and self.lt_vsync is not None:
-            fallback_line0loc, _, _ = self._get_line0_fallback(validpulses)
+            fallback_line0loc, _, _, fallback_is_first_field, fallback_is_first_field_confidence = self._get_line0_fallback(validpulses)
         if fallback_line0loc == None:
             fallback_line0loc = -1
+            fallback_is_first_field = -1
+            fallback_is_first_field_confidence = -1
 
         # find the location of the first hsync pulse (first line of video after the vsync pulses)
         # this function relies on the pulse type (hsync, vsync, eq pulse) being accurate in validpulses
@@ -833,7 +935,9 @@ class FieldShared:
             prev_first_hsync_offset_lines,
             self.rf.prev_first_hsync_loc,
             self.rf.prev_first_hsync_diff,
-            fallback_line0loc
+            fallback_line0loc,
+            fallback_is_first_field,
+            fallback_is_first_field_confidence
         )
 
         # save the current hsync pulse location to the previous hsync pulse
