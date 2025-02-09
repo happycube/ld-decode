@@ -813,9 +813,11 @@ def valid_pulses_to_linelocs(
 
     # This loop performs a best-fit to align the scan lines, which are expected to increment always
     # by around mean_line_len distance in samples, and the pulse locations in samples that were detected earlier
-    # * Each line will always increment by +- max_distance_between_pulse_and_line
-    # * If there isn't a pulse within this distance, then the line gets an estimated pulse
-    # * It's important that pulses do not get assigned to lines twice
+    # * Each line starts out by incrementing by the mean_line_length (estimated location)
+    # * The inner loop searches for the nearest pulse at the estimated location within +- max_distance_between_pulse_and_line
+    # * The closest pulse to the estimated location within the max_distance_between_pulse_and_line is assigned to the line
+    #   * Each pulse is only ever assigned to a line once
+    # * If there isn't a pulse within max_distance_between_pulse_and_line, then the line keeps the estimated location
 
     max_allowed_distance_between_pulse_and_line = meanlinelen / 1.5
     for line_index in range(0, proclines):
