@@ -71,8 +71,8 @@ class AFEBandPass:
         iir_hi = firdes_highpass(self.samp_rate, self.filter_params.FDC, self.filter_params.transition_width)
 
         # filter_plot(iir_lo[0], iir_lo[1], self.samp_rate, type="lopass", title="Front lopass")
-        self.filter_lo = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate)
-        self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], self.samp_rate)
+        self.filter_lo = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate, np.float64)
+        self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], self.samp_rate, np.float64)
 
     def work(self, data):
         return self.filter_lo.lfilt(self.filter_hi.filtfilt(data))
@@ -529,7 +529,8 @@ class HiFiDecode:
             * self.ifresample_denominator
             / (self.ifresample_numerator * audio_final_rate)
         )
-        
+
+        self.lopassRF = AFEBandPass(self.rfBandPassParams, self.sample_rate)
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
 
@@ -967,6 +968,11 @@ class HiFiDecode:
         self,
         raw_data: NDArray[np.int16]
     ) -> Tuple[int, NDArray[REAL_DTYPE], NDArray[REAL_DTYPE]]:
+        # Do a bandpass filter to remove the video components from the signal.
+        # 8mm only. 8mm has the FM and Video combined in one rf signal.
+        if self.options["format"] == "8mm":
+            raw_data = self.lopassRF.work(raw_data)
+        
         raw_data.astype(REAL_DTYPE, copy=False)
         data = samplerate_resample(
             raw_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
