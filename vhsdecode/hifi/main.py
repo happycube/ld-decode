@@ -645,7 +645,10 @@ class DecoderSharedMemory():
         float_item_size = np.dtype(dtype).itemsize
         byte_size = size * float_item_size
 
-        return SharedMemory(size=byte_size, name=name, create=True).name
+        # this instance must be saved in a variable that persists on both processes
+        # Windows will remove the shared memory if it garbage collects the handle in any of the processes it is open in
+        # https://stackoverflow.com/a/63717188
+        return SharedMemory(size=byte_size, name=name, create=True)
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=False)
@@ -720,31 +723,31 @@ class PostProcessor:
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.nr_side_gain = decode_options["nr_side_gain"]
         
-        self.nr_worker_l_shared_memory_name = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction L Shared Memory")
-        self.nr_worker_l_shared_memory = DecoderSharedMemory(self.nr_worker_l_shared_memory_name)
+        self.nr_worker_l_shared_memory_instance = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction L Shared Memory")
+        self.nr_worker_l_shared_memory = DecoderSharedMemory(self.nr_worker_l_shared_memory_instance.name)
         self.nr_worker_l_lock = ThreadLock()
         self.nr_worker_l_parent, nr_worker_l_child = Pipe()
-        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(nr_worker_l_child, self.nr_worker_l_shared_memory_name, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(nr_worker_l_child, self.nr_worker_l_shared_memory_instance.name, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
         atexit.register(self.nr_worker_l.terminate)
         atexit.register(self.nr_worker_l_shared_memory.close)
         atexit.register(self.nr_worker_l_shared_memory.unlink)
 
-        self.nr_worker_r_shared_memory_name = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction R Shared Memory")
-        self.nr_worker_r_shared_memory = DecoderSharedMemory(self.nr_worker_r_shared_memory_name)
+        self.nr_worker_r_shared_memory_instance = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size, "HiFiDecode NoiseReduction R Shared Memory")
+        self.nr_worker_r_shared_memory = DecoderSharedMemory(self.nr_worker_r_shared_memory_instance.name)
         self.nr_worker_r_lock = ThreadLock()
         self.nr_worker_r_parent, nr_worker_r_child = Pipe()
-        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(nr_worker_r_child, self.nr_worker_r_shared_memory_name, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(nr_worker_r_child, self.nr_worker_r_shared_memory_instance.name, self.spectral_nr_amount, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
         atexit.register(self.nr_worker_r.terminate)
         atexit.register(self.nr_worker_r_shared_memory.close)
         atexit.register(self.nr_worker_r_shared_memory.unlink)
 
-        self.discard_merge_worker_shared_memory_name = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size * 2, "HiFiDecode Stereo Merge Shared Memory")
-        self.discard_merge_worker_shared_memory = DecoderSharedMemory(self.discard_merge_worker_shared_memory_name)
+        self.discard_merge_worker_shared_memory_instance = DecoderSharedMemory.get_shared_memory(self.decoder_audio_block_size * 2, "HiFiDecode Stereo Merge Shared Memory")
+        self.discard_merge_worker_shared_memory = DecoderSharedMemory(self.discard_merge_worker_shared_memory_instance.name)
         self.discard_merge_worker_lock = ThreadLock()
         self.discard_merge_worker_parent, discard_merge_worker_child = Pipe()
-        self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, name="HiFiDecode Stereo Merge", args=(discard_merge_worker_child, self.discard_merge_worker_shared_memory_name, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
+        self.discard_merge_worker_process = Process(target=PostProcessor.discard_merge_worker, name="HiFiDecode Stereo Merge", args=(discard_merge_worker_child, self.discard_merge_worker_shared_memory_instance.name, self.final_audio_rate, self.decoder_audio_rate, self.decoder_audio_block_size, self.decoder_audio_discard_size))
         self.discard_merge_worker_process.start()
         atexit.register(self.discard_merge_worker_process.terminate)
         atexit.register(self.discard_merge_worker_shared_memory.close)
@@ -1167,29 +1170,31 @@ async def decode_parallel(
     decoder_in_conns: list = []
     decoder_out_queue: Queue = Queue()
     decoder_buffers: list[DecoderSharedMemory] = []
+    decoder_buffer_instances = []
 
     for i in range(len(decoders)):
         decoder = decoders[i]
         decoder_in_conn_parent, decoder_in_conn_child  = Pipe(duplex=False)
-        buffer_name = DecoderSharedMemory.get_shared_memory(block_size, f"HiFiDecode Decoder Thread Shared Memory {i}")
-        buffer = DecoderSharedMemory(buffer_name)
+        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, f"HiFiDecode Decoder Thread Shared Memory {i}")
+        buffer = DecoderSharedMemory(buffer_instance.name)
         atexit.register(buffer.close)
         atexit.register(buffer.unlink)
-        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(i, decoder, decode_options["auto_fine_tune"], decoder_in_conn_parent, decoder_out_queue, buffer_name))
+        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(i, decoder, decode_options["auto_fine_tune"], decoder_in_conn_parent, decoder_out_queue, buffer_instance.name))
         decoder_process.start()
 
         atexit.register(decoder_process.terminate)
         decoder_processes.append(decoder_process)
         decoder_in_conns.append(decoder_in_conn_child)
+        decoder_buffer_instances.append(buffer_instance)
         decoder_buffers.append(buffer)
 
     output_child_conn, output_parent_conn = Pipe(duplex=False)
-    output_file_buffer_name = DecoderSharedMemory.get_shared_memory(block_size, f"HiFiDecode Soundfile Encoder Shared Memory")
-    output_file_buffer = DecoderSharedMemory(output_file_buffer_name)
+    output_file_buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, f"HiFiDecode Soundfile Encoder Shared Memory")
+    output_file_buffer = DecoderSharedMemory(output_file_buffer_instance.name)
     output_file_lock = Lock()
     atexit.register(output_file_buffer.close)
     atexit.register(output_file_buffer.unlink)
-    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file_buffer_name, output_file_lock, output_file, decode_options["audio_rate"]))
+    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(output_child_conn, output_file_buffer_instance.name, output_file_lock, output_file, decode_options["audio_rate"]))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
     output_file_send_executor = ThreadPoolExecutor(1)
