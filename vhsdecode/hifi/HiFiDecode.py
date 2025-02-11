@@ -985,11 +985,11 @@ class HiFiDecode:
         preL, preR = self.demodblock(data)
 
         # low pass filter to remove any remaining high frequency noise
-        preL = self.preAudioResampleL.lfilt(preL)
-        preR = self.preAudioResampleR.lfilt(preR)
-
-        preL = preL.astype(REAL_DTYPE, copy=False)
-        preR = preR.astype(REAL_DTYPE, copy=False)
+        # disabled since it interferes with head switching noise detection
+        # preL = self.preAudioResampleL.lfilt(preL)
+        # preR = self.preAudioResampleR.lfilt(preR)
+        # preL = preL.astype(REAL_DTYPE, copy=False)
+        # preR = preR.astype(REAL_DTYPE, copy=False)
 
         # remove peaks at edges of demodulated audio
         trim = self.if_rate_audio_ratio * self.pre_trim
