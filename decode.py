@@ -2,6 +2,7 @@
 import argparse
 import sys
 from importlib import import_module
+from multiprocessing import freeze_support
 
 # from vhsdecode.main import main
 
@@ -39,7 +40,9 @@ def main(argv):
         hifimain()
     else:
         print_options()
+        print(f"Instead got: {to_run}")
 
 
 if __name__ == "__main__":
+    freeze_support()
     main(sys.argv[1:])

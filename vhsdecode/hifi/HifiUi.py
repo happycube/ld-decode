@@ -65,6 +65,7 @@ class MainUIParameters:
         self.output_file: str = ""
         self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
         self.resampler_quality = DEFAULT_RESAMPLER_QUALITY
+        self.head_switching_interpolation = "on"
 
 
 def decode_options_to_ui_parameters(decode_options):
@@ -83,6 +84,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.output_file = decode_options["output_file"]
     values.spectral_nr_amount = decode_options["spectral_nr_amount"]
     values.resampler_quality = decode_options["resampler_quality"]
+    values.head_switching_interpolation = decode_options["head_switching_interpolation"]
     return values
 
 
@@ -103,6 +105,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "output_file": values.output_file,
         "spectral_nr_amount": values.spectral_nr_amount,
         "resampler_quality": values.resampler_quality,
+        "head_switching_interpolation": values.head_switching_interpolation,
         "mode": (
             "s"
             if values.audio_mode == "Stereo"
@@ -251,10 +254,12 @@ class HifiUi(QMainWindow):
 
         # Checkboxes
         self.noise_reduction_checkbox = QCheckBox("Noise reduction")
+        self.head_switching_interpolation_checkbox = QCheckBox("Head Switching Interpolation")
         self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
         self.preview_checkbox = QCheckBox("Preview")
         self.preview_checkbox.setCheckable(params.preview_available)
         middle_layout.addWidget(self.noise_reduction_checkbox)
+        middle_layout.addWidget(self.head_switching_interpolation_checkbox)
         middle_layout.addWidget(self.automatic_fine_tuning_checkbox)
         middle_layout.addWidget(self.preview_checkbox)
 
@@ -436,6 +441,7 @@ class HifiUi(QMainWindow):
         self.sidechain_dial.setValue(int(values.sidechain_gain * 100))
         self.sidechain_textbox.setText(str(values.sidechain_gain))
         self.noise_reduction_checkbox.setChecked(values.noise_reduction)
+        self.head_switching_interpolation_checkbox.setChecked(values.head_switching_interpolation)
         self.automatic_fine_tuning_checkbox.setChecked(values.automatic_fine_tuning)
         self.sample_rate_combo.setCurrentText(str(values.audio_sample_rate))
         self.sample_rate_combo.setCurrentIndex(
@@ -473,6 +479,7 @@ class HifiUi(QMainWindow):
         values.volume = float(self.volume_textbox.text())
         values.sidechain_gain = float(self.sidechain_textbox.text())
         values.noise_reduction = self.noise_reduction_checkbox.isChecked()
+        values.head_switching_interpolation = self.head_switching_interpolation_checkbox.isChecked()
         values.automatic_fine_tuning = self.automatic_fine_tuning_checkbox.isChecked()
         values.audio_sample_rate = int(self.sample_rate_combo.currentText())
         values.standard = self.standard_combo.currentText()
