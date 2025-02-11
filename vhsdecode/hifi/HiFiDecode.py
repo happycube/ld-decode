@@ -531,6 +531,12 @@ class HiFiDecode:
         )
 
         self.lopassRF = AFEBandPass(self.rfBandPassParams, self.sample_rate)
+        a_iirb, a_iira = firdes_lowpass(
+            self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
+        )
+        self.preAudioResampleL = FiltersClass(a_iirb, a_iira, self.if_rate, np.float64)
+        self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate, np.float64)
+
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
 
@@ -968,17 +974,22 @@ class HiFiDecode:
         self,
         raw_data: NDArray[np.int16]
     ) -> Tuple[int, NDArray[REAL_DTYPE], NDArray[REAL_DTYPE]]:
-        # Do a bandpass filter to remove the video components from the signal.
-        # 8mm only. 8mm has the FM and Video combined in one rf signal.
-        if self.options["format"] == "8mm":
-            raw_data = self.lopassRF.work(raw_data)
+        # Do a bandpass filter to remove any the video components from the signal.
+        raw_data = self.lopassRF.work(raw_data)
+        raw_data = raw_data.astype(REAL_DTYPE, copy=False)
         
-        raw_data.astype(REAL_DTYPE, copy=False)
         data = samplerate_resample(
             raw_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
         # uses complex numbers so data comes out as float64
         preL, preR = self.demodblock(data)
+
+        # low pass filter to remove any remaining high frequency noise
+        preL = self.preAudioResampleL.lfilt(preL)
+        preR = self.preAudioResampleR.lfilt(preR)
+
+        preL = preL.astype(REAL_DTYPE, copy=False)
+        preR = preR.astype(REAL_DTYPE, copy=False)
 
         # remove peaks at edges of demodulated audio
         trim = self.if_rate_audio_ratio * self.pre_trim
