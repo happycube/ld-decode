@@ -837,33 +837,6 @@ class SoundDeviceProcess():
     def play(self, stereo):
         self._thread_executor.submit(self._play_parent_conn.send_bytes, stereo)
 
-def decoder_process_worker(
-    decoder: HiFiDecode,
-    auto_fine_tune: bool,
-    in_queue: Queue,
-    out_queue: Queue,
-):
-    while True:
-        try:
-            # get a new block to decode from the parent thread
-            buffer_params = in_queue.get()
-            buffer = DecoderSharedMemory(buffer_params)
-
-            raw_data_in = buffer.get_raw_data()
-            pre_l_out = buffer.get_pre_left()
-            pre_r_out = buffer.get_pre_right()
-
-            pre_audio_trimmed = decoder.block_decode(raw_data_in, pre_l_out, pre_r_out)
-            if auto_fine_tune:
-                log_bias(decoder)
-
-            buffer_params["pre_audio_trimmed"] = pre_audio_trimmed
-    
-            # tell the parent thread that this is done
-            out_queue.put(buffer_params)
-            buffer.close()
-        except InterruptedError:
-            pass
 
 def post_processor_worker(
     decode_options,
@@ -932,16 +905,22 @@ def write_soundfile_process_worker(
             decode_done.set()
 
 def decode_parallel(
-    decoders: List[HiFiDecode],
     decode_options: dict,
+    bias_guess,
     threads: int = 8,
     ui_t: Optional[AppWindow] = None,
 ):
+    decoder = HiFiDecode(options=decode_options)
+    if bias_guess:
+        LCRef, RCRef = guess_bias(decoder, decode_options["input_file"], int(decoder.sample_rate))
+        decoder.updateAFE(LCRef, RCRef)
+        
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
-    block_size = decoders[0].blockSize
-    audio_block_size = decoders[0].blockAudioSize
-    read_overlap = decoders[0].readOverlap
+    block_size = decoder.blockSize
+    block_resampled_size = decoder.blockResampledSize
+    audio_block_size = decoder.blockAudioSize
+    read_overlap = decoder.readOverlap
     input_position = Value('d', 0)
     start_time =  datetime.now()
     
@@ -963,7 +942,7 @@ def decode_parallel(
     shared_memory_instances = []
     shared_memory_idle_queue = Queue()
     for i in range(max_shared_memory_instances):
-        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, audio_block_size, f"HiFiDecode Shared Memory {i}")
+        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, block_resampled_size, audio_block_size, f"HiFiDecode Shared Memory {i}")
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
 
@@ -971,18 +950,16 @@ def decode_parallel(
         atexit.register(buffer_instance.unlink)
 
     # spin up the decoders
-    decoder_processes: list[Process] = []
+    decoders: list[HiFiDecode] = []
     decoder_in_queue = Queue(threads)
     decoder_out_queue = Queue()
     decode_done = Event()
-    for i in range(len(decoders)):
-        decoder = decoders[i]
 
-        decoder_process = Process(target=decoder_process_worker, name=f"HiFiDecode Decoder Thread {i}", args=(decoder, decode_options["auto_fine_tune"], decoder_in_queue, decoder_out_queue))
-        decoder_process.start()
-
-        atexit.register(decoder_process.terminate)
-        decoder_processes.append(decoder_process)
+    for i in range(threads):
+        decoder = HiFiDecode(decoder_in_queue, decoder_out_queue, decode_options)
+        decoder.start()
+        atexit.register(decoder.close)
+        decoders.append(decoder)
 
     # set up the post processor
     post_processor_out_queue = Queue()
@@ -1036,12 +1013,15 @@ def decode_parallel(
                     "stereo_audio_len": decoder.blockFinalAudioSize * 2,
                     "stereo_audio_trimmed": decoder.blockFinalAudioSize * 2,
                     "block_len": decoder.blockSize,
+                    "block_resampled_len": decoder.blockResampledSize,
+                    "block_resampled_trimmed": decoder.blockResampledSize,
                     "block_dtype": current_block.dtype,
                     "audio_dtype": REAL_DTYPE
                 }
 
                 buffer = DecoderSharedMemory(buffer_params)
-                block_buffer = buffer.get_raw_data()
+                # write data from input to shared memory
+                block_buffer = buffer.get_block()
                 DecoderSharedMemory.copy_data(current_block, block_buffer, 0, len(current_block))
                 decoder_in_queue.put(buffer_params)
                 buffer.close()
@@ -1065,9 +1045,6 @@ def decode_parallel(
         shared_memory.unlink()
         atexit.unregister(shared_memory.close)
         atexit.unregister(shared_memory.unlink)
-
-    for process in decoder_processes:
-        process.terminate()
     
     elapsed_time = datetime.now() - start_time
     dt_string = elapsed_time.total_seconds()
@@ -1091,39 +1068,12 @@ def guess_bias(decoder, input_file, block_size, blocks_limits=10):
     return LCRef, RCRef
 
 
-def log_bias(decoder: HiFiDecode):
-    devL = (decoder.standard.LCarrierRef - decoder.afe_params.LCarrierRef) / 1e3
-    devR = (decoder.standard.RCarrierRef - decoder.afe_params.RCarrierRef) / 1e3
-    print("Bias L %.02f kHz, R %.02f kHz" % (devL, devR), end=" ")
-    if abs(devL) < 9 and abs(devR) < 9:
-        print("(good player/recorder calibration)")
-    elif 9 <= abs(devL) < 10 or 9 <= abs(devR) < 10:
-        print("(maybe marginal player/recorder calibration)")
-    else:
-        print(
-            "\nWARN: the player or the recorder may be uncalibrated and/or\n"
-            "the standard and/or the sample rate specified are wrong"
-        )
-
-
 def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
     sample_freq = decode_options["input_rate"]
-    filename = decode_options["input_file"]
 
     if sample_freq is not None:
-        decoder = HiFiDecode(decode_options)
-        LCRef, RCRef = decoder.standard.LCarrierRef, decoder.standard.RCarrierRef
-        if args.BG:
-            LCRef, RCRef = guess_bias(decoder, filename, int(decoder.sample_rate))
-            decoder.updateAFE(LCRef, RCRef)
-
-        decoders = list()
-        for i in range(0, args.threads):
-            decoders.append(HiFiDecode(decode_options))
-            decoders[i].updateAFE(LCRef, RCRef)
-
         # set_start_method("spawn")
-        decode_parallel(decoders, decode_options, threads=args.threads, ui_t=ui_t)
+        decode_parallel(decode_options, args.BG, threads=args.threads, ui_t=ui_t)
         print("Decode finished successfully")
         return 0
     else:

@@ -22,6 +22,9 @@ class DecoderSharedMemory():
         stereo_audio_len = buffer_params["stereo_audio_len"]
         stereo_audio_trimmed = buffer_params["stereo_audio_trimmed"]
         block_len = buffer_params["block_len"]
+        block_resampled_len = buffer_params["block_resampled_len"]
+        block_resampled_trimmed = buffer_params["block_resampled_trimmed"]
+       
         block_dtype = buffer_params["block_dtype"]
         audio_dtype = buffer_params["audio_dtype"]
 
@@ -39,12 +42,14 @@ class DecoderSharedMemory():
         self.audio_dtype = audio_dtype
         self.audio_dtype_item_size = np.dtype(self.audio_dtype).itemsize
 
+        self.block_resampled_trimmed = block_resampled_trimmed
         self.pre_audio_trimmed = pre_audio_trimmed
         self.post_audio_trimmed = post_audio_trimmed
         self.stereo_audio_trimmed = stereo_audio_trimmed
 
         ### Decoder Memory
-        # |--pre_left--|--pre_right--|--------------------------------raw_data-------------------------------|
+        # |--pre_left--|--pre_right--|-------------------------------raw_data-------------------------------|
+        # |--pre_left--|--pre_right--|----------------------------block_resampled---------------------------|
 
         # pre left
         self.l_pre_offset = 0
@@ -59,6 +64,11 @@ class DecoderSharedMemory():
         self.block_offset = self.r_pre_offset + self.r_pre_bytes
         self.block_len = block_len
         self.block_bytes = self.block_len * self.block_dtype_item_size
+
+        # resampled raw data
+        self.block_resampled_offset = self.r_pre_offset + self.r_pre_bytes
+        self.block_resampled_len = block_resampled_len
+        self.block_resampled_bytes = self.block_resampled_len * self.audio_dtype_item_size
 
         ### Post Processing Memory (reuses raw data area)
         # |--pre_left--|--pre_right--|--stereo--|--nr_left--|--nr_right--|
@@ -80,14 +90,18 @@ class DecoderSharedMemory():
 
 
     @staticmethod
-    def get_shared_memory(block_len, pre_audio_len, name, block_dtype=np.int16, audio_dtype=REAL_DTYPE):
+    def get_shared_memory(block_len, block_resampled_len, pre_audio_len, name, block_dtype=np.int16, audio_dtype=REAL_DTYPE):
         max_audio_size = pre_audio_len * 6 * np.dtype(audio_dtype).itemsize
         block_size_with_audio = (
             block_len * np.dtype(block_dtype).itemsize + 
             pre_audio_len * 2 * np.dtype(audio_dtype).itemsize
         )
+        resampled_size_with_audio = (
+            block_resampled_len * np.dtype(audio_dtype).itemsize + 
+            pre_audio_len * 2 * np.dtype(audio_dtype).itemsize
+        )
 
-        byte_size = max(max_audio_size, block_size_with_audio)
+        byte_size = max(max_audio_size, block_size_with_audio, resampled_size_with_audio)
         # allow more than one instance to run at a time
         system_random = SystemRandom()
         name += "_" + ''.join(system_random.choice(string.ascii_lowercase + string.digits) for _ in range(8))
@@ -98,8 +112,11 @@ class DecoderSharedMemory():
         return SharedMemory(size=byte_size, name=name, create=True)
     
     ## Decoder methods
-    def get_raw_data(self):
+    def get_block(self):
         return np.ndarray(self.block_len, dtype=self.block_dtype, offset=self.block_offset, buffer=self.buf)
+    
+    def get_block_resampled(self):
+        return np.ndarray(self.block_resampled_trimmed, dtype=self.audio_dtype, offset=self.block_resampled_offset, buffer=self.buf)
     
     def get_pre_left(self):
         return np.ndarray(self.pre_audio_trimmed, dtype=self.audio_dtype, offset=self.l_pre_offset, buffer=self.buf)
