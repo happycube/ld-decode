@@ -14,6 +14,8 @@ env:
   FLALDF_FILE: "FlaLDF-v0.1-2-win-x64.zip"
   FLALDF_PATH: "flaldf"
   FLALDF_URL: "https://github.com/TokugawaHeavyIndustries/FlaLDF/releases/download/v0.1b/FlaLDF-v0.1-2-win-x64.zip"
+  AAA_PATH : "AudioAudioAlign"
+  AAA_URL: "https://gitlab.com/wolfre/vhs-decode-auto-audio-align/-/jobs/6727665225/artifacts/raw/vhs-decode-auto-audio-align_1.0.0.zip"
 
 jobs:
   build-tbc-tools:

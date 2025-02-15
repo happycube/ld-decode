@@ -6,3 +6,4 @@ samplerate
 scipy >=1.10,<=1.12
 soundfile
 sounddevice
+noisereduce
