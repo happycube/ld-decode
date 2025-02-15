@@ -71,8 +71,8 @@ class AFEBandPass:
         iir_hi = firdes_highpass(self.samp_rate, self.filter_params.FDC, self.filter_params.transition_width)
 
         # filter_plot(iir_lo[0], iir_lo[1], self.samp_rate, type="lopass", title="Front lopass")
-        self.filter_lo = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate)
-        self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], self.samp_rate)
+        self.filter_lo = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate, np.float64)
+        self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], self.samp_rate, np.float64)
 
     def work(self, data):
         return self.filter_lo.lfilt(self.filter_hi.filtfilt(data))
@@ -529,7 +529,14 @@ class HiFiDecode:
             * self.ifresample_denominator
             / (self.ifresample_numerator * audio_final_rate)
         )
-        
+
+        self.lopassRF = AFEBandPass(self.rfBandPassParams, self.sample_rate)
+        a_iirb, a_iira = firdes_lowpass(
+            self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
+        )
+        self.preAudioResampleL = FiltersClass(a_iirb, a_iira, self.if_rate, np.float64)
+        self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate, np.float64)
+
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self.blocks_second)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self.blocks_second)
 
@@ -567,6 +574,7 @@ class HiFiDecode:
                 self.afe_params = AFEParamsNTSCHi8()
                 self.standard = AFEParamsNTSCHi8()
 
+        self.headswitch_interpolation_enabled = self.options["head_switching_interpolation"]
         self.headswitch_passes = 2
         self.headswitch_signal_rate = self.audio_rate
         self.headswitch_hz = self.field_rate # frequency used to fit peaks to the expected headswitching interval
@@ -606,6 +614,7 @@ class HiFiDecode:
             "audioFinal_numerator": self.audioFinal_numerator,
             "audioFinal_denominator": self.audioFinal_denominator,
             "audio_final_resampler_converter": self.audio_final_resampler_converter,
+            "headswitch_interpolation_enabled": self.headswitch_interpolation_enabled,
             "headswitch_passes": self.headswitch_passes,
             "headswitch_signal_rate": self.headswitch_signal_rate,
             "headswitch_hz": self.headswitch_hz,
@@ -952,7 +961,9 @@ class HiFiDecode:
         audio = samplerate_resample(audio, audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
         audio, dc = HiFiDecode.cancelDC(audio)
         audio = HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
-        audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
+
+        if audio_process_params["headswitch_interpolation_enabled"]:
+            audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
 
         if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
             audio = samplerate_resample(audio, audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
@@ -963,12 +974,22 @@ class HiFiDecode:
         self,
         raw_data: NDArray[np.int16]
     ) -> Tuple[int, NDArray[REAL_DTYPE], NDArray[REAL_DTYPE]]:
-        raw_data.astype(REAL_DTYPE, copy=False)
+        # Do a bandpass filter to remove any the video components from the signal.
+        raw_data = self.lopassRF.work(raw_data)
+        raw_data = raw_data.astype(REAL_DTYPE, copy=False)
+        
         data = samplerate_resample(
             raw_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
         # uses complex numbers so data comes out as float64
         preL, preR = self.demodblock(data)
+
+        # low pass filter to remove any remaining high frequency noise
+        # disabled since it interferes with head switching noise detection
+        # preL = self.preAudioResampleL.lfilt(preL)
+        # preR = self.preAudioResampleR.lfilt(preR)
+        # preL = preL.astype(REAL_DTYPE, copy=False)
+        # preR = preR.astype(REAL_DTYPE, copy=False)
 
         # remove peaks at edges of demodulated audio
         trim = self.if_rate_audio_ratio * self.pre_trim
