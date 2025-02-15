@@ -709,7 +709,7 @@ class PostProcessor:
         return overlap_start, overlap_end
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True, parallel=True)
+    @njit(cache=True, fastmath=True, nogil=True)
     def stereo_interleave(
         audioL: np.array,
         audioR: np.array,
@@ -719,7 +719,7 @@ class PostProcessor:
     ) -> bytes:
         audio_len = (overlap_end - overlap_start)
 
-        for i in prange(int(audio_len)):
+        for i in range(int(audio_len)):
             stereo[(i * 2)] = audioL[i + overlap_start]
             stereo[(i * 2) + 1] = audioR[i + overlap_start]
             

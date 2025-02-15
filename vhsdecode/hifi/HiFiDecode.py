@@ -11,7 +11,7 @@ from multiprocessing import Process, Queue
 import sys
 
 import numpy as np
-from numba import njit, prange
+from numba import njit
 from scipy.signal import lfilter_zi, filtfilt, lfilter, iirpeak, iirnotch, butter, spectrogram, find_peaks
 from scipy.interpolate import interp1d
 from scipy.signal.signaltools import hilbert
@@ -1113,17 +1113,17 @@ class HiFiDecode:
         return meanL.pull(), meanR.pull()
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True, parallel=True)
+    @njit(cache=True, fastmath=True, nogil=True)
     def cancelDC(audio: np.array) -> Tuple[np.array, float]:
         dc = REAL_DTYPE(np.mean(audio))
-        for i in prange(len(audio)):
+        for i in range(len(audio)):
             audio[i] = audio[i] - dc
         return dc
     
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True, parallel=True)
+    @njit(cache=True, fastmath=True, nogil=True)
     def clip(audio: np.array, clip: float) -> np.array:
-        for i in prange(len(audio)):
+        for i in range(len(audio)):
             audio[i] = audio[i] / REAL_DTYPE(clip)
     
     @staticmethod
@@ -1164,12 +1164,12 @@ class HiFiDecode:
         return l, r
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True, parallel=True)
+    @njit(cache=True, fastmath=True, nogil=True)
     def adjust_gain(
         audio: np.array,
         gain: float
     ) -> np.array:
-        for i in prange(len(audio)):
+        for i in range(len(audio)):
             audio[i] = audio[i] * gain
     
     @staticmethod
