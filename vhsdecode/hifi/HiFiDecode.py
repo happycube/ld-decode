@@ -11,7 +11,7 @@ from multiprocessing import Process, Queue
 import sys
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from scipy.signal import lfilter_zi, filtfilt, lfilter, iirpeak, iirnotch, butter, spectrogram, find_peaks
 from scipy.interpolate import interp1d
 from scipy.signal.signaltools import hilbert
@@ -912,6 +912,39 @@ class HiFiDecode:
         return merged
     
     @staticmethod
+    def auto_fine_tune(channel, dc, standard_original, standard, audio_process_params):
+        if channel == 0:
+            dev = standard.LCarrierRef - dc
+            newC = standard.LCarrierRef - round(dev)
+
+            standard.LCarrierRef = (
+                max(
+                    min(newC, standard_original.LCarrierRef + 10e3),
+                    standard_original.LCarrierRef - 10e3,
+                )
+                if audio_process_params["format"] == "vhs"
+                else newC
+            )
+            afe, _, fm, _ = HiFiDecode.afeParams(standard, audio_process_params)
+        else:
+            dev = standard.RCarrierRef - dc
+            newC = standard.RCarrierRef - round(dev)
+
+            standard.RCarrierRef = (
+                max(
+                    min(newC, standard_original.RCarrierRef + 10e3),
+                    standard_original.RCarrierRef - 10e3,
+                )
+                if audio_process_params["format"] == "vhs"
+                else newC
+            )
+            _, afe, _, fm = HiFiDecode.afeParams(standard, audio_process_params)
+
+        HiFiDecode.log_bias(standard_original, standard)
+
+        return afe, fm, standard
+
+    @staticmethod
     def resample_if_worker(decoder_in, demod_process_audio_process_l_in, demod_process_audio_process_r_in, rfBandPassParams, audio_process_params):
         bandpassRF = AFEBandPass(rfBandPassParams, audio_process_params["input_rate"])
 
@@ -924,17 +957,19 @@ class HiFiDecode:
             raw_data = raw_data.astype(buffer_params["audio_dtype"], copy=False)
             raw_data = bandpassRF.work(raw_data)
             
+            # resample from input sample rate to if sample rate
             data = samplerate_resample(
                 raw_data, audio_process_params["ifresample_numerator"], audio_process_params["ifresample_denominator"], audio_process_params["if_resampler_converter"]
             )
     
+            # save the resampled data into shared memory for the next step
             buffer_params["block_resampled_trimmed"] = len(data)
             block_resampled_buffer = buffer.get_block_resampled()
             DecoderSharedMemory.copy_data(data, block_resampled_buffer, 0, buffer_params["block_resampled_trimmed"])
     
+            # send this data to the left and right demodulator processes
             demod_process_audio_process_l_in.put(buffer_params)
             demod_process_audio_process_r_in.put(buffer_params)
-    
             buffer.close()
 
     @staticmethod
@@ -946,58 +981,42 @@ class HiFiDecode:
 
         while True:
             buffer_params = demod_process_in.get()
-
             buffer = DecoderSharedMemory(buffer_params)
+
+            # demodulate the input block
             resampled_block = buffer.get_block_resampled()
-
             audio = HiFiDecode.demodblock(resampled_block, afe, fm, audio_process_params)
-            audio = samplerate_resample(audio, audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
-            audio, dc = HiFiDecode.cancelDC(audio)
-            audio = HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
 
+            # resample if sample rate to audio sample rate
+            audio = samplerate_resample(audio, audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
+            
+            # cancel dc based on mean
+            dc = HiFiDecode.cancelDC(audio)
+
+            # clip signal based on vco deviation
+            HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
+
+            # do head switching noise cancellation if enabled
             if audio_process_params["headswitch_interpolation_enabled"]:
                 audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
-    
+            
+            # resample audio sample rate to final audio sample rate
             if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
                 audio = samplerate_resample(audio, audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
 
+            # update the carrier frequency to account for any dc offset
+            if audio_process_params["auto_fine_tune"]:
+                afe, fm, standard = HiFiDecode.auto_fine_tune(channel, dc, standard_original, standard, audio_process_params)
+
+            # copy the resulting audio into shared memory for the next steps
             pre = buffer.get_pre_left() if channel == 0 else buffer.get_pre_right()
 
-            DecoderSharedMemory.copy_data(audio, pre, 0, len(audio))
             buffer_params["pre_audio_trimmed"] = len(audio)
+            DecoderSharedMemory.copy_data(audio, pre, 0, len(audio))
+
+            # send this buffer to the next step
             demod_process_out.put(buffer_params)
-
             buffer.close()
-
-            if audio_process_params["auto_fine_tune"]:
-                if channel == 0:
-                    dev = standard.LCarrierRef - dc
-                    newC = standard.LCarrierRef - round(dev)
-
-                    standard.LCarrierRef = (
-                        max(
-                            min(newC, standard_original.LCarrierRef + 10e3),
-                            standard_original.LCarrierRef - 10e3,
-                        )
-                        if audio_process_params["format"] == "vhs"
-                        else newC
-                    )
-                    afe, _, fm, _ = HiFiDecode.afeParams(standard, audio_process_params)
-                else:
-                    dev = standard.RCarrierRef - dc
-                    newC = standard.RCarrierRef - round(dev)
-
-                    standard.RCarrierRef = (
-                        max(
-                            min(newC, standard_original.RCarrierRef + 10e3),
-                            standard_original.RCarrierRef - 10e3,
-                        )
-                        if audio_process_params["format"] == "vhs"
-                        else newC
-                    )
-                    _, afe, _, fm = HiFiDecode.afeParams(standard, audio_process_params)
-
-                HiFiDecode.log_bias(standard_original, standard)
 
     @staticmethod
     def mix_gain_worker(demod_process_audio_process_l_out, demod_process_audio_process_r_out, mix_gain_out, audio_process_params):
@@ -1013,19 +1032,16 @@ class HiFiDecode:
             l_out = buffer.get_pre_left()
             r_out = buffer.get_pre_right()
     
-            preL, preR = HiFiDecode.mix_for_mode_stereo(l_out, r_out, audio_process_params["decode_mode"])
+            if audio_process_params["decode_mode"] != "s":
+                preL, preR = HiFiDecode.mix_for_mode_stereo(l_out, r_out, audio_process_params["decode_mode"])
+                DecoderSharedMemory.copy_data(preL, l_out, 0, len(preL))
+                DecoderSharedMemory.copy_data(preR, r_out, 0, len(preR))
     
             if audio_process_params["gain"] != 1:
-                preL = HiFiDecode.adjust_gain(preL, audio_process_params["gain"])
-                preR = HiFiDecode.adjust_gain(preR, audio_process_params["gain"])
-    
-            assert preL.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {preL.dtype}"
-            assert preR.dtype == REAL_DTYPE, f"Audio data must be in {REAL_DTYPE} format, instead got {preR.dtype}"
-    
-            DecoderSharedMemory.copy_data(preL, l_out, 0, len(preL))
-            DecoderSharedMemory.copy_data(preR, r_out, 0, len(preR))
-            buffer.close()
+                HiFiDecode.adjust_gain(l_out, audio_process_params["gain"])
+                HiFiDecode.adjust_gain(r_out, audio_process_params["gain"])
 
+            buffer.close()
             mix_gain_out.put(buffer_params)
 
     
@@ -1097,15 +1113,18 @@ class HiFiDecode:
         return meanL.pull(), meanR.pull()
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
+    @njit(cache=True, fastmath=True, nogil=True, parallel=True)
     def cancelDC(audio: np.array) -> Tuple[np.array, float]:
         dc = REAL_DTYPE(np.mean(audio))
-        return audio - dc, dc
+        for i in prange(len(audio)):
+            audio[i] = audio[i] - dc
+        return dc
     
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
+    @njit(cache=True, fastmath=True, nogil=True, parallel=True)
     def clip(audio: np.array, clip: float) -> np.array:
-        return audio / REAL_DTYPE(clip)
+        for i in prange(len(audio)):
+            audio[i] = audio[i] / REAL_DTYPE(clip)
     
     @staticmethod
     def headswitch_remove_noise(audio: np.array, audio_process_params: dict) -> np.array:
@@ -1145,11 +1164,13 @@ class HiFiDecode:
         return l, r
 
     @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True, parallel=True)
     def adjust_gain(
         audio: np.array,
         gain: float
     ) -> np.array:
-        return np.multiply(audio, gain)
+        for i in prange(len(audio)):
+            audio[i] = audio[i] * gain
     
     @staticmethod
     def debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, interpolated, headswitch_signal_rate):

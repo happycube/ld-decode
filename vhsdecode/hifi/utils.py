@@ -135,13 +135,7 @@ class DecoderSharedMemory():
         return np.ndarray(self.stereo_audio_trimmed, dtype=self.audio_dtype, offset=self.stereo_offset, buffer=self.buf)
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=False)
+    @njit(cache=True, fastmath=True, nogil=False, parallel=True)
     def copy_data(src: np.array, dst: np.array, offset:int, length: int):
-        for i in range(length):
+        for i in prange(length):
             dst[i+offset] = src[i]
-
-    @staticmethod
-    @njit(cache=True, fastmath=True, nogil=False)
-    def copy_data_src_offset(src: np.array, dst: np.array, src_offset: int, length: int):
-        for i in range(length):
-            dst[i] = src[i+src_offset]
