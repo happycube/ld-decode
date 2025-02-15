@@ -4,6 +4,6 @@ numba>=0.58.1
 numpy>=1.22
 samplerate
 scipy >=1.10,<=1.12
-soundfile
+soundfile>=0.13.1
 sounddevice
 noisereduce
