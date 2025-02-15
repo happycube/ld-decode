@@ -912,8 +912,7 @@ def decode_parallel(
 ):
     decoder = HiFiDecode(options=decode_options)
     if bias_guess:
-        LCRef, RCRef = guess_bias(decoder, decode_options["input_file"], int(decoder.sample_rate))
-        decoder.updateAFE(LCRef, RCRef)
+        LCRef, RCRef = guess_bias(decoder, decode_options["input_file"], int(decode_options["input_rate"]))
         
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
@@ -957,6 +956,9 @@ def decode_parallel(
 
     for i in range(threads):
         decoder = HiFiDecode(decoder_in_queue, decoder_out_queue, decode_options)
+        if bias_guess:
+            decoder.updateAFE(LCRef, RCRef)
+
         decoder.start()
         atexit.register(decoder.close)
         decoders.append(decoder)
@@ -1022,7 +1024,7 @@ def decode_parallel(
                 buffer = DecoderSharedMemory(buffer_params)
                 # write data from input to shared memory
                 block_buffer = buffer.get_block()
-                DecoderSharedMemory.copy_data_parallel(current_block, block_buffer, 0, len(current_block))
+                DecoderSharedMemory.copy_data(current_block, block_buffer, 0, len(current_block))
                 decoder_in_queue.put(buffer_params)
                 buffer.close()
 

@@ -962,7 +962,7 @@ class HiFiDecode:
             # save the resampled data into shared memory for the next step
             buffer_params["block_resampled_trimmed"] = len(data)
             block_resampled_buffer = buffer.get_block_resampled()
-            DecoderSharedMemory.copy_data_parallel(data, block_resampled_buffer, 0, buffer_params["block_resampled_trimmed"])
+            DecoderSharedMemory.copy_data(data, block_resampled_buffer, 0, buffer_params["block_resampled_trimmed"])
     
             # send this data to the left and right demodulator processes
             demod_process_audio_process_l_in.put(buffer_params)
@@ -1096,6 +1096,8 @@ class HiFiDecode:
         return self.standard_original.Hfreq
 
     def guessBiases(self, blocks):
+        afeL, afeR, fmL, fmR = HiFiDecode.afeParams(self.standard, self.audio_process_params)
+
         meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
             window_average=len(blocks)
         )
@@ -1103,7 +1105,8 @@ class HiFiDecode:
             data = samplerate_resample(
                 block, self.ifresample_numerator, self.ifresample_denominator, self.if_resampler_converter
             )
-            preL, preR = self.demodblock(data)
+            preL = self.demodblock(data, afeL, fmL, self.audio_process_params)
+            preR = self.demodblock(data, afeR, fmR, self.audio_process_params)
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
 
