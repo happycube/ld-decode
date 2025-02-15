@@ -785,10 +785,8 @@ class HiFiDecode:
         audio: np.array,
         boundaries: list[Tuple[int, int]]
     ):
-        interpolated_signal = audio
-
         # setup interpolator input by copying and removing any samples that are peaks
-        time = np.arange(len(interpolated_signal), dtype=float)
+        time = np.arange(len(audio), dtype=float)
         interpolator_in = np.empty(len(audio), dtype=audio.dtype)
         DecoderSharedMemory.copy_data(audio, interpolator_in, 0, len(audio))
 
@@ -807,13 +805,13 @@ class HiFiDecode:
 
             # sample and hold inteerpolation if boundaries are beyond this chunk
             if start < 0:
-                interpolated_signal[0:end] = interpolated_signal[end]
+                audio[0:end] = audio[end]
             elif end > len(audio):
-                interpolated_signal[start:len(audio)] = interpolated_signal[start]
+                audio[start:len(audio)] = audio[start]
             else:
-                for i in range(start, end): interpolated_signal[i] = interpolator(i)
+                for i in range(start, end): audio[i] = interpolator(i)
                 # smooth linear interpolation
-                interpolated_signal[start-smoothing_size:end+smoothing_size] = HiFiDecode.smooth(interpolated_signal[start-smoothing_size:end+smoothing_size], ceil(smoothing_size / 4))
+                audio[start-smoothing_size:end+smoothing_size] = HiFiDecode.smooth(audio[start-smoothing_size:end+smoothing_size], ceil(smoothing_size / 4))
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
@@ -964,7 +962,7 @@ class HiFiDecode:
             # save the resampled data into shared memory for the next step
             buffer_params["block_resampled_trimmed"] = len(data)
             block_resampled_buffer = buffer.get_block_resampled()
-            DecoderSharedMemory.copy_data(data, block_resampled_buffer, 0, buffer_params["block_resampled_trimmed"])
+            DecoderSharedMemory.copy_data_parallel(data, block_resampled_buffer, 0, buffer_params["block_resampled_trimmed"])
     
             # send this data to the left and right demodulator processes
             demod_process_audio_process_l_in.put(buffer_params)

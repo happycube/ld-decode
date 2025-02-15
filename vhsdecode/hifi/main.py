@@ -1022,7 +1022,7 @@ def decode_parallel(
                 buffer = DecoderSharedMemory(buffer_params)
                 # write data from input to shared memory
                 block_buffer = buffer.get_block()
-                DecoderSharedMemory.copy_data(current_block, block_buffer, 0, len(current_block))
+                DecoderSharedMemory.copy_data_parallel(current_block, block_buffer, 0, len(current_block))
                 decoder_in_queue.put(buffer_params)
                 buffer.close()
 
