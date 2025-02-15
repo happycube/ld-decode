@@ -784,12 +784,13 @@ class HiFiDecode:
     def headswitch_interpolate_boundaries(
         audio: np.array,
         boundaries: list[Tuple[int, int]]
-    ) -> np.array:
-        interpolated_signal = audio.copy()
+    ):
+        interpolated_signal = audio
 
         # setup interpolator input by copying and removing any samples that are peaks
         time = np.arange(len(interpolated_signal), dtype=float)
-        interpolator_in = audio.copy()
+        interpolator_in = np.empty(len(audio), dtype=audio.dtype)
+        DecoderSharedMemory.copy_data(audio, interpolator_in, 0, len(audio))
 
         for (start, end) in boundaries:
             time[start:end] = np.nan
@@ -813,8 +814,6 @@ class HiFiDecode:
                 for i in range(start, end): interpolated_signal[i] = interpolator(i)
                 # smooth linear interpolation
                 interpolated_signal[start-smoothing_size:end+smoothing_size] = HiFiDecode.smooth(interpolated_signal[start-smoothing_size:end+smoothing_size], ceil(smoothing_size / 4))
-    
-        return interpolated_signal
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
@@ -1131,13 +1130,13 @@ class HiFiDecode:
         for _ in range(audio_process_params["headswitch_passes"]):
             peaks, filtered_signal, filtered_signal_abs = HiFiDecode.headswitch_detect_peaks(audio, audio_process_params)
             interpolation_boundaries = HiFiDecode.headswitch_calc_boundaries(peaks, audio_process_params)
-            audio_interpolated = HiFiDecode.headswitch_interpolate_boundaries(audio, interpolation_boundaries)
+            HiFiDecode.headswitch_interpolate_boundaries(audio, interpolation_boundaries)
 
             # uncomment to debug head switching pulse detection
             # HiFiDecode.debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, audio_interpolated, audio_process_params["headswitch_signal_rate"])
             # plt.show()
             # sys.exit(0)
-        return audio_interpolated
+        return audio
     
     @staticmethod
     def mix_for_mode_stereo(

@@ -602,14 +602,14 @@ class PostProcessor:
                 buffer_params, channel_num = in_queue.get()
                 buffer = DecoderSharedMemory(buffer_params)
 
-                if spectral_nr_amount > 0:
-                    if channel_num == 0:
-                        pre = buffer.get_pre_left()
-                        spectral_nr_out = buffer.get_nr_left()
-                    else:
-                        pre = buffer.get_pre_right()
-                        spectral_nr_out = buffer.get_nr_right()
-                    
+                if channel_num == 0:
+                    pre = buffer.get_pre_left()
+                    spectral_nr_out = buffer.get_nr_left()
+                else:
+                    pre = buffer.get_pre_right()
+                    spectral_nr_out = buffer.get_nr_right()
+
+                if spectral_nr_amount > 0: 
                     audio = spectral_nr.spectral_nr(pre)
                 else:
                     audio = pre
@@ -640,17 +640,17 @@ class PostProcessor:
                 buffer_params, channel_num = in_queue.get()
                 buffer = DecoderSharedMemory(buffer_params)
 
-                if use_noise_reduction:
-                    if channel_num == 0:
-                        pre = buffer.get_pre_left()
-                        nr_out = buffer.get_nr_left()
-                    else:
-                        pre = buffer.get_pre_right()
-                        nr_out = buffer.get_nr_right()
+                if channel_num == 0:
+                    pre = buffer.get_pre_left()
+                    nr_out = buffer.get_nr_left()
+                else:
+                    pre = buffer.get_pre_right()
+                    nr_out = buffer.get_nr_right()
 
+                if use_noise_reduction:
                     audio = noise_reduction.noise_reduction(pre, nr_out)
                 else:
-                    audio = nr_out
+                    audio = pre
     
                 DecoderSharedMemory.copy_data(audio, nr_out, 0, len(audio))
                 buffer_params["post_audio_trimmed"] = len(audio)
