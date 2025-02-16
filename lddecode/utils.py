@@ -726,6 +726,9 @@ def build_hilbert(fft_size):
     return output
 
 if not numba.version_info.major and numba.version_info.minor < 59:
+    print("DEPRECATION WARNING: Please upgrade numba to 0.59 or later.", file=sys.stderr)
+    print("(follow instructions on the ld-decode wiki to set up a virtualenv)", file=sys.stderr)
+
     @njit(cache=True,nogil=True)
     def unwrap_hilbert_getangles(hilbert):
         tangles = np.angle(hilbert)
