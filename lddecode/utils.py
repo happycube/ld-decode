@@ -12,6 +12,7 @@ from multiprocessing import JoinableQueue
 import threading
 
 from numba import jit, njit
+import numba
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -724,35 +725,54 @@ def build_hilbert(fft_size):
 
     return output
 
-@njit(cache=True,nogil=True)
-def unwrap_hilbert_getangles(hilbert):
-    tangles = np.angle(hilbert)
-    dangles = np.ediff1d(tangles, to_begin=0).real
+if not numba.version_info.major and numba.version_info.minor < 59:
+    @njit(cache=True,nogil=True)
+    def unwrap_hilbert_getangles(hilbert):
+        tangles = np.angle(hilbert)
+        dangles = np.ediff1d(tangles, to_begin=0).real
 
-    # make sure unwapping goes the right way
-    if dangles[0] < -pi:
-        dangles[0] += tau
+        # make sure unwapping goes the right way
+        if dangles[0] < -pi:
+            dangles[0] += tau
 
-    return dangles
+        return dangles
 
-@njit(cache=True,nogil=True)
-def unwrap_hilbert_fixangles(tdangles2, freq_hz):
-    # With extremely bad data, the unwrapped angles can jump.
-    while np.min(tdangles2) < 0:
-        tdangles2[tdangles2 < 0] += tau
-    while np.max(tdangles2) > tau:
-        tdangles2[tdangles2 > tau] -= tau
+    @njit(cache=True,nogil=True)
+    def unwrap_hilbert_fixangles(tdangles2, freq_hz):
+        # With extremely bad data, the unwrapped angles can jump.
+        while np.min(tdangles2) < 0:
+            tdangles2[tdangles2 < 0] += tau
+        while np.max(tdangles2) > tau:
+            tdangles2[tdangles2 > tau] -= tau
 
-    return tdangles2 * (freq_hz / tau)
+        return tdangles2 * (freq_hz / tau)
 
-def unwrap_hilbert(hilbert, freq_hz):
-    dangles = unwrap_hilbert_getangles(hilbert)
+    def unwrap_hilbert(hilbert, freq_hz):
+        dangles = unwrap_hilbert_getangles(hilbert)
 
-    # This can't be run with numba
-    tdangles2 = np.unwrap(dangles)
+        # This can't be run with numba
+        tdangles2 = np.unwrap(dangles)
 
-    return unwrap_hilbert_fixangles(tdangles2, freq_hz) #* (freq_hz / tau)
+        return unwrap_hilbert_fixangles(tdangles2, freq_hz) #* (freq_hz / tau)
+else:
+    @njit(cache=True,nogil=True)
+    def unwrap_hilbert(hilbert, freq_hz):
+        tangles = np.angle(hilbert)
+        dangles = np.ediff1d(tangles, to_begin=0).real
 
+        # make sure unwapping goes the right way
+        if dangles[0] < -pi:
+            dangles[0] += tau
+
+        dangles = np.unwrap(dangles)
+
+        # With extremely bad data, the unwrapped angles can jump.
+        while np.min(dangles) < 0:
+            dangles[dangles < 0] += tau
+        while np.max(dangles) > tau:
+            dangles[dangles > tau] -= tau
+
+        return dangles * (freq_hz / tau)
 
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
     """ returns the # of sub-bins needed to get center+/-min_bandwidth.
@@ -788,6 +808,49 @@ def fft_do_slice(fdomain, lowbin, nbins, blocklen):
             fdomain[blocklen - lowbin - nbins_half : blocklen - lowbin],
         ]
     )
+
+'''
+overlap/save [i]fft functions for testing.  use in a jupyter notebook or similar
+like this:
+
+f = overlap_save_fft(fields[0].dspicture)
+invf = overlap_save_ifft(f, round=True).astype(np.uint16)
+sum(invf != fields[0].dspicture) # should be 0
+'''
+
+def overlap_save_fft(data, blocklen=32768, blockcut_begin=1024, blockcut_end=512):
+    blockstride = blocklen - blockcut_begin - blockcut_end
+
+    numblocks = (len(data) // blockstride) + 1
+
+    # return the length as the first element so we can reconstruct the original data
+    # with the correct length in overlap_save_ifft
+    fft_out = [len(data)]
+    for i in range(numblocks):
+        blockstart = i * blockstride
+        dcut = data[blockstart : blockstart + blocklen]
+        if len(dcut) < blocklen:
+            pad = np.full(blocklen - len(dcut), 0, dtype=dcut.dtype)
+            dcut = np.concatenate((dcut, pad))
+
+        fft_out.append(np.fft.fft(dcut))
+
+    return fft_out
+
+def overlap_save_ifft(ffts, blockcut_begin=1024, blockcut_end=512, round=False):
+    # blocklen is inferred from fft size
+    data_out = []
+
+    for i, f in enumerate(ffts[1:]):
+        invf = np.fft.ifft(f).real
+        if round:
+            invf = np.round(invf)
+        if not i:
+            data_out.append(invf[:-blockcut_end])
+        else:
+            data_out.append(invf[blockcut_begin:-blockcut_end])
+
+    return np.concatenate(data_out)[:ffts[0]]
 
 
 @njit(cache=True)
