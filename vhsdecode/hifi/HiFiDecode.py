@@ -519,13 +519,6 @@ class HiFiDecode:
             self.audioFinal_denominator
         ) = self.getResamplingRatios()
 
-        # block overlap and edge discard
-        self.blocks_second: int = BLOCKS_PER_SECOND
-        self.block_size: int = int(self.input_rate / self.blocks_second)
-        self.block_resampled_size: int = int(self.if_rate / self.blocks_second)
-        self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
-        self.block_final_audio_size: int = int(self.audio_final_rate / self.blocks_second)
-
         # trim off peaks at edges of if
         self.pre_trim = 50
         self.block_overlap_audio: int = int(self.audio_rate / (4e2 + self.pre_trim * 2))
@@ -537,6 +530,19 @@ class HiFiDecode:
             * self.ifresample_denominator
             / (self.ifresample_numerator * audio_final_rate)
         )
+
+        # TODO: block overlap should be an integer number of samples for all sample rate ratios
+        self.overlap_seconds = self.block_overlap / self.input_rate
+        self.block_overlap_resampled = self.if_rate * self.overlap_seconds
+        self.block_overlap_audio = self.audio_rate * self.overlap_seconds
+        self.block_overlap_audio_final = self.audio_final_rate * self.overlap_seconds
+
+        # block overlap and edge discard
+        self.blocks_second: int = BLOCKS_PER_SECOND
+        self.block_size: int = int(self.input_rate / self.blocks_second)
+        self.block_resampled_size: int = int(self.if_rate / self.blocks_second)
+        self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
+        self.block_final_audio_size: int = int(self.audio_final_rate / self.blocks_second)
 
         a_iirb, a_iira = firdes_lowpass(
             self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
@@ -609,6 +615,8 @@ class HiFiDecode:
         self.audio_process_params = {
             "pre_trim": self.pre_trim,
             "gain": self.gain,
+            "block_final_audio_size": self.block_final_audio_size,
+            "block_overlap_audio_final": self.block_overlap_audio_final,
             "decode_mode": self.decode_mode,
             "preview": options["preview"],
             "original": options["original"],
@@ -616,7 +624,6 @@ class HiFiDecode:
             "format": options["format"],
             "if_rate": self.if_rate,
             "if_rate_audio_ratio": self.if_rate_audio_ratio,
-            "pre_trim": self.pre_trim,
             "input_rate": self.input_rate,
             "audio_rate": self.audio_rate,
             "ifresample_numerator": self.ifresample_numerator,
@@ -1008,8 +1015,15 @@ class HiFiDecode:
             # copy the resulting audio into shared memory for the next steps
             pre = buffer.get_pre_left() if channel == 0 else buffer.get_pre_right()
 
-            buffer_params["pre_audio_trimmed"] = len(audio)
-            DecoderSharedMemory.copy_data(audio, pre, 0, len(audio))
+            # trim off the block overlap
+            audio_overlap = int(audio_process_params["block_overlap_audio_final"] / 2)
+            expected_audio_len = buffer_params["post_audio_trimmed"]
+            actual_audio_len = len(audio)
+            overlap_already_trimmed = expected_audio_len - actual_audio_len
+            overlap_to_trim = int((audio_overlap - overlap_already_trimmed) / 2)
+
+            DecoderSharedMemory.copy_data_src_offset(audio, pre, overlap_to_trim, actual_audio_len)
+            buffer_params["pre_audio_trimmed"] = expected_audio_len
 
             # send this buffer to the next step
             demod_process_out.put(buffer_params)
@@ -1033,7 +1047,7 @@ class HiFiDecode:
                 preL, preR = HiFiDecode.mix_for_mode_stereo(l_out, r_out, audio_process_params["decode_mode"])
                 DecoderSharedMemory.copy_data(preL, l_out, 0, len(preL))
                 DecoderSharedMemory.copy_data(preR, r_out, 0, len(preR))
-    
+
             if audio_process_params["gain"] != 1:
                 HiFiDecode.adjust_gain(l_out, audio_process_params["gain"])
                 HiFiDecode.adjust_gain(r_out, audio_process_params["gain"])
