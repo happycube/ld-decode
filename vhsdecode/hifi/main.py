@@ -803,9 +803,9 @@ def write_soundfile_process_worker(
                     buffer.close()
                     shared_memory_idle_queue.put(buffer_params["name"])
                     total_samples_decoded += buffer_params["stereo_audio_trimmed"] / 2
-                    with input_position.get_lock():
-                        blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
-                        log_decode(start_time, input_position.value, total_samples_decoded, blocks_enqueued, input_rate, audio_rate)
+                    
+                    blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
+                    log_decode(start_time, input_position.value, total_samples_decoded, blocks_enqueued, input_rate, audio_rate)
 
                     done = buffer_params["is_last_block"]
                 except InterruptedError:
@@ -851,10 +851,10 @@ def decode_parallel(
 
     # spin up shared memory
     # these blocks of memory are used to transfer the audio data throughout the various steps
-    max_shared_memory_instances = threads * 2
+    num_shared_memory_instances = threads * 2
     shared_memory_instances = []
     shared_memory_idle_queue = Queue()
-    for i in range(max_shared_memory_instances):
+    for i in range(num_shared_memory_instances):
         buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"HiFiDecode Shared Memory {i}")
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
@@ -868,7 +868,8 @@ def decode_parallel(
     decoder_out_queue = Queue()
     decode_done = Event()
 
-    for i in range(threads):
+    num_decoders = max(1, int(threads/2))
+    for i in range(num_decoders):
         decoder = HiFiDecode(decoder_in_queue, decoder_out_queue, decode_options)
         if bias_guess:
             decoder.updateAFE(LCRef, RCRef)
@@ -884,7 +885,7 @@ def decode_parallel(
     atexit.register(post_processor_process.terminate)
 
     # set up the output file process
-    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(post_processor_out_queue, max_shared_memory_instances, shared_memory_idle_queue, start_time, input_position, decode_options, output_file, decode_done))
+    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(post_processor_out_queue, num_shared_memory_instances, shared_memory_idle_queue, start_time, input_position, decode_options, output_file, decode_done))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
 

@@ -19,10 +19,11 @@ from scipy.signal.signaltools import hilbert
 from noisereduce.spectralgate.nonstationary import SpectralGateNonStationary
 
 from lddecode.utils import unwrap_hilbert
-from vhsdecode.addons.FMdeemph import FMDeEmphasisC, gen_shelf
-from vhsdecode.addons.chromasep import samplerate_resample
+from vhsdecode.addons.FMdeemph import gen_shelf
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
+
+from samplerate import Resampler
 
 from vhsdecode.hifi.utils import DecoderSharedMemory
 
@@ -492,7 +493,15 @@ class NoiseReduction:
         rsC = NoiseReduction.get_attacks_and_releases(attack, release)
 
         return NoiseReduction.apply_gate(rsC, audio_with_deemphasis, self.NR_envelope_gain)
+    
+class SamplerateResampler:
+    def __init__(self, numerator, denominator, converter):
+        self.ratio = numerator / denominator
+        self.resampler = Resampler(converter, channels=1)
 
+    def resample(self, input_data, is_last_block):
+        output_data = self.resampler.process(input_data, self.ratio, end_of_input=is_last_block)
+        return output_data
 
 class HiFiDecode:
     def __init__(self, decoder_in=None, decoder_out=None, options=None):
@@ -951,6 +960,7 @@ class HiFiDecode:
     @staticmethod
     def resample_if_worker(decoder_in, demod_process_audio_process_l_in, demod_process_audio_process_r_in, rfBandPassParams, audio_process_params):
         bandpassRF = AFEBandPass(rfBandPassParams, audio_process_params["input_rate"])
+        if_resampler = SamplerateResampler(audio_process_params["ifresample_numerator"], audio_process_params["ifresample_denominator"], audio_process_params["if_resampler_converter"])
 
         while True:
             buffer_params = decoder_in.get()
@@ -962,9 +972,7 @@ class HiFiDecode:
             raw_data = bandpassRF.work(raw_data)
             
             # resample from input sample rate to if sample rate
-            data = samplerate_resample(
-                raw_data, audio_process_params["ifresample_numerator"], audio_process_params["ifresample_denominator"], audio_process_params["if_resampler_converter"]
-            )
+            data = if_resampler.resample(raw_data, buffer_params["is_last_block"])
     
             # save the resampled data into shared memory for the next step
             buffer_params["block_resampled_trimmed"] = len(data)
@@ -983,6 +991,9 @@ class HiFiDecode:
         else:
             _, afe, _, fm = HiFiDecode.afeParams(standard, audio_process_params)
 
+        audio_resampler = SamplerateResampler(audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
+        audio_final_resampler = SamplerateResampler(audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
+
         while True:
             buffer_params = demod_process_in.get()
             buffer = DecoderSharedMemory(buffer_params)
@@ -992,7 +1003,7 @@ class HiFiDecode:
             audio = HiFiDecode.demodblock(resampled_block, afe, fm, audio_process_params)
 
             # resample if sample rate to audio sample rate
-            audio = samplerate_resample(audio, audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
+            audio = audio_resampler.resample(audio, buffer_params["is_last_block"])
             
             # cancel dc based on mean
             dc = HiFiDecode.cancelDC(audio)
@@ -1006,7 +1017,7 @@ class HiFiDecode:
             
             # resample audio sample rate to final audio sample rate
             if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
-                audio = samplerate_resample(audio, audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
+                audio = audio_final_resampler.resample(audio, buffer_params["is_last_block"])
 
             # update the carrier frequency to account for any dc offset
             if audio_process_params["auto_fine_tune"]:
@@ -1110,15 +1121,14 @@ class HiFiDecode:
         return self.standard_original.Hfreq
 
     def guessBiases(self, blocks):
+        if_resampler = SamplerateResampler(self.ifresample_numerator, self.ifresample_denominator, self.if_resampler_converter)
         afeL, afeR, fmL, fmR = HiFiDecode.afeParams(self.standard, self.audio_process_params)
 
         meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
             window_average=len(blocks)
         )
         for block in blocks:
-            data = samplerate_resample(
-                block, self.ifresample_numerator, self.ifresample_denominator, self.if_resampler_converter
-            )
+            data = if_resampler.resample(block, False)
             preL = self.demodblock(data, afeL, fmL, self.audio_process_params)
             preR = self.demodblock(data, afeR, fmR, self.audio_process_params)
             meanL.push(np.mean(preL))
