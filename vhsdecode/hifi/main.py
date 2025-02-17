@@ -760,11 +760,11 @@ def write_soundfile_process_worker(
     shared_memory_idle_queue,
     start_time,
     input_position,
+    total_samples_decoded,
     decode_options,
     output_file: str,
     decode_done,
 ):
-    total_samples_decoded = 0
     audio_rate = decode_options["audio_rate"]
     input_rate = decode_options["input_rate"]
     preview_mode = decode_options["preview"]
@@ -791,10 +791,11 @@ def write_soundfile_process_worker(
 
                     buffer.close()
                     shared_memory_idle_queue.put(decoder_state.name)
-                    total_samples_decoded += decoder_state.stereo_audio_trimmed / 2
+                    with total_samples_decoded.get_lock():
+                        total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_trimmed / 2)
                     
                     blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
-                    log_decode(start_time, input_position.value, total_samples_decoded, blocks_enqueued, input_rate, audio_rate)
+                    log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, input_rate, audio_rate)
 
                     done = decoder_state.is_last_block
                 except InterruptedError:
@@ -822,7 +823,8 @@ def decode_parallel(
     block_audio_size = decoder.blockAudioSize
 
     read_overlap = decoder.readOverlap
-    input_position = Value('d', 0)
+    input_position = Value('i', 0)
+    total_samples_decoded = Value('i', 0)
     start_time = datetime.now()
     
     # HiFiDecode data flow diagram
@@ -881,7 +883,20 @@ def decode_parallel(
     atexit.register(post_processor.close)
 
     # set up the output file process
-    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(post_processor_out_output_conn, num_shared_memory_instances, shared_memory_idle_queue, start_time, input_position, decode_options, output_file, decode_done))
+    output_file_process = Process(
+        target=write_soundfile_process_worker, 
+        name="HiFiDecode Soundfile Encoder", 
+        args=(
+            post_processor_out_output_conn, 
+            num_shared_memory_instances, 
+            shared_memory_idle_queue, 
+            start_time, 
+            input_position, 
+            total_samples_decoded, 
+            decode_options, 
+            output_file, 
+            decode_done
+    ))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
 
@@ -986,6 +1001,9 @@ def decode_parallel(
             # submit the block to the decoder
             # blocks should complete roughly in the order that they are submitted
             decoder_conn.send((decoder_state, decoder_idx))
+
+            blocks_enqueued = num_shared_memory_instances - shared_memory_idle_queue.qsize()
+            log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, decode_options["input_rate"], decode_options["audio_rate"])
 
             if is_last_block:
                  break
