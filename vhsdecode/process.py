@@ -293,7 +293,7 @@ class VHSDecode(ldd.LDdecode):
             black = jout["videoParameters"]["black16bIre"]
             white = jout["videoParameters"]["white16bIre"]
 
-            if self.rf.color_system == "MPAL":
+            if self.rf.color_system == "MPAL" or self.rf.color_system == "NLINHA":
                 # jout["videoParameters"]["isSourcePal"] = True
                 # jout["videoParameters"]["isSourcePalM"] = True
                 jout["videoParameters"]["system"] = "PAL-M"

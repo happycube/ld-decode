@@ -59,7 +59,7 @@ def is_color_under(tape_format: str) -> str:
 
 def parent_system(system: str) -> str:
     """Returns 'PAL' for 625 line systems and 405 line, and 'NTSC' for 525-line systems"""
-    if system == "MPAL":
+    if system == "MPAL" or system == "NLINHA":
         parent_system = "NTSC"
     elif system == "MESECAM" or system == "SECAM" or system == "405":
         parent_system = "PAL"
@@ -334,6 +334,19 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
         return get_sysparams_mpal_vhs(
             SysParams_NTSC, tape_speed
         ), get_rfparams_mpal_vhs(FilterParams_NTSC, tape_speed)
+    elif system == "NLINHA":
+        # NLINHA - hacky unofficial system used on old brazilian vcrs that
+        # uses PAL-M color but NTSC carrier freq and rotation.
+        if tape_format != "VHS":
+            logger.warning('Tape format "%s" not supported for NLINHA yet', tape_format)
+        from vhsdecode.format_defs.vhs import (
+            get_rfparams_ntsc_vhs,
+            get_sysparams_mpal_vhs,
+        )
+
+        return get_sysparams_mpal_vhs(
+            SysParams_NTSC, tape_speed
+        ), get_rfparams_ntsc_vhs(FilterParams_NTSC, tape_speed)
     elif system == "MESECAM":
         if tape_format != "VHS":
             logger.warning(
