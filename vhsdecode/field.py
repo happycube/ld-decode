@@ -76,7 +76,11 @@ def field_class_from_formats(system: str, tape_format: str):
         elif tape_format == "VIDEO8" or tape_format == "HI8":
             field_class = FieldPALVideo8
         else:
-            if tape_format != "VHS" and tape_format != "VHSHQ":
+            if (
+                tape_format != "VHS"
+                and tape_format != "VHSHQ"
+                and tape_format != "VIDEO2000"
+            ):
                 ldd.logger.info(
                     "Tape format unimplemented for PAL, using VHS field class."
                 )

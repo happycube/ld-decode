@@ -206,6 +206,15 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             return get_sysparams_pal_vcr_lp(SysParams_PAL), get_rfparams_pal_vcr_lp(
                 FilterParams_PAL
             )
+        elif tape_format == "VIDEO2000":
+            from vhsdecode.format_defs.video2000 import (
+                get_rfparams_pal_video2000,
+                get_sysparams_pal_video2000,
+            )
+
+            return get_sysparams_pal_video2000(
+                SysParams_PAL
+            ), get_rfparams_pal_video2000(FilterParams_PAL)
         else:
             if tape_format != "VHS":
                 logger.warning(
