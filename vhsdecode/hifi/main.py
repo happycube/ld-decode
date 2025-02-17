@@ -2,7 +2,7 @@
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, Process, Value, freeze_support, current_process, Event
+from multiprocessing import cpu_count, Pipe, Queue, Process, Value, freeze_support, current_process, Event, connection
 from datetime import datetime, timedelta
 import os
 import sys
@@ -460,8 +460,8 @@ class PostProcessor:
     def __init__(
         self,
         decode_options: dict,
-        in_queue,
-        out_queue
+        decoder_conns,
+        out_conn,
     ):
         self.final_audio_rate = decode_options["audio_rate"]
         self.use_noise_reduction = decode_options["noise_reduction"]
@@ -477,43 +477,43 @@ class PostProcessor:
         #                             \   (right channel)                                          /
         #                               spectral_noise_reduction_worker --> noise_reduction_worker 
 
-        self.block_sorter_worker_in_queue = in_queue
-        self.nr_worker_l_in_queue = Queue()
-        self.nr_worker_r_in_queue = Queue()
-        self.mix_to_stereo_worker_out_queue = out_queue
+        self.decoder_conns = decoder_conns
+        self.mix_to_stereo_worker_output = out_conn
 
-        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="HiFiDecode SpectralNoiseReduction L", args=(self.block_sorter_worker_in_queue, self.nr_worker_l_in_queue, self.nr_worker_r_in_queue))
+        nr_worker_l_in_output, nr_worker_l_in_input = Pipe(duplex=False)
+        nr_worker_r_in_output, nr_worker_r_in_input = Pipe(duplex=False)
+        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="HiFiDecode SpectralNoiseReduction L", args=(self.decoder_conns, nr_worker_l_in_input, nr_worker_r_in_input))
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
 
-        spectral_nr_worker_l_out_queue = Queue()
-        self.spectral_nr_worker_l = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction L", args=(self.nr_worker_l_in_queue, spectral_nr_worker_l_out_queue, self.spectral_nr_amount, self.final_audio_rate))
+        spectral_nr_worker_l_output, spectral_nr_worker_l_input = Pipe(duplex=False)
+        self.spectral_nr_worker_l = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction L", args=(nr_worker_l_in_output, spectral_nr_worker_l_input, self.spectral_nr_amount, self.final_audio_rate))
         self.spectral_nr_worker_l.start()
         atexit.register(self.spectral_nr_worker_l.terminate)
 
-        spectral_nr_worker_r_out_queue = Queue()
-        self.spectral_nr_worker_r = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction R", args=(self.nr_worker_r_in_queue, spectral_nr_worker_r_out_queue, self.spectral_nr_amount, self.final_audio_rate))
+        spectral_nr_worker_r_output, spectral_nr_worker_r_input = Pipe(duplex=False)
+        self.spectral_nr_worker_r = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction R", args=(nr_worker_r_in_output, spectral_nr_worker_r_input, self.spectral_nr_amount, self.final_audio_rate))
         self.spectral_nr_worker_r.start()
         atexit.register(self.spectral_nr_worker_r.terminate)
         
-        nr_worker_l_out_queue = Queue()
-        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(spectral_nr_worker_l_out_queue, nr_worker_l_out_queue, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        nr_worker_l_out_output, nr_worker_l_out_input = Pipe(duplex=False)
+        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(spectral_nr_worker_l_output, nr_worker_l_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
         atexit.register(self.nr_worker_l.terminate)
 
-        nr_worker_r_out_queue = Queue()
-        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(spectral_nr_worker_r_out_queue, nr_worker_r_out_queue, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        nr_worker_r_out_output, nr_worker_r_out_input = Pipe(duplex=False)
+        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(spectral_nr_worker_r_output, nr_worker_r_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
         atexit.register(self.nr_worker_r.terminate)
         
-        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="HiFiDecode Stereo Merge", args=(nr_worker_l_out_queue, nr_worker_r_out_queue, self.mix_to_stereo_worker_out_queue))
+        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="HiFiDecode Stereo Merge", args=(nr_worker_l_out_output, nr_worker_r_out_output, self.mix_to_stereo_worker_output))
         self.mix_to_stereo_worker_process.start()
         atexit.register(self.mix_to_stereo_worker_process.terminate)
 
     @staticmethod
     def spectral_noise_reduction_worker(
-        in_queue,
-        out_queue,
+        in_conn,
+        out_conn,
         spectral_nr_amount,
         final_audio_rate,
     ):
@@ -524,7 +524,7 @@ class PostProcessor:
 
         while True:
             try:
-                decoder_state, channel_num = in_queue.get()
+                decoder_state, channel_num = in_conn.recv()
                 buffer = DecoderSharedMemory(decoder_state)
 
                 if channel_num == 0:
@@ -539,15 +539,15 @@ class PostProcessor:
                 else:
                     DecoderSharedMemory.copy_data(pre, spectral_nr_out, len(spectral_nr_out))
 
-                out_queue.put((decoder_state, channel_num))
                 buffer.close()
+                out_conn.send((decoder_state, channel_num))
             except InterruptedError:
                 pass
 
     @staticmethod
     def noise_reduction_worker(
-        in_queue,
-        out_queue,
+        in_conn,
+        out_conn,
         use_noise_reduction,
         nr_side_gain,
         final_audio_rate,
@@ -559,7 +559,7 @@ class PostProcessor:
 
         while True:
             try:
-                decoder_state, channel_num = in_queue.get()
+                decoder_state, channel_num = in_conn.recv()
                 buffer = DecoderSharedMemory(decoder_state)
 
                 if channel_num == 0:
@@ -574,17 +574,17 @@ class PostProcessor:
                 else:
                     DecoderSharedMemory.copy_data(pre, nr_out, len(nr_out))
 
-                out_queue.put(decoder_state)
                 buffer.close()
+                out_conn.send(decoder_state)
             except InterruptedError:
                 pass
 
     @staticmethod
-    def mix_to_stereo_worker(nr_l_in_queue, nr_r_in_queue, out_queue):
+    def mix_to_stereo_worker(nr_l_in_conn, nr_r_in_conn, out_conn):
         while True:
             try:
-                l_decoder_state = nr_l_in_queue.get()
-                r_decoder_state = nr_r_in_queue.get()
+                l_decoder_state = nr_l_in_conn.recv()
+                r_decoder_state = nr_r_in_conn.recv()
 
                 assert l_decoder_state.block_num == r_decoder_state.block_num, "Noise reduction processes are out of sync! Channels will be out od sync."
 
@@ -597,8 +597,8 @@ class PostProcessor:
                 stereo_len = PostProcessor.stereo_interleave(l, r, stereo)
 
                 decoder_state.stereo_audio_trimmed = stereo_len
-                out_queue.put(decoder_state)
                 buffer.close()
+                out_conn.send(decoder_state)
             except InterruptedError:
                 pass
 
@@ -619,9 +619,9 @@ class PostProcessor:
 
     @staticmethod
     def block_sorter_worker(
-        block_sorter_worker_in_queue,
-        nr_worker_l_in_queue,
-        nr_worker_r_in_queue,
+        decoder_conns,
+        nr_worker_l_in_conn,
+        nr_worker_r_in_conn,
     ):
         next_block = 0
         last_block_submitted = -1
@@ -629,26 +629,30 @@ class PostProcessor:
 
         done = False
         while not done:
-            in_decoder_state = block_sorter_worker_in_queue.get()
-            # blocks are received from the decoder processes out of order
-            # gather them into ordered chunk and process sequentially
-            assert last_block_submitted < in_decoder_state.block_num, f"Warning, block was repeated, got {in_decoder_state.block_num}, already processed {last_block_submitted}"
-            block_queue.append(in_decoder_state)
-    
-            if in_decoder_state.block_num == next_block:
-                # process queued data in order of block number
-                block_queue.sort(key=lambda x: x.block_num)
-    
-                # enqueue the blocks in order
-                while len(block_queue) > 0 and (block_queue[0].block_num <= next_block):
-                    decoder_state = block_queue.pop(0)
-    
-                    nr_worker_l_in_queue.put((decoder_state, 0))
-                    nr_worker_r_in_queue.put((decoder_state, 1))
-    
-                    next_block += 1
-                    last_block_submitted = decoder_state.block_num
-                    done = decoder_state.is_last_block
+            for decoder_conn in connection.wait(decoder_conns, 0.01):
+                try:
+                    in_decoder_state: DecoderState = decoder_conn.recv()
+                    # blocks are received from the decoder processes out of order
+                    # gather them into ordered chunk and process sequentially
+                    assert last_block_submitted < in_decoder_state.block_num, f"Warning, block was repeated, got {in_decoder_state.block_num}, already processed {last_block_submitted}"
+                    block_queue.append(in_decoder_state)
+            
+                    if in_decoder_state.block_num == next_block:
+                        # process queued data in order of block number
+                        block_queue.sort(key=lambda x: x.block_num)
+            
+                        # enqueue the blocks in order
+                        while len(block_queue) > 0 and (block_queue[0].block_num <= next_block):
+                            decoder_state = block_queue.pop(0)
+            
+                            nr_worker_l_in_conn.send((decoder_state, 0))
+                            nr_worker_r_in_conn.send((decoder_state, 1))
+            
+                            next_block += 1
+                            last_block_submitted = decoder_state.block_num
+                            done = decoder_state.is_last_block
+                except InterruptedError:
+                    pass
 
     def close(self):
         self.block_sorter_process.terminate()
@@ -738,7 +742,7 @@ class SoundDeviceProcess():
     
 
 def write_soundfile_process_worker(
-    post_processor_out_queue,
+    post_processor_out_output_conn,
     max_shared_memory_size,
     shared_memory_idle_queue,
     start_time,
@@ -757,7 +761,7 @@ def write_soundfile_process_worker(
             done = False
             while not done:
                 try:
-                    decoder_state = post_processor_out_queue.get()
+                    decoder_state = post_processor_out_output_conn.recv()
                     buffer = DecoderSharedMemory(decoder_state)
                     stereo = buffer.get_stereo()
 
@@ -837,30 +841,31 @@ def decode_parallel(
 
     # spin up the decoders
     decoders: list[HiFiDecode] = []
-    decoder_in_queue = Queue()
-    decoder_out_queue = Queue()
+    decoder_conns = []
     decode_done = Event()
 
     for i in range(num_decoders):
-        decoder = HiFiDecode(decoder_in_queue, decoder_out_queue, decode_options)
+        decoder_output_conn, decoder_input_conn = Pipe()
+        decoder = HiFiDecode(decoder_output_conn, decode_options)
         if bias_guess:
             decoder.updateAFE(LCRef, RCRef)
 
         decoder.start()
         atexit.register(decoder.close)
         decoders.append(decoder)
+        decoder_conns.append(decoder_input_conn)
 
     # set up the post processor
-    post_processor_out_queue = Queue()
+    post_processor_out_output_conn, post_processor_out_input_conn = Pipe(duplex=False)
     post_processor = PostProcessor(
         decode_options,
-        decoder_out_queue,
-        post_processor_out_queue
+        decoder_conns,
+        post_processor_out_input_conn
     )
     atexit.register(post_processor.close)
 
     # set up the output file process
-    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(post_processor_out_queue, num_shared_memory_instances, shared_memory_idle_queue, start_time, input_position, decode_options, output_file, decode_done))
+    output_file_process = Process(target=write_soundfile_process_worker, name="HiFiDecode Soundfile Encoder", args=(post_processor_out_output_conn, num_shared_memory_instances, shared_memory_idle_queue, start_time, input_position, decode_options, output_file, decode_done))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
 
@@ -954,7 +959,10 @@ def decode_parallel(
             
             buffer.close()
 
-            decoder_in_queue.put(decoder_state)
+            # submit the buffer to this decoder
+            # blocks should complete roughly in the order that they are submitted
+            decoder_conn = decoder_conns[current_block_num % num_decoders]
+            decoder_conn.send(decoder_state)
 
             if is_last_block:
                  break
