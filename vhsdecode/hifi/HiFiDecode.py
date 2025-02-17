@@ -335,7 +335,7 @@ class SpectralNoiseReduction():
         chunk = np.zeros((1, self.padding * 2 + self.chunk_size * self.chunk_count), dtype=REAL_DTYPE)
 
         audio_copy = np.empty(len(audio), dtype=REAL_DTYPE)
-        DecoderSharedMemory.copy_data(audio, audio_copy, 0, len(audio))
+        DecoderSharedMemory.copy_data(audio, audio_copy, len(audio))
         
         chunks.pop(0)
         chunks.append(audio_copy)
@@ -346,19 +346,18 @@ class SpectralNoiseReduction():
 
         return chunk
     
-    def _trim_chunk(self, nr, audio_len):
-        last_chunk = self.chunk_size * (self.chunk_count-1) + self.padding
-
-        return nr[0][last_chunk:last_chunk+audio_len]
+    @staticmethod
+    def _write_chunk(chunk_size, chunk_count, padding, nr, audio_out):
+        last_chunk = chunk_size * (chunk_count-1) + padding
+        data = nr[0]
+        DecoderSharedMemory.copy_data_src_offset(data, audio_out, last_chunk, len(audio_out))
     
-    def spectral_nr(self, audio):
-        chunk = self._get_chunk(audio, self.chunks)
+    def spectral_nr(self, audio_in, audio_out):
+        chunk = self._get_chunk(audio_in, self.chunks)
 
         nr = self.spectral_gate.spectral_gating_nonstationary(chunk)
 
-        trimmed = self._trim_chunk(nr, len(audio))
-
-        return trimmed
+        SpectralNoiseReduction._write_chunk(self.chunk_size, self.chunk_count, self.padding, nr, audio_out)
 
 class NoiseReduction:
     def __init__(
@@ -477,13 +476,14 @@ class NoiseReduction:
     
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
-    def apply_gate(rsC: np.array, audio: np.array, nr_env_gain: float) -> np.array:
+    def apply_gate(rsC: np.array, audio: np.array, audio_out: np.array, nr_env_gain: float) -> np.array:
         # computes a sidechain signal to apply noise reduction
         # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
         #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
         #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
         gate = np.clip(rsC * nr_env_gain, a_min=0.0, a_max=1.0)
-        return np.multiply(audio, gate)
+        for i in range(len(audio)):
+            audio_out[i] = audio[i] * gate[i]
     
     def rs_envelope(self, raw_data):
         # prevent high frequency noise from interfering with envelope detector
@@ -494,16 +494,16 @@ class NoiseReduction:
 
         return NoiseReduction.expand(self.NR_envelope_log_strength, weighted_high_pass)
 
-    def noise_reduction(self, pre, de_noise):
+    def noise_reduction(self, pre_in, de_noise_in_out):
         # takes the RMS envelope of each audio channel
-        audio_env = self.rs_envelope(pre)
-        audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise)
+        audio_env = self.rs_envelope(pre_in)
+        audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise_in_out)
 
         attack = self.envelope_attack_Lowpass.lfilt(audio_env)
         release = self.envelope_release_Lowpass.lfilt(audio_env)
         rsC = NoiseReduction.get_attacks_and_releases(attack, release)
 
-        return NoiseReduction.apply_gate(rsC, audio_with_deemphasis, self.NR_envelope_gain)
+        NoiseReduction.apply_gate(rsC, audio_with_deemphasis, de_noise_in_out, self.NR_envelope_gain)
     
 class SamplerateResampler:
     def __init__(self, numerator, denominator, converter):
@@ -794,8 +794,8 @@ class HiFiDecode:
     ):
         interpolated_signal = np.empty_like(audio)
         interpolator_in = np.empty_like(audio)
-        DecoderSharedMemory.copy_data(audio, interpolated_signal, 0, len(interpolated_signal))
-        DecoderSharedMemory.copy_data(audio, interpolator_in, 0, len(interpolator_in))
+        DecoderSharedMemory.copy_data(audio, interpolated_signal, len(interpolated_signal))
+        DecoderSharedMemory.copy_data(audio, interpolator_in, len(interpolator_in))
 
         # setup interpolator input by copying and removing any samples that are peaks
         time = np.arange(len(interpolated_signal), dtype=float)

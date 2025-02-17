@@ -4,6 +4,7 @@ import numpy as np
 
 import string
 from random import SystemRandom
+import ctypes
 
 REAL_DTYPE = np.float32
 
@@ -168,18 +169,33 @@ class DecoderSharedMemory():
     
     def get_stereo(self):
         return np.ndarray(self.stereo_audio_trimmed, dtype=self.audio_dtype, offset=self.stereo_offset, buffer=self.buf)
-
+    
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=False)
-    def copy_data(src: np.array, dst: np.array, dst_offset:int, length: int):
+    def _copy_data_numba(src: np.array, dst: np.array, length: int):
         for i in range(length):
-            dst[i+dst_offset] = src[i]
+            dst[i] = src[i]
 
     @staticmethod
+    def copy_data(src: np.array, dst: np.array, length: int):
+        if src.dtype == dst.dtype and src.flags.c_contiguous and dst.flags.c_contiguous:
+            ctypes.memmove(dst.ctypes.data, src.ctypes.data, length * np.dtype(src.dtype).itemsize)
+        else:
+            DecoderSharedMemory._copy_data_numba(src, dst, length)
+    
+    @staticmethod
     @njit(cache=True, fastmath=True, nogil=False)
-    def copy_data_src_offset(src: np.array, dst: np.array, src_offset:int, length: int):
+    def _copy_data_src_offset_numba(src: np.array, dst: np.array, src_offset:int, length: int):
         for i in range(length):
             dst[i] = src[i+src_offset]
+
+    @staticmethod
+    def copy_data_src_offset(src: np.array, dst: np.array, src_offset: int, length: int):
+        if src.dtype == dst.dtype and src.flags.c_contiguous and dst.flags.c_contiguous:
+            itemsize = np.dtype(src.dtype).itemsize
+            ctypes.memmove(dst.ctypes.data, src.ctypes.data + src_offset * itemsize, length * itemsize)
+        else:
+            DecoderSharedMemory._copy_data_src_offset_numba(src, dst, src_offset, length)
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=False, parallel=True)
