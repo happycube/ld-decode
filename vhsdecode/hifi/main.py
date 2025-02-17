@@ -638,10 +638,14 @@ class PostProcessor:
         next_block = 0
         last_block_submitted = -1
         block_queue = []
+        decoder_conn_idx = 0
 
         done = False
         while not done:
-            for decoder_conn in connection.wait(decoder_conns):
+            decoder_conn = decoder_conns[decoder_conn_idx]
+            decoder_conn_idx = (decoder_conn_idx + 1) % len(decoder_conns)
+
+            if decoder_conn.poll(0.001):
                 try:
                     in_decoder_state, decoder_idx = decoder_conn.recv()
                     decoder_ready_conn.send(decoder_idx)
@@ -823,8 +827,8 @@ def decode_parallel(
     block_audio_size = decoder.blockAudioSize
 
     read_overlap = decoder.readOverlap
-    input_position = Value('i', 0)
-    total_samples_decoded = Value('i', 0)
+    input_position = Value('d', 0)
+    total_samples_decoded = Value('d', 0)
     start_time = datetime.now()
     
     # HiFiDecode data flow diagram
