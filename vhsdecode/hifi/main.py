@@ -922,7 +922,7 @@ def decode_parallel(
             with input_position.get_lock():
                 input_position.value = total_bytes_read
 
-            progressB.print(input_position.value)
+            progressB.print(input_position.value / 2)
 
             # handle stop and last block
             stop_requested = handle_ui_events()
