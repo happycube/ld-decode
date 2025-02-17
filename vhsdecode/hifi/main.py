@@ -822,7 +822,7 @@ def decode_parallel(
 
     # spin up shared memory
     # these blocks of memory are used to transfer the audio data throughout the various steps
-    num_shared_memory_instances = int(threads * 1.5)
+    num_shared_memory_instances = int(threads * 2)
     num_decoders = threads
 
     shared_memory_instances = []
