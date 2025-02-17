@@ -239,6 +239,7 @@ def get_line0_fallback(
       e.g a 240p/280p signal (that is, a pulse that is at least vsync pulse length.)
     """
     DEBUG_PLOT = False
+    DEBUG_PRINT = False
 
     PULSE_START = 0
     PULSE_LEN = 1
@@ -282,8 +283,11 @@ def get_line0_fallback(
     SHORT_PULSE_MAX = 0.2*linelen
     LONG_PULSE_MIN = 0.35*linelen
 
+    if DEBUG_PRINT:
+        print("get_line0_fallback called")
+
     # First try: Find end of long sync pulses
-    i = 10
+    i = 15
     while line_0 is None and i < (len(filtered_pulses)-2):
         disPPspp = (filtered_pulses[i-1].start - filtered_pulses[i-2].start)/linelen
         dispPSpp = (filtered_pulses[i  ].start - filtered_pulses[i-1].start)/linelen
@@ -305,7 +309,7 @@ def get_line0_fallback(
             measured_linelen = (disPPspp + dispPSpp + disppSPp + disppsPP) * (linelen/2)
             line_offset = None
             phase_cnt = [0,0,0]
-            for d in range(10,min(i,30)+1):
+            for d in range(15,min(i,30)+1):
                 pp = np.array([(filtered_pulses[i-2].start-filtered_pulses[i-d  ].start)/measured_linelen,
                                (filtered_pulses[i-2].start-filtered_pulses[i-d+1].start)/measured_linelen,
                                (filtered_pulses[i-2].start-filtered_pulses[i-d+2].start)/measured_linelen])
@@ -343,11 +347,13 @@ def get_line0_fallback(
             if line_offset is not None:
                 # in case we cannot find a matching pulse, we can still use this prediction
                 line_0_est = filtered_pulses[i-2].start - line_offset*measured_linelen
+                if DEBUG_PRINT:
+                    print(f"1. End of long sync pulses, pred: {line_0_est}, First-Field: {first_field}, confidence: {first_field_confidence}")
                 if line_0_backup is None:
                     line_0_backup = line_0_est
                 # find pulse
                 for j in range(max(0,i-16),i-4):
-                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.05:
+                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.08:
                         line_0 = filtered_pulses[j].start
                         break
         i += 1
@@ -393,21 +399,26 @@ def get_line0_fallback(
             if phase == 0:
                 # we need to differ between 625 and 525 line
                 line_offset = 2.0 if frame_lines == 625 else 3.0
-                first_field = 1
-                first_field_confidence = (phase_cnt[0]*100 // sum(phase_cnt))
+                _first_field = 1
+                _first_field_confidence = (phase_cnt[0]*100 // sum(phase_cnt))
             elif phase == 1:
                 line_offset = 2.5 if frame_lines == 625 else 2.5
-                first_field = 0
-                first_field_confidence = (phase_cnt[1]*100 // sum(phase_cnt))
+                _first_field = 0
+                _first_field_confidence = (phase_cnt[1]*100 // sum(phase_cnt))
 
             if line_offset is not None:
                 # in case we cannot find a matching pulse, we can still use this prediction
                 line_0_est = filtered_pulses[i-2].start - line_offset*measured_linelen
+                if DEBUG_PRINT:
+                    print(f"2. Begin of long sync pulses, pred: {line_0_est}, First-Field: {_first_field}, confidence: {_first_field_confidence}")
                 if line_0_backup is None:
                     line_0_backup = line_0_est
                 # find pulse
                 for j in range(max(0,i-10),i-3):
-                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.05:
+                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.08:
+                        if line_0 != filtered_pulses[j].start or _first_field_confidence > first_field_confidence:
+                            first_field = _first_field
+                            first_field_confidence = first_field_confidence
                         line_0 = filtered_pulses[j].start
                         break
         i += 1
@@ -445,23 +456,28 @@ def get_line0_fallback(
                         line_offset = 7.0
                     else:
                         line_offset = 8.0
-                    first_field = 0
-                    first_field_confidence = 80 if filtered_pulses[i].len < eq_pulse_len * 1.1 else 60
+                    _first_field = 0
+                    _first_field_confidence = 80 if filtered_pulses[i].len < eq_pulse_len * 1.1 else 60
                 elif filtered_pulses[i].len > hsync_pulse_len * 0.75:
                     if frame_lines == 625:
                         line_offset = 7.0
                     else:
                         line_offset = 9.0
-                    first_field = 1
-                    first_field_confidence = 80 if filtered_pulses[i].len > hsync_pulse_len * 0.9 else 60
+                    _first_field = 1
+                    _first_field_confidence = 80 if filtered_pulses[i].len > hsync_pulse_len * 0.9 else 60
             if line_offset is not None:
                 # in case we cannot find a matching pulse, we can still use this prediction
                 line_0_est = filtered_pulses[i-2].start - line_offset*measured_linelen
+                if DEBUG_PRINT:
+                    print(f"3. End of blanking, pred: {line_0_est}, First-Field: {_first_field}, confidence: {_first_field_confidence}")
                 if line_0_backup is None:
                     line_0_backup = line_0_est
                 # find pulse
                 for j in range(max(0,i-20),i-4):
-                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.05:
+                    if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.08:
+                        if line_0 != filtered_pulses[j].start or _first_field_confidence > first_field_confidence:
+                            first_field = _first_field
+                            first_field_confidence = first_field_confidence
                         line_0 = filtered_pulses[j].start
                         break
         i += 1
@@ -490,19 +506,25 @@ def get_line0_fallback(
 
             if hsync_pulse_len/eq_pulse_len > 1.75:
                 if filtered_pulses[i].len < eq_pulse_len * 1.25:
+                    _first_field_confidence = 60 if filtered_pulses[i].len < eq_pulse_len * 1.1 else 40
+                    if line_0 != filtered_pulses[i-1].start or _first_field_confidence > first_field_confidence:
+                        first_field_confidence = _first_field_confidence
+                        if frame_lines == 625:
+                            first_field = 0
+                        else:
+                            first_field = 1
                     line_0 = filtered_pulses[i-1].start
-                    if frame_lines == 625:
-                        first_field = 0
-                    else:
-                        first_field = 1
-                    first_field_confidence = 60 if filtered_pulses[i].len < eq_pulse_len * 1.1 else 40
                 elif filtered_pulses[i].len > hsync_pulse_len * 0.75:
+                    _first_field_confidence = 60 if filtered_pulses[i].len > hsync_pulse_len * 0.9 else 40
+                    if line_0 != filtered_pulses[i].start or _first_field_confidence > first_field_confidence:
+                        first_field_confidence = _first_field_confidence
+                        if frame_lines == 625:
+                            first_field = 0
+                        else:
+                            first_field = 1
                     line_0 = filtered_pulses[i].start
-                    if frame_lines == 625:
-                        first_field = 0
-                    else:
-                        first_field = 1
-                    first_field_confidence = 60 if filtered_pulses[i].len > hsync_pulse_len * 0.9 else 40
+                if DEBUG_PRINT:
+                    print(f"4. Start of blanking (pulses): {line_0}, First-Field: {first_field}, confidence: {_first_field_confidence}")
 
             # the pulse duration was not clear, we need to check contents
             # the interval between the first pulses half a line apart is either active or not
@@ -519,23 +541,27 @@ def get_line0_fallback(
                     abs(lineP_avg-lineN_avg)/(lineP_avg+lineN_avg) > 0.15 and
                     abs(lineP_std-lineI_std)*2 < abs(lineP_std-lineN_std)
                    ):
+                    if line_0 != filtered_pulses[i-1].start or 20 > first_field_confidence:
+                        if frame_lines == 625:
+                            first_field = 0
+                        else:
+                            _first_field = 1
+                        first_field_confidence = 20
                     line_0 = filtered_pulses[i-1].start
-                    if frame_lines == 625:
-                        first_field = 0
-                    else:
-                        first_field = 1
-                    first_field_confidence = 20
                 elif (
                     abs(lineP_avg-lineI_avg)/(lineP_avg+lineI_avg) > 0.15 and
                     abs(lineP_avg-lineN_avg)/(lineP_avg+lineN_avg) > 0.15 and
                     lineI_std*2 > lineP_std
                    ):
+                    if line_0 != filtered_pulses[i].start or 20 > first_field_confidence:
+                        if frame_lines == 625:
+                            first_field = 0
+                        else:
+                            first_field = 1
+                        first_field_confidence = 20
                     line_0 = filtered_pulses[i].start
-                    if frame_lines == 625:
-                        first_field = 0
-                    else:
-                        first_field = 1
-                    first_field_confidence = 20
+                if DEBUG_PRINT:
+                    print(f"4. Start of blanking (content): {line_0}, First-Field: {first_field}, confidence: {first_field_confidence}")
         i += 1
 
     if line_0 is None and line_0_backup is not None:
@@ -547,6 +573,11 @@ def get_line0_fallback(
 
     if line_0 is not None:
         if DEBUG_PLOT:
+            long_pulses = list(
+                filter(
+                    lambda p: inrange(p[PULSE_LEN], lt_vsync[0], lt_vsync[1] * 10), raw_pulses
+                )
+            )
             debug_plot_line0_fallback(demod_05, long_pulses, filtered_pulses, raw_pulses, line_0, None)
         return line_0, None, True, first_field, first_field_confidence
 
