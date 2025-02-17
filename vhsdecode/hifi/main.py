@@ -14,7 +14,7 @@ import atexit
 import numpy as np
 import soundfile as sf
 
-from vhsdecode.hifi.utils import DecoderSharedMemory
+from vhsdecode.hifi.utils import DecoderSharedMemory, DecoderState
 
 from vhsdecode.cmdcommons import (
     common_parser_cli,
@@ -524,8 +524,8 @@ class PostProcessor:
 
         while True:
             try:
-                buffer_params, channel_num = in_queue.get()
-                buffer = DecoderSharedMemory(buffer_params)
+                decoder_state, channel_num = in_queue.get()
+                buffer = DecoderSharedMemory(decoder_state)
 
                 if channel_num == 0:
                     pre = buffer.get_pre_left()
@@ -539,7 +539,7 @@ class PostProcessor:
                 else:
                     DecoderSharedMemory.copy_data(pre, spectral_nr_out, len(spectral_nr_out))
 
-                out_queue.put((buffer_params, channel_num))
+                out_queue.put((decoder_state, channel_num))
                 buffer.close()
             except InterruptedError:
                 pass
@@ -559,8 +559,8 @@ class PostProcessor:
 
         while True:
             try:
-                buffer_params, channel_num = in_queue.get()
-                buffer = DecoderSharedMemory(buffer_params)
+                decoder_state, channel_num = in_queue.get()
+                buffer = DecoderSharedMemory(decoder_state)
 
                 if channel_num == 0:
                     pre = buffer.get_pre_left()
@@ -574,7 +574,7 @@ class PostProcessor:
                 else:
                     DecoderSharedMemory.copy_data(pre, nr_out, len(nr_out))
 
-                out_queue.put(buffer_params)
+                out_queue.put(decoder_state)
                 buffer.close()
             except InterruptedError:
                 pass
@@ -583,21 +583,21 @@ class PostProcessor:
     def mix_to_stereo_worker(nr_l_in_queue, nr_r_in_queue, out_queue):
         while True:
             try:
-                l_buffer_params = nr_l_in_queue.get()
-                r_buffer_params = nr_r_in_queue.get()
+                l_decoder_state = nr_l_in_queue.get()
+                r_decoder_state = nr_r_in_queue.get()
 
-                assert l_buffer_params["block_num"] == r_buffer_params["block_num"], "Noise reduction processes are out of sync! Channels will be out od sync."
+                assert l_decoder_state.block_num == r_decoder_state.block_num, "Noise reduction processes are out of sync! Channels will be out od sync."
 
-                buffer_params = l_buffer_params
-                buffer = DecoderSharedMemory(buffer_params)
+                decoder_state = l_decoder_state
+                buffer = DecoderSharedMemory(decoder_state)
                 l = buffer.get_nr_left()
                 r = buffer.get_nr_right()
                 stereo = buffer.get_stereo()
 
                 stereo_len = PostProcessor.stereo_interleave(l, r, stereo)
 
-                buffer_params["stereo_audio_trimmed"] = stereo_len
-                out_queue.put(buffer_params)
+                decoder_state.stereo_audio_trimmed = stereo_len
+                out_queue.put(decoder_state)
                 buffer.close()
             except InterruptedError:
                 pass
@@ -629,26 +629,26 @@ class PostProcessor:
 
         done = False
         while not done:
-            in_buffer_params = block_sorter_worker_in_queue.get()
+            in_decoder_state = block_sorter_worker_in_queue.get()
             # blocks are received from the decoder processes out of order
             # gather them into ordered chunk and process sequentially
-            assert last_block_submitted < in_buffer_params["block_num"], f"Warning, block was repeated, got {in_buffer_params["block_num"]}, already processed {last_block_submitted}"
-            block_queue.append(in_buffer_params)
+            assert last_block_submitted < in_decoder_state.block_num, f"Warning, block was repeated, got {in_decoder_state.block_num}, already processed {last_block_submitted}"
+            block_queue.append(in_decoder_state)
     
-            if in_buffer_params["block_num"] == next_block:
+            if in_decoder_state.block_num == next_block:
                 # process queued data in order of block number
-                block_queue.sort(key=lambda x: x["block_num"])
+                block_queue.sort(key=lambda x: x.block_num)
     
                 # enqueue the blocks in order
-                while len(block_queue) > 0 and (block_queue[0]["block_num"] <= next_block):
-                    buffer_params = block_queue.pop(0)
+                while len(block_queue) > 0 and (block_queue[0].block_num <= next_block):
+                    decoder_state = block_queue.pop(0)
     
-                    nr_worker_l_in_queue.put((buffer_params, 0))
-                    nr_worker_r_in_queue.put((buffer_params, 1))
+                    nr_worker_l_in_queue.put((decoder_state, 0))
+                    nr_worker_r_in_queue.put((decoder_state, 1))
     
                     next_block += 1
-                    last_block_submitted = buffer_params["block_num"]
-                    done = buffer_params["is_last_block"]
+                    last_block_submitted = decoder_state.block_num
+                    done = decoder_state.is_last_block
 
     def close(self):
         self.block_sorter_process.terminate()
@@ -757,8 +757,8 @@ def write_soundfile_process_worker(
             done = False
             while not done:
                 try:
-                    buffer_params = post_processor_out_queue.get()
-                    buffer = DecoderSharedMemory(buffer_params)
+                    decoder_state = post_processor_out_queue.get()
+                    buffer = DecoderSharedMemory(decoder_state)
                     stereo = buffer.get_stereo()
 
                     w.buffer_write(stereo, dtype="float32")
@@ -773,13 +773,13 @@ def write_soundfile_process_worker(
                             )
 
                     buffer.close()
-                    shared_memory_idle_queue.put(buffer_params["name"])
-                    total_samples_decoded += buffer_params["stereo_audio_trimmed"] / 2
+                    shared_memory_idle_queue.put(decoder_state.name)
+                    total_samples_decoded += decoder_state.stereo_audio_trimmed / 2
                     
                     blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
                     log_decode(start_time, input_position.value, total_samples_decoded, blocks_enqueued, input_rate, audio_rate)
 
-                    done = buffer_params["is_last_block"]
+                    done = decoder_state.is_last_block
                 except InterruptedError:
                     pass
 
@@ -879,27 +879,27 @@ def decode_parallel(
             
     print(f"Starting decode...")
 
-    def get_buffer_params(buffer_name, block_len, is_last_block):
+    def get_decoder_state(buffer_name, block_len, is_last_block):
         block_sizes = decoder.set_block_sizes(block_len, is_last_block)
 
-        return {
-            "name": buffer_name,
-            "block_num": current_block_num,
-            "is_last_block": False,
-            "pre_audio_len": block_sizes["block_audio_len"],
-            "pre_audio_trimmed": block_sizes["block_audio_len"],
-            "post_audio_len": block_sizes["block_audio_final_len"],
-            "post_audio_trimmed": block_sizes["block_audio_final_len"],
-            "stereo_audio_len": block_sizes["block_audio_final_len"] * 2,
-            "stereo_audio_trimmed": block_sizes["block_audio_final_len"] * 2,
-            "block_len": block_sizes["block_len"],
-            "block_overlap": block_sizes["block_overlap"],
-            "block_resampled_len": block_sizes["block_resampled_len"],
-            "block_resampled_trimmed": block_sizes["block_resampled_len"],
-            "block_audio_final_overlap": block_sizes["block_audio_final_overlap"],
-            "block_dtype": np.int16,
-            "audio_dtype": REAL_DTYPE
-        }
+        return DecoderState(
+            name = buffer_name,
+            block_num = current_block_num,
+            is_last_block = False,
+            pre_audio_len = block_sizes["block_audio_len"],
+            pre_audio_trimmed = block_sizes["block_audio_len"],
+            post_audio_len = block_sizes["block_audio_final_len"],
+            post_audio_trimmed = block_sizes["block_audio_final_len"],
+            stereo_audio_len = block_sizes["block_audio_final_len"] * 2,
+            stereo_audio_trimmed = block_sizes["block_audio_final_len"] * 2,
+            block_len = block_sizes["block_len"],
+            block_overlap = block_sizes["block_overlap"],
+            block_resampled_len = block_sizes["block_resampled_len"],
+            block_resampled_trimmed = block_sizes["block_resampled_len"],
+            block_audio_final_overlap = block_sizes["block_audio_final_overlap"],
+            block_dtype = np.int16,
+            audio_dtype = REAL_DTYPE
+        )
 
     with as_soundfile(input_file) as f:
         progressB = TimeProgressBar(f.frames, f.frames)
@@ -911,8 +911,8 @@ def decode_parallel(
         while True:
             # get the next available shared memory buffer
             buffer_name = shared_memory_idle_queue.get()
-            buffer_params = get_buffer_params(buffer_name, block_size, False)
-            buffer = DecoderSharedMemory(buffer_params)
+            decoder_state = get_decoder_state(buffer_name, block_size, False)
+            buffer = DecoderSharedMemory(decoder_state)
 
             # read input data into the shared memory buffer
             block_in = buffer.get_block_in()
@@ -929,15 +929,15 @@ def decode_parallel(
             is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
             if is_last_block:
                 # get the new block lengths
-                buffer_params = get_buffer_params(buffer_name, frames_read, is_last_block)
+                decoder_state = get_decoder_state(buffer_name, frames_read, is_last_block)
                 block_data_read = buffer.get_block_in().copy()
                 buffer.close()
 
                 # create a new buffer with the updated offsets, and copy in the read data
-                buffer = DecoderSharedMemory(buffer_params)
+                buffer = DecoderSharedMemory(decoder_state)
                 new_block_in = buffer.get_block_in()
                 DecoderSharedMemory.copy_data(block_data_read, new_block_in, len(new_block_in))
-                buffer_params["is_last_block"] = True
+                decoder_state.is_last_block = True
 
             # copy the overlapping data from the previous read
             block_in_overlap = buffer.get_block_in_start_overlap()
@@ -954,7 +954,7 @@ def decode_parallel(
             
             buffer.close()
 
-            decoder_in_queue.put(buffer_params)
+            decoder_in_queue.put(decoder_state)
 
             if is_last_block:
                  break
