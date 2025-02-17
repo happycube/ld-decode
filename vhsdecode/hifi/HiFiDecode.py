@@ -1001,7 +1001,7 @@ class HiFiDecode:
 
         while True:
             try:
-                decoder_state = decoder_conn.recv()
+                decoder_state, decoder_idx = decoder_conn.recv()
                 buffer = DecoderSharedMemory(decoder_state)
                 raw_data = buffer.get_block()
         
@@ -1082,7 +1082,7 @@ class HiFiDecode:
                     HiFiDecode.adjust_gain(r_out, worker_params.gain)
     
                 buffer.close()
-                decoder_conn.send(decoder_state)
+                decoder_conn.send((decoder_state, decoder_idx))
             except InterruptedError:
                 pass
     

@@ -461,6 +461,7 @@ class PostProcessor:
         self,
         decode_options: dict,
         decoder_conns,
+        decoder_ready_input_conn,
         out_conn,
     ):
         self.final_audio_rate = decode_options["audio_rate"]
@@ -478,11 +479,12 @@ class PostProcessor:
         #                               spectral_noise_reduction_worker --> noise_reduction_worker 
 
         self.decoder_conns = decoder_conns
+        self.decoder_ready_conn = decoder_ready_input_conn
         self.mix_to_stereo_worker_output = out_conn
 
         nr_worker_l_in_output, nr_worker_l_in_input = Pipe(duplex=False)
         nr_worker_r_in_output, nr_worker_r_in_input = Pipe(duplex=False)
-        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="HiFiDecode SpectralNoiseReduction L", args=(self.decoder_conns, nr_worker_l_in_input, nr_worker_r_in_input))
+        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="HiFiDecode SpectralNoiseReduction L", args=(self.decoder_conns, self.decoder_ready_conn, nr_worker_l_in_input, nr_worker_r_in_input))
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
 
@@ -582,25 +584,34 @@ class PostProcessor:
     @staticmethod
     def mix_to_stereo_worker(nr_l_in_conn, nr_r_in_conn, out_conn):
         while True:
-            try:
-                l_decoder_state = nr_l_in_conn.recv()
-                r_decoder_state = nr_r_in_conn.recv()
+            while True:
+                try:
+                    l_decoder_state = nr_l_in_conn.recv()
+                    break;
+                except InterruptedError:
+                    pass
+        
+            while True:
+                try:
+                    r_decoder_state = nr_r_in_conn.recv()
+                    break;
+                except InterruptedError:
+                    pass
 
-                assert l_decoder_state.block_num == r_decoder_state.block_num, "Noise reduction processes are out of sync! Channels will be out od sync."
+            assert l_decoder_state.block_num == r_decoder_state.block_num, "Noise reduction processes are out of sync! Channels will be out od sync."
 
-                decoder_state = l_decoder_state
-                buffer = DecoderSharedMemory(decoder_state)
-                l = buffer.get_nr_left()
-                r = buffer.get_nr_right()
-                stereo = buffer.get_stereo()
+            decoder_state = l_decoder_state
+            buffer = DecoderSharedMemory(decoder_state)
+            l = buffer.get_nr_left()
+            r = buffer.get_nr_right()
+            stereo = buffer.get_stereo()
 
-                stereo_len = PostProcessor.stereo_interleave(l, r, stereo)
+            stereo_len = PostProcessor.stereo_interleave(l, r, stereo)
 
-                decoder_state.stereo_audio_trimmed = stereo_len
-                buffer.close()
-                out_conn.send(decoder_state)
-            except InterruptedError:
-                pass
+            decoder_state.stereo_audio_trimmed = stereo_len
+            buffer.close()
+            out_conn.send(decoder_state)
+            
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
@@ -620,6 +631,7 @@ class PostProcessor:
     @staticmethod
     def block_sorter_worker(
         decoder_conns,
+        decoder_ready_conn,
         nr_worker_l_in_conn,
         nr_worker_r_in_conn,
     ):
@@ -629,9 +641,10 @@ class PostProcessor:
 
         done = False
         while not done:
-            for decoder_conn in connection.wait(decoder_conns, 0.01):
+            for decoder_conn in connection.wait(decoder_conns):
                 try:
-                    in_decoder_state: DecoderState = decoder_conn.recv()
+                    in_decoder_state, decoder_idx = decoder_conn.recv()
+                    decoder_ready_conn.send(decoder_idx)
                     # blocks are received from the decoder processes out of order
                     # gather them into ordered chunk and process sequentially
                     assert last_block_submitted < in_decoder_state.block_num, f"Warning, block was repeated, got {in_decoder_state.block_num}, already processed {last_block_submitted}"
@@ -842,6 +855,7 @@ def decode_parallel(
     # spin up the decoders
     decoders: list[HiFiDecode] = []
     decoder_conns = []
+    decoder_ready_output_conn, decoder_ready_input_conn = Pipe(duplex=False)
     decode_done = Event()
 
     for i in range(num_decoders):
@@ -854,12 +868,14 @@ def decode_parallel(
         atexit.register(decoder.close)
         decoders.append(decoder)
         decoder_conns.append(decoder_input_conn)
+        decoder_ready_input_conn.send(i)
 
     # set up the post processor
     post_processor_out_output_conn, post_processor_out_input_conn = Pipe(duplex=False)
     post_processor = PostProcessor(
         decode_options,
         decoder_conns,
+        decoder_ready_input_conn,
         post_processor_out_input_conn
     )
     atexit.register(post_processor.close)
@@ -959,10 +975,17 @@ def decode_parallel(
             
             buffer.close()
 
-            # submit the buffer to this decoder
+            # get the next available decoder
+            while True:
+                try:
+                    decoder_idx = decoder_ready_output_conn.recv()
+                    break
+                except InterruptedError:
+                    pass
+            decoder_conn = decoder_conns[decoder_idx]
+            # submit the block to the decoder
             # blocks should complete roughly in the order that they are submitted
-            decoder_conn = decoder_conns[current_block_num % num_decoders]
-            decoder_conn.send(decoder_state)
+            decoder_conn.send((decoder_state, decoder_idx))
 
             if is_last_block:
                  break
