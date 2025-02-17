@@ -23,7 +23,7 @@ from vhsdecode.addons.FMdeemph import gen_shelf
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
 
-from samplerate import Resampler
+from samplerate import resample
 
 from vhsdecode.hifi.utils import DecoderSharedMemory
 
@@ -219,14 +219,25 @@ class FMdemod:
         to_zero_locations = np.where(np.abs(dd) < discont)
         ph_correct[to_zero_locations] = 0
         return p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def calc_if(instantaneous_phase: np.array, sample_rate: REAL_DTYPE):
+        instantaneous_phase_diff = np.diff(instantaneous_phase)
+        for i in range(len(instantaneous_phase_diff)):
+            instantaneous_phase_diff[i] = instantaneous_phase_diff[i] / (2.0 * pi) * sample_rate
+        
+        return instantaneous_phase_diff
+    
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def np_angle(analytic_signal: np.array):
+        return np.angle(analytic_signal)
 
     @staticmethod
     def unwrap_hilbert(analytic_signal: np.array, sample_rate: REAL_DTYPE):
-        instantaneous_phase = FMdemod.unwrap(np.angle(analytic_signal))
-        instantaneous_frequency = (
-            np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
-        )
-        return instantaneous_frequency
+        instantaneous_phase = FMdemod.unwrap(FMdemod.np_angle(analytic_signal))
+        return FMdemod.calc_if(instantaneous_phase, sample_rate)
 
     @staticmethod
     def inst_freq(signal: np.ndarray, sample_rate: REAL_DTYPE):
@@ -497,28 +508,28 @@ class NoiseReduction:
 class SamplerateResampler:
     def __init__(self, numerator, denominator, converter):
         self.ratio = numerator / denominator
-        self.resampler = Resampler(converter, channels=1)
+        self.converter = converter
 
-    def resample(self, input_data, is_last_block):
-        output_data = self.resampler.process(input_data, self.ratio, end_of_input=is_last_block)
-        return output_data
+    def resample(self, input_data):
+        return resample(input_data, self.ratio, self.converter)
+
 
 class HiFiDecode:
     def __init__(self, decoder_in=None, decoder_out=None, options=None):
         if options is None:
             options = dict()
         self.options = options
-        self.input_rate: int = options["input_rate"]
-        self.rfBandPassParams = AFEParamsFront()
-        self.audio_rate: int = 192000
-        self.audio_final_rate: int = options["audio_rate"]
         self.decode_mode = options["mode"]
         self.gain = options["gain"]
+
+        self.input_rate: int = int(options["input_rate"])
+        self.audio_rate: int = 192000
+        self.audio_final_rate: int = int(options["audio_rate"])
+        self.rfBandPassParams = AFEParamsFront()
         # downsamples the if signal to fit within the nyquist cutoff within an integer ratio of the audio rate
         min_if_rate = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
         self.if_rate_audio_ratio = ceil(min_if_rate / self.audio_rate)
-        self.if_rate: int = self.if_rate_audio_ratio * self.audio_rate
-
+        self.if_rate: int = int(self.if_rate_audio_ratio * self.audio_rate)
         (
             self.ifresample_numerator,
             self.ifresample_denominator,
@@ -528,30 +539,7 @@ class HiFiDecode:
             self.audioFinal_denominator
         ) = self.getResamplingRatios()
 
-        # trim off peaks at edges of if
-        self.pre_trim = 50
-        self.block_overlap_audio: int = int(self.audio_rate / (4e2 + self.pre_trim * 2))
-        audio_final_rate = (self.options["audio_rate"] / self.audio_rate) * (
-            self.audioRes_numerator / self.audioRes_denominator
-        )
-        self.block_overlap: int = round(
-            self.block_overlap_audio
-            * self.ifresample_denominator
-            / (self.ifresample_numerator * audio_final_rate)
-        )
-
-        # TODO: block overlap should be an integer number of samples for all sample rate ratios
-        self.overlap_seconds = self.block_overlap / self.input_rate
-        self.block_overlap_resampled = self.if_rate * self.overlap_seconds
-        self.block_overlap_audio = self.audio_rate * self.overlap_seconds
-        self.block_overlap_audio_final = self.audio_final_rate * self.overlap_seconds
-
-        # block overlap and edge discard
-        self.blocks_second: int = BLOCKS_PER_SECOND
-        self.block_size: int = int(self.input_rate / self.blocks_second)
-        self.block_resampled_size: int = int(self.if_rate / self.blocks_second)
-        self.block_audio_size: int = int(self.audio_rate / self.blocks_second)
-        self.block_final_audio_size: int = int(self.audio_final_rate / self.blocks_second)
+        self.set_block_sizes()
 
         a_iirb, a_iira = firdes_lowpass(
             self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
@@ -574,8 +562,6 @@ class HiFiDecode:
             self.if_resampler_converter = "sinc_fastest"
             self.audio_resampler_converter = "sinc_fastest"
             self.audio_final_resampler_converter = "sinc_fastest"
-
-        # filter_plot(envv_iirb, envv_iira, self.audio_rate, type="bandpass", title="audio_filter")
 
         if options["format"] == "vhs":
             if options["standard"] == "p":
@@ -659,6 +645,46 @@ class HiFiDecode:
 
         self.resample_if_process_in = decoder_in
         self.mix_gain_out = decoder_out
+
+    def set_block_sizes(self, block_size=None, is_last_block=False):
+        # block overlap and edge discard
+        self.blocks_second: float = 1 / BLOCKS_PER_SECOND
+        
+        if block_size == None:
+            self.block_size: int = ceil(self.input_rate * self.blocks_second)
+        else:
+            self.block_size: int = block_size
+            self.blocks_second: float = block_size / self.input_rate
+
+        self.block_resampled_size: int = ceil(self.if_rate * self.blocks_second)
+        self.block_audio_size: int = ceil(self.audio_rate * self.blocks_second)
+        self.block_final_audio_size: int = ceil(self.audio_final_rate * self.blocks_second)
+
+        # trim off peaks at edges of if
+        self.pre_trim = 50
+        self.resampler_overlap = 1e2
+        # use the greatest common divisor to calculate the overlap samples so it is always an integer
+        block_size_gcd = np.gcd.reduce([self.block_size, self.block_resampled_size, self.block_audio_size, self.block_final_audio_size])
+        overlap_divisor = int(self.audio_rate / block_size_gcd)
+
+        if not is_last_block:
+            self.block_overlap_audio = ceil((self.resampler_overlap + self.pre_trim * 2) / overlap_divisor) * overlap_divisor
+
+        overlap_seconds = self.block_overlap_audio / self.audio_rate
+
+        self.block_overlap = round(self.input_rate * overlap_seconds)
+        self.block_overlap_resampled = round(self.if_rate * overlap_seconds)
+        self.block_overlap_audio_final = round(self.audio_final_rate * overlap_seconds)
+
+        return {
+            "block_len": self.block_size,
+            "block_overlap": self.block_overlap,
+            "block_resampled_len": self.block_resampled_size + self.block_overlap_resampled,
+            "block_audio_len": self.block_audio_size + self.block_overlap_audio,
+            "block_audio_final_len": self.block_final_audio_size,
+            "block_audio_final_overlap": self.block_overlap_audio_final,
+        }
+
 
     def start(self):
         demod_process_audio_process_l_in = Queue()
@@ -972,7 +998,7 @@ class HiFiDecode:
             raw_data = bandpassRF.work(raw_data)
             
             # resample from input sample rate to if sample rate
-            data = if_resampler.resample(raw_data, buffer_params["is_last_block"])
+            data = if_resampler.resample(raw_data)
     
             # save the resampled data into shared memory for the next step
             buffer_params["block_resampled_trimmed"] = len(data)
@@ -1003,7 +1029,7 @@ class HiFiDecode:
             audio = HiFiDecode.demodblock(resampled_block, afe, fm, audio_process_params)
 
             # resample if sample rate to audio sample rate
-            audio = audio_resampler.resample(audio, buffer_params["is_last_block"])
+            audio = audio_resampler.resample(audio)
             
             # cancel dc based on mean
             dc = HiFiDecode.cancelDC(audio)
@@ -1017,7 +1043,7 @@ class HiFiDecode:
             
             # resample audio sample rate to final audio sample rate
             if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
-                audio = audio_final_resampler.resample(audio, buffer_params["is_last_block"])
+                audio = audio_final_resampler.resample(audio)
 
             # update the carrier frequency to account for any dc offset
             if audio_process_params["auto_fine_tune"]:
@@ -1027,14 +1053,12 @@ class HiFiDecode:
             pre = buffer.get_pre_left() if channel == 0 else buffer.get_pre_right()
 
             # trim off the block overlap
-            audio_overlap = int(audio_process_params["block_overlap_audio_final"] / 2)
-            expected_audio_len = buffer_params["post_audio_trimmed"]
-            actual_audio_len = len(audio)
-            overlap_already_trimmed = expected_audio_len - actual_audio_len
-            overlap_to_trim = int((audio_overlap - overlap_already_trimmed) / 2)
+            audio_len = len(audio)
+            trimmed_audio_len = buffer_params["post_audio_len"]
+            overlap_to_trim = int((audio_len - trimmed_audio_len) / 2)
 
-            DecoderSharedMemory.copy_data_src_offset(audio, pre, overlap_to_trim, actual_audio_len)
-            buffer_params["pre_audio_trimmed"] = expected_audio_len
+            DecoderSharedMemory.copy_data_src_offset(audio, pre, overlap_to_trim, audio_len)
+            buffer_params["pre_audio_trimmed"] = trimmed_audio_len
 
             # send this buffer to the next step
             demod_process_out.put(buffer_params)
