@@ -441,7 +441,7 @@ def log_decode(start_time: datetime, frames: int, audio_samples: int, blocks_enq
     audio_time: float = audio_samples / audio_rate
     audio_time_format: str = seconds_to_str(audio_time)
 
-    latency_time = input_time - audio_time
+    latency_time = max(0, input_time - audio_time)
     latency_format: str = seconds_to_str(latency_time)
 
     relative_speed: float = input_time / elapsed_time.total_seconds()
@@ -831,11 +831,10 @@ def decode_parallel(
     block_size = decoder.blockSize
     block_resampled_size = decoder.blockResampledSize
     block_audio_size = decoder.blockAudioSize
-    block_final_size = decoder.blockFinalAudioSize
 
     read_overlap = decoder.readOverlap
     input_position = Value('d', 0)
-    start_time =  datetime.now()
+    start_time = datetime.now()
     
     # HiFiDecode data flow diagram
     # All data is sent via SharedMemory
@@ -851,7 +850,9 @@ def decode_parallel(
 
     # spin up shared memory
     # these blocks of memory are used to transfer the audio data throughout the various steps
-    num_shared_memory_instances = threads * 2
+    num_shared_memory_instances = int(threads * 1.5)
+    num_decoders = threads
+
     shared_memory_instances = []
     shared_memory_idle_queue = Queue()
     for i in range(num_shared_memory_instances):
@@ -864,11 +865,10 @@ def decode_parallel(
 
     # spin up the decoders
     decoders: list[HiFiDecode] = []
-    decoder_in_queue = Queue(threads)
+    decoder_in_queue = Queue()
     decoder_out_queue = Queue()
     decode_done = Event()
 
-    num_decoders = max(1, int(threads/2))
     for i in range(num_decoders):
         decoder = HiFiDecode(decoder_in_queue, decoder_out_queue, decode_options)
         if bias_guess:
@@ -981,7 +981,6 @@ def decode_parallel(
             if is_last_block:
                  break
 
-            
             current_block_num += 1
 
     print("")
@@ -1007,7 +1006,9 @@ def guess_bias(decoder, input_file, block_size, blocks_limits=10):
 
     with as_soundfile(input_file) as f:
         while f.tell() < f.frames and len(blocks) <= blocks_limits:
-            blocks.append(f.read(block_size))
+            block_buffer = np.empty(block_size, dtype=np.int16)
+            f.buffer_read_into(block_buffer, "int16")
+            blocks.append(block_buffer)
 
     LCRef, RCRef = decoder.guessBiases(blocks)
     print("done!")

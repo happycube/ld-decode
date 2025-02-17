@@ -583,7 +583,7 @@ class HiFiDecode:
                 self.standard_original = AFEParamsNTSCHi8()
 
         self.headswitch_interpolation_enabled = self.options["head_switching_interpolation"]
-        self.headswitch_passes = 2
+        self.headswitch_passes = 1
         self.headswitch_signal_rate = self.audio_rate
         self.headswitch_hz = self.field_rate # frequency used to fit peaks to the expected headswitching interval
         self.headswitch_drift_hz = self.field_rate * 0.1 # +- 10% drift is normal
@@ -643,8 +643,8 @@ class HiFiDecode:
             "hs_a": hs_a
         }
 
-        self.resample_if_process_in = decoder_in
-        self.mix_gain_out = decoder_out
+        self.decoder_in = decoder_in
+        self.decoder_out = decoder_out
 
     def set_block_sizes(self, block_size=None, is_last_block=False):
         # block overlap and edge discard
@@ -685,54 +685,19 @@ class HiFiDecode:
             "block_audio_final_overlap": self.block_overlap_audio_final,
         }
 
-
     def start(self):
-        demod_process_audio_process_l_in = Queue()
-        demod_process_audio_process_r_in = Queue()
         self.resample_if_process = Process(target=HiFiDecode.resample_if_worker, args=(
-            self.resample_if_process_in,
-            demod_process_audio_process_l_in,
-            demod_process_audio_process_r_in,
+            self.decoder_in,
+            self.decoder_out,
+            self.standard,
+            self.standard_original,
             self.rfBandPassParams,
             self.audio_process_params
         ))
         self.resample_if_process.start()
 
-        demod_process_audio_process_l_out = Queue()
-        self.demod_process_audio_process_l = Process(target=HiFiDecode.demod_process_audio_worker, args=(
-            demod_process_audio_process_l_in,
-            demod_process_audio_process_l_out,
-            0,
-            self.standard,
-            self.standard_original,
-            self.audio_process_params,
-        ))
-        self.demod_process_audio_process_l.start()
-
-        demod_process_audio_process_r_out = Queue()
-        self.demod_process_audio_process_r = Process(target=HiFiDecode.demod_process_audio_worker, args=(
-            demod_process_audio_process_r_in,
-            demod_process_audio_process_r_out,
-            1,
-            self.standard,
-            self.standard_original,
-            self.audio_process_params,
-        ))
-        self.demod_process_audio_process_r.start()
-
-        self.mix_gain_process = Process(target=HiFiDecode.mix_gain_worker, args=(
-            demod_process_audio_process_l_out,
-            demod_process_audio_process_r_out,
-            self.mix_gain_out,
-            self.audio_process_params
-        ))
-        self.mix_gain_process.start()
-
     def close(self):
         self.resample_if_process.terminate()
-        self.demod_process_audio_process_l.terminate()
-        self.demod_process_audio_process_r.terminate()
-        self.mix_gain_process.terminate()
 
     def getResamplingRatios(self):
         samplerate2ifrate = self.if_rate / self.input_rate
@@ -827,10 +792,13 @@ class HiFiDecode:
         audio: np.array,
         boundaries: list[Tuple[int, int]]
     ):
+        interpolated_signal = np.empty_like(audio)
+        interpolator_in = np.empty_like(audio)
+        DecoderSharedMemory.copy_data(audio, interpolated_signal, 0, len(interpolated_signal))
+        DecoderSharedMemory.copy_data(audio, interpolator_in, 0, len(interpolator_in))
+
         # setup interpolator input by copying and removing any samples that are peaks
-        time = np.arange(len(audio), dtype=float)
-        interpolator_in = np.empty(len(audio), dtype=audio.dtype)
-        DecoderSharedMemory.copy_data(audio, interpolator_in, 0, len(audio))
+        time = np.arange(len(interpolated_signal), dtype=float)
 
         for (start, end) in boundaries:
             time[start:end] = np.nan
@@ -847,13 +815,15 @@ class HiFiDecode:
 
             # sample and hold inteerpolation if boundaries are beyond this chunk
             if start < 0:
-                audio[0:end] = audio[end]
+                interpolated_signal[0:end] = interpolated_signal[end]
             elif end > len(audio):
-                audio[start:len(audio)] = audio[start]
+                interpolated_signal[start:len(audio)] = interpolated_signal[start]
             else:
-                for i in range(start, end): audio[i] = interpolator(i)
+                for i in range(start, end): interpolated_signal[i] = interpolator(i)
                 # smooth linear interpolation
-                audio[start-smoothing_size:end+smoothing_size] = HiFiDecode.smooth(audio[start-smoothing_size:end+smoothing_size], ceil(smoothing_size / 4))
+                interpolated_signal[start-smoothing_size:end+smoothing_size] = HiFiDecode.smooth(interpolated_signal[start-smoothing_size:end+smoothing_size], ceil(smoothing_size / 4))
+
+        return interpolated_signal
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
@@ -979,14 +949,23 @@ class HiFiDecode:
             )
             _, afe, _, fm = HiFiDecode.afeParams(standard, audio_process_params)
 
-        HiFiDecode.log_bias(standard_original, standard)
-
         return afe, fm, standard
 
     @staticmethod
-    def resample_if_worker(decoder_in, demod_process_audio_process_l_in, demod_process_audio_process_r_in, rfBandPassParams, audio_process_params):
+    def resample_if_worker(
+        decoder_in,
+        decoder_out,
+        standard,
+        standard_original,
+        rfBandPassParams, 
+        audio_process_params
+    ):
         bandpassRF = AFEBandPass(rfBandPassParams, audio_process_params["input_rate"])
         if_resampler = SamplerateResampler(audio_process_params["ifresample_numerator"], audio_process_params["ifresample_denominator"], audio_process_params["if_resampler_converter"])
+        audio_resampler = SamplerateResampler(audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
+        audio_final_resampler = SamplerateResampler(audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
+
+        afeL, afeR, fmL, fmR = HiFiDecode.afeParams(standard, audio_process_params)
 
         while True:
             buffer_params = decoder_in.get()
@@ -994,115 +973,92 @@ class HiFiDecode:
             raw_data = buffer.get_block()
     
             # Do a bandpass filter to remove any the video components from the signal.
-            raw_data = raw_data.astype(buffer_params["audio_dtype"], copy=False)
+            # cast up to float64 for demodulation
+            raw_data = raw_data.astype(np.float64, copy=False)
             raw_data = bandpassRF.work(raw_data)
             
             # resample from input sample rate to if sample rate
             data = if_resampler.resample(raw_data)
-    
-            # save the resampled data into shared memory for the next step
-            buffer_params["block_resampled_trimmed"] = len(data)
-            block_resampled_buffer = buffer.get_block_resampled()
-            DecoderSharedMemory.copy_data(data, block_resampled_buffer, 0, buffer_params["block_resampled_trimmed"])
-    
-            # send this data to the left and right demodulator processes
-            demod_process_audio_process_l_in.put(buffer_params)
-            demod_process_audio_process_r_in.put(buffer_params)
             buffer.close()
 
-    @staticmethod
-    def demod_process_audio_worker(demod_process_in, demod_process_out, channel, standard, standard_original, audio_process_params):
-        if channel == 0:
-            afe, _, fm, _ = HiFiDecode.afeParams(standard, audio_process_params)
-        else:
-            _, afe, _, fm = HiFiDecode.afeParams(standard, audio_process_params)
+            # demodulate
+            audioL = HiFiDecode.demodblock(data, afeL, fmL)
+            audioR = HiFiDecode.demodblock(data, afeR, fmR)
 
-        audio_resampler = SamplerateResampler(audio_process_params["audioRes_numerator"], audio_process_params["audioRes_denominator"], audio_process_params["audio_resampler_converter"])
-        audio_final_resampler = SamplerateResampler(audio_process_params["audioFinal_numerator"], audio_process_params["audioFinal_denominator"], audio_process_params["audio_final_resampler_converter"])
-
-        while True:
-            buffer_params = demod_process_in.get()
-            buffer = DecoderSharedMemory(buffer_params)
-
-            # demodulate the input block
-            resampled_block = buffer.get_block_resampled()
-            audio = HiFiDecode.demodblock(resampled_block, afe, fm, audio_process_params)
+            # cast back down to float32 for audio operations
+            audioL = audioL.astype(buffer_params["audio_dtype"], copy=False)
+            audioR = audioR.astype(buffer_params["audio_dtype"], copy=False)
 
             # resample if sample rate to audio sample rate
-            audio = audio_resampler.resample(audio)
-            
+            audioL = audio_resampler.resample(audioL)
+            audioR = audio_resampler.resample(audioR)
+
             # cancel dc based on mean
-            dc = HiFiDecode.cancelDC(audio)
+            dcL = HiFiDecode.cancelDC(audioL)
+            dcR = HiFiDecode.cancelDC(audioR)
 
             # clip signal based on vco deviation
-            HiFiDecode.clip(audio, AFEParamsVHS().VCODeviation)
+            HiFiDecode.clip(audioL, AFEParamsVHS().VCODeviation)
+            HiFiDecode.clip(audioR, AFEParamsVHS().VCODeviation)
+
+            # remove spikes at ends
+            pre_trim = audio_process_params["pre_trim"]
+            for i in range(pre_trim):
+                audioL[i] = 0
+                audioR[i] = 0
+            for i in range(len(audioL)-pre_trim, len(audioL)):
+                audioL[i] = 0
+                audioR[i] = 0
 
             # do head switching noise cancellation if enabled
             if audio_process_params["headswitch_interpolation_enabled"]:
-                audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
-            
+                audioL = HiFiDecode.headswitch_remove_noise(audioL, audio_process_params)
+                audioR = HiFiDecode.headswitch_remove_noise(audioR, audio_process_params)
+    
             # resample audio sample rate to final audio sample rate
             if audio_process_params["audio_rate"] != audio_process_params["audio_final_rate"]:
-                audio = audio_final_resampler.resample(audio)
+                audioL = audio_final_resampler.resample(audioL)
+                audioR = audio_final_resampler.resample(audioR)
 
-            # update the carrier frequency to account for any dc offset
             if audio_process_params["auto_fine_tune"]:
-                afe, fm, standard = HiFiDecode.auto_fine_tune(channel, dc, standard_original, standard, audio_process_params)
+                afeL, fmL, standard = HiFiDecode.auto_fine_tune(0, dcL, standard_original, standard, audio_process_params)
+                afeR, fmR, standard = HiFiDecode.auto_fine_tune(1, dcR, standard_original, standard, audio_process_params)
+                HiFiDecode.log_bias(standard_original, standard)
 
-            # copy the resulting audio into shared memory for the next steps
-            pre = buffer.get_pre_left() if channel == 0 else buffer.get_pre_right()
+            # mix for various stereo modes
+            audioL, audioR = HiFiDecode.mix_for_mode_stereo(audioL, audioR, audio_process_params["decode_mode"])
 
             # trim off the block overlap
-            audio_len = len(audio)
+            audio_len = len(audioL)
             trimmed_audio_len = buffer_params["post_audio_len"]
             overlap_to_trim = int((audio_len - trimmed_audio_len) / 2)
 
-            DecoderSharedMemory.copy_data_src_offset(audio, pre, overlap_to_trim, audio_len)
+            # create a new buffer with the trimmed offsets
             buffer_params["pre_audio_trimmed"] = trimmed_audio_len
-
-            # send this buffer to the next step
-            demod_process_out.put(buffer_params)
-            buffer.close()
-
-    @staticmethod
-    def mix_gain_worker(demod_process_audio_process_l_out, demod_process_audio_process_r_out, mix_gain_out, audio_process_params):
-        while True:
-            l_buffer_params = demod_process_audio_process_l_out.get()
-            r_buffer_params = demod_process_audio_process_r_out.get()
-    
-            assert l_buffer_params["block_num"] == r_buffer_params["block_num"]
-            
-            buffer_params = l_buffer_params
             buffer = DecoderSharedMemory(buffer_params)
-    
+
+            # copy the audio data into the shared buffer
             l_out = buffer.get_pre_left()
             r_out = buffer.get_pre_right()
-    
-            if audio_process_params["decode_mode"] != "s":
-                preL, preR = HiFiDecode.mix_for_mode_stereo(l_out, r_out, audio_process_params["decode_mode"])
-                DecoderSharedMemory.copy_data(preL, l_out, 0, len(preL))
-                DecoderSharedMemory.copy_data(preR, r_out, 0, len(preR))
+            DecoderSharedMemory.copy_data_src_offset(audioL, l_out, overlap_to_trim, audio_len)
+            DecoderSharedMemory.copy_data_src_offset(audioR, r_out, overlap_to_trim, audio_len)
 
+            # adjust gain
             if audio_process_params["gain"] != 1:
                 HiFiDecode.adjust_gain(l_out, audio_process_params["gain"])
                 HiFiDecode.adjust_gain(r_out, audio_process_params["gain"])
 
             buffer.close()
-            mix_gain_out.put(buffer_params)
-
+            decoder_out.put(buffer_params)
     
     @staticmethod
-    def demodblock(data: np.array, afe: AFEFilterable, fm: FMdemod, audio_process_params) -> np.array:
+    def demodblock(data: np.array, afe: AFEFilterable, fm: FMdemod) -> np.array:
         filtered = afe.work(data)
 
         # demodulate
         if_filtered = fm.work(filtered)
 
-        # remove peaks at edges of demodulated audio
-        trim = audio_process_params["if_rate_audio_ratio"] * audio_process_params["pre_trim"]
-        if_filtered_trimmed = if_filtered[trim:-trim]
-
-        return if_filtered_trimmed
+        return if_filtered
 
     # size of the raw data block coming in
     @property
@@ -1152,9 +1108,11 @@ class HiFiDecode:
             window_average=len(blocks)
         )
         for block in blocks:
-            data = if_resampler.resample(block, False)
-            preL = self.demodblock(data, afeL, fmL, self.audio_process_params)
-            preR = self.demodblock(data, afeR, fmR, self.audio_process_params)
+            block = block.astype(np.float64, copy=False)
+            data = if_resampler.resample(block)
+
+            preL = HiFiDecode.demodblock(data, afeL, fmL)
+            preR = HiFiDecode.demodblock(data, afeR, fmR)
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
 
@@ -1162,7 +1120,7 @@ class HiFiDecode:
 
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=True)
-    def cancelDC(audio: np.array) -> Tuple[np.array, float]:
+    def cancelDC(audio: np.array) -> float:
         dc = REAL_DTYPE(np.mean(audio))
         for i in range(len(audio)):
             audio[i] = audio[i] - dc
@@ -1179,13 +1137,15 @@ class HiFiDecode:
         for _ in range(audio_process_params["headswitch_passes"]):
             peaks, filtered_signal, filtered_signal_abs = HiFiDecode.headswitch_detect_peaks(audio, audio_process_params)
             interpolation_boundaries = HiFiDecode.headswitch_calc_boundaries(peaks, audio_process_params)
-            HiFiDecode.headswitch_interpolate_boundaries(audio, interpolation_boundaries)
+            interpolated_audio = HiFiDecode.headswitch_interpolate_boundaries(audio, interpolation_boundaries)
 
             # uncomment to debug head switching pulse detection
-            # HiFiDecode.debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, audio_interpolated, audio_process_params["headswitch_signal_rate"])
-            # plt.show()
-            # sys.exit(0)
-        return audio
+            #HiFiDecode.debug_peak_interpolation(audio, filtered_signal, filtered_signal_abs, peaks, interpolation_boundaries, interpolated_audio, audio_process_params["headswitch_signal_rate"])
+            #plt.show()
+            
+            audio = interpolated_audio
+
+        return interpolated_audio
     
     @staticmethod
     def mix_for_mode_stereo(
@@ -1257,8 +1217,8 @@ class HiFiDecode:
         peak_ends = [round(x[2]) for x in peaks]
         peak_prominences = [x[3] for x in peaks]
 
-        interpolation_starts = [start for start, end in interpolation_boundaries]
-        interpolation_ends = [end for start, end in interpolation_boundaries]
+        interpolation_starts = [max(0, start) for start, end in interpolation_boundaries]
+        interpolation_ends = [min(end, len(audio)-1) for start, end in interpolation_boundaries]
         
         plt.subplot(4, 1, 2)
         plt.plot(t, filtered_signal_abs, label='Filtered Signal Absolute Value', color='black')
