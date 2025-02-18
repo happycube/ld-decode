@@ -27,7 +27,85 @@ class DecoderState:
     block_audio_final_overlap: int
     block_dtype: np.dtype
     audio_dtype: np.dtype
+    
+class PostProcessorSharedMemory():
+    def __init__(
+            self,
+            decoder_state: DecoderState
+        ):
+        self.shared_memory = SharedMemory(name=decoder_state.name)
 
+        self.size = self.shared_memory.size
+        self.buf = self.shared_memory.buf
+        self.name = self.shared_memory.name
+        self.close = self.shared_memory.close
+        self.unlink = self.shared_memory.unlink
+
+        self.audio_dtype = decoder_state.audio_dtype
+        self.channel_len = decoder_state.pre_audio_trimmed
+        self.audio_dtype_item_size = np.dtype(self.audio_dtype).itemsize
+
+        ### Post Processing Memory
+        # |--pre_left--|--pre_right--|--nr_left--|--nr_right--|
+        # |-----------stereo---------|
+
+        # pre left
+        self.l_pre_offset = 0
+        self.l_pre_len = self.channel_len
+        self.l_pre_bytes = self.l_pre_len * self.audio_dtype_item_size
+        # pre right
+        self.r_pre_offset = self.l_pre_offset + self.l_pre_bytes
+        self.r_pre_len = self.channel_len
+        self.r_pre_bytes = self.r_pre_len * self.audio_dtype_item_size
+
+        # overlaps with pre
+        ## stereo out
+        self.stereo_offset = 0
+        self.stereo_len = self.channel_len * 2
+        self.stereo_bytes = self.stereo_len * self.audio_dtype_item_size
+
+        ## noise reduction out
+        # left
+        self.l_nr_offset = self.r_pre_offset + self.r_pre_bytes
+        self.l_nr_len = self.channel_len
+        self.l_nr_bytes = self.l_nr_len * self.audio_dtype_item_size
+        # right
+        self.r_nr_offset = self.l_nr_offset + self.l_nr_bytes
+        self.r_nr_len = self.channel_len
+        self.r_nr_bytes = self.r_nr_len * self.audio_dtype_item_size
+
+            
+    @staticmethod
+    def get_shared_memory(channel_len, name, audio_dtype=REAL_DTYPE):
+        byte_size = channel_len * 4 * np.dtype(audio_dtype).itemsize
+
+        # allow more than one instance to run at a time
+        system_random = SystemRandom()
+        name += "_" + ''.join(system_random.choice(string.ascii_lowercase + string.digits) for _ in range(8))
+
+        # this instance must be saved in a variable that persists on both processes
+        # Windows will remove the shared memory if it garbage collects the handle in any of the processes it is open in
+        # https://stackoverflow.com/a/63717188
+        return SharedMemory(size=byte_size, name=name, create=True)
+
+    def get_pre_left(self):
+        return np.ndarray(self.l_pre_len, dtype=self.audio_dtype, offset=self.l_pre_offset, buffer=self.buf)
+    
+    def get_pre_right(self):
+        return np.ndarray(self.r_pre_len, dtype=self.audio_dtype, offset=self.r_pre_offset, buffer=self.buf)
+
+    # overlaps with the pre audio
+    def get_stereo(self):
+        return np.ndarray(self.stereo_len, dtype=self.audio_dtype, offset=self.stereo_offset, buffer=self.buf)
+    
+    def get_nr_left(self):
+        return np.ndarray(self.l_nr_len, dtype=self.audio_dtype, offset=self.l_nr_offset, buffer=self.buf)
+    
+    def get_nr_right(self):
+        return np.ndarray(self.r_nr_len, dtype=self.audio_dtype, offset=self.r_nr_offset, buffer=self.buf)
+    
+    
+    
 class DecoderSharedMemory():
     def __init__(
             self,
@@ -83,25 +161,6 @@ class DecoderSharedMemory():
         self.block_resampled_offset = self.r_pre_offset + self.r_pre_bytes
         self.block_resampled_len = decoder_state.block_resampled_len
         self.block_resampled_bytes = self.block_resampled_len * self.audio_dtype_item_size
-
-        ### Post Processing Memory (reuses raw data area)
-        # |--pre_left--|--pre_right--|--stereo--|--nr_left--|--nr_right--|
-
-        ## stereo out
-        self.stereo_offset = self.block_offset
-        self.stereo_len = decoder_state.stereo_audio_len
-        self.stereo_bytes = self.stereo_len * self.audio_dtype_item_size
-
-        ## noise reduction out
-        # left
-        self.l_nr_offset = self.stereo_offset + self.stereo_bytes
-        self.l_nr_len = decoder_state.post_audio_len
-        self.l_nr_bytes = self.l_nr_len * self.audio_dtype_item_size
-        # right
-        self.r_nr_offset = self.l_nr_offset + self.l_nr_bytes
-        self.r_nr_len = decoder_state.post_audio_len
-        self.r_nr_bytes = self.r_nr_len * self.audio_dtype_item_size
-
 
     @staticmethod
     def get_shared_memory(block_len, block_overlap, block_resampled_len, pre_audio_len, name, block_dtype=np.int16, audio_dtype=REAL_DTYPE):
@@ -162,16 +221,6 @@ class DecoderSharedMemory():
     
     def get_pre_right(self):
         return np.ndarray(self.pre_audio_trimmed, dtype=self.audio_dtype, offset=self.r_pre_offset, buffer=self.buf)
-    
-    ## Post Processor methods
-    def get_nr_left(self):
-        return np.ndarray(self.post_audio_trimmed, dtype=self.audio_dtype, offset=self.l_nr_offset, buffer=self.buf)
-    
-    def get_nr_right(self):
-        return np.ndarray(self.post_audio_trimmed, dtype=self.audio_dtype, offset=self.r_nr_offset, buffer=self.buf)
-    
-    def get_stereo(self):
-        return np.ndarray(self.stereo_audio_trimmed, dtype=self.audio_dtype, offset=self.stereo_offset, buffer=self.buf)
     
     @staticmethod
     @njit(cache=True, fastmath=True, nogil=False)
