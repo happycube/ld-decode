@@ -658,7 +658,7 @@ class PostProcessor:
             decoder_conn = decoder_conns[decoder_conn_idx]
             decoder_conn_idx = (decoder_conn_idx + 1) % len(decoder_conns)
 
-            if decoder_conn.poll(0.001):
+            for decoder_conn in connection.wait(decoder_conns):
                 try:
                     in_decoder_state, decoder_idx = decoder_conn.recv()
                     buffer = DecoderSharedMemory(in_decoder_state)
@@ -845,6 +845,7 @@ def decode_parallel(
     # TODO: reprocess data read in this step
     if bias_guess:
         LCRef, RCRef = guess_bias(decoder, decode_options["input_file"], int(decode_options["input_rate"]))
+        decoder.updateAFE(LCRef, RCRef)
         
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
@@ -887,19 +888,17 @@ def decode_parallel(
         atexit.register(buffer_instance.unlink)
 
     # spin up the decoders
-    decoders: list[HiFiDecode] = []
+    decoder_processes: list[Process] = []
     decoder_conns = []
     decode_done = Event()
 
     for i in range(num_decoders):
         decoder_output_conn, decoder_input_conn = Pipe()
-        decoder = HiFiDecode(decoder_output_conn, decode_options)
-        if bias_guess:
-            decoder.updateAFE(LCRef, RCRef)
+        decoder_process = Process(target=HiFiDecode.hifi_decode_worker, args=(decoder_output_conn, decode_options, decoder.standard))
+        decoder_process.start()
 
-        decoder.start()
-        atexit.register(decoder.close)
-        decoders.append(decoder)
+        atexit.register(decoder_process.terminate)
+        decoder_processes.append(decoder)
         decoder_conns.append(decoder_input_conn)
 
     # set up the post processor
