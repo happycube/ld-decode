@@ -551,7 +551,7 @@ class PostProcessor:
                 if spectral_nr_amount > 0: 
                     spectral_nr.spectral_nr(pre, spectral_nr_out)
                 else:
-                    DecoderSharedMemory.copy_data(pre, spectral_nr_out, len(spectral_nr_out))
+                    DecoderSharedMemory.copy_data(pre, spectral_nr_out, decoder_state.post_audio_len)
 
                 buffer.close()
                 out_conn.send((decoder_state, channel_num))
@@ -586,7 +586,7 @@ class PostProcessor:
                 if use_noise_reduction:
                     noise_reduction.noise_reduction(pre, nr_out)
                 else:
-                    DecoderSharedMemory.copy_data(pre, nr_out, len(nr_out))
+                    DecoderSharedMemory.copy_data(pre, nr_out, decoder_state.post_audio_len)
 
                 buffer.close()
                 out_conn.send(decoder_state)
@@ -618,7 +618,7 @@ class PostProcessor:
             r = buffer.get_nr_right()
             stereo = buffer.get_stereo()
 
-            stereo_len = PostProcessor.stereo_interleave(l, r, stereo)
+            stereo_len = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.post_audio_trimmed)
 
             decoder_state.stereo_audio_trimmed = stereo_len
             buffer.close()
@@ -631,13 +631,13 @@ class PostProcessor:
         audioL: np.array,
         audioR: np.array,
         stereo: np.array,
+        channel_length: int
     ) -> bytes:
-        audio_len = len(audioL)
-        for i in range(audio_len):
+        for i in range(channel_length):
             stereo[(i * 2)] = audioL[i]
             stereo[(i * 2) + 1] = audioR[i]
             
-        stereo_len = audio_len * 2
+        stereo_len = channel_length * 2
         return stereo_len
 
     @staticmethod
