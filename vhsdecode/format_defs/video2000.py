@@ -1,7 +1,7 @@
 """Module containing parameters for v2000"""
 
 # TODO: Needs to be 180 degrees on every four lines on each track
-PAL_ROTATION = [0, 0]
+PAL_ROTATION = [0, -1]
 
 
 def fill_rfparams_video2000_shared(rfparams: dict, tape_speed: int = 0) -> None:
@@ -15,7 +15,7 @@ def fill_rfparams_video2000_shared(rfparams: dict, tape_speed: int = 0) -> None:
     #  resistor divider ratio: 4:1 (=> gain factor 5)
 
     rfparams["deemph_mid"] = 273755.82  # sqrt(gain_factor)/(2*pi*r*c)
-    rfparams["deemph_gain"] = 13.9794  # 20*log10(gain_factor)
+    rfparams["deemph_gain"] = 12.9794  # 20*log10(gain_factor)
     rfparams["deemph_q"] = (
         0.462088186  # 1/sqrt(sqrt(gain_factor) + 1/sqrt(gain_factor) + 2)
     )
@@ -59,11 +59,13 @@ def get_rfparams_pal_video2000(rfparams_pal: dict, tape_speed: int = 0) -> dict:
     rfparams["video_lpf_freq"] = 3000000
     rfparams["video_lpf_order"] = 6
 
-    rfparams["color_under_carrier"] = 625000  ########((625 * 25) * 40) + 1953
+    rfparams["color_under_carrier"] = ((625 * 25) * 40) + 1953  ## 625000
 
     # Upper frequency of bandpass to filter out chroma from the rf signal.
     # The VR2020 has a 1 mhz lpf
     rfparams["chroma_bpf_upper"] = 1100000
+    rfparams["chroma_bpf_lower"] = 220000
+    rfparams["chroma_bpf_order"] = 5
 
     # Video EQ after FM demod (PAL v2000)
     rfparams["video_eq"] = {
@@ -133,6 +135,6 @@ def get_sysparams_pal_video2000(sysparams_pal: dict, tape_speed: int = 0) -> dic
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
     # This has to be low enough to avoid clipping, so we have to
     # tell the chroma decoder to boost it by a bit afterwards.
-    sysparams["burst_abs_ref"] = 5000
+    sysparams["burst_abs_ref"] = 10000
 
     return sysparams
