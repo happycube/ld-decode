@@ -230,6 +230,7 @@ class DecoderSharedMemory():
 
     @staticmethod
     def copy_data(src: np.array, dst: np.array, length: int):
+        #np.copyto(dst, src[:length])
         if src.dtype == dst.dtype and src.flags.c_contiguous and dst.flags.c_contiguous:
             ctypes.memmove(dst.ctypes.data, src.ctypes.data, length * np.dtype(src.dtype).itemsize)
         else:
