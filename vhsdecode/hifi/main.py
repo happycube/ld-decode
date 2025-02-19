@@ -522,7 +522,7 @@ class PostProcessor:
         self.nr_worker_r.start()
         atexit.register(self.nr_worker_r.terminate)
         
-        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="HiFiDecode Stereo Merge", args=(nr_worker_l_out_output, nr_worker_r_out_output, self.mix_to_stereo_worker_output))
+        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="HiFiDecode Stereo Merge", args=(nr_worker_l_out_output, nr_worker_r_out_output, self.mix_to_stereo_worker_output, self.final_audio_rate))
         self.mix_to_stereo_worker_process.start()
         atexit.register(self.mix_to_stereo_worker_process.terminate)
 
@@ -596,7 +596,7 @@ class PostProcessor:
                 pass
 
     @staticmethod
-    def mix_to_stereo_worker(nr_l_in_conn, nr_r_in_conn, out_conn):
+    def mix_to_stereo_worker(nr_l_in_conn, nr_r_in_conn, out_conn, sample_rate):
         while True:
             while True:
                 try:
@@ -620,7 +620,7 @@ class PostProcessor:
             r = buffer.get_nr_right()
             stereo = buffer.get_stereo()
 
-            stereo_len = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.post_audio_trimmed)
+            stereo_len = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.post_audio_trimmed, sample_rate, decoder_state.block_num == 0)
 
             decoder_state.stereo_audio_trimmed = stereo_len
             buffer.close()
@@ -628,16 +628,25 @@ class PostProcessor:
             
 
     @staticmethod
-    @njit(numba.types.int32(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32), cache=True, fastmath=True, nogil=True)
+    @njit(numba.types.int32(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32, numba.types.int32, numba.types.bool_), cache=True, fastmath=True, nogil=True)
     def stereo_interleave(
         audioL: np.array,
         audioR: np.array,
         stereo: np.array,
-        channel_length: int
+        channel_length: int,
+        sample_rate: int,
+        is_first_block: bool
     ) -> int:
         for i in range(channel_length):
             stereo[(i * 2)] = audioL[i]
             stereo[(i * 2) + 1] = audioR[i]
+
+        # mute the spike that occurs during noise reduction
+        if is_first_block:
+            trim_samples = int(0.0015 * sample_rate)
+            for i in range(trim_samples):
+                stereo[(i * 2)] = 0
+                stereo[(i * 2) + 1] = 0
             
         stereo_len = channel_length * 2
         return stereo_len

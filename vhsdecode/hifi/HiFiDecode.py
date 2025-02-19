@@ -233,7 +233,7 @@ class FMdemod:
         DecoderSharedMemory.copy_data_float32(out, output, len(output))
 
     @staticmethod
-    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.float32), cache=True, fastmath=True, nogil=True, parallel=True)
+    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.float32), cache=True, fastmath=True, nogil=True)
     def inst_freq_numba(signal: np.array, instantaneous_frequency: np.array, sample_rate: REAL_DTYPE):
         # hilbert transform adapted from signal.hilbert
         axis=-1
