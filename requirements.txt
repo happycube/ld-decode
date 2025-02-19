@@ -6,4 +6,5 @@ samplerate
 scipy >=1.10,<=1.12
 soundfile>=0.13.1
 sounddevice
-noisereduce
+noisereduce>=2.0.0
+rocket-fft>=0.2.5

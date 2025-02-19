@@ -9,12 +9,14 @@ import sys
 from typing import Optional
 import signal
 from numba import njit, prange
+import numba
 import atexit
 
 import numpy as np
 import soundfile as sf
 
-from vhsdecode.hifi.utils import DecoderSharedMemory, DecoderState, PostProcessorSharedMemory
+
+from vhsdecode.hifi.utils import DecoderSharedMemory, DecoderState, PostProcessorSharedMemory, NumbaAudioArray, profile
 
 from vhsdecode.cmdcommons import (
     common_parser_cli,
@@ -551,7 +553,7 @@ class PostProcessor:
                 if spectral_nr_amount > 0: 
                     spectral_nr.spectral_nr(pre, spectral_nr_out)
                 else:
-                    DecoderSharedMemory.copy_data(pre, spectral_nr_out, decoder_state.post_audio_len)
+                    DecoderSharedMemory.copy_data_float32(pre, spectral_nr_out, decoder_state.post_audio_len)
 
                 buffer.close()
                 out_conn.send((decoder_state, channel_num))
@@ -586,7 +588,7 @@ class PostProcessor:
                 if use_noise_reduction:
                     noise_reduction.noise_reduction(pre, nr_out)
                 else:
-                    DecoderSharedMemory.copy_data(pre, nr_out, decoder_state.post_audio_len)
+                    DecoderSharedMemory.copy_data_float32(pre, nr_out, decoder_state.post_audio_len)
 
                 buffer.close()
                 out_conn.send(decoder_state)
@@ -599,14 +601,14 @@ class PostProcessor:
             while True:
                 try:
                     l_decoder_state = nr_l_in_conn.recv()
-                    break;
+                    break
                 except InterruptedError:
                     pass
         
             while True:
                 try:
                     r_decoder_state = nr_r_in_conn.recv()
-                    break;
+                    break
                 except InterruptedError:
                     pass
 
@@ -626,13 +628,13 @@ class PostProcessor:
             
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
+    @njit(numba.types.int32(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32), cache=True, fastmath=True, nogil=True)
     def stereo_interleave(
         audioL: np.array,
         audioR: np.array,
         stereo: np.array,
         channel_length: int
-    ) -> bytes:
+    ) -> int:
         for i in range(channel_length):
             stereo[(i * 2)] = audioL[i]
             stereo[(i * 2) + 1] = audioR[i]
@@ -663,8 +665,15 @@ class PostProcessor:
                     in_decoder_state, decoder_idx = decoder_conn.recv()
                     buffer = DecoderSharedMemory(in_decoder_state)
 
-                    in_preL = buffer.get_pre_left().copy()
-                    in_preR = buffer.get_pre_right().copy()
+                    in_preL_buffer = buffer.get_pre_left()
+                    in_preR_buffer = buffer.get_pre_right()
+
+                    in_preL = np.empty_like(in_preL_buffer)
+                    in_preR = np.empty_like(in_preR_buffer)
+
+                    DecoderSharedMemory.copy_data_float32(in_preL_buffer, in_preL, len(in_preL))
+                    DecoderSharedMemory.copy_data_float32(in_preR_buffer, in_preR, len(in_preR))
+
                     buffer.close()
 
                     decoder_shared_memory_idle_queue.put((in_decoder_state.name, decoder_idx))
@@ -687,8 +696,8 @@ class PostProcessor:
                             decoder_state.name = name
                             buffer = PostProcessorSharedMemory(decoder_state)
 
-                            DecoderSharedMemory.copy_data(preL, buffer.get_pre_left(), decoder_state.pre_audio_trimmed)
-                            DecoderSharedMemory.copy_data(preR, buffer.get_pre_right(), decoder_state.pre_audio_trimmed)
+                            DecoderSharedMemory.copy_data_float32(preL, buffer.get_pre_left(), decoder_state.pre_audio_trimmed)
+                            DecoderSharedMemory.copy_data_float32(preR, buffer.get_pre_right(), decoder_state.pre_audio_trimmed)
 
                             nr_worker_l_in_conn.send((decoder_state, 0))
                             nr_worker_r_in_conn.send((decoder_state, 1))
@@ -751,16 +760,11 @@ class SoundDeviceProcess():
         return self
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
-    def build_stereo(interleaved: np.array) -> np.array:
-        stacked_len = int(len(interleaved)/2)
-        stacked = np.empty((stacked_len, 2), dtype=np.float32)
-
-        for i in range(0, stacked_len):
-            stacked[i][0] = interleaved[i*2]
-            stacked[i][1] = interleaved[i*2+1]
-
-        return stacked
+    @njit(numba.types.void(numba.types.Array(numba.types.float32, 1, "C", readonly=True), numba.types.Array(numba.types.int16, 2, "C")), cache=True, fastmath=True, nogil=True)
+    def build_stereo(interleaved: np.array, stacked) -> np.array:
+        for i in range(0, len(stacked)):
+            stacked[i][0] = interleaved[i*2] * 2**15
+            stacked[i][1] = interleaved[i*2+1] * 2**15
 
     @staticmethod
     def play_worker(conn, sample_rate):
@@ -771,13 +775,16 @@ class SoundDeviceProcess():
                 if output_stream == None:
                     output_stream = sd.OutputStream(
                         samplerate=sample_rate,
-                        channels=2
+                        channels=2,
+                        dtype="int16"
                     )
                     output_stream.start()
     
                 interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
                 interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo)
-                stacked = SoundDeviceProcess.build_stereo(interleaved)
+                stacked = np.empty((int(len(interleaved)/2), 2), dtype=np.int16)
+
+                SoundDeviceProcess.build_stereo(interleaved, stacked)
                 output_stream.write(stacked)
             except InterruptedError:
                 pass
@@ -814,7 +821,9 @@ def write_soundfile_process_worker(
                     w.buffer_write(stereo, dtype="float32")
                     if preview_mode:
                         if SOUNDDEVICE_AVAILABLE:
-                            player.play(stereo.copy())
+                            stereo_copy = np.empty_like(stereo)
+                            DecoderSharedMemory.copy_data_float32(stereo, stereo_copy, len(stereo_copy))
+                            player.play(stereo_copy)
                         else:
                             print(
                                 "Import of sounddevice failed, preview is not available!"
@@ -1005,21 +1014,21 @@ def decode_parallel(
                 # create a new buffer with the updated offsets, and copy in the read data
                 buffer = DecoderSharedMemory(decoder_state)
                 new_block_in = buffer.get_block_in()
-                DecoderSharedMemory.copy_data(block_data_read, new_block_in, len(new_block_in))
+                DecoderSharedMemory.copy_data_int16(block_data_read, new_block_in, len(new_block_in))
                 decoder_state.is_last_block = True
 
             # copy the overlapping data from the previous read
             block_in_overlap = buffer.get_block_in_start_overlap()
             if len(previous_overlap) != 0:
-                DecoderSharedMemory.copy_data(previous_overlap, block_in_overlap, len(block_in_overlap))
+                DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
             else:
             # this is the first block, fill in some data since there is no overlap
-                DecoderSharedMemory.copy_data(block_in, block_in_overlap, len(block_in_overlap))
+                DecoderSharedMemory.copy_data_int16(block_in, block_in_overlap, len(block_in_overlap))
 
             # copy the the current overlap to use in the next iteration
             current_overlap = buffer.get_block_in_end_overlap()
             previous_overlap = np.empty_like(current_overlap)
-            DecoderSharedMemory.copy_data(current_overlap, previous_overlap, len(current_overlap))
+            DecoderSharedMemory.copy_data_int16(current_overlap, previous_overlap, len(current_overlap))
             
             buffer.close()
 

@@ -1,14 +1,21 @@
 from multiprocessing.shared_memory import SharedMemory
 from numba import njit, prange
+import numba
 import numpy as np
 from dataclasses import dataclass
 
 import string
 from random import SystemRandom
-import ctypes
 
+from cProfile import Profile
+from pstats import SortKey, Stats
+
+BLOCK_DTYPE = np.int16
 REAL_DTYPE = np.float32
 ALIGNMENT = 64
+
+NumbaAudioArray = numba.types.Array(numba.types.float32, 1, "C")
+NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C")
 
 @dataclass
 class DecoderState:
@@ -100,20 +107,20 @@ class PostProcessorSharedMemory():
         # https://stackoverflow.com/a/63717188
         return SharedMemory(size=byte_size, name=name, create=True)
 
-    def get_pre_left(self):
+    def get_pre_left(self) -> np.array:
         return np.ndarray(self.l_pre_len, dtype=self.audio_dtype, offset=self.l_pre_offset, buffer=self.buf)
     
-    def get_pre_right(self):
+    def get_pre_right(self) -> np.array:
         return np.ndarray(self.r_pre_len, dtype=self.audio_dtype, offset=self.r_pre_offset, buffer=self.buf)
 
     # overlaps with the pre audio
-    def get_stereo(self):
+    def get_stereo(self) -> np.array:
         return np.ndarray(self.stereo_len, dtype=self.audio_dtype, offset=self.stereo_offset, buffer=self.buf)
     
-    def get_nr_left(self):
+    def get_nr_left(self) -> np.array:
         return np.ndarray(self.l_nr_len, dtype=self.audio_dtype, offset=self.l_nr_offset, buffer=self.buf)
     
-    def get_nr_right(self):
+    def get_nr_right(self) -> np.array:
         return np.ndarray(self.r_nr_len, dtype=self.audio_dtype, offset=self.r_nr_offset, buffer=self.buf)
     
     
@@ -201,62 +208,60 @@ class DecoderSharedMemory():
     ## Decoder methods
     
     # block data with start and end overlap included
-    def get_block(self):
+    def get_block(self) -> np.array:
         return np.ndarray(self.block_start_overlap_len + self.block_len + self.block_end_overlap_len, dtype=self.block_dtype, offset=self.block_start_overlap_offset, buffer=self.buf)
     
     # first block includes start since there is no overlap
-    def get_first_block_in(self):
+    def get_first_block_in(self) -> np.array:
         return self.get_block()
 
     # block starts after first overlap, goes until after the last overlap
     # first part of the block is copied from the previous read
-    def get_block_in(self):
+    def get_block_in(self) -> np.array:
         return np.ndarray(self.block_len + self.block_end_overlap_len, dtype=self.block_dtype, offset=self.block_offset, buffer=self.buf)
     
     # end overlap is copied into the start overlap
-    def get_block_in_start_overlap(self):
+    def get_block_in_start_overlap(self) -> np.array:
         return np.ndarray(self.block_start_overlap_len, dtype=self.block_dtype, offset=self.block_start_overlap_offset, buffer=self.buf)
     
     # end overlap is copied and appended to the beginning of the next block
-    def get_block_in_end_overlap(self):
+    def get_block_in_end_overlap(self) -> np.array:
         return np.ndarray(self.block_end_overlap_len, dtype=self.block_dtype, offset=self.block_end_overlap_offset, buffer=self.buf)
     
-    def get_pre_left(self):
+    def get_pre_left(self) -> np.array:
         return np.ndarray(self.pre_audio_trimmed, dtype=self.audio_dtype, offset=self.l_pre_offset, buffer=self.buf)
     
-    def get_pre_right(self):
+    def get_pre_right(self) -> np.array:
         return np.ndarray(self.pre_audio_trimmed, dtype=self.audio_dtype, offset=self.r_pre_offset, buffer=self.buf)
     
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=False)
-    def _copy_data_numba(src: np.array, dst: np.array, length: int):
+    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.int64), cache=True, fastmath=True, nogil=True)
+    def copy_data_float32(src: np.array, dst: np.array, length: int):
         for i in range(length):
             dst[i] = src[i]
 
     @staticmethod
-    def copy_data(src: np.array, dst: np.array, length: int):
-        #np.copyto(dst, src[:length])
-        if src.dtype == dst.dtype and src.flags.c_contiguous and dst.flags.c_contiguous:
-            ctypes.memmove(dst.ctypes.data, src.ctypes.data, length * np.dtype(src.dtype).itemsize)
-        else:
-            DecoderSharedMemory._copy_data_numba(src, dst, length)
-    
+    @njit(numba.types.void(numba.types.Array(numba.int16, 1, "C"), numba.types.Array(numba.int16, 1, "C"), numba.types.int64), cache=True, fastmath=True, nogil=True)
+    def copy_data_int16(src: np.array, dst: np.array, length: int):
+        for i in range(length):
+            dst[i] = src[i]
+
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=False)
-    def _copy_data_src_offset_numba(src: np.array, dst: np.array, src_offset:int, length: int):
+    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.int64, numba.types.int64), cache=True, fastmath=True, nogil=True)
+    def copy_data_src_offset_float32(src: np.array, dst: np.array, src_offset: int, length: int):
         for i in range(length):
             dst[i] = src[i+src_offset]
 
-    @staticmethod
-    def copy_data_src_offset(src: np.array, dst: np.array, src_offset: int, length: int):
-        if src.dtype == dst.dtype and src.flags.c_contiguous and dst.flags.c_contiguous:
-            itemsize = np.dtype(src.dtype).itemsize
-            ctypes.memmove(dst.ctypes.data, src.ctypes.data + src_offset * itemsize, length * itemsize)
-        else:
-            DecoderSharedMemory._copy_data_src_offset_numba(src, dst, src_offset, length)
 
-    @staticmethod
-    @njit(cache=True, fastmath=True, nogil=False, parallel=True)
-    def copy_data_parallel(src: np.array, dst: np.array, offset:int, length: int):
-        for i in prange(length):
-            dst[i+offset] = src[i]
+def profile(function) -> int:
+    def run_profiler(*args, **kwarg):
+        with Profile() as profiler:
+            return_code = function(*args, **kwarg)
+            (
+                Stats(profiler)
+                .strip_dirs()
+                .sort_stats(SortKey.CUMULATIVE)
+                .print_stats()
+            )
+        return return_code
+    return run_profiler
