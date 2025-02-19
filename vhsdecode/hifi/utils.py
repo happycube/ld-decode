@@ -19,6 +19,26 @@ NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C")
 
 @dataclass
 class DecoderState:
+    def __init__(self, decoder, buffer_name, block_len, block_num, is_last_block):
+        block_sizes = decoder.set_block_sizes(block_len, is_last_block)
+
+        self.name = buffer_name
+        self.block_num = block_num
+        self.is_last_block = False
+        self.pre_audio_len = block_sizes["block_audio_len"]
+        self.pre_audio_trimmed = block_sizes["block_audio_len"]
+        self.post_audio_len = block_sizes["block_audio_final_len"]
+        self.post_audio_trimmed = block_sizes["block_audio_final_len"]
+        self.stereo_audio_len = block_sizes["block_audio_final_len"] * 2
+        self.stereo_audio_trimmed = block_sizes["block_audio_final_len"] * 2
+        self.block_len = block_sizes["block_len"]
+        self.block_overlap = block_sizes["block_overlap"]
+        self.block_resampled_len = block_sizes["block_resampled_len"]
+        self.block_resampled_trimmed = block_sizes["block_resampled_len"]
+        self.block_audio_final_overlap = block_sizes["block_audio_final_overlap"]
+        self.block_dtype = np.int16
+        self.audio_dtype = REAL_DTYPE
+
     name: str
     block_num: int
     is_last_block: bool

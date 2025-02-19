@@ -11,6 +11,7 @@ import signal
 from numba import njit, prange
 import numba
 import atexit
+import asyncio
 
 import numpy as np
 import soundfile as sf
@@ -853,7 +854,7 @@ def write_soundfile_process_worker(
             w.flush()
             decode_done.set()
 
-def decode_parallel(
+async def decode_parallel(
     decode_options: dict,
     bias_guess,
     threads: int = 8,
@@ -951,7 +952,7 @@ def decode_parallel(
     output_file_process.start()
     atexit.register(output_file_process.terminate)
 
-    def handle_ui_events():
+    async def handle_ui_events():
         stop_requested = False
         if ui_t is not None:
             ui_t.app.processEvents()
@@ -960,45 +961,24 @@ def decode_parallel(
             elif ui_t.window.transport_state == 2:
                 while ui_t.window.transport_state == 2:
                     ui_t.app.processEvents()
-                    time.sleep(0.01)
+                    asyncio.sleep(0.01)
         
         return stop_requested
             
     print(f"Starting decode...")
 
-    def get_decoder_state(buffer_name, block_len, is_last_block):
-        block_sizes = decoder.set_block_sizes(block_len, is_last_block)
-
-        return DecoderState(
-            name = buffer_name,
-            block_num = current_block_num,
-            is_last_block = False,
-            pre_audio_len = block_sizes["block_audio_len"],
-            pre_audio_trimmed = block_sizes["block_audio_len"],
-            post_audio_len = block_sizes["block_audio_final_len"],
-            post_audio_trimmed = block_sizes["block_audio_final_len"],
-            stereo_audio_len = block_sizes["block_audio_final_len"] * 2,
-            stereo_audio_trimmed = block_sizes["block_audio_final_len"] * 2,
-            block_len = block_sizes["block_len"],
-            block_overlap = block_sizes["block_overlap"],
-            block_resampled_len = block_sizes["block_resampled_len"],
-            block_resampled_trimmed = block_sizes["block_resampled_len"],
-            block_audio_final_overlap = block_sizes["block_audio_final_overlap"],
-            block_dtype = np.int16,
-            audio_dtype = REAL_DTYPE
-        )
-
     with as_soundfile(input_file) as f:
         progressB = TimeProgressBar(f.frames, f.frames)
 
-        current_block_num = 0
+        block_num = 0
         total_bytes_read = 0
         previous_overlap = np.empty(0)
+        loop = asyncio.get_event_loop()
 
         while True:
             # get the next available shared memory buffer
-            buffer_name, decoder_idx = shared_memory_idle_queue.get()
-            decoder_state = get_decoder_state(buffer_name, block_size, False)
+            buffer_name, decoder_idx = await loop.run_in_executor(None, shared_memory_idle_queue.get)
+            decoder_state = DecoderState(decoder, buffer_name, block_size, block_num, False)
             buffer = DecoderSharedMemory(decoder_state)
 
             # read input data into the shared memory buffer
@@ -1012,11 +992,11 @@ def decode_parallel(
             progressB.print(input_position.value / 2)
 
             # handle stop and last block
-            stop_requested = handle_ui_events()
+            stop_requested = await handle_ui_events()
             is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
             if is_last_block:
                 # get the new block lengths
-                decoder_state = get_decoder_state(buffer_name, frames_read, is_last_block)
+                decoder_state = DecoderState(decoder, buffer_name, block_size, block_num, is_last_block)
                 block_data_read = buffer.get_block_in().copy()
                 buffer.close()
 
@@ -1052,7 +1032,7 @@ def decode_parallel(
             if is_last_block:
                  break
 
-            current_block_num += 1
+            block_num += 1
 
     print("")
     print("Decode finishing up. Emptying the queue")
@@ -1096,7 +1076,8 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
 
     if sample_freq is not None:
         # set_start_method("spawn")
-        decode_parallel(decode_options, args.BG, threads=args.threads, ui_t=ui_t)
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(decode_parallel(decode_options, args.BG, threads=args.threads, ui_t=ui_t))
         print("Decode finished successfully")
         return 0
     else:
