@@ -1276,7 +1276,8 @@ class HiFiDecode:
 
     @staticmethod
     def hifi_decode_worker(
-        decoder_conn,
+        decoder_in_queue,
+        decoder_out_queue,
         decode_options,
         standard
     ):
@@ -1286,13 +1287,7 @@ class HiFiDecode:
 
         # @profile
         def decode_next_block():
-            while True:
-                try:
-                    decoder_state, decoder_idx = decoder_conn.recv()
-                    break
-                except InterruptedError:
-                    pass
-    
+            decoder_state = decoder_in_queue.get()
             buffer = DecoderSharedMemory(decoder_state)
             raw_data = buffer.get_block()
     
@@ -1316,7 +1311,7 @@ class HiFiDecode:
                 print()
     
             buffer.close()
-            decoder_conn.send((decoder_state, decoder_idx))
+            decoder_out_queue.put(decoder_state)
     
         while True:
             decode_next_block()
