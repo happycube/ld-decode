@@ -952,7 +952,7 @@ async def decode_parallel(
     output_file_process.start()
     atexit.register(output_file_process.terminate)
 
-    async def handle_ui_events():
+    def handle_ui_events():
         stop_requested = False
         if ui_t is not None:
             ui_t.app.processEvents()
@@ -961,70 +961,89 @@ async def decode_parallel(
             elif ui_t.window.transport_state == 2:
                 while ui_t.window.transport_state == 2:
                     ui_t.app.processEvents()
-                    asyncio.sleep(0.01)
+                    time.sleep(0.01)
         
         return stop_requested
+    
+    def read_to_decoder(
+        f,
+        decoder_conn,
+        decoder,
+        decoder_state,
+        input_position,
+        exit_requested,
+        previous_overlap
+    ):
+        buffer = DecoderSharedMemory(decoder_state)
+        # read input data into the shared memory buffer
+        block_in = buffer.get_block_in()
+        frames_read = f.buffer_read_into(block_in, "int16")
+
+        with input_position.get_lock():
+            input_position.value += frames_read * 2
+
+        # handle stop and last block
+        stop_requested = handle_ui_events()
+        is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
+        if is_last_block:
+            # save the read data
+            block_data_read = buffer.get_block_in().copy()
+            buffer.close()
+
+            # create a new buffer with the updated offsets, and copy in the read data
+            decoder_state = DecoderState(decoder, buffer.name, frames_read, decoder_state.block_num, is_last_block)
+            buffer = DecoderSharedMemory(decoder_state)
+            new_block_in = buffer.get_block_in()
+            DecoderSharedMemory.copy_data_int16(block_data_read, new_block_in, len(new_block_in))
+
+        # copy the overlapping data from the previous read
+        block_in_overlap = buffer.get_block_in_start_overlap()
+        if block_num == 0:
+            # this is the first block, fill in some data since there is no overlap
+            DecoderSharedMemory.copy_data_int16(block_in, block_in_overlap, len(block_in_overlap))
+        else:
+            DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
+
+        # copy the the current overlap to use in the next iteration
+        current_overlap = buffer.get_block_in_end_overlap()
+        DecoderSharedMemory.copy_data_int16(current_overlap, previous_overlap, len(current_overlap))
+        
+        buffer.close()
+
+        # submit the block to the decoder
+        # blocks should complete roughly in the order that they are submitted
+        decoder_conn.send((decoder_state, decoder_idx))
+
+        return is_last_block
             
     print(f"Starting decode...")
 
     with as_soundfile(input_file) as f:
-        progressB = TimeProgressBar(f.frames, f.frames)
-
-        block_num = 0
-        total_bytes_read = 0
+        loop = asyncio.get_event_loop()        
         previous_overlap = np.empty(0)
-        loop = asyncio.get_event_loop()
+        progressB = TimeProgressBar(f.frames, f.frames)
+        block_num = 0
 
         while True:
             # get the next available shared memory buffer
             buffer_name, decoder_idx = await loop.run_in_executor(None, shared_memory_idle_queue.get)
-            decoder_state = DecoderState(decoder, buffer_name, block_size, block_num, False)
-            buffer = DecoderSharedMemory(decoder_state)
+            decoder_state = DecoderState(decoder, buffer_name, decoder.blockSize, block_num, False)
 
-            # read input data into the shared memory buffer
-            block_in = buffer.get_block_in()
-            frames_read = f.buffer_read_into(block_in, "int16")
-            total_bytes_read += frames_read * 2
-
-            with input_position.get_lock():
-                input_position.value = total_bytes_read
-
-            progressB.print(input_position.value / 2)
-
-            # handle stop and last block
-            stop_requested = await handle_ui_events()
-            is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
-            if is_last_block:
-                # get the new block lengths
-                decoder_state = DecoderState(decoder, buffer_name, block_size, block_num, is_last_block)
-                block_data_read = buffer.get_block_in().copy()
-                buffer.close()
-
-                # create a new buffer with the updated offsets, and copy in the read data
-                buffer = DecoderSharedMemory(decoder_state)
-                new_block_in = buffer.get_block_in()
-                DecoderSharedMemory.copy_data_int16(block_data_read, new_block_in, len(new_block_in))
-                decoder_state.is_last_block = True
-
-            # copy the overlapping data from the previous read
-            block_in_overlap = buffer.get_block_in_start_overlap()
-            if len(previous_overlap) != 0:
-                DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
-            else:
-            # this is the first block, fill in some data since there is no overlap
-                DecoderSharedMemory.copy_data_int16(block_in, block_in_overlap, len(block_in_overlap))
-
-            # copy the the current overlap to use in the next iteration
-            current_overlap = buffer.get_block_in_end_overlap()
-            previous_overlap = np.empty_like(current_overlap)
-            DecoderSharedMemory.copy_data_int16(current_overlap, previous_overlap, len(current_overlap))
-            
-            buffer.close()
+            if (len(previous_overlap) == 0):
+                previous_overlap = np.empty(decoder_state.block_overlap, dtype=np.int16)
 
             decoder_conn = decoder_conns[decoder_idx]
-            # submit the block to the decoder
-            # blocks should complete roughly in the order that they are submitted
-            decoder_conn.send((decoder_state, decoder_idx))
+            is_last_block = await loop.run_in_executor(None, read_to_decoder, 
+                f,
+                decoder_conn,
+                decoder,
+                decoder_state,
+                input_position,
+                exit_requested,
+                previous_overlap
+            )
+
+            progressB.print(input_position.value / 2)
 
             blocks_enqueued = num_shared_memory_instances - shared_memory_idle_queue.qsize()
             log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, decode_options["input_rate"], decode_options["audio_rate"])
@@ -1076,8 +1095,10 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
 
     if sample_freq is not None:
         # set_start_method("spawn")
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(decode_parallel(decode_options, args.BG, threads=args.threads, ui_t=ui_t))
+        with ThreadPoolExecutor(1) as async_executor:
+            loop = asyncio.get_event_loop()
+            loop.set_default_executor(async_executor)
+            loop.run_until_complete(decode_parallel(decode_options, args.BG, threads=args.threads, ui_t=ui_t))
         print("Decode finished successfully")
         return 0
     else:

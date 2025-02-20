@@ -24,7 +24,7 @@ class DecoderState:
 
         self.name = buffer_name
         self.block_num = block_num
-        self.is_last_block = False
+        self.is_last_block = is_last_block
         self.pre_audio_len = block_sizes["block_audio_len"]
         self.pre_audio_trimmed = block_sizes["block_audio_len"]
         self.post_audio_len = block_sizes["block_audio_final_len"]
