@@ -249,7 +249,7 @@ class FMdemod:
             out[i] = atan2(value.imag, value.real) # np.angle(analytic_signal)
             out[i-1] = out[i] - out[i-1] #           dd = np.diff(p)
             i += 1
-            if i > out_len:
+            if i >= out_len:
                 break
 
     @staticmethod
@@ -268,7 +268,7 @@ class FMdemod:
     @guvectorize([(numba.types.Array(numba.types.float64, 1, "C", aligned=True), numba.types.float64, numba.types.int64, NumbaAudioArray)], '(n),(),()->(n)', cache=True, fastmath=True, nopython=True)
     def inst_freq_diff(ph_correct, analytical_signal_start, sample_rate, instantaneous_frequency):
         instantaneous_phase = analytical_signal_start + np.cumsum(ph_correct) #                                             p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
-        for i in range(1, len(instantaneous_phase)):
+        for i in range(1, len(instantaneous_phase)-1):
             instantaneous_frequency[i-1] = (instantaneous_phase[i] - instantaneous_phase[i-1]) / (2.0 * pi) * sample_rate # np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
 
     @staticmethod
@@ -978,8 +978,6 @@ class HiFiDecode:
                 min(left_carrier_updated, self.standard_original.LCarrierRef + 10e3),
                 self.standard_original.LCarrierRef - 10e3,
             )
-            if self.options["format"] == "vhs"
-            else left_carrier_updated
         )
         
         right_carrier_dc_offset = self.standard.RCarrierRef - dcR
@@ -989,8 +987,6 @@ class HiFiDecode:
                 min(right_carrier_updated, self.standard_original.RCarrierRef + 10e3),
                 self.standard_original.RCarrierRef - 10e3,
             )
-            if self.options["format"] == "vhs"
-            else right_carrier_updated
         )
 
         self.afeL, self.afeR, self.fmL, self.fmR = self.get_carrier_filters(self.standard)
