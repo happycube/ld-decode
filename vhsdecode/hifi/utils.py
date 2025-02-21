@@ -1,5 +1,5 @@
 from multiprocessing.shared_memory import SharedMemory
-from numba import njit, prange
+from numba import njit, prange, vectorize
 import numba
 import numpy as np
 from dataclasses import dataclass
@@ -14,8 +14,8 @@ BLOCK_DTYPE = np.int16
 REAL_DTYPE = np.float32
 ALIGNMENT = 64
 
-NumbaAudioArray = numba.types.Array(numba.types.float32, 1, "C")
-NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C")
+NumbaAudioArray = numba.types.Array(numba.types.float32, 1, "C", aligned=True)
+NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C", aligned=True)
 
 @dataclass
 class DecoderState:
@@ -257,6 +257,7 @@ class DecoderSharedMemory():
     @staticmethod
     @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.int64), cache=True, fastmath=True, nogil=True)
     def copy_data_float32(src: np.array, dst: np.array, length: int):
+        #ctypes.memmove(dst.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), src.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), length)
         for i in range(length):
             dst[i] = src[i]
 

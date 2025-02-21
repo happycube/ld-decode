@@ -884,7 +884,7 @@ async def decode_parallel(
 
     # spin up shared memory
     # these blocks of memory are used to transfer the audio data throughout the various steps
-    num_shared_memory_instances = int(threads * 1.5)
+    num_shared_memory_instances = int(threads + 2)
     num_decoders = threads
 
     shared_memory_instances = []
@@ -892,7 +892,6 @@ async def decode_parallel(
     for i in range(num_shared_memory_instances):
         buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"HiFiDecode Shared Memory {i}")
         shared_memory_instances.append(buffer_instance)
-        decoder_idx = i % num_decoders
         shared_memory_idle_queue.put(buffer_instance.name)
 
         atexit.register(buffer_instance.close)

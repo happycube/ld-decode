@@ -4,14 +4,14 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi, sqrt, ceil, floor
+from math import log, pi, sqrt, ceil, floor, atan2
 from typing import Tuple
 from time import perf_counter
 import sys
 
 import numpy as np
 import numba
-from numba import njit, prange
+from numba import njit, prange, guvectorize, vectorize
 from scipy.signal import lfilter_zi, filtfilt, lfilter, iirpeak, iirnotch, butter, spectrogram, find_peaks
 from scipy.interpolate import interp1d
 from scipy.signal import hilbert
@@ -196,7 +196,7 @@ class AFEFilterable:
 
 class FMdemod:
     def __init__(self, sample_rate, carrier_freerun, type=0):
-        self.samp_rate = REAL_DTYPE(sample_rate)
+        self.samp_rate = int(sample_rate)
         self.type = type
         self.carrier = carrier_freerun
 
@@ -231,41 +231,49 @@ class FMdemod:
     def inst_freq(signal: np.ndarray, output: np.ndarray, sample_rate: REAL_DTYPE):
         out = FMdemod.unwrap_hilbert(hilbert(signal.real), sample_rate)
         DecoderSharedMemory.copy_data_float32(out, output, len(output))
-
+    
     @staticmethod
-    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.float32), cache=True, fastmath=True, nogil=True)
-    def inst_freq_numba(signal: np.array, instantaneous_frequency: np.array, sample_rate: REAL_DTYPE):
+    @guvectorize([(NumbaAudioArray, numba.types.Array(numba.types.float64, 1, "C", aligned=True))], '(n)->(n)', cache=True, fastmath=True, nopython=True, target="parallel")
+    def hilbert_numba(signal, out):
         # hilbert transform adapted from signal.hilbert
+        # uses rocket-fft for to allow numba comatibility with fft and ifft
         axis=-1
         N = signal.shape[axis]
-    
-        Xf = np.fft.fft(signal.real, N, axis=axis)
+        Xf = np.fft.fft(signal, N, axis=axis)
         h = np.zeros(N, dtype=Xf.dtype)
-        if N % 2 == 0:
-            h[0] = h[N // 2] = 1
-            h[1:N // 2] = 2
-        else:
-            h[0] = 1
-            h[1:(N + 1) // 2] = 2
-            
-        analytic_signal = np.fft.ifft(Xf * h, axis=axis)
-        p = np.angle(analytic_signal)
+        h[0] = h[N // 2] = 1
+        h[1:N // 2] = 2
+        i = 1
+        for value in np.fft.ifft(Xf * h, axis=axis):
+            out[i] = atan2(value.imag, value.real) # np.angle(analytic_signal)
+            out[i-1] = out[i] - out[i-1] #           dd = np.diff(p)
+            i += 1
 
-        # unwrap hilbert
+    @staticmethod
+    @vectorize([numba.types.float64(numba.types.float64)], cache=True, fastmath=True, nopython=True, target="parallel")
+    def unwrap_hilbert_numba(dd):
         discont = pi
-        dd = np.diff(p)
-        ddmod = np.mod(dd + pi, 2 * pi) - pi
-        for to_pi_location in np.where(np.logical_and(ddmod == -pi, dd > 0)):
-            ddmod[to_pi_location] = pi
-
-        ph_correct = ddmod - dd
-        for to_zero_location in np.where(np.abs(dd) < discont):
-            ph_correct[to_zero_location] = 0
-
-        # inst_freq
-        instantaneous_phase = p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+        ddmod = ((dd + pi) % (2 * pi)) - pi # ddmod = np.mod(dd + pi, 2 * pi) - pi
+        if ddmod == -pi and dd > 0: #         to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
+            ddmod = pi #                      ddmod[to_pi_locations] = pi
+        ph_correct = ddmod - dd #             ph_correct = ddmod - dd
+        if abs(dd) < discont: #               to_zero_locations = np.where(np.abs(dd) < discont)
+            ph_correct = 0 #                  ph_correct[to_zero_locations] = 0
+        return ph_correct
+    
+    @staticmethod
+    @guvectorize([(numba.types.Array(numba.types.float64, 1, "C", aligned=True), numba.types.float64, numba.types.int64, NumbaAudioArray)], '(n),(),()->(n)', cache=True, fastmath=True, nopython=True, target="parallel")
+    def inst_freq_diff(ph_correct, analytical_signal_start, sample_rate, instantaneous_frequency):
+        instantaneous_phase = analytical_signal_start + np.cumsum(ph_correct).astype(REAL_DTYPE) #                          p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
         for i in range(1, len(instantaneous_phase)):
-            instantaneous_frequency[i-1] = (instantaneous_phase[i] - instantaneous_phase[i-1]) / (2.0 * pi) * sample_rate
+            instantaneous_frequency[i-1] = (instantaneous_phase[i] - instantaneous_phase[i-1]) / (2.0 * pi) * sample_rate # np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
+
+    @staticmethod
+    def inst_freq_numba(signal: np.array, instantaneous_frequency: np.array, sample_rate: int):
+        analytic_signal = np.empty(len(signal), np.float64)
+        FMdemod.hilbert_numba(signal, analytic_signal)
+        ph_correct = FMdemod.unwrap_hilbert_numba(analytic_signal[:-1])
+        FMdemod.inst_freq_diff(ph_correct, analytic_signal[1], sample_rate, instantaneous_frequency[:-1])
 
     def work(self, input: np.array, output: np.array):
         if self.type == 2:
@@ -274,7 +282,6 @@ class FMdemod:
         #    DecoderSharedMemory.copy_data_float32(self.hhtdeFM(input), output, len(output))
         else:
             FMdemod.inst_freq_numba(input, output, self.samp_rate)
-
 
 def tau_as_freq(tau):
     return 1 / (2 * pi * tau)
@@ -481,7 +488,7 @@ class NoiseReduction:
         ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
     
     @staticmethod
-    @njit(numba.types.void(numba.types.float32, NumbaAudioArray, NumbaAudioArray), cache=True, fastmath=True, nogil=True)
+    @guvectorize([(numba.types.void(numba.types.float32, NumbaAudioArray, NumbaAudioArray))], '(),(n)->(n)', cache=True, fastmath=True, nopython=True)
     def expand(log_strength: float, signal: np.array, out: np.array) -> np.array:
         # detect the envelope and use logarithmic expansion
         rectified = np.abs(signal)
@@ -491,14 +498,14 @@ class NoiseReduction:
             out[i] = levels[i] ** REAL_DTYPE(log_strength)
     
     @staticmethod
-    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray), cache=True, fastmath=True, nogil=True)
+    @guvectorize([(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray)], '(n),(n)->(n)', cache=True, fastmath=True, nopython=True)
     def get_attacks_and_releases(attack: np.array, release: np.array, rsC: np.array):
         for releasing_index in np.where(attack < release):
             rsC[releasing_index] = release[releasing_index]
     
     @staticmethod
-    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.float32), cache=True, fastmath=True, nogil=True)
-    def apply_gate(rsC: np.array, audio: np.array, audio_out: np.array, nr_env_gain: float):
+    @guvectorize([(numba.types.float32, NumbaAudioArray, NumbaAudioArray, NumbaAudioArray)], '(),(n),(n)->(n)', cache=True, fastmath=True, nopython=True)
+    def apply_gate(nr_env_gain: float, rsC: np.array, audio: np.array, audio_out: np.array):
         # computes a sidechain signal to apply noise reduction
         # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
         #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
@@ -529,7 +536,7 @@ class NoiseReduction:
         rsC = attack
 
         NoiseReduction.get_attacks_and_releases(attack, release, rsC)
-        NoiseReduction.apply_gate(rsC, audio_with_deemphasis, de_noise_in_out, self.NR_envelope_gain)
+        NoiseReduction.apply_gate(self.NR_envelope_gain, rsC, audio_with_deemphasis, de_noise_in_out)
 
 
 @dataclass
@@ -1051,7 +1058,7 @@ class HiFiDecode:
         return meanL.pull(), meanR.pull()
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
+    @njit([numba.types.float32(NumbaAudioArray, numba.types.float32, numba.types.int16)], cache=True, fastmath=True)
     def cancelDC_clip_trim(audio: np.array, clip: float, trim: int) -> float:
         dc = REAL_DTYPE(np.mean(audio))
 
