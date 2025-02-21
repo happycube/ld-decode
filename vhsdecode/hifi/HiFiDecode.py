@@ -244,10 +244,13 @@ class FMdemod:
         h[0] = h[N // 2] = 1
         h[1:N // 2] = 2
         i = 1
+        out_len = len(out)
         for value in np.fft.ifft(Xf * h, axis=axis):
             out[i] = atan2(value.imag, value.real) # np.angle(analytic_signal)
             out[i-1] = out[i] - out[i-1] #           dd = np.diff(p)
             i += 1
+            if i > out_len:
+                break
 
     @staticmethod
     @vectorize([numba.types.float64(numba.types.float64)], cache=True, fastmath=True, nopython=True)

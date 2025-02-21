@@ -982,8 +982,8 @@ async def decode_parallel(
             # create a new buffer with the updated offsets, and copy in the read data
             decoder_state = DecoderState(decoder, buffer.name, frames_read, decoder_state.block_num, is_last_block)
             buffer = DecoderSharedMemory(decoder_state)
-            new_block_in = buffer.get_block_in()
-            DecoderSharedMemory.copy_data_int16(block_data_read, new_block_in, len(new_block_in))
+            block_in = buffer.get_block_in()
+            DecoderSharedMemory.copy_data_int16(block_data_read, block_in, len(block_in))
 
         # copy the overlapping data from the previous read
         block_in_overlap = buffer.get_block_in_start_overlap()
@@ -994,8 +994,9 @@ async def decode_parallel(
             DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
 
         # copy the the current overlap to use in the next iteration
-        current_overlap = buffer.get_block_in_end_overlap()
-        DecoderSharedMemory.copy_data_int16(current_overlap, previous_overlap, len(current_overlap))
+        if not is_last_block:
+            current_overlap = buffer.get_block_in_end_overlap()
+            DecoderSharedMemory.copy_data_int16(current_overlap, previous_overlap, len(current_overlap))
         
         buffer.close()
 
