@@ -233,7 +233,7 @@ class FMdemod:
         DecoderSharedMemory.copy_data_float32(out, output, len(output))
     
     @staticmethod
-    @guvectorize([(NumbaAudioArray, numba.types.Array(numba.types.float64, 1, "C", aligned=True))], '(n)->(n)', cache=True, fastmath=True, nopython=True, target="parallel")
+    @guvectorize([(NumbaAudioArray, numba.types.Array(numba.types.float64, 1, "C", aligned=True))], '(n)->(n)', cache=True, fastmath=True, nopython=True)
     def hilbert_numba(signal, out):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba comatibility with fft and ifft
@@ -250,7 +250,7 @@ class FMdemod:
             i += 1
 
     @staticmethod
-    @vectorize([numba.types.float64(numba.types.float64)], cache=True, fastmath=True, nopython=True, target="parallel")
+    @vectorize([numba.types.float64(numba.types.float64)], cache=True, fastmath=True, nopython=True)
     def unwrap_hilbert_numba(dd):
         discont = pi
         ddmod = ((dd + pi) % (2 * pi)) - pi # ddmod = np.mod(dd + pi, 2 * pi) - pi
@@ -262,9 +262,9 @@ class FMdemod:
         return ph_correct
     
     @staticmethod
-    @guvectorize([(numba.types.Array(numba.types.float64, 1, "C", aligned=True), numba.types.float64, numba.types.int64, NumbaAudioArray)], '(n),(),()->(n)', cache=True, fastmath=True, nopython=True, target="parallel")
+    @guvectorize([(numba.types.Array(numba.types.float64, 1, "C", aligned=True), numba.types.float64, numba.types.int64, NumbaAudioArray)], '(n),(),()->(n)', cache=True, fastmath=True, nopython=True)
     def inst_freq_diff(ph_correct, analytical_signal_start, sample_rate, instantaneous_frequency):
-        instantaneous_phase = analytical_signal_start + np.cumsum(ph_correct).astype(REAL_DTYPE) #                          p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+        instantaneous_phase = analytical_signal_start + np.cumsum(ph_correct) #                                             p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
         for i in range(1, len(instantaneous_phase)):
             instantaneous_frequency[i-1] = (instantaneous_phase[i] - instantaneous_phase[i-1]) / (2.0 * pi) * sample_rate # np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
 
