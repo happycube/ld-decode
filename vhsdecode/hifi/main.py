@@ -8,7 +8,7 @@ import os
 import sys
 from typing import Optional
 import signal
-from numba import njit, prange
+from numba import njit, guvectorize, prange
 import numba
 import atexit
 import asyncio
@@ -313,16 +313,20 @@ class UnSigned16BitFileReader(io.RawIOBase):
         self.file_path = file_path
         self.file = open(file_path, "rb")
 
-    def read(self, size=-1):
-        data = self.file.read(size)
-        if not data:
-            return b""
-
-        # Converts unsigned 16-bit to signed 16-bit
-        samples = np.frombuffer(data, dtype=np.uint16)
-        signed_samples = samples.astype(np.int16) - 32768
-
-        return signed_samples.tobytes()
+    def readinto(self, buffer):
+        buffer_uint16 = np.frombuffer(buffer, dtype=np.uint16)
+        bytes_read = self.file.readinto(buffer_uint16)
+        UnSigned16BitFileReader.uint16_to_int16(buffer_uint16, buffer)
+        if not bytes_read:
+            return 0
+        
+        return bytes_read
+    
+    @staticmethod
+    @guvectorize([(numba.types.Array(numba.types.uint16, 1, "C"), numba.types.Array(numba.types.int16, 1, "C"))], '(n)->(n)', cache=True, fastmath=True, nopython=True)
+    def uint16_to_int16(uint16_in, int16_out):
+        for i in range(len(uint16_in)):
+            int16_out[i] = uint16_in[i] - 2 ** 15
 
     def readable(self):
         return True
@@ -367,7 +371,7 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             endian="LITTLE",
         )
     elif "u16" == extension or "r16" == extension:
-        return sf.SoundFile(
+        return UnseekableSoundFile(
             UnSigned16BitFileReader(pathR),
             "r",
             channels=1,
