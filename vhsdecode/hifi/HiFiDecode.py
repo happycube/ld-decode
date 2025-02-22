@@ -233,50 +233,50 @@ class FMdemod:
         DecoderSharedMemory.copy_data_float32(out, output, len(output))
     
     @staticmethod
-    @guvectorize([(NumbaAudioArray, numba.types.Array(numba.types.float64, 1, "C", aligned=True))], '(n)->(n)', cache=True, fastmath=True, nopython=True)
-    def hilbert_numba(signal, out):
+    @guvectorize([(numba.types.float32, NumbaAudioArray, NumbaAudioArray)], '(),(n)->(n)', cache=True, fastmath=True, nopython=True)
+    def demod_numba(sample_rate, signal, instantaneous_frequency):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba comatibility with fft and ifft
         axis=-1
         N = signal.shape[axis]
-        Xf = np.fft.fft(signal, N, axis=axis)
-        h = np.zeros(N, dtype=Xf.dtype)
+        h = np.zeros(N, dtype=np.complex64)
         h[0] = h[N // 2] = 1
         h[1:N // 2] = 2
-        i = 1
-        out_len = len(out)
-        for value in np.fft.ifft(Xf * h, axis=axis):
-            out[i] = atan2(value.imag, value.real) # np.angle(analytic_signal)
-            out[i-1] = out[i] - out[i-1] #           dd = np.diff(p)
-            i += 1
-            if i >= out_len:
-                break
 
-    @staticmethod
-    @vectorize([numba.types.float64(numba.types.float64)], cache=True, fastmath=True, nopython=True)
-    def unwrap_hilbert_numba(dd):
+        analytic_signal = 0
+        analytic_signal_prev = 0
         discont = pi
-        ddmod = ((dd + pi) % (2 * pi)) - pi # ddmod = np.mod(dd + pi, 2 * pi) - pi
-        if ddmod == -pi and dd > 0: #         to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
-            ddmod = pi #                      ddmod[to_pi_locations] = pi
-        ph_correct = ddmod - dd #             ph_correct = ddmod - dd
-        if abs(dd) < discont: #               to_zero_locations = np.where(np.abs(dd) < discont)
-            ph_correct = 0 #                  ph_correct[to_zero_locations] = 0
-        return ph_correct
-    
-    @staticmethod
-    @guvectorize([(numba.types.Array(numba.types.float64, 1, "C", aligned=True), numba.types.float64, numba.types.int64, NumbaAudioArray)], '(n),(),()->(n)', cache=True, fastmath=True, nopython=True)
-    def inst_freq_diff(ph_correct, analytical_signal_start, sample_rate, instantaneous_frequency):
-        instantaneous_phase = analytical_signal_start + np.cumsum(ph_correct) #                                             p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
-        for i in range(1, len(instantaneous_phase)-1):
-            instantaneous_frequency[i-1] = (instantaneous_phase[i] - instantaneous_phase[i-1]) / (2.0 * pi) * sample_rate # np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
+        ph_correct = 0
+        ph_correct_prev = 0
+        
+        i = 1
+        instantaneous_frequency_len = len(instantaneous_frequency)
+        for hilbert_value in np.fft.ifft(np.fft.fft(signal, N, axis=axis) * h, axis=axis):
+            if i >= instantaneous_frequency_len: break
 
-    @staticmethod
-    def inst_freq_numba(signal: np.array, instantaneous_frequency: np.array, sample_rate: int):
-        analytic_signal = np.empty(len(signal), np.float64)
-        FMdemod.hilbert_numba(signal, analytic_signal)
-        ph_correct = FMdemod.unwrap_hilbert_numba(analytic_signal[:-1])
-        FMdemod.inst_freq_diff(ph_correct, analytic_signal[1], sample_rate, instantaneous_frequency[:-1])
+            analytic_signal = (
+                atan2(hilbert_value.imag, hilbert_value.real)
+            ) #                                           np.angle(analytic_signal)
+            dd = analytic_signal - analytic_signal_prev 
+            analytic_signal_prev = analytic_signal #      dd = np.diff(p)
+            
+            # FMdemod.unwrap
+            ddmod = ((dd + pi) % (2 * pi)) - pi #         ddmod = np.mod(dd + pi, 2 * pi) - pi
+            if ddmod == -pi and dd > 0: #                 to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
+                ddmod = pi #                              ddmod[to_pi_locations] = pi
+            ph_correct = ddmod - dd #                     ph_correct = ddmod - dd
+            if (-dd if dd < 0 else dd) < discont: #       to_zero_locations = np.where(np.abs(dd) < discont)
+                ph_correct = 0 #                          ph_correct[to_zero_locations] = 0
+            ph_correct = ph_correct_prev + ph_correct #   p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+            
+            # FMdemod.unwrap_hilbert
+            instantaneous_frequency[i-1] = (
+                (ph_correct - ph_correct_prev) / 
+                (2.0 * pi) * sample_rate
+            ) #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
+            
+            ph_correct_prev = ph_correct
+            i += 1
 
     def work(self, input: np.array, output: np.array):
         if self.type == 2:
@@ -284,7 +284,7 @@ class FMdemod:
         #elif self.type == 1:
         #    DecoderSharedMemory.copy_data_float32(self.hhtdeFM(input), output, len(output))
         else:
-            FMdemod.inst_freq_numba(input, output, self.samp_rate)
+            FMdemod.demod_numba(np.float32(self.samp_rate), input, output)
 
 def tau_as_freq(tau):
     return 1 / (2 * pi * tau)
@@ -1293,16 +1293,22 @@ class HiFiDecode:
 
         # @profile
         def decode_next_block():
-            decoder_state = decoder_in_queue.get()
+            while True:
+                try:
+                    decoder_state = decoder_in_queue.get()
+                    break
+                except InterruptedError: pass
+                except EOFError: return
+
             buffer = DecoderSharedMemory(decoder_state)
             raw_data = buffer.get_block()
-    
+        
             audioL, audioR = decoder.block_decode(raw_data, decoder_state.post_audio_len, measure_perf)
-    
+        
             # create a new buffer with the trimmed offsets
             decoder_state.pre_audio_trimmed = len(audioL)
             buffer = DecoderSharedMemory(decoder_state)
-    
+        
             if measure_perf: start_final_audio_copy = perf_counter()
             # copy the audio data into the shared buffer
             l_out = buffer.get_pre_left()
@@ -1310,12 +1316,12 @@ class HiFiDecode:
             DecoderSharedMemory.copy_data_float32(audioL, l_out, len(audioL))
             DecoderSharedMemory.copy_data_float32(audioR, r_out, len(audioR))
             if measure_perf: end_final_audio_copy = perf_counter()
-    
+        
             if measure_perf:
                 final_audio_copy_duration = end_final_audio_copy - start_final_audio_copy
                 print("final_audio_copy_duration:", final_audio_copy_duration)
                 print()
-    
+        
             buffer.close()
             decoder_out_queue.put(decoder_state)
     

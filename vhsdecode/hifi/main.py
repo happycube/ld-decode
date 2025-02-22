@@ -16,7 +16,6 @@ import asyncio
 import numpy as np
 import soundfile as sf
 
-
 from vhsdecode.hifi.utils import DecoderSharedMemory, DecoderState, PostProcessorSharedMemory, NumbaAudioArray, profile
 
 from vhsdecode.cmdcommons import (
@@ -448,8 +447,8 @@ def log_decode(start_time: datetime, frames: int, audio_samples: int, blocks_enq
     audio_time: float = audio_samples / audio_rate
     audio_time_format: str = seconds_to_str(audio_time)
 
-    latency_time = max(0, input_time - audio_time)
-    latency_format: str = seconds_to_str(latency_time)
+    audio_buffer_time = max(0, input_time - audio_time)
+    audio_buffer_time_format: str = seconds_to_str(audio_buffer_time)
 
     relative_speed: float = input_time / elapsed_time.total_seconds()
     elapsed_time_format: str = seconds_to_str(elapsed_time.total_seconds())
@@ -458,7 +457,7 @@ def log_decode(start_time: datetime, frames: int, audio_samples: int, blocks_enq
         f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x), {blocks_enqueued} blocks enqueued\n"
         + f"- Input position: {input_time_format}\n"
         + f"- Audio position: {audio_time_format}\n"
-        + f"- Latency:        {latency_format}\n"
+        + f"- Audio buffer  : {audio_buffer_time_format}\n"
         + f"- Wall time     : {elapsed_time_format}"
     )
 
@@ -544,26 +543,29 @@ class PostProcessor:
         )
 
         while True:
-            try:
-                decoder_state, channel_num = in_conn.recv()
-                buffer = PostProcessorSharedMemory(decoder_state)
+            while True:
+                try:
+                    decoder_state, channel_num = in_conn.recv()
+                    break
+                except InterruptedError: pass
+                except EOFError: return
 
-                if channel_num == 0:
-                    pre = buffer.get_pre_left()
-                    spectral_nr_out = buffer.get_nr_left()
-                else:
-                    pre = buffer.get_pre_right()
-                    spectral_nr_out = buffer.get_nr_right()
+            buffer = PostProcessorSharedMemory(decoder_state)
+            if channel_num == 0:
+                pre = buffer.get_pre_left()
+                spectral_nr_out = buffer.get_nr_left()
+            else:
+                pre = buffer.get_pre_right()
+                spectral_nr_out = buffer.get_nr_right()
 
-                if spectral_nr_amount > 0: 
-                    spectral_nr.spectral_nr(pre, spectral_nr_out)
-                else:
-                    DecoderSharedMemory.copy_data_float32(pre, spectral_nr_out, decoder_state.post_audio_len)
+            if spectral_nr_amount > 0: 
+                spectral_nr.spectral_nr(pre, spectral_nr_out)
+            else:
+                DecoderSharedMemory.copy_data_float32(pre, spectral_nr_out, decoder_state.post_audio_len)
 
-                buffer.close()
-                out_conn.send((decoder_state, channel_num))
-            except InterruptedError:
-                pass
+            buffer.close()
+            out_conn.send((decoder_state, channel_num))
+            
 
     @staticmethod
     def noise_reduction_worker(
@@ -579,26 +581,28 @@ class PostProcessor:
         )
 
         while True:
-            try:
-                decoder_state, channel_num = in_conn.recv()
-                buffer = PostProcessorSharedMemory(decoder_state)
+            while True:
+                try:
+                    decoder_state, channel_num = in_conn.recv()
+                    break
+                except InterruptedError: pass
+                except EOFError: return
 
-                if channel_num == 0:
-                    pre = buffer.get_pre_left()
-                    nr_out = buffer.get_nr_left()
-                else:
-                    pre = buffer.get_pre_right()
-                    nr_out = buffer.get_nr_right()
+            buffer = PostProcessorSharedMemory(decoder_state)
+            if channel_num == 0:
+                pre = buffer.get_pre_left()
+                nr_out = buffer.get_nr_left()
+            else:
+                pre = buffer.get_pre_right()
+                nr_out = buffer.get_nr_right()
 
-                if use_noise_reduction:
-                    noise_reduction.noise_reduction(pre, nr_out)
-                else:
-                    DecoderSharedMemory.copy_data_float32(pre, nr_out, decoder_state.post_audio_len)
+            if use_noise_reduction:
+                noise_reduction.noise_reduction(pre, nr_out)
+            else:
+                DecoderSharedMemory.copy_data_float32(pre, nr_out, decoder_state.post_audio_len)
 
-                buffer.close()
-                out_conn.send(decoder_state)
-            except InterruptedError:
-                pass
+            buffer.close()
+            out_conn.send(decoder_state)
 
     @staticmethod
     def mix_to_stereo_worker(nr_l_in_conn, nr_r_in_conn, out_conn, sample_rate):
@@ -607,15 +611,15 @@ class PostProcessor:
                 try:
                     l_decoder_state = nr_l_in_conn.recv()
                     break
-                except InterruptedError:
-                    pass
+                except InterruptedError: pass
+                except EOFError: return
         
             while True:
                 try:
                     r_decoder_state = nr_r_in_conn.recv()
                     break
-                except InterruptedError:
-                    pass
+                except InterruptedError: pass
+                except EOFError: return
 
             assert l_decoder_state.block_num == r_decoder_state.block_num, "Noise reduction processes are out of sync! Channels will be out od sync."
 
@@ -670,7 +674,13 @@ class PostProcessor:
 
         done = False
         while not done:
-            in_decoder_state = decoder_out_queue.get()
+            while True:
+                try:
+                    in_decoder_state = decoder_out_queue.get()
+                    break
+                except InterruptedError: pass
+                except EOFError: return
+
             buffer = DecoderSharedMemory(in_decoder_state)
 
             in_preL_buffer = buffer.get_pre_left()
@@ -697,7 +707,12 @@ class PostProcessor:
         
                 # enqueue the blocks in order
                 while len(block_queue) > 0 and (block_queue[0][0].block_num <= next_block):
-                    name = post_processor_shared_memory_idle_queue.get()
+                    while True:
+                        try:
+                            name = post_processor_shared_memory_idle_queue.get()
+                            break
+                        except InterruptedError: pass
+                        except EOFError: return
 
                     decoder_state, preL, preR = block_queue.pop(0)
                     
@@ -776,24 +791,27 @@ class SoundDeviceProcess():
     def play_worker(conn, sample_rate):
         output_stream = None
         while True:
-            try:
-                stereo = conn.recv_bytes()
-                if output_stream == None:
-                    output_stream = sd.OutputStream(
-                        samplerate=sample_rate,
-                        channels=2,
-                        dtype="int16"
-                    )
-                    output_stream.start()
-    
-                interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
-                interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo)
-                stacked = np.empty((int(len(interleaved)/2), 2), dtype=np.int16)
+            while True:
+                try:
+                    stereo = conn.recv_bytes()
+                    break
+                except InterruptedError: pass
+                except EOFError: return
 
-                SoundDeviceProcess.build_stereo(interleaved, stacked)
-                output_stream.write(stacked)
-            except InterruptedError:
-                pass
+            if output_stream == None:
+                output_stream = sd.OutputStream(
+                    samplerate=sample_rate,
+                    channels=2,
+                    dtype="int16"
+                )
+                output_stream.start()
+    
+            interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
+            interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo)
+            stacked = np.empty((int(len(interleaved)/2), 2), dtype=np.int16)
+
+            SoundDeviceProcess.build_stereo(interleaved, stacked)
+            output_stream.write(stacked)
     
     def play(self, stereo):
         self._thread_executor.submit(self._play_parent_conn.send_bytes, stereo)
@@ -819,33 +837,36 @@ def write_soundfile_process_worker(
         with as_outputfile(output_file, audio_rate) as w:
             done = False
             while not done:
-                try:
-                    decoder_state = post_processor_out_output_conn.recv()
-                    buffer = PostProcessorSharedMemory(decoder_state)
-                    stereo = buffer.get_stereo()
+                while True:
+                    try:
+                        decoder_state = post_processor_out_output_conn.recv()
+                        break
+                    except InterruptedError: pass
+                    except EOFError: return
 
-                    w.buffer_write(stereo, dtype="float32")
-                    if preview_mode:
-                        if SOUNDDEVICE_AVAILABLE:
-                            stereo_copy = np.empty_like(stereo)
-                            DecoderSharedMemory.copy_data_float32(stereo, stereo_copy, len(stereo_copy))
-                            player.play(stereo_copy)
-                        else:
-                            print(
-                                "Import of sounddevice failed, preview is not available!"
-                            )
+                buffer = PostProcessorSharedMemory(decoder_state)
+                stereo = buffer.get_stereo()
 
-                    buffer.close()
-                    post_processor_shared_memory_idle_queue.put(decoder_state.name)
-                    with total_samples_decoded.get_lock():
-                        total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_trimmed / 2)
-                    
-                    blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
-                    log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, input_rate, audio_rate)
+                w.buffer_write(stereo, dtype="float32")
+                if preview_mode:
+                    if SOUNDDEVICE_AVAILABLE:
+                        stereo_copy = np.empty_like(stereo)
+                        DecoderSharedMemory.copy_data_float32(stereo, stereo_copy, len(stereo_copy))
+                        player.play(stereo_copy)
+                    else:
+                        print(
+                            "Import of sounddevice failed, preview is not available!"
+                        )
 
-                    done = decoder_state.is_last_block
-                except InterruptedError:
-                    pass
+                buffer.close()
+                post_processor_shared_memory_idle_queue.put(decoder_state.name)
+                with total_samples_decoded.get_lock():
+                    total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_trimmed / 2)
+                
+                blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
+                log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, input_rate, audio_rate)
+
+                done = decoder_state.is_last_block
 
             w.flush()
             decode_done.set()
