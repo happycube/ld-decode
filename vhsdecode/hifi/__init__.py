@@ -17,9 +17,6 @@ os_lib_dir = os.path.join(
 
 try:
     if 32 << bool(sys.maxsize >> 32) == 64:
-    
-        # `NB_SVML_LIBS_DIR` below is arbitrary: it may have been set manually beforehand.
-        # ... Otherwise, the default values are pretty robust for what I can tell.
         _nb_svml_dir = os.environ.get('NB_SVML_LIBS_DIR') or os_lib_dir
         _nb_loader = lambda so: load_library_permanently(
             os.path.join(_nb_svml_dir, so)
