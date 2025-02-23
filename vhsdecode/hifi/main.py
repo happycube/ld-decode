@@ -494,7 +494,7 @@ class PostProcessor:
         self.post_processor_shared_memory_idle_queue = post_processor_shared_memory_idle_queue
         self.post_processor_num_shared_memory = 16
         for i in range(self.post_processor_num_shared_memory):
-            shared_memory = PostProcessorSharedMemory.get_shared_memory(channel_len, "HiFiDecode Post Processor Shared Memory")
+            shared_memory = PostProcessorSharedMemory.get_shared_memory(channel_len, f"hifi_post_mem_{i}")
             self.post_processor_shared_memory.append(shared_memory)
             self.post_processor_shared_memory_idle_queue.put(shared_memory.name)
             atexit.register(shared_memory.close)
@@ -502,31 +502,31 @@ class PostProcessor:
 
         nr_worker_l_in_output, nr_worker_l_in_input = Pipe(duplex=False)
         nr_worker_r_in_output, nr_worker_r_in_input = Pipe(duplex=False)
-        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="HiFiDecode SpectralNoiseReduction L", args=(self.decoder_out_queue, self.decoder_shared_memory_idle_queue, self.post_processor_shared_memory_idle_queue, nr_worker_l_in_input, nr_worker_r_in_input))
+        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="hifi_blk_srt", args=(self.decoder_out_queue, self.decoder_shared_memory_idle_queue, self.post_processor_shared_memory_idle_queue, nr_worker_l_in_input, nr_worker_r_in_input))
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
 
         spectral_nr_worker_l_output, spectral_nr_worker_l_input = Pipe(duplex=False)
-        self.spectral_nr_worker_l = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction L", args=(nr_worker_l_in_output, spectral_nr_worker_l_input, self.spectral_nr_amount, self.final_audio_rate))
+        self.spectral_nr_worker_l = Process(target=PostProcessor.spectral_noise_reduction_worker, name="hifi_spec_nr_l", args=(nr_worker_l_in_output, spectral_nr_worker_l_input, self.spectral_nr_amount, self.final_audio_rate))
         self.spectral_nr_worker_l.start()
         atexit.register(self.spectral_nr_worker_l.terminate)
 
         spectral_nr_worker_r_output, spectral_nr_worker_r_input = Pipe(duplex=False)
-        self.spectral_nr_worker_r = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction R", args=(nr_worker_r_in_output, spectral_nr_worker_r_input, self.spectral_nr_amount, self.final_audio_rate))
+        self.spectral_nr_worker_r = Process(target=PostProcessor.spectral_noise_reduction_worker, name="hifi_spec_nr_r", args=(nr_worker_r_in_output, spectral_nr_worker_r_input, self.spectral_nr_amount, self.final_audio_rate))
         self.spectral_nr_worker_r.start()
         atexit.register(self.spectral_nr_worker_r.terminate)
         
         nr_worker_l_out_output, nr_worker_l_out_input = Pipe(duplex=False)
-        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(spectral_nr_worker_l_output, nr_worker_l_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="hifi_nr_l", args=(spectral_nr_worker_l_output, nr_worker_l_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
         atexit.register(self.nr_worker_l.terminate)
 
         nr_worker_r_out_output, nr_worker_r_out_input = Pipe(duplex=False)
-        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(spectral_nr_worker_r_output, nr_worker_r_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="hifi_nr_r", args=(spectral_nr_worker_r_output, nr_worker_r_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
         atexit.register(self.nr_worker_r.terminate)
         
-        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="HiFiDecode Stereo Merge", args=(nr_worker_l_out_output, nr_worker_r_out_output, self.mix_to_stereo_worker_output, self.final_audio_rate))
+        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="hifi_stereo_mrg", args=(nr_worker_l_out_output, nr_worker_r_out_output, self.mix_to_stereo_worker_output, self.final_audio_rate))
         self.mix_to_stereo_worker_process.start()
         atexit.register(self.mix_to_stereo_worker_process.terminate)
 
@@ -915,7 +915,7 @@ async def decode_parallel(
     shared_memory_instances = []
     shared_memory_idle_queue = Queue()
     for i in range(num_shared_memory_instances):
-        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"HiFiDecode Shared Memory {i}")
+        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"hifi_decoder_{i}")
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
 
