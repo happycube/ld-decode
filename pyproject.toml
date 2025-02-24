@@ -15,7 +15,7 @@ classifiers = [
     "Programming Language :: Rust",
 ]
 dependencies = [
-    "numpy>=1.22","numba>=0.58.1","scipy>=1.10.1","samplerate", "static-ffmpeg", "cython", "soundfile", "sounddevice", "importlib_resources >= 5.0; python_version < '3.10'", "matplotlib", "noisereduce>=2.0.0"
+    "numpy>=1.22","numba>=0.58.1","scipy>=1.10.1","samplerate", "static-ffmpeg", "cython", "soundfile>=0.13.1", "sounddevice", "importlib_resources >= 5.0; python_version < '3.10'", "matplotlib", "noisereduce>=2.0.0", "rocket-fft>=0.2.5", "icc_rt"
 ]
 dynamic = ["version"]
 # version = "0.2.1dev0"

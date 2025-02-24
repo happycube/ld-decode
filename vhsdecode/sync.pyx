@@ -799,54 +799,78 @@ def valid_pulses_to_linelocs(
     cdef int[::1] line_locations = np.empty((proclines), dtype=np.int32, order='c')
     cdef int[::1] line_location_errs = np.full(proclines, 0, dtype=np.int32, order='c')
 
-    cdef Py_ssize_t i
-    cdef Py_ssize_t j
+    cdef Py_ssize_t line_index
+    cdef Py_ssize_t pulse_search_index
     
     # refine the line locations to pulses
-    cdef double current_distance
-    cdef double next_distance
-    cdef double min_distance
-    cdef int current_pulse
+    cdef double current_distance_from_pulse_to_line
+    cdef double next_observed_distance_between_pulse_and_line
+    cdef double smallest_distance_observed_from_pulse_to_line
+    cdef int current_pulse_sample_location
 
     cdef Py_ssize_t current_pulse_index = 0
     cdef Py_ssize_t validpulses_len = len(validpulses)
 
-    for i in range(0, proclines):
-        # estimate the line locations based on the mean line length
-        line_locations[i] = round_to_int(reference_pulse + meanlinelen * (i - reference_line))
+    # This loop performs a best-fit to align the scan lines, which are expected to increment always
+    # by around mean_line_len distance in samples, and the pulse locations in samples that were detected earlier
+    # * Each line starts out by incrementing by the mean_line_length (estimated location)
+    # * The inner loop searches for the nearest pulse at the estimated location within +- max_distance_between_pulse_and_line
+    # * The closest pulse to the estimated location within the max_distance_between_pulse_and_line is assigned to the line
+    #   * Each pulse is only ever assigned to a line once
+    # * If there isn't a pulse within max_distance_between_pulse_and_line, then the line keeps the estimated location
+
+    max_allowed_distance_between_pulse_and_line = meanlinelen / 1.5
+    for line_index in range(0, proclines):
+        # Start by setting this line's sample location to the expected location relative to the reference line
+        line_locations[line_index] = round_to_int(reference_pulse + meanlinelen * (line_index - reference_line))
 
         # search for the closest pulse, pulse locations are assumed to be sorted
         if current_pulse_index < validpulses_len:
-            current_distance = c_abs(validpulses[current_pulse_index] - line_locations[i])
-            next_distance = -1
-            current_pulse = -1
-            min_distance = meanlinelen / 1.5
-            j = current_pulse_index
+            # start the search using the distance between the current pulse and the expected line location
+            current_distance_from_pulse_to_line = c_abs(validpulses[current_pulse_index] - line_locations[line_index])
 
-            while j < validpulses_len - 1:
-                if current_distance <= min_distance:
-                    min_distance = current_distance
-                    current_pulse_index = j
-                    current_pulse = validpulses[j]
+            # start by setting this to the max allowed value so the loop will break if the next pulse is further away
+            smallest_distance_observed_from_pulse_to_line = max_allowed_distance_between_pulse_and_line
+
+            # reset the best fit variables
+            next_observed_distance_between_pulse_and_line = -1
+            current_pulse_sample_location = -1
+            
+            # start iteration at the pulse that hasn't been assigned yet
+            pulse_search_index = current_pulse_index
+
+            while pulse_search_index < validpulses_len - 1:
+                if current_distance_from_pulse_to_line <= smallest_distance_observed_from_pulse_to_line:
+                    smallest_distance_observed_from_pulse_to_line = current_distance_from_pulse_to_line
+
+                    current_pulse_index = pulse_search_index
+                    current_pulse_sample_location = validpulses[pulse_search_index]
     
-                # if the distance starts to increase, we've moved past where the pulse should be
-                next_distance = c_abs(validpulses[j+1] - line_locations[i])
-                if next_distance > current_distance:
+                # peek ahead to the next pulse to measure the distance
+                next_observed_distance_between_pulse_and_line = c_abs(validpulses[pulse_search_index+1] - line_locations[line_index])
+                if next_observed_distance_between_pulse_and_line > current_distance_from_pulse_to_line:
+                    # if the next pulse is greater than the current distance, we have already found the closest pulse
                     break
-    
-                current_distance = next_distance
-                j += 1
-    
-            if current_pulse != -1:
-                # print(i, "using nearest pulse", current_pulse)
-                line_locations[i] = current_pulse
+                else:
+                    # if the distance is not greater, continue searching
+                    current_distance_from_pulse_to_line = next_observed_distance_between_pulse_and_line
+                    pulse_search_index += 1
+            
+            # if we found a pulse that was close enough (i.e. +- max_distance_between_pulse_and_line),
+            # the set this line to the pulse's location, replacing the estimated location that was already set above
+            # otherwise, keep the estimated location
+            if current_pulse_sample_location != -1:
+                # print(line_index, "using nearest pulse", current_pulse_sample_location)
+                line_locations[line_index] = current_pulse_sample_location
                 current_pulse_index += 1
             # else:
-            #     # print(i, "using estimated pulse", line_locations[i])
+            #     # print(line_index, "using estimated pulse", line_locations[line_index])
             #     # fill any guessed lines with the previous field values
-            #     line_location_errs[i] = 1
+            #     line_location_errs[line_index] = 1
 
-    return line_locations, line_location_errs, current_pulse
+            # move on to the next line
+
+    return line_locations, line_location_errs, current_pulse_sample_location # will be the last pulse that was assigned to a line at this point
 
 # Rounds a line number to it's nearest line at intervals of .5 lines
 @cython.cfunc

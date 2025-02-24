@@ -23,6 +23,7 @@ class ChromaAFC:
         plot=False,
         tape_format="VHS",
         do_cafc=False,
+        chroma_bpf_lower=60000,
     ):
         self.tape_format = tape_format
         self.fv = sys_params["FPS"] * 2
@@ -39,6 +40,7 @@ class ChromaAFC:
         self.samp_rate = self.out_sample_rate_mhz * 1e6
         self.bpf_under_ratio = under_ratio
         self._chroma_bandpass_order = chroma_bandpass_order
+        self._chroma_bpf_lower = chroma_bpf_lower
         self.out_frequency_half = self.out_sample_rate_mhz / 2
         self.fieldlen = sys_params["outlinelen"] * max(sys_params["field_lines"])
         self.samples = np.arange(self.fieldlen)
@@ -458,7 +460,7 @@ class ChromaAFC:
         return sps.butter(
             self._chroma_bandpass_order,
             [
-                60000 / freq_hz_half,
+                self._chroma_bpf_lower / freq_hz_half,
                 self.cc_freq_mhz * 1e6 * self.bpf_under_ratio / freq_hz_half,
             ],
             btype="bandpass",

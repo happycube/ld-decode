@@ -182,7 +182,7 @@ def common_parser_inner(parser, use_gui=False, default_threads=DEFAULT_THREADS):
         type=str.upper,
         help="video system (overriden by individual options)",
         default="NTSC",
-        choices=["PAL", "MPAL", "PALM", "NTSC", "MESECAM", "405"],
+        choices=["PAL", "MPAL", "PALM", "NTSC", "MESECAM", "405", "NLINHA"],
     )
     file_options_group = parser.add_argument_group("File options")
     file_options_group.add_argument(
