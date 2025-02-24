@@ -1014,19 +1014,6 @@ async def decode_parallel(
     ))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
-
-    def handle_ui_events():
-        stop_requested = False
-        if ui_t is not None:
-            ui_t.app.processEvents()
-            if ui_t.window.transport_state == 0:
-                stop_requested = True
-            elif ui_t.window.transport_state == 2:
-                while ui_t.window.transport_state == 2:
-                    ui_t.app.processEvents()
-                    time.sleep(0.01)
-        
-        return stop_requested
     
     def read_and_send_to_decoder(
         f,
@@ -1034,7 +1021,8 @@ async def decode_parallel(
         decoder_state,
         input_position,
         exit_requested,
-        previous_overlap
+        previous_overlap,
+        stop_requested
     ):
         buffer = DecoderSharedMemory(decoder_state)
         # read input data into the shared memory buffer
@@ -1044,8 +1032,6 @@ async def decode_parallel(
         with input_position.get_lock():
             input_position.value += frames_read * 2
 
-        # handle stop and last block
-        stop_requested = handle_ui_events()
         is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
         if is_last_block:
             # save the read data
@@ -1081,6 +1067,19 @@ async def decode_parallel(
             
     print(f"Starting decode...")
 
+    async def handle_ui_events():
+        stop_requested = False
+        if ui_t is not None:
+            ui_t.app.processEvents()
+            if ui_t.window.transport_state == 0:
+                stop_requested = True
+            elif ui_t.window.transport_state == 2:
+                while ui_t.window.transport_state == 2:
+                    ui_t.app.processEvents()
+                    await asyncio.sleep(0.01)
+        
+        return stop_requested
+
     with as_soundfile(input_file) as f:
         loop = asyncio.get_event_loop()        
         previous_overlap = np.empty(0)
@@ -1101,13 +1100,15 @@ async def decode_parallel(
             if (len(previous_overlap) == 0):
                 previous_overlap = np.empty(decoder_state.block_overlap, dtype=np.int16)
 
+            stop_requested = await handle_ui_events();
             decoder_state, is_last_block = await loop.run_in_executor(None, read_and_send_to_decoder, 
                 f,
                 decoder,
                 decoder_state,
                 input_position,
                 exit_requested,
-                previous_overlap
+                previous_overlap,
+                stop_requested
             )
 
             progressB.print(input_position.value / 2)
