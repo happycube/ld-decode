@@ -328,9 +328,31 @@ Install VHS-Decode:
 
     cd vhs-decode
 
-Build and install vhs-decode via pipx
+Build and install vhs-decode via pipx, using **one** of the below scripts.
 
+* Base installation
+
+    ```
+    pipx install .
+    ```
+
+* With hifi-decode gui
+
+    ```
     pipx install .[hifi_gui_qt6]
+    ```
+
+* With Intel specific cpu optimizations
+
+    ```
+    pipx install .[intel]
+    ```
+
+* If reinstalling, you may need to add the `--force` flag to overwrite the previous installation.
+
+    ```
+    pipx install .[intel,hifi_gui_qt6] --force
+    ```
 
 Compile and Install ld-tools suite: (Required)
 

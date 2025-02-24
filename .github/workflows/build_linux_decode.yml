@@ -24,7 +24,7 @@ jobs:
           cp resources/appimage/decode/vhs-decode.desktop _build_appimage/
           cp resources/appimage/decode/vhs-decode.appdata.xml _build_appimage/
 
-          echo "${{ github.workspace }}[hifi_gui,hifi_gnuradio]" > _build_appimage/requirements.txt
+          echo "${{ github.workspace }}[intel,hifi_gui,hifi_gnuradio]" > _build_appimage/requirements.txt
 
           python-appimage build app -p 3.12 _build_appimage
 
