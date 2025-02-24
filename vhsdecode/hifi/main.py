@@ -2,7 +2,7 @@
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, SimpleQueue, Process, Value, freeze_support, current_process, Event, connection
+from multiprocessing import cpu_count, Pipe, SimpleQueue, Process, Value, freeze_support, current_process, Event
 from datetime import datetime, timedelta
 import os
 import sys
@@ -454,7 +454,7 @@ def log_decode(start_time: datetime, frames: int, audio_samples: int, blocks_enq
     elapsed_time_format: str = seconds_to_str(elapsed_time.total_seconds())
 
     print(
-        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x), {blocks_enqueued} blocks enqueued\n"
+        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x), {int(blocks_enqueued)} blocks enqueued\n"
         + f"- Input position: {input_time_format}\n"
         + f"- Audio position: {audio_time_format}\n"
         + f"- Audio buffer  : {audio_buffer_time_format}\n"
@@ -470,6 +470,7 @@ class PostProcessor:
         channel_len,
         post_processor_shared_memory_idle_queue,
         decoder_shared_memory_idle_queue,
+        blocks_enqueued,
         out_conn,
     ):
         self.final_audio_rate = decode_options["audio_rate"]
@@ -488,6 +489,7 @@ class PostProcessor:
 
         self.decoder_out_queue = decoder_out_queue
         self.mix_to_stereo_worker_output = out_conn
+        self.blocks_enqueued = blocks_enqueued
         self.decoder_shared_memory_idle_queue = decoder_shared_memory_idle_queue
 
         self.post_processor_shared_memory = []
@@ -502,7 +504,7 @@ class PostProcessor:
 
         nr_worker_l_in_output, nr_worker_l_in_input = Pipe(duplex=False)
         nr_worker_r_in_output, nr_worker_r_in_input = Pipe(duplex=False)
-        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="hifi_blk_srt", args=(self.decoder_out_queue, self.decoder_shared_memory_idle_queue, self.post_processor_shared_memory_idle_queue, nr_worker_l_in_input, nr_worker_r_in_input))
+        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="hifi_blk_srt", args=(self.decoder_out_queue, self.decoder_shared_memory_idle_queue, self.blocks_enqueued, self.post_processor_shared_memory_idle_queue, nr_worker_l_in_input, nr_worker_r_in_input))
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
 
@@ -664,6 +666,7 @@ class PostProcessor:
     def block_sorter_worker(
         decoder_out_queue,
         decoder_shared_memory_idle_queue,
+        blocks_enqueued,
         post_processor_shared_memory_idle_queue,
         nr_worker_l_in_conn,
         nr_worker_r_in_conn,
@@ -695,6 +698,8 @@ class PostProcessor:
             buffer.close()
 
             decoder_shared_memory_idle_queue.put(in_decoder_state.name)
+            with blocks_enqueued.get_lock():
+                blocks_enqueued.value -= 1
 
             # blocks are received from the decoder processes out of order
             # gather them into ordered chunk and process sequentially
@@ -819,8 +824,7 @@ class SoundDeviceProcess():
 
 def write_soundfile_process_worker(
     post_processor_out_output_conn,
-    max_shared_memory_size,
-    shared_memory_idle_queue,
+    blocks_enqueued,
     post_processor_shared_memory_idle_queue,
     start_time,
     input_position,
@@ -863,8 +867,7 @@ def write_soundfile_process_worker(
                 with total_samples_decoded.get_lock():
                     total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_trimmed / 2)
                 
-                blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
-                log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, input_rate, audio_rate)
+                log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued.value, input_rate, audio_rate)
 
                 done = decoder_state.is_last_block
 
@@ -891,6 +894,7 @@ async def decode_parallel(
     block_audio_size = decoder.blockAudioSize
 
     read_overlap = decoder.readOverlap
+    blocks_enqueued = Value("d", 0)
     input_position = Value('d', 0)
     total_samples_decoded = Value('d', 0)
     start_time = datetime.now()
@@ -913,7 +917,7 @@ async def decode_parallel(
     num_decoders = threads
 
     shared_memory_instances = []
-    shared_memory_idle_queue = Queue()
+    shared_memory_idle_queue = SimpleQueue()
     for i in range(num_shared_memory_instances):
         buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"hifi_decoder_{i}")
         shared_memory_instances.append(buffer_instance)
@@ -937,13 +941,14 @@ async def decode_parallel(
 
     # set up the post processor
     post_processor_out_output_conn, post_processor_out_input_conn = Pipe(duplex=False)
-    post_processor_shared_memory_idle_queue = Queue()
+    post_processor_shared_memory_idle_queue = SimpleQueue()
     post_processor = PostProcessor(
         decode_options,
         decoder_out_queue,
         decoder.blockFinalAudioSize,
         post_processor_shared_memory_idle_queue,
         shared_memory_idle_queue,
+        blocks_enqueued,
         post_processor_out_input_conn
     )
     atexit.register(post_processor.close)
@@ -953,9 +958,8 @@ async def decode_parallel(
         target=write_soundfile_process_worker, 
         name="HiFiDecode Soundfile Encoder", 
         args=(
-            post_processor_out_output_conn, 
-            num_shared_memory_instances, 
-            shared_memory_idle_queue,
+            post_processor_out_output_conn,
+            blocks_enqueued,
             post_processor_shared_memory_idle_queue,
             start_time, 
             input_position, 
@@ -1041,7 +1045,13 @@ async def decode_parallel(
 
         while True:
             # get the next available shared memory buffer
-            buffer_name = await loop.run_in_executor(None, shared_memory_idle_queue.get)
+            while True:
+                try:
+                    buffer_name = await loop.run_in_executor(None, shared_memory_idle_queue.get)
+                    break
+                except InterruptedError: pass
+                except EOFError: return
+
             decoder_state = DecoderState(decoder, buffer_name, decoder.blockSize, block_num, False)
 
             if (len(previous_overlap) == 0):
@@ -1057,9 +1067,9 @@ async def decode_parallel(
             )
 
             progressB.print(input_position.value / 2)
-
-            blocks_enqueued = num_shared_memory_instances - shared_memory_idle_queue.qsize()
-            log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, decode_options["input_rate"], decode_options["audio_rate"])
+            with blocks_enqueued.get_lock():
+                blocks_enqueued.value += 1
+            log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued.value, decode_options["input_rate"], decode_options["audio_rate"])
 
             if is_last_block:
                  break
