@@ -7,19 +7,20 @@ requires = ["setuptools>=61", "setuptools_scm>=6.2", "wheel", "Cython", "numpy"]
 name = "vhs_decode"
 description = "Software Decoder for raw rf captures of laserdisc, vhs and other analog video formats"
 readme = "README_pypi.md"
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.13"
 keywords = ["laserdisc", "vhs", "video", "tape", "decoder"]
 license = {file = "LICENSE"}
 classifiers = [
     "Topic :: Multimedia :: Video",
 ]
 dependencies = [
-    "numpy>=1.22","numba>=0.58.1","scipy>=1.10.1","samplerate", "static-ffmpeg", "cython", "soundfile", "sounddevice", "importlib_resources >= 5.0; python_version < '3.10'", "matplotlib", "noisereduce>=2.0.0"
+    "numpy>=1.22","numba>=0.58.1","scipy>=1.10.1","samplerate", "static-ffmpeg", "cython", "soundfile>=0.13.1", "sounddevice", "importlib_resources >= 5.0; python_version < '3.10'", "matplotlib", "noisereduce>=2.0.0", "rocket-fft>=0.2.5"
 ]
 dynamic = ["version"]
 # version = "0.2.1dev0"
 
 [project.optional-dependencies]
+intel = [ "intel-cmplr-lib-rt", "icc_rt" ]
 hifi_gui = [ "PyQt5>=5.14.1" ]
 hifi_gui_qt6 = [ "PyQt6>=6.4.2" ]
 hifi_gnuradio = [ "pyzmq" ]

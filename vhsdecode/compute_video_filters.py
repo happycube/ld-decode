@@ -70,17 +70,21 @@ def gen_custom_video_filters(filter_list, freq_hz, block_len):
                         f["filename"] + "-" + str(int(freq_hz)) + ".txt"
                     )
                     # file_path = osp.join(osp.dirname(__file__), "format_defs", f["filename"]+"-"+str(int(freq_hz))+".txt")
-                    ret *= np.loadtxt(file_path, dtype=np.complex_)
-                except:
+                    ret *= np.loadtxt(file_path, dtype=np.complex128)
+                except FileNotFoundError:
                     print(
-                        f"Warning: Cannot load filter from file for samplerate of {freq_hz} Hz!",
+                        f"Warning: Cannot load filter from file for samplerate of {freq_hz} Hz! Output will likely not look correct!",
                         file=sys.stderr,
                     )
             case "highshelf":
-                db, da = gen_shelf(f["midfreq"], f["gain"], "high", freq_hz / 2.0, qfactor=f["q"])
+                db, da = gen_shelf(
+                    f["midfreq"], f["gain"], "high", freq_hz / 2.0, qfactor=f["q"]
+                )
                 ret *= filtfft((db, da), block_len, whole=False)
             case "lowshelf":
-                db, da = gen_shelf(f["midfreq"], f["gain"], "low", freq_hz / 2.0, qfactor=f["q"])
+                db, da = gen_shelf(
+                    f["midfreq"], f["gain"], "low", freq_hz / 2.0, qfactor=f["q"]
+                )
                 ret *= filtfft((db, da), block_len, whole=False)
     return ret
 
