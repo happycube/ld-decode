@@ -21,9 +21,11 @@ This is a collection of basic "drag 'n drop" style bash scripts used for the win
 
 - `pcm-to-wav.bat` - Simple script to make the `pcm` audio from ld-decode to a `wave` format file tools can use with drag and drop. 
 
-- `ntsc_proxy.bat` - Intended for NTSC FFV1/V210 exports to make a quick BDWIF de-intelraced file for web and or proxy use. 
+- `proxy.bat` - Intended for universal FFV1/V210 exports to make a quick BDWIF de-interlaced file for web and or proxy use, this is also YouTube ready.
 
-- `pal_proxy.bat` - Intended for PAL FFV1/V210 exports to make a quick BDWIF de-intelraced file for web and or proxy use. 
+- `ntsc_proxy.bat` - Intended for NTSC FFV1/V210 exports to make a quick BDWIF de-interlaced file for web and or proxy use. 
+
+- `pal_proxy.bat` - Intended for PAL FFV1/V210 exports to make a quick BDWIF de-interlaced file for web and or proxy use. 
 
 
 ## Dependency's

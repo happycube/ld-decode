@@ -2,7 +2,7 @@
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, Pipe, Queue, SimpleQueue, Process, Value, freeze_support, current_process, Event, connection
+from multiprocessing import cpu_count, Pipe, SimpleQueue, Process, Value, freeze_support, current_process, Event
 from datetime import datetime, timedelta
 import os
 import sys
@@ -64,6 +64,7 @@ except ImportError as e:
     print(e)
     HIFI_UI = False
 
+NORMALIZE_FILE_SUFFIX = "_tmp_normalize.wav"
 
 parser, _ = common_parser_cli(
     "Extracts audio from RAW HiFi FM RF captures",
@@ -156,11 +157,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--normalize",
+    dest="normalize",
+    action="store_true",
+    default=False,
+    help=F"Automatically amplifies the audio to the peak gain of the decode. "
+    f"This will create a temporary file ending in \"{NORMALIZE_FILE_SUFFIX}\" that is deleted after the amplification step is complete."
+)
+
+parser.add_argument(
     "--gain",
     dest="gain",
     type=float,
     default=1.0,
-    help="Sets the gain/volume of the output audio (default is 1.0)",
+    help="Manually adjust the gain/volume of the output audio (default is 1.0)",
 )
 
 parser.add_argument(
@@ -408,8 +418,17 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
         return sf.SoundFile(pathR, "r")
 
 
-def as_outputfile(path, sample_rate):
-    if ".wav" in path.lower():
+def as_outputfile(path, sample_rate, normalize):
+    if normalize:
+        return sf.SoundFile(
+            path + NORMALIZE_FILE_SUFFIX,
+            "w",
+            channels=2,
+            samplerate=int(sample_rate),
+            format="WAV", # TODO: update to FLAC 32 bit when supported by soundfile
+            subtype="FLOAT",
+        )
+    elif ".wav" in path.lower():
         return sf.SoundFile(
             path,
             "w",
@@ -426,7 +445,7 @@ def as_outputfile(path, sample_rate):
             samplerate=int(sample_rate),
             format="FLAC",
             subtype="PCM_24",
-            #compression_level=0.0
+            compression_level=1.0
         )
 
 
@@ -454,7 +473,7 @@ def log_decode(start_time: datetime, frames: int, audio_samples: int, blocks_enq
     elapsed_time_format: str = seconds_to_str(elapsed_time.total_seconds())
 
     print(
-        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x), {blocks_enqueued} blocks enqueued\n"
+        f"- Decoding speed: {round(frames / (1e3 * elapsed_time.total_seconds()))} kFrames/s ({relative_speed:.2f}x), {int(blocks_enqueued)} blocks enqueued\n"
         + f"- Input position: {input_time_format}\n"
         + f"- Audio position: {audio_time_format}\n"
         + f"- Audio buffer  : {audio_buffer_time_format}\n"
@@ -470,12 +489,15 @@ class PostProcessor:
         channel_len,
         post_processor_shared_memory_idle_queue,
         decoder_shared_memory_idle_queue,
+        blocks_enqueued,
         out_conn,
+        peak_gain,
     ):
         self.final_audio_rate = decode_options["audio_rate"]
         self.use_noise_reduction = decode_options["noise_reduction"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.nr_side_gain = decode_options["nr_side_gain"]
+        self.peak_gain = peak_gain
 
         # create processes and wire up queues
         #
@@ -488,13 +510,14 @@ class PostProcessor:
 
         self.decoder_out_queue = decoder_out_queue
         self.mix_to_stereo_worker_output = out_conn
+        self.blocks_enqueued = blocks_enqueued
         self.decoder_shared_memory_idle_queue = decoder_shared_memory_idle_queue
 
         self.post_processor_shared_memory = []
         self.post_processor_shared_memory_idle_queue = post_processor_shared_memory_idle_queue
         self.post_processor_num_shared_memory = 16
         for i in range(self.post_processor_num_shared_memory):
-            shared_memory = PostProcessorSharedMemory.get_shared_memory(channel_len, "HiFiDecode Post Processor Shared Memory")
+            shared_memory = PostProcessorSharedMemory.get_shared_memory(channel_len, f"hifi_post_mem_{i}")
             self.post_processor_shared_memory.append(shared_memory)
             self.post_processor_shared_memory_idle_queue.put(shared_memory.name)
             atexit.register(shared_memory.close)
@@ -502,33 +525,39 @@ class PostProcessor:
 
         nr_worker_l_in_output, nr_worker_l_in_input = Pipe(duplex=False)
         nr_worker_r_in_output, nr_worker_r_in_input = Pipe(duplex=False)
-        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="HiFiDecode SpectralNoiseReduction L", args=(self.decoder_out_queue, self.decoder_shared_memory_idle_queue, self.post_processor_shared_memory_idle_queue, nr_worker_l_in_input, nr_worker_r_in_input))
+        self.block_sorter_process = Process(target=PostProcessor.block_sorter_worker, name="hifi_blk_srt", args=(self.decoder_out_queue, self.decoder_shared_memory_idle_queue, self.blocks_enqueued, self.post_processor_shared_memory_idle_queue, nr_worker_l_in_input, nr_worker_r_in_input))
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
 
         spectral_nr_worker_l_output, spectral_nr_worker_l_input = Pipe(duplex=False)
-        self.spectral_nr_worker_l = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction L", args=(nr_worker_l_in_output, spectral_nr_worker_l_input, self.spectral_nr_amount, self.final_audio_rate))
+        self.spectral_nr_worker_l = Process(target=PostProcessor.spectral_noise_reduction_worker, name="hifi_spec_nr_l", args=(nr_worker_l_in_output, spectral_nr_worker_l_input, self.spectral_nr_amount, self.final_audio_rate))
         self.spectral_nr_worker_l.start()
         atexit.register(self.spectral_nr_worker_l.terminate)
 
         spectral_nr_worker_r_output, spectral_nr_worker_r_input = Pipe(duplex=False)
-        self.spectral_nr_worker_r = Process(target=PostProcessor.spectral_noise_reduction_worker, name="HiFiDecode SpectralNoiseReduction R", args=(nr_worker_r_in_output, spectral_nr_worker_r_input, self.spectral_nr_amount, self.final_audio_rate))
+        self.spectral_nr_worker_r = Process(target=PostProcessor.spectral_noise_reduction_worker, name="hifi_spec_nr_r", args=(nr_worker_r_in_output, spectral_nr_worker_r_input, self.spectral_nr_amount, self.final_audio_rate))
         self.spectral_nr_worker_r.start()
         atexit.register(self.spectral_nr_worker_r.terminate)
         
         nr_worker_l_out_output, nr_worker_l_out_input = Pipe(duplex=False)
-        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction L", args=(spectral_nr_worker_l_output, nr_worker_l_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_l = Process(target=PostProcessor.noise_reduction_worker, name="hifi_nr_l", args=(spectral_nr_worker_l_output, nr_worker_l_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_l.start()
         atexit.register(self.nr_worker_l.terminate)
 
         nr_worker_r_out_output, nr_worker_r_out_input = Pipe(duplex=False)
-        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="HiFiDecode NoiseReduction R", args=(spectral_nr_worker_r_output, nr_worker_r_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
+        self.nr_worker_r = Process(target=PostProcessor.noise_reduction_worker, name="hifi_nr_r", args=(spectral_nr_worker_r_output, nr_worker_r_out_input, self.use_noise_reduction, self.nr_side_gain, self.final_audio_rate))
         self.nr_worker_r.start()
         atexit.register(self.nr_worker_r.terminate)
         
-        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="HiFiDecode Stereo Merge", args=(nr_worker_l_out_output, nr_worker_r_out_output, self.mix_to_stereo_worker_output, self.final_audio_rate))
+        self.mix_to_stereo_worker_process = Process(target=PostProcessor.mix_to_stereo_worker, name="hifi_stereo_mrg", args=(nr_worker_l_out_output, nr_worker_r_out_output, self.mix_to_stereo_worker_output, self.peak_gain, self.final_audio_rate))
         self.mix_to_stereo_worker_process.start()
         atexit.register(self.mix_to_stereo_worker_process.terminate)
+
+    @staticmethod
+    @guvectorize([(numba.types.float32, NumbaAudioArray, NumbaAudioArray)], '(),(n)->(n)', cache=True, fastmath=True, nopython=True)
+    def normalize(gain, _, audio):
+        for i in range(len(audio)):
+            audio[i] = audio[i] * gain
 
     @staticmethod
     def spectral_noise_reduction_worker(
@@ -605,7 +634,7 @@ class PostProcessor:
             out_conn.send(decoder_state)
 
     @staticmethod
-    def mix_to_stereo_worker(nr_l_in_conn, nr_r_in_conn, out_conn, sample_rate):
+    def mix_to_stereo_worker(nr_l_in_conn, nr_r_in_conn, out_conn, peak_gain, sample_rate):
         while True:
             while True:
                 try:
@@ -628,16 +657,20 @@ class PostProcessor:
             l = buffer.get_nr_left()
             r = buffer.get_nr_right()
             stereo = buffer.get_stereo()
+            
+            max_gain = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.post_audio_trimmed, sample_rate, decoder_state.block_num == 0)
 
-            stereo_len = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.post_audio_trimmed, sample_rate, decoder_state.block_num == 0)
+            if peak_gain.value < max_gain:
+                with peak_gain.get_lock():
+                    peak_gain.value = max_gain
 
-            decoder_state.stereo_audio_trimmed = stereo_len
+            decoder_state.stereo_audio_trimmed = decoder_state.post_audio_trimmed * 2
             buffer.close()
             out_conn.send(decoder_state)
             
 
     @staticmethod
-    @njit(numba.types.int32(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32, numba.types.int32, numba.types.bool_), cache=True, fastmath=True, nogil=True)
+    @njit(numba.types.float32(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32, numba.types.int32, numba.types.bool_), cache=True, fastmath=True, nogil=True)
     def stereo_interleave(
         audioL: np.array,
         audioR: np.array,
@@ -646,24 +679,35 @@ class PostProcessor:
         sample_rate: int,
         is_first_block: bool
     ) -> int:
-        for i in range(channel_length):
-            stereo[(i * 2)] = audioL[i]
-            stereo[(i * 2) + 1] = audioR[i]
+        max_gain = 0
+        start_sample = 0
 
         # mute the spike that occurs during noise reduction
         if is_first_block:
             trim_samples = int(0.0015 * sample_rate)
+            start_sample = trim_samples
             for i in range(trim_samples):
                 stereo[(i * 2)] = 0
                 stereo[(i * 2) + 1] = 0
-            
-        stereo_len = channel_length * 2
-        return stereo_len
+
+        for i in range(start_sample, channel_length):
+            audioLSample = audioL[i]
+            stereo[(i * 2)] = audioLSample
+            if abs(audioLSample) > max_gain:
+                max_gain = abs(audioLSample)
+
+            audioRSample = audioR[i]
+            stereo[(i * 2) + 1] = audioRSample
+            if abs(audioRSample) > max_gain:
+                max_gain = abs(audioRSample)
+
+        return max_gain
 
     @staticmethod
     def block_sorter_worker(
         decoder_out_queue,
         decoder_shared_memory_idle_queue,
+        blocks_enqueued,
         post_processor_shared_memory_idle_queue,
         nr_worker_l_in_conn,
         nr_worker_r_in_conn,
@@ -695,6 +739,8 @@ class PostProcessor:
             buffer.close()
 
             decoder_shared_memory_idle_queue.put(in_decoder_state.name)
+            with blocks_enqueued.get_lock():
+                blocks_enqueued.value -= 1
 
             # blocks are received from the decoder processes out of order
             # gather them into ordered chunk and process sequentially
@@ -819,8 +865,7 @@ class SoundDeviceProcess():
 
 def write_soundfile_process_worker(
     post_processor_out_output_conn,
-    max_shared_memory_size,
-    shared_memory_idle_queue,
+    blocks_enqueued,
     post_processor_shared_memory_idle_queue,
     start_time,
     input_position,
@@ -832,9 +877,10 @@ def write_soundfile_process_worker(
     audio_rate = decode_options["audio_rate"]
     input_rate = decode_options["input_rate"]
     preview_mode = decode_options["preview"]
+    normalize = decode_options["normalize"]
 
     with SoundDeviceProcess(audio_rate) as player:
-        with as_outputfile(output_file, audio_rate) as w:
+        with as_outputfile(output_file, audio_rate, normalize) as w:
             done = False
             while not done:
                 while True:
@@ -863,8 +909,7 @@ def write_soundfile_process_worker(
                 with total_samples_decoded.get_lock():
                     total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_trimmed / 2)
                 
-                blocks_enqueued = max_shared_memory_size - shared_memory_idle_queue.qsize()
-                log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, input_rate, audio_rate)
+                log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued.value, input_rate, audio_rate)
 
                 done = decoder_state.is_last_block
 
@@ -891,8 +936,10 @@ async def decode_parallel(
     block_audio_size = decoder.blockAudioSize
 
     read_overlap = decoder.readOverlap
+    blocks_enqueued = Value("d", 0)
     input_position = Value('d', 0)
     total_samples_decoded = Value('d', 0)
+    peak_gain = Value('d', 0)
     start_time = datetime.now()
     
     # HiFiDecode data flow diagram
@@ -913,9 +960,9 @@ async def decode_parallel(
     num_decoders = threads
 
     shared_memory_instances = []
-    shared_memory_idle_queue = Queue()
+    shared_memory_idle_queue = SimpleQueue()
     for i in range(num_shared_memory_instances):
-        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"HiFiDecode Shared Memory {i}")
+        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"hifi_decoder_{i}")
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
 
@@ -937,14 +984,16 @@ async def decode_parallel(
 
     # set up the post processor
     post_processor_out_output_conn, post_processor_out_input_conn = Pipe(duplex=False)
-    post_processor_shared_memory_idle_queue = Queue()
+    post_processor_shared_memory_idle_queue = SimpleQueue()
     post_processor = PostProcessor(
         decode_options,
         decoder_out_queue,
         decoder.blockFinalAudioSize,
         post_processor_shared_memory_idle_queue,
         shared_memory_idle_queue,
-        post_processor_out_input_conn
+        blocks_enqueued,
+        post_processor_out_input_conn,
+        peak_gain,
     )
     atexit.register(post_processor.close)
 
@@ -953,32 +1002,18 @@ async def decode_parallel(
         target=write_soundfile_process_worker, 
         name="HiFiDecode Soundfile Encoder", 
         args=(
-            post_processor_out_output_conn, 
-            num_shared_memory_instances, 
-            shared_memory_idle_queue,
+            post_processor_out_output_conn,
+            blocks_enqueued,
             post_processor_shared_memory_idle_queue,
             start_time, 
             input_position, 
-            total_samples_decoded, 
+            total_samples_decoded,
             decode_options, 
             output_file, 
             decode_done
     ))
     output_file_process.start()
     atexit.register(output_file_process.terminate)
-
-    def handle_ui_events():
-        stop_requested = False
-        if ui_t is not None:
-            ui_t.app.processEvents()
-            if ui_t.window.transport_state == 0:
-                stop_requested = True
-            elif ui_t.window.transport_state == 2:
-                while ui_t.window.transport_state == 2:
-                    ui_t.app.processEvents()
-                    time.sleep(0.01)
-        
-        return stop_requested
     
     def read_and_send_to_decoder(
         f,
@@ -986,7 +1021,8 @@ async def decode_parallel(
         decoder_state,
         input_position,
         exit_requested,
-        previous_overlap
+        previous_overlap,
+        stop_requested
     ):
         buffer = DecoderSharedMemory(decoder_state)
         # read input data into the shared memory buffer
@@ -996,8 +1032,6 @@ async def decode_parallel(
         with input_position.get_lock():
             input_position.value += frames_read * 2
 
-        # handle stop and last block
-        stop_requested = handle_ui_events()
         is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
         if is_last_block:
             # save the read data
@@ -1033,6 +1067,19 @@ async def decode_parallel(
             
     print(f"Starting decode...")
 
+    async def handle_ui_events():
+        stop_requested = False
+        if ui_t is not None:
+            ui_t.app.processEvents()
+            if ui_t.window.transport_state == 0:
+                stop_requested = True
+            elif ui_t.window.transport_state == 2:
+                while ui_t.window.transport_state == 2:
+                    ui_t.app.processEvents()
+                    await asyncio.sleep(0.01)
+        
+        return stop_requested
+
     with as_soundfile(input_file) as f:
         loop = asyncio.get_event_loop()        
         previous_overlap = np.empty(0)
@@ -1041,25 +1088,33 @@ async def decode_parallel(
 
         while True:
             # get the next available shared memory buffer
-            buffer_name = await loop.run_in_executor(None, shared_memory_idle_queue.get)
+            while True:
+                try:
+                    buffer_name = await loop.run_in_executor(None, shared_memory_idle_queue.get)
+                    break
+                except InterruptedError: pass
+                except EOFError: return
+
             decoder_state = DecoderState(decoder, buffer_name, decoder.blockSize, block_num, False)
 
             if (len(previous_overlap) == 0):
                 previous_overlap = np.empty(decoder_state.block_overlap, dtype=np.int16)
 
+            stop_requested = await handle_ui_events();
             decoder_state, is_last_block = await loop.run_in_executor(None, read_and_send_to_decoder, 
                 f,
                 decoder,
                 decoder_state,
                 input_position,
                 exit_requested,
-                previous_overlap
+                previous_overlap,
+                stop_requested
             )
 
             progressB.print(input_position.value / 2)
-
-            blocks_enqueued = num_shared_memory_instances - shared_memory_idle_queue.qsize()
-            log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued, decode_options["input_rate"], decode_options["audio_rate"])
+            with blocks_enqueued.get_lock():
+                blocks_enqueued.value += 1
+            log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued.value, decode_options["input_rate"], decode_options["audio_rate"])
 
             if is_last_block:
                  break
@@ -1078,6 +1133,41 @@ async def decode_parallel(
         shared_memory.unlink()
         atexit.unregister(shared_memory.close)
         atexit.unregister(shared_memory.unlink)
+    
+    print(f"\nPeak gain is {(peak_gain.value * 100):.2f}%.", end="")
+
+    if decode_options["normalize"]:
+        gain_adjust = 1 / peak_gain.value - np.finfo(np.float16).eps # subtract epsilon error to prevent appearance of "clipping" in editing tools
+        print(f" Adjusting by {(gain_adjust * 100):.2f}%, please wait...")
+
+        input_file_post_gain = output_file + NORMALIZE_FILE_SUFFIX
+        output_file = decode_options["output_file"]
+        audio_rate = decode_options["audio_rate"]
+    
+        try:
+            total_frames_read = 0
+            buffer = np.empty(block_audio_size, dtype=np.float32)
+            
+            with sf.SoundFile(input_file_post_gain, "r") as f:
+                progressB = TimeProgressBar(f.frames, f.frames)
+                with as_outputfile(output_file, audio_rate, False) as w:
+                    done = False
+                    while not done:
+                        frames_read = f.buffer_read_into(buffer, dtype="float32")
+                        samples_read = frames_read * 2
+                        
+                        if samples_read < len(buffer):
+                            buffer = buffer[0:samples_read]
+                            done = True
+    
+                        PostProcessor.normalize(gain_adjust, buffer, buffer)
+                        w.buffer_write(buffer, "float32")
+                        
+                        total_frames_read += frames_read
+                        progressB.print(total_frames_read, False)
+            print("")
+        finally:
+            os.remove(input_file_post_gain)
     
     elapsed_time = datetime.now() - start_time
     dt_string = elapsed_time.total_seconds()
@@ -1163,6 +1253,7 @@ def main() -> int:
         "head_switching_interpolation": args.head_switching_interpolation == "on",
         "noise_reduction": args.noise_reduction == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
+        "normalize": args.normalize,
         "nr_side_gain": args.NR_side_gain,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,

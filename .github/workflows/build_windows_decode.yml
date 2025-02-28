@@ -20,7 +20,7 @@ jobs:
 
       - name: Build Python module
         run: |
-          pip install ".[hifi_gui_qt6]" setuptools Cython pyinstaller pyinstaller-versionfile -r ./requirements.txt
+          pip install ".[intel,hifi_gui_qt6]" setuptools Cython pyinstaller pyinstaller-versionfile -r ./requirements.txt
           python setup.py build_ext --inplace
 
       - name: Build Windows binary
