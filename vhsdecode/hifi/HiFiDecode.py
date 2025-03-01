@@ -680,7 +680,7 @@ class HiFiDecode:
 
         # hifi carrier loss results in broadband noise
         # mute the audio when this broadband noise exists above the audible frequencies
-        self.muting_enabled = True#self.options["muting"]
+        self.muting_enabled = self.options["muting"]
         self.muting_audio_rate = self.audio_rate
         # number of samples to fade out before muting, and fade in after muting
         self.muting_fade_samples = 128
@@ -884,7 +884,7 @@ class HiFiDecode:
     @staticmethod
     def headswitch_interpolate_boundaries(
         audio: np.array,
-        boundaries: list[Tuple[int, int]]
+        boundaries: list[list[int, int]]
     ) -> np.array:
         interpolated_signal = np.empty_like(audio)
         interpolator_in = np.empty_like(audio)
@@ -894,7 +894,7 @@ class HiFiDecode:
         # setup interpolator input by copying and removing any samples that are peaks
         time = np.arange(len(interpolated_signal), dtype=float)
 
-        for (start, end) in boundaries:
+        for [start, end] in boundaries:
             time[start:end] = np.nan
             interpolator_in[start:end] = np.nan
 
@@ -904,7 +904,7 @@ class HiFiDecode:
         # interpolate the gap where the peak was removed
         interpolator = interp1d(time, interpolator_in, kind="linear", copy=False, assume_sorted=True, fill_value="extrapolate")
 
-        for (start, end) in boundaries:
+        for [start, end] in boundaries:
             smoothing_size = 1 + end - start
 
             # sample and hold inteerpolation if boundaries are beyond this chunk
@@ -997,7 +997,7 @@ class HiFiDecode:
             if not merged or merged[-1][1] < boundary[0]:
                 merged.append(boundary)
             else:
-                merged[-1] = (merged[-1][0], max(merged[-1][1], boundary[1]))
+                merged[-1] = [merged[-1][0], max(merged[-1][1], boundary[1])]
 
         return merged
     
@@ -1005,7 +1005,7 @@ class HiFiDecode:
     def headswitch_calc_boundaries(
         peaks: list[tuple[int, int, int, float]],
         audio_process_params: HiFiAudioParams,
-    ) -> list[Tuple[int, int]]:
+    ) -> list[list[int, int]]:
         peak_boundaries = list()
 
         # scale the peak width depending on how much the peak stands out from the base signal
@@ -1017,7 +1017,7 @@ class HiFiDecode:
             start = floor(peak_start - width_padding)
             end = ceil(peak_end + width_padding)
 
-            peak_boundaries.append((start, end))
+            peak_boundaries.append([start, end])
 
         # merge overlapping or duplicate boundaries
         return HiFiDecode.merge_boundaries(peak_boundaries)
@@ -1145,7 +1145,7 @@ class HiFiDecode:
         window_size = audio_process_params.muting_window_size  # Size of each window (in samples)
         hop_size = audio_process_params.muting_window_hop_size # Hop size (how much to move the window each time)
         
-        full_spectrum_ranges = [] 
+        mute_point_ranges = [] 
         full_spectrum_ranges_count = 0
 
         fft_start = audio_process_params.muting_fft_start
@@ -1166,18 +1166,19 @@ class HiFiDecode:
             magnitude_mean, magnitude_std = HiFiDecode.mean_stddev(magnitude)
             
             if magnitude_mean > audio_process_params.muting_amplitude_threshold and magnitude_std > audio_process_params.muting_std_threshold:
-                # starting a mute point
-                if len(full_spectrum_ranges) == full_spectrum_ranges_count:
-                    full_spectrum_ranges.append([start, len(audio)])  # Store the start index of this segment
+                # start the mute point, if not currently muted
+                if len(mute_point_ranges) == full_spectrum_ranges_count:
+                    mute_point_ranges.append([start, len(audio)]) # default to end muting at the end of the audio
             else:
-                # ending a mute point
-                if len(full_spectrum_ranges) > full_spectrum_ranges_count:
-                    full_spectrum_ranges[full_spectrum_ranges_count][1] = end
+                # end the mute point, if currently muted
+                if len(mute_point_ranges) > full_spectrum_ranges_count:
+                    mute_point_ranges[full_spectrum_ranges_count][1] = end
                     full_spectrum_ranges_count += 1
 
-        full_spectrum_boundaries = HiFiDecode.merge_boundaries(full_spectrum_ranges)
+        # sort and merge any overlapping boundaries
+        mute_point_boundaries = HiFiDecode.merge_boundaries(mute_point_ranges)
 
-        for boundary in full_spectrum_boundaries:
+        for boundary in mute_point_boundaries:
             start = boundary[0]
             fade_start = max(0, start - audio_process_params.muting_fade_samples)
             fade_start_duration = start - fade_start
@@ -1275,7 +1276,6 @@ class HiFiDecode:
         if audio_process_params.headswitch_interpolation_enabled:
             audio = HiFiDecode.headswitch_remove_noise(audio, audio_process_params)
         if measure_perf: perf_measurements["end_headswitch"] = perf_counter()
-
 
         # resample audio sample rate to final audio sample rate
         if measure_perf: perf_measurements["start_audio_final_resample"] = perf_counter()
