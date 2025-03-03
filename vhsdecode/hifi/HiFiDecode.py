@@ -280,7 +280,7 @@ class FMdemod:
 
     def work(self, input: np.array, output: np.array):
         if self.type == 2:
-            DecoderSharedMemory.copy_data_float32(self.htdeFM(input, self.samp_rate), output, len(output))
+            DecoderSharedMemory.copy_data_float32(self.htdeFM(input, self.samp_rate).astype(REAL_DTYPE), output, len(output))
         #elif self.type == 1:
         #    DecoderSharedMemory.copy_data_float32(self.hhtdeFM(input), output, len(output))
         else:
