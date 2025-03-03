@@ -732,7 +732,7 @@ if not numba.version_info.major and numba.version_info.minor < 59:
     @njit(cache=True,nogil=True)
     def unwrap_hilbert_getangles(hilbert):
         tangles = np.angle(hilbert)
-        dangles = np.ediff1d(tangles, to_begin=0).real
+        dangles = np.ediff1d(tangles, to_begin=np.asarray(0, dtype=tangles.dtype)).real
 
         # make sure unwapping goes the right way
         if dangles[0] < -pi:
@@ -761,7 +761,7 @@ else:
     @njit(cache=True,nogil=True)
     def unwrap_hilbert(hilbert, freq_hz):
         tangles = np.angle(hilbert)
-        dangles = np.ediff1d(tangles, to_begin=0).real
+        dangles = np.ediff1d(tangles, to_begin=np.asarray(0, dtype=tangles.dtype)).real
 
         # make sure unwapping goes the right way
         if dangles[0] < -pi:
