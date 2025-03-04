@@ -314,6 +314,14 @@ def main(args=None, use_gui=False):
         default=f.DEFAULT_HYSTERESIS,
         help="Dropout detection hysteresis, the rf level needs to go above the dropout threshold multiplied by this for a dropout to end.",
     )
+    dodgroup.add_argument(
+        "--gnrc",
+        "--gnuradio_rf_afe",
+        dest="gnrc_afe",
+        action="store_true",
+        default=False,
+        help="Open a ZMQ pipe back and forth to GNU Radio for RF AFE/EQ/Group delay measurements. (WIP)\nYou might want to use this with -t 1",
+    )
 
     args = parser.parse_args(args)
 
@@ -401,6 +409,7 @@ def main(args=None, use_gui=False):
     rf_options["export_raw_tbc"] = args.export_raw_tbc
     rf_options["tape_speed"] = args.tape_speed
     rf_options["ire0_adjust"] = args.ire0_adjust
+    rf_options["gnrc_afe"] = args.gnrc_afe
 
     extra_options = get_extra_options(args, not use_gui)
     extra_options["params_file"] = args.params_file
