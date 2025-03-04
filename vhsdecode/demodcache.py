@@ -11,7 +11,7 @@ class DemodCacheTape(DemodCache):
             self.zmqsend = ZMQSend()
             self.zmqreceive = ZMQReceive()
             print("Open GNURadio with ZMQ REQ source set at tcp://localhost:%d and ZMQ REP sink set at tcp://*:%d" % (self.zmqsend.port, self.zmqreceive.port))
-            print("The data stream will be of the float type at 40MSPS (40Mhz sample rate)")
+            print("The data stream will be of the float type at 40MSPS (40MHz sample rate)")
             print("It will send the raw RF for further processing prior to demodulation (useful for RF EQ discovery "
                   "and group delay compensation)")
             print("You might want to do this in single threaded decode mode (-t 1 parameter)")
