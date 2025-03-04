@@ -3335,7 +3335,7 @@ class FieldNTSC(Field):
 
         # Now adjust the phase to get the downscaled image onto I/Q color axis
         # (This should be 33 but this is what makes it line up)
-        shift33 = 78 * (np.pi / 180)
+        shift33 = 83 * (np.pi / 180)
         self.linelocs = self.apply_offsets(self.linelocs4, -shift33 - 0)
 
         self.wowfactor = self.computewow(self.linelocs)
