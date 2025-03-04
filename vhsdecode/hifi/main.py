@@ -148,6 +148,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--muting",
+    dest="muting",
+    type=str.lower,
+    default="on",
+    help=f"Mutes the audio when there is no hifi carrier. (defaults to \"on\")."
+)
+
+parser.add_argument(
     "--resampler_quality",
     dest="resampler_quality",
     type=str,
@@ -1251,6 +1259,7 @@ def main() -> int:
         "resampler_quality": resampler_quality if not args.preview else "low",
         "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
         "head_switching_interpolation": args.head_switching_interpolation == "on",
+        "muting": args.muting == "on",
         "noise_reduction": args.noise_reduction == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "normalize": args.normalize,
