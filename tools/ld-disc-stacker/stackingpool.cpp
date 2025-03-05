@@ -243,9 +243,26 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
             }
         }
     }
+	
+	//set mode used for this frame
+	if(mode != -1)
+	{
+		_mode = mode;
+	}
+	else if(numberOfSources <= 2)//mean
+	{
+		_mode = 0;
+	}
+	else if (numberOfSources <=4)//smart mean
+	{
+		_mode = 2;
+	}
+	else//smart neighbor
+	{
+		_mode = 3;
+	}
 
     // Set the other miscellaneous parameters
-    _mode = mode;
     _smartThreshold = smartThreshold;
     _reverse = reverse;
     _noDiffDod = noDiffDod;
