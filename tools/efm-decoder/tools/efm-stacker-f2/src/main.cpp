@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
             "efm-stacker-f2 - EFM F2 Section stacker\n"
             "\n"
             "(c)2025 Simon Inns\n"
-            "GPLv3 Open-Source - github: https://github.com/simoninns/efm-tools");
+            "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 

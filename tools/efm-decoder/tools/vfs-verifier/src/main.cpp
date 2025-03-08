@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
             "vfs-verifier - Acorn VFS (Domesday) image verifier\n"
             "\n"
             "(c)2025 Simon Inns\n"
-            "GPLv3 Open-Source - github: https://github.com/simoninns/efm-tools");
+            "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
 

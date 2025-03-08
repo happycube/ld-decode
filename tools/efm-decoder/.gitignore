@@ -54,3 +54,11 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
+
+# Executables
+/tools/efm-decoder-audio/efm-decoder-audio
+/tools/efm-decoder-d24/efm-decoder-d24
+/tools/efm-decoder-data/efm-decoder-data
+/tools/efm-decoder-f2/efm-decoder-f2
+/tools/efm-stacker-f2/efm-stacker-f2
+/tools/vfs-verifier/vfs-verifier
