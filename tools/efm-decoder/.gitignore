@@ -1,0 +1,56 @@
+# Qt-es
+*.jsc
+*.moc
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.qmlc
+*/.qtc_clangd
+*_plugin_import.cpp
+*build-*
+/.qmake.cache
+/.qmake.stash
+Makefile*
+moc_*.cpp
+moc_*.h
+object_script.*.Debug
+object_script.*.Release
+qrc_*.cpp
+ui_*.h
+
+# Qt unit tests
+target_wrapper.*
+
+# QtCreator
+*.autosave
+
+# QtCreator Qml
+*.qmlproject.user
+*.qmlproject.user.*
+
+# QtCreator CMake
+CMakeLists.txt.user*
+
+# EFM test and output files
+*.dat
+*.bin
+*.wav
+
+# Build directories
+/build
+/libs/efm/lib
+
+# CMake build directories
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+CMakeUserPresets.json
