@@ -82,3 +82,6 @@ ui_*.h
 # vscode related thingss
 .vscode/
 .theia/
+
+# Installation tool things
+ld_decode.egg-info/
