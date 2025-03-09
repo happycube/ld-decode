@@ -1,9 +1,6 @@
 # Set the target name
 set(TARGET_NAME efm-stacker-f2)
 
-# Find the Qt library
-set(CMAKE_AUTOMOC ON)
-
 # Add all source files from main directory and subdirectories
 file(GLOB_RECURSE SRC_FILES 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
