@@ -3,7 +3,6 @@ set(TARGET_NAME efm-decoder-audio)
 
 # Find the Qt library
 set(CMAKE_AUTOMOC ON)
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets)
 
 # Add all source files from main directory and subdirectories
 file(GLOB_RECURSE SRC_FILES 
