@@ -76,8 +76,8 @@ void AdfsFsm::showStarFree()
     quint32 freeSectors = m_numberOfSectors - usedSectors;
 
     qDebug().noquote() << "*FREE";
-    qDebug().noquote() << " " << toString24bits(usedSectors) << "=" << QLocale().toString(usedSectors * 256) << "Bytes Free";
-    qDebug().noquote() << " " << toString24bits(freeSectors) << "=" << QLocale().toString(freeSectors * 256) << "Bytes Used";
+    qDebug().noquote() << " " << toString24bits(usedSectors) << "=" << QString::number(usedSectors * 256) << "Bytes Free";
+    qDebug().noquote() << " " << toString24bits(freeSectors) << "=" << QString::number(freeSectors * 256) << "Bytes Used";
 }
 
 void AdfsFsm::showStarMap()
