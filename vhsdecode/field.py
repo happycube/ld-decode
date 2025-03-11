@@ -293,7 +293,6 @@ def get_line0_fallback(
         dispPSpp = (filtered_pulses[i  ].start - filtered_pulses[i-1].start)/linelen
         disppSPp = (filtered_pulses[i+1].start - filtered_pulses[i  ].start)/linelen
         disppsPP = (filtered_pulses[i+2].start - filtered_pulses[i+1].start)/linelen
-
         if (
             abs(disPPspp-0.5) < 0.06 and abs(dispPSpp-0.5) < 0.06 and
             abs(disppSPp-0.5) < 0.06 and abs(disppsPP-0.5) < 0.06 and
@@ -351,6 +350,8 @@ def get_line0_fallback(
                     print(f"1. End of long sync pulses, pred: {line_0_est}, First-Field: {first_field}, confidence: {first_field_confidence}")
                 if line_0_backup is None:
                     line_0_backup = line_0_est
+                    first_field_backup = first_field
+                    first_field_confidence_backup = first_field_confidence
                 # find pulse
                 for j in range(max(0,i-16),i-4):
                     if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.08:
@@ -413,6 +414,8 @@ def get_line0_fallback(
                     print(f"2. Begin of long sync pulses, pred: {line_0_est}, First-Field: {_first_field}, confidence: {_first_field_confidence}")
                 if line_0_backup is None:
                     line_0_backup = line_0_est
+                    first_field_backup = _first_field
+                    first_field_confidence_backup = _first_field_confidence
                 # find pulse
                 for j in range(max(0,i-10),i-3):
                     if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.08:
@@ -472,6 +475,8 @@ def get_line0_fallback(
                     print(f"3. End of blanking, pred: {line_0_est}, First-Field: {_first_field}, confidence: {_first_field_confidence}")
                 if line_0_backup is None:
                     line_0_backup = line_0_est
+                    first_field_backup = _first_field
+                    first_field_confidence_backup = _first_field_confidence
                 # find pulse
                 for j in range(max(0,i-20),i-4):
                     if abs(filtered_pulses[j].start-line_0_est)/linelen < 0.08:
@@ -564,9 +569,21 @@ def get_line0_fallback(
                     print(f"4. Start of blanking (content): {line_0}, First-Field: {first_field}, confidence: {first_field_confidence}")
         i += 1
 
+    if line_0 is not None and line_0 > (linelen*(frame_lines-1)/2) and line_0_backup is not None and line_0_backup < (line_0 - (linelen*(frame_lines-5)/2)):
+        ldd.logger.info(
+            "WARNING, line0 hsync not found for current field, but vsync area found, using predicted position, result may be garbled."
+        )
+        line_0 = line_0_backup
+        first_field = first_field_backup
+        first_field_confidence = first_field_confidence_backup - 20
+    elif line_0 is not None and line_0 > (linelen*(frame_lines-1)/2):
+        ldd.logger.info(
+            "WARNING, line0 hsync not found for current field, probably skipping one field."
+        )
+
     if line_0 is None and line_0_backup is not None:
         ldd.logger.info(
-            "WARNING, line0 hsync not found, guessing something, result may be garbled."
+            "WARNING, line0 hsync not found in entire block, but vsync area found, using predicted position, result may be garbled."
         )
         line_0 = line_0_backup
         first_field_confidence -= 20
