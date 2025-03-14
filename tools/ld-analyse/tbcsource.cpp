@@ -959,7 +959,7 @@ QImage TbcSource::generateQImage()
                 fieldHeight = inputHeight - 1;
             }
 
-            for (auto y = startingY; y < inputHeight; y++) {
+            for (auto y = startingY; y < fieldHeight; y++) {
                 auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine(y + inputOffset));
                 std::copy_n(&rgbData[fieldY * inputWidth], inputWidth, &outputLine[outputOffset]);
 

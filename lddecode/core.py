@@ -549,15 +549,17 @@ class RFDecode:
 
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
+        
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
         SF["F05_offset"] = 32 # Reduced because filtfft is half-strength on FIR
+
         F0_5_fft = filtfft((F0_5, [1.0]), self.blocklen)
         SF["FVideo05"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * F0_5_fft
 
-        SF["Fburst"] = filtfft(
-            sps.butter(1, self.notchrange(SP["fsc_mhz"], 0.1), "bandpass"),
-            self.blocklen,
-        )
+        Fburst = sps.firwin(81, self.notchrange(SP["fsc_mhz"], 0.2), pass_zero=False)
+        SF["FVideoBurst_offset"] = 40
+
+        SF["Fburst"] = filtfft((Fburst, [1.0]), self.blocklen)
         SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"]
 
         if self.system == "PAL":
@@ -704,6 +706,7 @@ class RFDecode:
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         out_videoburst = npfft.ifft(demod_fft * self.Filters["FVideoBurst"]).real
+        out_videoburst = np.roll(out_videoburst, -self.Filters["FVideoBurst_offset"])
 
         if self.system == "PAL":
             out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
@@ -1094,7 +1097,7 @@ class DemodCache:
 
         with self.lock:
             if redo:
-                for b in self.flush_demod(blocknums):
+                for b in self.flush_demod():
                     queuelist.append(b)
 
             for b in blocknums:
@@ -1148,14 +1151,11 @@ class DemodCache:
         self.q_out_event.clear()
         return None if reached_end else need_blocks
 
-    def flush_demod(self, blocknums):
+    def flush_demod(self):
         """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
         blocks_toredo = []
 
         for k in self.blocks.keys():
-            if k not in blocknums:
-                continue 
-
             self.blocks[k]['MTF']      = -1
             self.blocks[k]['request']  = -1
             self.blocks[k]['waiting']  = False
@@ -2851,10 +2851,11 @@ class Field:
         fsc_mhz_inv = 1 / self.rf.SysParams["fsc_mhz"]
 
         # compute approximate burst beginning/end
-        bstime = 25 * fsc_mhz_inv  # approx start of burst in usecs
+        bstime = 21 * fsc_mhz_inv  # approx start of core burst in usecs
+        betime = 28 * fsc_mhz_inv  # approx end of core burst in usecs
 
         bstart = int(bstime * lfreq)
-        bend   = int(8.8 * lfreq)
+        bend   = int(betime * lfreq)
 
         # copy and get the mean of the burst area to factor out wow/flutter
         burstarea = self.data["video"]["demod_burst"][s + bstart : s + bend]
@@ -2862,7 +2863,7 @@ class Field:
             return None, None
 
         burstarea = burstarea - nb_mean(burstarea)
-        threshold = 5 * self.rf.DecoderParams["hz_ire"]
+        threshold = rms(burstarea)
 
         burstarea_demod = self.data["video"]["demod"][s + bstart : s + bend]
         burstarea_demod = burstarea_demod - nb_mean(burstarea_demod)
@@ -3207,10 +3208,17 @@ class FieldNTSC(Field):
         adjs = {}
 
         for l in range(0, 266):
-            rising, phase_adjust = self.compute_line_bursts(linelocs, l)
+            prev_phaseadjust = self.phase_adjust_median
+
+            if prev_phaseadjust == 0 and self.prevfield:
+                prev_phaseadjust = self.prevfield.phase_adjust_median
+
+            rising, phase_adjust = self.compute_line_bursts(linelocs, l, prev_phaseadjust)
             if rising is None:
                 continue
 
+            # For adjustments, 1/2 the phase_adjust value is used for better results
+            # (todo: recheck)
             adjs[l] = phase_adjust / 2
 
             even_line = not (l % 2)
@@ -3218,6 +3226,9 @@ class FieldNTSC(Field):
 
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
         field14 = rising_sum > (len(adjs.keys()) // 4)
+
+        # store the full phase adjustment value here so things line up next time
+        self.phase_adjust_median = np.median([adjs[a] for a in adjs]) * 2
 
         return field14, adjs
 
@@ -3300,6 +3311,8 @@ class FieldNTSC(Field):
     def __init__(self, *args, **kwargs):
         super(FieldNTSC, self).__init__(*args, **kwargs)
 
+        self.phase_adjust_median = 0
+
     @profile
     def process(self):
         super(FieldNTSC, self).process()
@@ -3316,13 +3329,14 @@ class FieldNTSC(Field):
         ]
 
         self.linelocs3 = self.refine_linelocs_burst(self.linelocs2)
-        self.linelocs3 = self.fix_badlines(self.linelocs3, self.linelocs2)
+        self.linelocs4 = self.fix_badlines(self.linelocs3, self.linelocs2)
 
         self.burstmedian = self.calc_burstmedian()
 
         # Now adjust the phase to get the downscaled image onto I/Q color axis
-        shift33 = 84 * (np.pi / 180)
-        self.linelocs = self.apply_offsets(self.linelocs3, -shift33 - 0)
+        # (This should be 33 but this is what makes it line up)
+        shift33 = 83 * (np.pi / 180)
+        self.linelocs = self.apply_offsets(self.linelocs4, -shift33 - 0)
 
         self.wowfactor = self.computewow(self.linelocs)
 
@@ -3652,7 +3666,7 @@ class LDdecode:
         if rawdecode is None:
             # logger.info("Failed to demodulate data")
             return None, None
-
+        
         f = self.FieldClass(
             self.rf,
             rawdecode,

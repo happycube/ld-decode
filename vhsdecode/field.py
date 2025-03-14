@@ -76,7 +76,11 @@ def field_class_from_formats(system: str, tape_format: str):
         elif tape_format == "VIDEO8" or tape_format == "HI8":
             field_class = FieldPALVideo8
         else:
-            if tape_format != "VHS" and tape_format != "VHSHQ":
+            if (
+                tape_format != "VHS"
+                and tape_format != "VHSHQ"
+                and tape_format != "VIDEO2000"
+            ):
                 ldd.logger.info(
                     "Tape format unimplemented for PAL, using VHS field class."
                 )
@@ -102,7 +106,7 @@ def field_class_from_formats(system: str, tape_format: str):
                     "Tape format unimplemented for NTSC, using VHS field class."
                 )
             field_class = FieldNTSCVHS
-    elif system == "MPAL" and tape_format == "VHS":
+    elif (system == "MPAL" or system == "NLINHA") and tape_format == "VHS":
         field_class = FieldMPALVHS
     elif system == "MESECAM" and tape_format == "VHS":
         field_class = FieldMESECAMVHS
@@ -936,9 +940,16 @@ class FieldShared:
         self.rawpulses = self.rf.resync.get_pulses(self, check_levels)
 
         if (
-            self.rawpulses is None or 
+            self.rawpulses is None
+            or
             # when no pulses are found and there has not been a previous sync location and fallback vsync is not enabled
-            (len(self.rawpulses) == 0 and (not hasattr(self.rf, "prev_first_hsync_loc") or self.rf.options.fallback_vsync))
+            (
+                len(self.rawpulses) == 0
+                and (
+                    not hasattr(self.rf, "prev_first_hsync_loc")
+                    or self.rf.options.fallback_vsync
+                )
+            )
         ):
             return NO_PULSES_FOUND
 
@@ -959,13 +970,20 @@ class FieldShared:
 
         # calculate in terms of lines to prevent integer overflow when seeking ahead large amounts
         if self.rf.prev_first_hsync_readloc != -1:
-            prev_first_hsync_offset_lines = (self.rf.prev_first_hsync_readloc - self.readloc) / meanlinelen
+            prev_first_hsync_offset_lines = (
+                self.rf.prev_first_hsync_readloc - self.readloc
+            ) / meanlinelen
         else:
             prev_first_hsync_offset_lines = 0
 
         fallback_line0loc = None
-        if self.rf.options.fallback_vsync and hasattr(self, "lt_vsync") and self.lt_vsync is not None:
+        if (
+            self.rf.options.fallback_vsync
+            and hasattr(self, "lt_vsync")
+            and self.lt_vsync is not None
+        ):
             fallback_line0loc, _, _, fallback_is_first_field, fallback_is_first_field_confidence = self._get_line0_fallback(validpulses)
+
         if fallback_line0loc == None:
             fallback_line0loc = -1
             fallback_is_first_field = -1
@@ -973,9 +991,17 @@ class FieldShared:
 
         # find the location of the first hsync pulse (first line of video after the vsync pulses)
         # this function relies on the pulse type (hsync, vsync, eq pulse) being accurate in validpulses
-        line0loc, self.first_hsync_loc, self.first_hsync_loc_line, self.vblank_next, self.isFirstField, prev_hsync_diff, vblank_pulses = sync.get_first_hsync_loc(
-            validpulses, 
-            meanlinelen, 
+        (
+            line0loc,
+            self.first_hsync_loc,
+            self.first_hsync_loc_line,
+            self.vblank_next,
+            self.isFirstField,
+            prev_hsync_diff,
+            vblank_pulses,
+        ) = sync.get_first_hsync_loc(
+            validpulses,
+            meanlinelen,
             1 if self.rf.system == "NTSC" else 0,
             self.rf.SysParams["field_lines"],
             self.rf.SysParams["numPulses"],
@@ -996,9 +1022,15 @@ class FieldShared:
 
         self.rf.prev_first_field = self.isFirstField
 
-        #self.getLine0(validpulses, meanlinelen)
-        
-        return line0loc, self.first_hsync_loc, self.first_hsync_loc_line, meanlinelen, vblank_pulses
+        # self.getLine0(validpulses, meanlinelen)
+
+        return (
+            line0loc,
+            self.first_hsync_loc,
+            self.first_hsync_loc_line,
+            meanlinelen,
+            vblank_pulses,
+        )
 
     @property
     def compute_linelocs_issues(self):
@@ -1031,7 +1063,9 @@ class FieldShared:
             ldd.logger.error("Unable to find any sync pulses, jumping 100 ms")
             return None, None, int(self.rf.freq_hz / 10)
 
-        line0loc, first_hsync_loc, first_hsync_loc_line, meanlinelen, vblank_pulses = res
+        line0loc, first_hsync_loc, first_hsync_loc_line, meanlinelen, vblank_pulses = (
+            res
+        )
         validpulses = self.validpulses
 
         # TODO: This is set here for NTSC, but in the PAL base class for PAL in process() it seems..
@@ -1084,7 +1118,7 @@ class FieldShared:
             meanlinelen,
             self.rf.hsync_tolerance,
             proclines,
-            1.9
+            1.9,
         )
 
         self.linelocs0 = linelocs.copy()
@@ -1097,9 +1131,12 @@ class FieldShared:
             vblank_next_plot = -1 if self.vblank_next == None else self.vblank_next
 
             print(
-                "line0loc", line0loc_plot,
-                "first_hsync_loc", first_hsync_loc_plot,
-                "vblank_next", vblank_next_plot
+                "line0loc",
+                line0loc_plot,
+                "first_hsync_loc",
+                first_hsync_loc_plot,
+                "vblank_next",
+                vblank_next_plot,
             )
 
             plot_data_and_pulses(
@@ -1108,7 +1145,7 @@ class FieldShared:
                 linelocs=linelocs,
                 pulses=validpulses,
                 vblank_lines=vblank_pulses,
-                extra_lines=[line0loc_plot, first_hsync_loc_plot, vblank_next_plot]
+                extra_lines=[line0loc_plot, first_hsync_loc_plot, vblank_next_plot],
             )
 
         if self.vblank_next is None:

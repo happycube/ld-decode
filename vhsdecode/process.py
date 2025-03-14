@@ -293,7 +293,7 @@ class VHSDecode(ldd.LDdecode):
             black = jout["videoParameters"]["black16bIre"]
             white = jout["videoParameters"]["white16bIre"]
 
-            if self.rf.color_system == "MPAL":
+            if self.rf.color_system == "MPAL" or self.rf.color_system == "NLINHA":
                 # jout["videoParameters"]["isSourcePal"] = True
                 # jout["videoParameters"]["isSourcePalM"] = True
                 jout["videoParameters"]["system"] = "PAL-M"
@@ -686,6 +686,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.DecoderParams.get("chroma_bpf_order", 4),
             tape_format=tape_format,
             do_cafc=self._do_cafc,
+            chroma_bpf_lower=self.DecoderParams.get("chroma_bpf_lower", 60000)
         )
 
         self.Filters["FVideoBurst"] = (

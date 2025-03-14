@@ -11,6 +11,8 @@ PyInstaller.__main__.run(
         "decode.py",
         "--collect-submodules",
         "application",
+        "--collect-all",
+        "rocket_fft",
         "--add-data",
         "vhsdecode/format_defs:vhsdecode/format_defs",
         "--icon",
