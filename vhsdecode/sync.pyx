@@ -241,7 +241,9 @@ def get_first_hsync_loc(
     double last_field_offset_lines,
     int prev_first_hsync_loc,
     double prev_hsync_diff,
-    int fallback_line0loc
+    int fallback_line0loc,
+    int fallback_is_first_field,
+    int fallback_is_first_field_confidence,
 ):
     """
     Returns: 
@@ -373,7 +375,7 @@ def get_first_hsync_loc(
 
     # guess the field order if no previous field exists
     if prev_first_field == -1:
-        if field_boundaries_detected == 0 or round(field_boundaries_consensus / field_boundaries_detected) == 1:
+        if field_boundaries_detected == 0 or round(field_boundaries_consensus / field_boundaries_detected) == 1 or fallback_is_first_field == 1:
             first_field = True
         else:
             first_field = False
@@ -393,7 +395,14 @@ def get_first_hsync_loc(
             first_field = True
         elif field_boundaries_consensus / field_boundaries_detected == 0:
             first_field = False
-       
+
+    # overrides previous first field, if fallback has high confidence
+    if fallback_is_first_field_confidence > 70:
+        if fallback_is_first_field == 1:
+            first_field = True
+        else:
+            first_field = False
+
     # ***********************************************************
     # calculate the expected line locations for each vblank pulse
     # ***********************************************************
