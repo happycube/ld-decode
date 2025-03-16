@@ -65,21 +65,21 @@ int main(int argc, char *argv[])
 
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
-    
+
     QCommandLineOption HelpOption(QStringList() << "?" << "h" << "help",
                                        QCoreApplication::translate("main", "Displays help on commandline options."));
     parser.addOption(HelpOption);
-    
+
     // Option to show more info during stacking
     QCommandLineOption helpModeOption(QStringList() << "help-mode",
                                        QCoreApplication::translate("main", "Show info about stacking mode"));
     parser.addOption(helpModeOption);
-    
+
     // Option to show more info during stacking
     QCommandLineOption verboseOption(QStringList() << "V" << "verbose",
                                        QCoreApplication::translate("main", "Show more info during stacking"));
     parser.addOption(verboseOption);
-    
+
     // Option to specify a different JSON input file
     QCommandLineOption inputJsonOption(QStringList() << "input-json",
                                        QCoreApplication::translate("main", "Specify the input JSON file for the first input file (default input.json)"),
@@ -103,18 +103,18 @@ int main(int argc, char *argv[])
                                          "main", "Specify the number of concurrent threads (default is the number of logical CPUs)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(threadsOption);
-    
+
     // Option to select the stacking mode (-m)
     QCommandLineOption modeOption(QStringList() << "m" << "mode",
                                         QCoreApplication::translate(
                                          "main", "Specify the stacking mode to use (default is Auto) -1 = auto / 0 = mean / 1 = median / 2 = smart mean / 3 = smart neighbor / 4 = neighbor"),
                                          QCoreApplication::translate("main", "number"));
     parser.addOption(modeOption);
-    
+
     // Option to select the smart-threshold (-st)
     QCommandLineOption smartThresholdOption(QStringList() << "st" << "smart-threshold",
                                         QCoreApplication::translate(
-                                         "main", "Specify the range of value in 8 bit (0~128) for selecting sample where the distance to the median didnt exceed the selected value for applying mean (default is 15)"),
+                                         "main", "Specify the range of value in 8 bit (0~128) for selecting sample where the distance to the median didn't exceed the selected value for applying mean (default is 15)"),
                                         QCoreApplication::translate("main", "number"));
     parser.addOption(smartThresholdOption);
 
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate(
                                          "main", "Do not use differential dropout detection on low source pixels"));
     parser.addOption(noDiffDodOption);
-    
+
     // Option to disable differential dropout detection
     QCommandLineOption noMapOption(QStringList() << "no-map",
                                         QCoreApplication::translate(
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
                                         QCoreApplication::translate(
                                          "main", "Pass-through dropouts present on every source"));
     parser.addOption(passthroughOption);
-    
+
     // Option to check integrity off every source and remove bad frame
     QCommandLineOption integrityOption(QStringList() << "it" << "integrity",
                                         QCoreApplication::translate(
@@ -152,7 +152,7 @@ int main(int argc, char *argv[])
 
     // Process the command line options and arguments given by the user -----------------------------------------------
     parser.process(a);
-    
+
     // show info about stacking mode
     if (parser.isSet(helpModeOption)) {
         qInfo() << "ld-disc-stacker - Disc stacking for ld-decode\n";
@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
         qInfo() << "                      when only 2 sources are available, it take the closest sample to the neighbor";
         return 0; // Exit after showing detailed help
     }
-    
+
     // Check for help options first
     if (parser.isSet(HelpOption)) {
         parser.showHelp(); // This will exit the application
@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
     bool noMap = parser.isSet(noMapOption);
     bool passThrough = parser.isSet(passthroughOption);
     bool integrityCheck = parser.isSet(integrityOption);
-    
+
     // Get the arguments from the parser
     qint32 mode = -1;
     if (parser.isSet(modeOption)) {
@@ -201,7 +201,7 @@ int main(int argc, char *argv[])
             mode = -1;
         }
     }
-    
+
     // Get the arguments from the parser
     qint32 smartThreshold = (15*256);
     if (parser.isSet(smartThresholdOption)) {
@@ -412,7 +412,7 @@ int main(int argc, char *argv[])
         {
             if(!videoParameters.isMapped)
             {
-                qInfo() << "Source video" << i << "has not been mapped - be carefull using option no-map";
+                qInfo() << "Source video" << i << "has not been mapped - be careful using option no-map";
             }
         }
     }
