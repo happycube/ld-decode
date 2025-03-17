@@ -539,7 +539,8 @@ void MainWindow::updateOscilloscopeDialogue()
 void MainWindow::updateVectorscopeDialogue()
 {
     // Update the vectorscope dialogue
-    vectorscopeDialog->showTraceImage(tbcSource.getComponentFrame(), tbcSource.getVideoParameters());
+    vectorscopeDialog->showTraceImage(tbcSource.getComponentFrame(), tbcSource.getVideoParameters(),
+                                      tbcSource.getViewMode(), currentFieldNumber % 2);
 }
 
 // Method to set the view (field/frame) values

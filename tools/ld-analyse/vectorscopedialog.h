@@ -45,7 +45,8 @@ public:
     explicit VectorscopeDialog(QWidget *parent = nullptr);
     ~VectorscopeDialog();
 
-    void showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters);
+    void showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
+                        const TbcSource::ViewMode& viewMode, const bool isFirstField);
 
 signals:
     void scopeChanged();
@@ -59,8 +60,7 @@ private slots:
 private:
     Ui::VectorscopeDialog *ui;
 
-    QImage getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
-                         const TbcSource::ViewMode &viewMode, const bool firstField = false);
+    QImage getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters);
 };
 
 #endif // VECTORSCOPEDIALOG_H
