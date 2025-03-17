@@ -268,8 +268,10 @@ QImage TbcSource::getImage()
 
         // This will run once for field view and twice for frame/split view
         for (auto i = 0; i < fieldN; i++) {
-            auto currentField = (loadedFieldNumber + i) % 2 ? &firstField : &secondField;
-            imagePainter.setPen((loadedFieldNumber + i) % 2 ? Qt::red : Qt::blue);
+            // Set current field based on loop iteration or field number
+            auto isFirstField = getViewMode() == ViewMode::FIELD_VIEW ? loadedFieldNumber % 2 != 0 : i == 0;
+            auto currentField = isFirstField ? &firstField : &secondField;
+            imagePainter.setPen(isFirstField ? Qt::red : Qt::blue);
 
             // Draw the drop out data for the current field
             for (auto dropOutIndex = 0; dropOutIndex < currentField->dropOuts.size(); dropOutIndex++) {
@@ -280,9 +282,9 @@ QImage TbcSource::getImage()
                 switch (getViewMode()) {
                     case ViewMode::FRAME_VIEW: {
                         qint32 lineY;
-                        if (i == 0) { // Field 1
+                        if (isFirstField) {
                             lineY = (fieldLine - 1) * 2;
-                        } else { // Field 2
+                        } else {
                             lineY = (fieldLine * 2) - 1;
                         }
 
@@ -292,9 +294,9 @@ QImage TbcSource::getImage()
 
                     case ViewMode::SPLIT_VIEW: {
                         qint32 lineY;
-                        if (i == 0) { // Field 1
+                        if (isFirstField) {
                             lineY = fieldLine - 1;
-                        } else { // Field 2
+                        } else {
                             lineY = fieldLine + (frameHeight / 2);
                         }
 
@@ -467,7 +469,6 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
     auto frameLine = 0;
     bool isFirstField = true;
-    const auto fieldHeight = videoParameters.fieldHeight;
 
     switch (getViewMode()) {
         case ViewMode::FRAME_VIEW: {
@@ -477,12 +478,18 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
         }
 
         case ViewMode::SPLIT_VIEW: {
-            if (scanLine <= fieldHeight) { // Field 1
-                frameLine = (scanLine * 2) - 1;
+            if (scanLine <= videoParameters.fieldHeight) {
                 isFirstField = true;
-            } else { // Field 2
-                frameLine = (scanLine - fieldHeight) * 2;
+                frameLine = scanLine;
+
+                // Offset for LineNumber
+                scanLine = (scanLine * 2) - 1;
+            } else {
                 isFirstField = false;
+                frameLine = scanLine - videoParameters.fieldHeight;
+
+                // Offset for LineNumber
+                scanLine = (scanLine - videoParameters.fieldHeight) * 2;
             }
             break;
         }
@@ -492,27 +499,25 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 
             // Ensure frameLine accounts for fields and duplicated lines
             if (getStretchField()) {
-                frameLine = scanLine;
+                frameLine = (scanLine + 1) / 2;
 
-                if (scanLine % 2 == 0 && isFirstField && frameLine > 1) { // Field 1
-                    frameLine--;
-                } else { // Field 2
-                    frameLine++;
+                // Offset for LineNumber
+                if (scanLine % 2 == 0 && isFirstField && scanLine > 1) scanLine--;
+                if (scanLine % 2 != 0 && !isFirstField) scanLine++;
+            } else {
+                // Return if coords in unused area
+                const auto startOffset = getFrameHeight() / 4;
+
+                if (scanLine <= startOffset || scanLine > startOffset + videoParameters.fieldHeight) {
+                    return ScanLineData();
                 }
 
-                break;
+                frameLine = scanLine - startOffset;
+
+                // Offset for LineNumber
+                if (isFirstField) scanLine = (frameLine * 2) - 1;
+                if (!isFirstField) scanLine = (frameLine * 2);
             }
-
-            // Return if coords in unused area
-            const auto frameHeight = (videoParameters.fieldHeight * 2) - 1;
-            const auto offset = frameHeight / 4;
-            const auto newHeight = offset + videoParameters.fieldHeight;
-
-            if (scanLine < offset || scanLine > newHeight) {
-                return ScanLineData();
-            }
-
-            frameLine = (scanLine - offset) * 2;
 
             break;
         }
@@ -520,7 +525,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 
     // Set the system and line number
     scanLineData.systemDescription = ldDecodeMetaData.getVideoSystemDescription();
-    scanLineData.lineNumber = LineNumber::fromFrame1(frameLine, videoParameters.system);
+    scanLineData.lineNumber = LineNumber::fromFrame1(scanLine, videoParameters.system);
     const LineNumber &lineNumber = scanLineData.lineNumber;
 
     // Set the video parameters
@@ -858,9 +863,9 @@ QImage TbcSource::generateQImage()
     // Fill the QImage with black
     outputImage.fill(Qt::black);
 
-    // Create RGB32 data and set h/w + offstes
+    // Create RGB32 data and set h/w + offsets
     QVector<QRgb> rgbData;
-    qint32 inputHeight, inputWidth, inputOffset, outputOffset;
+    qint32 inputHeight, inputWidth, fieldHeight, inputOffset, outputOffset;
 
     if (chromaOn) {
         // Show debug information
@@ -874,6 +879,7 @@ QImage TbcSource::generateQImage()
 
         inputHeight = videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine;
         inputWidth = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
+        fieldHeight = inputHeight / 2;
         inputOffset = videoParameters.firstActiveFrameLine;
         outputOffset = videoParameters.activeVideoStart;
 
@@ -904,6 +910,7 @@ QImage TbcSource::generateQImage()
 
         inputHeight = frameHeight;
         inputWidth = frameWidth;
+        fieldHeight = videoParameters.fieldHeight;
         inputOffset = 0;
         outputOffset = 0;
 
@@ -915,13 +922,12 @@ QImage TbcSource::generateQImage()
         const quint16 *secondFieldPointer = inputFields[inputStartIndex + 1].data.data();
 
         // Create RGB32 from Gray16
-        for (auto y = 0; y < inputHeight; y++) {
-            for (auto n = 0; n < 2; n++) {
-                for (auto x = 0; x < inputWidth; x++) {
-                    auto *ptr = n % 2 == 0 ? firstFieldPointer : secondFieldPointer;
-                    auto value = static_cast<qint32>(ptr[(y * inputWidth) + x] / 256);
-                    rgbData.push_back(qRgb(value, value, value));
-                }
+        for (auto y = 0; y < fieldHeight * 2; y++) {
+            auto *ptr = y % 2 == 0 ? firstFieldPointer : secondFieldPointer;
+
+            for (auto x = 0; x < inputWidth; x++) {
+                auto value = static_cast<qint32>(ptr[((y / 2) * inputWidth) + x] / 256);
+                rgbData.push_back(qRgb(value, value, value));
             }
         }
     }
@@ -937,34 +943,25 @@ QImage TbcSource::generateQImage()
         }
 
         case ViewMode::SPLIT_VIEW: {
-            for (auto fieldN = 0; fieldN < 2; fieldN++) {
-                const auto startOffset = (inputOffset / 2) * (fieldN + 1);
-                const auto yOffset = startOffset + (fieldN * inputHeight / 2) + fieldN;
-
-                for (auto y = fieldN, fieldY = 0; y < inputHeight; y += 2, fieldY++) {
-                    auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine(yOffset + fieldY));
-                    std::copy_n(&rgbData[y * inputWidth], inputWidth , &outputLine[outputOffset]);
-                }
+            for (auto y = 0; y < inputHeight; y++) {
+                const auto startOffset = (inputOffset / 2) + (y % 2 == 0 ? 0 : (frameHeight / 2) + 1);
+                auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine((y / 2) + startOffset));
+                std::copy_n(&rgbData[y * inputWidth], inputWidth, &outputLine[outputOffset]);
             }
             break;
         }
 
         case ViewMode::FIELD_VIEW: {
-            auto startingY = ((inputHeight - inputOffset) / 4) - 1;
-            auto fieldHeight = startingY + (inputHeight / 2);
+            auto startOffset = getStretchField() ? inputOffset : (frameHeight / 4) + (inputOffset / 2);
+            auto height = getStretchField() ? inputHeight : fieldHeight;
             auto fieldY = loadedFieldNumber % 2 ? 0 : 1;
 
-            if (getStretchField()) {
-                startingY = 0;
-                fieldHeight = inputHeight - 1;
-            }
-
-            for (auto y = startingY; y < fieldHeight; y++) {
-                auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine(y + inputOffset));
+            for (auto y = 0; y < height; y++) {
+                auto *outputLine = reinterpret_cast<QRgb*>(outputImage.scanLine(y + startOffset));
                 std::copy_n(&rgbData[fieldY * inputWidth], inputWidth, &outputLine[outputOffset]);
 
                 // Only increment fieldY every other iteration, or if field stretch disabled
-                if (!getStretchField() || y % 2) {
+                if (!getStretchField() || y % 2 != 0) {
                     fieldY += 2;
                 }
             }
