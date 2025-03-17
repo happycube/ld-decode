@@ -40,7 +40,7 @@ VectorscopeDialog::VectorscopeDialog(QWidget *parent) :
     setWindowFlags(Qt::Window);
 
     ui->fieldSelectFirstRadioButton->setStyleSheet("color: green;");
-    ui->fieldSelectSecondRadioButton->setStyleSheet("color: red;");
+    ui->fieldSelectSecondRadioButton->setStyleSheet("color: darkcyan;");
 }
 
 VectorscopeDialog::~VectorscopeDialog()
@@ -131,11 +131,11 @@ QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, co
     qint32 startingFrame = !ui->fieldSelectSecondRadioButton->isChecked() ? 0 : 1;
 
     for (auto fieldN = startingFrame; fieldN < fieldCount; fieldN++) {
-        // Set color to red on second field if blend enabled...
-        if (ui->fieldSelectAllRadioButton->isChecked() && ui->blendColorCheckBox->isChecked() && fieldN == 1) color = Qt::red;
+        // Set color to cyan on second field if blend enabled...
+        if (ui->fieldSelectAllRadioButton->isChecked() && ui->blendColorCheckBox->isChecked() && fieldN == 1) color = Qt::cyan;
 
         // ...or second only is selected
-        if (ui->fieldSelectSecondRadioButton->isChecked()) color = Qt::red;
+        if (ui->fieldSelectSecondRadioButton->isChecked()) color = Qt::cyan;
 
         scopePainter.setPen(color);
 
