@@ -48,26 +48,40 @@ VectorscopeDialog::~VectorscopeDialog()
     delete ui;
 }
 
-void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters)
+void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
+                                       const TbcSource::ViewMode& viewMode, const bool isFirstField)
 {
     qDebug() << "VectorscopeDialog::showTraceImage(): Called";
 
-    // Get field to display
-    auto viewMode = TbcSource::ViewMode::FIELD_VIEW;
-    auto firstField = true;
+    // Set/enable/disable controls based on view
+    switch (viewMode) {
+        case TbcSource::ViewMode::FRAME_VIEW:
+        case TbcSource::ViewMode::SPLIT_VIEW:
+            ui->fieldSelectAllRadioButton->setEnabled(true);
+            ui->fieldSelectFirstRadioButton->setEnabled(true);
+            ui->fieldSelectSecondRadioButton->setEnabled(true);
+            ui->blendColorCheckBox->setEnabled(true);
+            break;
 
-    if (ui->fieldSelectAllRadioButton->isChecked()) {
-        viewMode = TbcSource::ViewMode::FRAME_VIEW;
-    } else if(ui->fieldSelectFirstRadioButton->isChecked()) {
-        viewMode = TbcSource::ViewMode::FIELD_VIEW;
-        firstField = true;
-    } else if(ui->fieldSelectSecondRadioButton->isChecked()) {
-        viewMode = TbcSource::ViewMode::FIELD_VIEW;
-        firstField = false;
+        case TbcSource::ViewMode::FIELD_VIEW:
+            ui->fieldSelectAllRadioButton->setEnabled(false);
+            ui->blendColorCheckBox->setEnabled(false);
+            ui->blendColorCheckBox->setChecked(false);
+
+            if (isFirstField) {
+                ui->fieldSelectFirstRadioButton->setEnabled(true);
+                ui->fieldSelectSecondRadioButton->setEnabled(false);
+                ui->fieldSelectFirstRadioButton->setChecked(true);
+            } else {
+                ui->fieldSelectFirstRadioButton->setEnabled(false);
+                ui->fieldSelectSecondRadioButton->setEnabled(true);
+                ui->fieldSelectSecondRadioButton->setChecked(true);
+            }
+            break;
     }
 
     // Draw the image
-    QImage traceImage = getTraceImage(componentFrame, videoParameters, viewMode, firstField);
+    QImage traceImage = getTraceImage(componentFrame, videoParameters);
 
     // Add the QImage to the QLabel in the dialogue
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -81,8 +95,7 @@ void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, con
     #endif
 }
 
-QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
-                                        const TbcSource::ViewMode &viewMode, const bool firstField)
+QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters)
 {
     // Scope size and scale
     constexpr qint32 SIZE = 1024;
@@ -109,26 +122,25 @@ QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, co
     std::normal_distribution<double> normalDist(0.0, 100.0);
 
     bool defocus = ui->defocusCheckBox->isChecked();
-    qint32 fieldCount = 2, lineOffset = 0;
     QColor color = Qt::green;
 
-    if (viewMode == TbcSource::ViewMode::FIELD_VIEW) {
-        fieldCount = 1;
-        lineOffset = firstField ? 0 : 1;
-    }
+    // Skip second field if first only is selected
+    qint32 fieldCount = !ui->fieldSelectFirstRadioButton->isChecked() ? 2 : 1;
 
-    for (auto f = 0; f < fieldCount; f++) {
-        if ((viewMode == TbcSource::ViewMode::FRAME_VIEW &&
-             ui->blendColorCheckBox->isChecked() && f != 0) ||
-            (viewMode == TbcSource::ViewMode::FIELD_VIEW && !firstField)) {
-                // Set color to red on second field, or if blend enabled in frame mode
-                color = Qt::red;
-        }
+    // Skip first field if second only is selected
+    qint32 startingFrame = !ui->fieldSelectSecondRadioButton->isChecked() ? 0 : 1;
+
+    for (auto fieldN = startingFrame; fieldN < fieldCount; fieldN++) {
+        // Set color to red on second field if blend enabled...
+        if (ui->fieldSelectAllRadioButton->isChecked() && ui->blendColorCheckBox->isChecked() && fieldN == 1) color = Qt::red;
+
+        // ...or second only is selected
+        if (ui->fieldSelectSecondRadioButton->isChecked()) color = Qt::red;
 
         scopePainter.setPen(color);
 
         // For each sample in the active area, plot its U/V values on the chart
-        for (qint32 lineNumber = videoParameters.firstActiveFrameLine + lineOffset; lineNumber < videoParameters.lastActiveFrameLine; lineNumber += 2) {
+        for (qint32 lineNumber = videoParameters.firstActiveFrameLine + fieldN; lineNumber < videoParameters.lastActiveFrameLine; lineNumber += 2) {
             const auto &uLine = componentFrame.u(lineNumber);
             const auto &vLine = componentFrame.v(lineNumber);
 
@@ -144,9 +156,6 @@ QImage VectorscopeDialog::getTraceImage(const ComponentFrame &componentFrame, co
                 scopePainter.drawPoint(x, y);
             }
         }
-
-        // Increment lineOffset for next pass in frame view
-        lineOffset += 1;
     }
 
     // Overlay the graticule, unless it's disabled
