@@ -551,15 +551,13 @@ class NoiseReduction:
 class HiFiAudioParams:
     pre_trim: int
     gain: int
-    block_final_audio_size: int
-    block_overlap_audio_final: int
+    block_audio_final_size: int
     decode_mode: str
     preview: bool
     original: bool
     auto_fine_tune: bool
     format: str
     if_rate: int
-    if_rate_audio_ratio: float
     input_rate: int
     audio_rate: int
     ifresample_numerator: int
@@ -601,13 +599,11 @@ class HiFiDecode:
         self.gain = options["gain"]
 
         self.input_rate: int = int(options["input_rate"])
+        self.if_rate: int = 2 ** 23 # needs to be a power of 2 for fft
         self.audio_rate: int = 192000
         self.audio_final_rate: int = int(options["audio_rate"])
+
         self.rfBandPassParams = AFEParamsFront()
-        # downsamples the if signal to fit within the nyquist cutoff within an integer ratio of the audio rate
-        min_if_rate = (self.rfBandPassParams.cutoff + self.rfBandPassParams.transition_width) * 2
-        self.if_rate_audio_ratio = ceil(min_if_rate / self.audio_rate)
-        self.if_rate: int = int(self.if_rate_audio_ratio * self.audio_rate)
         (
             self.ifresample_numerator,
             self.ifresample_denominator,
@@ -618,6 +614,10 @@ class HiFiDecode:
         ) = self.getResamplingRatios()
 
         self.set_block_sizes()
+
+        print("rates", self.input_rate, self.if_rate, self.audio_rate, self.audio_final_rate)
+        print("rates gcd", np.gcd.reduce([self.input_rate, self.if_rate, self.audio_rate, self.audio_final_rate]))
+        print("min overlap", self.pre_trim + self.resampler_overlap)
 
         self.bandpassRF = AFEBandPass(self.rfBandPassParams, self.input_rate)
         a_iirb, a_iira = firdes_lowpass(
@@ -716,15 +716,13 @@ class HiFiDecode:
         self.audio_process_params = HiFiAudioParams(
             pre_trim = self.pre_trim,
             gain = self.gain,
-            block_final_audio_size = self.block_final_audio_size,
-            block_overlap_audio_final = self.block_overlap_audio_final,
+            block_audio_final_size = self.block_audio_final_size,
             decode_mode = self.decode_mode,
             preview = options["preview"],
             original = options["original"],
             auto_fine_tune = options["auto_fine_tune"],
             format = options["format"],
             if_rate = self.if_rate,
-            if_rate_audio_ratio = self.if_rate_audio_ratio,
             input_rate = self.input_rate,
             audio_rate = self.audio_rate,
             ifresample_numerator = self.ifresample_numerator,
@@ -758,6 +756,10 @@ class HiFiDecode:
             muting_fft_end = self.muting_fft_end,
         )
 
+    # TODO: Subtrack overlap from block size rather than adding it
+    #       Required that the processing size of each block is exactly 0.5 seconds, so the demode can be a power of 2
+    #       Any overlap will represented inside the blocks, not appended
+
     def set_block_sizes(self, block_size=None, is_last_block=False):
         # block overlap and edge discard
         self.blocks_second: float = 1 / BLOCKS_PER_SECOND
@@ -770,31 +772,58 @@ class HiFiDecode:
 
         self.block_resampled_size: int = ceil(self.if_rate * self.blocks_second)
         self.block_audio_size: int = ceil(self.audio_rate * self.blocks_second)
-        self.block_final_audio_size: int = ceil(self.audio_final_rate * self.blocks_second)
+        self.block_audio_final_size: int = ceil(self.audio_final_rate * self.blocks_second)
 
         # trim off peaks at edges of if
         self.pre_trim = 50
         self.resampler_overlap = 1e2
         # use the greatest common divisor to calculate the overlap samples so it is always an integer
-        block_size_gcd = np.gcd.reduce([self.block_size, self.block_resampled_size, self.block_audio_size, self.block_final_audio_size])
-        overlap_divisor = int(self.audio_rate / block_size_gcd)
+        block_size_gcd = np.gcd.reduce([
+            self.block_size,
+            #self.block_resampled_size,
+            #self.block_audio_size,
+            self.block_audio_final_size
+        ])
+        block_audio_overlap_divisor = int(self.block_audio_size / block_size_gcd)
 
         if not is_last_block:
-            self.block_overlap_audio = ceil((self.resampler_overlap + self.pre_trim * 2) / overlap_divisor) * overlap_divisor
+            # TODO: What is this when it is the last block?????
+            self.block_audio_overlap = ceil((self.resampler_overlap + self.pre_trim * 2) / block_audio_overlap_divisor) * block_audio_overlap_divisor
 
-        overlap_seconds = self.block_overlap_audio / self.audio_rate
+        overlap_seconds = self.block_audio_overlap / self.audio_rate
 
         self.block_overlap = round(self.input_rate * overlap_seconds)
-        self.block_overlap_resampled = round(self.if_rate * overlap_seconds)
-        self.block_overlap_audio_final = round(self.audio_final_rate * overlap_seconds)
+        self.block_resampled_overlap = round(self.if_rate * overlap_seconds)
+        self.block_audio_overlap = round(self.audio_rate * overlap_seconds)
+        self.block_audio_final_overlap = round(self.audio_final_rate * overlap_seconds)
+
+        print("block sizes",
+            self.block_size,
+            self.block_resampled_size,
+            self.block_audio_size,
+            self.block_audio_final_size,
+            "overlap",
+            block_size_gcd,
+            self.block_overlap,
+            self.block_resampled_overlap,
+            self.block_audio_overlap
+        )
 
         return {
-            "block_len": self.block_size,
+            "block_size": self.block_size,
             "block_overlap": self.block_overlap,
-            "block_resampled_len": self.block_resampled_size + self.block_overlap_resampled,
-            "block_audio_len": self.block_audio_size + self.block_overlap_audio,
-            "block_audio_final_len": self.block_final_audio_size,
-            "block_audio_final_overlap": self.block_overlap_audio_final,
+            "block_audio_size": self.block_audio_size,
+            "block_audio_final_size": self.block_audio_final_size,
+            "block_audio_final_overlap": self.block_audio_final_overlap
+        }
+    
+    def get_block_sizes(self):
+        return {
+            "block_size": self.block_size,
+            "block_overlap": self.block_overlap,
+            "block_audio_size": self.block_audio_size,
+            "block_audio_final_size": self.block_audio_final_size,
+            "block_audio_final_overlap": self.block_audio_final_overlap
         }
 
     def getResamplingRatios(self):
@@ -1064,7 +1093,7 @@ class HiFiDecode:
     # size of the audio decoded audio after resampling
     @property
     def blockFinalAudioSize(self) -> int:
-        return self.block_final_audio_size
+        return self.block_audio_final_size
 
     @property
     def readOverlap(self) -> int:
@@ -1072,7 +1101,7 @@ class HiFiDecode:
 
     @property
     def audioDiscard(self) -> int:
-        return self.block_overlap_audio
+        return self.block_audio_overlap
 
     @property
     def sourceRate(self) -> int:
@@ -1287,20 +1316,21 @@ class HiFiDecode:
 
     def block_decode(
         self,
-        raw_data: np.array,
-        final_block_len: int,
+        rf_data: np.array,
+        block_audio_final_size: int,
+        block_audio_final_overlap: int,
         measure_perf: bool = False
     ) -> Tuple[int, np.array, np.array]:
         # Do a bandpass filter to remove any the video components from the signal.
         if measure_perf: start_bandpassRF = perf_counter()
-        raw_data = self.bandpassRF.work(raw_data)
+        rf_data = self.bandpassRF.work(rf_data)
         if measure_perf: end_bandpassRF = perf_counter()
-        raw_data = raw_data.astype(REAL_DTYPE, copy=False)
+        rf_data = rf_data.astype(REAL_DTYPE, copy=False)
 
         # resample from input sample rate to if sample rate
         if measure_perf: start_if_resampler = perf_counter()
-        data = samplerate_resample(
-            raw_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
+        rf_data_resampled = samplerate_resample(
+            rf_data, self.ifresample_numerator, self.ifresample_denominator, converter_type=self.if_resampler_converter
         )
         if measure_perf: end_if_resampler = perf_counter()
 
@@ -1318,7 +1348,7 @@ class HiFiDecode:
         #     preR, dcR = audioR_future.result()
         
         if measure_perf: start_carrier_filter = perf_counter()
-        filterL, filterR = self.filterCarriers(data)
+        filterL, filterR = self.filterCarriers(rf_data_resampled)
         if measure_perf: end_carrier_filter = perf_counter()
 
         if self.options["grc"] and ZMQ_AVAILABLE:
@@ -1341,9 +1371,12 @@ class HiFiDecode:
 
         # trim off the block overlap
         audio_len = len(preL)
-        overlap_to_trim = int((audio_len - final_block_len) / 2)
+        expected_len =  block_audio_final_size - block_audio_final_overlap * 2
+        overlap_to_trim = round((audio_len - expected_len) / 2)
         preL = preL[overlap_to_trim:-overlap_to_trim]
         preR = preR[overlap_to_trim:-overlap_to_trim]
+
+        print("overlap to trim", len(rf_data), len(rf_data_resampled), overlap_to_trim, audio_len)
 
         if measure_perf: start_adjust_gain = perf_counter()
         if self.audio_process_params.gain != 1:
@@ -1427,11 +1460,7 @@ class HiFiDecode:
             buffer = DecoderSharedMemory(decoder_state)
             raw_data = buffer.get_block()
         
-            audioL, audioR = decoder.block_decode(raw_data, decoder_state.post_audio_len, measure_perf)
-        
-            # create a new buffer with the trimmed offsets
-            decoder_state.pre_audio_trimmed = len(audioL)
-            buffer = DecoderSharedMemory(decoder_state)
+            audioL, audioR = decoder.block_decode(raw_data, decoder_state.block_audio_final_size, decoder_state.block_audio_final_overlap, measure_perf)
         
             if measure_perf: start_final_audio_copy = perf_counter()
             # copy the audio data into the shared buffer

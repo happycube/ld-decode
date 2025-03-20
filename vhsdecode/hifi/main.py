@@ -598,7 +598,7 @@ class PostProcessor:
             if spectral_nr_amount > 0: 
                 spectral_nr.spectral_nr(pre, spectral_nr_out)
             else:
-                DecoderSharedMemory.copy_data_float32(pre, spectral_nr_out, decoder_state.post_audio_len)
+                DecoderSharedMemory.copy_data_float32(pre, spectral_nr_out, decoder_state.block_audio_final_size)
 
             buffer.close()
             out_conn.send((decoder_state, channel_num))
@@ -636,7 +636,7 @@ class PostProcessor:
             if use_noise_reduction:
                 noise_reduction.noise_reduction(pre, nr_out)
             else:
-                DecoderSharedMemory.copy_data_float32(pre, nr_out, decoder_state.post_audio_len)
+                DecoderSharedMemory.copy_data_float32(pre, nr_out, decoder_state.block_audio_final_size)
 
             buffer.close()
             out_conn.send(decoder_state)
@@ -666,13 +666,13 @@ class PostProcessor:
             r = buffer.get_nr_right()
             stereo = buffer.get_stereo()
             
-            max_gain = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.post_audio_trimmed, sample_rate, decoder_state.block_num == 0)
+            max_gain = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.block_audio_final_size, sample_rate, decoder_state.block_num == 0)
 
             if peak_gain.value < max_gain:
                 with peak_gain.get_lock():
                     peak_gain.value = max_gain
 
-            decoder_state.stereo_audio_trimmed = decoder_state.post_audio_trimmed * 2
+            decoder_state.stereo_audio_len = decoder_state.block_audio_final_size * 2
             buffer.close()
             out_conn.send(decoder_state)
             
@@ -738,11 +738,11 @@ class PostProcessor:
             in_preL_buffer = buffer.get_pre_left()
             in_preR_buffer = buffer.get_pre_right()
 
-            in_preL = np.empty_like(in_preL_buffer)
-            in_preR = np.empty_like(in_preR_buffer)
+            in_preL = np.empty(in_decoder_state.block_audio_final_len, dtype=REAL_DTYPE)
+            in_preR = np.empty(in_decoder_state.block_audio_final_len, dtype=REAL_DTYPE)
 
-            DecoderSharedMemory.copy_data_float32(in_preL_buffer, in_preL, len(in_preL))
-            DecoderSharedMemory.copy_data_float32(in_preR_buffer, in_preR, len(in_preR))
+            DecoderSharedMemory.copy_data_float32(in_preL_buffer, in_preL, in_decoder_state.block_audio_final_len)
+            DecoderSharedMemory.copy_data_float32(in_preR_buffer, in_preR, in_decoder_state.block_audio_final_len)
 
             buffer.close()
 
@@ -773,8 +773,8 @@ class PostProcessor:
                     decoder_state.name = name
                     buffer = PostProcessorSharedMemory(decoder_state)
 
-                    DecoderSharedMemory.copy_data_float32(preL, buffer.get_pre_left(), decoder_state.pre_audio_trimmed)
-                    DecoderSharedMemory.copy_data_float32(preR, buffer.get_pre_right(), decoder_state.pre_audio_trimmed)
+                    DecoderSharedMemory.copy_data_float32(preL, buffer.get_pre_left(), decoder_state.block_audio_final_size)
+                    DecoderSharedMemory.copy_data_float32(preR, buffer.get_pre_right(), decoder_state.block_audio_final_size)
 
                     nr_worker_l_in_conn.send((decoder_state, 0))
                     nr_worker_r_in_conn.send((decoder_state, 1))
@@ -915,7 +915,7 @@ def write_soundfile_process_worker(
                 buffer.close()
                 post_processor_shared_memory_idle_queue.put(decoder_state.name)
                 with total_samples_decoded.get_lock():
-                    total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_trimmed / 2)
+                    total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_len / 2)
                 
                 log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued.value, input_rate, audio_rate)
 
@@ -970,7 +970,7 @@ async def decode_parallel(
     shared_memory_instances = []
     shared_memory_idle_queue = SimpleQueue()
     for i in range(num_shared_memory_instances):
-        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, read_overlap, block_resampled_size, block_audio_size, f"hifi_decoder_{i}")
+        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, block_audio_size, f"hifi_decoder_{i}")
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
 
