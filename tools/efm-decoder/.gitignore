@@ -55,6 +55,13 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 
+# Ignore any EFM decoder test data files
+*.dat
+*.f2s
+*.d24
+*.wav
+*.efm
+
 # Executables
 /tools/efm-decoder-audio/efm-decoder-audio
 /tools/efm-decoder-d24/efm-decoder-d24
