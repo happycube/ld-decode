@@ -30,6 +30,7 @@ class DecoderState:
         self.block_dtype = np.int16
         self.block_size = block_sizes["block_size"]
         self.block_overlap = block_sizes["block_overlap"]
+        self.block_read_overlap = block_sizes["block_read_overlap"]
 
         # block data for demodulated audio @ 192000Hz
         self.audio_dtype = REAL_DTYPE
@@ -39,7 +40,6 @@ class DecoderState:
         self.block_audio_final_size = block_sizes["block_audio_final_size"]
         self.block_audio_final_overlap = block_sizes["block_audio_final_overlap"]
         self.block_audio_final_len = self.block_audio_final_size - self.block_audio_final_overlap * 2
-        self.stereo_audio_len = self.block_audio_final_len * 2
 
     name: str
     block_num: int
@@ -48,6 +48,7 @@ class DecoderState:
     block_dtype: np.dtype
     block_size: int
     block_overlap: int
+    block_read_overlap: int
 
     audio_dtype: np.dtype
     block_audio_size: int
@@ -55,7 +56,6 @@ class DecoderState:
     block_audio_final_size: int
     block_audio_final_overlap: int
     block_audio_final_len: int
-    stereo_audio_len: int
 
 def to_aligned_offset(size):
     alignment = ALIGNMENT
@@ -183,15 +183,15 @@ class DecoderSharedMemory():
         ## raw data in
         # first overlap
         self.block_start_overlap_offset = to_aligned_offset(self.r_pre_offset + self.r_pre_bytes)
-        self.block_start_overlap_len = decoder_state.block_overlap
+        self.block_start_overlap_len = decoder_state.block_read_overlap
         self.block_start_overlap_bytes = self.block_start_overlap_len * self.block_dtype_item_size
         # block data
         self.block_offset = self.block_start_overlap_offset + self.block_start_overlap_bytes
-        self.block_len = decoder_state.block_size - (decoder_state.block_overlap * 2)
+        self.block_len = decoder_state.block_size - (decoder_state.block_read_overlap * 2)
         self.block_bytes = self.block_len * self.block_dtype_item_size
         # second overlap
         self.block_end_overlap_offset = self.block_offset + self.block_bytes
-        self.block_end_overlap_len = decoder_state.block_overlap
+        self.block_end_overlap_len = decoder_state.block_read_overlap
         self.block_end_overlap_bytes = self.block_end_overlap_len * self.block_dtype_item_size
 
     @staticmethod
@@ -213,11 +213,6 @@ class DecoderSharedMemory():
         # https://stackoverflow.com/a/63717188
         return SharedMemory(size=byte_size, name=name, create=True)
     
-
-    # |00|000000000000000|00|                  |11|222222222222222222|22|                  |33|4444444444444444444|44|
-    #                    |00|111111111111111111|11|                  |22|333333333333333333|33|
-    # S                     1                     2                     3                     4                      E
-
     ## Decoder methods
     
     # block data with start and end overlap included

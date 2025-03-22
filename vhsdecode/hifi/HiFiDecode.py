@@ -617,7 +617,6 @@ class HiFiDecode:
 
         print("rates", self.input_rate, self.if_rate, self.audio_rate, self.audio_final_rate)
         print("rates gcd", np.gcd.reduce([self.input_rate, self.if_rate, self.audio_rate, self.audio_final_rate]))
-        print("min overlap", self.pre_trim + self.resampler_overlap)
 
         self.bandpassRF = AFEBandPass(self.rfBandPassParams, self.input_rate)
         a_iirb, a_iira = firdes_lowpass(
@@ -774,27 +773,48 @@ class HiFiDecode:
         self.block_audio_size: int = ceil(self.audio_rate * self.blocks_second)
         self.block_audio_final_size: int = ceil(self.audio_final_rate * self.blocks_second)
 
-        # trim off peaks at edges of if
-        self.pre_trim = 50
-        self.resampler_overlap = 1e2
-        # use the greatest common divisor to calculate the overlap samples so it is always an integer
+        # Blocks are overlapped before and after by `block_overlap samples``
+        # Block n+1 is:
+        #   * Last half of the start overlap
+        #   * All the non-overlapping data
+        #   * First half of the end overlap
+        # Block 0 is:
+        #   * Copied data from beginning of non-overlapping data to simulate an overlap
+        #   * All the non-overlapping data
+        #   * First half of the end overlap
+        # Block end is:
+        #   * Last half of the start overlap
+        #   * All the non-overlapping data up to the end of the audio
+        #   * First half of the end overlap (last half of this overlap is discarded)
+        #
+        # reads:                |0000|1111111111|1111|          |2222|3333333333|3333|
+        #        xxxx|0000000000|0000|          |1111|2222222222|2222|          |3333|44444444444444
+        #          ^               ^               ^               ^               ^
+        # block:   0               1               2               3               4
+
+        # use the greatest common divisor to calculate the minimum size of overlap samples so it divides evenly against the input and final sample rates
         block_size_gcd = np.gcd.reduce([
             self.block_size,
-            #self.block_resampled_size,
-            #self.block_audio_size,
             self.block_audio_final_size
         ])
         block_audio_overlap_divisor = int(self.block_audio_size / block_size_gcd)
 
+        # start and end samples to zero to remove spikes at edges of demodulated audio
+        self.pre_trim = 50
+
         if not is_last_block:
             # TODO: What is this when it is the last block?????
-            self.block_audio_overlap = ceil((self.resampler_overlap + self.pre_trim * 2) / block_audio_overlap_divisor) * block_audio_overlap_divisor
+            # minimum overlap to account for loss during resampling
+            min_resampler_overlap = self.pre_trim + 50
+            # min overlap in terms of final sample rate
+            min_overlap = ceil(min_resampler_overlap / self.audio_rate * self.audio_final_rate)
+            # overlap rounded up to the nearest evenly divisible chunk
+            self.block_audio_final_overlap = ceil(min_overlap / block_audio_overlap_divisor) * block_audio_overlap_divisor
 
-        overlap_seconds = self.block_audio_overlap / self.audio_rate
+        overlap_seconds = self.block_audio_final_overlap / self.audio_final_rate
 
         self.block_overlap = round(self.input_rate * overlap_seconds)
-        self.block_resampled_overlap = round(self.if_rate * overlap_seconds)
-        self.block_audio_overlap = round(self.audio_rate * overlap_seconds)
+        self.block_read_overlap = self.block_overlap * 2
         self.block_audio_final_overlap = round(self.audio_final_rate * overlap_seconds)
 
         print("block sizes",
@@ -804,13 +824,17 @@ class HiFiDecode:
             self.block_audio_final_size,
             "overlap",
             block_size_gcd,
-            self.block_overlap,
-            self.block_resampled_overlap,
-            self.block_audio_overlap
+            self.block_audio_size / block_size_gcd,
+            self.block_read_overlap,
+            self.input_rate * overlap_seconds,
+            self.if_rate * overlap_seconds,
+            self.audio_rate * overlap_seconds,
+            self.audio_final_rate * overlap_seconds
         )
 
         return {
             "block_size": self.block_size,
+            "block_read_overlap": self.block_read_overlap,
             "block_overlap": self.block_overlap,
             "block_audio_size": self.block_audio_size,
             "block_audio_final_size": self.block_audio_final_size,
@@ -820,6 +844,7 @@ class HiFiDecode:
     def get_block_sizes(self):
         return {
             "block_size": self.block_size,
+            "block_read_overlap": self.block_read_overlap,
             "block_overlap": self.block_overlap,
             "block_audio_size": self.block_audio_size,
             "block_audio_final_size": self.block_audio_final_size,
@@ -1097,11 +1122,7 @@ class HiFiDecode:
 
     @property
     def readOverlap(self) -> int:
-        return self.block_overlap
-
-    @property
-    def audioDiscard(self) -> int:
-        return self.block_audio_overlap
+        return self.block_read_overlap
 
     @property
     def sourceRate(self) -> int:
@@ -1372,11 +1393,12 @@ class HiFiDecode:
         # trim off the block overlap
         audio_len = len(preL)
         expected_len =  block_audio_final_size - block_audio_final_overlap * 2
-        overlap_to_trim = round((audio_len - expected_len) / 2)
-        preL = preL[overlap_to_trim:-overlap_to_trim]
-        preR = preR[overlap_to_trim:-overlap_to_trim]
 
-        print("overlap to trim", len(rf_data), len(rf_data_resampled), overlap_to_trim, audio_len)
+        overlap_to_trim = round((audio_len - expected_len) / 2, 14)
+        trim_start = floor(overlap_to_trim)
+        trim_end = ceil(overlap_to_trim)
+        preL = preL[trim_start:-trim_end]
+        preR = preR[trim_start:-trim_end]
 
         if measure_perf: start_adjust_gain = perf_counter()
         if self.audio_process_params.gain != 1:

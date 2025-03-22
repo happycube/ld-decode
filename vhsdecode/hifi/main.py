@@ -672,7 +672,6 @@ class PostProcessor:
                 with peak_gain.get_lock():
                     peak_gain.value = max_gain
 
-            decoder_state.stereo_audio_len = decoder_state.block_audio_final_size * 2
             buffer.close()
             out_conn.send(decoder_state)
             
@@ -900,6 +899,7 @@ def write_soundfile_process_worker(
 
                 buffer = PostProcessorSharedMemory(decoder_state)
                 stereo = buffer.get_stereo()
+                samples_decoded = len(stereo) / 2
 
                 w.buffer_write(stereo, dtype="float32")
                 if preview_mode:
@@ -915,7 +915,7 @@ def write_soundfile_process_worker(
                 buffer.close()
                 post_processor_shared_memory_idle_queue.put(decoder_state.name)
                 with total_samples_decoded.get_lock():
-                    total_samples_decoded.value = int(total_samples_decoded.value + decoder_state.stereo_audio_len / 2)
+                    total_samples_decoded.value = int(total_samples_decoded.value + samples_decoded)
                 
                 log_decode(start_time, input_position.value, total_samples_decoded.value, blocks_enqueued.value, input_rate, audio_rate)
 
@@ -940,10 +940,8 @@ async def decode_parallel(
     output_file = decode_options["output_file"]
 
     block_size = decoder.blockSize
-    block_resampled_size = decoder.blockResampledSize
     block_audio_size = decoder.blockAudioSize
 
-    read_overlap = decoder.readOverlap
     blocks_enqueued = Value("d", 0)
     input_position = Value('d', 0)
     total_samples_decoded = Value('d', 0)
@@ -1106,7 +1104,7 @@ async def decode_parallel(
             decoder_state = DecoderState(decoder, buffer_name, decoder.blockSize, block_num, False)
 
             if (len(previous_overlap) == 0):
-                previous_overlap = np.empty(decoder_state.block_overlap, dtype=np.int16)
+                previous_overlap = np.empty(decoder_state.block_read_overlap, dtype=np.int16)
 
             stop_requested = await handle_ui_events();
             decoder_state, is_last_block = await loop.run_in_executor(None, read_and_send_to_decoder, 
