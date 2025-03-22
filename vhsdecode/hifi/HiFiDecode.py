@@ -599,7 +599,7 @@ class HiFiDecode:
         self.gain = options["gain"]
 
         self.input_rate: int = int(options["input_rate"])
-        self.if_rate: int = 2 ** 23 # needs to be a power of 2 for fft
+        self.if_rate: int = 2 ** 23 # needs to be a power of 2 for effcient fft
         self.audio_rate: int = 192000
         self.audio_final_rate: int = int(options["audio_rate"])
 
@@ -614,9 +614,7 @@ class HiFiDecode:
         ) = self.getResamplingRatios()
 
         self.set_block_sizes()
-
-        print("rates", self.input_rate, self.if_rate, self.audio_rate, self.audio_final_rate)
-        print("rates gcd", np.gcd.reduce([self.input_rate, self.if_rate, self.audio_rate, self.audio_final_rate]))
+        self._set_block_overlap()
 
         self.bandpassRF = AFEBandPass(self.rfBandPassParams, self.input_rate)
         a_iirb, a_iira = firdes_lowpass(
@@ -755,11 +753,7 @@ class HiFiDecode:
             muting_fft_end = self.muting_fft_end,
         )
 
-    # TODO: Subtrack overlap from block size rather than adding it
-    #       Required that the processing size of each block is exactly 0.5 seconds, so the demode can be a power of 2
-    #       Any overlap will represented inside the blocks, not appended
-
-    def set_block_sizes(self, block_size=None, is_last_block=False):
+    def set_block_sizes(self, block_size=None):
         # block overlap and edge discard
         self.blocks_second: float = 1 / BLOCKS_PER_SECOND
         
@@ -773,6 +767,13 @@ class HiFiDecode:
         self.block_audio_size: int = ceil(self.audio_rate * self.blocks_second)
         self.block_audio_final_size: int = ceil(self.audio_final_rate * self.blocks_second)
 
+        return {
+            "block_size": self.block_size,
+            "block_audio_size": self.block_audio_size,
+            "block_audio_final_size": self.block_audio_final_size,
+        }
+    
+    def _set_block_overlap(self):
         # Blocks are overlapped before and after by `block_overlap samples``
         # Block n+1 is:
         #   * Last half of the start overlap
@@ -802,14 +803,12 @@ class HiFiDecode:
         # start and end samples to zero to remove spikes at edges of demodulated audio
         self.pre_trim = 50
 
-        if not is_last_block:
-            # TODO: What is this when it is the last block?????
-            # minimum overlap to account for loss during resampling
-            min_resampler_overlap = self.pre_trim + 50
-            # min overlap in terms of final sample rate
-            min_overlap = ceil(min_resampler_overlap / self.audio_rate * self.audio_final_rate)
-            # overlap rounded up to the nearest evenly divisible chunk
-            self.block_audio_final_overlap = ceil(min_overlap / block_audio_overlap_divisor) * block_audio_overlap_divisor
+        # minimum overlap to account for loss during resampling
+        min_resampler_overlap = self.pre_trim + 50
+        # min overlap in terms of final sample rate
+        min_overlap = ceil(min_resampler_overlap / self.audio_rate * self.audio_final_rate)
+        # overlap rounded up to the nearest evenly divisible chunk
+        self.block_audio_final_overlap = ceil(min_overlap / block_audio_overlap_divisor) * block_audio_overlap_divisor
 
         overlap_seconds = self.block_audio_final_overlap / self.audio_final_rate
 
@@ -817,37 +816,10 @@ class HiFiDecode:
         self.block_read_overlap = self.block_overlap * 2
         self.block_audio_final_overlap = round(self.audio_final_rate * overlap_seconds)
 
-        print("block sizes",
-            self.block_size,
-            self.block_resampled_size,
-            self.block_audio_size,
-            self.block_audio_final_size,
-            "overlap",
-            block_size_gcd,
-            self.block_audio_size / block_size_gcd,
-            self.block_read_overlap,
-            self.input_rate * overlap_seconds,
-            self.if_rate * overlap_seconds,
-            self.audio_rate * overlap_seconds,
-            self.audio_final_rate * overlap_seconds
-        )
-
+    def get_block_overlap(self):
         return {
-            "block_size": self.block_size,
             "block_read_overlap": self.block_read_overlap,
             "block_overlap": self.block_overlap,
-            "block_audio_size": self.block_audio_size,
-            "block_audio_final_size": self.block_audio_final_size,
-            "block_audio_final_overlap": self.block_audio_final_overlap
-        }
-    
-    def get_block_sizes(self):
-        return {
-            "block_size": self.block_size,
-            "block_read_overlap": self.block_read_overlap,
-            "block_overlap": self.block_overlap,
-            "block_audio_size": self.block_audio_size,
-            "block_audio_final_size": self.block_audio_final_size,
             "block_audio_final_overlap": self.block_audio_final_overlap
         }
 

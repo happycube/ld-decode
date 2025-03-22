@@ -8,7 +8,7 @@ import os
 import sys
 from typing import Optional
 import signal
-from numba import njit, guvectorize, prange
+from numba import njit, guvectorize
 import numba
 import atexit
 import asyncio
@@ -1049,17 +1049,31 @@ async def decode_parallel(
             buffer = DecoderSharedMemory(decoder_state)
             block_in = buffer.get_block_in()
             DecoderSharedMemory.copy_data_int16(block_data_read, block_in, len(block_in))
-
-        # copy the overlapping data from the previous read
-        block_in_overlap = buffer.get_block_in_start_overlap()
-        if block_num == 0:
-            # this is the first block, fill in some data since there is no overlap
-            DecoderSharedMemory.copy_data_int16(block_in, block_in_overlap, len(block_in_overlap))
         else:
-            DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
+            if block_num == 0:
+                # save the read data
+                block_data_read = buffer.get_block_in().copy()
+                buffer.close()
+    
+                # shift the actual data down by half so only the copied data is discarded
+                start_overlap_end = decoder_state.block_read_overlap - decoder_state.block_overlap
+                new_block_length = frames_read + start_overlap_end
+    
+                # create a new buffer with the updated offsets, and copy in the read data
+                decoder_state = DecoderState(decoder, buffer.name, new_block_length, decoder_state.block_num, is_last_block)
+                buffer = DecoderSharedMemory(decoder_state)
+                block_in = buffer.get_block()
+                # copy starting at half the normal read overlap
+                DecoderSharedMemory.copy_data_dst_offset_int16(block_data_read, block_in, start_overlap_end, len(block_data_read))
+    
+                # this is the first block, fill in the empty data before half the read overlap
+                DecoderSharedMemory.copy_data_int16(block_data_read, block_in, start_overlap_end)
+            else:
+                # copy the overlapping data from the previous read
+                block_in_overlap = buffer.get_block_in_start_overlap()
+                DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
 
-        # copy the the current overlap to use in the next iteration
-        if not is_last_block:
+            # copy the the current overlap to use in the next iteration
             current_overlap = buffer.get_block_in_end_overlap()
             DecoderSharedMemory.copy_data_int16(current_overlap, previous_overlap, len(current_overlap))
         
@@ -1101,7 +1115,7 @@ async def decode_parallel(
                 except InterruptedError: pass
                 except EOFError: return
 
-            decoder_state = DecoderState(decoder, buffer_name, decoder.blockSize, block_num, False)
+            decoder_state = DecoderState(decoder, buffer_name, block_size, block_num, False)
 
             if (len(previous_overlap) == 0):
                 previous_overlap = np.empty(decoder_state.block_read_overlap, dtype=np.int16)

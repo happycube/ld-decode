@@ -20,7 +20,8 @@ NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C", aligned=True)
 @dataclass
 class DecoderState:
     def __init__(self, decoder, buffer_name, block_size, block_num, is_last_block):
-        block_sizes = decoder.set_block_sizes(block_size, is_last_block)
+        block_sizes = decoder.set_block_sizes(block_size)
+        block_overlap = decoder.get_block_overlap()
 
         self.name = buffer_name
         self.block_num = block_num
@@ -29,8 +30,8 @@ class DecoderState:
         # block data for input rf 
         self.block_dtype = np.int16
         self.block_size = block_sizes["block_size"]
-        self.block_overlap = block_sizes["block_overlap"]
-        self.block_read_overlap = block_sizes["block_read_overlap"]
+        self.block_overlap = block_overlap["block_overlap"]
+        self.block_read_overlap = block_overlap["block_read_overlap"]
 
         # block data for demodulated audio @ 192000Hz
         self.audio_dtype = REAL_DTYPE
@@ -38,7 +39,7 @@ class DecoderState:
 
         # block data for resampled audio @ user set audio rate
         self.block_audio_final_size = block_sizes["block_audio_final_size"]
-        self.block_audio_final_overlap = block_sizes["block_audio_final_overlap"]
+        self.block_audio_final_overlap = block_overlap["block_audio_final_overlap"]
         self.block_audio_final_len = self.block_audio_final_size - self.block_audio_final_overlap * 2
 
     name: str
@@ -254,6 +255,12 @@ class DecoderSharedMemory():
     def copy_data_int16(src: np.array, dst: np.array, length: int):
         for i in range(length):
             dst[i] = src[i]
+
+    @staticmethod
+    @njit(numba.types.void(numba.types.Array(numba.int16, 1, "C"), numba.types.Array(numba.int16, 1, "C"), numba.types.int64, numba.types.int64), cache=True, fastmath=True, nogil=True)
+    def copy_data_dst_offset_int16(src: np.array, dst: np.array, dst_offset: int, length: int):
+        for i in range(length):
+            dst[i+dst_offset] = src[i]
 
     @staticmethod
     @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.int64, numba.types.int64), cache=True, fastmath=True, nogil=True)
