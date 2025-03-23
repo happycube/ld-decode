@@ -666,7 +666,7 @@ class PostProcessor:
             r = buffer.get_nr_right()
             stereo = buffer.get_stereo()
             
-            max_gain = PostProcessor.stereo_interleave(l, r, stereo, decoder_state.block_audio_final_size, sample_rate, decoder_state.block_num == 0)
+            max_gain = PostProcessor.stereo_interleave(l, r, stereo, sample_rate, decoder_state.block_num == 0)
 
             if peak_gain.value < max_gain:
                 with peak_gain.get_lock():
@@ -677,12 +677,11 @@ class PostProcessor:
             
 
     @staticmethod
-    @njit(numba.types.float32(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32, numba.types.int32, numba.types.bool_), cache=True, fastmath=True, nogil=True)
+    @njit(numba.types.float32(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32, numba.types.bool_), cache=True, fastmath=True, nogil=True)
     def stereo_interleave(
         audioL: np.array,
         audioR: np.array,
         stereo: np.array,
-        channel_length: int,
         sample_rate: int,
         is_first_block: bool
     ) -> int:
@@ -697,16 +696,17 @@ class PostProcessor:
                 stereo[(i * 2)] = 0
                 stereo[(i * 2) + 1] = 0
 
+        channel_length = len(audioL)
         for i in range(start_sample, channel_length):
             audioLSample = audioL[i]
             stereo[(i * 2)] = audioLSample
-            if abs(audioLSample) > max_gain:
-                max_gain = abs(audioLSample)
+            gain = abs(audioLSample)
+            if gain > max_gain: max_gain = gain
 
             audioRSample = audioR[i]
             stereo[(i * 2) + 1] = audioRSample
-            if abs(audioRSample) > max_gain:
-                max_gain = abs(audioRSample)
+            gain = abs(audioRSample)
+            if gain > max_gain: max_gain = gain
 
         return max_gain
 
@@ -941,6 +941,7 @@ async def decode_parallel(
 
     block_size = decoder.blockSize
     block_audio_size = decoder.blockAudioSize
+    block_audio_overlap = decoder.blockAudioOverlap
 
     blocks_enqueued = Value("d", 0)
     input_position = Value('d', 0)
@@ -968,7 +969,7 @@ async def decode_parallel(
     shared_memory_instances = []
     shared_memory_idle_queue = SimpleQueue()
     for i in range(num_shared_memory_instances):
-        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, block_audio_size, f"hifi_decoder_{i}")
+        buffer_instance = DecoderSharedMemory.get_shared_memory(block_size, block_audio_size, block_audio_overlap, f"hifi_decoder_{i}")
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
 
@@ -1039,40 +1040,50 @@ async def decode_parallel(
             input_position.value += frames_read * 2
 
         is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
-        if is_last_block:
+        
+        if block_num == 0:
             # save the read data
             block_data_read = buffer.get_block_in().copy()
             buffer.close()
+    
+            # shift the actual data down by half so only the copied data is discarded
+            start_overlap_end = decoder_state.block_read_overlap - decoder_state.block_overlap
+            new_block_length = frames_read + start_overlap_end
+    
+            # create a new buffer with the updated offsets, and copy in the read data
+            decoder_state = DecoderState(decoder, buffer.name, new_block_length, decoder_state.block_num, is_last_block)
+            buffer = DecoderSharedMemory(decoder_state)
+            block_in = buffer.get_block()
+            # copy starting at half the normal read overlap
+            DecoderSharedMemory.copy_data_dst_offset_int16(block_data_read, block_in, start_overlap_end, len(block_data_read))
+    
+            # this is the first block, fill in the empty data before half the read overlap, this will be discarded
+            DecoderSharedMemory.copy_data_int16(block_data_read, block_in, start_overlap_end)
+        else:
+            # copy the overlapping data from the previous read
+            block_in_overlap = buffer.get_block_in_start_overlap()
+            DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
+
+        if is_last_block:
+            # save the read data
+            block_data_read = buffer.get_block().copy()
+            buffer.close()
+            
+            # first overlap, read data, first half of last overlap
+            new_block_length = decoder.block_read_overlap + frames_read + decoder.block_overlap
 
             # create a new buffer with the updated offsets, and copy in the read data
-            decoder_state = DecoderState(decoder, buffer.name, frames_read, decoder_state.block_num, is_last_block)
+            decoder_state = DecoderState(decoder, buffer.name, new_block_length, decoder_state.block_num, is_last_block)
             buffer = DecoderSharedMemory(decoder_state)
-            block_in = buffer.get_block_in()
-            DecoderSharedMemory.copy_data_int16(block_data_read, block_in, len(block_in))
-        else:
-            if block_num == 0:
-                # save the read data
-                block_data_read = buffer.get_block_in().copy()
-                buffer.close()
-    
-                # shift the actual data down by half so only the copied data is discarded
-                start_overlap_end = decoder_state.block_read_overlap - decoder_state.block_overlap
-                new_block_length = frames_read + start_overlap_end
-    
-                # create a new buffer with the updated offsets, and copy in the read data
-                decoder_state = DecoderState(decoder, buffer.name, new_block_length, decoder_state.block_num, is_last_block)
-                buffer = DecoderSharedMemory(decoder_state)
-                block_in = buffer.get_block()
-                # copy starting at half the normal read overlap
-                DecoderSharedMemory.copy_data_dst_offset_int16(block_data_read, block_in, start_overlap_end, len(block_data_read))
-    
-                # this is the first block, fill in the empty data before half the read overlap
-                DecoderSharedMemory.copy_data_int16(block_data_read, block_in, start_overlap_end)
-            else:
-                # copy the overlapping data from the previous read
-                block_in_overlap = buffer.get_block_in_start_overlap()
-                DecoderSharedMemory.copy_data_int16(previous_overlap, block_in_overlap, len(block_in_overlap))
 
+            block = buffer.get_block()
+            # copy already read data
+            DecoderSharedMemory.copy_data_int16(block_data_read, block, decoder.block_read_overlap + frames_read)
+
+            end_overlap = buffer.get_block_in_end_overlap()
+            # copy data to end that will be discarded as overlap
+            DecoderSharedMemory.copy_data_dst_offset_int16(end_overlap, end_overlap, decoder.block_overlap, decoder.block_overlap)
+        else:
             # copy the the current overlap to use in the next iteration
             current_overlap = buffer.get_block_in_end_overlap()
             DecoderSharedMemory.copy_data_int16(current_overlap, previous_overlap, len(current_overlap))

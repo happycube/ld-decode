@@ -196,11 +196,11 @@ class DecoderSharedMemory():
         self.block_end_overlap_bytes = self.block_end_overlap_len * self.block_dtype_item_size
 
     @staticmethod
-    def get_shared_memory(block_size, block_audio_size, name, block_dtype=np.int16, audio_dtype=REAL_DTYPE):
+    def get_shared_memory(block_size, block_audio_size, block_audio_overlap, name, block_dtype=np.int16, audio_dtype=REAL_DTYPE):
         max_audio_size = (block_audio_size * np.dtype(audio_dtype).itemsize) * 6
         block_size_with_audio = (
             to_aligned_offset(block_size * np.dtype(block_dtype).itemsize) +
-            to_aligned_offset(block_audio_size * np.dtype(audio_dtype).itemsize) * 2
+            to_aligned_offset(((block_audio_overlap * 4) + block_audio_size) * np.dtype(audio_dtype).itemsize) * 2
         )
 
         byte_size = max(max_audio_size, block_size_with_audio) + ALIGNMENT * 16

@@ -798,7 +798,12 @@ class HiFiDecode:
             self.block_size,
             self.block_audio_final_size
         ])
-        block_audio_overlap_divisor = int(self.block_audio_size / block_size_gcd)
+
+        if block_size_gcd > 5:
+            block_audio_overlap_divisor = int(self.block_audio_size / block_size_gcd)
+        else:
+            print(f"WARNING: The input sample rate is not evenly divisible by the output sample rate. Audio sync issues may occur. Input Rate: {self.input_rate}, Output Rate: {self.audio_final_rate}.")
+            block_audio_overlap_divisor = 1
 
         # start and end samples to zero to remove spikes at edges of demodulated audio
         self.pre_trim = 50
@@ -813,6 +818,7 @@ class HiFiDecode:
         overlap_seconds = self.block_audio_final_overlap / self.audio_final_rate
 
         self.block_overlap = round(self.input_rate * overlap_seconds)
+        self.block_audio_overlap = ceil(self.input_rate * overlap_seconds)
         self.block_read_overlap = self.block_overlap * 2
         self.block_audio_final_overlap = round(self.audio_final_rate * overlap_seconds)
 
@@ -1086,6 +1092,10 @@ class HiFiDecode:
     @property
     def blockAudioSize(self) -> int:
         return self.block_audio_size
+    
+    @property
+    def blockAudioOverlap(self) -> int:
+        return self.block_audio_overlap
         
     # size of the audio decoded audio after resampling
     @property
