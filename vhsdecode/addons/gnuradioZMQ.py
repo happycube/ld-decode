@@ -11,16 +11,32 @@ except ImportError:
     ZMQ_AVAILABLE = False
 import os
 import numpy as np
+import socket
+
+
+def find_available_port(start_port, end_port):
+    for port in range(start_port, end_port + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("localhost", port))
+                return port
+            except OSError:
+                continue
+    return None
 
 
 class ZMQSend:
     def __init__(self, port=5555):
         self.pid = os.getpid()
         print("Initializing ZMQSend (REP) at pid %d, port %d" % (self.pid, port))
-        self.port = port
+        self._port = port
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
         self.socket.bind("tcp://*:%s" % port)
+
+    @property
+    def port(self):
+        return self._port
 
     def chekcpid(self):
         pid = os.getpid()
@@ -46,13 +62,19 @@ class ZMQSend:
 
 
 class ZMQReceive:
-    def __init__(self, port=5555):
+    def __init__(self, port=None):
+        if port is None:
+            port = find_available_port(5555, 6666)
         self.pid = os.getpid()
         print("Initializing ZMQReceive (REQ) at pid %d, port %d" % (self.pid, port))
-        self.port = port
+        self._port = port
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REQ)
         self.socket.connect("tcp://localhost:%s" % port)
+
+    @property
+    def port(self):
+        return self._port
 
     def chekcpid(self):
         pid = os.getpid()

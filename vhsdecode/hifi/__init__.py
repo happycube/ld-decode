@@ -7,21 +7,17 @@ import os
 from llvmlite.binding import load_library_permanently
 
 # load intel intrinsics library for numba
-ON_LINUX = sys.platform.startswith('linux')
-ON_DARWIN = sys.platform.startswith('darwin')
-ON_WINDOWS = sys.platform.startswith('win')
+ON_LINUX = sys.platform.startswith("linux")
+ON_DARWIN = sys.platform.startswith("darwin")
+ON_WINDOWS = sys.platform.startswith("win")
 
-os_lib_dir = os.path.join(
-    sys.prefix, *(["Library", "bin"] if ON_WINDOWS else ["lib"])
-)
+os_lib_dir = os.path.join(sys.prefix, *(["Library", "bin"] if ON_WINDOWS else ["lib"]))
 
 try:
     if 32 << bool(sys.maxsize >> 32) == 64:
-        _nb_svml_dir = os.environ.get('NB_SVML_LIBS_DIR') or os_lib_dir
-        _nb_loader = lambda so: load_library_permanently(
-            os.path.join(_nb_svml_dir, so)
-        )
-    
+        _nb_svml_dir = os.environ.get("NB_SVML_LIBS_DIR") or os_lib_dir
+        _nb_loader = lambda so: load_library_permanently(os.path.join(_nb_svml_dir, so))
+
         if ON_LINUX:
             _nb_loader("libintlc.so.5")
             _nb_loader("libsvml.so")

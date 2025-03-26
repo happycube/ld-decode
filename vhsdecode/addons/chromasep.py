@@ -37,7 +37,7 @@ def signal_resample(data, n, d, converter_type="linear"):
 # The converter params are the same as in libsamplerate:
 # In ascending quality/complexity order:
 #   zero_order_hold, linear, sinc_fastest, sinc_best
-def samplerate_resample(data, n, d, converter_type="linear"):
+def samplerate_resample(data, n, d, converter_type="sinc_fastest"):
     ratio = n / d
     return resample(data, ratio=ratio, converter_type=converter_type)
 

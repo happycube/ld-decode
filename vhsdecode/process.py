@@ -604,6 +604,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "fm_audio_notch",
                 "chroma_offset",
                 "ire0_adjust",
+                "gnrc_afe",
             ],
         )(
             self.iretohz(100) * 2,
@@ -634,6 +635,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("fm_audio_notch", 0),
             int(self.DecoderParams.get("chroma_offset", 5) * (self.freq / 40.0)),
             ire0_adjust,
+            rf_options.get("gnrc_afe", False),
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -686,7 +688,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.DecoderParams.get("chroma_bpf_order", 4),
             tape_format=tape_format,
             do_cafc=self._do_cafc,
-            chroma_bpf_lower=self.DecoderParams.get("chroma_bpf_lower", 60000)
+            chroma_bpf_lower=self.DecoderParams.get("chroma_bpf_lower", 60000),
         )
 
         self.Filters["FVideoBurst"] = (

@@ -24,7 +24,9 @@ dynamic = ["version"]
 intel = [ "intel-cmplr-lib-rt", "icc_rt" ]
 hifi_gui = [ "PyQt5>=5.14.1" ]
 hifi_gui_qt6 = [ "PyQt6>=6.4.2" ]
+# Can probably be depcretaded now since it's also an option in vhs-decode to use it.
 hifi_gnuradio = [ "pyzmq" ]
+gnuradio = [ "pyzmq" ]
 
 [project.scripts]
 ld-decode = "lddecode.main:main"
