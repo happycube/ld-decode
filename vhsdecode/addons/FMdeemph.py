@@ -23,15 +23,15 @@ def gen_shelf(f0, dbgain, type, fs, qfactor=None, bandwidth=None, slope=None):
         "high" for high shelf, "low" for low shelf
 
     and one of the following:
-    * qfactor: 
+    * qfactor:
         determines shape of filter TODO: Document better
-    * bandwidth: 
+    * bandwidth:
         bandwidth in octaves between midpoint (dbGain / 2) gain frequencies
-    * slope: 
-        shelf slope. When slope=1, the shelf slope is as steep as it can be and 
-        remain monotonically increasing or decreasing gain with frequency. 
-        The shelf slope, in dB/octave, remains proportional to S for all other 
-        values for a fixed  and 
+    * slope:
+        shelf slope. When slope=1, the shelf slope is as steep as it can be and
+        remain monotonically increasing or decreasing gain with frequency.
+        The shelf slope, in dB/octave, remains proportional to S for all other
+        values for a fixed  and
 
     Based on: https://www.w3.org/2011/audio/audio-eq-cookbook.html
     """
@@ -41,11 +41,15 @@ def gen_shelf(f0, dbgain, type, fs, qfactor=None, bandwidth=None, slope=None):
     if qfactor != None:
         alpha = math.sin(w0) / (2 * qfactor)
     elif bandwidth != None:
-        alpha = math.sin(w0) * math.sinh((math.log(2) / 2) * bandwidth * (w0 / math.sin(w0)))
-    elif slope != None: 
-        alpha = math.sin(w0 / 2) * math.sqrt((a + 1/ a ) * (1 / slope - 1) + 2)
+        alpha = math.sin(w0) * math.sinh(
+            (math.log(2) / 2) * bandwidth * (w0 / math.sin(w0))
+        )
+    elif slope != None:
+        alpha = math.sin(w0 / 2) * math.sqrt((a + 1 / a) * (1 / slope - 1) + 2)
     else:
-        raise Exception("Must specify one value for either qfactor, bandwidth, or slope")
+        raise Exception(
+            "Must specify one value for either qfactor, bandwidth, or slope"
+        )
 
     cosw0 = math.cos(w0)
     asquared = math.sqrt(a)
@@ -65,7 +69,9 @@ def gen_shelf(f0, dbgain, type, fs, qfactor=None, bandwidth=None, slope=None):
         a1 = 2 * ((a - 1) - (a + 1) * cosw0)
         a2 = (a + 1) - (a - 1) * cosw0 - 2 * asquared * alpha
     else:
-        raise Exception("Must specify 'high' or 'low' for shelf type, instead got: ", type)
+        raise Exception(
+            "Must specify 'high' or 'low' for shelf type, instead got: ", type
+        )
 
     return [b0, b1, b2], [a0, a1, a2]
 
@@ -88,13 +94,7 @@ class FMDeEmphasisB:
         # We want to generate this based on time constant and 'X' value
         # currently we use the mid frequency and a gain to get the correct shape
         # with eyeballed mid value. Q=1/2 seems to give the correct slope.
-        self.ataps, self.btaps = gen_shelf(
-            mid_point,
-            dBgain,
-            "high",
-            fs,
-            qfactor=Q
-        )
+        self.ataps, self.btaps = gen_shelf(mid_point, dBgain, "high", fs, qfactor=Q)
 
     def get(self):
         return self.btaps, self.ataps

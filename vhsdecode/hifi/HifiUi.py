@@ -43,7 +43,7 @@ except ImportError:
 from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_NR_ENVELOPE_GAIN,
     DEFAULT_SPECTRAL_NR_AMOUNT,
-    DEFAULT_RESAMPLER_QUALITY
+    DEFAULT_RESAMPLER_QUALITY,
 )
 
 
@@ -262,7 +262,9 @@ class HifiUi(QMainWindow):
         self.normalize_checkbox = QCheckBox("Normalize")
         self.muting_checkbox = QCheckBox("Muting")
         self.noise_reduction_checkbox = QCheckBox("Noise reduction")
-        self.head_switching_interpolation_checkbox = QCheckBox("Head Switching Interpolation")
+        self.head_switching_interpolation_checkbox = QCheckBox(
+            "Head Switching Interpolation"
+        )
         self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
         self.preview_checkbox = QCheckBox("Preview")
         self.preview_checkbox.setCheckable(params.preview_available)
@@ -453,7 +455,9 @@ class HifiUi(QMainWindow):
         self.normalize_checkbox.setChecked(values.normalize)
         self.muting_checkbox.setChecked(values.muting)
         self.noise_reduction_checkbox.setChecked(values.noise_reduction)
-        self.head_switching_interpolation_checkbox.setChecked(values.head_switching_interpolation)
+        self.head_switching_interpolation_checkbox.setChecked(
+            values.head_switching_interpolation
+        )
         self.automatic_fine_tuning_checkbox.setChecked(values.automatic_fine_tuning)
         self.sample_rate_combo.setCurrentText(str(values.audio_sample_rate))
         self.sample_rate_combo.setCurrentIndex(
@@ -493,7 +497,9 @@ class HifiUi(QMainWindow):
         values.normalize = self.normalize_checkbox.isChecked()
         values.muting = self.muting_checkbox.isChecked()
         values.noise_reduction = self.noise_reduction_checkbox.isChecked()
-        values.head_switching_interpolation = self.head_switching_interpolation_checkbox.isChecked()
+        values.head_switching_interpolation = (
+            self.head_switching_interpolation_checkbox.isChecked()
+        )
         values.automatic_fine_tuning = self.automatic_fine_tuning_checkbox.isChecked()
         values.audio_sample_rate = int(self.sample_rate_combo.currentText())
         values.standard = self.standard_combo.currentText()

@@ -17,6 +17,7 @@ ALIGNMENT = 64
 NumbaAudioArray = numba.types.Array(numba.types.float32, 1, "C", aligned=True)
 NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C", aligned=True)
 
+
 @dataclass
 class DecoderState:
     def __init__(self, decoder, buffer_name, block_size, block_num, is_last_block):
@@ -27,7 +28,7 @@ class DecoderState:
         self.block_num = block_num
         self.is_last_block = is_last_block
 
-        # block data for input rf 
+        # block data for input rf
         self.block_dtype = np.int16
         self.block_size = block_sizes["block_size"]
         self.block_overlap = block_overlap["block_overlap"]
@@ -40,7 +41,9 @@ class DecoderState:
         # block data for resampled audio @ user set audio rate
         self.block_audio_final_size = block_sizes["block_audio_final_size"]
         self.block_audio_final_overlap = block_overlap["block_audio_final_overlap"]
-        self.block_audio_final_len = self.block_audio_final_size - self.block_audio_final_overlap * 2
+        self.block_audio_final_len = (
+            self.block_audio_final_size - self.block_audio_final_overlap * 2
+        )
 
     name: str
     block_num: int
@@ -58,22 +61,22 @@ class DecoderState:
     block_audio_final_overlap: int
     block_audio_final_len: int
 
+
 def to_aligned_offset(size):
     alignment = ALIGNMENT
     offset = size % alignment
     aligned_size = 0 if offset == 0 else alignment - offset
     return size + aligned_size
 
+
 def get_aligned_address(variable):
     address = id(variable)
     aligned_address = to_aligned_offset(address)
     return address, aligned_address
-    
-class PostProcessorSharedMemory():
-    def __init__(
-            self,
-            decoder_state: DecoderState
-        ):
+
+
+class PostProcessorSharedMemory:
+    def __init__(self, decoder_state: DecoderState):
         self.shared_memory = SharedMemory(name=decoder_state.name)
 
         self.size = self.shared_memory.size
@@ -107,7 +110,12 @@ class PostProcessorSharedMemory():
 
         ## noise reduction out
         # left
-        self.l_nr_offset = to_aligned_offset(max(self.stereo_offset + self.stereo_bytes, self.r_pre_offset + self.r_pre_bytes))
+        self.l_nr_offset = to_aligned_offset(
+            max(
+                self.stereo_offset + self.stereo_bytes,
+                self.r_pre_offset + self.r_pre_bytes,
+            )
+        )
         self.l_nr_len = self.channel_len
         self.l_nr_bytes = self.l_nr_len * self.audio_dtype_item_size
         # right
@@ -115,14 +123,19 @@ class PostProcessorSharedMemory():
         self.r_nr_len = self.channel_len
         self.r_nr_bytes = self.r_nr_len * self.audio_dtype_item_size
 
-            
     @staticmethod
     def get_shared_memory(channel_len, name, audio_dtype=REAL_DTYPE):
-        byte_size = to_aligned_offset(channel_len * np.dtype(audio_dtype).itemsize * 4) + ALIGNMENT * 16
+        byte_size = (
+            to_aligned_offset(channel_len * np.dtype(audio_dtype).itemsize * 4)
+            + ALIGNMENT * 16
+        )
 
         # allow more than one instance to run at a time
         system_random = SystemRandom()
-        name += "_" + ''.join(system_random.choice(string.ascii_lowercase + string.digits) for _ in range(8))
+        name += "_" + "".join(
+            system_random.choice(string.ascii_lowercase + string.digits)
+            for _ in range(8)
+        )
 
         # this instance must be saved in a variable that persists on both processes
         # Windows will remove the shared memory if it garbage collects the handle in any of the processes it is open in
@@ -130,28 +143,49 @@ class PostProcessorSharedMemory():
         return SharedMemory(size=byte_size, name=name, create=True)
 
     def get_pre_left(self) -> np.array:
-        return np.ndarray(self.l_pre_len, dtype=self.audio_dtype, offset=self.l_pre_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.l_pre_len,
+            dtype=self.audio_dtype,
+            offset=self.l_pre_offset,
+            buffer=self.buf,
+        )
+
     def get_pre_right(self) -> np.array:
-        return np.ndarray(self.r_pre_len, dtype=self.audio_dtype, offset=self.r_pre_offset, buffer=self.buf)
+        return np.ndarray(
+            self.r_pre_len,
+            dtype=self.audio_dtype,
+            offset=self.r_pre_offset,
+            buffer=self.buf,
+        )
 
     # overlaps with the pre audio
     def get_stereo(self) -> np.array:
-        return np.ndarray(self.stereo_len, dtype=self.audio_dtype, offset=self.stereo_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.stereo_len,
+            dtype=self.audio_dtype,
+            offset=self.stereo_offset,
+            buffer=self.buf,
+        )
+
     def get_nr_left(self) -> np.array:
-        return np.ndarray(self.l_nr_len, dtype=self.audio_dtype, offset=self.l_nr_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.l_nr_len,
+            dtype=self.audio_dtype,
+            offset=self.l_nr_offset,
+            buffer=self.buf,
+        )
+
     def get_nr_right(self) -> np.array:
-        return np.ndarray(self.r_nr_len, dtype=self.audio_dtype, offset=self.r_nr_offset, buffer=self.buf)
-    
-    
-    
-class DecoderSharedMemory():
-    def __init__(
-            self,
-            decoder_state: DecoderState
-        ):
+        return np.ndarray(
+            self.r_nr_len,
+            dtype=self.audio_dtype,
+            offset=self.r_nr_offset,
+            buffer=self.buf,
+        )
+
+
+class DecoderSharedMemory:
+    def __init__(self, decoder_state: DecoderState):
         self.shared_memory = SharedMemory(name=decoder_state.name)
 
         self.size = self.shared_memory.size
@@ -183,43 +217,72 @@ class DecoderSharedMemory():
 
         ## raw data in
         # first overlap
-        self.block_start_overlap_offset = to_aligned_offset(self.r_pre_offset + self.r_pre_bytes)
+        self.block_start_overlap_offset = to_aligned_offset(
+            self.r_pre_offset + self.r_pre_bytes
+        )
         self.block_start_overlap_len = decoder_state.block_read_overlap
-        self.block_start_overlap_bytes = self.block_start_overlap_len * self.block_dtype_item_size
+        self.block_start_overlap_bytes = (
+            self.block_start_overlap_len * self.block_dtype_item_size
+        )
         # block data
-        self.block_offset = self.block_start_overlap_offset + self.block_start_overlap_bytes
-        self.block_len = decoder_state.block_size - (decoder_state.block_read_overlap * 2)
+        self.block_offset = (
+            self.block_start_overlap_offset + self.block_start_overlap_bytes
+        )
+        self.block_len = decoder_state.block_size - (
+            decoder_state.block_read_overlap * 2
+        )
         self.block_bytes = self.block_len * self.block_dtype_item_size
         # second overlap
         self.block_end_overlap_offset = self.block_offset + self.block_bytes
         self.block_end_overlap_len = decoder_state.block_read_overlap
-        self.block_end_overlap_bytes = self.block_end_overlap_len * self.block_dtype_item_size
+        self.block_end_overlap_bytes = (
+            self.block_end_overlap_len * self.block_dtype_item_size
+        )
 
     @staticmethod
-    def get_shared_memory(block_size, block_audio_size, block_audio_overlap, name, block_dtype=np.int16, audio_dtype=REAL_DTYPE):
+    def get_shared_memory(
+        block_size,
+        block_audio_size,
+        block_audio_overlap,
+        name,
+        block_dtype=np.int16,
+        audio_dtype=REAL_DTYPE,
+    ):
         max_audio_size = (block_audio_size * np.dtype(audio_dtype).itemsize) * 6
         block_size_with_audio = (
-            to_aligned_offset(block_size * np.dtype(block_dtype).itemsize) +
-            to_aligned_offset(((block_audio_overlap * 4) + block_audio_size) * np.dtype(audio_dtype).itemsize) * 2
+            to_aligned_offset(block_size * np.dtype(block_dtype).itemsize)
+            + to_aligned_offset(
+                ((block_audio_overlap * 4) + block_audio_size)
+                * np.dtype(audio_dtype).itemsize
+            )
+            * 2
         )
 
         byte_size = max(max_audio_size, block_size_with_audio) + ALIGNMENT * 16
 
         # allow more than one instance to run at a time
         system_random = SystemRandom()
-        name += "_" + ''.join(system_random.choice(string.ascii_lowercase + string.digits) for _ in range(8))
+        name += "_" + "".join(
+            system_random.choice(string.ascii_lowercase + string.digits)
+            for _ in range(8)
+        )
 
         # this instance must be saved in a variable that persists on both processes
         # Windows will remove the shared memory if it garbage collects the handle in any of the processes it is open in
         # https://stackoverflow.com/a/63717188
         return SharedMemory(size=byte_size, name=name, create=True)
-    
+
     ## Decoder methods
-    
+
     # block data with start and end overlap included
     def get_block(self) -> np.array:
-        return np.ndarray(self.block_start_overlap_len + self.block_len + self.block_end_overlap_len, dtype=self.block_dtype, offset=self.block_start_overlap_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.block_start_overlap_len + self.block_len + self.block_end_overlap_len,
+            dtype=self.block_dtype,
+            offset=self.block_start_overlap_offset,
+            buffer=self.buf,
+        )
+
     # first block includes start since there is no overlap
     def get_first_block_in(self) -> np.array:
         return self.get_block()
@@ -227,57 +290,113 @@ class DecoderSharedMemory():
     # block starts after first overlap, goes until after the last overlap
     # first part of the block is copied from the previous read
     def get_block_in(self) -> np.array:
-        return np.ndarray(self.block_len + self.block_end_overlap_len, dtype=self.block_dtype, offset=self.block_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.block_len + self.block_end_overlap_len,
+            dtype=self.block_dtype,
+            offset=self.block_offset,
+            buffer=self.buf,
+        )
+
     # end overlap is copied into the start overlap
     def get_block_in_start_overlap(self) -> np.array:
-        return np.ndarray(self.block_start_overlap_len, dtype=self.block_dtype, offset=self.block_start_overlap_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.block_start_overlap_len,
+            dtype=self.block_dtype,
+            offset=self.block_start_overlap_offset,
+            buffer=self.buf,
+        )
+
     # end overlap is copied and appended to the beginning of the next block
     def get_block_in_end_overlap(self) -> np.array:
-        return np.ndarray(self.block_end_overlap_len, dtype=self.block_dtype, offset=self.block_end_overlap_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.block_end_overlap_len,
+            dtype=self.block_dtype,
+            offset=self.block_end_overlap_offset,
+            buffer=self.buf,
+        )
+
     def get_pre_left(self) -> np.array:
-        return np.ndarray(self.block_audio_len, dtype=self.audio_dtype, offset=self.l_pre_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.block_audio_len,
+            dtype=self.audio_dtype,
+            offset=self.l_pre_offset,
+            buffer=self.buf,
+        )
+
     def get_pre_right(self) -> np.array:
-        return np.ndarray(self.block_audio_len, dtype=self.audio_dtype, offset=self.r_pre_offset, buffer=self.buf)
-    
+        return np.ndarray(
+            self.block_audio_len,
+            dtype=self.audio_dtype,
+            offset=self.r_pre_offset,
+            buffer=self.buf,
+        )
+
     @staticmethod
-    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.int64), cache=True, fastmath=True, nogil=True)
+    @njit(
+        numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.int64),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
     def copy_data_float32(src: np.array, dst: np.array, length: int):
-        #ctypes.memmove(dst.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), src.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), length)
+        # ctypes.memmove(dst.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), src.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), length)
         for i in range(length):
             dst[i] = src[i]
 
     @staticmethod
-    @njit(numba.types.void(numba.types.Array(numba.int16, 1, "C"), numba.types.Array(numba.int16, 1, "C"), numba.types.int64), cache=True, fastmath=True, nogil=True)
+    @njit(
+        numba.types.void(
+            numba.types.Array(numba.int16, 1, "C"),
+            numba.types.Array(numba.int16, 1, "C"),
+            numba.types.int64,
+        ),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
     def copy_data_int16(src: np.array, dst: np.array, length: int):
         for i in range(length):
             dst[i] = src[i]
 
     @staticmethod
-    @njit(numba.types.void(numba.types.Array(numba.int16, 1, "C"), numba.types.Array(numba.int16, 1, "C"), numba.types.int64, numba.types.int64), cache=True, fastmath=True, nogil=True)
-    def copy_data_dst_offset_int16(src: np.array, dst: np.array, dst_offset: int, length: int):
+    @njit(
+        numba.types.void(
+            numba.types.Array(numba.int16, 1, "C"),
+            numba.types.Array(numba.int16, 1, "C"),
+            numba.types.int64,
+            numba.types.int64,
+        ),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def copy_data_dst_offset_int16(
+        src: np.array, dst: np.array, dst_offset: int, length: int
+    ):
         for i in range(length):
-            dst[i+dst_offset] = src[i]
+            dst[i + dst_offset] = src[i]
 
     @staticmethod
-    @njit(numba.types.void(NumbaAudioArray, NumbaAudioArray, numba.types.int64, numba.types.int64), cache=True, fastmath=True, nogil=True)
-    def copy_data_src_offset_float32(src: np.array, dst: np.array, src_offset: int, length: int):
+    @njit(
+        numba.types.void(
+            NumbaAudioArray, NumbaAudioArray, numba.types.int64, numba.types.int64
+        ),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def copy_data_src_offset_float32(
+        src: np.array, dst: np.array, src_offset: int, length: int
+    ):
         for i in range(length):
-            dst[i] = src[i+src_offset]
+            dst[i] = src[i + src_offset]
 
 
 def profile(function) -> int:
     def run_profiler(*args, **kwarg):
         with Profile() as profiler:
             return_code = function(*args, **kwarg)
-            (
-                Stats(profiler)
-                .strip_dirs()
-                .sort_stats(SortKey.CUMULATIVE)
-                .print_stats()
-            )
+            (Stats(profiler).strip_dirs().sort_stats(SortKey.CUMULATIVE).print_stats())
         return return_code
+
     return run_profiler

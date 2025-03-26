@@ -6,15 +6,24 @@ from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQReceive
 class DemodCacheTape(DemodCache):
     def __init__(self, *args, **kwargs):
         super(DemodCacheTape, self).__init__(*args, **kwargs)
-        self.rf_options = args[0].options
-        if self.rf_options.gnrc_afe:
+        self._gnrc_afe = args[0].options.gnrc_afe
+        if self._gnrc_afe:
             self.zmqsend = ZMQSend()
             self.zmqreceive = ZMQReceive()
-            print("Open GNURadio with ZMQ REQ source set at tcp://localhost:%d and ZMQ REP sink set at tcp://*:%d" % (self.zmqsend.port, self.zmqreceive.port))
-            print("The data stream will be of the float type at 40MSPS (40MHz sample rate)")
-            print("It will send the raw RF for further processing prior to demodulation (useful for RF EQ discovery "
-                  "and group delay compensation)")
-            print("You might want to do this in single threaded decode mode (-t 1 parameter)")
+            print(
+                "Open GNURadio with ZMQ REQ source set at tcp://localhost:%d and ZMQ REP sink set at tcp://*:%d"
+                % (self.zmqsend.port, self.zmqreceive.port)
+            )
+            print(
+                "The data stream will be of the float type at 40MSPS (40MHz sample rate)"
+            )
+            print(
+                "It will send the raw RF for further processing prior to demodulation (useful for RF EQ discovery "
+                "and group delay compensation)"
+            )
+            print(
+                "You might want to do this in single threaded decode mode (-t 1 parameter) - TODO: might not work correctly with --no_resample yet."
+            )
 
     def worker(self, return_on_empty=False):
         """Override to skip mtf stuff since that's laserdisc specific."""
@@ -35,7 +44,7 @@ class DemodCacheTape(DemodCache):
             if item[0] == "DEMOD":
                 blocknum, block, _, request = item[1:]
 
-                if self.rf_options.gnrc_afe:
+                if self._gnrc_afe:
                     raw_input = block["rawinput"]
                     raw_size = raw_input.size
                     self.zmqsend.send(raw_input)
