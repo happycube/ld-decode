@@ -221,14 +221,14 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     } else {
         availableSourcesForFrame.append(0);
     }
-    
+
     if(integrityCheck)
     {
         const QVector<qint32> availableSourcesForFrameTmp = availableSourcesForFrame;
         const int size = availableSourcesForFrameTmp.size();
-        for(int i; i < size;i++)
+        for(int i = 0; i < size;i++)
         {
-            
+
             if(!isIntegrityOk(firstFieldVideoData[availableSourcesForFrameTmp[i]],videoParameters[0]))
             {
                 availableSourcesForFrame.remove(i);
@@ -243,7 +243,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
             }
         }
     }
-	
+
 	//set mode used for this frame
 	if(mode != -1)
 	{
@@ -449,7 +449,7 @@ qint32 StackingPool::convertVbiFrameNumberToSequential(qint32 vbiFrameNumber, qi
 bool StackingPool::isIntegrityOk(const SourceVideo::Data& inputFields,const LdDecodeMetaData::VideoParameters& videoParameters)
 {
     qint32 count = 0;
-    for (qint32 y = 0; y < videoParameters.fieldHeight; y++) 
+    for (qint32 y = 0; y < videoParameters.fieldHeight; y++)
     {
         if(inputFields[(videoParameters.fieldWidth * y) + 4] > (videoParameters.black16bIre - (10 * 256)))
         {

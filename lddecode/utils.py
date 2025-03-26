@@ -347,7 +347,7 @@ class LoadFFmpeg:
         readlen_bytes = readlen * 2
 
         if self.ffmpeg is None:
-            command = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
+            command = ["ffmpeg", "-hide_banner", "-loglevel", "quiet"]
             command += self.input_args
             command += ["-i", "-"]
             command += self.output_args
@@ -502,7 +502,7 @@ class LoadLDF:
 
 
 def ffmpeg_pipe(outname: str, opts: str):
-    cmd = f"ffmpeg -y -hide_banner -loglevel error -f s16le -ar 40k -ac 1 -i -"
+    cmd = f"ffmpeg -y -hide_banner -loglevel quiet -f s16le -ar 40k -ac 1 -i -"
     if opts and len(opts):
         cmd += f" {opts}"
 
