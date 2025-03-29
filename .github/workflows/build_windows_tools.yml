@@ -5,12 +5,12 @@ on:
 
 env:
   # other tools to be bundled
-  FFMPEG_FILE: "ffmpeg-6.1.1-full_build.zip"
-  FFMPEG_PATH: "ffmpeg-6.1.1-full_build"
-  FFMPEG_URL: "https://github.com/GyanD/codexffmpeg/releases/download/6.1.1/ffmpeg-6.1.1-full_build.zip"
-  FLAC_FILE: "flac-1.4.3-win.zip"
-  FLAC_PATH: "flac-1.4.3-win"
-  FLAC_URL: "https://ftp.osuosl.org/pub/xiph/releases/flac/flac-1.4.3-win.zip"
+  FFMPEG_FILE: "ffmpeg-7.1.1-full_build.zip"
+  FFMPEG_PATH: "ffmpeg-7.1.1-full_build"
+  FFMPEG_URL: "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build.zip"
+  FLAC_FILE: "flac-1.5.0-win.zip"
+  FLAC_PATH: "flac-1.5.0-win"
+  FLAC_URL: "https://ftp.osuosl.org/pub/xiph/releases/flac/flac-1.5.0-win.zip"
   FLALDF_FILE: "FlaLDF-v0.1-2-win-x64.zip"
   FLALDF_PATH: "flaldf"
   FLALDF_URL: "https://github.com/TokugawaHeavyIndustries/FlaLDF/releases/download/v0.1b/FlaLDF-v0.1-2-win-x64.zip"
@@ -29,11 +29,13 @@ jobs:
           fetch-tags: true
 
       - uses: lukka/get-cmake@latest
+        with:
+            cmakeVersion: "^3.31.6" # Need to pin to cmake 3.x until fftw3 is updated to support cmake 4.x.
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: "fba75d09065fcc76a25dcf386b1d00d33f5175af"
+          vcpkgGitCommitId: "acd5bba5aac8b6573b5f6f463dc0341ac0ee6fa4"
 
       - name: Run CMake
         uses: lukka/run-cmake@v10
