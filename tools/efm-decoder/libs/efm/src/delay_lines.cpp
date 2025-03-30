@@ -80,6 +80,11 @@ DelayLine::DelayLine(qint32 delayLength) :
     flush();
 }
 
+// DelayLine class implementation
+DelayLine::DelayLine() : DelayLine(0)
+{
+}
+
 void DelayLine::push(quint8& datum, bool& datumError, bool& datumPadded)
 {
     if (m_delayLength == 0) {
