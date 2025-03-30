@@ -34,6 +34,8 @@ class DelayLine
 {
 public:
     DelayLine(qint32 _delayLength);
+    // Constructor taking no argument needed for QVector in Qt versions prior to 5.13
+    DelayLine();
     void push(quint8& datum, bool& datumError, bool& datumPadded);
     bool isReady();
     void flush();
