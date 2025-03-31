@@ -19,6 +19,8 @@ target_include_directories(lddecode-chroma PUBLIC .)
 
 target_link_libraries(lddecode-chroma PRIVATE Qt::Core ${FFTW_LIBRARY} lddecode-library)
 
+target_include_directories(lddecode-chroma PRIVATE ${FFTW_INCLUDE_DIR})
+
 # ld-chroma-decoder
 
 add_executable(ld-chroma-decoder
