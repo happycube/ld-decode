@@ -189,3 +189,11 @@ def get_sysparams_pal_typeb(sysparams_PAL):
     # Peak white = 8.90 mhz
 
     return SysParams_PAL_TYPEB
+
+def get_rfparams_pal_quad(RFParams_PAL):
+    # Since the whike/black points are the same as typec, use
+    # the type C filter params as a base as well.
+    return get_rfparams_pal_typec(RFParams_PAL)
+
+def get_sysparams_pal_quad(sysparams_PAL):
+    return get_sysparams_pal_typec(sysparams_PAL)

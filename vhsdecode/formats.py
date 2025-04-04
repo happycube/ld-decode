@@ -54,14 +54,14 @@ def get_sys_params_405():
 
 
 def is_color_under(tape_format: str) -> str:
-    return tape_format not in ["TYPEC", "TYPEB"]
+    return tape_format not in ["TYPEC", "TYPEB", "QUADRUPLEX"]
 
 
 def parent_system(system: str) -> str:
     """Returns 'PAL' for 625 line systems and 405 line, and 'NTSC' for 525-line systems"""
     if system == "MPAL" or system == "NLINHA":
         parent_system = "NTSC"
-    elif system == "MESECAM" or system == "SECAM" or system == "405":
+    elif system == "MESECAM" or system == "SECAM" or system == "405" or system == "819":
         parent_system = "PAL"
     else:
         parent_system = system
@@ -168,6 +168,15 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             )
 
             return get_sysparams_pal_eiaj(SysParams_PAL), get_rfparams_pal_eiaj(
+                FilterParams_PAL
+            )
+        elif tape_format == "QUADRUPLEX":
+            from vhsdecode.format_defs.typec import (
+                get_rfparams_pal_quad,
+                get_sysparams_pal_quad,
+            )
+
+            return get_sysparams_pal_quad(SysParams_PAL), get_rfparams_pal_quad(
                 FilterParams_PAL
             )
         elif tape_format == "TYPEB":

@@ -3,7 +3,7 @@ matplotlib
 numba>=0.58.1
 numpy>=1.22
 samplerate
-scipy >=1.10,<=1.12
+scipy >=1.10
 soundfile>=0.13.1
 sounddevice
 noisereduce>=2.0.0
