@@ -35,22 +35,51 @@ def get_sys_params_405():
         dict: dict of params for 405-line 25 fps.
     """
 
-    # TODO: Find sensible output sample rate
-
     sys_params_405 = {**SysParams_PAL}
     sys_params_405["frame_lines"] = 405
     sys_params_405["field_lines"] = (202, 203)
     sys_params_405["line_period"] = 98.765
     # start, length of active video.
     sys_params_405["activeVideoUS"] = (16.5, 98.765 - 1.75)
-    # sysparams['firstFieldH'] = (1, 0.5) # TODO: find out if correct
+    sys_params_405["firstFieldH"] = (1, 0.0)  # TODO: find out if correct
     # "blacksnr_slice": (22, 12, 50),
-    sys_params_405["numPulses"]: 6  # number of equalization pulses per section
-    sys_params_405["hsyncPulseUS"] = sys_params_405["line_period"] / 10.0
-    sys_params_405["eqPulseUS"] = sys_params_405["line_period"] / 10.0
-    sys_params_405["vsyncPulseUS"] = 4 * sys_params_405["line_period"] / 10.0
+    sys_params_405["numPulses"]: 8  # number of equalization pulses per section
+    sys_params_405["hsyncPulseUS"] = 9.0
+    sys_params_405["eqPulseUS"] = 10.0
+    sys_params_405["vsyncPulseUS"] = 40.0
 
     return sys_params_405
+
+
+def get_sys_params_819():
+    sys_params_819 = {**SysParams_PAL}
+    # TODO: Do we need to distinquish between system E (Brance)
+    # and and F (Belgium)?
+
+    # See https://web.archive.org/web/20060924213330/http://www.pembers.freeserve.co.uk/World-TV-Standards/Line-Standards.html#Vertical
+
+    sys_params_819["frame_lines"] = 819
+    sys_params_819["field_lines"] = (409, 410)
+    sys_params_819["line_period"] = 48.8
+    # start, length of active video.
+    sys_params_819["activeVideoUS"] = (
+        8.5,
+        48.8 - 1.75,
+    )  # TODO: These are just some approximations
+    sys_params_819["firstFieldH"] = (
+        -0.5,
+        -0.5,
+    )  # TODO: find out if correct - test if -0.5, -0.5 works
+    # "blacksnr_slice": (22, 12, 50),
+    sys_params_819["numPulses"]: 1  # or should possibly be 0 - 7 for System F
+    sys_params_819["hsyncPulseUS"] = 2.5
+    sys_params_819["eqPulseUS"] = 2.5
+    # For the system E half line field pulse - not sure if it technically counts as a vsync pulse
+    # System F is a bit different
+    sys_params_819["vsyncPulseUS"] = sys_params_819["line_period"] / 2
+    # TODO: May or may not have +50 mv pedestal
+
+    return sys_params_819
 
 
 def is_color_under(tape_format: str) -> str:
@@ -385,10 +414,26 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
                 get_sysparams_405line_betamax,
             )
 
+            sys_params = get_sys_params_405()
+
             return get_sysparams_405line_betamax(
-                SysParams_PAL
+                sys_params
             ), get_rfparams_405line_betamax(FilterParams_PAL)
         else:
             raise Exception("Tape format not supported for 405 line yet", tape_format)
+    elif system == "819":
+        if tape_format == "QUADRUPLEX":
+            from vhsdecode.format_defs.typec import (
+                get_rfparams_819line_quad,
+                get_sysparams_819line_quad,
+            )
+
+            sys_params = get_sys_params_819()
+
+            return get_sysparams_819line_quad(sys_params), get_rfparams_819line_quad(
+                FilterParams_PAL
+            )
+        else:
+            raise Exception("Tape format not supported for 819 line yet", tape_format)
     else:
         raise Exception("Unknown video system! ", system)

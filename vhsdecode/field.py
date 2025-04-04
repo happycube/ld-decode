@@ -8,7 +8,7 @@ from lddecode.utils import hz_to_output_array
 import vhsdecode.sync as sync
 import vhsdecode.formats as formats
 from vhsdecode.doc import detect_dropouts_rf
-from vhsdecode.addons.resync import Pulse
+from vhsdecode.addons.resync import Pulse, findpulses_range
 from vhsdecode.chroma import (
     decode_chroma_simple,
     decode_chroma,
@@ -119,6 +119,11 @@ def field_class_from_formats(system: str, tape_format: str):
             field_class = FieldPALTypeC
         else:
             raise Exception("405 line not implemented for format!", format)
+    elif system == "819":
+        if tape_format == "QUADRUPLEX":
+            field_class = FieldPALTypeC
+        else:
+            raise Exception("819 line not implemented for format!", format)
 
     if not field_class:
         raise Exception("Unknown video system!", system)
@@ -942,8 +947,11 @@ class FieldShared:
 
         super(FieldShared, self).process()
 
+        # TODO: DO this in a cleaner manner.
         if self.rf.color_system == "405":
             self.linecount = 203 if self.isFirstField else 202
+        elif self.rf.color_system == "819":
+            self.linecount = 410 if self.isFirstField else 409
 
     def hz_to_output(self, input):
         if type(input) == np.ndarray:

@@ -74,7 +74,7 @@ def get_rfparams_pal_typec(RFParams_PAL):
     RFParams_PAL_TYPEC["video_lpf_order"] = 6
     # 923828 ± x00
     RFParams_PAL_TYPEC["color_under_carrier"] = 4.43e6  # TODO set to fsc properly
-    RFParams_PAL_TYPEC["chroma_bpf_upper"] = 200000
+    RFParams_PAL_TYPEC["chroma_bpf_upper"] = 100000
 
     # Video EQ after FM demod (NTSC TYPEC) (based on NTSC one, needs tweak)
     RFParams_PAL_TYPEC["video_eq"] = {
@@ -190,10 +190,33 @@ def get_sysparams_pal_typeb(sysparams_PAL):
 
     return SysParams_PAL_TYPEB
 
-def get_rfparams_pal_quad(RFParams_PAL):
-    # Since the whike/black points are the same as typec, use
-    # the type C filter params as a base as well.
-    return get_rfparams_pal_typec(RFParams_PAL)
 
-def get_sysparams_pal_quad(sysparams_PAL):
-    return get_sysparams_pal_typec(sysparams_PAL)
+def get_rfparams_pal_quad(rfparams_pal):
+    # Using typec as a start
+    # TODO: Add different variants
+    return get_rfparams_pal_typec(rfparams_pal)
+
+
+def get_sysparams_pal_quad(sysparams_pal):
+    return get_sysparams_pal_typec(sysparams_pal)
+
+
+def get_sysparams_819line_quad(sysparams_pal):
+    # Using current recording as a band
+    # seems to not be super high band variant
+    sysparams_pal = get_sysparams_pal_quad(sysparams_pal)
+    sysparams_pal["hz_ire"] = (7.7e6 - 5.75e6) / 143.0
+    sysparams_pal["ire0"] = 6.35e6
+    return sysparams_pal
+
+
+def get_rfparams_819line_quad(rfparams_pal):
+    rfparams_pal = get_rfparams_pal_quad(rfparams_pal)
+    rfparams_pal["video_bpf_order"] = None
+    rfparams_pal["video_lpf_extra"] = 9500000
+    rfparams_pal["video_lpf_extra_order"] = 16
+    rfparams_pal["video_hpf_extra"] = 500000
+    rfparams_pal["video_hpf_extra_order"] = 3
+    rfparams_pal["video_lpf_freq"] = 5200000
+    rfparams_pal["video_lpf_order"] = 6
+    return rfparams_pal

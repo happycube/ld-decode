@@ -10,10 +10,12 @@ import hashlib
 from numba import njit
 
 
+@njit(cache=True, nogil=True)
 def iretohz(sysparams, ire):
     return sysparams.ire0 + (sysparams.hz_ire * ire)
 
 
+@njit(cache=True, nogil=True)
 def hztoire(sysparams, hz, ire0=None):
     if not ire0:
         ire0 = sysparams.ire0
@@ -250,6 +252,7 @@ def _fallback_vsync_loc_means(
     return vsync_locs, vsync_means
 
 
+@njit(cache=True, nogil=True)
 def findpulses_range(sp, vsync_hz, blank_hz=None):
     """Calculate half way point between blank and sync based on ire and reference
     uses calculated 0 IRE based on other params if blank_hz is not provided.
@@ -677,7 +680,10 @@ class Resync:
 
         if check_levels or not self._field_state.has_levels():
             # measures the serration levels if possible
-            self._vsync_serration.work(sync_reference)
+            # Just skip the serration stuff on 405 and 819 line stuff for now
+            # as it won't work.
+            if not (field.rf.color_system == "405" or field.rf.color_system == "819"):
+                self._vsync_serration.work(sync_reference)
             # adds the sync and blanking levels from the back porch
             self.add_pulselevels_to_serration_measures(
                 field, sync_reference, sp, field.rf.options.fallback_vsync
