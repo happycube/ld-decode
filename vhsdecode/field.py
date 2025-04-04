@@ -327,54 +327,94 @@ def get_line0_fallback(
                 linelen / 2
             )
             line_offset = None
-            phase_cnt = [0, 0, 0]
-            for d in range(15, min(i, 30) + 1):
-                pp = np.array(
-                    [
-                        (filtered_pulses[i - 2].start - filtered_pulses[i - d].start)
-                        / measured_linelen,
-                        (
-                            filtered_pulses[i - 2].start
-                            - filtered_pulses[i - d + 1].start
-                        )
-                        / measured_linelen,
-                        (
-                            filtered_pulses[i - 2].start
-                            - filtered_pulses[i - d + 2].start
-                        )
-                        / measured_linelen,
-                    ]
-                )
-                # PAL:  for start of first field all values should be 1, for second field all should be 0
-                # NTSC: for start of first field all values should be 0, for second field all should be 1
-                pps = np.sum(np.mod(np.round(pp * 2), 2))
-                if pps == 0:
-                    phase_cnt[0] += 1
-                elif pps == 3:
-                    phase_cnt[1] += 1
-                else:
-                    phase_cnt[2] += 1
-                if sum(phase_cnt[0:2]) >= 5:
+            # count "half lines" for detecting top/bottom field:
+            half_lines = 0
+            j = i
+            while j < i + 9:
+                dis = (filtered_pulses[j + 1].start - filtered_pulses[j].start) / linelen
+                if (
+                    abs(dis-0.5) < 0.06
+                    and filtered_pulses[j].len < SHORT_PULSE_MAX
+                    and filtered_pulses[j + 1].len < SHORT_PULSE_MAX
+                ):
+                    half_lines += 1
+                elif (
+                    abs(dis-1.0) < 0.06
+                    and filtered_pulses[j].len < SHORT_PULSE_MAX
+                    and filtered_pulses[j + 1].len < SHORT_PULSE_MAX
+                ):
                     break
-            phase = np.argmax(phase_cnt)
-            if phase == 0:
-                # we need to differ between 625 and 525 line
-                if frame_lines == 625:
-                    first_field = 0
-                    line_offset = 5.0
                 else:
-                    first_field = 1
-                    line_offset = 6.0
-                first_field_confidence = phase_cnt[0] * 100 // sum(phase_cnt)
-            elif phase == 1:
-                # we need to differ between 625 and 525 line
+                    half_lines = 0
+                    break
+                j += 1
+            if half_lines == 4 and frame_lines == 625:
+                first_field = 0
+                first_field_confidence = 100
+                line_offset = 5.0
+            elif half_lines == 5:
                 if frame_lines == 625:
                     first_field = 1
+                    first_field_confidence = 100
                     line_offset = 4.5
                 else:
                     first_field = 0
+                    first_field_confidence = 100
                     line_offset = 5.5
-                first_field_confidence = phase_cnt[1] * 100 // sum(phase_cnt)
+            elif half_lines == 6 and frame_lines == 525:
+                first_field = 1
+                line_offset = 6.0
+
+            # if we couldn't detect field type based on half lines check phase
+            if line_offset is None:
+                phase_cnt = [0, 0, 0]
+                for d in range(15, min(i, 30) + 1):
+                    pp = np.array(
+                        [
+                            (filtered_pulses[i - 2].start - filtered_pulses[i - d].start)
+                            / measured_linelen,
+                            (
+                                filtered_pulses[i - 2].start
+                                - filtered_pulses[i - d + 1].start
+                            )
+                            / measured_linelen,
+                            (
+                                filtered_pulses[i - 2].start
+                                - filtered_pulses[i - d + 2].start
+                            )
+                            / measured_linelen,
+                        ]
+                    )
+                    # PAL:  for start of first field all values should be 1, for second field all should be 0
+                    # NTSC: for start of first field all values should be 0, for second field all should be 1
+                    pps = np.sum(np.mod(np.round(pp * 2), 2))
+                    if pps == 0:
+                        phase_cnt[0] += 1
+                    elif pps == 3:
+                        phase_cnt[1] += 1
+                    else:
+                        phase_cnt[2] += 1
+                    if sum(phase_cnt[0:2]) >= 5:
+                        break
+                phase = np.argmax(phase_cnt)
+                if phase == 0:
+                    # we need to differ between 625 and 525 line
+                    if frame_lines == 625:
+                        first_field = 0
+                        line_offset = 5.0
+                    else:
+                        first_field = 1
+                        line_offset = 6.0
+                    first_field_confidence = phase_cnt[0] * 100 // sum(phase_cnt)
+                elif phase == 1:
+                    # we need to differ between 625 and 525 line
+                    if frame_lines == 625:
+                        first_field = 1
+                        line_offset = 4.5
+                    else:
+                        first_field = 0
+                        line_offset = 5.5
+                    first_field_confidence = phase_cnt[1] * 100 // sum(phase_cnt)
 
             if line_offset is not None:
                 # in case we cannot find a matching pulse, we can still use this prediction
@@ -761,7 +801,8 @@ def get_line0_fallback(
             "WARNING, line0 hsync not found in entire block, but vsync area found, using predicted position, result may be garbled."
         )
         line_0 = line_0_backup
-        first_field_confidence -= 20
+        first_field = first_field_backup
+        first_field_confidence = first_field_confidence_backup - 20
 
     if line_0 is not None:
         if DEBUG_PLOT:
