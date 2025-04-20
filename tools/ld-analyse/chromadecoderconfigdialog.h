@@ -31,6 +31,7 @@
 #include "comb.h"
 #include "outputwriter.h"
 #include "palcolour.h"
+#include "monodecoder.h"
 
 namespace Ui {
 class ChromaDecoderConfigDialog;
@@ -75,6 +76,7 @@ private:
     VideoSystem system;
     PalColour::Configuration palConfiguration;
     Comb::Configuration ntscConfiguration;
+    MonoDecoder::MonoConfiguration monoConfiguration;
     OutputWriter::Configuration outputConfiguration;
 
     void updateDialog();

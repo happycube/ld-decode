@@ -54,7 +54,7 @@ public:
         bool phaseCompensation = false;
 
         double cNRLevel = 0.0;
-        double yNRLevel = 1.0;
+        double yNRLevel = 0.0;
 
         qint32 getLookBehind() const;
         qint32 getLookAhead() const;

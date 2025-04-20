@@ -45,6 +45,7 @@
 #include "configuration.h"
 #include "palcolour.h"
 #include "comb.h"
+#include "monodecoder.h"
 
 class TbcSource : public QObject
 {
@@ -190,6 +191,7 @@ private:
     // Chroma decoder objects
     PalColour palColour;
     Comb ntscColour;
+	MonoDecoder monoDecoder;
     OutputWriter outputWriter;
 
     // VBI decoders
@@ -223,6 +225,7 @@ private:
     // Chroma decoder configuration
     PalColour::Configuration palConfiguration;
     Comb::Configuration ntscConfiguration;
+	MonoDecoder::MonoConfiguration monoConfiguration;
     OutputWriter::Configuration outputConfiguration;
 
     // Chapter map

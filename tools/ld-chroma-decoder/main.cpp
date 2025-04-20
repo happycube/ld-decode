@@ -233,7 +233,7 @@ int main(int argc, char *argv[])
 
     // Option to set the luma noise reduction level
     QCommandLineOption lumaNROption(QStringList() << "luma-nr",
-                                    QCoreApplication::translate("main", "Luma noise reduction level in dB (default 1.0)"),
+                                    QCoreApplication::translate("main", "Luma noise reduction level in dB (default 0.0)"),
                                     QCoreApplication::translate("main", "number"));
     parser.addOption(lumaNROption);
 

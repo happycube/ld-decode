@@ -764,12 +764,16 @@ void TbcSource::invalidateImageCache()
 void TbcSource::configureChromaDecoder()
 {
     // Configure the chroma decoder
-    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
+    LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters(); 
+	
     if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
+		monoConfiguration.yNRLevel = palConfiguration.yNRLevel;
         palColour.updateConfiguration(videoParameters, palConfiguration);
     } else {
+		monoConfiguration.yNRLevel = ntscConfiguration.yNRLevel;
         ntscColour.updateConfiguration(videoParameters, ntscConfiguration);
     }
+	monoDecoder.updateConfiguration(videoParameters, monoConfiguration);
 
     // Configure the OutputWriter.
     // Because we have padding disabled, this won't change the VideoParameters.
@@ -836,12 +840,20 @@ void TbcSource::decodeFrame()
 
     // Decode the current frame to components
     componentFrames.resize(1);
-    if (getSystem() == PAL || getSystem() == PAL_M) {
-        // PAL source
-        palColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+	if (getSystem() == PAL || getSystem() == PAL_M) {
+		if(palConfiguration.chromaFilter == palColour.ChromaFilterMode::mono){
+			monoDecoder.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+		} else {
+			// PAL source
+			palColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+		}
     } else {
-        // NTSC source
-        ntscColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+		if(ntscConfiguration.dimensions == 0){
+			monoDecoder.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+		} else {
+			// NTSC source
+			ntscColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
+		}
     }
 
     decodedFrameValid = true;

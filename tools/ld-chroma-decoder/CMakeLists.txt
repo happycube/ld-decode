@@ -4,6 +4,8 @@
 add_compile_definitions(_USE_MATH_DEFINES)
 
 add_library(lddecode-chroma STATIC
+	decoder.cpp
+	decoderpool.cpp
     comb.cpp
     componentframe.cpp
     framecanvas.cpp
@@ -13,6 +15,7 @@ add_library(lddecode-chroma STATIC
     transformpal.cpp
     transformpal2d.cpp
     transformpal3d.cpp
+	monodecoder.cpp
 )
 
 target_include_directories(lddecode-chroma PUBLIC .)
@@ -31,6 +34,8 @@ add_executable(ld-chroma-decoder
     ntscdecoder.cpp
     paldecoder.cpp
 )
+
+set_target_properties(lddecode-chroma PROPERTIES AUTOMOC ON)
 
 target_include_directories(ld-chroma-decoder PRIVATE ${FFTW_INCLUDE_DIR})
 

@@ -28,52 +28,130 @@
 #include "decoderpool.h"
 #include "palcolour.h"
 
+#include "deemp.h"
+#include "firfilter.h"
+
+bool MonoDecoder::updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters, const MonoDecoder::MonoConfiguration &configuration) {
+    // This decoder works for both PAL and NTSC.
+	monoConfig.yNRLevel = configuration.yNRLevel;
+    monoConfig.videoParameters = videoParameters;
+
+    return true;
+}
+
 bool MonoDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
     // This decoder works for both PAL and NTSC.
 
-    config.videoParameters = videoParameters;
+    monoConfig.videoParameters = videoParameters;
 
     return true;
 }
 
 QThread *MonoDecoder::makeThread(QAtomicInt& abort, DecoderPool& decoderPool) {
-    return new MonoThread(abort, decoderPool, config);
+    return new MonoThread(abort, decoderPool, monoConfig);
+}
+
+void MonoDecoder::decodeFrames(const QVector<SourceField>& inputFields,
+                               qint32 startIndex,
+                               qint32 endIndex,
+                               QVector<ComponentFrame>& componentFrames)
+{
+	const LdDecodeMetaData::VideoParameters &videoParameters = monoConfig.videoParameters;
+	bool ignoreUV = false;
+	
+	
+	for (qint32 fieldIndex = startIndex, frameIndex = 0; fieldIndex < endIndex; fieldIndex += 2, frameIndex++) {
+		componentFrames[frameIndex].init(videoParameters, ignoreUV);
+		for (qint32 y = videoParameters.firstActiveFrameLine; y < videoParameters.lastActiveFrameLine; y++) {
+			const SourceVideo::Data &inputFieldData = (y % 2) == 0 ? inputFields[fieldIndex].data :inputFields[fieldIndex+1].data;
+			const quint16 *inputLine = inputFieldData.data() + ((y / 2) * videoParameters.fieldWidth);
+
+			// Copy the whole composite signal to Y (leaving U and V blank)
+			double *outY = componentFrames[frameIndex].y(y);
+			for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
+				outY[x] = inputLine[x];
+			}
+		}
+		doYNR(componentFrames[frameIndex]);
+    }
+}
+
+void MonoDecoder::doYNR(ComponentFrame &componentFrame) {
+    if (monoConfig.yNRLevel == 0.0)
+        return;
+
+    // 1. Compute coring level (same formula in both existing routines)
+    double irescale = (monoConfig.videoParameters.white16bIre
+                     - monoConfig.videoParameters.black16bIre) / 100.0;
+    double nr_y     = monoConfig.yNRLevel * irescale;
+
+    // 2. Choose filter taps & descriptor based on system
+    bool usePal = (monoConfig.videoParameters.system == PAL || monoConfig.videoParameters.system == PAL_M);
+    const auto& taps       = usePal ? c_nrpal_b
+                                    : c_nr_b;
+    const auto& descriptor = usePal ? f_nrpal
+                                    : f_nr;
+
+    const int delay = static_cast<int>(taps.size()) / 2;
+
+    // 3. Process each active scanline in the frame
+    for (int line = monoConfig.videoParameters.firstActiveFrameLine;
+             line < monoConfig.videoParameters.lastActiveFrameLine;
+           ++line)
+    {
+        double* Y = componentFrame.y(line);
+
+        // 4. High‑pass buffer & FIR filter
+        std::vector<double> hpY(monoConfig.videoParameters.activeVideoEnd + delay);
+        auto yFilter(descriptor);  // uses the chosen taps internally
+
+        // Flush zeros before active start
+        for (int x = monoConfig.videoParameters.activeVideoStart - delay;
+                 x < monoConfig.videoParameters.activeVideoStart;
+               ++x)
+        {
+            yFilter.feed(0.0);
+        }
+        // Filter active region
+        for (int x = monoConfig.videoParameters.activeVideoStart;
+                 x < monoConfig.videoParameters.activeVideoEnd;
+               ++x)
+        {
+            hpY[x] = yFilter.feed(Y[x]);
+        }
+        // Flush zeros after active end
+        for (int x = monoConfig.videoParameters.activeVideoEnd;
+                 x < monoConfig.videoParameters.activeVideoEnd + delay;
+               ++x)
+        {
+            yFilter.feed(0.0);
+        }
+
+        // 5. Clamp & subtract
+        for (int x = monoConfig.videoParameters.activeVideoStart;
+                 x < monoConfig.videoParameters.activeVideoEnd;
+               ++x)
+        {
+            double a = hpY[x + delay];
+            if (std::fabs(a) > nr_y)
+                a = (a > 0.0) ? nr_y : -nr_y;
+            Y[x] -= a;
+        }
+    }
 }
 
 MonoThread::MonoThread(QAtomicInt& _abort, DecoderPool& _decoderPool,
-                       const MonoDecoder::Configuration &_config, QObject *parent)
-    : DecoderThread(_abort, _decoderPool, parent), config(_config)
+                       const MonoDecoder::MonoConfiguration &_monoConfig, QObject *parent)
+    : DecoderThread(_abort, _decoderPool, parent), monoConfig(_monoConfig)
 {
 }
 
-void MonoThread::decodeFrames(const QVector<SourceField> &inputFields, qint32 startIndex, qint32 endIndex,
-                              QVector<ComponentFrame> &componentFrames)
+void MonoThread::decodeFrames(const QVector<SourceField>& inputFields,
+                              qint32 startIndex, qint32 endIndex,
+                              QVector<ComponentFrame>& componentFrames)
 {
-    for (qint32 fieldIndex = startIndex, frameIndex = 0; fieldIndex < endIndex; fieldIndex += 2, frameIndex++) {
-        decodeFrame(inputFields[fieldIndex], inputFields[fieldIndex + 1], componentFrames[frameIndex]);
-    }
-}
-
-void MonoThread::decodeFrame(const SourceField &firstField, const SourceField &secondField, ComponentFrame &componentFrame)
-{
-    const LdDecodeMetaData::VideoParameters &videoParameters = config.videoParameters;
-
-    bool ignoreUV = decoderPool.getOutputWriter().getPixelFormat() == OutputWriter::PixelFormat::GRAY16;
-
-    // Initialise and clear the component frame
-    // Ignore UV if we're doing Grayscale output.
-    // TODO: Fix so we don't need U/V vectors for RGB and YUV output either.
-    componentFrame.init(videoParameters, ignoreUV);
-
-    // Interlace the active lines of the two input fields to produce a component frame
-    for (qint32 y = videoParameters.firstActiveFrameLine; y < videoParameters.lastActiveFrameLine; y++) {
-        const SourceVideo::Data &inputFieldData = (y % 2) == 0 ? firstField.data : secondField.data;
-        const quint16 *inputLine = inputFieldData.data() + ((y / 2) * videoParameters.fieldWidth);
-
-        // Copy the whole composite signal to Y (leaving U and V blank)
-        double *outY = componentFrame.y(y);
-        for (qint32 x = videoParameters.activeVideoStart; x < videoParameters.activeVideoEnd; x++) {
-            outY[x] = inputLine[x];
-        }
-    }
+    // Delegate to the centralized, public API
+    MonoDecoder d;
+    d.configure(monoConfig.videoParameters);
+    d.decodeFrames(inputFields, startIndex, endIndex, componentFrames);
 }
