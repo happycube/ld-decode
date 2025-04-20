@@ -31,6 +31,15 @@
 #include "deemp.h"
 #include "firfilter.h"
 
+MonoDecoder::MonoDecoder()
+{	
+}
+
+MonoDecoder::MonoDecoder(const MonoDecoder::MonoConfiguration &config)
+{
+    monoConfig = config;
+}
+
 bool MonoDecoder::updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters, const MonoDecoder::MonoConfiguration &configuration) {
     // This decoder works for both PAL and NTSC.
 	monoConfig.yNRLevel = configuration.yNRLevel;
@@ -151,7 +160,6 @@ void MonoThread::decodeFrames(const QVector<SourceField>& inputFields,
                               QVector<ComponentFrame>& componentFrames)
 {
     // Delegate to the centralized, public API
-    MonoDecoder d;
-    d.configure(monoConfig.videoParameters);
-    d.decodeFrames(inputFields, startIndex, endIndex, componentFrames);
+    auto &baseDecoder = static_cast<MonoDecoder&>(decoderPool.getDecoder());
+    baseDecoder.decodeFrames(inputFields, startIndex, endIndex, componentFrames);
 }

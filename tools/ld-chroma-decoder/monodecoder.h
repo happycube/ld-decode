@@ -43,10 +43,13 @@ class DecoderPool;
 // Decoder that passes all input through as luma, for purely monochrome sources
 class MonoDecoder : public Decoder {
 public:
+
 	struct MonoConfiguration {
 		double yNRLevel = 0.0;
 		LdDecodeMetaData::VideoParameters videoParameters;
 	};
+	MonoDecoder();
+	MonoDecoder(const MonoDecoder::MonoConfiguration &config);
 	bool updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters, const MonoDecoder::MonoConfiguration &configuration);
 	bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
