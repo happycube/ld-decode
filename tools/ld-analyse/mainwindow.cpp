@@ -227,7 +227,11 @@ void MainWindow::resetGui()
 
     // Update the chroma decoder configuration dialogue
     chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
-                                                tbcSource.getNtscConfiguration(), tbcSource.getOutputConfiguration());
+                                                tbcSource.getNtscConfiguration(),
+                                                tbcSource.getMonoConfiguration(),
+                                                tbcSource.getSourceMode(),
+												true,//set to true because the chroma decoder is already init
+												tbcSource.getOutputConfiguration());
 }
 
 // Method to update the GUI when a file is loaded
@@ -261,8 +265,12 @@ void MainWindow::updateGuiLoaded()
     videoParametersDialog->setVideoParameters(tbcSource.getVideoParameters());
 
     // Update the chroma decoder configuration dialogue
-    chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
-                                                tbcSource.getNtscConfiguration(), tbcSource.getOutputConfiguration());
+        chromaDecoderConfigDialog->setConfiguration(tbcSource.getSystem(), tbcSource.getPalConfiguration(),
+                                                tbcSource.getNtscConfiguration(),
+                                                tbcSource.getMonoConfiguration(),
+                                                tbcSource.getSourceMode(),
+												false,//set to false to init the chroma decoder selection
+												tbcSource.getOutputConfiguration());
 
     // Ensure the busy dialogue is hidden
     busyDialog->hide();

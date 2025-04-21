@@ -32,6 +32,7 @@
 #include "outputwriter.h"
 #include "palcolour.h"
 #include "monodecoder.h"
+#include "tbcsource.h"
 
 namespace Ui {
 class ChromaDecoderConfigDialog;
@@ -47,6 +48,9 @@ public:
 
     void setConfiguration(VideoSystem system, const PalColour::Configuration &palConfiguration,
                           const Comb::Configuration &ntscConfiguration,
+                          const MonoDecoder::MonoConfiguration &monoConfiguration,
+                          const TbcSource::SourceMode &_mode,
+						  const bool _isInit,
                           const OutputWriter::Configuration &outputConfiguration);
     const PalColour::Configuration &getPalConfiguration();
     const Comb::Configuration &getNtscConfiguration();
@@ -58,6 +62,7 @@ signals:
 private slots:
     void on_chromaGainHorizontalSlider_valueChanged(int value);
     void on_chromaPhaseHorizontalSlider_valueChanged(int value);
+	void on_enableYNRCheckBox_clicked();
 
     void on_palFilterButtonGroup_buttonClicked(QAbstractButton *button);
     void on_thresholdHorizontalSlider_valueChanged(int value);
@@ -78,6 +83,9 @@ private:
     Comb::Configuration ntscConfiguration;
     MonoDecoder::MonoConfiguration monoConfiguration;
     OutputWriter::Configuration outputConfiguration;
+	TbcSource::SourceMode sourceMode;
+	double ynrLevel = 0;
+	bool isInit = true;
 
     void updateDialog();
 };

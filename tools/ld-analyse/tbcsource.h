@@ -149,6 +149,7 @@ public:
                                 const OutputWriter::Configuration &outputConfiguration);
     const PalColour::Configuration &getPalConfiguration();
     const Comb::Configuration &getNtscConfiguration();
+    const MonoDecoder::MonoConfiguration &getMonoConfiguration();
     const OutputWriter::Configuration &getOutputConfiguration();
 
     qint32 startOfNextChapter(qint32 currentFrameNumber);

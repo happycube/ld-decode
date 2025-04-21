@@ -679,6 +679,11 @@ const Comb::Configuration &TbcSource::getNtscConfiguration()
     return ntscConfiguration;
 }
 
+const MonoDecoder::MonoConfiguration &TbcSource::getMonoConfiguration()
+{
+    return monoConfiguration;
+}
+
 const OutputWriter::Configuration &TbcSource::getOutputConfiguration()
 {
     return outputConfiguration;

@@ -89,13 +89,18 @@ ChromaDecoderConfigDialog::~ChromaDecoderConfigDialog()
 
 void ChromaDecoderConfigDialog::setConfiguration(VideoSystem _system, const PalColour::Configuration &_palConfiguration,
                                                  const Comb::Configuration &_ntscConfiguration,
+                                                 const MonoDecoder::MonoConfiguration &_monoConfiguration,
+												 const TbcSource::SourceMode &_mode,
+												 const bool _isInit,
                                                  const OutputWriter::Configuration &_outputConfiguration)
 {
     double yNRLevel = _system == NTSC ? ntscConfiguration.yNRLevel : palConfiguration.yNRLevel;
     system = _system;
     palConfiguration = _palConfiguration;
     ntscConfiguration = _ntscConfiguration;
+    monoConfiguration = _monoConfiguration;
     outputConfiguration = _outputConfiguration;
+	sourceMode = _mode;
 
     palConfiguration.chromaGain = qBound(0.0, palConfiguration.chromaGain, 2.0);
     palConfiguration.chromaPhase = qBound(-180.0, palConfiguration.chromaPhase, 180.0);
@@ -114,7 +119,8 @@ void ChromaDecoderConfigDialog::setConfiguration(VideoSystem _system, const PalC
     } else {
         ui->standardTabs->setCurrentWidget(ui->palTab);
     }
-
+	
+	isInit = _isInit;
     updateDialog();
     emit chromaDecoderConfigChanged();
 }
@@ -138,6 +144,21 @@ void ChromaDecoderConfigDialog::updateDialog()
 {
     const bool isSourcePal = system == PAL || system == PAL_M;
     const bool isSourceNtsc = system == NTSC;
+	
+	if(!isInit)
+	{
+		if(sourceMode == TbcSource::ONE_SOURCE)
+		{
+			palConfiguration.chromaFilter = PalColour::transform3DFilter;
+			ntscConfiguration.dimensions = 3;
+		}
+		else
+		{
+			palConfiguration.chromaFilter = PalColour::transform2DFilter;
+			ntscConfiguration.dimensions = 2;
+		}
+		isInit = true;
+	}
 
     // Shared settings
 
@@ -274,6 +295,26 @@ void ChromaDecoderConfigDialog::on_chromaPhaseHorizontalSlider_valueChanged(int 
     palConfiguration.chromaPhase = sliderPosToDegrees(static_cast<double>(value));
     ntscConfiguration.chromaPhase = palConfiguration.chromaPhase;
     ui->chromaPhaseValueLabel->setText(QString::number(palConfiguration.chromaPhase, 'f', 1) + QChar(0xB0));
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_enableYNRCheckBox_clicked()
+{
+	ui->yNRHorizontalSlider->setEnabled(ui->enableYNRCheckBox->isChecked());
+	if(ui->enableYNRCheckBox->isChecked())
+	{
+		palConfiguration.yNRLevel = ynrLevel;
+		ntscConfiguration.yNRLevel = ynrLevel;
+		monoConfiguration.yNRLevel = ynrLevel;
+	}
+	else
+	{
+		ynrLevel = monoConfiguration.yNRLevel;
+		
+		palConfiguration.yNRLevel = static_cast<double>(0);
+		ntscConfiguration.yNRLevel = static_cast<double>(0);
+		monoConfiguration.yNRLevel = static_cast<double>(0);
+	}
     emit chromaDecoderConfigChanged();
 }
 
