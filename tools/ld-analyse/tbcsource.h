@@ -80,6 +80,7 @@ public:
     void setChromaDecoder(bool _state);
     void setFieldView(bool _state);
     void setFieldOrder(bool _state);
+	void setCombine(bool _state);
     bool getHighlightDropouts();
     bool getChromaDecoder();
     bool getFieldOrder();
@@ -217,6 +218,8 @@ private:
 
     // Chroma decoder output for the loaded frame
     QVector<ComponentFrame> componentFrames;
+    QVector<ComponentFrame> yFrames;
+    QVector<ComponentFrame> cFrames;
     bool decodedFrameValid;
 
     // RGB image data for the loaded frame
@@ -228,6 +231,7 @@ private:
     Comb::Configuration ntscConfiguration;
 	MonoDecoder::MonoConfiguration monoConfiguration;
     OutputWriter::Configuration outputConfiguration;
+	bool combine = false;
 
     // Chapter map
     QVector<qint32> chapterMap;

@@ -59,6 +59,7 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QString inputFilenameParam, QWidget *parent = nullptr);
+	TbcSource& getTbcSource();
     ~MainWindow();
 
 private slots:

@@ -25,6 +25,7 @@
 
 #include "chromadecoderconfigdialog.h"
 #include "ui_chromadecoderconfigdialog.h"
+#include "mainwindow.h"
 
 #include <cmath>
 
@@ -78,6 +79,11 @@ ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     ui->yNRHorizontalSlider->setMinimum(0);
     ui->yNRHorizontalSlider->setMaximum(100);
     
+	//get tbcSource instance from mainWindow
+	if (auto mw = qobject_cast<MainWindow*>(parent)) {
+		tbcSource = &mw->getTbcSource();
+	}
+	
     // Update the dialogue
     updateDialog();
 }
@@ -178,6 +184,15 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->yNRValueLabel->setText(QString::number(yNRLevel, 'f', 1) + " IRE");
 	
 	ui->enableYNRCheckBox->setChecked(true);
+	ui->enableYCCombineCheckBox->setChecked(false);
+	if(sourceMode == TbcSource::BOTH_SOURCES)
+	{
+		ui->enableYCCombineCheckBox->show();
+	}
+	else
+	{
+		ui->enableYCCombineCheckBox->hide();
+	}
 
     // PAL settings
 	
@@ -401,4 +416,23 @@ void ChromaDecoderConfigDialog::on_yNRHorizontalSlider_valueChanged(int value)
 	monoConfiguration.yNRLevel = static_cast<double>(value) / 10;
     ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
     emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::updateSourceMode(TbcSource::SourceMode mode)
+{
+	sourceMode = mode;
+	if(sourceMode == TbcSource::BOTH_SOURCES)
+	{
+		ui->enableYCCombineCheckBox->show();
+	}
+	else
+	{
+		ui->enableYCCombineCheckBox->hide();
+	}
+}
+
+void ChromaDecoderConfigDialog::on_enableYCCombineCheckBox_clicked()
+{
+	tbcSource->setCombine(ui->enableYCCombineCheckBox->isChecked());
+	emit chromaDecoderConfigChanged();
 }

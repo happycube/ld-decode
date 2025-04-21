@@ -180,6 +180,11 @@ void MainWindow::setGuiEnabled(bool enabled)
     ui->originalSizePushButton->setEnabled(enabled);
 }
 
+TbcSource& MainWindow::getTbcSource()
+{
+	return this->tbcSource;
+}
+
 void MainWindow::resetGui()
 {
     ui->posNumberSpinBox->setMinimum(1);
@@ -377,6 +382,7 @@ void MainWindow::updateSourcesPushButton()
 			break;
 		}
 	}
+	chromaDecoderConfigDialog->updateSourceMode(tbcSource.getSourceMode());
 }
 
 // Frame display methods ----------------------------------------------------------------------------------------------

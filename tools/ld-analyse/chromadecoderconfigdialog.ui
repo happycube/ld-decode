@@ -115,6 +115,13 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="enableYCCombineCheckBox">
+     <property name="text">
+      <string>Combine Y/C -> CVBS</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer_1">
      <property name="orientation">
       <enum>Qt::Vertical</enum>

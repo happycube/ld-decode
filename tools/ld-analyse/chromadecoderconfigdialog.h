@@ -59,10 +59,14 @@ public:
 signals:
     void chromaDecoderConfigChanged();
 
+public slots:
+	void updateSourceMode(TbcSource::SourceMode mode);
+
 private slots:
     void on_chromaGainHorizontalSlider_valueChanged(int value);
     void on_chromaPhaseHorizontalSlider_valueChanged(int value);
 	void on_enableYNRCheckBox_clicked();
+	void on_enableYCCombineCheckBox_clicked();
 
     void on_palFilterButtonGroup_buttonClicked(QAbstractButton *button);
     void on_thresholdHorizontalSlider_valueChanged(int value);
@@ -83,6 +87,7 @@ private:
     Comb::Configuration ntscConfiguration;
     MonoDecoder::MonoConfiguration monoConfiguration;
     OutputWriter::Configuration outputConfiguration;
+	TbcSource* tbcSource = nullptr;
 	TbcSource::SourceMode sourceMode;
 	double ynrLevel = 0;
 	bool isInit = true;
