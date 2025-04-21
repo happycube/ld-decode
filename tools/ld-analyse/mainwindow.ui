@@ -18,7 +18,7 @@
   </property>
   <property name="minimumSize">
    <size>
-    <width>900</width>
+    <width>780</width>
     <height>600</height>
    </size>
   </property>
@@ -30,6 +30,12 @@
     <normaloff>:/icons/Graphics/16-analyse.png</normaloff>:/icons/Graphics/16-analyse.png</iconset>
   </property>
   <widget class="QWidget" name="centralWidget">
+   <property name="sizePolicy">
+    <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+     <horstretch>0</horstretch>
+     <verstretch>0</verstretch>
+    </sizepolicy>
+   </property>
    <property name="minimumSize">
     <size>
      <width>450</width>
@@ -40,8 +46,14 @@
     <property name="sizeConstraint">
      <enum>QLayout::SetDefaultConstraint</enum>
     </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
     <item>
      <layout class="QVBoxLayout" name="verticalLayout">
+      <property name="spacing">
+       <number>6</number>
+      </property>
       <item>
        <widget class="QScrollArea" name="scrollArea">
         <property name="widgetResizable">
@@ -53,10 +65,25 @@
            <x>0</x>
            <y>0</y>
            <width>969</width>
-           <height>576</height>
+           <height>586</height>
           </rect>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_2">
+          <property name="spacing">
+           <number>0</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
           <item>
            <widget class="QLabel" name="imageViewerLabel">
             <property name="text">
@@ -97,7 +124,25 @@
           <layout class="QHBoxLayout" name="horizontalLayout_3">
            <item>
             <widget class="QLabel" name="posNumberSpinBoxLabel">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>60</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="baseSize">
               <size>
                <width>60</width>
                <height>0</height>
@@ -110,6 +155,12 @@
            </item>
            <item>
             <widget class="QSpinBox" name="posNumberSpinBox">
+             <property name="maximumSize">
+              <size>
+               <width>120</width>
+               <height>50</height>
+              </size>
+             </property>
              <property name="toolTip">
               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enter a frame number and press &amp;lt;Enter&amp;gt; to go to a frame&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
              </property>
@@ -118,12 +169,6 @@
              </property>
              <property name="value">
               <number>79999</number>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>120</width>
-               <height>50</height>
-              </size>
              </property>
             </widget>
            </item>
@@ -237,7 +282,7 @@
               <enum>Qt::Horizontal</enum>
              </property>
              <property name="sizeType">
-              <enum>QSizePolicy::Fixed</enum>
+              <enum>QSizePolicy::Maximum</enum>
              </property>
              <property name="sizeHint" stdset="0">
               <size>
@@ -333,6 +378,12 @@
                <height>30</height>
               </size>
              </property>
+             <property name="baseSize">
+              <size>
+               <width>30</width>
+               <height>30</height>
+              </size>
+             </property>
              <property name="toolTip">
               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Stretch field to frame height&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
              </property>
@@ -394,9 +445,27 @@
            </item>
            <item>
             <widget class="QPushButton" name="videoPushButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="minimumSize">
               <size>
+               <width>50</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
                <width>80</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="baseSize">
+              <size>
+               <width>0</width>
                <height>0</height>
               </size>
              </property>
@@ -410,6 +479,30 @@
            </item>
            <item>
             <widget class="QPushButton" name="aspectPushButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>48</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>70</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="baseSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
              <property name="text">
               <string>DAR 1:1</string>
              </property>
@@ -417,9 +510,27 @@
            </item>
            <item>
             <widget class="QPushButton" name="dropoutsPushButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="minimumSize">
               <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
                <width>115</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="baseSize">
+              <size>
+               <width>0</width>
                <height>0</height>
               </size>
              </property>
@@ -433,9 +544,27 @@
            </item>
            <item>
             <widget class="QPushButton" name="sourcesPushButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="minimumSize">
               <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
                <width>110</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="baseSize">
+              <size>
+               <width>0</width>
                <height>0</height>
               </size>
              </property>
@@ -449,9 +578,27 @@
            </item>
            <item>
             <widget class="QPushButton" name="viewPushButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="minimumSize">
               <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
                <width>100</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="baseSize">
+              <size>
+               <width>0</width>
                <height>0</height>
               </size>
              </property>
@@ -465,9 +612,27 @@
            </item>
            <item>
             <widget class="QPushButton" name="fieldOrderPushButton">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="minimumSize">
               <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
                <width>145</width>
+               <height>16777215</height>
+              </size>
+             </property>
+             <property name="baseSize">
+              <size>
+               <width>0</width>
                <height>0</height>
               </size>
              </property>
@@ -494,7 +659,7 @@
      <x>0</x>
      <y>0</y>
      <width>991</width>
-     <height>22</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">

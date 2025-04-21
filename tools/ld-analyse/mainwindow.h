@@ -116,6 +116,9 @@ private slots:
     void on_busy(QString infoMessage);
     void on_finishedLoading(bool success);
     void on_finishedSaving(bool success);
+	
+	// UI handler
+	void resize_on_aspect();
 
 private:
     Ui::MainWindow *ui;
@@ -173,6 +176,7 @@ private:
     void updateOscilloscopeDialogue();
     void updateVectorscopeDialogue();
     void mouseScanLineSelect(qint32 oX, qint32 oY);
+	void resizeEvent(QResizeEvent *event);
 };
 
 #endif // MAINWINDOW_H

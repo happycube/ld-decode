@@ -187,7 +187,7 @@ void MainWindow::resetGui()
 
     ui->posNumberSpinBox->setValue(1);
     ui->posHorizontalSlider->setValue(1);
-    ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+   (this->width() >= 930) ? ui->dropoutsPushButton->setText(tr("Dropouts Off")) : ui->dropoutsPushButton->setText(tr("Drop N"));
 
     setViewValues();
 
@@ -201,10 +201,15 @@ void MainWindow::resetGui()
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
-    displayAspectRatio = false;
+    displayAspectRatio = true;
     updateAspectPushButton();
     updateSourcesPushButton();
-    ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+    if (this->width() > 1000)
+		ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+	else if (this->width() >= 930)
+		ui->fieldOrderPushButton->setText(tr("Normal order"));
+	else
+		ui->fieldOrderPushButton->setText(tr("Normal"));
 
     // Zoom button options
     ui->zoomInPushButton->setAutoRepeat(true);
@@ -264,6 +269,9 @@ void MainWindow::updateGuiLoaded()
 
     // Disable "Save JSON", now we've loaded the metadata into the GUI
     ui->actionSave_JSON->setEnabled(false);
+	
+	//resize the windows to fit the content in full screen
+	MainWindow::resize_on_aspect();
 }
 
 // Method to update the GUI when a file is unloaded
@@ -288,11 +296,16 @@ void MainWindow::updateGuiUnloaded()
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
-    ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+    (this->width() >= 930) ? ui->dropoutsPushButton->setText(tr("Dropouts Off")) : ui->dropoutsPushButton->setText(tr("Drop N"));
     displayAspectRatio = false;
     updateAspectPushButton();
     updateSourcesPushButton();
-    ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+    if (this->width() > 1000)
+		ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+	else if (this->width() >= 930)
+		ui->fieldOrderPushButton->setText(tr("Normal order"));
+	else
+		ui->fieldOrderPushButton->setText(tr("Normal"));
 
     // Hide the displayed image
     hideImage();
@@ -313,7 +326,7 @@ void MainWindow::updateAspectPushButton()
     if (!displayAspectRatio) {
         ui->aspectPushButton->setText(tr("SAR 1:1"));
     } else if (tbcSource.getIsWidescreen()) {
-        ui->aspectPushButton->setText(tr("DAR 16:9"));
+        (this->width() >= 1020) ? ui->aspectPushButton->setText(tr("DAR 16:9")) : ui->aspectPushButton->setText(tr("16:9"));
     } else {
         ui->aspectPushButton->setText(tr("DAR 4:3"));
     }
@@ -322,20 +335,40 @@ void MainWindow::updateAspectPushButton()
 // Update the source selection button
 void MainWindow::updateSourcesPushButton()
 {
-    switch (tbcSource.getSourceMode()) {
-    case TbcSource::ONE_SOURCE:
-        ui->sourcesPushButton->setText(tr("One Source"));
-        break;
-    case TbcSource::LUMA_SOURCE:
-        ui->sourcesPushButton->setText(tr("Y Source"));
-        break;
-    case TbcSource::CHROMA_SOURCE:
-        ui->sourcesPushButton->setText(tr("C Source"));
-        break;
-    case TbcSource::BOTH_SOURCES:
-        ui->sourcesPushButton->setText(tr("Y+C Sources"));
-        break;
-    }
+	if (this->width() >= 930)
+	{
+		switch (tbcSource.getSourceMode()) {
+		case TbcSource::ONE_SOURCE:
+			ui->sourcesPushButton->setText(tr("One Source"));
+			break;
+		case TbcSource::LUMA_SOURCE:
+			ui->sourcesPushButton->setText(tr("Y Source"));
+			break;
+		case TbcSource::CHROMA_SOURCE:
+			ui->sourcesPushButton->setText(tr("C Source"));
+			break;
+		case TbcSource::BOTH_SOURCES:
+			ui->sourcesPushButton->setText(tr("Y+C Sources"));
+			break;
+		}
+	}
+	else
+	{
+		switch (tbcSource.getSourceMode()) {
+		case TbcSource::ONE_SOURCE:
+			ui->sourcesPushButton->setText(tr(".TBC"));
+			break;
+		case TbcSource::LUMA_SOURCE:
+			ui->sourcesPushButton->setText(tr("Y"));
+			break;
+		case TbcSource::CHROMA_SOURCE:
+			ui->sourcesPushButton->setText(tr("C"));
+			break;
+		case TbcSource::BOTH_SOURCES:
+			ui->sourcesPushButton->setText(tr("Y+C"));
+			break;
+		}
+	}
 }
 
 // Frame display methods ----------------------------------------------------------------------------------------------
@@ -548,27 +581,53 @@ void MainWindow::setViewValues()
 {
     qint32 currentNumber, maximum;
     QString buttonLabel, spinLabel;
+	
+	if (this->width() >= 930)
+	{
+		if (tbcSource.getFieldViewEnabled()) {
+			currentNumber = currentFieldNumber;
+			maximum = tbcSource.getNumberOfFields();
+			spinLabel = QString("Field #:");
+			buttonLabel = QString("Field View");
 
-    if (tbcSource.getFieldViewEnabled()) {
-        currentNumber = currentFieldNumber;
-        maximum = tbcSource.getNumberOfFields();
-        spinLabel = QString("Field #:");
-        buttonLabel = QString("Field View");
+			ui->stretchFieldButton->setEnabled(true);
+		} else {
+			currentNumber = currentFrameNumber;
+			maximum = tbcSource.getNumberOfFrames();
+			spinLabel = QString("Frame #:");
 
-        ui->stretchFieldButton->setEnabled(true);
-    } else {
-        currentNumber = currentFrameNumber;
-        maximum = tbcSource.getNumberOfFrames();
-        spinLabel = QString("Frame #:");
+			ui->stretchFieldButton->setEnabled(false);
 
-        ui->stretchFieldButton->setEnabled(false);
+			if (tbcSource.getSplitViewEnabled()) {
+				buttonLabel = QString("Split View");
+			} else {
+				buttonLabel = QString("Frame View");
+			}
+		}
+	}
+	else
+	{
+		if (tbcSource.getFieldViewEnabled()) {
+			currentNumber = currentFieldNumber;
+			maximum = tbcSource.getNumberOfFields();
+			spinLabel = QString("Field #:");
+			buttonLabel = QString("Field");
 
-        if (tbcSource.getSplitViewEnabled()) {
-            buttonLabel = QString("Split View");
-        } else {
-            buttonLabel = QString("Frame View");
-        }
-    }
+			ui->stretchFieldButton->setEnabled(true);
+		} else {
+			currentNumber = currentFrameNumber;
+			maximum = tbcSource.getNumberOfFrames();
+			spinLabel = QString("Frame #:");
+
+			ui->stretchFieldButton->setEnabled(false);
+
+			if (tbcSource.getSplitViewEnabled()) {
+				buttonLabel = QString("Split");
+			} else {
+				buttonLabel = QString("Frame");
+			}
+		}
+	}
 
     ui->posNumberSpinBox->setMaximum(maximum);
     ui->posNumberSpinBox->setValue(currentNumber);
@@ -994,21 +1053,72 @@ void MainWindow::on_aspectPushButton_clicked()
     displayAspectRatio = !displayAspectRatio;
 
     // Update the button text
-    updateAspectPushButton();
+	updateAspectPushButton();
 
     // Update the image viewer (the scopes don't depend on this)
     updateImageViewer();
+	
+	//resize the windows to fit the new size
+	resize_on_aspect();
+}
+
+void MainWindow::resize_on_aspect()
+{
+	if (tbcSource.getSystem() == PAL){
+		if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
+		{
+			this->resize(959, 765);
+		}
+		else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
+		{
+			this->resize(1258, 765);
+		}
+		else// 1:1
+		{
+			this->resize(1155, 765);
+		}
+		
+	} else {
+		if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
+		{
+			this->resize(780, 665);
+		}
+		else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
+		{
+			this->resize(1052, 665);
+		}
+		else// 1:1
+		{
+			this->resize(930, 665);
+		}
+	}
 }
 
 // Show/hide dropouts button clicked
 void MainWindow::on_dropoutsPushButton_clicked()
 {
+	int width = this->width();
+	
     if (tbcSource.getHighlightDropouts()) {
         tbcSource.setHighlightDropouts(false);
-        ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+		if (width >= 930)
+		{			
+			ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+		}
+		else
+		{
+			ui->dropoutsPushButton->setText(tr("Drop N"));
+		}
     } else {
         tbcSource.setHighlightDropouts(true);
-        ui->dropoutsPushButton->setText(tr("Dropouts On"));
+        if (width >= 930)
+		{			
+			ui->dropoutsPushButton->setText(tr("Dropouts On"));
+		}
+		else
+		{
+			ui->dropoutsPushButton->setText(tr("Drop Y"));
+		}
     }
 
     // Show the current image (why isn't this option passed?)
@@ -1079,20 +1189,32 @@ void MainWindow::on_viewPushButton_clicked()
 // Normal/Reverse field order button clicked
 void MainWindow::on_fieldOrderPushButton_clicked()
 {
+	int width = this->width();
+	
     if (tbcSource.getFieldOrder()) {
         tbcSource.setFieldOrder(false);
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
         resetGui();
         updateGuiLoaded();
-        ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+        if (width > 1000)
+			ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+		else if (width >= 930)
+			ui->fieldOrderPushButton->setText(tr("Normal order"));
+		else
+			ui->fieldOrderPushButton->setText(tr("Normal"));
     } else {
         tbcSource.setFieldOrder(true);
 
         // If the TBC field order is changed, the number of available frames can change, so we need to update the GUI
         resetGui();
         updateGuiLoaded();
-        ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+        if (width > 1000)
+			ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+		else if (width >= 930)
+			ui->fieldOrderPushButton->setText(tr("Reverse order"));
+		else
+			ui->fieldOrderPushButton->setText(tr("Reverse"));
     }
 
     // Show the current image
@@ -1401,3 +1523,96 @@ void MainWindow::on_finishedSaving(bool success)
     // Enable the main window
     this->setEnabled(true);
 }
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    int width = this->width();
+	
+	//field order rename depending on size
+	if (!tbcSource.getFieldOrder())
+	{
+		if (width > 1000)
+			ui->fieldOrderPushButton->setText(tr("Normal Field-order"));
+		else if (width >= 930)
+			ui->fieldOrderPushButton->setText(tr("Normal order"));
+		else
+			ui->fieldOrderPushButton->setText(tr("Normal"));
+	}
+	else
+	{
+		if (width > 1000)
+			ui->fieldOrderPushButton->setText(tr("Reverse Field-order"));
+		else if (width >= 930)
+			ui->fieldOrderPushButton->setText(tr("Reverse order"));
+		else
+			ui->fieldOrderPushButton->setText(tr("Reverse"));
+	}
+	
+	//source label depending on size
+	updateSourcesPushButton();
+	
+	//dropout label
+	if (!tbcSource.getHighlightDropouts()) 
+	{
+		if (width >= 930)
+		{			
+			ui->dropoutsPushButton->setText(tr("Dropouts Off"));
+		}
+		else
+		{
+			ui->dropoutsPushButton->setText(tr("Drop N"));
+		}
+
+	}
+	else
+	{
+		if (width >= 930)
+		{			
+			ui->dropoutsPushButton->setText(tr("Dropouts On"));
+		}
+		else
+		{
+			ui->dropoutsPushButton->setText(tr("Drop Y"));
+		}
+	}
+	
+	//view label
+	if (this->width() >= 930)
+	{
+		if (tbcSource.getFieldViewEnabled()) {
+			ui->viewPushButton->setText("Field View");
+
+			ui->stretchFieldButton->setEnabled(true);
+		} else {
+			ui->stretchFieldButton->setEnabled(false);
+
+			if (tbcSource.getSplitViewEnabled()) {
+				ui->viewPushButton->setText("Split View");
+			} else {
+				ui->viewPushButton->setText("Frame View");
+			}
+		}
+	}
+	else
+	{
+		if (tbcSource.getFieldViewEnabled()) {
+			ui->viewPushButton->setText("Field");
+
+			ui->stretchFieldButton->setEnabled(true);
+		} else {
+			ui->stretchFieldButton->setEnabled(false);
+
+			if (tbcSource.getSplitViewEnabled()) {
+				ui->viewPushButton->setText("Split");
+			} else {
+				ui->viewPushButton->setText("Frame");
+			}
+		}
+	}
+	
+	//asepec ratio label
+	updateAspectPushButton();
+	
+}
+
