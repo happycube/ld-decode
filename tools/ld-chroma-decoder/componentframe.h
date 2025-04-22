@@ -67,27 +67,27 @@ public:
         return vData.data() + getLineOffsetUV(line);
     }
 	
-	QVector<double> getY(){
-		return yData;
+	QVector<double>* getY(){
+		return &yData;
 	}
 	
-	QVector<double> getU(){
-		return uData;
+	QVector<double>* getU(){
+		return &uData;
 	}
 	
-	QVector<double> getV(){
-		return vData;
+	QVector<double>* getV(){
+		return &vData;
 	}
 	
-	void setY(QVector<double> _yData){
+	void setY(QVector<double>& _yData){
 		yData = _yData;
 	}
 	
-	void setU(QVector<double> _uData){
+	void setU(QVector<double>& _uData){
 		uData = _uData;
 	}
 	
-	void setV(QVector<double> _vData){
+	void setV(QVector<double>& _vData){
 		vData = _vData;
 	}
 

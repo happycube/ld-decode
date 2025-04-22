@@ -361,7 +361,7 @@ void MainWindow::updateSourcesPushButton()
 			ui->sourcesPushButton->setText(tr("C Source"));
 			break;
 		case TbcSource::BOTH_SOURCES:
-			ui->sourcesPushButton->setText(tr("Y+C Sources"));
+			ui->sourcesPushButton->setText(tr("Y/C Sources"));
 			break;
 		}
 	}
@@ -378,7 +378,7 @@ void MainWindow::updateSourcesPushButton()
 			ui->sourcesPushButton->setText(tr("C"));
 			break;
 		case TbcSource::BOTH_SOURCES:
-			ui->sourcesPushButton->setText(tr("Y+C"));
+			ui->sourcesPushButton->setText(tr("Y/C"));
 			break;
 		}
 	}

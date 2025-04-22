@@ -850,12 +850,40 @@ void TbcSource::decodeFrame()
     if (decodedFrameValid) return;
 
     loadInputFields();
+	
+	bool isMono = false;
 
     // Decode the current frame to components
     componentFrames.resize(1);
     yFrames.resize(1);
     cFrames.resize(1);
-	if(combine)
+	if(!combine && sourceMode == BOTH_SOURCES)
+	{
+		monoDecoder.decodeFrames(inputFields, inputStartIndex, inputEndIndex, yFrames);
+		if ((getSystem() == PAL || getSystem() == PAL_M) && palConfiguration.chromaFilter != PalColour::mono) {
+			// PAL source
+			palColour.decodeFrames(chromaInputFields, inputStartIndex, inputEndIndex, cFrames);
+		} else if(getSystem() == NTSC && ntscConfiguration.dimensions != 0){
+			// NTSC source
+			ntscColour.decodeFrames(chromaInputFields, inputStartIndex, inputEndIndex, cFrames);
+		}
+		else
+		{
+			isMono = true;
+		}
+		
+		for (qint32 fieldIndex = inputStartIndex, frameIndex = 0; fieldIndex < inputEndIndex; fieldIndex += 2, frameIndex++)
+		{
+			//isMono ? cFrames[frameIndex].init(ldDecodeMetaData.getVideoParameters(), false);
+			componentFrames[frameIndex].init(ldDecodeMetaData.getVideoParameters(), false);
+			componentFrames[frameIndex].setY(*yFrames[frameIndex].getY());
+			if(!isMono){	
+				componentFrames[frameIndex].setU(*cFrames[frameIndex].getU());
+				componentFrames[frameIndex].setV(*cFrames[frameIndex].getV());
+			}
+		}
+	}
+	else
 	{
 		if (getSystem() == PAL || getSystem() == PAL_M) {
 			if(palConfiguration.chromaFilter == palColour.ChromaFilterMode::mono){
@@ -871,25 +899,6 @@ void TbcSource::decodeFrame()
 				// NTSC source
 				ntscColour.decodeFrames(inputFields, inputStartIndex, inputEndIndex, componentFrames);
 			}
-		}
-	}
-	else
-	{
-		monoDecoder.decodeFrames(inputFields, inputStartIndex, inputEndIndex, yFrames);
-		if (getSystem() == PAL || getSystem() == PAL_M) {
-			// PAL source
-			palColour.decodeFrames(chromaInputFields, inputStartIndex, inputEndIndex, cFrames);
-		} else {
-			// NTSC source
-			ntscColour.decodeFrames(chromaInputFields, inputStartIndex, inputEndIndex, cFrames);
-		}
-		
-		for (qint32 fieldIndex = inputStartIndex, frameIndex = 0; fieldIndex < inputEndIndex; fieldIndex += 2, frameIndex++)
-		{
-			componentFrames[frameIndex].init(ldDecodeMetaData.getVideoParameters(), false);
-			componentFrames[frameIndex].setY(yFrames[frameIndex].getY());
-			componentFrames[frameIndex].setU(cFrames[frameIndex].getU());
-			componentFrames[frameIndex].setV(cFrames[frameIndex].getV());
 		}
 	}
 

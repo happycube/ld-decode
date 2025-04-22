@@ -163,7 +163,11 @@ void ChromaDecoderConfigDialog::updateDialog()
 			palConfiguration.chromaFilter = PalColour::transform2DFilter;
 			ntscConfiguration.dimensions = 2;
 		}
+		ui->enableYNRCheckBox->setChecked(true);
+		ui->enableYCCombineCheckBox->setChecked(false);
+		
 		isInit = true;
+		
 	}
 
     // Shared settings
@@ -183,8 +187,6 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->yNRHorizontalSlider->setValue(static_cast<qint32>(yNRLevel * 10));
     ui->yNRValueLabel->setText(QString::number(yNRLevel, 'f', 1) + " IRE");
 	
-	ui->enableYNRCheckBox->setChecked(true);
-	ui->enableYCCombineCheckBox->setChecked(false);
 	if(sourceMode == TbcSource::BOTH_SOURCES)
 	{
 		ui->enableYCCombineCheckBox->show();
