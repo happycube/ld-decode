@@ -163,6 +163,8 @@ void ChromaDecoderConfigDialog::updateDialog()
 			palConfiguration.chromaFilter = PalColour::transform2DFilter;
 			ntscConfiguration.dimensions = 2;
 		}
+		ntscConfiguration.phaseCompensation = false;
+		
 		ui->enableYNRCheckBox->setChecked(true);
 		ui->enableYCCombineCheckBox->setChecked(false);
 		

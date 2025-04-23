@@ -1078,32 +1078,35 @@ void MainWindow::on_aspectPushButton_clicked()
 
 void MainWindow::resize_on_aspect()
 {
-	if (tbcSource.getSystem() == PAL){
-		if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
-		{
-			this->resize(959, 765);
-		}
-		else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
-		{
-			this->resize(1258, 765);
-		}
-		else// 1:1
-		{
-			this->resize(1155, 765);
-		}
-		
-	} else {
-		if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
-		{
-			this->resize(780, 665);
-		}
-		else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
-		{
-			this->resize(1052, 665);
-		}
-		else// 1:1
-		{
-			this->resize(930, 665);
+	if(!this->isFullScreen() && !this->isMaximized())
+	{
+		if (tbcSource.getSystem() == PAL){
+			if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
+			{
+				this->resize(959, 765);
+			}
+			else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
+			{
+				this->resize(1258, 765);
+			}
+			else// 1:1
+			{
+				this->resize(1155, 765);
+			}
+			
+		} else {
+			if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
+			{
+				this->resize(780, 665);
+			}
+			else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
+			{
+				this->resize(1052, 665);
+			}
+			else// 1:1
+			{
+				this->resize(930, 665);
+			}
 		}
 	}
 }
