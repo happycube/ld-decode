@@ -164,9 +164,8 @@ void ChromaDecoderConfigDialog::updateDialog()
 			ntscConfiguration.dimensions = 2;
 		}
 		ntscConfiguration.phaseCompensation = false;
-		
-		ui->enableYNRCheckBox->setChecked(true);
-		ui->enableYCCombineCheckBox->setChecked(false);
+		ui->enableYNRCheckBox->setChecked(yNREnabled);
+		ui->enableYCCombineCheckBox->setChecked(combine);
 		
 		isInit = true;
 		
@@ -184,10 +183,8 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->chromaPhaseValueLabel->setEnabled(true);
     ui->chromaPhaseValueLabel->setText(QString::number(palConfiguration.chromaPhase, 'f', 1) + QChar(0xB0));
     
-    double yNRLevel = isSourcePal ? palConfiguration.yNRLevel : ntscConfiguration.yNRLevel;
-    
-    ui->yNRHorizontalSlider->setValue(static_cast<qint32>(yNRLevel * 10));
-    ui->yNRValueLabel->setText(QString::number(yNRLevel, 'f', 1) + " IRE");
+    ui->yNRHorizontalSlider->setValue(static_cast<qint32>(ynrLevel * 10));
+    ui->yNRValueLabel->setText(QString::number(ynrLevel, 'f', 1) + " IRE");
 	
 	if(sourceMode == TbcSource::BOTH_SOURCES)
 	{
@@ -321,7 +318,9 @@ void ChromaDecoderConfigDialog::on_chromaPhaseHorizontalSlider_valueChanged(int 
 
 void ChromaDecoderConfigDialog::on_enableYNRCheckBox_clicked()
 {
-	ui->yNRHorizontalSlider->setEnabled(ui->enableYNRCheckBox->isChecked());
+	yNREnabled = ui->enableYNRCheckBox->isChecked();
+	ui->yNRHorizontalSlider->setEnabled(yNREnabled);
+	
 	if(ui->enableYNRCheckBox->isChecked())
 	{
 		palConfiguration.yNRLevel = ynrLevel;
@@ -418,6 +417,7 @@ void ChromaDecoderConfigDialog::on_yNRHorizontalSlider_valueChanged(int value)
     palConfiguration.yNRLevel = static_cast<double>(value) / 10;
     ntscConfiguration.yNRLevel = static_cast<double>(value) / 10;
 	monoConfiguration.yNRLevel = static_cast<double>(value) / 10;
+	ynrLevel = static_cast<double>(value) / 10;
     ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
     emit chromaDecoderConfigChanged();
 }
@@ -437,6 +437,7 @@ void ChromaDecoderConfigDialog::updateSourceMode(TbcSource::SourceMode mode)
 
 void ChromaDecoderConfigDialog::on_enableYCCombineCheckBox_clicked()
 {
-	tbcSource->setCombine(ui->enableYCCombineCheckBox->isChecked());
+	combine = ui->enableYCCombineCheckBox->isChecked();
+	tbcSource->setCombine(combine);
 	emit chromaDecoderConfigChanged();
 }

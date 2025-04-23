@@ -91,6 +91,8 @@ private:
 	TbcSource::SourceMode sourceMode;
 	double ynrLevel = 0;
 	bool isInit = true;
+	bool combine = false;
+	bool yNREnabled = true;
 
     void updateDialog();
 };
