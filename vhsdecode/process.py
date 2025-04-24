@@ -1145,8 +1145,7 @@ class VHSRFDecode(ldd.RFDecode):
 
         # If there are obviously out of bounds values, do an extra demod on a diffed waveform and
         # replace the spikes with data from the diffed demod. (Which in practice is an extra EQed signal)
-        if False:
-            # not self._disable_diff_demod:
+        if not self._disable_diff_demod:
             check_value = self.options.diff_demod_check_value
 
             if np.max(demod[20:-20]) > check_value:
