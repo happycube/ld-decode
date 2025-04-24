@@ -41,6 +41,7 @@ supported_tape_formats = {
     "VIDEO8",
     "HI8",
     "EIAJ",
+    "QUADRUPLEX",
     "VCR",
     "VCR_LP",
     "TYPEC",
@@ -52,26 +53,13 @@ supported_tape_formats = {
 def main(args=None, use_gui=False):
     import vhsdecode.formats as f
 
+    format_help = "Tape format - " + " ".join(supported_tape_formats) + "are supported"
+
     parser, debug_group = common_parser(
         "Extracts video from RAW RF captures of colour-under & composite modulated tapes",
         use_gui=use_gui,
     )
-    if not use_gui:
-        parser.add_argument(
-            "--doDOD",
-            dest="dodod",
-            action="store_true",
-            default=False,
-            help=argparse.SUPPRESS,
-        )
-        parser.add_argument(
-            "-U",
-            "--u-matic",
-            dest="umatic",
-            action="store_true",
-            default=False,
-            help=argparse.SUPPRESS,
-        )
+
     parser.add_argument(
         "--tf",
         "--tape_format",
@@ -80,7 +68,7 @@ def main(args=None, use_gui=False):
         metavar="tape_format",
         default="VHS",
         choices=supported_tape_formats,
-        help="Tape format, currently VHS (Default), VHSHQ, SVHS, UMATIC, UMATIC_HI, BETAMAX, BETAMAX_HIFI, SUPERBETA, VIDEO8, HI8 ,EIAJ, VCR, VCR_LP, TYPEC and TYPEB, are supported",
+        help=format_help,
     )
     parser.add_argument(
         "--ts",
@@ -420,17 +408,9 @@ def main(args=None, use_gui=False):
 
     logger = init_logging(outname + ".log")
 
-    if not use_gui and args.umatic:
-        tape_format = "UMATIC"
-    else:
-        tape_format = args.tape_format.upper()
+    tape_format = args.tape_format.upper()
     if tape_format not in supported_tape_formats:
         logger.warning("Tape format %s not supported! Defaulting to VHS", tape_format)
-
-    if not use_gui and args.dodod:
-        logger.warning(
-            "--doDOD is deprecated, dod is on by default, use noDOD to turn off."
-        )
 
     debug_plot = None
     if args.debug_plot:

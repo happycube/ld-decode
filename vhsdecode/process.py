@@ -99,6 +99,10 @@ class VHSDecode(ldd.LDdecode):
             sys_params_pal_temp = ldd.SysParams_PAL.copy()
             # If we are using 405-line we need to override this so the superclasses are initialized with the right values.
             ldd.SysParams_PAL = vhs_formats.get_sys_params_405()
+        elif system == "819":
+            sys_params_pal_temp = ldd.SysParams_PAL.copy()
+            # If we are using 819-line we need to override this so the superclasses are initialized with the right values.
+            ldd.SysParams_PAL = vhs_formats.get_sys_params_819()
 
         super(VHSDecode, self).__init__(
             fname_in,
@@ -112,6 +116,11 @@ class VHSDecode(ldd.LDdecode):
             inputfreq=inputfreq,
             extra_options=extra_options,
         )
+
+        if system == "819":
+            # We need a larger buffer for 819-line input
+            # TODO: Is this useful for normal formats too?
+            self.readlen = self.rf.linelen * 500
 
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
@@ -621,7 +630,8 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("fallback_vsync", False)
             or tape_format == "TYPEC"
             or tape_format == "EIAJ"
-            or system == "405",
+            or system == "405"
+            or system == "819",
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,
