@@ -244,9 +244,12 @@ void MainWindow::updateGuiLoaded()
 {
     // Enable the GUI controls
     setGuiEnabled(true);
-
+	
     // Update the status bar
     QString statusText;
+	if(tbcSource.getVideoParameters().tapeFormat != "") {
+		statusText += (tbcSource.getVideoParameters().tapeFormat + " ");
+	}
     statusText += tbcSource.getSystemDescription();
     statusText += " source loaded with ";
 

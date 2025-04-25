@@ -180,6 +180,7 @@ void LdDecodeMetaData::VideoParameters::read(JsonReader &reader)
         else if (member == "sampleRate") reader.read(sampleRate);
         else if (member == "system") reader.read(systemString);
         else if (member == "white16bIre") reader.read(white16bIre);
+        else if (member == "tapeFormat") reader.read(tapeFormat);
         else reader.discard();
     }
 
@@ -227,6 +228,9 @@ void LdDecodeMetaData::VideoParameters::write(JsonWriter &writer) const
     writer.writeMember("sampleRate", sampleRate);
     writer.writeMember("system", VIDEO_SYSTEM_DEFAULTS[system].name);
     writer.writeMember("white16bIre", white16bIre);
+	if(tapeFormat != "") {
+		writer.writeMember("tapeFormat", tapeFormat);
+	}
 
     writer.endObject();
 }

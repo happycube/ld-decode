@@ -163,12 +163,11 @@ void ChromaDecoderConfigDialog::updateDialog()
 			palConfiguration.chromaFilter = PalColour::transform2DFilter;
 			ntscConfiguration.dimensions = 2;
 		}
-		ntscConfiguration.phaseCompensation = false;
+		ntscConfiguration.phaseCompensation = (tbcSource->getVideoParameters().tapeFormat != "");//enable phase compensation only for tape
 		ui->enableYNRCheckBox->setChecked(yNREnabled);
 		ui->enableYCCombineCheckBox->setChecked(combine);
 		
 		isInit = true;
-		
 	}
 
     // Shared settings
