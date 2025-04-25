@@ -1083,8 +1083,14 @@ void MainWindow::on_aspectPushButton_clicked()
 
 void MainWindow::resize_on_aspect()
 {
-	int width = ui->imageViewerLabel->pixmap().size().width();
-	int height = ui->imageViewerLabel->pixmap().size().height();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	int width = ui->imageViewerLabel->pixmap().width();
+	int height = ui->imageViewerLabel->pixmap().height();
+#else
+	int width = ui->imageViewerLabel->pixmap()->width();
+	int height = ui->imageViewerLabel->pixmap()->height();
+#endif
+	
 	if(!this->isFullScreen() && !this->isMaximized())
 	{
 		this->resize(width + 20, height + 140);
