@@ -885,18 +885,21 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
 void MainWindow::on_actionZoom_In_triggered()
 {
     on_zoomInPushButton_clicked();
+	MainWindow::resize_on_aspect();
 }
 
 // Zoom out menu option
 void MainWindow::on_actionZoom_Out_triggered()
 {
     on_zoomOutPushButton_clicked();
+	MainWindow::resize_on_aspect();
 }
 
 // Original size 1:1 zoom menu option
 void MainWindow::on_actionZoom_1x_triggered()
 {
     on_originalSizePushButton_clicked();
+	MainWindow::resize_on_aspect();
 }
 
 // 2:1 zoom menu option
@@ -904,6 +907,7 @@ void MainWindow::on_actionZoom_2x_triggered()
 {
     scaleFactor = 2.0;
     updateImageViewer();
+	MainWindow::resize_on_aspect();
 }
 
 // 3:1 zoom menu option
@@ -911,6 +915,7 @@ void MainWindow::on_actionZoom_3x_triggered()
 {
     scaleFactor = 3.0;
     updateImageViewer();
+	MainWindow::resize_on_aspect();
 }
 
 // Show closed captions
@@ -1078,36 +1083,11 @@ void MainWindow::on_aspectPushButton_clicked()
 
 void MainWindow::resize_on_aspect()
 {
+	int width = ui->imageViewerLabel->pixmap().size().width();
+	int height = ui->imageViewerLabel->pixmap().size().height();
 	if(!this->isFullScreen() && !this->isMaximized())
 	{
-		if (tbcSource.getSystem() == PAL){
-			if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
-			{
-				this->resize(959, 765);
-			}
-			else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
-			{
-				this->resize(1258, 765);
-			}
-			else// 1:1
-			{
-				this->resize(1155, 765);
-			}
-			
-		} else {
-			if (displayAspectRatio && !tbcSource.getIsWidescreen())// 4:3
-			{
-				this->resize(780, 665);
-			}
-			else if (displayAspectRatio && tbcSource.getIsWidescreen())// 16:9
-			{
-				this->resize(1052, 665);
-			}
-			else// 1:1
-			{
-				this->resize(930, 665);
-			}
-		}
+		this->resize(width + 20, height + 140);
 	}
 }
 
