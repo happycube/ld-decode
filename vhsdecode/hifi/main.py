@@ -79,7 +79,7 @@ except ImportError as e:
     print(e)
     HIFI_UI = False
 
-NORMALIZE_FILE_SUFFIX = "_tmp_normalize.wav"
+NORMALIZE_FILE_SUFFIX = "tmp_normalize.raw"
 
 parser, _ = common_parser_cli(
     "Extracts audio from RAW HiFi FM RF captures",
@@ -452,16 +452,22 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             )
         return sf.SoundFile(pathR, "r")
 
+def get_normalize_filename(path, sample_rate):
+    return f"{path}_{int(sample_rate)}_f32_{NORMALIZE_FILE_SUFFIX}"
+
+normalize_parameters = {
+    "channels": 2,
+    "format": "RAW",  # TODO: update to FLAC 32 bit when supported by soundfile
+    "subtype": "FLOAT"
+}
 
 def as_outputfile(path, sample_rate, normalize):
     if normalize:
         return sf.SoundFile(
-            path + NORMALIZE_FILE_SUFFIX,
+            get_normalize_filename(path, sample_rate),
             "w",
-            channels=2,
             samplerate=int(sample_rate),
-            format="WAV",  # TODO: update to FLAC 32 bit when supported by soundfile
-            subtype="FLOAT",
+            **normalize_parameters
         )
     elif ".wav" in path.lower():
         return sf.SoundFile(
@@ -1405,7 +1411,7 @@ async def decode_parallel(
         )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
         print(f" Adjusting by {(gain_adjust * 100):.2f}%, please wait...")
 
-        input_file_post_gain = output_file + NORMALIZE_FILE_SUFFIX
+        input_file_post_gain = get_normalize_filename(output_file, decode_options["audio_rate"])
         output_file = decode_options["output_file"]
         audio_rate = decode_options["audio_rate"]
 
@@ -1413,7 +1419,12 @@ async def decode_parallel(
             total_frames_read = 0
             buffer = np.empty(block_audio_size, dtype=np.float32)
 
-            with sf.SoundFile(input_file_post_gain, "r") as f:
+            with sf.SoundFile(
+                input_file_post_gain,
+                "r",
+                samplerate=int(decode_options["audio_rate"]),
+                **normalize_parameters
+            ) as f:
                 progressB = TimeProgressBar(f.frames, f.frames)
                 with as_outputfile(output_file, audio_rate, False) as w:
                     done = False
