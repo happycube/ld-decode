@@ -1094,7 +1094,7 @@ void MainWindow::resize_on_aspect()
 	int height = ui->imageViewerLabel->pixmap()->height();
 #endif
 	
-	if(!this->isFullScreen() && !this->isMaximized())
+	if(!this->isFullScreen() && !this->isMaximized() && autoResize)
 	{
 		this->resize(width + 20, height + 140);
 	}
@@ -1225,6 +1225,11 @@ void MainWindow::on_fieldOrderPushButton_clicked()
 
     // Show the current image
     showImage();
+}
+
+void MainWindow::on_toggleAutoResize_toggled(bool checked)
+{
+	autoResize = checked;
 }
 
 // Zoom in

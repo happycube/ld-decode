@@ -104,6 +104,8 @@ private slots:
     void on_originalSizePushButton_clicked();
     void on_stretchFieldButton_clicked();
     void on_mouseModePushButton_clicked();
+    //void on_autoResizeButton_clicked();
+	void on_toggleAutoResize_toggled(bool checked);
 
     // Miscellaneous handlers
     void scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord);
@@ -146,6 +148,7 @@ private:
     QLabel timeCodeStatus;
     TbcSource tbcSource;
     bool displayAspectRatio;
+	bool autoResize = true;
     qint32 lastScopeLine;
     qint32 lastScopeDot;
     qint32 currentFieldNumber, currentFrameNumber;

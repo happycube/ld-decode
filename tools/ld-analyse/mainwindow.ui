@@ -705,6 +705,7 @@
     <addaction name="actionZoom_1x"/>
     <addaction name="actionZoom_2x"/>
     <addaction name="actionZoom_3x"/>
+    <addaction name="toggleAutoResize"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -795,6 +796,17 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+3</string>
+   </property>
+  </action>
+  <action name="toggleAutoResize">
+   <property name="text">
+	<string>Toggle Auto Resize</string>
+   </property>
+   <property name="checkable">
+	<bool>true</bool>
+   </property>
+   <property name="checked">
+	<bool>true</bool>
    </property>
   </action>
   <action name="actionDropout_analysis">
