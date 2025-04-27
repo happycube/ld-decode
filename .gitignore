@@ -85,3 +85,6 @@ ui_*.h
 
 # Installation tool things
 ld_decode.egg-info/
+
+# Compilation script
+compile.bat

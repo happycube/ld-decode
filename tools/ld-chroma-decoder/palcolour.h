@@ -51,13 +51,15 @@ public:
         // 2D Transform PAL frequency-domain filter
         transform2DFilter,
         // 3D Transform PAL frequency-domain filter
-        transform3DFilter
+        transform3DFilter,
+		//mono decoder
+		mono
     };
 
     struct Configuration {
         double chromaGain = 1.0;
         double chromaPhase = 0.0;
-        double yNRLevel = 0.5;
+        double yNRLevel = 0.0;
         bool simplePAL = false;
         ChromaFilterMode chromaFilter = palColourFilter;
         double transformThreshold = 0.4;

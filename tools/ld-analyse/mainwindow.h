@@ -59,6 +59,7 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QString inputFilenameParam, QWidget *parent = nullptr);
+	TbcSource& getTbcSource();
     ~MainWindow();
 
 private slots:
@@ -103,6 +104,8 @@ private slots:
     void on_originalSizePushButton_clicked();
     void on_stretchFieldButton_clicked();
     void on_mouseModePushButton_clicked();
+    //void on_autoResizeButton_clicked();
+	void on_toggleAutoResize_toggled(bool checked);
 
     // Miscellaneous handlers
     void scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord);
@@ -116,6 +119,9 @@ private slots:
     void on_busy(QString infoMessage);
     void on_finishedLoading(bool success);
     void on_finishedSaving(bool success);
+	
+	// UI handler
+	void resize_on_aspect();
 
 private:
     Ui::MainWindow *ui;
@@ -142,6 +148,7 @@ private:
     QLabel timeCodeStatus;
     TbcSource tbcSource;
     bool displayAspectRatio;
+	bool autoResize = true;
     qint32 lastScopeLine;
     qint32 lastScopeDot;
     qint32 currentFieldNumber, currentFrameNumber;
@@ -173,6 +180,7 @@ private:
     void updateOscilloscopeDialogue();
     void updateVectorscopeDialogue();
     void mouseScanLineSelect(qint32 oX, qint32 oY);
+	void resizeEvent(QResizeEvent *event);
 };
 
 #endif // MAINWINDOW_H

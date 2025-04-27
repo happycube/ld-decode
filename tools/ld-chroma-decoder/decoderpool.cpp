@@ -37,6 +37,8 @@ DecoderPool::DecoderPool(Decoder &_decoder, QString _inputFileName,
 {
 }
 
+Decoder& DecoderPool::getDecoder() { return decoder; }
+
 bool DecoderPool::process()
 {
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();

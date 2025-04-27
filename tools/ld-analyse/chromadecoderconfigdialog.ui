@@ -108,6 +108,20 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="enableYNRCheckBox">
+     <property name="text">
+      <string>Enable luma noise reduction</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="enableYCCombineCheckBox">
+     <property name="text">
+      <string>Combine Y/C -> CVBS</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer_1">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
@@ -135,6 +149,16 @@
          <property name="text">
           <string>Chroma filter:</string>
          </property>
+        </widget>
+       </item>
+	   <item>
+        <widget class="QRadioButton" name="palMonoRadioButton">
+         <property name="text">
+          <string>Mono</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">palFilterButtonGroup</string>
+         </attribute>
         </widget>
        </item>
        <item>
@@ -272,6 +296,16 @@
          <property name="text">
           <string>Chroma filter:</string>
          </property>
+        </widget>
+       </item>
+	   <item>
+        <widget class="QRadioButton" name="ntscMonoRadioButton">
+         <property name="text">
+          <string>Mono</string>
+         </property>
+         <attribute name="buttonGroup">
+          <string notr="true">ntscFilterButtonGroup</string>
+         </attribute>
         </widget>
        </item>
        <item>
