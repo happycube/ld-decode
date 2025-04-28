@@ -93,3 +93,9 @@ vhsdecode/*.c
 
 # auto-generated version file
 vhsdecode/_version.py
+
+# Installation tool things
+ld_decode.egg-info/
+
+# Compilation script
+compile.bat

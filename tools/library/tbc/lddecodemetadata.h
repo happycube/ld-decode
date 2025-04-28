@@ -84,6 +84,7 @@ public:
         double sampleRate = -1.0;
 
         bool isMapped = false;
+        QString tapeFormat = "";
 
         QString gitBranch;
         QString gitCommit;

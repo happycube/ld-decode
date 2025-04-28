@@ -25,6 +25,7 @@
 
 #include "chromadecoderconfigdialog.h"
 #include "ui_chromadecoderconfigdialog.h"
+#include "mainwindow.h"
 
 #include <cmath>
 
@@ -78,6 +79,11 @@ ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     ui->yNRHorizontalSlider->setMinimum(0);
     ui->yNRHorizontalSlider->setMaximum(100);
     
+	//get tbcSource instance from mainWindow
+	if (auto mw = qobject_cast<MainWindow*>(parent)) {
+		tbcSource = &mw->getTbcSource();
+	}
+	
     // Update the dialogue
     updateDialog();
 }
@@ -89,13 +95,18 @@ ChromaDecoderConfigDialog::~ChromaDecoderConfigDialog()
 
 void ChromaDecoderConfigDialog::setConfiguration(VideoSystem _system, const PalColour::Configuration &_palConfiguration,
                                                  const Comb::Configuration &_ntscConfiguration,
+                                                 const MonoDecoder::MonoConfiguration &_monoConfiguration,
+												 const TbcSource::SourceMode &_mode,
+												 const bool _isInit,
                                                  const OutputWriter::Configuration &_outputConfiguration)
 {
     double yNRLevel = _system == NTSC ? ntscConfiguration.yNRLevel : palConfiguration.yNRLevel;
     system = _system;
     palConfiguration = _palConfiguration;
     ntscConfiguration = _ntscConfiguration;
+    monoConfiguration = _monoConfiguration;
     outputConfiguration = _outputConfiguration;
+	sourceMode = _mode;
 
     palConfiguration.chromaGain = qBound(0.0, palConfiguration.chromaGain, 2.0);
     palConfiguration.chromaPhase = qBound(-180.0, palConfiguration.chromaPhase, 180.0);
@@ -114,7 +125,8 @@ void ChromaDecoderConfigDialog::setConfiguration(VideoSystem _system, const PalC
     } else {
         ui->standardTabs->setCurrentWidget(ui->palTab);
     }
-
+	
+	isInit = _isInit;
     updateDialog();
     emit chromaDecoderConfigChanged();
 }
@@ -138,45 +150,84 @@ void ChromaDecoderConfigDialog::updateDialog()
 {
     const bool isSourcePal = system == PAL || system == PAL_M;
     const bool isSourceNtsc = system == NTSC;
+	
+	if(!isInit)
+	{
+		if(sourceMode == TbcSource::ONE_SOURCE)
+		{
+			palConfiguration.chromaFilter = PalColour::transform3DFilter;
+			ntscConfiguration.dimensions = 3;
+		}
+		else
+		{
+			palConfiguration.chromaFilter = PalColour::transform2DFilter;
+			ntscConfiguration.dimensions = 2;
+		}
+		ntscConfiguration.phaseCompensation = (tbcSource->getVideoParameters().tapeFormat != "");//enable phase compensation only for tape
+		ui->enableYNRCheckBox->setChecked(yNREnabled);
+		ui->enableYCCombineCheckBox->setChecked(combine);
+		
+		isInit = true;
+	}
 
     // Shared settings
 
-    ui->chromaGainHorizontalSlider->setEnabled(true);
     ui->chromaGainHorizontalSlider->setValue(static_cast<qint32>(palConfiguration.chromaGain * 100));
 
     ui->chromaGainValueLabel->setEnabled(true);
     ui->chromaGainValueLabel->setText(QString::number(palConfiguration.chromaGain, 'f', 2));
 
-    ui->chromaPhaseHorizontalSlider->setEnabled(true);
     ui->chromaPhaseHorizontalSlider->setValue(static_cast<qint32>(degreesToSliderPos(palConfiguration.chromaPhase)));
 
     ui->chromaPhaseValueLabel->setEnabled(true);
     ui->chromaPhaseValueLabel->setText(QString::number(palConfiguration.chromaPhase, 'f', 1) + QChar(0xB0));
     
-    double yNRLevel = isSourcePal ? palConfiguration.yNRLevel : ntscConfiguration.yNRLevel;
-    
-    ui->yNRHorizontalSlider->setValue(static_cast<qint32>(yNRLevel * 10));
-    ui->yNRValueLabel->setText(QString::number(yNRLevel, 'f', 1) + " IRE");
+    ui->yNRHorizontalSlider->setValue(static_cast<qint32>(ynrLevel * 10));
+    ui->yNRValueLabel->setText(QString::number(ynrLevel, 'f', 1) + " IRE");
+	
+	if(sourceMode == TbcSource::BOTH_SOURCES)
+	{
+		ui->enableYCCombineCheckBox->show();
+	}
+	else
+	{
+		ui->enableYCCombineCheckBox->hide();
+	}
 
     // PAL settings
-
+	
+	ui->palMonoRadioButton->setEnabled(isSourcePal);
     ui->palFilterPalColourRadioButton->setEnabled(isSourcePal);
     ui->palFilterTransform2DRadioButton->setEnabled(isSourcePal);
     ui->palFilterTransform3DRadioButton->setEnabled(isSourcePal);
+	
+	if(isSourcePal)
+	{
+		switch (palConfiguration.chromaFilter) {
+		case PalColour::mono:
+			ui->palMonoRadioButton->setChecked(true);
+			ui->chromaGainHorizontalSlider->setEnabled(false);
+			ui->chromaPhaseHorizontalSlider->setEnabled(false);
+			break;
+		case PalColour::palColourFilter:
+			ui->palFilterPalColourRadioButton->setChecked(true);
+			ui->chromaGainHorizontalSlider->setEnabled(true);
+			ui->chromaPhaseHorizontalSlider->setEnabled(true);
+			break;
+		case PalColour::transform2DFilter:
+			ui->palFilterTransform2DRadioButton->setChecked(true);
+			ui->chromaGainHorizontalSlider->setEnabled(true);
+			ui->chromaPhaseHorizontalSlider->setEnabled(true);
+			break;
+		case PalColour::transform3DFilter:
+			ui->palFilterTransform3DRadioButton->setChecked(true);
+			ui->chromaGainHorizontalSlider->setEnabled(true);
+			ui->chromaPhaseHorizontalSlider->setEnabled(true);
+			break;
+		}
+	}
 
-    switch (palConfiguration.chromaFilter) {
-    case PalColour::palColourFilter:
-        ui->palFilterPalColourRadioButton->setChecked(true);
-        break;
-    case PalColour::transform2DFilter:
-        ui->palFilterTransform2DRadioButton->setChecked(true);
-        break;
-    case PalColour::transform3DFilter:
-        ui->palFilterTransform3DRadioButton->setChecked(true);
-        break;
-    }
-
-    const bool isTransform = (palConfiguration.chromaFilter != PalColour::palColourFilter);
+    const bool isTransform = ((palConfiguration.chromaFilter != PalColour::palColourFilter) && (palConfiguration.chromaFilter != PalColour::mono) );
 
     ui->thresholdLabel->setEnabled(isSourcePal && isTransform);
 
@@ -196,20 +247,39 @@ void ChromaDecoderConfigDialog::updateDialog()
 
     ui->phaseCompCheckBox->setEnabled(isSourceNtsc);
     ui->phaseCompCheckBox->setChecked(ntscConfiguration.phaseCompensation);
+    ui->ntscMonoRadioButton->setEnabled(isSourceNtsc);
     ui->ntscFilter1DRadioButton->setEnabled(isSourceNtsc);
     ui->ntscFilter2DRadioButton->setEnabled(isSourceNtsc);
     ui->ntscFilter3DRadioButton->setEnabled(isSourceNtsc);
-
-    switch (ntscConfiguration.dimensions) {
-    case 1:
-        ui->ntscFilter1DRadioButton->setChecked(true);
-        break;
-    case 2:
-        ui->ntscFilter2DRadioButton->setChecked(true);
-        break;
-    case 3:
-        ui->ntscFilter3DRadioButton->setChecked(true);
-        break;
+	
+	if(isSourceNtsc)
+	{
+		switch (ntscConfiguration.dimensions) {
+		case 0:
+			ui->ntscMonoRadioButton->setChecked(true);
+			ui->phaseCompCheckBox->setEnabled(false);
+			ui->chromaGainHorizontalSlider->setEnabled(false);
+			ui->chromaPhaseHorizontalSlider->setEnabled(false);
+			break;
+		case 1:
+			ui->ntscFilter1DRadioButton->setChecked(true);
+			ui->phaseCompCheckBox->setEnabled(true);
+			ui->chromaGainHorizontalSlider->setEnabled(true);
+			ui->chromaPhaseHorizontalSlider->setEnabled(true);
+			break;
+		case 2:
+			ui->ntscFilter2DRadioButton->setChecked(true);
+			ui->phaseCompCheckBox->setEnabled(true);
+			ui->chromaGainHorizontalSlider->setEnabled(true);
+			ui->chromaPhaseHorizontalSlider->setEnabled(true);
+			break;
+		case 3:
+			ui->ntscFilter3DRadioButton->setChecked(true);
+			ui->phaseCompCheckBox->setEnabled(true);
+			ui->chromaGainHorizontalSlider->setEnabled(true);
+			ui->chromaPhaseHorizontalSlider->setEnabled(true);
+			break;
+		}
     }
 
     ui->adaptiveCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
@@ -220,7 +290,7 @@ void ChromaDecoderConfigDialog::updateDialog()
 
     ui->cNRLabel->setEnabled(isSourceNtsc);
 
-    ui->cNRHorizontalSlider->setEnabled(isSourceNtsc);
+    ui->cNRHorizontalSlider->setEnabled(isSourceNtsc && ntscConfiguration.dimensions != 0);
     ui->cNRHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.cNRLevel * 10));
 
     ui->cNRValueLabel->setEnabled(isSourceNtsc);
@@ -245,9 +315,33 @@ void ChromaDecoderConfigDialog::on_chromaPhaseHorizontalSlider_valueChanged(int 
     emit chromaDecoderConfigChanged();
 }
 
+void ChromaDecoderConfigDialog::on_enableYNRCheckBox_clicked()
+{
+	yNREnabled = ui->enableYNRCheckBox->isChecked();
+	ui->yNRHorizontalSlider->setEnabled(yNREnabled);
+	
+	if(ui->enableYNRCheckBox->isChecked())
+	{
+		palConfiguration.yNRLevel = ynrLevel;
+		ntscConfiguration.yNRLevel = ynrLevel;
+		monoConfiguration.yNRLevel = ynrLevel;
+	}
+	else
+	{
+		ynrLevel = monoConfiguration.yNRLevel;
+		
+		palConfiguration.yNRLevel = static_cast<double>(0);
+		ntscConfiguration.yNRLevel = static_cast<double>(0);
+		monoConfiguration.yNRLevel = static_cast<double>(0);
+	}
+    emit chromaDecoderConfigChanged();
+}
+
 void ChromaDecoderConfigDialog::on_palFilterButtonGroup_buttonClicked(QAbstractButton *button)
 {
-    if (button == ui->palFilterPalColourRadioButton) {
+	if (button == ui->palMonoRadioButton){
+		palConfiguration.chromaFilter = PalColour::mono;
+    } else if (button == ui->palFilterPalColourRadioButton) {
         palConfiguration.chromaFilter = PalColour::palColourFilter;
     } else if (button == ui->palFilterTransform2DRadioButton) {
         palConfiguration.chromaFilter = PalColour::transform2DFilter;
@@ -279,7 +373,9 @@ void ChromaDecoderConfigDialog::on_simplePALCheckBox_clicked()
 
 void ChromaDecoderConfigDialog::on_ntscFilterButtonGroup_buttonClicked(QAbstractButton *button)
 {
-    if (button == ui->ntscFilter1DRadioButton) {
+	if(button == ui->ntscMonoRadioButton){
+		ntscConfiguration.dimensions = 0;
+	} else if (button == ui->ntscFilter1DRadioButton) {
         ntscConfiguration.dimensions = 1;
     } else if (button == ui->ntscFilter2DRadioButton) {
         ntscConfiguration.dimensions = 2;
@@ -319,6 +415,28 @@ void ChromaDecoderConfigDialog::on_yNRHorizontalSlider_valueChanged(int value)
 {
     palConfiguration.yNRLevel = static_cast<double>(value) / 10;
     ntscConfiguration.yNRLevel = static_cast<double>(value) / 10;
+	monoConfiguration.yNRLevel = static_cast<double>(value) / 10;
+	ynrLevel = static_cast<double>(value) / 10;
     ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
     emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::updateSourceMode(TbcSource::SourceMode mode)
+{
+	sourceMode = mode;
+	if(sourceMode == TbcSource::BOTH_SOURCES)
+	{
+		ui->enableYCCombineCheckBox->show();
+	}
+	else
+	{
+		ui->enableYCCombineCheckBox->hide();
+	}
+}
+
+void ChromaDecoderConfigDialog::on_enableYCCombineCheckBox_clicked()
+{
+	combine = ui->enableYCCombineCheckBox->isChecked();
+	tbcSource->setCombine(combine);
+	emit chromaDecoderConfigChanged();
 }
