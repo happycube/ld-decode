@@ -105,3 +105,9 @@ vhsdecode/_version.py
 # already existing elements were commented out
 
 #/target
+
+# Installation tool things
+ld_decode.egg-info/
+
+# Compilation script
+compile.bat

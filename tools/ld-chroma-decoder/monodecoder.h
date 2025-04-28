@@ -43,11 +43,25 @@ class DecoderPool;
 // Decoder that passes all input through as luma, for purely monochrome sources
 class MonoDecoder : public Decoder {
 public:
-    bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
+
+	struct MonoConfiguration {
+		double yNRLevel = 0.0;
+		LdDecodeMetaData::VideoParameters videoParameters;
+	};
+	MonoDecoder();
+	MonoDecoder(const MonoDecoder::MonoConfiguration &config);
+	bool updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters, const MonoDecoder::MonoConfiguration &configuration);
+	bool configure(const LdDecodeMetaData::VideoParameters &videoParameters) override;
     QThread *makeThread(QAtomicInt& abort, DecoderPool& decoderPool) override;
+	/// Synchronously decode luma-only frames (no filtering)
+	void decodeFrames(const QVector<SourceField>& inputFields,
+                    qint32 startIndex,
+                    qint32 endIndex,
+                    QVector<ComponentFrame>& componentFrames);
+	void doYNR(ComponentFrame &componentFrame);				
 
 private:
-    Configuration config;
+    MonoConfiguration monoConfig;
 };
 
 class MonoThread : public DecoderThread
@@ -55,7 +69,7 @@ class MonoThread : public DecoderThread
     Q_OBJECT
 public:
     explicit MonoThread(QAtomicInt &abort, DecoderPool &decoderPool,
-                       const MonoDecoder::Configuration &config,
+                       const MonoDecoder::MonoConfiguration &monoConfig,
                        QObject *parent = nullptr);
 
 protected:
@@ -63,10 +77,8 @@ protected:
                       QVector<ComponentFrame> &componentFrames) override;
 
 private:
-    void decodeFrame(const SourceField &firstField, const SourceField &secondField, ComponentFrame &componentFrame);
-
     // Settings
-    const MonoDecoder::Configuration &config;
+    const MonoDecoder::MonoConfiguration &monoConfig;
 };
 
 #endif // MONODECODER

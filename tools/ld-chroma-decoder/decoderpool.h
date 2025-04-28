@@ -56,6 +56,8 @@ public:
     OutputWriter &getOutputWriter() {
         return outputWriter;
     }
+	
+	Decoder& getDecoder();
 
     // For worker threads: get the next batch of data from the input file.
     //

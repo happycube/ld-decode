@@ -19,8 +19,6 @@ PyInstaller.__main__.run(
         "--collect-all",
         "rocket_fft",
         "--collect-all",
-        "icc_rt",
-        "--add-data",
         "vhsdecode/format_defs:vhsdecode/format_defs",
         "--icon",
         "assets\\icons\\vhs-decode.ico",
