@@ -768,7 +768,7 @@ inline bool Stacker::isDropout(const DropOuts& dropOuts, const qint32 fieldX, co
     return false;
 }
 
-// Method returns true all specified pixel are dropouts
+// Method returns true if all specified pixel are dropouts
 inline bool Stacker::haveAllDropout(const QVector<LdDecodeMetaData::Field>& fieldMetadata, const qint32 x, const qint32 y)
 {
     const qint32 size = fieldMetadata.size();

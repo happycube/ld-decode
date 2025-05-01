@@ -60,7 +60,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
     // if (oneCount != 96 && oneCount != 0) {
     //     if (m_showDebug) {
     //         qDebug() << "Subcode::fromData(): P channel data contains" << 96-oneCount << "zeros and"
-    //                  << oneCount << "ones - indicating some p-channel corruption"; 
+    //                  << oneCount << "ones - indicating some p-channel corruption";
     //     }
     // }
 
@@ -203,7 +203,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             } else {
                 sectionMetadata.setSectionType(SectionType(SectionType::UserData), trackNumber);
             }
-            
+
             // Set the frame time q_data_channel[3-5]
             sectionMetadata.setSectionTime(SectionTime(
                     bcd2ToInt(qChannelData[3]), bcd2ToInt(qChannelData[4]), bcd2ToInt(qChannelData[5])));
@@ -228,7 +228,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
                 while (upcString.size() < 13) {
                     upcString = "0" + upcString;
                 }
-                
+
                 qDebug() << "Subcode::fromData(): Q-Mode 2 has UPC/EAN code of:" << upcString;
             }
 
@@ -442,7 +442,7 @@ QByteArray Subcode::toData(const SectionMetadata &sectionMetadata)
         }
 
         if (frameType.type() == SectionType::LeadOut) {
-        quint16 tno = 0xAA; // Hexidecimal AA for lead-out
+        quint16 tno = 0xAA; // Hexadecimal AA for lead-out
         quint16 index = 01; // Must be 01 for lead-out
         quint8 zero = 0;
 

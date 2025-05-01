@@ -71,7 +71,7 @@ def diffplot(freq, B, A, B2, A2):
 
 
 def FDLS(N, D, w, Am=[], Th=[], shift=0, h=[]):
-    """ Python implementation of the FDLS filter design algorithm.
+    """ Python implementationmak of the FDLS filter design algorithm.
 
 	Keyword Arguments:
 	w, Am, Th are equal-length vectors:
