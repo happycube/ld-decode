@@ -298,7 +298,7 @@ F1ToData::StateMachine F1ToData::sm_state_noSync()
     // The current sector has no sync.  Here we need to determine if the sector is corrupt, or if it's just missing
     // (due to a gap in the EFM rather than errors in the EFM)
 
-    // If the f1DataBuffer is less than the minium sector size, we have to resize it to avoid
+    // If the f1DataBuffer is less than the minimum sector size, we have to resize it to avoid
     // unwanted errors
     if (f1DataBuffer.size() < 2352) f1DataBuffer.resize(2352);
     Sector sector(f1DataBuffer.mid(0, 2352), true);

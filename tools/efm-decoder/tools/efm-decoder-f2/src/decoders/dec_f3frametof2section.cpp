@@ -304,7 +304,7 @@ void F3FrameToF2Section::outputSection(bool showAddress)
     m_lastSectionMetadata = sectionMetadata;
     m_outputBuffer.enqueue(f2Section);
 
-    if (m_showDebug && showAddress) qDebug() << "F3FrameToF2Section::outputSection - Outputing F2 section with address"
+    if (m_showDebug && showAddress) qDebug() << "F3FrameToF2Section::outputSection - Outputting F2 section with address"
         << sectionMetadata.absoluteSectionTime().toString();
 }
 

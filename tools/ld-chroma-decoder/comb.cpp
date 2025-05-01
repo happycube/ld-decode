@@ -588,7 +588,7 @@ void Comb::FrameBuffer::splitIQlocked()
             const auto ti = (lsin * info.bcos - lcos * info.bsin);
             const auto tq = (lsin * info.bsin + lcos * info.bcos);
 
-            // Invert Q and rorate to get the correct I/Q vector.
+            // Invert Q and rotate to get the correct I/Q vector.
             // TODO: Needed to shift the chroma 1 sample to the right to get it to line up
             // may not get the first pixel in each line correct because of this.
             I[h + 1] = ti * ROTATE_COS - tq * -ROTATE_SIN;

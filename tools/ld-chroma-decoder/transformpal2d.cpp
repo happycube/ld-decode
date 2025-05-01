@@ -116,7 +116,7 @@ void TransformPal2D::filterFields(const QVector<SourceField> &inputFields, qint3
     }
 }
 
-// Process one field, writing the reuslt into chromaBuf[outputIndex]
+// Process one field, writing the result into chromaBuf[outputIndex]
 void TransformPal2D::filterField(const SourceField& inputField, qint32 outputIndex)
 {
     const qint32 firstFieldLine = inputField.getFirstActiveLine(videoParameters);

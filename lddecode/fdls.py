@@ -71,20 +71,20 @@ def diffplot(freq, B, A, B2, A2):
 
 
 def FDLS(N, D, w, Am=[], Th=[], shift=0, h=[]):
-    """ Python implentation of the FDLS filter design algorithm.
+    """ Python implementationmak of the FDLS filter design algorithm.
 
 	Keyword Arguments:
 	w, Am, Th are equal-length vectors:
 
 	w - frequency of sample (in radians) - equivalent to ωmts in FDLS sample calc, and w from freqz
-	Am = Amplitude - equivalent to np.absolute(h) from freqz 
+	Am = Amplitude - equivalent to np.absolute(h) from freqz
 	Th = Phase - equivalent to np.angle(h) from freqz
-	N = numerator order (length of B) 
-	D = denominator order (length of A) 
+	N = numerator order (length of B)
+	D = denominator order (length of A)
 	shift = Phase shift (used to stabilize filters in some cases)
 
 	returns [B, A], matching other scipy filter types
-	
+
 	"""
 
     # Compute amplitude and angle from h if provided

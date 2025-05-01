@@ -198,7 +198,7 @@ QVector<DropOutCorrect::DropOutLocation> DropOutCorrect::setDropOutLocations(QVe
     // drop-out covered more than one area).
     //
     // Since a drop-out can span multiple areas, we have to keep
-    // spliting the drop-outs until there is nothing left to split
+    // splitting the drop-outs until there is nothing left to split
     qint32 splitCount = 0;
 
     do {
@@ -408,7 +408,7 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
                                                   qint32 sourceOffset, qint32 stepAmount,
                                                   qint32 sourceNo, const QVector<double> &sourceFrameQuality,
                                                   QVector<Replacement> &candidates)
-{    
+{
     // Calculate the start source line, applying sourceOffset to find a line with the right chroma phase
     qint32 sourceLine = targetDropouts[0][targetIndex].fieldLine + sourceOffset;
 
@@ -527,4 +527,3 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
     }
     statistics.totalReplacementDistance += replacement.distance;
 }
-
