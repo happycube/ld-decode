@@ -393,7 +393,7 @@ inline quint16 Stacker::median(QVector<quint16> elements)
     }
 }
 
-// Method to find the median of a vector of quint16s
+// Method to find the mean of a vector of quint16s
 inline qint32 Stacker::mean(const QVector<quint16>& elements)
 {
     quint32 result = 0;
@@ -768,7 +768,7 @@ inline bool Stacker::isDropout(const DropOuts& dropOuts, const qint32 fieldX, co
     return false;
 }
 
-// Method returns true if specified pixel is a dropout
+// Method returns true all specified pixel are dropouts
 inline bool Stacker::haveAllDropout(const QVector<LdDecodeMetaData::Field>& fieldMetadata, const qint32 x, const qint32 y)
 {
     const qint32 size = fieldMetadata.size();
