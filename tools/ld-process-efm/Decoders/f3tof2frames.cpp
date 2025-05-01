@@ -46,7 +46,7 @@ const std::vector<F2Frame> &F3ToF2Frames::process(const std::vector<F3Frame> &f3
     // 98 frames... otherwise we have an upstream bug.
     if (f3FramesIn.size() % 98 != 0) {
         qFatal("F3ToF2Frames::process(): Upstream has provided incomplete sections of 98 F3 frames - This is a bug!");
-        // Exection stops...
+        // Execution stops...
         // return f2FramesOut;
     }
 

@@ -590,7 +590,7 @@ VbiDecoder::Vbi VbiDecoder::decode(qint32 vbi16, qint32 vbi17, qint32 vbi18)
     return vbi;
 }
 
-// Private method to verifiy parity
+// Private method to verify parity
 bool VbiDecoder::parity(quint32 x4, quint32 x5)
 {
     // X51 is the parity with X41, X42 and X44
