@@ -21,6 +21,8 @@ from numba import njit, guvectorize
 import numba
 import atexit
 import asyncio
+from setproctitle import setproctitle
+from contextlib import nullcontext
 
 import numpy as np
 import soundfile as sf
@@ -683,6 +685,7 @@ class PostProcessor:
         spectral_nr_amount,
         final_audio_rate,
     ):
+        setproctitle(current_process().name)
         spectral_nr = SpectralNoiseReduction(
             nr_reduction_amount=spectral_nr_amount,
             audio_rate=final_audio_rate,
@@ -724,6 +727,7 @@ class PostProcessor:
         nr_side_gain,
         final_audio_rate,
     ):
+        setproctitle(current_process().name)
         noise_reduction = NoiseReduction(nr_side_gain, audio_rate=final_audio_rate)
 
         while True:
@@ -758,6 +762,7 @@ class PostProcessor:
     def mix_to_stereo_worker(
         nr_l_in_conn, nr_r_in_conn, out_conn, peak_gain, sample_rate
     ):
+        setproctitle(current_process().name)
         while True:
             while True:
                 try:
@@ -854,6 +859,7 @@ class PostProcessor:
         nr_worker_l_in_conn,
         nr_worker_r_in_conn,
     ):
+        setproctitle(current_process().name)
         next_block = 0
         last_block_submitted = -1
         block_queue = []
@@ -980,9 +986,9 @@ class SoundDeviceProcess:
 
     def __enter__(self):
         self._play_parent_conn, self._play_child_conn = Pipe()
-        self._thread_executor = ThreadPoolExecutor(1)
         self._process = Process(
             target=SoundDeviceProcess.play_worker,
+            name="hifi_playback_worker",
             args=(self._play_child_conn, self._sample_rate),
         )
         self._process.start()
@@ -990,7 +996,6 @@ class SoundDeviceProcess:
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
         self._process.terminate()
-        self._thread_executor.shutdown(False)
         return self
 
     @staticmethod
@@ -1010,6 +1015,7 @@ class SoundDeviceProcess:
 
     @staticmethod
     def play_worker(conn, sample_rate):
+        setproctitle(current_process().name)
         output_stream = None
         while True:
             while True:
@@ -1035,7 +1041,7 @@ class SoundDeviceProcess:
             output_stream.write(stacked)
 
     def play(self, stereo):
-        self._thread_executor.submit(self._play_parent_conn.send_bytes, stereo)
+        self._play_parent_conn.send_bytes(stereo)
 
 
 def write_soundfile_process_worker(
@@ -1049,59 +1055,64 @@ def write_soundfile_process_worker(
     output_file: str,
     decode_done,
 ):
+    setproctitle(current_process().name)
     audio_rate = decode_options["audio_rate"]
     input_rate = decode_options["input_rate"]
     preview_mode = decode_options["preview"]
     normalize = decode_options["normalize"]
 
-    with SoundDeviceProcess(audio_rate) as player:
-        with as_outputfile(output_file, audio_rate, normalize) as w:
-            done = False
-            while not done:
-                while True:
-                    try:
-                        decoder_state = post_processor_out_output_conn.recv()
-                        break
-                    except InterruptedError:
-                        pass
-                    except EOFError:
-                        return
+    if preview_mode:
+        player = SoundDeviceProcess(audio_rate)
+    else:
+        player = nullcontext()
 
-                buffer = PostProcessorSharedMemory(decoder_state)
-                stereo = buffer.get_stereo()
-                samples_decoded = len(stereo) / 2
+    with player, as_outputfile(output_file, audio_rate, normalize) as w:
+        done = False
+        while not done:
+            while True:
+                try:
+                    decoder_state = post_processor_out_output_conn.recv()
+                    break
+                except InterruptedError:
+                    pass
+                except EOFError:
+                    return
 
-                w.buffer_write(stereo, dtype="float32")
-                if preview_mode:
-                    if SOUNDDEVICE_AVAILABLE:
-                        stereo_copy = np.empty_like(stereo)
-                        DecoderSharedMemory.copy_data_float32(
-                            stereo, stereo_copy, len(stereo_copy)
-                        )
-                        player.play(stereo_copy)
-                    else:
-                        print("Import of sounddevice failed, preview is not available!")
+            buffer = PostProcessorSharedMemory(decoder_state)
+            stereo = buffer.get_stereo()
+            samples_decoded = len(stereo) / 2
 
-                buffer.close()
-                post_processor_shared_memory_idle_queue.put(decoder_state.name)
-                with total_samples_decoded.get_lock():
-                    total_samples_decoded.value = int(
-                        total_samples_decoded.value + samples_decoded
+            w.buffer_write(stereo, dtype="float32")
+            if preview_mode:
+                if SOUNDDEVICE_AVAILABLE:
+                    stereo_copy = np.empty_like(stereo)
+                    DecoderSharedMemory.copy_data_float32(
+                        stereo, stereo_copy, len(stereo_copy)
                     )
+                    player.play(stereo_copy)
+                else:
+                    print("Import of sounddevice failed, preview is not available!")
 
-                log_decode(
-                    start_time,
-                    input_position.value,
-                    total_samples_decoded.value,
-                    blocks_enqueued.value,
-                    input_rate,
-                    audio_rate,
+            buffer.close()
+            post_processor_shared_memory_idle_queue.put(decoder_state.name)
+            with total_samples_decoded.get_lock():
+                total_samples_decoded.value = int(
+                    total_samples_decoded.value + samples_decoded
                 )
 
-                done = decoder_state.is_last_block
+            log_decode(
+                start_time,
+                input_position.value,
+                total_samples_decoded.value,
+                blocks_enqueued.value,
+                input_rate,
+                audio_rate,
+            )
 
-            w.flush()
-            decode_done.set()
+            done = decoder_state.is_last_block
+
+        w.flush()
+        decode_done.set()
 
 
 async def decode_parallel(
@@ -1169,6 +1180,7 @@ async def decode_parallel(
     for i in range(num_decoders):
         decoder_process = Process(
             target=HiFiDecode.hifi_decode_worker,
+            name=f"hifi_decode_worker_{i}",
             args=(
                 decoder_in_queue,
                 decoder_out_queue,
@@ -1199,7 +1211,7 @@ async def decode_parallel(
     # set up the output file process
     output_file_process = Process(
         target=write_soundfile_process_worker,
-        name="HiFiDecode Soundfile Encoder",
+        name="hifi_soundfile_enc",
         args=(
             post_processor_out_output_conn,
             blocks_enqueued,
@@ -1424,23 +1436,22 @@ async def decode_parallel(
                 "r",
                 samplerate=int(decode_options["audio_rate"]),
                 **normalize_parameters
-            ) as f:
+            ) as f, as_outputfile(output_file, audio_rate, False) as w:   
                 progressB = TimeProgressBar(f.frames, f.frames)
-                with as_outputfile(output_file, audio_rate, False) as w:
-                    done = False
-                    while not done:
-                        frames_read = f.buffer_read_into(buffer, dtype="float32")
-                        samples_read = frames_read * 2
+                done = False
+                while not done:
+                    frames_read = f.buffer_read_into(buffer, dtype="float32")
+                    samples_read = frames_read * 2
 
-                        if samples_read < len(buffer):
-                            buffer = buffer[0:samples_read]
-                            done = True
+                    if samples_read < len(buffer):
+                        buffer = buffer[0:samples_read]
+                        done = True
 
-                        PostProcessor.normalize(gain_adjust, buffer, buffer)
-                        w.buffer_write(buffer, "float32")
+                    PostProcessor.normalize(gain_adjust, buffer, buffer)
+                    w.buffer_write(buffer, "float32")
 
-                        total_frames_read += frames_read
-                        progressB.print(total_frames_read, False)
+                    total_frames_read += frames_read
+                    progressB.print(total_frames_read, False)
             print("")
         finally:
             os.remove(input_file_post_gain)

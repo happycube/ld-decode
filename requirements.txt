@@ -2,10 +2,11 @@ Cython
 matplotlib
 numba>=0.58.1
 numpy>=1.22
-samplerate
+samplerate==0.1
 scipy >=1.10
 soundfile>=0.13.1
 sounddevice
 noisereduce>=2.0.0
 rocket-fft>=0.2.5
 pyzmq
+setproctitle

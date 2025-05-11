@@ -1,6 +1,7 @@
 import cython
 import numpy as np
 cimport numpy as np
+from libc cimport stdint
 import lddecode.utils as lddu
 
 from libc.math cimport isnan, NAN, round, abs
@@ -189,8 +190,8 @@ cdef struct s_sync_distance_input:
     double meanlinelen,
     double VSYNC_TOLERANCE_LINES,
     double hsync_start_line,
-    int first_pulse,
-    int second_pulse,
+    double first_pulse,
+    double second_pulse,
     double first_line,
     double second_line
 
@@ -239,9 +240,9 @@ def get_first_hsync_loc(
     int num_eq_pulses,
     int prev_first_field,
     double last_field_offset_lines,
-    int prev_first_hsync_loc,
+    double prev_first_hsync_loc,
     double prev_hsync_diff,
-    int fallback_line0loc,
+    double fallback_line0loc,
     int fallback_is_first_field,
     int fallback_is_first_field_confidence,
 ):
@@ -603,7 +604,7 @@ def get_first_hsync_loc(
         ) * meanlinelen
     )
 
-    cdef int estimated_hsync_with_offset
+    cdef double estimated_hsync_with_offset
     cdef bint used_estimated_hsync = 0
     if (
         # if there are no valid sync distances
@@ -621,7 +622,7 @@ def get_first_hsync_loc(
         if prev_hsync_diff <= .5 and prev_hsync_diff >= -.5:
             # TODO: determine when to add or subtract the prev_hsync_diff
             #       maybe this can be based on difference in tape speed, add if slower, subtract if faster
-            estimated_hsync_with_offset = round_to_int(estimated_hsync_loc + meanlinelen * prev_hsync_diff)
+            estimated_hsync_with_offset = estimated_hsync_loc + meanlinelen * prev_hsync_diff
         else:
             estimated_hsync_with_offset = estimated_hsync_loc
         
@@ -799,14 +800,14 @@ def valid_pulses_to_linelocs(
     """
 
     # Lists to fill
-    cdef int[::1] validpulses = np.sort(np.asarray(
+    cdef double[::1] validpulses = np.sort(np.asarray(
         [
             p[1].start
             for p in validpulses_in
-        ], dtype=np.int32, order='c'
+        ], dtype=np.double, order='c'
     ))
-    cdef int[::1] line_locations = np.empty((proclines), dtype=np.int32, order='c')
-    cdef int[::1] line_location_errs = np.full(proclines, 0, dtype=np.int32, order='c')
+    cdef double[::1] line_locations = np.empty((proclines), dtype=np.double, order='c')
+    cdef stdint.uint8_t[::1] line_location_errs = np.full(proclines, 0, dtype=np.uint8, order='c')
 
     cdef Py_ssize_t line_index
     cdef Py_ssize_t pulse_search_index
@@ -815,7 +816,7 @@ def valid_pulses_to_linelocs(
     cdef double current_distance_from_pulse_to_line
     cdef double next_observed_distance_between_pulse_and_line
     cdef double smallest_distance_observed_from_pulse_to_line
-    cdef int current_pulse_sample_location
+    cdef double current_pulse_sample_location
 
     cdef Py_ssize_t current_pulse_index = 0
     cdef Py_ssize_t validpulses_len = len(validpulses)
@@ -831,7 +832,7 @@ def valid_pulses_to_linelocs(
     max_allowed_distance_between_pulse_and_line = meanlinelen / 1.5
     for line_index in range(0, proclines):
         # Start by setting this line's sample location to the expected location relative to the reference line
-        line_locations[line_index] = round_to_int(reference_pulse + meanlinelen * (line_index - reference_line))
+        line_locations[line_index] = reference_pulse + meanlinelen * (line_index - reference_line)
 
         # search for the closest pulse, pulse locations are assumed to be sorted
         if current_pulse_index < validpulses_len:
@@ -889,7 +890,7 @@ cdef inline double round_nearest_line_loc(double line_number) nogil:
     return round(0.5 * round(line_number / 0.5) * 10) / 10.0
 
 @cython.boundscheck(False)
-def refine_linelocs_hsync(field, int[::1] linebad, double hsync_threshold):
+def refine_linelocs_hsync(field, stdint.uint8_t[::1] linebad, double hsync_threshold):
     """Refine the line start locations using horizontal sync data."""
 
     # Original used a copy here which resulted in a list.
