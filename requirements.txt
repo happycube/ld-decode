@@ -9,3 +9,4 @@ sounddevice
 noisereduce>=2.0.0
 rocket-fft>=0.2.5
 pyzmq
+setproctitle

@@ -7,6 +7,8 @@ from fractions import Fraction
 from math import log, pi, sqrt, ceil, floor, atan2, log1p
 from typing import Tuple
 from time import perf_counter
+from setproctitle import setproctitle
+from multiprocessing import current_process
 import sys
 
 import numpy as np
@@ -1697,6 +1699,7 @@ class HiFiDecode:
     def hifi_decode_worker(
         decoder_in_queue, decoder_out_queue, decode_options, standard
     ):
+        setproctitle(current_process().name)
         measure_perf = False
         decoder = HiFiDecode(decode_options)
         decoder.standard = standard
