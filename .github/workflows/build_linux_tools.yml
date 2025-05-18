@@ -35,7 +35,7 @@ jobs:
           dnf install --assumeyes --nogpgcheck https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm
           dnf install --assumeyes --nogpgcheck https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm https://mirrors.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-$(rpm -E %rhel).noarch.rpm
           FORCE_DNF=1 /usr/bin/crb enable
-          dnf --assumeyes install git file qt5-qtbase-devel qwt-qt5-devel fftw-devel ffmpeg-devel ffmpeg pkgconf-pkg-config make cmake sox python3-pip gcc-c++ python3-devel
+          dnf --assumeyes install git file xz qt5-qtbase-devel qwt-qt5-devel fftw-devel ffmpeg-devel ffmpeg pkgconf-pkg-config make cmake sox python3-pip gcc-c++ python3-devel
 
       - uses: actions/checkout@v4
         with:
