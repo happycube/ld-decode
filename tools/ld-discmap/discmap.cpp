@@ -161,7 +161,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
             m_frames[frameNumber].vbiFrameNumber(ldDecodeMetaData->convertClvTimecodeToFrameNumber(clvTimecode));
 
             // Check for CLV timecode offset frame (actually, this marks the frame
-            // that preceeds the jump)
+            // that precedes the jump)
             // There will be a one frame time-code jump after each frame marked
             // by this check
             if (!m_isDiscPal) {
@@ -186,7 +186,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
 
             // Does the current frame have a frame number (and is not lead in/out)?
             if (m_frames[frameNumber].vbiFrameNumber() == -1 && !m_frames[frameNumber].isLeadInOrOut()) {
-                // Get the phaseID of the preceeding frame (with underflow protection)
+                // Get the phaseID of the preceding frame (with underflow protection)
                 qint32 lastPhase2 = -1;
                 if (frameNumber > 0) lastPhase2 = ldDecodeMetaData->getField(
                             ldDecodeMetaData->getSecondFieldNumber(frameNumber)).fieldPhaseID; // -1
@@ -200,7 +200,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
                 if (frameNumber < m_numberOfFrames - 1) nextPhase1 = ldDecodeMetaData->getField(
                             ldDecodeMetaData->getFirstFieldNumber(frameNumber + 2)).fieldPhaseID; // +1
 
-                // Work out what the preceeding phase is expected to be
+                // Work out what the preceding phase is expected to be
                 qint32 expectedLastPhase;
                 qint32 expectedNextPhase;
                 qint32 expectedIntraPhase;
@@ -243,7 +243,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
                          }
                     } else {
                         // Probably not a pull-down frame
-                        qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "is not in phase sequence with the preceeding frame!";
+                        qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "is not in phase sequence with the preceding frame!";
                     }
                 } else {
                     // Probably not a pull-down frame
@@ -289,7 +289,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     qDebug() << "Performing a frame quality analysis for each frame";
     for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
         // If the frame following the current one has a lower VBI number, give the current
-        // frame a quality penalty as the likelyhood the player skipped is higher
+        // frame a quality penalty as the likelihood the player skipped is higher
         double penaltyPercent = 0;
         if (frameNumber < m_numberOfFrames - 1) {
             if (vbiData[frameNumber + 1].picNo < vbiData[frameNumber].picNo) penaltyPercent = 80.0;
@@ -507,7 +507,7 @@ bool DiscMap::isClvOffset(qint32 frameNumber) const
 
 // Return true if the phase of the frame is correct according to the leading and trailing frames
 // Note: This checks that:
-//  The second field of the preceeding frame phase is -1 from the first field of the current frame
+//  The second field of the preceding frame phase is -1 from the first field of the current frame
 //  The second field of the current frame is -1 from the first field of the following frame
 bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
 {
@@ -518,14 +518,14 @@ bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
         return false;
     }
 
-    // Check that the phase of the preceeding field and the first field
+    // Check that the phase of the preceding field and the first field
     // of the current frame are in sequence
     if (frameNumber > 0) { // not the first frame
         expectedNextPhase = m_frames[frameNumber - 1].secondFieldPhase() + 1;
         if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
         if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
         if (m_frames[frameNumber].firstFieldPhase() != expectedNextPhase) {
-            qDebug() << "Frame number" << frameNumber << "phase sequence does not match preceeding frame! -"
+            qDebug() << "Frame number" << frameNumber << "phase sequence does not match preceding frame! -"
             << expectedNextPhase << "expected but got" << m_frames[frameNumber].firstFieldPhase();
             return false;
         }
@@ -547,7 +547,7 @@ bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
     return true;
 }
 
-// Return true if the phase of the frame is the same as the preceeding frame
+// Return true if the phase of the frame is the same as the preceding frame
 bool DiscMap::isPhaseRepeating(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
@@ -589,10 +589,10 @@ void DiscMap::sort()
 {
     // Here we sort the disc map (m_frames) using frame numbers.  If a frame is NTSC CAV pull-down
     // it will not have a frame number - the only thing we can do is sort it so the
-    // pull-downs are sorted following the preceeding numbered frame (which should keep
+    // pull-downs are sorted following the preceding numbered frame (which should keep
     // them in the right place).
     //
-    // Note that the stuct has an overloaded < operator that controls the sort comparison
+    // Note that the struct has an overloaded < operator that controls the sort comparison
     // (see the .h file)
     std::sort(m_frames.begin(), m_frames.end());
 
@@ -651,7 +651,7 @@ qint32 DiscMap::getVideoFieldLength()
 }
 
 // Method to get the current audio field length (in bytes) from the metadata
-// Note: This acutally varies from field to field, so this provides
+// Note: This actually varies from field to field, so this provides
 // a best guess
 qint32 DiscMap::getApproximateAudioFieldLength()
 {
@@ -793,7 +793,7 @@ bool DiscMap::saveTargetMetadata(QFileInfo outputFileInfo)
                         secondSourceMetadata.vbi.vbiData[0], secondSourceMetadata.vbi.vbiData[1], secondSourceMetadata.vbi.vbiData[2]);
 
                 if (vbi.picNo != m_frames[frameNumber].vbiFrameNumber()) {
-                    qInfo() << "Warning: Updated VBI frame number for frame" << m_frames[frameNumber].vbiFrameNumber() << "has been corrupted by exisiting VBI data - overwriting all VBI for frame";
+                    qInfo() << "Warning: Updated VBI frame number for frame" << m_frames[frameNumber].vbiFrameNumber() << "has been corrupted by existing VBI data - overwriting all VBI for frame";
                     firstSourceMetadata.vbi.vbiData[0] = 0;
                 }
             } else {

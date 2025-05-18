@@ -108,7 +108,7 @@ def calclinelen(SysParams, mult, mhz):
 
     return int(nb_round(SysParams["line_period"] * mhz * mult))
 
-# Compute dictionary entries for things tht use FSC, etc.
+# Compute dictionary entries for things that use FSC, etc.
 
 # In color NTSC, the line period was changed from 63.5 to 227.5 color cycles,
 # which works out to 63.555(with a bar on top) usec
@@ -285,9 +285,9 @@ class RFDecode:
         """
 
         self.blocklen     = blocklen
-        self.blockcut     = 1024 
+        self.blockcut     = 1024
         self.blockcut_end = 0
-        
+
         self.system       = system
 
         self.setupcount   = 0
@@ -336,7 +336,7 @@ class RFDecode:
 
         deemp = list(self.DecoderParams["video_deemp"])
 
-        # note that deemp[0] is the t1 (high freuqency) coefficient, and 
+        # note that deemp[0] is the t1 (high freuqency) coefficient, and
         # deemp[1] is the t2 (low frequency) one.  These are passed in as
         # microseconds, but are converted to seconds here.
 
@@ -390,7 +390,7 @@ class RFDecode:
                                    (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half]
 
             # This analog audio bandpass filter is an approximation of
-            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm, 
+            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm,
             # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
             # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
 
@@ -454,11 +454,11 @@ class RFDecode:
     # Lambda-scale functions used to simplify following filter builders
 
     # Split out the frequency list given to the filter builder
-    def freqrange(self, f1, f2): 
+    def freqrange(self, f1, f2):
         return [f1 / self.freq_hz_half, f2 / self.freq_hz_half]
 
     # Like freqrange, but for notch filters
-    def notchrange(self, f, notchwidth, hz = False): 
+    def notchrange(self, f, notchwidth, hz = False):
         return [
             (f - notchwidth) / (self.freq_hz_half if hz else self.freq_half),
             (f + notchwidth) / (self.freq_hz_half if hz else self.freq_half)
@@ -507,7 +507,7 @@ class RFDecode:
                 btype="bandstop",
             )
             SF["Fcutl"] = filtfft(cut_left, self.blocklen)
-            
+
             cut_right = sps.butter(
                 DP["audio_notchorder"],
                 self.notchrange(SP["audio_rfreq"], DP['audio_notchwidth'], True),
@@ -549,7 +549,7 @@ class RFDecode:
 
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
-        
+
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
         SF["F05_offset"] = 32 # Reduced because filtfft is half-strength on FIR
 
@@ -670,7 +670,7 @@ class RFDecode:
             """ This routine works around an 'interesting' issue seen with LD-V4300D players and
                 some PAL digital audio disks, where there is a signal somewhere between 8.47 and 8.57mhz.
 
-                The idea here is to look for anomolies (3 std deviations) and snip them out of the
+                The idea here is to look for anomalies (3 std deviations) and snip them out of the
                 FFT.  There may be side effects, however, but generally minor compared to the
                 'wibble' itself and only in certain cases.
             """
@@ -1211,9 +1211,9 @@ class DemodCache:
         # transpose the cache by key, not block
         # This is a list of entries in the output from the threaded
         # demodblock function that if they exist is to be merged together
-        # to form contigous arrays for further processing. This excludes "fft"
+        # to form contiguous arrays for further processing. This excludes "fft"
         # as while that is contained in the output, it is only there so
-        # it can be re-used case mtf checking fails and is not used later and
+        # it can be reused case mtf checking fails and is not used later and
         # thus does not need to be concatenated.
         t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
@@ -2486,7 +2486,7 @@ class Field:
             if not self.isFirstField:
                 linecount += self.rf.SysParams["field_lines"][0]
 
-            # Now compute the # of audio samples that should be written, and then the 
+            # Now compute the # of audio samples that should be written, and then the
             # location of that relative to the current line
             samples_per_line = (self.rf.SysParams['line_period'] / 1000000) / (1 / audio)
 
@@ -2495,7 +2495,7 @@ class Field:
 
             if audsamp_offset > .5:
                 audio_offset = (1 - audsamp_offset) * (1 / audio)
-            else: 
+            else:
                 audio_offset = -audsamp_offset * (1 / audio)
         else:
             # Either analog audio is disabled, or we're using hsync-locked sampling
@@ -2765,7 +2765,7 @@ class Field:
         errlistc = errlist.copy()
         lineoffset = -field.lineoffset
 
-        # Remove dropouts occuring before the start of the frame so they don't
+        # Remove dropouts occurring before the start of the frame so they don't
         # cause the rest to be skipped
         curerr = errlistc.pop(0)
         while len(errlistc) > 0 and curerr[0] < field.linelocs[field.lineoffset]:
@@ -3562,10 +3562,10 @@ class LDdecode:
             cut = field.data['video']['demod'][ls]
             freq = np.percentile(cut, 50 if len(wl) == 3 else wl[3])
             freq_ire = field.rf.hztoire(freq, spec=True)
-            
+
             if inrange(freq_ire, 95, 110):
                 ire100_hzs.append(freq)
-            
+
         for l in range(12, self.output_lines):
             lsa = field.lineslice(l, 0.25, 4)
 
@@ -3601,7 +3601,7 @@ class LDdecode:
             fftdata = np.fft.fft(blk)
             filtdata = np.fft.ifft(fftdata * self.rf.Filters['AC3']).real
             odata = self.AC3Collector.cut(filtdata)
-            odata = np.clip(odata / 64, -100, 100) 
+            odata = np.clip(odata / 64, -100, 100)
 
             self.outfile_ac3.write(np.int8(odata))
 
@@ -3648,7 +3648,7 @@ class LDdecode:
 
         rv['field'] = None
         rv['offset'] = None
-    
+
         readloc = int(start - self.rf.blockcut)
         if readloc < 0:
             readloc = 0
@@ -3666,7 +3666,7 @@ class LDdecode:
         if rawdecode is None:
             # logger.info("Failed to demodulate data")
             return None, None
-        
+
         f = self.FieldClass(
             self.rf,
             rawdecode,
@@ -3740,7 +3740,7 @@ class LDdecode:
                 # ... but if the first call, this is empty
                 if len(self.threadreturn) > 0:
                     f, offset = self.threadreturn['field'], self.threadreturn['offset']
-            
+
             # Start new thread
             self.threadreturn = {}
             if f and f.valid:
@@ -3760,7 +3760,7 @@ class LDdecode:
                 self.decodethread.start()
             else:
                 self.decodefield(*df_args)
-            
+
             # process previous run
             if f:
                 self.fdoffset += offset
@@ -3772,8 +3772,8 @@ class LDdecode:
                 # Downscaling is time consuming, but currently things are
                 # blocking on the decode thread started above finishing
                 picture, audio, efm = f.downscale(
-                    linesout=self.output_lines, 
-                    final=True, 
+                    linesout=self.output_lines,
+                    final=True,
                     audio=self.analog_audio,
                     lastfieldwritten=self.lastFieldWritten,
                 )
@@ -3824,7 +3824,7 @@ class LDdecode:
                     done = True
                     fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
                     fieldlength /= f.inlinelen
-                    if ((f.sync_confidence < 50) and not 
+                    if ((f.sync_confidence < 50) and not
                          inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
                         logger.warning("WARNING: Possible player skip detected - check output")
 
@@ -3839,7 +3839,7 @@ class LDdecode:
 
         if f is None or f.valid is False:
             return None
-        
+
         if f is not None and self.fname_out is not None:
             # Only write a FirstField first
             if len(self.fieldinfo) == 0 and not f.isFirstField:
@@ -3957,7 +3957,7 @@ class LDdecode:
 
         if f.isFirstField:
             # compute IRE50 from field1 l13
-            # Unforunately this is too short to get a 50IRE RF level
+            # Unfortunately this is too short to get a 50IRE RF level
             wl_slice = f.lineslice_tbc(13, 4.7 + 15.5, 3)
             metrics["greyPSNR"] = self.calcpsnr(f, wl_slice)
             metrics["greyIRE"] = nb_mean(f.output_to_ire(f.dspicture[wl_slice]))
@@ -4191,7 +4191,7 @@ class LDdecode:
                         outstr += f"Timecode {disk_TimeCode} "
                     elif disk_Frame:
                         outstr += f"Frame #{disk_Frame} "
-                        
+
 
                     if special is not None:
                         outstr += special

@@ -125,7 +125,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
     }
 
     if (noAudio) {
-        qInfo() << "-no-audio selected.  No analogue audio output wil be written.";
+        qInfo() << "-no-audio selected.  No analogue audio output will be written.";
     }
 
     qInfo() << "Writing output video and metadata information...";
@@ -148,7 +148,7 @@ void DiscMapper::removeLeadInOut(DiscMap &discMap)
         if (discMap.vbiFrameNumber(frameNumber) == 0) discMap.debugFrameDetails(frameNumber);
 
         if (!discMap.isLeadInOut(frameNumber) && discMap.isDiscCav() && discMap.vbiFrameNumber(frameNumber) == 0) {
-            qInfo() << "Warning: Frame with illegal CAV frame number of 0 found... Assuming illegal leadin and deleting.";
+            qInfo() << "Warning: Frame with illegal CAV frame number of 0 found... Assuming illegal lead in and deleting.";
             discMap.setMarkedForDeletion(frameNumber);
             leadInOutCounter++;
         }
@@ -358,7 +358,7 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
             for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
                 // Does the current frameNumber's VBI match the VBI in the duplicated frame list?
                 if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
-                    // Add the frame number ot the duplicate disc map address list
+                    // Add the frame number to the duplicate disc map address list
                     discMapDuplicateAddress.append(frameNumber);
 //                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
 //                                duplicatedFrameList[i] <<
@@ -529,7 +529,7 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                         }
                     }
                 } else {
-                    // Check if this is a CLV IEC ammendment 2 timecode gap
+                    // Check if this is a CLV IEC amendment 2 timecode gap
                     if (!discMap.isClvOffset(frameNumber)) {
                         // Not a CLV offset frame
                         qint32 gapLength = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
@@ -807,14 +807,3 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
     qInfo() << "Target video metadata saved";
     return true;
 }
-
-
-
-
-
-
-
-
-
-
-

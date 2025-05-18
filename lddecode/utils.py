@@ -215,7 +215,7 @@ def load_unpacked_data_float32(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 4)
 
 
-# This is for the .r30 format I did in ddpack/unpack.c.  Depricated but I still have samples in it.
+# This is for the .r30 format I did in ddpack/unpack.c.  Deprecated but I still have samples in it.
 def load_packed_data_3_32(infile, sample, readlen):
     start = (sample // 3) * 4
     offset = sample % 3
@@ -530,17 +530,17 @@ def ac3_pipe(outname: str):
     logfp = open(f"{outname + '.log'}", 'w')
 
     # This is done in reverse order to allow for pipe building
-    processes.append(subprocess.Popen(cmd3.split(' '), 
+    processes.append(subprocess.Popen(cmd3.split(' '),
                                       stdin=subprocess.PIPE,
                                       stdout=logfp,
                                       stderr=subprocess.STDOUT))
 
-    processes.append(subprocess.Popen(cmd2.split(' '), 
-                                      stdin=subprocess.PIPE, 
+    processes.append(subprocess.Popen(cmd2.split(' '),
+                                      stdin=subprocess.PIPE,
                                       stdout=processes[-1].stdin))
 
-    processes.append(subprocess.Popen(cmd1.split(' '), 
-                                      stdin=subprocess.PIPE, 
+    processes.append(subprocess.Popen(cmd1.split(' '),
+                                      stdin=subprocess.PIPE,
                                       stdout=processes[-1].stdin))
 
     return processes, processes[-1].stdin
