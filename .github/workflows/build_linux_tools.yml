@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: oraclelinux:8
-      options: --cap-add SYS_ADMIN --cap-add MKNOD --device /dev/fuse:mrw
+      options: --cap-add SYS_ADMIN --cap-add MKNOD --device /dev/fuse:mrw --security-opt apparmor:unconfined --privileged
 
     steps:
       - name: Set up DNF download cache
