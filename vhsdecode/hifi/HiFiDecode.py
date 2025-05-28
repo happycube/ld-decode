@@ -787,7 +787,11 @@ class HiFiDecode:
         self.gain = options["gain"]
 
         self.input_rate: int = int(options["input_rate"])
-        self.if_rate: int = 2**23  # needs to be a power of 2 for effcient fft
+        if self.options["demod_type"] == DEMOD_HILBERT:
+            self.if_rate: int = 2**23  # needs to be a power of 2 for effcient fft
+        else:
+            self.if_rate: int = self.input_rate # do not resample rf when doing quadrature demodulation
+
         self.audio_rate: int = 192000
         self.audio_final_rate: int = int(options["audio_rate"])
 
@@ -1636,20 +1640,27 @@ class HiFiDecode:
         # Do a bandpass filter to remove any the video components from the signal.
         if measure_perf:
             start_bandpassRF = perf_counter()
+
         rf_data = self.bandpassRF.work(rf_data)
         if measure_perf:
             end_bandpassRF = perf_counter()
+
         rf_data = rf_data.astype(REAL_DTYPE, copy=False)
 
         # resample from input sample rate to if sample rate
         if measure_perf:
             start_if_resampler = perf_counter()
-        rf_data_resampled = samplerate_resample(
-            rf_data,
-            self.ifresample_numerator,
-            self.ifresample_denominator,
-            converter_type=self.if_resampler_converter,
-        )
+
+        if self.options["demod_type"] == DEMOD_HILBERT:
+            rf_data_resampled = samplerate_resample(
+                rf_data,
+                self.ifresample_numerator,
+                self.ifresample_denominator,
+                converter_type=self.if_resampler_converter,
+            )
+        else:
+            rf_data_resampled = rf_data
+
         if measure_perf:
             end_if_resampler = perf_counter()
 
