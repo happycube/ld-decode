@@ -10,6 +10,7 @@ from time import perf_counter
 from setproctitle import setproctitle
 from multiprocessing import current_process
 import sys
+from functools import cache
 
 import numpy as np
 import numba
@@ -223,10 +224,26 @@ class AFEFilterable:
 
 
 class FMdemod:
-    def __init__(self, sample_rate, carrier_freerun, type=0):
-        self.samp_rate = int(sample_rate)
+    def __init__(self, sample_rate, carrier_center, type=0):
+        self.samp_rate = np.int32(sample_rate)
         self.type = type
-        self.carrier = carrier_freerun
+        self.carrier = np.int32(carrier_center)
+
+        quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.samp_rate  / 2)
+        self.quadrature_lp_b = np.float32(quadrature_lp_b)
+        self.quadrature_lp_a = np.float32(quadrature_lp_a)
+
+    @staticmethod
+    @cache
+    def gen_i_oscillator(sample_rate, carrier_center, chunk_size):
+        t = np.arange(chunk_size) / sample_rate
+        return np.cos(2 * np.pi * carrier_center * t, dtype=np.float32)  # In-phase
+    
+    @staticmethod
+    @cache
+    def gen_q_oscillator(sample_rate, carrier_center, chunk_size):
+        t = np.arange(chunk_size) / sample_rate
+        return -np.sin(2 * np.pi * carrier_center * t, dtype=np.float32)  # Quadrature (negative sign for proper rotation)
 
     def hhtdeFM(self, data):
         return FMdemod.inst_freq(data, self.samp_rate)
@@ -355,21 +372,21 @@ class FMdemod:
             # FMdemod.unwrap
             ddmod = (
                 (dd + pi) % (2 * pi)
-            ) - pi  #         ddmod = np.mod(dd + pi, 2 * pi) - pi
+            ) - pi  #                                      ddmod = np.mod(dd + pi, 2 * pi) - pi
             if (
                 ddmod == -pi and dd > 0
-            ):  #                 to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
+            ):  #                                          to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
                 ddmod = pi  #                              ddmod[to_pi_locations] = pi
             ph_correct = ddmod - dd  #                     ph_correct = ddmod - dd
             if (
                 -dd if dd < 0 else dd
-            ) < discont:  #       to_zero_locations = np.where(np.abs(dd) < discont)
+            ) < discont:  #                                to_zero_locations = np.where(np.abs(dd) < discont)
                 ph_correct = (
-                    0  #                          ph_correct[to_zero_locations] = 0
+                    0  #                                   ph_correct[to_zero_locations] = 0
                 )
             ph_correct = (
                 ph_correct_prev + ph_correct
-            )  #   p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+            )  #                                           p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
             # FMdemod.unwrap_hilbert
             instantaneous_frequency[i - 1] = (
@@ -379,6 +396,67 @@ class FMdemod:
             ph_correct_prev = ph_correct
             i += 1
 
+    @staticmethod
+    @njit(
+        [(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, NumbaAudioArray)],
+        cache=True, fastmath=True, nogil=True
+    )
+    def mix_iq(in_data, i_signal, q_signal, lo_i, lo_q):
+        for i in range(len(in_data)):
+            i_signal[i] = in_data[i] * lo_i[i]
+            q_signal[i] = in_data[i] * lo_q[i]
+
+    @staticmethod
+    @njit(
+        [(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32, numba.types.int32)],
+        cache=True, fastmath=True, nogil=True
+    )
+    def iq_unwrap(i_filtered, q_filtered, demod, sample_rate, carrier):
+        # Optimized implementation of:
+        # phase = np.arctan2(q_filtered, i_filtered)
+        # inst_freq = np.diff(np.unwrap(phase)) / (2 * pi * (1 / fs))
+        # demod = inst_freq - f_center
+
+        # unwrap and diff should happen as float64 to avoid accumulating error
+        prev_angle = atan2(np.float64(q_filtered[0]), np.float64(i_filtered[0]))
+        prev_unwrapped = prev_angle
+
+        for i in range(1, len(i_filtered)):
+            current_angle = atan2(np.float64(q_filtered[i]), np.float64(i_filtered[i]))
+            delta = current_angle - prev_angle
+
+            if delta > pi:
+                corrected = current_angle - 2 * pi
+            elif delta < -pi:
+                corrected = current_angle + 2 * pi
+            else:
+                corrected = current_angle 
+    
+            unwrapped = prev_unwrapped + (corrected - prev_angle)
+            diff = unwrapped - prev_unwrapped
+
+            demod[i-1] = diff / (2 * pi * (1 / sample_rate)) - carrier
+
+            prev_angle = current_angle
+            prev_unwrapped = unwrapped
+
+    def fm_quad_demodulate(self, in_data, out_data):
+        # Mix to baseband
+        i_signal = np.empty_like(in_data)
+        q_signal = np.empty_like(in_data)
+        FMdemod.mix_iq(
+            in_data,
+            i_signal,
+            q_signal,
+            FMdemod.gen_i_oscillator(self.samp_rate, self.carrier, len(in_data)),
+            FMdemod.gen_q_oscillator(self.samp_rate, self.carrier, len(in_data))
+        )
+
+        i_filtered = lfilter(self.quadrature_lp_b, self.quadrature_lp_a, i_signal)
+        q_filtered = lfilter(self.quadrature_lp_b, self.quadrature_lp_a, q_signal)
+
+        FMdemod.iq_unwrap(i_filtered, q_filtered, out_data, self.samp_rate, self.carrier)
+
     def work(self, input: np.array, output: np.array):
         if self.type == 2:
             DecoderSharedMemory.copy_data_float32(
@@ -386,8 +464,8 @@ class FMdemod:
                 output,
                 len(output),
             )
-        # elif self.type == 1:
-        #    DecoderSharedMemory.copy_data_float32(self.hhtdeFM(input), output, len(output))
+        elif self.type == 1:
+            self.fm_quad_demodulate(input, output)
         else:
             if ROCKET_FFT_AVAILABLE:
                 FMdemod.demod_numba(np.float32(self.samp_rate), input, output)
