@@ -52,6 +52,9 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
     REAL_DTYPE,
+    DEMOD_QUADRATURE,
+    DEMOD_HILBERT,
+    DEFAULT_DEMOD,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 import io
@@ -111,15 +114,15 @@ parser.add_argument(
     dest="preview",
     action="store_true",
     default=False,
-    help="Use preview quality (faster and noisier)",
+    help="Preview the audio through your speakers as it decodes. Uses preview quality (faster and noisier)",
 )
 
 parser.add_argument(
-    "--original",
-    dest="original",
-    action="store_true",
-    default=False,
-    help="Use the same FM demod as vhs-decode",
+    "--demod",
+    dest="demod_type",
+    type=str.lower,
+    default=DEFAULT_DEMOD,
+    help=f"Set the FM demodulation type (default: {DEFAULT_DEMOD}) ({DEMOD_QUADRATURE}, {DEMOD_HILBERT})",
 )
 
 parser.add_argument(
@@ -1538,7 +1541,7 @@ def main() -> int:
         "format": "vhs" if not args.format_8mm else "8mm",
         "preview": args.preview,
         "preview_available": SOUNDDEVICE_AVAILABLE,
-        "original": args.original,
+        "demod_type": args.demod_type,
         "resampler_quality": resampler_quality if not args.preview else "low",
         "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
         "head_switching_interpolation": args.head_switching_interpolation == "on",

@@ -9,8 +9,8 @@ from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
 from multiprocessing import current_process
-import sys
 from functools import cache
+import sys
 
 import numpy as np
 import numba
@@ -57,6 +57,10 @@ DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 DEFAULT_RESAMPLER_QUALITY = "high"
 DEFAULT_FINAL_AUDIO_RATE = 48000
 REAL_DTYPE = np.float32
+
+DEMOD_QUADRATURE = "quadrature"
+DEMOD_HILBERT = "hilbert"
+DEFAULT_DEMOD = DEMOD_QUADRATURE
 
 BLOCKS_PER_SECOND = 2
 
@@ -224,7 +228,7 @@ class AFEFilterable:
 
 
 class FMdemod:
-    def __init__(self, sample_rate, carrier_center, type=0):
+    def __init__(self, sample_rate, carrier_center, type):
         self.samp_rate = np.int32(sample_rate)
         self.type = type
         self.carrier = np.int32(carrier_center)
@@ -245,44 +249,12 @@ class FMdemod:
         t = np.arange(chunk_size) / sample_rate
         return -np.sin(2 * np.pi * carrier_center * t, dtype=np.float32)  # Quadrature (negative sign for proper rotation)
 
-    def hhtdeFM(self, data):
-        return FMdemod.inst_freq(data, self.samp_rate)
-
-    @staticmethod
-    def htdeFM(data, samp_rate):
-        return unwrap_hilbert(hilbert(data), samp_rate)
-
-    @staticmethod
-    def unwrap_hilbert(analytic_signal: np.array, sample_rate: REAL_DTYPE) -> np.array:
-        instantaneous_phase = FMdemod.unwrap(np.angle(analytic_signal))
-        instantaneous_frequency = (
-            np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
-        )
-        return instantaneous_frequency
-
-    @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
-    def unwrap(p: np.array, discont: float = pi) -> np.array:
-        dd = np.diff(p)
-        ddmod = np.mod(dd + pi, 2 * pi) - pi
-        to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
-        ddmod[to_pi_locations] = pi
-        ph_correct = ddmod - dd
-        to_zero_locations = np.where(np.abs(dd) < discont)
-        ph_correct[to_zero_locations] = 0
-        return p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
-
-    @staticmethod
-    def inst_freq(signal: np.ndarray, output: np.ndarray, sample_rate: REAL_DTYPE):
-        out = FMdemod.unwrap_hilbert(hilbert(signal.real), sample_rate)
-        DecoderSharedMemory.copy_data_float32(out, output, len(output))
-
     # Identical copy of the numba version without numba tag for fallback
     # since rocket-fft release doesn't work on python 3.13 yet
     # This isn't an ideal workaround, but works for now until
     # we can replace rocket-fft with something better.
     @staticmethod
-    def demod_python(sample_rate, signal, instantaneous_frequency):
+    def demod_hilbert_python(sample_rate, signal, instantaneous_frequency):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba comatibility with fft and ifft
         axis = -1
@@ -339,8 +311,14 @@ class FMdemod:
             i += 1
 
     @staticmethod
-    @njit(cache=True)
-    def demod_numba(sample_rate, signal, instantaneous_frequency):
+    @guvectorize(
+        [(numba.types.float32, NumbaAudioArray, NumbaAudioArray)],
+        "(),(n)->(n)",
+        cache=True,
+        fastmath=True,
+        nopython=True,
+    )
+    def demod_hilbert_numba(sample_rate, signal, instantaneous_frequency):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba comatibility with fft and ifft
         axis = -1
@@ -440,7 +418,7 @@ class FMdemod:
             prev_angle = current_angle
             prev_unwrapped = unwrapped
 
-    def fm_quad_demodulate(self, in_data, out_data):
+    def demod_quadrature(self, in_data, out_data):
         # Mix to baseband
         i_signal = np.empty_like(in_data)
         q_signal = np.empty_like(in_data)
@@ -458,19 +436,13 @@ class FMdemod:
         FMdemod.iq_unwrap(i_filtered, q_filtered, out_data, self.samp_rate, self.carrier)
 
     def work(self, input: np.array, output: np.array):
-        if self.type == 2:
-            DecoderSharedMemory.copy_data_float32(
-                self.htdeFM(input, self.samp_rate).astype(REAL_DTYPE),
-                output,
-                len(output),
-            )
-        elif self.type == 1:
-            self.fm_quad_demodulate(input, output)
-        else:
+        if self.type == DEMOD_HILBERT:
             if ROCKET_FFT_AVAILABLE:
-                FMdemod.demod_numba(np.float32(self.samp_rate), input, output)
+                FMdemod.demod_hilbert_numba(np.float32(self.samp_rate), input, output)
             else:
-                FMdemod.demod_python(np.float32(self.samp_rate), input, output)
+                FMdemod.demod_hilbert_python(np.float32(self.samp_rate), input, output)
+        elif self.type == DEMOD_QUADRATURE:
+            self.demod_quadrature(input, output)
 
 
 def tau_as_freq(tau):
@@ -769,7 +741,7 @@ class HiFiAudioParams:
     block_audio_final_size: int
     decode_mode: str
     preview: bool
-    original: bool
+    demod_type: str
     auto_fine_tune: bool
     format: str
     if_rate: int
@@ -945,7 +917,7 @@ class HiFiDecode:
             block_audio_final_size=self.block_audio_final_size,
             decode_mode=self.decode_mode,
             preview=options["preview"],
-            original=options["original"],
+            demod_type=options["demod_type"],
             auto_fine_tune=options["auto_fine_tune"],
             format=options["format"],
             if_rate=self.if_rate,
@@ -1127,15 +1099,8 @@ class HiFiDecode:
     def get_carrier_filters(self, standard):
         afeL = AFEFilterable(standard, self.if_rate, 0)
         afeR = AFEFilterable(standard, self.if_rate, 1)
-        if self.options["preview"]:
-            fmL = FMdemod(self.if_rate, standard.LCarrierRef, 1)
-            fmR = FMdemod(self.if_rate, standard.RCarrierRef, 1)
-        elif self.options["original"]:
-            fmL = FMdemod(self.if_rate, standard.LCarrierRef, 2)
-            fmR = FMdemod(self.if_rate, standard.RCarrierRef, 2)
-        else:
-            fmL = FMdemod(self.if_rate, standard.LCarrierRef, 0)
-            fmR = FMdemod(self.if_rate, standard.RCarrierRef, 0)
+        fmL = FMdemod(self.if_rate, standard.LCarrierRef, self.options["demod_type"])
+        fmR = FMdemod(self.if_rate, standard.RCarrierRef, self.options["demod_type"])
 
         return afeL, afeR, fmL, fmR
 

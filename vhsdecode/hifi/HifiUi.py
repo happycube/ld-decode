@@ -44,6 +44,9 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_NR_ENVELOPE_GAIN,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
+    DEMOD_QUADRATURE,
+    DEMOD_HILBERT,
+    DEFAULT_DEMOD,
 )
 
 
@@ -61,6 +64,7 @@ class MainUIParameters:
         self.standard: str = "PAL"
         self.format: str = "VHS"
         self.audio_mode: str = "Stereo"
+        self.demod_type: str = DEFAULT_DEMOD.capitalize()
         self.input_sample_rate: float = 40.0
         self.input_file: str = ""
         self.output_file: str = ""
@@ -82,6 +86,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
     values.audio_mode = "Stereo"
+    values.demod_type = decode_options["demod_type"].capitalize()
     values.input_sample_rate = decode_options["input_rate"]
     values.input_file = decode_options["input_file"]
     values.output_file = decode_options["output_file"]
@@ -98,7 +103,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "standard": "p" if values.standard == "PAL" else "n",
         "format": "vhs" if values.format == "VHS" else "8mm",
         "preview": values.preview,
-        "original": False,
+        "demod_type": values.demod_type.lower(),
         "noise_reduction": values.noise_reduction,
         "auto_fine_tune": values.automatic_fine_tuning,
         "nr_side_gain": values.sidechain_gain * 100.0,
@@ -307,6 +312,14 @@ class HifiUi(QMainWindow):
         audio_mode_layout.addWidget(audio_mode_label)
         audio_mode_layout.addWidget(self.audio_mode_combo)
 
+        # Adds demodulation options
+        demod_type_layout = QHBoxLayout()
+        demod_type_label = QLabel("FM Demodulation Type:")
+        self.demod_type_combo = QComboBox(self)
+        self.demod_type_combo.addItems([DEMOD_QUADRATURE.capitalize(), DEMOD_HILBERT.capitalize()])
+        demod_type_layout.addWidget(demod_type_label)
+        demod_type_layout.addWidget(self.demod_type_combo)
+
         # adds input sample rate layout
         input_samplerate_layout = QHBoxLayout()
         input_samplerate_label = QLabel("Input Sample Rate MHz:")
@@ -343,6 +356,7 @@ class HifiUi(QMainWindow):
         middle_layout.addLayout(standard_layout)
         middle_layout.addLayout(format_layout)
         middle_layout.addLayout(audio_mode_layout)
+        middle_layout.addLayout(demod_type_layout)
         middle_layout.addLayout(samplerate_layout)
 
         # Bottom partition layout (horizontal)
@@ -474,6 +488,11 @@ class HifiUi(QMainWindow):
             self.audio_mode_combo.findText(values.audio_mode)
         )
 
+        self.demod_type_combo.setCurrentText(values.demod_type)
+        self.demod_type_combo.setCurrentIndex(
+            self.demod_type_combo.findText(values.demod_type)
+        )
+
         self.input_sample_rate = values.input_sample_rate / 1e6
         found_rate = False
         for i, rate in enumerate(self._input_combo_rates):
@@ -505,6 +524,7 @@ class HifiUi(QMainWindow):
         values.standard = self.standard_combo.currentText()
         values.format = self.format_combo.currentText()
         values.audio_mode = self.audio_mode_combo.currentText()
+        values.demod_type = self.demod_type_combo.currentText()
         values.input_sample_rate = self.input_sample_rate
         values.input_file = self.input_file
         values.output_file = self.output_file
