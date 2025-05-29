@@ -26,11 +26,9 @@ from scipy.signal import (
     find_peaks,
 )
 from scipy.interpolate import interp1d
-from scipy.signal import hilbert
 
 from noisereduce.spectralgate.nonstationary import SpectralGateNonStationary
 
-from lddecode.utils import unwrap_hilbert
 from vhsdecode.addons.FMdeemph import gen_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
@@ -56,7 +54,13 @@ DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 DEFAULT_RESAMPLER_QUALITY = "high"
 DEFAULT_FINAL_AUDIO_RATE = 48000
+
+# audio processing precision
 REAL_DTYPE = np.float32
+
+# demodulation section precision
+DEMOD_DTYPE_NP = np.float64
+DEMOD_DTYPE_NB = numba.types.float64
 
 DEMOD_QUADRATURE = "quadrature"
 DEMOD_HILBERT = "hilbert"
@@ -233,21 +237,18 @@ class FMdemod:
         self.type = type
         self.carrier = np.int32(carrier_center)
 
-        quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.samp_rate  / 2)
-        self.quadrature_lp_b = np.float32(quadrature_lp_b)
-        self.quadrature_lp_a = np.float32(quadrature_lp_a)
+        quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.samp_rate / 2)
+        self.quadrature_lp_b = DEMOD_DTYPE_NP(quadrature_lp_b)
+        self.quadrature_lp_a = DEMOD_DTYPE_NP(quadrature_lp_a)
 
     @staticmethod
     @cache
-    def gen_i_oscillator(sample_rate, carrier_center, chunk_size):
+    def get_iq_oscillators(sample_rate, carrier_center, chunk_size):
         t = np.arange(chunk_size) / sample_rate
-        return np.cos(2 * np.pi * carrier_center * t, dtype=np.float32)  # In-phase
-    
-    @staticmethod
-    @cache
-    def gen_q_oscillator(sample_rate, carrier_center, chunk_size):
-        t = np.arange(chunk_size) / sample_rate
-        return -np.sin(2 * np.pi * carrier_center * t, dtype=np.float32)  # Quadrature (negative sign for proper rotation)
+        return (
+            np.cos(2 * np.pi * carrier_center * t, dtype=DEMOD_DTYPE_NP), #  In-phase
+            -np.sin(2 * np.pi * carrier_center * t, dtype=DEMOD_DTYPE_NP)  # Quadrature (negative sign for proper rotation)
+        )
 
     # Identical copy of the numba version without numba tag for fallback
     # since rocket-fft release doesn't work on python 3.13 yet
@@ -320,7 +321,7 @@ class FMdemod:
     )
     def demod_hilbert_numba(sample_rate, signal, instantaneous_frequency):
         # hilbert transform adapted from signal.hilbert
-        # uses rocket-fft for to allow numba comatibility with fft and ifft
+        # uses rocket-fft for to allow numba compatibility with fft and ifft
         axis = -1
         N = signal.shape[axis]
         h = np.zeros(N, dtype=np.complex64)
@@ -372,68 +373,122 @@ class FMdemod:
             )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
 
             ph_correct_prev = ph_correct
-            i += 1
+            i += 1    
 
     @staticmethod
     @njit(
-        [(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, NumbaAudioArray)],
+        [(
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            NumbaAudioArray,
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.int32,
+            numba.types.int32
+        )],
         cache=True, fastmath=True, nogil=True
     )
-    def mix_iq(in_data, i_signal, q_signal, lo_i, lo_q):
-        for i in range(len(in_data)):
-            i_signal[i] = in_data[i] * lo_i[i]
-            q_signal[i] = in_data[i] * lo_q[i]
-
-    @staticmethod
-    @njit(
-        [(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray, numba.types.int32, numba.types.int32)],
-        cache=True, fastmath=True, nogil=True
-    )
-    def iq_unwrap(i_filtered, q_filtered, demod, sample_rate, carrier):
-        # Optimized implementation of:
+    def demod_quadrature(
+        in_rf,
+        out_demod,
+        i_osc,
+        q_osc,
+        filter_b,
+        filter_a,
+        sample_rate,
+        carrier
+    ):
+        # Numba optimized implementation of:
+        # 
+        # # mix in  i/q
+        # i_signal = in_rf * i_osc
+        # q_signal = in_rf * q_osc
+        #
+        # # low pass filter
+        # i_filtered = lfilter(filter_b, filter_a, i_signal)
+        # q_filtered = lfilter(filter_b, filter_a, q_signal)
+        # 
+        # # unwrap angles
         # phase = np.arctan2(q_filtered, i_filtered)
-        # inst_freq = np.diff(np.unwrap(phase)) / (2 * pi * (1 / fs))
-        # demod = inst_freq - f_center
+        # inst_freq = np.diff(np.unwrap(phase)) / (2 * pi * (1 / sample_rate))
+        # demod = inst_freq - carrier
 
-        # unwrap and diff should happen as float64 to avoid accumulating error
-        prev_angle = atan2(np.float64(q_filtered[0]), np.float64(i_filtered[0]))
+        # constants
+        two_pi: numba.types.Literal = 2*pi
+        diff_divisor = two_pi * (1/sample_rate)
+        order = len(filter_b) - 1
+
+        #
+        # low pass filter history
+        #
+        i_in_hist = np.zeros(order, dtype=np.float64)
+        q_in_hist = np.zeros(order, dtype=np.float64)
+        i_filtered_hist = np.zeros(order, dtype=np.float64)
+        q_filtered_hist = np.zeros(order, dtype=np.float64)
+
+        prev_angle = 0 # doesn't matter since the final chunks have overlap
         prev_unwrapped = prev_angle
 
-        for i in range(1, len(i_filtered)):
-            current_angle = atan2(np.float64(q_filtered[i]), np.float64(i_filtered[i]))
+        for i in range(1, len(in_rf) - order):
+            #
+            # mix in i/q
+            #
+            i_in = in_rf[i] * i_osc[i]
+            q_in = in_rf[i] * q_osc[i]
+
+            #
+            # low pass filter
+            #
+            i_filtered = filter_b[0] * i_in
+            q_filtered = filter_b[0] * q_in
+
+            f_idx = order - 1
+            next_f_idx = order
+            while f_idx >= 0:
+                i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx]
+                i_filtered -= filter_a[next_f_idx] * i_filtered_hist[f_idx]
+
+                q_filtered += filter_b[next_f_idx] * q_in_hist[f_idx]
+                q_filtered -= filter_a[next_f_idx] * q_filtered_hist[f_idx]
+
+                # Shift histories forward
+                if (next_f_idx < order):
+                    i_in_hist[next_f_idx] = i_in_hist[f_idx]
+                    i_filtered_hist[next_f_idx] = i_filtered_hist[f_idx]
+
+                    q_in_hist[next_f_idx] = q_in_hist[f_idx]
+                    q_filtered_hist[next_f_idx] = q_filtered_hist[f_idx]
+
+                next_f_idx = f_idx
+                f_idx -= 1
+
+            i_in_hist[0] = i_in
+            i_filtered_hist[0] = i_filtered
+
+            q_in_hist[0] = q_in
+            q_filtered_hist[0] = q_filtered
+
+            #
+            # unwrap angles
+            #
+            current_angle = atan2(q_filtered, i_filtered)
             delta = current_angle - prev_angle
 
             if delta > pi:
-                corrected = current_angle - 2 * pi
+                corrected = current_angle - two_pi
             elif delta < -pi:
-                corrected = current_angle + 2 * pi
+                corrected = current_angle + two_pi
             else:
                 corrected = current_angle 
     
             unwrapped = prev_unwrapped + (corrected - prev_angle)
             diff = unwrapped - prev_unwrapped
 
-            demod[i-1] = diff / (2 * pi * (1 / sample_rate)) - carrier
+            out_demod[i-1] = diff / diff_divisor - carrier
 
             prev_angle = current_angle
             prev_unwrapped = unwrapped
-
-    def demod_quadrature(self, in_data, out_data):
-        # Mix to baseband
-        i_signal = np.empty_like(in_data)
-        q_signal = np.empty_like(in_data)
-        FMdemod.mix_iq(
-            in_data,
-            i_signal,
-            q_signal,
-            FMdemod.gen_i_oscillator(self.samp_rate, self.carrier, len(in_data)),
-            FMdemod.gen_q_oscillator(self.samp_rate, self.carrier, len(in_data))
-        )
-
-        i_filtered = lfilter(self.quadrature_lp_b, self.quadrature_lp_a, i_signal)
-        q_filtered = lfilter(self.quadrature_lp_b, self.quadrature_lp_a, q_signal)
-
-        FMdemod.iq_unwrap(i_filtered, q_filtered, out_data, self.samp_rate, self.carrier)
 
     def work(self, input: np.array, output: np.array):
         if self.type == DEMOD_HILBERT:
@@ -442,7 +497,18 @@ class FMdemod:
             else:
                 FMdemod.demod_hilbert_python(np.float32(self.samp_rate), input, output)
         elif self.type == DEMOD_QUADRATURE:
-            self.demod_quadrature(input, output)
+            i_osc, q_osc = FMdemod.get_iq_oscillators(self.samp_rate, self.carrier, len(input))
+
+            FMdemod.demod_quadrature(
+                input,
+                output,
+                i_osc,
+                q_osc,
+                self.quadrature_lp_b,
+                self.quadrature_lp_a,
+                self.samp_rate,
+                self.carrier
+            )
 
 
 def tau_as_freq(tau):
@@ -1573,7 +1639,7 @@ class HiFiDecode:
         # demodulate
         if measure_perf:
             perf_measurements["start_demod"] = perf_counter()
-        audio = np.empty_like(filtered)
+        audio = np.empty(len(filtered), dtype=REAL_DTYPE)
         fm.work(filtered, audio)
         if measure_perf:
             perf_measurements["end_demod"] = perf_counter()
@@ -1645,7 +1711,7 @@ class HiFiDecode:
         if measure_perf:
             end_bandpassRF = perf_counter()
 
-        rf_data = rf_data.astype(REAL_DTYPE, copy=False)
+        rf_data = rf_data.astype(DEMOD_DTYPE_NP, copy=False)
 
         # resample from input sample rate to if sample rate
         if measure_perf:
