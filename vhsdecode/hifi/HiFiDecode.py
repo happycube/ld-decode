@@ -4,12 +4,16 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi, sqrt, ceil, floor, atan2, log1p
+from math import log, pi, sqrt, ceil, floor, atan2, log1p, cos, sin
 from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
 from multiprocessing import current_process
-from functools import cache
+from multiprocessing.shared_memory import SharedMemory
+import string
+from random import SystemRandom
+
+import atexit
 import sys
 
 import numpy as np
@@ -232,23 +236,16 @@ class AFEFilterable:
 
 
 class FMdemod:
-    def __init__(self, sample_rate, carrier_center, type):
+    def __init__(self, sample_rate, carrier_center, type, i_osc=None, q_osc=None):
         self.samp_rate = np.int32(sample_rate)
         self.type = type
         self.carrier = np.int32(carrier_center)
 
         quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.samp_rate / 2)
-        self.quadrature_lp_b = DEMOD_DTYPE_NP(quadrature_lp_b)
-        self.quadrature_lp_a = DEMOD_DTYPE_NP(quadrature_lp_a)
-
-    @staticmethod
-    @cache
-    def get_iq_oscillators(sample_rate, carrier_center, chunk_size):
-        t = np.arange(chunk_size) / sample_rate
-        return (
-            np.cos(2 * np.pi * carrier_center * t, dtype=DEMOD_DTYPE_NP), #  In-phase
-            -np.sin(2 * np.pi * carrier_center * t, dtype=DEMOD_DTYPE_NP)  # Quadrature (negative sign for proper rotation)
-        )
+        self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
+        self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
+        self.i_osc = i_osc
+        self.q_osc = q_osc
 
     # Identical copy of the numba version without numba tag for fallback
     # since rocket-fft release doesn't work on python 3.13 yet
@@ -497,13 +494,11 @@ class FMdemod:
             else:
                 FMdemod.demod_hilbert_python(np.float32(self.samp_rate), input, output)
         elif self.type == DEMOD_QUADRATURE:
-            i_osc, q_osc = FMdemod.get_iq_oscillators(self.samp_rate, self.carrier, len(input))
-
             FMdemod.demod_quadrature(
                 input,
                 output,
-                i_osc,
-                q_osc,
+                self.i_osc,
+                self.q_osc,
                 self.quadrature_lp_b,
                 self.quadrature_lp_a,
                 self.samp_rate,
@@ -845,17 +840,18 @@ class HiFiAudioParams:
 
 
 class HiFiDecode:
-    def __init__(self, options=None):
+    def __init__(self, options=None, is_main_process=True):
         if options is None:
             options = dict()
         self.options = options
+        self.is_main_process = is_main_process
         self.decode_mode = options["mode"]
         self.gain = options["gain"]
 
         self.input_rate: int = int(options["input_rate"])
         if self.options["demod_type"] == DEMOD_HILBERT:
             self.if_rate: int = 2**23  # needs to be a power of 2 for effcient fft
-        else:
+        elif self.options["demod_type"] == DEMOD_QUADRATURE:
             self.if_rate: int = self.input_rate # do not resample rf when doing quadrature demodulation
 
         self.audio_rate: int = 192000
@@ -1166,11 +1162,101 @@ class HiFiDecode:
             else newRC
         )
 
+    @staticmethod
+    @njit(
+        [(
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.float64,
+            numba.types.float64,
+            numba.types.int64,
+            numba.types.float64
+        )],
+        cache=True, fastmath=False, nogil=True
+    )
+    def _generate_iq_oscillators(i_left, q_left, i_right, q_right, carrier_left, carrier_right, size, sample_rate):
+        two_pi_left = 2 * pi * carrier_left
+        two_pi_right = 2 * pi * carrier_right
+
+        for i in range(size):
+            t = i / sample_rate
+
+            i_left[i] = cos(two_pi_left * t) #    In-phase
+            q_left[i] = -sin(two_pi_left * t) #   Quadrature (negative sign for proper rotation)
+            i_right[i] = cos(two_pi_right * t) #  In-phase
+            q_right[i] = -sin(two_pi_right * t) # Quadrature (negative sign for proper rotation)
+    
+    def _init_iq_oscillators(self):
+        demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
+        
+        if self.is_main_process:
+            iq_size = self.blockSize
+            shared_memory_size = iq_size * demod_dtype_itemsize
+    
+            random_string = "_" + "".join(
+                SystemRandom().choice(string.ascii_lowercase + string.digits)
+                for _ in range(8)
+            )
+            
+            # store in shared memory so the static data can be reused among processes
+            self.i_osc_left_shm = SharedMemory(size=shared_memory_size, name=f"hifi_decoder_i_left{random_string}", create=True)
+            self.q_osc_left_shm = SharedMemory(size=shared_memory_size, name=f"hifi_decoder_q_left{random_string}", create=True)
+            self.i_osc_right_shm = SharedMemory(size=shared_memory_size, name=f"hifi_decoder_i_right{random_string}", create=True)
+            self.q_osc_right_shm = SharedMemory(size=shared_memory_size, name=f"hifi_decoder_q_right{random_string}", create=True)
+
+            self.options["i_osc_left"] = self.i_osc_left_shm.name
+            self.options["q_osc_left"] = self.q_osc_left_shm.name
+            self.options["i_osc_right"] = self.i_osc_right_shm.name
+            self.options["q_osc_right"] = self.q_osc_right_shm.name
+
+            atexit.register(self.i_osc_left_shm.unlink)
+            atexit.register(self.q_osc_left_shm.close)
+            atexit.register(self.q_osc_left_shm.unlink)
+            atexit.register(self.i_osc_right_shm.close)
+            atexit.register(self.i_osc_right_shm.unlink)
+            atexit.register(self.q_osc_right_shm.close)
+            atexit.register(self.q_osc_right_shm.unlink)
+            atexit.register(self.i_osc_left_shm.close)
+        else:
+            self.i_osc_left_shm = SharedMemory(name=self.options["i_osc_left"])
+            self.q_osc_left_shm = SharedMemory(name=self.options["q_osc_left"])
+            self.i_osc_right_shm = SharedMemory(name=self.options["i_osc_right"])
+            self.q_osc_right_shm = SharedMemory(name=self.options["q_osc_right"])
+
+        i_osc_left = np.ndarray(int(self.i_osc_left_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.i_osc_left_shm.buf, order="C")
+        q_osc_left = np.ndarray(int(self.q_osc_left_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.q_osc_left_shm.buf, order="C")
+        i_osc_right = np.ndarray(int(self.i_osc_right_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.i_osc_right_shm.buf, order="C")
+        q_osc_right = np.ndarray(int(self.q_osc_right_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.q_osc_right_shm.buf, order="C")
+
+        if self.is_main_process:
+            # generate i/q oscillators once and share among sub processes
+            HiFiDecode._generate_iq_oscillators(
+                i_osc_left,
+                q_osc_left,
+                i_osc_right,
+                q_osc_right,
+                self.standard.LCarrierRef,
+                self.standard.RCarrierRef,
+                iq_size,
+                np.float64(self.if_rate)
+            )
+
+        return i_osc_left, q_osc_left, i_osc_right, q_osc_right
+        
+
     def get_carrier_filters(self, standard):
         afeL = AFEFilterable(standard, self.if_rate, 0)
         afeR = AFEFilterable(standard, self.if_rate, 1)
-        fmL = FMdemod(self.if_rate, standard.LCarrierRef, self.options["demod_type"])
-        fmR = FMdemod(self.if_rate, standard.RCarrierRef, self.options["demod_type"])
+        
+        if self.options["demod_type"] == DEMOD_QUADRATURE:
+            i_osc_left, q_osc_left, i_osc_right, q_osc_right = self._init_iq_oscillators()
+            fmL = FMdemod(self.if_rate, standard.LCarrierRef, self.options["demod_type"], i_osc=i_osc_left, q_osc=q_osc_left)
+            fmR = FMdemod(self.if_rate, standard.RCarrierRef, self.options["demod_type"], i_osc=i_osc_right, q_osc=q_osc_right)
+        else:
+            fmL = FMdemod(self.if_rate, standard.LCarrierRef, self.options["demod_type"])
+            fmR = FMdemod(self.if_rate, standard.RCarrierRef, self.options["demod_type"])
 
         return afeL, afeR, fmL, fmR
 
@@ -1392,9 +1478,11 @@ class HiFiDecode:
             self.standard_original.RCarrierRef - 10e3,
         )
 
-        self.afeL, self.afeR, self.fmL, self.fmR = self.get_carrier_filters(
-            self.standard
-        )
+        # auto fine tune doesn't work with quadrature demodulation since the i/q oscillators are generated once, disabling for now
+        if self.options["demod_type"] == DEMOD_HILBERT:
+            self.afeL, self.afeR, self.fmL, self.fmR = self.get_carrier_filters(
+                self.standard
+            )
 
     def filterCarriers(self, data: np.array) -> Tuple[np.array, np.array]:
         return self.afeL.work(data), self.afeR.work(data)
@@ -1887,7 +1975,7 @@ class HiFiDecode:
     ):
         setproctitle(current_process().name)
         measure_perf = False
-        decoder = HiFiDecode(decode_options)
+        decoder = HiFiDecode(decode_options, is_main_process=False)
         decoder.standard = standard
 
         # @profile

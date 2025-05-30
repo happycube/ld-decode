@@ -1124,7 +1124,7 @@ async def decode_parallel(
     threads: int = 8,
     ui_t: Optional[AppWindow] = None,
 ):
-    decoder = HiFiDecode(options=decode_options)
+    decoder = HiFiDecode(options=decode_options, is_main_process=True)
     # TODO: reprocess data read in this step
     if bias_guess:
         LCRef, RCRef = guess_bias(
