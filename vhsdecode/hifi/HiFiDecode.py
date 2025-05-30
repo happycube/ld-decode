@@ -824,6 +824,7 @@ class HiFiAudioParams:
     headswitch_hz: int
     headswitch_drift_hz: int
     headswitch_cutoff_freq: int
+    headswitch_peak_prominence_limit: int
     headswitch_interpolation_padding: int
     headswitch_interpolation_neighbor_range: int
     hs_b: float
@@ -924,6 +925,11 @@ class HiFiDecode:
         self.headswitch_cutoff_freq = (
             25000  # filter cutoff frequency for peak detection
         )
+        # upper limit for peak promience which is used to widen the interpoation boundary
+        # when a peak is detected. Head switching peaks may exceed this number; however,
+        # the width of the interpolation will only be expanded up to this number.
+        # If there is noise that is a greater duration than this, it should probably be muted instead.
+        self.headswitch_peak_prominence_limit = 3
         # maximum seconds to widen the interpolation based on the strength of the peak
         #   setting too low prevents interpolation from covering the whole pulse
         #   setting too high causes audible artifacts where the interpolation occurs
@@ -1005,6 +1011,7 @@ class HiFiDecode:
             headswitch_hz=self.headswitch_hz,
             headswitch_drift_hz=self.headswitch_drift_hz,
             headswitch_cutoff_freq=self.headswitch_cutoff_freq,
+            headswitch_peak_prominence_limit=self.headswitch_peak_prominence_limit,
             headswitch_interpolation_padding=self.headswitch_interpolation_padding,
             headswitch_interpolation_neighbor_range=self.headswitch_interpolation_neighbor_range,
             hs_b=hs_b,
@@ -1355,44 +1362,44 @@ class HiFiDecode:
             audio_process_params.hs_b, audio_process_params.hs_a, audio
         )
         filtered_signal_abs = abs(filtered_signal)
+        filtered_signal_mean, filtered_signal_std_dev = HiFiDecode.mean_stddev(
+            filtered_signal
+        )
 
         # detect the peaks that align with the headswitching speed
         # peaks should align roughly to the frame rate of the video system
         # account for small drifts in the head switching pulse (shows up as the sliding dot on video)
         peak_distance_seconds = 1 / (
-            audio_process_params.headswitch_hz
-            + audio_process_params.headswitch_drift_hz
+            audio_process_params.headswitch_hz + audio_process_params.headswitch_drift_hz
         )
         peak_centers, peak_center_props = find_peaks(
             filtered_signal_abs,
-            distance=peak_distance_seconds
-            * audio_process_params.headswitch_signal_rate,
+            distance=peak_distance_seconds * audio_process_params.headswitch_signal_rate,
             width=1,
         )
 
-        peaks = list(
-            zip(
-                peak_centers,
-                peak_center_props["left_ips"],
-                peak_center_props["right_ips"],
-                peak_center_props["prominences"],
-            )
-        )
-
-        # using the head switching points, detect neighboring peaks around the headswitching pulse area
-        filtered_signal_mean, filtered_signal_std_dev = HiFiDecode.mean_stddev(
-            filtered_signal
-        )
-
-        # a neighboring peak theshold based on stadard deviation
+        # setup the neighboring peak theshold based on stadard deviation
         neighbor_threshold = filtered_signal_mean + filtered_signal_std_dev
         neighbor_search_width = round(
-            audio_process_params.headswitch_interpolation_neighbor_range
-            * audio_process_params.headswitch_signal_rate
+            audio_process_params.headswitch_interpolation_neighbor_range * audio_process_params.headswitch_signal_rate
         )
 
-        # search around the center peak for any neighboring noise that is above the threshold
-        for peak_center, peak_start, peak_end, peak_prominence in peaks.copy():
+        peaks = []
+        # add the peaks and search around the center peak for any neighboring noise that is above the threshold
+        for i in range(len(peak_centers)):
+            peak_start = peak_center_props["left_ips"][i]
+            peak_end = peak_center_props["right_ips"][i]
+
+            peaks.append(
+                (
+                    peak_centers[i],
+                    peak_start,
+                    peak_end,
+                    # limit peak prominence from balooning too high in empty audio or broadband noise causing an entire chunk to be interpolated
+                    min(max(peak_center_props["prominences"][i], audio_process_params.headswitch_peak_prominence_limit), 0)
+                )
+            )
+
             start_neighbor = max(0, floor(peak_start - neighbor_search_width))
             end_neighbor = min(
                 ceil(peak_end + neighbor_search_width), len(filtered_signal_abs)
@@ -1411,11 +1418,10 @@ class HiFiDecode:
                 peaks.append(
                     (
                         neighbor_peak_centers[peak_log_neighbor_idx] + start_neighbor,
-                        neighbor_peak_props["left_ips"][peak_log_neighbor_idx]
-                        + start_neighbor,
-                        neighbor_peak_props["right_ips"][peak_log_neighbor_idx]
-                        + start_neighbor,
-                        neighbor_peak_props["prominences"][peak_log_neighbor_idx],
+                        neighbor_peak_props["left_ips"][peak_log_neighbor_idx] + start_neighbor,
+                        neighbor_peak_props["right_ips"][peak_log_neighbor_idx] + start_neighbor,
+                        # limit peak prominence from balooning too high in empty audio or broadband noise causing an entire chunk to be interpolated
+                        min(max(neighbor_peak_props["prominences"][peak_log_neighbor_idx], audio_process_params.headswitch_peak_prominence_limit), 0),
                     )
                 )
 
