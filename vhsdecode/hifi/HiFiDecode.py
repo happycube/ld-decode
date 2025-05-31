@@ -431,7 +431,6 @@ class FMdemod:
         prev_unwrapped = prev_angle
 
         for i in range(1, len(in_rf) - order):
-            assert i >= 0
             #
             # mix in i/q
             #
@@ -582,9 +581,7 @@ class SpectralNoiseReduction:
             sig_stft_smooth_x, sig_stft_smooth_y = sig_stft_smooth.shape
 
             for x in range(sig_stft_smooth_x):
-                assert x >= 0
                 for y in range(sig_stft_smooth_y):
-                     assert y >= 0
                      sig_stft_smooth[x][y] = 1 / (1 + np.exp(-((abs_sig_stft[x][y] - sig_stft_smooth[x][y]) / sig_stft_smooth[x][y] + -thresh_n_mult_nonstationary) * sigmoid_slope_nonstationary))
         
         @staticmethod
@@ -603,9 +600,7 @@ class SpectralNoiseReduction:
             sig_mask_x, sig_mask_y = sig_mask.shape
 
             for x in range(sig_mask_x):
-                assert x >= 0
                 for y in range(sig_mask_y):
-                    assert y >= 0
                     sig_stft[x][y] = sig_stft[x][y] * (sig_mask[x][y] * prop_decrease + 1 * (1.0 - prop_decrease))
     
         def spectral_gating_nonstationary_single_channel(self, chunk):
@@ -704,7 +699,6 @@ class SpectralNoiseReduction:
             chunk_data = chunks[i]
 
             for j in range(len(chunk_data)):
-                assert j >= 0
                 chunk[j+chunk_offset] = chunk_data[j]
 
             chunk_offset += len(chunk_data)
@@ -712,7 +706,6 @@ class SpectralNoiseReduction:
         # add the input audio to the chunks
         audio_copy = np.empty_like(audio)
         for i in range(len(audio)):
-            assert i >= 0
             audio_copy[i] = audio[i]
             chunk[i+chunk_offset] = audio[i]
 
@@ -854,7 +847,6 @@ class NoiseReduction:
         levels = np.clip(rectified, 0.0, 1.0)
 
         for i in range(len(levels)):
-            assert i >= 0
             out[i] = levels[i] ** REAL_DTYPE(log_strength)
 
     @staticmethod
@@ -886,7 +878,6 @@ class NoiseReduction:
         #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
         gate = np.clip(rsC * nr_env_gain, a_min=0.0, a_max=1.0)
         for i in range(len(audio)):
-            assert i >= 0
             audio_out[i] = audio[i] * gate[i]
 
     def rs_envelope(self, raw_data):
@@ -1276,7 +1267,6 @@ class HiFiDecode:
         two_pi_right = 2 * pi * carrier_right
 
         for i in range(size):
-            assert i >= 0
             t = i / sample_rate
 
             i_left[i] = cos(two_pi_left * t) #    In-phase
@@ -1565,7 +1555,6 @@ class HiFiDecode:
     def smooth(data_in: np.array, data_out: np.array, half_window: int):
         data_in_len = len(data_in)
         for i in range(data_in_len):
-            assert i >= 0
             start = max(0, i - half_window)
             end = min(data_in_len, i + half_window + 1)
             data_out[i] = np.mean(data_in[start:end])  # Apply moving average
@@ -1711,18 +1700,15 @@ class HiFiDecode:
     )
     def cancelDC_clip_trim(audio: np.array, clip: float, trim: int) -> float:
         for i in range(trim):
-            assert i >= 0
             audio[i] = 0
 
         for i in range(len(audio) - trim, len(audio)):
-            assert i >= 0
             audio[i] = 0
 
         # TODO: change this to roll off at a low frequency rather than just the mean
         dc = REAL_DTYPE(np.mean(audio))
 
         for i in range(trim, len(audio) - trim):
-            assert i >= 0
             audio[i] = (audio[i] - dc) / REAL_DTYPE(clip)
 
         return dc
@@ -1835,7 +1821,6 @@ class HiFiDecode:
     )
     def adjust_gain(audio: np.array, gain: float) -> np.array:
         for i in range(len(audio)):
-            assert i >= 0
             audio[i] = audio[i] * gain
 
     @staticmethod

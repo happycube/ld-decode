@@ -375,7 +375,6 @@ class UnSigned16BitFileReader(io.RawIOBase):
     )
     def uint16_to_int16(uint16_in, int16_out):
         for i in range(len(uint16_in)):
-            assert i >= 0
             int16_out[i] = uint16_in[i] - 2**15
 
     def readable(self):
@@ -680,7 +679,6 @@ class PostProcessor:
     )
     def normalize(gain, _, audio):
         for i in range(len(audio)):
-            assert i >= 0
             audio[i] = audio[i] * gain
 
     @staticmethod
@@ -836,13 +834,11 @@ class PostProcessor:
             trim_samples = int(0.0015 * sample_rate)
             start_sample = trim_samples
             for i in range(trim_samples):
-                assert i >= 0
                 stereo[(i * 2)] = 0
                 stereo[(i * 2) + 1] = 0
 
         channel_length = len(audioL)
         for i in range(start_sample, channel_length):
-            assert i >= 0
             audioLSample = audioL[i]
             stereo[(i * 2)] = audioLSample
             gain = abs(audioLSample)
@@ -1017,7 +1013,6 @@ class SoundDeviceProcess:
     )
     def build_stereo(interleaved: np.array, stacked) -> np.array:
         for i in range(0, len(stacked)):
-            assert i >= 0
             stacked[i][0] = interleaved[i * 2] * 2**15
             stacked[i][1] = interleaved[i * 2 + 1] * 2**15
 
@@ -1295,20 +1290,15 @@ async def decode_parallel(
         if is_last_block:
             # save read data (previous overlap + last block data)
             block_in = buffer.get_block()
-
             new_block_length = (
                 len(previous_overlap) + # previous overlap
                 frames_read + # data read
                 decoder_state.block_overlap # overlap data
             )
 
-            # duplicate data at the end that will discarded as overlap
-            for i in range(decoder_state.block_overlap):
-                src_offset = len(previous_overlap) + frames_read - decoder_state.block_overlap + i
-                dst_offset = src_offset + decoder_state.block_overlap
-
-                block_in[dst_offset] = block_in[src_offset]
-
+            buffer.close()
+            block_overlap = decoder_state.block_overlap
+            
             # create a new decoder state with the updated offsets
             decoder_state = DecoderState(
                 decoder,
@@ -1317,6 +1307,16 @@ async def decode_parallel(
                 decoder_state.block_num,
                 is_last_block,
             )
+
+            buffer = DecoderSharedMemory(decoder_state)
+            block_in = buffer.get_block()
+
+            # duplicate data at the end that will discarded as overlap
+            for i in range(block_overlap):
+                src_offset = (len(previous_overlap) - 1) + frames_read - block_overlap + i
+                dst_offset = src_offset + block_overlap
+
+                block_in[dst_offset] = block_in[src_offset]
         else:
             # copy the the current overlap to use in the next iteration
             current_overlap = buffer.get_block_in_end_overlap()
