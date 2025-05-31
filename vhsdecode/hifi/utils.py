@@ -363,6 +363,24 @@ class DecoderSharedMemory:
     @staticmethod
     @njit(
         numba.types.void(
+            NumbaAudioArray,
+            NumbaAudioArray,
+            numba.types.int64,
+            numba.types.int64,
+        ),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def copy_data_dst_offset_float32(
+        src: np.array, dst: np.array, dst_offset: int, length: int
+    ):
+        for i in range(length):
+            dst[i + dst_offset] = src[i]
+
+    @staticmethod
+    @njit(
+        numba.types.void(
             NumbaAudioArray, NumbaAudioArray, numba.types.int64, numba.types.int64
         ),
         cache=True,

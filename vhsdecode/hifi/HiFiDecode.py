@@ -560,7 +560,44 @@ class SpectralNoiseReduction:
             #   b**2  + (1 - b) / t_frames  - 2 = 0
             # which approximates the full-width half-max of the
             # squared frequency response of the IIR low-pass filt
-            self.smooth_filter_b = (np.sqrt(1 + 4 * self.t_frames  ** 2) - 1) / (2 * self.t_frames  ** 2)
+            b = (np.sqrt(1 + 4 * self.t_frames  ** 2) - 1) / (2 * self.t_frames  ** 2)
+            self.smooth_filter_b = [b]
+            self.smooth_filter_a = [1, b - 1]
+
+        @staticmethod
+        @vectorize(
+            [numba.types.float64(
+                numba.types.float64,
+                numba.types.float64,
+                numba.types.float64,
+                numba.types.float64
+            )],
+            cache=True,
+            fastmath=True,
+            nopython=True,
+            target="cpu"
+        )
+        def _get_sig_mask(abs_sig_stft, sig_stft_smooth, thresh_n_mult_nonstationary, sigmoid_slope_nonstationary):   
+            # get the number of X above the mean the signal is
+            return 1 / (1 + np.exp(-((abs_sig_stft - sig_stft_smooth) / sig_stft_smooth + -thresh_n_mult_nonstationary) * sigmoid_slope_nonstationary))
+        
+        @staticmethod
+        @vectorize(
+            [numba.types.complex128(
+                numba.types.float64,
+                numba.types.complex128,
+                numba.types.float64,
+            )],
+            cache=True,
+            fastmath=True,
+            nopython=True,
+            target="cpu"
+        )
+        def _mask_signal(sig_mask, sig_stft, prop_decrease):
+            # multiply signal with mask
+            return sig_stft * (sig_mask * prop_decrease + np.ones(np.shape(sig_mask)) * (
+                1.0 - prop_decrease
+            ))
     
         def spectral_gating_nonstationary_single_channel(self, chunk):
             """non-stationary version of spectral gating"""
@@ -575,22 +612,24 @@ class SpectralNoiseReduction:
             abs_sig_stft = np.abs(sig_stft)
     
             # get the smoothed mean of the signal
-            sig_stft_smooth = filtfilt([self.smooth_filter_b], [1, self.smooth_filter_b - 1], abs_sig_stft, axis=-1, padtype=None)
-    
-            # get the number of X above the mean the signal is
-            sig_mult_above_thresh = (abs_sig_stft - sig_stft_smooth) / sig_stft_smooth
-            sig_mask = 1 / (1 + np.exp(-(sig_mult_above_thresh + -self._thresh_n_mult_nonstationary) * self._sigmoid_slope_nonstationary))
+            sig_stft_smooth = filtfilt(self.smooth_filter_b, self.smooth_filter_a, abs_sig_stft, axis=-1, padtype=None)
+
+            sig_mask = SpectralNoiseReduction.SpectralGateNonStationaryNumba._get_sig_mask(
+                abs_sig_stft,
+                sig_stft_smooth,
+                self._thresh_n_mult_nonstationary,
+                self._sigmoid_slope_nonstationary
+            )
     
             if self.smooth_mask:
                 # convolve the mask with a smoothing filter
                 sig_mask = fftconvolve(sig_mask, self._smoothing_filter, mode="same")
-    
-            sig_mask = sig_mask * self._prop_decrease + np.ones(np.shape(sig_mask)) * (
-                1.0 - self._prop_decrease
+
+            sig_stft_denoised = SpectralNoiseReduction.SpectralGateNonStationaryNumba._mask_signal(
+                sig_mask,
+                sig_stft,
+                self._prop_decrease
             )
-    
-            # multiply signal with mask
-            sig_stft_denoised = sig_stft * sig_mask
     
             # invert/recover the signal
             _, denoised_signal = istft(
