@@ -26,6 +26,9 @@ from scipy.signal import (
     iirpeak,
     iirnotch,
     butter,
+    stft,
+    istft,
+    fftconvolve,
     spectrogram,
     find_peaks,
 )
@@ -546,23 +549,75 @@ def build_shelf_filter(
 
 
 class SpectralNoiseReduction:
+    class SpectralGateNonStationaryNumba(SpectralGateNonStationary):
+        # Adapted from noisereduce
+        def __init__(self, params):
+            super().__init__(**params)
+    
+            self.t_frames = self._time_constant_s * self.sr / self._hop_length
+    
+            # By default, this solves the equation for b:
+            #   b**2  + (1 - b) / t_frames  - 2 = 0
+            # which approximates the full-width half-max of the
+            # squared frequency response of the IIR low-pass filt
+            self.smooth_filter_b = (np.sqrt(1 + 4 * self.t_frames  ** 2) - 1) / (2 * self.t_frames  ** 2)
+    
+        def spectral_gating_nonstationary_single_channel(self, chunk):
+            """non-stationary version of spectral gating"""
+            _, _, sig_stft = stft(
+                chunk,
+                nfft=self._n_fft,
+                noverlap=self._win_length - self._hop_length,
+                nperseg=self._win_length,
+                padded=False
+            )
+            # get abs of signal stft
+            abs_sig_stft = np.abs(sig_stft)
+    
+            # get the smoothed mean of the signal
+            sig_stft_smooth = filtfilt([self.smooth_filter_b], [1, self.smooth_filter_b - 1], abs_sig_stft, axis=-1, padtype=None)
+    
+            # get the number of X above the mean the signal is
+            sig_mult_above_thresh = (abs_sig_stft - sig_stft_smooth) / sig_stft_smooth
+            sig_mask = 1 / (1 + np.exp(-(sig_mult_above_thresh + -self._thresh_n_mult_nonstationary) * self._sigmoid_slope_nonstationary))
+    
+            if self.smooth_mask:
+                # convolve the mask with a smoothing filter
+                sig_mask = fftconvolve(sig_mask, self._smoothing_filter, mode="same")
+    
+            sig_mask = sig_mask * self._prop_decrease + np.ones(np.shape(sig_mask)) * (
+                1.0 - self._prop_decrease
+            )
+    
+            # multiply signal with mask
+            sig_stft_denoised = sig_stft * sig_mask
+    
+            # invert/recover the signal
+            _, denoised_signal = istft(
+                sig_stft_denoised,
+                nfft=self._n_fft,
+                noverlap=self._win_length - self._hop_length,
+                nperseg=self._win_length
+            )
+    
+            return denoised_signal.astype(REAL_DTYPE)
+        
     def __init__(self, audio_rate, nr_reduction_amount):
         self.chunk_size = int(audio_rate / BLOCKS_PER_SECOND)
         self.chunk_count = BLOCKS_PER_SECOND
-        self.padding = int(self.chunk_size)
+        self.end_padding = int(self.chunk_size / 8)
         self.nr_reduction_amount = nr_reduction_amount
 
         self.denoise_params = {
             "y": np.empty(1),
             "sr": audio_rate,
             "chunk_size": self.chunk_size,
-            "padding": self.padding,
+            "padding": self.end_padding,
             "prop_decrease": self.nr_reduction_amount,
             "n_fft": 1024,
             "win_length": None,
             "hop_length": None,
-            "time_constant_s": (self.chunk_size * self.chunk_count / 2)
-            / audio_rate,  # (self.chunk_size * (self.chunk_count - 1)) / audio_rate,
+            "time_constant_s": (self.chunk_size * self.chunk_count / 2) / audio_rate,  # (self.chunk_size * (self.chunk_count - 1)) / audio_rate,
             "freq_mask_smooth_hz": 500,
             "time_mask_smooth_ms": 50,
             "thresh_n_mult_nonstationary": 2,
@@ -572,45 +627,59 @@ class SpectralNoiseReduction:
             "n_jobs": 1,
         }
 
-        self.spectral_gate = SpectralGateNonStationary(**self.denoise_params)
-
+        self.spectral_gate = SpectralNoiseReduction.SpectralGateNonStationaryNumba(self.denoise_params)
         self.chunks = []
-
         for i in range(self.chunk_count):
-            self.chunks.append(np.zeros(self.chunk_size))
-
-    def _get_chunk(self, audio, chunks):
-        chunk = np.zeros(
-            (1, self.padding * 2 + self.chunk_size * self.chunk_count), dtype=REAL_DTYPE
-        )
-
-        audio_copy = np.empty(len(audio), dtype=REAL_DTYPE)
-        DecoderSharedMemory.copy_data_float32(audio, audio_copy, len(audio))
-
-        chunks.pop(0)
-        chunks.append(audio_copy)
-
-        for i in range(self.chunk_count):
-            position = self.padding + self.chunk_size * i
-            chunk[:, position : position + len(chunks[i])] = chunks[i]
-
-        return chunk
+            self.chunks.append(np.zeros(self.chunk_size, dtype=REAL_DTYPE))
 
     @staticmethod
-    def _write_chunk(chunk_size, chunk_count, padding, nr, audio_out):
-        last_chunk = chunk_size * (chunk_count - 1) + padding
-        data = nr[0]
-        DecoderSharedMemory.copy_data_src_offset_float32(
-            data, audio_out, last_chunk, len(audio_out)
-        )
+    @njit(
+        numba.types.Tuple((NumbaAudioArray, NumbaAudioArray))(
+            numba.types.int64,
+            NumbaAudioArray,
+            NumbaAudioArray,
+            NumbaAudioArray,
+        ),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def _get_chunk(end_padding, audio, chunk1, chunk2):
+        # merge the chunks into one array for processing
+        chunks = [chunk1, chunk2]
+        chunk = np.zeros(len(chunk1) + len(chunk2) + len(audio) + end_padding, dtype=REAL_DTYPE)
+
+        chunk_offset = 0
+        for i in range(len(chunks)):
+            chunk_data = chunks[i]
+
+            for j in range(len(chunk_data)):
+                chunk[j+chunk_offset] = chunk_data[j]
+
+            chunk_offset += len(chunk_data)
+        
+        # add the input audio to the chunks
+        audio_copy = np.empty_like(audio)
+        for i in range(len(audio)):
+            audio_copy[i] = audio[i]
+            chunk[i+chunk_offset] = audio[i]
+
+        return chunk, audio_copy
 
     def spectral_nr(self, audio_in, audio_out):
-        chunk = self._get_chunk(audio_in, self.chunks)
+        chunk, audio_copy = SpectralNoiseReduction._get_chunk(
+            self.end_padding,
+            audio_in,
+            self.chunks[0],
+            self.chunks[1],
+        )
+        self.chunks.append(audio_copy)
+        self.chunks.pop(0)
 
-        nr = self.spectral_gate.spectral_gating_nonstationary(chunk)
+        nr = self.spectral_gate.spectral_gating_nonstationary_single_channel(chunk)
 
-        SpectralNoiseReduction._write_chunk(
-            self.chunk_size, self.chunk_count, self.padding, nr, audio_out
+        DecoderSharedMemory.copy_data_src_offset_float32(
+            nr, audio_out, len(nr) - len(audio_out) - self.end_padding, len(audio_out)
         )
 
 
