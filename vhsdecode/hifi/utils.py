@@ -325,6 +325,7 @@ class DecoderSharedMemory:
     def copy_data_float32(src: np.array, dst: np.array, length: int):
         # ctypes.memmove(dst.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), src.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), length)
         for i in range(length):
+            assert i >= 0
             dst[i] = src[i]
 
     @staticmethod
@@ -340,6 +341,7 @@ class DecoderSharedMemory:
     )
     def copy_data_int16(src: np.array, dst: np.array, length: int):
         for i in range(length):
+            assert i >= 0
             dst[i] = src[i]
 
     @staticmethod
@@ -358,6 +360,7 @@ class DecoderSharedMemory:
         src: np.array, dst: np.array, dst_offset: int, length: int
     ):
         for i in range(length):
+            assert i >= 0
             dst[i + dst_offset] = src[i]
 
     @staticmethod
@@ -376,6 +379,7 @@ class DecoderSharedMemory:
         src: np.array, dst: np.array, dst_offset: int, length: int
     ):
         for i in range(length):
+            assert i >= 0
             dst[i + dst_offset] = src[i]
 
     @staticmethod
@@ -391,6 +395,7 @@ class DecoderSharedMemory:
         src: np.array, dst: np.array, src_offset: int, length: int
     ):
         for i in range(length):
+            assert i >= 0
             dst[i] = src[i + src_offset]
 
 

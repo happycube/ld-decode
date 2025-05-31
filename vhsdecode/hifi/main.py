@@ -375,6 +375,7 @@ class UnSigned16BitFileReader(io.RawIOBase):
     )
     def uint16_to_int16(uint16_in, int16_out):
         for i in range(len(uint16_in)):
+            assert i >= 0
             int16_out[i] = uint16_in[i] - 2**15
 
     def readable(self):
@@ -679,6 +680,7 @@ class PostProcessor:
     )
     def normalize(gain, _, audio):
         for i in range(len(audio)):
+            assert i >= 0
             audio[i] = audio[i] * gain
 
     @staticmethod
@@ -834,11 +836,13 @@ class PostProcessor:
             trim_samples = int(0.0015 * sample_rate)
             start_sample = trim_samples
             for i in range(trim_samples):
+                assert i >= 0
                 stereo[(i * 2)] = 0
                 stereo[(i * 2) + 1] = 0
 
         channel_length = len(audioL)
         for i in range(start_sample, channel_length):
+            assert i >= 0
             audioLSample = audioL[i]
             stereo[(i * 2)] = audioLSample
             gain = abs(audioLSample)
@@ -1013,6 +1017,7 @@ class SoundDeviceProcess:
     )
     def build_stereo(interleaved: np.array, stacked) -> np.array:
         for i in range(0, len(stacked)):
+            assert i >= 0
             stacked[i][0] = interleaved[i * 2] * 2**15
             stacked[i][1] = interleaved[i * 2 + 1] * 2**15
 
