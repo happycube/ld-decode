@@ -37,6 +37,14 @@ from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
 
 from vhsdecode.hifi.utils import DecoderSharedMemory, NumbaAudioArray, profile
 
+ROCKET_FFT_AVAILABLE = False
+try:
+    from rocket_fft import c2c
+    ROCKET_FFT_AVAILABLE = True
+except ImportError:
+    print("rocket fft not available")
+    pass
+
 import matplotlib.pyplot as plt
 
 # lower increases expander strength and decreases overall gain
@@ -252,14 +260,69 @@ class FMdemod:
         out = FMdemod.unwrap_hilbert(hilbert(signal.real), sample_rate)
         DecoderSharedMemory.copy_data_float32(out, output, len(output))
 
+    # Identical copy of the numba version without numba tag for fallback
+    # since rocket-fft release doesn't work on python 3.13 yet
+    # This isn't an ideal workaround, but works for now until
+    # we can replace rocket-fft with something better.
     @staticmethod
-    @guvectorize(
-        [(numba.types.float32, NumbaAudioArray, NumbaAudioArray)],
-        "(),(n)->(n)",
-        cache=True,
-        fastmath=True,
-        nopython=True,
-    )
+    def demod_python(sample_rate, signal, instantaneous_frequency):
+        # hilbert transform adapted from signal.hilbert
+        # uses rocket-fft for to allow numba comatibility with fft and ifft
+        axis = -1
+        N = signal.shape[axis]
+        h = np.zeros(N, dtype=np.complex64)
+        h[0] = h[N // 2] = 1
+        h[1 : N // 2] = 2
+
+        analytic_signal = 0
+        analytic_signal_prev = 0
+        discont = pi
+        ph_correct = 0
+        ph_correct_prev = 0
+
+        i = 1
+        instantaneous_frequency_len = len(instantaneous_frequency)
+        for hilbert_value in np.fft.ifft(
+            np.fft.fft(signal, N, axis=axis) * h, axis=axis
+        ):
+            if i >= instantaneous_frequency_len:
+                break
+
+            analytic_signal = atan2(
+                hilbert_value.imag, hilbert_value.real
+            )  #                                           np.angle(analytic_signal)
+            dd = analytic_signal - analytic_signal_prev
+            analytic_signal_prev = analytic_signal  #      dd = np.diff(p)
+
+            # FMdemod.unwrap
+            ddmod = (
+                (dd + pi) % (2 * pi)
+            ) - pi  #         ddmod = np.mod(dd + pi, 2 * pi) - pi
+            if (
+                ddmod == -pi and dd > 0
+            ):  #                 to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
+                ddmod = pi  #                              ddmod[to_pi_locations] = pi
+            ph_correct = ddmod - dd  #                     ph_correct = ddmod - dd
+            if (
+                -dd if dd < 0 else dd
+            ) < discont:  #       to_zero_locations = np.where(np.abs(dd) < discont)
+                ph_correct = (
+                    0  #                          ph_correct[to_zero_locations] = 0
+                )
+            ph_correct = (
+                ph_correct_prev + ph_correct
+            )  #   p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+
+            # FMdemod.unwrap_hilbert
+            instantaneous_frequency[i - 1] = (
+                (ph_correct - ph_correct_prev) / (2.0 * pi) * sample_rate
+            )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
+
+            ph_correct_prev = ph_correct
+            i += 1
+
+    @staticmethod
+    @njit(cache=True)
     def demod_numba(sample_rate, signal, instantaneous_frequency):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba comatibility with fft and ifft
@@ -326,7 +389,10 @@ class FMdemod:
         # elif self.type == 1:
         #    DecoderSharedMemory.copy_data_float32(self.hhtdeFM(input), output, len(output))
         else:
-            FMdemod.demod_numba(np.float32(self.samp_rate), input, output)
+            if ROCKET_FFT_AVAILABLE:
+                FMdemod.demod_numba(np.float32(self.samp_rate), input, output)
+            else:
+                FMdemod.demod_python(np.float32(self.samp_rate), input, output)
 
 
 def tau_as_freq(tau):
