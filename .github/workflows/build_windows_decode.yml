@@ -23,7 +23,7 @@ jobs:
       - name: Build Python module
         run: |
           pip install pyinstaller pyinstaller-versionfile
-          pip install -e ".[hifi_gui]" .
+          pip install -e ".[hifi_gui]"
 
       - name: Build Windows binary
         run: |
