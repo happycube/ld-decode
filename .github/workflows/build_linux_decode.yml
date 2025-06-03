@@ -6,9 +6,16 @@ on:
 jobs:
   build-decode:
     name: Build vhs-decode (x86_64)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: oraclelinux:8
+      options: --cap-add SYS_ADMIN --cap-add MKNOD --device /dev/fuse:mrw --security-opt apparmor:unconfined --privileged
 
     steps:
+      - name: Setup environment
+        run: |
+          dnf install --assumeyes git python3.12-pip gcc-c++ file
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -24,7 +31,7 @@ jobs:
           cp resources/appimage/decode/vhs-decode.desktop _build_appimage/
           cp resources/appimage/decode/vhs-decode.appdata.xml _build_appimage/
 
-          echo "${{ github.workspace }}[hifi_gui,hifi_gnuradio]" > _build_appimage/requirements.txt
+          echo "$(pwd)[hifi_gui,hifi_gnuradio]" > _build_appimage/requirements.txt
 
           python-appimage build app -p 3.12 _build_appimage
 

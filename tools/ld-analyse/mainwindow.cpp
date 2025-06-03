@@ -244,7 +244,7 @@ void MainWindow::updateGuiLoaded()
 {
     // Enable the GUI controls
     setGuiEnabled(true);
-	
+
     // Update the status bar
     QString statusText;
 	if(tbcSource.getVideoParameters().tapeFormat != "") {
@@ -285,7 +285,7 @@ void MainWindow::updateGuiLoaded()
 
     // Disable "Save JSON", now we've loaded the metadata into the GUI
     ui->actionSave_JSON->setEnabled(false);
-	
+
 	//resize the windows to fit the content in full screen
 	MainWindow::resize_on_aspect();
 }
@@ -598,7 +598,7 @@ void MainWindow::setViewValues()
 {
     qint32 currentNumber, maximum;
     QString buttonLabel, spinLabel;
-	
+
 	if (this->width() >= 930)
 	{
 		if (tbcSource.getFieldViewEnabled()) {
@@ -1079,7 +1079,7 @@ void MainWindow::on_aspectPushButton_clicked()
 
     // Update the image viewer (the scopes don't depend on this)
     updateImageViewer();
-	
+
 	//resize the windows to fit the new size
 	resize_on_aspect();
 }
@@ -1093,7 +1093,7 @@ void MainWindow::resize_on_aspect()
 	int width = ui->imageViewerLabel->pixmap()->width();
 	int height = ui->imageViewerLabel->pixmap()->height();
 #endif
-	
+
 	if(!this->isFullScreen() && !this->isMaximized() && autoResize)
 	{
 		this->resize(width + 20, height + 140);
@@ -1104,11 +1104,11 @@ void MainWindow::resize_on_aspect()
 void MainWindow::on_dropoutsPushButton_clicked()
 {
 	int width = this->width();
-	
+
     if (tbcSource.getHighlightDropouts()) {
         tbcSource.setHighlightDropouts(false);
 		if (width >= 930)
-		{			
+		{
 			ui->dropoutsPushButton->setText(tr("Dropouts Off"));
 		}
 		else
@@ -1118,7 +1118,7 @@ void MainWindow::on_dropoutsPushButton_clicked()
     } else {
         tbcSource.setHighlightDropouts(true);
         if (width >= 930)
-		{			
+		{
 			ui->dropoutsPushButton->setText(tr("Dropouts On"));
 		}
 		else
@@ -1196,7 +1196,7 @@ void MainWindow::on_viewPushButton_clicked()
 void MainWindow::on_fieldOrderPushButton_clicked()
 {
 	int width = this->width();
-	
+
     if (tbcSource.getFieldOrder()) {
         tbcSource.setFieldOrder(false);
 
@@ -1292,7 +1292,7 @@ void MainWindow::on_mouseModePushButton_clicked()
 
 // Miscellaneous handler methods --------------------------------------------------------------------------------------
 
-// Handler called when another class changes the currenly selected scan line
+// Handler called when another class changes the currently selected scan line
 void MainWindow::scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord)
 {
     qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with xCoord =" << xCoord << "and yCoord =" << yCoord;
@@ -1539,7 +1539,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     int width = this->width();
-	
+
 	//field order rename depending on size
 	if (!tbcSource.getFieldOrder())
 	{
@@ -1559,15 +1559,15 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 		else
 			ui->fieldOrderPushButton->setText(tr("Reverse"));
 	}
-	
+
 	//source label depending on size
 	updateSourcesPushButton();
-	
+
 	//dropout label
-	if (!tbcSource.getHighlightDropouts()) 
+	if (!tbcSource.getHighlightDropouts())
 	{
 		if (width >= 930)
-		{			
+		{
 			ui->dropoutsPushButton->setText(tr("Dropouts Off"));
 		}
 		else
@@ -1579,7 +1579,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 	else
 	{
 		if (width >= 930)
-		{			
+		{
 			ui->dropoutsPushButton->setText(tr("Dropouts On"));
 		}
 		else
@@ -1587,7 +1587,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 			ui->dropoutsPushButton->setText(tr("Drop Y"));
 		}
 	}
-	
+
 	//view label
 	if (this->width() >= 930)
 	{
@@ -1621,9 +1621,8 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 			}
 		}
 	}
-	
+
 	//asepec ratio label
 	updateAspectPushButton();
-	
-}
 
+}

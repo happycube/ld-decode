@@ -17,22 +17,30 @@ env:
 jobs:
   build-tbc-tools:
     name: Build tbc-tools (x86_64)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: oraclelinux:8
+      options: --cap-add SYS_ADMIN --cap-add MKNOD --device /dev/fuse:mrw --security-opt apparmor:unconfined --privileged
 
     steps:
+      - name: Set up DNF download cache
+        id: dnf-cache
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/dnf
+          key: dnfcache
+          
+      - name: Setup environment
+        run: |
+          dnf install --assumeyes --nogpgcheck https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm -E %rhel).noarch.rpm
+          dnf install --assumeyes --nogpgcheck https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-$(rpm -E %rhel).noarch.rpm https://mirrors.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-$(rpm -E %rhel).noarch.rpm
+          FORCE_DNF=1 /usr/bin/crb enable
+          dnf --assumeyes install git file xz qt5-qtbase-devel qwt-qt5-devel fftw-devel ffmpeg-devel ffmpeg pkgconf-pkg-config make cmake sox python3-pip gcc-c++ python3-devel
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
-
-      - name: Setup environment
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: >-
-            git make cmake pkg-config openssl
-            qt5-qmake qtbase5-dev libqwt-qt5-dev libfftw3-dev
-            ffmpeg libavformat-dev libavcodec-dev libavutil-dev
-          version: 1.0
 
       - name: Create release directory
         run: mkdir release/
@@ -55,8 +63,9 @@ jobs:
 
           chmod +x ${{ env.APPIMAGE_FILE }} ${{ env.APPIMAGE_PLUGIN_FILE }} ${{ env.APPIMAGE_QT_FILE }}
 
+          EXTRA_QT_MODULES="core;gui;opengl;svg;widgets" ./${{ env.APPIMAGE_QT_FILE }} --appdir AppDir
+
           ./${{ env.APPIMAGE_FILE }} \
-          --plugin qt \
           --desktop-file resources/appimage/tools/tbc-tools.desktop \
           --icon-file assets/icons/vhs-decode.png \
           --appdir AppDir/ \

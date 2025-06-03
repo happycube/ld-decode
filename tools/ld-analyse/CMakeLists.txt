@@ -27,9 +27,9 @@ set(APP_ICON_RESOURCE_WINDOWS "${CMAKE_CURRENT_SOURCE_DIR}/appicon.rc")
 
 add_executable(ld-analyse
     ${ld-analyse_SOURCES}
-	${APP_ICON_RESOURCE_WINDOWS})
+    ${APP_ICON_RESOURCE_WINDOWS})
 elseif(UNIX)
-	add_executable(ld-analyse
+    add_executable(ld-analyse
     ${ld-analyse_SOURCES})
 endif()
 
@@ -38,11 +38,22 @@ target_include_directories(ld-analyse PRIVATE
     ${QWT_INCLUDE_DIR}  ${FFTW_INCLUDE_DIR}
 )
 
+
+# Include homebrew folders manually for qwt on macos
+# as it seems the find scripts don't handle it
+# properly.
+if(APPLE)
+    target_include_directories(ld-analyse PRIVATE
+    /opt/homebrew/lib/qwt.framework/Headers
+    )
+endif()
+
 target_link_libraries(ld-analyse PRIVATE
     Qt::Core Qt::Gui Qt::Widgets
     ${QWT_LIBRARY}
     lddecode-library lddecode-chroma
 )
+
 
 if(WIN32)
     target_compile_definitions(ld-analyse PRIVATE
@@ -52,20 +63,21 @@ if(WIN32)
     set_property(TARGET ld-analyse PROPERTY WIN32_EXECUTABLE true)
 endif()
 
+
 if(UNIX)
-	install(TARGETS ld-analyse BUNDLE DESTINATION bin)
-	#add .tbc mime type
-	install(CODE "execute_process(COMMAND xdg-mime install --novendor --mode system ${CMAKE_CURRENT_SOURCE_DIR}/install/application-video-tbc.xml)")
-	#add ld-analyse icon
-	install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 16 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/16-analyse.png ld-analyse)")
-	install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 32 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/32-analyse.png ld-analyse)")
-	install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 64 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/64-analyse.png ld-analyse)")
-	install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 128 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/128-analyse.png ld-analyse)")
-	#add ld-analyse to application menu
-	install(CODE "execute_process(COMMAND xdg-desktop-menu install --novendor --mode system ${CMAKE_CURRENT_SOURCE_DIR}/install/ld-analyse.desktop)")
+    install(TARGETS ld-analyse BUNDLE DESTINATION bin)
+    #add .tbc mime type
+    install(CODE "execute_process(COMMAND xdg-mime install --novendor --mode system ${CMAKE_CURRENT_SOURCE_DIR}/install/application-video-tbc.xml)")
+    #add ld-analyse icon
+    install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 16 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/16-analyse.png ld-analyse)")
+    install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 32 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/32-analyse.png ld-analyse)")
+    install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 64 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/64-analyse.png ld-analyse)")
+    install(CODE "execute_process(COMMAND xdg-icon-resource install --novendor --mode system --context apps --size 128 ${CMAKE_CURRENT_SOURCE_DIR}/Graphics/128-analyse.png ld-analyse)")
+    #add ld-analyse to application menu
+    install(CODE "execute_process(COMMAND xdg-desktop-menu install --novendor --mode system ${CMAKE_CURRENT_SOURCE_DIR}/install/ld-analyse.desktop)")
 else()
-	install(
-			TARGETS ld-analyse
-			BUNDLE DESTINATION bin
-	)
+    install(
+        TARGETS ld-analyse
+        BUNDLE DESTINATION bin
+    )
 endif()

@@ -135,7 +135,7 @@ struct BitStreamInformation {
     uint8_t mixlevel2;  // mixing level, ch2
     uint8_t roomtyp2;   // room type, ch2
     uint8_t copyrightb; // copyright bit
-    uint8_t origbs;     // origional bit stream
+    uint8_t origbs;     // original bit stream
     uint8_t timecod1e;  // time code first half exists
     uint8_t timecod1;   // time code first half
     uint8_t timecod2e;  // time code second half exists
@@ -213,7 +213,7 @@ struct SyncFrame {
                                                   syncInfo(bs), bsi(bs) {}
 
     // See page 106, 7.10.2 Checking Bit Stream Consistency
-    // these checks almost entirely apply to audio blocks, which are not unpacked here, so cant be checked.
+    // these checks almost entirely apply to audio blocks, which are not unpacked here, so can't be checked.
 
     // Check both CRCs in the frame are valid.
     // May throw InvalidFrameError.

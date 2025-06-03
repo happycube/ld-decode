@@ -192,7 +192,7 @@ void Frame::secondFieldPhase(qint32 value)
     m_secondFieldPhase = value;
 }
 
-// Overide less than operator for sorting
+// Override less than operator for sorting
 bool Frame::operator<(const Frame& other) const
 {
     return (m_vbiFrameNumber < other.m_vbiFrameNumber) ||

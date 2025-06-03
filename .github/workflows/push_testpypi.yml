@@ -35,7 +35,7 @@ jobs:
 
   create-sdist:
     name: Create source distribution
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
 
   publish-to-testpypi:
     name: Publish to TestPyPI
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     needs:
       - build-wheels
