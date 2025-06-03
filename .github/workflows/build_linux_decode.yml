@@ -21,6 +21,8 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Create AppImage
         run: |
           pip3 install python-appimage

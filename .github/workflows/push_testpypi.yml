@@ -24,6 +24,7 @@ jobs:
           fetch-tags: true
 
       - uses: actions/setup-python@v5
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.17.0

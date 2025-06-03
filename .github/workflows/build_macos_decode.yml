@@ -25,7 +25,9 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
+
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: brew install create-dmg
@@ -33,7 +35,7 @@ jobs:
       - name: Build Python module
         run: |
           pip3 install ".[hifi_gui_qt6,hifi_gnuradio]" setuptools Cython pyinstaller -r ./requirements.txt
-          python3 setup.py build_ext --inplace
+          pip3 install -e .
 
       - name: Build binary
         run: |

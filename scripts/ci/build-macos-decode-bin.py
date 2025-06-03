@@ -12,7 +12,7 @@ PyInstaller.__main__.run(
         "--collect-submodules",
         "application",
         "--collect-all",
-        "rocket_fft",
+        "vhsd_rust",
         "--add-data",
         "vhsdecode/format_defs:vhsdecode/format_defs",
         "--icon",
