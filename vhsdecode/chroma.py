@@ -72,6 +72,7 @@ def comb_c_pal(data, line_len):
     and one advanced by 2H
     line by line. VCRs do this to reduce crosstalk.
     Helps chroma stability on LP tapes in particular.
+    (VCRs only adds delayed by 1h instead)
     """
 
     # TODO: Compensate for PAL quarter cycle offset
@@ -92,19 +93,22 @@ def comb_c_pal(data, line_len):
 @njit(cache=True, nogil=True)
 def comb_c_ntsc(data, line_len):
     """Very basic comb filter, adds the signal together with a signal delayed by 1H,
+    and one advanced by 1h
     line by line. VCRs do this to reduce crosstalk.
+    (VCRs only adds delayed by 1h instead)
     """
 
     data2 = data.copy()
     numlines = len(data) // line_len
     for line_num in range(16, numlines - 2):
+        advanced1h = data2[(line_num + 1) * line_len : (line_num + 2) * line_len]
         delayed1h = data2[(line_num - 1) * line_len : (line_num) * line_len]
         line_slice = data[line_num * line_len : (line_num + 1) * line_len]
         # Let the delayed signal contribute 1/3.
         # Could probably make the filtering configurable later.
         data[line_num * line_len : (line_num + 1) * line_len] = (
-            (line_slice * 2) - (delayed1h)
-        ) / 3
+            (line_slice * 2) - advanced1h - delayed1h
+        ) / 4
     return data
 
 
