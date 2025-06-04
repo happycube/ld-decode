@@ -52,6 +52,9 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
     REAL_DTYPE,
+    DEMOD_QUADRATURE,
+    DEMOD_HILBERT,
+    DEFAULT_DEMOD,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 import io
@@ -111,15 +114,15 @@ parser.add_argument(
     dest="preview",
     action="store_true",
     default=False,
-    help="Use preview quality (faster and noisier)",
+    help="Preview the audio through your speakers as it decodes. Uses preview quality (faster and noisier)",
 )
 
 parser.add_argument(
-    "--original",
-    dest="original",
-    action="store_true",
-    default=False,
-    help="Use the same FM demod as vhs-decode",
+    "--demod",
+    dest="demod_type",
+    type=str.lower,
+    default=DEFAULT_DEMOD,
+    help=f"Set the FM demodulation type (default: {DEFAULT_DEMOD}) ({DEMOD_QUADRATURE}, {DEMOD_HILBERT})",
 )
 
 parser.add_argument(
@@ -536,7 +539,7 @@ class PostProcessor:
         self,
         decode_options: dict,
         decoder_out_queue,
-        channel_len,
+        channel_size,
         post_processor_shared_memory_idle_queue,
         decoder_shared_memory_idle_queue,
         blocks_enqueued,
@@ -570,7 +573,7 @@ class PostProcessor:
         self.post_processor_num_shared_memory = 16
         for i in range(self.post_processor_num_shared_memory):
             shared_memory = PostProcessorSharedMemory.get_shared_memory(
-                channel_len, f"hifi_post_mem_{i}"
+                channel_size, f"hifi_post_mem_{i}"
             )
             self.post_processor_shared_memory.append(shared_memory)
             self.post_processor_shared_memory_idle_queue.put(shared_memory.name)
@@ -713,7 +716,7 @@ class PostProcessor:
                 spectral_nr.spectral_nr(pre, spectral_nr_out)
             else:
                 DecoderSharedMemory.copy_data_float32(
-                    pre, spectral_nr_out, decoder_state.block_audio_final_size
+                    pre, spectral_nr_out, decoder_state.block_audio_final_len
                 )
 
             buffer.close()
@@ -752,7 +755,7 @@ class PostProcessor:
                 noise_reduction.noise_reduction(pre, nr_out)
             else:
                 DecoderSharedMemory.copy_data_float32(
-                    pre, nr_out, decoder_state.block_audio_final_size
+                    pre, nr_out, decoder_state.block_audio_final_len
                 )
 
             buffer.close()
@@ -784,7 +787,7 @@ class PostProcessor:
 
             assert (
                 l_decoder_state.block_num == r_decoder_state.block_num
-            ), "Noise reduction processes are out of sync! Channels will be out od sync."
+            ), "Noise reduction processes are out of sync! Channels will be out of sync."
 
             decoder_state = l_decoder_state
             buffer = PostProcessorSharedMemory(decoder_state)
@@ -928,12 +931,12 @@ class PostProcessor:
                     DecoderSharedMemory.copy_data_float32(
                         preL,
                         buffer.get_pre_left(),
-                        decoder_state.block_audio_final_size,
+                        decoder_state.block_audio_final_len,
                     )
                     DecoderSharedMemory.copy_data_float32(
                         preR,
                         buffer.get_pre_right(),
-                        decoder_state.block_audio_final_size,
+                        decoder_state.block_audio_final_len,
                     )
 
                     nr_worker_l_in_conn.send((decoder_state, 0))
@@ -1121,7 +1124,7 @@ async def decode_parallel(
     threads: int = 8,
     ui_t: Optional[AppWindow] = None,
 ):
-    decoder = HiFiDecode(options=decode_options)
+    decoder = HiFiDecode(options=decode_options, is_main_process=True)
     # TODO: reprocess data read in this step
     if bias_guess:
         LCRef, RCRef = guess_bias(
@@ -1132,9 +1135,7 @@ async def decode_parallel(
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
 
-    block_size = decoder.blockSize
-    block_audio_size = decoder.blockAudioSize
-    block_audio_overlap = decoder.blockAudioOverlap
+    block_size = decoder.initialBlockSize
 
     blocks_enqueued = Value("d", 0)
     input_position = Value("d", 0)
@@ -1163,7 +1164,10 @@ async def decode_parallel(
     shared_memory_idle_queue = SimpleQueue()
     for i in range(num_shared_memory_instances):
         buffer_instance = DecoderSharedMemory.get_shared_memory(
-            block_size, block_audio_size, block_audio_overlap, f"hifi_decoder_{i}"
+            decoder.initialBlockSize,
+            decoder.blockOverlap,
+            decoder.initialBlockFinalAudioSize,
+            f"hifi_decoder_{i}"
         )
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
@@ -1199,7 +1203,7 @@ async def decode_parallel(
     post_processor = PostProcessor(
         decode_options,
         decoder_out_queue,
-        decoder.blockFinalAudioSize,
+        decoder.initialBlockFinalAudioSize + decoder.blockAudioFinalOverlap * 2,
         post_processor_shared_memory_idle_queue,
         shared_memory_idle_queue,
         blocks_enqueued,
@@ -1284,16 +1288,18 @@ async def decode_parallel(
             )
 
         if is_last_block:
-            # save the read data
-            block_data_read = buffer.get_block().copy()
-            buffer.close()
-
-            # first overlap, read data, first half of last overlap
+            # save read data (previous overlap + last block data)
+            block_in = buffer.get_block()
             new_block_length = (
-                decoder.block_read_overlap + frames_read + decoder.block_overlap
+                len(previous_overlap) + # previous overlap
+                frames_read + # data read
+                decoder_state.block_overlap # overlap data
             )
 
-            # create a new buffer with the updated offsets, and copy in the read data
+            buffer.close()
+            block_overlap = decoder_state.block_overlap
+            
+            # create a new decoder state with the updated offsets
             decoder_state = DecoderState(
                 decoder,
                 buffer.name,
@@ -1301,19 +1307,16 @@ async def decode_parallel(
                 decoder_state.block_num,
                 is_last_block,
             )
+
             buffer = DecoderSharedMemory(decoder_state)
+            block_in = buffer.get_block()
 
-            block = buffer.get_block()
-            # copy already read data
-            DecoderSharedMemory.copy_data_int16(
-                block_data_read, block, decoder.block_read_overlap + frames_read
-            )
+            # duplicate data at the end that will discarded as overlap
+            for i in range(block_overlap):
+                src_offset = (len(previous_overlap) - 1) + frames_read - block_overlap + i
+                dst_offset = src_offset + block_overlap
 
-            end_overlap = buffer.get_block_in_end_overlap()
-            # copy data to end that will be discarded as overlap
-            DecoderSharedMemory.copy_data_dst_offset_int16(
-                end_overlap, end_overlap, decoder.block_overlap, decoder.block_overlap
-            )
+                block_in[dst_offset] = block_in[src_offset]
         else:
             # copy the the current overlap to use in the next iteration
             current_overlap = buffer.get_block_in_end_overlap()
@@ -1327,7 +1330,7 @@ async def decode_parallel(
         # blocks should complete roughly in the order that they are submitted
         decoder_in_queue.put(decoder_state)
 
-        return decoder_state, is_last_block
+        return is_last_block
 
     print(f"Starting decode...")
 
@@ -1373,7 +1376,7 @@ async def decode_parallel(
                 )
 
             stop_requested = await handle_ui_events()
-            decoder_state, is_last_block = await loop.run_in_executor(
+            is_last_block = await loop.run_in_executor(
                 None,
                 read_and_send_to_decoder,
                 f,
@@ -1429,7 +1432,7 @@ async def decode_parallel(
 
         try:
             total_frames_read = 0
-            buffer = np.empty(block_audio_size, dtype=np.float32)
+            buffer = np.empty(2**20, dtype=np.float32)
 
             with sf.SoundFile(
                 input_file_post_gain,
@@ -1538,7 +1541,7 @@ def main() -> int:
         "format": "vhs" if not args.format_8mm else "8mm",
         "preview": args.preview,
         "preview_available": SOUNDDEVICE_AVAILABLE,
-        "original": args.original,
+        "demod_type": args.demod_type,
         "resampler_quality": resampler_quality if not args.preview else "low",
         "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
         "head_switching_interpolation": args.head_switching_interpolation == "on",
