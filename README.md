@@ -279,8 +279,9 @@ Currently, MacOS builds while supported and deployable these are not directly ve
 
 </details>
 
+
 <details closed>
-<summary>Installation on Linux (Ubuntu/Debian-based)</summary>
+<summary>Installation of the development release on Linux (Ubuntu/Debian-based)</summary>
 <br>
 
 
@@ -301,6 +302,8 @@ Set up pipx
     pipx ensurepath
 
 (Alternatively, a [python virtual environment](https://docs.python.org/3/library/venv.html) can be used instead of using pipx)
+
+Install rust - see the [rust installer website](https://www.rust-lang.org/tools/install) for instructions.
 
 Install TBC-Video-Export
 
