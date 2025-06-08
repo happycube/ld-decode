@@ -13,10 +13,10 @@ This version has been modified to work with the differences found in FM RF signa
 > [!CAUTION]
 > FM RF Archival captures and capturing is not to be confused with the TV Modulator/Demodulator pack's signals, i.e the **"antenna connectors"** on the back of a VCR!
 
-<img src="assets/images/DdD-EBU-Colour-Bar-PAL-VHS-SP.png" width="" height="">
 
+<img src="assets/images/ld-analyse-vhs-decode-svhs-&-scopes.png" width="" height="">
 
-SMPTE ColourBars (16:9) Test Tape With [WSS](https://github.com/oyvindln/vhs-decode/wiki/Wide-Screen-Signalling) (PAL) exported full-frame (1112 x 624)
+> EBU Colourbars (4:3) on SVHS decoded signal frame (1112 x 624), with scanline ossiliscope and vectorscope enabled in frame view mode.
 
 
 # [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
@@ -58,19 +58,28 @@ The frequently asked questions page and the [Wiki](https://github.com/oyvindln/v
 # [CVBS-Decode - Composite Video Decoder](https://github.com/oyvindln/vhs-decode/wiki/CVBS-Composite-Decode)
 
 
+<img src="assets/images/ld-analyse_pal_philips_cvbs_chroma_frame.png"  width="600" height="">
+
+> Phlips Test Pattern with PAL 3D Transform decoder - 2025
+
 This repository also contains an **experimental** CVBS decoder, `cvbs-decode`, which shares code with ld-decode and vhs-decode. Capable of decoding basic RAW digitized NTSC and PAL composite video, including colour if the source is somewhat stable. 
 
-RAW CVBS has been captured using CX Cards & CXADC, however, only at lowest gain states and or with external signal feed into it to stop its hardware decoder from triggering.
+This primarily allows for users to leverage the powerful TBC code, VBI processing and Transform 2D and Transform 3D PAL chroma-decoders (comb filters) of the ld-tools suite.
 
 > [!CAUTION]
-> CVBS capture is not possible with the DomesDayDuplicator Rev3 due to input filtering on the hardware, but is possible with the [MISRC](https://github.com/oyvindln/vhs-decode/wiki/RF-Capture-Hardware#misrc---multi-input-simultaneous-raw-rf-capture) boards.
+> - CVBS capture is not possible with the DomesDayDuplicator Rev3 due to input filtering on the hardware, but is possible with the [MISRC](https://github.com/oyvindln/vhs-decode/wiki/RF-Capture-Hardware#misrc---multi-input-simultaneous-raw-rf-capture) board. 
+> - CX Cards & CXADC, can work, however only at lowest gain states and or with external signal feed into it to stop its hardware decoder from triggering.
 
-Test samples & signals can be digitally generated using [HackTV](https://github.com/fsphil/hacktv) or downloaded from [The Internet Archive](https://archive.org/details/wss-wide-screen-signaling).
+
+Test samples & signals can be generated using a [HackDAC](https://github.com/inaxeon/hacktv-hackrf) & [HackTV](https://github.com/fsphil/hacktv) or downloaded from [The Internet Archive](https://archive.org/details/wss-wide-screen-signaling).
 
 # [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/003-Audio#hifi-decode-hifi-rf-into-audio-installation-and-usage) & [RTL-SDR Decode](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR)
 
 
-Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we now have a working [HiFi Audio Decoder](https://github.com/oyvindln/vhs-decode/wiki/003-Audio) which provides decoding support for VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or FLAC compressed RF captures of HiFi FM signals and outputs standard 24-bit 44.1-192kHz FLAC stereo audio files. The decoded quality is close to and better in some cases than the hardware output from a VCR.
+<img src="assets/images/hifi-decode-gui-2025-windows.png"  width="400" height="">
+
+
+Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we have [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/hifi-decode) which provides decoding support for (S)VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or FLAC compressed RF captures of HiFi FM signals and outputs standard 24-bit 44.1-192kHz FLAC stereo audio files. The decoded quality is close to and better in some cases than the hardware output from a VCR.
 
 [RTLSDR capture & decoding](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR) (cross plafrom as its 100% GNURadio based) can run in realtime on most systems (1~3 sec delay) and provide live playback, Alongside 8msps RF files and a 48kHz 24-bit FLAC file of the decoded audio.
 
@@ -133,7 +142,7 @@ Today with a modified Linux driver, these cards can be forced to output RAW sign
 
 While you can use any generic card with the correct chips, today we recommend the ‘‘New’’ Chinese variants that can be found on AliExpress that have integrated Asmedia or ITE 1x PCIE bridge chips allowing modern systems to use them, and consistent performance.
 
-These cards combined with a [dedicated amplifier](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards#external-amplification) & [the clockgen mod](https://github.com/oyvindln/vhs-decode/wiki/Clockgen-Mod) enabling Video + HiFi RF + Baseband (Baseband = linear or deck decoded HiFi audio) to be captured in perfect hardware sync, a highly reliable turn-key "one run and done" capturing workflow for a wide range of videotape formats.
+These cards combined with a [dedicated amplifier](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards#external-amplification) & [the clockgen mod](https://github.com/oyvindln/vhs-decode/wiki/Clockgen-Mod) enabling Video + HiFi RF + Baseband (Baseband = linear or deck decoded HiFi audio on RCA/XLR outputs) to be captured in perfect hardware sync, a highly reliable turn-key "one run and done" capturing workflow for a wide range of videotape formats.
 
 [Where to Buy? & More Info](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards)
 
@@ -150,7 +159,7 @@ The setup process for RF capture involves running a short cable internally from 
 
 This cable is then routed to an added BNC jack at back of your metal/plastic VCR chassis or cable threaded out a vent, this allows direct access to the FM RF signals conveniently & reliably, we call this a `Tap Point` or `RF Tap` respectively for some decks and camcorders however DuPont connectors (2.54mm headers) and ribbon jigs can be used, but can be less mechanically safe/secure in some setups.
 
-Adding an [amplifier](https://github.com/oyvindln/vhs-decode/wiki/Amplificaiton-R&D) in-between your RF Tap and your Bulkheads or cabled connection to an ADC solution can drastically improve the performance of lower signal level output machines, and reduce/eliminate issues such as cross-hatching from too much signal draw on the internal head amplifier, this also removes most needs to change any capture device gain levels.
+Adding an [amplifier](https://github.com/oyvindln/vhs-decode/wiki/Amplifier-Setup-Guide) in-between your RF Tap and your Bulkheads or cabled connection to an ADC solution can drastically improve the performance of lower signal level output machines, and reduce/eliminate issues such as cross-hatching from too much signal draw on the internal head amplifier, this also removes most needs to change any capture device gain levels.
 
 
 ````
@@ -499,7 +508,7 @@ For DomesDayDuplicator captures on Linux simply run:
 
 For DomesDayDuplicator captures on Windows simply drag and drop on: 
 
-`ld-compress.bat` or `ld-compress-nvidia-gpu.bat`
+`lds-compress.bat` or `lds-compress-nvidia-gpu.bat`
 
 Your `.lds` file will be compressed to an FLAC OGG `.ldf` file.
 
@@ -543,9 +552,9 @@ Decode your captured tape to `.tbc` by using:
 
 Full Usage Example:
 
-    vhs-decode --debug --ire0_adjust --frequency 28.6 --pal --threads 8 --tape_format VHS CX-White-2022.10.25.u8 my-first-decode-2022.10.25
+    vhs-decode --debug --ire0_adjust --recheck_phase --frequency 28.6 --pal --threads 8 --tape_format VHS CX-White-2022.10.25.u8 my-first-decode-2022.10.25
 
-Use analyse tool during or after decoding to inspect decoded data:
+Use the analyse tool during or after decoding to inspect & adjust  decoded data:
 
     ld-analyse <decoded tape name>.tbc
 
@@ -624,8 +633,8 @@ Define your profile with for example: `--profile ffv1_8bit_pcm`
 | prores_4444xq | ProRes 4444XQ | Compressed           | 10-bit    | 4:4:4               | PCM Audio    | QuickTime | .mov           | 80-110mbps |
 | v210          | V210          | Uncompressed         | 10-bit    | 4:2:2               | PCM Audio    | QuickTime | .mov           | 200mbps    |
 | v410          | V410          | Uncompressed         | 10-bit    | 4:4:4               | PCM Audio    | QuickTime | .mov           | 400mbps    |
-| x264_web      | AVC/H.264     | Lossy                | 8-bit     | 4:2:0               | AAC Audio    | QuickTime | .mov           | 8mbps      |
-| x265_web      | HEVC/H.265    | Lossy                | 8-bit     | 4:2:0               | AAC Audio    | QuickTime | .mov           | 8mbps      |
+| x264_web      | AVC/H.264     | Lossy                | 8-bit     | 4:2:0               | AAC Audio    | MPEG-4    | .mp4           | 8mbps      |
+| x265_web      | HEVC/H.265    | Lossy                | 8-bit     | 4:2:0               | AAC Audio    | MPEG-4    | .mp4           | 8mbps      |
 
 </details>
 
@@ -699,7 +708,7 @@ The decoder is 8/16 bit agnostic so as long as sample rate is defined, it will d
 
 Example's `-f 280000hz` or `-f 28mhz` or `-f 8fsc` 
 
-In the case of stock CX Card use `-f 28.6` for example or [legacy CXADC designers](https://github.com/oyvindln/vhs-decode/wiki/Command-List#cxadc-sample-rates-stock).
+In the case of stock CX Card use `-f 28.6` for example or [legacy CXADC designators](https://github.com/oyvindln/vhs-decode/wiki/Command-List#cxadc-sample-rates-stock).
 
 
 ## TV System Commands
