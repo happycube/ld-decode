@@ -290,13 +290,37 @@ Currently, MacOS builds while supported and deployable these are not directly ve
 
 
 <details closed>
-<summary>Installation of the development release on Linux (Ubuntu/Debian-based)</summary>
+<summary>Linux Appimage Builds</summary>
+<br>
+    
+[Linux Setup & Usage Docs](https://github.com/oyvindln/vhs-decode/wiki/Linux-Build)
+
+Decoders & TBC Video Export has a mainly self-contained binary appimage package for use on most distributions, this can be used fully or as a fallback if direct building is broken on your OS install.
+
+
+</details>
+
+
+<details closed>
+<summary>Direct installation of the development release on Linux (Ubuntu/Debian-based)</summary>
 <br>
 
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
     sudo apt install git qtbase5-dev libqwt-qt5-dev libfftw3-dev libavformat-dev libavcodec-dev libavutil-dev ffmpeg pv pkg-config make cmake sox pipx g++ python3-dev
+
+Install all requirements (redo this after each update)
+
+    pip install -r requirements.txt
+
+Install [Rust Compiler](https://www.rust-lang.org/tools/install) (required for decode v0.3.5 onwards)
+
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+Verify Rust Compiler 
+
+    source "$HOME/.cargo/env" && echo "Rust version: $(rustc --version)" && echo "Cargo version: $(cargo --version)"
 
 Ubuntu 22.04/Linux Mint 21/Debian may also need this library installed if one wants to use the GUI version of hifi-decode:
 
@@ -311,8 +335,6 @@ Set up pipx
     pipx ensurepath
 
 (Alternatively, a [python virtual environment](https://docs.python.org/3/library/venv.html) can be used instead of using pipx)
-
-Install rust - see the [rust installer website](https://www.rust-lang.org/tools/install) for instructions.
 
 Install TBC-Video-Export
 
@@ -342,29 +364,21 @@ Install VHS-Decode:
 
 Build and install vhs-decode via pipx, using **one** of the below scripts.
 
-* Base installation
+### Base installation
 
-    ```
     pipx install .
-    ```
 
-* With hifi-decode gui
+### With hifi-decode gui
 
-    ```
     pipx install .[hifi_gui_qt6]
-    ```
 
-* With Intel specific cpu optimizations
+### With Intel specific cpu optimizations
 
-    ```
     pipx install .[intel]
-    ```
 
-* If reinstalling, you may need to add the `--force` flag to overwrite the previous installation.
+### If updating or reinstalling, you may need to add the `--force` flag to overwrite/update the previous installation.
 
-    ```
     pipx install .[intel,hifi_gui_qt6] --force
-    ```
 
 Compile and Install ld-tools suite: (Required)
 
@@ -386,11 +400,9 @@ To update your local repository enter `git pull` into the terminal while inside 
 
 To update the tools to the latest version, the steps under "Compile and Install ld-tools suite: (Required)" has to be re-ran after a `git pull`. The tools are not updated very often.
 
-> [!NOTE]  
-> debian/ubuntu does not have a qt6 version of qwt in repositories as of yet, so you have to inform the build script to use Qt5 if both qt5 and qt6 are installed with `-DUSE_QT_VERSION=5` as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
+NOTE!
 
-> [!NOTE]  
-> `pip install -r requirements.txt` May need to be run for the suite to build properly after major updates.  
+Debian/Ubuntu does not have a qt6 version of qwt in repositories as of yet, so you have to inform the build script to use Qt5 if both qt5 and qt6 are installed with `-DUSE_QT_VERSION=5` as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
 
 
 # Usage
