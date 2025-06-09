@@ -4,11 +4,12 @@
 def fill_rfparams_8mm_shared(rfparams):
     # Upper frequency of bandpass to filter out chroma from the rf signal.
     # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1450000
+    rfparams["chroma_bpf_upper"] = 1400000
     rfparams["chroma_bpf_order"] = 6
 
     rfparams["fm_audio_channel_0_freq"] = 1500000
     rfparams["fm_audio_channel_1_freq"] = 1700000
+    rfparams["chroma_bpf_lower"] = 160000
     rfparams["chroma_audio_notch_freq"] = rfparams["fm_audio_channel_0_freq"]
 
 
