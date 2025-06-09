@@ -41,6 +41,7 @@ from vhsdecode.compute_video_filters import (
     gen_bpf_supergauss,
     gen_fm_audio_notch_params,
     NONLINEAR_AMP_LPF_FREQ_DEFAULT,
+    CHROMA_AUDIO_NOTCH_Q,
 )
 from vhsdecode import compute_video_filters as cvf
 from vhsdecode.demodcache import DemodCacheTape
@@ -611,6 +612,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "hsync_refine_use_threshold",
                 "export_raw_tbc",
                 "fm_audio_notch",
+                "chroma_audio_notch",
                 "chroma_offset",
                 "ire0_adjust",
                 "gnrc_afe",
@@ -643,6 +645,7 @@ class VHSRFDecode(ldd.RFDecode):
             True,
             export_raw_tbc,
             rf_options.get("fm_audio_notch", 0),
+            self.DecoderParams.get("chroma_audio_notch_freq", 0) > 0,
             int(self.DecoderParams.get("chroma_offset", 5) * (self.freq / 40.0)),
             ire0_adjust,
             rf_options.get("gnrc_afe", False),
@@ -721,20 +724,38 @@ class VHSRFDecode(ldd.RFDecode):
             self.Filters["chroma_deemphasis"] = (b, a)
 
         if self._notch is not None:
-            if not self._do_cafc:
-                self.Filters["FVideoNotch"] = sps.iirnotch(
-                    self._notch / self.freq_half, self._notch_q
-                )
-            else:
+            video_notch_filter = sps.iirnotch(
+                self._notch / self.freq_half, self._notch_q
+            )
+
+            # Chroma notch filter
+            if self._do_cafc:
                 self.Filters["FVideoNotch"] = sps.iirnotch(
                     self._notch / self._chroma_afc.getOutFreqHalf(), self._notch_q
                 )
+            else:
+                self.Filters["FVideoNotch"] = video_notch_filter
 
+            # Luma notch filter
             self.Filters["FVideoNotchF"] = abs(
-                lddu.filtfft(self.Filters["FVideoNotch"], self.blocklen)
+                lddu.filtfft(video_notch_filter, self.blocklen)
             )
         else:
             self.Filters["FVideoNotch"] = None, None
+
+        if self._options.chroma_audio_notch:
+            if self._do_cafc:
+                self.Filters["FChromaAudioNotch"] = sps.iirnotch(
+                    DP["chroma_audio_notch_freq"]
+                    / self._chroma_afc.getOutFreqHalf()
+                    * 1e6,
+                    CHROMA_AUDIO_NOTCH_Q,
+                )
+            else:
+                self.Filters["FChromaAudioNotch"] = sps.iirnotch(
+                    DP["chroma_audio_notch_freq"] / (self.freq_hz_half),
+                    CHROMA_AUDIO_NOTCH_Q,
+                )
 
         # The following filters are for post-TBC:
         # The output sample rate is 4fsc
@@ -1235,6 +1256,7 @@ class VHSRFDecode(ldd.RFDecode):
                 self.Filters["FVideoNotch"],
                 self._notch,
                 move=int(self.options.chroma_offset),
+                audio_notch=self.Filters.get("FChromaAudioNotch", None),
                 # TODO: Do we need to tweak move elsewhere too?
                 # if cafc is enabled, this filtering will be done after TBC
             )

@@ -1,8 +1,21 @@
 """Module containing parameters for video8 and hi8"""
 
 
+def fill_rfparams_8mm_shared(rfparams):
+    # Upper frequency of bandpass to filter out chroma from the rf signal.
+    # For vhs decks it's typically a bit more than 2x cc
+    rfparams["chroma_bpf_upper"] = 1450000
+    rfparams["chroma_bpf_order"] = 6
+
+    rfparams["fm_audio_channel_0_freq"] = 1500000
+    rfparams["fm_audio_channel_1_freq"] = 1700000
+    rfparams["chroma_audio_notch_freq"] = rfparams["fm_audio_channel_0_freq"]
+
+
 def fill_rfparams_video8_shared(rfparams):
     """Fill in parameters that are shared between systems for VHS"""
+
+    fill_rfparams_8mm_shared(rfparams)
 
     # sync 4.2 mhz
     # peak white 5.4 mhz
@@ -60,13 +73,11 @@ def fill_rfparams_video8_shared(rfparams):
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 0.5
 
-    # Upper frequency of bandpass to filter out chroma from the rf signal.
-    # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1450000
-
 
 def fill_rfparams_hi8_shared(rfparams):
     """Fill in parameters that are shared between systems for VHS"""
+
+    fill_rfparams_8mm_shared(rfparams)
 
     # sync 5.7 mhz
     # peak white 7.7 mhz
@@ -129,10 +140,6 @@ def fill_rfparams_hi8_shared(rfparams):
     rfparams["video_eq"] = {
         "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 2},
     }
-
-    # Upper frequency of bandpass to filter out chroma from the rf signal.
-    # For vhs decks it's typically a bit more than 2x cc
-    rfparams["chroma_bpf_upper"] = 1450000
 
 
 def fill_chroma_params_pal(rfparams):

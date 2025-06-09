@@ -165,8 +165,17 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
     return chroma
 
 
-def demod_chroma_filt(data, filter, blocklen, notch, do_notch=None, move=10):
+def demod_chroma_filt(
+    data, filter, blocklen, notch, do_notch=None, move=10, audio_notch=None
+):
     out_chroma = utils.filter_simple(data[:blocklen], filter)
+
+    if audio_notch is not None:
+        out_chroma = sps.filtfilt(
+            audio_notch[0],
+            audio_notch[1],
+            out_chroma,
+        )
 
     if do_notch is not None and do_notch:
         out_chroma = sps.filtfilt(
@@ -208,6 +217,7 @@ def process_chroma(
                 field.rf.Filters["FVideoNotch"],
                 field.rf.notch,
                 move=(int(10 * (field.rf.sys_params["outfreq"] / 40))),
+                audio_notch=field.rf.Filters.get("FChromaAudioNotch", None),
             )
 
             if not disable_tracking_cafc:

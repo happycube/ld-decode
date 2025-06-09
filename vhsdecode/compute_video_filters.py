@@ -16,6 +16,7 @@ from vhsdecode.addons.FMdeemph import FMDeEmphasisB, gen_shelf
 
 NONLINEAR_AMP_LPF_FREQ_DEFAULT = 700000
 NONLINEAR_STATIC_FACTOR_DEFAULT = None
+CHROMA_AUDIO_NOTCH_Q = 10
 
 
 def create_sub_emphasis_params(rf_params, sys_params, hz_ire, vsync_ire):
