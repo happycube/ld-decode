@@ -151,7 +151,7 @@ class AFEParamsVHS:
 
 
 @dataclass
-class AFEParamsHi8:
+class AFEParams8mm:
     def __init__(self):
         self.maxVCODeviation = 100e3
         self.LCarrierRef = 1.5e6
@@ -181,14 +181,14 @@ class AFEParamsNTSCVHS(AFEParamsVHS):
 
 
 @dataclass
-class AFEParamsNTSCHi8(AFEParamsHi8):
+class AFEParamsNTSC8mm(AFEParams8mm):
     def __init__(self):
         super().__init__()
         self.Hfreq = 15.750e3
 
 
 @dataclass
-class AFEParamsPALHi8(AFEParamsHi8):
+class AFEParamsPAL8mm(AFEParams8mm):
     def __init__(self):
         super().__init__()
         self.Hfreq = 15.625e3
@@ -1019,12 +1019,12 @@ class HiFiDecode:
         else:
             if options["standard"] == "p":
                 self.field_rate = 50
-                self.standard = AFEParamsPALHi8()
-                self.standard_original = AFEParamsPALHi8()
+                self.standard = AFEParamsPAL8mm()
+                self.standard_original = AFEParamsPAL8mm()
             else:
                 self.field_rate = 59.94
-                self.standard = AFEParamsNTSCHi8()
-                self.standard_original = AFEParamsNTSCHi8()
+                self.standard = AFEParamsNTSC8mm()
+                self.standard_original = AFEParamsNTSC8mm()
 
         self.headswitch_interpolation_enabled = self.options[
             "head_switching_interpolation"
@@ -1825,7 +1825,7 @@ class HiFiDecode:
 
     @staticmethod
     def demod_process_audio(
-        filtered: np.array, fm: FMdemod, audio_process_params: dict, measure_perf: bool
+        filtered: np.array, fm: FMdemod, audio_process_params: dict, measure_perf: bool, vco_deviation: float
     ) -> Tuple[np.array, float, dict]:
         perf_measurements = {
             "start_demod": 0,
@@ -1864,7 +1864,7 @@ class HiFiDecode:
         if measure_perf:
             perf_measurements["start_dc_clip_trim"] = perf_counter()
         dc = HiFiDecode.cancelDC_clip_trim(
-            audio, AFEParamsVHS().VCODeviation, audio_process_params.pre_trim
+            audio, vco_deviation, audio_process_params.pre_trim
         )
         if measure_perf:
             perf_measurements["end_dc_clip_trim"] = perf_counter()
@@ -1954,10 +1954,10 @@ class HiFiDecode:
             self.grc.send(filterL + filterR)
 
         preL, dcL, perf_measurements_l = HiFiDecode.demod_process_audio(
-            filterL, self.fmL, self.audio_process_params, measure_perf
+            filterL, self.fmL, self.audio_process_params, measure_perf, self.standard.VCODeviation
         )
         preR, dcR, perf_measurements_r = HiFiDecode.demod_process_audio(
-            filterR, self.fmR, self.audio_process_params, measure_perf
+            filterR, self.fmR, self.audio_process_params, measure_perf, self.standard.VCODeviation
         )
 
         # fine tune carrier frequency
