@@ -41,6 +41,7 @@ from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
 
+from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 from vhsdecode.hifi.utils import DecoderSharedMemory, NumbaAudioArray, profile
 
 ROCKET_FFT_AVAILABLE = False
@@ -61,6 +62,9 @@ DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 DEFAULT_RESAMPLER_QUALITY = "high"
 DEFAULT_FINAL_AUDIO_RATE = 48000
+
+# needs to be a power of 2 for effcient fft
+DEMOD_HILBERT_IF_RATE = 2**23
 
 # audio processing precision
 REAL_DTYPE = np.float32
@@ -313,7 +317,10 @@ class FMdemod:
 
     @staticmethod
     @guvectorize(
-        [(numba.types.float32, NumbaAudioArray, NumbaAudioArray)],
+        [
+            (numba.types.float32, NumbaAudioArray, NumbaAudioArray),
+            (numba.types.float32, numba.types.Array(DEMOD_DTYPE_NB, 1, "C"), NumbaAudioArray)
+        ],
         "(),(n)->(n)",
         cache=True,
         fastmath=True,
@@ -485,7 +492,7 @@ class FMdemod:
             unwrapped = prev_unwrapped + (corrected - prev_angle)
             diff = unwrapped - prev_unwrapped
 
-            out_demod[i-1] = diff / diff_divisor - carrier
+            out_demod[i-1] = -(diff / diff_divisor - carrier)
 
             prev_angle = current_angle
             prev_unwrapped = unwrapped
@@ -964,7 +971,7 @@ class HiFiDecode:
 
         self.input_rate: int = int(options["input_rate"])
         if self.options["demod_type"] == DEMOD_HILBERT:
-            self.if_rate: int = 2**23  # needs to be a power of 2 for effcient fft
+            self.if_rate: int = DEMOD_HILBERT_IF_RATE
         elif self.options["demod_type"] == DEMOD_QUADRATURE:
             self.if_rate: int = self.input_rate # do not resample rf when doing quadrature demodulation
 
@@ -979,7 +986,12 @@ class HiFiDecode:
             self.audioRes_denominator,
             self.audioFinal_numerator,
             self.audioFinal_denominator,
-        ) = self.getResamplingRatios()
+        ) = HiFiDecode.getResamplingRatios(
+            self.input_rate,
+            self.if_rate,
+            self.audio_rate,
+            self.audio_final_rate
+        )
 
         self.set_block_sizes()
         self._set_block_overlap()
@@ -1083,8 +1095,11 @@ class HiFiDecode:
             if freq <= self.muting_cutoff_freq:
                 self.muting_fft_start = i
 
-        self.afeL, self.afeR, self.fmL, self.fmR = self.get_carrier_filters(
-            self.standard
+        if self.options["demod_type"] == DEMOD_QUADRATURE:
+            self._init_iq_oscillator_shared_memory()
+
+        self.afeL, self.afeR, self.fmL, self.fmR = self._get_carrier_filters(
+            self.if_rate, self.options["demod_type"], self.is_main_process
         )
 
         if self.options["grc"]:
@@ -1221,60 +1236,37 @@ class HiFiDecode:
             "block_audio_final_overlap": self._block_audio_final_overlap,
         }
 
-    def getResamplingRatios(self):
-        samplerate2ifrate = self.if_rate / self.input_rate
-        self.ifresample_numerator = Fraction(samplerate2ifrate).numerator
-        self.ifresample_denominator = Fraction(samplerate2ifrate).denominator
-        assert (
-            self.ifresample_numerator > 0
-        ), f"IF resampling numerator got 0; sample_rate {self.input_rate}"
-        assert (
-            self.ifresample_denominator > 0
-        ), f"IF resampling denominator got 0; sample_rate {self.input_rate}"
+    @staticmethod
+    def getResamplingRatios(input_rate, if_rate, audio_rate, audio_final_rate):
+        samplerate2ifrate = if_rate / input_rate
 
-        audiorate2ifrate = self.audio_rate / self.if_rate
-        self.audioRes_numerator = Fraction(audiorate2ifrate).numerator
-        self.audioRes_denominator = Fraction(audiorate2ifrate).denominator
+        ifresample_numerator = Fraction(samplerate2ifrate).numerator
+        ifresample_denominator = Fraction(samplerate2ifrate).denominator
+        assert (
+            ifresample_numerator > 0
+        ), f"IF resampling numerator got 0; sample_rate {input_rate}"
+        assert (
+            ifresample_denominator > 0
+        ), f"IF resampling denominator got 0; sample_rate {input_rate}"
 
-        audiorate2FinalAudioRate = self.audio_final_rate / self.audio_rate
-        self.audioFinal_numerator = Fraction(audiorate2FinalAudioRate).numerator
-        self.audioFinal_denominator = Fraction(audiorate2FinalAudioRate).denominator
+        audiorate2ifrate = audio_rate / if_rate
+        audioRes_numerator = Fraction(audiorate2ifrate).numerator
+        audioRes_denominator = Fraction(audiorate2ifrate).denominator
+
+        audiorate2FinalAudioRate = audio_final_rate / audio_rate
+        audioFinal_numerator = Fraction(audiorate2FinalAudioRate).numerator
+        audioFinal_denominator = Fraction(audiorate2FinalAudioRate).denominator
+
         return (
-            self.ifresample_numerator,
-            self.ifresample_denominator,
-            self.audioRes_numerator,
-            self.audioRes_denominator,
-            self.audioFinal_numerator,
-            self.audioFinal_denominator,
+            ifresample_numerator,
+            ifresample_denominator,
+            audioRes_numerator,
+            audioRes_denominator,
+            audioFinal_numerator,
+            audioFinal_denominator,
         )
 
-    @staticmethod
-    @njit(
-        [(
-            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-            numba.types.float64,
-            numba.types.float64,
-            numba.types.int64,
-            numba.types.float64
-        )],
-        cache=True, fastmath=False, nogil=True
-    )
-    def _generate_iq_oscillators(i_left, q_left, i_right, q_right, carrier_left, carrier_right, size, sample_rate):
-        two_pi_left = 2 * pi * carrier_left
-        two_pi_right = 2 * pi * carrier_right
-
-        for i in range(size):
-            t = i / sample_rate
-
-            i_left[i] = cos(two_pi_left * t) #    In-phase
-            q_left[i] = -sin(two_pi_left * t) #   Quadrature (negative sign for proper rotation)
-            i_right[i] = cos(two_pi_right * t) #  In-phase
-            q_right[i] = -sin(two_pi_right * t) # Quadrature (negative sign for proper rotation)
-    
-    def _init_iq_oscillators(self):
+    def _init_iq_oscillator_shared_memory(self):
         demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
         
         if self.is_main_process:
@@ -1311,12 +1303,41 @@ class HiFiDecode:
             self.i_osc_right_shm = SharedMemory(name=self.options["i_osc_right"])
             self.q_osc_right_shm = SharedMemory(name=self.options["q_osc_right"])
 
+    @staticmethod
+    @njit(
+        [(
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.float64,
+            numba.types.float64,
+            numba.types.float64
+        )],
+        cache=True, fastmath=False, nogil=True
+    )
+    def _generate_iq_oscillators(i_left, q_left, i_right, q_right, carrier_left, carrier_right, sample_rate):
+        two_pi_left = 2 * pi * carrier_left
+        two_pi_right = 2 * pi * carrier_right
+        size = len(i_left)
+
+        for i in range(size):
+            t = i / sample_rate
+
+            i_left[i] = cos(two_pi_left * t) #    In-phase
+            q_left[i] = -sin(two_pi_left * t) #   Quadrature (negative sign for proper rotation)
+            i_right[i] = cos(two_pi_right * t) #  In-phase
+            q_right[i] = -sin(two_pi_right * t) # Quadrature (negative sign for proper rotation)
+
+    def get_iq_oscillators(self, generate_iq_oscillators):
+        demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
+
         i_osc_left = np.ndarray(int(self.i_osc_left_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.i_osc_left_shm.buf, order="C")
         q_osc_left = np.ndarray(int(self.q_osc_left_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.q_osc_left_shm.buf, order="C")
         i_osc_right = np.ndarray(int(self.i_osc_right_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.i_osc_right_shm.buf, order="C")
         q_osc_right = np.ndarray(int(self.q_osc_right_shm.size / demod_dtype_itemsize), dtype=DEMOD_DTYPE_NP, buffer=self.q_osc_right_shm.buf, order="C")
 
-        if self.is_main_process:
+        if generate_iq_oscillators:
             # generate i/q oscillators once and share among sub processes
             HiFiDecode._generate_iq_oscillators(
                 i_osc_left,
@@ -1325,23 +1346,22 @@ class HiFiDecode:
                 q_osc_right,
                 self.standard.LCarrierRef,
                 self.standard.RCarrierRef,
-                iq_size,
                 np.float64(self.if_rate)
             )
 
         return i_osc_left, q_osc_left, i_osc_right, q_osc_right
         
-    def get_carrier_filters(self, standard):
-        afeL = AFEFilterable(standard, self.if_rate, 0)
-        afeR = AFEFilterable(standard, self.if_rate, 1)
+    def _get_carrier_filters(self, if_rate, demod_type, generate_iq_oscillators):
+        afeL = AFEFilterable(self.standard, if_rate, 0)
+        afeR = AFEFilterable(self.standard, if_rate, 1)
         
         if self.options["demod_type"] == DEMOD_QUADRATURE:
-            i_osc_left, q_osc_left, i_osc_right, q_osc_right = self._init_iq_oscillators()
-            fmL = FMdemod(self.if_rate, standard.LCarrierRef, self.options["demod_type"], i_osc=i_osc_left, q_osc=q_osc_left)
-            fmR = FMdemod(self.if_rate, standard.RCarrierRef, self.options["demod_type"], i_osc=i_osc_right, q_osc=q_osc_right)
+            i_osc_left, q_osc_left, i_osc_right, q_osc_right = self.get_iq_oscillators(generate_iq_oscillators)
+            fmL = FMdemod(if_rate, self.standard.LCarrierRef, demod_type, i_osc=i_osc_left, q_osc=q_osc_left)
+            fmR = FMdemod(if_rate, self.standard.RCarrierRef, demod_type, i_osc=i_osc_right, q_osc=q_osc_right)
         else:
-            fmL = FMdemod(self.if_rate, standard.LCarrierRef, self.options["demod_type"])
-            fmR = FMdemod(self.if_rate, standard.RCarrierRef, self.options["demod_type"])
+            fmL = FMdemod(if_rate, self.standard.LCarrierRef, demod_type)
+            fmR = FMdemod(if_rate, self.standard.RCarrierRef, demod_type)
 
         return afeL, afeR, fmL, fmR
 
@@ -1349,26 +1369,49 @@ class HiFiDecode:
         meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
             window_average=len(blocks)
         )
-        for block in blocks:
-            data = self.bandpassRF.work(block)
+
+        (
+            ifresample_numerator,
+            ifresample_denominator,
+            _, _, _, _,
+        ) = HiFiDecode.getResamplingRatios(
+            self.input_rate,
+            DEMOD_HILBERT_IF_RATE,
+            self.audio_rate,
+            self.audio_final_rate
+        )
+        afeL, afeR, fmL, fmR = self._get_carrier_filters(DEMOD_HILBERT_IF_RATE, DEMOD_HILBERT, False)
+
+        progressB = TimeProgressBar(len(blocks), len(blocks))
+
+        for i in range(len(blocks)):
+            data = self.bandpassRF.work(blocks[i])
             data = data.astype(REAL_DTYPE, copy=False)
 
             data = samplerate_resample(
                 data,
-                self.ifresample_numerator,
-                self.ifresample_denominator,
-                converter_type=self.if_resampler_converter,
+                ifresample_numerator,
+                ifresample_denominator,
+                converter_type="linear",
             )
 
-            filterL, filterR = self.filterCarriers(data)
-            preL = np.empty_like(filterL)
-            preR = np.empty_like(filterR)
+            filterL = afeL.work(data)
+            filterR = afeR.work(data)
+            preL = np.empty(len(filterL), dtype=REAL_DTYPE)
+            preR = np.empty(len(filterR), dtype=REAL_DTYPE)
 
-            self.fmL.work(filterL, preL)
-            self.fmR.work(filterR, preR)
+            fmL.work(filterL.astype(DEMOD_DTYPE_NP), preL)
+            fmR.work(filterR.astype(DEMOD_DTYPE_NP), preR)
+
+            # remove dc spikes at beginning and end
+            preL = preL[self.pre_trim: -self.pre_trim]
+            preR = preR[self.pre_trim: -self.pre_trim]
 
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
+
+            progressB.label = "Carrier L %.06f MHz, R %.06f MHz" % (meanL.pull() / 10e5, meanR.pull() / 10e5)
+            progressB.print(i+1, False)
 
         return meanL.pull(), meanR.pull()
 
@@ -1405,6 +1448,11 @@ class HiFiDecode:
             else newRC
         )
 
+        # update all the filters and iq oscilators with the new bias
+        self.afeL, self.afeR, self.fmL, self.fmR = self._get_carrier_filters(
+            self.if_rate, self.options["demod_type"], True
+        )
+
     def auto_fine_tune(self, dcL: float, dcR: float) -> Tuple[AFEFilterable, AFEFilterable, FMdemod, FMdemod]:
         left_carrier_dc_offset = self.standard.LCarrierRef - dcL
         left_carrier_updated = self.standard.LCarrierRef - round(left_carrier_dc_offset)
@@ -1422,14 +1470,12 @@ class HiFiDecode:
             self.standard_original.RCarrierRef - 10e3,
         )
 
-        # auto fine tune doesn't work with quadrature demodulation since the i/q oscillators are generated once, disabling for now
+        # auto fine tune can't adjust quadrature demodulation since the i/q oscillators are generated once, disabling for now
+        # use the --bg option to adjust for bias at the beginning of the decode
         if self.options["demod_type"] == DEMOD_HILBERT:
-            self.afeL, self.afeR, self.fmL, self.fmR = self.get_carrier_filters(
-                self.standard
+            self.afeL, self.afeR, self.fmL, self.fmR = self._get_carrier_filters(
+                self.if_rate, self.options["demod_type"], True
             )
-
-    def filterCarriers(self, data: np.array) -> Tuple[np.array, np.array]:
-        return self.afeL.work(data), self.afeR.work(data)
     
     @staticmethod
     @njit(
@@ -1946,7 +1992,8 @@ class HiFiDecode:
 
         if measure_perf:
             start_carrier_filter = perf_counter()
-        filterL, filterR = self.filterCarriers(rf_data_resampled)
+        filterL = self.afeL.work(rf_data_resampled)
+        filterR = self.afeR.work(rf_data_resampled)
         if measure_perf:
             end_carrier_filter = perf_counter()
 

@@ -1475,11 +1475,7 @@ def guess_bias(decoder, input_file, block_size, blocks_limits=10):
             blocks.append(block_buffer)
 
     LCRef, RCRef = decoder.guessBiases(blocks)
-    print("done!")
-    print(
-        "L carrier found at %.02f MHz, R carrier found at %.02f MHz"
-        % (LCRef / 1e6, RCRef / 1e6)
-    )
+    print("\ndone!")
     return LCRef, RCRef
 
 
