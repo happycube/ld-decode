@@ -586,10 +586,12 @@ class SpectralNoiseReduction:
         def _get_sig_mask(sig_stft_smooth, abs_sig_stft, thresh_n_mult_nonstationary, sigmoid_slope_nonstationary):   
             # get the number of X above the mean the signal is
             sig_stft_smooth_x, sig_stft_smooth_y = sig_stft_smooth.shape
+            # prevent divide by zero
+            epsilon = np.finfo(np.float64).eps
 
             for x in range(sig_stft_smooth_x):
                 for y in range(sig_stft_smooth_y):
-                     sig_stft_smooth[x][y] = 1 / (1 + np.exp(-((abs_sig_stft[x][y] - sig_stft_smooth[x][y]) / sig_stft_smooth[x][y] + -thresh_n_mult_nonstationary) * sigmoid_slope_nonstationary))
+                    sig_stft_smooth[x][y] = 1 / (1 + np.exp((thresh_n_mult_nonstationary - (abs_sig_stft[x][y] - sig_stft_smooth[x][y]) / (sig_stft_smooth[x][y] + epsilon)) * sigmoid_slope_nonstationary))
         
         @staticmethod
         @njit(
