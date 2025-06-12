@@ -491,6 +491,10 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             )
         else:
             print("WARN: flac and ffmpeg are not installed. LDF file format may not decode correctly")
+            return sf.SoundFile(
+                pathR,
+                "r",
+            )
     elif "-" == path:
         return UnseekableSoundFile(
             BufferedInputStream(sys.stdin.buffer),
