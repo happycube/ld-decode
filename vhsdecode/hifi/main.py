@@ -236,6 +236,28 @@ parser.add_argument(
     ),
 )
 
+def test_if_flac_is_installed():
+    shell_command = ["flac", "-version"]
+    try:
+        p = subprocess.Popen(
+            shell_command,
+            shell=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=False,
+        )
+        # prints ffmpeg version and closes the process
+        stdout_as_string = p.stdout.read().decode("utf-8")
+        version = stdout_as_string.split("\n")[0]
+        print(f"Found {version}")
+        p.communicate()
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print(
+            "WARN: flac not installed (or not in PATH)"
+        )
+        return False
 
 def test_if_ffmpeg_is_installed():
     shell_command = ["ffmpeg", "-version"]
@@ -256,7 +278,7 @@ def test_if_ffmpeg_is_installed():
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
         print(
-            "WARN: ffmpeg not installed (or not in PATH), please install it to speed up file reading"
+            "WARN: ffmpeg not installed (or not in PATH)"
         )
         return False
 
@@ -299,17 +321,29 @@ class BufferedInputStream(io.RawIOBase):
     def seek(self, offset, whence=io.SEEK_SET):
         return self.tell()
 
-
-# executes ffmpeg and reads stdout as a file
-class FfmpegFileReader(BufferedInputStream):
+class FlacFileReader(BufferedInputStream):
     def __init__(self, file_path):
-        shell_command = ["ffmpeg", "-i", file_path, "-f", "s16le", "pipe:1"]
+        shell_command = ["flac", "-d", "-c", "--force-raw-format", "--endian", "little", "--sign", "signed", file_path]
         p = subprocess.Popen(
             shell_command,
             shell=False,
-            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=False,
+        )
+        self.buffer = p.stdout
+        self._pos: int = 0
+
+# executes ffmpeg and reads stdout as a file
+class FFMpegFileReader(BufferedInputStream):
+    def __init__(self, file_path):
+        # Force ffmpeg to ignore duration metadata and read until actual EOF
+        shell_command = ["ffmpeg", "-ignore_unknown", "-i", file_path, "-f", "s16le", "-acodec", "pcm_s16le", "-avoid_negative_ts", "disabled", "-"]
+        p = subprocess.Popen(
+            shell_command,
+            shell=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             universal_newlines=False,
         )
         self.buffer = p.stdout
@@ -429,11 +463,34 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             subtype="PCM_16",
             endian="LITTLE",
         )
-    elif "flac" == extension or "ldf" == extension or "hifi" == extension:
+    elif "flac" == extension:
         return sf.SoundFile(
             pathR,
             "r",
         )
+    elif "ldf" == extension:
+        if test_if_flac_is_installed():
+            return UnseekableSoundFile(
+                FlacFileReader(pathR),
+                "r",
+                channels=1,
+                samplerate=int(sample_rate),
+                format="RAW",
+                subtype="PCM_16",
+                endian="LITTLE",
+            )
+        elif test_if_ffmpeg_is_installed():
+            return UnseekableSoundFile(
+                FFMpegFileReader(pathR),
+                "r",
+                channels=1,
+                samplerate=int(sample_rate),
+                format="RAW",
+                subtype="PCM_16",
+                endian="LITTLE",
+            )
+        else:
+            print("WARN: flac and ffmpeg are not installed. LDF file format may not decode correctly")
     elif "-" == path:
         return UnseekableSoundFile(
             BufferedInputStream(sys.stdin.buffer),
@@ -445,9 +502,11 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             endian="LITTLE",
         )
     else:
+        print("WARN: Unknown file format.")
+        print("WARN: Attempting to decode with ffmpeg")
         if test_if_ffmpeg_is_installed():
             return UnseekableSoundFile(
-                FfmpegFileReader(pathR),
+                FFMpegFileReader(pathR),
                 "r",
                 channels=1,
                 samplerate=int(sample_rate),
@@ -455,6 +514,7 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
                 subtype="PCM_16",
                 endian="LITTLE",
             )
+        print("WARN: Attempting to decode with SoundFile")
         return sf.SoundFile(pathR, "r")
 
 def get_normalize_filename(path, sample_rate):
