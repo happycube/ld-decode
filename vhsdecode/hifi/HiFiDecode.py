@@ -2028,8 +2028,8 @@ class HiFiDecode:
         if measure_perf:
             start_adjust_gain = perf_counter()
         if self.audio_process_params.gain != 1:
-            preL = HiFiDecode.adjust_gain(preL, self.audio_process_params.gain)
-            preR = HiFiDecode.adjust_gain(preR, self.audio_process_params.gain)
+            HiFiDecode.adjust_gain(preL, self.audio_process_params.gain)
+            HiFiDecode.adjust_gain(preR, self.audio_process_params.gain)
         if measure_perf:
             end_adjust_gain = perf_counter()
 
