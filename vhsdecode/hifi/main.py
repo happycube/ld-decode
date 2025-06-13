@@ -236,6 +236,25 @@ parser.add_argument(
     ),
 )
 
+def test_if_ld_ldf_reader_is_installed():
+    shell_command = ["ld-ldf-reader", "--help"]
+    try:
+        p = subprocess.Popen(
+            shell_command,
+            shell=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=False,
+        )
+        print(f"Found ld-ldf-reader")
+        p.communicate()
+        return True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print(
+            "WARN: ld-ldf-reader not installed (or not in PATH)"
+        )
+
 def test_if_flac_is_installed():
     shell_command = ["flac", "-version"]
     try:
@@ -321,14 +340,25 @@ class BufferedInputStream(io.RawIOBase):
     def seek(self, offset, whence=io.SEEK_SET):
         return self.tell()
 
-class FlacFileReader(BufferedInputStream):
+class LDFFileReader(BufferedInputStream):
     def __init__(self, file_path):
-        shell_command = ["flac", "-d", "-c", "--force-raw-format", "--endian", "little", "--sign", "signed", file_path]
+        shell_command = ["ld-ldf-reader", file_path]
         p = subprocess.Popen(
             shell_command,
             shell=False,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            universal_newlines=False,
+        )
+        self.buffer = p.stdout
+        self._pos: int = 0
+
+class FlacFileReader(BufferedInputStream):
+    def __init__(self, file_path):
+        shell_command = ["flac", "-d", "-c", "-s", "--force-raw-format", "--endian", "little", "--sign", "signed", file_path]
+        p = subprocess.Popen(
+            shell_command,
+            shell=False,
+            stdout=subprocess.PIPE,
             universal_newlines=False,
         )
         self.buffer = p.stdout
@@ -338,12 +368,11 @@ class FlacFileReader(BufferedInputStream):
 class FFMpegFileReader(BufferedInputStream):
     def __init__(self, file_path):
         # Force ffmpeg to ignore duration metadata and read until actual EOF
-        shell_command = ["ffmpeg", "-ignore_unknown", "-i", file_path, "-f", "s16le", "-acodec", "pcm_s16le", "-avoid_negative_ts", "disabled", "-"]
+        shell_command = ["ffmpeg", "-hide_banner", "-loglevel error", "-ignore_unknown", "-i", file_path, "-f", "s16le", "-acodec", "pcm_s16le", "-avoid_negative_ts", "disabled", "-"]
         p = subprocess.Popen(
             shell_command,
             shell=False,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
             universal_newlines=False,
         )
         self.buffer = p.stdout
@@ -469,6 +498,18 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             "r",
         )
     elif "ldf" == extension:
+        if test_if_ld_ldf_reader_is_installed():
+            return UnseekableSoundFile(
+                LDFFileReader(pathR),
+                "r",
+                channels=1,
+                samplerate=int(sample_rate),
+                format="RAW",
+                subtype="PCM_16",
+                endian="LITTLE",
+            )
+        print("WARN: ld-ldf-reader is not installed. LDF file format may not decode correctly")
+
         if test_if_flac_is_installed():
             return UnseekableSoundFile(
                 FlacFileReader(pathR),
@@ -490,7 +531,6 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
                 endian="LITTLE",
             )
         else:
-            print("WARN: flac and ffmpeg are not installed. LDF file format may not decode correctly")
             return sf.SoundFile(
                 pathR,
                 "r",
