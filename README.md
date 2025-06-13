@@ -310,10 +310,6 @@ Install all dependencies required by LD-Decode and VHS-Decode:
 
     sudo apt install git qtbase5-dev libqwt-qt5-dev libfftw3-dev libavformat-dev libavcodec-dev libavutil-dev ffmpeg pv pkg-config make cmake sox pipx g++ python3-dev
 
-Install all requirements (redo this after each update)
-
-    pip install -r requirements.txt
-
 Install [Rust Compiler](https://www.rust-lang.org/tools/install) (required for decode v0.3.5 onwards)
 
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
