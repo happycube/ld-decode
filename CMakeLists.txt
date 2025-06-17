@@ -148,21 +148,8 @@ if(BUILD_TESTING)
     include(LdDecodeTests)
 endif()
 
-# ld-ldf-reader
-
 if(BUILD_LDF_READER)
-    pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
-        libavcodec
-        libavformat
-        libavutil
-    )
-
-    add_executable(ld-ldf-reader
-      ld-ldf-reader.c)
-
-    target_link_libraries(ld-ldf-reader PkgConfig::FFMPEG)
-
-    install(TARGETS ld-ldf-reader)
+    add_subdirectory(tools/ld-ldf-reader)
 endif()
 
 # Python library and tools
