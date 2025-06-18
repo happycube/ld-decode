@@ -29,7 +29,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <libavutil/samplefmt.h>
 #include <libavutil/timestamp.h>
 #include <libavcodec/avcodec.h>
@@ -87,9 +86,9 @@ static int decode_packet(AVCodecContext *dec, const AVPacket *pkt)
         size_t length = (frame->nb_samples * bytes_per_sample) - offset;
 
         // Write the raw audio data samples to stdout
-        size_t rv = write(1, frame->extended_data[0] + offset, length);
+        size_t rv = fwrite(frame->extended_data[0] + offset, sizeof(uint8_t), length, stdout);
         if (rv != length) {
-            fprintf(stderr, "write error %ld", offset);
+            fprintf(stderr, "write error %lld", (long long)offset);
             return -1;
         }
 
@@ -205,7 +204,7 @@ int main (int argc, char **argv)
 
     fprintf(stderr, "RATE:%d\n", audio_dec_ctx->sample_rate);
     // From fmt_ctx, this is the approximate length in ms.  (divide by 1000 for actual time)
-    fprintf(stderr, "DURATION:%ld\n", fmt_ctx->duration);
+    fprintf(stderr, "DURATION:%lld\n", (long long)fmt_ctx->duration);
 
     frame = av_frame_alloc();
     if (!frame) {
@@ -245,8 +244,8 @@ end:
     av_packet_free(&pkt);
     av_frame_free(&frame);
 
-    // Send an EOF on stdout
-    close(1);
+    // flush any remaining data
+    fflush(stdout);
 
     return ret < 0;
 }
