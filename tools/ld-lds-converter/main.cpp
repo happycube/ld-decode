@@ -32,8 +32,9 @@
 
 int main(int argc, char *argv[])
 {
-    //set 'binary mode' for stdin and stdout on windows
+    // Set 'binary mode' for stdin and stdout on Windows
     setBinaryMode();
+
     // Install the local debug message handler
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
