@@ -128,11 +128,14 @@ def make_loader(filename, inputfreq=None):
             # Assume ffmpeg will recognise this format itself.
             input_args = []
 
-        # Use asetrate first to override the input file's sample rate.
-        output_args = [
-            "-filter:a",
-            "asetrate=" + str(inputfreq * 1e6) + ",aresample=" + str(40e6),
-        ]
+        output_args = []
+
+        if inputfreq != 40:
+            # Use asetrate first to override the input file's sample rate.
+            output_args = [
+                "-filter:a",
+                "asetrate=" + str(inputfreq * 1e6) + ",aresample=" + str(40e6),
+            ]
 
         return LoadFFmpeg(input_args=input_args, output_args=output_args)
 
