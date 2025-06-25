@@ -32,8 +32,8 @@
 #include <QCommandLineParser>
 
 #ifdef _WIN32
-#  include <io.h>
-#  include <fcntl.h>
+#include <io.h>
+#include <fcntl.h>
 #endif
 
 // Prototypes
