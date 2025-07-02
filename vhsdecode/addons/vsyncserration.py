@@ -57,6 +57,16 @@ def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
     return data
 
 
+@njit(cache=True)
+def _select_serration(where_min, serrations, selected):
+    for id, edge in enumerate(serrations):
+        for s_min in where_min:
+            next_serration_id = min(id + 1, len(serrations) - 1)
+            if edge <= s_min <= serrations[next_serration_id]:
+                selected = np.append(selected, edge)
+    return selected
+
+
 # encapsulates the serration search logic
 class VsyncSerration:
     def __init__(self, fs, sysparams, divisor=1, show_decoded_serration=False):
@@ -211,20 +221,12 @@ class VsyncSerration:
         first_harmonic = self.serrationFilter_envelope.filtfilt(first_harmonic)
         return argrelextrema(first_harmonic, np.less)[0]
 
-    def _select_serration(self, where_min, serrations):
-        selected = np.array([], np.int64)
-        for id, edge in enumerate(serrations):
-            for s_min in where_min:
-                next_serration_id = min(id + 1, len(serrations) - 1)
-                if edge <= s_min <= serrations[next_serration_id]:
-                    selected = np.append(selected, edge)
-        return selected
-
     # fills in missing VBI positions when possible
     def _vsync_arbitrage(self, where_allmin, serrations, datalen):
         result = np.array([], np.int64)
         if len(where_allmin) > 1:
-            valid_serrations = self._select_serration(where_allmin, serrations)
+            selected = np.array([], np.int64)
+            valid_serrations = _select_serration(where_allmin, serrations, selected)
             for serration in valid_serrations:
                 if (
                     serration - self.vsynclen >= 0

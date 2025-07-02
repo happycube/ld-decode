@@ -73,7 +73,7 @@ def sub_deemphasis_inner(
     # and divide by the formats specified deviation so we get a amplitude compared to the specifications references.
     amplitude = abs(sps.hilbert(hf_part)) / deviation
     # Clip the value after filtering to make sure we don't go negative
-    amplitude = np.clip(filter_simple(amplitude, filters["NLAmplitudeLPF"]), 0, None)
+    amplitude = np.clip(sps.sosfiltfilt(filters["NLAmplitudeLPF"], amplitude), 0, None)
     if debug_const_amplitude:
         amplitude = debug_const_amplitude
 

@@ -168,7 +168,7 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
 def demod_chroma_filt(
     data, filter, blocklen, notch, do_notch=None, move=10, audio_notch=None
 ):
-    out_chroma = utils.filter_simple(data[:blocklen], filter)
+    out_chroma = sps.sosfiltfilt(filter, data[:blocklen])
 
     if audio_notch is not None:
         out_chroma = sps.filtfilt(
@@ -291,7 +291,7 @@ def process_chroma(
     # frequencies. We only want the difference wave which is at the correct color
     # carrier frequency here.
     # We do however want to be careful to avoid filtering out too much of the sideband.
-    uphet = utils.filter_simple(uphet, field.rf.Filters["FChromaFinal"])
+    uphet = sps.sosfiltfilt(field.rf.Filters["FChromaFinal"], uphet)
 
     # FFT filter way to use a supergauss filter to more sharply cut out the upper harmonic
     # This may be a better approach but slows down things a bit much so not using for now

@@ -738,7 +738,7 @@ class VHSRFDecode(ldd.RFDecode):
 
             # Luma notch filter
             self.Filters["FVideoNotchF"] = abs(
-                lddu.filtfft(video_notch_filter, self.blocklen)
+                utils.filtfft(video_notch_filter, self.blocklen)
             )
         else:
             self.Filters["FVideoNotch"] = None, None
@@ -879,10 +879,6 @@ class VHSRFDecode(ldd.RFDecode):
 
         SF["hilbert"] = lddu.build_hilbert(self.blocklen)
 
-        self.Filters["EnvLowPass"] = sps.butter(
-            1, [1.0 / self.freq_half], btype="lowpass"
-        )
-
         if DP.get("video_bpf_supergauss", False):
             self.Filters["RFVideo"] = gen_bpf_supergauss(
                 DP["video_bpf_low"],
@@ -899,7 +895,7 @@ class VHSRFDecode(ldd.RFDecode):
             # Filter for rf before demodulating.
             # Only use bpf if order defined - otherwise skip
             if DP.get("video_bpf_order", None):
-                y_fm = lddu.filtfft(
+                y_fm = utils.filtfft(
                     sps.butter(
                         DP["video_bpf_order"],
                         [
@@ -950,7 +946,7 @@ class VHSRFDecode(ldd.RFDecode):
             # Add optional rf peaking filter
             from vhsdecode.addons.biquad import peaking
 
-            peaking_filter = lddu.filtfft(
+            peaking_filter = utils.filtfft(
                 peaking(
                     DP["video_rf_peak_freq"] / self.freq_hz_half,
                     DP.get("video_rf_peak_gain", 3),
@@ -1036,13 +1032,16 @@ class VHSRFDecode(ldd.RFDecode):
         F0_5 = sps.firwin(65, [0.5 / self.freq_half], pass_zero=True)
         filter_05 = filtfft((F0_5, [1.0]), self.blocklen, False)
 
-        # SF["F05"] = lddu.filtfft((F0_5, [1.0]), self.blocklen)
+        # SF["F05"] = utils.filtfft((F0_5, [1.0]), self.blocklen)
         # Defined earlier
         # SF["F05_offset"] = 32
 
+        # This filter is simple enough that we can get away with single precision
+        # sections and thus do the filtering in sngle precision.
+        # On higher order filters this is not viable as it tends to alter the filter too much.
         self.Filters["FEnvPost"] = sps.butter(
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
-        )
+        ).astype(np.single)
 
         self.Filters["NLAmplitudeLPF"] = gen_nonlinear_amplitude_lpf(
             DP.get("nonlinear_amp_lpf_freq", NONLINEAR_AMP_LPF_FREQ_DEFAULT),
@@ -1138,7 +1137,9 @@ class VHSRFDecode(ldd.RFDecode):
         # Applies RF filters
         indata_fft *= self.Filters["RFVideo"]
 
-        raw_filtered = npfft.ifft(indata_fft * self.Filters["hilbert"]).real
+        raw_filtered = npfft.ifft(indata_fft * self.Filters["hilbert"]).real.astype(
+            np.single
+        )
 
         # Calculate an evelope with signal strength using absolute of hilbert transform.
         # Roll this a bit to compensate for filter delay, value eyballed for now.
@@ -1147,7 +1148,8 @@ class VHSRFDecode(ldd.RFDecode):
         del raw_filtered
         # Downconvert to single precision for some possible speedup since we don't need
         # super high accuracy for the dropout detection.
-        env = utils.filter_simple(raw_env, self.Filters["FEnvPost"]).astype(np.single)
+        env = sps.sosfiltfilt(self.Filters["FEnvPost"], raw_env)
+
         del raw_env
         env_mean = np.mean(env)
 
@@ -1156,9 +1158,9 @@ class VHSRFDecode(ldd.RFDecode):
         if len(np.where(env == 0)[0]) == 0:  # checks for zeroes on env
             if self._high_boost is not None:
                 data_filtered = npfft.ifft(indata_fft).real
-                high_part = utils.filter_simple(
-                    data_filtered, self.Filters["RFTop"]
-                ) * ((env_mean * 0.9) / env)
+                high_part = sps.sosfiltfilt(self.Filters["RFTop"], data_filtered) * (
+                    (env_mean * 0.9) / env
+                )
                 del data_filtered
                 indata_fft += npfft.fft(high_part * self._high_boost)
         else:

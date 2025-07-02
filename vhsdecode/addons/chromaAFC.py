@@ -109,7 +109,7 @@ class ChromaAFC:
             fdc_wave = utils.gen_wave_at_frequency(freq, self.samp_rate, sample_size)
             self.setCC(freq)
             mean = self.measureCenterFreq(
-                utils.filter_simple(fdc_wave, self.get_chroma_bandpass())
+                sps.sosfiltfilt(self.get_chroma_bandpass(), fdc_wave)
             )
             # print(ix, "%.02f %.02f" % (freq / 1e3, mean / 1e3))
             means = np.append(means, [[freq, mean]], axis=0)

@@ -1,7 +1,12 @@
+from packaging.version import Version, parse
 import numpy as np
 import scipy.signal as signal
+import scipy
 from numba import njit
 from vhsdecode.rust_utils import sosfiltfilt_rust
+
+SCIPY_1_5_OR_HIGHER = parse(scipy.__version__) >= Version("1.5.0")
+
 
 def gen_wave_at_frequency(frequency, sample_frequency, num_samples, gen_func=np.sin):
     """Generate a sine wave with the specified parameters."""
@@ -18,8 +23,9 @@ def gen_compl_wave_at_frequency(frequency, sample_frequency, num_samples):
 
 
 def filter_simple(data, filter_coeffs):
-    #return signal.sosfiltfilt(filter_coeffs, data)
+    # return signal.sosfiltfilt(filter_coeffs, data)
     return sosfiltfilt_rust(filter_coeffs, data)
+
 
 @njit(cache=True)
 def get_line(data, line_length, line):
@@ -123,18 +129,27 @@ def moving_average(data_list, window=1024):
 # This converts a regular B, A filter to an FFT of our selected block length
 # if Whole is false, output only up to and including the nyquist frequency (for use with rfft)
 def filtfft(filt, blocklen, whole=True):
-    # worN = blocklen if whole else (blocklen // 2) + 1
-    worN = blocklen
-    output_size = blocklen if whole else (blocklen // 2) + 1
-
     # When not calculating the whole spectrum,
     # we still need to include the nyquist value here to give the same result as with
     # the whole freq range output.
     # This requires scipy 1.5.0 or newer.
-    # return signal.freqz(filt[0], filt[1], worN, whole=whole, include_nyquist=True)[1]
+    if SCIPY_1_5_OR_HIGHER:
+        worN = blocklen if whole else (blocklen // 2) + 1
+        result = signal.freqz(
+            filt[0], filt[1], worN, whole=whole, include_nyquist=True
+        )[1]
 
-    # Using the old way for now.
-    return signal.freqz(filt[0], filt[1], worN, whole=True)[1][:output_size]
+        # worN = blocklen
+        # output_size = blocklen if whole else (blocklen // 2) + 1
+        # result2 = signal.freqz(filt[0], filt[1], worN, whole=True)[1][:output_size]
+        # assert (result == result2).all
+
+        return result
+    else:
+        # Fallback for old versions, not sure if we still need this.
+        worN = blocklen
+        output_size = blocklen if whole else (blocklen // 2) + 1
+        return signal.freqz(filt[0], filt[1], worN, whole=True)[1][:output_size]
 
 
 def design_filter(samp_rate, passband, stopband, order_limit=20):
