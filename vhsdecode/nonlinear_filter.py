@@ -3,7 +3,7 @@ import numpy.fft as npfft
 import scipy.signal as sps
 import numpy as np
 import math
-from vhsdecode.utils import filter_simple
+from vhsdecode.rust_utils import sosfiltfilt_rust
 
 
 def _sub_deemphasis_debug(
@@ -73,7 +73,7 @@ def sub_deemphasis_inner(
     # and divide by the formats specified deviation so we get a amplitude compared to the specifications references.
     amplitude = abs(sps.hilbert(hf_part)) / deviation
     # Clip the value after filtering to make sure we don't go negative
-    amplitude = np.clip(sps.sosfiltfilt(filters["NLAmplitudeLPF"], amplitude), 0, None)
+    amplitude = np.clip(sosfiltfilt_rust(filters["NLAmplitudeLPF"], amplitude), 0, None)
     if debug_const_amplitude:
         amplitude = debug_const_amplitude
 

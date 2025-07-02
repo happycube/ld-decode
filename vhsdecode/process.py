@@ -45,6 +45,7 @@ from vhsdecode.compute_video_filters import (
 )
 from vhsdecode import compute_video_filters as cvf
 from vhsdecode.demodcache import DemodCacheTape
+from vhsdecode.rust_utils import sosfiltfilt_rust
 
 
 def is_secam(system: str):
@@ -1041,7 +1042,7 @@ class VHSRFDecode(ldd.RFDecode):
         # On higher order filters this is not viable as it tends to alter the filter too much.
         self.Filters["FEnvPost"] = sps.butter(
             1, [700000 / self.freq_hz_half], btype="lowpass", output="sos"
-        ).astype(np.single)
+        )
 
         self.Filters["NLAmplitudeLPF"] = gen_nonlinear_amplitude_lpf(
             DP.get("nonlinear_amp_lpf_freq", NONLINEAR_AMP_LPF_FREQ_DEFAULT),
@@ -1148,7 +1149,7 @@ class VHSRFDecode(ldd.RFDecode):
         del raw_filtered
         # Downconvert to single precision for some possible speedup since we don't need
         # super high accuracy for the dropout detection.
-        env = sps.sosfiltfilt(self.Filters["FEnvPost"], raw_env)
+        env = sosfiltfilt_rust(self.Filters["FEnvPost"], raw_env)
 
         del raw_env
         env_mean = np.mean(env)
@@ -1158,7 +1159,7 @@ class VHSRFDecode(ldd.RFDecode):
         if len(np.where(env == 0)[0]) == 0:  # checks for zeroes on env
             if self._high_boost is not None:
                 data_filtered = npfft.ifft(indata_fft).real
-                high_part = sps.sosfiltfilt(self.Filters["RFTop"], data_filtered) * (
+                high_part = sosfiltfilt_rust(self.Filters["RFTop"], data_filtered) * (
                     (env_mean * 0.9) / env
                 )
                 del data_filtered
