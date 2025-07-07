@@ -147,7 +147,7 @@ class LpFilter:
 @dataclass
 class AFEParamsVHS:
     def __init__(self):
-        self.maxVCODeviation = 150e3
+        self.maxVCODeviation = 200e3
 
     @property
     def VCODeviation(self):
@@ -227,18 +227,20 @@ class AFEFilterable:
             )
 
         self.filter_reject_other = FiltersClass(
-            iir_notch_other[0], iir_notch_other[1], self.samp_rate
+            iir_notch_other[0], iir_notch_other[1], self.samp_rate, DEMOD_DTYPE_NP
         )
         self.filter_band = FiltersClass(
-            iir_front_peak[0], iir_front_peak[1], self.samp_rate
+            iir_front_peak[0], iir_front_peak[1], self.samp_rate, DEMOD_DTYPE_NP
         )
         self.filter_reject_image = FiltersClass(
-            iir_notch_image[0], iir_notch_image[1], self.samp_rate
+            iir_notch_image[0], iir_notch_image[1], self.samp_rate, DEMOD_DTYPE_NP
         )
 
     def work(self, data):
-        return self.filter_band.lfilt(
-            self.filter_reject_other.lfilt(self.filter_reject_image.lfilt(data))
+        return self.filter_band.filtfilt(
+            self.filter_reject_other.filtfilt(
+                self.filter_reject_image.filtfilt(data)
+            )
         )
 
 
@@ -260,13 +262,13 @@ class FMdemod:
     # This isn't an ideal workaround, but works for now until
     # we can replace rocket-fft with something better.
     @staticmethod
-    def demod_hilbert_python(sample_rate, deviation, signal, instantaneous_frequency):
+    def demod_hilbert_python(sample_rate, deviation, input, output):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba compatibility with fft and ifft
         two_pi = 2*pi
 
         axis = -1
-        N = signal.shape[axis]
+        N = input.shape[axis]
         h = np.zeros(N, dtype=np.complex64)
         h[0] = h[N // 2] = 1
         h[1 : N // 2] = 2
@@ -278,9 +280,9 @@ class FMdemod:
         ph_correct_prev = 0
 
         i = 1
-        instantaneous_frequency_len = len(instantaneous_frequency)
+        instantaneous_frequency_len = len(output)
         for hilbert_value in np.fft.ifft(
-            np.fft.fft(signal, N, axis=axis) * h, axis=axis
+            np.fft.fft(input, N, axis=axis) * h, axis=axis
         ):
             if i >= instantaneous_frequency_len:
                 break
@@ -302,7 +304,7 @@ class FMdemod:
             ph_correct = ph_correct_prev + ph_correct #    p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
             # FMdemod.unwrap_hilbert
-            instantaneous_frequency[i - 1] = (
+            output[i - 1] = (
                 (ph_correct - ph_correct_prev) / two_pi * sample_rate / deviation
             )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
 
@@ -310,23 +312,20 @@ class FMdemod:
             i += 1
 
     @staticmethod
-    @guvectorize(
+    @njit(
         [
             (numba.types.float32, numba.types.int32, NumbaAudioArray, NumbaAudioArray),
-            (numba.types.float32, numba.types.int32, numba.types.Array(DEMOD_DTYPE_NB, 1, "C"), NumbaAudioArray)
-        ],
-        "(),(),(n)->(n)",
-        cache=True,
-        fastmath=True,
-        nopython=True,
+            (numba.types.float32, numba.types.int32, numba.types.Array(DEMOD_DTYPE_NB, 1, "C"), NumbaAudioArray),
+            (numba.types.float32, numba.types.int32, numba.types.Array(DEMOD_DTYPE_NB, 1, "A"), NumbaAudioArray)
+        ], cache=True, fastmath=True, nogil=True
     )
-    def demod_hilbert_numba(sample_rate, deviation, signal, instantaneous_frequency):
+    def demod_hilbert_numba(sample_rate, deviation, input, output):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba compatibility with fft and ifft
         two_pi = 2*pi
 
         axis = -1
-        N = signal.shape[axis]
+        N = input.shape[axis]
         h = np.zeros(N, dtype=np.complex64)
         h[0] = h[N // 2] = 1
         h[1 : N // 2] = 2
@@ -338,9 +337,9 @@ class FMdemod:
         ph_correct_prev = 0
 
         i = 1
-        instantaneous_frequency_len = len(instantaneous_frequency)
+        instantaneous_frequency_len = len(output)
         for hilbert_value in np.fft.ifft(
-            np.fft.fft(signal, N, axis=axis) * h, axis=axis
+            np.fft.fft(input, N, axis=axis) * h, axis=axis
         ):
             if i >= instantaneous_frequency_len:
                 break
@@ -362,7 +361,7 @@ class FMdemod:
             ph_correct = ph_correct_prev + ph_correct #    p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
             # FMdemod.unwrap_hilbert
-            instantaneous_frequency[i - 1] = (
+            output[i - 1] = (
                 (ph_correct - ph_correct_prev) / two_pi * sample_rate / deviation
             )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
 
@@ -373,6 +372,16 @@ class FMdemod:
     @njit(
         [(
             numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            NumbaAudioArray,
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.int32,
+            numba.types.int32,
+            numba.types.int32
+        ),(
+            numba.types.Array(DEMOD_DTYPE_NB, 1, "A"),
             NumbaAudioArray,
             numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
             numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
