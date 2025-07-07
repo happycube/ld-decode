@@ -243,10 +243,11 @@ class AFEFilterable:
 
 
 class FMdemod:
-    def __init__(self, sample_rate, carrier_center, type, i_osc=None, q_osc=None):
+    def __init__(self, sample_rate, carrier_center, deviation, type, i_osc=None, q_osc=None):
         self.samp_rate = np.int32(sample_rate)
         self.type = type
         self.carrier = np.int32(carrier_center)
+        self.deviation = np.int32(deviation)
 
         quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.samp_rate / 2)
         self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
@@ -259,9 +260,11 @@ class FMdemod:
     # This isn't an ideal workaround, but works for now until
     # we can replace rocket-fft with something better.
     @staticmethod
-    def demod_hilbert_python(sample_rate, signal, instantaneous_frequency):
+    def demod_hilbert_python(sample_rate, deviation, signal, instantaneous_frequency):
         # hilbert transform adapted from signal.hilbert
-        # uses rocket-fft for to allow numba comatibility with fft and ifft
+        # uses rocket-fft for to allow numba compatibility with fft and ifft
+        two_pi = 2*pi
+
         axis = -1
         N = signal.shape[axis]
         h = np.zeros(N, dtype=np.complex64)
@@ -289,27 +292,18 @@ class FMdemod:
             analytic_signal_prev = analytic_signal  #      dd = np.diff(p)
 
             # FMdemod.unwrap
-            ddmod = (
-                (dd + pi) % (2 * pi)
-            ) - pi  #         ddmod = np.mod(dd + pi, 2 * pi) - pi
-            if (
-                ddmod == -pi and dd > 0
-            ):  #                 to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
+            ddmod = ((dd + pi) % two_pi) - pi  #           ddmod = np.mod(dd + pi, 2 * pi) - pi
+            if ddmod == -pi and dd > 0:  #                 to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
                 ddmod = pi  #                              ddmod[to_pi_locations] = pi
             ph_correct = ddmod - dd  #                     ph_correct = ddmod - dd
-            if (
-                -dd if dd < 0 else dd
-            ) < discont:  #       to_zero_locations = np.where(np.abs(dd) < discont)
-                ph_correct = (
-                    0  #                          ph_correct[to_zero_locations] = 0
-                )
-            ph_correct = (
-                ph_correct_prev + ph_correct
-            )  #   p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+            if (-dd if dd < 0 else dd) < discont:  #       to_zero_locations = np.where(np.abs(dd) < discont)
+                ph_correct = 0  #                          ph_correct[to_zero_locations] = 0
+            
+            ph_correct = ph_correct_prev + ph_correct #    p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
             # FMdemod.unwrap_hilbert
             instantaneous_frequency[i - 1] = (
-                (ph_correct - ph_correct_prev) / (2.0 * pi) * sample_rate
+                (ph_correct - ph_correct_prev) / two_pi * sample_rate / deviation
             )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
 
             ph_correct_prev = ph_correct
@@ -318,17 +312,19 @@ class FMdemod:
     @staticmethod
     @guvectorize(
         [
-            (numba.types.float32, NumbaAudioArray, NumbaAudioArray),
-            (numba.types.float32, numba.types.Array(DEMOD_DTYPE_NB, 1, "C"), NumbaAudioArray)
+            (numba.types.float32, numba.types.int32, NumbaAudioArray, NumbaAudioArray),
+            (numba.types.float32, numba.types.int32, numba.types.Array(DEMOD_DTYPE_NB, 1, "C"), NumbaAudioArray)
         ],
-        "(),(n)->(n)",
+        "(),(),(n)->(n)",
         cache=True,
         fastmath=True,
         nopython=True,
     )
-    def demod_hilbert_numba(sample_rate, signal, instantaneous_frequency):
+    def demod_hilbert_numba(sample_rate, deviation, signal, instantaneous_frequency):
         # hilbert transform adapted from signal.hilbert
         # uses rocket-fft for to allow numba compatibility with fft and ifft
+        two_pi = 2*pi
+
         axis = -1
         N = signal.shape[axis]
         h = np.zeros(N, dtype=np.complex64)
@@ -356,31 +352,22 @@ class FMdemod:
             analytic_signal_prev = analytic_signal  #      dd = np.diff(p)
 
             # FMdemod.unwrap
-            ddmod = (
-                (dd + pi) % (2 * pi)
-            ) - pi  #                                      ddmod = np.mod(dd + pi, 2 * pi) - pi
-            if (
-                ddmod == -pi and dd > 0
-            ):  #                                          to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
+            ddmod = ((dd + pi) % two_pi) - pi  #           ddmod = np.mod(dd + pi, 2 * pi) - pi
+            if ddmod == -pi and dd > 0:  #                 to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
                 ddmod = pi  #                              ddmod[to_pi_locations] = pi
             ph_correct = ddmod - dd  #                     ph_correct = ddmod - dd
-            if (
-                -dd if dd < 0 else dd
-            ) < discont:  #                                to_zero_locations = np.where(np.abs(dd) < discont)
-                ph_correct = (
-                    0  #                                   ph_correct[to_zero_locations] = 0
-                )
-            ph_correct = (
-                ph_correct_prev + ph_correct
-            )  #                                           p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
+            if (-dd if dd < 0 else dd) < discont:  #       to_zero_locations = np.where(np.abs(dd) < discont)
+                ph_correct = 0  #                          ph_correct[to_zero_locations] = 0
+            
+            ph_correct = ph_correct_prev + ph_correct #    p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
             # FMdemod.unwrap_hilbert
             instantaneous_frequency[i - 1] = (
-                (ph_correct - ph_correct_prev) / (2.0 * pi) * sample_rate
+                (ph_correct - ph_correct_prev) / two_pi * sample_rate / deviation
             )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
 
             ph_correct_prev = ph_correct
-            i += 1    
+            i += 1
 
     @staticmethod
     @njit(
@@ -391,6 +378,7 @@ class FMdemod:
             numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
             numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
             numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+            numba.types.int32,
             numba.types.int32,
             numba.types.int32
         )],
@@ -404,7 +392,8 @@ class FMdemod:
         filter_b,
         filter_a,
         sample_rate,
-        carrier
+        carrier,
+        deviation
     ):
         # Numba optimized implementation of:
         # 
@@ -492,7 +481,7 @@ class FMdemod:
             unwrapped = prev_unwrapped + (corrected - prev_angle)
             diff = unwrapped - prev_unwrapped
 
-            out_demod[i-1] = -(diff / diff_divisor - carrier)
+            out_demod[i-1] = -(diff / diff_divisor - carrier) / deviation
 
             prev_angle = current_angle
             prev_unwrapped = unwrapped
@@ -500,9 +489,9 @@ class FMdemod:
     def work(self, input: np.array, output: np.array):
         if self.type == DEMOD_HILBERT:
             if ROCKET_FFT_AVAILABLE:
-                FMdemod.demod_hilbert_numba(np.float32(self.samp_rate), input, output)
+                FMdemod.demod_hilbert_numba(np.float32(self.samp_rate), self.deviation, input, output)
             else:
-                FMdemod.demod_hilbert_python(np.float32(self.samp_rate), input, output)
+                FMdemod.demod_hilbert_python(np.float32(self.samp_rate), self.deviation, input, output)
         elif self.type == DEMOD_QUADRATURE:
             FMdemod.demod_quadrature(
                 input,
@@ -512,7 +501,8 @@ class FMdemod:
                 self.quadrature_lp_b,
                 self.quadrature_lp_a,
                 self.samp_rate,
-                self.carrier
+                self.carrier,
+                self.deviation,
             )
 
 
@@ -1359,11 +1349,11 @@ class HiFiDecode:
         
         if self.options["demod_type"] == DEMOD_QUADRATURE:
             i_osc_left, q_osc_left, i_osc_right, q_osc_right = self.get_iq_oscillators(generate_iq_oscillators)
-            fmL = FMdemod(if_rate, self.standard.LCarrierRef, demod_type, i_osc=i_osc_left, q_osc=q_osc_left)
-            fmR = FMdemod(if_rate, self.standard.RCarrierRef, demod_type, i_osc=i_osc_right, q_osc=q_osc_right)
+            fmL = FMdemod(if_rate, self.standard.LCarrierRef, self.standard.maxVCODeviation, demod_type, i_osc=i_osc_left, q_osc=q_osc_left)
+            fmR = FMdemod(if_rate, self.standard.RCarrierRef, self.standard.maxVCODeviation, demod_type, i_osc=i_osc_right, q_osc=q_osc_right)
         else:
-            fmL = FMdemod(if_rate, self.standard.LCarrierRef, demod_type)
-            fmR = FMdemod(if_rate, self.standard.RCarrierRef, demod_type)
+            fmL = FMdemod(if_rate, self.standard.LCarrierRef, self.standard.maxVCODeviation, demod_type)
+            fmR = FMdemod(if_rate, self.standard.RCarrierRef, self.standard.maxVCODeviation, demod_type)
 
         return afeL, afeR, fmL, fmR
 
@@ -1412,10 +1402,13 @@ class HiFiDecode:
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
 
-            progressB.label = "Carrier L %.06f MHz, R %.06f MHz" % (meanL.pull() / 10e5, meanR.pull() / 10e5)
+            meanLResult = meanL.pull() * self.standard.maxVCODeviation
+            meanRResult = meanR.pull() * self.standard.maxVCODeviation
+
+            progressB.label = "Carrier L %.06f MHz, R %.06f MHz" % (meanLResult / 10e5, meanRResult / 10e5)
             progressB.print(i+1, False)
 
-        return meanL.pull(), meanR.pull()
+        return meanLResult, meanRResult
 
     def log_bias(self):
         devL = (self.standard_original.LCarrierRef - self.standard.LCarrierRef) / 1e3
@@ -1456,14 +1449,14 @@ class HiFiDecode:
         )
 
     def auto_fine_tune(self, dcL: float, dcR: float) -> Tuple[AFEFilterable, AFEFilterable, FMdemod, FMdemod]:
-        left_carrier_dc_offset = self.standard.LCarrierRef - dcL
+        left_carrier_dc_offset = self.standard.LCarrierRef - dcL * self.standard.maxVCODeviation
         left_carrier_updated = self.standard.LCarrierRef - round(left_carrier_dc_offset)
         self.standard.LCarrierRef = max(
             min(left_carrier_updated, self.standard_original.LCarrierRef + 10e3),
             self.standard_original.LCarrierRef - 10e3,
         )
 
-        right_carrier_dc_offset = self.standard.RCarrierRef - dcR
+        right_carrier_dc_offset = self.standard.RCarrierRef - dcR * self.standard.maxVCODeviation
         right_carrier_updated = self.standard.RCarrierRef - round(
             right_carrier_dc_offset
         )
@@ -1742,11 +1735,11 @@ class HiFiDecode:
 
     @staticmethod
     @njit(
-        [numba.types.float32(NumbaAudioArray, numba.types.float32, numba.types.int16)],
+        [numba.types.float32(NumbaAudioArray, numba.types.int16)],
         cache=True,
         fastmath=True,
     )
-    def cancelDC_clip_trim(audio: np.array, clip: float, trim: int) -> float:
+    def cancelDC_clip_trim(audio: np.array, trim: int) -> float:
         for i in range(trim):
             audio[i] = 0
 
@@ -1757,7 +1750,7 @@ class HiFiDecode:
         dc = REAL_DTYPE(np.mean(audio))
 
         for i in range(trim, len(audio) - trim):
-            audio[i] = (audio[i] - dc) / REAL_DTYPE(clip)
+            audio[i] = audio[i] - dc
 
         return dc
 
@@ -1873,7 +1866,7 @@ class HiFiDecode:
 
     @staticmethod
     def demod_process_audio(
-        filtered: np.array, fm: FMdemod, audio_process_params: dict, measure_perf: bool, vco_deviation: float
+        filtered: np.array, fm: FMdemod, audio_process_params: dict, measure_perf: bool
     ) -> Tuple[np.array, float, dict]:
         perf_measurements = {
             "start_demod": 0,
@@ -1912,7 +1905,7 @@ class HiFiDecode:
         if measure_perf:
             perf_measurements["start_dc_clip_trim"] = perf_counter()
         dc = HiFiDecode.cancelDC_clip_trim(
-            audio, vco_deviation, audio_process_params.pre_trim
+            audio, audio_process_params.pre_trim
         )
         if measure_perf:
             perf_measurements["end_dc_clip_trim"] = perf_counter()
@@ -2003,10 +1996,10 @@ class HiFiDecode:
             self.grc.send(filterL + filterR)
 
         preL, dcL, perf_measurements_l = HiFiDecode.demod_process_audio(
-            filterL, self.fmL, self.audio_process_params, measure_perf, self.standard.VCODeviation
+            filterL, self.fmL, self.audio_process_params, measure_perf
         )
         preR, dcR, perf_measurements_r = HiFiDecode.demod_process_audio(
-            filterR, self.fmR, self.audio_process_params, measure_perf, self.standard.VCODeviation
+            filterR, self.fmR, self.audio_process_params, measure_perf
         )
 
         # fine tune carrier frequency
