@@ -35,13 +35,13 @@ from vhsdecode.hifi.utils import (
     profile,
 )
 
+import argparse
+import lddecode.utils as lddu
 from vhsdecode.cmdcommons import (
-    common_parser_cli,
-    select_sample_freq,
-    select_system,
-    get_basics,
     test_input_file,
     test_output_file,
+    TestInputFile,
+    TestOutputFile
 )
 from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
@@ -86,29 +86,66 @@ except ImportError as e:
 
 NORMALIZE_FILE_SUFFIX = "tmp_normalize.raw"
 
-parser, _ = common_parser_cli(
-    "Extracts audio from RAW HiFi FM RF captures",
-    default_threads=round(cpu_count() / 2),
-)
+
+default_threads=cpu_count()
+parser = argparse.ArgumentParser(description="Extracts audio from RAW HiFi FM RF captures")
 
 parser.add_argument(
-    "--ar",
-    "--audio_rate",
-    dest="rate",
-    type=int,
-    default=DEFAULT_FINAL_AUDIO_RATE,
-    help=f"Output sample rate in Hz (default {DEFAULT_FINAL_AUDIO_RATE})",
+    "infile",
+    metavar="infile",
+    type=str,
+    help="source file",
+    nargs="?",
+    default="",
+    action=TestInputFile,
 )
-
 parser.add_argument(
-    "--bg",
-    "--bias_guess",
-    dest="BG",
+    "outfile",
+    metavar="outfile",
+    type=str,
+    help="base name for destination files",
+    nargs="?",
+    default="",
+    action=TestOutputFile,
+)
+parser.add_argument(
+    "--frequency",
+    "-f",
+    dest="inputfreq",
+    metavar="FREQ",
+    type=lddu.parse_frequency,
+    default=40000000,
+    help="RF sampling frequency in source file (default is 40MHz)",
+)
+parser.add_argument(
+    "--overwrite",
+    dest="overwrite",
     action="store_true",
     default=False,
-    help="Do carrier bias guess",
+    help="Overwrite existing decode files.",
 )
-
+parser.add_argument(
+    "--threads",
+    "-t",
+    metavar="threads",
+    type=int,
+    default=default_threads,
+    help="number of CPU threads to use",
+)
+parser.add_argument(
+    "--gui",
+    dest="UI",
+    action="store_true",
+    default=False,
+    help="Opens hifi-decode GUI graphical user interface",
+)
+parser.add_argument(
+    "--gnuradio",
+    dest="GRC",
+    action="store_true",
+    default=False,
+    help="Opens ZMQ REP pipe to gnuradio at port 5555",
+)
 parser.add_argument(
     "--preview",
     dest="preview",
@@ -117,91 +154,22 @@ parser.add_argument(
     help="Preview the audio through your speakers as it decodes. Uses preview quality (faster and noisier)",
 )
 
-parser.add_argument(
-    "--demod",
-    dest="demod_type",
-    type=str.lower,
-    default=DEFAULT_DEMOD,
-    help=f"Set the FM demodulation type (default: {DEFAULT_DEMOD}) ({DEMOD_QUADRATURE}, {DEMOD_HILBERT})",
-)
-
-parser.add_argument(
-    "--noise_reduction",
-    dest="noise_reduction",
-    type=str.lower,
-    default="on",
-    help="Set noise reduction block (deemphasis and expansion) on/off",
-)
-
-parser.add_argument(
-    "--auto_fine_tune",
-    dest="auto_fine_tune",
-    type=str.lower,
-    default="on",
-    help="Set auto tuning of the analog front end on/off",
-)
-
-parser.add_argument(
-    "--NR_sidechain_gain",
-    dest="NR_side_gain",
-    type=float,
-    default=DEFAULT_NR_ENVELOPE_GAIN,
-    help=f"Sets the noise reduction expander sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
-    f"Range (20~100): Higher values increase the effect of the expander",
-)
-
-parser.add_argument(
-    "--NR_spectral_amount",
-    dest="spectral_nr_amount",
-    type=float,
-    default=DEFAULT_SPECTRAL_NR_AMOUNT,
-    help=f"Sets the amount of broadband spectral noise reduction to apply. (default is {DEFAULT_SPECTRAL_NR_AMOUNT}). "
-    f"Range (0~1): 0 being off, 1 being full spectral noise reduction",
-)
-
-parser.add_argument(
-    "--head_switching_interpolation",
-    dest="head_switching_interpolation",
-    type=str.lower,
-    default="on",
-    help=f'Enables head switching noise interpolation. (defaults to "on").',
-)
-
-parser.add_argument(
-    "--muting",
-    dest="muting",
-    type=str.lower,
-    default="on",
-    help=f'Mutes the audio when there is no hifi carrier. (defaults to "on").',
-)
-
-parser.add_argument(
-    "--resampler_quality",
-    dest="resampler_quality",
-    type=str,
-    default=DEFAULT_RESAMPLER_QUALITY,
-    help=f"Sets quality of resampling to use in the audio chain. (default is {DEFAULT_RESAMPLER_QUALITY}). "
-    f"Range (low, medium, high): low being faster, and high having best quality",
-)
-
-parser.add_argument(
-    "--normalize",
-    dest="normalize",
+system_options_group = parser.add_argument_group("System options")
+system_options_group.add_argument(
+    "--pal",
+    "-p",
+    dest="pal",
     action="store_true",
-    default=False,
-    help=f"Automatically amplifies the audio to the peak gain of the decode. "
-    f'This will create a temporary file ending in "{NORMALIZE_FILE_SUFFIX}" that is deleted after the amplification step is complete.',
+    help="source is in PAL format",
 )
-
-parser.add_argument(
-    "--gain",
-    dest="gain",
-    type=float,
-    default=1.0,
-    help="Manually adjust the gain/volume of the output audio (default is 1.0)",
+system_options_group.add_argument(
+    "--ntsc",
+    "-n",
+    dest="ntsc",
+    action="store_true",
+    help="source is in NTSC format",
 )
-
-parser.add_argument(
+system_options_group.add_argument(
     "--8mm",
     dest="format_8mm",
     action="store_true",
@@ -209,23 +177,40 @@ parser.add_argument(
     help="Use settings for Video8 and Hi8 tape formats.",
 )
 
-parser.add_argument(
-    "--gnuradio",
-    dest="GRC",
+demod_options = parser.add_argument_group("Demodulation options")
+demod_options.add_argument(
+    "--bias_guess",
+    "--bg",
+    dest="BG",
     action="store_true",
     default=False,
-    help="Opens ZMQ REP pipe to gnuradio at port 5555",
+    help="Do carrier bias guess",
+)
+demod_options.add_argument(
+    "--auto_fine_tune",
+    dest="auto_fine_tune",
+    type=str.lower,
+    default="on",
+    help="Set auto tuning of the analog front end on/off",
+)
+demod_options.add_argument(
+    "--demod",
+    dest="demod_type",
+    type=str.lower,
+    default=DEFAULT_DEMOD,
+    help=f"Set the FM demodulation type (default: {DEFAULT_DEMOD}) ({DEMOD_QUADRATURE}, {DEMOD_HILBERT})",
 )
 
-parser.add_argument(
-    "--gui",
-    dest="UI",
-    action="store_true",
-    default=False,
-    help="Opens hifi-decode GUI graphical user interface",
+audio_processing_options_group = parser.add_argument_group("Audio processing options")
+audio_processing_options_group.add_argument(
+    "--audio_rate",
+    "--ar",
+    dest="rate",
+    type=int,
+    default=DEFAULT_FINAL_AUDIO_RATE,
+    help=f"Output sample rate in Hz (default {DEFAULT_FINAL_AUDIO_RATE})",
 )
-
-parser.add_argument(
+audio_processing_options_group.add_argument(
     "--audio_mode",
     dest="mode",
     type=str,
@@ -234,6 +219,68 @@ parser.add_argument(
         "defaults to s other than on 8mm which defaults to mpx."
         " 8mm mono is not auto detected currently so has to be manually specified as l."
     ),
+)
+audio_processing_options_group.add_argument(
+    "--resampler_quality",
+    dest="resampler_quality",
+    type=str,
+    default=DEFAULT_RESAMPLER_QUALITY,
+    help=f"Sets quality of resampling to use in the audio chain. (default is {DEFAULT_RESAMPLER_QUALITY}). "
+    f"Range (low, medium, high): low being faster, and high having best quality",
+)
+audio_processing_options_group.add_argument(
+    "--normalize",
+    dest="normalize",
+    action="store_true",
+    default=False,
+    help=f"Automatically amplifies the audio to the peak gain of the decode. "
+    f'This will create a temporary file ending in "{NORMALIZE_FILE_SUFFIX}" that is deleted after the amplification step is complete.',
+)
+audio_processing_options_group.add_argument(
+    "--gain",
+    dest="gain",
+    type=float,
+    default=1.0,
+    help="Manually adjust the gain/volume of the output audio (default is 1.0).",
+)
+
+noise_reduction_options_group = parser.add_argument_group("Noise reduction options")
+noise_reduction_options_group.add_argument(
+    "--head_switching_interpolation",
+    dest="head_switching_interpolation",
+    type=str.lower,
+    default="on",
+    help=f'Enables head switching noise interpolation. (defaults to "on").',
+)
+noise_reduction_options_group.add_argument(
+    "--muting",
+    dest="muting",
+    type=str.lower,
+    default="on",
+    help=f'Mutes the audio when there is no hifi carrier. (defaults to "on").',
+)
+noise_reduction_options_group.add_argument(
+    "--noise_reduction",
+    dest="noise_reduction",
+    type=str.lower,
+    default="on",
+    help="Set noise reduction block (deemphasis and expansion) on/off",
+)
+noise_reduction_options_group.add_argument(
+    "--NR_sidechain_gain",
+    dest="NR_side_gain",
+    type=float,
+    default=DEFAULT_NR_ENVELOPE_GAIN,
+    help=f"Sets the noise reduction expander sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
+    f"Range (20~100): Higher values increase the effect of the expander",
+)
+noise_reduction_options_group.add_argument(
+    "--NR_spectral_amount",
+    dest="spectral_nr_amount",
+    type=float,
+    default=DEFAULT_SPECTRAL_NR_AMOUNT,
+    help=f"Sets the amount of broadband spectral noise reduction to apply. (default is {DEFAULT_SPECTRAL_NR_AMOUNT}). "
+    f"Range (0~1): 0 being off, 1 being full spectral noise reduction",
 )
 
 def test_if_ld_ldf_reader_is_installed():
@@ -1606,10 +1653,18 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
 def main() -> int:
     args = parser.parse_args()
 
-    system = select_system(args)
-    sample_freq = select_sample_freq(args)
+    system = "PAL" if args.pal else "NTSC"
+    sample_freq = args.inputfreq
 
-    filename, outname, _, _ = get_basics(args)
+    if not "UI" in args:
+        if not test_input_file(args.infile):
+            raise FileNotFoundError("Input file error")
+        if not test_output_file(args.outfile):
+            raise FileNotFoundError("Output file error")
+
+    filename = args.infile
+    outname = args.outfile
+
     if not args.UI and not args.overwrite:
         if os.path.isfile(outname):
             print(
