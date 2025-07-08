@@ -18,7 +18,7 @@ import sys
 
 import numpy as np
 import numba
-from numba import njit, prange, guvectorize, vectorize
+from numba import njit, prange, guvectorize
 from scipy.signal import (
     lfilter_zi,
     filtfilt,
@@ -40,6 +40,7 @@ from vhsdecode.addons.FMdeemph import gen_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
+from vhsdecode.rust_utils import sos_filter_as_array_and_order
 
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 from vhsdecode.hifi.utils import DecoderSharedMemory, NumbaAudioArray, profile
@@ -90,17 +91,12 @@ class AFEParamsFront:
 
 # assembles the current filter design on a pipe-able filter
 class FiltersClass:
-    def __init__(self, iir_b, iir_a, samp_rate, dtype=REAL_DTYPE):
+    def __init__(self, iir_b, iir_a, dtype=REAL_DTYPE):
         self.iir_b, self.iir_a = iir_b.astype(dtype), iir_a.astype(dtype)
         self.z = lfilter_zi(self.iir_b, self.iir_a)
-        self.samp_rate = samp_rate
-
-    def rate(self):
-        return self.samp_rate
 
     def filtfilt(self, data):
-        output = filtfilt(self.iir_b, self.iir_a, data)
-        return output
+        return filtfilt(self.iir_b, self.iir_a, data)
 
     def lfilt(self, data):
         output, self.z = lfilter(self.iir_b, self.iir_a, data, zi=self.z)
@@ -115,33 +111,18 @@ class AFEBandPass:
         iir_lo = firdes_lowpass(
             self.samp_rate,
             self.filter_params.cutoff,
-            self.filter_params.transition_width,
+            self.filter_params.transition_width
         )
         iir_hi = firdes_highpass(
             self.samp_rate, self.filter_params.FDC, self.filter_params.transition_width
         )
 
         # filter_plot(iir_lo[0], iir_lo[1], self.samp_rate, type="lopass", title="Front lopass")
-        self.filter_lo = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate, np.float64)
-        self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], self.samp_rate, np.float64)
+        self.filter_lo = FiltersClass(iir_lo[0], iir_lo[1], dtype=np.float64)
+        self.filter_hi = FiltersClass(iir_hi[0], iir_hi[1], dtype=np.float64)
 
     def work(self, data):
         return self.filter_lo.lfilt(self.filter_hi.filtfilt(data))
-
-
-class LpFilter:
-    def __init__(self, sample_rate, cut=20e3, transition=10e3):
-        self.samp_rate = sample_rate
-        self.cut = cut
-
-        iir_lo = firdes_lowpass(self.samp_rate, self.cut, transition)
-        self.filter = FiltersClass(iir_lo[0], iir_lo[1], self.samp_rate)
-
-    def work(self, data):
-        return self.filter.lfilt(data)
-
-    def filtfilt(self, data):
-        return self.filter.filtfilt(data)
 
 
 @dataclass
@@ -227,13 +208,13 @@ class AFEFilterable:
             )
 
         self.filter_reject_other = FiltersClass(
-            iir_notch_other[0], iir_notch_other[1], self.samp_rate, DEMOD_DTYPE_NP
+            iir_notch_other[0], iir_notch_other[1], dtype=DEMOD_DTYPE_NP
         )
         self.filter_band = FiltersClass(
-            iir_front_peak[0], iir_front_peak[1], self.samp_rate, DEMOD_DTYPE_NP
+            iir_front_peak[0], iir_front_peak[1], dtype=DEMOD_DTYPE_NP
         )
         self.filter_reject_image = FiltersClass(
-            iir_notch_image[0], iir_notch_image[1], self.samp_rate, DEMOD_DTYPE_NP
+            iir_notch_image[0], iir_notch_image[1], dtype=DEMOD_DTYPE_NP
         )
 
     def work(self, data):
@@ -765,8 +746,15 @@ class NoiseReduction:
         # this is set to avoid high frequency noise to interfere with the NR envelope tracking
         self.NR_Lo_cut = 19e3
         self.NR_Lo_transition = 10e3
-        self.nrWeightedLowpass = LpFilter(
-            self.audio_rate, cut=self.NR_Lo_cut, transition=self.NR_Lo_transition
+
+        locut_iirb, locut_iira = firdes_lowpass(
+            self.audio_rate,
+            self.NR_Lo_cut,
+            self.NR_Lo_transition,
+        )
+
+        self.nrWeightedLowpass = FiltersClass(
+            np.array(locut_iirb), np.array(locut_iira)
         )
 
         # weighted filter for envelope detector
@@ -784,7 +772,7 @@ class NoiseReduction:
         )
 
         self.nrWeightedHighpass = FiltersClass(
-            np.array(env_iirb), np.array(env_iira), self.audio_rate
+            np.array(env_iirb), np.array(env_iira)
         )
 
         # expander attack
@@ -794,7 +782,7 @@ class NoiseReduction:
             self.NR_weighting_attack_Lo_transition,
         )
         self.envelope_attack_Lowpass = FiltersClass(
-            loenv_iirb, loenv_iira, self.audio_rate
+            loenv_iirb, loenv_iira
         )
 
         # expander release
@@ -804,7 +792,7 @@ class NoiseReduction:
             self.NR_weighting_release_Lo_transition,
         )
         self.envelope_release_Lowpass = FiltersClass(
-            loenvr_iirb, loenvr_iira, self.audio_rate
+            loenvr_iirb, loenvr_iira
         )
 
         ##############
@@ -826,7 +814,7 @@ class NoiseReduction:
         )
 
         self.nrDeemphasisLowpass = FiltersClass(
-            np.array(deemph_b), np.array(deemph_a), self.audio_rate
+            np.array(deemph_b), np.array(deemph_a)
         )
 
     @staticmethod
@@ -890,7 +878,7 @@ class NoiseReduction:
 
     def rs_envelope(self, raw_data):
         # prevent high frequency noise from interfering with envelope detector
-        low_pass = self.nrWeightedLowpass.work(raw_data)
+        low_pass = self.nrWeightedLowpass.lfilt(raw_data)
 
         # high pass weighted input to envelope detector
         weighted_high_pass = self.nrWeightedHighpass.lfilt(low_pass)
@@ -1001,8 +989,8 @@ class HiFiDecode:
         a_iirb, a_iira = firdes_lowpass(
             self.if_rate, self.audio_rate * 3 / 4, self.audio_rate / 3, order_limit=10
         )
-        self.preAudioResampleL = FiltersClass(a_iirb, a_iira, self.if_rate, np.float64)
-        self.preAudioResampleR = FiltersClass(a_iirb, a_iira, self.if_rate, np.float64)
+        self.preAudioResampleL = FiltersClass(a_iirb, a_iira, dtype=np.float64)
+        self.preAudioResampleR = FiltersClass(a_iirb, a_iira, dtype=np.float64)
 
         self.dcCancelL = StackableMA(min_watermark=0, window_average=self._blocks_per_second_ratio)
         self.dcCancelR = StackableMA(min_watermark=0, window_average=self._blocks_per_second_ratio)
