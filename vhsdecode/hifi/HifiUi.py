@@ -54,7 +54,8 @@ class MainUIParameters:
     def __init__(self):
         self.volume: float = 1.0
         self.normalize = False
-        self.sidechain_gain: float = DEFAULT_NR_ENVELOPE_GAIN / 100.0
+        self.nr_envelope_gain: float = DEFAULT_NR_ENVELOPE_GAIN / 100.0
+        self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
         self.noise_reduction: bool = True
         self.automatic_fine_tuning: bool = True
         self.grc = False
@@ -68,7 +69,6 @@ class MainUIParameters:
         self.input_sample_rate: float = 40.0
         self.input_file: str = ""
         self.output_file: str = ""
-        self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
         self.resampler_quality = DEFAULT_RESAMPLER_QUALITY
         self.head_switching_interpolation = "on"
         self.muting = "on"
@@ -78,7 +78,8 @@ def decode_options_to_ui_parameters(decode_options):
     values = MainUIParameters()
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
-    values.sidechain_gain = decode_options["nr_side_gain"] / 100.0
+    values.nr_envelope_gain = decode_options["nr_side_gain"] / 100.0
+    values.spectral_nr_amount = decode_options["spectral_nr_amount"]
     values.noise_reduction = decode_options["noise_reduction"]
     values.automatic_fine_tuning = decode_options["auto_fine_tune"]
     values.preview_available = decode_options["preview_available"]
@@ -90,7 +91,6 @@ def decode_options_to_ui_parameters(decode_options):
     values.input_sample_rate = decode_options["input_rate"]
     values.input_file = decode_options["input_file"]
     values.output_file = decode_options["output_file"]
-    values.spectral_nr_amount = decode_options["spectral_nr_amount"]
     values.resampler_quality = decode_options["resampler_quality"]
     values.head_switching_interpolation = decode_options["head_switching_interpolation"]
     values.muting = decode_options["muting"]
@@ -106,14 +106,14 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "demod_type": values.demod_type.lower(),
         "noise_reduction": values.noise_reduction,
         "auto_fine_tune": values.automatic_fine_tuning,
-        "nr_side_gain": values.sidechain_gain * 100.0,
+        "nr_side_gain": values.nr_envelope_gain * 100.0,
+        "spectral_nr_amount": values.spectral_nr_amount,
         "grc": values.grc,
         "audio_rate": values.audio_sample_rate,
         "gain": values.volume,
         "normalize": values.normalize,
         "input_file": values.input_file,
         "output_file": values.output_file,
-        "spectral_nr_amount": values.spectral_nr_amount,
         "resampler_quality": values.resampler_quality,
         "head_switching_interpolation": values.head_switching_interpolation,
         "muting": values.muting,
@@ -239,15 +239,27 @@ class HifiUi(QMainWindow):
             5
         )  # Set a reasonable maximum length for display
 
-        # Sidechain gain dial and numeric textbox
-        sidechain_label = QLabel("NR Gain:")
-        self.sidechain_dial = QDial(self)
-        self.sidechain_dial.setRange(0, 100)
-        self.sidechain_textbox = QLineEdit(self)
-        self.sidechain_textbox.setValidator(
+        # NR Envelope gain dial and numeric textbox
+        nr_envelope_label = QLabel("Expander Gain:")
+        self.nr_envelope_dial = QDial(self)
+        self.nr_envelope_dial.setRange(0, 100)
+        self.nr_envelope_textbox = QLineEdit(self)
+        self.nr_envelope_textbox.setValidator(
             QtGui.QDoubleValidator()
         )  # Only allow float input
-        self.sidechain_textbox.setMaxLength(
+        self.nr_envelope_textbox.setMaxLength(
+            5
+        )  # Set a reasonable maximum length for display
+
+        # Spectral Noise NR amount dial and numeric textbox
+        spectral_nr_amount_label = QLabel("Spectral NR:")
+        self.spectral_nr_amount_dial = QDial(self)
+        self.spectral_nr_amount_dial.setRange(0, 100)
+        self.spectral_nr_amount_textbox = QLineEdit(self)
+        self.spectral_nr_amount_textbox.setValidator(
+            QtGui.QDoubleValidator()
+        )  # Only allow float input
+        self.spectral_nr_amount_textbox.setMaxLength(
             5
         )  # Set a reasonable maximum length for display
 
@@ -255,9 +267,12 @@ class HifiUi(QMainWindow):
         upper_layout.addWidget(volume_label)
         upper_layout.addWidget(self.volume_dial)
         upper_layout.addWidget(self.volume_textbox)
-        upper_layout.addWidget(sidechain_label)
-        upper_layout.addWidget(self.sidechain_dial)
-        upper_layout.addWidget(self.sidechain_textbox)
+        upper_layout.addWidget(nr_envelope_label)
+        upper_layout.addWidget(self.nr_envelope_dial)
+        upper_layout.addWidget(self.nr_envelope_textbox)
+        upper_layout.addWidget(spectral_nr_amount_label)
+        upper_layout.addWidget(self.spectral_nr_amount_dial)
+        upper_layout.addWidget(self.spectral_nr_amount_textbox)
 
         # Middle partition layout (vertical)
         middle_layout = QVBoxLayout()
@@ -382,9 +397,13 @@ class HifiUi(QMainWindow):
         # Connect events to functions
         self.volume_dial.valueChanged.connect(self.on_volume_changed)
         self.volume_textbox.editingFinished.connect(self.on_volume_textbox_changed)
-        self.sidechain_dial.valueChanged.connect(self.on_sidechain_gain_changed)
-        self.sidechain_textbox.editingFinished.connect(
-            self.on_sidechain_textbox_changed
+        self.nr_envelope_dial.valueChanged.connect(self.on_nr_envelope_gain_changed)
+        self.nr_envelope_textbox.editingFinished.connect(
+            self.on_nr_envelope_textbox_changed
+        )
+        self.spectral_nr_amount_dial.valueChanged.connect(self.on_spectral_nr_amount_changed)
+        self.spectral_nr_amount_textbox.editingFinished.connect(
+            self.on_spectral_nr_amount_textbox_changed
         )
         self.play_button.clicked.connect(self.on_play_clicked)
         self.pause_button.clicked.connect(self.on_pause_clicked)
@@ -464,8 +483,10 @@ class HifiUi(QMainWindow):
     def setValues(self, values: MainUIParameters):
         self.volume_dial.setValue(int(values.volume * 100 / 2))
         self.volume_textbox.setText(str(values.volume))
-        self.sidechain_dial.setValue(int(values.sidechain_gain * 100))
-        self.sidechain_textbox.setText(str(values.sidechain_gain))
+        self.nr_envelope_dial.setValue(int(values.nr_envelope_gain * 100))
+        self.nr_envelope_textbox.setText(str(values.nr_envelope_gain))
+        self.spectral_nr_amount_dial.setValue(int(values.spectral_nr_amount * 100))
+        self.spectral_nr_amount_textbox.setText(str(values.spectral_nr_amount))
         self.normalize_checkbox.setChecked(values.normalize)
         self.muting_checkbox.setChecked(values.muting)
         self.noise_reduction_checkbox.setChecked(values.noise_reduction)
@@ -512,7 +533,8 @@ class HifiUi(QMainWindow):
     def getValues(self) -> MainUIParameters:
         values = MainUIParameters()
         values.volume = float(self.volume_textbox.text())
-        values.sidechain_gain = float(self.sidechain_textbox.text())
+        values.nr_envelope_gain = float(self.nr_envelope_textbox.text())
+        values.spectral_nr_amount = float(self.spectral_nr_amount_textbox.text())
         values.normalize = self.normalize_checkbox.isChecked()
         values.muting = self.muting_checkbox.isChecked()
         values.noise_reduction = self.noise_reduction_checkbox.isChecked()
@@ -542,14 +564,25 @@ class HifiUi(QMainWindow):
         except ValueError:
             pass
 
-    def on_sidechain_gain_changed(self, value):
-        self.sidechain_textbox.setText(str(value / 100.0))
+    def on_nr_envelope_gain_changed(self, value):
+        self.nr_envelope_textbox.setText(str(value / 100.0))
 
-    def on_sidechain_textbox_changed(self):
-        text = self.sidechain_textbox.text()
+    def on_nr_envelope_textbox_changed(self):
+        text = self.nr_envelope_textbox.text()
         try:
             value = float(text)
-            self.sidechain_dial.setValue(int(value * 100))
+            self.spectral_nr_amount_dial.setValue(int(value * 100))
+        except ValueError:
+            pass
+
+    def on_spectral_nr_amount_changed(self, value):
+        self.spectral_nr_amount_textbox.setText(str(value / 100.0))
+
+    def on_spectral_nr_amount_textbox_changed(self):
+        text = self.spectral_nr_amount_textbox.text()
+        try:
+            value = float(text)
+            self.spectral_nr_amount_dial.setValue(int(value * 100))
         except ValueError:
             pass
 
