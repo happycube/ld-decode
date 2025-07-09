@@ -41,7 +41,6 @@ from vhsdecode.addons.FMdeemph import gen_shelf
 from vhsdecode.addons.chromasep import samplerate_resample
 from vhsdecode.addons.gnuradioZMQ import ZMQSend, ZMQ_AVAILABLE
 from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
-from vhsdecode.rust_utils import sos_filter_as_array_and_order
 
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 from vhsdecode.hifi.utils import DecoderSharedMemory, NumbaAudioArray, profile
@@ -57,7 +56,7 @@ except ImportError:
 import matplotlib.pyplot as plt
 
 # lower increases expander strength and decreases overall gain
-DEFAULT_NR_ENVELOPE_GAIN = 22
+DEFAULT_NR_EXPANDER_GAIN = 22
 # sets logarithmic slope for the 1:2 expander
 DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
@@ -713,7 +712,7 @@ class SpectralNoiseReduction:
 class NoiseReduction:
     def __init__(
         self,
-        side_gain: float,
+        expander_gain: float,
         audio_rate: int = 192000,
     ):
         self.audio_rate = audio_rate
@@ -723,17 +722,17 @@ class NoiseReduction:
         ############
 
         # noise reduction envelope tracking constants (this ones might need tweaking)
-        self.NR_envelope_gain = side_gain
+        self.NR_expander_gain = expander_gain
         # strength of the logarithmic function used to expand the signal
-        self.NR_envelope_log_strength = DEFAULT_EXPANDER_LOG_STRENGTH
+        self.NR_expander_log_strength = DEFAULT_EXPANDER_LOG_STRENGTH
 
         # values in seconds
-        NRenv_attack = 3e-3
-        NRenv_release = 70e-3
+        NR_attack_tau = 3e-3
+        NR_release_tau = 70e-3
 
-        self.NR_weighting_attack_Lo_cut = tau_as_freq(NRenv_attack)
+        self.NR_weighting_attack_Lo_cut = tau_as_freq(NR_attack_tau)
         self.NR_weighting_attack_Lo_transition = 1e3
-        self.NR_weighting_release_Lo_cut = tau_as_freq(NRenv_release)
+        self.NR_weighting_release_Lo_cut = tau_as_freq(NR_release_tau)
         self.NR_weighting_release_Lo_transition = 1e3
 
         # this is set to avoid high frequency noise to interfere with the NR envelope tracking
@@ -774,7 +773,7 @@ class NoiseReduction:
             self.NR_weighting_attack_Lo_cut,
             self.NR_weighting_attack_Lo_transition,
         )
-        self.envelope_attack_Lowpass = FiltersClass(
+        self.expander_attack_Lowpass = FiltersClass(
             loenv_iirb, loenv_iira
         )
 
@@ -784,7 +783,7 @@ class NoiseReduction:
             self.NR_weighting_release_Lo_cut,
             self.NR_weighting_release_Lo_transition,
         )
-        self.envelope_release_Lowpass = FiltersClass(
+        self.expander_release_Lowpass = FiltersClass(
             loenvr_iirb, loenvr_iira
         )
 
@@ -878,23 +877,23 @@ class NoiseReduction:
 
         audio_env = np.empty_like(weighted_high_pass)
         NoiseReduction.expand(
-            self.NR_envelope_log_strength, weighted_high_pass, audio_env
+            self.NR_expander_log_strength, weighted_high_pass, audio_env
         )
 
         return audio_env
 
     def noise_reduction(self, pre_in, de_noise_in_out):
-        # takes the RMS envelope of each audio channel
+        # takes the RMS expander of each audio channel
         audio_env = self.rs_envelope(pre_in)
         audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise_in_out)
 
-        attack = self.envelope_attack_Lowpass.lfilt(audio_env)
-        release = self.envelope_release_Lowpass.lfilt(audio_env)
+        attack = self.expander_attack_Lowpass.lfilt(audio_env)
+        release = self.expander_release_Lowpass.lfilt(audio_env)
         rsC = attack
 
         NoiseReduction.get_attacks_and_releases(attack, release, rsC)
         NoiseReduction.apply_gate(
-            self.NR_envelope_gain, rsC, audio_with_deemphasis, de_noise_in_out
+            self.NR_expander_gain, rsC, audio_with_deemphasis, de_noise_in_out
         )
 
 

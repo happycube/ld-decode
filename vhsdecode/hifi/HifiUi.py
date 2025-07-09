@@ -43,7 +43,7 @@ except ImportError:
     from PyQt5 import QtGui, QtCore
 
 from vhsdecode.hifi.HiFiDecode import (
-    DEFAULT_NR_ENVELOPE_GAIN,
+    DEFAULT_NR_EXPANDER_GAIN,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEMOD_QUADRATURE,
@@ -62,7 +62,7 @@ class MainUIParameters:
     def __init__(self):
         self.volume: float = 1.0
         self.normalize = False
-        self.nr_envelope_gain: float = DEFAULT_NR_ENVELOPE_GAIN / 100.0
+        self.nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN / 100.0
         self.afe_vco_deviation = 0
         self.afe_left_carrier = 0
         self.afe_right_carrier = 0
@@ -87,7 +87,7 @@ def decode_options_to_ui_parameters(decode_options):
     values = MainUIParameters()
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
-    values.nr_envelope_gain = decode_options["nr_side_gain"] / 100.0
+    values.nr_expander_gain = decode_options["nr_expander_gain"] / 100.0
     values.afe_vco_deviation = decode_options["afe_vco_deviation"]
     values.afe_left_carrier = decode_options["afe_left_carrier"]
     values.afe_right_carrier = decode_options["afe_right_carrier"]
@@ -116,7 +116,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "demod_type": values.demod_type.lower(),
         "noise_reduction": values.noise_reduction,
         "auto_fine_tune": values.automatic_fine_tuning,
-        "nr_side_gain": values.nr_envelope_gain * 100.0,
+        "nr_expander_gain": values.nr_expander_gain * 100.0,
         "afe_vco_deviation": values.afe_vco_deviation,
         "afe_left_carrier": values.afe_left_carrier,
         "afe_right_carrier": values.afe_right_carrier,
@@ -247,15 +247,15 @@ class HifiUi(QMainWindow):
             5
         )  # Set a reasonable maximum length for display
 
-        # NR Envelope gain dial and numeric textbox
-        nr_envelope_label = QLabel("Expander Gain:")
-        self.nr_envelope_dial = QDial(self)
-        self.nr_envelope_dial.setRange(0, 100)
-        self.nr_envelope_textbox = QLineEdit(self)
-        self.nr_envelope_textbox.setValidator(
+        # NR Expander gain dial and numeric textbox
+        nr_expander_label = QLabel("Expander Gain:")
+        self.nr_expander_dial = QDial(self)
+        self.nr_expander_dial.setRange(0, 100)
+        self.nr_expander_textbox = QLineEdit(self)
+        self.nr_expander_textbox.setValidator(
             QtGui.QDoubleValidator()
         )  # Only allow float input
-        self.nr_envelope_textbox.setMaxLength(
+        self.nr_expander_textbox.setMaxLength(
             5
         )  # Set a reasonable maximum length for display
 
@@ -277,9 +277,9 @@ class HifiUi(QMainWindow):
         upper_layout.addWidget(volume_label)
         upper_layout.addWidget(self.volume_dial)
         upper_layout.addWidget(self.volume_textbox)
-        upper_layout.addWidget(nr_envelope_label)
-        upper_layout.addWidget(self.nr_envelope_dial)
-        upper_layout.addWidget(self.nr_envelope_textbox)
+        upper_layout.addWidget(nr_expander_label)
+        upper_layout.addWidget(self.nr_expander_dial)
+        upper_layout.addWidget(self.nr_expander_textbox)
         upper_layout.addWidget(spectral_nr_amount_label)
         upper_layout.addWidget(self.spectral_nr_amount_dial)
         upper_layout.addWidget(self.spectral_nr_amount_textbox)
@@ -450,9 +450,9 @@ class HifiUi(QMainWindow):
         # Connect events to functions
         self.volume_dial.valueChanged.connect(self.on_volume_changed)
         self.volume_textbox.editingFinished.connect(self.on_volume_textbox_changed)
-        self.nr_envelope_dial.valueChanged.connect(self.on_nr_envelope_gain_changed)
-        self.nr_envelope_textbox.editingFinished.connect(
-            self.on_nr_envelope_textbox_changed
+        self.nr_expander_dial.valueChanged.connect(self.on_nr_expander_gain_changed)
+        self.nr_expander_textbox.editingFinished.connect(
+            self.on_nr_expander_textbox_changed
         )
         self.spectral_nr_amount_dial.valueChanged.connect(self.on_spectral_nr_amount_changed)
         self.spectral_nr_amount_textbox.editingFinished.connect(
@@ -541,8 +541,8 @@ class HifiUi(QMainWindow):
     def setValues(self, values: MainUIParameters):
         self.volume_dial.setValue(int(values.volume * 100 / 2))
         self.volume_textbox.setText(str(values.volume))
-        self.nr_envelope_dial.setValue(int(values.nr_envelope_gain * 100))
-        self.nr_envelope_textbox.setText(str(values.nr_envelope_gain))
+        self.nr_expander_dial.setValue(int(values.nr_expander_gain * 100))
+        self.nr_expander_textbox.setText(str(values.nr_expander_gain))
         self.spectral_nr_amount_dial.setValue(int(values.spectral_nr_amount * 100))
         self.spectral_nr_amount_textbox.setText(str(values.spectral_nr_amount))
         self.normalize_checkbox.setChecked(values.normalize)
@@ -601,7 +601,7 @@ class HifiUi(QMainWindow):
     def getValues(self) -> MainUIParameters:
         values = MainUIParameters()
         values.volume = float(self.volume_textbox.text())
-        values.nr_envelope_gain = float(self.nr_envelope_textbox.text())
+        values.nr_expander_gain = float(self.nr_expander_textbox.text())
         values.afe_vco_deviation = self.afe_vco_deviation_spinbox.value()
         values.afe_left_carrier = self.afe_left_carrier_spinbox.value()
         values.afe_right_carrier = self.afe_right_carrier_spinbox.value()
@@ -647,11 +647,11 @@ class HifiUi(QMainWindow):
         except ValueError:
             pass
 
-    def on_nr_envelope_gain_changed(self, value):
-        self.nr_envelope_textbox.setText(str(value / 100.0))
+    def on_nr_expander_gain_changed(self, value):
+        self.nr_expander_textbox.setText(str(value / 100.0))
 
-    def on_nr_envelope_textbox_changed(self):
-        text = self.nr_envelope_textbox.text()
+    def on_nr_expander_textbox_changed(self):
+        text = self.nr_expander_textbox.text()
         try:
             value = float(text)
             self.spectral_nr_amount_dial.setValue(int(value * 100))

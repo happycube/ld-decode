@@ -47,7 +47,7 @@ from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
     SpectralNoiseReduction,
     NoiseReduction,
-    DEFAULT_NR_ENVELOPE_GAIN,
+    DEFAULT_NR_EXPANDER_GAIN,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
@@ -289,11 +289,11 @@ noise_reduction_options_group.add_argument(
     help="Set noise reduction block (deemphasis and expansion) on/off",
 )
 noise_reduction_options_group.add_argument(
-    "--NR_sidechain_gain",
-    dest="NR_side_gain",
+    "--NR_expander_gain",
+    dest="NR_expander_gain",
     type=float,
-    default=DEFAULT_NR_ENVELOPE_GAIN,
-    help=f"Sets the noise reduction expander sidechain gain (default is {DEFAULT_NR_ENVELOPE_GAIN}). "
+    default=DEFAULT_NR_EXPANDER_GAIN,
+    help=f"Sets the noise reduction expander gain (default is {DEFAULT_NR_EXPANDER_GAIN}). "
     f"Range (20~100): Higher values increase the effect of the expander",
 )
 noise_reduction_options_group.add_argument(
@@ -722,7 +722,7 @@ class PostProcessor:
         self.final_audio_rate = decode_options["audio_rate"]
         self.use_noise_reduction = decode_options["noise_reduction"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
-        self.nr_side_gain = decode_options["nr_side_gain"]
+        self.nr_expander_gain = decode_options["nr_expander_gain"]
         self.peak_gain = peak_gain
 
         # create processes and wire up queues
@@ -806,7 +806,7 @@ class PostProcessor:
                 spectral_nr_worker_l_output,
                 nr_worker_l_out_input,
                 self.use_noise_reduction,
-                self.nr_side_gain,
+                self.nr_expander_gain,
                 self.final_audio_rate,
             ),
         )
@@ -821,7 +821,7 @@ class PostProcessor:
                 spectral_nr_worker_r_output,
                 nr_worker_r_out_input,
                 self.use_noise_reduction,
-                self.nr_side_gain,
+                self.nr_expander_gain,
                 self.final_audio_rate,
             ),
         )
@@ -900,11 +900,11 @@ class PostProcessor:
         in_conn,
         out_conn,
         use_noise_reduction,
-        nr_side_gain,
+        nr_expander_gain,
         final_audio_rate,
     ):
         setproctitle(current_process().name)
-        noise_reduction = NoiseReduction(nr_side_gain, audio_rate=final_audio_rate)
+        noise_reduction = NoiseReduction(nr_expander_gain, audio_rate=final_audio_rate)
 
         while True:
             while True:
@@ -1738,7 +1738,7 @@ def main() -> int:
         "noise_reduction": args.noise_reduction == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "normalize": args.normalize,
-        "nr_side_gain": args.NR_side_gain,
+        "nr_expander_gain": args.NR_expander_gain,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,
