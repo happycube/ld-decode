@@ -47,22 +47,28 @@ from vhsdecode.hifi.HiFiDecode import (
     DEMOD_QUADRATURE,
     DEMOD_HILBERT,
     DEFAULT_DEMOD,
+    HiFiDecode
 )
 
+STOP_STATE = 0
+PLAY_STATE = 1
+PAUSE_STATE = 2
+PREVIEW_STATE = 3
 
 class MainUIParameters:
     def __init__(self):
         self.volume: float = 1.0
         self.normalize = False
         self.nr_envelope_gain: float = DEFAULT_NR_ENVELOPE_GAIN / 100.0
+        self.afe_vco_deviation = 0
+        self.afe_left_carrier = 0
+        self.afe_right_carrier = 0
         self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
         self.noise_reduction: bool = True
         self.automatic_fine_tuning: bool = True
         self.grc = False
-        self.preview: bool = False
-        self.preview_available: bool = True
         self.audio_sample_rate: int = 48000
-        self.standard: str = "PAL"
+        self.standard: str = "NTSC"
         self.format: str = "VHS"
         self.audio_mode: str = "Stereo"
         self.demod_type: str = DEFAULT_DEMOD.capitalize()
@@ -79,10 +85,12 @@ def decode_options_to_ui_parameters(decode_options):
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
     values.nr_envelope_gain = decode_options["nr_side_gain"] / 100.0
+    values.afe_vco_deviation = decode_options["afe_vco_deviation"]
+    values.afe_left_carrier = decode_options["afe_left_carrier"]
+    values.afe_right_carrier = decode_options["afe_right_carrier"]
     values.spectral_nr_amount = decode_options["spectral_nr_amount"]
     values.noise_reduction = decode_options["noise_reduction"]
     values.automatic_fine_tuning = decode_options["auto_fine_tune"]
-    values.preview_available = decode_options["preview_available"]
     values.audio_sample_rate = decode_options["audio_rate"]
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
@@ -102,11 +110,13 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "input_rate": float(values.input_sample_rate) * 1e6,
         "standard": "p" if values.standard == "PAL" else "n",
         "format": "vhs" if values.format == "VHS" else "8mm",
-        "preview": values.preview,
         "demod_type": values.demod_type.lower(),
         "noise_reduction": values.noise_reduction,
         "auto_fine_tune": values.automatic_fine_tuning,
         "nr_side_gain": values.nr_envelope_gain * 100.0,
+        "afe_vco_deviation": values.afe_vco_deviation,
+        "afe_left_carrier": values.afe_left_carrier,
+        "afe_right_carrier": values.afe_right_carrier,
         "spectral_nr_amount": values.spectral_nr_amount,
         "grc": values.grc,
         "audio_rate": values.audio_sample_rate,
@@ -135,38 +145,34 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
 
 
 class InputDialog(QDialog):
-    def __init__(self, prompt: str, value=None, validator=None):
+    def __init__(self, label: str, title: str, value=None, validator=None):
         super().__init__()
         self.validator = validator
-        self.prompt = prompt
+        self.label = label
         self.value = value
+        self.title = title
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("Input Dialog")
+        self.setWindowTitle(self.title)
 
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
 
-        label = QLabel(self.prompt, self)
         self.input_line = QLineEdit(self)
         self.input_line.setText(str(self.value))
+
         if self.validator is not None:
             self.input_line.setValidator(self.validator)
-        ok_button = QPushButton("Accept", self)
-        cancel_button = QPushButton("Cancel", self)
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(ok_button)
-        button_layout.addWidget(cancel_button)
-
-        ok_button.clicked.connect(self.accept)
-        cancel_button.clicked.connect(self.reject)
-
-        layout.addWidget(label)
         layout.addWidget(self.input_line)
-        layout.addLayout(button_layout)
+
+        label = QLabel(self.label, self)
+        layout.addWidget(label)
+
+        ok_button = QPushButton("Accept", self)
+        ok_button.clicked.connect(self.accept_user_input)
+        layout.addWidget(ok_button)
 
         self.setLayout(layout)
-
         self.setStyleSheet(
             """
             QDialog {
@@ -193,13 +199,13 @@ class InputDialog(QDialog):
         self.setFixedWidth(int(self.sizeHint().width()))
         self.setFixedHeight(self.sizeHint().height())
 
-    def get_input_value(self):
-        result = self.exec()  # Ejecutar el diálogo de entrada
-        if result == QDialog.accepted:
-            return self.input_line.text()
-        else:
-            return None
+    def accept_user_input(self):
+        self.value = self.input_line.text()
+        self.accept()
 
+    def get_input_value(self):
+        self.exec()
+        return self.value
 
 class HifiUi(QMainWindow):
     def __init__(
@@ -210,8 +216,7 @@ class HifiUi(QMainWindow):
     ):
         super(HifiUi, self).__init__()
 
-        # 0 stop, 1 play, 2 pause
-        self._transport_state = 0
+        self._transport_state = STOP_STATE
 
         # Set up the main window
         self.setWindowTitle(title)
@@ -286,14 +291,11 @@ class HifiUi(QMainWindow):
             "Head Switching Interpolation"
         )
         self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
-        self.preview_checkbox = QCheckBox("Preview")
-        self.preview_checkbox.setCheckable(params.preview_available)
         middle_layout.addWidget(self.normalize_checkbox)
         middle_layout.addWidget(self.muting_checkbox)
         middle_layout.addWidget(self.noise_reduction_checkbox)
         middle_layout.addWidget(self.head_switching_interpolation_checkbox)
         middle_layout.addWidget(self.automatic_fine_tuning_checkbox)
-        middle_layout.addWidget(self.preview_checkbox)
 
         samplerate_layout = QHBoxLayout()
         # Sample rate options dropdown
@@ -341,9 +343,9 @@ class HifiUi(QMainWindow):
         self.input_samplerate_combo = QComboBox(self)
         self.input_samplerate_combo.addItems(
             [
-                "DdD (40.0)",
-                "Clockgen (10.0)",
-                "RTLSDR (8.0)",
+                "DdD (40)",
+                "Clockgen (10)",
+                "RTLSDR (8)",
                 "cxadc (28.64)",
                 "cxadc3 (35.8)",
                 "10cxadc (14.32)",
@@ -360,9 +362,9 @@ class HifiUi(QMainWindow):
             14.32,
             17.9,
         ]
-        self.input_sample_rate = self._input_combo_rates[0]
         input_samplerate_layout.addWidget(input_samplerate_label)
         input_samplerate_layout.addWidget(self.input_samplerate_combo)
+        self.input_samplerate_combo.setCurrentIndex(-1)
         self.input_samplerate_combo.currentIndexChanged.connect(
             self.on_input_samplerate_changed
         )
@@ -379,17 +381,21 @@ class HifiUi(QMainWindow):
         self.main_layout.addLayout(bottom_layout)
 
         # Playback controls
+        self.preview_button = QPushButton("Preview", self)
         self.play_button = QPushButton("▶", self)  # Play symbol
         self.pause_button = QPushButton("||", self)  # Pause symbol
         self.stop_button = QPushButton("■", self)  # Stop symbol
         max_button_height = max(
+            self.preview_button.sizeHint().height(),
             self.play_button.sizeHint().height(),
             self.pause_button.sizeHint().height(),
             self.stop_button.sizeHint().height(),
         )
+        self.preview_button.setFixedHeight(max_button_height)
         self.play_button.setFixedHeight(max_button_height)
         self.pause_button.setFixedHeight(max_button_height)
         self.stop_button.setFixedHeight(max_button_height)
+        bottom_layout.addWidget(self.preview_button)
         bottom_layout.addWidget(self.play_button)
         bottom_layout.addWidget(self.pause_button)
         bottom_layout.addWidget(self.stop_button)
@@ -405,6 +411,7 @@ class HifiUi(QMainWindow):
         self.spectral_nr_amount_textbox.editingFinished.connect(
             self.on_spectral_nr_amount_textbox_changed
         )
+        self.preview_button.clicked.connect(self.on_preview_clicked)
         self.play_button.clicked.connect(self.on_play_clicked)
         self.pause_button.clicked.connect(self.on_pause_clicked)
         self.stop_button.clicked.connect(self.on_stop_clicked)
@@ -457,12 +464,14 @@ class HifiUi(QMainWindow):
 
     @transport_state.setter
     def transport_state(self, value):
-        if value == 0:
+        if value == STOP_STATE:
             self.on_stop_clicked()
-        elif value == 1:
+        elif value == PLAY_STATE:
             self.on_play_clicked()
-        elif value == 2:
+        elif value == PAUSE_STATE:
             self.on_pause_clicked()
+        elif value == PREVIEW_STATE:
+            self.on_preview_clicked()
         else:
             raise ValueError("Invalid transport state value")
         self._transport_state = value
@@ -522,18 +531,23 @@ class HifiUi(QMainWindow):
                 found_rate = True
                 break
         if not found_rate:
-            self.input_samplerate_combo.setCurrentText(
-                f"Other ({values.input_sample_rate / 1e6:.2f})"
-            )
+            new_other_text = f"Other ({(values.input_sample_rate / 1e6):g})"
+            self.input_samplerate_combo.setPlaceholderText(new_other_text)
+
+        self.update_afe_values(values)
 
         self.input_file = values.input_file
         self.output_file = values.output_file
-        self.preview_checkbox.setChecked(values.preview)
 
     def getValues(self) -> MainUIParameters:
         values = MainUIParameters()
         values.volume = float(self.volume_textbox.text())
         values.nr_envelope_gain = float(self.nr_envelope_textbox.text())
+
+        #values.afe_vco_deviation = float(self.afe_vco_deviation.text())
+        #values.afe_left_carrier = float(self.afe_left_carrier.text())
+        #values.afe_right_carrier = float(self.afe_right_carrier.text())
+
         values.spectral_nr_amount = float(self.spectral_nr_amount_textbox.text())
         values.normalize = self.normalize_checkbox.isChecked()
         values.muting = self.muting_checkbox.isChecked()
@@ -550,8 +564,19 @@ class HifiUi(QMainWindow):
         values.input_sample_rate = self.input_sample_rate
         values.input_file = self.input_file
         values.output_file = self.output_file
-        values.preview = self.preview_checkbox.isChecked()
         return values
+    
+    def update_afe_values(self, values):
+        standard, _ = HiFiDecode.get_standard(
+            "vhs" if values.format == "VHS" else "8mm",
+            "p" if values.standard == "PAL" else "n",
+            values.afe_vco_deviation,
+            values.afe_left_carrier,
+            values.afe_right_carrier
+        )
+        self.afe_vco_deviation = standard.VCODeviation
+        self.afe_left_carrier = standard.LCarrierRef
+        self.afe_right_carrier = standard.RCarrierRef
 
     def on_volume_changed(self, value):
         self.volume_textbox.setText(str(value * 2 / 100.0))
@@ -607,8 +632,7 @@ class HifiUi(QMainWindow):
         """
         )
 
-    def on_play_clicked(self):
-        print("▶ Play command issued.")
+    def confirm_overwrite(self):
         # checks if destination file exists and prompts user to overwrite
         if os.path.exists(self.output_file) and self.transport_state == 0:
             message_box = QMessageBox(
@@ -638,44 +662,63 @@ class HifiUi(QMainWindow):
 
             if overwrite == QMessageBox.StandardButton.No:
                 print("Overwrite cancelled.")
-                return
+                return True
+            
+        return False
 
-        self._transport_state = 1
+    def on_play_clicked(self):
+        print("▶ Play command issued.")
+        if self.confirm_overwrite(): return
+
+        self._transport_state = PLAY_STATE
         self.change_button_color(self.play_button, "#0f0")
+        self.default_button_color(self.preview_button)
+        self.default_button_color(self.pause_button)
+        self.default_button_color(self.stop_button)
+        self.setWindowIcon(QIcon.fromTheme("document-save"))
+
+    def on_preview_clicked(self):
+        print("▶ Preview command issued.")
+        if self.confirm_overwrite(): return
+
+        self._transport_state = PREVIEW_STATE
+        self.change_button_color(self.preview_button, "#0f0")
+        self.default_button_color(self.play_button)
         self.default_button_color(self.pause_button)
         self.default_button_color(self.stop_button)
         self.setWindowIcon(QIcon.fromTheme("document-save"))
 
     def on_pause_clicked(self):
         self.change_button_color(self.pause_button, "#eee")
+        self.default_button_color(self.preview_button)
         self.default_button_color(self.play_button)
         self.default_button_color(self.stop_button)
         self.setWindowIcon(QIcon.fromTheme("document-open"))
         print("|| Pause command issued.")
-        self._transport_state = 2
+        self._transport_state = PAUSE_STATE
 
     def on_stop_clicked(self):
         self.change_button_color(self.stop_button, "#eee")
+        self.default_button_color(self.preview_button)
         self.default_button_color(self.play_button)
         self.default_button_color(self.pause_button)
         print("■ Stop command issued.")
-        self._transport_state = 0
+        self._transport_state = STOP_STATE
 
     def on_input_samplerate_changed(self):
         print("Input sample rate changed.")
         if "Other" in self.input_samplerate_combo.currentText():
             input_dialog = InputDialog(
-                prompt="Input Sample Rate (MHz)",
+                title="Input Sample Rate",
+                label="MHz",
                 value=self.input_sample_rate,
                 validator=QtGui.QDoubleValidator(),
             )
             value: float = input_dialog.get_input_value()
             if value is not None:
-                new_other_text = f"Other ({value})"
-                self.input_samplerate_combo.setItemText(
-                    self.input_samplerate_combo.currentIndex(), new_other_text
-                )
-                self.input_samplerate_combo.setCurrentText(value)
+                new_other_text = f"Other ({float(value):g})"
+                self.input_samplerate_combo.setPlaceholderText(new_other_text)
+                self.input_samplerate_combo.setCurrentIndex(-1)
                 self.input_sample_rate = value
         else:
             self.input_sample_rate = self._input_combo_rates[

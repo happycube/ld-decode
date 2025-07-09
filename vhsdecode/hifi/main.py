@@ -57,6 +57,7 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_DEMOD,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
+from vhsdecode.hifi.HifiUi import STOP_STATE, PLAY_STATE, PAUSE_STATE, PREVIEW_STATE
 import io
 
 try:
@@ -179,6 +180,13 @@ system_options_group.add_argument(
 
 demod_options = parser.add_argument_group("Demodulation options")
 demod_options.add_argument(
+    "--demod",
+    dest="demod_type",
+    type=str.lower,
+    default=DEFAULT_DEMOD,
+    help=f"Set the FM demodulation type (default: {DEFAULT_DEMOD}) ({DEMOD_QUADRATURE}, {DEMOD_HILBERT})",
+)
+demod_options.add_argument(
     "--bias_guess",
     "--bg",
     dest="BG",
@@ -194,11 +202,25 @@ demod_options.add_argument(
     help="Set auto tuning of the analog front end on/off",
 )
 demod_options.add_argument(
-    "--demod",
-    dest="demod_type",
-    type=str.lower,
-    default=DEFAULT_DEMOD,
-    help=f"Set the FM demodulation type (default: {DEFAULT_DEMOD}) ({DEMOD_QUADRATURE}, {DEMOD_HILBERT})",
+    "--AFE_vco_deviation",
+    dest="afe_vco_deviation",
+    type=lddu.parse_frequency,
+    default=0,
+    help="Overrides the VCO maximum deviation. This represents the maximum frequency offset + or - from the center frequency.",
+)
+demod_options.add_argument(
+    "--AFE_left_carrier",
+    dest="afe_left_carrier",
+    type=lddu.parse_frequency,
+    default=0,
+    help="Overrides the left carrier center frequency.",
+)
+demod_options.add_argument(
+    "--AFE_right_carrier",
+    dest="afe_right_carrier",
+    type=lddu.parse_frequency,
+    default=0,
+    help="Overrides the right carrier center frequency.",
 )
 
 audio_processing_options_group = parser.add_argument_group("Audio processing options")
@@ -1489,10 +1511,10 @@ async def decode_parallel(
         stop_requested = False
         if ui_t is not None:
             ui_t.app.processEvents()
-            if ui_t.window.transport_state == 0:
+            if ui_t.window.transport_state == STOP_STATE:
                 stop_requested = True
-            elif ui_t.window.transport_state == 2:
-                while ui_t.window.transport_state == 2:
+            elif ui_t.window.transport_state == PAUSE_STATE:
+                while ui_t.window.transport_state == PAUSE_STATE:
                     ui_t.app.processEvents()
                     await asyncio.sleep(0.01)
 
@@ -1697,6 +1719,9 @@ def main() -> int:
         "preview": args.preview,
         "preview_available": SOUNDDEVICE_AVAILABLE,
         "demod_type": args.demod_type,
+        "afe_vco_deviation": args.afe_vco_deviation * 10e5,
+        "afe_left_carrier": args.afe_left_carrier * 10e5,
+        "afe_right_carrier": args.afe_right_carrier * 10e5,
         "resampler_quality": resampler_quality if not args.preview else "low",
         "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
         "head_switching_interpolation": args.head_switching_interpolation == "on",
@@ -1726,9 +1751,13 @@ def main() -> int:
         decoder_state = 0
         try:
             while ui_t.window.isVisible():
-                if ui_t.window.transport_state == 1:
+                if ui_t.window.transport_state == PLAY_STATE or ui_t.window.transport_state == PREVIEW_STATE:
                     print("Starting decode...")
                     options = ui_parameters_to_decode_options(ui_t.window.getValues())
+                    if ui_t.window.transport_state == PREVIEW_STATE:
+                        options["preview"] = True
+                    else:
+                        options["preview"] = False
 
                     print("options", options)
 
@@ -1741,7 +1770,7 @@ def main() -> int:
                         options["output_file"]
                     ):
                         decoder_state = run_decoder(args, options, ui_t=ui_t)
-                        ui_t.window.transport_state = 0
+                        ui_t.window.transport_state = STOP_STATE
                         ui_t.window.on_decode_finished()
                     else:
                         message = None
@@ -1757,7 +1786,7 @@ def main() -> int:
 
                 ui_t.app.processEvents()
                 time.sleep(0.01)
-            ui_t.window.transport_state = 0
+            ui_t.window.transport_state = STOP_STATE
         except (KeyboardInterrupt, RuntimeError):
             pass
 

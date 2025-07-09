@@ -10,6 +10,7 @@ from time import perf_counter
 from setproctitle import setproctitle
 from multiprocessing import current_process
 from multiprocessing.shared_memory import SharedMemory
+from copy import deepcopy
 import string
 from random import SystemRandom
 
@@ -128,23 +129,15 @@ class AFEBandPass:
 @dataclass
 class AFEParamsVHS:
     def __init__(self):
-        self.maxVCODeviation = 200e3
-
-    @property
-    def VCODeviation(self):
-        return self.maxVCODeviation
+        self.VCODeviation = 150e3
 
 
 @dataclass
 class AFEParams8mm:
     def __init__(self):
-        self.maxVCODeviation = 100e3
+        self.VCODeviation = 100e3
         self.LCarrierRef = 1.5e6
         self.RCarrierRef = 1.7e6
-
-    @property
-    def VCODeviation(self):
-        return self.maxVCODeviation
 
 
 @dataclass
@@ -184,8 +177,8 @@ class AFEFilterable:
         self.samp_rate = sample_rate
         self.filter_params = filters_params
         d = abs(self.filter_params.LCarrierRef - self.filter_params.RCarrierRef)
-        QL = self.filter_params.LCarrierRef / (4 * self.filter_params.maxVCODeviation)
-        QR = self.filter_params.RCarrierRef / (4 * self.filter_params.maxVCODeviation)
+        QL = self.filter_params.LCarrierRef / (4 * self.filter_params.VCODeviation)
+        QR = self.filter_params.RCarrierRef / (4 * self.filter_params.VCODeviation)
         if channel == 0:
             iir_front_peak = iirpeak(
                 self.filter_params.LCarrierRef, QL, fs=self.samp_rate
@@ -1008,24 +1001,14 @@ class HiFiDecode:
             self.audio_resampler_converter = "sinc_fastest"
             self.audio_final_resampler_converter = "sinc_fastest"
 
-        if options["format"] == "vhs":
-            if options["standard"] == "p":
-                self.field_rate = 50
-                self.standard = AFEParamsPALVHS()
-                self.standard_original = AFEParamsPALVHS()
-            else:
-                self.field_rate = 59.94
-                self.standard = AFEParamsNTSCVHS()
-                self.standard_original = AFEParamsNTSCVHS()
-        else:
-            if options["standard"] == "p":
-                self.field_rate = 50
-                self.standard = AFEParamsPAL8mm()
-                self.standard_original = AFEParamsPAL8mm()
-            else:
-                self.field_rate = 59.94
-                self.standard = AFEParamsNTSC8mm()
-                self.standard_original = AFEParamsNTSC8mm()
+        self.standard, self.field_rate = HiFiDecode.get_standard(
+            options["format"],
+            options["standard"],
+            options["afe_vco_deviation"],
+            options["afe_left_carrier"],
+            options["afe_right_carrier"]
+        )
+        self.standard_original = deepcopy(self.standard)
 
         self.headswitch_interpolation_enabled = self.options[
             "head_switching_interpolation"
@@ -1142,6 +1125,35 @@ class HiFiDecode:
             muting_fft_start=self.muting_fft_start,
             muting_fft_end=self.muting_fft_end,
         )
+
+    @staticmethod
+    def get_standard(
+        format,
+        system,
+        afe_vco_deviation,
+        afe_left_carrier,
+        afe_right_carrier
+    ):
+        if format == "vhs":
+            if system == "p":
+                field_rate = 50
+                standard = AFEParamsPALVHS()
+            elif system == "n":
+                field_rate = 59.94
+                standard = AFEParamsNTSCVHS()
+        elif format == "8mm":
+            if system == "p":
+                field_rate = 50
+                standard = AFEParamsPAL8mm()
+            elif system == "n":
+                field_rate = 59.94
+                standard = AFEParamsNTSC8mm()
+
+        if afe_vco_deviation != 0: standard.VCODeviation = afe_vco_deviation
+        if afe_left_carrier != 0: standard.LCarrierRef = afe_left_carrier
+        if afe_right_carrier != 0: standard.RCarrierRef = afe_right_carrier
+
+        return standard, field_rate
 
     def set_block_sizes(self, block_size=None):
         # block overlap and edge discard
@@ -1346,11 +1358,11 @@ class HiFiDecode:
         
         if self.options["demod_type"] == DEMOD_QUADRATURE:
             i_osc_left, q_osc_left, i_osc_right, q_osc_right = self.get_iq_oscillators(generate_iq_oscillators)
-            fmL = FMdemod(if_rate, self.standard.LCarrierRef, self.standard.maxVCODeviation, demod_type, i_osc=i_osc_left, q_osc=q_osc_left)
-            fmR = FMdemod(if_rate, self.standard.RCarrierRef, self.standard.maxVCODeviation, demod_type, i_osc=i_osc_right, q_osc=q_osc_right)
+            fmL = FMdemod(if_rate, self.standard.LCarrierRef, self.standard.VCODeviation, demod_type, i_osc=i_osc_left, q_osc=q_osc_left)
+            fmR = FMdemod(if_rate, self.standard.RCarrierRef, self.standard.VCODeviation, demod_type, i_osc=i_osc_right, q_osc=q_osc_right)
         else:
-            fmL = FMdemod(if_rate, self.standard.LCarrierRef, self.standard.maxVCODeviation, demod_type)
-            fmR = FMdemod(if_rate, self.standard.RCarrierRef, self.standard.maxVCODeviation, demod_type)
+            fmL = FMdemod(if_rate, self.standard.LCarrierRef, self.standard.VCODeviation, demod_type)
+            fmR = FMdemod(if_rate, self.standard.RCarrierRef, self.standard.VCODeviation, demod_type)
 
         return afeL, afeR, fmL, fmR
 
@@ -1399,8 +1411,8 @@ class HiFiDecode:
             meanL.push(np.mean(preL))
             meanR.push(np.mean(preR))
 
-            meanLResult = meanL.pull() * self.standard.maxVCODeviation
-            meanRResult = meanR.pull() * self.standard.maxVCODeviation
+            meanLResult = meanL.pull() * self.standard.VCODeviation
+            meanRResult = meanR.pull() * self.standard.VCODeviation
 
             progressB.label = "Carrier L %.06f MHz, R %.06f MHz" % (meanLResult / 10e5, meanRResult / 10e5)
             progressB.print(i+1, False)
@@ -1446,14 +1458,14 @@ class HiFiDecode:
         )
 
     def auto_fine_tune(self, dcL: float, dcR: float) -> Tuple[AFEFilterable, AFEFilterable, FMdemod, FMdemod]:
-        left_carrier_dc_offset = self.standard.LCarrierRef - dcL * self.standard.maxVCODeviation
+        left_carrier_dc_offset = self.standard.LCarrierRef - dcL * self.standard.VCODeviation
         left_carrier_updated = self.standard.LCarrierRef - round(left_carrier_dc_offset)
         self.standard.LCarrierRef = max(
             min(left_carrier_updated, self.standard_original.LCarrierRef + 10e3),
             self.standard_original.LCarrierRef - 10e3,
         )
 
-        right_carrier_dc_offset = self.standard.RCarrierRef - dcR * self.standard.maxVCODeviation
+        right_carrier_dc_offset = self.standard.RCarrierRef - dcR * self.standard.VCODeviation
         right_carrier_updated = self.standard.RCarrierRef - round(
             right_carrier_dc_offset
         )
