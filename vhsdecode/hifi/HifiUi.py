@@ -74,11 +74,11 @@ class MainUIParameters:
         self.standard: str = "NTSC"
         self.format: str = "VHS"
         self.audio_mode: str = "Stereo"
+        self.resampler_quality = DEFAULT_RESAMPLER_QUALITY
         self.demod_type: str = DEFAULT_DEMOD.capitalize()
         self.input_sample_rate: float = 40.0
         self.input_file: str = ""
         self.output_file: str = ""
-        self.resampler_quality = DEFAULT_RESAMPLER_QUALITY
         self.head_switching_interpolation = "on"
         self.muting = "on"
 
@@ -98,11 +98,11 @@ def decode_options_to_ui_parameters(decode_options):
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
     values.audio_mode = "Stereo"
+    values.resampler_quality = decode_options["resampler_quality"]
     values.demod_type = decode_options["demod_type"].capitalize()
     values.input_sample_rate = decode_options["input_rate"]
     values.input_file = decode_options["input_file"]
     values.output_file = decode_options["output_file"]
-    values.resampler_quality = decode_options["resampler_quality"]
     values.head_switching_interpolation = decode_options["head_switching_interpolation"]
     values.muting = decode_options["muting"]
     return values
@@ -263,7 +263,9 @@ class HifiUi(QMainWindow):
         spectral_nr_amount_label = QLabel("Spectral NR:")
         self.spectral_nr_amount_dial = QDial(self)
         self.spectral_nr_amount_dial.setRange(0, 100)
+        self.spectral_nr_amount_dial.setToolTip("Uses \"0\" in Preview Mode")
         self.spectral_nr_amount_textbox = QLineEdit(self)
+        self.spectral_nr_amount_textbox.setToolTip("Uses \"0\" in Preview Mode")
         self.spectral_nr_amount_textbox.setValidator(
             QtGui.QDoubleValidator()
         )  # Only allow float input
@@ -336,6 +338,7 @@ class HifiUi(QMainWindow):
         sample_rate_label = QLabel("Audio Sample Rate Hz:")
         self.sample_rate_combo = QComboBox(self)
         self.sample_rate_combo.addItems(["44100", "48000", "96000", "192000"])
+        self.sample_rate_combo.setToolTip("Uses \"44100\" in Preview Mode")
         samplerate_layout.addWidget(sample_rate_label)
         samplerate_layout.addWidget(self.sample_rate_combo)
 
@@ -362,6 +365,15 @@ class HifiUi(QMainWindow):
         self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo MPX", "Sum"])
         audio_mode_layout.addWidget(audio_mode_label)
         audio_mode_layout.addWidget(self.audio_mode_combo)
+
+        # Adds resampler quality layout
+        resampler_quality_layout = QHBoxLayout()
+        resampler_quality_label = QLabel("Audio Resampler Quality:")
+        self.resampler_quality_combo = QComboBox(self)
+        self.resampler_quality_combo.addItems(["High", "Medium", "Low"])
+        self.resampler_quality_combo.setToolTip("Uses \"Low\" in Preview Mode")
+        resampler_quality_layout.addWidget(resampler_quality_label)
+        resampler_quality_layout.addWidget(self.resampler_quality_combo)
 
         # Adds demodulation options
         demod_type_layout = QHBoxLayout()
@@ -407,6 +419,7 @@ class HifiUi(QMainWindow):
         middle_layout.addLayout(standard_layout)
         middle_layout.addLayout(format_layout)
         middle_layout.addLayout(audio_mode_layout)
+        middle_layout.addLayout(resampler_quality_layout)
         middle_layout.addLayout(demod_type_layout)
         middle_layout.addLayout(samplerate_layout)
 
@@ -553,6 +566,10 @@ class HifiUi(QMainWindow):
         self.audio_mode_combo.setCurrentIndex(
             self.audio_mode_combo.findText(values.audio_mode)
         )
+        self.resampler_quality_combo.setCurrentText(values.resampler_quality.title())
+        self.resampler_quality_combo.setCurrentIndex(
+            self.resampler_quality_combo.findText(values.resampler_quality.title())
+        )
 
         self.demod_type_combo.setCurrentText(values.demod_type)
         self.demod_type_combo.setCurrentIndex(
@@ -600,6 +617,7 @@ class HifiUi(QMainWindow):
         values.standard = self.standard_combo.currentText()
         values.format = self.format_combo.currentText()
         values.audio_mode = self.audio_mode_combo.currentText()
+        values.resampler_quality = self.resampler_quality_combo.currentText().lower()
         values.demod_type = self.demod_type_combo.currentText()
         values.input_sample_rate = self.input_sample_rate
         values.input_file = self.input_file
