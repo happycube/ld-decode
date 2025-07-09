@@ -48,6 +48,15 @@ from vhsdecode.hifi.HiFiDecode import (
     SpectralNoiseReduction,
     NoiseReduction,
     DEFAULT_NR_EXPANDER_GAIN,
+    DEFAULT_NR_EXPANDER_LOG_STRENGTH,
+    DEFAULT_NR_EXPANDER_ATTACK_TAU,
+    DEFAULT_NR_EXPANDER_RELEASE_TAU,
+    DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    DEFAULT_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_NR_DEEMPHASIS_TAU_2,
+    DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
@@ -282,27 +291,95 @@ noise_reduction_options_group.add_argument(
     help=f'Mutes the audio when there is no hifi carrier. (defaults to "on").',
 )
 noise_reduction_options_group.add_argument(
-    "--noise_reduction",
-    dest="noise_reduction",
-    type=str.lower,
-    default="on",
-    help="Set noise reduction block (deemphasis and expansion) on/off",
-)
-noise_reduction_options_group.add_argument(
-    "--NR_expander_gain",
-    dest="NR_expander_gain",
-    type=float,
-    default=DEFAULT_NR_EXPANDER_GAIN,
-    help=f"Sets the noise reduction expander gain (default is {DEFAULT_NR_EXPANDER_GAIN}). "
-    f"Range (20~100): Higher values increase the effect of the expander",
-)
-noise_reduction_options_group.add_argument(
     "--NR_spectral_amount",
     dest="spectral_nr_amount",
     type=float,
     default=DEFAULT_SPECTRAL_NR_AMOUNT,
     help=f"Sets the amount of broadband spectral noise reduction to apply. (default is {DEFAULT_SPECTRAL_NR_AMOUNT}). "
     f"Range (0~1): 0 being off, 1 being full spectral noise reduction",
+)
+noise_reduction_options_group.add_argument(
+    "--noise_reduction",
+    dest="noise_reduction",
+    type=str.lower,
+    default="on",
+    help="Set noise reduction block (deemphasis and expansion) on/off",
+)
+
+expander_options_group = parser.add_argument_group("Expander tuning options (advanced)")
+expander_options_group.add_argument(
+    "--NR_expander_gain",
+    dest="nr_expander_gain",
+    type=float,
+    default=DEFAULT_NR_EXPANDER_GAIN,
+    help=f"Sets the expander gain (default is {DEFAULT_NR_EXPANDER_GAIN}). "
+    f"Range (20~100): Higher values increase the effect of the expander",
+)
+expander_options_group.add_argument(
+    "--NR_expander_strength",
+    dest="nr_expander_strength",
+    type=float,
+    default=DEFAULT_NR_EXPANDER_LOG_STRENGTH,
+    help=f"Sets the expander logarithmic strength (default is {DEFAULT_NR_EXPANDER_LOG_STRENGTH}). "
+    f"Range (1~2): Higher values increase the logarithmic slope of the expander",
+)
+expander_options_group.add_argument(
+    "--NR_attack_tau",
+    dest="nr_attack_tau",
+    type=float,
+    default=DEFAULT_NR_EXPANDER_ATTACK_TAU,
+    help=f"Sets the expander attack speed in tau (default is {DEFAULT_NR_EXPANDER_ATTACK_TAU})."
+)
+expander_options_group.add_argument(
+    "--NR_release_tau",
+    dest="nr_release_tau",
+    type=float,
+    default=DEFAULT_NR_EXPANDER_RELEASE_TAU,
+    help=f"Sets the expander release speed in tau (default is {DEFAULT_NR_EXPANDER_RELEASE_TAU})."
+)
+expander_options_group.add_argument(
+    "--NR_weighting_shelf_low_tau",
+    dest="nr_weighting_shelf_low_tau",
+    type=float,
+    default=DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
+    help=f"Sets the expander sidechain high-pass shelf filter low point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1})."
+)
+expander_options_group.add_argument(
+    "--NR_weighting_shelf_high_tau",
+    dest="nr_weighting_shelf_high_tau",
+    type=float,
+    default=DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
+    help=f"Sets the expander sidechain high-pass shelf filter high point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2})."
+)
+expander_options_group.add_argument(
+    "--NR_weighting_db_per_octave",
+    dest="nr_weighting_db_per_octave",
+    type=float,
+    default=DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    help=f"Sets the expander sidechain high-pass shelf filter cutoff rate (default is {DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE})."
+)
+
+deemphasis_options_group = parser.add_argument_group("Deemphasis tuning options (advanced)")
+deemphasis_options_group.add_argument(
+    "--NR_deemphasis_low_tau",
+    dest="nr_deemphasis_low_tau",
+    type=float,
+    default=DEFAULT_NR_DEEMPHASIS_TAU_1,
+    help=f"Sets the deemphasis low-pass shelf filter low point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_1})."
+)
+deemphasis_options_group.add_argument(
+    "--NR_deemphasis_high_tau",
+    dest="nr_deemphasis_high_tau",
+    type=float,
+    default=DEFAULT_NR_DEEMPHASIS_TAU_2,
+    help=f"Sets the deemphasis low-pass shelf filter high point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_2})."
+)
+deemphasis_options_group.add_argument(
+    "--NR_deemphasis_db_per_octave",
+    dest="nr_deemphasis_db_per_octave",
+    type=float,
+    default=DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
+    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (default is {DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE})."
 )
 
 def test_if_ld_ldf_reader_is_installed():
@@ -722,7 +799,6 @@ class PostProcessor:
         self.final_audio_rate = decode_options["audio_rate"]
         self.use_noise_reduction = decode_options["noise_reduction"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
-        self.nr_expander_gain = decode_options["nr_expander_gain"]
         self.peak_gain = peak_gain
 
         # create processes and wire up queues
@@ -806,8 +882,17 @@ class PostProcessor:
                 spectral_nr_worker_l_output,
                 nr_worker_l_out_input,
                 self.use_noise_reduction,
-                self.nr_expander_gain,
                 self.final_audio_rate,
+                decode_options["nr_expander_gain"],
+                decode_options["nr_expander_strength"],
+                decode_options["nr_attack_tau"],
+                decode_options["nr_release_tau"],
+                decode_options["nr_weighting_shelf_low_tau"],
+                decode_options["nr_weighting_shelf_high_tau"],
+                decode_options["nr_weighting_db_per_octave"],
+                decode_options["nr_deemphasis_low_tau"],
+                decode_options["nr_deemphasis_high_tau"],
+                decode_options["nr_deemphasis_db_per_octave"],
             ),
         )
         self.nr_worker_l.start()
@@ -821,8 +906,17 @@ class PostProcessor:
                 spectral_nr_worker_r_output,
                 nr_worker_r_out_input,
                 self.use_noise_reduction,
-                self.nr_expander_gain,
                 self.final_audio_rate,
+                decode_options["nr_expander_gain"],
+                decode_options["nr_expander_strength"],
+                decode_options["nr_attack_tau"],
+                decode_options["nr_release_tau"],
+                decode_options["nr_weighting_shelf_low_tau"],
+                decode_options["nr_weighting_shelf_high_tau"],
+                decode_options["nr_weighting_db_per_octave"],
+                decode_options["nr_deemphasis_low_tau"],
+                decode_options["nr_deemphasis_high_tau"],
+                decode_options["nr_deemphasis_db_per_octave"],
             ),
         )
         self.nr_worker_r.start()
@@ -900,11 +994,32 @@ class PostProcessor:
         in_conn,
         out_conn,
         use_noise_reduction,
-        nr_expander_gain,
         final_audio_rate,
+        nr_expander_gain,
+        nr_expander_strength,
+        nr_attack_tau,
+        nr_release_tau,
+        nr_weighting_shelf_low_tau,
+        nr_weighting_shelf_high_tau,
+        nr_weighting_db_per_octave,
+        nr_deemphasis_low_tau,
+        nr_deemphasis_high_tau,
+        nr_deemphasis_db_per_octave,
     ):
         setproctitle(current_process().name)
-        noise_reduction = NoiseReduction(nr_expander_gain, audio_rate=final_audio_rate)
+        noise_reduction = NoiseReduction(
+            final_audio_rate,
+            nr_expander_gain,
+            nr_expander_strength,
+            nr_attack_tau,
+            nr_release_tau,
+            nr_weighting_shelf_low_tau,
+            nr_weighting_shelf_high_tau,
+            nr_weighting_db_per_octave,
+            nr_deemphasis_low_tau,
+            nr_deemphasis_high_tau,
+            nr_deemphasis_db_per_octave,
+        )
 
         while True:
             while True:
@@ -1738,7 +1853,16 @@ def main() -> int:
         "noise_reduction": args.noise_reduction == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "normalize": args.normalize,
-        "nr_expander_gain": args.NR_expander_gain,
+        "nr_expander_gain": args.nr_expander_gain,
+        "nr_expander_strength": args.nr_expander_strength,
+        "nr_attack_tau": args.nr_attack_tau,
+        "nr_release_tau": args.nr_release_tau,
+        "nr_weighting_shelf_low_tau": args.nr_weighting_shelf_low_tau,
+        "nr_weighting_shelf_high_tau": args.nr_weighting_shelf_high_tau,
+        "nr_weighting_db_per_octave": args.nr_weighting_db_per_octave,
+        "nr_deemphasis_low_tau": args.nr_deemphasis_low_tau,
+        "nr_deemphasis_high_tau": args.nr_deemphasis_high_tau,
+        "nr_deemphasis_db_per_octave": args.nr_deemphasis_db_per_octave,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,

@@ -44,6 +44,15 @@ except ImportError:
 
 from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_NR_EXPANDER_GAIN,
+    DEFAULT_NR_EXPANDER_LOG_STRENGTH,
+    DEFAULT_NR_EXPANDER_ATTACK_TAU,
+    DEFAULT_NR_EXPANDER_RELEASE_TAU,
+    DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    DEFAULT_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_NR_DEEMPHASIS_TAU_2,
+    DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEMOD_QUADRATURE,
@@ -63,6 +72,15 @@ class MainUIParameters:
         self.volume: float = 1.0
         self.normalize = False
         self.nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN / 100.0
+        self.nr_expander_strength: float = DEFAULT_NR_EXPANDER_LOG_STRENGTH
+        self.nr_attack_tau: float = DEFAULT_NR_EXPANDER_ATTACK_TAU
+        self.nr_release_tau: float = DEFAULT_NR_EXPANDER_RELEASE_TAU
+        self.nr_weighting_shelf_low_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1
+        self.nr_weighting_shelf_high_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2
+        self.nr_weighting_db_per_octave: float = DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE
+        self.nr_deemphasis_low_tau: float = DEFAULT_NR_DEEMPHASIS_TAU_1
+        self.nr_deemphasis_high_tau: float = DEFAULT_NR_DEEMPHASIS_TAU_2
+        self.nr_deemphasis_db_per_octave: float = DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE
         self.afe_vco_deviation = 0
         self.afe_left_carrier = 0
         self.afe_right_carrier = 0
@@ -88,6 +106,15 @@ def decode_options_to_ui_parameters(decode_options):
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
     values.nr_expander_gain = decode_options["nr_expander_gain"] / 100.0
+    values.nr_expander_strength = decode_options["nr_expander_strength"]
+    values.nr_attack_tau = decode_options["nr_attack_tau"]
+    values.nr_release_tau = decode_options["nr_release_tau"]
+    values.nr_weighting_shelf_low_tau = decode_options["nr_weighting_shelf_low_tau"]
+    values.nr_weighting_shelf_high_tau = decode_options["nr_weighting_shelf_high_tau"]
+    values.nr_weighting_db_per_octave = decode_options["nr_weighting_db_per_octave"]
+    values.nr_deemphasis_low_tau = decode_options["nr_deemphasis_low_tau"]
+    values.nr_deemphasis_high_tau = decode_options["nr_deemphasis_high_tau"]
+    values.nr_deemphasis_db_per_octave = decode_options["nr_deemphasis_db_per_octave"]
     values.afe_vco_deviation = decode_options["afe_vco_deviation"]
     values.afe_left_carrier = decode_options["afe_left_carrier"]
     values.afe_right_carrier = decode_options["afe_right_carrier"]
@@ -117,6 +144,15 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "noise_reduction": values.noise_reduction,
         "auto_fine_tune": values.automatic_fine_tuning,
         "nr_expander_gain": values.nr_expander_gain * 100.0,
+        "nr_expander_strength": values.nr_expander_strength,
+        "nr_attack_tau": values.nr_attack_tau,
+        "nr_release_tau": values.nr_release_tau,
+        "nr_weighting_shelf_low_tau": values.nr_weighting_shelf_low_tau,
+        "nr_weighting_shelf_high_tau": values.nr_weighting_shelf_high_tau,
+        "nr_weighting_db_per_octave": values.nr_weighting_db_per_octave,
+        "nr_deemphasis_low_tau": values.nr_deemphasis_low_tau,
+        "nr_deemphasis_high_tau": values.nr_deemphasis_high_tau,
+        "nr_deemphasis_db_per_octave": values.nr_deemphasis_db_per_octave,
         "afe_vco_deviation": values.afe_vco_deviation,
         "afe_left_carrier": values.afe_left_carrier,
         "afe_right_carrier": values.afe_right_carrier,

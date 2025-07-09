@@ -58,7 +58,27 @@ import matplotlib.pyplot as plt
 # lower increases expander strength and decreases overall gain
 DEFAULT_NR_EXPANDER_GAIN = 22
 # sets logarithmic slope for the 1:2 expander
-DEFAULT_EXPANDER_LOG_STRENGTH = 1.2
+DEFAULT_NR_EXPANDER_LOG_STRENGTH = 1.2
+DEFAULT_NR_EXPANDER_ATTACK_TAU = 3e-3
+DEFAULT_NR_EXPANDER_RELEASE_TAU = 70e-3
+
+# High shelf filter parameters for weighted sidechain input to expander
+# low end of shelf curve
+DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1 = 240e-6
+# high end of shelf curve
+DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2 = 24e-6
+# slope of the filter
+DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 2.1
+
+# Low shelf filter for deemphasis
+# low end of shelf curve
+DEFAULT_NR_DEEMPHASIS_TAU_1 = 240e-6
+# high end of shelf curve
+DEFAULT_NR_DEEMPHASIS_TAU_2 = 56e-6
+# slope of the filter
+DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE = 6.6
+
+
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
 DEFAULT_RESAMPLER_QUALITY = "high"
@@ -712,8 +732,17 @@ class SpectralNoiseReduction:
 class NoiseReduction:
     def __init__(
         self,
-        expander_gain: float,
-        audio_rate: int = 192000,
+        audio_rate,
+        nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN,
+        nr_expander_strength: float = DEFAULT_NR_EXPANDER_LOG_STRENGTH,
+        nr_attack_tau: float = DEFAULT_NR_EXPANDER_ATTACK_TAU,
+        nr_release_tau: float = DEFAULT_NR_EXPANDER_RELEASE_TAU,
+        nr_weighting_shelf_low_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
+        nr_weighting_shelf_high_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
+        nr_weighting_db_per_octave: float = DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+        nr_deemphasis_low_tau: float = DEFAULT_NR_DEEMPHASIS_TAU_1,
+        nr_deemphasis_high_tau: float = DEFAULT_NR_DEEMPHASIS_TAU_2,
+        nr_deemphasis_db_per_octave: float = DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
     ):
         self.audio_rate = audio_rate
 
@@ -722,13 +751,13 @@ class NoiseReduction:
         ############
 
         # noise reduction envelope tracking constants (this ones might need tweaking)
-        self.NR_expander_gain = expander_gain
+        self.NR_expander_gain = nr_expander_gain
         # strength of the logarithmic function used to expand the signal
-        self.NR_expander_log_strength = DEFAULT_EXPANDER_LOG_STRENGTH
+        self.NR_expander_log_strength = nr_expander_strength
 
         # values in seconds
-        NR_attack_tau = 3e-3
-        NR_release_tau = 70e-3
+        NR_attack_tau = nr_attack_tau
+        NR_release_tau = nr_release_tau
 
         self.NR_weighting_attack_Lo_cut = tau_as_freq(NR_attack_tau)
         self.NR_weighting_attack_Lo_transition = 1e3
@@ -750,9 +779,9 @@ class NoiseReduction:
         )
 
         # weighted filter for envelope detector
-        self.NR_weighting_T1 = 240e-6
-        self.NR_weighting_T2 = 24e-6
-        self.NR_weighting_db_per_octave = 2.1
+        self.NR_weighting_T1 = nr_weighting_shelf_low_tau
+        self.NR_weighting_T2 = nr_weighting_shelf_high_tau
+        self.NR_weighting_db_per_octave = nr_weighting_db_per_octave
 
         env_iirb, env_iira = build_shelf_filter(
             "high",
@@ -792,9 +821,9 @@ class NoiseReduction:
         ##############
 
         # deemphasis filter for output audio
-        self.NR_deemphasis_T1 = 240e-6
-        self.NR_deemphasis_T2 = 56e-6
-        self.NR_deemphasis_db_per_octave = 6.6
+        self.NR_deemphasis_T1 = nr_deemphasis_low_tau
+        self.NR_deemphasis_T2 = nr_deemphasis_high_tau
+        self.NR_deemphasis_db_per_octave = nr_deemphasis_db_per_octave
 
         deemph_b, deemph_a = build_shelf_filter(
             "low",
@@ -831,11 +860,8 @@ class NoiseReduction:
     )
     def expand(log_strength: float, signal: np.array, out: np.array) -> np.array:
         # detect the envelope and use logarithmic expansion
-        rectified = np.abs(signal)
-        levels = np.clip(rectified, 0.0, 1.0)
-
-        for i in range(len(levels)):
-            out[i] = levels[i] ** REAL_DTYPE(log_strength)
+        for i in range(len(signal)):
+            out[i] = abs(signal[i]) ** REAL_DTYPE(log_strength)
 
     @staticmethod
     @guvectorize(
