@@ -18,6 +18,7 @@ try:
         QFileDialog,
         QDialog,
         QMessageBox,
+        QSpinBox
     )
     from PyQt6 import QtGui, QtCore
 except ImportError:
@@ -37,6 +38,7 @@ except ImportError:
         QFileDialog,
         QDialog,
         QMessageBox,
+        QSpinBox
     )
     from PyQt5 import QtGui, QtCore
 
@@ -54,6 +56,7 @@ STOP_STATE = 0
 PLAY_STATE = 1
 PAUSE_STATE = 2
 PREVIEW_STATE = 3
+IMMEDIATE_STOP = "IMMEDIATE_STOP"
 
 class MainUIParameters:
     def __init__(self):
@@ -283,6 +286,37 @@ class HifiUi(QMainWindow):
         middle_layout = QVBoxLayout()
         self.main_layout.addLayout(middle_layout)
 
+        # Analog Front End adjustments
+        afe_vco_deviation_spinbox_label = QLabel("VCO Deviation")
+        self.afe_vco_deviation_spinbox = QSpinBox(self)
+        self.afe_vco_deviation_spinbox.setGroupSeparatorShown(True)
+        self.afe_vco_deviation_spinbox.setMinimum(int(10e3))
+        self.afe_vco_deviation_spinbox.setMaximum(int(10e5))
+        self.afe_vco_deviation_spinbox.setSingleStep(10)
+        self.afe_vco_deviation_spinbox.setToolTip("Maximum frequency offset + or - from the center frequency")
+        middle_layout.addWidget(afe_vco_deviation_spinbox_label)
+        middle_layout.addWidget(self.afe_vco_deviation_spinbox)
+
+        afe_left_carrier_spinbox_label = QLabel("Left Carrier")
+        self.afe_left_carrier_spinbox = QSpinBox(self)
+        self.afe_left_carrier_spinbox.setGroupSeparatorShown(True)
+        self.afe_left_carrier_spinbox.setMinimum(int(10e5))
+        self.afe_left_carrier_spinbox.setMaximum(int(10e6))
+        self.afe_left_carrier_spinbox.setSingleStep(100)
+        self.afe_left_carrier_spinbox.setToolTip("Left carrier center frequency")
+        middle_layout.addWidget(afe_left_carrier_spinbox_label)
+        middle_layout.addWidget(self.afe_left_carrier_spinbox)
+
+        afe_right_carrier_spinbox_label = QLabel("Right Carrier")
+        self.afe_right_carrier_spinbox = QSpinBox(self)
+        self.afe_right_carrier_spinbox.setGroupSeparatorShown(True)
+        self.afe_right_carrier_spinbox.setMinimum(int(10e5))
+        self.afe_right_carrier_spinbox.setMaximum(int(10e6))
+        self.afe_right_carrier_spinbox.setSingleStep(100)
+        self.afe_right_carrier_spinbox.setToolTip("Right carrier center frequency")
+        middle_layout.addWidget(afe_right_carrier_spinbox_label)
+        middle_layout.addWidget(self.afe_right_carrier_spinbox)
+
         # Checkboxes
         self.normalize_checkbox = QCheckBox("Normalize")
         self.muting_checkbox = QCheckBox("Muting")
@@ -411,6 +445,8 @@ class HifiUi(QMainWindow):
         self.spectral_nr_amount_textbox.editingFinished.connect(
             self.on_spectral_nr_amount_textbox_changed
         )
+        self.standard_combo.currentIndexChanged.connect(self.on_standard_change)
+        self.format_combo.currentIndexChanged.connect(self.on_format_change)
         self.preview_button.clicked.connect(self.on_preview_clicked)
         self.play_button.clicked.connect(self.on_play_clicked)
         self.pause_button.clicked.connect(self.on_pause_clicked)
@@ -534,7 +570,13 @@ class HifiUi(QMainWindow):
             new_other_text = f"Other ({(values.input_sample_rate / 1e6):g})"
             self.input_samplerate_combo.setPlaceholderText(new_other_text)
 
-        self.update_afe_values(values)
+        self.update_afe_values(
+            values.format,
+            values.standard,
+            values.afe_vco_deviation,
+            values.afe_left_carrier,
+            values.afe_right_carrier
+        )
 
         self.input_file = values.input_file
         self.output_file = values.output_file
@@ -543,11 +585,9 @@ class HifiUi(QMainWindow):
         values = MainUIParameters()
         values.volume = float(self.volume_textbox.text())
         values.nr_envelope_gain = float(self.nr_envelope_textbox.text())
-
-        #values.afe_vco_deviation = float(self.afe_vco_deviation.text())
-        #values.afe_left_carrier = float(self.afe_left_carrier.text())
-        #values.afe_right_carrier = float(self.afe_right_carrier.text())
-
+        values.afe_vco_deviation = self.afe_vco_deviation_spinbox.value()
+        values.afe_left_carrier = self.afe_left_carrier_spinbox.value()
+        values.afe_right_carrier = self.afe_right_carrier_spinbox.value()
         values.spectral_nr_amount = float(self.spectral_nr_amount_textbox.text())
         values.normalize = self.normalize_checkbox.isChecked()
         values.muting = self.muting_checkbox.isChecked()
@@ -566,17 +606,17 @@ class HifiUi(QMainWindow):
         values.output_file = self.output_file
         return values
     
-    def update_afe_values(self, values):
+    def update_afe_values(self, format, standard, afe_vco_deviation=0, afe_left_carrier=0, afe_right_carrier=0):
         standard, _ = HiFiDecode.get_standard(
-            "vhs" if values.format == "VHS" else "8mm",
-            "p" if values.standard == "PAL" else "n",
-            values.afe_vco_deviation,
-            values.afe_left_carrier,
-            values.afe_right_carrier
+            "vhs" if format == "VHS" else "8mm",
+            "p" if standard == "PAL" else "n",
+            afe_vco_deviation,
+            afe_left_carrier,
+            afe_right_carrier,
         )
-        self.afe_vco_deviation = standard.VCODeviation
-        self.afe_left_carrier = standard.LCarrierRef
-        self.afe_right_carrier = standard.RCarrierRef
+        self.afe_vco_deviation_spinbox.setValue(int(standard.VCODeviation))
+        self.afe_left_carrier_spinbox.setValue(int(standard.LCarrierRef))
+        self.afe_right_carrier_spinbox.setValue(int(standard.RCarrierRef))
 
     def on_volume_changed(self, value):
         self.volume_textbox.setText(str(value * 2 / 100.0))
@@ -610,6 +650,18 @@ class HifiUi(QMainWindow):
             self.spectral_nr_amount_dial.setValue(int(value * 100))
         except ValueError:
             pass
+
+    def on_standard_change(self):
+        self.update_afe_values(
+            format=self.format_combo.currentText(),
+            standard=self.standard_combo.currentText(),
+        )
+
+    def on_format_change(self):
+        self.update_afe_values(
+            format=self.format_combo.currentText(),
+            standard=self.standard_combo.currentText(),
+        )
 
     def change_button_color(self, button, color):
         button.setStyleSheet(
