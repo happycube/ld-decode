@@ -526,23 +526,23 @@ def ldf_pipe(outname: str, compression_level: int = 6):
 def ac3_pipe(outname: str):
     processes = []
 
-    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -"
-    cmd2 = "ld-ac3-demodulate -v 3 - -"
-    cmd3 = f"ld-ac3-decode - {outname}"
+    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -".split()
+    cmd2 = "ld-ac3-demodulate -v 3 - -".split()
+    cmd3 = ["ld-ac3-decode", "-", outname]
 
-    logfp = open(f"{outname + '.log'}", 'w')
+    logfp = open(outname + '.log', 'w')
 
     # This is done in reverse order to allow for pipe building
-    processes.append(subprocess.Popen(cmd3.split(' '),
+    processes.append(subprocess.Popen(cmd3,
                                       stdin=subprocess.PIPE,
                                       stdout=logfp,
                                       stderr=subprocess.STDOUT))
 
-    processes.append(subprocess.Popen(cmd2.split(' '),
+    processes.append(subprocess.Popen(cmd2,
                                       stdin=subprocess.PIPE,
                                       stdout=processes[-1].stdin))
 
-    processes.append(subprocess.Popen(cmd1.split(' '),
+    processes.append(subprocess.Popen(cmd1,
                                       stdin=subprocess.PIPE,
                                       stdout=processes[-1].stdin))
 
