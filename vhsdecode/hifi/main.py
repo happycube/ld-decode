@@ -57,7 +57,7 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_DEMOD,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
-from vhsdecode.hifi.HifiUi import STOP_STATE, PLAY_STATE, PAUSE_STATE, PREVIEW_STATE
+from vhsdecode.hifi.HifiUi import STOP_STATE, PLAY_STATE, PAUSE_STATE, PREVIEW_STATE, IMMEDIATE_STOP
 import io
 
 try:
@@ -1368,7 +1368,7 @@ async def decode_parallel(
         decoder_process.start()
 
         atexit.register(decoder_process.terminate)
-        decoder_processes.append(decoder)
+        decoder_processes.append(decoder_process)
 
     # set up the post processor
     post_processor_out_output_conn, post_processor_out_input_conn = Pipe(duplex=False)
@@ -1510,9 +1510,13 @@ async def decode_parallel(
     async def handle_ui_events():
         stop_requested = False
         if ui_t is not None:
+            previous_state = ui_t.window.transport_state
             ui_t.app.processEvents()
+
             if ui_t.window.transport_state == STOP_STATE:
                 stop_requested = True
+                if previous_state == PREVIEW_STATE:
+                    stop_requested = IMMEDIATE_STOP
             elif ui_t.window.transport_state == PAUSE_STATE:
                 while ui_t.window.transport_state == PAUSE_STATE:
                     ui_t.app.processEvents()
@@ -1578,11 +1582,16 @@ async def decode_parallel(
 
             block_num += 1
 
-    print("")
-    print("Decode finishing up. Emptying the queue")
-    print("")
+    if stop_requested == IMMEDIATE_STOP:
+        for p in decoder_processes:
+            p.terminate()
+        output_file_process.terminate()
+    else:
+        print("")
+        print("Decode finishing up. Emptying the queue")
+        print("")
+        decode_done.wait()
 
-    decode_done.wait()
     post_processor.close()
 
     for shared_memory in shared_memory_instances:
@@ -1770,8 +1779,11 @@ def main() -> int:
                         options["output_file"]
                     ):
                         decoder_state = run_decoder(args, options, ui_t=ui_t)
+                        previous_state = ui_t.window.transport_state
                         ui_t.window.transport_state = STOP_STATE
-                        ui_t.window.on_decode_finished()
+
+                        if previous_state == PLAY_STATE:
+                            ui_t.window.on_decode_finished()
                     else:
                         message = None
                         if not test_input_file(options["input_file"]):
