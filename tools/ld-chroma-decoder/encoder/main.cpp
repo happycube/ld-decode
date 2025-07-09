@@ -29,11 +29,6 @@
 #include <QCommandLineParser>
 #include <cstdio>
 
-#ifdef _WIN32
-	#include <io.h>
-	#include <fcntl.h>
-#endif
-
 #include "lddecodemetadata.h"
 #include "logging.h"
 
@@ -42,10 +37,9 @@
 
 int main(int argc, char *argv[])
 {
-	#ifdef _WIN32
-	_setmode(_fileno(stdout), O_BINARY);
-	_setmode(_fileno(stdin), O_BINARY);	
-	#endif
+    // Set 'binary mode' for stdin and stdout on Windows
+    setBinaryMode();
+
     // Install the local debug message handler
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);

@@ -315,6 +315,36 @@ def plot_luma_rf(rf, rf_luma_filter):
     plt.show()
 
 
+def plot_env_filter(env_filter1, env_filter2):
+    #    import math
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    x = np.linspace(0, 40, env_filter1.size)
+
+    mag = 20 * np.log10(np.absolute(env_filter1))
+    mag2 = 20 * np.log10(np.absolute(env_filter2))
+    # ph = np.angle(env_filter1, deg=True)
+
+    fig, ax1 = plt.subplots()
+
+    col = "tab:red"
+    ax1.set_xlabel("Frequenzy (MHz)")
+    ax1.set_ylabel("Magnetude (dB)", color=col)
+    ax1.plot(x, mag, color=col)
+    ax1.tick_params(axis="y", labelcolor=col)
+
+    ax2 = ax1.twinx()
+
+    col = "tab:green"
+    ax2.set_ylabel("Phase (°)", color=col)
+    ax2.plot(x, mag2, color=col)
+    ax2.tick_params(axis="y", labelcolor=col)
+
+    fig.tight_layout()
+    plt.show()
+
+
 def plot_deemphasis(rf, filter_video_lpf, decoder_params, filter_deemp):
     import math
     import matplotlib.pyplot as plt

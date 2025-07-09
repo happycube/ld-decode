@@ -331,15 +331,17 @@ def get_line0_fallback(
             half_lines = 0
             j = i
             while j < i + 9:
-                dis = (filtered_pulses[j + 1].start - filtered_pulses[j].start) / linelen
+                dis = (
+                    filtered_pulses[j + 1].start - filtered_pulses[j].start
+                ) / linelen
                 if (
-                    abs(dis-0.5) < 0.06
+                    abs(dis - 0.5) < 0.06
                     and filtered_pulses[j].len < SHORT_PULSE_MAX
                     and filtered_pulses[j + 1].len < SHORT_PULSE_MAX
                 ):
                     half_lines += 1
                 elif (
-                    abs(dis-1.0) < 0.06
+                    abs(dis - 1.0) < 0.06
                     and filtered_pulses[j].len < SHORT_PULSE_MAX
                     and filtered_pulses[j + 1].len < SHORT_PULSE_MAX
                 ):
@@ -371,7 +373,10 @@ def get_line0_fallback(
                 for d in range(15, min(i, 30) + 1):
                     pp = np.array(
                         [
-                            (filtered_pulses[i - 2].start - filtered_pulses[i - d].start)
+                            (
+                                filtered_pulses[i - 2].start
+                                - filtered_pulses[i - d].start
+                            )
                             / measured_linelen,
                             (
                                 filtered_pulses[i - 2].start

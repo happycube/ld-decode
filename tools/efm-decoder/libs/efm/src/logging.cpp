@@ -127,6 +127,7 @@ void setQuiet(bool state)
     quietDebug = state;
 }
 
+// Ensure the stdout/stdin file descriptors are in binary mode
 void setBinaryMode(void)
 {
 #ifdef _WIN32

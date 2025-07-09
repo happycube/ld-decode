@@ -5,6 +5,7 @@ from scipy.fftpack import fft, fftfreq
 import lddecode.core as ldd
 from scipy.signal import argrelextrema
 from vhsdecode.linear_filter import FiltersClass
+from vhsdecode.rust_utils import sosfiltfilt_rust
 
 twopi = 2 * np.pi
 
@@ -109,7 +110,7 @@ class ChromaAFC:
             fdc_wave = utils.gen_wave_at_frequency(freq, self.samp_rate, sample_size)
             self.setCC(freq)
             mean = self.measureCenterFreq(
-                utils.filter_simple(fdc_wave, self.get_chroma_bandpass())
+                sosfiltfilt_rust(self.get_chroma_bandpass(), fdc_wave)
             )
             # print(ix, "%.02f %.02f" % (freq / 1e3, mean / 1e3))
             means = np.append(means, [[freq, mean]], axis=0)
@@ -194,52 +195,52 @@ class ChromaAFC:
             ]
         )
 
-    # As this is done on the tbced signal, we need the sampling frequency of that,
-    # which is 4fsc for NTSC and approx. 4 fsc for PAL.
-    def genHetC_filtered(self):
-        cc_wave_scale = self.cc_freq_mhz / self.out_sample_rate_mhz
-        het_freq = self.fsc_mhz + self.cc_freq_mhz
-
-        phase_drift = self.cc_phase
-        # 0 phase downconverted color under carrier wave
-        cc_wave = np.sin((twopi * cc_wave_scale * self.samples) + phase_drift)
-        self.cc_wave = cc_wave
-
-        # +90 deg and so on phase wave for track2 phase rotation
-        cc_wave_90 = np.sin(
-            (twopi * cc_wave_scale * self.samples) + (np.pi / 2) + phase_drift
-        )
-        cc_wave_180 = np.sin(
-            (twopi * cc_wave_scale * self.samples) + np.pi + phase_drift
-        )
-        cc_wave_270 = np.sin(
-            (twopi * cc_wave_scale * self.samples) + np.pi + (np.pi / 2) + phase_drift
-        )
-
-        # Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
-        het_filter = sps.butter(
-            6,
-            [
-                (het_freq - 0.001) / self.out_frequency_half,
-                (het_freq + 0.001) / self.out_frequency_half,
-            ],
-            btype="bandpass",
-            output="sos",
-        )
-
-        # Heterodyne wave
-        # We combine the color carrier with a wave with a frequency of the
-        # subcarrier + the downconverted chroma carrier to get the original
-        # color wave back.
-
-        return np.array(
-            [
-                sps.sosfiltfilt(het_filter, cc_wave * self.fsc_wave),
-                sps.sosfiltfilt(het_filter, cc_wave_90 * self.fsc_wave),
-                sps.sosfiltfilt(het_filter, cc_wave_180 * self.fsc_wave),
-                sps.sosfiltfilt(het_filter, cc_wave_270 * self.fsc_wave),
-            ]
-        )
+    #    # As this is done on the tbced signal, we need the sampling frequency of that,
+    #    # which is 4fsc for NTSC and approx. 4 fsc for PAL.
+    #    def genHetC_filtered(self):
+    #        cc_wave_scale = self.cc_freq_mhz / self.out_sample_rate_mhz
+    #        het_freq = self.fsc_mhz + self.cc_freq_mhz
+    #
+    #        phase_drift = self.cc_phase
+    #        # 0 phase downconverted color under carrier wave
+    #        cc_wave = np.sin((twopi * cc_wave_scale * self.samples) + phase_drift)
+    #        self.cc_wave = cc_wave
+    #
+    #        # +90 deg and so on phase wave for track2 phase rotation
+    #        cc_wave_90 = np.sin(
+    #            (twopi * cc_wave_scale * self.samples) + (np.pi / 2) + phase_drift
+    #        )
+    #        cc_wave_180 = np.sin(
+    #            (twopi * cc_wave_scale * self.samples) + np.pi + phase_drift
+    #        )
+    #        cc_wave_270 = np.sin(
+    #            (twopi * cc_wave_scale * self.samples) + np.pi + (np.pi / 2) + phase_drift
+    #        )
+    #
+    #        # Bandpass filter to select heterodyne frequency from the mixed fsc and color carrier signal
+    #        het_filter = sps.butter(
+    #            6,
+    #            [
+    #        #        (het_freq - 0.001) / self.out_frequency_half,
+    #        #        (het_freq + 0.001) / self.out_frequency_half,
+    #            ],
+    #            btype="bandpass",
+    #            output="sos",
+    #        )
+    #
+    #        # Heterodyne wave
+    #        # We combine the color carrier with a wave with a frequency of the
+    #        # subcarrier + the downconverted chroma carrier to get the original
+    #        # color wave back.
+    #
+    #        return np.array(
+    #            [
+    #                sps.sosfiltfilt(het_filter, cc_wave * self.fsc_wave),
+    #                sps.sosfiltfilt(het_filter, cc_wave_90 * self.fsc_wave),
+    #                sps.sosfiltfilt(het_filter, cc_wave_180 * self.fsc_wave),
+    #                sps.sosfiltfilt(het_filter, cc_wave_270 * self.fsc_wave),
+    #            ]
+    #        )
 
     # Returns the chroma heterodyning wave table/array computed after genHetC()
     def getChromaHet(self):

@@ -68,6 +68,19 @@ def run_command(cmd, **kwopts):
     if rc != 0:
         die(cmd[0], 'failed with exit code', rc)
 
+def run_decode_command(cmd):
+    """Run an ld-cut/ld-decode command, setting PATH so that helper programs
+    can be found."""
+
+    env = os.environ.copy()
+    env['PATH'] = ':'.join([
+        build_dir,
+        build_dir + '/tools/ld-ldf-reader',
+        source_dir,
+        env['PATH'],
+        ])
+    run_command(cmd, env=env)
+
 def run_ld_cut(args):
     """Run ld-cut."""
 
@@ -87,10 +100,7 @@ def run_ld_cut(args):
     cmd += ['-l', str(args.cutlength)]
     cmd += [args.infile, cutfile]
 
-    # Set PATH so it can invoke helper programs
-    env = os.environ.copy()
-    env['PATH'] = build_dir + ':' + source_dir + ':' + env['PATH']
-    run_command(cmd, env=env)
+    run_decode_command(cmd)
 
     # Use the output as the input for the rest of the decoding process
     args.infile = cutfile
@@ -109,11 +119,8 @@ def run_ld_decode(args):
 
     cmd += [args.infile, args.output]
 
-    # Set PATH so it can invoke helper programs
-    env = os.environ.copy()
-    env['PATH'] = build_dir + ':' + source_dir + ':' + env['PATH']
-    run_command(cmd, env=env)
-    
+    run_decode_command(cmd)
+
     # If doing AC3, check that there are enough output samples
     if (args.expect_ac3_bytes is not None) and (not dry_run):
         ac3_file = args.output + '.ac3'
