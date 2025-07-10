@@ -1,8 +1,9 @@
 import os.path
 import sys
+import math
 
 try:
-    from PyQt6.QtGui import QIcon
+    from PyQt6.QtGui import QIcon, QPalette
     from PyQt6.QtWidgets import (
         QApplication,
         QMainWindow,
@@ -18,11 +19,14 @@ try:
         QFileDialog,
         QDialog,
         QMessageBox,
-        QSpinBox
+        QSpinBox,
+        QFrame,
+        QSizePolicy,
+        QGridLayout,
     )
     from PyQt6 import QtGui, QtCore
 except ImportError:
-    from PyQt5.QtGui import QIcon
+    from PyQt5.QtGui import QIcon, QPalette
     from PyQt5.QtWidgets import (
         QApplication,
         QMainWindow,
@@ -38,7 +42,10 @@ except ImportError:
         QFileDialog,
         QDialog,
         QMessageBox,
-        QSpinBox
+        QSpinBox,
+        QFrame,
+        QSizePolicy,
+        QGridLayout,
     )
     from PyQt5 import QtGui, QtCore
 
@@ -71,7 +78,7 @@ class MainUIParameters:
     def __init__(self):
         self.volume: float = 1.0
         self.normalize = False
-        self.nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN / 100.0
+        self.nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN
         self.nr_expander_strength: float = DEFAULT_NR_EXPANDER_LOG_STRENGTH
         self.nr_attack_tau: float = DEFAULT_NR_EXPANDER_ATTACK_TAU
         self.nr_release_tau: float = DEFAULT_NR_EXPANDER_RELEASE_TAU
@@ -105,7 +112,7 @@ def decode_options_to_ui_parameters(decode_options):
     values = MainUIParameters()
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
-    values.nr_expander_gain = decode_options["nr_expander_gain"] / 100.0
+    values.nr_expander_gain = decode_options["nr_expander_gain"]
     values.nr_expander_strength = decode_options["nr_expander_strength"]
     values.nr_attack_tau = decode_options["nr_attack_tau"]
     values.nr_release_tau = decode_options["nr_release_tau"]
@@ -143,7 +150,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "demod_type": values.demod_type.lower(),
         "noise_reduction": values.noise_reduction,
         "auto_fine_tune": values.automatic_fine_tuning,
-        "nr_expander_gain": values.nr_expander_gain * 100.0,
+        "nr_expander_gain": values.nr_expander_gain,
         "nr_expander_strength": values.nr_expander_strength,
         "nr_attack_tau": values.nr_attack_tau,
         "nr_release_tau": values.nr_release_tau,
@@ -259,7 +266,6 @@ class HifiUi(QMainWindow):
 
         # Set up the main window
         self.setWindowTitle(title)
-        self.setGeometry(100, 100, 400, 200)
 
         # Create central widget and layout
         central_widget = QWidget(self)
@@ -267,161 +273,122 @@ class HifiUi(QMainWindow):
         self.main_layout: QHBoxLayout = QVBoxLayout(central_widget)
         main_layout_callback(self.main_layout)
 
-        # Upper partition layout (horizontal)
-        upper_layout = QHBoxLayout()
-        self.main_layout.addLayout(upper_layout)
+        # Inner controls layout
+        controls_layout = QVBoxLayout()
+        self.main_layout.addLayout(controls_layout)
 
-        # Volume dial and numeric textbox
-        volume_label = QLabel("Volume:")
-        self.volume_dial = QDial(self)
-        self.volume_dial.setRange(0, 100)
-        self.volume_textbox = QLineEdit(self)
-        self.volume_textbox.setValidator(
-            QtGui.QDoubleValidator()
-        )  # Only allow float input
-        self.volume_textbox.setMaxLength(
-            5
-        )  # Set a reasonable maximum length for display
+        # Input sample rate selection
+        input_options_section = self.build_input_options_section()
+        controls_layout.addLayout(input_options_section)
 
-        # NR Expander gain dial and numeric textbox
-        nr_expander_label = QLabel("Expander Gain:")
-        self.nr_expander_dial = QDial(self)
-        self.nr_expander_dial.setRange(0, 100)
-        self.nr_expander_textbox = QLineEdit(self)
-        self.nr_expander_textbox.setValidator(
-            QtGui.QDoubleValidator()
-        )  # Only allow float input
-        self.nr_expander_textbox.setMaxLength(
-            5
-        )  # Set a reasonable maximum length for display
+        # Format options Analog Front End adjustments
+        format_system_options = self.build_format_options_section()
+        controls_layout.addLayout(format_system_options)
 
-        # Spectral Noise NR amount dial and numeric textbox
-        spectral_nr_amount_label = QLabel("Spectral NR:")
-        self.spectral_nr_amount_dial = QDial(self)
-        self.spectral_nr_amount_dial.setRange(0, 100)
-        self.spectral_nr_amount_dial.setToolTip("Uses \"0\" in Preview Mode")
-        self.spectral_nr_amount_textbox = QLineEdit(self)
-        self.spectral_nr_amount_textbox.setToolTip("Uses \"0\" in Preview Mode")
-        self.spectral_nr_amount_textbox.setValidator(
-            QtGui.QDoubleValidator()
-        )  # Only allow float input
-        self.spectral_nr_amount_textbox.setMaxLength(
-            5
-        )  # Set a reasonable maximum length for display
+        # Demodulation options section
+        demodulation_options = self.build_demodulation_options_section()
+        controls_layout.addLayout(demodulation_options)
 
-        # Add widgets to the upper layout
-        upper_layout.addWidget(volume_label)
-        upper_layout.addWidget(self.volume_dial)
-        upper_layout.addWidget(self.volume_textbox)
-        upper_layout.addWidget(nr_expander_label)
-        upper_layout.addWidget(self.nr_expander_dial)
-        upper_layout.addWidget(self.nr_expander_textbox)
-        upper_layout.addWidget(spectral_nr_amount_label)
-        upper_layout.addWidget(self.spectral_nr_amount_dial)
-        upper_layout.addWidget(self.spectral_nr_amount_textbox)
+        # Noise Reduction Options section
+        noise_reduction_options = self.build_noise_reduction_section()
+        controls_layout.addLayout(noise_reduction_options)
 
-        # Middle partition layout (vertical)
-        middle_layout = QVBoxLayout()
-        self.main_layout.addLayout(middle_layout)
+        # Audio Processing Options section
+        audio_processing_options = self.build_audio_processing_options_section()
+        controls_layout.addLayout(audio_processing_options)
 
-        # Analog Front End adjustments
-        afe_vco_deviation_spinbox_label = QLabel("VCO Deviation")
-        self.afe_vco_deviation_spinbox = QSpinBox(self)
-        self.afe_vco_deviation_spinbox.setGroupSeparatorShown(True)
-        self.afe_vco_deviation_spinbox.setMinimum(int(10e3))
-        self.afe_vco_deviation_spinbox.setMaximum(int(10e5))
-        self.afe_vco_deviation_spinbox.setSingleStep(10)
-        self.afe_vco_deviation_spinbox.setToolTip("Maximum frequency offset + or - from the center frequency")
-        middle_layout.addWidget(afe_vco_deviation_spinbox_label)
-        middle_layout.addWidget(self.afe_vco_deviation_spinbox)
+        # Expander options
+        expander_deemphasis_options = self.build_expander_deemphasis_section()
+        controls_layout.addLayout(expander_deemphasis_options)
 
-        afe_left_carrier_spinbox_label = QLabel("Left Carrier")
-        self.afe_left_carrier_spinbox = QSpinBox(self)
-        self.afe_left_carrier_spinbox.setGroupSeparatorShown(True)
-        self.afe_left_carrier_spinbox.setMinimum(int(10e5))
-        self.afe_left_carrier_spinbox.setMaximum(int(10e6))
-        self.afe_left_carrier_spinbox.setSingleStep(100)
-        self.afe_left_carrier_spinbox.setToolTip("Left carrier center frequency")
-        middle_layout.addWidget(afe_left_carrier_spinbox_label)
-        middle_layout.addWidget(self.afe_left_carrier_spinbox)
-
-        afe_right_carrier_spinbox_label = QLabel("Right Carrier")
-        self.afe_right_carrier_spinbox = QSpinBox(self)
-        self.afe_right_carrier_spinbox.setGroupSeparatorShown(True)
-        self.afe_right_carrier_spinbox.setMinimum(int(10e5))
-        self.afe_right_carrier_spinbox.setMaximum(int(10e6))
-        self.afe_right_carrier_spinbox.setSingleStep(100)
-        self.afe_right_carrier_spinbox.setToolTip("Right carrier center frequency")
-        middle_layout.addWidget(afe_right_carrier_spinbox_label)
-        middle_layout.addWidget(self.afe_right_carrier_spinbox)
-
-        # Checkboxes
-        self.normalize_checkbox = QCheckBox("Normalize")
-        self.muting_checkbox = QCheckBox("Muting")
-        self.noise_reduction_checkbox = QCheckBox("Noise reduction")
-        self.head_switching_interpolation_checkbox = QCheckBox(
-            "Head Switching Interpolation"
+        # Transport controls
+        transport_controls_layout = self.build_transport_controls()
+        self.main_layout.addLayout(transport_controls_layout)
+        
+        # Apply dark theme with improved text visibility
+        self.setStyleSheet(
+            """
+            QMainWindow {
+                background-color: #333;
+                color: #eee;
+            }
+            QDial, QLineEdit, QCheckBox, QComboBox, QPushButton {
+                background-color: #555;
+                color: #eee;
+                border: 1px solid #777;
+            }
+            QDial {
+                min-width: 50px;
+                max-width: 50px;
+                min-height: 50px;
+                max-height: 50px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::item {
+                background-color: #555;
+                color: #eee;
+            }
+            QLabel {
+                color: #eee;
+            }
+        """
         )
-        self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
-        middle_layout.addWidget(self.normalize_checkbox)
-        middle_layout.addWidget(self.muting_checkbox)
-        middle_layout.addWidget(self.noise_reduction_checkbox)
-        middle_layout.addWidget(self.head_switching_interpolation_checkbox)
-        middle_layout.addWidget(self.automatic_fine_tuning_checkbox)
+        self.change_button_color(self.stop_button, "#eee")
+        # disables maximize button
+        self.setWindowFlags(
+            self.windowFlags() & ~QtCore.Qt.WindowType.WindowMaximizeButtonHint
+        )
+        # disables resize
+        self.setFixedWidth(int(self.sizeHint().width()))
+        # sets fixed height
+        self.setFixedHeight(self.sizeHint().height())
+        # sets default window icon
+        self.setWindowIcon(QIcon.fromTheme("document-open"))
+        self.center_on_screen()
+        self.setValues(params)
 
-        samplerate_layout = QHBoxLayout()
-        # Sample rate options dropdown
-        sample_rate_label = QLabel("Audio Sample Rate Hz:")
-        self.sample_rate_combo = QComboBox(self)
-        self.sample_rate_combo.addItems(["44100", "48000", "96000", "192000"])
-        self.sample_rate_combo.setToolTip("Uses \"44100\" in Preview Mode")
-        samplerate_layout.addWidget(sample_rate_label)
-        samplerate_layout.addWidget(self.sample_rate_combo)
+    def build_transport_controls(self):
+        transport_controls_layout = QHBoxLayout()
 
-        # Adds standard (pal/ntsc) layout
-        standard_layout = QHBoxLayout()
-        standard_label = QLabel("Standard:")
-        self.standard_combo = QComboBox(self)
-        self.standard_combo.addItems(["PAL", "NTSC"])
-        standard_layout.addWidget(standard_label)
-        standard_layout.addWidget(self.standard_combo)
+        # Playback controls
+        self.preview_button = QPushButton("Preview", self)
+        self.play_button = QPushButton("▶", self)  # Play symbol
+        self.pause_button = QPushButton("||", self)  # Pause symbol
+        self.stop_button = QPushButton("■", self)  # Stop symbol
+        max_button_height = max(
+            self.preview_button.sizeHint().height(),
+            self.play_button.sizeHint().height(),
+            self.pause_button.sizeHint().height(),
+            self.stop_button.sizeHint().height(),
+        )
+        self.preview_button.setFixedHeight(max_button_height)
+        self.play_button.setFixedHeight(max_button_height)
+        self.pause_button.setFixedHeight(max_button_height)
+        self.stop_button.setFixedHeight(max_button_height)
+        transport_controls_layout.addWidget(self.preview_button)
+        transport_controls_layout.addWidget(self.play_button)
+        transport_controls_layout.addWidget(self.pause_button)
+        transport_controls_layout.addWidget(self.stop_button)
 
-        # Adds format (vhs/video8) layout
-        format_layout = QHBoxLayout()
-        format_label = QLabel("Format:")
-        self.format_combo = QComboBox(self)
-        self.format_combo.addItems(["VHS", "Video8/Hi8"])
-        format_layout.addWidget(format_label)
-        format_layout.addWidget(self.format_combo)
+        self.preview_button.clicked.connect(self.on_preview_clicked)
+        self.play_button.clicked.connect(self.on_play_clicked)
+        self.pause_button.clicked.connect(self.on_pause_clicked)
+        self.stop_button.clicked.connect(self.on_stop_clicked)
 
-        # Adds audio mode (mono L/mono R/stereo/stereo mpx) layout
-        audio_mode_layout = QHBoxLayout()
-        audio_mode_label = QLabel("Audio Mode:")
-        self.audio_mode_combo = QComboBox(self)
-        self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo MPX", "Sum"])
-        audio_mode_layout.addWidget(audio_mode_label)
-        audio_mode_layout.addWidget(self.audio_mode_combo)
+        return transport_controls_layout
 
-        # Adds resampler quality layout
-        resampler_quality_layout = QHBoxLayout()
-        resampler_quality_label = QLabel("Audio Resampler Quality:")
-        self.resampler_quality_combo = QComboBox(self)
-        self.resampler_quality_combo.addItems(["High", "Medium", "Low"])
-        self.resampler_quality_combo.setToolTip("Uses \"Low\" in Preview Mode")
-        resampler_quality_layout.addWidget(resampler_quality_label)
-        resampler_quality_layout.addWidget(self.resampler_quality_combo)
 
-        # Adds demodulation options
-        demod_type_layout = QHBoxLayout()
-        demod_type_label = QLabel("FM Demodulation Type:")
-        self.demod_type_combo = QComboBox(self)
-        self.demod_type_combo.addItems([DEMOD_QUADRATURE.capitalize(), DEMOD_HILBERT.capitalize()])
-        demod_type_layout.addWidget(demod_type_label)
-        demod_type_layout.addWidget(self.demod_type_combo)
+    def build_input_options_section(self):
+        layout = QVBoxLayout()
 
-        # adds input sample rate layout
+        input_options_frame = LabeledFrame(self, "Input Options")
+        layout.addLayout(input_options_frame)
+
+        # input sample rate
         input_samplerate_layout = QHBoxLayout()
-        input_samplerate_label = QLabel("Input Sample Rate MHz:")
+        input_samplerate_label = QLabel("Input Sample Rate (MHz)")
         self.input_samplerate_combo = QComboBox(self)
         self.input_samplerate_combo.addItems(
             [
@@ -450,98 +417,223 @@ class HifiUi(QMainWindow):
         self.input_samplerate_combo.currentIndexChanged.connect(
             self.on_input_samplerate_changed
         )
+        input_options_frame.inner_layout.addLayout(input_samplerate_layout)
 
-        middle_layout.addLayout(input_samplerate_layout)
-        middle_layout.addLayout(standard_layout)
-        middle_layout.addLayout(format_layout)
-        middle_layout.addLayout(audio_mode_layout)
-        middle_layout.addLayout(resampler_quality_layout)
-        middle_layout.addLayout(demod_type_layout)
-        middle_layout.addLayout(samplerate_layout)
+        return layout
 
-        # Bottom partition layout (horizontal)
-        bottom_layout = QHBoxLayout()
-        self.main_layout.addLayout(bottom_layout)
+    def build_format_options_section(self):
+        layout = QVBoxLayout()
 
-        # Playback controls
-        self.preview_button = QPushButton("Preview", self)
-        self.play_button = QPushButton("▶", self)  # Play symbol
-        self.pause_button = QPushButton("||", self)  # Pause symbol
-        self.stop_button = QPushButton("■", self)  # Stop symbol
-        max_button_height = max(
-            self.preview_button.sizeHint().height(),
-            self.play_button.sizeHint().height(),
-            self.pause_button.sizeHint().height(),
-            self.stop_button.sizeHint().height(),
-        )
-        self.preview_button.setFixedHeight(max_button_height)
-        self.play_button.setFixedHeight(max_button_height)
-        self.pause_button.setFixedHeight(max_button_height)
-        self.stop_button.setFixedHeight(max_button_height)
-        bottom_layout.addWidget(self.preview_button)
-        bottom_layout.addWidget(self.play_button)
-        bottom_layout.addWidget(self.pause_button)
-        bottom_layout.addWidget(self.stop_button)
+        format_options_frame = LabeledFrame(self, "Format Options")
+        layout.addLayout(format_options_frame)
 
-        # Connect events to functions
-        self.volume_dial.valueChanged.connect(self.on_volume_changed)
-        self.volume_textbox.editingFinished.connect(self.on_volume_textbox_changed)
-        self.nr_expander_dial.valueChanged.connect(self.on_nr_expander_gain_changed)
-        self.nr_expander_textbox.editingFinished.connect(
-            self.on_nr_expander_textbox_changed
-        )
-        self.spectral_nr_amount_dial.valueChanged.connect(self.on_spectral_nr_amount_changed)
-        self.spectral_nr_amount_textbox.editingFinished.connect(
-            self.on_spectral_nr_amount_textbox_changed
-        )
+        # standard option
+        standard_layout = QHBoxLayout()
+        standard_label = QLabel("Standard")
+        self.standard_combo = QComboBox(self)
+        self.standard_combo.addItems(["PAL", "NTSC"])
+        standard_layout.addWidget(standard_label)
+        standard_layout.addWidget(self.standard_combo)
         self.standard_combo.currentIndexChanged.connect(self.on_standard_change)
-        self.format_combo.currentIndexChanged.connect(self.on_format_change)
-        self.preview_button.clicked.connect(self.on_preview_clicked)
-        self.play_button.clicked.connect(self.on_play_clicked)
-        self.pause_button.clicked.connect(self.on_pause_clicked)
-        self.stop_button.clicked.connect(self.on_stop_clicked)
+        format_options_frame.inner_layout.addLayout(standard_layout)
 
-        # Apply dark theme with improved text visibility
-        self.setStyleSheet(
-            """
-            QMainWindow {
-                background-color: #333;
-                color: #eee;
-            }
-            QDial, QLineEdit, QCheckBox, QComboBox, QPushButton {
-                background-color: #555;
-                color: #eee;
-                border: 1px solid #777;
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox::item {
-                background-color: #555;
-                color: #eee;
-            }
-            QCheckBox::indicator {
-                width: 15px;
-                height: 15px;
-            }
-            QLabel {
-                color: #eee;
-            }
-        """
+        # format option
+        format_layout = QHBoxLayout()
+        format_label = QLabel("Format")
+        self.format_combo = QComboBox(self)
+        self.format_combo.addItems(["VHS", "Video8/Hi8"])
+        format_layout.addWidget(format_label)
+        format_layout.addWidget(self.format_combo)
+        self.format_combo.currentIndexChanged.connect(self.on_format_change)
+        format_options_frame.inner_layout.addLayout(format_layout)
+
+        advanced_format_options_frame = LabeledFrame(self, "Advanced Format Options")
+        layout.addLayout(advanced_format_options_frame)
+
+        # left carrier adjustment
+        afe_left_carrier_layout = QHBoxLayout()
+        afe_left_carrier_spinbox_label = QLabel("Left Carrier (Hz)")
+        self.afe_left_carrier_spinbox = QSpinBox(self)
+        self.afe_left_carrier_spinbox.setGroupSeparatorShown(True)
+        self.afe_left_carrier_spinbox.setMinimum(int(10e5))
+        self.afe_left_carrier_spinbox.setMaximum(int(10e6))
+        self.afe_left_carrier_spinbox.setSingleStep(100)
+        self.afe_left_carrier_spinbox.setToolTip("Left carrier center frequency")
+        afe_left_carrier_layout.addWidget(afe_left_carrier_spinbox_label)
+        afe_left_carrier_layout.addWidget(self.afe_left_carrier_spinbox)
+        advanced_format_options_frame.inner_layout.addLayout(afe_left_carrier_layout)
+
+        # right carrier adjustment
+        afe_right_carrier_layout = QHBoxLayout()
+        afe_right_carrier_spinbox_label = QLabel("Right Carrier (Hz)")
+        self.afe_right_carrier_spinbox = QSpinBox(self)
+        self.afe_right_carrier_spinbox.setGroupSeparatorShown(True)
+        self.afe_right_carrier_spinbox.setMinimum(int(10e5))
+        self.afe_right_carrier_spinbox.setMaximum(int(10e6))
+        self.afe_right_carrier_spinbox.setSingleStep(100)
+        self.afe_right_carrier_spinbox.setToolTip("Right carrier center frequency")
+        afe_right_carrier_layout.addWidget(afe_right_carrier_spinbox_label)
+        afe_right_carrier_layout.addWidget(self.afe_right_carrier_spinbox)
+        advanced_format_options_frame.inner_layout.addLayout(afe_right_carrier_layout)
+
+        # vco deviation adjustment
+        afe_vco_deviation_layout = QHBoxLayout()
+        afe_vco_deviation_spinbox_label = QLabel("VCO Deviation")
+        self.afe_vco_deviation_spinbox = QSpinBox(self)
+        self.afe_vco_deviation_spinbox.setGroupSeparatorShown(True)
+        self.afe_vco_deviation_spinbox.setMinimum(int(10e3))
+        self.afe_vco_deviation_spinbox.setMaximum(int(10e5))
+        self.afe_vco_deviation_spinbox.setSingleStep(10)
+        self.afe_vco_deviation_spinbox.setToolTip("Maximum frequency offset + or - from the center frequency")
+        afe_vco_deviation_layout.addWidget(afe_vco_deviation_spinbox_label)
+        afe_vco_deviation_layout.addWidget(self.afe_vco_deviation_spinbox)
+        advanced_format_options_frame.inner_layout.addLayout(afe_vco_deviation_layout)
+        return layout
+    
+    def build_demodulation_options_section(self):
+        layout = QVBoxLayout()
+
+        demodulation_options_frame = LabeledFrame(self, "Demodulation Options")
+        layout.addLayout(demodulation_options_frame)
+
+        # auto fine tune
+        self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
+        demodulation_options_frame.inner_layout.addWidget(self.automatic_fine_tuning_checkbox)
+
+        # demodulation type option
+        demod_type_layout = QHBoxLayout()
+        demod_type_label = QLabel("FM Demodulation Type")
+        self.demod_type_combo = QComboBox(self)
+        self.demod_type_combo.addItems([DEMOD_QUADRATURE.capitalize(), DEMOD_HILBERT.capitalize()])
+        demod_type_layout.addWidget(demod_type_label)
+        demod_type_layout.addWidget(self.demod_type_combo)
+        demodulation_options_frame.inner_layout.addLayout(demod_type_layout)
+
+        return layout
+
+    def build_noise_reduction_section(self):
+        layout = QVBoxLayout()
+
+        noise_reduction_options_frame = LabeledFrame(self, "Noise Reduction Options")
+        layout.addLayout(noise_reduction_options_frame)
+
+        noise_reduction_options_layout = QHBoxLayout()
+
+        # Volume dial and numeric textbox
+        self.spectral_nr_amount_dial_control = DialControl(self, "Spectral NR", QtGui.QDoubleValidator(), 100, 0, 1)
+        self.spectral_nr_amount_dial_control.dial.setToolTip("Uses \"0\" in Preview Mode")
+        self.spectral_nr_amount_dial_control.textbox.setToolTip("Uses \"0\" in Preview Mode")
+
+        noise_reduction_checkboxes_layout = QVBoxLayout()
+        # Head Switching Interpolation checkbox
+        self.head_switching_interpolation_checkbox = QCheckBox(
+            "Head Switching Interpolation"
         )
-        self.change_button_color(self.stop_button, "#eee")
-        # disables maximize button
-        self.setWindowFlags(
-            self.windowFlags() & ~QtCore.Qt.WindowType.WindowMaximizeButtonHint
-        )
-        # disables resize
-        self.setFixedWidth(int(self.sizeHint().width() * 3 / 4))
-        # sets fixed height
-        self.setFixedHeight(self.sizeHint().height())
-        # sets defaut window icon
-        self.setWindowIcon(QIcon.fromTheme("document-open"))
-        self.center_on_screen()
-        self.setValues(params)
+        noise_reduction_checkboxes_layout.addWidget(self.head_switching_interpolation_checkbox)
+        # Muting checkbox
+        self.muting_checkbox = QCheckBox("Muting")
+        noise_reduction_checkboxes_layout.addWidget(self.muting_checkbox)
+
+        noise_reduction_options_layout.addWidget(self.spectral_nr_amount_dial_control, 1)
+        noise_reduction_options_layout.addLayout(noise_reduction_checkboxes_layout, 1)
+        noise_reduction_options_frame.inner_layout.addLayout(noise_reduction_options_layout)
+
+        return layout
+
+    def build_audio_processing_options_section(self):
+        layout = QVBoxLayout()
+
+        advanced_format_options_frame = LabeledFrame(self, "Audio Options")
+        layout.addLayout(advanced_format_options_frame)
+
+        # gain section
+        gain_section_layout = QHBoxLayout()
+        advanced_format_options_frame.inner_layout.addLayout(gain_section_layout)
+
+        # Volume dial and numeric textbox
+        self.volume_dial_control = DialControl(self, "Output Gain", QtGui.QDoubleValidator(), 100, 0, 2)
+        gain_section_layout.addWidget(self.volume_dial_control, 1)
+
+        # Normalize Checkbox
+        normalize_layout = QHBoxLayout()
+        self.normalize_checkbox = QCheckBox("Normalize")
+        normalize_layout.addWidget(self.normalize_checkbox)
+        gain_section_layout.addLayout(normalize_layout, 1)
+
+        # Audio mode (mono L/mono R/stereo/stereo mpx)
+        audio_mode_layout = QHBoxLayout()
+        audio_mode_label = QLabel("Output Channel Mode")
+        self.audio_mode_combo = QComboBox(self)
+        self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo MPX", "Sum"])
+        audio_mode_layout.addWidget(audio_mode_label)
+        audio_mode_layout.addWidget(self.audio_mode_combo)
+        advanced_format_options_frame.inner_layout.addLayout(audio_mode_layout)
+
+        # Sample rate options dropdown
+        samplerate_layout = QHBoxLayout()
+        sample_rate_label = QLabel("Output Sample Rate (Hz)")
+        self.sample_rate_combo = QComboBox(self)
+        self.sample_rate_combo.addItems(["44100", "48000", "96000", "192000"])
+        self.sample_rate_combo.setToolTip("Uses \"44100\" in Preview Mode")
+        samplerate_layout.addWidget(sample_rate_label)
+        samplerate_layout.addWidget(self.sample_rate_combo)
+        advanced_format_options_frame.inner_layout.addLayout(samplerate_layout)
+
+        # Resampler quality
+        resampler_quality_layout = QHBoxLayout()
+        resampler_quality_label = QLabel("Output Resampler Quality")
+        self.resampler_quality_combo = QComboBox(self)
+        self.resampler_quality_combo.addItems(["High", "Medium", "Low"])
+        self.resampler_quality_combo.setToolTip("Uses \"Low\" in Preview Mode")
+        resampler_quality_layout.addWidget(resampler_quality_label)
+        resampler_quality_layout.addWidget(self.resampler_quality_combo)
+        advanced_format_options_frame.inner_layout.addLayout(resampler_quality_layout)
+
+        return layout
+
+    def build_expander_deemphasis_section(self):
+        layout = QVBoxLayout()
+
+        # Enable Expander/Deemphasis checkbox
+        expander_controls_frame = LabeledFrame(self, "Expander Controls")
+        layout.addLayout(expander_controls_frame)
+
+        self.noise_reduction_checkbox = QCheckBox("Enable Expander/Deemphasis")
+        expander_controls_frame.inner_layout.addWidget(self.noise_reduction_checkbox)
+        expander_controls_layout = QHBoxLayout()
+        self.nr_expander_gain_dial_control = DialControl(self, "Gain", QtGui.QDoubleValidator(), 1, 0, 100)
+        expander_controls_layout.addWidget(self.nr_expander_gain_dial_control)
+        self.nr_expander_strength_dial_control = DialControl(self, "Strength", QtGui.QDoubleValidator(), 10, 1, 5)
+        expander_controls_layout.addWidget(self.nr_expander_strength_dial_control)
+        self.nr_attack_tau_dial_control = DialControl(self, "Attack (𝜏)", QtGui.QDoubleValidator(), 10e3, 10e-4, 10e-3)
+        expander_controls_layout.addWidget(self.nr_attack_tau_dial_control)
+        self.nr_release_tau_dial_control = DialControl(self, "Release (𝜏)", QtGui.QDoubleValidator(), 10e2, 10e-3, 10e-2)
+        expander_controls_layout.addWidget(self.nr_release_tau_dial_control)
+        expander_controls_frame.inner_layout.addLayout(expander_controls_layout)
+
+        expander_sideband_frame = LabeledFrame(self, "Expander Sideband Input (High-Pass Shelf Filter)")
+        layout.addLayout(expander_sideband_frame)
+        weighting_layout = QHBoxLayout()
+        self.nr_weighting_shelf_low_tau_dial_control = DialControl(self, "Low Shelf (𝜏)", QtGui.QDoubleValidator(), 10e5, DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2, 10e-4)
+        weighting_layout.addWidget(self.nr_weighting_shelf_low_tau_dial_control)
+        self.nr_weighting_shelf_high_tau_dial_control = DialControl(self, "High Shelf (𝜏)", QtGui.QDoubleValidator(), 10e5, 10e-7, DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1)
+        weighting_layout.addWidget(self.nr_weighting_shelf_high_tau_dial_control)
+        self.nr_weighting_db_per_octave_dial_control = DialControl(self, "Slope (db/octave)", QtGui.QDoubleValidator(), 10, 0, 12)
+        weighting_layout.addWidget(self.nr_weighting_db_per_octave_dial_control)
+        expander_sideband_frame.inner_layout.addLayout(weighting_layout)
+
+        deemphasis_frame = LabeledFrame(self, "Deemphasis (Low-Pass Shelf Filter)")
+        layout.addLayout(deemphasis_frame)
+        deemphasis_layout = QHBoxLayout()
+        self.nr_deemphasis_low_tau_dial_control = DialControl(self, "Low Shelf (𝜏)", QtGui.QDoubleValidator(), 10e5, DEFAULT_NR_DEEMPHASIS_TAU_2, 10e-4)
+        deemphasis_layout.addWidget(self.nr_deemphasis_low_tau_dial_control)
+        self.nr_deemphasis_high_tau_dial_control = DialControl(self, "High Shelf (𝜏)", QtGui.QDoubleValidator(), 10e5, 10e-7, DEFAULT_NR_DEEMPHASIS_TAU_1)
+        deemphasis_layout.addWidget(self.nr_deemphasis_high_tau_dial_control)
+        self.nr_deemphasis_db_per_octave_dial_control = DialControl(self, "Slope (db/octave)", QtGui.QDoubleValidator(), 10, 0, 12)
+        deemphasis_layout.addWidget(self.nr_deemphasis_db_per_octave_dial_control)
+        deemphasis_frame.inner_layout.addLayout(deemphasis_layout)
+
+        return layout
 
     @property
     def transport_state(self):
@@ -575,12 +667,18 @@ class HifiUi(QMainWindow):
         )
 
     def setValues(self, values: MainUIParameters):
-        self.volume_dial.setValue(int(values.volume * 100 / 2))
-        self.volume_textbox.setText(str(values.volume))
-        self.nr_expander_dial.setValue(int(values.nr_expander_gain * 100))
-        self.nr_expander_textbox.setText(str(values.nr_expander_gain))
-        self.spectral_nr_amount_dial.setValue(int(values.spectral_nr_amount * 100))
-        self.spectral_nr_amount_textbox.setText(str(values.spectral_nr_amount))
+        self.volume_dial_control.setValue(values.volume)
+        self.nr_expander_gain_dial_control.setValue(values.nr_expander_gain)
+        self.nr_expander_strength_dial_control.setValue(values.nr_expander_strength)
+        self.nr_attack_tau_dial_control.setValue(values.nr_attack_tau)
+        self.nr_release_tau_dial_control.setValue(values.nr_release_tau)
+        self.nr_weighting_shelf_low_tau_dial_control.setValue(values.nr_weighting_shelf_low_tau)
+        self.nr_weighting_shelf_high_tau_dial_control.setValue(values.nr_weighting_shelf_high_tau)
+        self.nr_weighting_db_per_octave_dial_control.setValue(values.nr_weighting_db_per_octave)
+        self.nr_deemphasis_low_tau_dial_control.setValue(values.nr_deemphasis_low_tau)
+        self.nr_deemphasis_high_tau_dial_control.setValue(values.nr_deemphasis_high_tau)
+        self.nr_deemphasis_db_per_octave_dial_control.setValue(values.nr_deemphasis_db_per_octave)
+        self.spectral_nr_amount_dial_control.setValue(values.spectral_nr_amount)
         self.normalize_checkbox.setChecked(values.normalize)
         self.muting_checkbox.setChecked(values.muting)
         self.noise_reduction_checkbox.setChecked(values.noise_reduction)
@@ -636,12 +734,21 @@ class HifiUi(QMainWindow):
 
     def getValues(self) -> MainUIParameters:
         values = MainUIParameters()
-        values.volume = float(self.volume_textbox.text())
-        values.nr_expander_gain = float(self.nr_expander_textbox.text())
+        values.volume = self.volume_dial_control.value()
+        values.nr_expander_gain = self.nr_expander_gain_dial_control.value()
+        values.nr_expander_strength = self.nr_expander_strength_dial_control.value()
+        values.nr_attack_tau = self.nr_attack_tau_dial_control.value()
+        values.nr_release_tau = self.nr_release_tau_dial_control.value()
+        values.nr_weighting_shelf_low_tau = self.nr_weighting_shelf_low_tau_dial_control.value()
+        values.nr_weighting_shelf_high_tau = self.nr_weighting_shelf_high_tau_dial_control.value()
+        values.nr_weighting_db_per_octave = self.nr_weighting_db_per_octave_dial_control.value()
+        values.nr_deemphasis_low_tau = self.nr_deemphasis_low_tau_dial_control.value()
+        values.nr_deemphasis_high_tau = self.nr_deemphasis_high_tau_dial_control.value()
+        values.nr_deemphasis_db_per_octave = self.nr_deemphasis_db_per_octave_dial_control.value()
         values.afe_vco_deviation = self.afe_vco_deviation_spinbox.value()
         values.afe_left_carrier = self.afe_left_carrier_spinbox.value()
         values.afe_right_carrier = self.afe_right_carrier_spinbox.value()
-        values.spectral_nr_amount = float(self.spectral_nr_amount_textbox.text())
+        values.spectral_nr_amount = float(self.spectral_nr_amount_dial_control.textbox.text())
         values.normalize = self.normalize_checkbox.isChecked()
         values.muting = self.muting_checkbox.isChecked()
         values.noise_reduction = self.noise_reduction_checkbox.isChecked()
@@ -671,39 +778,6 @@ class HifiUi(QMainWindow):
         self.afe_vco_deviation_spinbox.setValue(int(standard.VCODeviation))
         self.afe_left_carrier_spinbox.setValue(int(standard.LCarrierRef))
         self.afe_right_carrier_spinbox.setValue(int(standard.RCarrierRef))
-
-    def on_volume_changed(self, value):
-        self.volume_textbox.setText(str(value * 2 / 100.0))
-
-    def on_volume_textbox_changed(self):
-        text = self.volume_textbox.text()
-        try:
-            value = float(text)
-            self.volume_dial.setValue(int(value * 100 / 2))
-        except ValueError:
-            pass
-
-    def on_nr_expander_gain_changed(self, value):
-        self.nr_expander_textbox.setText(str(value / 100.0))
-
-    def on_nr_expander_textbox_changed(self):
-        text = self.nr_expander_textbox.text()
-        try:
-            value = float(text)
-            self.spectral_nr_amount_dial.setValue(int(value * 100))
-        except ValueError:
-            pass
-
-    def on_spectral_nr_amount_changed(self, value):
-        self.spectral_nr_amount_textbox.setText(str(value / 100.0))
-
-    def on_spectral_nr_amount_textbox_changed(self):
-        text = self.spectral_nr_amount_textbox.text()
-        try:
-            value = float(text)
-            self.spectral_nr_amount_dial.setValue(int(value * 100))
-        except ValueError:
-            pass
 
     def on_standard_change(self):
         self.update_afe_values(
@@ -867,14 +941,14 @@ class FileOutputDialogUI(HifiUi):
     def __init__(
         self,
         params: MainUIParameters,
-        title: str = "HiFi File Output",
+        title: str = "HiFi Decode",
         main_layout_callback=None,
     ):
         super(FileOutputDialogUI, self).__init__(params, title, self._layout_callback)
 
     def _layout_callback(self, main_layout):
         # Add file output widgets
-        self.file_output_label = QLabel("Output file:")
+        self.file_output_label = QLabel("Output file")
         self.file_output_textbox = QLineEdit(self)
         self.file_output_button = QPushButton("Browse", self)
         self.file_output_button.clicked.connect(self.on_file_output_button_clicked)
@@ -917,19 +991,127 @@ class FileOutputDialogUI(HifiUi):
         decoded_filename = os.path.basename(self.file_output_textbox.text())
         super(FileOutputDialogUI, self).on_decode_finished(decoded_filename)
 
+class DialControl(QWidget):
+    def __init__(
+        self,
+        main_window,
+        label_text,
+        validator,
+        scale = 1,
+        min_value = 0,
+        max_value = 1,
+        scroll_step_size = 1
+    ):
+        super(QWidget, self).__init__()
+        layout = QHBoxLayout(self)
+
+        # Volume dial and numeric textbox
+        label_and_textbox = QVBoxLayout()
+
+        label = QLabel(label_text)
+        self.scale = scale
+
+        textbox_character_width = max(int(math.log10(self.scale)) + 1, 3)
+        self.textbox = QLineEdit(main_window)
+        self.textbox.setValidator(validator)
+        metrics = QtGui.QFontMetrics(self.textbox.font())
+        width = metrics.horizontalAdvance('M') * textbox_character_width
+        self.textbox.setFixedWidth(width)
+        self.textbox.show()
+
+        self.dial = QDial(main_window)
+        self.dial.setRange(int(min_value * scale), int(max_value * scale))
+        self.dial.setPageStep(1)
+        self.dial.setSingleStep(scroll_step_size)        
+
+        label_and_textbox.addWidget(label)
+        label_and_textbox.addWidget(self.textbox)
+        layout.addWidget(self.dial)
+        layout.addLayout(label_and_textbox)
+
+        self.dial.valueChanged.connect(self.on_dial_change)
+        self.textbox.editingFinished.connect(self.on_textbox_change)
+
+    def setValue(self, value):
+        self.dial.setValue(int(value * self.scale))
+        self.textbox.setText(f"{value:g}")
+
+    def value(self):
+        return float(self.textbox.text())
+
+    def on_dial_change(self, value):
+        scaled_value = value / self.scale
+        self.textbox.setText(f"{scaled_value:g}")
+
+    def on_textbox_change(self):
+        text = self.textbox.text()
+        try:
+            value = float(text)
+            self.dial.setValue(int(value * self.scale))
+        except ValueError:
+            pass
+
+
+class LabeledFrame(QVBoxLayout):
+    def __init__(
+        self,
+        main_window,
+        label_text,
+    ):
+        super(LabeledFrame, self).__init__()
+
+        horizontal_spacer = QGridLayout()
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        line.setFixedHeight(2)
+
+        label = QLabel(label_text)
+        # Get the main widget background color from palette
+        bg_color = main_window.palette().color(QPalette.ColorRole.Window).name()
+        label.setStyleSheet(f"background-color: {bg_color}; padding: 1 0px; font-size: 0.8rem;")
+        label_font = label.font()
+        #label_font.setPointSize(12)
+        #label_font.setCapitalization(QtGui.QFont.Capitalization.SmallCaps)
+        label_font.setItalic(True)
+        label.setFont(label_font)
+
+        # Wrapper widget to hold label + padding
+        label_layout = QHBoxLayout()
+        label_layout.setContentsMargins(5, 0, 0, 0)
+        label_layout.addWidget(label)
+        label_layout.addStretch()
+        label_widget = QWidget()
+        label_widget.setLayout(label_layout)
+
+        # Add both label and line to the same grid cell
+        horizontal_spacer.setContentsMargins(0, 10, 0, 0)
+        horizontal_spacer.setSpacing(0)
+        horizontal_spacer.addWidget(line, 0, 0, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+        horizontal_spacer.addWidget(label_widget, 0, 0, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+
+        self.frame = QFrame()
+        self.frame.setFrameShape(QFrame.Shape.NoFrame)
+        self.frame.setObjectName("LabeledFrame")
+        self.frame.setStyleSheet("QFrame#LabeledFrame { border: 1px solid grey; border-radius: 15px; }")
+        self.addLayout(horizontal_spacer)
+        self.addWidget(self.frame)
+
+        self.inner_layout = QVBoxLayout(self.frame)
+
 
 class FileIODialogUI(HifiUi):
     def __init__(
         self,
         params: MainUIParameters,
-        title: str = "HiFi File Input/Output",
+        title: str = "HiFi Decode",
         main_layout_callback=None,
     ):
         super(FileIODialogUI, self).__init__(params, title, self._layout_callback)
 
     def _layout_callback(self, main_layout):
         # Add file input widgets
-        self.file_input_label = QLabel("Input file:")
+        self.file_input_label = QLabel("Input file")
         self.file_input_textbox = QLineEdit(self)
         self.file_input_button = QPushButton("Browse", self)
         self.file_input_button.clicked.connect(self.on_file_input_button_clicked)
@@ -947,7 +1129,7 @@ class FileIODialogUI(HifiUi):
         )
 
         # Add file output widgets
-        self.file_output_label = QLabel("Output file:")
+        self.file_output_label = QLabel("Output file")
         self.file_output_textbox = QLineEdit(self)
         self.file_output_button = QPushButton("Browse", self)
         self.file_output_button.clicked.connect(self.on_file_output_button_clicked)
