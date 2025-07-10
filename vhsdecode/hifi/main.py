@@ -198,7 +198,7 @@ demod_options.add_argument(
 demod_options.add_argument(
     "--bias_guess",
     "--bg",
-    dest="BG",
+    dest="bias_guess",
     action="store_true",
     default=False,
     help="Do carrier bias guess",
@@ -1408,13 +1408,12 @@ def write_soundfile_process_worker(
 
 async def decode_parallel(
     decode_options: dict,
-    bias_guess,
     threads: int = 8,
     ui_t: Optional[AppWindow] = None,
 ):
     decoder = HiFiDecode(options=decode_options, is_main_process=True)
     # TODO: reprocess data read in this step
-    if bias_guess:
+    if decode_options["bias_guess"]:
         LCRef, RCRef = guess_bias(
             decoder, decode_options["input_file"], int(decode_options["input_rate"])
         )
@@ -1786,7 +1785,7 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
             loop.set_default_executor(async_executor)
             loop.run_until_complete(
                 decode_parallel(
-                    decode_options, args.BG, threads=args.threads, ui_t=ui_t
+                    decode_options, threads=args.threads, ui_t=ui_t
                 )
             )
         print("Decode finished successfully")
@@ -1852,6 +1851,7 @@ def main() -> int:
         "muting": args.muting == "on",
         "noise_reduction": args.noise_reduction == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
+        "bias_guess": args.bias_guess,
         "normalize": args.normalize,
         "nr_expander_gain": args.nr_expander_gain,
         "nr_expander_strength": args.nr_expander_strength,

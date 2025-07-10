@@ -94,6 +94,7 @@ class MainUIParameters:
         self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
         self.noise_reduction: bool = True
         self.automatic_fine_tuning: bool = True
+        self.bias_guess: bool = False
         self.grc = False
         self.audio_sample_rate: int = 48000
         self.standard: str = "NTSC"
@@ -128,6 +129,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.spectral_nr_amount = decode_options["spectral_nr_amount"]
     values.noise_reduction = decode_options["noise_reduction"]
     values.automatic_fine_tuning = decode_options["auto_fine_tune"]
+    values.bias_guess = decode_options["bias_guess"]
     values.audio_sample_rate = decode_options["audio_rate"]
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
@@ -150,6 +152,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "demod_type": values.demod_type.lower(),
         "noise_reduction": values.noise_reduction,
         "auto_fine_tune": values.automatic_fine_tuning,
+        "bias_guess": values.bias_guess,
         "nr_expander_gain": values.nr_expander_gain,
         "nr_expander_strength": values.nr_expander_strength,
         "nr_attack_tau": values.nr_attack_tau,
@@ -450,6 +453,16 @@ class HifiUi(QMainWindow):
         advanced_format_options_frame = LabeledFrame(self, "Advanced Format Options")
         layout.addLayout(advanced_format_options_frame)
 
+        # auto fine tune
+        self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
+        self.automatic_fine_tuning_checkbox.setToolTip("Automatically adjust bias during decode. Not applicable to Quadrature demodulation.")
+        advanced_format_options_frame.inner_layout.addWidget(self.automatic_fine_tuning_checkbox)
+
+        # bias guess
+        self.bias_guess_checkbox = QCheckBox("Bias Guess")
+        self.bias_guess_checkbox.setToolTip("Attempt to guess the carrier frequencies")
+        advanced_format_options_frame.inner_layout.addWidget(self.bias_guess_checkbox)
+
         # left carrier adjustment
         afe_left_carrier_layout = QHBoxLayout()
         afe_left_carrier_spinbox_label = QLabel("Left Carrier (Hz)")
@@ -495,10 +508,6 @@ class HifiUi(QMainWindow):
 
         demodulation_options_frame = LabeledFrame(self, "Demodulation Options")
         layout.addLayout(demodulation_options_frame)
-
-        # auto fine tune
-        self.automatic_fine_tuning_checkbox = QCheckBox("Automatic fine tuning")
-        demodulation_options_frame.inner_layout.addWidget(self.automatic_fine_tuning_checkbox)
 
         # demodulation type option
         demod_type_layout = QHBoxLayout()
@@ -686,6 +695,7 @@ class HifiUi(QMainWindow):
             values.head_switching_interpolation
         )
         self.automatic_fine_tuning_checkbox.setChecked(values.automatic_fine_tuning)
+        self.bias_guess_checkbox.setChecked(values.bias_guess)
         self.sample_rate_combo.setCurrentText(str(values.audio_sample_rate))
         self.sample_rate_combo.setCurrentIndex(
             self.sample_rate_combo.findText(str(values.audio_sample_rate))
@@ -756,6 +766,7 @@ class HifiUi(QMainWindow):
             self.head_switching_interpolation_checkbox.isChecked()
         )
         values.automatic_fine_tuning = self.automatic_fine_tuning_checkbox.isChecked()
+        values.bias_guess = self.bias_guess_checkbox.isChecked()
         values.audio_sample_rate = int(self.sample_rate_combo.currentText())
         values.standard = self.standard_combo.currentText()
         values.format = self.format_combo.currentText()
