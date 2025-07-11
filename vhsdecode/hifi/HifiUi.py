@@ -74,7 +74,6 @@ STOP_STATE = 0
 PLAY_STATE = 1
 PAUSE_STATE = 2
 PREVIEW_STATE = 3
-IMMEDIATE_STOP = "IMMEDIATE_STOP"
 
 class MainUIParameters:
     def __init__(self):

@@ -66,7 +66,7 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_DEMOD,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
-from vhsdecode.hifi.HifiUi import STOP_STATE, PLAY_STATE, PAUSE_STATE, PREVIEW_STATE, IMMEDIATE_STOP
+from vhsdecode.hifi.HifiUi import STOP_STATE, PLAY_STATE, PAUSE_STATE, PREVIEW_STATE
 import io
 
 try:
@@ -93,6 +93,10 @@ try:
 except ImportError as e:
     print(e)
     HIFI_UI = False
+
+STOP_NOT_REQUESTED = 0
+STOP_REQUESTED = 1
+STOP_IMMEDIATE_REQUESTED = 2
 
 NORMALIZE_FILE_SUFFIX = "tmp_normalize.raw"
 
@@ -784,6 +788,12 @@ def log_decode(
     )
 
 
+def cleanup_process(process):
+    atexit.unregister(process.terminate)
+    atexit.unregister(process.join)
+    process.terminate()
+    process.join()
+
 class PostProcessor:
     def __init__(
         self,
@@ -833,7 +843,7 @@ class PostProcessor:
         nr_worker_r_in_output, nr_worker_r_in_input = Pipe(duplex=False)
         self.block_sorter_process = Process(
             target=PostProcessor.block_sorter_worker,
-            name="hifi_blk_srt",
+            name="hifi_block_sort",
             args=(
                 self.decoder_out_queue,
                 self.decoder_shared_memory_idle_queue,
@@ -845,6 +855,7 @@ class PostProcessor:
         )
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
+        atexit.register(self.block_sorter_process.join)
 
         spectral_nr_worker_l_output, spectral_nr_worker_l_input = Pipe(duplex=False)
         self.spectral_nr_worker_l = Process(
@@ -859,6 +870,7 @@ class PostProcessor:
         )
         self.spectral_nr_worker_l.start()
         atexit.register(self.spectral_nr_worker_l.terminate)
+        atexit.register(self.spectral_nr_worker_l.join)
 
         spectral_nr_worker_r_output, spectral_nr_worker_r_input = Pipe(duplex=False)
         self.spectral_nr_worker_r = Process(
@@ -873,11 +885,12 @@ class PostProcessor:
         )
         self.spectral_nr_worker_r.start()
         atexit.register(self.spectral_nr_worker_r.terminate)
+        atexit.register(self.spectral_nr_worker_r.join)
 
         nr_worker_l_out_output, nr_worker_l_out_input = Pipe(duplex=False)
         self.nr_worker_l = Process(
             target=PostProcessor.noise_reduction_worker,
-            name="hifi_nr_l",
+            name="hifi_expander_l",
             args=(
                 spectral_nr_worker_l_output,
                 nr_worker_l_out_input,
@@ -901,7 +914,7 @@ class PostProcessor:
         nr_worker_r_out_output, nr_worker_r_out_input = Pipe(duplex=False)
         self.nr_worker_r = Process(
             target=PostProcessor.noise_reduction_worker,
-            name="hifi_nr_r",
+            name="hifi_expander_r",
             args=(
                 spectral_nr_worker_r_output,
                 nr_worker_r_out_input,
@@ -921,10 +934,11 @@ class PostProcessor:
         )
         self.nr_worker_r.start()
         atexit.register(self.nr_worker_r.terminate)
+        atexit.register(self.nr_worker_r.join)
 
         self.mix_to_stereo_worker_process = Process(
             target=PostProcessor.mix_to_stereo_worker,
-            name="hifi_stereo_mrg",
+            name="hifi_stereo_mix",
             args=(
                 nr_worker_l_out_output,
                 nr_worker_r_out_output,
@@ -935,6 +949,7 @@ class PostProcessor:
         )
         self.mix_to_stereo_worker_process.start()
         atexit.register(self.mix_to_stereo_worker_process.terminate)
+        atexit.register(self.mix_to_stereo_worker_process.join)
 
     @staticmethod
     @guvectorize(
@@ -1235,10 +1250,12 @@ class PostProcessor:
                     done = decoder_state.is_last_block
 
     def close(self):
-        self.block_sorter_process.terminate()
-        self.nr_worker_l.terminate()
-        self.nr_worker_r.terminate()
-        self.mix_to_stereo_worker_process.terminate()
+        cleanup_process(self.block_sorter_process)
+        cleanup_process(self.spectral_nr_worker_l)
+        cleanup_process(self.spectral_nr_worker_r)
+        cleanup_process(self.nr_worker_l)
+        cleanup_process(self.nr_worker_r)
+        cleanup_process(self.mix_to_stereo_worker_process)
 
 
 class AppWindow:
@@ -1272,21 +1289,23 @@ class AppWindow:
 
 
 class SoundDeviceProcess:
-    def __init__(self, sample_rate):
+    def __init__(self, sample_rate, stop_requested):
         self._sample_rate = sample_rate
+        self._stop_requested = stop_requested
 
     def __enter__(self):
         self._play_parent_conn, self._play_child_conn = Pipe()
         self._process = Process(
             target=SoundDeviceProcess.play_worker,
             name="hifi_playback_worker",
-            args=(self._play_child_conn, self._sample_rate),
+            args=(self._play_child_conn, self._sample_rate, self._stop_requested),
         )
         self._process.start()
         return self
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
         self._process.terminate()
+        self._process.join()
         return self
 
     @staticmethod
@@ -1305,18 +1324,23 @@ class SoundDeviceProcess:
             stacked[i][1] = interleaved[i * 2 + 1] * 2**15
 
     @staticmethod
-    def play_worker(conn, sample_rate):
+    def play_worker(conn, sample_rate, stop_requested):
         setproctitle(current_process().name)
         output_stream = None
         while True:
             while True:
                 try:
-                    stereo = conn.recv_bytes()
-                    break
+                    if stop_requested.value == STOP_IMMEDIATE_REQUESTED:
+                        return
+                    
+                    if conn.poll(1):
+                        stereo = conn.recv_bytes()
+                        break
                 except InterruptedError:
                     pass
                 except EOFError:
                     return
+                
 
             if output_stream == None:
                 output_stream = sd.OutputStream(
@@ -1344,6 +1368,7 @@ def write_soundfile_process_worker(
     total_samples_decoded,
     decode_options,
     output_file: str,
+    stop_requested,
     decode_done,
 ):
     setproctitle(current_process().name)
@@ -1353,7 +1378,7 @@ def write_soundfile_process_worker(
     normalize = decode_options["normalize"]
 
     if preview_mode:
-        player = SoundDeviceProcess(audio_rate)
+        player = SoundDeviceProcess(audio_rate, stop_requested)
     else:
         player = nullcontext()
 
@@ -1428,6 +1453,7 @@ async def decode_parallel(
     input_position = Value("d", 0)
     total_samples_decoded = Value("d", 0)
     peak_gain = Value("d", 0)
+    stop_requested = Value("d", STOP_NOT_REQUESTED)
     start_time = datetime.now()
 
     # HiFiDecode data flow diagram
@@ -1502,7 +1528,7 @@ async def decode_parallel(
     # set up the output file process
     output_file_process = Process(
         target=write_soundfile_process_worker,
-        name="hifi_soundfile_enc",
+        name="hifi_output_encoder",
         args=(
             post_processor_out_output_conn,
             blocks_enqueued,
@@ -1512,11 +1538,13 @@ async def decode_parallel(
             total_samples_decoded,
             decode_options,
             output_file,
+            stop_requested,
             decode_done,
         ),
     )
     output_file_process.start()
     atexit.register(output_file_process.terminate)
+    atexit.register(output_file_process.join)
 
     def read_and_send_to_decoder(
         f,
@@ -1525,7 +1553,6 @@ async def decode_parallel(
         input_position,
         exit_requested,
         previous_overlap,
-        stop_requested,
     ):
         buffer = DecoderSharedMemory(decoder_state)
         # read input data into the shared memory buffer
@@ -1535,7 +1562,7 @@ async def decode_parallel(
         with input_position.get_lock():
             input_position.value += frames_read * 2
 
-        is_last_block = frames_read < len(block_in) or exit_requested or stop_requested
+        is_last_block = frames_read < len(block_in) or exit_requested or stop_requested.value
 
         if block_num == 0:
             # save the read data
@@ -1621,22 +1648,27 @@ async def decode_parallel(
 
     print(f"Starting decode...")
 
-    async def handle_ui_events():
-        stop_requested = False
-        if ui_t is not None:
+    async def ui_task(stop_requested, ui_t):
+        while True:
             previous_state = ui_t.window.transport_state
             ui_t.app.processEvents()
 
             if ui_t.window.transport_state == STOP_STATE:
-                stop_requested = True
+                stop_requested.value = STOP_REQUESTED
+
                 if previous_state == PREVIEW_STATE:
-                    stop_requested = IMMEDIATE_STOP
+                    stop_requested.value = STOP_IMMEDIATE_REQUESTED
+
+                break
             elif ui_t.window.transport_state == PAUSE_STATE:
                 while ui_t.window.transport_state == PAUSE_STATE:
                     ui_t.app.processEvents()
                     await asyncio.sleep(0.01)
 
-        return stop_requested
+            await asyncio.sleep(0.01)
+
+    if ui_t is not None:
+        asyncio.create_task(ui_task(stop_requested, ui_t))
 
     with as_soundfile(input_file) as f:
         loop = asyncio.get_event_loop()
@@ -1666,7 +1698,6 @@ async def decode_parallel(
                     decoder_state.block_read_overlap, dtype=np.int16
                 )
 
-            stop_requested = await handle_ui_events()
             is_last_block = await loop.run_in_executor(
                 None,
                 read_and_send_to_decoder,
@@ -1676,7 +1707,6 @@ async def decode_parallel(
                 input_position,
                 exit_requested,
                 previous_overlap,
-                stop_requested,
             )
 
             progressB.print(input_position.value / 2)
@@ -1696,17 +1726,17 @@ async def decode_parallel(
 
             block_num += 1
 
-    if stop_requested == IMMEDIATE_STOP:
-        for p in decoder_processes:
-            p.terminate()
-        output_file_process.terminate()
-    else:
-        print("")
-        print("Decode finishing up. Emptying the queue")
-        print("")
+    print("")
+    print("Decode finishing up. Emptying the queue")
+    print("")
+
+    if stop_requested.value != STOP_IMMEDIATE_REQUESTED:
         decode_done.wait()
 
+    for p in decoder_processes:
+        cleanup_process(p)
     post_processor.close()
+    cleanup_process(output_file_process)
 
     for shared_memory in shared_memory_instances:
         shared_memory.close()
