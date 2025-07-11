@@ -23,6 +23,7 @@ try:
         QFrame,
         QSizePolicy,
         QGridLayout,
+        QToolButton
     )
     from PyQt6 import QtGui, QtCore
 except ImportError:
@@ -46,6 +47,7 @@ except ImportError:
         QFrame,
         QSizePolicy,
         QGridLayout,
+        QToolButton
     )
     from PyQt5 import QtGui, QtCore
 
@@ -270,10 +272,14 @@ class HifiUi(QMainWindow):
         # Set up the main window
         self.setWindowTitle(title)
 
+        self.collapsableSections = []
+
         # Create central widget and layout
-        central_widget = QWidget(self)
-        self.setCentralWidget(central_widget)
-        self.main_layout: QHBoxLayout = QVBoxLayout(central_widget)
+        self.central_widget = QWidget(self)
+        self.setCentralWidget(self.central_widget)
+        self.central_widget.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+
+        self.main_layout: QHBoxLayout = QVBoxLayout(self.central_widget)
         main_layout_callback(self.main_layout)
 
         # Inner controls layout
@@ -292,6 +298,10 @@ class HifiUi(QMainWindow):
         demodulation_options = self.build_demodulation_options_section()
         controls_layout.addLayout(demodulation_options)
 
+        # Expander options
+        expander_deemphasis_options = self.build_expander_deemphasis_section()
+        controls_layout.addLayout(expander_deemphasis_options)
+
         # Noise Reduction Options section
         noise_reduction_options = self.build_noise_reduction_section()
         controls_layout.addLayout(noise_reduction_options)
@@ -299,10 +309,6 @@ class HifiUi(QMainWindow):
         # Audio Processing Options section
         audio_processing_options = self.build_audio_processing_options_section()
         controls_layout.addLayout(audio_processing_options)
-
-        # Expander options
-        expander_deemphasis_options = self.build_expander_deemphasis_section()
-        controls_layout.addLayout(expander_deemphasis_options)
 
         # Transport controls
         transport_controls_layout = self.build_transport_controls()
@@ -343,14 +349,25 @@ class HifiUi(QMainWindow):
         self.setWindowFlags(
             self.windowFlags() & ~QtCore.Qt.WindowType.WindowMaximizeButtonHint
         )
-        # disables resize
-        self.setFixedWidth(int(self.sizeHint().width()))
-        # sets fixed height
-        self.setFixedHeight(self.sizeHint().height())
+        self.resize_window()
         # sets default window icon
         self.setWindowIcon(QIcon.fromTheme("document-open"))
         self.center_on_screen()
         self.setValues(params)
+        
+        # update this at the end so the window width is calculated with everything expanded
+        for collapsableSection in self.collapsableSections:
+            collapsableSection.setDefaultCollapseState()
+
+    def resize_window(self, axis="hv"):
+        self.central_widget.adjustSize()
+        # disables resize
+        if "h" in axis:
+            self.setFixedWidth(int(self.minimumSizeHint().width()))
+        # sets fixed height
+        if "v" in axis:
+            self.setFixedHeight(self.minimumSizeHint().height())
+
 
     def build_transport_controls(self):
         transport_controls_layout = QHBoxLayout()
@@ -386,7 +403,7 @@ class HifiUi(QMainWindow):
     def build_input_options_section(self):
         layout = QVBoxLayout()
 
-        input_options_frame = LabeledFrame(self, "Input Options")
+        input_options_frame = CollapsableSection(self, "Input Options")
         layout.addLayout(input_options_frame)
 
         # input sample rate
@@ -427,7 +444,7 @@ class HifiUi(QMainWindow):
     def build_format_options_section(self):
         layout = QVBoxLayout()
 
-        format_options_frame = LabeledFrame(self, "Format Options")
+        format_options_frame = CollapsableSection(self, "Format Options")
         layout.addLayout(format_options_frame)
 
         # standard option
@@ -450,7 +467,7 @@ class HifiUi(QMainWindow):
         self.format_combo.currentIndexChanged.connect(self.on_format_change)
         format_options_frame.inner_layout.addLayout(format_layout)
 
-        advanced_format_options_frame = LabeledFrame(self, "Advanced Format Options")
+        advanced_format_options_frame = CollapsableSection(self, "Advanced Format Options", default_collapsed=True)
         layout.addLayout(advanced_format_options_frame)
 
         # auto fine tune
@@ -506,7 +523,7 @@ class HifiUi(QMainWindow):
     def build_demodulation_options_section(self):
         layout = QVBoxLayout()
 
-        demodulation_options_frame = LabeledFrame(self, "Demodulation Options")
+        demodulation_options_frame = CollapsableSection(self, "Demodulation Options", default_collapsed=True)
         layout.addLayout(demodulation_options_frame)
 
         # demodulation type option
@@ -523,7 +540,7 @@ class HifiUi(QMainWindow):
     def build_noise_reduction_section(self):
         layout = QVBoxLayout()
 
-        noise_reduction_options_frame = LabeledFrame(self, "Noise Reduction Options")
+        noise_reduction_options_frame = CollapsableSection(self, "Noise Reduction Options", default_collapsed=True)
         layout.addLayout(noise_reduction_options_frame)
 
         noise_reduction_options_layout = QHBoxLayout()
@@ -552,7 +569,7 @@ class HifiUi(QMainWindow):
     def build_audio_processing_options_section(self):
         layout = QVBoxLayout()
 
-        advanced_format_options_frame = LabeledFrame(self, "Audio Options")
+        advanced_format_options_frame = CollapsableSection(self, "Audio Options")
         layout.addLayout(advanced_format_options_frame)
 
         # gain section
@@ -604,7 +621,7 @@ class HifiUi(QMainWindow):
         layout = QVBoxLayout()
 
         # Enable Expander/Deemphasis checkbox
-        expander_controls_frame = LabeledFrame(self, "Expander Controls")
+        expander_controls_frame = CollapsableSection(self, "Expander Controls", default_collapsed=True)
         layout.addLayout(expander_controls_frame)
 
         self.noise_reduction_checkbox = QCheckBox("Enable Expander/Deemphasis")
@@ -620,7 +637,7 @@ class HifiUi(QMainWindow):
         expander_controls_layout.addWidget(self.nr_release_tau_dial_control)
         expander_controls_frame.inner_layout.addLayout(expander_controls_layout)
 
-        expander_sideband_frame = LabeledFrame(self, "Expander Sideband Input (High-Pass Shelf Filter)")
+        expander_sideband_frame = CollapsableSection(self, "Expander Sideband Input (High-Pass Shelf Filter)", default_collapsed=True)
         layout.addLayout(expander_sideband_frame)
         weighting_layout = QHBoxLayout()
         self.nr_weighting_shelf_low_tau_dial_control = DialControl(self, "Low Shelf (𝜏)", QtGui.QDoubleValidator(), 10e5, DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2, 10e-4)
@@ -631,7 +648,7 @@ class HifiUi(QMainWindow):
         weighting_layout.addWidget(self.nr_weighting_db_per_octave_dial_control)
         expander_sideband_frame.inner_layout.addLayout(weighting_layout)
 
-        deemphasis_frame = LabeledFrame(self, "Deemphasis (Low-Pass Shelf Filter)")
+        deemphasis_frame = CollapsableSection(self, "Deemphasis (Low-Pass Shelf Filter)", default_collapsed=True)
         layout.addLayout(deemphasis_frame)
         deemphasis_layout = QHBoxLayout()
         self.nr_deemphasis_low_tau_dial_control = DialControl(self, "Low Shelf (𝜏)", QtGui.QDoubleValidator(), 10e5, DEFAULT_NR_DEEMPHASIS_TAU_2, 10e-4)
@@ -1063,52 +1080,83 @@ class DialControl(QWidget):
             pass
 
 
-class LabeledFrame(QVBoxLayout):
+class CollapsableSection(QVBoxLayout):
     def __init__(
         self,
         main_window,
         label_text,
+        default_collapsed=False
     ):
-        super(LabeledFrame, self).__init__()
+        super(CollapsableSection, self).__init__()
 
-        horizontal_spacer = QGridLayout()
+        self.main_window = main_window
+        self.main_window.collapsableSections.append(self)
+        self.default_collapsed = default_collapsed
+
+        # Get the main widget background color from palette
+        bg_color = self.main_window.palette().color(QPalette.ColorRole.Window).name()
+
+        # Create toggle button
+        self.collapsed_arrow = QLabel()
+        self.collapsed_arrow.setStyleSheet("border: none;")
+        self.collapsed_arrow.setFixedSize(self.collapsed_arrow.sizeHint().width(), self.collapsed_arrow.sizeHint().width())
+        collapsed_arrow_font = self.collapsed_arrow.font()
+        collapsed_arrow_font.setBold(True)
+        collapsed_arrow_font.setPointSize(10)
+        collapsed_arrow_font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
+        self.collapsed_arrow.setFont(collapsed_arrow_font)
+
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
         line.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        line.setStyleSheet("color: #666;")
         line.setFixedHeight(2)
 
         label = QLabel(label_text)
-        # Get the main widget background color from palette
-        bg_color = main_window.palette().color(QPalette.ColorRole.Window).name()
         label.setStyleSheet(f"background-color: {bg_color}; padding: 1 0px; font-size: 0.8rem;")
         label_font = label.font()
-        #label_font.setPointSize(12)
-        #label_font.setCapitalization(QtGui.QFont.Capitalization.SmallCaps)
         label_font.setItalic(True)
         label.setFont(label_font)
 
         # Wrapper widget to hold label + padding
         label_layout = QHBoxLayout()
-        label_layout.setContentsMargins(5, 0, 0, 0)
+        label_layout.setContentsMargins(0, 0, 0, 0)
         label_layout.addWidget(label)
-        label_layout.addStretch()
         label_widget = QWidget()
         label_widget.setLayout(label_layout)
 
         # Add both label and line to the same grid cell
-        horizontal_spacer.setContentsMargins(0, 10, 0, 0)
+        self.header = QWidget()
+
+        horizontal_spacer = QGridLayout(self.header)
+        horizontal_spacer.setContentsMargins(0, 0, 0, 0)
         horizontal_spacer.setSpacing(0)
-        horizontal_spacer.addWidget(line, 0, 0, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
-        horizontal_spacer.addWidget(label_widget, 0, 0, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+        horizontal_spacer.addWidget(self.collapsed_arrow, 0, 0, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+        horizontal_spacer.addWidget(label_widget, 0, 1, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
+        horizontal_spacer.addWidget(line, 0, 2, alignment=QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        self.frame = QFrame()
-        self.frame.setFrameShape(QFrame.Shape.NoFrame)
-        self.frame.setObjectName("LabeledFrame")
-        self.frame.setStyleSheet("QFrame#LabeledFrame { border: 1px solid grey; border-radius: 15px; }")
-        self.addLayout(horizontal_spacer)
-        self.addWidget(self.frame)
+        self.body = QFrame()
+        self.body.setFrameShape(QFrame.Shape.NoFrame)
+        self.body.setObjectName("LabeledFrame")
+        self.body.setStyleSheet("QFrame#LabeledFrame { border: 1px solid #aaa; border-radius: 15px; }")
+        self.addWidget(self.header)
+        self.addWidget(self.body)
 
-        self.inner_layout = QVBoxLayout(self.frame)
+        self.header.mousePressEvent = self._toggle
+        self.inner_layout = QVBoxLayout(self.body)
+
+    def setDefaultCollapseState(self):
+        self._setCollapsed(self.default_collapsed)
+
+    def _setCollapsed(self, value):
+        self._collapsed = value
+        self.body.setVisible(not self._collapsed)
+        self.collapsed_arrow.setText("▶" if self._collapsed else "▼")  # Right arrow if collapsed
+        self.update()
+        self.main_window.resize_window(axis="v")
+
+    def _toggle(self, _):
+        self._setCollapsed(not self._collapsed)
 
 
 class FileIODialogUI(HifiUi):
