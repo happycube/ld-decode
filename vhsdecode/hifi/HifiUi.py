@@ -22,8 +22,7 @@ try:
         QSpinBox,
         QFrame,
         QSizePolicy,
-        QGridLayout,
-        QToolButton
+        QGridLayout
     )
     from PyQt6 import QtGui, QtCore
 except ImportError:
@@ -46,8 +45,7 @@ except ImportError:
         QSpinBox,
         QFrame,
         QSizePolicy,
-        QGridLayout,
-        QToolButton
+        QGridLayout
     )
     from PyQt5 import QtGui, QtCore
 

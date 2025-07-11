@@ -66,7 +66,6 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_DEMOD,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
-from vhsdecode.hifi.HifiUi import STOP_STATE, PLAY_STATE, PAUSE_STATE, PREVIEW_STATE
 import io
 
 try:
@@ -93,6 +92,11 @@ try:
 except ImportError as e:
     print(e)
     HIFI_UI = False
+
+STOP_STATE = 0
+PLAY_STATE = 1
+PAUSE_STATE = 2
+PREVIEW_STATE = 3
 
 STOP_NOT_REQUESTED = 0
 STOP_REQUESTED = 1
