@@ -62,6 +62,9 @@ DEFAULT_NR_EXPANDER_LOG_STRENGTH = 1.2
 DEFAULT_NR_EXPANDER_ATTACK_TAU = 3e-3
 DEFAULT_NR_EXPANDER_RELEASE_TAU = 70e-3
 
+# sets maximum amount the expander can increase volume when applying the sidechain
+DEFAULT_NR_EXPANDER_GATE_HARD_LIMIT = 1
+
 # High shelf filter parameters for weighted sidechain input to expander
 # low end of shelf curve
 DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1 = 240e-6
@@ -852,20 +855,29 @@ class NoiseReduction:
 
     @staticmethod
     @guvectorize(
-        [(numba.types.void(numba.types.float32, NumbaAudioArray, NumbaAudioArray))],
+        [(
+            numba.types.float64,
+            numba.types.Array(numba.types.float64, 1, "C"),
+            numba.types.Array(numba.types.float64, 1, "C")
+        )],
         "(),(n)->(n)",
         cache=True,
         fastmath=True,
         nopython=True,
     )
     def expand(log_strength: float, signal: np.array, out: np.array) -> np.array:
+        # use float64 to prevent overflow, the envelope here can expand greatly
         # detect the envelope and use logarithmic expansion
         for i in range(len(signal)):
             out[i] = abs(signal[i]) ** REAL_DTYPE(log_strength)
 
     @staticmethod
     @guvectorize(
-        [(NumbaAudioArray, NumbaAudioArray, NumbaAudioArray)],
+        [(
+            numba.types.Array(numba.types.float64, 1, "C"),
+            numba.types.Array(numba.types.float64, 1, "C"),
+            numba.types.Array(numba.types.float64, 1, "C")
+        )],
         "(n),(n)->(n)",
         cache=True,
         fastmath=True,
@@ -877,7 +889,12 @@ class NoiseReduction:
 
     @staticmethod
     @guvectorize(
-        [(numba.types.float32, NumbaAudioArray, NumbaAudioArray, NumbaAudioArray)],
+        [(
+            numba.types.float32,
+            numba.types.Array(numba.types.float64, 1, "C"),
+            NumbaAudioArray,
+            NumbaAudioArray
+        )],
         "(),(n),(n)->(n)",
         cache=True,
         fastmath=True,
@@ -890,18 +907,19 @@ class NoiseReduction:
         # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
         #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
         #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
-        gate = np.clip(rsC * nr_env_gain, a_min=0.0, a_max=1.0)
         for i in range(len(audio)):
-            audio_out[i] = audio[i] * gate[i]
+            # possibly this gate shouldn't be here
+            gate = min(DEFAULT_NR_EXPANDER_GATE_HARD_LIMIT, max(0, rsC[i] * nr_env_gain))
+            audio_out[i] = audio[i] * gate
 
     def rs_envelope(self, raw_data):
         # prevent high frequency noise from interfering with envelope detector
-        low_pass = self.nrWeightedLowpass.lfilt(raw_data)
+        low_pass = self.nrWeightedLowpass.filtfilt(raw_data)
 
         # high pass weighted input to envelope detector
-        weighted_high_pass = self.nrWeightedHighpass.lfilt(low_pass)
+        weighted_high_pass = self.nrWeightedHighpass.filtfilt(low_pass)
 
-        audio_env = np.empty_like(weighted_high_pass)
+        audio_env = np.empty(len(weighted_high_pass), dtype=np.float64)
         NoiseReduction.expand(
             self.NR_expander_log_strength, weighted_high_pass, audio_env
         )
