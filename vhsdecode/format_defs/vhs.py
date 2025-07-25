@@ -30,6 +30,11 @@ def fill_rfparams_vhs_shared(rfparams: dict, tape_speed: int = 0) -> None:
     rfparams["nonlinear_exp_scaling"] = 0.12
     rfparams["use_sub_deemphasis"] = [False, True, True, True][tape_speed]
 
+    # Make sure these exist in the dict so they can be overridden
+    rfparams["video_rf_peak_freq"] = None
+    rfparams["video_rf_peak_gain"] = None
+    rfparams["video_rf_peak_bandwidth"] = None
+
 
 def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     """Fill in parameters that are shared between systems for Super VHS
@@ -92,6 +97,8 @@ def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
     """Get RF params for PAL VHS"""
 
     RFParams_PAL_VHS = {**rfparams_pal}
+
+    fill_rfparams_vhs_shared(RFParams_PAL_VHS, tape_speed)
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
@@ -170,8 +177,6 @@ def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
     RFParams_PAL_VHS["fm_audio_channel_0_freq"] = 1400000
     RFParams_PAL_VHS["fm_audio_channel_1_freq"] = 1800000
 
-    fill_rfparams_vhs_shared(RFParams_PAL_VHS, tape_speed)
-
     return RFParams_PAL_VHS
 
 
@@ -240,6 +245,8 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
 
     RFParams_NTSC_VHS = {**rfparams_ntsc}
 
+    fill_rfparams_vhs_shared(RFParams_NTSC_VHS, tape_speed)
+
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
     RFParams_NTSC_VHS["video_bpf_low"] = 1000000
@@ -292,8 +299,6 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
     # Frequency of fm audio channels - used for notch filter
     RFParams_NTSC_VHS["fm_audio_channel_0_freq"] = 1300000
     RFParams_NTSC_VHS["fm_audio_channel_1_freq"] = 1700000
-
-    fill_rfparams_vhs_shared(RFParams_NTSC_VHS, tape_speed)
 
     return RFParams_NTSC_VHS
 

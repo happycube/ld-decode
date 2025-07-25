@@ -9,6 +9,12 @@ def _override_group(json_input, group, group_name, logger):
             if item in group:
                 changed[item] = json_input[group_name][item]
                 group[item] = json_input[group_name][item]
+            else:
+                logger.info(
+                    "Item %s in params json not in group %s. Not changed!",
+                    item,
+                    group_name,
+                )
     if len(changed) > 0:
         logger.debug("Changed %s in %s", changed, group_name)
 
