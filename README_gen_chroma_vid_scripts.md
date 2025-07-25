@@ -1,11 +1,10 @@
-# Exporitng to Video Files
+# Exporting to Video Files
 
 
-These scripts are considered ready for use but have now been moved to legacy in support of the more flexiable and external profile based `tbc-video-export.py` python script. 
+These scripts are considered ready for use but have now been moved to legacy in support of the more flexible and external profile based `tbc-video-export` python tool that's now a self-contained cross-platform binary. 
 
 
 ### [Read the full exporting guide here](https://github.com/oyvindln/vhs-decode/wiki/Video-Exporting-&-Gen-Chroma-Scripts)
-
 
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/TV-PC-Levels.png" width="600" height="">
@@ -16,7 +15,8 @@ These are stored in 16-bit `GREY16` headerless files separated into chroma/luma 
 
 The gen chroma scrips will by default render a lossless, interlaced top field first and high-bitrate (roughly 70-100 Mb/s) FFV1 codec video which, which although ideal for archival and further processing has only recently started to gain support in modern [NLEs](https://en.wikipedia.org/wiki/Non-linear_editing).
 
-To generate .mkv files viewable in most media players, simply use the `gen_chroma_vid.sh` script below.
+To generate .mkv files that work in most media players, simply use the `gen_chroma_vid.sh` script below.
+
 
 ### Export your TBC files to a video file with the following basic command
 
@@ -40,9 +40,11 @@ For basic online sharing you can use this command to convert the FFV1 output to 
     ffmpeg -hide_banner -i "$1.mkv" -vf scale=in_color_matrix=bt601:out_color_matrix=bt709:1440x1080,bwdif=1:0:0 -c:v libx264 -preset veryslow -b:v 15M -maxrate 15M -bufsize 8M -pixel_format yuv420p -color_trc bt709 -aspect 4:3 -c:a libopus -b:a 192k -strict -2 -movflags +faststart -y "$1_1440x1080_lossy.mp4"
 
 
-To just export the video with standard settings and the same input file name, the .tbc extention is not required.
+To just export the video with standard settings and the same input file name, the .tbc extension is not required.
+
 
 ## Time Control & Audio Muxing
+
 
 Command Examples:
 
@@ -73,15 +75,15 @@ Software decoding provides the full signal frame, recovery software can be used 
 [Ruxpin TV Teddy](https://github.com/oyvindln/vhs-decode/blob/vhs_decode/tools/ruxpin-decode/readme.pdf) (Extra audio in visable frame)
 
 
-### Generate an video output with the top VBI area:
+### Generate a video output with the top VBI area:
 
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Post-Processing/Jennings-With-VBI.png" width="600" height="">
 
 PAL
 
-    ./gen_chroma_vid.sh --ffll 2 --lfll 308 --ffrl 2 --lfrl 620 <tbc-name>
+    ./gen_chroma_vid.sh --ffll 2 --lfll 308 --ffrl 2 --lfrl 620 input.tbc
 
 NTSC
 
-    ./gen_chroma_vid.sh --ffll 1 --lfll 259 --ffrl 2 --lfrl 525 <tbc-name>
+    ./gen_chroma_vid.sh --ffll 1 --lfll 259 --ffrl 2 --lfrl 525 input.tbc
