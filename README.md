@@ -62,7 +62,7 @@ The frequently asked questions page and the [Wiki](https://github.com/oyvindln/v
 
 <img src="assets/images/ld-analyse_pal_philips_cvbs_chroma_frame.png"  width="600" height="">
 
-> Phlips Test Pattern with PAL 3D Transform decoder - 2025
+> Philips Test Pattern with PAL 3D Transform decoder - 2025
 
 This repository also contains an **experimental** CVBS decoder, `cvbs-decode`, which shares code with ld-decode and vhs-decode. Capable of decoding basic RAW digitized NTSC and PAL composite video, including colour if the source is somewhat stable. 
 
@@ -83,7 +83,7 @@ Test samples & signals can be generated using a [HackDAC](https://github.com/ina
 
 Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com/VideoMem/Superheterodyne-decoding-tools) we have [HiFi-Decode](https://github.com/oyvindln/vhs-decode/wiki/hifi-decode) which provides decoding support for (S)VHS & Video8/Hi8 HiFi FM tracks which takes uncompressed or FLAC compressed RF captures of HiFi FM signals and outputs standard 24-bit 44.1-192kHz FLAC stereo audio files. The decoded quality is close to and better in some cases than the hardware output from a VCR.
 
-[RTLSDR capture & decoding](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR) (cross plafrom as its 100% GNURadio based) can run in realtime on most systems (1~3 sec delay) and provide live playback, Alongside 8msps RF files and a 48kHz 24-bit FLAC file of the decoded audio.
+[RTLSDR capture & decoding](https://github.com/oyvindln/vhs-decode/wiki/RTLSDR) (cross platfrom as its 100% GNURadio based) can run in realtime on most systems (1~3 sec delay) and provide live playback, Alongside 8msps RF files and a 48kHz 24-bit FLAC file of the decoded audio.
 
 
 # Dependencies - Hardware
@@ -94,7 +94,7 @@ Thanks to VideoMem's work on [Superheterodyne Decoding Tools](https://github.com
 
 Preferably somewhat calibrated and in excellent mechanical and head condition, prosumer metal track decks are preferable as they were built generally better in terms of mechanical stability than cheaper later consumer decks that use more plastics. 
 
-However, the only **critical requirement** is availible test points or a head amplifier that is easy to tap into, this goes for any and all tape formats. Since the rest of the circuitry is bypassed much of the difference between the VCR model lineup outside of head count/HiFi capability is also skipped and thus a good condition 90s HiFi VCR can give equally good results as a top of the line SVHS VCR.
+However, the only **critical requirement** is available test points or a head amplifier that is easy to tap into, this goes for any and all tape formats. Since the rest of the circuitry is bypassed much of the difference between the VCR model lineup outside of head count/HiFi capability is also skipped and thus a good condition 90s HiFi VCR can give equally good results as a top of the line SVHS VCR.
 
 > [!TIP]
 > SVHS tapes can be RF captured on some newer standard VHS HiFi decks. 
@@ -130,7 +130,7 @@ Capture & Config of single cards uses simple command-line arguments and paramete
 
 While you can use any generic card with the correct chips, today we recommend the ‘‘New’’ Chinese variants that can be found on AliExpress that have integrated Asmedia or ITE 1x PCIE bridge chips allowing modern systems to use them, and consistent performance.
 
-These cards combined with a [dedicated amplifier](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards#external-amplification) & [the clockgen mod](https://github.com/oyvindln/vhs-decode/wiki/Clockgen-Mod) allows users to have a refined RF tapp reguardless of format and sync-up multible cards off a common clock source, enabling Video RF + HiFi RF + Baseband (Baseband = Linear or deck decoded HiFi audio on RCA/XLR outputs) from VCR/VTRs to be captured in perfect hardware sync, a highly reliable turn-key "one run and done" capturing workflow for a wide range of videotape formats allowing for automated audio alignment post-capture saving countless hours.
+These cards combined with a [dedicated amplifier](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards#external-amplification) & [the clockgen mod](https://github.com/oyvindln/vhs-decode/wiki/Clockgen-Mod) allows users to have a refined RF tap regardless of format and sync-up multiple cards off a common clock source, enabling Video RF + HiFi RF + Baseband (Baseband = Linear or deck decoded HiFi audio on RCA/XLR outputs) from VCR/VTRs to be captured in perfect hardware sync, a highly reliable turn-key "one run and done" capturing workflow for a wide range of videotape formats allowing for automated audio alignment post-capture saving countless hours.
 
 [Where to Buy? & More Info](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards)
 
@@ -143,9 +143,9 @@ Capture is done using an intuitive GUI application.
 [Linux / Windows / MacOS](https://github.com/simoninns/DomesdayDuplicator/wiki)
 
 > [!WARNING]  
-> This is a single channel capture device! not a multi-channel one which is the ideal mimium for VHS etc.
+> This is a single channel capture device! not a multi-channel one which is the ideal minimum for VHS etc.
 
-Built and geared towards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing many forms of single channel tape formats such as Video8/Hi8/Betamax NTSC, but is not ideal for VHS/Betamax PAL/Umatic and outhers that need anouther ADC channel for HiFi and less powerful ones for Linear audio capture (in sync on a hardware level).
+Built and geared towards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing many forms of single channel tape formats such as Video8/Hi8/Betamax NTSC, but is not ideal for VHS/Betamax PAL/Umatic and others that need another ADC channel for HiFi and less powerful ones for Linear audio capture (in sync on a hardware level).
 
 It consists of a custom analogue to digital board with an amplifier and DIP switch for control, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
 
@@ -210,7 +210,7 @@ Decks follow this naming or close to it not every possible name is covered.
 
 * 50ohm BNC connectors, normally a [pre made bulkhead](https://s.click.aliexpress.com/e/_DCynGRN), or [solderable thread mounted](https://s.click.aliexpress.com/e/_Dd6dn0b).
 * 50-100cm of [RG316](https://s.click.aliexpress.com/e/_DEjGLGT) or [RG178](https://s.click.aliexpress.com/e/_DBLPVc3) 50 ohm coaxial cable.
-* 10uf Capacitors [standard ceramic assorment](https://s.click.aliexpress.com/e/_DlOEdSJ) or audio grade like Nichicon if you like.
+* 10uf Capacitors [standard ceramic assortment](https://s.click.aliexpress.com/e/_DlOEdSJ) or audio grade like Nichicon if you like.
 
 Connection Cables
 
@@ -234,7 +234,7 @@ Adding a 10uf (0.1uf to 100uf range) capacitor to the test point or amplifier is
 
 Center is Signal, Outer is Ground, this goes for jacks and for coaxial cable in general.
 
-For an polarized electrolytic capacitor Positive leg (longer) goes on test/signal point, Negative leg (shorter) on cable to connector/probe. 
+For a polarized electrolytic capacitor Positive leg (longer) goes on test/signal point, Negative leg (shorter) on cable to connector/probe. 
 
 However, this does not matter for Ceramic which are bidirectional & recommend today.
 
@@ -317,7 +317,7 @@ Decoders & TBC Video Export has a mainly self-contained binary appimage package 
 Install all dependencies required by the decode suite.
 
 > [!TIP]
-> If your having installation problems or want automated installation assistance, use Agent mode with [Warp terminal](https://app.warp.dev/referral/WDW45K), If it manages to solve an installation issue please make an issue ticket, and post your entire start to finish process dialogue on the terminal, thiw allows documentation to be fluidly updated.
+> If your having installation problems or want automated installation assistance, use Agent mode with [Warp terminal](https://app.warp.dev/referral/WDW45K), If it manages to solve an installation issue please make an issue ticket, and post your entire start to finish process dialogue on the terminal, this allows documentation to be fluidly updated.
 
 Install all dependencies required by LD-Decode and VHS-Decode:
 
