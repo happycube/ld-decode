@@ -3378,6 +3378,9 @@ class LDdecode:
 
         self.blackIRE = 0
 
+
+        self.start_time = time.time()
+        self.second_decode = None
         self.use_profiler = extra_options.get("use_profiler", False)
         if self.use_profiler:
             from line_profiler import LineProfiler
@@ -3525,6 +3528,8 @@ class LDdecode:
 
         if self.use_profiler:
             self.lpf.print_stats()
+
+        self.print_stats()
 
     def roughseek(self, location, isField=True):
         self.prevPhaseID = None
@@ -3722,6 +3727,9 @@ class LDdecode:
             self.fieldstack.pop(-1)
 
         while done is False:
+            if self.second_decode is None and self.fields_written:
+                self.second_decode = time.time()
+
             if redo:
                 # Drop existing thread
                 self.decodethread = None
@@ -3862,6 +3870,18 @@ class LDdecode:
             self.writeout(self.lastvalidfield[f.isFirstField])
 
         return f
+    
+    def print_stats(self):
+        if self.fields_written:
+            timeused = time.time() - self.start_time
+            timeused2 = time.time() - self.second_decode
+            frames = self.fields_written // 2
+            fps = frames / timeused2
+
+            print(
+                f"Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)",
+                file=sys.stderr,
+            )
 
     def decodeFrameNumber(self, f1, f2):
         """ decode frame #/information from Philips code data on both fields """
@@ -4342,6 +4362,6 @@ class LDdecode:
 
         jout["videoParameters"] = vp
 
-        jout["fields"] = self.fieldinfo.copy()
+        jout["fields"] = self.fieldinfo
 
         return jout

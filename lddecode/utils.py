@@ -7,9 +7,9 @@ import os
 import subprocess
 import sys
 import traceback
+import signal
 
-from multiprocessing import JoinableQueue
-import threading
+from multiprocessing import Event, Pipe, Process
 
 from numba import jit, njit
 import numba
@@ -128,11 +128,14 @@ def make_loader(filename, inputfreq=None):
             # Assume ffmpeg will recognise this format itself.
             input_args = []
 
-        # Use asetrate first to override the input file's sample rate.
-        output_args = [
-            "-filter:a",
-            "asetrate=" + str(inputfreq * 1e6) + ",aresample=" + str(40e6),
-        ]
+        output_args = []
+
+        if inputfreq != 40:
+            # Use asetrate first to override the input file's sample rate.
+            output_args = [
+                "-filter:a",
+                "asetrate=" + str(inputfreq * 1e6) + ",aresample=" + str(40e6),
+            ]
 
         return LoadFFmpeg(input_args=input_args, output_args=output_args)
 
@@ -523,23 +526,23 @@ def ldf_pipe(outname: str, compression_level: int = 6):
 def ac3_pipe(outname: str):
     processes = []
 
-    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -"
-    cmd2 = "ld-ac3-demodulate -v 3 - -"
-    cmd3 = f"ld-ac3-decode - {outname}"
+    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -".split()
+    cmd2 = "ld-ac3-demodulate -v 3 - -".split()
+    cmd3 = ["ld-ac3-decode", "-", outname]
 
-    logfp = open(f"{outname + '.log'}", 'w')
+    logfp = open(outname + '.log', 'w')
 
     # This is done in reverse order to allow for pipe building
-    processes.append(subprocess.Popen(cmd3.split(' '),
+    processes.append(subprocess.Popen(cmd3,
                                       stdin=subprocess.PIPE,
                                       stdout=logfp,
                                       stderr=subprocess.STDOUT))
 
-    processes.append(subprocess.Popen(cmd2.split(' '),
+    processes.append(subprocess.Popen(cmd2,
                                       stdin=subprocess.PIPE,
                                       stdout=processes[-1].stdin))
 
-    processes.append(subprocess.Popen(cmd1.split(' '),
+    processes.append(subprocess.Popen(cmd1,
                                       stdin=subprocess.PIPE,
                                       stdout=processes[-1].stdin))
 
@@ -1280,52 +1283,56 @@ def init_opencl(cl, name = None):
     #queue = cl.CommandQueue(ctx)
     return ctx
 
+class JSONDumper:
+    def __init__(self, ldd, outname):
+        self._rx, self._tx = Pipe(False)
+        self._writing = Event()
+        self._build_json = ldd.build_json
 
-# Write the .tbc.json file (used by lddecode and notebooks)
-def write_json(ldd, jsondict, outname):
+        self._outname = outname
+        self._dumper = Process(target=JSONDumper._consume, args=(self._rx, self._writing, self._outname, ldd.verboseVITS,), name="lddecode-json-dumper")
+        self._dumper.start()
+    
+    def write(self):
+        if not self._writing.is_set():
+            self._tx.send(self._build_json())
 
-    fp = open(outname + ".tbc.json.tmp", "w")
-    json.dump(
-        jsondict,
-        fp,
-        allow_nan=False,
-        indent=4 if ldd.verboseVITS else None,
-        separators=(",", ":") if not ldd.verboseVITS else None,
-    )
-    fp.write("\n")
-    fp.close()
+    def close(self):
+        self._tx.send(self._build_json())
+        self._tx.send(None)
+        self._dumper.join()
 
-    os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
+    @staticmethod
+    def write_json(jsondict, outname, verboseVITS):
+        fp = open(outname + ".tbc.json.tmp", "w")
+        json.dump(
+            jsondict,
+            fp,
+            allow_nan=False,
+            indent=4 if verboseVITS else None,
+            separators=(",", ":") if not verboseVITS else None,
+        )
+        fp.write("\n")
+        fp.close()
+    
+        os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
 
+    @staticmethod
+    def _consume(conn, ready, outname, verboseVITS):
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-def jsondump_thread(ldd, outname):
-    """
-    This creates a background thread to write a json dict to a file.
-
-    Probably had a bit too much fun here - this returns a queue that is
-    fed into a thread created by the function itself.  Feed it json
-    dictionaries during runtime and None when done.
-    """
-
-    def consume(q):
         while True:
-            jsondict = q.get()
+            try:
+                jsondict = conn.recv()
+                ready.set()
+            except (InterruptedError, KeyboardInterrupt, EOFError):
+                break
+        
             if jsondict is None:
-                q.task_done()
-                return
-
-            write_json(ldd, jsondict, outname)
-
-            q.task_done()
-
-    q = JoinableQueue()
-
-    # Start the self-contained thread
-    t = threading.Thread(target=consume, args=(q,))
-    t.start()
-
-    return q
-
+                break
+    
+            JSONDumper.write_json(jsondict, outname, verboseVITS)
+            ready.clear()
 
 class StridedCollector:
     # This keeps a numpy buffer and outputs an fft block and keeps the overlap
