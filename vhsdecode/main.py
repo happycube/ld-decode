@@ -449,26 +449,17 @@ def main(args=None, use_gui=False):
 
     done = False
 
-    jsondumper = lddu.jsondump_thread(vhsd, outname)
+    jsondumper = lddu.JSONDumper(vhsd, outname)
 
     def cleanup():
-        jsondumper.put(vhsd.build_json())
+        jsondumper.close()
         vhsd.close()
-        jsondumper.put(None)
-
-    # TODO: Put the stuff below this in a function so we can re-use for both vhs and cvbs
-
-    # seconddecode is taken so that setup time is not included in FPS calculation
-    firstdecode = time.time()
-    seconddecode = None
 
     while not done and vhsd.fields_written < (req_frames * 2):
         try:
             f = vhsd.readfield()
-            if not seconddecode:
-                seconddecode = time.time()
         except KeyboardInterrupt:
-            print("Terminated, saving JSON and exiting")
+            print("\nTerminated, saving JSON and exiting")
             cleanup()
             sys.exit(1)
         except Exception as err:
@@ -489,18 +480,10 @@ def main(args=None, use_gui=False):
             f.prevfield = None
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
-            jsondumper.put(vhsd.build_json())
+            jsondumper.write()
 
     if vhsd.fields_written:
-        timeused = time.time() - firstdecode
-        timeused2 = time.time() - seconddecode
-        frames = vhsd.fields_written // 2
-        fps = frames / timeused2
-
-        print(
-            f"\nCompleted: saving JSON and exiting.  Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)",
-            file=sys.stderr,
-        )
+        print(f"\nCompleted: saving JSON and exiting.", file=sys.stderr)
     else:
         print(f"\nCompleted without handling any frames.", file=sys.stderr)
 
