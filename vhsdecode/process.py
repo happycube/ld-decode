@@ -336,6 +336,9 @@ class VHSDecode(ldd.LDdecode):
             self.fieldstack.pop(-1)
 
         while done is False:
+            if self.second_decode is None and self.fields_written:
+                self.second_decode = time.time()
+
             if redo:
                 # Drop existing thread
                 self.decodethread = None

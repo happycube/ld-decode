@@ -179,30 +179,20 @@ def main(args=None):
     # if args.MTF_offset is not None:
     #    ldd.rf.mtf_offset = args.MTF_offset
 
-    def write_json(vhsd, outname):
-        jsondict = vhsd.build_json()
-
-        fp = open(outname + ".tbc.json.tmp", "w")
-        json.dump(jsondict, fp, indent=4)
-        fp.write("\n")
-        fp.close()
-
-        os.rename(outname + ".tbc.json.tmp", outname + ".tbc.json")
-
     done = False
 
-    jsondumper = lddu.jsondump_thread(vhsd, outname)
+    jsondumper: lddu.JSONDumper = lddu.JSONDumper(vhsd, outname)
 
     def cleanup(outname):
         jsondumper.put(vhsd.build_json())
+        jsondumper.close()
         vhsd.close()
-        jsondumper.put(None)
 
     while not done and vhsd.fields_written < (req_frames * 2):
         try:
             f = vhsd.readfield()
         except KeyboardInterrupt:
-            print("Terminated, saving JSON and exiting")
+            print("\nTerminated, saving JSON and exiting")
             cleanup(outname)
             sys.exit(1)
         except Exception as err:
@@ -224,7 +214,7 @@ def main(args=None):
             f.prevfield = None
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
-            jsondumper.put(vhsd.build_json())
+            jsondumper.write()
 
     if "lowest_agc_gain" in vhsd.rf.DecoderParams:
         print("Automatic gain control statistics:", file=sys.stderr)
