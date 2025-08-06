@@ -8,7 +8,7 @@ from lddecode.utils import hz_to_output_array
 import vhsdecode.sync as sync
 import vhsdecode.formats as formats
 from vhsdecode.doc import detect_dropouts_rf
-from vhsdecode.addons.resync import Pulse, findpulses_range
+from vhsdecode.addons.resync import Pulse
 from vhsdecode.chroma import (
     decode_chroma_simple,
     decode_chroma,

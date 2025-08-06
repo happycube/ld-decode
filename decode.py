@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-import argparse
 import sys
-from importlib import import_module
 from multiprocessing import freeze_support
 
 # from vhsdecode.main import main
 
 
 def print_options():
-    print("Options are vhs, cvbs, ld, hifi")
+    print("Options are vhs, cvbs, ld, hifi, filter-tune")
 
 
 def main(argv):
@@ -38,6 +36,10 @@ def main(argv):
         from vhsdecode.hifi.main import main as hifimain
 
         hifimain()
+    elif to_run == "filter-tune" or to_run == "filter_tune" or to_run == "filtertune":
+        from filter_tune.filter_tune import main as filtertunemain
+
+        filtertunemain()
     else:
         print_options()
         print(f"Instead got: {to_run}")

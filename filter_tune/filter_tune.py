@@ -10,22 +10,18 @@ import os
 import sys
 import logging
 import json
+
 try:
     QT_VERSION = 6
 
     from PyQt6.QtCore import (
         Qt,
-        QByteArray,
-        QCryptographicHash,
-        QMetaType,
         QObject,
         QSize,
         QThread,
         pyqtSignal,
     )
     from PyQt6.QtWidgets import (
-        QAbstractItemView,
-        QAbstractScrollArea,
         QApplication,
         QCheckBox,
         QComboBox,
@@ -35,75 +31,57 @@ try:
         QGroupBox,
         QHBoxLayout,
         QLabel,
-        QMessageBox,
         QPushButton,
-        QRadioButton,
         QScrollArea,
         QSlider,
         QSpinBox,
         QSplitter,
         QSizePolicy,
-        QTableWidgetItem,
-        QTextEdit,
         QVBoxLayout,
         QWidget,
     )
     from PyQt6.QtGui import (
-        QBrush,
         QGuiApplication,
         QImage,
-        QKeySequence,
-        QKeyEvent,
-        QPalette,
         QPixmap,
     )
 except ImportError:
-    QT_VERSION = 5
+    try:
+        QT_VERSION = 5
 
-    from PyQt5.QtCore import (
-        Qt,
-        QByteArray,
-        QCryptographicHash,
-        QMetaType,
-        QObject,
-        QSize,
-        QThread,
-        pyqtSignal,
-    )
-    from PyQt5.QtWidgets import (
-        QAbstractItemView,
-        QAbstractScrollArea,
-        QApplication,
-        QCheckBox,
-        QComboBox,
-        QDialog,
-        QFileDialog,
-        QGridLayout,
-        QGroupBox,
-        QHBoxLayout,
-        QLabel,
-        QMessageBox,
-        QPushButton,
-        QRadioButton,
-        QScrollArea,
-        QSlider,
-        QSpinBox,
-        QSplitter,
-        QSizePolicy,
-        QTableWidgetItem,
-        QTextEdit,
-        QVBoxLayout,
-        QWidget,
-    )
-    from PyQt5.QtGui import (
-        QBrush,
-        QGuiApplication,
-        QImage,
-        QKeySequence,
-        QKeyEvent,
-        QPalette,
-        QPixmap,
-    )
+        from PyQt5.QtCore import (
+            Qt,
+            QObject,
+            QSize,
+            QThread,
+            pyqtSignal,
+        )
+        from PyQt5.QtWidgets import (
+            QApplication,
+            QCheckBox,
+            QComboBox,
+            QDialog,
+            QFileDialog,
+            QGridLayout,
+            QGroupBox,
+            QHBoxLayout,
+            QLabel,
+            QPushButton,
+            QScrollArea,
+            QSlider,
+            QSpinBox,
+            QSplitter,
+            QSizePolicy,
+            QVBoxLayout,
+            QWidget,
+        )
+        from PyQt5.QtGui import (
+            QImage,
+            QPixmap,
+        )
+    except ImportError:
+        print("Neither PyQt5 and PyQt6 not found! can't start filter-tune")
+        sys.exit(1)
 
 from matplotlib.backends.backend_qtagg import FigureCanvas
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
@@ -352,7 +330,9 @@ class FormatParams:
         self.fs = fs
         self.system = system
         # TODO: tape speed
-        self.sys_params, self.rf_params = get_format_params(system, tape_format, 0, logger)
+        self.sys_params, self.rf_params = get_format_params(
+            system, tape_format, 0, logger
+        )
         self.field_lines = max(self.sys_params["field_lines"])
         self.field_width = int(np.round(self.sys_params["line_period"] * (fs / 1e6)))
 
@@ -426,12 +406,12 @@ class DeemphasisFilters:
             filter_params["custom_video_filters"]["value"]
             and rf_params.get("video_custom_luma_filters", None) is not None
         ):
-            self._filters[
-                "FCustomVideo"
-            ] = compute_video_filters.gen_custom_video_filters(
-                rf_params["video_custom_luma_filters"],
-                fs,
-                block_len,
+            self._filters["FCustomVideo"] = (
+                compute_video_filters.gen_custom_video_filters(
+                    rf_params["video_custom_luma_filters"],
+                    fs,
+                    block_len,
+                )
             )
             self._filters["FVideo"] *= self._filters["FCustomVideo"]
         else:
@@ -448,10 +428,10 @@ class DeemphasisFilters:
             fs / 2.0,
             block_len,
         )
-        self.filters[
-            "NLAmplitudeLPF"
-        ] = compute_video_filters.gen_nonlinear_amplitude_lpf(
-            filter_params["nonlinear_amplitude_lpf"]["value"], fs / 2.0
+        self.filters["NLAmplitudeLPF"] = (
+            compute_video_filters.gen_nonlinear_amplitude_lpf(
+                filter_params["nonlinear_amplitude_lpf"]["value"], fs / 2.0
+            )
         )
 
 
@@ -554,6 +534,8 @@ class VHStune(QDialog):
             self,
         )
 
+        self.fftData = []
+
     def _update_format(self):
         self.makeFilterParams()
         self.createFilterGroupBox()
@@ -576,7 +558,6 @@ class VHStune(QDialog):
                     self.filter_params[k]["label"].deleteLater()
 
         self.filter_params = {
-            #          "deemph_enable": { "value": True, "step": None, "desc": "Enable deemphasis", "onchange": [ self.applyFilter, self.drawImage ] },
             "video_lpf_freq": {
                 "value": rf_params["video_lpf_freq"],
                 "step": 5000,
@@ -648,7 +629,7 @@ class VHStune(QDialog):
                 ],
             },
             "custom_video_filters": {
-                "value": (rf_params.get("video_custom_luma_filters", None) != None),
+                "value": rf_params.get("video_custom_luma_filters", None) != None,
                 "step": None,
                 "desc": "Enable custom linear filters",
                 "onchange": [
@@ -771,7 +752,9 @@ class VHStune(QDialog):
                 "step": 5000,
                 "min": 50000,
                 "max": 6000000,
-                "desc": "NL deemp Amplitude detector low pass filter corner freq ({:.1f}):",
+                "desc": (
+                    "NL deemp Amplitude detector low pass filter corner freq ({:.1f}):"
+                ),
                 "onchange": [
                     self.update_nl_deemphasis,
                     self.apply_both_deemph_filters,
@@ -1114,7 +1097,9 @@ class VHStune(QDialog):
         # scroll = QScrollArea()
         # scroll.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
         self.dispLabel = QLabel()
-        self.dispLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.dispLabel.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
+        )
         # self._disp_label_layout = QVBoxLayout()
         # self.dispLabel.setLayout(self._disp_label_layout)
         # scroll.setWidget(self.dispLabel)
@@ -1228,7 +1213,9 @@ class VHStune(QDialog):
 
         layout.addWidget(self.showFieldsChkBox)
 
-        self.displayWidthSlider = QSlider(Qt.Orientation.Horizontal, self.controlsGroupBox)
+        self.displayWidthSlider = QSlider(
+            Qt.Orientation.Horizontal, self.controlsGroupBox
+        )
         self.displayWidthSlider.setRange(1, 200)
         self.displayWidthSlider.setValue(100)
         self.displayWidthSlider.setTracking(False)
@@ -1241,7 +1228,9 @@ class VHStune(QDialog):
         layout.addWidget(displayWidthLabel)
         layout.addWidget(self.displayWidthSlider)
 
-        self.displayHeightSlider = QSlider(Qt.Orientation.Horizontal, self.controlsGroupBox)
+        self.displayHeightSlider = QSlider(
+            Qt.Orientation.Horizontal, self.controlsGroupBox
+        )
         self.displayHeightSlider.setRange(1, 5)
         self.displayHeightSlider.setValue(1)
         self.displayHeightSlider.setTracking(False)

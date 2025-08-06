@@ -184,7 +184,9 @@ class NLFilter:
 
 
 def to_db(input):
-    return 20 * np.log10(input)
+    # Ignore divide by zero errors since filters may have zeroes.
+    with np.errstate(divide='ignore'):
+        return 20 * np.log10(np.abs(input))
 
 
 def from_db(input):

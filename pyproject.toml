@@ -33,6 +33,7 @@ ld-decode = "lddecode.main:main"
 vhs-decode = "vhsdecode.main:main"
 cvbs-decode = "cvbsdecode.main:main"
 hifi-decode = "vhsdecode.hifi.main:main"
+filter-tune = "filter_tune.filter_tune:main"
 
 #[console_scripts]
 # TODO: These should maybe be made modules too
