@@ -197,6 +197,17 @@ fn sosfiltfilt_f32<'py>(
     output_array.into_pyarray(py)
 }
 
+#[pyfunction]
+fn check_debug<'py>(
+    _py: Python<'py>,
+) -> PyResult<bool> {
+    if cfg!(debug_assertions) {
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 /// A Python module implemented in Rust. The name of this function must match
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
@@ -209,5 +220,6 @@ fn vhsd_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fallback_vsync_loc_means, m)?)?;
     m.add_function(wrap_pyfunction!(sosfiltfilt, m)?)?;
     m.add_function(wrap_pyfunction!(sosfiltfilt_f32, m)?)?;
+    m.add_function(wrap_pyfunction!(check_debug, m)?)?;
     Ok(())
 }

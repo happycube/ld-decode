@@ -7,7 +7,8 @@ jobs:
   build-decode:
     name: Build vhs-decode (x86_64)
     runs-on: windows-2022
-
+    env:
+        SETUPTOOLS_RUST_CARGO_PROFILE: release
     steps:
       - uses: actions/checkout@v4
         with:

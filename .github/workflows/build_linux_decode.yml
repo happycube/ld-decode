@@ -24,6 +24,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Create AppImage
+        env:
+          SETUPTOOLS_RUST_CARGO_PROFILE: release
         run: |
           pip3 install python-appimage
           mkdir _build_appimage
