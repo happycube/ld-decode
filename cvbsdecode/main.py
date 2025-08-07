@@ -3,7 +3,6 @@ import argparse
 import os
 import sys
 import signal
-import json
 import traceback
 import lddecode.utils as lddu
 from lddecode.utils_logging import init_logging
@@ -184,7 +183,6 @@ def main(args=None):
     jsondumper: lddu.JSONDumper = lddu.JSONDumper(vhsd, outname)
 
     def cleanup(outname):
-        jsondumper.put(vhsd.build_json())
         jsondumper.close()
         vhsd.close()
 
