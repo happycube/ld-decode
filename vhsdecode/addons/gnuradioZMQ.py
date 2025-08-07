@@ -49,12 +49,12 @@ class ZMQSend:
 
     def send(self, data):
         self.chekcpid()
-        null = self.socket.recv()
+        _ = self.socket.recv()
         self.socket.send(data.astype(np.float32))
 
     def send_complex(self, complex):
         self.chekcpid()
-        null = self.socket.recv()
+        _ = self.socket.recv()
         data = np.empty((complex.real.size + complex.imag.size,), dtype=np.float32)
         data[0::2] = complex.real.astype(np.float32)
         data[1::2] = complex.imag.astype(np.float32)

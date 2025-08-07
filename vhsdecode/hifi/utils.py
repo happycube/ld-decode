@@ -1,5 +1,5 @@
 from multiprocessing.shared_memory import SharedMemory
-from numba import njit, prange, vectorize
+from numba import njit
 import numba
 import numpy as np
 from dataclasses import dataclass
@@ -243,7 +243,9 @@ class DecoderSharedMemory:
         block_dtype=np.int16,
         audio_dtype=REAL_DTYPE,
     ):
-        max_audio_size = (block_audio_final_size + to_aligned_offset(block_audio_final_size)) * np.dtype(audio_dtype).itemsize
+        max_audio_size = (
+            block_audio_final_size + to_aligned_offset(block_audio_final_size)
+        ) * np.dtype(audio_dtype).itemsize
         block_size = (block_size + block_overlap * 2) * np.dtype(block_dtype).itemsize
 
         byte_size = max(max_audio_size, block_size)

@@ -763,9 +763,6 @@ class VHSRFDecode(ldd.RFDecode):
 
         # The following filters are for post-TBC:
         # The output sample rate is 4fsc
-        out_size = self.SysParams["outlinelen"] * (
-            (self.SysParams["frame_lines"] // 2) + 1
-        )
         self.Filters["FChromaFinal"] = self._chroma_afc.get_chroma_bandpass_final(
             self._options.color_under
         )

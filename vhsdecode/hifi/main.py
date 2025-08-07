@@ -32,7 +32,6 @@ from vhsdecode.hifi.utils import (
     DecoderState,
     PostProcessorSharedMemory,
     NumbaAudioArray,
-    profile,
 )
 
 import argparse
@@ -41,7 +40,7 @@ from vhsdecode.cmdcommons import (
     test_input_file,
     test_output_file,
     TestInputFile,
-    TestOutputFile
+    TestOutputFile,
 )
 from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
@@ -105,8 +104,10 @@ STOP_IMMEDIATE_REQUESTED = 2
 NORMALIZE_FILE_SUFFIX = "tmp_normalize.raw"
 
 
-default_threads=cpu_count()
-parser = argparse.ArgumentParser(description="Extracts audio from RAW HiFi FM RF captures")
+default_threads = cpu_count()
+parser = argparse.ArgumentParser(
+    description="Extracts audio from RAW HiFi FM RF captures"
+)
 
 parser.add_argument(
     "infile",
@@ -289,14 +290,14 @@ noise_reduction_options_group.add_argument(
     dest="head_switching_interpolation",
     type=str.lower,
     default="on",
-    help=f'Enables head switching noise interpolation. (defaults to "on").',
+    help='Enables head switching noise interpolation. (defaults to "on").',
 )
 noise_reduction_options_group.add_argument(
     "--muting",
     dest="muting",
     type=str.lower,
     default="on",
-    help=f'Mutes the audio when there is no hifi carrier. (defaults to "on").',
+    help='Mutes the audio when there is no hifi carrier. (defaults to "on").',
 )
 noise_reduction_options_group.add_argument(
     "--NR_spectral_amount",
@@ -336,59 +337,62 @@ expander_options_group.add_argument(
     dest="nr_attack_tau",
     type=float,
     default=DEFAULT_NR_EXPANDER_ATTACK_TAU,
-    help=f"Sets the expander attack speed in tau (default is {DEFAULT_NR_EXPANDER_ATTACK_TAU})."
+    help=f"Sets the expander attack speed in tau (default is {DEFAULT_NR_EXPANDER_ATTACK_TAU}).",
 )
 expander_options_group.add_argument(
     "--NR_release_tau",
     dest="nr_release_tau",
     type=float,
     default=DEFAULT_NR_EXPANDER_RELEASE_TAU,
-    help=f"Sets the expander release speed in tau (default is {DEFAULT_NR_EXPANDER_RELEASE_TAU})."
+    help=f"Sets the expander release speed in tau (default is {DEFAULT_NR_EXPANDER_RELEASE_TAU}).",
 )
 expander_options_group.add_argument(
     "--NR_weighting_shelf_low_tau",
     dest="nr_weighting_shelf_low_tau",
     type=float,
     default=DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
-    help=f"Sets the expander sidechain high-pass shelf filter low point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1})."
+    help=f"Sets the expander sidechain high-pass shelf filter low point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1}).",
 )
 expander_options_group.add_argument(
     "--NR_weighting_shelf_high_tau",
     dest="nr_weighting_shelf_high_tau",
     type=float,
     default=DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
-    help=f"Sets the expander sidechain high-pass shelf filter high point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2})."
+    help=f"Sets the expander sidechain high-pass shelf filter high point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2}).",
 )
 expander_options_group.add_argument(
     "--NR_weighting_db_per_octave",
     dest="nr_weighting_db_per_octave",
     type=float,
     default=DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    help=f"Sets the expander sidechain high-pass shelf filter cutoff rate (default is {DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE})."
+    help=f"Sets the expander sidechain high-pass shelf filter cutoff rate (default is {DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE}).",
 )
 
-deemphasis_options_group = parser.add_argument_group("Deemphasis tuning options (advanced)")
+deemphasis_options_group = parser.add_argument_group(
+    "Deemphasis tuning options (advanced)"
+)
 deemphasis_options_group.add_argument(
     "--NR_deemphasis_low_tau",
     dest="nr_deemphasis_low_tau",
     type=float,
     default=DEFAULT_NR_DEEMPHASIS_TAU_1,
-    help=f"Sets the deemphasis low-pass shelf filter low point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_1})."
+    help=f"Sets the deemphasis low-pass shelf filter low point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_1}).",
 )
 deemphasis_options_group.add_argument(
     "--NR_deemphasis_high_tau",
     dest="nr_deemphasis_high_tau",
     type=float,
     default=DEFAULT_NR_DEEMPHASIS_TAU_2,
-    help=f"Sets the deemphasis low-pass shelf filter high point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_2})."
+    help=f"Sets the deemphasis low-pass shelf filter high point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_2}).",
 )
 deemphasis_options_group.add_argument(
     "--NR_deemphasis_db_per_octave",
     dest="nr_deemphasis_db_per_octave",
     type=float,
     default=DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
-    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (default is {DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE})."
+    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (default is {DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE}).",
 )
+
 
 def test_if_ld_ldf_reader_is_installed():
     shell_command = ["ld-ldf-reader", "--help"]
@@ -401,13 +405,12 @@ def test_if_ld_ldf_reader_is_installed():
             stderr=subprocess.PIPE,
             universal_newlines=False,
         )
-        print(f"Found ld-ldf-reader")
+        print("Found ld-ldf-reader")
         p.communicate()
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print(
-            "WARN: ld-ldf-reader not installed (or not in PATH)"
-        )
+        print("WARN: ld-ldf-reader not installed (or not in PATH)")
+
 
 def test_if_flac_is_installed():
     shell_command = ["flac", "-version"]
@@ -427,10 +430,9 @@ def test_if_flac_is_installed():
         p.communicate()
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print(
-            "WARN: flac not installed (or not in PATH)"
-        )
+        print("WARN: flac not installed (or not in PATH)")
         return False
+
 
 def test_if_ffmpeg_is_installed():
     shell_command = ["ffmpeg", "-version"]
@@ -450,9 +452,7 @@ def test_if_ffmpeg_is_installed():
         p.communicate()
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print(
-            "WARN: ffmpeg not installed (or not in PATH)"
-        )
+        print("WARN: ffmpeg not installed (or not in PATH)")
         return False
 
 
@@ -494,6 +494,7 @@ class BufferedInputStream(io.RawIOBase):
     def seek(self, offset, whence=io.SEEK_SET):
         return self.tell()
 
+
 class LDFFileReader(BufferedInputStream):
     def __init__(self, file_path):
         shell_command = ["ld-ldf-reader", file_path]
@@ -506,9 +507,21 @@ class LDFFileReader(BufferedInputStream):
         self.buffer = p.stdout
         self._pos: int = 0
 
+
 class FlacFileReader(BufferedInputStream):
     def __init__(self, file_path):
-        shell_command = ["flac", "-d", "-c", "-s", "--force-raw-format", "--endian", "little", "--sign", "signed", file_path]
+        shell_command = [
+            "flac",
+            "-d",
+            "-c",
+            "-s",
+            "--force-raw-format",
+            "--endian",
+            "little",
+            "--sign",
+            "signed",
+            file_path,
+        ]
         p = subprocess.Popen(
             shell_command,
             shell=False,
@@ -518,11 +531,26 @@ class FlacFileReader(BufferedInputStream):
         self.buffer = p.stdout
         self._pos: int = 0
 
+
 # executes ffmpeg and reads stdout as a file
 class FFMpegFileReader(BufferedInputStream):
     def __init__(self, file_path):
         # Force ffmpeg to ignore duration metadata and read until actual EOF
-        shell_command = ["ffmpeg", "-hide_banner", "-loglevel error", "-ignore_unknown", "-i", file_path, "-f", "s16le", "-acodec", "pcm_s16le", "-avoid_negative_ts", "disabled", "-"]
+        shell_command = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel error",
+            "-ignore_unknown",
+            "-i",
+            file_path,
+            "-f",
+            "s16le",
+            "-acodec",
+            "pcm_s16le",
+            "-avoid_negative_ts",
+            "disabled",
+            "-",
+        ]
         p = subprocess.Popen(
             shell_command,
             shell=False,
@@ -662,7 +690,9 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
                 subtype="PCM_16",
                 endian="LITTLE",
             )
-        print("WARN: ld-ldf-reader is not installed. LDF file format may not decode correctly")
+        print(
+            "WARN: ld-ldf-reader is not installed. LDF file format may not decode correctly"
+        )
 
         if test_if_flac_is_installed():
             return UnseekableSoundFile(
@@ -715,14 +745,17 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
         print("WARN: Attempting to decode with SoundFile")
         return sf.SoundFile(pathR, "r")
 
+
 def get_normalize_filename(path, sample_rate):
     return f"{path}_{int(sample_rate)}_f32_{NORMALIZE_FILE_SUFFIX}"
+
 
 normalize_parameters = {
     "channels": 2,
     "format": "RAW",  # TODO: update to FLAC 32 bit when supported by soundfile
-    "subtype": "FLOAT"
+    "subtype": "FLOAT",
 }
+
 
 def as_outputfile(path, sample_rate, normalize):
     if normalize:
@@ -730,7 +763,7 @@ def as_outputfile(path, sample_rate, normalize):
             get_normalize_filename(path, sample_rate),
             "w",
             samplerate=int(sample_rate),
-            **normalize_parameters
+            **normalize_parameters,
         )
     elif ".wav" in path.lower():
         return sf.SoundFile(
@@ -797,6 +830,7 @@ def cleanup_process(process):
     atexit.unregister(process.join)
     process.terminate()
     process.join()
+
 
 class PostProcessor:
     def __init__(
@@ -1336,7 +1370,7 @@ class SoundDeviceProcess:
                 try:
                     if stop_requested.value == STOP_IMMEDIATE_REQUESTED:
                         return
-                    
+
                     if conn.poll(1):
                         stereo = conn.recv_bytes()
                         break
@@ -1344,7 +1378,6 @@ class SoundDeviceProcess:
                     pass
                 except EOFError:
                     return
-                
 
             if output_stream == None:
                 output_stream = sd.OutputStream(
@@ -1484,7 +1517,7 @@ async def decode_parallel(
             decoder.initialBlockSize,
             decoder.blockOverlap,
             decoder.initialBlockFinalAudioSize,
-            f"hifi_decoder_{i}"
+            f"hifi_decoder_{i}",
         )
         shared_memory_instances.append(buffer_instance)
         shared_memory_idle_queue.put(buffer_instance.name)
@@ -1566,7 +1599,9 @@ async def decode_parallel(
         with input_position.get_lock():
             input_position.value += frames_read * 2
 
-        is_last_block = frames_read < len(block_in) or exit_requested or stop_requested.value
+        is_last_block = (
+            frames_read < len(block_in) or exit_requested or stop_requested.value
+        )
 
         if block_num == 0:
             # save the read data
@@ -1609,14 +1644,14 @@ async def decode_parallel(
             # save read data (previous overlap + last block data)
             block_in = buffer.get_block()
             new_block_length = (
-                len(previous_overlap) + # previous overlap
-                frames_read + # data read
-                decoder_state.block_overlap # overlap data
+                len(previous_overlap)  # previous overlap
+                + frames_read  # data read
+                + decoder_state.block_overlap  # overlap data
             )
 
             buffer.close()
             block_overlap = decoder_state.block_overlap
-            
+
             # create a new decoder state with the updated offsets
             decoder_state = DecoderState(
                 decoder,
@@ -1631,7 +1666,9 @@ async def decode_parallel(
 
             # duplicate data at the end that will discarded as overlap
             for i in range(block_overlap):
-                src_offset = (len(previous_overlap) - 1) + frames_read - block_overlap + i
+                src_offset = (
+                    (len(previous_overlap) - 1) + frames_read - block_overlap + i
+                )
                 dst_offset = src_offset + block_overlap
 
                 block_in[dst_offset] = block_in[src_offset]
@@ -1756,7 +1793,9 @@ async def decode_parallel(
         )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
         print(f" Adjusting by {(gain_adjust * 100):.2f}%, please wait...")
 
-        input_file_post_gain = get_normalize_filename(output_file, decode_options["audio_rate"])
+        input_file_post_gain = get_normalize_filename(
+            output_file, decode_options["audio_rate"]
+        )
         output_file = decode_options["output_file"]
         audio_rate = decode_options["audio_rate"]
 
@@ -1768,8 +1807,8 @@ async def decode_parallel(
                 input_file_post_gain,
                 "r",
                 samplerate=int(decode_options["audio_rate"]),
-                **normalize_parameters
-            ) as f, as_outputfile(output_file, audio_rate, False) as w:   
+                **normalize_parameters,
+            ) as f, as_outputfile(output_file, audio_rate, False) as w:
                 progressB = TimeProgressBar(f.frames, f.frames)
                 done = False
                 while not done:
@@ -1818,9 +1857,7 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
             loop = asyncio.get_event_loop()
             loop.set_default_executor(async_executor)
             loop.run_until_complete(
-                decode_parallel(
-                    decode_options, threads=args.threads, ui_t=ui_t
-                )
+                decode_parallel(decode_options, threads=args.threads, ui_t=ui_t)
             )
         print("Decode finished successfully")
         return 0
@@ -1918,7 +1955,10 @@ def main() -> int:
         decoder_state = 0
         try:
             while ui_t.window.isVisible():
-                if ui_t.window.transport_state == PLAY_STATE or ui_t.window.transport_state == PREVIEW_STATE:
+                if (
+                    ui_t.window.transport_state == PLAY_STATE
+                    or ui_t.window.transport_state == PREVIEW_STATE
+                ):
                     print("Starting decode...")
                     options = ui_parameters_to_decode_options(ui_t.window.getValues())
                     if ui_t.window.transport_state == PREVIEW_STATE:

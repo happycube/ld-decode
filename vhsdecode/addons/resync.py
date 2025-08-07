@@ -8,7 +8,8 @@ import lddecode.core as ldd
 import math
 import hashlib
 from numba import njit
-from vhsd_rust import fallback_vsync_loc_means as fallback_vsync_loc_means_r
+
+# from vhsd_rust import fallback_vsync_loc_means as fallback_vsync_loc_means_r
 
 
 @njit(cache=True, nogil=True)

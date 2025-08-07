@@ -1000,7 +1000,7 @@ class FieldShared:
             self.linecount = 410 if self.isFirstField else 409
 
     def hz_to_output(self, input):
-        if type(input) == np.ndarray:
+        if type(input) is np.ndarray:
             if self.rf.options.export_raw_tbc:
                 return input.astype(np.single)
             else:
@@ -1217,7 +1217,7 @@ class FieldShared:
                 fallback_is_first_field_confidence,
             ) = self._get_line0_fallback(validpulses)
 
-        if fallback_line0loc == None:
+        if fallback_line0loc is None:
             fallback_line0loc = -1
             fallback_is_first_field = -1
             fallback_is_first_field_confidence = -1
@@ -1248,7 +1248,7 @@ class FieldShared:
         )
 
         # save the current hsync pulse location to the previous hsync pulse
-        if self.first_hsync_loc != None:
+        if self.first_hsync_loc is not None:
             self.rf.prev_first_hsync_readloc = self.readloc
             self.rf.prev_first_hsync_loc = self.first_hsync_loc
             self.rf.prev_first_hsync_diff = prev_hsync_diff
@@ -1788,7 +1788,7 @@ class FieldPALBetamax(FieldPALShared):
         super(FieldPALBetamax, self).__init__(*args, **kwargs)
 
     def try_detect_track(self):
-        test = try_detect_track_betamax_pal(self)
+        _ = try_detect_track_betamax_pal(self)
         return 0, False
 
     def downscale(self, final=False, *args, **kwargs):

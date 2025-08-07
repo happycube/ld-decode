@@ -56,7 +56,8 @@ def main(args=None, use_gui=False):
     format_help = "Tape format - " + " ".join(supported_tape_formats) + "are supported"
 
     parser, debug_group = common_parser(
-        "Extracts video from RAW RF captures of colour-under & composite modulated tapes",
+        "Extracts video from RAW RF captures of colour-under & composite modulated"
+        " tapes",
         use_gui=use_gui,
     )
 
@@ -78,7 +79,11 @@ def main(args=None, use_gui=False):
         metavar="tape_speed",
         default="sp",
         choices=TAPE_SPEEDS.keys(),
-        help="Tape speed selection for adjusting format parameters. SP (default), LP, SLP, EP, and VP. Only supported for some formats. SLP and EP refers to the same speed.",
+        help=(
+            "Tape speed selection for adjusting format parameters. SP (default), LP,"
+            " SLP, EP, and VP. Only supported for some formats. SLP and EP refers to"
+            " the same speed."
+        ),
     )
     parser.add_argument(
         "--params_file",
@@ -96,7 +101,10 @@ def main(args=None, use_gui=False):
         metavar="IRE Multiplier",
         type=float,
         default=0.1,
-        help="Multiply top/bottom IRE in json by 1 +/- this value (used to avoid clipping on RGB conversion in chroma decoder).",
+        help=(
+            "Multiply top/bottom IRE in json by 1 +/- this value (used to avoid"
+            " clipping on RGB conversion in chroma decoder)."
+        ),
     )
     luma_group.add_argument(
         "--ire0_adjust",
@@ -110,7 +118,10 @@ def main(args=None, use_gui=False):
         metavar="High frequency boost multiplier",
         type=float,
         default=None,
-        help="Multiplier for boost to high rf frequencies, uses default if not specified. Subject to change.",
+        help=(
+            "Multiplier for boost to high rf frequencies, uses default if not"
+            " specified. Subject to change."
+        ),
     )
     luma_group.add_argument(
         "--nodd",
@@ -129,7 +140,11 @@ def main(args=None, use_gui=False):
         default=0,
         const=10,
         type=float,
-        help="Enable notch filter on FM audio frequencies to filter out wave-like pattern from interference, mainly useful on VHS. Optional argument to specify Q factor (filter width)",
+        help=(
+            "Enable notch filter on FM audio frequencies to filter out wave-like"
+            " pattern from interference, mainly useful on VHS. Optional argument to"
+            " specify Q factor (filter width)"
+        ),
     )
     if not use_gui:
         luma_group.add_argument(
@@ -154,7 +169,10 @@ def main(args=None, use_gui=False):
         dest="nldeemp",
         action="store_true",
         default=False,
-        help="Enable primitive clipping non-linear deemphasis, can help reduce ringing and oversharpening. (WIP).",
+        help=(
+            "Enable primitive clipping non-linear deemphasis, can help reduce ringing"
+            " and oversharpening. (WIP)."
+        ),
     )
     luma_group.add_argument(
         "--sd",
@@ -182,7 +200,11 @@ def main(args=None, use_gui=False):
         dest="cafc",
         action="store_true",
         default=False,
-        help="Tries to detect the chroma carrier frequency on a field basis within some limit instead of using the default one for the format. Mainly useful for debug purposes and used on PAL betamax. implies --recheck_phase",
+        help=(
+            "Tries to detect the chroma carrier frequency on a field basis within some"
+            " limit instead of using the default one for the format. Mainly useful for"
+            " debug purposes and used on PAL betamax. implies --recheck_phase"
+        ),
     )
     chroma_group.add_argument(
         "-T",
@@ -211,14 +233,20 @@ def main(args=None, use_gui=False):
         dest="skip_chroma",
         action="store_true",
         default=False,
-        help="Don't output chroma even for formats that may have it and possibly skip some of the chroma processing.",
+        help=(
+            "Don't output chroma even for formats that may have it and possibly skip"
+            " some of the chroma processing."
+        ),
     )
     plot_options = "demodblock, deemphasis, raw_pulses, line_locs"
     debug_group.add_argument(
         "--dp",
         "--debug_plot",
         dest="debug_plot",
-        help="Do a plot for the requested data, separated by whitespace. Current options are: "
+        help=(
+            "Do a plot for the requested data, separated by whitespace. Current options"
+            " are: "
+        )
         + plot_options
         + ".",
     )
@@ -236,7 +264,10 @@ def main(args=None, use_gui=False):
         metavar="value",
         type=int,
         default=3,
-        help="Use only every nth sample for vsync serration code - may improve speed at cost of minor accuracy. Limited to max 10.",
+        help=(
+            "Use only every nth sample for vsync serration code - may improve speed at"
+            " cost of minor accuracy. Limited to max 10."
+        ),
     )
     debug_group.add_argument(
         "--no_resample",
@@ -250,14 +281,21 @@ def main(args=None, use_gui=False):
         dest="fallback_vsync",
         action="store_true",
         default=False,
-        help="Enable vsync detect fallback. Will be enabled by default once more tested, so expect this option to change. Always enabled when using TypeC tape format",
+        help=(
+            "Enable vsync detect fallback. Will be enabled by default once more tested,"
+            " so expect this option to change. Always enabled when using TypeC tape"
+            " format"
+        ),
     )
     debug_group.add_argument(
         "--use_saved_levels",
         dest="saved_levels",
         action="store_true",
         default=False,
-        help="Try re-using video levels detected from the first decoded fields instead of re-calculating each frame. Will be done by default once well tested",
+        help=(
+            "Try re-using video levels detected from the first decoded fields instead"
+            " of re-calculating each frame. Will be done by default once well tested"
+        ),
     )
     debug_group.add_argument(
         "--export_raw_tbc",
@@ -282,7 +320,10 @@ def main(args=None, use_gui=False):
         metavar="value",
         type=float,
         default=None,
-        help="RF level fraction threshold for dropouts as percentage of average (in decimal).",
+        help=(
+            "RF level fraction threshold for dropouts as percentage of average (in"
+            " decimal)."
+        ),
     )
     dodgroup.add_argument(
         "--dod_t_abs",
@@ -291,7 +332,10 @@ def main(args=None, use_gui=False):
         metavar="value",
         type=float,
         default=None,
-        help="RF level threshold absolute value. Note that RF levels vary greatly between tapes and recording setups.",
+        help=(
+            "RF level threshold absolute value. Note that RF levels vary greatly"
+            " between tapes and recording setups."
+        ),
     )
     dodgroup.add_argument(
         "--dod_h",
@@ -300,7 +344,10 @@ def main(args=None, use_gui=False):
         metavar="value",
         type=float,
         default=f.DEFAULT_HYSTERESIS,
-        help="Dropout detection hysteresis, the rf level needs to go above the dropout threshold multiplied by this for a dropout to end.",
+        help=(
+            "Dropout detection hysteresis, the rf level needs to go above the dropout"
+            " threshold multiplied by this for a dropout to end."
+        ),
     )
     dodgroup.add_argument(
         "--gnrc",
@@ -308,7 +355,10 @@ def main(args=None, use_gui=False):
         dest="gnrc_afe",
         action="store_true",
         default=False,
-        help="Open a ZMQ pipe back and forth to GNU Radio for RF AFE/EQ/Group delay measurements. (WIP)\nYou might want to use this with -t 1",
+        help=(
+            "Open a ZMQ pipe back and forth to GNU Radio for RF AFE/EQ/Group delay"
+            " measurements. (WIP)\nYou might want to use this with -t 1"
+        ),
     )
 
     args = parser.parse_args(args)
@@ -340,7 +390,8 @@ def main(args=None, use_gui=False):
 
         if conflicts:
             print(
-                "Existing decode files found, remove them or run command with --overwrite"
+                "Existing decode files found, remove them or run command with"
+                " --overwrite"
             )
             for conflict in conflicts:
                 print("\t", conflict)
@@ -438,7 +489,9 @@ def main(args=None, use_gui=False):
     )
 
     if check_debug():
-        logger.warning("Rust modules are compiled in debug mode! vhs-decode will run slower.")
+        logger.warning(
+            "Rust modules are compiled in debug mode! vhs-decode will run slower."
+        )
 
     signal.signal(signal.SIGINT, original_sigint_handler)
 
@@ -486,9 +539,9 @@ def main(args=None, use_gui=False):
             jsondumper.write()
 
     if vhsd.fields_written:
-        print(f"\nCompleted: saving JSON and exiting.", file=sys.stderr)
+        print("\nCompleted: saving JSON and exiting.", file=sys.stderr)
     else:
-        print(f"\nCompleted without handling any frames.", file=sys.stderr)
+        print("\nCompleted without handling any frames.", file=sys.stderr)
 
     cleanup()
     sys.exit(0)
