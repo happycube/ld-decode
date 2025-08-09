@@ -16,6 +16,7 @@ jobs:
       CIBW_ARCHS_LINUX: "x86_64"
       CIBW_ARCHS_WINDOWS: "AMD64"
       CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
+      CIBW_ENVIRONMENT_LINUX: "PATH=$HOME/.cargo/bin:$PATH"
 
     steps:
       - uses: actions/checkout@v4
