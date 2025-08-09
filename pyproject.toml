@@ -54,3 +54,7 @@ vhs_decode = ["*.txt"]
 [[tool.setuptools-rust.ext-modules]]
 # Private Rust extension module to be nested into the Python package
 target = "vhsd_rust"
+
+# Needed to prevent building for older macos versions not supported by rust - see https://cibuildwheel.pypa.io/en/stable/faq/#building-rust-wheels
+[tool.cibuildwheel.macos.environment]
+MACOSX_DEPLOYMENT_TARGET = "10.12"
