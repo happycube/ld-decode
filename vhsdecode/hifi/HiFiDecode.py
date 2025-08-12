@@ -385,6 +385,7 @@ class FMdemod:
         two_pi: numba.types.Literal = 2 * pi
         diff_divisor = two_pi * (1 / sample_rate)
         order = len(filter_b) - 1
+        iq_osc_len = len(i_osc)
 
         #
         # low pass filter history
@@ -401,8 +402,8 @@ class FMdemod:
             #
             # mix in i/q
             #
-            i_in = in_rf[i] * i_osc[i]
-            q_in = in_rf[i] * q_osc[i]
+            i_in = in_rf[i] * i_osc[i % iq_osc_len]
+            q_in = in_rf[i] * q_osc[i % iq_osc_len]
 
             #
             # low pass filter
@@ -1319,8 +1320,8 @@ class HiFiDecode:
         demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
 
         if self.is_main_process:
-            iq_size = self._initial_block_size * 2
-            shared_memory_size = iq_size * demod_dtype_itemsize
+            iq_l_size = int(round(self.if_rate / self.standard.LCarrierRef)) * demod_dtype_itemsize
+            iq_r_size = int(round(self.if_rate / self.standard.RCarrierRef)) * demod_dtype_itemsize
 
             random_string = "_" + "".join(
                 SystemRandom().choice(string.ascii_lowercase + string.digits)
@@ -1329,22 +1330,22 @@ class HiFiDecode:
 
             # store in shared memory so the static data can be reused among processes
             self.i_osc_left_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_l_size,
                 name=f"hifi_decoder_i_left{random_string}",
                 create=True,
             )
             self.q_osc_left_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_l_size,
                 name=f"hifi_decoder_q_left{random_string}",
                 create=True,
             )
             self.i_osc_right_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_r_size,
                 name=f"hifi_decoder_i_right{random_string}",
                 create=True,
             )
             self.q_osc_right_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_r_size,
                 name=f"hifi_decoder_q_right{random_string}",
                 create=True,
             )
@@ -1390,15 +1391,17 @@ class HiFiDecode:
     ):
         two_pi_left = 2 * pi * carrier_left
         two_pi_right = 2 * pi * carrier_right
-        size = len(i_left)
 
-        for i in range(size):
+        for i in range(len(i_left)):
             t = i / sample_rate
-
             i_left[i] = cos(two_pi_left * t)  #    In-phase
             q_left[i] = -sin(
                 two_pi_left * t
             )  #   Quadrature (negative sign for proper rotation)
+
+        for i in range(len(i_right)):
+            t = i / sample_rate
+            
             i_right[i] = cos(two_pi_right * t)  #  In-phase
             q_right[i] = -sin(
                 two_pi_right * t
