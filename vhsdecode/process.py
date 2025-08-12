@@ -3,6 +3,7 @@ import time
 import numpy as np
 import traceback
 import scipy.signal as sps
+import threading
 from collections import namedtuple
 
 import lddecode.core as ldd
@@ -216,20 +217,17 @@ class VHSDecode(ldd.LDdecode):
         if prevfi is not None:
             if prevfi["isFirstField"] == fi["isFirstField"]:
                 # logger.info('WARNING!  isFirstField stuck between fields')
-                if lddu.inrange(fi["diskLoc"] - prevfi["diskLoc"], 0.95, 1.05):
-                    decodeFaults |= 1
-                    fi["isFirstField"] = not prevfi["isFirstField"]
-                    fi["syncConf"] = 10
-                else:
-                    # TODO: Do we want to handle this differently?
-                    # Also check if this is done properly by calling function
-                    # Not sure if it is at the moment..
-                    ldd.logger.error(
-                        "Possibly skipped field (Two fields with same isFirstField in a row), writing out an copy of last field to compensate.."
-                    )
-                    decodeFaults |= 4
-                    fi["syncConf"] = 0
-                    return fi, True
+                # TODO: Do we want to handle this differently?
+                # Also check if this is done properly by calling function
+                # Not sure if it is at the moment..
+                # ld-chroma-decoder and export tools require alternating fields
+                # sync logic before this handles the correctness of the isFirstField flag, and it should be trusted here
+                ldd.logger.error(
+                    "Possibly skipped field (Two fields with same isFirstField in a row), writing out an copy of last field to compensate.."
+                )
+                decodeFaults |= 4
+                fi["syncConf"] = 0
+                return fi, True
 
         fi["decodeFaults"] = decodeFaults
         fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
@@ -382,12 +380,12 @@ class VHSDecode(ldd.LDdecode):
                 self.threadreturn,
             )
 
-            # THis doesn't actually seem to do anything in the background so disable for now.
-            # if self.numthreads != 0:
-            #    self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-            #    self.decodethread.start()
-            # else:
-            self.decodefield(*df_args)
+            # decode the next field in a thread so the result is ready for the next iteration
+            if self.numthreads != 0:
+                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+                self.decodethread.start()
+            else:
+                self.decodefield(*df_args)
 
             # process previous run
             if f:
@@ -607,6 +605,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "disable_right_hsync",
                 "disable_dc_offset",
                 "fallback_vsync",
+                "field_order_confidence",
                 "saved_levels",
                 "y_comb",
                 "write_chroma",
@@ -638,6 +637,7 @@ class VHSRFDecode(ldd.RFDecode):
             or tape_format == "EIAJ"
             or system == "405"
             or system == "819",
+            rf_options.get("field_order_confidence", False),
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,

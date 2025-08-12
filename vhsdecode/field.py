@@ -1242,6 +1242,7 @@ class FieldShared:
             prev_first_hsync_offset_lines,
             self.rf.prev_first_hsync_loc,
             self.rf.prev_first_hsync_diff,
+            self.rf.options.field_order_confidence,
             fallback_line0loc,
             fallback_is_first_field,
             fallback_is_first_field_confidence,

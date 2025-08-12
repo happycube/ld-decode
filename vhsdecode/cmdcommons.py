@@ -141,7 +141,7 @@ def common_parser_gui(meta_title):
 
 
 def common_parser_cli(meta_title, default_threads=DEFAULT_THREADS + 1):
-    parser = argparse.ArgumentParser(description=meta_title)
+    parser = argparse.ArgumentParser(description=meta_title, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(
         "infile",
         metavar="infile",

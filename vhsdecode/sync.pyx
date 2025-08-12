@@ -242,6 +242,7 @@ def get_first_hsync_loc(
     double last_field_offset_lines,
     double prev_first_hsync_loc,
     double prev_hsync_diff,
+    int field_order_confidence,
     double fallback_line0loc,
     int fallback_is_first_field,
     int fallback_is_first_field_confidence,
@@ -380,21 +381,31 @@ def get_first_hsync_loc(
             first_field = True
         else:
             first_field = False
-    # default to the inverse of the previous field
+    # continue a previously established field order cadence, i.e. inverse of the previous field
     else:
         first_field = not prev_first_field
     
-    # override previous first field, if consensus is sure about field order
-    if (
-        # if fallback vsync is enabled or we are previously synced, need a full field consensus to overide field order
-        field_boundaries_detected == field_order_lengths_len or
+    # Override field cadence depending on confidence of field order detection
+    # * Confidence depends on the proportion of `first_field = True` (y/n)
+    # * Confidence is weighted by number of measurements (field_boundaries_detected / )
+    # * Confidence is bounded between 0 and 100%
+    # * If field_boundaries_detected = 0, confidence is undefined and we use the previously defined `first_field`
 
-        # otherwise, need more than half a consensus
-        (fallback_line0loc == -1 and prev_first_hsync_loc < 0 and field_boundaries_detected >= field_order_lengths_len / 2.0)
-    ):
-        if field_boundaries_consensus / field_boundaries_detected == 1:
+    cdef int first_field_confidence = 0
+    cdef int second_field_confidence = 0
+    cdef double field_order_weighting = field_boundaries_detected / field_order_lengths_len
+    if field_boundaries_detected > 0:
+        # when the fallback vsync is disabled, and there is no previous hsync location, lower min confidence to 50
+        if (fallback_line0loc == -1 and prev_first_hsync_loc < 0):
+            field_order_confidence = 50 if field_order_confidence > 50 else field_order_confidence
+
+        first_field_confidence = round_to_int((field_boundaries_consensus / field_boundaries_detected) * field_order_weighting * 100)
+        second_field_confidence = round_to_int(((field_boundaries_detected - field_boundaries_consensus) / field_boundaries_detected) * field_order_weighting * 100)
+
+        # when first field and second field confidence are the same, don't change anything
+        if first_field_confidence >= field_order_confidence and first_field_confidence > second_field_confidence:
             first_field = True
-        elif field_boundaries_consensus / field_boundaries_detected == 0:
+        elif second_field_confidence >= field_order_confidence and first_field_confidence < second_field_confidence:
             first_field = False
 
     # overrides previous first field, if fallback has high confidence
@@ -719,10 +730,13 @@ def get_first_hsync_loc(
         ## field order
         #print(
         #    "prev first field:", prev_first_field, 
+        #    "curr first field:", 1 if first_field else 0,
         #    "field boundry consensus:", field_boundaries_consensus,
         #    "field boundries detected:", field_boundaries_detected, 
+        #    "field boundries detected:", field_boundaries_detected, 
         #    [x for x in field_order_lengths[:field_order_lengths_len]],
-        #    "curr first field:", first_field
+        #    "first field confidence:", first_field_confidence,
+        #    "second field confidence:", second_field_confidence,
         #)
         #
         ## vsync pulses
