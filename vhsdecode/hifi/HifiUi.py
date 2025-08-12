@@ -1184,15 +1184,12 @@ class DialControl(QWidget):
 
 
 class CollapsableSection(QVBoxLayout):
-    def __init__(self, main_window, label_text, default_collapsed=False):
+    def __init__(self, main_window, label_text, default_collapsed=False, bg_color = "#333"):
         super(CollapsableSection, self).__init__()
 
         self.main_window = main_window
         self.main_window.collapsableSections.append(self)
         self.default_collapsed = default_collapsed
-
-        # Get the main widget background color from palette
-        bg_color = self.main_window.palette().color(QPalette.ColorRole.Window).name()
 
         # Create toggle button
         self.collapsed_arrow = QLabel()
