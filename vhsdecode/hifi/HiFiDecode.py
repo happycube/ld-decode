@@ -244,41 +244,58 @@ class FMdemod:
         self.i_osc = i_osc
         self.q_osc = q_osc
 
-    # Identical copy of the numba version without numba tag for fallback
-    # since rocket-fft release doesn't work on python 3.13 yet
-    # This isn't an ideal workaround, but works for now until
-    # we can replace rocket-fft with something better.
     @staticmethod
-    def demod_hilbert_python(sample_rate, deviation, input, output):
-        # hilbert transform adapted from signal.hilbert
-        # uses rocket-fft for to allow numba compatibility with fft and ifft
-        two_pi = 2 * pi
-
+    def compute_analytic_signal(input):
         axis = -1
         N = input.shape[axis]
         h = np.zeros(N, dtype=np.complex64)
         h[0] = h[N // 2] = 1
         h[1 : N // 2] = 2
 
-        analytic_signal = 0
-        analytic_signal_prev = 0
+        i = 0
+        for hilbert_value in np.fft.ifft(
+            np.fft.fft(input, N, axis=axis) * h, axis=axis
+        ):
+            input[i] = atan2(hilbert_value.imag, hilbert_value.real)  # np.angle(analytic_signal)
+            i+=1
+
+    @staticmethod
+    @njit(
+        [
+            (numba.types.float32, numba.types.int32, NumbaAudioArray, NumbaAudioArray),
+            (
+                numba.types.float32,
+                numba.types.int32,
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+                NumbaAudioArray,
+            ),
+            (
+                numba.types.float32,
+                numba.types.int32,
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "A"),
+                NumbaAudioArray,
+            ),
+        ],
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def demod_hilbert(sample_rate, deviation, analytic_signal, output):
+        two_pi = 2 * pi
+        analytic_signal_value = 0
+        analytic_signal_value_prev = 0
         discont = pi
         ph_correct = 0
         ph_correct_prev = 0
 
         i = 1
         instantaneous_frequency_len = len(output)
-        for hilbert_value in np.fft.ifft(
-            np.fft.fft(input, N, axis=axis) * h, axis=axis
-        ):
+        for analytic_signal_value in analytic_signal:
             if i >= instantaneous_frequency_len:
                 break
 
-            analytic_signal = atan2(
-                hilbert_value.imag, hilbert_value.real
-            )  #                                           np.angle(analytic_signal)
-            dd = analytic_signal - analytic_signal_prev
-            analytic_signal_prev = analytic_signal  #      dd = np.diff(p)
+            dd = analytic_signal_value - analytic_signal_value_prev
+            analytic_signal_value_prev = analytic_signal_value  #      dd = np.diff(p)
 
             # FMdemod.unwrap
             ddmod = (
@@ -442,7 +459,8 @@ class FMdemod:
 
     def work(self, input: np.array, output: np.array):
         if self.type == DEMOD_HILBERT:
-            FMdemod.demod_hilbert_python(
+            FMdemod.compute_analytic_signal(input)
+            FMdemod.demod_hilbert(
                 np.float32(self.samp_rate), self.deviation, input, output
             )
         elif self.type == DEMOD_QUADRATURE:
