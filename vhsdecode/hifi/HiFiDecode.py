@@ -43,16 +43,8 @@ from vhsdecode.utils import firdes_lowpass, firdes_highpass, StackableMA
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 from vhsdecode.hifi.utils import DecoderSharedMemory, NumbaAudioArray
 
-ROCKET_FFT_AVAILABLE = False
-try:
-    from rocket_fft import c2c
-
-    ROCKET_FFT_AVAILABLE = True
-except ImportError:
-    print("rocket fft not available")
-    pass
-
 import matplotlib.pyplot as plt
+
 
 # lower increases expander strength and decreases overall gain
 DEFAULT_NR_EXPANDER_GAIN = 22
@@ -319,86 +311,6 @@ class FMdemod:
     @staticmethod
     @njit(
         [
-            (numba.types.float32, numba.types.int32, NumbaAudioArray, NumbaAudioArray),
-            (
-                numba.types.float32,
-                numba.types.int32,
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                NumbaAudioArray,
-            ),
-            (
-                numba.types.float32,
-                numba.types.int32,
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "A"),
-                NumbaAudioArray,
-            ),
-        ],
-        cache=True,
-        fastmath=True,
-        nogil=True,
-    )
-    def demod_hilbert_numba(sample_rate, deviation, input, output):
-        # hilbert transform adapted from signal.hilbert
-        # uses rocket-fft for to allow numba compatibility with fft and ifft
-        two_pi = 2 * pi
-
-        axis = -1
-        N = input.shape[axis]
-        h = np.zeros(N, dtype=np.complex64)
-        h[0] = h[N // 2] = 1
-        h[1 : N // 2] = 2
-
-        analytic_signal = 0
-        analytic_signal_prev = 0
-        discont = pi
-        ph_correct = 0
-        ph_correct_prev = 0
-
-        i = 1
-        instantaneous_frequency_len = len(output)
-        for hilbert_value in np.fft.ifft(
-            np.fft.fft(input, N, axis=axis) * h, axis=axis
-        ):
-            if i >= instantaneous_frequency_len:
-                break
-
-            analytic_signal = atan2(
-                hilbert_value.imag, hilbert_value.real
-            )  #                                           np.angle(analytic_signal)
-            dd = analytic_signal - analytic_signal_prev
-            analytic_signal_prev = analytic_signal  #      dd = np.diff(p)
-
-            # FMdemod.unwrap
-            ddmod = (
-                (dd + pi) % two_pi
-            ) - pi  #           ddmod = np.mod(dd + pi, 2 * pi) - pi
-            if (
-                ddmod == -pi and dd > 0
-            ):  #                 to_pi_locations = np.where(np.logical_and(ddmod == -pi, dd > 0))
-                ddmod = pi  #                              ddmod[to_pi_locations] = pi
-            ph_correct = ddmod - dd  #                     ph_correct = ddmod - dd
-            if (
-                -dd if dd < 0 else dd
-            ) < discont:  #       to_zero_locations = np.where(np.abs(dd) < discont)
-                ph_correct = (
-                    0  #                          ph_correct[to_zero_locations] = 0
-                )
-
-            ph_correct = (
-                ph_correct_prev + ph_correct
-            )  #    p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
-
-            # FMdemod.unwrap_hilbert
-            output[i - 1] = (
-                (ph_correct - ph_correct_prev) / two_pi * sample_rate / deviation
-            )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
-
-            ph_correct_prev = ph_correct
-            i += 1
-
-    @staticmethod
-    @njit(
-        [
             (
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
                 NumbaAudioArray,
@@ -530,14 +442,9 @@ class FMdemod:
 
     def work(self, input: np.array, output: np.array):
         if self.type == DEMOD_HILBERT:
-            if ROCKET_FFT_AVAILABLE:
-                FMdemod.demod_hilbert_numba(
-                    np.float32(self.samp_rate), self.deviation, input, output
-                )
-            else:
-                FMdemod.demod_hilbert_python(
-                    np.float32(self.samp_rate), self.deviation, input, output
-                )
+            FMdemod.demod_hilbert_python(
+                np.float32(self.samp_rate), self.deviation, input, output
+            )
         elif self.type == DEMOD_QUADRATURE:
             FMdemod.demod_quadrature(
                 input,
