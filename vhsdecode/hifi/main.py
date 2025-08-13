@@ -680,68 +680,83 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             "r",
         )
     elif "ldf" == extension:
-        if test_if_ld_ldf_reader_is_installed():
-            return UnseekableSoundFile(
-                LDFFileReader(pathR),
-                "r",
-                channels=1,
-                samplerate=int(sample_rate),
-                format="RAW",
-                subtype="PCM_16",
-                endian="LITTLE",
+        try:
+            if test_if_ld_ldf_reader_is_installed():
+                return UnseekableSoundFile(
+                    LDFFileReader(pathR),
+                    "r",
+                    channels=1,
+                    samplerate=int(sample_rate),
+                    format="RAW",
+                    subtype="PCM_16",
+                    endian="LITTLE",
+                )
+            print(
+                "WARN: ld-ldf-reader is not installed. LDF file format may not decode correctly"
             )
-        print(
-            "WARN: ld-ldf-reader is not installed. LDF file format may not decode correctly"
-        )
+        except e:
+            print(
+                "WARN: Unexpected error opening ld-ldf-reader, LDF file format may not decode correctly", e
+            )
+        
+        try:    
+            if test_if_flac_is_installed():
+                return UnseekableSoundFile(
+                    FlacFileReader(pathR),
+                    "r",
+                    channels=1,
+                    samplerate=int(sample_rate),
+                    format="RAW",
+                    subtype="PCM_16",
+                    endian="LITTLE",
+                )
+            if test_if_ffmpeg_is_installed():
+                return UnseekableSoundFile(
+                    FFMpegFileReader(pathR),
+                    "r",
+                    channels=1,
+                    samplerate=int(sample_rate),
+                    format="RAW",
+                    subtype="PCM_16",
+                    endian="LITTLE",
+                )
+        except:
+            pass
 
-        if test_if_flac_is_installed():
-            return UnseekableSoundFile(
-                FlacFileReader(pathR),
-                "r",
-                channels=1,
-                samplerate=int(sample_rate),
-                format="RAW",
-                subtype="PCM_16",
-                endian="LITTLE",
-            )
-        elif test_if_ffmpeg_is_installed():
-            return UnseekableSoundFile(
-                FFMpegFileReader(pathR),
-                "r",
-                channels=1,
-                samplerate=int(sample_rate),
-                format="RAW",
-                subtype="PCM_16",
-                endian="LITTLE",
-            )
-        else:
-            return sf.SoundFile(
-                pathR,
-                "r",
-            )
-    elif "-" == path:
-        return UnseekableSoundFile(
-            BufferedInputStream(sys.stdin.buffer),
+        return sf.SoundFile(
+            pathR,
             "r",
-            channels=1,
-            samplerate=int(sample_rate),
-            format="RAW",
-            subtype="PCM_16",
-            endian="LITTLE",
         )
+    elif "-" == path:
+        try:
+            return UnseekableSoundFile(
+                BufferedInputStream(sys.stdin.buffer),
+                "r",
+                channels=1,
+                samplerate=int(sample_rate),
+                format="RAW",
+                subtype="PCM_16",
+                endian="LITTLE",
+            )
+        except e:
+            print("Failed to open standard in, unable to decode")
+            raise e
     else:
         print("WARN: Unknown file format.")
         print("WARN: Attempting to decode with ffmpeg")
-        if test_if_ffmpeg_is_installed():
-            return UnseekableSoundFile(
-                FFMpegFileReader(pathR),
-                "r",
-                channels=1,
-                samplerate=int(sample_rate),
-                format="RAW",
-                subtype="PCM_16",
-                endian="LITTLE",
-            )
+        try:
+            if test_if_ffmpeg_is_installed():
+                return UnseekableSoundFile(
+                    FFMpegFileReader(pathR),
+                    "r",
+                    channels=1,
+                    samplerate=int(sample_rate),
+                    format="RAW",
+                    subtype="PCM_16",
+                    endian="LITTLE",
+                )
+        except:
+            pass
         print("WARN: Attempting to decode with SoundFile")
         return sf.SoundFile(pathR, "r")
 
