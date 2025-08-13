@@ -694,7 +694,7 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             print(
                 "WARN: ld-ldf-reader is not installed. LDF file format may not decode correctly"
             )
-        except e:
+        except Exception as e:
             print(
                 "WARN: Unexpected error opening ld-ldf-reader, LDF file format may not decode correctly", e
             )
@@ -720,7 +720,7 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
                     subtype="PCM_16",
                     endian="LITTLE",
                 )
-        except:
+        except Exception as e:
             pass
 
         return sf.SoundFile(
@@ -738,7 +738,7 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
                 subtype="PCM_16",
                 endian="LITTLE",
             )
-        except e:
+        except Exception as e:
             print("Failed to open standard in, unable to decode")
             raise e
     else:
@@ -755,7 +755,7 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
                     subtype="PCM_16",
                     endian="LITTLE",
                 )
-        except:
+        except Exception:
             pass
         print("WARN: Attempting to decode with SoundFile")
         return sf.SoundFile(pathR, "r")
