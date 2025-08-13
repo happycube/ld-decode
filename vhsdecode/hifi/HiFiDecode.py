@@ -244,41 +244,58 @@ class FMdemod:
         self.i_osc = i_osc
         self.q_osc = q_osc
 
-    # Identical copy of the numba version without numba tag for fallback
-    # since rocket-fft release doesn't work on python 3.13 yet
-    # This isn't an ideal workaround, but works for now until
-    # we can replace rocket-fft with something better.
     @staticmethod
-    def demod_hilbert_python(sample_rate, deviation, input, output):
-        # hilbert transform adapted from signal.hilbert
-        # uses rocket-fft for to allow numba compatibility with fft and ifft
-        two_pi = 2 * pi
-
+    def compute_analytic_signal(input):
         axis = -1
         N = input.shape[axis]
         h = np.zeros(N, dtype=np.complex64)
         h[0] = h[N // 2] = 1
         h[1 : N // 2] = 2
 
-        analytic_signal = 0
-        analytic_signal_prev = 0
+        i = 0
+        for hilbert_value in np.fft.ifft(
+            np.fft.fft(input, N, axis=axis) * h, axis=axis
+        ):
+            input[i] = atan2(hilbert_value.imag, hilbert_value.real)  # np.angle(analytic_signal)
+            i+=1
+
+    @staticmethod
+    @njit(
+        [
+            (numba.types.float32, numba.types.int32, NumbaAudioArray, NumbaAudioArray),
+            (
+                numba.types.float32,
+                numba.types.int32,
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+                NumbaAudioArray,
+            ),
+            (
+                numba.types.float32,
+                numba.types.int32,
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "A"),
+                NumbaAudioArray,
+            ),
+        ],
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def demod_hilbert(sample_rate, deviation, analytic_signal, output):
+        two_pi = 2 * pi
+        analytic_signal_value = 0
+        analytic_signal_value_prev = 0
         discont = pi
         ph_correct = 0
         ph_correct_prev = 0
 
         i = 1
         instantaneous_frequency_len = len(output)
-        for hilbert_value in np.fft.ifft(
-            np.fft.fft(input, N, axis=axis) * h, axis=axis
-        ):
+        for analytic_signal_value in analytic_signal:
             if i >= instantaneous_frequency_len:
                 break
 
-            analytic_signal = atan2(
-                hilbert_value.imag, hilbert_value.real
-            )  #                                           np.angle(analytic_signal)
-            dd = analytic_signal - analytic_signal_prev
-            analytic_signal_prev = analytic_signal  #      dd = np.diff(p)
+            dd = analytic_signal_value - analytic_signal_value_prev
+            analytic_signal_value_prev = analytic_signal_value  #      dd = np.diff(p)
 
             # FMdemod.unwrap
             ddmod = (
@@ -368,6 +385,7 @@ class FMdemod:
         two_pi: numba.types.Literal = 2 * pi
         diff_divisor = two_pi * (1 / sample_rate)
         order = len(filter_b) - 1
+        iq_osc_len = len(i_osc)
 
         #
         # low pass filter history
@@ -384,8 +402,8 @@ class FMdemod:
             #
             # mix in i/q
             #
-            i_in = in_rf[i] * i_osc[i]
-            q_in = in_rf[i] * q_osc[i]
+            i_in = in_rf[i] * i_osc[i % iq_osc_len]
+            q_in = in_rf[i] * q_osc[i % iq_osc_len]
 
             #
             # low pass filter
@@ -442,7 +460,8 @@ class FMdemod:
 
     def work(self, input: np.array, output: np.array):
         if self.type == DEMOD_HILBERT:
-            FMdemod.demod_hilbert_python(
+            FMdemod.compute_analytic_signal(input)
+            FMdemod.demod_hilbert(
                 np.float32(self.samp_rate), self.deviation, input, output
             )
         elif self.type == DEMOD_QUADRATURE:
@@ -1301,8 +1320,8 @@ class HiFiDecode:
         demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
 
         if self.is_main_process:
-            iq_size = self._initial_block_size * 2
-            shared_memory_size = iq_size * demod_dtype_itemsize
+            iq_l_size = int(round(self.if_rate / self.standard.LCarrierRef)) * demod_dtype_itemsize
+            iq_r_size = int(round(self.if_rate / self.standard.RCarrierRef)) * demod_dtype_itemsize
 
             random_string = "_" + "".join(
                 SystemRandom().choice(string.ascii_lowercase + string.digits)
@@ -1311,22 +1330,22 @@ class HiFiDecode:
 
             # store in shared memory so the static data can be reused among processes
             self.i_osc_left_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_l_size,
                 name=f"hifi_decoder_i_left{random_string}",
                 create=True,
             )
             self.q_osc_left_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_l_size,
                 name=f"hifi_decoder_q_left{random_string}",
                 create=True,
             )
             self.i_osc_right_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_r_size,
                 name=f"hifi_decoder_i_right{random_string}",
                 create=True,
             )
             self.q_osc_right_shm = SharedMemory(
-                size=shared_memory_size,
+                size=iq_r_size,
                 name=f"hifi_decoder_q_right{random_string}",
                 create=True,
             )
@@ -1372,15 +1391,17 @@ class HiFiDecode:
     ):
         two_pi_left = 2 * pi * carrier_left
         two_pi_right = 2 * pi * carrier_right
-        size = len(i_left)
 
-        for i in range(size):
+        for i in range(len(i_left)):
             t = i / sample_rate
-
             i_left[i] = cos(two_pi_left * t)  #    In-phase
             q_left[i] = -sin(
                 two_pi_left * t
             )  #   Quadrature (negative sign for proper rotation)
+
+        for i in range(len(i_right)):
+            t = i / sample_rate
+            
             i_right[i] = cos(two_pi_right * t)  #  In-phase
             q_right[i] = -sin(
                 two_pi_right * t

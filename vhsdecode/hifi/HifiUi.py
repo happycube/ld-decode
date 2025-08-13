@@ -355,7 +355,6 @@ class HifiUi(QMainWindow):
         self.resize_window()
         # sets default window icon
         self.setWindowIcon(QIcon.fromTheme("document-open"))
-        self.center_on_screen()
         self.setValues(params)
 
         # update this at the end so the window width is calculated with everything expanded
@@ -753,19 +752,6 @@ class HifiUi(QMainWindow):
         else:
             raise ValueError("Invalid transport state value")
         self._transport_state = value
-
-    def center_on_screen(self):
-        # Get the screen geometry
-        screen_geometry = self.screen().availableGeometry()
-
-        # Calculate the center of the screen
-        screen_center = screen_geometry.center()
-
-        # Set the window position to the center of the screen
-        self.move(
-            int(screen_center.x() - self.width() / 2),
-            int((screen_center.y() - self.height()) * 3 / 4),
-        )
 
     def setValues(self, values: MainUIParameters):
         self.volume_dial_control.setValue(values.volume)
@@ -1184,15 +1170,12 @@ class DialControl(QWidget):
 
 
 class CollapsableSection(QVBoxLayout):
-    def __init__(self, main_window, label_text, default_collapsed=False):
+    def __init__(self, main_window, label_text, default_collapsed=False, bg_color = "#333"):
         super(CollapsableSection, self).__init__()
 
         self.main_window = main_window
         self.main_window.collapsableSections.append(self)
         self.default_collapsed = default_collapsed
-
-        # Get the main widget background color from palette
-        bg_color = self.main_window.palette().color(QPalette.ColorRole.Window).name()
 
         # Create toggle button
         self.collapsed_arrow = QLabel()

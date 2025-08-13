@@ -310,7 +310,7 @@ Decoders & TBC Video Export has a mainly self-contained binary appimage package 
 
 
 <details closed>
-<summary>Direct installation of the development release on Linux (Ubuntu/Debian-based)</summary>
+<summary>Build from Source Linux (Ubuntu/Debian-based)</summary>
 <br>
 
 
@@ -433,6 +433,35 @@ Use <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop the current process.
 
 You don't actually type `<` and `>` on your input & output files.
 
+
+</details>
+
+
+<details closed>
+<summary>Build from Source Windows</summary>
+<br>
+
+1. Install Python 3.13
+   * Download the [python installer](https://www.python.org/downloads/)
+   * **Make sure to check the box requesting Python be added to the PATH**
+1. Install Visual Studio Build Tools for 
+   * Download the [Visual Studio Installer](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   * In the installer, select `Visual Studio Build Tools 2022`
+     * If there are multiple versions, select the latest year
+   * Click on the `Desktop Development with C++` and a list of default components will be selected
+   * Click `Install` to install them
+1. Install Rust
+   * Download the [Rust installer](https://www.rust-lang.org/tools/install) follow the wizard to install Rust
+1. Install extra python dependencies
+   * Open a terminal. If python installed successfully, `pip` should be an executable in your PATH.
+   * `pip install samplerate --prefer-binary`
+     * There is currently an issue with samplerate that prevents it from building on Windows, so this will install a prebuilt binary
+1. Build vhs-decode
+   * Clone the repo if you have not already done so
+   * `cd C:\path\to\vhs-decode`
+   * `pip install .[hifi_gui_qt6]`
+1. Now you will be able to run the decode suite from the source code.
+   * Example `python C:\path\to\vhs-decode\decode.py hifi --gui`
 
 </details>
 
