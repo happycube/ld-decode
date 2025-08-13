@@ -90,6 +90,7 @@ class VHSDecode(ldd.LDdecode):
         rf_options={},
         extra_options={},
         debug_plot=None,
+        field_order_action="alternate"
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -162,6 +163,8 @@ class VHSDecode(ldd.LDdecode):
             self.outfile_chroma = None
 
         self.debug_plot = debug_plot
+        self.field_order_action = field_order_action
+        self.next_field_order_action = field_order_action
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -186,7 +189,7 @@ class VHSDecode(ldd.LDdecode):
         return 20 * np.log10(signal / noise)
 
     def buildmetadata(self, f, check_phase=False):
-        """returns field information JSON and whether or not a backfill field is needed"""
+        """returns field information JSON and whether to duplicate or drop the field"""
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
         # Not calulated and used for tapes at the moment
@@ -195,12 +198,16 @@ class VHSDecode(ldd.LDdecode):
 
         fi = {
             "isFirstField": True if f.isFirstField else False,
+            "detectedFirstField": True if f.isFirstField else False,
+            "isDuplicateField": False,
             "syncConf": f.compute_syncconf(),
             "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
             "fileLoc": int(np.floor(f.readloc)),
             "fieldPhaseID": f.fieldPhaseID,
         }
+        write_field = True
+        duplicate_field = False
 
         if self.doDOD:
             dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
@@ -212,23 +219,53 @@ class VHSDecode(ldd.LDdecode):
                 }
 
         # This is a bitmap, not a counter
+        # docs for this mysterious bitmap???
         decodeFaults = 0
 
         if prevfi is not None:
-            if prevfi["isFirstField"] == fi["isFirstField"]:
-                # logger.info('WARNING!  isFirstField stuck between fields')
-                # TODO: Do we want to handle this differently?
-                # Also check if this is done properly by calling function
-                # Not sure if it is at the moment..
-                # ld-chroma-decoder and export tools require alternating fields
-                # sync logic before this handles the correctness of the isFirstField flag, and it should be trusted here
-                ldd.logger.error(
-                    "Possibly skipped field (Two fields with same isFirstField in a row), writing out an copy of last field to compensate.."
-                )
-                decodeFaults |= 4
-                fi["syncConf"] = 0
-                return fi, True
+            # ld-chroma-decoder and export tools require alternating fields
+            # sync logic before this handles the correctness of the isFirstField flag, and it should be trusted here
 
+            # detectedFirstField will always be what was present in the vsync pulses
+            #  * it is determined by measuring the vsync pulses for the current and next fields
+            #
+            # isFirstField will always be alternating and will indicate how the video should be exported for interlacing
+            #  * progressive video is detected when two or more consecutive fields are detected as progressive
+            #  * in this case, isFirstField is always set to alternate to support encoding progressive fields in interlaced video
+
+            if f.prevfield is not None and f.prevfield.isProgressiveField and f.isProgressiveField:
+                ldd.logger.error(
+                    "Detected progressive video content..."
+                )
+            # just log for now, need samples to test this before enabling
+            #    decodeFaults |= 1
+            #    fi["syncConf"] = 10
+            #    fi["isFirstField"] = not prevfi["isFirstField"]
+            #elif prevfi["isFirstField"] == fi["isFirstField"]:
+            if prevfi["isFirstField"] == fi["isFirstField"]:
+                # duplicate or drop the field based on options
+                if self.field_order_action == "alternate":
+                    # toggle the action if alternate is specified
+                    self.next_field_order_action = "duplicate" if self.next_field_order_action == "drop" else "drop"
+                
+                fi["syncConf"] = 0
+
+                if self.next_field_order_action == "duplicate":
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
+                    )
+                    decodeFaults |= 4
+                    fi["isDuplicateField"] = True
+                    duplicate_field = True
+                else:
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row), dropping the last field to compensate..."
+                    )
+                    decodeFaults |= 4
+                    write_field = False
+
+                return fi, duplicate_field, write_field
+                
         fi["decodeFaults"] = decodeFaults
         fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
 
@@ -258,7 +295,7 @@ class VHSDecode(ldd.LDdecode):
                     ldd.logger.warning("file frame %d : VBI decoding error", rawloc)
                     traceback.print_exc()
 
-        return fi, False
+        return fi, duplicate_field, write_field
 
     # Again ignored for tapes
     def checkMTF(self, field, pfield=None):
@@ -468,21 +505,21 @@ class VHSDecode(ldd.LDdecode):
             if len(self.fieldinfo) == 0 and not f.isFirstField:
                 return f
 
-            # XXX: this routine currently performs a needed sanity check
-            fi, needFiller = self.buildmetadata(f)
+            fi, duplicateField, writeField = self.buildmetadata(f)
 
             self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
 
-            if needFiller:
+            if duplicateField:
                 if self.lastvalidfield[not f.isFirstField] is not None:
                     self.writeout(self.lastvalidfield[not f.isFirstField])
                     self.writeout(self.lastvalidfield[f.isFirstField])
 
                 # If this is the first field to be written, don't write anything
                 return f
-
-            self.lastFieldWritten = (self.fields_written, f.readloc)
-            self.writeout(self.lastvalidfield[f.isFirstField])
+            
+            if writeField:
+                self.lastFieldWritten = (self.fields_written, f.readloc)
+                self.writeout(self.lastvalidfield[f.isFirstField])
 
         return f
 

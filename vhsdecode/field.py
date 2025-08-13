@@ -1195,6 +1195,11 @@ class FieldShared:
             else:
                 self.rf.prev_first_field = -1
 
+            if hasattr(self.prevfield, "isProgressiveField"):
+                self.rf.prev_progressive_field = 1 if self.prevfield.isProgressiveField else 0
+            else:
+                self.rf.prev_progressive_field = -1
+
         # calculate in terms of lines to prevent integer overflow when seeking ahead large amounts
         if self.rf.prev_first_hsync_readloc != -1:
             prev_first_hsync_offset_lines = (
@@ -1230,6 +1235,7 @@ class FieldShared:
             self.first_hsync_loc_line,
             self.vblank_next,
             self.isFirstField,
+            self.isProgressiveField,
             prev_hsync_diff,
             vblank_pulses,
         ) = sync.get_first_hsync_loc(
@@ -1255,6 +1261,7 @@ class FieldShared:
             self.rf.prev_first_hsync_diff = prev_hsync_diff
 
         self.rf.prev_first_field = self.isFirstField
+        self.rf.prev_progressive_field = self.isProgressiveField
 
         # self.getLine0(validpulses, meanlinelen)
 

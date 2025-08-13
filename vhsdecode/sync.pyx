@@ -338,8 +338,12 @@ def get_first_hsync_loc(
     cdef Py_ssize_t LAST_HSYNC_LENGTH = 2
     cdef Py_ssize_t LAST_EQPL2_LENGTH = 3
 
+    cdef int first_field
+    cdef int progressive_field = False
+
     cdef double *first_field_lengths = [-1, -1, -1, -1]
     cdef double *second_field_lengths = [-1, -1, -1, -1]
+    cdef double *progressive_field_lengths = [-1, -1, -1, -1]
 
     if is_ntsc:
         first_field_lengths[FIRST_HSYNC_LENGTH] = 1
@@ -351,6 +355,12 @@ def get_first_hsync_loc(
         second_field_lengths[FIRST_EQPL2_LENGTH] = 1
         second_field_lengths[LAST_HSYNC_LENGTH] = 1
         second_field_lengths[LAST_EQPL2_LENGTH] = .5
+
+        # TODO: What is an expected progressive field order for NTSC?
+        progressive_field_lengths[FIRST_HSYNC_LENGTH] = 1
+        progressive_field_lengths[FIRST_EQPL2_LENGTH] = .5
+        progressive_field_lengths[LAST_HSYNC_LENGTH] = 1
+        progressive_field_lengths[LAST_EQPL2_LENGTH] = .5
     else:
         first_field_lengths[FIRST_HSYNC_LENGTH] = .5
         first_field_lengths[FIRST_EQPL2_LENGTH] = .5
@@ -362,22 +372,39 @@ def get_first_hsync_loc(
         second_field_lengths[LAST_HSYNC_LENGTH] = .5
         second_field_lengths[LAST_EQPL2_LENGTH] = .5
 
-    cdef double field_boundaries_consensus = 0
-    cdef double field_boundaries_detected = 0
+        # TODO: What is an expected progressive field order for PAL?
+        progressive_field_lengths[FIRST_HSYNC_LENGTH] = .5
+        progressive_field_lengths[FIRST_EQPL2_LENGTH] = .5
+        progressive_field_lengths[LAST_HSYNC_LENGTH] = .5
+        progressive_field_lengths[LAST_EQPL2_LENGTH] = .5
+
+    # measure the likelyhood of the field order based on the detected pulse widths vs. expected pulse widths, weigthed by the number of measurements
+    cdef double interlaced_field_boundaries_consensus = 0
+    cdef double interlaced_field_boundaries_detected = 0
+    cdef double progressive_field_consensus = 0
+    cdef double progressive_field_boundaries_detected = 0
+
     cdef double field_length
     for i in range(0, field_order_lengths_len):
         field_length = field_order_lengths[i]
 
         if field_length == first_field_lengths[i]:
-            field_boundaries_consensus += 1
-            field_boundaries_detected += 1
+            interlaced_field_boundaries_consensus += 1
+            interlaced_field_boundaries_detected += 1
 
-        elif field_length == second_field_lengths[i]:
-            field_boundaries_detected += 1
+        if field_length == second_field_lengths[i]:
+            interlaced_field_boundaries_detected += 1
+
+        if field_length == progressive_field_lengths[i]:
+            progressive_field_consensus += 1
+            progressive_field_boundaries_detected += 1
+
+        if field_length != -1:
+            progressive_field_boundaries_detected += 1
 
     # guess the field order if no previous field exists
     if prev_first_field == -1:
-        if field_boundaries_detected == 0 or round(field_boundaries_consensus / field_boundaries_detected) == 1 or fallback_is_first_field == 1:
+        if interlaced_field_boundaries_detected == 0 or round(interlaced_field_boundaries_consensus / interlaced_field_boundaries_detected) == 1 or fallback_is_first_field == 1:
             first_field = True
         else:
             first_field = False
@@ -393,20 +420,31 @@ def get_first_hsync_loc(
 
     cdef int first_field_confidence = 0
     cdef int second_field_confidence = 0
-    cdef double field_order_weighting = field_boundaries_detected / field_order_lengths_len
-    if field_boundaries_detected > 0:
+    cdef double interlaced_field_order_weighting = interlaced_field_boundaries_detected / field_order_lengths_len
+
+    cdef int progressive_field_confidence = 0
+    cdef double progressive_field_order_weighting = progressive_field_boundaries_detected / field_order_lengths_len
+    if interlaced_field_boundaries_detected > 0:
         # when the fallback vsync is disabled, and there is no previous hsync location, lower min confidence to 50
         if (fallback_line0loc == -1 and prev_first_hsync_loc < 0):
             field_order_confidence = 50 if field_order_confidence > 50 else field_order_confidence
 
-        first_field_confidence = round_to_int((field_boundaries_consensus / field_boundaries_detected) * field_order_weighting * 100)
-        second_field_confidence = round_to_int(((field_boundaries_detected - field_boundaries_consensus) / field_boundaries_detected) * field_order_weighting * 100)
+        # first try to match on interlaced fields
+        first_field_confidence = round_to_int((interlaced_field_boundaries_consensus / interlaced_field_boundaries_detected) * interlaced_field_order_weighting * 100)
+        second_field_confidence = round_to_int((interlaced_field_boundaries_detected - interlaced_field_boundaries_consensus) / interlaced_field_boundaries_detected * interlaced_field_order_weighting * 100)
 
-        # when first field and second field confidence are the same, don't change anything
         if first_field_confidence >= field_order_confidence and first_field_confidence > second_field_confidence:
             first_field = True
         elif second_field_confidence >= field_order_confidence and first_field_confidence < second_field_confidence:
             first_field = False
+        
+        # next, try to detect progressive fields
+        # this should be true if we're 100% confident both fields are first fields
+        if progressive_field_boundaries_detected > 0:
+            progressive_field_confidence = round_to_int((progressive_field_boundaries_detected - progressive_field_consensus) / progressive_field_boundaries_detected * progressive_field_order_weighting * 100)
+    
+            if progressive_field_confidence == field_order_lengths_len:
+                progressive_field = True
 
     # overrides previous first field, if fallback has high confidence
     if fallback_is_first_field_confidence > 70:
@@ -731,12 +769,13 @@ def get_first_hsync_loc(
         #print(
         #    "prev first field:", prev_first_field, 
         #    "curr first field:", 1 if first_field else 0,
-        #    "field boundry consensus:", field_boundaries_consensus,
-        #    "field boundries detected:", field_boundaries_detected, 
-        #    "field boundries detected:", field_boundaries_detected, 
+        #    "field boundry consensus:", interlaced_field_boundaries_consensus,
+        #    "field boundries detected:", interlaced_field_boundaries_detected, 
+        #    "field boundries detected:", interlaced_field_boundaries_detected, 
         #    [x for x in field_order_lengths[:field_order_lengths_len]],
         #    "first field confidence:", first_field_confidence,
         #    "second field confidence:", second_field_confidence,
+        #    "progressive field confidence:", progressive_field_confidence,
         #)
         #
         ## vsync pulses
@@ -771,7 +810,7 @@ def get_first_hsync_loc(
         free(validpulses_valid)
         free(field_lines)
 
-        return line0loc, first_hsync_loc, hsync_start_line, next_field, first_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
+        return line0loc, first_hsync_loc, hsync_start_line, next_field, first_field, progressive_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
 
     # no sync pulses found
     # print("no sync pulses found")
@@ -780,7 +819,7 @@ def get_first_hsync_loc(
     free(validpulses_start)
     free(validpulses_valid)
     free(field_lines)
-    return None, None, hsync_start_line, None, first_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
+    return None, None, hsync_start_line, None, first_field, progressive_field, prev_hsync_diff, np.asarray([x for x in vblank_pulses[:8]], dtype=np.int32)
 
 
 @cython.boundscheck(False)
