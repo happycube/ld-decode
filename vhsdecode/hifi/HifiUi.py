@@ -355,7 +355,6 @@ class HifiUi(QMainWindow):
         self.resize_window()
         # sets default window icon
         self.setWindowIcon(QIcon.fromTheme("document-open"))
-        self.center_on_screen()
         self.setValues(params)
 
         # update this at the end so the window width is calculated with everything expanded
@@ -753,19 +752,6 @@ class HifiUi(QMainWindow):
         else:
             raise ValueError("Invalid transport state value")
         self._transport_state = value
-
-    def center_on_screen(self):
-        # Get the screen geometry
-        screen_geometry = self.screen().availableGeometry()
-
-        # Calculate the center of the screen
-        screen_center = screen_geometry.center()
-
-        # Set the window position to the center of the screen
-        self.move(
-            int(screen_center.x() - self.width() / 2),
-            int((screen_center.y() - self.height()) * 3 / 4),
-        )
 
     def setValues(self, values: MainUIParameters):
         self.volume_dial_control.setValue(values.volume)
