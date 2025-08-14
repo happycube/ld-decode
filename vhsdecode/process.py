@@ -164,6 +164,7 @@ class VHSDecode(ldd.LDdecode):
 
         self.debug_plot = debug_plot
         self.field_order_action = field_order_action
+        self.duplicate_prev_field = "drop"
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -191,7 +192,6 @@ class VHSDecode(ldd.LDdecode):
         """returns field information JSON and whether to duplicate or drop the field"""
         prevfi_1 = self.fieldinfo[-1] if len(self.fieldinfo) else None
         prevfi_2 = self.fieldinfo[-2] if len(self.fieldinfo) > 1 else None
-        prevfi_3 = self.fieldinfo[-3] if len(self.fieldinfo) > 2 else None
 
         # Not calulated and used for tapes at the moment
         # bust_median = lddu.roundfloat(np.nan_to_num(f.burstmedian)) #lddu.roundfloat(f.burstmedian if not math.isnan(f.burstmedian) else 0.0)
@@ -228,12 +228,11 @@ class VHSDecode(ldd.LDdecode):
         if prevfi_1 is not None and prevfi_1["isFirstField"] == fi["isFirstField"]:
             distance_from_previous_field = fi["diskLoc"] - prevfi_1["diskLoc"]
             if (
-                # there are four repeating field orders in a row
+                # there are three (this one, and two previous) repeating field orders in a row
                 # should be impossible for valid interlaced video, so maybe it's progressive??
                 # progressive examples needed to test this!
-                                             prevfi_1["detectedFirstField"] == fi["isFirstField"]
-                and prevfi_2 is not None and prevfi_2["detectedFirstField"] == fi["isFirstField"]
-                and prevfi_3 is not None and prevfi_3["detectedFirstField"] == fi["isFirstField"]
+                                             prevfi_1["detectedFirstField"] == fi["detectedFirstField"]
+                and prevfi_2 is not None and prevfi_2["detectedFirstField"] == prevfi_1["detectedFirstField"]
                 # and this field is within a reasonable distance to be valid
                 and lddu.inrange(distance_from_previous_field, 0.9, 1.1)
             ):
@@ -244,26 +243,33 @@ class VHSDecode(ldd.LDdecode):
                 fi["decodeFaults"] |= 1
                 fi["syncConf"] = 10
                 fi["isFirstField"] = not prevfi_1["isFirstField"]
-            elif (
-                # duplicated field order was detected more than 1.5 fields away from the previous field, possibly a gap
-                distance_from_previous_field >= 1.5 or self.field_order_action == "duplicate"
-            ):
-                ldd.logger.error(
-                    "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
-                )
-                fi["decodeFaults"] |= 4
-                fi["syncConf"] = 0
-                fi["isDuplicateField"] = True
-            elif (
-                # duplicated field order was detected less than 1.5 fields away from the previous field, probably not a gap
-                distance_from_previous_field < 1.5 or self.field_order_action == "drop"
-            ):
-                ldd.logger.error(
-                    "Possibly skipped field (Two fields with same isFirstField in a row), dropping the last field to compensate..."
-                )
-                fi["decodeFaults"] |= 4
-                write_field = False
-                fi["syncConf"] = 0
+            else:
+                # duplicated field order was detected more than 1.1 fields away from the previous field, possibly a gap
+                if distance_from_previous_field > 1.1 or self.field_order_action == "duplicate":
+                    self.duplicate_prev_field = True
+
+                # duplicated field order was detected less than 0.9 fields away from the previous field, probably overlaped end of last field
+                elif distance_from_previous_field < 0.9 or self.field_order_action == "drop":
+                    self.duplicate_prev_field = False
+
+                # next field is close enough to be a valid field, duplicating or dropping is valid, alternate to avoid too many duplicates or drops
+                else:
+                    self.duplicate_prev_field = not self.duplicate_prev_field
+
+                if self.duplicate_prev_field:
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
+                    )
+                    fi["decodeFaults"] |= 4
+                    fi["syncConf"] = 0
+                    fi["isDuplicateField"] = True
+                else:
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row), dropping the last field to compensate..."
+                    )
+                    fi["decodeFaults"] |= 4
+                    write_field = False
+                    fi["syncConf"] = 0
 
             return fi, fi["isDuplicateField"], write_field
 
