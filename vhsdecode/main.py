@@ -307,14 +307,13 @@ def main(args=None, use_gui=False):
     debug_group.add_argument(
         "--field_order_action",
         dest="field_order_action",
-        default="alternate",
+        default="detect",
         metavar="value",
-        type=lambda x: x if x in ["alternate", "duplicate", "drop"] else parser.error('--field_order_action must be one of ["alternate", "duplicate", "drop"]'),
+        type=lambda x: x if x in ["detect", "duplicate", "drop"] else parser.error('--field_order_action must be one of ["detect", "duplicate", "drop"]'),
         help=(
             "Decides how to handle field order discontinuities,\n"
             "  When the field order cadence is broken such that there are two Top or two Bottom fields.\n"
-            "  * `alternate`: (default) alternate between duplicate and drop.\n"
-            "                 This option should allow the video to stay synced with the audio when there are multiple duplicate fields\n"
+            "  * `detect`:    (default) use the distance between the dropped field to determine whether to drop or duplicate.\n"
             "  * `duplicate`: always duplicate the last valid field\n"
             "  * `drop`:      always drop the last valid field\n"
         ),

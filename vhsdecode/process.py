@@ -90,7 +90,7 @@ class VHSDecode(ldd.LDdecode):
         rf_options={},
         extra_options={},
         debug_plot=None,
-        field_order_action="alternate"
+        field_order_action="detect"
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -164,7 +164,6 @@ class VHSDecode(ldd.LDdecode):
 
         self.debug_plot = debug_plot
         self.field_order_action = field_order_action
-        self.next_field_order_action = field_order_action
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -190,7 +189,9 @@ class VHSDecode(ldd.LDdecode):
 
     def buildmetadata(self, f, check_phase=False):
         """returns field information JSON and whether to duplicate or drop the field"""
-        prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
+        prevfi_1 = self.fieldinfo[-1] if len(self.fieldinfo) else None
+        prevfi_2 = self.fieldinfo[-2] if len(self.fieldinfo) > 1 else None
+        prevfi_3 = self.fieldinfo[-3] if len(self.fieldinfo) > 2 else None
 
         # Not calulated and used for tapes at the moment
         # bust_median = lddu.roundfloat(np.nan_to_num(f.burstmedian)) #lddu.roundfloat(f.burstmedian if not math.isnan(f.burstmedian) else 0.0)
@@ -207,7 +208,6 @@ class VHSDecode(ldd.LDdecode):
             "fieldPhaseID": f.fieldPhaseID,
         }
         write_field = True
-        duplicate_field = False
 
         if self.doDOD:
             dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
@@ -220,54 +220,52 @@ class VHSDecode(ldd.LDdecode):
 
         # This is a bitmap, not a counter
         # docs for this mysterious bitmap???
-        decodeFaults = 0
-
-        if prevfi is not None:
-            # ld-chroma-decoder and export tools require alternating fields
-            # sync logic before this handles the correctness of the isFirstField flag, and it should be trusted here
-
-            # detectedFirstField will always be what was present in the vsync pulses
-            #  * it is determined by measuring the vsync pulses for the current and next fields
-            #
-            # isFirstField will always be alternating and will indicate how the video should be exported for interlacing
-            #  * progressive video is detected when two or more consecutive fields are detected as progressive
-            #  * in this case, isFirstField is always set to alternate to support encoding progressive fields in interlaced video
-
-            if f.prevfield is not None and f.prevfield.isProgressiveField and f.isProgressiveField:
+        fi["decodeFaults"] = 0
+        fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
+        # interlaced video requires alternating fields, handle cases where fields are repeated
+        #   this can happen due to breaks in recordings between fields, i.e. home recordings, and
+        #   progressive content, such as video game, osd, computer output, etc.
+        if prevfi_1 is not None and prevfi_1["isFirstField"] == fi["isFirstField"]:
+            distance_from_previous_field = fi["diskLoc"] - prevfi_1["diskLoc"]
+            if (
+                # there are four repeating field orders in a row
+                # should be impossible for valid interlaced video, so maybe it's progressive??
+                # progressive examples needed to test this!
+                                             prevfi_1["detectedFirstField"] == fi["isFirstField"]
+                and prevfi_2 is not None and prevfi_2["detectedFirstField"] == fi["isFirstField"]
+                and prevfi_3 is not None and prevfi_3["detectedFirstField"] == fi["isFirstField"]
+                # and this field is within a reasonable distance to be valid
+                and lddu.inrange(distance_from_previous_field, 0.9, 1.1)
+            ):
+                # treat this as progressive, and manually flip the field order
                 ldd.logger.error(
-                    "Detected progressive video content..."
+                    "Detected progressive video content..., manually flipping the field order to compensate"
                 )
-            # just log for now, need samples to test this before enabling
-            #    decodeFaults |= 1
-            #    fi["syncConf"] = 10
-            #    fi["isFirstField"] = not prevfi["isFirstField"]
-            #elif prevfi["isFirstField"] == fi["isFirstField"]:
-            if prevfi["isFirstField"] == fi["isFirstField"]:
-                # duplicate or drop the field based on options
-                if self.field_order_action == "alternate":
-                    # toggle the action if alternate is specified
-                    self.next_field_order_action = "duplicate" if self.next_field_order_action == "drop" else "drop"
-                
+                fi["decodeFaults"] |= 1
+                fi["syncConf"] = 10
+                fi["isFirstField"] = not prevfi_1["isFirstField"]
+            elif (
+                # duplicated field order was detected more than 1.5 fields away from the previous field, possibly a gap
+                distance_from_previous_field >= 1.5 or self.field_order_action == "duplicate"
+            ):
+                ldd.logger.error(
+                    "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
+                )
+                fi["decodeFaults"] |= 4
+                fi["syncConf"] = 0
+                fi["isDuplicateField"] = True
+            elif (
+                # duplicated field order was detected less than 1.5 fields away from the previous field, probably not a gap
+                distance_from_previous_field < 1.5 or self.field_order_action == "drop"
+            ):
+                ldd.logger.error(
+                    "Possibly skipped field (Two fields with same isFirstField in a row), dropping the last field to compensate..."
+                )
+                fi["decodeFaults"] |= 4
+                write_field = False
                 fi["syncConf"] = 0
 
-                if self.next_field_order_action == "duplicate":
-                    ldd.logger.error(
-                        "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
-                    )
-                    decodeFaults |= 4
-                    fi["isDuplicateField"] = True
-                    duplicate_field = True
-                else:
-                    ldd.logger.error(
-                        "Possibly skipped field (Two fields with same isFirstField in a row), dropping the last field to compensate..."
-                    )
-                    decodeFaults |= 4
-                    write_field = False
-
-                return fi, duplicate_field, write_field
-                
-        fi["decodeFaults"] = decodeFaults
-        fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
+            return fi, fi["isDuplicateField"], write_field
 
         self.frameNumber = None
         if f.isFirstField:
@@ -295,7 +293,7 @@ class VHSDecode(ldd.LDdecode):
                     ldd.logger.warning("file frame %d : VBI decoding error", rawloc)
                     traceback.print_exc()
 
-        return fi, duplicate_field, write_field
+        return fi, fi["isDuplicateField"], write_field
 
     # Again ignored for tapes
     def checkMTF(self, field, pfield=None):
