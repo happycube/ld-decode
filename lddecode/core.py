@@ -22,7 +22,7 @@ import scipy.fft as npfft
 from . import efm_pll
 from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
-from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, rms
+from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
@@ -2521,29 +2521,18 @@ class Field:
                 downscale_audio(*dsa_args)
 
         dsout = np.zeros((linesout * outwidth), dtype=np.double)
-        # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
-        lineoffset = self.lineoffset + 1
+        tbc_error = scale_field(self.data["video"][channel],
+            dsout,
+            lineinfo,
+            self.lineoffset,
+            linesout,
+            outwidth,
+            self.wowfactor,
+            self.rf.DecoderParams["ire0"])
 
-        for l in range(lineoffset, linesout + lineoffset):
-            if lineinfo[l + 1] > lineinfo[l]:
-                scaled = scale(
-                    self.data["video"][channel],
-                    lineinfo[l],
-                    lineinfo[l + 1],
-                    outwidth,
-                    self.wowfactor[l],
-                )
-
-                dsout[
-                    (l - lineoffset) * outwidth : (l + 1 - lineoffset) * outwidth
-                ] = scaled
-            else:
-                # Massive TBC error detected
-                self.sync_confidence = 1
-                #logger.warning("WARNING: TBC failure at line %d", l)
-                dsout[
-                    (l - lineoffset) * outwidth : (l + 1 - lineoffset) * outwidth
-                ] = self.rf.DecoderParams["ire0"]
+        if tbc_error:
+            #logger.warning("WARNING: TBC failure at line %d", l)
+            self.sync_confidence = 1
 
         if self.rf.decode_digital_audio:
             self.efmout = self.data["efm"][
