@@ -446,12 +446,12 @@ def get_first_hsync_loc(
             if progressive_field_confidence == field_order_lengths_len:
                 progressive_field = True
 
-    # overrides previous first field, if fallback has high confidence
-    if fallback_is_first_field_confidence > 70:
-        if fallback_is_first_field == 1:
-            first_field = True
-        else:
-            first_field = False
+    # overrides previous first field, if fallback has more confidence
+    if (
+        fallback_is_first_field_confidence > first_field_confidence
+        and fallback_is_first_field_confidence > second_field_confidence
+    ):
+        first_field = fallback_is_first_field == 1
 
     # ***********************************************************
     # calculate the expected line locations for each vblank pulse
