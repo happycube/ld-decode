@@ -2,8 +2,7 @@ Cython
 matplotlib
 numba>=0.58.1
 numpy>=1.22
-samplerate==0.1; platform_system == "Linux"
-samplerate; platform_system != "Linux"
+soxr
 scipy >=1.10
 soundfile>=0.13.1
 sounddevice

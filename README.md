@@ -452,10 +452,6 @@ You don't actually type `<` and `>` on your input & output files.
    * Click `Install` to install them
 1. Install Rust
    * Download the [Rust installer](https://www.rust-lang.org/tools/install) follow the wizard to install Rust
-1. Install extra python dependencies
-   * Open a terminal. If python installed successfully, `pip` should be an executable in your PATH.
-   * `pip install samplerate --prefer-binary`
-     * There is currently an issue with samplerate that prevents it from building on Windows, so this will install a prebuilt binary
 1. Build vhs-decode
    * Clone the repo if you have not already done so
    * `cd C:\path\to\vhs-decode`

@@ -2,21 +2,11 @@ from fractions import Fraction
 import vhsdecode.utils as utils
 import numpy as np
 from scipy import signal
+from soxr import resample
 
-try:
-    from samplerate import resample
-
-    use_samplerate = True
-except ImportError as e:
-    # print("[chromasep.py] WARN: Cannot find samplerate, processing will be slower")
-    # print("exec:\n\tsudo pip3 install samplerate")
-    # print("(to fix this inconvenience) %s" % e)
-    use_samplerate = False
-
-
-def signal_resample(data, n, d, converter_type="linear"):
-    upsize = len(data) * n
-    downsize = round(upsize / d)
+def signal_resample(data, output_rate, input_rate, converter_type="linear"):
+    upsize = len(data) * output_rate
+    downsize = round(upsize / input_rate)
 
     if converter_type == "linear":
         upscaled = np.interp(
@@ -33,42 +23,36 @@ def signal_resample(data, n, d, converter_type="linear"):
         upscaled = signal.resample(data, upsize)
         return signal.resample(upscaled, downsize)
 
-
-# The converter params are the same as in libsamplerate:
 # In ascending quality/complexity order:
-#   zero_order_hold, linear, sinc_fastest, sinc_best
-def samplerate_resample(data, n, d, converter_type="sinc_fastest"):
-    ratio = n / d
-    return resample(data, ratio=ratio, converter_type=converter_type)
+#   https://sourceforge.net/p/soxr/code/ci/master/tree/src/soxr.h#l283
+#   * QQ   'Quick' cubic interpolation.
+#   * LQ   'Low' 16-bit with larger rolloff.
+#   * MQ   'Medium' 16-bit with medium rolloff.
+#   * HQ   'High quality'.
+#   * VHQ  'Very high quality'.
+def soxr_resample(data, input_rate, output_rate, quality="LQ"):
+    return resample(data, input_rate, output_rate, quality)
 
 
 class ChromaSepClass:
-    def __init__(self, fs, fsc, logger, converter_type="linear"):
+    def __init__(self, fs, fsc, logger, quality="QQ"):
         self.fs = fs
         self.fsc = fsc
-        self.converter_type = converter_type
+        self.quality = quality
         self.multiplier = 8
         self.delay = int(self.multiplier / 2)
 
         fscx = int(self.fsc * self.multiplier * 1e6)
         self.ratio = Fraction(fscx / self.fs).limit_denominator(1000)
 
-        if use_samplerate:
-            self.method = samplerate_resample
-        else:
-            logger.warning(
-                "Cannot find samplerate, processing will be significantly slower with --ct active. Consider installing the python samplerate library."
-            )
-            self.method = signal_resample
-
     # It resamples the luminance data to self.multiplier * fsc
     # Applies the comb filter, then resamples it back
     def work(self, luminance):
-        downsampled = self.method(
+        downsampled = soxr_resample(
             luminance,
-            self.ratio.numerator,
             self.ratio.denominator,
-            converter_type=self.converter_type,
+            self.ratio.numerator,
+            self.quality,
         )
 
         delayed = np.roll(downsampled, self.delay)
@@ -76,11 +60,11 @@ class ChromaSepClass:
         del downsampled
         del delayed
 
-        result = self.method(
+        result = soxr_resample(
             combed,
-            self.ratio.denominator,
             self.ratio.numerator,
-            converter_type=self.converter_type,
+            self.ratio.denominator,
+            self.quality,
         )
 
         result = utils.pad_or_truncate(result, luminance)
