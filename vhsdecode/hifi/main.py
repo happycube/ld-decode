@@ -1488,13 +1488,10 @@ async def decode_parallel(
     threads: int = 8,
     ui_t: Optional[AppWindow] = None,
 ):
-    decoder = HiFiDecode(options=decode_options, is_main_process=True)
+    decoder = HiFiDecode(options=decode_options, is_main_process=True, bias_guess=decode_options["bias_guess"])
     # TODO: reprocess data read in this step
     if decode_options["bias_guess"]:
-        LCRef, RCRef = guess_bias(
-            decoder, decode_options["input_file"], int(decode_options["input_rate"])
-        )
-        decoder.updateAFE(LCRef, RCRef)
+        guess_bias(decoder, decode_options["input_file"], int(decode_options["input_rate"]))
 
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
@@ -1858,9 +1855,8 @@ def guess_bias(decoder, input_file, block_size, blocks_limits=10):
             f.buffer_read_into(block_buffer, "int16")
             blocks.append(block_buffer)
 
-    LCRef, RCRef = decoder.guessBiases(blocks)
+    decoder.guessBiases(blocks)
     print("\ndone!")
-    return LCRef, RCRef
 
 
 def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
