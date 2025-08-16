@@ -112,12 +112,8 @@ However, the only **critical requirement** is available test points or a head am
 ## An RF Capture Device
 
 
-
-
-
-
 > [!TIP]  
-> Currently is there is a couple standardised hardware workflows, but.. [you need to read and select one based off what format(s) you are actually going to be capturing](https://github.com/oyvindln/vhs-decode/wiki/Workflow-Guide).
+> Currently there is a couple standardised hardware workflows, but.. [you need to read and select one based off what format(s) you are actually going to be capturing](https://github.com/oyvindln/vhs-decode/wiki/Workflow-Guide).
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Hardware/DdD-Rev3-CX-White-Sony-ILCE-7RM3-2022.12.20-21.54.48.png" width="600" height="">
 
