@@ -1635,15 +1635,15 @@ async def decode_parallel(
                 is_last_block,
             )
             buffer = DecoderSharedMemory(decoder_state)
-            block_in = buffer.get_block()
+            block = buffer.get_block()
             # copy starting at half the normal read overlap
             DecoderSharedMemory.copy_data_dst_offset_int16(
-                block_data_read, block_in, start_overlap_end, len(block_data_read)
+                block_data_read, block, start_overlap_end, len(block_data_read)
             )
 
             # this is the first block, fill in the empty data before half the read overlap, this will be discarded
             DecoderSharedMemory.copy_data_int16(
-                block_data_read, block_in, start_overlap_end
+                block_data_read, block, start_overlap_end
             )
         else:
             # copy the overlapping data from the previous read
@@ -1653,37 +1653,20 @@ async def decode_parallel(
             )
 
         if is_last_block:
-            # save read data (previous overlap + last block data)
-            block_in = buffer.get_block()
-            new_block_length = (
+            new_block_size = (
                 len(previous_overlap)  # previous overlap
                 + frames_read  # data read
                 + decoder_state.block_overlap  # overlap data
             )
 
-            buffer.close()
-            block_overlap = decoder_state.block_overlap
+            decoder_state.is_last_block = is_last_block
+            decoder_state.block_audio_final_size = decoder.calculate_block_sizes(new_block_size)["block_audio_final_size"]
 
-            # create a new decoder state with the updated offsets
-            decoder_state = DecoderState(
-                decoder,
-                buffer.name,
-                new_block_length,
-                decoder_state.block_num,
-                is_last_block,
-            )
-
-            buffer = DecoderSharedMemory(decoder_state)
-            block_in = buffer.get_block()
-
-            # duplicate data at the end that will discarded as overlap
-            for i in range(block_overlap):
-                src_offset = (
-                    (len(previous_overlap) - 1) + frames_read - block_overlap + i
-                )
-                dst_offset = src_offset + block_overlap
-
-                block_in[dst_offset] = block_in[src_offset]
+            block = buffer.get_block()
+            overlap_start = len(previous_overlap) + frames_read
+            overlap_end = overlap_start + decoder_state.block_overlap
+            for i in range(overlap_start, overlap_end):
+                block[i] = block[i-decoder_state.block_overlap]
         else:
             # copy the the current overlap to use in the next iteration
             current_overlap = buffer.get_block_in_end_overlap()
@@ -1803,7 +1786,7 @@ async def decode_parallel(
         gain_adjust = (
             1 / peak_gain.value - np.finfo(np.float16).eps
         )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
-        print(f" Adjusting by {(gain_adjust * 100):.2f}%, please wait...")
+        print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
 
         input_file_post_gain = get_normalize_filename(
             output_file, decode_options["audio_rate"]

@@ -41,9 +41,6 @@ class DecoderState:
         # block data for resampled audio @ user set audio rate
         self.block_audio_final_size = block_sizes["block_audio_final_size"]
         self.block_audio_final_overlap = block_overlap["block_audio_final_overlap"]
-        self.block_audio_final_len = (
-            self.block_audio_final_size - self.block_audio_final_overlap * 2
-        )
 
     name: str
     block_num: int
@@ -59,7 +56,12 @@ class DecoderState:
 
     block_audio_final_size: int
     block_audio_final_overlap: int
-    block_audio_final_len: int
+
+    @property
+    def block_audio_final_len(self):
+        # don't allow 0 or negative length audio, even if there's more overlap than actual audio
+        return max(50, self.block_audio_final_size - self.block_audio_final_overlap * 2)
+
 
 
 def to_aligned_offset(size):

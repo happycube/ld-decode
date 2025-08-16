@@ -1204,27 +1204,44 @@ class HiFiDecode:
 
         return standard, field_rate
 
-    def set_block_sizes(self, block_size=None):
+    def calculate_block_sizes(self, block_size=None):
         # block overlap and edge discard
-        self._blocks_per_second_ratio: float = 1 / BLOCKS_PER_SECOND
+        blocks_per_second_ratio = loat = 1 / BLOCKS_PER_SECOND
 
         if block_size == None:
-            self._initial_block_size: int = ceil(
-                self.input_rate * self._blocks_per_second_ratio
+            block_size: int = ceil(
+                self.input_rate * blocks_per_second_ratio
             )
         else:
-            self._initial_block_size: int = block_size
-            self._blocks_per_second_ratio: float = block_size / self.input_rate
+            block_size: int = block_size
+            blocks_per_second_ratio: float = block_size / self.input_rate
 
-        self._initial_block_resampled_size: int = ceil(
-            self.if_rate * self._blocks_per_second_ratio
+        block_resampled_size: int = ceil(
+            self.if_rate * blocks_per_second_ratio
         )
-        self._initial_block_audio_size: int = ceil(
-            self.audio_rate * self._blocks_per_second_ratio
+        block_audio_size: int = ceil(
+            self.audio_rate * blocks_per_second_ratio
         )
-        self._initial_block_audio_final_size: int = ceil(
-            self.audio_final_rate * self._blocks_per_second_ratio
+        block_audio_final_size: int = ceil(
+            self.audio_final_rate * blocks_per_second_ratio
         )
+
+        return {
+            "blocks_per_second_ratio": blocks_per_second_ratio,
+            "block_size": block_size,
+            "block_resampled_size": block_resampled_size,
+            "block_audio_size": block_audio_size,
+            "block_audio_final_size": block_audio_final_size,
+        }
+
+    def set_block_sizes(self, block_size=None):
+        block_calculations = self.calculate_block_sizes(block_size)
+
+        self._blocks_per_second_ratio = block_calculations["blocks_per_second_ratio"]
+        self._initial_block_size = block_calculations["block_size"]
+        self._initial_block_resampled_size = block_calculations["block_resampled_size"]
+        self._initial_block_audio_size = block_calculations["block_audio_size"]
+        self._initial_block_audio_final_size = block_calculations["block_audio_final_size"]
 
         return {
             "block_size": self._initial_block_size,
@@ -2341,7 +2358,7 @@ class HiFiDecode:
             # trim off the block overlap
             audio_len = len(audioL)
             expected_len = decoder_state.block_audio_final_len
-            overlap_to_trim = round((audio_len - expected_len) / 2)
+            overlap_to_trim = max(0, round((audio_len - expected_len) / 2))
 
             DecoderSharedMemory.copy_data_src_offset_float32(
                 audioL, l_out, overlap_to_trim, expected_len
