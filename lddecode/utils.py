@@ -66,6 +66,55 @@ def scale(buf, begin, end, tgtlen, mult=1):
 
     return output
 
+@njit(nogil=True, cache=True, fastmath=True)
+def scale_field(buf, dsout, lineinfo, lineoffset, linesout, outwidth, wowfactors, ire0):
+    # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
+    tbc_error = False
+    lineoffset += 1
+
+    for l in range(lineoffset, linesout + lineoffset):
+        dsout_start = round((l - lineoffset) * outwidth)
+        dsout_end = round((l + 1 - lineoffset) * outwidth)
+        wowfactor = 1 if wowfactors[l] is None else wowfactors[l]
+        line_start = lineinfo[l]
+        line_end = lineinfo[l+1]
+
+        if line_end > line_start:
+            linelen = line_end - line_start
+            sfactor = linelen / outwidth
+
+            for i in range(outwidth):
+                # This runs a cubic scaler on a line.
+                # originally from https://www.paulinternet.nl/?page=bicubic
+                coord = (i * sfactor) + line_start
+                start = int(coord) - 1
+                p = buf[start : start + 4]
+                x = coord - int(coord)
+        
+                dsout[dsout_start + i] = wowfactor * (
+                    p[1]
+                    + 0.5
+                    * x
+                    * (
+                        p[2]
+                        - p[0]
+                        + x
+                        * (
+                            2.0 * p[0]
+                            - 5.0 * p[1]
+                            + 4.0 * p[2]
+                            - p[3]
+                            + x * (3.0 * (p[1] - p[2]) + p[3] - p[0])
+                        )
+                    )
+                )
+        else:
+            # Massive TBC error detected
+            tbc_error = True
+            dsout[dsout_start:dsout_end] = ire0
+
+    return tbc_error
+
 
 frequency_suffixes = [
     ("ghz", 1.0e9),
