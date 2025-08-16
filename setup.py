@@ -1,4 +1,6 @@
 from setuptools import setup
+import shutil
+import os
 import distutils.ccompiler
 from distutils.extension import Extension
 from Cython.Build import cythonize
@@ -12,6 +14,10 @@ import numpy
 compiler = distutils.ccompiler.new_compiler()
 
 if compiler.compiler_type == "unix":
+    if shutil.which("clang"):
+        os.environ["CC"] = "clang"
+        os.environ["CXX"] = "clang++"
+
     extra_compile_args=["-O3", "-flto"]
     extra_link_args=["-O3", "-flto"]
 else:
