@@ -511,7 +511,8 @@ class VHSDecode(ldd.LDdecode):
 
             fi, duplicateField, writeField = self.buildmetadata(f)
 
-            self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
+            if writeField:
+                self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
 
             if duplicateField:
                 if self.lastvalidfield[not f.isFirstField] is not None:
