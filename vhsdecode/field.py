@@ -18,6 +18,7 @@ from vhsdecode.chroma import (
     try_detect_track_betamax_pal,
 )
 
+from numba import njit
 from vhsdecode.debug_plot import plot_data_and_pulses
 
 NO_PULSES_FOUND = 1
