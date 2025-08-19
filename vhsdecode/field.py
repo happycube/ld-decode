@@ -1645,22 +1645,6 @@ class FieldShared:
 
         return LT
 
-    def computewow(self, lineinfo):
-        """Compute how much the line deviates fron expected
-        Overridden to limit the result so we don't get super-bright lines at head switch.
-        TODO: Better solution to that
-        """
-        wow = np.ones(len(lineinfo))
-
-        for l in range(0, len(wow) - 1):
-            computed = self.get_linelen(l) / self.inlinelen
-            wow[l] = computed if inrange(computed, 0.9, 1.02) else 1.0
-
-        for l in range(self.lineoffset, self.lineoffset + 10):
-            wow[l] = np.median(wow[l : l + 4])
-
-        return wow
-
     def fix_badlines(self, linelocs_in, linelocs_backup_in=None):
         # No longer needed. Bad line locations are fixed in sync.pyx
         return linelocs_in
