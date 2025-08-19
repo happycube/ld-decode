@@ -2442,7 +2442,7 @@ class Field:
 
         return linelocs
 
-    def computewow_scaled(self):
+    def computewow_scaled(self, kind='linear'):
         """Compute how much the line deviates fron expected,
            and scale input samples to output samples
         """
@@ -2453,12 +2453,16 @@ class Field:
         outsamples = self.outlinecount * self.outlinelen
         outline_offset = (self.lineoffset + 1) * self.outlinelen
 
-        # k=1, linear
-        # k=3, cubic
-        k=1
-        bc_type=None
-        if k==3:
+        if kind == 'linear':
+            k=1
+            bc_type=None
+        elif kind == 'quadratic':
+            k=2
+            bc_type=None
+        elif kind == 'cubic':
+            k=3
             bc_type='natural'
+
         spl = interpolate.make_interp_spline(known_indicies, known_values, k=k, bc_type=bc_type, check_finite=False)
 
         # compute the wow and scale to the output size
