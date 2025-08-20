@@ -256,7 +256,13 @@ class VHSDecode(ldd.LDdecode):
                 else:
                     self.duplicate_prev_field = not self.duplicate_prev_field
 
-                if self.duplicate_prev_field:
+                if self.field_order_action == "none":
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row)"
+                    )
+                    fi["decodeFaults"] |= 4
+                    fi["syncConf"] = 0
+                elif self.duplicate_prev_field:
                     ldd.logger.error(
                         "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
                     )

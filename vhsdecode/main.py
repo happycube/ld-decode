@@ -309,13 +309,14 @@ def main(args=None, use_gui=False):
         dest="field_order_action",
         default="detect",
         metavar="value",
-        type=lambda x: x if x in ["detect", "duplicate", "drop"] else parser.error('--field_order_action must be one of ["detect", "duplicate", "drop"]'),
+        type=lambda x: x if x in ["detect", "duplicate", "drop", "none"] else parser.error('--field_order_action must be one of ["detect", "duplicate", "drop", "none"]'),
         help=(
             "Decides how to handle field order discontinuities,\n"
             "  When the field order cadence is broken such that there are two Top or two Bottom fields.\n"
             "  * `detect`:    (default) use the distance between the dropped field to determine whether to drop or duplicate.\n"
             "  * `duplicate`: always duplicate the last valid field\n"
             "  * `drop`:      always drop the last valid field\n"
+            "  * `none`:      do nothing, (field order will be out of sync causing issues for interlaced video)\n"
         ),
     )
     debug_group.add_argument(
