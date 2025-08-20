@@ -57,15 +57,6 @@ def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
     return data
 
 
-@njit(cache=True)
-def _select_serration(where_min, serrations, selected):
-    for id, edge in enumerate(serrations):
-        for s_min in where_min:
-            next_serration_id = min(id + 1, len(serrations) - 1)
-            if edge <= s_min <= serrations[next_serration_id]:
-                selected = np.append(selected, edge)
-    return selected
-
 
 # encapsulates the serration search logic
 class VsyncSerration:
@@ -222,24 +213,33 @@ class VsyncSerration:
         return argrelextrema(first_harmonic, np.less)[0]
 
     # fills in missing VBI positions when possible
-    def _vsync_arbitrage(self, where_allmin, serrations, datalen):
-        result = np.array([], np.int64)
+    @staticmethod
+    @njit(nogil=True, cache=True, fastmath=True)
+    def _vsync_arbitrage(vsynclen, where_allmin, serrations, datalen):
+        result = []
         if len(where_allmin) > 1:
-            selected = np.array([], np.int64)
-            valid_serrations = _select_serration(where_allmin, serrations, selected)
+            valid_serrations = []
+
+            # select serration
+            for id, edge in enumerate(serrations):
+                for s_min in where_allmin:
+                    next_serration_id = min(id + 1, len(serrations) - 1)
+                    if edge <= s_min <= serrations[next_serration_id]:
+                        valid_serrations.append(edge)
+
             for serration in valid_serrations:
                 if (
-                    serration - self.vsynclen >= 0
-                    or serration + self.vsynclen <= datalen - 1
+                    serration - vsynclen >= 0
+                    or serration + vsynclen <= datalen - 1
                 ):
-                    result = np.append(result, serration)
+                    result.append(serration)
         elif len(where_allmin) == 1:
-            if where_allmin[0] + self.vsynclen < datalen - 1:
-                result = np.append(where_allmin[0], where_allmin[0] + self.vsynclen)
+            if where_allmin[0] + vsynclen < datalen - 1:
+                result.append(where_allmin[0])
+                result.append(where_allmin[0] + vsynclen)
             else:
-                result = np.append(
-                    where_allmin[0], max(where_allmin[0] - self.vsynclen, 0)
-                )
+                result.append(where_allmin[0])
+                result.append(max(where_allmin[0] - vsynclen, 0))
         else:
             result = None
 
@@ -321,7 +321,7 @@ class VsyncSerration:
         where_allmin = argrelextrema(diff, np.less)[0]
         if len(where_allmin) > 0:
             serrations = self._power_ratio_search(padded)
-            where_min = self._vsync_arbitrage(where_allmin, serrations, len(padded))
+            where_min = VsyncSerration._vsync_arbitrage(self.vsynclen, where_allmin, serrations, len(padded))
             serration_locs = list()
             if len(where_min) > 0:
                 mask_len = self.linelen * 5
