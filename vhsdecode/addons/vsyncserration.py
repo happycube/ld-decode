@@ -39,22 +39,22 @@ def _chainfiltfilt(data, filters):
 
 
 # clips any sync pulse that satisfies min_synclen < pulse_len < max_synclen
-@njit(cache=True)
-def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
-    sync, blank = levels
-    mid_sync = (sync + blank) / 2
-    where_all_picture = np.where(sync_ref > mid_sync)[0]
-    locs_len = np.diff(where_all_picture)
-    min_synclen = eq_pulselen * 3 / 4
-    max_synclen = eq_pulselen * 3
-    is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
-    where_all_syncs = np.where(is_sync)[0]
-    clip_from = where_all_picture[where_all_syncs]
-    clip_len = locs_len[where_all_syncs]
-    for ix, begin in enumerate(clip_from):
-        data[begin : begin + clip_len[ix]] = sync
-
-    return data
+# @njit(cache=True)
+# def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
+#     sync, blank = levels
+#     mid_sync = (sync + blank) / 2
+#     where_all_picture = np.where(sync_ref > mid_sync)[0]
+#     locs_len = np.diff(where_all_picture)
+#     min_synclen = eq_pulselen * 3 / 4
+#     max_synclen = eq_pulselen * 3
+#     is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
+#     where_all_syncs = np.where(is_sync)[0]
+#     clip_from = where_all_picture[where_all_syncs]
+#     clip_len = locs_len[where_all_syncs]
+#     for ix, begin in enumerate(clip_from):
+#         data[begin : begin + clip_len[ix]] = sync
+# 
+#     return data
 
 
 
@@ -246,7 +246,9 @@ class VsyncSerration:
         return result
 
     # extracts the level from a valid serration
-    def _get_serration_sync_levels(self, serration):
+    @staticmethod
+    @njit(nogil=True, cache=True, fastmath=True)
+    def _get_serration_sync_levels(serration):
         half_amp = np.mean(serration)
         peaks = np.where(serration > half_amp)[0]
         valleys = np.where(serration <= half_amp)[0]
@@ -285,7 +287,8 @@ class VsyncSerration:
             # now calculated at initialization
             if self.vbi_time_range[0] < len(serration) < self.vbi_time_range[1]:
                 self.found_serration = True
-                self.push_levels(self._get_serration_sync_levels(serration))
+                self.push_levels(VsyncSerration._get_serration_sync_levels(serration))
+
                 if self.show_decoded:
                     sync, blank = self.pull_levels()
                     marker = np.ones(len(serration)) * blank
@@ -326,10 +329,12 @@ class VsyncSerration:
             if len(where_min) > 0:
                 mask_len = self.linelen * 5
                 state = False
-
+                tasks = []
                 for w_min in where_min:
-                    state, serr_loc, serr_len = self._search_eq_pulses(data, w_min)
+                    self.executor.submit(self._search_eq_pulses, data, w_min)
 
+                for task in tasks:
+                    state, serr_loc, serr_len = task.result()
                     if state:
                         serration_locs.append(serr_loc)
                         mask_len = serr_len - serr_loc
@@ -383,9 +388,9 @@ class VsyncSerration:
         self.fieldcount += 1
 
     # safe clips the bottom of the sync pulses, but not the picture area
-    def safe_sync_clip(self, sync_ref, data):
-        if self.has_levels():
-            data = _safe_sync_clip(
-                sync_ref, data, self.pull_levels(), self.getEQpulselen()
-            )
-        return data
+    # def safe_sync_clip(self, sync_ref, data):
+    #     if self.has_levels():
+    #         data = _safe_sync_clip(
+    #             sync_ref, data, self.pull_levels(), self.getEQpulselen()
+    #         )
+    #     return data
