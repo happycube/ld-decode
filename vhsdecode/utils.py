@@ -2,6 +2,7 @@ from packaging.version import Version, parse
 import numpy as np
 import scipy.signal as signal
 import scipy
+import numba as nb
 from numba import njit
 from vhsdecode.rust_utils import sosfiltfilt_rust
 
@@ -114,18 +115,6 @@ def pad_or_truncate(data, filler):
     return data
 
 
-@njit(cache=True)
-def moving_average(data_list, window=1024):
-
-    # TODO(oln): Should this maybe be done first?
-    if len(data_list) >= window:
-        data_list = data_list[-window:]
-
-    average = np.mean(data_list)
-
-    return average, data_list
-
-
 # This converts a regular B, A filter to an FFT of our selected block length
 # if Whole is false, output only up to and including the nyquist frequency (for use with rfft)
 def filtfft(filt, blocklen, whole=True):
@@ -228,32 +217,45 @@ class FiltersClass:
 
 # stacks and returns the moving average of the last window_average elements
 # has_values() method returns true if the stack has more than min_watermark elements
+
+float64_spec = [
+    ("window_average", nb.int32),
+    ("min_watermark", nb.int32),
+    ("stack", nb.types.ListType(nb.float64)),
+]
+@nb.experimental.jitclass(float64_spec)
 class StackableMA:
     def __init__(self, min_watermark=3, window_average=30):
         self.window_average = window_average
         self.min_watermark = min_watermark
-        self.stack = np.array([])
+        self.stack = nb.typed.List.empty_list(nb.float64)
 
     def push(self, value):
-        self.stack = np.append(self.stack, value)
+        self.stack.append(value)
+
+    def mean(self):
+        mean = 0
+        for val in self.stack:
+            mean += val
+        return mean / len(self.stack)
 
     def pull(self):
         if np.size(self.stack) > 0:
-            value, self.stack = moving_average(
-                self.stack, window=int(self.window_average)
-            )
-            return value
+            if len(self.stack) >= self.window_average:
+                self.stack = self.stack[-self.window_average:]
+        
+            return self.mean()
         else:
             return None
 
     def has_values(self):
-        return np.size(self.stack) > self.min_watermark
+        return len(self.stack) > self.min_watermark
 
     def current(self):
         return self.stack[-1:][0] if len(self.stack) > 0 else None
 
     def size(self):
-        return np.size(self.stack)
+        return len(self.stack)
 
     def work(self, value):
         self.push(value)
