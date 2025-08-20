@@ -1665,7 +1665,7 @@ async def decode_parallel(
             block = buffer.get_block()
             overlap_start = len(previous_overlap) + frames_read
             overlap_end = overlap_start + decoder_state.block_overlap
-            for i in range(overlap_start, overlap_end):
+            for i in range(overlap_start, min(overlap_end, len(block))):
                 block[i] = block[i-decoder_state.block_overlap]
         else:
             # copy the the current overlap to use in the next iteration
