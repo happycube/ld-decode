@@ -164,7 +164,7 @@ class VHSDecode(ldd.LDdecode):
 
         self.debug_plot = debug_plot
         self.field_order_action = field_order_action
-        self.duplicate_prev_field = "drop"
+        self.duplicate_prev_field = True
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -244,24 +244,28 @@ class VHSDecode(ldd.LDdecode):
                 fi["syncConf"] = 10
                 fi["isFirstField"] = not prevfi_1["isFirstField"]
             else:
-                # duplicated field order was detected more than 1.1 fields away from the previous field, possibly a gap
-                if distance_from_previous_field > 1.1 or self.field_order_action == "duplicate":
+                if self.field_order_action == "duplicate":
                     self.duplicate_prev_field = True
-
-                # duplicated field order was detected less than 0.9 fields away from the previous field, probably overlaped end of last field
-                elif distance_from_previous_field < 0.9 or self.field_order_action == "drop":
+                elif self.field_order_action == "drop":
                     self.duplicate_prev_field = False
-
-                # next field is close enough to be a valid field, duplicating or dropping is valid, alternate to avoid too many duplicates or drops
-                else:
-                    self.duplicate_prev_field = not self.duplicate_prev_field
+                elif self.field_order_action == "detect":
+                    # duplicated field order was detected more than 1.1 fields away from the previous field, possibly a gap
+                    if distance_from_previous_field > 1.1:
+                        self.duplicate_prev_field = True
+                    # duplicated field order was detected less than 0.9 fields away from the previous field, probably overlaped end of last field
+                    elif distance_from_previous_field < 0.9:
+                        self.duplicate_prev_field = False
+                    # next field is close enough to be a valid field, duplicating or dropping is valid, alternate to avoid too many duplicates or drops
+                    else:
+                        self.duplicate_prev_field = not self.duplicate_prev_field
 
                 if self.field_order_action == "none":
                     ldd.logger.error(
-                        "Possibly skipped field (Two fields with same isFirstField in a row)"
+                        "Possibly skipped field (Two fields with same isFirstField in a row), manually flipping the field order to compensate"
                     )
                     fi["decodeFaults"] |= 4
                     fi["syncConf"] = 0
+                    fi["isFirstField"] = not prevfi_1["isFirstField"]
                 elif self.duplicate_prev_field:
                     ldd.logger.error(
                         "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
