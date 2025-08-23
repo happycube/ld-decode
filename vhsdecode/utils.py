@@ -240,7 +240,7 @@ class StackableMA:
         return mean / len(self.stack)
 
     def pull(self):
-        if np.size(self.stack) > 0:
+        if len(self.stack) > 0:
             if len(self.stack) >= self.window_average:
                 self.stack = self.stack[-self.window_average:]
         
