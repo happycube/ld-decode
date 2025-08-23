@@ -2204,7 +2204,6 @@ class HiFiDecode:
             self.grc.send(filterL + filterR)
 
         if self.audio_process_params.decode_mode != 'r': 
-            print("processing left")
             preL, dcL, perf_measurements_l = HiFiDecode.demod_process_audio(
                 filterL, self.fmL, self.audio_process_params, self.audio_resampler_l, self.audio_final_resampler_l, measure_perf
             )
@@ -2213,7 +2212,6 @@ class HiFiDecode:
             dcL = 0
             perf_measurements_l = 0
         if self.audio_process_params.decode_mode != 'l': 
-            print("processing right")
             preR, dcR, perf_measurements_r = HiFiDecode.demod_process_audio(
                 filterR, self.fmR, self.audio_process_params, self.audio_resampler_r, self.audio_final_resampler_r, measure_perf
             )
