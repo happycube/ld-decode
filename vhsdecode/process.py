@@ -3,6 +3,7 @@ import time
 import numpy as np
 import traceback
 import scipy.signal as sps
+import threading
 from collections import namedtuple
 
 import lddecode.core as ldd
@@ -89,6 +90,7 @@ class VHSDecode(ldd.LDdecode):
         rf_options={},
         extra_options={},
         debug_plot=None,
+        field_order_action="detect"
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -161,6 +163,8 @@ class VHSDecode(ldd.LDdecode):
             self.outfile_chroma = None
 
         self.debug_plot = debug_plot
+        self.field_order_action = field_order_action
+        self.duplicate_prev_field = True
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -185,8 +189,9 @@ class VHSDecode(ldd.LDdecode):
         return 20 * np.log10(signal / noise)
 
     def buildmetadata(self, f, check_phase=False):
-        """returns field information JSON and whether or not a backfill field is needed"""
-        prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
+        """returns field information JSON and whether to duplicate or drop the field"""
+        prevfi_1 = self.fieldinfo[-1] if len(self.fieldinfo) else None
+        prevfi_2 = self.fieldinfo[-2] if len(self.fieldinfo) > 1 else None
 
         # Not calulated and used for tapes at the moment
         # bust_median = lddu.roundfloat(np.nan_to_num(f.burstmedian)) #lddu.roundfloat(f.burstmedian if not math.isnan(f.burstmedian) else 0.0)
@@ -194,12 +199,15 @@ class VHSDecode(ldd.LDdecode):
 
         fi = {
             "isFirstField": True if f.isFirstField else False,
+            "detectedFirstField": True if f.isFirstField else False,
+            "isDuplicateField": False,
             "syncConf": f.compute_syncconf(),
             "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
             "fileLoc": int(np.floor(f.readloc)),
             "fieldPhaseID": f.fieldPhaseID,
         }
+        write_field = True
 
         if self.doDOD:
             dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
@@ -211,28 +219,69 @@ class VHSDecode(ldd.LDdecode):
                 }
 
         # This is a bitmap, not a counter
-        decodeFaults = 0
-
-        if prevfi is not None:
-            if prevfi["isFirstField"] == fi["isFirstField"]:
-                # logger.info('WARNING!  isFirstField stuck between fields')
-                if lddu.inrange(fi["diskLoc"] - prevfi["diskLoc"], 0.95, 1.05):
-                    decodeFaults |= 1
-                    fi["isFirstField"] = not prevfi["isFirstField"]
-                    fi["syncConf"] = 10
-                else:
-                    # TODO: Do we want to handle this differently?
-                    # Also check if this is done properly by calling function
-                    # Not sure if it is at the moment..
-                    ldd.logger.error(
-                        "Possibly skipped field (Two fields with same isFirstField in a row), writing out an copy of last field to compensate.."
-                    )
-                    decodeFaults |= 4
-                    fi["syncConf"] = 0
-                    return fi, True
-
-        fi["decodeFaults"] = decodeFaults
+        # docs for this mysterious bitmap???
+        fi["decodeFaults"] = 0
         fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
+        # interlaced video requires alternating fields, handle cases where fields are repeated
+        #   this can happen due to breaks in recordings between fields, i.e. home recordings, and
+        #   progressive content, such as video game, osd, computer output, etc.
+        if prevfi_1 is not None and prevfi_1["isFirstField"] == fi["isFirstField"]:
+            distance_from_previous_field = fi["diskLoc"] - prevfi_1["diskLoc"]
+            if (
+                # there are three (this one, and two previous) repeating field orders in a row
+                # should be impossible for valid interlaced video, so maybe it's progressive??
+                # progressive examples needed to test this!
+                                             prevfi_1["detectedFirstField"] == fi["detectedFirstField"]
+                and prevfi_2 is not None and prevfi_2["detectedFirstField"] == prevfi_1["detectedFirstField"]
+                # and this field is within a reasonable distance to be valid
+                and lddu.inrange(distance_from_previous_field, 0.9, 1.1)
+            ):
+                # treat this as progressive, and manually flip the field order
+                ldd.logger.error(
+                    "Detected progressive video content..., manually flipping the field order to compensate"
+                )
+                fi["decodeFaults"] |= 1
+                fi["syncConf"] = 10
+                fi["isFirstField"] = not prevfi_1["isFirstField"]
+            else:
+                if self.field_order_action == "duplicate":
+                    self.duplicate_prev_field = True
+                elif self.field_order_action == "drop":
+                    self.duplicate_prev_field = False
+                elif self.field_order_action == "detect":
+                    # duplicated field order was detected more than 1.1 fields away from the previous field, possibly a gap
+                    if distance_from_previous_field > 1.1:
+                        self.duplicate_prev_field = True
+                    # duplicated field order was detected less than 0.9 fields away from the previous field, probably overlaped end of last field
+                    elif distance_from_previous_field < 0.9:
+                        self.duplicate_prev_field = False
+                    # next field is close enough to be a valid field, duplicating or dropping is valid, alternate to avoid too many duplicates or drops
+                    else:
+                        self.duplicate_prev_field = not self.duplicate_prev_field
+
+                if self.field_order_action == "none":
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row), manually flipping the field order to compensate"
+                    )
+                    fi["decodeFaults"] |= 4
+                    fi["syncConf"] = 0
+                    fi["isFirstField"] = not prevfi_1["isFirstField"]
+                elif self.duplicate_prev_field:
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
+                    )
+                    fi["decodeFaults"] |= 4
+                    fi["syncConf"] = 0
+                    fi["isDuplicateField"] = True
+                else:
+                    ldd.logger.error(
+                        "Possibly skipped field (Two fields with same isFirstField in a row), dropping the last field to compensate..."
+                    )
+                    fi["decodeFaults"] |= 4
+                    write_field = False
+                    fi["syncConf"] = 0
+
+            return fi, fi["isDuplicateField"], write_field
 
         self.frameNumber = None
         if f.isFirstField:
@@ -260,7 +309,7 @@ class VHSDecode(ldd.LDdecode):
                     ldd.logger.warning("file frame %d : VBI decoding error", rawloc)
                     traceback.print_exc()
 
-        return fi, False
+        return fi, fi["isDuplicateField"], write_field
 
     # Again ignored for tapes
     def checkMTF(self, field, pfield=None):
@@ -382,12 +431,12 @@ class VHSDecode(ldd.LDdecode):
                 self.threadreturn,
             )
 
-            # THis doesn't actually seem to do anything in the background so disable for now.
-            # if self.numthreads != 0:
-            #    self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-            #    self.decodethread.start()
-            # else:
-            self.decodefield(*df_args)
+            # decode the next field in a thread so the result is ready for the next iteration
+            if self.numthreads != 0:
+                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+                self.decodethread.start()
+            else:
+                self.decodefield(*df_args)
 
             # process previous run
             if f:
@@ -470,21 +519,22 @@ class VHSDecode(ldd.LDdecode):
             if len(self.fieldinfo) == 0 and not f.isFirstField:
                 return f
 
-            # XXX: this routine currently performs a needed sanity check
-            fi, needFiller = self.buildmetadata(f)
+            fi, duplicateField, writeField = self.buildmetadata(f)
 
-            self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
+            if writeField:
+                self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
 
-            if needFiller:
+            if duplicateField:
                 if self.lastvalidfield[not f.isFirstField] is not None:
                     self.writeout(self.lastvalidfield[not f.isFirstField])
                     self.writeout(self.lastvalidfield[f.isFirstField])
 
                 # If this is the first field to be written, don't write anything
                 return f
-
-            self.lastFieldWritten = (self.fields_written, f.readloc)
-            self.writeout(self.lastvalidfield[f.isFirstField])
+            
+            if writeField:
+                self.lastFieldWritten = (self.fields_written, f.readloc)
+                self.writeout(self.lastvalidfield[f.isFirstField])
 
         return f
 
@@ -607,6 +657,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "disable_right_hsync",
                 "disable_dc_offset",
                 "fallback_vsync",
+                "field_order_confidence",
                 "saved_levels",
                 "y_comb",
                 "write_chroma",
@@ -638,6 +689,7 @@ class VHSRFDecode(ldd.RFDecode):
             or tape_format == "EIAJ"
             or system == "405"
             or system == "819",
+            rf_options.get("field_order_confidence", False),
             rf_options.get("saved_levels", False),
             rf_options.get("y_comb", 0) * self.SysParams["hz_ire"],
             write_chroma,

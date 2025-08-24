@@ -18,6 +18,7 @@ from vhsdecode.chroma import (
     try_detect_track_betamax_pal,
 )
 
+from numba import njit
 from vhsdecode.debug_plot import plot_data_and_pulses
 
 NO_PULSES_FOUND = 1
@@ -1195,6 +1196,11 @@ class FieldShared:
             else:
                 self.rf.prev_first_field = -1
 
+            if hasattr(self.prevfield, "isProgressiveField"):
+                self.rf.prev_progressive_field = 1 if self.prevfield.isProgressiveField else 0
+            else:
+                self.rf.prev_progressive_field = -1
+
         # calculate in terms of lines to prevent integer overflow when seeking ahead large amounts
         if self.rf.prev_first_hsync_readloc != -1:
             prev_first_hsync_offset_lines = (
@@ -1230,6 +1236,7 @@ class FieldShared:
             self.first_hsync_loc_line,
             self.vblank_next,
             self.isFirstField,
+            self.isProgressiveField,
             prev_hsync_diff,
             vblank_pulses,
         ) = sync.get_first_hsync_loc(
@@ -1242,6 +1249,7 @@ class FieldShared:
             prev_first_hsync_offset_lines,
             self.rf.prev_first_hsync_loc,
             self.rf.prev_first_hsync_diff,
+            self.rf.options.field_order_confidence,
             fallback_line0loc,
             fallback_is_first_field,
             fallback_is_first_field_confidence,
@@ -1254,6 +1262,7 @@ class FieldShared:
             self.rf.prev_first_hsync_diff = prev_hsync_diff
 
         self.rf.prev_first_field = self.isFirstField
+        self.rf.prev_progressive_field = self.isProgressiveField
 
         # self.getLine0(validpulses, meanlinelen)
 

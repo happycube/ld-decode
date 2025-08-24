@@ -1040,13 +1040,6 @@ class HiFiDecode:
         self.preAudioResampleL = FiltersClass(a_iirb, a_iira, dtype=np.float64)
         self.preAudioResampleR = FiltersClass(a_iirb, a_iira, dtype=np.float64)
 
-        self.dcCancelL = StackableMA(
-            min_watermark=0, window_average=self._blocks_per_second_ratio
-        )
-        self.dcCancelR = StackableMA(
-            min_watermark=0, window_average=self._blocks_per_second_ratio
-        )
-
         self.standard, self.field_rate = HiFiDecode.get_standard(
             options["format"],
             options["standard"],
@@ -1606,7 +1599,13 @@ class HiFiDecode:
         devL = (self.standard_original.LCarrierRef - self.standard.LCarrierRef) / 1e3
         devR = (self.standard_original.RCarrierRef - self.standard.RCarrierRef) / 1e3
 
-        print("Bias L %.02f kHz, R %.02f kHz" % (devL, devR), end=" ")
+        if self.audio_process_params.decode_mode == 'l':
+            print("Bias L %.02f kHz" % (devL), end=" ")
+        elif self.audio_process_params.decode_mode == 'r':
+            print("Bias R %.02f kHz" % (devR), end=" ")
+        else:
+            print("Bias L %.02f kHz, R %.02f kHz" % (devL, devR), end=" ")
+
         if abs(devL) < 9 and abs(devR) < 9:
             print("(good player/recorder calibration)")
         elif 9 <= abs(devL) < 10 or 9 <= abs(devR) < 10:
@@ -1646,25 +1645,27 @@ class HiFiDecode:
     def auto_fine_tune(
         self, dcL: float, dcR: float
     ) -> Tuple[AFEFilterable, AFEFilterable, FMdemod, FMdemod]:
-        left_carrier_dc_offset = (
-            self.standard.LCarrierRef - dcL * self.standard.VCODeviation
-        )
-        left_carrier_updated = self.standard.LCarrierRef - round(left_carrier_dc_offset)
-        self.standard.LCarrierRef = max(
-            min(left_carrier_updated, self.standard_original.LCarrierRef + 10e3),
-            self.standard_original.LCarrierRef - 10e3,
-        )
-
-        right_carrier_dc_offset = (
-            self.standard.RCarrierRef - dcR * self.standard.VCODeviation
-        )
-        right_carrier_updated = self.standard.RCarrierRef - round(
-            right_carrier_dc_offset
-        )
-        self.standard.RCarrierRef = max(
-            min(right_carrier_updated, self.standard_original.RCarrierRef + 10e3),
-            self.standard_original.RCarrierRef - 10e3,
-        )
+        if self.audio_process_params.decode_mode != 'r':
+            left_carrier_dc_offset = (
+                self.standard.LCarrierRef - dcL * self.standard.VCODeviation
+            )
+            left_carrier_updated = self.standard.LCarrierRef - round(left_carrier_dc_offset)
+            self.standard.LCarrierRef = max(
+                min(left_carrier_updated, self.standard_original.LCarrierRef + 10e3),
+                self.standard_original.LCarrierRef - 10e3,
+            )
+            
+        if self.audio_process_params.decode_mode != 'l':
+            right_carrier_dc_offset = (
+                self.standard.RCarrierRef - dcR * self.standard.VCODeviation
+            )
+            right_carrier_updated = self.standard.RCarrierRef - round(
+                right_carrier_dc_offset
+            )
+            self.standard.RCarrierRef = max(
+                min(right_carrier_updated, self.standard_original.RCarrierRef + 10e3),
+                self.standard_original.RCarrierRef - 10e3,
+            )
 
         # auto fine tune can't adjust quadrature demodulation since the i/q oscillators are generated once, disabling for now
         # use the --bg option to adjust for bias at the beginning of the decode
@@ -1960,7 +1961,7 @@ class HiFiDecode:
         cache=True,
         fastmath=True,
     )
-    def cancelDC_clip_trim(audio: np.array, trim: int) -> float:
+    def cancelDC_trim(audio: np.array, trim: int) -> float:
         for i in range(trim):
             audio[i] = 0
 
@@ -2094,8 +2095,8 @@ class HiFiDecode:
             "end_demod": 0,
             "start_audio_resample": 0,
             "end_audio_resample": 0,
-            "start_dc_clip_trim": 0,
-            "end_dc_clip_trim": 0,
+            "start_dc_trim": 0,
+            "end_dc_trim": 0,
             "start_headswitch": 0,
             "end_headswitch": 0,
             "start_audio_final_resample": 0,
@@ -2118,12 +2119,12 @@ class HiFiDecode:
         if measure_perf:
             perf_measurements["end_audio_resample"] = perf_counter()
 
-        # cancel dc based on mean, clip signal based on vco deviation, remove spikes at end of signal
+        # cancel dc based on mean, remove spikes at end of signal
         if measure_perf:
-            perf_measurements["start_dc_clip_trim"] = perf_counter()
-        dc = HiFiDecode.cancelDC_clip_trim(audio, audio_process_params.pre_trim)
+            perf_measurements["start_dc_trim"] = perf_counter()
+        dc = HiFiDecode.cancelDC_trim(audio, audio_process_params.pre_trim)
         if measure_perf:
-            perf_measurements["end_dc_clip_trim"] = perf_counter()
+            perf_measurements["end_dc_trim"] = perf_counter()
 
         # mute audio when carrier loss occurs
         if measure_perf:
@@ -2194,20 +2195,30 @@ class HiFiDecode:
 
         if measure_perf:
             start_carrier_filter = perf_counter()
-        filterL = self.afeL.work(rf_data_resampled)
-        filterR = self.afeR.work(rf_data_resampled)
+        if self.audio_process_params.decode_mode != 'r': filterL = self.afeL.work(rf_data_resampled)
+        if self.audio_process_params.decode_mode != 'l': filterR = self.afeR.work(rf_data_resampled)
         if measure_perf:
             end_carrier_filter = perf_counter()
 
         if self.options["grc"] and ZMQ_AVAILABLE:
             self.grc.send(filterL + filterR)
 
-        preL, dcL, perf_measurements_l = HiFiDecode.demod_process_audio(
-            filterL, self.fmL, self.audio_process_params, self.audio_resampler_l, self.audio_final_resampler_l, measure_perf
-        )
-        preR, dcR, perf_measurements_r = HiFiDecode.demod_process_audio(
-            filterR, self.fmR, self.audio_process_params, self.audio_resampler_r, self.audio_final_resampler_r, measure_perf
-        )
+        if self.audio_process_params.decode_mode != 'r': 
+            preL, dcL, perf_measurements_l = HiFiDecode.demod_process_audio(
+                filterL, self.fmL, self.audio_process_params, self.audio_resampler_l, self.audio_final_resampler_l, measure_perf
+            )
+        else:
+            preL = None
+            dcL = 0
+            perf_measurements_l = 0
+        if self.audio_process_params.decode_mode != 'l': 
+            preR, dcR, perf_measurements_r = HiFiDecode.demod_process_audio(
+                filterR, self.fmR, self.audio_process_params, self.audio_resampler_r, self.audio_final_resampler_r, measure_perf
+            )
+        else:
+            preR = None
+            dcR = 0
+            perf_measurements_r = 0
 
         # fine tune carrier frequency
         if measure_perf:
@@ -2254,9 +2265,9 @@ class HiFiDecode:
                 perf_measurements_l["end_audio_resample"]
                 - perf_measurements_l["start_audio_resample"]
             )
-            duration_dc_clip_trim_l = (
-                perf_measurements_l["end_dc_clip_trim"]
-                - perf_measurements_l["start_dc_clip_trim"]
+            duration_dc_trim_l = (
+                perf_measurements_l["end_dc_trim"]
+                - perf_measurements_l["start_dc_trim"]
             )
             duration_mute_l = (
                 perf_measurements_l["end_mute"] - perf_measurements_l["start_mute"]
@@ -2277,9 +2288,9 @@ class HiFiDecode:
                 perf_measurements_r["end_audio_resample"]
                 - perf_measurements_r["start_audio_resample"]
             )
-            duration_dc_clip_trim_r = (
-                perf_measurements_r["end_dc_clip_trim"]
-                - perf_measurements_r["start_dc_clip_trim"]
+            duration_dc_trim_r = (
+                perf_measurements_r["end_dc_trim"]
+                - perf_measurements_r["start_dc_trim"]
             )
             duration_mute_r = (
                 perf_measurements_r["end_mute"] - perf_measurements_r["start_mute"]
@@ -2302,13 +2313,13 @@ class HiFiDecode:
                 ("duration_carrier_filter", duration_carrier_filter),
                 ("duration_demod_l", duration_demod_l),
                 ("duration_audio_resample_l", duration_audio_resample_l),
-                ("duration_dc_clip_trim_l", duration_dc_clip_trim_l),
+                ("duration_dc_trim_l", duration_dc_trim_l),
                 ("duration_mute_l", duration_mute_l),
                 ("duration_headswitch_l", duration_headswitch_l),
                 ("duration_audio_final_resample_l", duration_audio_final_resample_l),
                 ("duration_demod_r", duration_demod_r),
                 ("duration_audio_resample_r", duration_audio_resample_r),
-                ("duration_dc_clip_trim_r", duration_dc_clip_trim_r),
+                ("duration_dc_trim_r", duration_dc_trim_r),
                 ("duration_mute_r", duration_mute_r),
                 ("duration_headswitch_r", duration_headswitch_r),
                 ("duration_audio_final_resample_r", duration_audio_final_resample_r),

@@ -3,6 +3,7 @@ import os
 import sys
 import signal
 import traceback
+import json
 
 import numpy
 
@@ -288,6 +289,37 @@ def main(args=None, use_gui=False):
         ),
     )
     debug_group.add_argument(
+        "--field_order_confidence",
+        dest="field_order_confidence",
+        default=100,
+        metavar="value",
+        type=int,
+        help=(
+            "Allow field order cadence to change after n percent of field order pulses detected.\n"
+            "  Reduce this number if you experience field order issues when decoding sources with multiple recordings, such as home recordings\n"
+            "  Increase this number if there is damage to the v-sync area to prevent incorrect field order detection\n"
+            "  Range 0-100; Sane Values 50-100\n"
+            "    100, (default) all field order pulses must match to change field cadence\n"
+            "     50, half of field order pulses must match to change field cadence\n"
+            "      0, any field order pulse can match to change field cadence\n"
+        ),
+    )
+    debug_group.add_argument(
+        "--field_order_action",
+        dest="field_order_action",
+        default="detect",
+        metavar="value",
+        type=lambda x: x if x in ["detect", "duplicate", "drop", "none"] else parser.error('--field_order_action must be one of ["detect", "duplicate", "drop", "none"]'),
+        help=(
+            "Decides how to handle field order discontinuities,\n"
+            "  When the field order cadence is broken such that there are two Top or two Bottom fields.\n"
+            "  * `detect`:    (default) use the distance between the dropped field to determine whether to drop or duplicate.\n"
+            "  * `duplicate`: always duplicate the last valid field\n"
+            "  * `drop`:      always drop the last valid field\n"
+            "  * `none`:      do nothing, (field order will be out of sync causing issues for interlaced video)\n"
+        ),
+    )
+    debug_group.add_argument(
         "--use_saved_levels",
         dest="saved_levels",
         action="store_true",
@@ -443,6 +475,7 @@ def main(args=None, use_gui=False):
     rf_options["disable_right_hsync"] = args.disable_right_hsync
     rf_options["level_detect_divisor"] = args.level_detect_divisor
     rf_options["fallback_vsync"] = args.fallback_vsync
+    rf_options["field_order_confidence"] = int(max(0, min(100, args.field_order_confidence)))
     rf_options["saved_levels"] = args.saved_levels
     rf_options["skip_hsync_refine"] = args.skip_hsync_refine
     rf_options["export_raw_tbc"] = args.export_raw_tbc
@@ -486,6 +519,7 @@ def main(args=None, use_gui=False):
         rf_options=rf_options,
         extra_options=extra_options,
         debug_plot=debug_plot,
+        field_order_action=args.field_order_action
     )
 
     if check_debug():
@@ -510,6 +544,9 @@ def main(args=None, use_gui=False):
     def cleanup():
         jsondumper.close()
         vhsd.close()
+
+    logger.debug("Sys Parameters: \n" + json.dumps(vhsd.rf.SysParams, sort_keys=True, indent=4))
+    logger.debug("RF Parameters: \n" + json.dumps(vhsd.rf.DecoderParams, sort_keys=True, indent=4))
 
     while not done and vhsd.fields_written < (req_frames * 2):
         try:

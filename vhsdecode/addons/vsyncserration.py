@@ -39,32 +39,23 @@ def _chainfiltfilt(data, filters):
 
 
 # clips any sync pulse that satisfies min_synclen < pulse_len < max_synclen
-@njit(cache=True)
-def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
-    sync, blank = levels
-    mid_sync = (sync + blank) / 2
-    where_all_picture = np.where(sync_ref > mid_sync)[0]
-    locs_len = np.diff(where_all_picture)
-    min_synclen = eq_pulselen * 3 / 4
-    max_synclen = eq_pulselen * 3
-    is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
-    where_all_syncs = np.where(is_sync)[0]
-    clip_from = where_all_picture[where_all_syncs]
-    clip_len = locs_len[where_all_syncs]
-    for ix, begin in enumerate(clip_from):
-        data[begin : begin + clip_len[ix]] = sync
+# @njit(cache=True)
+# def _safe_sync_clip(sync_ref, data, levels, eq_pulselen):
+#     sync, blank = levels
+#     mid_sync = (sync + blank) / 2
+#     where_all_picture = np.where(sync_ref > mid_sync)[0]
+#     locs_len = np.diff(where_all_picture)
+#     min_synclen = eq_pulselen * 3 / 4
+#     max_synclen = eq_pulselen * 3
+#     is_sync = np.bitwise_and(locs_len > min_synclen, locs_len < max_synclen)
+#     where_all_syncs = np.where(is_sync)[0]
+#     clip_from = where_all_picture[where_all_syncs]
+#     clip_len = locs_len[where_all_syncs]
+#     for ix, begin in enumerate(clip_from):
+#         data[begin : begin + clip_len[ix]] = sync
+# 
+#     return data
 
-    return data
-
-
-@njit(cache=True)
-def _select_serration(where_min, serrations, selected):
-    for id, edge in enumerate(serrations):
-        for s_min in where_min:
-            next_serration_id = min(id + 1, len(serrations) - 1)
-            if edge <= s_min <= serrations[next_serration_id]:
-                selected = np.append(selected, edge)
-    return selected
 
 
 # encapsulates the serration search logic
@@ -222,31 +213,42 @@ class VsyncSerration:
         return argrelextrema(first_harmonic, np.less)[0]
 
     # fills in missing VBI positions when possible
-    def _vsync_arbitrage(self, where_allmin, serrations, datalen):
-        result = np.array([], np.int64)
+    @staticmethod
+    @njit(nogil=True, cache=True, fastmath=True)
+    def _vsync_arbitrage(vsynclen, where_allmin, serrations, datalen):
+        result = []
         if len(where_allmin) > 1:
-            selected = np.array([], np.int64)
-            valid_serrations = _select_serration(where_allmin, serrations, selected)
+            valid_serrations = []
+
+            # select serration
+            for id, edge in enumerate(serrations):
+                for s_min in where_allmin:
+                    next_serration_id = min(id + 1, len(serrations) - 1)
+                    if edge <= s_min <= serrations[next_serration_id]:
+                        valid_serrations.append(edge)
+
             for serration in valid_serrations:
                 if (
-                    serration - self.vsynclen >= 0
-                    or serration + self.vsynclen <= datalen - 1
+                    serration - vsynclen >= 0
+                    or serration + vsynclen <= datalen - 1
                 ):
-                    result = np.append(result, serration)
+                    result.append(serration)
         elif len(where_allmin) == 1:
-            if where_allmin[0] + self.vsynclen < datalen - 1:
-                result = np.append(where_allmin[0], where_allmin[0] + self.vsynclen)
+            if where_allmin[0] + vsynclen < datalen - 1:
+                result.append(where_allmin[0])
+                result.append(where_allmin[0] + vsynclen)
             else:
-                result = np.append(
-                    where_allmin[0], max(where_allmin[0] - self.vsynclen, 0)
-                )
+                result.append(where_allmin[0])
+                result.append(max(where_allmin[0] - vsynclen, 0))
         else:
             result = None
 
         return result
 
     # extracts the level from a valid serration
-    def _get_serration_sync_levels(self, serration):
+    @staticmethod
+    @njit(nogil=True, cache=True, fastmath=True)
+    def _get_serration_sync_levels(serration):
         half_amp = np.mean(serration)
         peaks = np.where(serration > half_amp)[0]
         valleys = np.where(serration <= half_amp)[0]
@@ -285,7 +287,8 @@ class VsyncSerration:
             # now calculated at initialization
             if self.vbi_time_range[0] < len(serration) < self.vbi_time_range[1]:
                 self.found_serration = True
-                self.push_levels(self._get_serration_sync_levels(serration))
+                self.push_levels(VsyncSerration._get_serration_sync_levels(serration))
+
                 if self.show_decoded:
                     sync, blank = self.pull_levels()
                     marker = np.ones(len(serration)) * blank
@@ -321,15 +324,17 @@ class VsyncSerration:
         where_allmin = argrelextrema(diff, np.less)[0]
         if len(where_allmin) > 0:
             serrations = self._power_ratio_search(padded)
-            where_min = self._vsync_arbitrage(where_allmin, serrations, len(padded))
+            where_min = VsyncSerration._vsync_arbitrage(self.vsynclen, where_allmin, serrations, len(padded))
             serration_locs = list()
             if len(where_min) > 0:
                 mask_len = self.linelen * 5
                 state = False
-
+                tasks = []
                 for w_min in where_min:
-                    state, serr_loc, serr_len = self._search_eq_pulses(data, w_min)
+                    self.executor.submit(self._search_eq_pulses, data, w_min)
 
+                for task in tasks:
+                    state, serr_loc, serr_len = task.result()
                     if state:
                         serration_locs.append(serr_loc)
                         mask_len = serr_len - serr_loc
@@ -383,9 +388,9 @@ class VsyncSerration:
         self.fieldcount += 1
 
     # safe clips the bottom of the sync pulses, but not the picture area
-    def safe_sync_clip(self, sync_ref, data):
-        if self.has_levels():
-            data = _safe_sync_clip(
-                sync_ref, data, self.pull_levels(), self.getEQpulselen()
-            )
-        return data
+    # def safe_sync_clip(self, sync_ref, data):
+    #     if self.has_levels():
+    #         data = _safe_sync_clip(
+    #             sync_ref, data, self.pull_levels(), self.getEQpulselen()
+    #         )
+    #     return data
