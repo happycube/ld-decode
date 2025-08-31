@@ -220,7 +220,8 @@ class VHSDecode(ldd.LDdecode):
 
         # This is a bitmap, not a counter
         # docs for this mysterious bitmap???
-        fi["decodeFaults"] = 0
+
+        decode_faults = 0
         fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
         # interlaced video requires alternating fields, handle cases where fields are repeated
         #   this can happen due to breaks in recordings between fields, i.e. home recordings, and
@@ -240,7 +241,7 @@ class VHSDecode(ldd.LDdecode):
                 ldd.logger.error(
                     "Detected progressive video content..., manually flipping the field order to compensate"
                 )
-                fi["decodeFaults"] |= 1
+                decode_faults |= 1
                 fi["syncConf"] = 10
                 fi["isFirstField"] = not prevfi_1["isFirstField"]
             else:
@@ -263,23 +264,28 @@ class VHSDecode(ldd.LDdecode):
                     ldd.logger.error(
                         "Possibly skipped field (Two fields with same isFirstField in a row), manually flipping the field order to compensate"
                     )
-                    fi["decodeFaults"] |= 4
+                    decode_faults |= 4
                     fi["syncConf"] = 0
                     fi["isFirstField"] = not prevfi_1["isFirstField"]
                 elif self.duplicate_prev_field:
                     ldd.logger.error(
                         "Possibly skipped field (Two fields with same isFirstField in a row), duplicating the last field to compensate..."
                     )
-                    fi["decodeFaults"] |= 4
+                    decode_faults |= 4
                     fi["syncConf"] = 0
                     fi["isDuplicateField"] = True
                 else:
                     ldd.logger.error(
                         "Possibly skipped field (Two fields with same isFirstField in a row), dropping the last field to compensate..."
                     )
-                    fi["decodeFaults"] |= 4
+                    decode_faults |= 4
                     write_field = False
                     fi["syncConf"] = 0
+
+            if decode_faults != 0:
+                # Only write this if it's anything else than 0, to save a little space in the json,
+                # since it's not used for anything atm anyhow.
+                fi["decodeFaults"] = decode_faults
 
             return fi, fi["isDuplicateField"], write_field
 
