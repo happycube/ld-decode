@@ -50,7 +50,8 @@ jobs:
           cmake -B _build \
           -DCMAKE_BUILD_TYPE=Release \
           -DUSE_QT_VERSION=5 \
-          -DBUILD_PYTHON=false
+          -DBUILD_PYTHON=false \
+          -DBUILD_TESTING=OFF
 
           cmake --build _build
           cmake --install _build --prefix AppDir/usr

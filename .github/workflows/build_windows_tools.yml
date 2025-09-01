@@ -41,7 +41,7 @@ jobs:
         uses: lukka/run-cmake@v10
         with:
           configurePreset: vcpkg
-          configurePresetAdditionalArgs: "['-G Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DUSE_QT_VERSION=6', '-DBUILD_PYTHON=false', '-DVCPKG_APPLOCAL_DEPS=ON']"
+          configurePresetAdditionalArgs: "['-G Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DUSE_QT_VERSION=6', '-DBUILD_PYTHON=false', '-DVCPKG_APPLOCAL_DEPS=ON', '-DBUILD_TESTING=OFF',]"
           buildPreset: vcpkg
           buildPresetAdditionalArgs: "['--config Release']"
 
