@@ -5,9 +5,9 @@ on:
 
 env:
   # other tools to be bundled
-  FFMPEG_FILE: "ffmpeg-7.1.1-full_build.zip"
-  FFMPEG_PATH: "ffmpeg-7.1.1-full_build"
-  FFMPEG_URL: "https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build.zip"
+  FFMPEG_FILE: "ffmpeg-8.0-full_build.zip"
+  FFMPEG_PATH: "ffmpeg-8.0-full_build"
+  FFMPEG_URL: "https://github.com/GyanD/codexffmpeg/releases/download/8.0/ffmpeg-8.0-full_build.zip"
   FLAC_FILE: "flac-1.5.0-win.zip"
   FLAC_PATH: "flac-1.5.0-win"
   FLAC_URL: "https://ftp.osuosl.org/pub/xiph/releases/flac/flac-1.5.0-win.zip"
