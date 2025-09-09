@@ -150,6 +150,7 @@ def plot_magnitude_density(
 
 def plot_input_data(
     raw_data,
+    filtered_data,
     raw_fft,
     filtered_fft,
     env,
@@ -181,6 +182,7 @@ def plot_input_data(
         #        ax1.plot(hilbert, color='#FF0000')
         blocklen = len(raw_data)
         ax1.plot(raw_data, color="#00FF00")
+        ax1.plot(filtered_data, color="#FF0000")
         ax1.plot(env, label="Envelope", color="#0000FF")
         if rfdecode.dod_options.dod_threshold_a:
             ax1.axhline(

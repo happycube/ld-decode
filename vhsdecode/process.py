@@ -1174,6 +1174,7 @@ class VHSRFDecode(ldd.RFDecode):
         self, data=None, mtf_level=0, fftdata=None, cut=False, thread_benchmark=False
     ):
         rv = {}
+        demod_block_debug = False
         demod_start_time = time.time()
         if fftdata is not None:
             indata_fft = fftdata
@@ -1186,6 +1187,7 @@ class VHSRFDecode(ldd.RFDecode):
             data = npfft.ifft(indata_fft).real
 
         if self.debug_plot and self.debug_plot.is_plot_requested("demodblock"):
+            demod_block_debug = True
             # If we're doing a plot make a copy of the input to be able to plot it since we
             # are modifying the data in place.
             indata_fft_copy = indata_fft.copy()
@@ -1226,6 +1228,9 @@ class VHSRFDecode(ldd.RFDecode):
             ldd.logger.warning("RF signal is weak. Is your deck tracking properly?")
 
         hilbert = npfft.ifft(indata_fft * self.Filters["hilbert"])
+
+        if not demod_block_debug:
+            del indata_fft
 
         # FM demodulator
         # test1 = np.angle(hilbert)
@@ -1334,11 +1339,12 @@ class VHSRFDecode(ldd.RFDecode):
                 rfdecode=self,
             )
 
-        if self.debug_plot and self.debug_plot.is_plot_requested("demodblock"):
+        if demod_block_debug:
             from vhsdecode.debug_plot import plot_input_data
 
             plot_input_data(
                 raw_data=data,
+                filtered_data=npfft.ifft(indata_fft).real,
                 env=env,
                 env_mean=env_mean,
                 raw_fft=indata_fft_copy,

@@ -249,16 +249,16 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
-    RFParams_NTSC_VHS["video_bpf_low"] = 1000000
-    RFParams_NTSC_VHS["video_bpf_high"] = 5400000
+    RFParams_NTSC_VHS["video_bpf_low"] = 500000
+    RFParams_NTSC_VHS["video_bpf_high"] = 5700000
 
-    RFParams_NTSC_VHS["video_bpf_order"] = 6
+    RFParams_NTSC_VHS["video_bpf_order"] = 8
     RFParams_NTSC_VHS["video_bpf_supergauss"] = True
 
-    RFParams_NTSC_VHS["video_lpf_extra"] = 5350000
+    RFParams_NTSC_VHS["video_lpf_extra"] = 5450000
     RFParams_NTSC_VHS["video_lpf_extra_order"] = 25
 
-    RFParams_NTSC_VHS["video_hpf_extra"] = 500000
+    RFParams_NTSC_VHS["video_hpf_extra"] = 1200000
     RFParams_NTSC_VHS["video_hpf_extra_order"] = 20
 
     # Low-pass filter on Y after demodulation
@@ -290,11 +290,16 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
 
     # Use linear ramp to boost RF
     # Lower number attenuates lower freqs more giving a "softer" look with less ringing but potentially less detail
-    RFParams_NTSC_VHS["boost_rf_linear_0"] = 0.21
+    RFParams_NTSC_VHS["boost_rf_linear_0"] = 0
     # This param doesn't really seem to matter.
-    RFParams_NTSC_VHS["boost_rf_linear_20"] = 8
+    RFParams_NTSC_VHS["boost_rf_linear_20"] = 1
     # Double up ramp filter to more closely mimic VHS EQ
-    RFParams_NTSC_VHS["boost_rf_linear_double"] = True
+    RFParams_NTSC_VHS["boost_rf_linear_double"] = False
+    RFParams_NTSC_VHS["start_rf_linear"] = RFParams_NTSC_VHS["color_under_carrier"]
+
+    RFParams_NTSC_VHS["video_rf_peak_freq"] = 3900000
+    RFParams_NTSC_VHS["video_rf_peak_gain"] = 4
+    RFParams_NTSC_VHS["video_rf_peak_bandwidth"] = 1.0e7
 
     # Frequency of fm audio channels - used for notch filter
     RFParams_NTSC_VHS["fm_audio_channel_0_freq"] = 1300000
