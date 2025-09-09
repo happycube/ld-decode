@@ -141,7 +141,7 @@ Capture is done using an intuitive GUI application.
 > [!WARNING]  
 > This is a single channel capture device! not a multi-channel one which is the ideal minimum for VHS etc.
 
-Built and geared towards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing many forms of single channel tape formats such as Video8/Hi8/Betamax NTSC, but is not ideal for VHS/Betamax PAL/U-matic and others that need *another* ADC channel for HiFi and less powerful ones for Linear audio capture (in sync on a hardware level).
+Built and geared towards capturing RF from Laserdisc players, it does however also work perfectly well for digitizing many forms of single channel tape formats such as Video8/Hi8/Betamax NTSC, but is not ideal for VHS/Betamax PAL/Umatic and others that need *another* ADC channel for HiFi and less powerful ones for Linear audio capture (in sync on a hardware level).
 
 It consists of a custom analogue to digital board with an amplifier and DIP switch for control, an off-the-shelf DE0-NANO FPGA development board, and a Cypress FX3 SuperSpeed Explorer USB 3.0 board.
 
@@ -206,7 +206,7 @@ Decks follow this naming or close to it not every possible name is covered.
 
 * 50 Ohm BNC connectors, normally a [pre made bulkhead](https://s.click.aliexpress.com/e/_DCynGRN), or [solderable thread mounted](https://s.click.aliexpress.com/e/_Dd6dn0b).
 * 50-100 cm (20-40 inch) of [RG316](https://s.click.aliexpress.com/e/_DEjGLGT) or [RG178](https://s.click.aliexpress.com/e/_DBLPVc3) 50 Ohm coaxial cable.
-* 10 ㎌ Capacitors [standard ceramic assortment](https://s.click.aliexpress.com/e/_DlOEdSJ) or audio grade like Nichicon if you like.
+* 10 uF Capacitors [standard ceramic assortment](https://s.click.aliexpress.com/e/_DlOEdSJ) or audio grade like Nichicon if you like.
 
 Connection Cables
 
@@ -226,7 +226,7 @@ On [CX White Cards](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards) you us
 > [!TIP]  
 > The [Hardware Installation Guide](https://github.com/oyvindln/vhs-decode/wiki/Hardware-Installation-Guide) visually goes over all the installation steps for tape decks to Sony 8mm camcorders.
 
-Adding a 10 ㎌ (0.1 ㎌ to 100 ㎌ range) capacitor to the test point or amplifier is recommended. It can help improve signal integrity. (A handful of VCRs have this on the test point already.)
+Adding a 10 uF (0.1 uF to 100 uF range) capacitor to the test point or amplifier is recommended. It can help improve signal integrity. (A handful of VCRs have this on the test point already.)
 
 Center is Signal, Outer is Ground, this goes for jacks and for coaxial cable in general.
 
@@ -248,7 +248,7 @@ While type and voltage does not matter drastically it's best to use new/tested c
 
 - Do not make sharp bends in any RF cabling, keep total cable runs as short as possible, ideally 30-60 cm. More cable = more signal loss.
 
-- Some U-matic decks have an RF output on the back, *however* this only provides Luma RF for dropout detection and not the full Y/C FM signal required for a full RF capture.
+- Some Umatic decks have an RF output on the back, *however* this only provides Luma RF for dropout detection and not the full Y/C FM signal required for a full RF capture.
 
 
 # Dependencies & Installation - Software
@@ -617,7 +617,7 @@ After decoding, process your tapes VBI data with:
 
 VHS-Decode produces [4fsc sampled](https://github.com/oyvindln/vhs-decode/wiki/Signal-Sampling#4fsc), non-square pixel, timebase corrected, headerless files, there are two formatting versions of these files: 
 
-- S-Video signal in two files for colour-under format tape media such as VHS/U-matic/Betamax/SuperBeta/Video8/Hi8 etc. 
+- S-Video signal in two files for colour-under format tape media such as VHS/Umatic/Betamax/SuperBeta/Video8/Hi8 etc. 
 
 - Composite/CVBS signal in a single file for SMPTE-C/B/A this also applies to 2" Quad and LaserDisc & anything CVBS-Decode. 
 
@@ -739,7 +739,7 @@ The decode projects tool suite has built-in tools for this `ld-process-vbi` & `l
 
 The decoders support various arguments to change how captured tape recordings are processed. 
 
-These vary slightly between formats like VHS & U-matic, but the basic arguments remain the same.
+These vary slightly between formats like VHS & Umatic, but the basic arguments remain the same.
 
 The list below is a short list for common/daily usage but does not cover all the abilities and new or advanced command arguments possible, so please read the [complete and up-to-date command list](https://github.com/oyvindln/vhs-decode/wiki/Command-List) on the wiki as commands may change or be deprecated. It's always good to check this list for any updates or specific issues you're trying to correct. 
 
@@ -839,7 +839,7 @@ Useful to recover decoding after a crash, or for limiting processing time by pro
 
 `--ct` enables a *chroma trap*, a filter intended to reduce chroma interference on the main luma signal. Use if seeing banding or checkerboarding on the main luma .tbc in ld-analyse.
 
-`--recheck_phase` re-check chroma phase on every field, fixes most colour issues. (No effect on U-matic.)
+`--recheck_phase` re-check chroma phase on every field, fixes most colour issues. (No effect on Umatic.)
 
 `--sl` defines the output *sharpness level*, as an integer from 0-100, the default being 0. Higher values are better suited for plain, flat images i.e. cartoons and animated material, as strong ghosting can occur. (Akin to cranking up the sharpness on any regular TV set.)
 
