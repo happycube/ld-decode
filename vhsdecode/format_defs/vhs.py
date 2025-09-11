@@ -360,7 +360,7 @@ def get_rfparams_ntsc_svhs_et(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
 
     # use svhs as a starting point but adjust upper lpf as ET mode
     # has lower white clip
-    rfparams = get_rfparams_pal_svhs(rfparams_ntsc)
+    rfparams = get_rfparams_ntsc_svhs(rfparams_ntsc)
     rfparams["video_lpf_extra"] = 8450000
 
     # TODO: add extra deemph
