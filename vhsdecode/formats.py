@@ -119,6 +119,8 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
     # We base the parameters off the original laserdisc ones and override the ones
     # we need.
 
+    # TODO: This should be made cleaner.
+
     assert tape_speed <= 4, "Tape speed was > 4!"
 
     # TBC/JSON uses "PAL-M" instead of "MPAL".
@@ -170,6 +172,15 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             )
 
             return get_sysparams_pal_svhs(SysParams_PAL), get_rfparams_pal_svhs(
+                FilterParams_PAL
+            )
+        elif tape_format == "SVHS_ET":
+            from vhsdecode.format_defs.vhs import (
+                get_rfparams_pal_svhs_et,
+                get_sysparams_pal_svhs,
+            )
+
+            return get_sysparams_pal_svhs(SysParams_PAL), get_rfparams_pal_svhs_et(
                 FilterParams_PAL
             )
         elif tape_format == "VIDEO8":
@@ -292,6 +303,15 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             )
 
             return get_sysparams_ntsc_svhs(SysParams_NTSC), get_rfparams_ntsc_svhs(
+                FilterParams_NTSC
+            )
+        elif tape_format == "SVHS_ET":
+            from vhsdecode.format_defs.vhs import (
+                get_rfparams_ntsc_svhs_et,
+                get_sysparams_ntsc_svhs,
+            )
+
+            return get_sysparams_ntsc_svhs(SysParams_NTSC), get_rfparams_ntsc_svhs_et(
                 FilterParams_NTSC
             )
         elif tape_format == "BETAMAX":

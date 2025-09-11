@@ -41,19 +41,21 @@ def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     SVHS uses the same luma frequencies for NTSC and PAL
     """
     # 5.4-7.0 ± 0.1 mhz
+    # for standard SHVS white clip at 210% of sync tip, which would be 5.4 * (1.6 * 2.1), approx 8.76
     rfparams["video_bpf_low"] = 2000000
     rfparams["video_bpf_high"] = 8980000
 
     # Band-pass filter order.
     # Order may be fine as is.
-    rfparams["video_bpf_order"] = 1
+    rfparams["video_bpf_order"] = None
+    rfparams["video_bpf_supergauss"] = False
 
     # Sharper upper cutoff to get rid of high-frequency junk.
-    rfparams["video_lpf_extra"] = 9210000
-    rfparams["video_lpf_extra_order"] = 3
+    rfparams["video_lpf_extra"] = 8800000
+    rfparams["video_lpf_extra_order"] = 25
 
-    rfparams["video_hpf_extra"] = 1720000
-    rfparams["video_hpf_extra_order"] = 3
+    rfparams["video_hpf_extra"] = 1600000
+    rfparams["video_hpf_extra_order"] = 20
 
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 7500000
@@ -65,15 +67,16 @@ def fill_rfparams_svhs_shared(rfparams: dict) -> None:
         {"type": "highshelf", "gain": 4.0, "midfreq": 2000000, "q": 0.4967045},
     ]
 
-    rfparams["boost_bpf_low"] = 7000000
-    rfparams["boost_bpf_high"] = 8400000
+    rfparams["boost_bpf_low"] = 6700000
+    rfparams["boost_bpf_high"] = 8000000
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = None
 
     # Use linear ramp to boost RF
-    rfparams["boost_rf_linear_0"] = 0.5
-    rfparams["boost_rf_linear_20"] = 100
+    rfparams["boost_rf_linear_0"] = 0
+    rfparams["boost_rf_linear_20"] = 2
     rfparams["boost_rf_linear_double"] = False
+    rfparams["start_rf_linear"] = rfparams["color_under_carrier"]
 
     # SVHS uses the emphasis curve from VHS + an additional sub-emphasis filter
     # The latter isn't properly implemented yet but
@@ -83,6 +86,10 @@ def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     # rfparams["deemph_mid"] = 335000 # the optimal value of this parameter is currently dependant on the recording devices
     # rfparams["deemph_gain"] = 14
 
+    rfparams["video_rf_peak_freq"] = 6200000
+    rfparams["video_rf_peak_gain"] = 4
+    rfparams["video_rf_peak_bandwidth"] = 1.6e7
+
     rfparams["nonlinear_highpass_freq"] = 320000
     rfparams["nonlinear_amp_lpf_freq"] = 590000
     rfparams["nonlinear_exp_scaling"] = 0.23
@@ -91,6 +98,20 @@ def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     rfparams["nonlinear_logistic_mid"] = 0.2
     rfparams["nonlinear_logistic_rate"] = 14.0
     rfparams["use_sub_deemphasis"] = True
+
+
+def get_rfparams_pal_svhs_et(rfparams_pal: dict, tape_speed: int = 0) -> dict:
+    """Get RF params for PAL SVHS"""
+    # Super-VHS ET
+
+    # use svhs as a starting point but adjust upper lpf as ET mode
+    # has lower white clip
+    rfparams = get_rfparams_pal_svhs(rfparams_pal)
+    rfparams["video_lpf_extra"] = 8450000
+
+    # TODO: add extra deemph
+
+    return rfparams
 
 
 def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
@@ -331,6 +352,20 @@ def get_rfparams_ntsc_svhs(rfparams_ntsc):
     fill_rfparams_svhs_shared(RFParams_NTSC_SVHS)
 
     return RFParams_NTSC_SVHS
+
+
+def get_rfparams_ntsc_svhs_et(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
+    """Get RF params for PAL SVHS"""
+    # Super-VHS ET
+
+    # use svhs as a starting point but adjust upper lpf as ET mode
+    # has lower white clip
+    rfparams = get_rfparams_pal_svhs(rfparams_ntsc)
+    rfparams["video_lpf_extra"] = 8450000
+
+    # TODO: add extra deemph
+
+    return rfparams
 
 
 def get_sysparams_ntsc_svhs(sysparams_ntsc):

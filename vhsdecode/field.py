@@ -59,13 +59,7 @@ def y_comb(data, line_len, limit):
 def field_class_from_formats(system: str, tape_format: str):
     field_class = None
     if system == "PAL":
-        if (
-            tape_format == "UMATIC"
-            or tape_format == "UMATIC_HI"
-            or tape_format == "EIAJ"
-            or tape_format == "VCR"
-            or tape_format == "VCR_LP"
-        ):
+        if tape_format in ["UMATIC", "UMATIC_HI", "EIAJ", "VCR", "VCR_LP"]:
             # These use simple chroma downconversion and filters.
             field_class = FieldPALUMatic
         elif (
@@ -74,7 +68,7 @@ def field_class_from_formats(system: str, tape_format: str):
             or tape_format == "QUADRUPLEX"
         ):
             field_class = FieldPALTypeC
-        elif tape_format == "SVHS":
+        elif tape_format == "SVHS" or tape_format == "SVHS_ET":
             field_class = FieldPALSVHS
         elif tape_format == "BETAMAX":
             field_class = FieldPALBetamax
@@ -95,7 +89,7 @@ def field_class_from_formats(system: str, tape_format: str):
             field_class = FieldNTSCUMatic
         elif tape_format == "TYPEC" or tape_format == "TYPEB":
             field_class = FieldNTSCTypeC
-        elif tape_format == "SVHS":
+        elif tape_format == "SVHS" or "SVHS_ET":
             field_class = FieldNTSCSVHS
         elif (
             tape_format == "BETAMAX"
@@ -1197,7 +1191,9 @@ class FieldShared:
                 self.rf.prev_first_field = -1
 
             if hasattr(self.prevfield, "isProgressiveField"):
-                self.rf.prev_progressive_field = 1 if self.prevfield.isProgressiveField else 0
+                self.rf.prev_progressive_field = (
+                    1 if self.prevfield.isProgressiveField else 0
+                )
             else:
                 self.rf.prev_progressive_field = -1
 

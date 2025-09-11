@@ -34,6 +34,7 @@ supported_tape_formats = {
     "VHS",
     "VHSHQ",
     "SVHS",
+    "SVHS_ET",
     "UMATIC",
     "UMATIC_HI",
     "BETAMAX",
