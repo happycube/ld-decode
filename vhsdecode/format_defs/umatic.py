@@ -131,48 +131,53 @@ def get_sysparams_pal_umatic_hi(sysparams_pal):
 
 
 def get_rfparams_ntsc_umatic(rfparams_ntsc):
-    RFParams_NTSC_UMATIC = {**rfparams_ntsc}
+    rfparams = {**rfparams_ntsc}
 
-    RFParams_NTSC_UMATIC["video_bpf_low"] = 1400000
-    RFParams_NTSC_UMATIC["video_bpf_high"] = 6500000
-    RFParams_NTSC_UMATIC["video_bpf_order"] = None
-    RFParams_NTSC_UMATIC["video_lpf_extra"] = 6500000
-    RFParams_NTSC_UMATIC["video_lpf_extra_order"] = 8
-    RFParams_NTSC_UMATIC["video_hpf_extra"] = 1400000
-    RFParams_NTSC_UMATIC["video_hpf_extra_order"] = 14
-    RFParams_NTSC_UMATIC["video_lpf_freq"] = 4000000
-    RFParams_NTSC_UMATIC["video_lpf_order"] = 6
+    rfparams["video_bpf_low"] = 1400000
+    rfparams["video_bpf_high"] = 6500000
+    rfparams["video_bpf_order"] = None
+    rfparams["video_lpf_extra"] = 7000000
+    rfparams["video_lpf_extra_order"] = 16
+    rfparams["video_hpf_extra"] = 1400000
+    rfparams["video_hpf_extra_order"] = 14
+    rfparams["video_lpf_freq"] = 4000000
+    rfparams["video_lpf_order"] = 6
     #  688374 ± 200
     # (525 * (30 / 1.001)) * (175/4)
-    RFParams_NTSC_UMATIC["color_under_carrier"] = (525 * (30 / 1.001)) * (175 / 4)
-    RFParams_NTSC_UMATIC["chroma_bpf_upper"] = 1500000
+    rfparams["color_under_carrier"] = (525 * (30 / 1.001)) * (175 / 4)
+    rfparams["chroma_bpf_upper"] = 1500000
 
     # Video EQ after FM demod (NTSC UMATIC) (needs tweak)
-    RFParams_NTSC_UMATIC["video_eq"] = {
+    rfparams["video_eq"] = {
         "loband": {"corner": 2.62e6, "transition": 500e3, "order_limit": 20, "gain": 2},
     }
 
     # Video Y FM de-emphasis (550 ~ 650ns)
-    RFParams_NTSC_UMATIC["deemph_tau"] = 600e-9
+    rfparams["deemph_tau"] = 600e-9
 
-    RFParams_NTSC_UMATIC["deemph_mid"] = 500000
-    RFParams_NTSC_UMATIC["deemph_gain"] = 10.8
+    rfparams["deemph_mid"] = 500000
+    rfparams["deemph_gain"] = 10.8
 
     # Use linear ramp to boost RF
-    RFParams_NTSC_UMATIC["boost_rf_linear_0"] = 0.5
-    RFParams_NTSC_UMATIC["boost_rf_linear_20"] = 3
+    rfparams["boost_rf_linear_0"] = 0
+    rfparams["boost_rf_linear_20"] = 1
+    rfparams["boost_rf_linear_double"] = False
 
     # This has not really been stress-tested due to lack of crummy umatic samples.
-    RFParams_NTSC_UMATIC["boost_bpf_low"] = 5000000
-    RFParams_NTSC_UMATIC["boost_bpf_high"] = 5800000
-    RFParams_NTSC_UMATIC["boost_bpf_mult"] = 1
+    rfparams["boost_bpf_low"] = 5000000
+    rfparams["boost_bpf_high"] = 5800000
+    rfparams["boost_bpf_mult"] = None
+
+    rfparams["video_rf_peak_freq"] = 4600000
+    rfparams["video_rf_peak_gain"] = 4
+    rfparams["video_rf_peak_bandwidth"] = 1.6e7
 
     # Needs to be tweaked, just using some random values for now.
-    RFParams_NTSC_UMATIC["nonlinear_highpass_freq"] = 1000000
-    RFParams_NTSC_UMATIC["nonlinear_highpass_limit_h"] = 5000
-    RFParams_NTSC_UMATIC["nonlinear_highpass_limit_l"] = 20000
+    rfparams["nonlinear_highpass_freq"] = 1000000
+    rfparams["nonlinear_highpass_limit_h"] = 5000
+    rfparams["nonlinear_highpass_limit_l"] = 20000
 
-    return RFParams_NTSC_UMATIC
+    return rfparams
 
 
 def get_sysparams_ntsc_umatic(sysparams_ntsc):

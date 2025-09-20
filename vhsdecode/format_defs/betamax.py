@@ -230,11 +230,23 @@ def get_rfparams_ntsc_super_betamax(rfparams_ntsc):
     # Order may be fine as is.
     rfparams["video_bpf_order"] = 0
     # Sharper upper cutoff to get rid of high-frequency junk.
-    rfparams["video_lpf_extra"] = 6910000
-    rfparams["video_lpf_extra_order"] = 12
+    rfparams["video_lpf_extra"] = 7650000
+    rfparams["video_lpf_extra_order"] = 15
 
     rfparams["video_hpf_extra"] = 2000000
-    rfparams["video_hpf_extra_order"] = 12
+    rfparams["video_hpf_extra_order"] = 20
+
+    # Use linear ramp to boost RF
+    # Lower number attenuates lower freqs more giving a "softer" look with less ringing but potentially less detail
+    rfparams["boost_rf_linear_0"] = 0
+    # This param doesn't really seem to matter.
+    rfparams["boost_rf_linear_20"] = 1
+    # Double up ramp filter to more closely mimic VHS EQ
+    rfparams["boost_rf_linear_double"] = False
+
+    rfparams["video_rf_peak_freq"] = 5480000
+    rfparams["video_rf_peak_gain"] = 4
+    rfparams["video_rf_peak_bandwidth"] = 1.4e7
 
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 4000000
