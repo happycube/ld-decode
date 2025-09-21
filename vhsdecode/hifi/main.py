@@ -11,6 +11,7 @@ from multiprocessing import (
     freeze_support,
     current_process,
     Event,
+    set_start_method
 )
 from datetime import datetime, timedelta
 import os
@@ -2064,4 +2065,5 @@ else:
 
 if __name__ == "__main__":
     freeze_support()
+    set_start_method('spawn')
     sys.exit(main())

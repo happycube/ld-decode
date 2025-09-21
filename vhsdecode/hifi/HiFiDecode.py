@@ -1106,6 +1106,11 @@ class HiFiDecode:
             if freq <= self.muting_cutoff_freq:
                 self.muting_fft_start = i
 
+        self.i_osc_left_shm = None
+        self.q_osc_left_shm = None
+        self.i_osc_right_shm = None
+        self.q_osc_right_shm = None
+        
         if not bias_guess:
             # defer until carriers can be determined
             self.afeL, self.afeR = self._get_afe()
@@ -1114,7 +1119,7 @@ class HiFiDecode:
                 self._init_iq_oscillator_shared_memory()
 
             self.fmL, self.fmR = self._get_fm_demod(
-                self.if_rate, self.options["demod_type"], self.is_main_process
+                self.if_rate, self.options["demod_type"]
             )
 
         if self.options["grc"]:
@@ -1356,10 +1361,33 @@ class HiFiDecode:
 
     def _init_iq_oscillator_shared_memory(self):
         demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
+        iq_l_size = self.iq_l_osc_length * demod_dtype_itemsize
+        iq_r_size = self.iq_r_osc_length * demod_dtype_itemsize
 
         if self.is_main_process:
-            iq_l_size = self.iq_l_osc_length * demod_dtype_itemsize
-            iq_r_size = self.iq_r_osc_length * demod_dtype_itemsize
+            if self.i_osc_left_shm != None:
+               self.i_osc_left_shm.close()
+               self.i_osc_left_shm.unlink()
+               atexit.unregister(self.i_osc_left_shm.close)
+               atexit.unregister(self.i_osc_left_shm.unlink)
+
+            if self.q_osc_left_shm != None:
+               self.q_osc_left_shm.close()
+               self.q_osc_left_shm.unlink()
+               atexit.unregister(self.q_osc_left_shm.close)
+               atexit.unregister(self.q_osc_left_shm.unlink)
+
+            if self.i_osc_right_shm != None:
+               self.i_osc_right_shm.close()
+               self.i_osc_right_shm.unlink()
+               atexit.unregister(self.i_osc_right_shm.close)
+               atexit.unregister(self.i_osc_right_shm.unlink)
+               
+            if self.q_osc_right_shm != None:
+               self.q_osc_right_shm.close()
+               self.q_osc_right_shm.unlink()
+               atexit.unregister(self.q_osc_right_shm.close)
+               atexit.unregister(self.q_osc_right_shm.unlink)
 
             random_string = "_" + "".join(
                 SystemRandom().choice(string.ascii_lowercase + string.digits)
@@ -1393,6 +1421,7 @@ class HiFiDecode:
             self.options["i_osc_right"] = self.i_osc_right_shm.name
             self.options["q_osc_right"] = self.q_osc_right_shm.name
 
+            atexit.register(self.i_osc_left_shm.close)
             atexit.register(self.i_osc_left_shm.unlink)
             atexit.register(self.q_osc_left_shm.close)
             atexit.register(self.q_osc_left_shm.unlink)
@@ -1400,12 +1429,73 @@ class HiFiDecode:
             atexit.register(self.i_osc_right_shm.unlink)
             atexit.register(self.q_osc_right_shm.close)
             atexit.register(self.q_osc_right_shm.unlink)
-            atexit.register(self.i_osc_left_shm.close)
         else:
-            self.i_osc_left_shm = SharedMemory(name=self.options["i_osc_left"])
-            self.q_osc_left_shm = SharedMemory(name=self.options["q_osc_left"])
-            self.i_osc_right_shm = SharedMemory(name=self.options["i_osc_right"])
-            self.q_osc_right_shm = SharedMemory(name=self.options["q_osc_right"])
+            if self.i_osc_left_shm != None:
+               self.i_osc_left_shm.close()
+               atexit.unregister(self.i_osc_left_shm.close)
+
+            if self.q_osc_left_shm != None:
+               self.q_osc_left_shm.close()
+               atexit.unregister(self.q_osc_left_shm.close)
+
+            if self.i_osc_right_shm != None:
+               self.i_osc_right_shm.close()
+               atexit.unregister(self.i_osc_right_shm.close)
+               
+            if self.q_osc_right_shm != None:
+               self.q_osc_right_shm.close()
+               atexit.unregister(self.q_osc_right_shm.close)
+
+            self.i_osc_left_shm = SharedMemory(name=self.options["i_osc_left"], create=False)
+            self.q_osc_left_shm = SharedMemory(name=self.options["q_osc_left"], create=False)
+            self.i_osc_right_shm = SharedMemory(name=self.options["i_osc_right"], create=False)
+            self.q_osc_right_shm = SharedMemory(name=self.options["q_osc_right"], create=False)
+
+            atexit.register(self.i_osc_left_shm.close)
+            atexit.register(self.q_osc_left_shm.close)
+            atexit.register(self.i_osc_right_shm.close)
+            atexit.register(self.q_osc_right_shm.close)
+
+        assert iq_l_size <= self.i_osc_left_shm.size, "Failed to allocated shared memory for IQ oscillator"
+        assert iq_l_size <= self.q_osc_left_shm.size, "Failed to allocated shared memory for IQ oscillator"
+        assert iq_r_size <= self.i_osc_right_shm.size, "Failed to allocated shared memory for IQ oscillator"
+        assert iq_r_size <= self.q_osc_right_shm.size, "Failed to allocated shared memory for IQ oscillator"
+
+        self.i_osc_left = np.ndarray(
+            self.iq_l_osc_length,
+            dtype=DEMOD_DTYPE_NP,
+            buffer=self.i_osc_left_shm.buf,
+            order="C",
+        )
+        self.q_osc_left = np.ndarray(
+            self.iq_l_osc_length,
+            dtype=DEMOD_DTYPE_NP,
+            buffer=self.q_osc_left_shm.buf,
+            order="C",
+        )
+        self.i_osc_right = np.ndarray(
+            self.iq_r_osc_length,
+            dtype=DEMOD_DTYPE_NP,
+            buffer=self.i_osc_right_shm.buf,
+            order="C",
+        )
+        self.q_osc_right = np.ndarray(
+            self.iq_r_osc_length,
+            dtype=DEMOD_DTYPE_NP,
+            buffer=self.q_osc_right_shm.buf,
+            order="C",
+        )
+
+        if self.is_main_process:
+            HiFiDecode._generate_iq_oscillators(
+                self.i_osc_left,
+                self.q_osc_left,
+                self.i_osc_right,
+                self.q_osc_right,
+                self.standard.LCarrierRef,
+                self.standard.RCarrierRef,
+                np.float64(self.if_rate),
+            )
 
     @staticmethod
     @njit(
@@ -1424,6 +1514,7 @@ class HiFiDecode:
         fastmath=False,
         nogil=True,
     )
+
     def _generate_iq_oscillators(
         i_left, q_left, i_right, q_right, carrier_left, carrier_right, sample_rate
     ):
@@ -1445,66 +1536,23 @@ class HiFiDecode:
                 two_pi_right * t
             )  # Quadrature (negative sign for proper rotation)
 
-    def get_iq_oscillators(self, generate_iq_oscillators):
-        i_osc_left = np.ndarray(
-            self.iq_l_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.i_osc_left_shm.buf,
-            order="C",
-        )
-        q_osc_left = np.ndarray(
-            self.iq_l_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.q_osc_left_shm.buf,
-            order="C",
-        )
-        i_osc_right = np.ndarray(
-            self.iq_r_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.i_osc_right_shm.buf,
-            order="C",
-        )
-        q_osc_right = np.ndarray(
-            self.iq_r_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.q_osc_right_shm.buf,
-            order="C",
-        )
-
-        if generate_iq_oscillators:
-            # generate i/q oscillators once and share among sub processes
-            HiFiDecode._generate_iq_oscillators(
-                i_osc_left,
-                q_osc_left,
-                i_osc_right,
-                q_osc_right,
-                self.standard.LCarrierRef,
-                self.standard.RCarrierRef,
-                np.float64(self.if_rate),
-            )
-
-        return i_osc_left, q_osc_left, i_osc_right, q_osc_right
-
-    def _get_fm_demod(self, if_rate, demod_type, generate_iq_oscillators):
+    def _get_fm_demod(self, if_rate, demod_type):
         if demod_type == DEMOD_QUADRATURE:
-            i_osc_left, q_osc_left, i_osc_right, q_osc_right = self.get_iq_oscillators(
-                generate_iq_oscillators
-            )
             fmL = FMdemod(
                 if_rate,
                 self.standard.LCarrierRef,
                 self.standard.VCODeviation,
                 demod_type,
-                i_osc=i_osc_left,
-                q_osc=q_osc_left,
+                i_osc=self.i_osc_left,
+                q_osc=self.q_osc_left,
             )
             fmR = FMdemod(
                 if_rate,
                 self.standard.RCarrierRef,
                 self.standard.VCODeviation,
                 demod_type,
-                i_osc=i_osc_right,
-                q_osc=q_osc_right,
+                i_osc=self.i_osc_right,
+                q_osc=self.q_osc_right,
             )
         else:
             fmL = FMdemod(
@@ -1542,7 +1590,7 @@ class HiFiDecode:
         )
         afeL, afeR = self._get_afe()
         fmL, fmR = self._get_fm_demod(
-            DEMOD_HILBERT_IF_RATE, DEMOD_HILBERT, False
+            DEMOD_HILBERT_IF_RATE, DEMOD_HILBERT
         )
 
         progressB = TimeProgressBar(len(blocks), len(blocks))
@@ -1586,11 +1634,12 @@ class HiFiDecode:
         self.afeL, self.afeR = self._get_afe(meanLResult, meanRResult)
 
         if (self.options["demod_type"] == DEMOD_QUADRATURE):
+            # recreate shared memory with the updated bias
             self._init_iq_oscillator_shared_memory()
 
         # update all the filters and iq oscilators with the new bias
         self.fmL, self.fmR = self._get_fm_demod(
-            self.if_rate, self.options["demod_type"], True
+            self.if_rate, self.options["demod_type"]
         )
 
         return meanLResult, meanRResult
@@ -1672,7 +1721,7 @@ class HiFiDecode:
         if self.options["demod_type"] == DEMOD_HILBERT:
             self.afeL, self.afeR = self._get_afe()
             self.fmL, self.fmR = self._get_fm_demod(
-                self.if_rate, self.options["demod_type"], True
+                self.if_rate, self.options["demod_type"]
             )
 
     @staticmethod
