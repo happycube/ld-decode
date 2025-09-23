@@ -385,7 +385,8 @@ class FMdemod:
         two_pi: numba.types.Literal = 2 * pi
         diff_divisor = two_pi * (1 / sample_rate)
         order = len(filter_b) - 1
-        iq_osc_len = len(i_osc)
+        iq_len = len(i_osc)
+        rf_len = len(in_rf)
 
         #
         # low pass filter history
@@ -398,12 +399,15 @@ class FMdemod:
         prev_angle = 0  # doesn't matter since the final chunks have overlap
         prev_unwrapped = prev_angle
 
-        for i in range(1, len(in_rf) - order):
+        for i in range(1, rf_len - order):
             #
-            # mix in i/q
+            # mix in i/q, reflect the sine and cosine
             #
-            i_in = in_rf[i] * i_osc[i % iq_osc_len]
-            q_in = in_rf[i] * q_osc[i % iq_osc_len]
+            iq_index = i % iq_len
+            sign = 1 - 2 * ((i // iq_len) % 2)
+
+            i_in = in_rf[i] * i_osc[iq_index] * sign
+            q_in = in_rf[i] * q_osc[iq_index] * sign
 
             #
             # low pass filter
@@ -1347,7 +1351,7 @@ class HiFiDecode:
 
         samples_per_period = self.if_rate / rounded_carrier
         min_periods = lcm(self.if_rate, rounded_carrier) / self.if_rate
-        min_samples = int(samples_per_period * min_periods)
+        min_samples = int(samples_per_period * min_periods / 2)
 
         return min(min_samples, self.initialBlockResampledSize)
     
