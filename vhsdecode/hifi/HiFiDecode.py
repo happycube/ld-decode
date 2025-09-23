@@ -9,7 +9,6 @@ from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
 from multiprocessing import current_process
-from multiprocessing.shared_memory import SharedMemory
 from copy import deepcopy
 import string
 from random import SystemRandom
@@ -231,18 +230,59 @@ class AFEFilterable:
 
 class FMdemod:
     def __init__(
-        self, sample_rate, carrier_center, deviation, type, i_osc=None, q_osc=None
+        self, sample_rate, carrier_center, deviation, max_iq_len, type
     ):
-        self.samp_rate = np.int32(sample_rate)
-        self.type = type
-        self.carrier = np.int32(carrier_center)
+        self.sample_rate = np.int32(sample_rate)
+        self.carrier = np.int32(round(carrier_center))
         self.deviation = np.int32(deviation)
+        self.type = type
 
-        quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.samp_rate / 2)
-        self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
-        self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
-        self.i_osc = i_osc
-        self.q_osc = q_osc
+        if self.type == DEMOD_QUADRATURE:
+            quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.sample_rate / 2)
+            self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
+            self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
+        
+            iq_len = self._get_min_iq_length(max_iq_len)
+            self.i_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
+            self.q_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
+            FMdemod._generate_iq_oscillators(
+                self.i_osc,
+                self.q_osc,
+                self.carrier,
+                self.sample_rate
+            )
+
+    def _get_min_iq_length(self, max_iq_len):
+        # calculates the minimum i/q oscillator size to avoid discontinuities
+        samples_per_period = self.sample_rate / self.carrier
+        min_periods = lcm(self.sample_rate, self.carrier) / self.sample_rate
+        min_samples = int(samples_per_period * min_periods / 2)
+
+        return min(min_samples, max_iq_len)
+
+    @staticmethod
+    @njit(
+        [
+            (
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+                numba.types.int32,
+                numba.types.int32,
+            )
+        ],
+        cache=True,
+        fastmath=False,
+        nogil=True,
+    )
+    def _generate_iq_oscillators(
+        i_osc, q_osc, carrier, sample_rate
+    ):
+        two_pi_carrier = 2 * pi * carrier
+
+        for i in range(len(i_osc)):
+            t = i / sample_rate
+            i_osc[i] = cos(two_pi_carrier * t)  #  In-phase
+            q_osc[i] = -sin(two_pi_carrier * t)  # Quadrature
 
     @staticmethod
     def compute_analytic_signal(input):
@@ -466,7 +506,7 @@ class FMdemod:
         if self.type == DEMOD_HILBERT:
             FMdemod.compute_analytic_signal(input)
             FMdemod.demod_hilbert(
-                np.float32(self.samp_rate), self.deviation, input, output
+                np.float32(self.sample_rate), self.deviation, input, output
             )
         elif self.type == DEMOD_QUADRATURE:
             FMdemod.demod_quadrature(
@@ -476,7 +516,7 @@ class FMdemod:
                 self.q_osc,
                 self.quadrature_lp_b,
                 self.quadrature_lp_a,
-                self.samp_rate,
+                self.sample_rate,
                 self.carrier,
                 self.deviation,
             )
@@ -1110,17 +1150,9 @@ class HiFiDecode:
             if freq <= self.muting_cutoff_freq:
                 self.muting_fft_start = i
 
-        self.i_osc_left_shm = None
-        self.q_osc_left_shm = None
-        self.i_osc_right_shm = None
-        self.q_osc_right_shm = None
-        
         if not bias_guess:
             # defer until carriers can be determined
             self.afeL, self.afeR = self._get_afe()
-
-            if self.options["demod_type"] == DEMOD_QUADRATURE:
-                self._init_iq_oscillator_shared_memory()
 
             self.fmL, self.fmR = self._get_fm_demod(
                 self.if_rate, self.options["demod_type"]
@@ -1344,235 +1376,24 @@ class HiFiDecode:
             audioFinal_numerator,
             audioFinal_denominator,
         )
-    
-    def _get_min_iq_length(self, carrier_freq):
-        # calculates the minimum i/q oscillator size to avoid discontinuities
-        rounded_carrier = round(carrier_freq)
-
-        samples_per_period = self.if_rate / rounded_carrier
-        min_periods = lcm(self.if_rate, rounded_carrier) / self.if_rate
-        min_samples = int(samples_per_period * min_periods / 2)
-
-        return min(min_samples, self.initialBlockResampledSize)
-    
-    @property
-    def iq_l_osc_length(self):
-        return self._get_min_iq_length(self.standard.LCarrierRef)
-    
-    @property
-    def iq_r_osc_length(self):
-        return self._get_min_iq_length(self.standard.RCarrierRef)
-
-    def _init_iq_oscillator_shared_memory(self):
-        demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
-        iq_l_size = self.iq_l_osc_length * demod_dtype_itemsize
-        iq_r_size = self.iq_r_osc_length * demod_dtype_itemsize
-
-        if self.is_main_process:
-            if self.i_osc_left_shm != None:
-               self.i_osc_left_shm.close()
-               self.i_osc_left_shm.unlink()
-               atexit.unregister(self.i_osc_left_shm.close)
-               atexit.unregister(self.i_osc_left_shm.unlink)
-
-            if self.q_osc_left_shm != None:
-               self.q_osc_left_shm.close()
-               self.q_osc_left_shm.unlink()
-               atexit.unregister(self.q_osc_left_shm.close)
-               atexit.unregister(self.q_osc_left_shm.unlink)
-
-            if self.i_osc_right_shm != None:
-               self.i_osc_right_shm.close()
-               self.i_osc_right_shm.unlink()
-               atexit.unregister(self.i_osc_right_shm.close)
-               atexit.unregister(self.i_osc_right_shm.unlink)
-               
-            if self.q_osc_right_shm != None:
-               self.q_osc_right_shm.close()
-               self.q_osc_right_shm.unlink()
-               atexit.unregister(self.q_osc_right_shm.close)
-               atexit.unregister(self.q_osc_right_shm.unlink)
-
-            random_string = "_" + "".join(
-                SystemRandom().choice(string.ascii_lowercase + string.digits)
-                for _ in range(8)
-            )
-
-            # store in shared memory so the static data can be reused among processes
-            self.i_osc_left_shm = SharedMemory(
-                size=iq_l_size,
-                name=f"hifi_decoder_i_left{random_string}",
-                create=True,
-            )
-            self.q_osc_left_shm = SharedMemory(
-                size=iq_l_size,
-                name=f"hifi_decoder_q_left{random_string}",
-                create=True,
-            )
-            self.i_osc_right_shm = SharedMemory(
-                size=iq_r_size,
-                name=f"hifi_decoder_i_right{random_string}",
-                create=True,
-            )
-            self.q_osc_right_shm = SharedMemory(
-                size=iq_r_size,
-                name=f"hifi_decoder_q_right{random_string}",
-                create=True,
-            )
-
-            self.options["i_osc_left"] = self.i_osc_left_shm.name
-            self.options["q_osc_left"] = self.q_osc_left_shm.name
-            self.options["i_osc_right"] = self.i_osc_right_shm.name
-            self.options["q_osc_right"] = self.q_osc_right_shm.name
-
-            atexit.register(self.i_osc_left_shm.close)
-            atexit.register(self.i_osc_left_shm.unlink)
-            atexit.register(self.q_osc_left_shm.close)
-            atexit.register(self.q_osc_left_shm.unlink)
-            atexit.register(self.i_osc_right_shm.close)
-            atexit.register(self.i_osc_right_shm.unlink)
-            atexit.register(self.q_osc_right_shm.close)
-            atexit.register(self.q_osc_right_shm.unlink)
-        else:
-            if self.i_osc_left_shm != None:
-               self.i_osc_left_shm.close()
-               atexit.unregister(self.i_osc_left_shm.close)
-
-            if self.q_osc_left_shm != None:
-               self.q_osc_left_shm.close()
-               atexit.unregister(self.q_osc_left_shm.close)
-
-            if self.i_osc_right_shm != None:
-               self.i_osc_right_shm.close()
-               atexit.unregister(self.i_osc_right_shm.close)
-               
-            if self.q_osc_right_shm != None:
-               self.q_osc_right_shm.close()
-               atexit.unregister(self.q_osc_right_shm.close)
-
-            self.i_osc_left_shm = SharedMemory(name=self.options["i_osc_left"], create=False)
-            self.q_osc_left_shm = SharedMemory(name=self.options["q_osc_left"], create=False)
-            self.i_osc_right_shm = SharedMemory(name=self.options["i_osc_right"], create=False)
-            self.q_osc_right_shm = SharedMemory(name=self.options["q_osc_right"], create=False)
-
-            atexit.register(self.i_osc_left_shm.close)
-            atexit.register(self.q_osc_left_shm.close)
-            atexit.register(self.i_osc_right_shm.close)
-            atexit.register(self.q_osc_right_shm.close)
-
-        assert iq_l_size <= self.i_osc_left_shm.size, "Failed to allocated shared memory for IQ oscillator"
-        assert iq_l_size <= self.q_osc_left_shm.size, "Failed to allocated shared memory for IQ oscillator"
-        assert iq_r_size <= self.i_osc_right_shm.size, "Failed to allocated shared memory for IQ oscillator"
-        assert iq_r_size <= self.q_osc_right_shm.size, "Failed to allocated shared memory for IQ oscillator"
-
-        self.i_osc_left = np.ndarray(
-            self.iq_l_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.i_osc_left_shm.buf,
-            order="C",
-        )
-        self.q_osc_left = np.ndarray(
-            self.iq_l_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.q_osc_left_shm.buf,
-            order="C",
-        )
-        self.i_osc_right = np.ndarray(
-            self.iq_r_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.i_osc_right_shm.buf,
-            order="C",
-        )
-        self.q_osc_right = np.ndarray(
-            self.iq_r_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.q_osc_right_shm.buf,
-            order="C",
-        )
-
-        if self.is_main_process:
-            HiFiDecode._generate_iq_oscillators(
-                self.i_osc_left,
-                self.q_osc_left,
-                self.i_osc_right,
-                self.q_osc_right,
-                self.standard.LCarrierRef,
-                self.standard.RCarrierRef,
-                np.float64(self.if_rate),
-            )
-
-    @staticmethod
-    @njit(
-        [
-            (
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.float64,
-                numba.types.float64,
-                numba.types.float64,
-            )
-        ],
-        cache=True,
-        fastmath=False,
-        nogil=True,
-    )
-
-    def _generate_iq_oscillators(
-        i_left, q_left, i_right, q_right, carrier_left, carrier_right, sample_rate
-    ):
-        two_pi_left = 2 * pi * carrier_left
-        two_pi_right = 2 * pi * carrier_right
-
-        for i in range(len(i_left)):
-            t = i / sample_rate
-            i_left[i] = cos(two_pi_left * t)  #    In-phase
-            q_left[i] = -sin(
-                two_pi_left * t
-            )  #   Quadrature (negative sign for proper rotation)
-
-        for i in range(len(i_right)):
-            t = i / sample_rate
-            
-            i_right[i] = cos(two_pi_right * t)  #  In-phase
-            q_right[i] = -sin(
-                two_pi_right * t
-            )  # Quadrature (negative sign for proper rotation)
 
     def _get_fm_demod(self, if_rate, demod_type):
-        if demod_type == DEMOD_QUADRATURE:
-            fmL = FMdemod(
+        return (
+            FMdemod(
                 if_rate,
                 self.standard.LCarrierRef,
                 self.standard.VCODeviation,
-                demod_type,
-                i_osc=self.i_osc_left,
-                q_osc=self.q_osc_left,
-            )
-            fmR = FMdemod(
+                self.initialBlockResampledSize,
+                demod_type
+            ),
+            FMdemod(
                 if_rate,
                 self.standard.RCarrierRef,
                 self.standard.VCODeviation,
-                demod_type,
-                i_osc=self.i_osc_right,
-                q_osc=self.q_osc_right,
+                self.initialBlockResampledSize,
+                demod_type
             )
-        else:
-            fmL = FMdemod(
-                if_rate,
-                self.standard.LCarrierRef,
-                self.standard.VCODeviation,
-                demod_type,
-            )
-            fmR = FMdemod(
-                if_rate,
-                self.standard.RCarrierRef,
-                self.standard.VCODeviation,
-                demod_type,
-            )
-
-        return fmL, fmR
+        )
 
     def guessBiases(self, blocks: list[np.array]) -> Tuple[float, float]:
         meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
