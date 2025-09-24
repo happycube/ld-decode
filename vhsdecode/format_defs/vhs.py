@@ -26,8 +26,8 @@ def fill_rfparams_vhs_shared(rfparams: dict, tape_speed: int = 0) -> None:
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
 
-    rfparams["nonlinear_scaling_1"] = 0.1
-    rfparams["nonlinear_exp_scaling"] = 0.12
+    rfparams["nonlinear_scaling_1"] = [0.5, 0.1, 0.1, 0.1][tape_speed]
+    rfparams["nonlinear_exp_scaling"] = [0.06, 0.12, 0.12, 0.12][tape_speed]
     rfparams["use_sub_deemphasis"] = [False, True, True, True][tape_speed]
 
     # Make sure these exist in the dict so they can be overridden
@@ -138,6 +138,7 @@ def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
     RFParams_PAL_VHS["video_hpf_extra_order"] = 12
 
     # Low-pass filter on Y after demodulation
+    # The HR-D565 technical manual specifies a lpf with corner 3.3 mhz
     RFParams_PAL_VHS["video_lpf_freq"] = 3400000
     RFParams_PAL_VHS["video_lpf_order"] = 6
 
@@ -181,9 +182,9 @@ def get_rfparams_pal_vhs(rfparams_pal: dict, tape_speed: int = 0) -> dict:
 
     RFParams_PAL_VHS["start_rf_linear"] = RFParams_PAL_VHS["color_under_carrier"]
 
-    RFParams_PAL_VHS["video_rf_peak_freq"] = 4700000
+    RFParams_PAL_VHS["video_rf_peak_freq"] = 4300000
     RFParams_PAL_VHS["video_rf_peak_gain"] = 4
-    RFParams_PAL_VHS["video_rf_peak_bandwidth"] = 1.5e7
+    RFParams_PAL_VHS["video_rf_peak_bandwidth"] = 1.0e7
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
@@ -340,7 +341,7 @@ def get_sysparams_ntsc_vhs(sysparams_ntsc: dict, tape_speed: int = 0) -> dict:
 
     # Mean absolute value of color burst for Automatic Chroma Control.
     # The value is eyeballed to give ok chroma level as of now, needs to be tweaked.
-    SysParams_NTSC_VHS["burst_abs_ref"] = 3200
+    SysParams_NTSC_VHS["burst_abs_ref"] = 4416
 
     return SysParams_NTSC_VHS
 
