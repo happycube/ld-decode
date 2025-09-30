@@ -7,12 +7,12 @@ from multiprocessing import (
     Pipe,
     SimpleQueue,
     Process,
-    Value,
     freeze_support,
     current_process,
     Event,
     set_start_method
 )
+from multiprocessing.sharedctypes import Value
 from datetime import datetime, timedelta
 import os
 import sys
