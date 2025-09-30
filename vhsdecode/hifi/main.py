@@ -964,6 +964,7 @@ class PostProcessor:
         )
         self.nr_worker_l.start()
         atexit.register(self.nr_worker_l.terminate)
+        atexit.register(self.nr_worker_l.join)
 
         nr_worker_r_out_output, nr_worker_r_out_input = Pipe(duplex=False)
         self.nr_worker_r = Process(
