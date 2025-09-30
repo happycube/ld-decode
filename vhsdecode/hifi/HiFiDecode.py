@@ -922,7 +922,7 @@ class NoiseReduction:
             rsC[releasing_index] = release[releasing_index]
 
     @staticmethod
-    @guvectorize(
+    @njit(
         [
             (
                 numba.types.float32,
@@ -931,10 +931,9 @@ class NoiseReduction:
                 NumbaAudioArray,
             )
         ],
-        "(),(n),(n)->(n)",
         cache=True,
         fastmath=True,
-        nopython=True,
+        nogil=True,
     )
     def apply_gate(
         nr_env_gain: float, rsC: np.array, audio: np.array, audio_out: np.array
@@ -943,7 +942,8 @@ class NoiseReduction:
         # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
         #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
         #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
-        for i in range(len(audio)):
+        audio_len = min(len(audio), len(audio_out))
+        for i in range(audio_len):
             # possibly this gate shouldn't be here
             gate = min(
                 DEFAULT_NR_EXPANDER_GATE_HARD_LIMIT, max(0, rsC[i] * nr_env_gain)
