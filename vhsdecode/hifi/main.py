@@ -1156,8 +1156,8 @@ class PostProcessor:
                 l, r, stereo, sample_rate, decoder_state.block_num == 0
             )
 
-            if peak_gain.value < max_gain:
-                with peak_gain.get_lock():
+            with peak_gain.get_lock():
+                if peak_gain.value < max_gain:
                     peak_gain.value = max_gain
 
             buffer.close()
@@ -1384,8 +1384,9 @@ class SoundDeviceProcess:
         while True:
             while True:
                 try:
-                    if stop_requested.value == STOP_IMMEDIATE_REQUESTED:
-                        return
+                    with stop_requested.get_lock():
+                        if stop_requested.value == STOP_IMMEDIATE_REQUESTED:
+                            return
 
                     if conn.poll(1):
                         stereo = conn.recv_bytes()
@@ -1464,19 +1465,19 @@ def write_soundfile_process_worker(
 
             buffer.close()
             post_processor_shared_memory_idle_queue.put(decoder_state.name)
-            with total_samples_decoded.get_lock():
+            with total_samples_decoded.get_lock(), input_position.get_lock(), blocks_enqueued.get_lock():
                 total_samples_decoded.value = int(
                     total_samples_decoded.value + samples_decoded
                 )
-
-            log_decode(
-                start_time,
-                input_position.value,
-                total_samples_decoded.value,
-                blocks_enqueued.value,
-                input_rate,
-                audio_rate,
-            )
+                
+                log_decode(
+                    start_time,
+                    input_position.value,
+                    total_samples_decoded.value,
+                    blocks_enqueued.value,
+                    input_rate,
+                    audio_rate,
+                )
 
             done = decoder_state.is_last_block
 
@@ -1612,9 +1613,10 @@ async def decode_parallel(
         with input_position.get_lock():
             input_position.value += frames_read * 2
 
-        is_last_block = (
-            frames_read < len(block_in) or exit_requested or stop_requested.value
-        )
+        with stop_requested.get_lock():
+            is_last_block = (
+                frames_read < len(block_in) or exit_requested or stop_requested.value
+            )
 
         if block_num == 0:
             # save the read data
@@ -1691,10 +1693,11 @@ async def decode_parallel(
             ui_t.app.processEvents()
 
             if ui_t.window.transport_state == STOP_STATE:
-                stop_requested.value = STOP_REQUESTED
+                with stop_requested.get_lock():
+                    stop_requested.value = STOP_REQUESTED
 
-                if previous_state == PREVIEW_STATE:
-                    stop_requested.value = STOP_IMMEDIATE_REQUESTED
+                    if previous_state == PREVIEW_STATE:
+                        stop_requested.value = STOP_IMMEDIATE_REQUESTED
 
                 break
             elif ui_t.window.transport_state == PAUSE_STATE:
@@ -1745,18 +1748,18 @@ async def decode_parallel(
                 exit_requested,
                 previous_overlap,
             )
-
-            progressB.print(input_position.value / 2)
-            with blocks_enqueued.get_lock():
+            
+            with input_position.get_lock(), total_samples_decoded.get_lock(), blocks_enqueued.get_lock():
+                progressB.print(input_position.value / 2)
                 blocks_enqueued.value += 1
-            log_decode(
-                start_time,
-                input_position.value,
-                total_samples_decoded.value,
-                blocks_enqueued.value,
-                decode_options["input_rate"],
-                decode_options["audio_rate"],
-            )
+                log_decode(
+                    start_time,
+                    input_position.value,
+                    total_samples_decoded.value,
+                    blocks_enqueued.value,
+                    decode_options["input_rate"],
+                    decode_options["audio_rate"],
+                )
 
             if is_last_block:
                 break
@@ -1766,9 +1769,10 @@ async def decode_parallel(
     print("")
     print("Decode finishing up. Emptying the queue")
     print("")
-
-    if stop_requested.value != STOP_IMMEDIATE_REQUESTED:
-        decode_done.wait()
+    
+    with stop_requested.get_lock():
+        if stop_requested.value != STOP_IMMEDIATE_REQUESTED:
+            decode_done.wait()
 
     for p in decoder_processes:
         cleanup_process(p)
@@ -1780,49 +1784,50 @@ async def decode_parallel(
         shared_memory.unlink()
         atexit.unregister(shared_memory.close)
         atexit.unregister(shared_memory.unlink)
+    
+    with peak_gain.get_lock():
+        print(f"\nPeak gain is {(peak_gain.value * 100):.2f}%.", end="")
 
-    print(f"\nPeak gain is {(peak_gain.value * 100):.2f}%.", end="")
+        if decode_options["normalize"]:
+            gain_adjust = (
+                1 / peak_gain.value - np.finfo(np.float16).eps
+            )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
+            print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
 
-    if decode_options["normalize"]:
-        gain_adjust = (
-            1 / peak_gain.value - np.finfo(np.float16).eps
-        )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
-        print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
+            input_file_post_gain = get_normalize_filename(
+                output_file, decode_options["audio_rate"]
+            )
+            output_file = decode_options["output_file"]
+            audio_rate = decode_options["audio_rate"]
 
-        input_file_post_gain = get_normalize_filename(
-            output_file, decode_options["audio_rate"]
-        )
-        output_file = decode_options["output_file"]
-        audio_rate = decode_options["audio_rate"]
+            try:
+                total_frames_read = 0
+                buffer = np.empty(2**20, dtype=np.float32)
 
-        try:
-            total_frames_read = 0
-            buffer = np.empty(2**20, dtype=np.float32)
+                with sf.SoundFile(
+                    input_file_post_gain,
+                    "r",
+                    samplerate=int(decode_options["audio_rate"]),
+                    **normalize_parameters,
+                ) as f, as_outputfile(output_file, audio_rate, False) as w:
+                    progressB = TimeProgressBar(f.frames, f.frames)
+                    done = False
+                    while not done:
+                        frames_read = f.buffer_read_into(buffer, dtype="float32")
+                        samples_read = frames_read * 2
 
-            with sf.SoundFile(
-                input_file_post_gain,
-                "r",
-                samplerate=int(decode_options["audio_rate"]),
-                **normalize_parameters,
-            ) as f, as_outputfile(output_file, audio_rate, False) as w:
-                progressB = TimeProgressBar(f.frames, f.frames)
-                done = False
-                while not done:
-                    frames_read = f.buffer_read_into(buffer, dtype="float32")
-                    samples_read = frames_read * 2
+                        if samples_read < len(buffer):
+                            buffer = buffer[0:samples_read]
+                            done = True
 
-                    if samples_read < len(buffer):
-                        buffer = buffer[0:samples_read]
-                        done = True
+                        PostProcessor.normalize(gain_adjust, buffer, buffer)
+                        w.buffer_write(buffer, "float32")
 
-                    PostProcessor.normalize(gain_adjust, buffer, buffer)
-                    w.buffer_write(buffer, "float32")
-
-                    total_frames_read += frames_read
-                    progressB.print(total_frames_read, False)
-            print("")
-        finally:
-            os.remove(input_file_post_gain)
+                        total_frames_read += frames_read
+                        progressB.print(total_frames_read, False)
+                print("")
+            finally:
+                os.remove(input_file_post_gain)
 
     elapsed_time = datetime.now() - start_time
     dt_string = elapsed_time.total_seconds()
