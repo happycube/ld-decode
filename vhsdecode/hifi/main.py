@@ -1157,8 +1157,8 @@ class PostProcessor:
                 l, r, stereo, sample_rate, decoder_state.block_num == 0
             )
 
-            with peak_gain.get_lock():
-                if peak_gain.value < max_gain:
+            if peak_gain.value < max_gain:
+                with peak_gain.get_lock():
                     peak_gain.value = max_gain
 
             buffer.close()
@@ -1466,19 +1466,19 @@ def write_soundfile_process_worker(
 
             buffer.close()
             post_processor_shared_memory_idle_queue.put(decoder_state.name)
-            with total_samples_decoded.get_lock(), input_position.get_lock(), blocks_enqueued.get_lock():
+            with total_samples_decoded.get_lock():
                 total_samples_decoded.value = int(
                     total_samples_decoded.value + samples_decoded
                 )
                 
-                log_decode(
-                    start_time,
-                    input_position.value,
-                    total_samples_decoded.value,
-                    blocks_enqueued.value,
-                    input_rate,
-                    audio_rate,
-                )
+            log_decode(
+                start_time,
+                input_position.value,
+                total_samples_decoded.value,
+                blocks_enqueued.value,
+                input_rate,
+                audio_rate,
+            )
 
             done = decoder_state.is_last_block
 
@@ -1614,10 +1614,9 @@ async def decode_parallel(
         with input_position.get_lock():
             input_position.value += frames_read * 2
 
-        with stop_requested.get_lock():
-            is_last_block = (
-                frames_read < len(block_in) or exit_requested or stop_requested.value
-            )
+        is_last_block = (
+            frames_read < len(block_in) or exit_requested or stop_requested.value
+        )
 
         if block_num == 0:
             # save the read data
@@ -1750,17 +1749,18 @@ async def decode_parallel(
                 previous_overlap,
             )
             
-            with input_position.get_lock(), total_samples_decoded.get_lock(), blocks_enqueued.get_lock():
+            with blocks_enqueued.get_lock():
                 progressB.print(input_position.value / 2)
                 blocks_enqueued.value += 1
-                log_decode(
-                    start_time,
-                    input_position.value,
-                    total_samples_decoded.value,
-                    blocks_enqueued.value,
-                    decode_options["input_rate"],
-                    decode_options["audio_rate"],
-                )
+
+            log_decode(
+                start_time,
+                input_position.value,
+                total_samples_decoded.value,
+                blocks_enqueued.value,
+                decode_options["input_rate"],
+                decode_options["audio_rate"],
+            )
 
             if is_last_block:
                 break
