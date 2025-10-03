@@ -5,8 +5,8 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-pyo3 = { version = "0.25", features = ["extension-module"] }
-numpy = "0.25"
+pyo3 = { version = "0.26", features = ["extension-module"] }
+numpy = "0.26"
 sci-rs = "0.4.1"
 itertools = "0.14.0"
 #ndarray = { version = "0.15.6", features = ["rayon"]}
