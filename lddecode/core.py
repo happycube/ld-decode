@@ -28,7 +28,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate, gen_bpf_supergauss
+from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -3476,7 +3476,7 @@ class LDdecode:
 
         self.doDOD = doDOD
 
-        self.fieldinfo = []
+        self.fieldinfo = FieldInfo()
 
         self.leadIn = False
         self.leadOut = False
@@ -4358,7 +4358,5 @@ class LDdecode:
         ))
 
         jout["videoParameters"] = vp
-
-        jout["fields"] = self.fieldinfo
 
         return jout

@@ -1,6 +1,7 @@
 # A collection of helper functions used in dev notebooks and lddecode_core.py
 
 from collections import namedtuple
+import itertools
 import json
 import math
 import os
@@ -1314,11 +1315,39 @@ def init_opencl(cl, name = None):
     #queue = cl.CommandQueue(ctx)
     return ctx
 
+class FieldInfo:
+    def __init__(self, field_history_size=3):
+        self._depth = field_history_size
+        # store previous field references in a ring buffer
+        self._fieldinfo = np.empty(field_history_size, dtype=object)
+        self._fieldinfo_idx = 0
+        self._fieldinfo_unsent = []
+        self._len = 0
+
+    def __len__(self):
+        return self._len
+    
+    def __getitem__(self, key):
+        return self._fieldinfo[(self._fieldinfo_idx + key) % self._depth]
+
+    def read(self):
+        unsent = self._fieldinfo_unsent
+        self._fieldinfo_unsent = []
+        return unsent
+    
+    def append(self, value):
+        self._fieldinfo[self._fieldinfo_idx]
+        self._fieldinfo_idx = (self._fieldinfo_idx + 1) % self._depth
+
+        self._fieldinfo_unsent.append(value)
+        self._len += 1
+
 class JSONDumper:
     def __init__(self, ldd, outname):
         self._rx, self._tx = Pipe(False)
         self._writing = Event()
         self._build_json = ldd.build_json
+        self._get_field_info = ldd.fieldinfo.read
 
         self._outname = outname
         self._dumper = Process(target=JSONDumper._consume, args=(self._rx, self._writing, self._outname, ldd.verboseVITS,), name="lddecode-json-dumper")
@@ -1326,10 +1355,17 @@ class JSONDumper:
     
     def write(self):
         if not self._writing.is_set():
-            self._tx.send(self._build_json())
+            json_data = self._build_json()
+            field_info = self._get_field_info()
+            self._tx.send(json_data)
+            self._tx.send(field_info)
 
     def close(self):
-        self._tx.send(self._build_json())
+        json_data = self._build_json()
+        field_info = self._get_field_info()
+        self._tx.send(json_data)
+        self._tx.send(field_info)
+
         self._tx.send(None)
         self._dumper.join()
 
@@ -1351,16 +1387,22 @@ class JSONDumper:
     @staticmethod
     def _consume(conn, ready, outname, verboseVITS):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+        field_info = []
 
         while True:
             try:
                 jsondict = conn.recv()
+                if jsondict is None:
+                    break
+
+                next_field_info = conn.recv()
                 ready.set()
             except (InterruptedError, KeyboardInterrupt, EOFError):
                 break
         
-            if jsondict is None:
-                break
+            
+            field_info.append(next_field_info)
+            jsondict["fields"] = list(itertools.chain.from_iterable(field_info))
     
             JSONDumper.write_json(jsondict, outname, verboseVITS)
             ready.clear()
