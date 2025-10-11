@@ -25,12 +25,12 @@
 #include "dec_sectorcorrection.h"
 
 SectorCorrection::SectorCorrection()
-    : m_missingLeadingSectors(0),
-    m_missingSectors(0),
-    m_haveLastSectorInfo(false),
-    m_lastSectorAddress(0),
-    m_lastSectorMode(0),
-    m_goodSectors(0)
+    : m_haveLastSectorInfo(false),
+      m_lastSectorAddress(0),
+      m_lastSectorMode(0),
+      m_goodSectors(0),
+      m_missingLeadingSectors(0),
+      m_missingSectors(0)
 {}
 
 void SectorCorrection::pushSector(const Sector &sector)

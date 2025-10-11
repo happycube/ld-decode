@@ -71,8 +71,8 @@ void DelayLines::flush()
 
 // DelayLine class implementation
 DelayLine::DelayLine(qint32 delayLength) :
-    m_pushCount(0),
-    m_ready(false)
+    m_ready(false),
+    m_pushCount(0)
 {
     m_buffer.resize(delayLength);
     m_delayLength = delayLength;

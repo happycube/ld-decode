@@ -27,20 +27,20 @@
 F2SectionCorrection::F2SectionCorrection()
     : m_leadinComplete(false),
       m_maximumGapSize(10),
+      m_paddingWatermark(5),
       m_totalSections(0),
       m_correctedSections(0),
       m_uncorrectableSections(0),
       m_preLeadinSections(0),
       m_missingSections(0),
-      m_absoluteStartTime(59, 59, 74),
-      m_absoluteEndTime(0, 0, 0),
-      m_outOfOrderSections(0),
       m_paddingSections(0),
-      m_paddingWatermark(5),
+      m_outOfOrderSections(0),
       m_qmode1Sections(0),
       m_qmode2Sections(0),
       m_qmode3Sections(0),
-      m_qmode4Sections(0)
+      m_qmode4Sections(0),
+      m_absoluteStartTime(59, 59, 74),
+      m_absoluteEndTime(0, 0, 0)
 {}
 
 void F2SectionCorrection::pushSection(const F2Section &data)

@@ -137,20 +137,20 @@ public:
     enum QMode { QMode1, QMode2, QMode3, QMode4 };
 
     SectionMetadata() :
+        m_pFlag(true),
+        m_qMode(QMode1),
         m_sectionType(SectionType::UserData),
         m_sectionTime(SectionTime()),
         m_absoluteSectionTime(SectionTime()),
         m_trackNumber(0),
         m_isValid(false),
+        m_isRepaired(false),
         m_isAudio(true),
         m_isCopyProhibited(true),
         m_hasPreemphasis(false),
         m_is2Channel(true),
-        m_pFlag(true),
-        m_qMode(QMode1),
         m_upcEanCode(0),
-        m_isrcCode(0),
-        m_isRepaired(false)
+        m_isrcCode(0)
     {}
 
     SectionType sectionType() const { return m_sectionType; }
