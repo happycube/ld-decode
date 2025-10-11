@@ -25,18 +25,18 @@
 #include "dec_f3frametof2section.h"
 
 F3FrameToF2Section::F3FrameToF2Section() :
+    m_badSyncCounter(0),
+    m_lastSectionMetadata(SectionMetadata()),
     m_currentState(ExpectingInitialSync),
     m_inputF3Frames(0),
     m_presyncDiscardedF3Frames(0),
     m_goodSync0(0),
+    m_missingSync0(0),
     m_undershootSync0(0),
     m_overshootSync0(0),
     m_discardedF3Frames(0),
     m_paddedF3Frames(0),
-    m_missingSync0(0),
-    m_badSyncCounter(0),
-    m_lostSyncCounter(0),
-    m_lastSectionMetadata(SectionMetadata())
+    m_lostSyncCounter(0)
 {}
 
 void F3FrameToF2Section::pushFrame(const F3Frame &data)

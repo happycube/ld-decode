@@ -27,10 +27,10 @@
 F2Stacker::F2Stacker() :
     m_goodBytes(0),
     m_noValidValueForByte(0),
-    m_errorFreeFrames(0),
-    m_errorFrames(0),
     m_validValueForByte(0),
     m_usedMostCommonValue(0),
+    m_errorFreeFrames(0),
+    m_errorFrames(0),
     m_paddedFrames(0)
 {}
 

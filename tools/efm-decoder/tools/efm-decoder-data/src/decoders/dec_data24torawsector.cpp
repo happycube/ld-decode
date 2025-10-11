@@ -25,14 +25,14 @@
 #include "dec_data24torawsector.h"
 
 Data24ToRawSector::Data24ToRawSector()
-    : m_validSectorCount(0),
-      m_discardedBytes(0),
-      m_discardedPaddingBytes(0),
+    : m_currentState(WaitingForSync),
       m_missedSyncPatternCount(0),
       m_goodSyncPatternCount(0),
-      m_syncLostCount(0),
       m_badSyncPatternCount(0),
-      m_currentState(WaitingForSync)
+      m_validSectorCount(0),
+      m_discardedBytes(0),
+      m_discardedPaddingBytes(0),
+      m_syncLostCount(0)
 {}
 
 void Data24ToRawSector::pushSection(const Data24Section &data24Section)

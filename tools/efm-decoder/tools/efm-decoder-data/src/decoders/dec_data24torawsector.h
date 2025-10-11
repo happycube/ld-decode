@@ -67,7 +67,6 @@ private:
     quint32 m_badSyncPatternCount;
 
     // Statistics
-    quint32 m_invalidSectorCount;
     quint32 m_validSectorCount;
     quint32 m_discardedBytes;
     quint32 m_discardedPaddingBytes;
