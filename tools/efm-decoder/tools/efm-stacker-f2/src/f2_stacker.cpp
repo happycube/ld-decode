@@ -25,7 +25,6 @@
 #include "f2_stacker.h"
 
 F2Stacker::F2Stacker() :
-    m_goodBytes(0),
     m_noValidValueForByte(0),
     m_validValueForByte(0),
     m_usedMostCommonValue(0),
