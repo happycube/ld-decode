@@ -207,7 +207,6 @@ bool Audio::isEmpty() const
 void Audio::showData()
 {
     QString dataString;
-    bool hasError = false;
     for (int i = 0; i < m_audioData.size(); ++i) {
         if (m_audioErrorData[i] == false) {
             dataString.append(QString("%1%2 ")
@@ -215,7 +214,6 @@ void Audio::showData()
                 .arg(qAbs(m_audioData[i]), 4, 16, QChar('0')));
         } else {
             dataString.append(QString("XXXXX "));
-            hasError = true;
         }
     }
 
