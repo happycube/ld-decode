@@ -107,7 +107,6 @@ void VideoParametersDialog::on_whiteLevelSpinBox_valueChanged(int value)
 
 void VideoParametersDialog::on_activeVideoStartSpinBox_valueChanged(int value)
 {
-    int adjustAmount = videoParameters.activeVideoStart - value;
     videoParameters.activeVideoStart = value;
     // prevent the width from going over the actual field width
     ui->activeVideoWidthSpinBox->setMaximum(videoParameters.fieldWidth - value - 1);
