@@ -242,7 +242,7 @@ void AudioCorrection::processQueue()
     }
 }
 
-void AudioCorrection::showStatistics()
+void AudioCorrection::showStatistics() const
 {
     qInfo().nospace() << "Audio correction statistics:";
     qInfo().nospace() << "  Total mono samples: "

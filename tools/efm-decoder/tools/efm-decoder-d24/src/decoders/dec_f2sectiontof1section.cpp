@@ -234,7 +234,7 @@ void F2SectionToF1Section::showData(const QString &description, qint32 index, co
                                  << timeString << ") " << dataString << "XX=ERROR";
 }
 
-void F2SectionToF1Section::showStatistics()
+void F2SectionToF1Section::showStatistics() const
 {
     qInfo() << "F2 Section to F1 Section statistics:";
     qInfo() << "  Input F2 Frames:";

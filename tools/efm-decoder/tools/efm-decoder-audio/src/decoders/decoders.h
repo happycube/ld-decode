@@ -39,7 +39,7 @@ class Decoder
 {
 public:
     Decoder() : m_showDebug(false) { }
-    virtual void showStatistics()
+    virtual void showStatistics() const
     {
         qInfo() << "Decoder::showStatistics(): No statistics available";
     };

@@ -123,7 +123,7 @@ bool SectorCorrection::isReady() const
     return !m_outputBuffer.isEmpty();
 }
 
-void SectorCorrection::showStatistics()
+void SectorCorrection::showStatistics() const
 {
     qInfo().noquote() << "Sector gap correction:";
     qInfo().noquote() << "  Good sectors:" << m_goodSectors;

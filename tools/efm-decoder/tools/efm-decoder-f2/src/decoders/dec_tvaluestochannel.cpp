@@ -459,7 +459,7 @@ quint32 TvaluesToChannel::countBits(const QByteArray &data, qint32 startPosition
     return bitCount;
 }
 
-void TvaluesToChannel::showStatistics()
+void TvaluesToChannel::showStatistics() const
 {
     qInfo() << "T-values to Channel Frame statistics:";
     qInfo() << "  T-Values:";
