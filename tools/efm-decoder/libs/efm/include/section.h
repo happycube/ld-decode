@@ -49,7 +49,6 @@ public:
 
 private:
     QVector<F2Frame> m_frames;
-    bool m_isPadding;
 };
 
 class F1Section
@@ -67,7 +66,6 @@ public:
 
 private:
     QVector<F1Frame> m_frames;
-    bool m_isPadding;
 };
 
 class Data24Section
