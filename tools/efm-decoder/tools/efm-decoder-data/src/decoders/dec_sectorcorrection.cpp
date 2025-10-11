@@ -85,7 +85,7 @@ void SectorCorrection::processQueue()
             // Check if there is a gap between this sector and the last
             if (sector.address() != m_lastSectorAddress + 1) {
                 // Calculate the number of missing sectors
-                quint32 gap = sector.address().address() - m_lastSectorAddress.address() - 1;
+                qint32 gap = sector.address().address() - m_lastSectorAddress.address() - 1;
 
                 if (m_showDebug) {
                     qDebug() << "SectorCorrection::processQueue(): Sector is not in the correct position. Last good sector address:"
@@ -94,7 +94,7 @@ void SectorCorrection::processQueue()
                 }
                 
                  // Add missing sectors
-                for (int i = 0; i < gap; ++i) {
+                for (qint32 i = 0; i < gap; ++i) {
                     Sector missingSector;
                     missingSector.dataValid(false);
                     missingSector.setAddress(m_lastSectorAddress + 1 + i);
