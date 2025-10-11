@@ -203,7 +203,8 @@ quint16 ChannelToF3Frame::getBits(const QByteArray &data, int startBit, int endB
     int endByte = endBit / 8;
     
     if (Q_UNLIKELY(endByte >= data.size())) {
-        qFatal("ChannelToF3Frame::getBits(): Byte index %d exceeds data size %d", endByte, data.size());
+        qFatal("ChannelToF3Frame::getBits(): Byte index %d exceeds data size %d",
+               endByte, static_cast<int>(data.size()));
     }
 
     // Fast path for bits within a single byte

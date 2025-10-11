@@ -29,7 +29,8 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
 {
     // Ensure the data is 98 bytes long
     if (data.size() != 98) {
-        qFatal("Subcode::fromData(): Data size of %d does not match 98 bytes", data.size());
+        qFatal("Subcode::fromData(): Data size of %d does not match 98 bytes",
+               static_cast<int>(data.size()));
     }
 
     // Extract the p-channel data and q-channel data
@@ -483,8 +484,8 @@ void Subcode::setBit(QByteArray &data, quint8 bitPosition, bool value)
 {
     // Check to ensure the bit position is valid
     if (bitPosition >= data.size() * 8) {
-        qFatal("Subcode::setBit(): Bit position %d is out of range for data size %d", bitPosition,
-               data.size());
+        qFatal("Subcode::setBit(): Bit position %d is out of range for data size %d",
+               bitPosition, static_cast<int>(data.size()));
     }
 
     // We need to convert this to a byte number and bit number within that byte
@@ -504,8 +505,8 @@ bool Subcode::getBit(const QByteArray &data, quint8 bitPosition)
 {
     // Check to ensure we don't overflow the data array
     if (bitPosition >= data.size() * 8) {
-        qFatal("Subcode::getBit(): Bit position %d is out of range for data size %d", bitPosition,
-               data.size());
+        qFatal("Subcode::getBit(): Bit position %d is out of range for data size %d",
+               bitPosition, static_cast<int>(data.size()));
     }
 
     // We need to convert this to a byte number and bit number within that byte
