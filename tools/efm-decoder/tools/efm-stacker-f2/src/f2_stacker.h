@@ -48,7 +48,6 @@ private:
     F2Frame stackFrames(QVector<F2Frame> &f2Frames);
 
     // Statistics
-    quint64 m_goodBytes;
     quint64 m_noValidValueForByte;
 
     quint64 m_validValueForByte;
