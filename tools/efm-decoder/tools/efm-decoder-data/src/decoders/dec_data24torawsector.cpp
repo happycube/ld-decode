@@ -112,7 +112,7 @@ Data24ToRawSector::State Data24ToRawSector::waitingForSync()
     }
 
     // Does the sector data contain the sync pattern?
-    quint32 syncPatternPosition = m_sectorData.indexOf(m_syncPattern);
+    int syncPatternPosition = m_sectorData.indexOf(m_syncPattern);
     if (syncPatternPosition == -1) {
         // No sync pattern found
         //if (m_showDebug) qDebug() << "Data24ToRawSector::waitingForSync(): No sync pattern found in sectorData, discarding" << m_sectorData.size() - 11 << "bytes";
