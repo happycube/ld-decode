@@ -29,7 +29,8 @@
 void Audio::setData(const QVector<qint16> &data)
 {
     if (data.size() != frameSize()) {
-        qFatal("Audio::setData(): Data size of %d does not match frame size of %d", data.size(), frameSize());
+        qFatal("Audio::setData(): Data size of %d does not match frame size of %d",
+               static_cast<int>(data.size()), frameSize());
     }
     m_audioData = data;
 }
@@ -38,7 +39,8 @@ void Audio::setData(const QVector<qint16> &data)
 void Audio::setDataLeftRight(const QVector<qint16> &dataLeft, const QVector<qint16> &dataRight)
 {
     if (dataLeft.size() + dataRight.size() != frameSize()) {
-        qFatal("Audio::setDataLeftRight(): Data size of %d does not match frame size of %d", dataLeft.size() + dataRight.size(), frameSize());
+        qFatal("Audio::setDataLeftRight(): Data size of %d does not match frame size of %d",
+               static_cast<int>(dataLeft.size() + dataRight.size()), frameSize());
     }
     
     m_audioData.clear();
@@ -92,7 +94,8 @@ QVector<qint16> Audio::dataRight() const
 void Audio::setErrorData(const QVector<bool> &errorData)
 {
     if (errorData.size() != frameSize()) {
-        qFatal("Audio::setErrorData(): Error data size of %d does not match frame size of %d", errorData.size(), frameSize());
+        qFatal("Audio::setErrorData(): Error data size of %d does not match frame size of %d",
+               static_cast<int>(errorData.size()), frameSize());
     }
     m_audioErrorData = errorData;
 }
@@ -101,7 +104,8 @@ void Audio::setErrorData(const QVector<bool> &errorData)
 void Audio::setErrorDataLeftRight(const QVector<bool> &errorDataLeft, const QVector<bool> &errorDataRight)
 {
     if (errorDataLeft.size() + errorDataRight.size() != frameSize()) {
-        qFatal("Audio::setErrorDataLeftRight(): Error data size of %d does not match frame size of %d", errorDataLeft.size() + errorDataRight.size(), frameSize());
+        qFatal("Audio::setErrorDataLeftRight(): Error data size of %d does not match frame size of %d",
+               static_cast<int>(errorDataLeft.size() + errorDataRight.size()), frameSize());
     }
     
     m_audioErrorData.clear();
@@ -226,7 +230,8 @@ int Audio::frameSize() const
 void Audio::setConcealedData(const QVector<bool> &concealedData)
 {
     if (concealedData.size() != frameSize()) {
-        qFatal("Audio::setConcealedData(): Concealed data size of %d does not match frame size of %d", concealedData.size(), frameSize());
+        qFatal("Audio::setConcealedData(): Concealed data size of %d does not match frame size of %d",
+               static_cast<int>(concealedData.size()), frameSize());
     }
     m_audioConcealedData = concealedData;
 }
