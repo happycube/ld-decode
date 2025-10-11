@@ -37,7 +37,7 @@ public:
     Sector popSector();
     bool isReady() const;
 
-    void showStatistics();
+    void showStatistics() const;
 
 private:
     void processQueue();

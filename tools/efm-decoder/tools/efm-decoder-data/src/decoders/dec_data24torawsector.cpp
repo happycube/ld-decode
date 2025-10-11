@@ -268,7 +268,7 @@ Data24ToRawSector::State Data24ToRawSector::lostSync()
     return nextState;
 }
 
-void Data24ToRawSector::showStatistics()
+void Data24ToRawSector::showStatistics() const
 {
     qInfo() << "Data24ToRawSector statistics:";
     qInfo() << "  Valid sectors:" << m_validSectorCount;

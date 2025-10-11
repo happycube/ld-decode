@@ -119,7 +119,7 @@ void F1SectionToData24Section::processQueue()
     }
 }
 
-void F1SectionToData24Section::showStatistics()
+void F1SectionToData24Section::showStatistics() const
 {
     qInfo() << "F1 Section to Data24 Section statistics:";
 

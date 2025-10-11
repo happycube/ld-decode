@@ -127,7 +127,7 @@ void Data24ToAudio::processQueue()
     }
 }
 
-void Data24ToAudio::showStatistics()
+void Data24ToAudio::showStatistics() const
 {
     qInfo() << "Data24 to Audio statistics:";
     qInfo().nospace() << "  Data24 Frames:";

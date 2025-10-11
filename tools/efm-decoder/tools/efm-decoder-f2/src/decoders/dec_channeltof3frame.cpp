@@ -235,7 +235,7 @@ quint16 ChannelToF3Frame::getBits(const QByteArray &data, int startBit, int endB
     return result;
 }
 
-void ChannelToF3Frame::showStatistics()
+void ChannelToF3Frame::showStatistics() const
 {
     qInfo() << "Channel to F3 Frame statistics:";
     qInfo() << "  Channel Frames:";

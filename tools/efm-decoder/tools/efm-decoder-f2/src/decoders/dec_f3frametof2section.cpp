@@ -308,7 +308,7 @@ void F3FrameToF2Section::outputSection(bool showAddress)
         << sectionMetadata.absoluteSectionTime().toString();
 }
 
-void F3FrameToF2Section::showStatistics()
+void F3FrameToF2Section::showStatistics() const
 {
     qInfo() << "F3 Frame to F2 Section statistics:";
     qInfo() << "  F3 Frames:";
