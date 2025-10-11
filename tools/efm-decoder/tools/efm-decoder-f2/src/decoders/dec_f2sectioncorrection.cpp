@@ -479,9 +479,9 @@ void F2SectionCorrection::processInternalBuffer()
                                 m_internalBuffer[errorStart].metadata.trackNumber());
 
                         // Same thing for the section time
-                        SectionTime expectedSectionTime =
+                        m_internalBuffer[i].metadata.setSectionTime(
                                 m_internalBuffer[errorStart].metadata.sectionTime()
-                                + (i - errorStart);
+                                + (i - errorStart));
                     }
 
                     // Mark the corrected metadata as valid
