@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm
+from math import log, log10, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm
 from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
@@ -46,14 +46,10 @@ import matplotlib.pyplot as plt
 
 
 # lower increases expander strength and decreases overall gain
-DEFAULT_NR_EXPANDER_GAIN = 22
-# sets logarithmic slope for the 1:2 expander
-DEFAULT_NR_EXPANDER_LOG_STRENGTH = 1.2
+DEFAULT_NR_EXPANDER_GAIN = 16
+DEFAULT_NR_EXPANDER_RATIO = 2
 DEFAULT_NR_EXPANDER_ATTACK_TAU = 3e-3
 DEFAULT_NR_EXPANDER_RELEASE_TAU = 70e-3
-
-# sets maximum amount the expander can increase volume when applying the sidechain
-DEFAULT_NR_EXPANDER_GATE_HARD_LIMIT = 1
 
 # High shelf filter parameters for weighted sidechain input to expander
 # low end of shelf curve
@@ -61,7 +57,7 @@ DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1 = 240e-6
 # high end of shelf curve
 DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2 = 24e-6
 # slope of the filter
-DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 2.1
+DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 6
 
 # Low shelf filter for deemphasis
 # low end of shelf curve
@@ -69,7 +65,7 @@ DEFAULT_NR_DEEMPHASIS_TAU_1 = 240e-6
 # high end of shelf curve
 DEFAULT_NR_DEEMPHASIS_TAU_2 = 56e-6
 # slope of the filter
-DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE = 6.6
+DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE = 7
 
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
@@ -775,7 +771,7 @@ class NoiseReduction:
         self,
         audio_rate,
         nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN,
-        nr_expander_strength: float = DEFAULT_NR_EXPANDER_LOG_STRENGTH,
+        nr_expander_ratio: float = DEFAULT_NR_EXPANDER_RATIO,
         nr_attack_tau: float = DEFAULT_NR_EXPANDER_ATTACK_TAU,
         nr_release_tau: float = DEFAULT_NR_EXPANDER_RELEASE_TAU,
         nr_weighting_shelf_low_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
@@ -791,10 +787,9 @@ class NoiseReduction:
         # expander #
         ############
 
-        # noise reduction envelope tracking constants (this ones might need tweaking)
-        self.NR_expander_gain = nr_expander_gain
-        # strength of the logarithmic function used to expand the signal
-        self.NR_expander_log_strength = nr_expander_strength
+        # makeup gain to apply after expansion
+        self.NR_expander_gain = 10 ** (nr_expander_gain / 20)
+        self.NR_expander_ratio = nr_expander_ratio
 
         # values in seconds
         NR_attack_tau = nr_attack_tau
@@ -816,7 +811,7 @@ class NoiseReduction:
         )
 
         self.nrWeightedLowpass = FiltersClass(
-            np.array(locut_iirb), np.array(locut_iira)
+            np.array(locut_iirb), np.array(locut_iira), dtype=np.float64
         )
 
         # weighted filter for envelope detector
@@ -829,11 +824,11 @@ class NoiseReduction:
             self.NR_weighting_T1,
             self.NR_weighting_T2,
             self.NR_weighting_db_per_octave,
-            1.85,
+            1.5,
             self.audio_rate,
         )
 
-        self.nrWeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira))
+        self.nrWeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira), dtype=np.float64)
 
         # expander attack
         loenv_iirb, loenv_iira = firdes_lowpass(
@@ -841,7 +836,7 @@ class NoiseReduction:
             self.NR_weighting_attack_Lo_cut,
             self.NR_weighting_attack_Lo_transition,
         )
-        self.expander_attack_Lowpass = FiltersClass(loenv_iirb, loenv_iira)
+        self.expander_attack_Lowpass = FiltersClass(loenv_iirb, loenv_iira, dtype=np.float64)
 
         # expander release
         loenvr_iirb, loenvr_iira = firdes_lowpass(
@@ -849,7 +844,7 @@ class NoiseReduction:
             self.NR_weighting_release_Lo_cut,
             self.NR_weighting_release_Lo_transition,
         )
-        self.expander_release_Lowpass = FiltersClass(loenvr_iirb, loenvr_iira)
+        self.expander_release_Lowpass = FiltersClass(loenvr_iirb, loenvr_iira, dtype=np.float64)
 
         ##############
         # deemphasis #
@@ -869,57 +864,41 @@ class NoiseReduction:
             self.audio_rate,
         )
 
-        self.nrDeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a))
+        self.nrDeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a), dtype=np.float64)
+
+    def rs_envelope(self, raw_data):
+        # prevent high frequency noise from interfering with envelope detector
+        low_pass = self.nrWeightedLowpass.filtfilt(raw_data)
+
+        # high pass weighted input to envelope detector
+        audio_env = self.nrWeightedHighpass.filtfilt(low_pass)
+
+        NoiseReduction.expand(audio_env, self.NR_expander_ratio)
+
+        return audio_env
 
     @staticmethod
-    def audio_notch(samp_rate: int, freq: float, audio):
-        cancel_shift = int(round(samp_rate / (2 * freq)))
-        shift = audio[:-cancel_shift]
-        return np.add(audio, np.pad(shift, (cancel_shift, 0), "wrap")) / 2
-
-    @staticmethod
-    def audio_notch_stereo(samp_rate: int, freq: float, audioL, audioR):
-        return NoiseReduction.audio_notch(
-            samp_rate, freq, audioL
-        ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
-
-    @staticmethod
-    @guvectorize(
+    @njit(
         [
             (
-                numba.types.float64,
-                numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
+                numba.types.Array(numba.types.float64, 1, "A"),
+                numba.types.float32
             )
         ],
-        "(),(n)->(n)",
         cache=True,
         fastmath=True,
-        nopython=True,
+        nogil=True,
     )
-    def expand(log_strength: float, signal: np.array, out: np.array) -> np.array:
-        # use float64 to prevent overflow, the envelope here can expand greatly
-        # detect the envelope and use logarithmic expansion
-        for i in range(len(signal)):
-            out[i] = abs(signal[i]) ** REAL_DTYPE(log_strength)
-
-    @staticmethod
-    @guvectorize(
-        [
-            (
-                numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
-            )
-        ],
-        "(n),(n)->(n)",
-        cache=True,
-        fastmath=True,
-        nopython=True,
-    )
-    def get_attacks_and_releases(attack: np.array, release: np.array, rsC: np.array):
-        for releasing_index in np.where(attack < release):
-            rsC[releasing_index] = release[releasing_index]
+    def expand(in_out: np.array, ratio: float):
+        for i in range(len(in_out)):        
+            # Convert to dB (amplitude)
+            db = 20 * log10(max(1e-12, abs(in_out[i])))
+            
+            # Apply expansion
+            db_expanded = db / ratio
+            
+            # Convert back to linear
+            in_out[i] = 10 ** (db_expanded / 20)
 
     @staticmethod
     @njit(
@@ -927,8 +906,9 @@ class NoiseReduction:
             (
                 numba.types.float32,
                 numba.types.Array(numba.types.float64, 1, "C"),
-                NumbaAudioArray,
-                NumbaAudioArray,
+                numba.types.Array(numba.types.float64, 1, "C"),
+                numba.types.Array(numba.types.float64, 1, "C"),
+                NumbaAudioArray, 
             )
         ],
         cache=True,
@@ -936,50 +916,33 @@ class NoiseReduction:
         nogil=True,
     )
     def apply_gate(
-        nr_env_gain: float, rsC: np.array, audio_with_deemphasis: np.array, audio_out: np.array
+        nr_env_gain: float, 
+        attacks: np.array, 
+        releases: np.array, 
+        audio_with_deemphasis: np.array,
+        audio_out: np.array
     ):
-        # computes a sidechain signal to apply noise reduction
-        # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
-        #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
-        #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
         audio_end = len(audio_out)
         audio_start = audio_end - len(audio_with_deemphasis)
         for i in range(0, audio_start):
             audio_out[i] = 0
 
         for i in range(audio_start, audio_end):
-            # possibly this gate shouldn't be here
-            gate = min(
-                DEFAULT_NR_EXPANDER_GATE_HARD_LIMIT, max(0, rsC[i] * nr_env_gain)
-            )
-            audio_out[i] = audio_with_deemphasis[i-audio_start] * gate
+            attack = attacks[i]
+            release = releases[i]
+            envelope = release if attack < release else attack
 
-    def rs_envelope(self, raw_data):
-        # prevent high frequency noise from interfering with envelope detector
-        low_pass = self.nrWeightedLowpass.filtfilt(raw_data)
-
-        # high pass weighted input to envelope detector
-        weighted_high_pass = self.nrWeightedHighpass.filtfilt(low_pass)
-
-        audio_env = np.empty(len(weighted_high_pass), dtype=np.float64)
-        NoiseReduction.expand(
-            self.NR_expander_log_strength, weighted_high_pass, audio_env
-        )
-
-        return audio_env
+            audio_out[i] = audio_with_deemphasis[i-audio_start] * envelope * nr_env_gain
 
     def noise_reduction(self, pre_in, de_noise_in_out):
-        # takes the RMS expander of each audio channel
         audio_env = self.rs_envelope(pre_in)
-        audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise_in_out)
-
         attack = self.expander_attack_Lowpass.lfilt(audio_env)
         release = self.expander_release_Lowpass.lfilt(audio_env)
-        rsC = attack
 
-        NoiseReduction.get_attacks_and_releases(attack, release, rsC)
+        audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise_in_out)
+
         NoiseReduction.apply_gate(
-            self.NR_expander_gain, rsC, audio_with_deemphasis, de_noise_in_out
+            self.NR_expander_gain, attack, release, audio_with_deemphasis, de_noise_in_out
         )
 
 

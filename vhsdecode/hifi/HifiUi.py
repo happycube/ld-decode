@@ -51,7 +51,7 @@ except ImportError:
 
 from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_NR_EXPANDER_GAIN,
-    DEFAULT_NR_EXPANDER_LOG_STRENGTH,
+    DEFAULT_NR_EXPANDER_RATIO,
     DEFAULT_NR_EXPANDER_ATTACK_TAU,
     DEFAULT_NR_EXPANDER_RELEASE_TAU,
     DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
@@ -79,7 +79,7 @@ class MainUIParameters:
         self.volume: float = 1.0
         self.normalize = False
         self.nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN
-        self.nr_expander_strength: float = DEFAULT_NR_EXPANDER_LOG_STRENGTH
+        self.nr_expander_ratio: float = DEFAULT_NR_EXPANDER_RATIO
         self.nr_attack_tau: float = DEFAULT_NR_EXPANDER_ATTACK_TAU
         self.nr_release_tau: float = DEFAULT_NR_EXPANDER_RELEASE_TAU
         self.nr_weighting_shelf_low_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1
@@ -116,7 +116,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
     values.nr_expander_gain = decode_options["nr_expander_gain"]
-    values.nr_expander_strength = decode_options["nr_expander_strength"]
+    values.nr_expander_ratio = decode_options["nr_expander_ratio"]
     values.nr_attack_tau = decode_options["nr_attack_tau"]
     values.nr_release_tau = decode_options["nr_release_tau"]
     values.nr_weighting_shelf_low_tau = decode_options["nr_weighting_shelf_low_tau"]
@@ -156,7 +156,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "auto_fine_tune": values.automatic_fine_tuning,
         "bias_guess": values.bias_guess,
         "nr_expander_gain": values.nr_expander_gain,
-        "nr_expander_strength": values.nr_expander_strength,
+        "nr_expander_ratio": values.nr_expander_ratio,
         "nr_attack_tau": values.nr_attack_tau,
         "nr_release_tau": values.nr_release_tau,
         "nr_weighting_shelf_low_tau": values.nr_weighting_shelf_low_tau,
@@ -656,13 +656,13 @@ class HifiUi(QMainWindow):
         expander_controls_frame.inner_layout.addWidget(self.noise_reduction_checkbox)
         expander_controls_layout = QHBoxLayout()
         self.nr_expander_gain_dial_control = DialControl(
-            self, "Gain", QtGui.QDoubleValidator(), 1, 0, 100
+            self, "Gain (db)", QtGui.QDoubleValidator(), 1, 0, 30
         )
         expander_controls_layout.addWidget(self.nr_expander_gain_dial_control)
-        self.nr_expander_strength_dial_control = DialControl(
-            self, "Strength", QtGui.QDoubleValidator(), 10, 1, 5
+        self.nr_expander_ratio_dial_control = DialControl(
+            self, "Ratio", QtGui.QDoubleValidator(), 1, 1, 10
         )
-        expander_controls_layout.addWidget(self.nr_expander_strength_dial_control)
+        expander_controls_layout.addWidget(self.nr_expander_ratio_dial_control)
         self.nr_attack_tau_dial_control = DialControl(
             self, "Attack (𝜏)", QtGui.QDoubleValidator(), 10e3, 10e-4, 10e-3
         )
@@ -756,7 +756,7 @@ class HifiUi(QMainWindow):
     def setValues(self, values: MainUIParameters):
         self.volume_dial_control.setValue(values.volume)
         self.nr_expander_gain_dial_control.setValue(values.nr_expander_gain)
-        self.nr_expander_strength_dial_control.setValue(values.nr_expander_strength)
+        self.nr_expander_ratio_dial_control.setValue(values.nr_expander_ratio)
         self.nr_attack_tau_dial_control.setValue(values.nr_attack_tau)
         self.nr_release_tau_dial_control.setValue(values.nr_release_tau)
         self.nr_weighting_shelf_low_tau_dial_control.setValue(
@@ -832,7 +832,7 @@ class HifiUi(QMainWindow):
         values = MainUIParameters()
         values.volume = self.volume_dial_control.value()
         values.nr_expander_gain = self.nr_expander_gain_dial_control.value()
-        values.nr_expander_strength = self.nr_expander_strength_dial_control.value()
+        values.nr_expander_ratio = self.nr_expander_ratio_dial_control.value()
         values.nr_attack_tau = self.nr_attack_tau_dial_control.value()
         values.nr_release_tau = self.nr_release_tau_dial_control.value()
         values.nr_weighting_shelf_low_tau = (

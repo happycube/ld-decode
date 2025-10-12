@@ -48,7 +48,7 @@ from vhsdecode.hifi.HiFiDecode import (
     SpectralNoiseReduction,
     NoiseReduction,
     DEFAULT_NR_EXPANDER_GAIN,
-    DEFAULT_NR_EXPANDER_LOG_STRENGTH,
+    DEFAULT_NR_EXPANDER_RATIO,
     DEFAULT_NR_EXPANDER_ATTACK_TAU,
     DEFAULT_NR_EXPANDER_RELEASE_TAU,
     DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
@@ -323,15 +323,15 @@ expander_options_group.add_argument(
     type=float,
     default=DEFAULT_NR_EXPANDER_GAIN,
     help=f"Sets the expander gain (default is {DEFAULT_NR_EXPANDER_GAIN}). "
-    f"Range (20~100): Higher values increase the effect of the expander",
+    f"Range (0~30): Higher values increase output gain of the expander",
 )
 expander_options_group.add_argument(
-    "--NR_expander_strength",
-    dest="nr_expander_strength",
+    "--nr_expander_ratio",
+    dest="nr_expander_ratio",
     type=float,
-    default=DEFAULT_NR_EXPANDER_LOG_STRENGTH,
-    help=f"Sets the expander logarithmic strength (default is {DEFAULT_NR_EXPANDER_LOG_STRENGTH}). "
-    f"Range (1~2): Higher values increase the logarithmic slope of the expander",
+    default=DEFAULT_NR_EXPANDER_RATIO,
+    help=f"Sets the ratio (default is {DEFAULT_NR_EXPANDER_RATIO}). "
+    f"Range (1~2): Higher values increase the ratio of the expander",
 )
 expander_options_group.add_argument(
     "--NR_attack_tau",
@@ -951,7 +951,7 @@ class PostProcessor:
                 self.use_noise_reduction,
                 self.final_audio_rate,
                 decode_options["nr_expander_gain"],
-                decode_options["nr_expander_strength"],
+                decode_options["nr_expander_ratio"],
                 decode_options["nr_attack_tau"],
                 decode_options["nr_release_tau"],
                 decode_options["nr_weighting_shelf_low_tau"],
@@ -976,7 +976,7 @@ class PostProcessor:
                 self.use_noise_reduction,
                 self.final_audio_rate,
                 decode_options["nr_expander_gain"],
-                decode_options["nr_expander_strength"],
+                decode_options["nr_expander_ratio"],
                 decode_options["nr_attack_tau"],
                 decode_options["nr_release_tau"],
                 decode_options["nr_weighting_shelf_low_tau"],
@@ -1066,7 +1066,7 @@ class PostProcessor:
         use_noise_reduction,
         final_audio_rate,
         nr_expander_gain,
-        nr_expander_strength,
+        nr_expander_ratio,
         nr_attack_tau,
         nr_release_tau,
         nr_weighting_shelf_low_tau,
@@ -1080,7 +1080,7 @@ class PostProcessor:
         noise_reduction = NoiseReduction(
             final_audio_rate,
             nr_expander_gain,
-            nr_expander_strength,
+            nr_expander_ratio,
             nr_attack_tau,
             nr_release_tau,
             nr_weighting_shelf_low_tau,
@@ -1926,7 +1926,7 @@ def main() -> int:
         "bias_guess": args.bias_guess,
         "normalize": args.normalize,
         "nr_expander_gain": args.nr_expander_gain,
-        "nr_expander_strength": args.nr_expander_strength,
+        "nr_expander_ratio": args.nr_expander_ratio,
         "nr_attack_tau": args.nr_attack_tau,
         "nr_release_tau": args.nr_release_tau,
         "nr_weighting_shelf_low_tau": args.nr_weighting_shelf_low_tau,
