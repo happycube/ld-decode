@@ -47,6 +47,7 @@ from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
     SpectralNoiseReduction,
     Expander,
+    Deemphasis,
     DEFAULT_EXPANDER_GAIN,
     DEFAULT_EXPANDER_RATIO,
     DEFAULT_EXPANDER_ATTACK_TAU,
@@ -315,7 +316,7 @@ expander_options_group.add_argument(
     dest="enable_expander",
     type=str.lower,
     default="on",
-    help="Set expander block (deemphasis and expansion) on/off",
+    help="Set expander block on/off",
 )
 
 expander_options_group.add_argument(
@@ -372,6 +373,13 @@ expander_options_group.add_argument(
 
 deemphasis_options_group = parser.add_argument_group(
     "Deemphasis tuning options (advanced)"
+)
+deemphasis_options_group.add_argument(
+    "--deemphasis",
+    dest="enable_deemphasis",
+    type=str.lower,
+    default="on",
+    help="Set deemphasis block on/off",
 )
 deemphasis_options_group.add_argument(
     "--deemphasis_low_tau",
@@ -863,6 +871,7 @@ class PostProcessor:
     ):
         self.final_audio_rate = decode_options["audio_rate"]
         self.enable_expander = decode_options["enable_expander"]
+        self.enable_deemphasis = decode_options["enable_deemphasis"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.peak_gain = peak_gain
 
@@ -950,6 +959,7 @@ class PostProcessor:
                 spectral_nr_worker_l_rx,
                 expander_worker_l_out_tx,
                 self.enable_expander,
+                self.enable_deemphasis,
                 self.final_audio_rate,
                 decode_options["expander_gain"],
                 decode_options["expander_ratio"],
@@ -975,6 +985,7 @@ class PostProcessor:
                 spectral_nr_worker_r_rx,
                 expander_worker_r_out_tx,
                 self.enable_expander,
+                self.enable_deemphasis,
                 self.final_audio_rate,
                 decode_options["expander_gain"],
                 decode_options["expander_ratio"],
@@ -1065,6 +1076,7 @@ class PostProcessor:
         in_conn,
         out_conn,
         enable_expander,
+        enable_deemphasis,
         final_audio_rate,
         expander_gain,
         expander_ratio,
@@ -1087,6 +1099,10 @@ class PostProcessor:
             expander_weighting_shelf_low_tau,
             expander_weighting_shelf_high_tau,
             expander_weighting_db_per_octave,
+        )
+
+        deemphasis = Deemphasis(
+            final_audio_rate,
             deemphasis_low_tau,
             deemphasis_high_tau,
             deemphasis_db_per_octave,
@@ -1105,16 +1121,19 @@ class PostProcessor:
             buffer = PostProcessorSharedMemory(decoder_state)
             if channel_num == 0:
                 pre = buffer.get_pre_left()
-                expander_out = buffer.get_post_left()
+                post = buffer.get_post_left()
             else:
                 pre = buffer.get_pre_right()
-                expander_out = buffer.get_post_right()
+                post = buffer.get_post_right()
+
+            if enable_deemphasis:
+                deemphasis.process(post)
 
             if enable_expander:
-                expander.expand(pre, expander_out)
+                expander.process(pre, post)
             else:
                 DecoderSharedMemory.copy_data_float32(
-                    pre, expander_out, decoder_state.block_audio_final_len
+                    pre, post, decoder_state.block_audio_final_len
                 )
 
             buffer.close()
@@ -1923,6 +1942,7 @@ def main() -> int:
         "head_switching_interpolation": args.head_switching_interpolation == "on",
         "muting": args.muting == "on",
         "enable_expander": args.enable_expander == "on",
+        "enable_deemphasis": args.enable_deemphasis == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "bias_guess": args.bias_guess,
         "normalize": args.normalize,

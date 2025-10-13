@@ -95,6 +95,7 @@ class MainUIParameters:
         self.afe_right_carrier = 0
         self.spectral_nr_amount = DEFAULT_SPECTRAL_NR_AMOUNT
         self.enable_expander: bool = True
+        self.enable_deemphasis: bool = True
         self.automatic_fine_tuning: bool = True
         self.bias_guess: bool = False
         self.grc = False
@@ -116,6 +117,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
     values.enable_expander = decode_options["enable_expander"]
+    values.enable_deemphasis = decode_options["enable_deemphasis"]
     values.expander_gain = decode_options["expander_gain"]
     values.expander_ratio = decode_options["expander_ratio"]
     values.expander_attack_tau = decode_options["expander_attack_tau"]
@@ -155,6 +157,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "auto_fine_tune": values.automatic_fine_tuning,
         "bias_guess": values.bias_guess,
         "enable_expander": values.enable_expander,
+        "enable_deemphasis": values.enable_deemphasis,
         "expander_gain": values.expander_gain,
         "expander_ratio": values.expander_ratio,
         "expander_attack_tau": values.expander_attack_tau,
@@ -652,7 +655,7 @@ class HifiUi(QMainWindow):
         )
         layout.addLayout(expander_controls_frame)
 
-        self.enable_expander_checkbox = QCheckBox("Enable Expander/Deemphasis")
+        self.enable_expander_checkbox = QCheckBox("Enabled")
         expander_controls_frame.inner_layout.addWidget(self.enable_expander_checkbox)
         expander_controls_layout = QHBoxLayout()
         self.expander_gain_dial_control = DialControl(
@@ -709,6 +712,9 @@ class HifiUi(QMainWindow):
         )
         layout.addLayout(deemphasis_frame)
         deemphasis_layout = QHBoxLayout()
+
+        self.enable_deemphasis_checkbox = QCheckBox("Enabled")
+        deemphasis_frame.inner_layout.addWidget(self.enable_deemphasis_checkbox)
         self.deemphasis_low_tau_dial_control = DialControl(
             self,
             "Low Shelf (𝜏)",
@@ -777,6 +783,7 @@ class HifiUi(QMainWindow):
         self.normalize_checkbox.setChecked(values.normalize)
         self.muting_checkbox.setChecked(values.muting)
         self.enable_expander_checkbox.setChecked(values.enable_expander)
+        self.enable_deemphasis_checkbox.setChecked(values.enable_deemphasis)
         self.head_switching_interpolation_checkbox.setChecked(
             values.head_switching_interpolation
         )
@@ -858,6 +865,7 @@ class HifiUi(QMainWindow):
         values.normalize = self.normalize_checkbox.isChecked()
         values.muting = self.muting_checkbox.isChecked()
         values.enable_expander = self.enable_expander_checkbox.isChecked()
+        values.enable_deemphasis = self.enable_deemphasis_checkbox.isChecked()
         values.head_switching_interpolation = (
             self.head_switching_interpolation_checkbox.isChecked()
         )

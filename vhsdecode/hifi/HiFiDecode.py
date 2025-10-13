@@ -765,6 +765,57 @@ class SpectralNoiseReduction:
             nr, audio_out, len(nr) - len(audio_out) - self.end_padding, len(audio_out)
         )
 
+class Deemphasis:
+    def __init__(
+        self,
+        audio_rate,
+        deemphasis_low_tau: float = DEFAULT_DEEMPHASIS_TAU_1,
+        deemphasis_high_tau: float = DEFAULT_DEEMPHASIS_TAU_2,
+        deemphasis_db_per_octave: float = DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
+    ):
+        self.audio_rate = audio_rate
+
+        # deemphasis filter for output audio
+        self.deemphasis_T1 = deemphasis_low_tau
+        self.deemphasis_T2 = deemphasis_high_tau
+        self.deemphasis_db_per_octave = deemphasis_db_per_octave
+
+        deemph_b, deemph_a = build_shelf_filter(
+            "low",
+            self.deemphasis_T1,
+            self.deemphasis_T2,
+            self.deemphasis_db_per_octave,
+            1.75,
+            self.audio_rate,
+        )
+
+        self.DeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a))
+
+    @staticmethod
+    @njit(
+        [
+            (
+                NumbaAudioArray, 
+                NumbaAudioArray, 
+            )
+        ],
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def align_audio(audio_in, audio_out):
+        audio_end = len(audio_out)
+        audio_start = audio_end - len(audio_in)
+        for i in range(0, audio_start):
+            audio_out[i] = 0
+
+        for i in range(audio_start, audio_end):
+            audio_out[i] = audio_in[i-audio_start]
+
+    def process(self, audio_out):
+        audio_filtered = self.DeemphasisLowpass.lfilt(audio_out)
+        Deemphasis.align_audio(audio_filtered, audio_out)
+
 
 class Expander:
     def __init__(
@@ -777,19 +828,12 @@ class Expander:
         weighting_shelf_low_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_1,
         weighting_shelf_high_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_2,
         weighting_db_per_octave: float = DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-        deemphasis_low_tau: float = DEFAULT_DEEMPHASIS_TAU_1,
-        deemphasis_high_tau: float = DEFAULT_DEEMPHASIS_TAU_2,
-        deemphasis_db_per_octave: float = DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
     ):
         self.audio_rate = audio_rate
 
         # makeup gain to apply after expansion
         self.gain = 10 ** (gain / 20)
         self.ratio = ratio
-
-        # values in seconds
-        attack_tau = attack_tau
-        release_tau = release_tau
 
         self.weighting_attack_Lo_cut = tau_as_freq(attack_tau)
         self.weighting_attack_Lo_transition = 1e3
@@ -842,26 +886,6 @@ class Expander:
         )
         self.release_Lowpass = FiltersClass(loenvr_iirb, loenvr_iira, dtype=np.float64)
 
-        ##############
-        # deemphasis #
-        ##############
-
-        # deemphasis filter for output audio
-        self.deemphasis_T1 = deemphasis_low_tau
-        self.deemphasis_T2 = deemphasis_high_tau
-        self.deemphasis_db_per_octave = deemphasis_db_per_octave
-
-        deemph_b, deemph_a = build_shelf_filter(
-            "low",
-            self.deemphasis_T1,
-            self.deemphasis_T2,
-            self.deemphasis_db_per_octave,
-            1.75,
-            self.audio_rate,
-        )
-
-        self.DeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a), dtype=np.float64)
-
     def rs_envelope(self, raw_data):
         # prevent high frequency noise from interfering with envelope detector
         low_pass = self.WeightedLowpass.filtfilt(raw_data)
@@ -903,7 +927,6 @@ class Expander:
                 numba.types.float32,
                 numba.types.Array(numba.types.float64, 1, "C"),
                 numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
                 NumbaAudioArray, 
             )
         ],
@@ -915,31 +938,21 @@ class Expander:
         env_gain: float, 
         attacks: np.array, 
         releases: np.array, 
-        audio_with_deemphasis: np.array,
-        audio_out: np.array
+        audio: np.array
     ):
-        audio_end = len(audio_out)
-        audio_start = audio_end - len(audio_with_deemphasis)
-        for i in range(0, audio_start):
-            audio_out[i] = 0
-
-        for i in range(audio_start, audio_end):
+        for i in range(len(audio)):
             attack = attacks[i]
             release = releases[i]
             envelope = release if attack < release else attack
 
-            audio_out[i] = audio_with_deemphasis[i-audio_start] * envelope * env_gain
+            audio[i] = audio[i] * envelope * env_gain
 
-    def expand(self, pre_in, de_noise_in_out):
+    def process(self, pre_in, audio_out):
         audio_env = self.rs_envelope(pre_in)
         attack = self.attack_Lowpass.lfilt(audio_env)
         release = self.release_Lowpass.lfilt(audio_env)
 
-        audio_with_deemphasis = self.DeemphasisLowpass.lfilt(de_noise_in_out)
-
-        Expander.apply_gate(
-            self.gain, attack, release, audio_with_deemphasis, de_noise_in_out
-        )
+        Expander.apply_gate(self.gain, attack, release, audio_out)
 
 
 @dataclass
