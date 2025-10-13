@@ -10,7 +10,6 @@ from multiprocessing import (
     freeze_support,
     current_process,
     Event,
-    set_start_method
 )
 from multiprocessing.sharedctypes import Value
 from datetime import datetime, timedelta
@@ -1490,7 +1489,7 @@ def write_soundfile_process_worker(
                 total_samples_decoded.value = int(
                     total_samples_decoded.value + samples_decoded
                 )
-                
+
             log_decode(
                 start_time,
                 input_position.value,
@@ -2092,5 +2091,4 @@ else:
 
 if __name__ == "__main__":
     freeze_support()
-    set_start_method('spawn')
-    Process(target=main).start()
+    sys.exit(main())

@@ -65,7 +65,7 @@ DEFAULT_DEEMPHASIS_TAU_1 = 240e-6
 # high end of shelf curve
 DEFAULT_DEEMPHASIS_TAU_2 = 56e-6
 # slope of the filter
-DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 7
+DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 6.6
 
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
