@@ -25,10 +25,10 @@
 #include "dec_audiocorrection.h"
 
 AudioCorrection::AudioCorrection() :
-    m_silencedSamplesCount(0),
-    m_validSamplesCount(0),
+    m_firstSectionFlag(true),
     m_concealedSamplesCount(0),
-    m_firstSectionFlag(true)
+    m_silencedSamplesCount(0),
+    m_validSamplesCount(0)
 {}
 
 void AudioCorrection::pushSection(const AudioSection &audioSection)
@@ -242,7 +242,7 @@ void AudioCorrection::processQueue()
     }
 }
 
-void AudioCorrection::showStatistics()
+void AudioCorrection::showStatistics() const
 {
     qInfo().nospace() << "Audio correction statistics:";
     qInfo().nospace() << "  Total mono samples: "

@@ -31,8 +31,8 @@
 void Frame::setData(const QVector<quint8> &data)
 {
     if (data.size() != frameSize()) {
-        qFatal("Frame::setData(): Data size of %d does not match frame size of %d", data.size(),
-               frameSize());
+        qFatal("Frame::setData(): Data size of %d does not match frame size of %d",
+               static_cast<int>(data.size()), frameSize());
     }
     m_frameData = data;
 }
@@ -53,7 +53,7 @@ void Frame::setErrorData(const QVector<bool> &errorData)
 {
     if (errorData.size() != frameSize()) {
         qFatal("Frame::setErrorData(): Error data size of %d does not match frame size of %d",
-               errorData.size(), frameSize());
+               static_cast<int>(errorData.size()), frameSize());
     }
 
     m_frameErrorData = errorData;
@@ -88,7 +88,7 @@ void Frame::setPaddedData(const QVector<bool> &paddedData)
 {
     if (paddedData.size() != frameSize()) {
         qFatal("Frame::setPaddedData(): Padded data size of %d does not match frame size of %d",
-            paddedData.size(), frameSize());
+               static_cast<int>(paddedData.size()), frameSize());
     }
 
     m_framePaddedData = paddedData;

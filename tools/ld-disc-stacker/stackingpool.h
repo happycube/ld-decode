@@ -50,13 +50,13 @@ public:
                        QVector<qint32> &firstFieldNumber, QVector<SourceVideo::Data> &firstFieldVideoData, QVector<LdDecodeMetaData::Field> &firstFieldMetadata,
                        QVector<qint32> &secondFieldNumber, QVector<SourceVideo::Data> &secondFieldVideoData, QVector<LdDecodeMetaData::Field> &secondFieldMetadata,
                        QVector<LdDecodeMetaData::VideoParameters> &videoParameters,
-                       qint32& _mode, qint32& _smartThreshold, bool& _reverse, bool &_noDiffDod, bool &_passThrough, QVector<qint32> &availableSourcesForFrame);
+                       qint32& _mode, qint32& _smartThreshold, bool& _reverse, bool &_noDiffDod, bool &_passThrough,
+                       bool &_verbose, QVector<qint32> &availableSourcesForFrame);
 
     bool setOutputFrame(qint32 frameNumber,
                         SourceVideo::Data firstTargetFieldData, SourceVideo::Data secondTargetFieldData,
                         qint32 firstFieldSeqNo, qint32 secondFieldSeqNo,
                         DropOuts firstTargetFieldDropOuts, DropOuts secondTargetFieldDropouts);
-    const bool verbose;
 
 private:
     QString outputFilename;
@@ -68,6 +68,8 @@ private:
     bool noDiffDod;
     bool passThrough;
     bool integrityCheck;
+    bool verbose;
+
     QElapsedTimer totalTimer;
     qint32 skippedFrame;
 

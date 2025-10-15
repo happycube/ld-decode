@@ -37,7 +37,7 @@ public:
     F2Section popSection();
     bool isReady() const;
 
-    void showStatistics();
+    void showStatistics() const;
 
 private:
     void processStateMachine();

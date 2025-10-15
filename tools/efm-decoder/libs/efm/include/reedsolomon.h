@@ -56,13 +56,13 @@ public:
     void c2Decode(QVector<quint8> &inputData, QVector<bool> &errorData,
         QVector<bool> &paddedData, bool m_showDebug);
 
-    qint32 validC1s();
-    qint32 fixedC1s();
-    qint32 errorC1s();
+    qint32 validC1s() const;
+    qint32 fixedC1s() const;
+    qint32 errorC1s() const;
 
-    qint32 validC2s();
-    qint32 fixedC2s();
-    qint32 errorC2s();
+    qint32 validC2s() const;
+    qint32 fixedC2s() const;
+    qint32 errorC2s() const;
 
 private:
     qint32 m_validC1s;

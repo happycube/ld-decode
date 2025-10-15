@@ -30,17 +30,17 @@ F2SectionToF1Section::F2SectionToF1Section() :
     m_delayLine2({ 0, 0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 2, 2, 2, 2 }),
     m_delayLineM({ 108, 104, 100, 96, 92, 88, 84, 80, 76, 72, 68, 64, 60, 56,
         52,  48,  44,  40, 36, 32, 28, 24, 20, 16, 12, 8,  4,  0 }),
-    m_validInputF2FramesCount(0),
     m_invalidInputF2FramesCount(0),
+    m_validInputF2FramesCount(0),
     m_invalidOutputF1FramesCount(0),
     m_validOutputF1FramesCount(0),
+    m_dlLostFramesCount(0),
+    m_continuityErrorCount(0),
     m_inputByteErrors(0),
     m_outputByteErrors(0),
-    m_dlLostFramesCount(0),
-    m_lastFrameNumber(-1),
-    m_continuityErrorCount(0),
     m_invalidPaddedF1FramesCount(0),
-    m_invalidNonPaddedF1FramesCount(0)
+    m_invalidNonPaddedF1FramesCount(0),
+    m_lastFrameNumber(-1)
 {}
 
 void F2SectionToF1Section::pushSection(const F2Section &f2Section)
@@ -234,7 +234,7 @@ void F2SectionToF1Section::showData(const QString &description, qint32 index, co
                                  << timeString << ") " << dataString << "XX=ERROR";
 }
 
-void F2SectionToF1Section::showStatistics()
+void F2SectionToF1Section::showStatistics() const
 {
     qInfo() << "F2 Section to F1 Section statistics:";
     qInfo() << "  Input F2 Frames:";

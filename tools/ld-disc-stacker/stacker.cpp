@@ -45,7 +45,7 @@ void Stacker::run()
     bool reverse;
     bool noDiffDod;
     bool passThrough;
-    const bool& verbose = stackingPool.verbose;
+    bool verbose;
     QVector<qint32> availableSourcesForFrame;
 
     while(!abort) {
@@ -53,7 +53,7 @@ void Stacker::run()
         if (!stackingPool.getInputFrame(frameNumber, firstFieldSeqNo, firstSourceField, firstFieldMetadata,
                                        secondFieldSeqNo, secondSourceField, secondFieldMetadata,
                                        videoParameters, mode, smartThreshold, reverse, noDiffDod, passThrough,
-                                       availableSourcesForFrame)) {
+                                       verbose, availableSourcesForFrame)) {
             // No more input fields -- exit
             break;
         }

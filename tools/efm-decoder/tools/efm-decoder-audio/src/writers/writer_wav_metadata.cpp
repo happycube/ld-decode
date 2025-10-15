@@ -28,14 +28,14 @@
 // This is used when the output is stereo audio data
 
 WriterWavMetadata::WriterWavMetadata() :
+    m_noAudioConcealment(false),
     m_inErrorRange(false),
     m_inConcealedRange(false),
-    m_haveStartTime(false),
-    m_noAudioConcealment(false),
     m_absoluteSectionTime(0, 0, 0),
     m_sectionTime(0, 0, 0),
     m_prevAbsoluteSectionTime(0, 0, 0),
-    m_prevSectionTime(0, 0, 0)
+    m_prevSectionTime(0, 0, 0),
+    m_haveStartTime(false)
 {}
 
 WriterWavMetadata::~WriterWavMetadata()

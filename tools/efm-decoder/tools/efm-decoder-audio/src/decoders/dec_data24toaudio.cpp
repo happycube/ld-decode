@@ -25,13 +25,13 @@
 #include "dec_data24toaudio.h"
 
 Data24ToAudio::Data24ToAudio() :
-    m_startTime(SectionTime(59, 59, 74)),
-    m_endTime(SectionTime(0, 0, 0)),
     m_invalidData24FramesCount(0),
     m_validData24FramesCount(0),
     m_invalidSamplesCount(0),
     m_validSamplesCount(0),
-    m_invalidByteCount(0)
+    m_invalidByteCount(0),
+    m_startTime(SectionTime(59, 59, 74)),
+    m_endTime(SectionTime(0, 0, 0))
 {}
 
 void Data24ToAudio::pushSection(const Data24Section &data24Section)
@@ -127,7 +127,7 @@ void Data24ToAudio::processQueue()
     }
 }
 
-void Data24ToAudio::showStatistics()
+void Data24ToAudio::showStatistics() const
 {
     qInfo() << "Data24 to Audio statistics:";
     qInfo().nospace() << "  Data24 Frames:";

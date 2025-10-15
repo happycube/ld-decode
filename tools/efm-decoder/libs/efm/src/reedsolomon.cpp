@@ -202,32 +202,32 @@ void ReedSolomon::c2Decode(QVector<quint8> &inputData, QVector<bool> &errorData,
 }
 
 // Getter functions for the statistics
-qint32 ReedSolomon::validC1s()
+qint32 ReedSolomon::validC1s() const
 {
     return m_validC1s;
 }
 
-qint32 ReedSolomon::fixedC1s()
+qint32 ReedSolomon::fixedC1s() const
 {
     return m_fixedC1s;
 }
 
-qint32 ReedSolomon::errorC1s()
+qint32 ReedSolomon::errorC1s() const
 {
     return m_errorC1s;
 }
 
-qint32 ReedSolomon::validC2s()
+qint32 ReedSolomon::validC2s() const
 {
     return m_validC2s;
 }
 
-qint32 ReedSolomon::fixedC2s()
+qint32 ReedSolomon::fixedC2s() const
 {
     return m_fixedC2s;
 }
 
-qint32 ReedSolomon::errorC2s()
+qint32 ReedSolomon::errorC2s() const
 {
     return m_errorC2s;
 }

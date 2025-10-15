@@ -60,8 +60,8 @@ private:
     bool m_leadinComplete;
 
     QQueue<F2Section> m_window;
-    quint32 m_maximumGapSize;
-    quint32 m_paddingWatermark;
+    qint32 m_maximumGapSize;
+    qint32 m_paddingWatermark;
 
     // Statistics
     quint32 m_totalSections;

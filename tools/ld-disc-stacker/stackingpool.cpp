@@ -133,7 +133,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
                                   QVector<qint32>& secondFieldNumber, QVector<SourceVideo::Data>& secondFieldVideoData, QVector<LdDecodeMetaData::Field>& secondFieldMetadata,
                                   QVector<LdDecodeMetaData::VideoParameters>& videoParameters,
                                   qint32& _mode, qint32& _smartThreshold, bool& _reverse, bool& _noDiffDod, bool& _passThrough,
-                                  QVector<qint32>& availableSourcesForFrame)
+                                  bool& _verbose, QVector<qint32>& availableSourcesForFrame)
 {
     QMutexLocker locker(&inputMutex);
 
@@ -267,6 +267,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     _reverse = reverse;
     _noDiffDod = noDiffDod;
     _passThrough = passThrough;
+    _verbose = verbose;
 
     return true;
 }
