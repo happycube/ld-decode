@@ -86,7 +86,7 @@ class PostProcessorSharedMemory:
         self.audio_dtype_item_size = np.dtype(self.audio_dtype).itemsize
 
         ### Post Processing Memory
-        # |--pre_left--|--pre_right--|--nr_left--|--nr_right--|
+        # |--pre_left--|--pre_right--|--post_left--|--post_right--|
         # |-----------stereo---------|
 
         # pre left
@@ -106,18 +106,18 @@ class PostProcessorSharedMemory:
 
         ## noise reduction out
         # left
-        self.l_nr_offset = to_aligned_offset(
+        self.l_post_offset = to_aligned_offset(
             max(
                 self.stereo_offset + self.stereo_bytes,
                 self.r_pre_offset + self.r_pre_bytes,
             )
         )
-        self.l_nr_len = self.channel_len
-        self.l_nr_bytes = self.l_nr_len * self.audio_dtype_item_size
+        self.l_post_len = self.channel_len
+        self.l_post_bytes = self.l_post_len * self.audio_dtype_item_size
         # right
-        self.r_nr_offset = to_aligned_offset(self.l_nr_offset + self.l_nr_bytes)
-        self.r_nr_len = self.channel_len
-        self.r_nr_bytes = self.r_nr_len * self.audio_dtype_item_size
+        self.r_post_offset = to_aligned_offset(self.l_post_offset + self.l_post_bytes)
+        self.r_post_len = self.channel_len
+        self.r_post_bytes = self.r_post_len * self.audio_dtype_item_size
 
     @staticmethod
     def get_shared_memory(channel_size, name, audio_dtype=REAL_DTYPE):
@@ -163,19 +163,19 @@ class PostProcessorSharedMemory:
             buffer=self.buf,
         )
 
-    def get_nr_left(self) -> np.array:
+    def get_post_left(self) -> np.array:
         return np.ndarray(
-            self.l_nr_len,
+            self.l_post_len,
             dtype=self.audio_dtype,
-            offset=self.l_nr_offset,
+            offset=self.l_post_offset,
             buffer=self.buf,
         )
 
-    def get_nr_right(self) -> np.array:
+    def get_post_right(self) -> np.array:
         return np.ndarray(
-            self.r_nr_len,
+            self.r_post_len,
             dtype=self.audio_dtype,
-            offset=self.r_nr_offset,
+            offset=self.r_post_offset,
             buffer=self.buf,
         )
 

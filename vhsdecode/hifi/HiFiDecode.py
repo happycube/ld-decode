@@ -4,12 +4,11 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm
+from math import log, log10, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm
 from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
 from multiprocessing import current_process
-from multiprocessing.shared_memory import SharedMemory
 from copy import deepcopy
 import string
 from random import SystemRandom
@@ -47,30 +46,26 @@ import matplotlib.pyplot as plt
 
 
 # lower increases expander strength and decreases overall gain
-DEFAULT_NR_EXPANDER_GAIN = 22
-# sets logarithmic slope for the 1:2 expander
-DEFAULT_NR_EXPANDER_LOG_STRENGTH = 1.2
-DEFAULT_NR_EXPANDER_ATTACK_TAU = 3e-3
-DEFAULT_NR_EXPANDER_RELEASE_TAU = 70e-3
-
-# sets maximum amount the expander can increase volume when applying the sidechain
-DEFAULT_NR_EXPANDER_GATE_HARD_LIMIT = 1
+DEFAULT_EXPANDER_GAIN = 16
+DEFAULT_EXPANDER_RATIO = 2
+DEFAULT_EXPANDER_ATTACK_TAU = 3e-3
+DEFAULT_EXPANDER_RELEASE_TAU = 70e-3
 
 # High shelf filter parameters for weighted sidechain input to expander
 # low end of shelf curve
-DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1 = 240e-6
+DEFAULT_EXPANDER_WEIGHTING_TAU_1 = 240e-6
 # high end of shelf curve
-DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2 = 24e-6
+DEFAULT_EXPANDER_WEIGHTING_TAU_2 = 24e-6
 # slope of the filter
-DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 2.1
+DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 6
 
 # Low shelf filter for deemphasis
 # low end of shelf curve
-DEFAULT_NR_DEEMPHASIS_TAU_1 = 240e-6
+DEFAULT_DEEMPHASIS_TAU_1 = 240e-6
 # high end of shelf curve
-DEFAULT_NR_DEEMPHASIS_TAU_2 = 56e-6
+DEFAULT_DEEMPHASIS_TAU_2 = 56e-6
 # slope of the filter
-DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE = 6.6
+DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 6.6
 
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
@@ -231,18 +226,59 @@ class AFEFilterable:
 
 class FMdemod:
     def __init__(
-        self, sample_rate, carrier_center, deviation, type, i_osc=None, q_osc=None
+        self, sample_rate, carrier_center, deviation, max_iq_len, type
     ):
-        self.samp_rate = np.int32(sample_rate)
-        self.type = type
-        self.carrier = np.int32(carrier_center)
+        self.sample_rate = np.int32(sample_rate)
+        self.carrier = np.int32(round(carrier_center))
         self.deviation = np.int32(deviation)
+        self.type = type
 
-        quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.samp_rate / 2)
-        self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
-        self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
-        self.i_osc = i_osc
-        self.q_osc = q_osc
+        if self.type == DEMOD_QUADRATURE:
+            quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.sample_rate / 2)
+            self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
+            self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
+        
+            iq_len = self._get_min_iq_length(max_iq_len)
+            self.i_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
+            self.q_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
+            FMdemod._generate_iq_oscillators(
+                self.i_osc,
+                self.q_osc,
+                self.carrier,
+                self.sample_rate
+            )
+
+    def _get_min_iq_length(self, max_iq_len):
+        # calculates the minimum i/q oscillator size to avoid discontinuities
+        samples_per_period = self.sample_rate / self.carrier
+        min_periods = lcm(self.sample_rate, self.carrier) / self.sample_rate
+        min_samples = int(samples_per_period * min_periods / 2)
+
+        return min(min_samples, max_iq_len)
+
+    @staticmethod
+    @njit(
+        [
+            (
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+                numba.types.int32,
+                numba.types.int32,
+            )
+        ],
+        cache=True,
+        fastmath=False,
+        nogil=True,
+    )
+    def _generate_iq_oscillators(
+        i_osc, q_osc, carrier, sample_rate
+    ):
+        two_pi_carrier = 2 * pi * carrier
+
+        for i in range(len(i_osc)):
+            t = i / sample_rate
+            i_osc[i] = cos(two_pi_carrier * t)  #  In-phase
+            q_osc[i] = -sin(two_pi_carrier * t)  # Quadrature
 
     @staticmethod
     def compute_analytic_signal(input):
@@ -385,7 +421,8 @@ class FMdemod:
         two_pi: numba.types.Literal = 2 * pi
         diff_divisor = two_pi * (1 / sample_rate)
         order = len(filter_b) - 1
-        iq_osc_len = len(i_osc)
+        iq_len = len(i_osc)
+        rf_len = len(in_rf)
 
         #
         # low pass filter history
@@ -398,12 +435,15 @@ class FMdemod:
         prev_angle = 0  # doesn't matter since the final chunks have overlap
         prev_unwrapped = prev_angle
 
-        for i in range(1, len(in_rf) - order):
+        for i in range(1, rf_len - order):
             #
-            # mix in i/q
+            # mix in i/q, reflect the sine and cosine
             #
-            i_in = in_rf[i] * i_osc[i % iq_osc_len]
-            q_in = in_rf[i] * q_osc[i % iq_osc_len]
+            iq_index = i % iq_len
+            sign = 1 - 2 * ((i // iq_len) % 2)
+
+            i_in = in_rf[i] * i_osc[iq_index] * sign
+            q_in = in_rf[i] * q_osc[iq_index] * sign
 
             #
             # low pass filter
@@ -462,7 +502,7 @@ class FMdemod:
         if self.type == DEMOD_HILBERT:
             FMdemod.compute_analytic_signal(input)
             FMdemod.demod_hilbert(
-                np.float32(self.samp_rate), self.deviation, input, output
+                np.float32(self.sample_rate), self.deviation, input, output
             )
         elif self.type == DEMOD_QUADRATURE:
             FMdemod.demod_quadrature(
@@ -472,7 +512,7 @@ class FMdemod:
                 self.q_osc,
                 self.quadrature_lp_b,
                 self.quadrature_lp_a,
-                self.samp_rate,
+                self.sample_rate,
                 self.carrier,
                 self.deviation,
             )
@@ -725,214 +765,194 @@ class SpectralNoiseReduction:
             nr, audio_out, len(nr) - len(audio_out) - self.end_padding, len(audio_out)
         )
 
-
-class NoiseReduction:
+class Deemphasis:
     def __init__(
         self,
         audio_rate,
-        nr_expander_gain: float = DEFAULT_NR_EXPANDER_GAIN,
-        nr_expander_strength: float = DEFAULT_NR_EXPANDER_LOG_STRENGTH,
-        nr_attack_tau: float = DEFAULT_NR_EXPANDER_ATTACK_TAU,
-        nr_release_tau: float = DEFAULT_NR_EXPANDER_RELEASE_TAU,
-        nr_weighting_shelf_low_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
-        nr_weighting_shelf_high_tau: float = DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
-        nr_weighting_db_per_octave: float = DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-        nr_deemphasis_low_tau: float = DEFAULT_NR_DEEMPHASIS_TAU_1,
-        nr_deemphasis_high_tau: float = DEFAULT_NR_DEEMPHASIS_TAU_2,
-        nr_deemphasis_db_per_octave: float = DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
+        deemphasis_low_tau: float = DEFAULT_DEEMPHASIS_TAU_1,
+        deemphasis_high_tau: float = DEFAULT_DEEMPHASIS_TAU_2,
+        deemphasis_db_per_octave: float = DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
     ):
         self.audio_rate = audio_rate
 
-        ############
-        # expander #
-        ############
-
-        # noise reduction envelope tracking constants (this ones might need tweaking)
-        self.NR_expander_gain = nr_expander_gain
-        # strength of the logarithmic function used to expand the signal
-        self.NR_expander_log_strength = nr_expander_strength
-
-        # values in seconds
-        NR_attack_tau = nr_attack_tau
-        NR_release_tau = nr_release_tau
-
-        self.NR_weighting_attack_Lo_cut = tau_as_freq(NR_attack_tau)
-        self.NR_weighting_attack_Lo_transition = 1e3
-        self.NR_weighting_release_Lo_cut = tau_as_freq(NR_release_tau)
-        self.NR_weighting_release_Lo_transition = 1e3
-
-        # this is set to avoid high frequency noise to interfere with the NR envelope tracking
-        self.NR_Lo_cut = 19e3
-        self.NR_Lo_transition = 10e3
-
-        locut_iirb, locut_iira = firdes_lowpass(
-            self.audio_rate,
-            self.NR_Lo_cut,
-            self.NR_Lo_transition,
-        )
-
-        self.nrWeightedLowpass = FiltersClass(
-            np.array(locut_iirb), np.array(locut_iira)
-        )
-
-        # weighted filter for envelope detector
-        self.NR_weighting_T1 = nr_weighting_shelf_low_tau
-        self.NR_weighting_T2 = nr_weighting_shelf_high_tau
-        self.NR_weighting_db_per_octave = nr_weighting_db_per_octave
-
-        env_iirb, env_iira = build_shelf_filter(
-            "high",
-            self.NR_weighting_T1,
-            self.NR_weighting_T2,
-            self.NR_weighting_db_per_octave,
-            1.85,
-            self.audio_rate,
-        )
-
-        self.nrWeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira))
-
-        # expander attack
-        loenv_iirb, loenv_iira = firdes_lowpass(
-            self.audio_rate,
-            self.NR_weighting_attack_Lo_cut,
-            self.NR_weighting_attack_Lo_transition,
-        )
-        self.expander_attack_Lowpass = FiltersClass(loenv_iirb, loenv_iira)
-
-        # expander release
-        loenvr_iirb, loenvr_iira = firdes_lowpass(
-            self.audio_rate,
-            self.NR_weighting_release_Lo_cut,
-            self.NR_weighting_release_Lo_transition,
-        )
-        self.expander_release_Lowpass = FiltersClass(loenvr_iirb, loenvr_iira)
-
-        ##############
-        # deemphasis #
-        ##############
-
         # deemphasis filter for output audio
-        self.NR_deemphasis_T1 = nr_deemphasis_low_tau
-        self.NR_deemphasis_T2 = nr_deemphasis_high_tau
-        self.NR_deemphasis_db_per_octave = nr_deemphasis_db_per_octave
+        self.deemphasis_T1 = deemphasis_low_tau
+        self.deemphasis_T2 = deemphasis_high_tau
+        self.deemphasis_db_per_octave = deemphasis_db_per_octave
 
         deemph_b, deemph_a = build_shelf_filter(
             "low",
-            self.NR_deemphasis_T1,
-            self.NR_deemphasis_T2,
-            self.NR_deemphasis_db_per_octave,
+            self.deemphasis_T1,
+            self.deemphasis_T2,
+            self.deemphasis_db_per_octave,
             1.75,
             self.audio_rate,
         )
 
-        self.nrDeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a))
+        self.DeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a))
 
     @staticmethod
-    def audio_notch(samp_rate: int, freq: float, audio):
-        cancel_shift = int(round(samp_rate / (2 * freq)))
-        shift = audio[:-cancel_shift]
-        return np.add(audio, np.pad(shift, (cancel_shift, 0), "wrap")) / 2
-
-    @staticmethod
-    def audio_notch_stereo(samp_rate: int, freq: float, audioL, audioR):
-        return NoiseReduction.audio_notch(
-            samp_rate, freq, audioL
-        ), NoiseReduction.audio_notch(samp_rate, freq, audioR)
-
-    @staticmethod
-    @guvectorize(
+    @njit(
         [
             (
-                numba.types.float64,
-                numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
+                NumbaAudioArray, 
+                NumbaAudioArray, 
             )
         ],
-        "(),(n)->(n)",
         cache=True,
         fastmath=True,
-        nopython=True,
+        nogil=True,
     )
-    def expand(log_strength: float, signal: np.array, out: np.array) -> np.array:
-        # use float64 to prevent overflow, the envelope here can expand greatly
-        # detect the envelope and use logarithmic expansion
-        for i in range(len(signal)):
-            out[i] = abs(signal[i]) ** REAL_DTYPE(log_strength)
+    def align_audio(audio_in, audio_out):
+        audio_end = len(audio_out)
+        audio_start = audio_end - len(audio_in)
+        for i in range(0, audio_start):
+            audio_out[i] = 0
+
+        for i in range(audio_start, audio_end):
+            audio_out[i] = audio_in[i-audio_start]
+
+    def process(self, audio_out):
+        audio_filtered = self.DeemphasisLowpass.lfilt(audio_out)
+        Deemphasis.align_audio(audio_filtered, audio_out)
+
+
+class Expander:
+    def __init__(
+        self,
+        audio_rate,
+        gain: float = DEFAULT_EXPANDER_GAIN,
+        ratio: float = DEFAULT_EXPANDER_RATIO,
+        attack_tau: float = DEFAULT_EXPANDER_ATTACK_TAU,
+        release_tau: float = DEFAULT_EXPANDER_RELEASE_TAU,
+        weighting_shelf_low_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_1,
+        weighting_shelf_high_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_2,
+        weighting_db_per_octave: float = DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    ):
+        self.audio_rate = audio_rate
+
+        # makeup gain to apply after expansion
+        self.gain = 10 ** (gain / 20)
+        self.ratio = ratio
+
+        self.weighting_attack_Lo_cut = tau_as_freq(attack_tau)
+        self.weighting_attack_Lo_transition = 1e3
+        self.weighting_release_Lo_cut = tau_as_freq(release_tau)
+        self.weighting_release_Lo_transition = 1e3
+
+        # this is set to avoid high frequency noise to interfere with the NR envelope tracking
+        self.Lo_cut = 19e3
+        self.Lo_transition = 10e3
+
+        locut_iirb, locut_iira = firdes_lowpass(
+            self.audio_rate,
+            self.Lo_cut,
+            self.Lo_transition,
+        )
+
+        self.WeightedLowpass = FiltersClass(
+            np.array(locut_iirb), np.array(locut_iira), dtype=np.float64
+        )
+
+        # weighted filter for envelope detector
+        self.weighting_T1 = weighting_shelf_low_tau
+        self.weighting_T2 = weighting_shelf_high_tau
+        self.weighting_db_per_octave = weighting_db_per_octave
+
+        env_iirb, env_iira = build_shelf_filter(
+            "high",
+            self.weighting_T1,
+            self.weighting_T2,
+            self.weighting_db_per_octave,
+            1.5,
+            self.audio_rate,
+        )
+
+        self.WeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira), dtype=np.float64)
+
+        # expander attack
+        loenv_iirb, loenv_iira = firdes_lowpass(
+            self.audio_rate,
+            self.weighting_attack_Lo_cut,
+            self.weighting_attack_Lo_transition,
+        )
+        self.attack_Lowpass = FiltersClass(loenv_iirb, loenv_iira, dtype=np.float64)
+
+        # expander release
+        loenvr_iirb, loenvr_iira = firdes_lowpass(
+            self.audio_rate,
+            self.weighting_release_Lo_cut,
+            self.weighting_release_Lo_transition,
+        )
+        self.release_Lowpass = FiltersClass(loenvr_iirb, loenvr_iira, dtype=np.float64)
+
+    def rs_envelope(self, raw_data):
+        # prevent high frequency noise from interfering with envelope detector
+        low_pass = self.WeightedLowpass.filtfilt(raw_data)
+
+        # high pass weighted input to envelope detector
+        audio_env = self.WeightedHighpass.filtfilt(low_pass)
+
+        Expander.expand_to_ratio(audio_env, self.ratio)
+
+        return audio_env
 
     @staticmethod
-    @guvectorize(
+    @njit(
         [
             (
-                numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
+                numba.types.Array(numba.types.float64, 1, "A"),
+                numba.types.float32
             )
         ],
-        "(n),(n)->(n)",
         cache=True,
         fastmath=True,
-        nopython=True,
+        nogil=True,
     )
-    def get_attacks_and_releases(attack: np.array, release: np.array, rsC: np.array):
-        for releasing_index in np.where(attack < release):
-            rsC[releasing_index] = release[releasing_index]
+    def expand_to_ratio(in_out: np.array, ratio: float):
+        for i in range(len(in_out)):        
+            # Convert to dB (amplitude)
+            db = 20 * log10(max(1e-12, abs(in_out[i])))
+            
+            # Apply expansion
+            db_expanded = db / ratio
+            
+            # Convert back to linear
+            in_out[i] = 10 ** (db_expanded / 20)
 
     @staticmethod
-    @guvectorize(
+    @njit(
         [
             (
                 numba.types.float32,
                 numba.types.Array(numba.types.float64, 1, "C"),
-                NumbaAudioArray,
-                NumbaAudioArray,
+                numba.types.Array(numba.types.float64, 1, "C"),
+                NumbaAudioArray, 
             )
         ],
-        "(),(n),(n)->(n)",
         cache=True,
         fastmath=True,
-        nopython=True,
+        nogil=True,
     )
     def apply_gate(
-        nr_env_gain: float, rsC: np.array, audio: np.array, audio_out: np.array
+        env_gain: float, 
+        attacks: np.array, 
+        releases: np.array, 
+        audio: np.array
     ):
-        # computes a sidechain signal to apply noise reduction
-        # TODO If the expander gain is set to high, this gate will always be 1 and defeat the expander.
-        #      This would benefit from some auto adjustment to keep the expander curve aligned to the audio.
-        #      Perhaps a limiter with slow attack and release would keep the signal within the expander's range.
         for i in range(len(audio)):
-            # possibly this gate shouldn't be here
-            gate = min(
-                DEFAULT_NR_EXPANDER_GATE_HARD_LIMIT, max(0, rsC[i] * nr_env_gain)
-            )
-            audio_out[i] = audio[i] * gate
+            attack = attacks[i]
+            release = releases[i]
+            envelope = release if attack < release else attack
 
-    def rs_envelope(self, raw_data):
-        # prevent high frequency noise from interfering with envelope detector
-        low_pass = self.nrWeightedLowpass.filtfilt(raw_data)
+            audio[i] = audio[i] * envelope * env_gain
 
-        # high pass weighted input to envelope detector
-        weighted_high_pass = self.nrWeightedHighpass.filtfilt(low_pass)
-
-        audio_env = np.empty(len(weighted_high_pass), dtype=np.float64)
-        NoiseReduction.expand(
-            self.NR_expander_log_strength, weighted_high_pass, audio_env
-        )
-
-        return audio_env
-
-    def noise_reduction(self, pre_in, de_noise_in_out):
-        # takes the RMS expander of each audio channel
+    def process(self, pre_in, audio_out):
         audio_env = self.rs_envelope(pre_in)
-        audio_with_deemphasis = self.nrDeemphasisLowpass.lfilt(de_noise_in_out)
+        attack = self.attack_Lowpass.lfilt(audio_env)
+        release = self.release_Lowpass.lfilt(audio_env)
 
-        attack = self.expander_attack_Lowpass.lfilt(audio_env)
-        release = self.expander_release_Lowpass.lfilt(audio_env)
-        rsC = attack
-
-        NoiseReduction.get_attacks_and_releases(attack, release, rsC)
-        NoiseReduction.apply_gate(
-            self.NR_expander_gain, rsC, audio_with_deemphasis, de_noise_in_out
-        )
+        Expander.apply_gate(self.gain, attack, release, audio_out)
 
 
 @dataclass
@@ -1110,11 +1130,8 @@ class HiFiDecode:
             # defer until carriers can be determined
             self.afeL, self.afeR = self._get_afe()
 
-            if self.options["demod_type"] == DEMOD_QUADRATURE:
-                self._init_iq_oscillator_shared_memory()
-
             self.fmL, self.fmR = self._get_fm_demod(
-                self.if_rate, self.options["demod_type"], self.is_main_process
+                self.if_rate, self.options["demod_type"]
             )
 
         if self.options["grc"]:
@@ -1335,192 +1352,24 @@ class HiFiDecode:
             audioFinal_numerator,
             audioFinal_denominator,
         )
-    
-    def _get_min_iq_length(self, carrier_freq):
-        # calculates the minimum i/q oscillator size to avoid discontinuities
-        rounded_carrier = round(carrier_freq)
 
-        samples_per_period = self.if_rate / rounded_carrier
-        min_periods = lcm(self.if_rate, rounded_carrier) / self.if_rate
-        min_samples = int(samples_per_period * min_periods)
-
-        return min(min_samples, self.initialBlockResampledSize)
-    
-    @property
-    def iq_l_osc_length(self):
-        return self._get_min_iq_length(self.standard.LCarrierRef)
-    
-    @property
-    def iq_r_osc_length(self):
-        return self._get_min_iq_length(self.standard.RCarrierRef)
-
-    def _init_iq_oscillator_shared_memory(self):
-        demod_dtype_itemsize = np.dtype(DEMOD_DTYPE_NP).itemsize
-
-        if self.is_main_process:
-            iq_l_size = self.iq_l_osc_length * demod_dtype_itemsize
-            iq_r_size = self.iq_r_osc_length * demod_dtype_itemsize
-
-            random_string = "_" + "".join(
-                SystemRandom().choice(string.ascii_lowercase + string.digits)
-                for _ in range(8)
-            )
-
-            # store in shared memory so the static data can be reused among processes
-            self.i_osc_left_shm = SharedMemory(
-                size=iq_l_size,
-                name=f"hifi_decoder_i_left{random_string}",
-                create=True,
-            )
-            self.q_osc_left_shm = SharedMemory(
-                size=iq_l_size,
-                name=f"hifi_decoder_q_left{random_string}",
-                create=True,
-            )
-            self.i_osc_right_shm = SharedMemory(
-                size=iq_r_size,
-                name=f"hifi_decoder_i_right{random_string}",
-                create=True,
-            )
-            self.q_osc_right_shm = SharedMemory(
-                size=iq_r_size,
-                name=f"hifi_decoder_q_right{random_string}",
-                create=True,
-            )
-
-            self.options["i_osc_left"] = self.i_osc_left_shm.name
-            self.options["q_osc_left"] = self.q_osc_left_shm.name
-            self.options["i_osc_right"] = self.i_osc_right_shm.name
-            self.options["q_osc_right"] = self.q_osc_right_shm.name
-
-            atexit.register(self.i_osc_left_shm.unlink)
-            atexit.register(self.q_osc_left_shm.close)
-            atexit.register(self.q_osc_left_shm.unlink)
-            atexit.register(self.i_osc_right_shm.close)
-            atexit.register(self.i_osc_right_shm.unlink)
-            atexit.register(self.q_osc_right_shm.close)
-            atexit.register(self.q_osc_right_shm.unlink)
-            atexit.register(self.i_osc_left_shm.close)
-        else:
-            self.i_osc_left_shm = SharedMemory(name=self.options["i_osc_left"])
-            self.q_osc_left_shm = SharedMemory(name=self.options["q_osc_left"])
-            self.i_osc_right_shm = SharedMemory(name=self.options["i_osc_right"])
-            self.q_osc_right_shm = SharedMemory(name=self.options["q_osc_right"])
-
-    @staticmethod
-    @njit(
-        [
-            (
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
-                numba.types.float64,
-                numba.types.float64,
-                numba.types.float64,
-            )
-        ],
-        cache=True,
-        fastmath=False,
-        nogil=True,
-    )
-    def _generate_iq_oscillators(
-        i_left, q_left, i_right, q_right, carrier_left, carrier_right, sample_rate
-    ):
-        two_pi_left = 2 * pi * carrier_left
-        two_pi_right = 2 * pi * carrier_right
-
-        for i in range(len(i_left)):
-            t = i / sample_rate
-            i_left[i] = cos(two_pi_left * t)  #    In-phase
-            q_left[i] = -sin(
-                two_pi_left * t
-            )  #   Quadrature (negative sign for proper rotation)
-
-        for i in range(len(i_right)):
-            t = i / sample_rate
-            
-            i_right[i] = cos(two_pi_right * t)  #  In-phase
-            q_right[i] = -sin(
-                two_pi_right * t
-            )  # Quadrature (negative sign for proper rotation)
-
-    def get_iq_oscillators(self, generate_iq_oscillators):
-        i_osc_left = np.ndarray(
-            self.iq_l_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.i_osc_left_shm.buf,
-            order="C",
-        )
-        q_osc_left = np.ndarray(
-            self.iq_l_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.q_osc_left_shm.buf,
-            order="C",
-        )
-        i_osc_right = np.ndarray(
-            self.iq_r_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.i_osc_right_shm.buf,
-            order="C",
-        )
-        q_osc_right = np.ndarray(
-            self.iq_r_osc_length,
-            dtype=DEMOD_DTYPE_NP,
-            buffer=self.q_osc_right_shm.buf,
-            order="C",
-        )
-
-        if generate_iq_oscillators:
-            # generate i/q oscillators once and share among sub processes
-            HiFiDecode._generate_iq_oscillators(
-                i_osc_left,
-                q_osc_left,
-                i_osc_right,
-                q_osc_right,
-                self.standard.LCarrierRef,
-                self.standard.RCarrierRef,
-                np.float64(self.if_rate),
-            )
-
-        return i_osc_left, q_osc_left, i_osc_right, q_osc_right
-
-    def _get_fm_demod(self, if_rate, demod_type, generate_iq_oscillators):
-        if demod_type == DEMOD_QUADRATURE:
-            i_osc_left, q_osc_left, i_osc_right, q_osc_right = self.get_iq_oscillators(
-                generate_iq_oscillators
-            )
-            fmL = FMdemod(
+    def _get_fm_demod(self, if_rate, demod_type):
+        return (
+            FMdemod(
                 if_rate,
                 self.standard.LCarrierRef,
                 self.standard.VCODeviation,
-                demod_type,
-                i_osc=i_osc_left,
-                q_osc=q_osc_left,
-            )
-            fmR = FMdemod(
+                self.initialBlockResampledSize,
+                demod_type
+            ),
+            FMdemod(
                 if_rate,
                 self.standard.RCarrierRef,
                 self.standard.VCODeviation,
-                demod_type,
-                i_osc=i_osc_right,
-                q_osc=q_osc_right,
+                self.initialBlockResampledSize,
+                demod_type
             )
-        else:
-            fmL = FMdemod(
-                if_rate,
-                self.standard.LCarrierRef,
-                self.standard.VCODeviation,
-                demod_type,
-            )
-            fmR = FMdemod(
-                if_rate,
-                self.standard.RCarrierRef,
-                self.standard.VCODeviation,
-                demod_type,
-            )
-
-        return fmL, fmR
+        )
 
     def guessBiases(self, blocks: list[np.array]) -> Tuple[float, float]:
         meanL, meanR = StackableMA(window_average=len(blocks)), StackableMA(
@@ -1542,7 +1391,7 @@ class HiFiDecode:
         )
         afeL, afeR = self._get_afe()
         fmL, fmR = self._get_fm_demod(
-            DEMOD_HILBERT_IF_RATE, DEMOD_HILBERT, False
+            DEMOD_HILBERT_IF_RATE, DEMOD_HILBERT
         )
 
         progressB = TimeProgressBar(len(blocks), len(blocks))
@@ -1586,11 +1435,12 @@ class HiFiDecode:
         self.afeL, self.afeR = self._get_afe(meanLResult, meanRResult)
 
         if (self.options["demod_type"] == DEMOD_QUADRATURE):
+            # recreate shared memory with the updated bias
             self._init_iq_oscillator_shared_memory()
 
         # update all the filters and iq oscilators with the new bias
         self.fmL, self.fmR = self._get_fm_demod(
-            self.if_rate, self.options["demod_type"], True
+            self.if_rate, self.options["demod_type"]
         )
 
         return meanLResult, meanRResult
@@ -1672,7 +1522,7 @@ class HiFiDecode:
         if self.options["demod_type"] == DEMOD_HILBERT:
             self.afeL, self.afeR = self._get_afe()
             self.fmL, self.fmR = self._get_fm_demod(
-                self.if_rate, self.options["demod_type"], True
+                self.if_rate, self.options["demod_type"]
             )
 
     @staticmethod

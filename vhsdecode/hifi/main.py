@@ -7,11 +7,11 @@ from multiprocessing import (
     Pipe,
     SimpleQueue,
     Process,
-    Value,
     freeze_support,
     current_process,
     Event,
 )
+from multiprocessing.sharedctypes import Value
 from datetime import datetime, timedelta
 import os
 import sys
@@ -45,17 +45,18 @@ from vhsdecode.cmdcommons import (
 from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
     SpectralNoiseReduction,
-    NoiseReduction,
-    DEFAULT_NR_EXPANDER_GAIN,
-    DEFAULT_NR_EXPANDER_LOG_STRENGTH,
-    DEFAULT_NR_EXPANDER_ATTACK_TAU,
-    DEFAULT_NR_EXPANDER_RELEASE_TAU,
-    DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
-    DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    DEFAULT_NR_DEEMPHASIS_TAU_1,
-    DEFAULT_NR_DEEMPHASIS_TAU_2,
-    DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
+    Expander,
+    Deemphasis,
+    DEFAULT_EXPANDER_GAIN,
+    DEFAULT_EXPANDER_RATIO,
+    DEFAULT_EXPANDER_ATTACK_TAU,
+    DEFAULT_EXPANDER_RELEASE_TAU,
+    DEFAULT_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    DEFAULT_DEEMPHASIS_TAU_1,
+    DEFAULT_DEEMPHASIS_TAU_2,
+    DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
@@ -307,90 +308,98 @@ noise_reduction_options_group.add_argument(
     help=f"Sets the amount of broadband spectral noise reduction to apply. (default is {DEFAULT_SPECTRAL_NR_AMOUNT}). "
     f"Range (0~1): 0 being off, 1 being full spectral noise reduction",
 )
-noise_reduction_options_group.add_argument(
-    "--noise_reduction",
-    dest="noise_reduction",
-    type=str.lower,
-    default="on",
-    help="Set noise reduction block (deemphasis and expansion) on/off",
-)
 
 expander_options_group = parser.add_argument_group("Expander tuning options (advanced)")
 expander_options_group.add_argument(
-    "--NR_expander_gain",
-    dest="nr_expander_gain",
+    "--expander",
+    dest="enable_expander",
+    type=str.lower,
+    default="on",
+    help="Set expander block on/off",
+)
+
+expander_options_group.add_argument(
+    "--expander_gain",
+    dest="expander_gain",
     type=float,
-    default=DEFAULT_NR_EXPANDER_GAIN,
-    help=f"Sets the expander gain (default is {DEFAULT_NR_EXPANDER_GAIN}). "
-    f"Range (20~100): Higher values increase the effect of the expander",
+    default=DEFAULT_EXPANDER_GAIN,
+    help=f"Sets the expander gain (default is {DEFAULT_EXPANDER_GAIN}). "
+    f"Range (0~30): Higher values increase output gain of the expander",
 )
 expander_options_group.add_argument(
-    "--NR_expander_strength",
-    dest="nr_expander_strength",
+    "--expander_ratio",
+    dest="expander_ratio",
     type=float,
-    default=DEFAULT_NR_EXPANDER_LOG_STRENGTH,
-    help=f"Sets the expander logarithmic strength (default is {DEFAULT_NR_EXPANDER_LOG_STRENGTH}). "
-    f"Range (1~2): Higher values increase the logarithmic slope of the expander",
+    default=DEFAULT_EXPANDER_RATIO,
+    help=f"Sets the ratio (default is {DEFAULT_EXPANDER_RATIO}). "
+    f"Range (1~2): Higher values increase the ratio of the expander",
 )
 expander_options_group.add_argument(
-    "--NR_attack_tau",
-    dest="nr_attack_tau",
+    "--expander_attack_tau",
+    dest="expander_attack_tau",
     type=float,
-    default=DEFAULT_NR_EXPANDER_ATTACK_TAU,
-    help=f"Sets the expander attack speed in tau (default is {DEFAULT_NR_EXPANDER_ATTACK_TAU}).",
+    default=DEFAULT_EXPANDER_ATTACK_TAU,
+    help=f"Sets the expander attack speed in tau (default is {DEFAULT_EXPANDER_ATTACK_TAU}).",
 )
 expander_options_group.add_argument(
-    "--NR_release_tau",
-    dest="nr_release_tau",
+    "--expander_release_tau",
+    dest="expander_release_tau",
     type=float,
-    default=DEFAULT_NR_EXPANDER_RELEASE_TAU,
-    help=f"Sets the expander release speed in tau (default is {DEFAULT_NR_EXPANDER_RELEASE_TAU}).",
+    default=DEFAULT_EXPANDER_RELEASE_TAU,
+    help=f"Sets the expander release speed in tau (default is {DEFAULT_EXPANDER_RELEASE_TAU}).",
 )
 expander_options_group.add_argument(
-    "--NR_weighting_shelf_low_tau",
-    dest="nr_weighting_shelf_low_tau",
+    "--expander_weighting_shelf_low_tau",
+    dest="expander_weighting_shelf_low_tau",
     type=float,
-    default=DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1,
-    help=f"Sets the expander sidechain high-pass shelf filter low point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_1}).",
+    default=DEFAULT_EXPANDER_WEIGHTING_TAU_1,
+    help=f"Sets the expander sidechain high-pass shelf filter low point in tau (default is {DEFAULT_EXPANDER_WEIGHTING_TAU_1}).",
 )
 expander_options_group.add_argument(
-    "--NR_weighting_shelf_high_tau",
-    dest="nr_weighting_shelf_high_tau",
+    "--expander_weighting_shelf_high_tau",
+    dest="expander_weighting_shelf_high_tau",
     type=float,
-    default=DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2,
-    help=f"Sets the expander sidechain high-pass shelf filter high point in tau (default is {DEFAULT_NR_EXPANDER_WEIGHTING_TAU_2}).",
+    default=DEFAULT_EXPANDER_WEIGHTING_TAU_2,
+    help=f"Sets the expander sidechain high-pass shelf filter high point in tau (default is {DEFAULT_EXPANDER_WEIGHTING_TAU_2}).",
 )
 expander_options_group.add_argument(
-    "--NR_weighting_db_per_octave",
-    dest="nr_weighting_db_per_octave",
+    "--expander_weighting_db_per_octave",
+    dest="expander_weighting_db_per_octave",
     type=float,
-    default=DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    help=f"Sets the expander sidechain high-pass shelf filter cutoff rate (default is {DEFAULT_NR_EXPANDER_WEIGHTING_DB_PER_OCTAVE}).",
+    default=DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    help=f"Sets the expander sidechain high-pass shelf filter cutoff rate (default is {DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE}).",
 )
 
 deemphasis_options_group = parser.add_argument_group(
     "Deemphasis tuning options (advanced)"
 )
 deemphasis_options_group.add_argument(
-    "--NR_deemphasis_low_tau",
-    dest="nr_deemphasis_low_tau",
-    type=float,
-    default=DEFAULT_NR_DEEMPHASIS_TAU_1,
-    help=f"Sets the deemphasis low-pass shelf filter low point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_1}).",
+    "--deemphasis",
+    dest="enable_deemphasis",
+    type=str.lower,
+    default="on",
+    help="Set deemphasis block on/off",
 )
 deemphasis_options_group.add_argument(
-    "--NR_deemphasis_high_tau",
-    dest="nr_deemphasis_high_tau",
+    "--deemphasis_low_tau",
+    dest="deemphasis_low_tau",
     type=float,
-    default=DEFAULT_NR_DEEMPHASIS_TAU_2,
-    help=f"Sets the deemphasis low-pass shelf filter high point in tau (default is {DEFAULT_NR_DEEMPHASIS_TAU_2}).",
+    default=DEFAULT_DEEMPHASIS_TAU_1,
+    help=f"Sets the deemphasis low-pass shelf filter low point in tau (default is {DEFAULT_DEEMPHASIS_TAU_1}).",
 )
 deemphasis_options_group.add_argument(
-    "--NR_deemphasis_db_per_octave",
-    dest="nr_deemphasis_db_per_octave",
+    "--deemphasis_high_tau",
+    dest="deemphasis_high_tau",
     type=float,
-    default=DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE,
-    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (default is {DEFAULT_NR_DEEMPHASIS_DB_PER_OCTAVE}).",
+    default=DEFAULT_DEEMPHASIS_TAU_2,
+    help=f"Sets the deemphasis low-pass shelf filter high point in tau (default is {DEFAULT_DEEMPHASIS_TAU_2}).",
+)
+deemphasis_options_group.add_argument(
+    "--deemphasis_db_per_octave",
+    dest="deemphasis_db_per_octave",
+    type=float,
+    default=DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
+    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (default is {DEFAULT_DEEMPHASIS_DB_PER_OCTAVE}).",
 )
 
 
@@ -860,18 +869,19 @@ class PostProcessor:
         peak_gain,
     ):
         self.final_audio_rate = decode_options["audio_rate"]
-        self.use_noise_reduction = decode_options["noise_reduction"]
+        self.enable_expander = decode_options["enable_expander"]
+        self.enable_deemphasis = decode_options["enable_deemphasis"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.peak_gain = peak_gain
 
         # create processes and wire up queues
         #
         #                                 (left channel)
-        #                               spectral_noise_reduction_worker --> noise_reduction_worker
+        #                               spectral_noise_reduction_worker --> expander_worker
         #                             /                                                            \
         # data in --[block_sorter]----                                                              --> mix_to_stereo_worker --> data out
         #                             \   (right channel)                                          /
-        #                               spectral_noise_reduction_worker --> noise_reduction_worker
+        #                               spectral_noise_reduction_worker --> expander_worker
 
         self.decoder_out_queue = decoder_out_queue
         self.mix_to_stereo_worker_output = out_conn
@@ -892,8 +902,8 @@ class PostProcessor:
             atexit.register(shared_memory.close)
             atexit.register(shared_memory.unlink)
 
-        nr_worker_l_in_output, nr_worker_l_in_input = Pipe(duplex=False)
-        nr_worker_r_in_output, nr_worker_r_in_input = Pipe(duplex=False)
+        spec_nr_worker_l_in_rx, spec_nr_worker_l_in_tx = Pipe(duplex=False)
+        spec_nr_worker_r_in_rx, spec_nr_worker_r_in_tx = Pipe(duplex=False)
         self.block_sorter_process = Process(
             target=PostProcessor.block_sorter_worker,
             name="hifi_block_sort",
@@ -902,21 +912,21 @@ class PostProcessor:
                 self.decoder_shared_memory_idle_queue,
                 self.blocks_enqueued,
                 self.post_processor_shared_memory_idle_queue,
-                nr_worker_l_in_input,
-                nr_worker_r_in_input,
+                spec_nr_worker_l_in_tx,
+                spec_nr_worker_r_in_tx,
             ),
         )
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
         atexit.register(self.block_sorter_process.join)
 
-        spectral_nr_worker_l_output, spectral_nr_worker_l_input = Pipe(duplex=False)
+        spectral_nr_worker_l_rx, spectral_nr_worker_l_tx = Pipe(duplex=False)
         self.spectral_nr_worker_l = Process(
             target=PostProcessor.spectral_noise_reduction_worker,
             name="hifi_spec_nr_l",
             args=(
-                nr_worker_l_in_output,
-                spectral_nr_worker_l_input,
+                spec_nr_worker_l_in_rx,
+                spectral_nr_worker_l_tx,
                 self.spectral_nr_amount,
                 self.final_audio_rate,
             ),
@@ -925,13 +935,13 @@ class PostProcessor:
         atexit.register(self.spectral_nr_worker_l.terminate)
         atexit.register(self.spectral_nr_worker_l.join)
 
-        spectral_nr_worker_r_output, spectral_nr_worker_r_input = Pipe(duplex=False)
+        spectral_nr_worker_r_rx, spectral_nr_worker_r_tx = Pipe(duplex=False)
         self.spectral_nr_worker_r = Process(
             target=PostProcessor.spectral_noise_reduction_worker,
             name="hifi_spec_nr_r",
             args=(
-                nr_worker_r_in_output,
-                spectral_nr_worker_r_input,
+                spec_nr_worker_r_in_rx,
+                spectral_nr_worker_r_tx,
                 self.spectral_nr_amount,
                 self.final_audio_rate,
             ),
@@ -940,61 +950,64 @@ class PostProcessor:
         atexit.register(self.spectral_nr_worker_r.terminate)
         atexit.register(self.spectral_nr_worker_r.join)
 
-        nr_worker_l_out_output, nr_worker_l_out_input = Pipe(duplex=False)
-        self.nr_worker_l = Process(
-            target=PostProcessor.noise_reduction_worker,
+        expander_worker_l_out_rx, expander_worker_l_out_tx = Pipe(duplex=False)
+        self.expander_worker_l = Process(
+            target=PostProcessor.expander_worker,
             name="hifi_expander_l",
             args=(
-                spectral_nr_worker_l_output,
-                nr_worker_l_out_input,
-                self.use_noise_reduction,
+                spectral_nr_worker_l_rx,
+                expander_worker_l_out_tx,
+                self.enable_expander,
+                self.enable_deemphasis,
                 self.final_audio_rate,
-                decode_options["nr_expander_gain"],
-                decode_options["nr_expander_strength"],
-                decode_options["nr_attack_tau"],
-                decode_options["nr_release_tau"],
-                decode_options["nr_weighting_shelf_low_tau"],
-                decode_options["nr_weighting_shelf_high_tau"],
-                decode_options["nr_weighting_db_per_octave"],
-                decode_options["nr_deemphasis_low_tau"],
-                decode_options["nr_deemphasis_high_tau"],
-                decode_options["nr_deemphasis_db_per_octave"],
+                decode_options["expander_gain"],
+                decode_options["expander_ratio"],
+                decode_options["expander_attack_tau"],
+                decode_options["expander_release_tau"],
+                decode_options["expander_weighting_shelf_low_tau"],
+                decode_options["expander_weighting_shelf_high_tau"],
+                decode_options["expander_weighting_db_per_octave"],
+                decode_options["deemphasis_low_tau"],
+                decode_options["deemphasis_high_tau"],
+                decode_options["deemphasis_db_per_octave"],
             ),
         )
-        self.nr_worker_l.start()
-        atexit.register(self.nr_worker_l.terminate)
+        self.expander_worker_l.start()
+        atexit.register(self.expander_worker_l.terminate)
+        atexit.register(self.expander_worker_l.join)
 
-        nr_worker_r_out_output, nr_worker_r_out_input = Pipe(duplex=False)
-        self.nr_worker_r = Process(
-            target=PostProcessor.noise_reduction_worker,
+        expander_worker_r_out_rx, expander_worker_r_out_tx = Pipe(duplex=False)
+        self.expander_worker_r = Process(
+            target=PostProcessor.expander_worker,
             name="hifi_expander_r",
             args=(
-                spectral_nr_worker_r_output,
-                nr_worker_r_out_input,
-                self.use_noise_reduction,
+                spectral_nr_worker_r_rx,
+                expander_worker_r_out_tx,
+                self.enable_expander,
+                self.enable_deemphasis,
                 self.final_audio_rate,
-                decode_options["nr_expander_gain"],
-                decode_options["nr_expander_strength"],
-                decode_options["nr_attack_tau"],
-                decode_options["nr_release_tau"],
-                decode_options["nr_weighting_shelf_low_tau"],
-                decode_options["nr_weighting_shelf_high_tau"],
-                decode_options["nr_weighting_db_per_octave"],
-                decode_options["nr_deemphasis_low_tau"],
-                decode_options["nr_deemphasis_high_tau"],
-                decode_options["nr_deemphasis_db_per_octave"],
+                decode_options["expander_gain"],
+                decode_options["expander_ratio"],
+                decode_options["expander_attack_tau"],
+                decode_options["expander_release_tau"],
+                decode_options["expander_weighting_shelf_low_tau"],
+                decode_options["expander_weighting_shelf_high_tau"],
+                decode_options["expander_weighting_db_per_octave"],
+                decode_options["deemphasis_low_tau"],
+                decode_options["deemphasis_high_tau"],
+                decode_options["deemphasis_db_per_octave"],
             ),
         )
-        self.nr_worker_r.start()
-        atexit.register(self.nr_worker_r.terminate)
-        atexit.register(self.nr_worker_r.join)
+        self.expander_worker_r.start()
+        atexit.register(self.expander_worker_r.terminate)
+        atexit.register(self.expander_worker_r.join)
 
         self.mix_to_stereo_worker_process = Process(
             target=PostProcessor.mix_to_stereo_worker,
             name="hifi_stereo_mix",
             args=(
-                nr_worker_l_out_output,
-                nr_worker_r_out_output,
+                expander_worker_l_out_rx,
+                expander_worker_r_out_rx,
                 self.mix_to_stereo_worker_output,
                 self.peak_gain,
                 self.final_audio_rate,
@@ -1042,10 +1055,10 @@ class PostProcessor:
             buffer = PostProcessorSharedMemory(decoder_state)
             if channel_num == 0:
                 pre = buffer.get_pre_left()
-                spectral_nr_out = buffer.get_nr_left()
+                spectral_nr_out = buffer.get_post_left()
             else:
                 pre = buffer.get_pre_right()
-                spectral_nr_out = buffer.get_nr_right()
+                spectral_nr_out = buffer.get_post_right()
 
             if spectral_nr_amount > 0:
                 spectral_nr.spectral_nr(pre, spectral_nr_out)
@@ -1058,35 +1071,40 @@ class PostProcessor:
             out_conn.send((decoder_state, channel_num))
 
     @staticmethod
-    def noise_reduction_worker(
+    def expander_worker(
         in_conn,
         out_conn,
-        use_noise_reduction,
+        enable_expander,
+        enable_deemphasis,
         final_audio_rate,
-        nr_expander_gain,
-        nr_expander_strength,
-        nr_attack_tau,
-        nr_release_tau,
-        nr_weighting_shelf_low_tau,
-        nr_weighting_shelf_high_tau,
-        nr_weighting_db_per_octave,
-        nr_deemphasis_low_tau,
-        nr_deemphasis_high_tau,
-        nr_deemphasis_db_per_octave,
+        expander_gain,
+        expander_ratio,
+        expander_attack_tau,
+        expander_release_tau,
+        expander_weighting_shelf_low_tau,
+        expander_weighting_shelf_high_tau,
+        expander_weighting_db_per_octave,
+        deemphasis_low_tau,
+        deemphasis_high_tau,
+        deemphasis_db_per_octave,
     ):
         setproctitle(current_process().name)
-        noise_reduction = NoiseReduction(
+        expander = Expander(
             final_audio_rate,
-            nr_expander_gain,
-            nr_expander_strength,
-            nr_attack_tau,
-            nr_release_tau,
-            nr_weighting_shelf_low_tau,
-            nr_weighting_shelf_high_tau,
-            nr_weighting_db_per_octave,
-            nr_deemphasis_low_tau,
-            nr_deemphasis_high_tau,
-            nr_deemphasis_db_per_octave,
+            expander_gain,
+            expander_ratio,
+            expander_attack_tau,
+            expander_release_tau,
+            expander_weighting_shelf_low_tau,
+            expander_weighting_shelf_high_tau,
+            expander_weighting_db_per_octave,
+        )
+
+        deemphasis = Deemphasis(
+            final_audio_rate,
+            deemphasis_low_tau,
+            deemphasis_high_tau,
+            deemphasis_db_per_octave,
         )
 
         while True:
@@ -1102,16 +1120,19 @@ class PostProcessor:
             buffer = PostProcessorSharedMemory(decoder_state)
             if channel_num == 0:
                 pre = buffer.get_pre_left()
-                nr_out = buffer.get_nr_left()
+                post = buffer.get_post_left()
             else:
                 pre = buffer.get_pre_right()
-                nr_out = buffer.get_nr_right()
+                post = buffer.get_post_right()
 
-            if use_noise_reduction:
-                noise_reduction.noise_reduction(pre, nr_out)
+            if enable_deemphasis:
+                deemphasis.process(post)
+
+            if enable_expander:
+                expander.process(pre, post)
             else:
                 DecoderSharedMemory.copy_data_float32(
-                    pre, nr_out, decoder_state.block_audio_final_len
+                    pre, post, decoder_state.block_audio_final_len
                 )
 
             buffer.close()
@@ -1119,13 +1140,13 @@ class PostProcessor:
 
     @staticmethod
     def mix_to_stereo_worker(
-        nr_l_in_conn, nr_r_in_conn, out_conn, peak_gain, sample_rate
+        expander_l_in_conn, expander_r_in_conn, out_conn, peak_gain, sample_rate
     ):
         setproctitle(current_process().name)
         while True:
             while True:
                 try:
-                    l_decoder_state = nr_l_in_conn.recv()
+                    l_decoder_state = expander_l_in_conn.recv()
                     break
                 except InterruptedError:
                     pass
@@ -1134,7 +1155,7 @@ class PostProcessor:
 
             while True:
                 try:
-                    r_decoder_state = nr_r_in_conn.recv()
+                    r_decoder_state = expander_r_in_conn.recv()
                     break
                 except InterruptedError:
                     pass
@@ -1147,8 +1168,8 @@ class PostProcessor:
 
             decoder_state = l_decoder_state
             buffer = PostProcessorSharedMemory(decoder_state)
-            l = buffer.get_nr_left()
-            r = buffer.get_nr_right()
+            l = buffer.get_post_left()
+            r = buffer.get_post_right()
             stereo = buffer.get_stereo()
 
             max_gain = PostProcessor.stereo_interleave(
@@ -1215,8 +1236,8 @@ class PostProcessor:
         decoder_shared_memory_idle_queue,
         blocks_enqueued,
         post_processor_shared_memory_idle_queue,
-        nr_worker_l_in_conn,
-        nr_worker_r_in_conn,
+        l_tx,
+        r_tx,
     ):
         setproctitle(current_process().name)
         next_block = 0
@@ -1295,8 +1316,8 @@ class PostProcessor:
                         decoder_state.block_audio_final_len,
                     )
 
-                    nr_worker_l_in_conn.send((decoder_state, 0))
-                    nr_worker_r_in_conn.send((decoder_state, 1))
+                    l_tx.send((decoder_state, 0))
+                    r_tx.send((decoder_state, 1))
 
                     next_block += 1
                     last_block_submitted = decoder_state.block_num
@@ -1306,8 +1327,8 @@ class PostProcessor:
         cleanup_process(self.block_sorter_process)
         cleanup_process(self.spectral_nr_worker_l)
         cleanup_process(self.spectral_nr_worker_r)
-        cleanup_process(self.nr_worker_l)
-        cleanup_process(self.nr_worker_r)
+        cleanup_process(self.expander_worker_l)
+        cleanup_process(self.expander_worker_r)
         cleanup_process(self.mix_to_stereo_worker_process)
 
 
@@ -1383,8 +1404,9 @@ class SoundDeviceProcess:
         while True:
             while True:
                 try:
-                    if stop_requested.value == STOP_IMMEDIATE_REQUESTED:
-                        return
+                    with stop_requested.get_lock():
+                        if stop_requested.value == STOP_IMMEDIATE_REQUESTED:
+                            return
 
                     if conn.poll(1):
                         stereo = conn.recv_bytes()
@@ -1412,7 +1434,7 @@ class SoundDeviceProcess:
 
 
 def write_soundfile_process_worker(
-    post_processor_out_output_conn,
+    post_processor_out_rx_conn,
     blocks_enqueued,
     post_processor_shared_memory_idle_queue,
     start_time,
@@ -1439,7 +1461,7 @@ def write_soundfile_process_worker(
         while not done:
             while True:
                 try:
-                    decoder_state = post_processor_out_output_conn.recv()
+                    decoder_state = post_processor_out_rx_conn.recv()
                     break
                 except InterruptedError:
                     pass
@@ -1560,7 +1582,7 @@ async def decode_parallel(
         decoder_processes.append(decoder_process)
 
     # set up the post processor
-    post_processor_out_output_conn, post_processor_out_input_conn = Pipe(duplex=False)
+    post_processor_out_rx_conn, post_processor_out_tx_conn = Pipe(duplex=False)
     post_processor_shared_memory_idle_queue = SimpleQueue()
     post_processor = PostProcessor(
         decode_options,
@@ -1569,7 +1591,7 @@ async def decode_parallel(
         post_processor_shared_memory_idle_queue,
         shared_memory_idle_queue,
         blocks_enqueued,
-        post_processor_out_input_conn,
+        post_processor_out_tx_conn,
         peak_gain,
     )
     atexit.register(post_processor.close)
@@ -1579,7 +1601,7 @@ async def decode_parallel(
         target=write_soundfile_process_worker,
         name="hifi_output_encoder",
         args=(
-            post_processor_out_output_conn,
+            post_processor_out_rx_conn,
             blocks_enqueued,
             post_processor_shared_memory_idle_queue,
             start_time,
@@ -1690,10 +1712,11 @@ async def decode_parallel(
             ui_t.app.processEvents()
 
             if ui_t.window.transport_state == STOP_STATE:
-                stop_requested.value = STOP_REQUESTED
+                with stop_requested.get_lock():
+                    stop_requested.value = STOP_REQUESTED
 
-                if previous_state == PREVIEW_STATE:
-                    stop_requested.value = STOP_IMMEDIATE_REQUESTED
+                    if previous_state == PREVIEW_STATE:
+                        stop_requested.value = STOP_IMMEDIATE_REQUESTED
 
                 break
             elif ui_t.window.transport_state == PAUSE_STATE:
@@ -1744,10 +1767,11 @@ async def decode_parallel(
                 exit_requested,
                 previous_overlap,
             )
-
-            progressB.print(input_position.value / 2)
+            
             with blocks_enqueued.get_lock():
+                progressB.print(input_position.value / 2)
                 blocks_enqueued.value += 1
+
             log_decode(
                 start_time,
                 input_position.value,
@@ -1765,9 +1789,10 @@ async def decode_parallel(
     print("")
     print("Decode finishing up. Emptying the queue")
     print("")
-
-    if stop_requested.value != STOP_IMMEDIATE_REQUESTED:
-        decode_done.wait()
+    
+    with stop_requested.get_lock():
+        if stop_requested.value != STOP_IMMEDIATE_REQUESTED:
+            decode_done.wait()
 
     for p in decoder_processes:
         cleanup_process(p)
@@ -1779,49 +1804,50 @@ async def decode_parallel(
         shared_memory.unlink()
         atexit.unregister(shared_memory.close)
         atexit.unregister(shared_memory.unlink)
+    
+    with peak_gain.get_lock():
+        print(f"\nPeak gain is {(peak_gain.value * 100):.2f}%.", end="")
 
-    print(f"\nPeak gain is {(peak_gain.value * 100):.2f}%.", end="")
+        if decode_options["normalize"]:
+            gain_adjust = (
+                1 / peak_gain.value - np.finfo(np.float16).eps
+            )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
+            print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
 
-    if decode_options["normalize"]:
-        gain_adjust = (
-            1 / peak_gain.value - np.finfo(np.float16).eps
-        )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
-        print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
+            input_file_post_gain = get_normalize_filename(
+                output_file, decode_options["audio_rate"]
+            )
+            output_file = decode_options["output_file"]
+            audio_rate = decode_options["audio_rate"]
 
-        input_file_post_gain = get_normalize_filename(
-            output_file, decode_options["audio_rate"]
-        )
-        output_file = decode_options["output_file"]
-        audio_rate = decode_options["audio_rate"]
+            try:
+                total_frames_read = 0
+                buffer = np.empty(2**20, dtype=np.float32)
 
-        try:
-            total_frames_read = 0
-            buffer = np.empty(2**20, dtype=np.float32)
+                with sf.SoundFile(
+                    input_file_post_gain,
+                    "r",
+                    samplerate=int(decode_options["audio_rate"]),
+                    **normalize_parameters,
+                ) as f, as_outputfile(output_file, audio_rate, False) as w:
+                    progressB = TimeProgressBar(f.frames, f.frames)
+                    done = False
+                    while not done:
+                        frames_read = f.buffer_read_into(buffer, dtype="float32")
+                        samples_read = frames_read * 2
 
-            with sf.SoundFile(
-                input_file_post_gain,
-                "r",
-                samplerate=int(decode_options["audio_rate"]),
-                **normalize_parameters,
-            ) as f, as_outputfile(output_file, audio_rate, False) as w:
-                progressB = TimeProgressBar(f.frames, f.frames)
-                done = False
-                while not done:
-                    frames_read = f.buffer_read_into(buffer, dtype="float32")
-                    samples_read = frames_read * 2
+                        if samples_read < len(buffer):
+                            buffer = buffer[0:samples_read]
+                            done = True
 
-                    if samples_read < len(buffer):
-                        buffer = buffer[0:samples_read]
-                        done = True
+                        PostProcessor.normalize(gain_adjust, buffer, buffer)
+                        w.buffer_write(buffer, "float32")
 
-                    PostProcessor.normalize(gain_adjust, buffer, buffer)
-                    w.buffer_write(buffer, "float32")
-
-                    total_frames_read += frames_read
-                    progressB.print(total_frames_read, False)
-            print("")
-        finally:
-            os.remove(input_file_post_gain)
+                        total_frames_read += frames_read
+                        progressB.print(total_frames_read, False)
+                print("")
+            finally:
+                os.remove(input_file_post_gain)
 
     elapsed_time = datetime.now() - start_time
     dt_string = elapsed_time.total_seconds()
@@ -1914,20 +1940,21 @@ def main() -> int:
         "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
         "head_switching_interpolation": args.head_switching_interpolation == "on",
         "muting": args.muting == "on",
-        "noise_reduction": args.noise_reduction == "on",
+        "enable_expander": args.enable_expander == "on",
+        "enable_deemphasis": args.enable_deemphasis == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "bias_guess": args.bias_guess,
         "normalize": args.normalize,
-        "nr_expander_gain": args.nr_expander_gain,
-        "nr_expander_strength": args.nr_expander_strength,
-        "nr_attack_tau": args.nr_attack_tau,
-        "nr_release_tau": args.nr_release_tau,
-        "nr_weighting_shelf_low_tau": args.nr_weighting_shelf_low_tau,
-        "nr_weighting_shelf_high_tau": args.nr_weighting_shelf_high_tau,
-        "nr_weighting_db_per_octave": args.nr_weighting_db_per_octave,
-        "nr_deemphasis_low_tau": args.nr_deemphasis_low_tau,
-        "nr_deemphasis_high_tau": args.nr_deemphasis_high_tau,
-        "nr_deemphasis_db_per_octave": args.nr_deemphasis_db_per_octave,
+        "expander_gain": args.expander_gain,
+        "expander_ratio": args.expander_ratio,
+        "expander_attack_tau": args.expander_attack_tau,
+        "expander_release_tau": args.expander_release_tau,
+        "expander_weighting_shelf_low_tau": args.expander_weighting_shelf_low_tau,
+        "expander_weighting_shelf_high_tau": args.expander_weighting_shelf_high_tau,
+        "expander_weighting_db_per_octave": args.expander_weighting_db_per_octave,
+        "deemphasis_low_tau": args.deemphasis_low_tau,
+        "deemphasis_high_tau": args.deemphasis_high_tau,
+        "deemphasis_db_per_octave": args.deemphasis_db_per_octave,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,
