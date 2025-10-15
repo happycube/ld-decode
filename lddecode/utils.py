@@ -1317,18 +1317,21 @@ def init_opencl(cl, name = None):
 
 class FieldInfo:
     def __init__(self, field_history_size=3):
-        self._depth = field_history_size
+        self._field_history_size = field_history_size
         # store previous field references in a ring buffer
         self._fieldinfo = np.empty(field_history_size, dtype=object)
-        self._fieldinfo_idx = 0
         self._fieldinfo_unsent = []
         self._len = 0
 
     def __len__(self):
         return self._len
     
+    # called like a normal python list, where -1 is the last element, -2 the one before that, etc.
+    # using [0] is not allowed since this only stores the end of the list
     def __getitem__(self, key):
-        return self._fieldinfo[(self._fieldinfo_idx + key) % self._depth]
+        assert key < 0, "Attempted to get a field that has not been written"
+        assert key > -self._field_history_size, "Attempted to get a field that is not buffered"
+        return self._fieldinfo[(self._len + key) % self._field_history_size]
 
     def read(self):
         unsent = self._fieldinfo_unsent
@@ -1336,9 +1339,7 @@ class FieldInfo:
         return unsent
     
     def append(self, value):
-        self._fieldinfo[self._fieldinfo_idx]
-        self._fieldinfo_idx = (self._fieldinfo_idx + 1) % self._depth
-
+        self._fieldinfo[self._len % self._field_history_size] = value
         self._fieldinfo_unsent.append(value)
         self._len += 1
 
@@ -1370,23 +1371,11 @@ class JSONDumper:
         self._dumper.join()
 
     @staticmethod
-    def write_json(jsondict, outname, verboseVITS):
-        fp = open(outname + ".tbc.json.tmp", "w")
-        json.dump(
-            jsondict,
-            fp,
-            allow_nan=False,
-            indent=4 if verboseVITS else None,
-            separators=(",", ":") if not verboseVITS else None,
-        )
-        fp.write("\n")
-        fp.close()
-    
-        os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
-
-    @staticmethod
     def _consume(conn, ready, outname, verboseVITS):
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        indent = 4 if verboseVITS else None
+        linebreak = '\n' if verboseVITS else ''
         field_info = []
 
         while True:
@@ -1399,12 +1388,42 @@ class JSONDumper:
                 ready.set()
             except (InterruptedError, KeyboardInterrupt, EOFError):
                 break
-        
-            
-            field_info.append(next_field_info)
-            jsondict["fields"] = list(itertools.chain.from_iterable(field_info))
-    
-            JSONDumper.write_json(jsondict, outname, verboseVITS)
+
+            # json serialize each field info object to a string
+            serialized_field_info = []
+            for field in next_field_info:
+                serialized_field_info.append(
+                    json.dumps(
+                        field,
+                        allow_nan=False,
+                        indent=indent,
+                    )
+                )
+
+            field_info.append(serialized_field_info)
+
+            f = open(outname + ".tbc.json.tmp", "w")
+            f.write('{'+linebreak)
+            # write the field metadata
+            for (k, v) in jsondict.items():
+                json.dump(k, f, allow_nan=False, indent=indent)
+                f.write(':')
+                json.dump(v, f, allow_nan=False, indent=indent)
+                f.write(','+linebreak)
+
+            # Write the field info
+            f.write('"fields":['+linebreak)
+            for i, field in enumerate(itertools.chain.from_iterable(field_info)):
+                if i != 0:
+                    f.write(','+linebreak)
+
+                f.write(field)
+            f.write(linebreak+']'+linebreak+'}')
+
+            f.write('\n')
+            f.close()
+            os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
+
             ready.clear()
 
 class StridedCollector:
