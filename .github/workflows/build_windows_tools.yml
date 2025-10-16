@@ -57,21 +57,13 @@ jobs:
       - name: Copy license files to release directory
         run: |
           New-Item -ItemType Directory -Path release\LICENSES
-          "brotli", `
-          "bzip2", `
           "double-conversion", `
           "fftw3", `
-          "freetype", `
           "getopt-win32", `
-          "harfbuzz", `
-          "icu", `
           "libpng", `
-          "openssl", `
-          "pcre2", `
           "qtbase", `
           "qwt", `
-          "zlib", `
-          "zstd" | ForEach-Object { Copy-Item -Path build\vcpkg_installed\x64-windows\share\$($_)\copyright -Destination release\LICENSES\copyright-$($_) }
+          "zlib" | ForEach-Object { Copy-Item -Path build\vcpkg_installed\x64-windows\share\$($_)\copyright -Destination release\LICENSES\copyright-$($_) }
           Rename-Item -Path release\LICENSES\copyright-qtbase -NewName copyright-qt6
 
       - name: Copy scripts to release directory
