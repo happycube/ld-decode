@@ -89,7 +89,7 @@ def field_class_from_formats(system: str, tape_format: str):
             field_class = FieldNTSCUMatic
         elif tape_format == "TYPEC" or tape_format == "TYPEB":
             field_class = FieldNTSCTypeC
-        elif tape_format == "SVHS" or "SVHS_ET":
+        elif tape_format == "SVHS" or tape_format == "SVHS_ET":
             field_class = FieldNTSCSVHS
         elif (
             tape_format == "BETAMAX"
