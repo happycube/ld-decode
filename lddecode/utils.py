@@ -1376,6 +1376,8 @@ class JSONDumper:
 
         indent = 4 if verboseVITS else None
         linebreak = '\n' if verboseVITS else ''
+        separators = None if verboseVITS else (',', ':')
+        separator = ',' + linebreak
         field_info = []
 
         while True:
@@ -1397,6 +1399,7 @@ class JSONDumper:
                         field,
                         allow_nan=False,
                         indent=indent,
+                        separators=separators
                     )
                 )
 
@@ -1406,16 +1409,16 @@ class JSONDumper:
             f.write('{'+linebreak)
             # write the field metadata
             for (k, v) in jsondict.items():
-                json.dump(k, f, allow_nan=False, indent=indent)
+                json.dump(k, f, allow_nan=False, indent=indent, separators=separators)
                 f.write(':')
-                json.dump(v, f, allow_nan=False, indent=indent)
-                f.write(','+linebreak)
+                json.dump(v, f, allow_nan=False, indent=indent, separators=separators)
+                f.write(separator)
 
             # Write the field info
             f.write('"fields":['+linebreak)
             for i, field in enumerate(itertools.chain.from_iterable(field_info)):
                 if i != 0:
-                    f.write(','+linebreak)
+                    f.write(separator)
 
                 f.write(field)
             f.write(linebreak+']'+linebreak+'}')
