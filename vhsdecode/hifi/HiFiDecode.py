@@ -232,6 +232,10 @@ class FMdemod:
         self.carrier = np.int32(round(carrier_center))
         self.deviation = np.int32(deviation)
         self.type = type
+        
+        float_info = np.finfo(np.float32)
+        self.max_float = float_info.max - float_info.eps
+        self.min_float = float_info.min + float_info.epsneg
 
         if self.type == DEMOD_QUADRATURE:
             quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.sample_rate / 2)
@@ -298,25 +302,36 @@ class FMdemod:
     @staticmethod
     @njit(
         [
-            (numba.types.float32, numba.types.int32, NumbaAudioArray, NumbaAudioArray),
             (
-                numba.types.float32,
-                numba.types.int32,
-                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
                 NumbaAudioArray,
+                NumbaAudioArray,
+                numba.types.float32,
+                numba.types.float32,
+                numba.types.float32,
+                numba.types.int32
             ),
             (
+                numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
+                NumbaAudioArray,
                 numba.types.float32,
-                numba.types.int32,
+                numba.types.float32,
+                numba.types.float32,
+                numba.types.int32
+            ),
+            (
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "A"),
                 NumbaAudioArray,
+                numba.types.float32,
+                numba.types.float32,
+                numba.types.float32,
+                numba.types.int32
             ),
         ],
         cache=True,
         fastmath=True,
         nogil=True,
     )
-    def demod_hilbert(sample_rate, deviation, analytic_signal, output):
+    def demod_hilbert(analytic_signal, output, min_float, max_float, sample_rate, deviation):
         two_pi = 2 * pi
         analytic_signal_value = 0
         analytic_signal_value_prev = 0
@@ -354,10 +369,8 @@ class FMdemod:
             )  #    p[1] + np.cumsum(ph_correct).astype(REAL_DTYPE)
 
             # FMdemod.unwrap_hilbert
-            output[i - 1] = (
-                (ph_correct - ph_correct_prev) / two_pi * sample_rate / deviation
-            )  #                                           np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
-
+            out = (ph_correct - ph_correct_prev) / two_pi * sample_rate / deviation # np.diff(instantaneous_phase) / (2.0 * pi) * sample_rate
+            output[i - 1] = max(min_float, min(max_float, out))
             ph_correct_prev = ph_correct
             i += 1
 
@@ -367,6 +380,8 @@ class FMdemod:
             (
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
                 NumbaAudioArray,
+                numba.types.float32,
+                numba.types.float32,
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
@@ -378,6 +393,8 @@ class FMdemod:
             (
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "A"),
                 NumbaAudioArray,
+                numba.types.float32,
+                numba.types.float32,
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
                 numba.types.Array(DEMOD_DTYPE_NB, 1, "C"),
@@ -394,6 +411,8 @@ class FMdemod:
     def demod_quadrature(
         in_rf,
         out_demod,
+        min_float,
+        max_float,
         i_osc,
         q_osc,
         filter_b,
@@ -492,8 +511,9 @@ class FMdemod:
 
             unwrapped = prev_unwrapped + (corrected - prev_angle)
             diff = unwrapped - prev_unwrapped
+            out = -(diff / diff_divisor - carrier) / deviation
 
-            out_demod[i - 1] = -(diff / diff_divisor - carrier) / deviation
+            out_demod[i - 1] = max(min_float, min(max_float, out))
 
             prev_angle = current_angle
             prev_unwrapped = unwrapped
@@ -502,12 +522,19 @@ class FMdemod:
         if self.type == DEMOD_HILBERT:
             FMdemod.compute_analytic_signal(input)
             FMdemod.demod_hilbert(
-                np.float32(self.sample_rate), self.deviation, input, output
+                input,
+                output,
+                self.min_float,
+                self.max_float,
+                np.float32(self.sample_rate),
+                self.deviation,
             )
         elif self.type == DEMOD_QUADRATURE:
             FMdemod.demod_quadrature(
                 input,
                 output,
+                self.min_float,
+                self.max_float,
                 self.i_osc,
                 self.q_osc,
                 self.quadrature_lp_b,
@@ -1294,8 +1321,9 @@ class HiFiDecode:
             )
             block_audio_overlap_divisor = 1
 
-        # start and end samples to zero to remove spikes at edges of demodulated audio
-        self.pre_trim = 50
+        # trims out the discontinuity errors at the beginning and end of each block
+        # the duration of the discontiunity errors seem to increase as the distance between the carrier frequency and nyquist limit of the rf decreases
+        self.pre_trim = 1000
 
         # minimum overlap to account for loss during resampling
         min_resampler_overlap = self.pre_trim + 50
@@ -1433,10 +1461,6 @@ class HiFiDecode:
 
         # update the standard
         self.afeL, self.afeR = self._get_afe(meanLResult, meanRResult)
-
-        if (self.options["demod_type"] == DEMOD_QUADRATURE):
-            # recreate shared memory with the updated bias
-            self._init_iq_oscillator_shared_memory()
 
         # update all the filters and iq oscilators with the new bias
         self.fmL, self.fmR = self._get_fm_demod(
@@ -1812,17 +1836,16 @@ class HiFiDecode:
         fastmath=True,
     )
     def cancelDC_trim(audio: np.array, trim: int) -> float:
+        dc = REAL_DTYPE(np.mean(audio[trim:-trim]))
+
+        for i in range(trim, len(audio) - trim):
+            audio[i] = audio[i] - dc
+
         for i in range(trim):
             audio[i] = 0
 
         for i in range(len(audio) - trim, len(audio)):
             audio[i] = 0
-
-        # TODO: change this to roll off at a low frequency rather than just the mean
-        dc = REAL_DTYPE(np.mean(audio))
-
-        for i in range(trim, len(audio) - trim):
-            audio[i] = audio[i] - dc
 
         return dc
 

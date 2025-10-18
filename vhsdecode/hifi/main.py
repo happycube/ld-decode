@@ -1211,19 +1211,19 @@ class PostProcessor:
             trim_samples = int(0.0015 * sample_rate)
             start_sample = trim_samples
             for i in range(trim_samples):
-                stereo[(i * 2)] = 0
-                stereo[(i * 2) + 1] = 0
+                stereo[i * 2] = 0
+                stereo[i * 2 + 1] = 0
 
         channel_length = len(audioL)
         for i in range(start_sample, channel_length):
             audioLSample = audioL[i]
-            stereo[(i * 2)] = audioLSample
+            stereo[i * 2] = audioLSample
             gain = abs(audioLSample)
             if gain > max_gain:
                 max_gain = gain
 
             audioRSample = audioR[i]
-            stereo[(i * 2) + 1] = audioRSample
+            stereo[i * 2 + 1] = audioRSample
             gain = abs(audioRSample)
             if gain > max_gain:
                 max_gain = gain
@@ -1471,6 +1471,12 @@ def write_soundfile_process_worker(
             buffer = PostProcessorSharedMemory(decoder_state)
             stereo = buffer.get_stereo()
             samples_decoded = len(stereo) / 2
+            
+            # pad the start of the audio due to beginning gap
+            if decoder_state.block_num == 0:
+                padding = round(decoder_state.block_audio_final_overlap / 2) * 2 * 4 # 2 channels, 4 bytes per channel
+                w.buffer_write(bytes(padding), dtype="float32")
+                print("padded by", padding)
 
             w.buffer_write(stereo, dtype="float32")
             if preview_mode:
