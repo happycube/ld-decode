@@ -20,7 +20,7 @@ NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C", aligned=True)
 
 @dataclass
 class DecoderState:
-    def __init__(self, decoder, buffer_name, block_size, block_num, is_last_block):
+    def __init__(self, decoder, buffer_name, block_frames_read, block_size, block_num, is_last_block):
         block_sizes = decoder.set_block_sizes(block_size)
         block_overlap = decoder.get_block_overlap()
 
@@ -29,6 +29,7 @@ class DecoderState:
         self.is_last_block = is_last_block
 
         # block data for input rf
+        self.block_frames_read = block_frames_read
         self.block_dtype = np.int16
         self.block_size = block_sizes["block_size"]
         self.block_overlap = block_overlap["block_overlap"]
@@ -46,6 +47,7 @@ class DecoderState:
     block_num: int
     is_last_block: bool
 
+    block_frames_read: int
     block_dtype: np.dtype
     block_size: int
     block_overlap: int
@@ -56,12 +58,17 @@ class DecoderState:
 
     block_audio_final_size: int
     block_audio_final_overlap: int
-
+        
     @property
     def block_audio_final_len(self):
-        # don't allow 0 or negative length audio, even if there's more overlap than actual audio
-        return max(50, self.block_audio_final_size - self.block_audio_final_overlap * 2)
-
+        if self.is_last_block:
+            # shrink the final stereo output to only include the actual frames read, and the overlap that would have been used for the next block
+            rf_rate_to_final_rate_ratio = self.block_size / self.block_audio_final_size
+            audio_size = round(self.block_frames_read / rf_rate_to_final_rate_ratio)
+            return max(50, audio_size + self.block_audio_final_overlap)
+        else:
+            # don't allow 0 or negative length audio, even if there's more overlap than actual audio
+            return max(50, self.block_audio_final_size - self.block_audio_final_overlap * 2)
 
 
 def to_aligned_offset(size):
@@ -213,6 +220,7 @@ class DecoderSharedMemory:
             self.block_start_overlap_len * self.block_dtype_item_size
         )
         # block data
+        self.block_frames_read = decoder_state.block_frames_read
         self.block_offset = (
             self.block_start_overlap_offset + self.block_start_overlap_bytes
         )
@@ -270,6 +278,15 @@ class DecoderSharedMemory:
     def get_block(self) -> np.array:
         return np.ndarray(
             self.block_start_overlap_len + self.block_len + self.block_end_overlap_len,
+            dtype=self.block_dtype,
+            offset=self.block_start_overlap_offset,
+            buffer=self.buf,
+        )
+    
+    # block data only including the data that was read
+    def get_last_block(self) -> np.array:
+        return np.ndarray(
+            self.block_start_overlap_len + self.block_frames_read,
             dtype=self.block_dtype,
             offset=self.block_start_overlap_offset,
             buffer=self.buf,

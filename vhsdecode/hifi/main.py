@@ -1064,7 +1064,7 @@ class PostProcessor:
                 spectral_nr.spectral_nr(pre, spectral_nr_out)
             else:
                 DecoderSharedMemory.copy_data_float32(
-                    pre, spectral_nr_out, decoder_state.block_audio_final_len
+                    pre, spectral_nr_out, len(spectral_nr_out)
                 )
 
             buffer.close()
@@ -1129,10 +1129,13 @@ class PostProcessor:
                 deemphasis.process(post)
 
             if enable_expander:
+                if decoder_state.block_num == 0:
+                    # prime the expander's gain if this is the first block
+                    expander.process(pre, np.copy(post))
                 expander.process(pre, post)
             else:
                 DecoderSharedMemory.copy_data_float32(
-                    pre, post, decoder_state.block_audio_final_len
+                    pre, post, len(post)
                 )
 
             buffer.close()
@@ -1264,10 +1267,10 @@ class PostProcessor:
             in_preR = np.empty(in_decoder_state.block_audio_final_len, dtype=REAL_DTYPE)
 
             DecoderSharedMemory.copy_data_float32(
-                in_preL_buffer, in_preL, in_decoder_state.block_audio_final_len
+                in_preL_buffer, in_preL, len(in_preL)
             )
             DecoderSharedMemory.copy_data_float32(
-                in_preR_buffer, in_preR, in_decoder_state.block_audio_final_len
+                in_preR_buffer, in_preR, len(in_preR)
             )
 
             buffer.close()
@@ -1305,15 +1308,17 @@ class PostProcessor:
                     decoder_state.name = name
                     buffer = PostProcessorSharedMemory(decoder_state)
 
+                    post_processor_preL = buffer.get_pre_left()
                     DecoderSharedMemory.copy_data_float32(
                         preL,
-                        buffer.get_pre_left(),
-                        decoder_state.block_audio_final_len,
+                        post_processor_preL,
+                        len(post_processor_preL),
                     )
+                    post_processor_preR = buffer.get_pre_right()
                     DecoderSharedMemory.copy_data_float32(
                         preR,
-                        buffer.get_pre_right(),
-                        decoder_state.block_audio_final_len,
+                        post_processor_preR,
+                        len(post_processor_preR),
                     )
 
                     l_tx.send((decoder_state, 0))
@@ -1476,7 +1481,6 @@ def write_soundfile_process_worker(
             if decoder_state.block_num == 0:
                 padding = round(decoder_state.block_audio_final_overlap / 2) * 2 * 4 # 2 channels, 4 bytes per channel
                 w.buffer_write(bytes(padding), dtype="float32")
-                print("padded by", padding)
 
             w.buffer_write(stereo, dtype="float32")
             if preview_mode:
@@ -1635,13 +1639,12 @@ async def decode_parallel(
         # read input data into the shared memory buffer
         block_in = buffer.get_block_in()
         frames_read = f.buffer_read_into(block_in, "int16")
+        
+        decoder_state.block_frames_read = frames_read
+        decoder_state.is_last_block = frames_read < len(block_in) or exit_requested or stop_requested.value
 
         with input_position.get_lock():
             input_position.value += frames_read * 2
-
-        is_last_block = (
-            frames_read < len(block_in) or exit_requested or stop_requested.value
-        )
 
         if block_num == 0:
             # save the read data
@@ -1658,9 +1661,10 @@ async def decode_parallel(
             decoder_state = DecoderState(
                 decoder,
                 buffer.name,
+                decoder_state.block_frames_read,
                 new_block_length,
                 decoder_state.block_num,
-                is_last_block,
+                decoder_state.is_last_block,
             )
             buffer = DecoderSharedMemory(decoder_state)
             block = buffer.get_block()
@@ -1680,22 +1684,7 @@ async def decode_parallel(
                 previous_overlap, block_in_overlap, len(block_in_overlap)
             )
 
-        if is_last_block:
-            new_block_size = (
-                len(previous_overlap)  # previous overlap
-                + frames_read  # data read
-                + decoder_state.block_overlap  # overlap data
-            )
-
-            decoder_state.is_last_block = is_last_block
-            decoder_state.block_audio_final_size = decoder.calculate_block_sizes(new_block_size)["block_audio_final_size"]
-
-            block = buffer.get_block()
-            overlap_start = len(previous_overlap) + frames_read
-            overlap_end = overlap_start + decoder_state.block_overlap
-            for i in range(overlap_start, min(overlap_end, len(block))):
-                block[i] = block[i-decoder_state.block_overlap]
-        else:
+        if not decoder_state.is_last_block:
             # copy the the current overlap to use in the next iteration
             current_overlap = buffer.get_block_in_end_overlap()
             DecoderSharedMemory.copy_data_int16(
@@ -1708,7 +1697,7 @@ async def decode_parallel(
         # blocks should complete roughly in the order that they are submitted
         decoder_in_queue.put(decoder_state)
 
-        return is_last_block
+        return decoder_state.is_last_block
 
     print(f"Starting decode...")
 
@@ -1755,7 +1744,7 @@ async def decode_parallel(
                     return
 
             decoder_state = DecoderState(
-                decoder, buffer_name, block_size, block_num, False
+                decoder, buffer_name, 0, block_size, block_num, False
             )
 
             if len(previous_overlap) == 0:

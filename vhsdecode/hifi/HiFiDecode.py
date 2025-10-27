@@ -1243,7 +1243,7 @@ class HiFiDecode:
 
     def calculate_block_sizes(self, block_size=None):
         # block overlap and edge discard
-        blocks_per_second_ratio = loat = 1 / BLOCKS_PER_SECOND
+        blocks_per_second_ratio = 1 / BLOCKS_PER_SECOND
 
         if block_size == None:
             block_size: int = ceil(
@@ -2226,7 +2226,10 @@ class HiFiDecode:
                     return
 
             buffer = DecoderSharedMemory(decoder_state)
-            raw_data = buffer.get_block()
+            if decoder_state.is_last_block:
+                raw_data = buffer.get_last_block()
+            else:
+                raw_data = buffer.get_block()
 
             audioL, audioR = decoder.block_decode(
                 raw_data,
@@ -2239,16 +2242,16 @@ class HiFiDecode:
             l_out = buffer.get_pre_left()
             r_out = buffer.get_pre_right()
 
-            # trim off the block overlap
+            # shift the audio left to remove the block overlap
             audio_len = len(audioL)
             expected_len = decoder_state.block_audio_final_len
             overlap_to_trim = max(0, round((audio_len - expected_len) / 2))
 
             DecoderSharedMemory.copy_data_src_offset_float32(
-                audioL, l_out, overlap_to_trim, expected_len
+                audioL, l_out, overlap_to_trim, audio_len
             )
             DecoderSharedMemory.copy_data_src_offset_float32(
-                audioR, r_out, overlap_to_trim, expected_len
+                audioR, r_out, overlap_to_trim, audio_len
             )
             if measure_perf:
                 end_final_audio_copy = perf_counter()
