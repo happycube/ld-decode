@@ -18,7 +18,9 @@ def replace_spikes(demod, demod_diffed, max_value, replace_start=8, replace_end=
     for i in to_fix:
         start = max(i - replace_start, 0)
         end = min(i + replace_end, len(demod_diffed) - 1)
-        demod[start:end] = demod_diffed[start:end]
+        # Only replace if it seems to help
+        if max(demod_diffed[start:end]) < max(demod[start:end]):
+            demod[start:end] = demod_diffed[start:end]
 
     return demod
 

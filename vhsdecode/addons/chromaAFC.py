@@ -485,8 +485,8 @@ class ChromaAFC:
     # Note: order will be doubled since we use filtfilt.
     def get_chroma_bandpass_final(self, color_under_format=True):
         if color_under_format:
-            lower = (self.color_under / 1e6) * 1
-            upper = (self.color_under / 1e6) * 0.85
+            lower = (self.color_under / 1e6) * 0.9
+            upper = (self.color_under / 1e6) * 0.75
         else:
             # Using a narrow filter atm as this is just used for
             # picking out burst signal in this case.
