@@ -55,6 +55,9 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 
+# VS Code settings
+.vscode/
+
 # Executables
 /tools/efm-decoder-audio/efm-decoder-audio
 /tools/efm-decoder-d24/efm-decoder-d24
@@ -62,3 +65,4 @@ CMakeUserPresets.json
 /tools/efm-decoder-f2/efm-decoder-f2
 /tools/efm-stacker-f2/efm-stacker-f2
 /tools/vfs-verifier/vfs-verifier
+/tools/ld-ldf-reader/ld-ldf-reader
