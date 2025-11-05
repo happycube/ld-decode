@@ -27,6 +27,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 #include <QThread>
+#include <QLoggingCategory>
 
 #include "logging.h"
 #include "efm_processor.h"
@@ -100,23 +101,34 @@ int main(int argc, char *argv[])
     // Standard logging options
     processStandardDebugOptions(parser);
 
-    // Check for frame data options
-    bool showF2 = parser.isSet("show-f2");
-    bool showF3 = parser.isSet("show-f3");
-
-    // Check for advanced debug options
+    // Check for advanced debug options and enable debug mode if any are set
     bool showTValuesDebug = parser.isSet("show-tvalues-debug");
     bool showChannelDebug = parser.isSet("show-channel-debug");
     bool showF3Debug = parser.isSet("show-f3-debug");
     bool showF2CorrectDebug = parser.isSet("show-f2-correct-debug");
     bool showAllDebug = parser.isSet("show-all-debug");
 
+    // If show all debug is set, enable all specific debug options
     if (showAllDebug) {
         showTValuesDebug = true;
         showChannelDebug = true;
         showF3Debug = true;
         showF2CorrectDebug = true;
     }
+
+    // If any debug-specific switch is used, enable Qt debug mode automatically
+    // otherwise a specific --debug switch would be needed to see any qDebug output
+    if (showTValuesDebug || showChannelDebug || showF3Debug || showF2CorrectDebug || showAllDebug) {
+        setDebug(true);
+
+        // Enable Qt debug logging if debug mode is enabled (as Qt 5.2+ suppresses qDebug by default)
+        // Not sure how wide this effect is but without it Fedora 43 shows no qDebug output at all
+        QLoggingCategory::setFilterRules("*.debug=true");
+    }
+
+    // Check for frame data options
+    bool showF2 = parser.isSet("show-f2");
+    bool showF3 = parser.isSet("show-f3");
 
     // Get the filename arguments from the parser
     QString inputFilename;
