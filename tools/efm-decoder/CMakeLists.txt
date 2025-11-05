@@ -7,6 +7,9 @@ project(efm-tools)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+# Find Qt5 components
+find_package(Qt5 REQUIRED COMPONENTS Core Widgets)
+
 # Get the Git branch and revision
 execute_process(
     COMMAND git rev-parse --abbrev-ref HEAD
