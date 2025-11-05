@@ -37,6 +37,7 @@ public:
     void pushSection(const F2Section &data);
     F2Section popSection();
     bool isReady() const;
+    bool isValid() const;
     void flush();
 
     void showStatistics() const;
