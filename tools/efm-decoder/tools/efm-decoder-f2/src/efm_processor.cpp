@@ -77,19 +77,26 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
     qInfo() << "Processing final pipeline data";
     processGeneralPipeline();
 
-    // Show summary
-    qInfo() << "Decoding complete";
+    // Make sure we have valid data from the timecode correction stage
+    if (!m_f2SectionCorrection.isValid()) {
+        qInfo() << "Decoding FAILED";
+        qInfo() << "F2 Section Correction stage did not complete lead-in detection successfully.";
+        qInfo() << "Decoding has failed due to invalid or missing time code information in the input data.";
+    } else {
+        qInfo() << "Decoding complete";
 
-    m_tValuesToChannel.showStatistics();
-    qInfo() << "";
-    m_channelToF3.showStatistics();
-    qInfo() << "";
-    m_f3FrameToF2Section.showStatistics();
-    qInfo() << "";
-    m_f2SectionCorrection.showStatistics();
-    qInfo() << "";
+        // All good, show statistics
+        m_tValuesToChannel.showStatistics();
+        qInfo() << "";
+        m_channelToF3.showStatistics();
+        qInfo() << "";
+        m_f3FrameToF2Section.showStatistics();
+        qInfo() << "";
+        m_f2SectionCorrection.showStatistics();
+        qInfo() << "";
 
-    showGeneralPipelineStatistics();
+        showGeneralPipelineStatistics();
+    }
 
     // Close the input file
     m_readerData.close();
@@ -97,7 +104,6 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
     // Close the output files
     if (m_writerF2Section.isOpen()) m_writerF2Section.close();
 
-    qInfo() << "Encoding complete";
     return true;
 }
 
