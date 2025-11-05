@@ -14,7 +14,7 @@ target_include_directories(${TARGET_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc
 target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/ezpwd/c++)
 target_include_directories(${TARGET_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tools/ld-process-efm/)
 
-# Link Qt5 libraries
+# Link Qt libraries
 target_link_libraries(${TARGET_NAME} Qt::Core)
 
 # Optionally, you can specify the output directory for the library
