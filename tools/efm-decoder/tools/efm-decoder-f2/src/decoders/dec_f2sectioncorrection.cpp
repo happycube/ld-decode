@@ -64,6 +64,13 @@ bool F2SectionCorrection::isReady() const
     return !m_outputBuffer.isEmpty();
 }
 
+bool F2SectionCorrection::isValid() const
+{
+    // Return true if the leadin process was complete and we
+    // therefore have valid data
+    return m_leadinComplete;
+}
+
 void F2SectionCorrection::processQueue()
 {
     // Process the input buffer
