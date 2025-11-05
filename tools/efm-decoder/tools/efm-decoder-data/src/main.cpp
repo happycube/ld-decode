@@ -27,6 +27,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 #include <QThread>
+#include <QLoggingCategory>
 
 #include "logging.h"
 #include "efm_processor.h"
@@ -116,6 +117,16 @@ int main(int argc, char *argv[])
         showRawSectorDebug = true;
         showSectorDebug = true;
         showSectorCorrectionDebug = true;
+    }
+
+    // If any debug-specific switch is used, enable Qt debug mode automatically
+    // otherwise a specific --debug switch would be needed to see any qDebug output
+    if (showRawSectorDebug || showSectorDebug || showSectorCorrectionDebug || showAllDebug) {
+        setDebug(true);
+
+        // Enable Qt debug logging if debug mode is enabled (as Qt 5.2+ suppresses qDebug by default)
+        // Not sure how wide this effect is but without it Fedora 43 shows no qDebug output at all
+        QLoggingCategory::setFilterRules("*.debug=true");
     }
 
     // Get the filename arguments from the parser
