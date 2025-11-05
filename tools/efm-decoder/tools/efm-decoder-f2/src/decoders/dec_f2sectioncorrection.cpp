@@ -40,7 +40,8 @@ F2SectionCorrection::F2SectionCorrection()
       m_qmode3Sections(0),
       m_qmode4Sections(0),
       m_absoluteStartTime(59, 59, 74),
-      m_absoluteEndTime(0, 0, 0)
+      m_absoluteEndTime(0, 0, 0),
+      m_noTimecodes(false)
 {}
 
 void F2SectionCorrection::pushSection(const F2Section &data)
@@ -73,6 +74,13 @@ bool F2SectionCorrection::isValid() const
 
 void F2SectionCorrection::processQueue()
 {
+    // If no timecodes flag is set, skip leadin checks and process all sections directly
+    if (m_noTimecodes && !m_leadinComplete) {
+        if (m_showDebug)
+            qDebug() << "F2SectionCorrection::processQueue(): No timecodes flag set, skipping leadin checks.";
+        m_leadinComplete = true;
+    }
+
     // Process the input buffer
     while (!m_inputBuffer.isEmpty()) {
         // Dequeue the next section
@@ -137,12 +145,28 @@ void F2SectionCorrection::waitForInputToSettle(F2Section &f2Section)
                                 "buffer discarded).";
             }
         } else {
-            // The leadin buffer is empty, so we can just add the section
+            // The leadin buffer is empty, so we can now add the collected section to the leadin buffer
             m_leadinBuffer.enqueue(f2Section);
-            if (m_showDebug)
-                qDebug() << "F2SectionCorrection::waitForInputToSettle(): Added section to "
-                            "lead in buffer with absolute time"
-                         << f2Section.metadata.absoluteSectionTime().toString();
+            if (m_showDebug) {
+                qDebug() << "F2SectionCorrection::waitForInputToSettle(): Added section to leadin buffer with valid metadata:";
+                qDebug() << "F2SectionCorrection::waitForInputToSettle():   Absolute time:" << f2Section.metadata.absoluteSectionTime().toString();
+                qDebug() << "F2SectionCorrection::waitForInputToSettle():   Section time:" << f2Section.metadata.sectionTime().toString();
+                {
+                    SectionType st = f2Section.metadata.sectionType();
+                    QString sectionTypeStr;
+                    switch (st.type()) {
+                        case SectionType::LeadIn:  sectionTypeStr = "LeadIn";  break;
+                        case SectionType::LeadOut: sectionTypeStr = "LeadOut"; break;
+                        case SectionType::UserData:sectionTypeStr = "UserData";break;
+                        default: sectionTypeStr = QString("Unknown(%1)").arg(static_cast<int>(st.type())); break;
+                    }
+                    qDebug() << "F2SectionCorrection::waitForInputToSettle():   Section type:" << sectionTypeStr;
+                }
+                qDebug() << "F2SectionCorrection::waitForInputToSettle():   Track number:" << f2Section.metadata.trackNumber();
+            }
+
+            // At this point, we have no idea if the section has a valid absolute time or not
+            // a value of 00:00:00 will happen in either case.
         }
     } else {
         // The current section doesn't have valid metadata
@@ -179,6 +203,24 @@ void F2SectionCorrection::waitingForSection(F2Section &f2Section)
 
     // What is the next expected section time?
     SectionTime expectedAbsoluteTime = getExpectedAbsoluteTime();
+
+    // If no timecodes flag is set, we cannot perform any timecode-based checks so we
+    // set the section's absolute time to the expected time
+    if (m_noTimecodes) {
+        f2Section.metadata.setAbsoluteSectionTime(expectedAbsoluteTime);
+        f2Section.metadata.setSectionTime(expectedAbsoluteTime);
+        
+        // Create a SectionType object and set it to UserData, then pass that to setSectionType
+        SectionType st;
+        st.setType(SectionType::UserData);
+        f2Section.metadata.setSectionType(st, 1); // Track number 1 for no timecodes
+
+        if (m_showDebug) {
+            qDebug() << "F2SectionCorrection::waitingForSection(): No timecodes flag set, setting "
+                        "section absolute time to expected time"
+                     << expectedAbsoluteTime.toString();
+        }
+    }
 
     // Check for Q-mode 2 and 3 sections - these will only have valid frame numbers in the
     // absolute time (i.e. minutes and seconds will be zero).
@@ -613,6 +655,11 @@ void F2SectionCorrection::flush()
     while (!m_internalBuffer.isEmpty()) {
         outputSections();
     }
+}
+
+void F2SectionCorrection::setNoTimecodes(bool noTimecodes)
+{
+    m_noTimecodes = noTimecodes;
 }
 
 void F2SectionCorrection::showStatistics() const

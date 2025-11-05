@@ -82,6 +82,7 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
         qInfo() << "Decoding FAILED";
         qInfo() << "F2 Section Correction stage did not complete lead-in detection successfully.";
         qInfo() << "Decoding has failed due to invalid or missing time code information in the input data.";
+        qInfo() << "Try running again with the --no-timecodes option if the input data is not ECMA-130 compliant and does not contain time codes.";
     } else {
         qInfo() << "Decoding complete";
 
@@ -168,6 +169,12 @@ void EfmProcessor::setShowData(bool showF2, bool showF3)
 {
     m_showF2 = showF2;
     m_showF3 = showF3;
+}
+
+void EfmProcessor::setNoTimecodes(bool noTimecodes)
+{
+    // Tell the section correction stage to process data with no timecodes present
+    m_f2SectionCorrection.setNoTimecodes(noTimecodes);
 }
 
 void EfmProcessor::setDebug(bool tvalue, bool channel, bool f3, bool f2)

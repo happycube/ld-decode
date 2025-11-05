@@ -39,7 +39,7 @@ public:
     bool isReady() const;
     bool isValid() const;
     void flush();
-
+    void setNoTimecodes(bool noTimecodes);
     void showStatistics() const;
 
 private:
@@ -63,6 +63,8 @@ private:
     QQueue<F2Section> m_window;
     qint32 m_maximumGapSize;
     qint32 m_paddingWatermark;
+
+    bool m_noTimecodes;
 
     // Statistics
     quint32 m_totalSections;

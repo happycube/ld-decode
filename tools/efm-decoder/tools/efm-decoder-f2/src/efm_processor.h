@@ -46,6 +46,7 @@ public:
 
     bool process(const QString &inputFilename, const QString &outputFilename);
     void setShowData(bool showF2, bool showF3);
+    void setNoTimecodes(bool noTimecodes);
     void setDebug(bool tvalue, bool channel, bool f3, bool f2);
     void showStatistics() const;
 

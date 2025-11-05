@@ -62,6 +62,12 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
+    // Add option to allow processing of input data with no timecodes
+    QCommandLineOption noTimecodesOption(
+            "no-timecodes",
+            QCoreApplication::translate("main", "Process input EFM data with no timecodes (may increase error rates)"));
+    parser.addOption(noTimecodesOption);
+
     // Group of options for showing frame data
     QList<QCommandLineOption> displayFrameDataOptions = {
         QCommandLineOption("show-f3", QCoreApplication::translate("main", "Show F3 frame data")),
@@ -100,6 +106,9 @@ int main(int argc, char *argv[])
 
     // Standard logging options
     processStandardDebugOptions(parser);
+
+    // Check for no timecode option
+    bool noTimecodes = parser.isSet(noTimecodesOption);
 
     // Check for advanced debug options and enable debug mode if any are set
     bool showTValuesDebug = parser.isSet("show-tvalues-debug");
@@ -146,6 +155,7 @@ int main(int argc, char *argv[])
     qInfo() << "Beginning EFM decoding of" << inputFilename;
     EfmProcessor efmProcessor;
 
+    efmProcessor.setNoTimecodes(noTimecodes);
     efmProcessor.setShowData(showF2, showF3);
     efmProcessor.setDebug(showTValuesDebug, showChannelDebug, showF3Debug, showF2CorrectDebug);
 
