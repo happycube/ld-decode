@@ -3,10 +3,6 @@ cmake_minimum_required(VERSION 3.10)
 # Set the project name
 project(efm-tools)
 
-# Specify the C++ standard
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
-
 # Handle Qt version selection - default to Qt5 for backward compatibility
 if(NOT DEFINED USE_QT_VERSION)
     set(USE_QT_VERSION 5)
