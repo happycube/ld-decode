@@ -64,8 +64,6 @@ private:
     qint32 m_maximumGapSize;
     qint32 m_paddingWatermark;
 
-    bool m_noTimecodes;
-
     // Statistics
     quint32 m_totalSections;
     quint32 m_correctedSections;
@@ -86,6 +84,9 @@ private:
     QVector<quint8> m_trackNumbers;
     QVector<SectionTime> m_trackStartTimes;
     QVector<SectionTime> m_trackEndTimes;
+
+    // Timecode handling
+    bool m_noTimecodes;
 };
 
 #endif // DEC_F2SECTIONCORRECTION_H
