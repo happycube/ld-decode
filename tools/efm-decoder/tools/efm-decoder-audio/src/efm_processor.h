@@ -35,6 +35,7 @@
 #include "dec_audiocorrection.h"
 
 #include "writer_wav.h"
+#include "writer_raw.h"
 #include "writer_wav_metadata.h"
 
 #include "reader_data24section.h"
@@ -46,7 +47,7 @@ public:
 
     bool process(const QString &inputFilename, const QString &outputFilename);
     void setShowData(bool showAudio);
-    void setOutputType(bool outputWavMetadata, bool noAudioConcealment, bool zeroPad);
+    void setOutputType(bool outputWavMetadata, bool noAudioConcealment, bool zeroPad, bool noWavHeader);
     void setDebug(bool audio, bool audioCorrection);
     void showStatistics() const;
 
@@ -58,6 +59,7 @@ private:
     bool m_outputWavMetadata;
     bool m_noAudioConcealment;
     bool m_zeroPad;
+    bool m_noWavHeader;
 
     // IEC 60909-1999 Decoders
     Data24ToAudio m_data24ToAudio;
@@ -68,6 +70,7 @@ private:
 
     // Output file writers
     WriterWav m_writerWav;
+    WriterRaw m_writerRaw;
     WriterWavMetadata m_writerWavMetadata;
 
     // Processing statistics

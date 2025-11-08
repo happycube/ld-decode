@@ -53,17 +53,43 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
 
     // Process the Data24 Section data
     QElapsedTimer dataPipelineTimer;
-    for (int index = 0; index < m_readerData24Section.size(); ++index) {
-        dataPipelineTimer.restart();
-        m_data24ToRawSector.pushSection(m_readerData24Section.read());
-        m_dataPipelineStats.data24ToRawSectorTime += dataPipelineTimer.nsecsElapsed();
-        processDataPipeline();
+    int index = 0;
+    
+    if (m_readerData24Section.isStdin() || m_readerData24Section.size() < 0) {
+        // Streaming mode: process until no more data
+        while (m_readerData24Section.hasMoreData()) {
+            dataPipelineTimer.restart();
+            Data24Section section = m_readerData24Section.read();
+            
+            // Check if we reached end of stream (the read operation should handle this)
+            if (!m_readerData24Section.hasMoreData() && !section.isComplete()) {
+                break; // End of stream
+            }
+            
+            m_data24ToRawSector.pushSection(section);
+            m_dataPipelineStats.data24ToRawSectorTime += dataPipelineTimer.nsecsElapsed();
+            processDataPipeline();
 
-        // Every 500 sections show progress
-        if (index % 500 == 0) {
-            // Calculate the percentage complete
-            float percentageComplete = (index / static_cast<float>(m_readerData24Section.size())) * 100.0;
-            qInfo().nospace().noquote() << "Decoding Data24 Section " << index << " of " << m_readerData24Section.size() << " (" << QString::number(percentageComplete, 'f', 2) << "%)";
+            // Every 500 sections show progress (without percentage for streaming)
+            if (index % 500 == 0) {
+                qInfo().nospace().noquote() << "Decoding Data24 Section " << index << " (streaming mode)";
+            }
+            index++;
+        }
+    } else {
+        // File mode: process with known size
+        for (index = 0; index < m_readerData24Section.size(); ++index) {
+            dataPipelineTimer.restart();
+            m_data24ToRawSector.pushSection(m_readerData24Section.read());
+            m_dataPipelineStats.data24ToRawSectorTime += dataPipelineTimer.nsecsElapsed();
+            processDataPipeline();
+
+            // Every 500 sections show progress
+            if (index % 500 == 0) {
+                // Calculate the percentage complete
+                float percentageComplete = (index / static_cast<float>(m_readerData24Section.size())) * 100.0;
+                qInfo().nospace().noquote() << "Decoding Data24 Section " << index << " of " << m_readerData24Section.size() << " (" << QString::number(percentageComplete, 'f', 2) << "%)";
+            }
         }
     }
 

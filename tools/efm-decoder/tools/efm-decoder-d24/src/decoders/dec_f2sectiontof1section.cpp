@@ -76,7 +76,10 @@ void F2SectionToF1Section::processQueue()
 
         // Sanity check the F2 section
         if (!f2Section.isComplete()) {
-            qFatal("F2SectionToF1Section::processQueue - F2 Section is not complete");
+            qCritical() << "F2SectionToF1Section::processQueue - F2 Section is not complete";
+            qCritical() << "This usually indicates a stream error or EOF while reading from stdin in a pipeline";
+            qCritical() << "Check that the input EFM stream is properly formatted and complete";
+            qFatal("Cannot continue processing incomplete F2 Section");
         }
 
         // Check section continuity
