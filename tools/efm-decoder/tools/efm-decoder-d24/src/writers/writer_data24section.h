@@ -43,10 +43,12 @@ public:
     void close();
     qint64 size() const;
     bool isOpen() const { return m_file.isOpen(); };
+    bool isStdout() const;
 
 private:
     QFile m_file;
     QDataStream* m_dataStream;
+    bool m_usingStdout;
 };
 
 #endif // WRITER_DATA24SECTION_H

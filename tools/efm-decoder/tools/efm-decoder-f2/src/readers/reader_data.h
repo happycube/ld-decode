@@ -28,6 +28,7 @@
 #include <QString>
 #include <QDebug>
 #include <QFile>
+#include <QTextStream>
 
 class ReaderData
 {
@@ -39,9 +40,12 @@ public:
     QByteArray read(uint32_t chunkSize);
     void close();
     qint64 size() const;
+    bool isStdin() const;
 
 private:
     QFile m_file;
+    QTextStream* m_stdinStream;
+    bool m_usingStdin;
 };
 
 #endif // READER_DATA_H

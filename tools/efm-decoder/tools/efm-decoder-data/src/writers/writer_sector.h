@@ -42,9 +42,11 @@ public:
     void close();
     qint64 size() const;
     bool isOpen() const { return m_file.isOpen(); };
+    bool isStdout() const;
 
 private:
     QFile m_file;
+    bool m_usingStdout;
 };
 
 #endif // WRITER_SECTOR_H

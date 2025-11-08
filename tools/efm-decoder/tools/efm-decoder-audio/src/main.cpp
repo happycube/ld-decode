@@ -73,6 +73,9 @@ int main(int argc, char *argv[])
         QCommandLineOption(
                 "zero-pad",
                 QCoreApplication::translate("main", "Zero pad the audio data from 00:00:00")),
+        QCommandLineOption(
+                "no-wav-header",
+                QCoreApplication::translate("main", "Output raw audio data without WAV header")),
     };
     parser.addOptions(outputTypeOptions);
 
@@ -97,9 +100,9 @@ int main(int argc, char *argv[])
 
     // -- Positional arguments --
     parser.addPositionalArgument("input",
-                                 QCoreApplication::translate("main", "Specify input Data24 Section file"));
+                                 QCoreApplication::translate("main", "Specify input Data24 Section file (use '-' for stdin, optional if using stdin)"));
     parser.addPositionalArgument("output",
-                                 QCoreApplication::translate("main", "Specify output wav file"));
+                                 QCoreApplication::translate("main", "Specify output wav file (use '-' for stdout, optional if using stdout)"));
 
     // Process the command line options and arguments given by the user
     parser.process(app);
@@ -111,6 +114,7 @@ int main(int argc, char *argv[])
     bool outputWavMetadata = parser.isSet("audacity-labels");
     bool noAudioConcealment = parser.isSet("no-audio-concealment");
     bool zeroPad = parser.isSet("zero-pad");
+    bool noWavHeader = parser.isSet("no-wav-header");
 
     // Check for frame data options
     bool showAudio = parser.isSet("show-audio");
@@ -140,19 +144,49 @@ int main(int argc, char *argv[])
     QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
 
-    if (positionalArguments.count() != 2) {
-        qWarning() << "You must specify the input Data24 Section filename and the output wav filename";
+    // Handle various argument combinations
+    if (positionalArguments.count() == 0) {
+        // No arguments: stdin -> stdout
+        inputFilename = "-";
+        outputFilename = "-";
+    } else if (positionalArguments.count() == 1) {
+        // One argument: could be input or output, need to determine
+        QString arg = positionalArguments.at(0);
+        if (arg == "-") {
+            // Single "-" means stdin -> stdout
+            inputFilename = "-";
+            outputFilename = "-";
+        } else {
+            // Assume it's input file, output to stdout
+            inputFilename = arg;
+            outputFilename = "-";
+        }
+    } else if (positionalArguments.count() == 2) {
+        // Two arguments: input and output
+        inputFilename = positionalArguments.at(0);
+        outputFilename = positionalArguments.at(1);
+    } else {
+        qWarning() << "Too many arguments. Expected: [input] [output] (use '-' for stdin/stdout)";
         return 1;
     }
-    inputFilename = positionalArguments.at(0);
-    outputFilename = positionalArguments.at(1);
+
+    // Validate --no-wav-header requirement for stdout pipeline
+    if (outputFilename == "-" && !noWavHeader) {
+        qCritical() << "ERROR: When piping output to stdout, --no-wav-header is mandatory";
+        qCritical() << "WAV headers cannot be written to stdout as they require seeking to update file size information";
+        return 1;
+    }
 
     // Perform the processing
-    qInfo() << "Beginning EFM decoding of" << inputFilename;
+    if (inputFilename == "-") {
+        qInfo() << "Beginning EFM decoding from stdin";
+    } else {
+        qInfo() << "Beginning EFM decoding of" << inputFilename;
+    }
     EfmProcessor efmProcessor;
 
     efmProcessor.setShowData(showAudio);
-    efmProcessor.setOutputType(outputWavMetadata, noAudioConcealment, zeroPad);
+    efmProcessor.setOutputType(outputWavMetadata, noAudioConcealment, zeroPad, noWavHeader);
     efmProcessor.setDebug(showAudioDebug, showAudioCorrectionDebug);
 
     if (!efmProcessor.process(inputFilename, outputFilename)) {

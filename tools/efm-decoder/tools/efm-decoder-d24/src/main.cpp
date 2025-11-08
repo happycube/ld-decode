@@ -53,7 +53,6 @@ int main(int argc, char *argv[])
     QCommandLineParser parser;
     parser.setApplicationDescription(
             "efm-decoder-d24 - EFM F2 Section to Data24 Section decoder\n"
-            "\n"
             "(c)2025 Simon Inns\n"
             "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
@@ -83,9 +82,9 @@ int main(int argc, char *argv[])
 
     // -- Positional arguments --
     parser.addPositionalArgument("input",
-                                 QCoreApplication::translate("main", "Specify input F2 Section file"));
+                                 QCoreApplication::translate("main", "Specify input F2 Section file (use '-' for stdin, optional if using stdin)"));
     parser.addPositionalArgument("output",
-                                 QCoreApplication::translate("main", "Specify output Data24 Section file"));
+                                 QCoreApplication::translate("main", "Specify output Data24 Section file (use '-' for stdout, optional if using stdout)"));
 
     // Process the command line options and arguments given by the user
     parser.process(app);
@@ -122,15 +121,38 @@ int main(int argc, char *argv[])
     QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
 
-    if (positionalArguments.count() != 2) {
-        qWarning() << "You must specify the input F2 Section filename and the output Data24 Section filename";
+    // Handle various argument combinations
+    if (positionalArguments.count() == 0) {
+        // No arguments: stdin -> stdout
+        inputFilename = "-";
+        outputFilename = "-";
+    } else if (positionalArguments.count() == 1) {
+        // One argument: could be input or output, need to determine
+        QString arg = positionalArguments.at(0);
+        if (arg == "-") {
+            // Single "-" means stdin -> stdout
+            inputFilename = "-";
+            outputFilename = "-";
+        } else {
+            // Assume it's input file, output to stdout
+            inputFilename = arg;
+            outputFilename = "-";
+        }
+    } else if (positionalArguments.count() == 2) {
+        // Two arguments: input and output
+        inputFilename = positionalArguments.at(0);
+        outputFilename = positionalArguments.at(1);
+    } else {
+        qWarning() << "Too many arguments. Expected: [input] [output] (use '-' for stdin/stdout)";
         return 1;
     }
-    inputFilename = positionalArguments.at(0);
-    outputFilename = positionalArguments.at(1);
 
     // Perform the processing
-    qInfo() << "Beginning EFM decoding of" << inputFilename;
+    if (inputFilename == "-") {
+        qInfo() << "Beginning EFM decoding from stdin";
+    } else {
+        qInfo() << "Beginning EFM decoding of" << inputFilename;
+    }
     EfmProcessor efmProcessor;
 
     efmProcessor.setShowData(showData24, showF1);
