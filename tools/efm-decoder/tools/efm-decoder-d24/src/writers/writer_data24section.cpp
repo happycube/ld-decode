@@ -26,7 +26,7 @@
 
 // This writer class writes the Data24 sections to a file
 
-WriterData24Section::WriterData24Section()
+WriterData24Section::WriterData24Section() : m_dataStream(nullptr), m_usingStdout(false)
 {}
 
 WriterData24Section::~WriterData24Section()
@@ -38,15 +38,27 @@ WriterData24Section::~WriterData24Section()
 
 bool WriterData24Section::open(const QString &filename)
 {
-    m_file.setFileName(filename);
-    if (!m_file.open(QIODevice::WriteOnly)) {
-        qCritical() << "WriterData24Section::open() - Could not open file" << filename << "for writing";
-        return false;
+    if (filename == "-") {
+        // Use stdout
+        m_usingStdout = true;
+        if (!m_file.open(stdout, QIODevice::WriteOnly)) {
+            qCritical() << "WriterData24Section::open() - Could not open stdout for writing";
+            return false;
+        }
+        qDebug() << "WriterData24Section::open() - Opened stdout for data writing";
+    } else {
+        // Use regular file
+        m_usingStdout = false;
+        m_file.setFileName(filename);
+        if (!m_file.open(QIODevice::WriteOnly)) {
+            qCritical() << "WriterData24Section::open() - Could not open file" << filename << "for writing";
+            return false;
+        }
+        qDebug() << "WriterData24Section::open() - Opened file" << filename << "for data writing";
     }
 
     // Create a data stream for writing
     m_dataStream = new QDataStream(&m_file);
-    qDebug() << "WriterData24Section::open() - Opened file" << filename << "for data writing";
     return true;
 }
 
@@ -67,18 +79,34 @@ void WriterData24Section::close()
     }
 
     // Close the data stream
-    delete m_dataStream;
-    m_dataStream = nullptr;
+    if (m_dataStream) {
+        delete m_dataStream;
+        m_dataStream = nullptr;
+    }
 
+    if (m_usingStdout) {
+        qDebug() << "WriterData24Section::close(): Closed stdout";
+    } else {
+        qDebug() << "WriterData24Section::close(): Closed the data file" << m_file.fileName();
+    }
     m_file.close();
-    qDebug() << "WriterData24Section::close(): Closed the data file" << m_file.fileName();
+    m_usingStdout = false;
 }
 
 qint64 WriterData24Section::size() const
 {
+    if (m_usingStdout) {
+        // Cannot determine size when writing to stdout
+        return -1;
+    }
     if (m_file.isOpen()) {
         return m_file.size();
     }
 
     return 0;
+}
+
+bool WriterData24Section::isStdout() const
+{
+    return m_usingStdout;
 }

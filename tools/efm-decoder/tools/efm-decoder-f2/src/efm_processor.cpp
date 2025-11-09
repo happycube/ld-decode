@@ -47,6 +47,8 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
     qint64 totalSize = m_readerData.size();
     qint64 processedSize = 0;
     int lastProgress = 0;
+    bool canShowProgress = (totalSize > 0);  // Can only show progress for files, not stdin
+    qint64 lastStdinProgressChunks = 0;  // Track last reported chunk count for stdin
 
     // Process the EFM data in chunks of 1024 T-values
     bool endOfData = false;
@@ -55,10 +57,19 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
         QByteArray tValues = m_readerData.read(1024);
         processedSize += tValues.size();
 
-        int progress = static_cast<int>((processedSize * 100) / totalSize);
-        if (progress >= lastProgress + 5) { // Show progress every 5%
-            qInfo() << "Progress:" << progress << "%";
-            lastProgress = progress;
+        if (canShowProgress) {
+            int progress = static_cast<int>((processedSize * 100) / totalSize);
+            if (progress >= lastProgress + 5) { // Show progress every 5%
+                qInfo() << "Progress:" << progress << "%";
+                lastProgress = progress;
+            }
+        } else {
+            // For stdin, show processing info periodically based on chunks processed
+            qint64 currentChunks = processedSize / 1024;
+            if (currentChunks > 0 && currentChunks % 1000 == 0 && currentChunks > lastStdinProgressChunks) {
+                qInfo() << "Processed" << currentChunks << "k chunks from stdin";
+                lastStdinProgressChunks = currentChunks;
+            }
         }
 
         if (tValues.isEmpty()) {
@@ -81,8 +92,8 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
     if (!m_f2SectionCorrection.isValid()) {
         qInfo() << "Decoding FAILED";
         qInfo() << "F2 Section Correction stage did not complete lead-in detection successfully.";
-        qInfo() << "Decoding has failed due to invalid or missing time code information in the input data.";
-        qInfo() << "Try running again with the --no-timecodes option if the input data is not ECMA-130 compliant and does not contain time codes.";
+        qInfo() << "This could be due to invalid input data or due to missing timecode information in the input EFM.";
+        qInfo() << "If you think the input EFM is valid - try running again with the --no-timecodes option (in case the input EFM is not ECMA-130 compliant and does not contain timecodes).";
     } else {
         qInfo() << "Decoding complete";
 

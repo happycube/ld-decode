@@ -1,8 +1,8 @@
 /************************************************************************
 
-    reader_data24section.h
+    writer_raw.h
 
-    efm-decoder-data - EFM Data24 to data decoder
+    efm-decoder-audio - EFM Data24 to Audio decoder
     Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
@@ -22,33 +22,31 @@
 
 ************************************************************************/
 
-#ifndef READER_DATA24SECTION_H
-#define READER_DATA24SECTION_H
+#ifndef WRITER_RAW_H
+#define WRITER_RAW_H
 
 #include <QString>
 #include <QDebug>
 #include <QFile>
-#include <QDataStream>
+
 #include "section.h"
 
-class ReaderData24Section
+class WriterRaw
 {
 public:
-    ReaderData24Section();
-    ~ReaderData24Section();
+    WriterRaw();
+    ~WriterRaw();
 
     bool open(const QString &filename);
-    Data24Section read();
+    void write(const AudioSection &audioSection);
     void close();
-    qint64 size();
-    bool isStdin() const;
-    bool hasMoreData();
+    qint64 size() const;
+    bool isOpen() const { return m_file.isOpen(); };
+    bool isStdout() const;
 
 private:
     QFile m_file;
-    QDataStream* m_dataStream;
-    qint64 m_fileSizeInSections;
-    bool m_usingStdin;
+    bool m_usingStdout;
 };
 
-#endif // READER_DATA24SECTION_H
+#endif // WRITER_RAW_H

@@ -45,17 +45,52 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
 
     // Process the F2 Section data
     QElapsedTimer pipelineTimer;
-    for (int index = 0; index < m_readerF2Section.size(); ++index) {
-        pipelineTimer.restart();
-        m_f2SectionToF1Section.pushSection(m_readerF2Section.read());
-        m_generalPipelineStats.f2SectionToF1SectionTime += pipelineTimer.nsecsElapsed();
-        processGeneralPipeline();
+    qint64 totalSections = m_readerF2Section.size();
+    bool canShowProgress = (totalSections > 0);  // Can only show progress for files, not stdin
+    int sectionsProcessed = 0;
+    
+    // For file input, use the known size
+    if (canShowProgress) {
+        for (int index = 0; index < totalSections; ++index) {
+            pipelineTimer.restart();
+            m_f2SectionToF1Section.pushSection(m_readerF2Section.read());
+            m_generalPipelineStats.f2SectionToF1SectionTime += pipelineTimer.nsecsElapsed();
+            processGeneralPipeline();
 
-        // Every 1000 sections show progress
-        if (index % 1000 == 0) {
-            // Calculate the percentage complete
-            float percentageComplete = (index / static_cast<float>(m_readerF2Section.size())) * 100.0;
-            qInfo().nospace().noquote() << "Decoding F2 Section " << index << " of " << m_readerF2Section.size() << " (" << QString::number(percentageComplete, 'f', 2) << "%)";
+            // Every 1000 sections show progress
+            if (index % 1000 == 0) {
+                // Calculate the percentage complete
+                float percentageComplete = (index / static_cast<float>(totalSections)) * 100.0;
+                qInfo().nospace().noquote() << "Decoding F2 Section " << index << " of " << totalSections << " (" << QString::number(percentageComplete, 'f', 2) << "%)";
+            }
+        }
+    } else {
+        // For stdin input, read until EOF
+        while (true) {
+            F2Section section = m_readerF2Section.read();
+            
+            // Check if we're at end of stream first
+            if (m_readerF2Section.atEnd()) {
+                break;
+            }
+            
+            // Check if the section is complete before processing
+            if (!section.isComplete()) {
+                qWarning() << "EfmProcessor::process() - Received incomplete F2 section from stdin, skipping";
+                break; // Likely EOF or stream error, stop processing
+            }
+            
+            pipelineTimer.restart();
+            m_f2SectionToF1Section.pushSection(section);
+            m_generalPipelineStats.f2SectionToF1SectionTime += pipelineTimer.nsecsElapsed();
+            processGeneralPipeline();
+            
+            sectionsProcessed++;
+            
+            // Every 1000 sections show progress for stdin
+            if (sectionsProcessed % 1000 == 0) {
+                qInfo() << "Processed" << sectionsProcessed << "F2 sections from stdin";
+            }
         }
     }
 
