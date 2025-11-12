@@ -90,7 +90,7 @@ class VHSDecode(ldd.LDdecode):
         rf_options={},
         extra_options={},
         debug_plot=None,
-        field_order_action="detect"
+        field_order_action="detect",
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -125,6 +125,8 @@ class VHSDecode(ldd.LDdecode):
             # We need a larger buffer for 819-line input
             # TODO: Is this useful for normal formats too?
             self.readlen = self.rf.linelen * 500
+        # else:
+        #    self.readlen = int(self.readlen * 1.1)
 
         # Adjustment for output to avoid clipping.
         self.level_adjust = level_adjust
@@ -232,8 +234,9 @@ class VHSDecode(ldd.LDdecode):
                 # there are three (this one, and two previous) repeating field orders in a row
                 # should be impossible for valid interlaced video, so maybe it's progressive??
                 # progressive examples needed to test this!
-                                             prevfi_1["detectedFirstField"] == fi["detectedFirstField"]
-                and prevfi_2 is not None and prevfi_2["detectedFirstField"] == prevfi_1["detectedFirstField"]
+                prevfi_1["detectedFirstField"] == fi["detectedFirstField"]
+                and prevfi_2 is not None
+                and prevfi_2["detectedFirstField"] == prevfi_1["detectedFirstField"]
                 # and this field is within a reasonable distance to be valid
                 and lddu.inrange(distance_from_previous_field, 0.9, 1.1)
             ):
@@ -370,8 +373,12 @@ class VHSDecode(ldd.LDdecode):
             jout["videoParameters"]["tapeFormat"] = self.rf.options.tape_format
             return jout
         except TypeError as e:
-            traceback.print_exc()
-            print("Cannot build json: %s" % e)
+            if self.rf.debug:
+                traceback.print_exc()
+                ldd.logger.error("Error! Cannot build json: %s" % e)
+            ldd.logger.error(
+                "Error! Something went wrong when decoding or building json!"
+            )
             return None
 
     def readfield(self, initphase=False):
@@ -401,7 +408,6 @@ class VHSDecode(ldd.LDdecode):
                 f, offset = self.decodefield(
                     redo, self.mtf_level, self.fieldstack[0], initphase, redo
                 )
-
                 # Only allow one redo, no matter what
                 done = True
                 redo = None
@@ -439,7 +445,9 @@ class VHSDecode(ldd.LDdecode):
 
             # decode the next field in a thread so the result is ready for the next iteration
             if self.numthreads != 0:
-                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
+                self.decodethread = threading.Thread(
+                    target=self.decodefield, args=df_args
+                )
                 self.decodethread.start()
             else:
                 self.decodefield(*df_args)
@@ -537,7 +545,7 @@ class VHSDecode(ldd.LDdecode):
 
                 # If this is the first field to be written, don't write anything
                 return f
-            
+
             if writeField:
                 self.lastFieldWritten = (self.fields_written, f.readloc)
                 self.writeout(self.lastvalidfield[f.isFirstField])
@@ -592,6 +600,7 @@ class VHSRFDecode(ldd.RFDecode):
         self._disable_diff_demod = rf_options.get("disable_diff_demod", False)
         self.useAGC = extra_options.get("useAGC", False)
         self.debug = extra_options.get("debug", False)
+
         # Enable cafc for betamax until proper track detection for it is implemented.
         self._do_cafc = (
             True

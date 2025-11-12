@@ -18,7 +18,6 @@ from vhsdecode.chroma import (
     try_detect_track_betamax_pal,
 )
 
-from numba import njit
 from vhsdecode.debug_plot import plot_data_and_pulses
 
 NO_PULSES_FOUND = 1
@@ -1346,7 +1345,7 @@ class FieldShared:
                     meanlinelen,
                     line0loc,
                 )
-                ldd.logger.info("lastline < proclines , skipping a tiny bit")
+                ldd.logger.info("Did not find the expected number of lines (lastline < proclines) , skipping a tiny bit")
             return None, None, max(line0loc - (meanlinelen * 20), self.inlinelen)
 
         linelocs, lineloc_errs, last_validpulse = sync.valid_pulses_to_linelocs(

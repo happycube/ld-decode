@@ -141,7 +141,9 @@ def common_parser_gui(meta_title):
 
 
 def common_parser_cli(meta_title, default_threads=DEFAULT_THREADS + 1):
-    parser = argparse.ArgumentParser(description=meta_title, formatter_class=argparse.RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=meta_title, formatter_class=argparse.RawTextHelpFormatter
+    )
     parser.add_argument(
         "infile",
         metavar="infile",
@@ -237,21 +239,21 @@ def common_parser_inner(parser, use_gui=False, default_threads=DEFAULT_THREADS):
         dest="cxadc3",
         action="store_true",
         default=False,
-        help="Use cxadc ten fsc input frequency (~35,79 Mhz)",
+        help=argparse.SUPPRESS,
     )
     input_format_group.add_argument(
         "--10cxadc",
         dest="cxadc_tenbit",
         action="store_true",
         default=False,
-        help="Use cxadc input frequency in ten bit mode (~14,31 Mhz)",
+        help=argparse.SUPPRESS,
     )
     input_format_group.add_argument(
         "--10cxadc3",
         dest="cxadc3_tenbit",
         action="store_true",
         default=False,
-        help="Use cxadc ten fsc input frequency in ten bit mode (~17,89 Mhz)",
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "-t",
@@ -269,7 +271,7 @@ def common_parser_inner(parser, use_gui=False, default_threads=DEFAULT_THREADS):
         dest="chroma_trap",
         action="store_true",
         default=False,
-        help="Enable filter that can help reduce some forms of chroma interference on luma. This will soften the image and have a noticeable impact on decoding speed.",
+        help="Enable luma filter that filters in some areas around the color frequency. This will soften the image and have a noticeable impact on decoding speed.",
     )
     extra_filtering_group.add_argument(
         "--sl",
@@ -426,6 +428,7 @@ def get_extra_options(args, checkagc=False):
         "useAGC": False,
         # Only used for ld, but could maybe be used for vhs too.
         "deemp_coeff": (0, 0),
+        "debug": args.debug,
     }
     if checkagc:
         extra_options["useAGC"]: args.AGC and not args.noAGC
