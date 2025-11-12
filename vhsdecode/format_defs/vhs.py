@@ -51,10 +51,10 @@ def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     rfparams["video_bpf_supergauss"] = False
 
     # Sharper upper cutoff to get rid of high-frequency junk.
-    rfparams["video_lpf_extra"] = 8800000
+    rfparams["video_lpf_extra"] = 9100000
     rfparams["video_lpf_extra_order"] = 25
 
-    rfparams["video_hpf_extra"] = 1600000
+    rfparams["video_hpf_extra"] = 1300000
     rfparams["video_hpf_extra_order"] = 20
 
     # Low-pass filter on Y after demodulation
@@ -73,8 +73,8 @@ def fill_rfparams_svhs_shared(rfparams: dict) -> None:
     rfparams["boost_bpf_mult"] = None
 
     # Use linear ramp to boost RF
-    rfparams["boost_rf_linear_0"] = 0
-    rfparams["boost_rf_linear_20"] = 2
+    rfparams["boost_rf_linear_0"] = 1
+    rfparams["boost_rf_linear_20"] = 4
     rfparams["boost_rf_linear_double"] = False
     rfparams["start_rf_linear"] = rfparams["color_under_carrier"]
 
