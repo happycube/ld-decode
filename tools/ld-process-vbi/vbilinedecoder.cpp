@@ -123,6 +123,7 @@ SourceVideo::Data VbiLineDecoder::getFieldLine(const SourceVideo::Data &sourceFi
         return SourceVideo::Data();
     }
 
+    // Calculate position: lines are 1-indexed, sourceField starts at startFieldLine
     qint32 startPointer = (fieldLine - startFieldLine) * videoParameters.fieldWidth;
     return sourceField.mid(startPointer, videoParameters.fieldWidth);
 }
@@ -184,10 +185,9 @@ QVector<double> VbiLineDecoder::getFieldLineSlice(const SourceVideo::Data &sourc
                                                   const LdDecodeMetaData::VideoParameters &videoParameters)
 {
     QVector<double> returnData;
-    fieldLine--; // Adjust for field offset
 
     // Range-check the field line
-    if (fieldLine < 0 || fieldLine >= videoParameters.fieldHeight) {
+    if (fieldLine < startFieldLine || fieldLine > endFieldLine) {
         qWarning() << "Cannot generate field-line data, line number is out of bounds! Scan line =" << fieldLine;
         return returnData;
     }
@@ -201,7 +201,8 @@ QVector<double> VbiLineDecoder::getFieldLineSlice(const SourceVideo::Data &sourc
     double startSampleDouble = startUs * samplesPerUs;
     double lengthSampleDouble = lengthUs * samplesPerUs;
 
-    qint32 startPointer = (fieldLine * videoParameters.fieldWidth) + static_cast<qint32>(startSampleDouble);
+    // Calculate position relative to startFieldLine
+    qint32 startPointer = ((fieldLine - startFieldLine) * videoParameters.fieldWidth) + static_cast<qint32>(startSampleDouble);
     qint32 length = static_cast<qint32>(lengthSampleDouble);
 
     // Convert data points to floating-point IRE values

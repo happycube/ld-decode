@@ -42,8 +42,9 @@ public:
     explicit VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent = nullptr);
 
     // The range of field lines needed from the input file (1-based, inclusive)
-    static constexpr qint32 startFieldLine = 6;
-    static constexpr qint32 endFieldLine = 22;
+    // Extended to lines 1-26 to include VITS measurement lines
+    static constexpr qint32 startFieldLine = 1;
+    static constexpr qint32 endFieldLine = 26;
 
 protected:
     void run() override;
