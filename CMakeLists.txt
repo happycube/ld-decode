@@ -135,7 +135,6 @@ add_subdirectory(tools/ld-lds-converter)
 add_subdirectory(tools/ld-process-ac3)
 add_subdirectory(tools/ld-process-efm)
 add_subdirectory(tools/ld-process-vbi)
-add_subdirectory(tools/ld-process-vits)
 add_subdirectory(tools/library)
 add_subdirectory(tools/efm-decoder)
 

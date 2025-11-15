@@ -7,6 +7,7 @@ add_executable(ld-process-vbi
     vbilinedecoder.cpp
     videoid.cpp
     vitccode.cpp
+    vitsanalyser.cpp
     whiteflag.cpp
 )
 
