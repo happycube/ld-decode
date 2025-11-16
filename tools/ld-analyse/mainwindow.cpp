@@ -209,7 +209,7 @@ void MainWindow::resetGui()
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
-    displayAspectRatio = false;
+    displayAspectRatio = true;
     updateAspectPushButton();
     updateSourcesPushButton();
     if (this->width() > 1000)
