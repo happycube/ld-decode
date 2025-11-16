@@ -1,9 +1,9 @@
 /************************************************************************
 
-    vectorscopedialog.cpp
+    vbidialog.h
 
     ld-analyse - TBC output analysis
-    Copyright (C) 2022 Adam Sampson
+    Copyright (C) 2018-2022 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -22,44 +22,35 @@
 
 ************************************************************************/
 
-#ifndef VECTORSCOPEDIALOG_H
-#define VECTORSCOPEDIALOG_H
+#ifndef VBIDIALOG_H
+#define VBIDIALOG_H
 
-#include <QAbstractButton>
-#include <QGraphicsPixmapItem>
 #include <QDialog>
 
-#include "componentframe.h"
 #include "lddecodemetadata.h"
-#include "tbcsource.h"
+#include "vbidecoder.h"
+#include "videoiddecoder.h"
 
 namespace Ui {
-class VectorscopeDialog;
+class VbiDialog;
 }
 
-class VectorscopeDialog : public QDialog
+class VbiDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit VectorscopeDialog(QWidget *parent = nullptr);
-    ~VectorscopeDialog();
+    explicit VbiDialog(QWidget *parent = nullptr);
+    ~VbiDialog();
 
-    void showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters);
-
-signals:
-    void scopeChanged();
-
-private slots:
-    void on_defocusCheckBox_clicked();
-    void on_blendColorCheckBox_clicked();
-    void on_graticuleButtonGroup_buttonClicked(QAbstractButton *button);
-    void on_fieldSelectButtonGroup_buttonClicked(QAbstractButton *button);
+    void updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid);
+    void updateVideoId(VideoIdDecoder::VideoId videoid, bool isVideoIdValid);
 
 private:
-    Ui::VectorscopeDialog *ui;
+    Ui::VbiDialog *ui;
 
-    QImage getTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters);
+    VbiDecoder vbiDecoder;
+    VideoIdDecoder videoIdDecoder;
 };
 
-#endif // VECTORSCOPEDIALOG_H
+#endif // VBIDIALOG_H

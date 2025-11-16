@@ -73,7 +73,6 @@ public:
     void unloadSource();
     bool getIsSourceLoaded();
     void saveSourceJson();
-    bool fixJsonSnrValues();
     QString getCurrentSourceFilename();
     QString getLastIOError();
 

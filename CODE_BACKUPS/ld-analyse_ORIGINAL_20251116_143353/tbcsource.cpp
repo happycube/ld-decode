@@ -106,103 +106,6 @@ QString TbcSource::getLastIOError()
     return lastIOError;
 }
 
-// Fix outlier bPSNR values in the JSON metadata
-bool TbcSource::fixJsonSnrValues()
-{
-    if (!sourceReady || currentJsonFilename.isEmpty()) {
-        lastIOError = "No JSON metadata is loaded";
-        return false;
-    }
-
-    try {
-        // Create a backup file with .bup extension
-        QString backupFilename = currentJsonFilename + ".bup";
-        if (QFile::exists(backupFilename)) {
-            QFile::remove(backupFilename);
-        }
-        if (!QFile::copy(currentJsonFilename, backupFilename)) {
-            lastIOError = "Failed to create backup file";
-            return false;
-        }
-
-        qDebug() << "TbcSource::fixJsonSnrValues(): Fixing SNR outliers in" << currentJsonFilename;
-        
-        // Fix outlier bPSNR values using rolling average method
-        qint32 numberOfFields = ldDecodeMetaData.getNumberOfFields();
-        QVector<double> bpsrValues;
-        bool modified = false;
-
-        // First pass: collect all BPSR values for rolling average calculation
-        for (qint32 fieldNum = 1; fieldNum <= numberOfFields; fieldNum++) {
-            const LdDecodeMetaData::Field &field = ldDecodeMetaData.getField(fieldNum);
-            const LdDecodeMetaData::VitsMetrics &vits = field.vitsMetrics;
-            if (vits.inUse) {
-                bpsrValues.append(vits.bPSNR);
-            }
-        }
-
-        // Second pass: fix outliers that are > 50 and differ from rolling average by > 3
-        if (bpsrValues.size() > 0) {
-            qint32 windowSize = 10;  // Rolling average window
-
-            for (qint32 fieldNum = 1; fieldNum <= numberOfFields; fieldNum++) {
-                const LdDecodeMetaData::Field &field = ldDecodeMetaData.getField(fieldNum);
-                LdDecodeMetaData::VitsMetrics vits = field.vitsMetrics;
-
-                if (vits.inUse && vits.bPSNR > 50.0) {
-                    // Find this field's index in the bpsrValues
-                    qint32 fieldIndex = 0;
-                    for (qint32 f = 1; f < fieldNum; f++) {
-                        if (ldDecodeMetaData.getField(f).vitsMetrics.inUse) fieldIndex++;
-                    }
-
-                    // Calculate rolling average
-                    qint32 start = qMax(0, fieldIndex - windowSize / 2);
-                    qint32 end = qMin(static_cast<qint32>(bpsrValues.size() - 1), fieldIndex + windowSize / 2);
-                    double sum = 0.0;
-                    qint32 count = 0;
-
-                    for (qint32 i = start; i <= end; i++) {
-                        if (i != fieldIndex && bpsrValues[i] <= 50.0) {
-                            sum += bpsrValues[i];
-                            count++;
-                        }
-                    }
-
-                    if (count > 0) {
-                        double average = sum / count;
-                        // If outlier differs from average by more than 3
-                        if (qAbs(vits.bPSNR - average) > 3.0) {
-                            qDebug() << "TbcSource::fixJsonSnrValues(): Fixing field" << fieldNum 
-                                     << "from" << vits.bPSNR << "to" << average;
-                            vits.bPSNR = average;
-                            ldDecodeMetaData.updateFieldVitsMetrics(vits, fieldNum);
-                            modified = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Save the modified metadata back to JSON
-        if (modified) {
-            qDebug() << "TbcSource::fixJsonSnrValues(): Saving fixed JSON to" << currentJsonFilename;
-            if (!ldDecodeMetaData.write(currentJsonFilename)) {
-                lastIOError = "Failed to save fixed JSON metadata";
-                return false;
-            }
-        } else {
-            qDebug() << "TbcSource::fixJsonSnrValues(): No outliers detected to fix";
-        }
-
-        return true;
-    } catch (const std::exception &e) {
-        lastIOError = QString("Exception while fixing SNR values: %1").arg(e.what());
-        qDebug() << "TbcSource::fixJsonSnrValues(): Exception:" << lastIOError;
-        return false;
-    }
-}
-
 // Method to set the highlight dropouts mode (true = dropouts highlighted)
 void TbcSource::setHighlightDropouts(bool _state)
 {
@@ -1307,17 +1210,6 @@ bool TbcSource::startBackgroundLoad(QString sourceFilename)
 
     // Get the video parameters from the metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
-
-    // Check if TBC file exists - if not, allow JSON-only mode
-    if (!QFileInfo::exists(sourceFilename)) {
-        // JSON-only mode - metadata loaded but no video data
-        qDebug() << "TbcSource::startBackgroundLoad(): TBC file not found, entering JSON-only mode";
-        sourceReady = true;
-        currentSourceFilename = "[JSON METADATA ONLY] " + sourceFilename;
-        currentJsonFilename = jsonFileName;
-        emit busy("JSON metadata loaded (no video data)");
-        return true;
-    }
 
     // Open the new source video
     qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";

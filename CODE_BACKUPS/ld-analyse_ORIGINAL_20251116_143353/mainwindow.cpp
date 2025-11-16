@@ -528,25 +528,6 @@ void MainWindow::updateImageViewer()
         imagePainter.end();
     }
 
-    // Draw red border around active area when chroma decoding is enabled (not in split view)
-    if (tbcSource.getChromaDecoder() && !tbcSource.getSplitViewEnabled()) {
-        LdDecodeMetaData::VideoParameters videoParameters = tbcSource.getVideoParameters();
-        
-        // Create a painter object for the border
-        QPainter borderPainter;
-        borderPainter.begin(&image);
-        
-        // Draw 4-pixel red rectangle around the active video area
-        QPen redPen(Qt::red, 4);
-        borderPainter.setPen(redPen);
-        borderPainter.drawRect(videoParameters.activeVideoStart, 
-                               videoParameters.firstActiveFrameLine,
-                               videoParameters.activeVideoEnd - videoParameters.activeVideoStart,
-                               videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine);
-        
-        borderPainter.end();
-    }
-
     QPixmap pixmap = QPixmap::fromImage(image);
 
     // Get the aspect ratio adjustment if required
@@ -608,7 +589,8 @@ void MainWindow::updateOscilloscopeDialogue()
 void MainWindow::updateVectorscopeDialogue()
 {
     // Update the vectorscope dialogue
-    vectorscopeDialog->showTraceImage(tbcSource.getComponentFrame(), tbcSource.getVideoParameters());
+    vectorscopeDialog->showTraceImage(tbcSource.getComponentFrame(), tbcSource.getVideoParameters(),
+                                      tbcSource.getViewMode(), currentFieldNumber % 2);
 }
 
 // Method to set the view (field/frame) values
@@ -957,38 +939,7 @@ void MainWindow::on_actionChroma_decoder_configuration_triggered()
     chromaDecoderConfigDialog->show();
 }
 
-// Fix JSON SNR values
-void MainWindow::on_actionFix_JSON_SNR_triggered()
-{
-    if (!tbcSource.getIsSourceLoaded()) {
-        QMessageBox messageBox;
-        messageBox.warning(this, "Warning", "No TBC file or JSON metadata is currently loaded!");
-        return;
-    }
-
-    // Ask user for confirmation
-    QMessageBox confirmBox;
-    confirmBox.setWindowTitle("Fix JSON SNR");
-    confirmBox.setText("This will fix outlier bPSNR values in the JSON metadata.\n\nA backup file will be created with .bup extension.\n\nContinue?");
-    confirmBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-    confirmBox.setDefaultButton(QMessageBox::No);
-
-    if (confirmBox.exec() == QMessageBox::No) {
-        return;
-    }
-
-    // Perform the fix
-    bool success = tbcSource.fixJsonSnrValues();
-
-    QMessageBox resultBox;
-    if (success) {
-        resultBox.information(this, "Success", "JSON SNR values have been fixed successfully.\n\nA backup file has been created.");
-    } else {
-        resultBox.warning(this, "Error", "Failed to fix JSON SNR values.\n\nPlease ensure a JSON file is loaded.");
-    }
-}
-
-// Media control frame signal handlers
+// Media control frame signal handlers --------------------------------------------------------------------------------
 
 // Previous field/frame button has been clicked
 void MainWindow::on_previousPushButton_clicked()

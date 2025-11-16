@@ -48,21 +48,36 @@ VectorscopeDialog::~VectorscopeDialog()
     delete ui;
 }
 
-void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters)
+void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
+                                       const TbcSource::ViewMode& viewMode, const bool isFirstField)
 {
     qDebug() << "VectorscopeDialog::showTraceImage(): Called";
 
-    // All controls are available - user can select via UI
-    ui->fieldSelectAllRadioButton->setEnabled(true);
-    ui->fieldSelectFirstRadioButton->setEnabled(true);
-    ui->fieldSelectSecondRadioButton->setEnabled(true);
-    ui->blendColorCheckBox->setEnabled(true);
-    
-    // Ensure "All fields" is selected by default for new images
-    if (!ui->fieldSelectAllRadioButton->isChecked() && 
-        !ui->fieldSelectFirstRadioButton->isChecked() && 
-        !ui->fieldSelectSecondRadioButton->isChecked()) {
-        ui->fieldSelectAllRadioButton->setChecked(true);
+    // Set/enable/disable controls based on view
+    switch (viewMode) {
+        case TbcSource::ViewMode::FRAME_VIEW:
+        case TbcSource::ViewMode::SPLIT_VIEW:
+            ui->fieldSelectAllRadioButton->setEnabled(true);
+            ui->fieldSelectFirstRadioButton->setEnabled(true);
+            ui->fieldSelectSecondRadioButton->setEnabled(true);
+            ui->blendColorCheckBox->setEnabled(true);
+            break;
+
+        case TbcSource::ViewMode::FIELD_VIEW:
+            ui->fieldSelectAllRadioButton->setEnabled(false);
+            ui->blendColorCheckBox->setEnabled(false);
+            ui->blendColorCheckBox->setChecked(false);
+
+            if (isFirstField) {
+                ui->fieldSelectFirstRadioButton->setEnabled(true);
+                ui->fieldSelectSecondRadioButton->setEnabled(false);
+                ui->fieldSelectFirstRadioButton->setChecked(true);
+            } else {
+                ui->fieldSelectFirstRadioButton->setEnabled(false);
+                ui->fieldSelectSecondRadioButton->setEnabled(true);
+                ui->fieldSelectSecondRadioButton->setChecked(true);
+            }
+            break;
     }
 
     // Draw the image

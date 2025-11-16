@@ -85,7 +85,6 @@ private slots:
     void on_actionClosed_Captions_triggered();
     void on_actionVideo_parameters_triggered();
     void on_actionChroma_decoder_configuration_triggered();
-    void on_actionFix_JSON_SNR_triggered();
 
     // Media control frame handlers
     void on_previousPushButton_clicked();

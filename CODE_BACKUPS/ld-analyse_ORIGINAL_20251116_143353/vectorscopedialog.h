@@ -45,7 +45,8 @@ public:
     explicit VectorscopeDialog(QWidget *parent = nullptr);
     ~VectorscopeDialog();
 
-    void showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters);
+    void showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
+                        const TbcSource::ViewMode& viewMode, const bool isFirstField);
 
 signals:
     void scopeChanged();

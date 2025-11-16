@@ -707,16 +707,9 @@
     <addaction name="actionZoom_3x"/>
     <addaction name="toggleAutoResize"/>
    </widget>
-   <widget class="QMenu" name="menuTools">
-    <property name="title">
-     <string>Tools</string>
-    </property>
-    <addaction name="actionFix_JSON_SNR"/>
-   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
    <addaction name="menuWindow"/>
-   <addaction name="menuTools"/>
    <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
@@ -912,14 +905,6 @@
   <action name="actionVisible_Dropout_analysis">
    <property name="text">
     <string>Visible Dropout analysis...</string>
-   </property>
-  </action>
-  <action name="actionFix_JSON_SNR">
-   <property name="text">
-    <string>Fix JSON SNR...</string>
-   </property>
-   <property name="shortcut">
-    <string>Ctrl+J</string>
    </property>
   </action>
  </widget>
