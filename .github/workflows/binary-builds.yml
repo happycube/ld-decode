@@ -1,0 +1,145 @@
+name: Binary Builds
+
+on:
+  push:
+    branches:
+      - 'ld-analyse/improvements'
+      - 'main'
+  pull_request:
+  release:
+    types: [published]
+
+jobs:
+  linux-qt5:
+    name: Linux Binary (Qt 5)
+    runs-on: ubuntu-22.04
+    steps:
+
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+        fetch-depth: 0
+
+    - name: Install dependencies
+      timeout-minutes: 10
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends git cmake make python3-setuptools python3-numpy python3-scipy python3-matplotlib libqt5opengl5-dev libqt5svg5-dev libqwt-qt5-dev libfftw3-dev python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg
+
+    - name: Set up build dir
+      timeout-minutes: 1
+      run: mkdir obj
+
+    - name: Configure
+      timeout-minutes: 5
+      run: cd obj && cmake -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5 -DCMAKE_INSTALL_PREFIX=/usr ..
+
+    - name: Build
+      timeout-minutes: 20
+      run: make -C obj VERBOSE=1 -j$(nproc)
+
+    - name: Install to staging
+      timeout-minutes: 5
+      run: make -C obj install DESTDIR=$PWD/staging
+
+    - name: Create archive
+      run: |
+        cd staging
+        tar -czf ../ld-decode-linux-qt5.tar.gz .
+
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ld-decode-linux-qt5
+        path: ld-decode-linux-qt5.tar.gz
+        retention-days: 30
+
+  linux-qt6:
+    name: Linux Binary (Qt 6)
+    runs-on: ubuntu-22.04
+    steps:
+
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+        fetch-depth: 0
+
+    - name: Install dependencies
+      timeout-minutes: 10
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends git cmake make python3-setuptools python3-numpy python3-scipy python3-matplotlib qt6-base-dev libgl-dev libfftw3-dev python3-numba libavformat-dev libavcodec-dev libavutil-dev ffmpeg
+
+    - name: Set up build dir
+      timeout-minutes: 1
+      run: mkdir obj
+
+    - name: Configure
+      timeout-minutes: 5
+      run: cd obj && cmake -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=6 -DUSE_QWT=OFF -DCMAKE_INSTALL_PREFIX=/usr ..
+
+    - name: Build
+      timeout-minutes: 20
+      run: make -C obj VERBOSE=1 -j$(nproc)
+
+    - name: Install to staging
+      timeout-minutes: 5
+      run: make -C obj install DESTDIR=$PWD/staging
+
+    - name: Create archive
+      run: |
+        cd staging
+        tar -czf ../ld-decode-linux-qt6.tar.gz .
+
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ld-decode-linux-qt6
+        path: ld-decode-linux-qt6.tar.gz
+        retention-days: 30
+
+  macos:
+    name: macOS Binary
+    runs-on: macos-latest
+    steps:
+
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+        fetch-depth: 0
+
+    - name: Install dependencies
+      timeout-minutes: 15
+      run: |
+        brew install qt@5 qwt-qt5 fftw ffmpeg python3 numpy scipy matplotlib numba
+
+    - name: Set up build dir
+      timeout-minutes: 1
+      run: mkdir obj
+
+    - name: Configure
+      timeout-minutes: 5
+      run: |
+        cd obj
+        export Qt5_DIR=$(brew --prefix qt@5)/lib/cmake/Qt5
+        cmake -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5 -DCMAKE_INSTALL_PREFIX=/usr/local ..
+
+    - name: Build
+      timeout-minutes: 30
+      run: make -C obj VERBOSE=1 -j$(sysctl -n hw.ncpu)
+
+    - name: Install to staging
+      timeout-minutes: 5
+      run: make -C obj install DESTDIR=$PWD/staging
+
+    - name: Create archive
+      run: |
+        cd staging
+        tar -czf ../ld-decode-macos.tar.gz .
+
+    - name: Upload binary artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ld-decode-macos
+        path: ld-decode-macos.tar.gz
+        retention-days: 30
