@@ -71,6 +71,8 @@ private slots:
     void on_actionLine_scope_triggered();
     void on_actionVectorscope_triggered();
     void on_actionAbout_ld_analyse_triggered();
+    void on_actionHelp_VHS_Decode_Wiki_triggered();
+    void on_actionHelp_LD_Decode_Wiki_triggered();
     void on_actionVBI_triggered();
     void on_actionDropout_analysis_triggered();
     void on_actionVisible_Dropout_analysis_triggered();

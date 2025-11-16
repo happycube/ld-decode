@@ -28,6 +28,8 @@
 #include <QClipboard>
 #include <QApplication>
 #include <QMimeData>
+#include <QDesktopServices>
+#include <QUrl>
 
 MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     QMainWindow(parent),
@@ -790,6 +792,18 @@ void MainWindow::on_actionVectorscope_triggered()
 void MainWindow::on_actionAbout_ld_analyse_triggered()
 {
     aboutDialog->show();
+}
+
+// Open VHS-Decode wiki
+void MainWindow::on_actionHelp_VHS_Decode_Wiki_triggered()
+{
+    QDesktopServices::openUrl(QUrl("https://github.com/oyvindln/vhs-decode/wiki/ld-analyse-User-Guide"));
+}
+
+// Open LD-Decode wiki
+void MainWindow::on_actionHelp_LD_Decode_Wiki_triggered()
+{
+    QDesktopServices::openUrl(QUrl("https://github.com/happycube/ld-decode/wiki/ld-analyse"));
 }
 
 // Show the VBI window

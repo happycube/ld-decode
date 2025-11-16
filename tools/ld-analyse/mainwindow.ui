@@ -695,6 +695,9 @@
      <string>Help</string>
     </property>
     <addaction name="actionAbout_ld_analyse"/>
+    <addaction name="separator"/>
+    <addaction name="actionHelp_VHS_Decode_Wiki"/>
+    <addaction name="actionHelp_LD_Decode_Wiki"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -920,6 +923,16 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+J</string>
+   </property>
+  </action>
+  <action name="actionHelp_VHS_Decode_Wiki">
+   <property name="text">
+    <string>VHS-Decode Wiki (ld-analyse guide)...</string>
+   </property>
+  </action>
+  <action name="actionHelp_LD_Decode_Wiki">
+   <property name="text">
+    <string>LD-Decode Wiki (ld-analyse)...</string>
    </property>
   </action>
  </widget>
