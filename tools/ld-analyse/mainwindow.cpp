@@ -528,6 +528,25 @@ void MainWindow::updateImageViewer()
         imagePainter.end();
     }
 
+    // Draw red border around active area when chroma decoding is enabled (not in split view)
+    if (tbcSource.getChromaDecoder() && !tbcSource.getSplitViewEnabled()) {
+        LdDecodeMetaData::VideoParameters videoParameters = tbcSource.getVideoParameters();
+        
+        // Create a painter object for the border
+        QPainter borderPainter;
+        borderPainter.begin(&image);
+        
+        // Draw 4-pixel red rectangle around the active video area
+        QPen redPen(Qt::red, 4);
+        borderPainter.setPen(redPen);
+        borderPainter.drawRect(videoParameters.activeVideoStart, 
+                               videoParameters.firstActiveFrameLine,
+                               videoParameters.activeVideoEnd - videoParameters.activeVideoStart,
+                               videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine);
+        
+        borderPainter.end();
+    }
+
     QPixmap pixmap = QPixmap::fromImage(image);
 
     // Get the aspect ratio adjustment if required
