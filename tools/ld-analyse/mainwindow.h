@@ -113,6 +113,7 @@ private slots:
     void vectorscopeChangedSignalHandler();
     void mousePressEvent(QMouseEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
+    void keyPressEvent(QKeyEvent *event);
     void videoParametersChangedSignalHandler(const LdDecodeMetaData::VideoParameters &videoParameters);
     void chromaDecoderConfigChangedSignalHandler();
 

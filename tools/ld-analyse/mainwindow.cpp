@@ -25,6 +25,9 @@
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <QClipboard>
+#include <QApplication>
+#include <QMimeData>
 
 MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     QMainWindow(parent),
@@ -206,7 +209,7 @@ void MainWindow::resetGui()
 
     // Set option button states
     ui->videoPushButton->setText(tr("Source"));
-    displayAspectRatio = true;
+    displayAspectRatio = false;
     updateAspectPushButton();
     updateSourcesPushButton();
     if (this->width() > 1000)
@@ -1582,6 +1585,38 @@ void MainWindow::on_finishedSaving(bool success)
 
     // Enable the main window
     this->setEnabled(true);
+}
+
+// Key press event handler for Ctrl+C screenshot to clipboard
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    // Check if Ctrl+C is pressed
+    if ((event->key() == Qt::Key_C) && (event->modifiers() == Qt::ControlModifier)) {
+        if (!tbcSource.getIsSourceLoaded()) {
+            event->ignore();
+            return;
+        }
+
+        // Generate QImage for the current frame
+        QImage imageToSave = tbcSource.getImage();
+
+        // Get the aspect ratio adjustment, and scale the image if needed
+        qint32 adjustment = getAspectAdjustment();
+        if (adjustment != 0) {
+            imageToSave = imageToSave.scaled((imageToSave.size().width() + adjustment),
+                                             (imageToSave.size().height()),
+                                             Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        }
+
+        // Copy to clipboard
+        QClipboard *clipboard = QApplication::clipboard();
+        clipboard->setImage(imageToSave);
+        event->accept();
+        return;
+    }
+
+    // Pass all other key events to the parent class
+    QMainWindow::keyPressEvent(event);
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
