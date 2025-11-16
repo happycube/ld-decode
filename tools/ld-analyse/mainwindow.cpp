@@ -529,7 +529,7 @@ void MainWindow::updateImageViewer()
     }
 
     // Draw red border around active area when chroma decoding is enabled (not in split view)
-    if (tbcSource.getChromaDecoder() && !tbcSource.getSplitViewEnabled()) {
+    if (tbcSource.getChromaDecoder() && !tbcSource.getSplitViewEnabled() && videoParametersDialog->getChromaRedBorderEnabled()) {
         LdDecodeMetaData::VideoParameters videoParameters = tbcSource.getVideoParameters();
         
         // Create a painter object for the border

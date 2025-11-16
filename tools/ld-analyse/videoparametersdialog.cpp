@@ -163,3 +163,20 @@ void VideoParametersDialog::on_aspectRatioButtonGroup_buttonClicked(QAbstractBut
     updateDialog();
     emit videoParametersChanged(videoParameters);
 }
+
+bool VideoParametersDialog::getChromaRedBorderEnabled() const
+{
+    return chromaRedBorderEnabled;
+}
+
+void VideoParametersDialog::setChromaRedBorderEnabled(bool enabled)
+{
+    chromaRedBorderEnabled = enabled;
+    ui->chromaRedBorderCheckBox->setChecked(enabled);
+}
+
+void VideoParametersDialog::on_chromaRedBorderCheckBox_toggled(bool checked)
+{
+    chromaRedBorderEnabled = checked;
+    updateDialog();
+}

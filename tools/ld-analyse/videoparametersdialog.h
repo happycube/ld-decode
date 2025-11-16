@@ -43,8 +43,10 @@ public:
     ~VideoParametersDialog();
 
     void setVideoParameters(const LdDecodeMetaData::VideoParameters &videoParameters);
+    bool getChromaRedBorderEnabled() const;
+    void setChromaRedBorderEnabled(bool enabled);
 
-signals:
+    signals:
     void videoParametersChanged(const LdDecodeMetaData::VideoParameters &videoParameters);
 
 public slots:
@@ -63,12 +65,14 @@ private slots:
     void on_activeVideoWidthResetButton_clicked();
 
     void on_aspectRatioButtonGroup_buttonClicked(QAbstractButton *button);
+    void on_chromaRedBorderCheckBox_toggled(bool checked);
 
 private:
     Ui::VideoParametersDialog *ui;
     LdDecodeMetaData::VideoParameters videoParameters;
     qint32 originalActiveVideoStart = -1;
     qint32 originalActiveVideoWidth = -1;
+    bool chromaRedBorderEnabled = false;
 
     void updateDialog();
 };

@@ -338,6 +338,16 @@
      </layout>
     </widget>
    </item>
+   <item row="5" column="0" colspan="4">
+    <widget class="QCheckBox" name="chromaRedBorderCheckBox">
+     <property name="text">
+      <string>Show red border on chroma decode</string>
+     </property>
+     <property name="checked">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
   </layout>
  </widget>
  <resources/>
