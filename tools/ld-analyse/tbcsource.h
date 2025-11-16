@@ -53,11 +53,25 @@ class TbcSource : public QObject
 public:
     explicit TbcSource(QObject *parent = nullptr);
 
+    enum ViewMode {
+        FRAME_VIEW,
+        SPLIT_VIEW,
+        FIELD_VIEW,
+    };
+
+    enum SourceMode {
+        ONE_SOURCE,
+        LUMA_SOURCE,
+        CHROMA_SOURCE,
+        BOTH_SOURCES,
+    };
+
     struct ScanLineData {
         QString systemDescription;
         LineNumber lineNumber;
         QVector<qint32> composite;
         QVector<qint32> luma;
+        QVector<qint32> chroma;  // For BOTH_SOURCES (Y+C) mode
         QVector<bool> isDropout;
         qint32 blackIre;
         qint32 whiteIre;
@@ -67,6 +81,7 @@ public:
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
         bool isActiveLine;
+        SourceMode sourceMode;  // Track which source mode generated this data
     };
 
     void loadSource(QString inputFileName);
@@ -86,11 +101,6 @@ public:
     bool getChromaDecoder();
     bool getFieldOrder();
 
-    enum ViewMode {
-        FRAME_VIEW,
-        SPLIT_VIEW,
-        FIELD_VIEW,
-    };
     void setViewMode(ViewMode viewMode);
     void setStretchField(bool _stretch);
 
@@ -100,12 +110,6 @@ public:
     bool getSplitViewEnabled();
     bool getStretchField();
 
-    enum SourceMode {
-        ONE_SOURCE,
-        LUMA_SOURCE,
-        CHROMA_SOURCE,
-        BOTH_SOURCES,
-    };
     SourceMode getSourceMode();
     void setSourceMode(SourceMode sourceMode);
 

@@ -568,6 +568,9 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 {
     if (loadedFrameNumber == -1) return ScanLineData();
 
+    // Ensure input fields are loaded (needed for both regular and chroma data)
+    loadInputFields();
+
     ScanLineData scanLineData;
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
     auto frameLine = 0;
@@ -629,6 +632,7 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
     // Set the system and line number
     scanLineData.systemDescription = ldDecodeMetaData.getVideoSystemDescription();
     scanLineData.lineNumber = LineNumber::fromFrame1(scanLine, videoParameters.system);
+    scanLineData.sourceMode = sourceMode;  // Store the current source mode
     const LineNumber &lineNumber = scanLineData.lineNumber;
 
     // Set the video parameters
@@ -651,30 +655,46 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
 
     scanLineData.composite.resize(videoParameters.fieldWidth);
     scanLineData.luma.resize(videoParameters.fieldWidth);
+    scanLineData.chroma.resize(videoParameters.fieldWidth);
     scanLineData.isDropout.resize(videoParameters.fieldWidth);
 
+    // Chroma offset constant used in Y+C mode (see chroma_to_u16 in vhsdecode/chroma.py)
+    static constexpr qint32 CHROMA_OFFSET = 32767;
+    
     for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
-        // Get the 16-bit composite value for the current pixel (frame data is numbered 0-624 or 0-524)
-        scanLineData.composite[xPosition] = fieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition];
-
-        // Get the decoded luma value for the current pixel (only computed in the active region)
-        // When in BOTH_SOURCES mode (Y/C dual), use the luma from the chroma decoder (PAL/NTSC)
-        // so that Y and C traces respect the selected chroma decoder, not just the mono decoder
-        qint32 lumaValue = 0;
-        if (sourceMode == BOTH_SOURCES && (frameLine - 1) >= videoParameters.firstActiveFrameLine && 
-            (frameLine - 1) < videoParameters.lastActiveFrameLine) {
-            // Use the chroma-decoded luma from yFrames instead of the mono decoder
-            if (!yFrames.empty()) {
-                lumaValue = static_cast<qint32>(yFrames[0].y(frameLine - 1)[xPosition]);
-            } else {
-                // Fallback to component frame if yFrames not available
-                lumaValue = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
-            }
+        // Get the 16-bit raw value for the current pixel (frame data is numbered 0-624 or 0-524)
+        qint32 rawValue = fieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition];
+        
+        if (sourceMode == CHROMA_SOURCE) {
+            // CHROMA_SOURCE mode: inputFields contains chroma only with 32767 offset
+            // Treat composite as the centred chroma signal; C should match YC-Y
+            qint32 compositeValue = rawValue - CHROMA_OFFSET;
+            scanLineData.composite[xPosition] = compositeValue;
+            scanLineData.luma[xPosition] = 0;  // No luma in chroma-only mode
+            scanLineData.chroma[xPosition] = compositeValue;  // C = composite - Y
+        } else if (sourceMode == BOTH_SOURCES && !chromaInputFields.empty() && inputStartIndex + (isFirstField ? 0 : 1) < chromaInputFields.size()) {
+            // BOTH_SOURCES (Y+C) mode: Y and C are separate data streams
+            const SourceVideo::Data &chromaFieldData = isFirstField ? chromaInputFields[inputStartIndex].data : chromaInputFields[inputStartIndex + 1].data;
+            qint32 rawChromaValue = chromaFieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition];
+            
+            // Create composite by adding chroma to luma (same as combine does)
+            qint32 compositeValue = rawValue + rawChromaValue - CHROMA_OFFSET;
+            scanLineData.composite[xPosition] = qBound(0, compositeValue, 65535);
+            
+            // Get decoded Y from the component frame (decoded by mono decoder from luma file)
+            qint32 lumaValue = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
+            scanLineData.luma[xPosition] = lumaValue;
+            // Define C as composite minus luma so scope mapping matches YC/Y
+            scanLineData.chroma[xPosition] = compositeValue - lumaValue;
         } else {
-            // Use standard component frame luma for other modes
-            lumaValue = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
+            // ONE_SOURCE mode: composite contains Y+C combined signal
+            scanLineData.composite[xPosition] = rawValue;
+            // Get the decoded luma value using the component frame decoder
+            qint32 lumaValue = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
+            scanLineData.luma[xPosition] = lumaValue;
+            // C is composite - Y in ONE_SOURCE mode
+            scanLineData.chroma[xPosition] = rawValue - lumaValue;
         }
-        scanLineData.luma[xPosition] = lumaValue;
 
         scanLineData.isDropout[xPosition] = false;
         for (qint32 doCount = 0; doCount < dropouts.size(); doCount++) {

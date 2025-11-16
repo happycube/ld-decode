@@ -127,6 +127,7 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     }
     assert(scanLineData.composite.size() == scanLineData.fieldWidth);
     assert(scanLineData.luma.size() == scanLineData.fieldWidth);
+    assert(scanLineData.chroma.size() == scanLineData.fieldWidth);
 
     // Set the background to black
     scopeImage.fill(Qt::black);
@@ -162,11 +163,12 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     scopePainter.drawLine(scanLineData.activeVideoEnd, 0, scanLineData.activeVideoEnd, scopeHeight);
 
     // Get the signal data
-    const QVector<qint32> &signalDataYC = scanLineData.composite; // Composite - luma (Y) and chroma (C) combined
-    const QVector<bool> &dropOutYC = scanLineData.isDropout; // Drop out locations within YC data
-    const QVector<qint32> &signalDataY = scanLineData.luma; // Luma (Y) only
-    QVector<qint32> signalDataC(scanLineData.fieldWidth); // Chroma (C) only
+    const QVector<qint32> &signalDataYC = scanLineData.composite; // Composite signal
+    const QVector<bool> &dropOutYC = scanLineData.isDropout; // Drop out locations
+    const QVector<qint32> &signalDataY = scanLineData.luma; // Luma (Y) channel
 
+    // Derive chroma as composite minus luma so C maps correctly relative to YC and Y
+    QVector<qint32> signalDataC(scanLineData.fieldWidth);
     if (showC) {
         for (qint32 i = 0; i < scanLineData.fieldWidth; i++) {
             signalDataC[i] = signalDataYC[i] - signalDataY[i];
