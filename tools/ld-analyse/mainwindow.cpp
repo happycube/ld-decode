@@ -76,6 +76,9 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Connect to the video parameters changed signal
     connect(videoParametersDialog, &VideoParametersDialog::videoParametersChanged, this, &MainWindow::videoParametersChangedSignalHandler);
 
+    // Connect to the red border state changed signal to refresh the image
+    connect(videoParametersDialog, &VideoParametersDialog::chromaRedBorderStateChanged, this, &MainWindow::updateImageViewer);
+
     // Connect to the chroma decoder configuration changed signal
     connect(chromaDecoderConfigDialog, &ChromaDecoderConfigDialog::chromaDecoderConfigChanged, this, &MainWindow::chromaDecoderConfigChangedSignalHandler);
 

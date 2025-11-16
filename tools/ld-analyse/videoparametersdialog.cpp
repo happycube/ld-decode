@@ -60,6 +60,10 @@ void VideoParametersDialog::setVideoParameters(const LdDecodeMetaData::VideoPara
     if (videoParameters.isWidescreen) ui->aspectRatio169RadioButton->setChecked(true);
     else ui->aspectRatio43RadioButton->setChecked(true);
 
+    // Reset the chroma red border checkbox to OFF when a new file is loaded
+    chromaRedBorderEnabled = false;
+    ui->chromaRedBorderCheckBox->setChecked(false);
+
     // Update the dialogue
     updateDialog();
 }
@@ -179,4 +183,5 @@ void VideoParametersDialog::on_chromaRedBorderCheckBox_toggled(bool checked)
 {
     chromaRedBorderEnabled = checked;
     updateDialog();
+    emit chromaRedBorderStateChanged();
 }

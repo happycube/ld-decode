@@ -48,6 +48,7 @@ public:
 
     signals:
     void videoParametersChanged(const LdDecodeMetaData::VideoParameters &videoParameters);
+    void chromaRedBorderStateChanged();
 
 public slots:
     void levelSelected(qint32 level);
