@@ -1004,7 +1004,7 @@ def refine_linelocs_hsync(field, stdint.uint8_t[::1] linebad, double hsync_thres
                     demod_05,
                     ll1 + (normal_hsync_length) - one_usec,
                     zc_threshold,
-                    count=round_to_int(one_usec * 3),
+                    count=round_to_int(normal_hsync_length)*2,
                     edge=1,
                 )
             right_cross_refined = False
