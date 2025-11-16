@@ -1211,6 +1211,17 @@ bool TbcSource::startBackgroundLoad(QString sourceFilename)
     // Get the video parameters from the metadata
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
+    // Check if TBC file exists - if not, allow JSON-only mode
+    if (!QFileInfo::exists(sourceFilename)) {
+        // JSON-only mode - metadata loaded but no video data
+        qDebug() << "TbcSource::startBackgroundLoad(): TBC file not found, entering JSON-only mode";
+        sourceReady = true;
+        currentSourceFilename = "[JSON METADATA ONLY] " + sourceFilename;
+        currentJsonFilename = jsonFileName;
+        emit busy("JSON metadata loaded (no video data)");
+        return true;
+    }
+
     // Open the new source video
     qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
     emit busy("Loading TBC file...");
