@@ -658,7 +658,23 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
         scanLineData.composite[xPosition] = fieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition];
 
         // Get the decoded luma value for the current pixel (only computed in the active region)
-        scanLineData.luma[xPosition] = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
+        // When in BOTH_SOURCES mode (Y/C dual), use the luma from the chroma decoder (PAL/NTSC)
+        // so that Y and C traces respect the selected chroma decoder, not just the mono decoder
+        qint32 lumaValue = 0;
+        if (sourceMode == BOTH_SOURCES && (frameLine - 1) >= videoParameters.firstActiveFrameLine && 
+            (frameLine - 1) < videoParameters.lastActiveFrameLine) {
+            // Use the chroma-decoded luma from yFrames instead of the mono decoder
+            if (!yFrames.empty()) {
+                lumaValue = static_cast<qint32>(yFrames[0].y(frameLine - 1)[xPosition]);
+            } else {
+                // Fallback to component frame if yFrames not available
+                lumaValue = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
+            }
+        } else {
+            // Use standard component frame luma for other modes
+            lumaValue = static_cast<qint32>(componentFrame.y(frameLine - 1)[xPosition]);
+        }
+        scanLineData.luma[xPosition] = lumaValue;
 
         scanLineData.isDropout[xPosition] = false;
         for (qint32 doCount = 0; doCount < dropouts.size(); doCount++) {
