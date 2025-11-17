@@ -2,6 +2,15 @@ import os.path
 import sys
 import math
 
+from scipy import signal
+import numpy as np
+
+import matplotlib
+matplotlib.use("Qt5Agg")  # Must come before importing pyplot
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+import matplotlib.pyplot as plt
+
 try:
     from PyQt6.QtGui import QIcon, QPalette
     from PyQt6.QtWidgets import (
@@ -57,14 +66,18 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_EXPANDER_WEIGHTING_TAU_1,
     DEFAULT_EXPANDER_WEIGHTING_TAU_2,
     DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
     DEFAULT_DEEMPHASIS_TAU_1,
     DEFAULT_DEEMPHASIS_TAU_2,
     DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
+    DEFAULT_DEEMPHASIS_BANDWIDTH,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEMOD_QUADRATURE,
     DEMOD_HILBERT,
     DEFAULT_DEMOD,
+    build_shelf_filter,
+    tau_as_freq,
     HiFiDecode,
 )
 
@@ -84,12 +97,12 @@ class MainUIParameters:
         self.expander_release_tau: float = DEFAULT_EXPANDER_RELEASE_TAU
         self.expander_weighting_shelf_low_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_1
         self.expander_weighting_shelf_high_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_2
-        self.expander_weighting_db_per_octave: float = (
-            DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE
-        )
+        self.expander_weighting_db_per_octave: float = DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE
+        self.expander_weighting_bandwidth: float = DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH
         self.deemphasis_low_tau: float = DEFAULT_DEEMPHASIS_TAU_1
         self.deemphasis_high_tau: float = DEFAULT_DEEMPHASIS_TAU_2
         self.deemphasis_db_per_octave: float = DEFAULT_DEEMPHASIS_DB_PER_OCTAVE
+        self.deemphasis_bandwidth: float = DEFAULT_DEEMPHASIS_BANDWIDTH
         self.afe_vco_deviation = 0
         self.afe_left_carrier = 0
         self.afe_right_carrier = 0
@@ -125,9 +138,11 @@ def decode_options_to_ui_parameters(decode_options):
     values.expander_weighting_shelf_low_tau = decode_options["expander_weighting_shelf_low_tau"]
     values.expander_weighting_shelf_high_tau = decode_options["expander_weighting_shelf_high_tau"]
     values.expander_weighting_db_per_octave = decode_options["expander_weighting_db_per_octave"]
+    values.expander_weighting_bandwidth = decode_options["expander_weighting_bandwidth"]
     values.deemphasis_low_tau = decode_options["deemphasis_low_tau"]
     values.deemphasis_high_tau = decode_options["deemphasis_high_tau"]
     values.deemphasis_db_per_octave = decode_options["deemphasis_db_per_octave"]
+    values.deemphasis_bandwidth = decode_options["deemphasis_bandwidth"]
     values.afe_vco_deviation = decode_options["afe_vco_deviation"]
     values.afe_left_carrier = decode_options["afe_left_carrier"]
     values.afe_right_carrier = decode_options["afe_right_carrier"]
@@ -165,9 +180,11 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "expander_weighting_shelf_low_tau": values.expander_weighting_shelf_low_tau,
         "expander_weighting_shelf_high_tau": values.expander_weighting_shelf_high_tau,
         "expander_weighting_db_per_octave": values.expander_weighting_db_per_octave,
+        "expander_weighting_bandwidth": values.expander_weighting_bandwidth,
         "deemphasis_low_tau": values.deemphasis_low_tau,
         "deemphasis_high_tau": values.deemphasis_high_tau,
         "deemphasis_db_per_octave": values.deemphasis_db_per_octave,
+        "deemphasis_bandwidth": values.deemphasis_bandwidth,
         "afe_vco_deviation": values.afe_vco_deviation,
         "afe_left_carrier": values.afe_left_carrier,
         "afe_right_carrier": values.afe_right_carrier,
@@ -319,6 +336,9 @@ class HifiUi(QMainWindow):
         # Transport controls
         transport_controls_layout = self.build_transport_controls()
         self.main_layout.addLayout(transport_controls_layout)
+
+        # Weighting / Deemphasis plot
+        self.build_plot_window()
 
         # Apply dark theme with improved text visibility
         self.setStyleSheet(
@@ -702,10 +722,18 @@ class HifiUi(QMainWindow):
         )
         weighting_layout.addWidget(self.expander_weighting_shelf_high_tau_dial_control)
         self.expander_weighting_db_per_octave_dial_control = DialControl(
-            self, "Slope (db/octave)", QtGui.QDoubleValidator(), 10, 0, 12
+            self, "Slope (db/oct)", QtGui.QDoubleValidator(), 10, 0, 12
         )
         weighting_layout.addWidget(self.expander_weighting_db_per_octave_dial_control)
+        self.expander_weighting_bandwidth_dial_control = DialControl(
+            self, "Bandwidth", QtGui.QDoubleValidator(), 50, 0, 12
+        )
+        weighting_layout.addWidget(self.expander_weighting_bandwidth_dial_control)
         expander_sideband_frame.inner_layout.addLayout(weighting_layout)
+
+        show_plot_btn_weighting = QPushButton("Plot")
+        show_plot_btn_weighting.clicked.connect(self.show_plot)
+        weighting_layout.addWidget(show_plot_btn_weighting)
 
         deemphasis_frame = CollapsableSection(
             self, "Deemphasis (Low-Pass Shelf Filter)", default_collapsed=True
@@ -734,12 +762,49 @@ class HifiUi(QMainWindow):
         )
         deemphasis_layout.addWidget(self.deemphasis_high_tau_dial_control)
         self.deemphasis_db_per_octave_dial_control = DialControl(
-            self, "Slope (db/octave)", QtGui.QDoubleValidator(), 10, 0, 12
+            self, "Slope (db/oct)", QtGui.QDoubleValidator(), 10, 0, 12
         )
         deemphasis_layout.addWidget(self.deemphasis_db_per_octave_dial_control)
+        self.deemphasis_bandwidth_dial_control = DialControl(
+            self, "Bandwidth", QtGui.QDoubleValidator(), 50, 0, 12
+        )
+        deemphasis_layout.addWidget(self.deemphasis_bandwidth_dial_control)
+
+        show_plot_btn_deemphasis = QPushButton("Plot")
+        show_plot_btn_deemphasis.clicked.connect(self.show_plot)
+        deemphasis_layout.addWidget(show_plot_btn_deemphasis)
+
         deemphasis_frame.inner_layout.addLayout(deemphasis_layout)
 
         return layout
+    
+    def schedule_plot_update(self):
+        self._plot_update_timer.start(50)
+    
+    def build_plot_window(self):
+        # Sideband / Deemphasis plot window
+        self.weighting_deemphasis_plot = PlotWindow("Weighting / Deemphasis", self.getValues)
+        self._plot_update_timer = QtCore.QTimer()
+        self._plot_update_timer.setSingleShot(True)
+        self._plot_update_timer.timeout.connect(self.weighting_deemphasis_plot.update_plot)
+
+        self.expander_weighting_shelf_low_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_weighting_shelf_high_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_weighting_db_per_octave_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_weighting_bandwidth_dial_control.valueChanged.connect(self.schedule_plot_update)
+
+        self.deemphasis_low_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.deemphasis_high_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.deemphasis_db_per_octave_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.deemphasis_bandwidth_dial_control.valueChanged.connect(self.schedule_plot_update)
+
+        self.audio_mode_combo.currentIndexChanged.connect(self.schedule_plot_update)
+    
+    def show_plot(self):
+        geo = self.geometry()
+        self.weighting_deemphasis_plot.move(geo.x() + geo.width() + 20, geo.y())
+        self.weighting_deemphasis_plot.update_plot()
+        self.weighting_deemphasis_plot.show()
 
     @property
     def transport_state(self):
@@ -774,10 +839,16 @@ class HifiUi(QMainWindow):
         self.expander_weighting_db_per_octave_dial_control.setValue(
             values.expander_weighting_db_per_octave
         )
+        self.expander_weighting_bandwidth_dial_control.setValue(
+            values.expander_weighting_bandwidth
+        )
         self.deemphasis_low_tau_dial_control.setValue(values.deemphasis_low_tau)
         self.deemphasis_high_tau_dial_control.setValue(values.deemphasis_high_tau)
         self.deemphasis_db_per_octave_dial_control.setValue(
             values.deemphasis_db_per_octave
+        )
+        self.deemphasis_bandwidth_dial_control.setValue(
+            values.deemphasis_bandwidth
         )
         self.spectral_nr_amount_dial_control.setValue(values.spectral_nr_amount)
         self.normalize_checkbox.setChecked(values.normalize)
@@ -851,10 +922,16 @@ class HifiUi(QMainWindow):
         values.expander_weighting_db_per_octave = (
             self.expander_weighting_db_per_octave_dial_control.value()
         )
+        values.expander_weighting_bandwidth = (
+            self.expander_weighting_bandwidth_dial_control.value()
+        )
         values.deemphasis_low_tau = self.deemphasis_low_tau_dial_control.value()
         values.deemphasis_high_tau = self.deemphasis_high_tau_dial_control.value()
         values.deemphasis_db_per_octave = (
             self.deemphasis_db_per_octave_dial_control.value()
+        )
+        values.deemphasis_bandwidth = (
+            self.deemphasis_bandwidth_dial_control.value()
         )
         values.afe_vco_deviation = self.afe_vco_deviation_spinbox.value()
         values.afe_left_carrier = self.afe_left_carrier_spinbox.value()
@@ -1117,6 +1194,8 @@ class FileOutputDialogUI(HifiUi):
 
 
 class DialControl(QWidget):
+    valueChanged = QtCore.pyqtSignal(float)
+
     def __init__(
         self,
         main_window,
@@ -1167,12 +1246,14 @@ class DialControl(QWidget):
     def on_dial_change(self, value):
         scaled_value = value / self.scale
         self.textbox.setText(f"{scaled_value:g}")
+        self.valueChanged.emit(self.value())
 
     def on_textbox_change(self):
         text = self.textbox.text()
         try:
             value = float(text)
             self.dial.setValue(int(value * self.scale))
+            self.valueChanged.emit(value)
         except ValueError:
             pass
 
@@ -1355,6 +1436,91 @@ class FileIODialogUI(HifiUi):
     def on_decode_finished(self, decoded_filename: str = "input stream"):
         decoded_filename = os.path.basename(self.file_input_textbox.text())
         super(FileIODialogUI, self).on_decode_finished(decoded_filename)
+
+class PlotWindow(QWidget):
+    def __init__(self, title, getValues):
+        super(QWidget, self).__init__()
+
+        self.setWindowTitle(title)
+
+        # Matplotlib figure
+        fig, self.ax = plt.subplots(figsize=(12, 8))
+        self.canvas = FigureCanvas(fig)
+
+        self.toolbar = NavigationToolbar(self.canvas, self)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.canvas)
+        layout.addWidget(self.toolbar)
+        self.setLayout(layout)
+        self.getValues = getValues
+
+    def plot_response(self, label, color, direction, t1, t2, db_per_octave, bandwidth, fs):
+        # Compute the frequency response
+        b, a = build_shelf_filter(direction, t1, t2, db_per_octave, bandwidth, fs)
+
+        w, h = signal.freqz(b, a)
+        freq = 0.5 * fs * w / np.pi      # Convert rad/sample → Hz
+        mag_db = 20 * np.log10(np.abs(h))
+    
+        # Convert taus to frequencies
+        t1_f = round(tau_as_freq(t1))
+        t2_f = round(tau_as_freq(t2))
+        center_f = round(np.sqrt(tau_as_freq(t1) * tau_as_freq(t2)))
+    
+        # Plot the full frequency response
+        self.ax.semilogx(freq, mag_db, label=label, color=color)
+    
+        # Helper: get magnitude at closest frequency index
+        def point_at(freq_target):
+            idx = np.argmin(np.abs(freq - freq_target))
+            return freq[idx], mag_db[idx]
+    
+        # Compute (x, y) for points
+        t1_x, t1_y = point_at(t1_f)
+        t2_x, t2_y = point_at(t2_f)
+        cf_x, cf_y = point_at(center_f)
+    
+        # Plot dot markers instead of axvlines
+        self.ax.plot(t1_x, t1_y, marker='|', color=color, markersize=15, 
+                 label=f"({t1_f} Hz)")
+        self.ax.plot(cf_x,  cf_y, marker='o', color=color, markersize=5,
+                 label=f"({center_f} Hz)")
+        self.ax.plot(t2_x, t2_y, marker='|', color=color, markersize=15,
+                 label=f"({t2_f} Hz)")
+
+    def update_plot(self):
+        self.ax.clear()
+        ui_values = self.getValues()
+
+        self.plot_response(
+            "Sideband",
+            "green",
+            "high",
+            ui_values.expander_weighting_shelf_low_tau,
+            ui_values.expander_weighting_shelf_high_tau,
+            ui_values.expander_weighting_db_per_octave,
+            ui_values.expander_weighting_bandwidth,
+            ui_values.audio_sample_rate
+        )
+        self.plot_response(
+            "Deemphasis",
+            "blue",
+            "low",
+            ui_values.deemphasis_low_tau,
+            ui_values.deemphasis_high_tau,
+            ui_values.deemphasis_db_per_octave,
+            ui_values.deemphasis_bandwidth,
+            ui_values.audio_sample_rate
+        )
+
+        self.ax.grid(True, which="both")
+        self.ax.set_xlabel("Frequency [Hz]")
+        self.ax.set_ylabel("Amplitude [dB]")
+        self.ax.set_xlim([1, ui_values.audio_sample_rate/2])
+        
+        self.ax.legend()
+        self.canvas.draw()
 
 
 if __name__ == "__main__":
