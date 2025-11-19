@@ -886,6 +886,8 @@ Both the luminance and chrominance channels are separate data files, essentially
 
 - [Reddit](https://www.reddit.com/r/vhsdecode/)
 
+- You can also find us on IRC at #domesday86 on [libera.chat](libera.chat)
+
 
 # Support us! 
 
