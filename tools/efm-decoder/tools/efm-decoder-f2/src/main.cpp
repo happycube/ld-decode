@@ -27,6 +27,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 #include <QThread>
+#include <QLoggingCategory>
 
 #include "logging.h"
 #include "efm_processor.h"
@@ -52,7 +53,6 @@ int main(int argc, char *argv[])
     QCommandLineParser parser;
     parser.setApplicationDescription(
             "efm-decoder-f2 - EFM T-values to F2 Section decoder\n"
-            "\n"
             "(c)2025 Simon Inns\n"
             "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
@@ -60,6 +60,12 @@ int main(int argc, char *argv[])
 
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
+
+    // Add option to allow processing of input data with no timecodes
+    QCommandLineOption noTimecodesOption(
+            "no-timecodes",
+            QCoreApplication::translate("main", "Process input EFM data with no timecodes (may increase error rates)"));
+    parser.addOption(noTimecodesOption);
 
     // Group of options for showing frame data
     QList<QCommandLineOption> displayFrameDataOptions = {
@@ -90,9 +96,9 @@ int main(int argc, char *argv[])
 
     // -- Positional arguments --
     parser.addPositionalArgument("input",
-                                 QCoreApplication::translate("main", "Specify input EFM file"));
+                                 QCoreApplication::translate("main", "Specify input EFM file (use '-' for stdin, optional if using stdin)"));
     parser.addPositionalArgument("output",
-                                 QCoreApplication::translate("main", "Specify output F2 section file"));
+                                 QCoreApplication::translate("main", "Specify output F2 section file (use '-' for stdout, optional if using stdout)"));
 
     // Process the command line options and arguments given by the user
     parser.process(app);
@@ -100,17 +106,17 @@ int main(int argc, char *argv[])
     // Standard logging options
     processStandardDebugOptions(parser);
 
-    // Check for frame data options
-    bool showF2 = parser.isSet("show-f2");
-    bool showF3 = parser.isSet("show-f3");
+    // Check for no timecode option
+    bool noTimecodes = parser.isSet(noTimecodesOption);
 
-    // Check for advanced debug options
+    // Check for advanced debug options and enable debug mode if any are set
     bool showTValuesDebug = parser.isSet("show-tvalues-debug");
     bool showChannelDebug = parser.isSet("show-channel-debug");
     bool showF3Debug = parser.isSet("show-f3-debug");
     bool showF2CorrectDebug = parser.isSet("show-f2-correct-debug");
     bool showAllDebug = parser.isSet("show-all-debug");
 
+    // If show all debug is set, enable all specific debug options
     if (showAllDebug) {
         showTValuesDebug = true;
         showChannelDebug = true;
@@ -118,22 +124,60 @@ int main(int argc, char *argv[])
         showF2CorrectDebug = true;
     }
 
+    // If any debug-specific switch is used, enable Qt debug mode automatically
+    // otherwise a specific --debug switch would be needed to see any qDebug output
+    if (showTValuesDebug || showChannelDebug || showF3Debug || showF2CorrectDebug || showAllDebug) {
+        setDebug(true);
+
+        // Enable Qt debug logging if debug mode is enabled (as Qt 5.2+ suppresses qDebug by default)
+        // Not sure how wide this effect is but without it Fedora 43 shows no qDebug output at all
+        QLoggingCategory::setFilterRules("*.debug=true");
+    }
+
+    // Check for frame data options
+    bool showF2 = parser.isSet("show-f2");
+    bool showF3 = parser.isSet("show-f3");
+
     // Get the filename arguments from the parser
     QString inputFilename;
     QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
 
-    if (positionalArguments.count() != 2) {
-        qWarning() << "You must specify the input EFM filename and the output F2 section filename";
+    // Handle various argument combinations
+    if (positionalArguments.count() == 0) {
+        // No arguments: stdin -> stdout
+        inputFilename = "-";
+        outputFilename = "-";
+    } else if (positionalArguments.count() == 1) {
+        // One argument: could be input or output, need to determine
+        QString arg = positionalArguments.at(0);
+        if (arg == "-") {
+            // Single "-" means stdin -> stdout
+            inputFilename = "-";
+            outputFilename = "-";
+        } else {
+            // Assume it's input file, output to stdout
+            inputFilename = arg;
+            outputFilename = "-";
+        }
+    } else if (positionalArguments.count() == 2) {
+        // Two arguments: input and output
+        inputFilename = positionalArguments.at(0);
+        outputFilename = positionalArguments.at(1);
+    } else {
+        qWarning() << "Too many arguments. Expected: [input] [output] (use '-' for stdin/stdout)";
         return 1;
     }
-    inputFilename = positionalArguments.at(0);
-    outputFilename = positionalArguments.at(1);
 
     // Perform the processing
-    qInfo() << "Beginning EFM decoding of" << inputFilename;
+    if (inputFilename == "-") {
+        qInfo() << "Beginning EFM decoding from stdin";
+    } else {
+        qInfo() << "Beginning EFM decoding of" << inputFilename;
+    }
     EfmProcessor efmProcessor;
 
+    efmProcessor.setNoTimecodes(noTimecodes);
     efmProcessor.setShowData(showF2, showF3);
     efmProcessor.setDebug(showTValuesDebug, showChannelDebug, showF3Debug, showF2CorrectDebug);
 

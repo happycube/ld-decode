@@ -27,7 +27,8 @@
 EfmProcessor::EfmProcessor() : 
     m_showAudio(false),
     m_outputWavMetadata(false),
-    m_noAudioConcealment(false)
+    m_noAudioConcealment(false),
+    m_noWavHeader(false)
 {}
 
 bool EfmProcessor::process(const QString &inputFilename, const QString &outputFilename)
@@ -42,7 +43,12 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
     }
 
     // Prepare the output writers
-    m_writerWav.open(outputFilename);
+    if (m_noWavHeader) {
+        m_writerRaw.open(outputFilename);
+    } else {
+        m_writerWav.open(outputFilename);
+    }
+    
     if (m_outputWavMetadata) {
         QString metadataFilename = outputFilename;
         if (metadataFilename.endsWith(".wav")) {
@@ -89,19 +95,37 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
 
     // Process the Data24 Section data
     QElapsedTimer audioPipelineTimer;
-    for (int index = 0; index < m_readerData24Section.size(); ++index) {
+    
+    // Get total size for progress reporting (will be -1 for stdin)
+    qint64 totalSections = m_readerData24Section.size();
+    bool canShowProgress = (totalSections > 0);  // Can only show progress for files, not stdin
+    qint64 lastStdinProgressSections = 0;  // Track last reported section count for stdin
+    
+    int index = 0;
+    
+    // Process sections until we reach end of data
+    while (currentSection.metadata.isValid()) {
         audioPipelineTimer.restart();
         m_data24ToAudio.pushSection(currentSection);
         m_audioPipelineStats.data24ToAudioTime += audioPipelineTimer.nsecsElapsed();
         processAudioPipeline();
 
-        // Every 500 sections show progress
-        if (index % 500 == 0) {
-            // Calculate the percentage complete
-            float percentageComplete = (index / static_cast<float>(m_readerData24Section.size())) * 100.0;
-            qInfo().nospace().noquote() << "Decoding Data24 Section " << index << " of " << m_readerData24Section.size() << " (" << QString::number(percentageComplete, 'f', 2) << "%)";
+        // Progress reporting
+        if (canShowProgress) {
+            // Every 500 sections show progress for files
+            if (index % 500 == 0) {
+                float percentageComplete = (index / static_cast<float>(totalSections)) * 100.0;
+                qInfo().nospace().noquote() << "Decoding Data24 Section " << index << " of " << totalSections << " (" << QString::number(percentageComplete, 'f', 2) << "%)";
+            }
+        } else {
+            // For stdin, show processing info periodically based on sections processed
+            if (index > 0 && index % 1000 == 0 && index > lastStdinProgressSections) {
+                qInfo() << "Processed" << index << "sections from stdin";
+                lastStdinProgressSections = index;
+            }
         }
-
+        
+        index++;
         currentSection = m_readerData24Section.read();
     }
 
@@ -131,6 +155,7 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
 
     // Close the output files
     if (m_writerWav.isOpen()) m_writerWav.close();
+    if (m_writerRaw.isOpen()) m_writerRaw.close();
     if (m_writerWavMetadata.isOpen()) m_writerWavMetadata.close();
 
     qInfo() << "Encoding complete";
@@ -145,7 +170,11 @@ void EfmProcessor::processAudioPipeline()
     if (m_noAudioConcealment) {
         while (m_data24ToAudio.isReady()) {
             AudioSection audioSection = m_data24ToAudio.popSection();
-            m_writerWav.write(audioSection);
+            if (m_noWavHeader) {
+                m_writerRaw.write(audioSection);
+            } else {
+                m_writerWav.write(audioSection);
+            }
             if (m_outputWavMetadata)
                 m_writerWavMetadata.write(audioSection);
         }
@@ -159,7 +188,11 @@ void EfmProcessor::processAudioPipeline()
 
         while (m_audioCorrection.isReady()) {
             AudioSection audioSection = m_audioCorrection.popSection();
-            m_writerWav.write(audioSection);
+            if (m_noWavHeader) {
+                m_writerRaw.write(audioSection);
+            } else {
+                m_writerWav.write(audioSection);
+            }
             if (m_outputWavMetadata)
                 m_writerWavMetadata.write(audioSection);
         }
@@ -184,11 +217,12 @@ void EfmProcessor::setShowData(bool showAudio)
 }
 
 // Set the output data type (true for WAV, false for raw)
-void EfmProcessor::setOutputType(bool outputWavMetadata, bool noAudioConcealment, bool zeroPad)
+void EfmProcessor::setOutputType(bool outputWavMetadata, bool noAudioConcealment, bool zeroPad, bool noWavHeader)
 {
     m_outputWavMetadata = outputWavMetadata;
     m_noAudioConcealment = noAudioConcealment;
     m_zeroPad = zeroPad;
+    m_noWavHeader = noWavHeader;
 }
 
 void EfmProcessor::setDebug(bool audio, bool audioCorrection)

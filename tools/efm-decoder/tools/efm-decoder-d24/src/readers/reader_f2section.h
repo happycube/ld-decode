@@ -41,11 +41,14 @@ public:
     F2Section read();
     void close();
     qint64 size();
+    bool isStdin() const;
+    bool atEnd() const;
 
 private:
     QFile m_file;
     QDataStream* m_dataStream;
     qint64 m_fileSizeInSections;
+    bool m_usingStdin;
 };
 
 #endif // READER_F2SECTION_H

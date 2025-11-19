@@ -26,7 +26,8 @@
 
 ReaderF2Section::ReaderF2Section() :
     m_dataStream(nullptr),
-    m_fileSizeInSections(0)
+    m_fileSizeInSections(0),
+    m_usingStdin(false)
 {}
 
 ReaderF2Section::~ReaderF2Section()
@@ -38,35 +39,55 @@ ReaderF2Section::~ReaderF2Section()
 
 bool ReaderF2Section::open(const QString &filename)
 {
-    m_file.setFileName(filename);
-    if (!m_file.open(QIODevice::ReadOnly)) {
-        qCritical() << "ReaderF2Section::open() - Could not open file" << filename << "for reading";
-        return false;
+    if (filename == "-") {
+        // Use stdin
+        m_usingStdin = true;
+        if (!m_file.open(stdin, QIODevice::ReadOnly)) {
+            qCritical() << "ReaderF2Section::open() - Could not open stdin for reading";
+            return false;
+        }
+        
+        // Create a data stream for reading
+        m_dataStream = new QDataStream(&m_file);
+        
+        // Cannot determine size for stdin
+        m_fileSizeInSections = -1;
+        
+        qDebug() << "ReaderF2Section::open() - Opened stdin for F2 Section data reading";
+        return true;
+    } else {
+        // Use regular file
+        m_usingStdin = false;
+        m_file.setFileName(filename);
+        if (!m_file.open(QIODevice::ReadOnly)) {
+            qCritical() << "ReaderF2Section::open() - Could not open file" << filename << "for reading";
+            return false;
+        }
+
+        // Create a data stream for reading
+        m_dataStream = new QDataStream(&m_file);
+
+        // Get total file size and current position
+        qint64 currentPos = m_file.pos();
+        qint64 totalSize = m_file.size();
+        
+        // Reset to start of file
+        m_file.seek(0);
+
+        // Get the size of one F2Section object in bytes
+        F2Section dummy;
+        *m_dataStream >> dummy;
+        qint64 sectionSize = m_file.pos();
+
+        // Calculate the number of F2Sections in the file
+        m_fileSizeInSections = totalSize / sectionSize;
+        
+        // Restore original position
+        m_file.seek(currentPos);
+
+        qDebug() << "ReaderF2Section::open() - Opened file" << filename << "for data reading containing" << size() << "F2 Section objects";
+        return true;
     }
-
-    // Create a data stream for reading
-    m_dataStream = new QDataStream(&m_file);
-
-    // Get total file size and current position
-    qint64 currentPos = m_file.pos();
-    qint64 totalSize = m_file.size();
-    
-    // Reset to start of file
-    m_file.seek(0);
-
-    // Get the size of one F2Section object in bytes
-    F2Section dummy;
-    *m_dataStream >> dummy;
-    qint64 sectionSize = m_file.pos();
-
-    // Calculate the number of F2Sections in the file
-    m_fileSizeInSections = totalSize / sectionSize;
-    
-    // Restore original position
-    m_file.seek(currentPos);
-
-    qDebug() << "ReaderF2Section::open() - Opened file" << filename << "for data reading containing" << size() << "F2 Section objects";
-    return true;
 }
 
 F2Section ReaderF2Section::read()
@@ -78,6 +99,15 @@ F2Section ReaderF2Section::read()
 
     F2Section f2Section;
     *m_dataStream >> f2Section;
+    
+    // Check for stream errors, especially important when reading from stdin
+    if (m_dataStream->status() != QDataStream::Ok) {
+        qDebug() << "ReaderF2Section::read() - Data stream error occurred while reading F2Section";
+        // Return an empty/invalid section to signal error
+        F2Section emptySection;
+        return emptySection;
+    }
+    
     return f2Section;
 }
 
@@ -91,11 +121,29 @@ void ReaderF2Section::close()
     delete m_dataStream;
     m_dataStream = nullptr;
 
+    if (m_usingStdin) {
+        qDebug() << "ReaderF2Section::close(): Closed stdin";
+    } else {
+        qDebug() << "ReaderF2Section::close(): Closed the data file" << m_file.fileName();
+    }
     m_file.close();
-    qDebug() << "ReaderF2Section::close(): Closed the data file" << m_file.fileName();
+    m_usingStdin = false;
 }
 
 qint64 ReaderF2Section::size()
 {
     return m_fileSizeInSections;
+}
+
+bool ReaderF2Section::isStdin() const
+{
+    return m_usingStdin;
+}
+
+bool ReaderF2Section::atEnd() const
+{
+    if (!m_file.isOpen()) {
+        return true;
+    }
+    return m_file.atEnd();
 }

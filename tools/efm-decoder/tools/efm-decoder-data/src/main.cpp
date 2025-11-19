@@ -27,6 +27,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 #include <QThread>
+#include <QLoggingCategory>
 
 #include "logging.h"
 #include "efm_processor.h"
@@ -90,9 +91,9 @@ int main(int argc, char *argv[])
 
     // -- Positional arguments --
     parser.addPositionalArgument("input",
-                                 QCoreApplication::translate("main", "Specify input Data24 Section file"));
+                                 QCoreApplication::translate("main", "Specify input Data24 Section file (use '-' for stdin, optional if using stdin)"));
     parser.addPositionalArgument("output",
-                                 QCoreApplication::translate("main", "Specify output data file"));
+                                 QCoreApplication::translate("main", "Specify output data file (use '-' for stdout, optional if using stdout)"));
 
     // Process the command line options and arguments given by the user
     parser.process(app);
@@ -118,20 +119,59 @@ int main(int argc, char *argv[])
         showSectorCorrectionDebug = true;
     }
 
+    // If any debug-specific switch is used, enable Qt debug mode automatically
+    // otherwise a specific --debug switch would be needed to see any qDebug output
+    if (showRawSectorDebug || showSectorDebug || showSectorCorrectionDebug || showAllDebug) {
+        setDebug(true);
+
+        // Enable Qt debug logging if debug mode is enabled (as Qt 5.2+ suppresses qDebug by default)
+        // Not sure how wide this effect is but without it Fedora 43 shows no qDebug output at all
+        QLoggingCategory::setFilterRules("*.debug=true");
+    }
+
     // Get the filename arguments from the parser
     QString inputFilename;
     QString outputFilename;
     QStringList positionalArguments = parser.positionalArguments();
 
-    if (positionalArguments.count() != 2) {
-        qWarning() << "You must specify the input Data24 Section filename and the output ECMA-130 data filename";
+    // Handle various argument combinations
+    if (positionalArguments.count() == 0) {
+        // No arguments: stdin -> stdout
+        inputFilename = "-";
+        outputFilename = "-";
+    } else if (positionalArguments.count() == 1) {
+        // One argument: could be input or output, need to determine
+        QString arg = positionalArguments.at(0);
+        if (arg == "-") {
+            // Single "-" means stdin -> stdout
+            inputFilename = "-";
+            outputFilename = "-";
+        } else {
+            // Assume it's input file, output to stdout
+            inputFilename = arg;
+            outputFilename = "-";
+        }
+    } else if (positionalArguments.count() == 2) {
+        // Two arguments: input and output
+        inputFilename = positionalArguments.at(0);
+        outputFilename = positionalArguments.at(1);
+    } else {
+        qWarning() << "Too many arguments. Expected: [input] [output] (use '-' for stdin/stdout)";
         return 1;
     }
-    inputFilename = positionalArguments.at(0);
-    outputFilename = positionalArguments.at(1);
+
+    // Check for incompatible options
+    if (outputDataMetadata && outputFilename == "-") {
+        qWarning() << "Error: --output-metadata cannot be used when outputting to stdout. Please specify a file for output.";
+        return 1;
+    }
 
     // Perform the processing
-    qInfo() << "Beginning Data24 to ECMA-130 Data decoding of" << inputFilename;
+    if (inputFilename == "-") {
+        qInfo() << "Beginning Data24 to ECMA-130 Data decoding from stdin";
+    } else {
+        qInfo() << "Beginning Data24 to ECMA-130 Data decoding of" << inputFilename;
+    }
     EfmProcessor efmProcessor;
 
     efmProcessor.setShowData(showRawSector);

@@ -26,7 +26,8 @@
 
 ReaderData24Section::ReaderData24Section() :
     m_dataStream(nullptr),
-    m_fileSizeInSections(0)
+    m_fileSizeInSections(0),
+    m_usingStdin(false)
 {}
 
 ReaderData24Section::~ReaderData24Section()
@@ -38,35 +39,54 @@ ReaderData24Section::~ReaderData24Section()
 
 bool ReaderData24Section::open(const QString &filename)
 {
-    m_file.setFileName(filename);
-    if (!m_file.open(QIODevice::ReadOnly)) {
-        qCritical() << "ReaderData24Section::open() - Could not open file" << filename << "for reading";
-        return false;
+    if (filename == "-") {
+        // Use stdin
+        m_usingStdin = true;
+        if (!m_file.open(stdin, QIODevice::ReadOnly)) {
+            qCritical() << "ReaderData24Section::open() - Could not open stdin for reading";
+            return false;
+        }
+        qDebug() << "ReaderData24Section::open() - Opened stdin for data reading";
+        
+        // Create a data stream for reading
+        m_dataStream = new QDataStream(&m_file);
+        
+        // Cannot determine size when using stdin
+        m_fileSizeInSections = -1;
+        return true;
+    } else {
+        // Use regular file
+        m_usingStdin = false;
+        m_file.setFileName(filename);
+        if (!m_file.open(QIODevice::ReadOnly)) {
+            qCritical() << "ReaderData24Section::open() - Could not open file" << filename << "for reading";
+            return false;
+        }
+
+        // Create a data stream for reading
+        m_dataStream = new QDataStream(&m_file);
+
+        // Get total file size and current position
+        qint64 currentPos = m_file.pos();
+        qint64 totalSize = m_file.size();
+        
+        // Reset to start of file
+        m_file.seek(0);
+
+        // Get the size of one Data24Section object in bytes
+        Data24Section dummy;
+        *m_dataStream >> dummy;
+        qint64 sectionSize = m_file.pos();
+
+        // Calculate the number of Data24Section in the file
+        m_fileSizeInSections = totalSize / sectionSize;
+        
+        // Restore original position
+        m_file.seek(currentPos);    
+
+        qDebug() << "ReaderData24Section::open() - Opened file" << filename << "for data reading containing" << size() << "Data24 Section objects";
+        return true;
     }
-
-    // Create a data stream for reading
-    m_dataStream = new QDataStream(&m_file);
-
-    // Get total file size and current position
-    qint64 currentPos = m_file.pos();
-    qint64 totalSize = m_file.size();
-    
-    // Reset to start of file
-    m_file.seek(0);
-
-    // Get the size of one Data24Section object in bytes
-    Data24Section dummy;
-    *m_dataStream >> dummy;
-    qint64 sectionSize = m_file.pos();
-
-    // Calculate the number of Data24Section in the file
-    m_fileSizeInSections = totalSize / sectionSize;
-    
-    // Restore original position
-    m_file.seek(currentPos);    
-
-    qDebug() << "ReaderData24Section::open() - Opened file" << filename << "for data reading containing" << size() << "F2 Section objects";
-    return true;
 }
 
 Data24Section ReaderData24Section::read()
@@ -78,6 +98,13 @@ Data24Section ReaderData24Section::read()
 
     Data24Section data24Section;
     *m_dataStream >> data24Section;
+    
+    // Check if the read operation was successful
+    if (m_dataStream->status() != QDataStream::Ok) {
+        // End of file or error - return invalid section
+        data24Section.metadata.setValid(false);
+    }
+    
     return data24Section;
 }
 
@@ -91,11 +118,21 @@ void ReaderData24Section::close()
     delete m_dataStream;
     m_dataStream = nullptr;
 
+    if (m_usingStdin) {
+        qDebug() << "ReaderData24Section::close(): Closed stdin";
+    } else {
+        qDebug() << "ReaderData24Section::close(): Closed the data file" << m_file.fileName();
+    }
     m_file.close();
-    qDebug() << "ReaderData24Section::close(): Closed the data file" << m_file.fileName();
+    m_usingStdin = false;
 }
 
 qint64 ReaderData24Section::size()
 {
     return m_fileSizeInSections;
+}
+
+bool ReaderData24Section::isStdin() const
+{
+    return m_usingStdin;
 }

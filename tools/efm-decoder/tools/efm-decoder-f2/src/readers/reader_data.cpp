@@ -24,25 +24,36 @@
 
 #include "reader_data.h"
 
-ReaderData::ReaderData() { }
+ReaderData::ReaderData() : m_stdinStream(nullptr), m_usingStdin(false) { }
 
 ReaderData::~ReaderData()
 {
-    if (m_file.isOpen()) {
-        m_file.close();
-    }
+    close();
 }
 
 bool ReaderData::open(const QString &filename)
 {
-    m_file.setFileName(filename);
-    if (!m_file.open(QIODevice::ReadOnly)) {
-        qCritical() << "ReaderData::open() - Could not open file" << filename << "for reading";
-        return false;
+    if (filename == "-") {
+        // Use stdin
+        m_usingStdin = true;
+        if (!m_file.open(stdin, QIODevice::ReadOnly)) {
+            qCritical() << "ReaderData::open() - Could not open stdin for reading";
+            return false;
+        }
+        qDebug() << "ReaderData::open() - Opened stdin for data reading";
+        return true;
+    } else {
+        // Use regular file
+        m_usingStdin = false;
+        m_file.setFileName(filename);
+        if (!m_file.open(QIODevice::ReadOnly)) {
+            qCritical() << "ReaderData::open() - Could not open file" << filename << "for reading";
+            return false;
+        }
+        qDebug() << "ReaderData::open() - Opened file" << filename << "for data reading with size"
+                 << m_file.size() << "bytes";
+        return true;
     }
-    qDebug() << "ReaderData::open() - Opened file" << filename << "for data reading with size"
-             << m_file.size() << "bytes";
-    return true;
 }
 
 QByteArray ReaderData::read(uint32_t chunkSize)
@@ -61,11 +72,30 @@ void ReaderData::close()
         return;
     }
 
+    if (m_usingStdin) {
+        qDebug() << "ReaderData::close(): Closed stdin";
+    } else {
+        qDebug() << "ReaderData::close(): Closed the data file" << m_file.fileName();
+    }
     m_file.close();
-    qDebug() << "ReaderData::close(): Closed the data file" << m_file.fileName();
+    
+    if (m_stdinStream) {
+        delete m_stdinStream;
+        m_stdinStream = nullptr;
+    }
+    m_usingStdin = false;
 }
 
 qint64 ReaderData::size() const
 {
+    if (m_usingStdin) {
+        // Cannot determine size of stdin
+        return -1;
+    }
     return m_file.size();
+}
+
+bool ReaderData::isStdin() const
+{
+    return m_usingStdin;
 }

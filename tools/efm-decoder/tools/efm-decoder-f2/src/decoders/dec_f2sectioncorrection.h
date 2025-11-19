@@ -37,8 +37,9 @@ public:
     void pushSection(const F2Section &data);
     F2Section popSection();
     bool isReady() const;
+    bool isValid() const;
     void flush();
-
+    void setNoTimecodes(bool noTimecodes);
     void showStatistics() const;
 
 private:
@@ -83,6 +84,9 @@ private:
     QVector<quint8> m_trackNumbers;
     QVector<SectionTime> m_trackStartTimes;
     QVector<SectionTime> m_trackEndTimes;
+
+    // Timecode handling
+    bool m_noTimecodes;
 };
 
 #endif // DEC_F2SECTIONCORRECTION_H

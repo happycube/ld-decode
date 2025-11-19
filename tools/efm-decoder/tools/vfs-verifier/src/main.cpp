@@ -27,6 +27,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 #include <QThread>
+#include <QLoggingCategory>
 
 #include "logging.h"
 #include "adfs_verifier.h"
@@ -39,6 +40,10 @@ int main(int argc, char *argv[])
     // Install the local debug message handler
     setDebug(true);
     qInstallMessageHandler(debugOutputHandler);
+
+    // Enable Qt debug logging if debug mode is enabled (as Qt 5.2+ suppresses qDebug by default)
+    // Not sure how wide this effect is but without it Fedora 43 shows no qDebug output at all
+    QLoggingCategory::setFilterRules("*.debug=true");
 
     QCoreApplication app(argc, argv);
 

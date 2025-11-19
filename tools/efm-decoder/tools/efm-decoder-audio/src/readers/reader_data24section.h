@@ -41,11 +41,13 @@ public:
     Data24Section read();
     void close();
     qint64 size();
+    bool isStdin() const;
 
 private:
     QFile m_file;
     QDataStream* m_dataStream;
     qint64 m_fileSizeInSections;
+    bool m_usingStdin;
 };
 
 #endif // READER_DATA24SECTION_H

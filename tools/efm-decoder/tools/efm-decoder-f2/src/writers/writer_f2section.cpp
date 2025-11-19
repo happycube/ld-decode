@@ -24,26 +24,36 @@
 
 #include "writer_f2section.h"
 
-WriterF2Section::WriterF2Section() { }
+WriterF2Section::WriterF2Section() : m_dataStream(nullptr), m_usingStdout(false) { }
 
 WriterF2Section::~WriterF2Section()
 {
-    if (m_file.isOpen()) {
-        m_file.close();
-    }
+    close();
 }
 
 bool WriterF2Section::open(const QString &filename)
 {
-    m_file.setFileName(filename);
-    if (!m_file.open(QIODevice::WriteOnly)) {
-        qCritical() << "WriterData::open() - Could not open file" << filename << "for writing";
-        return false;
+    if (filename == "-") {
+        // Use stdout
+        m_usingStdout = true;
+        if (!m_file.open(stdout, QIODevice::WriteOnly)) {
+            qCritical() << "WriterF2Section::open() - Could not open stdout for writing";
+            return false;
+        }
+        qDebug() << "WriterF2Section::open() - Opened stdout for data writing";
+    } else {
+        // Use regular file
+        m_usingStdout = false;
+        m_file.setFileName(filename);
+        if (!m_file.open(QIODevice::WriteOnly)) {
+            qCritical() << "WriterF2Section::open() - Could not open file" << filename << "for writing";
+            return false;
+        }
+        qDebug() << "WriterF2Section::open() - Opened file" << filename << "for data writing";
     }
 
     // Create a data stream for writing
     m_dataStream = new QDataStream(&m_file);
-    qDebug() << "WriterData::open() - Opened file" << filename << "for data writing";
     return true;
 }
 
@@ -64,18 +74,33 @@ void WriterF2Section::close()
     }
 
     // Close the data stream
-    delete m_dataStream;
-    m_dataStream = nullptr;
+    if (m_dataStream) {
+        delete m_dataStream;
+        m_dataStream = nullptr;
+    }
 
+    if (m_usingStdout) {
+        qDebug() << "WriterF2Section::close(): Closed stdout";
+    } else {
+        qDebug() << "WriterF2Section::close(): Closed the data file" << m_file.fileName();
+    }
     m_file.close();
-    qDebug() << "WriterF2Section::close(): Closed the data file" << m_file.fileName();
+    m_usingStdout = false;
 }
 
 qint64 WriterF2Section::size() const
 {
+    if (m_usingStdout) {
+        // Cannot determine size when writing to stdout
+        return -1;
+    }
     if (m_file.isOpen()) {
         return m_file.size();
     }
-
     return 0;
+}
+
+bool WriterF2Section::isStdout() const
+{
+    return m_usingStdout;
 }
