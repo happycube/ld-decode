@@ -961,7 +961,7 @@ def refine_linelocs_hsync(field, stdint.uint8_t[::1] linebad, double hsync_thres
     cdef bint disable_right_hsync = rf.options.disable_right_hsync
     cdef double zc_threshold = hsync_threshold #rf.iretohz(rf.SysParams["vsync_ire"] / 2.0)
     cdef double ire_30 = rf.iretohz(30)
-    cdef double ire_n_55 = rf.iretohz(-55)
+    cdef double ire_n_65 = rf.iretohz(-65)
     cdef double ire_110 = rf.iretohz(110)
 
     cdef bint right_cross_refined
@@ -1004,7 +1004,7 @@ def refine_linelocs_hsync(field, stdint.uint8_t[::1] linebad, double hsync_thres
                     demod_05,
                     ll1 + (normal_hsync_length) - one_usec,
                     zc_threshold,
-                    count=round_to_int(one_usec * 3),
+                    count=round_to_int(normal_hsync_length)*2,
                     edge=1,
                 )
             right_cross_refined = False
@@ -1022,7 +1022,7 @@ def refine_linelocs_hsync(field, stdint.uint8_t[::1] linebad, double hsync_thres
                 back_porch = demod_05[
                     round_to_int(zc + one_usec * 3.5) : round_to_int(zc + (one_usec * 8))
                 ]
-                if is_out_of_range(hsync_area, ire_n_55, ire_110): # or is_out_of_range(back_porch, ire_n_55, ire_110):
+                if is_out_of_range(hsync_area, ire_n_65, ire_110): # or is_out_of_range(back_porch, ire_n_65, ire_110):
                     # don't use the computed value here if it's bad
                     linebad[i] = True
                     linelocs_refined[i] = linelocs_original[i]
@@ -1092,7 +1092,7 @@ def refine_linelocs_hsync(field, stdint.uint8_t[::1] linebad, double hsync_thres
                     round_to_int(zc_fr - (one_usec * 0.75)) : round_to_int(zc_fr + (one_usec * 8))
                 ]
 
-                if not is_out_of_range(hsync_area, ire_n_55, ire_30):
+                if not is_out_of_range(hsync_area, ire_n_65, ire_30):
 
                     porch_level = c_median(
                         demod_05[round_to_int(zc_fr + normal_hsync_length + (one_usec * 1)) : round_to_int(zc_fr + normal_hsync_length + (one_usec * 2))]
