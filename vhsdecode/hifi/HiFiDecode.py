@@ -57,7 +57,8 @@ DEFAULT_EXPANDER_WEIGHTING_TAU_1 = 240e-6
 # high end of shelf curve
 DEFAULT_EXPANDER_WEIGHTING_TAU_2 = 24e-6
 # slope of the filter
-DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 6
+DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 3
+DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH = 2
 
 # Low shelf filter for deemphasis
 # low end of shelf curve
@@ -65,8 +66,8 @@ DEFAULT_DEEMPHASIS_TAU_1 = 240e-6
 # high end of shelf curve
 DEFAULT_DEEMPHASIS_TAU_2 = 56e-6
 # slope of the filter
-DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 6.6
-
+DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 8
+DEFAULT_DEEMPHASIS_BANDWIDTH = 3
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
@@ -799,6 +800,7 @@ class Deemphasis:
         deemphasis_low_tau: float = DEFAULT_DEEMPHASIS_TAU_1,
         deemphasis_high_tau: float = DEFAULT_DEEMPHASIS_TAU_2,
         deemphasis_db_per_octave: float = DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
+        deemphasis_bandwidth: float = DEFAULT_DEEMPHASIS_BANDWIDTH,
     ):
         self.audio_rate = audio_rate
 
@@ -806,13 +808,14 @@ class Deemphasis:
         self.deemphasis_T1 = deemphasis_low_tau
         self.deemphasis_T2 = deemphasis_high_tau
         self.deemphasis_db_per_octave = deemphasis_db_per_octave
+        self.deemphasis_bandwidth = deemphasis_bandwidth
 
         deemph_b, deemph_a = build_shelf_filter(
             "low",
             self.deemphasis_T1,
             self.deemphasis_T2,
             self.deemphasis_db_per_octave,
-            1.75,
+            self.deemphasis_bandwidth,
             self.audio_rate,
         )
 
@@ -855,6 +858,7 @@ class Expander:
         weighting_shelf_low_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_1,
         weighting_shelf_high_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_2,
         weighting_db_per_octave: float = DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+        weighting_bandwidth: float = DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
     ):
         self.audio_rate = audio_rate
 
@@ -885,13 +889,14 @@ class Expander:
         self.weighting_T1 = weighting_shelf_low_tau
         self.weighting_T2 = weighting_shelf_high_tau
         self.weighting_db_per_octave = weighting_db_per_octave
+        self.weighting_bandwidth = weighting_bandwidth
 
         env_iirb, env_iira = build_shelf_filter(
             "high",
             self.weighting_T1,
             self.weighting_T2,
             self.weighting_db_per_octave,
-            1.5,
+            self.weighting_bandwidth,
             self.audio_rate,
         )
 
@@ -918,7 +923,7 @@ class Expander:
         low_pass = self.WeightedLowpass.filtfilt(raw_data)
 
         # high pass weighted input to envelope detector
-        audio_env = self.WeightedHighpass.filtfilt(low_pass)
+        audio_env = self.WeightedHighpass.lfilt(low_pass)
 
         Expander.expand_to_ratio(audio_env, self.ratio)
 
@@ -929,6 +934,10 @@ class Expander:
         [
             (
                 numba.types.Array(numba.types.float64, 1, "A"),
+                numba.types.float32
+            ),
+            (
+                numba.types.Array(numba.types.float32, 1, "A"),
                 numba.types.float32
             )
         ],

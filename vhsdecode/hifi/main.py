@@ -54,9 +54,11 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_EXPANDER_WEIGHTING_TAU_1,
     DEFAULT_EXPANDER_WEIGHTING_TAU_2,
     DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
     DEFAULT_DEEMPHASIS_TAU_1,
     DEFAULT_DEEMPHASIS_TAU_2,
     DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
+    DEFAULT_DEEMPHASIS_BANDWIDTH,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
@@ -369,6 +371,13 @@ expander_options_group.add_argument(
     default=DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
     help=f"Sets the expander sidechain high-pass shelf filter cutoff rate (default is {DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE}).",
 )
+expander_options_group.add_argument(
+    "--expander_weighting_bandwidth",
+    dest="expander_weighting_bandwidth",
+    type=float,
+    default=DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
+    help=f"Sets the expander sidechain high-pass shelf filter bandwidth (default is {DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH}).",
+)
 
 deemphasis_options_group = parser.add_argument_group(
     "Deemphasis tuning options (advanced)"
@@ -400,6 +409,13 @@ deemphasis_options_group.add_argument(
     type=float,
     default=DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
     help=f"Sets the deemphasis low-pass shelf filter cutoff rate (default is {DEFAULT_DEEMPHASIS_DB_PER_OCTAVE}).",
+)
+deemphasis_options_group.add_argument(
+    "--deemphasis_bandwidth",
+    dest="deemphasis_bandwidth",
+    type=float,
+    default=DEFAULT_DEEMPHASIS_BANDWIDTH,
+    help=f"Sets the deemphasis low-pass shelf filter bandwidth (default is {DEFAULT_DEEMPHASIS_BANDWIDTH}).",
 )
 
 
@@ -967,9 +983,11 @@ class PostProcessor:
                 decode_options["expander_weighting_shelf_low_tau"],
                 decode_options["expander_weighting_shelf_high_tau"],
                 decode_options["expander_weighting_db_per_octave"],
+                decode_options["expander_weighting_bandwidth"],
                 decode_options["deemphasis_low_tau"],
                 decode_options["deemphasis_high_tau"],
                 decode_options["deemphasis_db_per_octave"],
+                decode_options["deemphasis_bandwidth"],
             ),
         )
         self.expander_worker_l.start()
@@ -993,9 +1011,11 @@ class PostProcessor:
                 decode_options["expander_weighting_shelf_low_tau"],
                 decode_options["expander_weighting_shelf_high_tau"],
                 decode_options["expander_weighting_db_per_octave"],
+                decode_options["expander_weighting_bandwidth"],
                 decode_options["deemphasis_low_tau"],
                 decode_options["deemphasis_high_tau"],
                 decode_options["deemphasis_db_per_octave"],
+                decode_options["deemphasis_bandwidth"],
             ),
         )
         self.expander_worker_r.start()
@@ -1084,9 +1104,11 @@ class PostProcessor:
         expander_weighting_shelf_low_tau,
         expander_weighting_shelf_high_tau,
         expander_weighting_db_per_octave,
+        expander_weighting_bandwidth,
         deemphasis_low_tau,
         deemphasis_high_tau,
         deemphasis_db_per_octave,
+        deemphasis_bandwidth
     ):
         setproctitle(current_process().name)
         expander = Expander(
@@ -1098,6 +1120,7 @@ class PostProcessor:
             expander_weighting_shelf_low_tau,
             expander_weighting_shelf_high_tau,
             expander_weighting_db_per_octave,
+            expander_weighting_bandwidth
         )
 
         deemphasis = Deemphasis(
@@ -1105,6 +1128,7 @@ class PostProcessor:
             deemphasis_low_tau,
             deemphasis_high_tau,
             deemphasis_db_per_octave,
+            deemphasis_bandwidth
         )
 
         while True:
@@ -1947,9 +1971,11 @@ def main() -> int:
         "expander_weighting_shelf_low_tau": args.expander_weighting_shelf_low_tau,
         "expander_weighting_shelf_high_tau": args.expander_weighting_shelf_high_tau,
         "expander_weighting_db_per_octave": args.expander_weighting_db_per_octave,
+        "expander_weighting_bandwidth": args.expander_weighting_bandwidth,
         "deemphasis_low_tau": args.deemphasis_low_tau,
         "deemphasis_high_tau": args.deemphasis_high_tau,
         "deemphasis_db_per_octave": args.deemphasis_db_per_octave,
+        "deemphasis_bandwidth": args.deemphasis_bandwidth,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,
