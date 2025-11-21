@@ -39,6 +39,8 @@ OscilloscopeDialog::OscilloscopeDialog(QWidget *parent) :
     lastScopeX = 0;
     lastScopeY = 0;
     scopeWidth = 0;
+    scopeHeight = 512;  // Initial default height
+    devicePixelRatio = 1.0;
 
     // Configure the GUI
     ui->xCoordSpinBox->setMinimum(0);
@@ -71,6 +73,13 @@ void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qi
     lastScopeX = xCoord;
     lastScopeY = yCoord;
 
+    // Calculate optimal scope height based on widget size and DPI
+    scopeHeight = getOptimalScopeHeight();
+    devicePixelRatio = ui->scopeLabel->devicePixelRatioF();
+
+    qDebug() << "OscilloscopeDialog::showTraceImage(): Widget height =" << ui->scopeLabel->height() 
+             << "Calculated scope height =" << scopeHeight << "DPI ratio =" << devicePixelRatio;
+
     // Get the raw field data for the selected line
     QImage traceImage = getFieldLineTraceImage(scanLineData, lastScopeX);
 
@@ -78,7 +87,11 @@ void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qi
     ui->scopeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     ui->scopeLabel->setAlignment(Qt::AlignCenter);
     ui->scopeLabel->setScaledContents(true);
-    ui->scopeLabel->setPixmap(QPixmap::fromImage(traceImage));
+    
+    // Set pixmap with proper high-DPI support
+    QPixmap pixmap = QPixmap::fromImage(traceImage);
+    pixmap.setDevicePixelRatio(devicePixelRatio);
+    ui->scopeLabel->setPixmap(pixmap);
 
     // Update the X coordinate spinbox
     ui->xCoordSpinBox->setMaximum(maximumX - 1);
@@ -110,14 +123,24 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     bool showC = ui->CcheckBox->isChecked();
     bool showDropouts = ui->dropoutsCheckBox->isChecked();
 
-    // These are fixed, but may be changed to options later
-    qint32 scopeHeight = 2048;
-    scopeWidth = scanLineData.fieldWidth;
+    // Use dynamic scope height - ensure it's been calculated
+    qint32 imageHeight = scopeHeight;
+    if (imageHeight <= 0) {
+        qWarning() << "OscilloscopeDialog::getFieldLineTraceImage(): scopeHeight not set, using default 512";
+        imageHeight = 512;
+    }
+    
+    // Clamp to reasonable bounds for image generation
+    if (imageHeight < 256) imageHeight = 256;
+    if (imageHeight > 4096) imageHeight = 4096;
 
-    qint32 scopeScale = 65536 / scopeHeight;
+    scopeWidth = scanLineData.fieldWidth;
+    qint32 scopeScale = 65536 / imageHeight;
+
+    qDebug() << "OscilloscopeDialog::getFieldLineTraceImage(): Using imageHeight =" << imageHeight << "scopeScale =" << scopeScale;
 
     // Define image with width, height and format
-    QImage scopeImage(scopeWidth, scopeHeight, QImage::Format_RGB888);
+    QImage scopeImage(scopeWidth, imageHeight, QImage::Format_RGB888);
     QPainter scopePainter;
 
     // Ensure we have valid data
@@ -138,11 +161,11 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     // Add the black and white levels
     // Note: For PAL this should be black at 64 and white at 211
 
-    // Scale to 512 pixel height
-    qint32 blackIre = scopeHeight - (scanLineData.blackIre / scopeScale);
-    qint32 whiteIre = scopeHeight - (scanLineData.whiteIre / scopeScale);
+    // Scale to dynamic pixel height
+    qint32 blackIre = imageHeight - (scanLineData.blackIre / scopeScale);
+    qint32 whiteIre = imageHeight - (scanLineData.whiteIre / scopeScale);
     qint32 midPointIre = scanLineData.blackIre + ((scanLineData.whiteIre - scanLineData.blackIre) / 2);
-    midPointIre = scopeHeight - (midPointIre / scopeScale);
+    midPointIre = imageHeight - (midPointIre / scopeScale);
 
     scopePainter.setPen(Qt::white);
     scopePainter.drawLine(0, blackIre, scanLineData.fieldWidth, blackIre);
@@ -156,11 +179,11 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
 
     // Draw the indicator lines
     scopePainter.setPen(Qt::blue);
-    scopePainter.drawLine(scanLineData.colourBurstStart, 0, scanLineData.colourBurstStart, scopeHeight);
-    scopePainter.drawLine(scanLineData.colourBurstEnd, 0, scanLineData.colourBurstEnd, scopeHeight);
+    scopePainter.drawLine(scanLineData.colourBurstStart, 0, scanLineData.colourBurstStart, imageHeight);
+    scopePainter.drawLine(scanLineData.colourBurstEnd, 0, scanLineData.colourBurstEnd, imageHeight);
     scopePainter.setPen(Qt::cyan);
-    scopePainter.drawLine(scanLineData.activeVideoStart, 0, scanLineData.activeVideoStart, scopeHeight);
-    scopePainter.drawLine(scanLineData.activeVideoEnd, 0, scanLineData.activeVideoEnd, scopeHeight);
+    scopePainter.drawLine(scanLineData.activeVideoStart, 0, scanLineData.activeVideoStart, imageHeight);
+    scopePainter.drawLine(scanLineData.activeVideoEnd, 0, scanLineData.activeVideoEnd, imageHeight);
 
     // Get the signal data
     const QVector<qint32> &signalDataYC = scanLineData.composite; // Composite signal
@@ -179,8 +202,8 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     qint32 lastSignalLevelYC = 0;
     for (qint32 xPosition = 0; xPosition < scanLineData.fieldWidth; xPosition++) {
         if (showYC) {
-            // Scale (to 0-512) and invert
-            qint32 signalLevelYC = scopeHeight - (signalDataYC[xPosition] / scopeScale);
+            // Scale (to dynamic height) and invert
+            qint32 signalLevelYC = imageHeight - (signalDataYC[xPosition] / scopeScale);
 
             if (xPosition != 0) {
                 // Non-active video area YC is yellow, active is white
@@ -204,8 +227,8 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
     qint32 lastSignalLevelC = 0;
     for (qint32 xPosition = scanLineData.activeVideoStart; xPosition < scanLineData.activeVideoEnd; xPosition++) {
         if (showC && scanLineData.isActiveLine) {
-            // Scale (to 0-512) and invert
-            qint32 signalLevelC = (scopeHeight - (signalDataC[xPosition] / scopeScale)) - (scopeHeight - midPointIre);
+            // Scale (to dynamic height) and invert
+            qint32 signalLevelC = (imageHeight - (signalDataC[xPosition] / scopeScale)) - (imageHeight - midPointIre);
 
             if (xPosition != scanLineData.activeVideoStart) {
                 // Draw a line from the last Y signal to the current one (signal green, out of range in yellow)
@@ -219,8 +242,8 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
         }
 
         if (showY && scanLineData.isActiveLine) {
-            // Scale (to 0-512) and invert
-            qint32 signalLevelY = scopeHeight - (signalDataY[xPosition] / scopeScale);
+            // Scale (to dynamic height) and invert
+            qint32 signalLevelY = imageHeight - (signalDataY[xPosition] / scopeScale);
 
             if (xPosition != scanLineData.activeVideoStart) {
                 // Draw a line from the last Y signal to the current one (signal white, out of range in red)
@@ -236,11 +259,34 @@ QImage OscilloscopeDialog::getFieldLineTraceImage(TbcSource::ScanLineData scanLi
 
     // Draw the picture dot position line
     scopePainter.setPen(QColor(0, 255, 0, 127));
-    scopePainter.drawLine(pictureDot, 0, pictureDot, scopeHeight);
+    scopePainter.drawLine(pictureDot, 0, pictureDot, imageHeight);
 
     // Return the QImage
     scopePainter.end();
     return scopeImage;
+}
+
+// Calculate optimal scope height based on widget size and DPI
+qint32 OscilloscopeDialog::getOptimalScopeHeight()
+{
+    // Get the widget's physical size
+    qint32 widgetHeight = ui->scopeLabel->height();
+    
+    qDebug() << "OscilloscopeDialog::getOptimalScopeHeight(): Widget height =" << widgetHeight;
+    
+    // If widget hasn't been sized yet, use a reasonable default
+    if (widgetHeight < 50) {
+        qDebug() << "OscilloscopeDialog::getOptimalScopeHeight(): Using default height 512 (widget too small)";
+        return 512;
+    }
+    
+    // Clamp to reasonable bounds (between 256 and 4096 pixels)
+    if (widgetHeight > 2048) {
+        return 4096;  // Maximum quality to avoid memory waste
+    } else {
+        // Scale height proportionally: each display pixel gets ~2 image pixels for quality
+        return qMax(512, widgetHeight * 2);
+    }
 }
 
 // GUI signal handlers ------------------------------------------------------------------------------------------------
@@ -328,17 +374,20 @@ void OscilloscopeDialog::mouseMoveEvent(QMouseEvent *event)
 // Handle a click on the scope with shift held down, to select a level
 void OscilloscopeDialog::mouseLevelSelect(qint32 oY)
 {
-    double unscaledYR = (65536.0 / static_cast<double>(ui->scopeLabel->height())) * static_cast<double>(oY);
+    // Convert widget pixel coordinate to image pixel coordinate, accounting for DPI
+    double scaleFactor = static_cast<double>(scopeHeight) / static_cast<double>(ui->scopeLabel->height());
+    double unscaledYR = scaleFactor * static_cast<double>(oY);
 
-    qint32 level = qBound(0, 65535 - static_cast<qint32>(unscaledYR), 65535);
+    qint32 level = qBound(0, 65535 - static_cast<qint32>(unscaledYR * (65536.0 / static_cast<double>(scopeHeight))), 65535);
     emit scopeLevelSelect(level);
 }
 
 // Handle a click on the scope without shift held down, to select a sample
 void OscilloscopeDialog::mousePictureDotSelect(qint32 oX)
 {
-    double unscaledXR = (static_cast<double>(scopeWidth) /
-                         static_cast<double>(ui->scopeLabel->width())) * static_cast<double>(oX);
+    // Convert widget pixel coordinate to image pixel coordinate, accounting for DPI
+    double scaleFactor = static_cast<double>(scopeWidth) / static_cast<double>(ui->scopeLabel->width());
+    double unscaledXR = scaleFactor * static_cast<double>(oX);
 
     qint32 unscaledX = static_cast<qint32>(unscaledXR);
     if (unscaledX > scopeWidth - 1) unscaledX = scopeWidth - 1;

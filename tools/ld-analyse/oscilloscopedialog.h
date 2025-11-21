@@ -73,10 +73,13 @@ private:
     qint32 scopeWidth;
     qint32 lastScopeX;
     qint32 lastScopeY;
+    qint32 scopeHeight;  // Dynamic height based on widget size
+    qreal devicePixelRatio;  // DPI scaling factor
 
     QImage getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot);
     void mouseLevelSelect(qint32 oY);
     void mousePictureDotSelect(qint32 oX);
+    qint32 getOptimalScopeHeight();  // Calculate optimal height based on widget size
 };
 
 #endif // OSCILLOSCOPEDIALOG_H
