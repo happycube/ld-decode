@@ -447,6 +447,12 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     in5 = (line.number - 2) <  firstLine ? blackLine : (chromaData + ((line.number - 3) * videoParameters.fieldWidth));
     in6 = (line.number + 3) >= lastLine  ? blackLine : (chromaData + ((line.number + 3) * videoParameters.fieldWidth));
 
+    // Clamp end position to max width so we don't go out of bounds.
+    const auto endPos = std::min(videoParameters.activeVideoEnd, MAX_WIDTH);
+    if (endPos < videoParameters.activeVideoEnd) {
+        qDebug() << "Warning: Tried to decode video outside max width!";
+    }
+
     double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];
     if (PREFILTERED_CHROMA && configuration.simplePAL) {
         // Use Simple PAL 1D filter.
@@ -486,7 +492,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         // Apply the filter to U, and copy the result to V
         uvFilter.apply(&m[startPos], &pu[startPos], endPos - startPos);
         uvFilter.apply(&n[startPos], &qu[startPos], endPos - startPos);
-        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+        for (qint32 i = videoParameters.activeVideoStart; i < endPos; i++) {
             pv[i] = pu[i];
             qv[i] = qu[i];
         }
@@ -513,7 +519,8 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         // Vertical taps 1 and 2 are swapped in the array to save one addition
         // in the filter loop, as U and V use the same sign for taps 0 and 2.
         double m[4][MAX_WIDTH], n[4][MAX_WIDTH];
-        for (qint32 i = videoParameters.activeVideoStart - FILTER_SIZE; i < videoParameters.activeVideoEnd + FILTER_SIZE + 1; i++) {
+        const auto endPos2 = std::min(videoParameters.activeVideoEnd + FILTER_SIZE + 1, MAX_WIDTH);
+        for (qint32 i = videoParameters.activeVideoStart - FILTER_SIZE; i < endPos2; i++) {
             m[0][i] =  in0[i] * sine[i];
             m[2][i] =  in1[i] * sine[i] - in2[i] * sine[i];
             m[1][i] = -in3[i] * sine[i] - in4[i] * sine[i];
@@ -529,7 +536,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
         // NB: Multiline averaging/filtering assumes perfect
         //     inter-line phase registration...
 
-        for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+        for (qint32 i = videoParameters.activeVideoStart; i < endPos; i++) {
             double PU = 0, QU = 0, PV = 0, QV = 0, PY = 0, QY = 0;
 
             // Carry out 2D filtering. P and Q are the two arbitrary SINE & COS
@@ -574,7 +581,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     double *outU = componentFrame.u(lineNumber);
     double *outV = componentFrame.v(lineNumber);
 
-    for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+    for (qint32 i = videoParameters.activeVideoStart; i < endPos; i++) {
         // Compute luma by...
         if (PREFILTERED_CHROMA) {
             // ... subtracting pre-filtered chroma from the composite input
