@@ -2446,8 +2446,8 @@ class Field:
         """Compute how much the line deviates fron expected,
            and scale input samples to output samples
         """
-        known_values = np.array(self.linelocs, dtype=np.float64)
-        known_indicies = np.array([i * self.inlinelen for i in range(len(known_values))], dtype=np.float64)
+        actual_linelocs = np.array(self.linelocs, dtype=np.float64)
+        expected_linelocs = np.array([i * self.inlinelen for i in range(len(actual_linelocs))], dtype=np.float64)
 
         outscale = self.inlinelen / self.outlinelen
         outsamples = self.outlinecount * self.outlinelen
@@ -2463,11 +2463,18 @@ class Field:
             k=3
             bc_type='natural'
 
-        spl = interpolate.make_interp_spline(known_indicies, known_values, k=k, bc_type=bc_type, check_finite=False)
+        # create a spline that interpolates the exact sample value based on expected vs. actual line locations
+        spl = interpolate.make_interp_spline(expected_linelocs, actual_linelocs, k=k, bc_type=bc_type, check_finite=False)
 
-        # compute the wow and scale to the output size
-        wow = spl(np.arange(outsamples + outline_offset) * outscale)
-        return wow
+        # scale up to compute where the output pixel would fall on the interpolated line loc
+        scaled_pixel_locs = np.arange(outsamples + outline_offset) * outscale
+
+        # interpolate the expected pixel location
+        interpolated_pixel_locs = spl(scaled_pixel_locs)
+        # amount of wow for each scaled pixel
+        wowfactors = spl(scaled_pixel_locs, 1)
+
+        return interpolated_pixel_locs, wowfactors
 
     #@profile
     def downscale(
@@ -2536,11 +2543,12 @@ class Field:
                 downscale_audio(*dsa_args)
 
         dsout = np.zeros((linesout * outwidth), dtype=np.float32)
-        wowfactor = self.computewow_scaled()
+        interpolated_pixel_locs, wowfactors = self.computewow_scaled()
         scale_field(
             self.data["video"][channel].astype(np.float32, copy=False),
             dsout,
-            wowfactor,
+            interpolated_pixel_locs,
+            wowfactors,
             self.lineoffset,
             outwidth,
         )

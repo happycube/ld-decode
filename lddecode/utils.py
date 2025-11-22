@@ -68,8 +68,10 @@ def scale(buf, begin, end, tgtlen, mult=1):
 
     return output
 
+
+# Scales and compensates for wow-induced playback-speed variations
 @njit(nogil=True, cache=True, fastmath=True)
-def scale_field(buf, dsout, wowfactors, lineoffset, outwidth):
+def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, lineoffset, outwidth, level_adjust_threshold = 15):
     # Constants preserved as float32
     point_5 = np.float32(0.5)
     two = np.float32(2)
@@ -80,9 +82,25 @@ def scale_field(buf, dsout, wowfactors, lineoffset, outwidth):
     lineoffset += 1
     lineoffset_out_samples = outwidth * lineoffset
 
+    # average out any unusual spikes in wow that happen on a per line basis
+    # this indicates an hsync tbc error vs. being normal wow from playback speed variations
+    # in this case for level adjusting we just want to fallback to the average wow to avoid a bright or dark line
+    median = np.median(wowfactors)
+    mad = np.median(np.abs(wowfactors - median)) # median absolute deviation
+    threshold = level_adjust_threshold * mad if mad > 0 else 0.001  # fallback for no variance
+
+    level_adjusts = np.where(
+        np.abs(wowfactors - median) > threshold,
+        median,
+        wowfactors
+    )
+
     for i in range(lineoffset_out_samples, len(dsout) + lineoffset_out_samples):
-        # get the index to map from the output data
-        coord = np.float32(wowfactors[i])
+        # compensates for the amplitude/frequency shift caused by FM demodulation under varying playback speed.
+        level_adjust = level_adjusts[i]
+
+        # reconstructs the waveform at the proper fractional sample position, undoing wow-induced timing variations
+        coord = np.float32(interpolated_pixel_locs[i])
         coord_int = int(coord)
 
         # get the data from the buffer that aligns to the wow factor index
@@ -96,7 +114,7 @@ def scale_field(buf, dsout, wowfactors, lineoffset, outwidth):
         a = p2 - p0
         b = two * p0 - five * p1 + four * p2 - p3
         c = three * (p1 - p2) + p3 - p0
-        dsout[i-lineoffset_out_samples] = p1 + point_5 * x * (a + x * (b + x * c))
+        dsout[i-lineoffset_out_samples] = level_adjust * (p1 + point_5 * x * (a + x * (b + x * c)))
 
 
 frequency_suffixes = [
