@@ -16,7 +16,6 @@ import numba
 from numba import njit
 
 import scipy.fft as npfft
-from scipy import interpolate
 
 # internal libraries
 
@@ -1507,6 +1506,7 @@ class Field:
         self.linebad   = self.compute_deriv_error(self.linelocs2, self.linebad)
 
         self.linelocs  = self.linelocs2
+        self.wowfactor = self.computewow(self.linelocs)
 
         self.valid     = True
 
@@ -2442,31 +2442,16 @@ class Field:
 
         return linelocs
 
-    def computewow_scaled(self, kind='linear'):
-        """Compute how much the line deviates fron expected,
-           and scale input samples to output samples
-        """
-        known_values = np.array(self.linelocs, dtype=np.float64)
-        known_indicies = np.array([i * self.inlinelen for i in range(len(known_values))], dtype=np.float64)
+    def computewow(self, lineinfo):
+        wow = np.ones(len(lineinfo))
 
-        outscale = self.inlinelen / self.outlinelen
-        outsamples = self.outlinecount * self.outlinelen
-        outline_offset = (self.lineoffset + 1) * self.outlinelen
+        for l in range(0, len(wow) - 1):
+            wow[l] = self.get_linelen(l) / self.inlinelen
 
-        if kind == 'linear':
-            k=1
-            bc_type=None
-        elif kind == 'quadratic':
-            k=2
-            bc_type=None
-        elif kind == 'cubic':
-            k=3
-            bc_type='natural'
+        # smooth out wow in the sync area
+        for l in range(self.lineoffset, self.lineoffset + 10):
+            wow[l] = np.median(wow[l : l + 4])
 
-        spl = interpolate.make_interp_spline(known_indicies, known_values, k=k, bc_type=bc_type, check_finite=False)
-
-        # compute the wow and scale to the output size
-        wow = spl(np.arange(outsamples + outline_offset) * outscale)
         return wow
 
     #@profile
@@ -2535,15 +2520,19 @@ class Field:
                 # return values will still be in audio_rv later
                 downscale_audio(*dsa_args)
 
-        dsout = np.zeros((linesout * outwidth), dtype=np.float32)
-        wowfactor = self.computewow_scaled()
-        scale_field(
-            self.data["video"][channel].astype(np.float32, copy=False),
+        dsout = np.zeros((linesout * outwidth), dtype=np.double)
+        tbc_error = scale_field(self.data["video"][channel],
             dsout,
-            wowfactor,
+            lineinfo,
             self.lineoffset,
+            linesout,
             outwidth,
-        )
+            self.wowfactor,
+            self.rf.DecoderParams["ire0"])
+
+        if tbc_error:
+            #logger.warning("WARNING: TBC failure at line %d", l)
+            self.sync_confidence = 1
 
         if self.rf.decode_digital_audio:
             self.efmout = self.data["efm"][
@@ -3069,6 +3058,7 @@ class FieldPAL(Field):
         self.linelocs3a = self.refine_linelocs_pilot(self.linelocs3)
         self.linelocs = self.fix_badlines(self.linelocs3a)
 
+        self.wowfactor = self.computewow(self.linelocs)
         self.burstmedian = self.calc_burstmedian()
 
         self.linecount = 312 if self.isFirstField else 313
@@ -3336,6 +3326,8 @@ class FieldNTSC(Field):
         # (This should be 33 but this is what makes it line up)
         shift33 = 83 * (np.pi / 180)
         self.linelocs = self.apply_offsets(self.linelocs4, -shift33 - 0)
+
+        self.wowfactor = self.computewow(self.linelocs)
 
 
 class LDdecode:
