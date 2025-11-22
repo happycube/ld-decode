@@ -18,6 +18,7 @@ import numba
 # standard numeric/scientific libraries
 import numpy as np
 import scipy.signal as sps
+from scipy import interpolate
 
 # Try to make sure ffmpeg is available
 try:
@@ -67,54 +68,53 @@ def scale(buf, begin, end, tgtlen, mult=1):
 
     return output
 
+
+# Scales and compensates for wow-induced playback-speed variations
 @njit(nogil=True, cache=True, fastmath=True)
-def scale_field(buf, dsout, lineinfo, lineoffset, linesout, outwidth, wowfactors, ire0):
-    # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
-    tbc_error = False
+def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, lineoffset, outwidth, level_adjust_threshold = 15):
+    # Constants preserved as float32
+    point_5 = np.float32(0.5)
+    two = np.float32(2)
+    three = np.float32(3)
+    four = np.float32(4)
+    five = np.float32(5)
+
     lineoffset += 1
+    lineoffset_out_samples = outwidth * lineoffset
 
-    for l in range(lineoffset, linesout + lineoffset):
-        dsout_start = round((l - lineoffset) * outwidth)
-        dsout_end = round((l + 1 - lineoffset) * outwidth)
-        wowfactor = 1 if wowfactors[l] is None else wowfactors[l]
-        line_start = lineinfo[l]
-        line_end = lineinfo[l+1]
+    # average out any unusual spikes in wow that happen on a per line basis
+    # this indicates an hsync tbc error vs. being normal wow from playback speed variations
+    # in this case for level adjusting we just want to fallback to the average wow to avoid a bright or dark line
+    median = np.median(wowfactors)
+    mad = np.median(np.abs(wowfactors - median)) # median absolute deviation
+    threshold = level_adjust_threshold * mad if mad > 0 else 0.001  # fallback for no variance
 
-        if line_end > line_start:
-            linelen = line_end - line_start
-            sfactor = linelen / outwidth
+    level_adjusts = np.where(
+        np.abs(wowfactors - median) > threshold,
+        median,
+        wowfactors
+    )
 
-            for i in range(outwidth):
-                # This runs a cubic scaler on a line.
-                # originally from https://www.paulinternet.nl/?page=bicubic
-                coord = (i * sfactor) + line_start
-                start = int(coord) - 1
-                p = buf[start : start + 4]
-                x = coord - int(coord)
-        
-                dsout[dsout_start + i] = wowfactor * (
-                    p[1]
-                    + 0.5
-                    * x
-                    * (
-                        p[2]
-                        - p[0]
-                        + x
-                        * (
-                            2.0 * p[0]
-                            - 5.0 * p[1]
-                            + 4.0 * p[2]
-                            - p[3]
-                            + x * (3.0 * (p[1] - p[2]) + p[3] - p[0])
-                        )
-                    )
-                )
-        else:
-            # Massive TBC error detected
-            tbc_error = True
-            dsout[dsout_start:dsout_end] = ire0
+    for i in range(lineoffset_out_samples, len(dsout) + lineoffset_out_samples):
+        # compensates for the amplitude/frequency shift caused by FM demodulation under varying playback speed.
+        level_adjust = level_adjusts[i]
 
-    return tbc_error
+        # reconstructs the waveform at the proper fractional sample position, undoing wow-induced timing variations
+        coord = np.float32(interpolated_pixel_locs[i])
+        coord_int = int(coord)
+
+        # get the data from the buffer that aligns to the wow factor index
+        p0 = buf[coord_int - 1]
+        p1 = buf[coord_int]
+        p2 = buf[coord_int + 1]
+        p3 = buf[coord_int + 2]
+        x = np.float32(coord - coord_int)
+
+        # perform cubic scaling
+        a = p2 - p0
+        b = two * p0 - five * p1 + four * p2 - p3
+        c = three * (p1 - p2) + p3 - p0
+        dsout[i-lineoffset_out_samples] = level_adjust * (p1 + point_5 * x * (a + x * (b + x * c)))
 
 
 frequency_suffixes = [
