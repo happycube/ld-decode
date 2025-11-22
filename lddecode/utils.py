@@ -18,7 +18,6 @@ import numba
 # standard numeric/scientific libraries
 import numpy as np
 import scipy.signal as sps
-from scipy import interpolate
 
 # Try to make sure ffmpeg is available
 try:
@@ -69,34 +68,53 @@ def scale(buf, begin, end, tgtlen, mult=1):
     return output
 
 @njit(nogil=True, cache=True, fastmath=True)
-def scale_field(buf, dsout, wowfactors, lineoffset, outwidth):
-    # Constants preserved as float32
-    point_5 = np.float32(0.5)
-    two = np.float32(2)
-    three = np.float32(3)
-    four = np.float32(4)
-    five = np.float32(5)
-
+def scale_field(buf, dsout, lineinfo, lineoffset, linesout, outwidth, wowfactors, ire0):
+    # self.lineoffset is an adjustment for 0-based lines *before* downscaling so add 1 here
+    tbc_error = False
     lineoffset += 1
-    lineoffset_out_samples = outwidth * lineoffset
 
-    for i in range(lineoffset_out_samples, len(dsout) + lineoffset_out_samples):
-        # get the index to map from the output data
-        coord = np.float32(wowfactors[i])
-        coord_int = int(coord)
+    for l in range(lineoffset, linesout + lineoffset):
+        dsout_start = round((l - lineoffset) * outwidth)
+        dsout_end = round((l + 1 - lineoffset) * outwidth)
+        wowfactor = 1 if wowfactors[l] is None else wowfactors[l]
+        line_start = lineinfo[l]
+        line_end = lineinfo[l+1]
 
-        # get the data from the buffer that aligns to the wow factor index
-        p0 = buf[coord_int - 1]
-        p1 = buf[coord_int]
-        p2 = buf[coord_int + 1]
-        p3 = buf[coord_int + 2]
-        x = np.float32(coord - coord_int)
+        if line_end > line_start:
+            linelen = line_end - line_start
+            sfactor = linelen / outwidth
 
-        # perform cubic scaling
-        a = p2 - p0
-        b = two * p0 - five * p1 + four * p2 - p3
-        c = three * (p1 - p2) + p3 - p0
-        dsout[i-lineoffset_out_samples] = p1 + point_5 * x * (a + x * (b + x * c))
+            for i in range(outwidth):
+                # This runs a cubic scaler on a line.
+                # originally from https://www.paulinternet.nl/?page=bicubic
+                coord = (i * sfactor) + line_start
+                start = int(coord) - 1
+                p = buf[start : start + 4]
+                x = coord - int(coord)
+        
+                dsout[dsout_start + i] = wowfactor * (
+                    p[1]
+                    + 0.5
+                    * x
+                    * (
+                        p[2]
+                        - p[0]
+                        + x
+                        * (
+                            2.0 * p[0]
+                            - 5.0 * p[1]
+                            + 4.0 * p[2]
+                            - p[3]
+                            + x * (3.0 * (p[1] - p[2]) + p[3] - p[0])
+                        )
+                    )
+                )
+        else:
+            # Massive TBC error detected
+            tbc_error = True
+            dsout[dsout_start:dsout_end] = ire0
+
+    return tbc_error
 
 
 frequency_suffixes = [
