@@ -47,7 +47,7 @@ public:
     explicit OscilloscopeDialog(QWidget *parent = nullptr);
     ~OscilloscopeDialog();
 
-    void showTraceImage(TbcSource::ScanLineData scanLineData, qint32 xCoord, qint32 yCoord, qint32 frameWidth, qint32 frameHeight);
+    void showTraceImage(TbcSource::ScanLineData scanLineData, qint32 xCoord, qint32 yCoord, qint32 frameWidth, qint32 frameHeight, bool bothSources);
 
 signals:
     void scopeCoordsChanged(qint32 xCoord, qint32 yCoord);
@@ -74,7 +74,7 @@ private:
     qint32 lastScopeX;
     qint32 lastScopeY;
 
-    QImage getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot);
+    QImage getFieldLineTraceImage(TbcSource::ScanLineData scanLineData, qint32 pictureDot, bool bothSources);
     void mouseLevelSelect(qint32 oY);
     void mousePictureDotSelect(qint32 oX);
 };

@@ -58,6 +58,7 @@ public:
         LineNumber lineNumber;
         QVector<qint32> composite;
         QVector<qint32> luma;
+        QVector<qint32> chroma;
         QVector<bool> isDropout;
         qint32 blackIre;
         qint32 whiteIre;
