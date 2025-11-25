@@ -964,6 +964,7 @@ QImage TbcSource::generateQImage()
         outputWriter.convert(componentFrames[0], outputFrame);
 
         const auto rgb48Ptr = reinterpret_cast<quint16 *>(outputFrame.data());
+        rgbData.reserve(inputHeight * inputWidth * 3);
 
         // Create RGB32 from RGB48
         for (auto i = 0; i < inputHeight * inputWidth * 3; i += 3) {
@@ -993,6 +994,7 @@ QImage TbcSource::generateQImage()
         // Get pointers to the 16-bit greyscale data
         const quint16 *firstFieldPointer = inputFields[inputStartIndex].data.data();
         const quint16 *secondFieldPointer = inputFields[inputStartIndex + 1].data.data();
+        rgbData.reserve(inputHeight * inputWidth * 3);
 
         // Create RGB32 from Gray16
         for (auto y = 0; y < fieldHeight * 2; y++) {

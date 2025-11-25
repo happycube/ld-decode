@@ -31,8 +31,6 @@
 #include <QDebug>
 #include <QMouseEvent>
 
-#include "sourcevideo.h"
-#include "lddecodemetadata.h"
 #include "tbcsource.h"
 
 namespace Ui {

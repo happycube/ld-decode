@@ -39,10 +39,8 @@
 #include "vbidecoder.h"
 #include "videoiddecoder.h"
 #include "vitcdecoder.h"
-#include "filters.h"
 
 // Chroma decoder includes
-#include "configuration.h"
 #include "palcolour.h"
 #include "comb.h"
 #include "monodecoder.h"
