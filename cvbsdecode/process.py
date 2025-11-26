@@ -443,7 +443,9 @@ class FieldNTSCCVBS(FieldCVBSShared, ldd.FieldNTSC):
 
     def refine_linelocs_hsync(self):
         if not self.rf.options.skip_hsync_refine:
-            # TODO: test and use modified variant.
+            return sync.refine_linelocs_hsync(
+                self, self.linebad, 0
+            )  # TODO fix last param once it's actually used.
             return super(FieldNTSCCVBS, self).refine_linelocs_hsync()
         else:
             return self.linelocs1.copy()
