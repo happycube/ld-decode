@@ -473,6 +473,15 @@ class FieldNTSCCVBS(FieldCVBSShared, ldd.FieldNTSC):
         """Disabled this for now as line starts can vary widely."""
         return baserr
 
+    def hz_to_output(self, input):
+        if (
+            self.rf.DecoderParams["clamp_agc"] is True
+            and self.outlinecount * self.outlinelen == input.size
+        ):
+            return hz_to_output_override(self, input)
+        else:
+            return super(FieldNTSCCVBS, self).hz_to_output(input)
+
 
 class FieldMPALCVBS(FieldNTSCCVBS):
     def __init__(self, *args, **kwargs):
