@@ -511,8 +511,8 @@ class FMdemod:
                 corrected = current_angle
 
             unwrapped = prev_unwrapped + (corrected - prev_angle)
-            diff = unwrapped - prev_unwrapped
-            out = -(diff / diff_divisor - carrier) / deviation
+            diff = prev_unwrapped - unwrapped
+            out = (carrier - diff / diff_divisor) / deviation
 
             out_demod[i - 1] = max(min_float, min(max_float, out))
 
