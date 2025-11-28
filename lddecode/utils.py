@@ -190,7 +190,7 @@ def make_loader(filename, inputfreq=None):
         return LoadFFmpeg(input_args=input_args, output_args=output_args)
 
     elif filename.endswith(".lds"):
-        return load_packed_data_4_40
+        return load_packed_data_4_40_buffered
     elif filename.endswith(".r30"):
         return load_packed_data_3_32
     elif filename.endswith(".rf"):
@@ -336,6 +336,90 @@ def unpack_data_4_40(indata, readlen, offset):
     return rv_signed
 
 
+class BufferedLDSLoader:
+    """Simple buffered loader for .lds files - single large buffer for better network performance."""
+    
+    def __init__(self, buffer_size_mb=64):
+        self.buffer_size_samples = buffer_size_mb * 1024 * 1024 // 2  # Convert MB to samples (2 bytes per sample)
+        self.infile = None
+        
+        # Single buffer
+        self.buffer = None
+        self.buffer_start = None
+        self.buffer_end = None
+        
+    def _read_chunk_from_file(self, start_sample, num_samples):
+        """Read a chunk of packed data from file."""
+        start_byte = (start_sample // 4) * 5
+        bytes_needed = int(np.ceil(num_samples * 5 / 4)) + 5
+        
+        self.infile.seek(start_byte)
+        data = self.infile.read(bytes_needed)
+        
+        if len(data) == 0:
+            return None, None, None
+        
+        # Calculate actual number of samples we can extract from remaining data in the file
+        # Each 5 bytes encodes 4 samples, need at least 5 bytes to have a sample
+        if len(data) < 5:
+            return None, None, None
+        
+        actual_samples = (len(data) - 5) * 4 // 5
+        actual_end = start_sample + actual_samples
+        
+        return data, start_sample, actual_end
+    
+    def __call__(self, infile, sample, readlen):
+        """Main loader interface."""
+        if self.infile is None:
+            self.infile = infile
+        
+        # Check if request fits in current buffer
+        if (self.buffer is not None and 
+            self.buffer_start is not None and
+            self.buffer_end is not None and
+            sample >= self.buffer_start and 
+            (sample + readlen) <= self.buffer_end):
+            
+            # Serve from buffer
+            offset_in_buffer = sample - self.buffer_start
+            
+            # Calculate byte offset in the packed data
+            start_byte = (offset_in_buffer // 4) * 5
+            sample_offset = offset_in_buffer % 4
+            bytes_needed = int(np.ceil(readlen * 5 / 4)) + 5
+            
+            data = self.buffer[start_byte:start_byte + bytes_needed]
+            if len(data) < bytes_needed:
+                return None
+            
+            indata = np.frombuffer(data, "uint8", len(data))
+            return unpack_data_4_40(indata, readlen, sample_offset)
+        
+        # Not in buffer - load new chunk from file
+        data, start, end = self._read_chunk_from_file(sample, self.buffer_size_samples)
+        
+        if data is None:
+            return None
+        
+        self.buffer = data
+        self.buffer_start = start
+        self.buffer_end = end
+        
+        # Now serve from the buffer we just loaded
+        offset_in_buffer = sample - self.buffer_start
+        start_byte = (offset_in_buffer // 4) * 5
+        sample_offset = offset_in_buffer % 4
+        bytes_needed = int(np.ceil(readlen * 5 / 4)) + 5
+        
+        data = self.buffer[start_byte:start_byte + bytes_needed]
+        if len(data) < bytes_needed:
+            return None
+        
+        indata = np.frombuffer(data, "uint8", len(data))
+        return unpack_data_4_40(indata, readlen, sample_offset)
+
+
 @profile
 def load_packed_data_4_40(infile, sample, readlen):
     """Load data from packed DdD format (4 x 10-bits packed in 5 bytes)"""
@@ -354,6 +438,14 @@ def load_packed_data_4_40(infile, sample, readlen):
         return None
 
     return unpack_data_4_40(indata, readlen, offset)
+
+
+# Create a global instance of the buffered loader
+_buffered_lds_loader = BufferedLDSLoader()
+
+def load_packed_data_4_40_buffered(infile, sample, readlen):
+    """Buffered version of load_packed_data_4_40 for better network performance."""
+    return _buffered_lds_loader(infile, sample, readlen)
 
 
 class LoadFFmpeg:
