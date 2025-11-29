@@ -48,7 +48,7 @@ import matplotlib.pyplot as plt
 # lower increases expander strength and decreases overall gain
 DEFAULT_EXPANDER_GAIN = 16
 DEFAULT_EXPANDER_RATIO = 2
-DEFAULT_EXPANDER_ATTACK_TAU = 3e-3
+DEFAULT_EXPANDER_ATTACK_TAU = 5e-3
 DEFAULT_EXPANDER_RELEASE_TAU = 70e-3
 
 # High shelf filter parameters for weighted sidechain input to expander
@@ -864,12 +864,11 @@ class Expander:
 
         # makeup gain to apply after expansion
         self.gain = 10 ** (gain / 20)
-        self.ratio = ratio
+        self.ratio = float(ratio)
+        self.atkCoeff = np.exp(-1.0 / (attack_tau * self.audio_rate))
+        self.relCoeff = np.exp(-1.0 / (release_tau * self.audio_rate))
 
-        self.weighting_attack_Lo_cut = tau_as_freq(attack_tau)
-        self.weighting_attack_Lo_transition = 1e3
-        self.weighting_release_Lo_cut = tau_as_freq(release_tau)
-        self.weighting_release_Lo_transition = 1e3
+        self.env = 0.0
 
         # this is set to avoid high frequency noise to interfere with the NR envelope tracking
         self.Lo_cut = 19e3
@@ -882,7 +881,7 @@ class Expander:
         )
 
         self.WeightedLowpass = FiltersClass(
-            np.array(locut_iirb), np.array(locut_iira), dtype=np.float64
+            np.array(locut_iirb), np.array(locut_iira), dtype=np.float32
         )
 
         # weighted filter for envelope detector
@@ -900,95 +899,72 @@ class Expander:
             self.audio_rate,
         )
 
-        self.WeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira), dtype=np.float64)
-
-        # expander attack
-        loenv_iirb, loenv_iira = firdes_lowpass(
-            self.audio_rate,
-            self.weighting_attack_Lo_cut,
-            self.weighting_attack_Lo_transition,
-        )
-        self.attack_Lowpass = FiltersClass(loenv_iirb, loenv_iira, dtype=np.float64)
-
-        # expander release
-        loenvr_iirb, loenvr_iira = firdes_lowpass(
-            self.audio_rate,
-            self.weighting_release_Lo_cut,
-            self.weighting_release_Lo_transition,
-        )
-        self.release_Lowpass = FiltersClass(loenvr_iirb, loenvr_iira, dtype=np.float64)
-
-    def rs_envelope(self, raw_data):
-        # prevent high frequency noise from interfering with envelope detector
-        low_pass = self.WeightedLowpass.filtfilt(raw_data)
-
-        # high pass weighted input to envelope detector
-        audio_env = self.WeightedHighpass.lfilt(low_pass)
-
-        Expander.expand_to_ratio(audio_env, self.ratio)
-
-        return audio_env
+        self.WeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira), dtype=np.float32)
 
     @staticmethod
     @njit(
-        [
-            (
-                numba.types.Array(numba.types.float64, 1, "A"),
-                numba.types.float32
-            ),
-            (
-                numba.types.Array(numba.types.float32, 1, "A"),
-                numba.types.float32
-            )
-        ],
+        [(
+            NumbaAudioArray,
+            NumbaAudioArray,
+            numba.types.float32,
+            numba.types.float32,
+            numba.types.float32,
+            numba.types.float32,
+            numba.types.float32
+        )],
         cache=True,
         fastmath=True,
-        nogil=True,
+        nogil=True
     )
-    def expand_to_ratio(in_out: np.array, ratio: float):
-        for i in range(len(in_out)):        
-            # Convert to dB (amplitude)
-            db = 20 * log10(max(1e-12, abs(in_out[i])))
-            
-            # Apply expansion
-            db_expanded = db / ratio
-            
-            # Convert back to linear
-            in_out[i] = 10 ** (db_expanded / 20)
-
-    @staticmethod
-    @njit(
-        [
-            (
-                numba.types.float32,
-                numba.types.Array(numba.types.float64, 1, "C"),
-                numba.types.Array(numba.types.float64, 1, "C"),
-                NumbaAudioArray, 
-            )
-        ],
-        cache=True,
-        fastmath=True,
-        nogil=True,
-    )
-    def apply_gate(
-        env_gain: float, 
-        attacks: np.array, 
-        releases: np.array, 
-        audio: np.array
+    def expand(
+        audio,
+        side_chain,
+        env,
+        atkCoeff,
+        relCoeff,
+        gain,
+        ratio,
     ):
-        for i in range(len(audio)):
-            attack = attacks[i]
-            release = releases[i]
-            envelope = release if attack < release else attack
+        audio_len = audio.shape[0]
+        ratio_m1 = ratio - 1
+        cutoff_threshold = 1e-12
 
-            audio[i] = audio[i] * envelope * env_gain
+        for i in range(audio_len):
+            sc_abs = abs(side_chain[i])
+
+            # Envelope follower
+            if sc_abs > env:
+                # attack
+                env = atkCoeff * env + (1.0 - atkCoeff) * sc_abs
+            else:
+                # release
+                env = relCoeff * env + (1.0 - relCoeff) * sc_abs
+
+            if env < cutoff_threshold:
+                env_gain = 0.0
+            else:
+                env_gain = env ** ratio_m1
+    
+            audio[i] *= env_gain * gain
+    
+        return env
 
     def process(self, pre_in, audio_out):
-        audio_env = self.rs_envelope(pre_in)
-        attack = self.attack_Lowpass.lfilt(audio_env)
-        release = self.release_Lowpass.lfilt(audio_env)
+        # prevent high frequency noise from interfering with envelope detector
+        pre_in_low_pass = self.WeightedLowpass.filtfilt(pre_in)
 
-        Expander.apply_gate(self.gain, attack, release, audio_out)
+        # high pass weighted input to envelope detector
+        side_chain = self.WeightedHighpass.lfilt(pre_in_low_pass)
+
+        self.env = Expander.expand(
+            audio_out,
+            side_chain,
+            self.env,
+            self.atkCoeff,
+            self.relCoeff,
+            self.gain,
+            self.ratio
+        )
 
 
 @dataclass
