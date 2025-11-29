@@ -3,7 +3,7 @@
     discmap.cpp
 
     ld-discmap - TBC and VBI alignment and correction
-    Copyright (C) 2019-2022 Simon Inns
+    Copyright (C) 2019-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -35,7 +35,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     // Open the TBC metadata file
     if (!ldDecodeMetaData->read(metadataFileInfo.filePath())) {
         // Open failed
-        qDebug() << "Cannot load JSON metadata from" << metadataFileInfo.filePath();
+        qDebug() << "Cannot load metadata from" << metadataFileInfo.filePath();
         m_tbcValid = false;
         return;
     }
@@ -48,13 +48,13 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     m_numberOfFrames = ldDecodeMetaData->getNumberOfFrames();
 
     if (m_numberOfFrames < 2) {
-        qDebug() << "JSON metadata contains only" << m_numberOfFrames << "frames - too small";
+        qDebug() << "Metadata contains only" << m_numberOfFrames << "frames - too small";
         m_tbcValid = false;
         return;
     }
 
     if (m_numberOfFrames > 108000) {
-        qDebug() << "JSON metadata contains" << m_numberOfFrames << "frames - too big";
+        qDebug() << "Metadata contains" << m_numberOfFrames << "frames - too big";
         m_tbcValid = false;
         return;
     }

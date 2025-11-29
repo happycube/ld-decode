@@ -4,6 +4,7 @@
 
     ld-chroma-encoder - Composite video encoder
     Copyright (C) 2019-2022 Adam Sampson
+    Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -252,7 +253,7 @@ int main(int argc, char *argv[])
     }
 
     // Write the metadata
-    if (!metaData.write(outputFileName + ".json")) {
+    if (!metaData.write(outputFileName + ".db")) {
         return -1;
     }
 

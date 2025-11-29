@@ -3,7 +3,7 @@
     stackingpool.cpp
 
     ld-disc-stacker - Disc stacking for ld-decode
-    Copyright (C) 2020-2022 Simon Inns
+    Copyright (C) 2020-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -39,7 +39,7 @@ class StackingPool : public QObject
 {
     Q_OBJECT
 public:
-    explicit StackingPool(QString _outputFilename, QString _outputJsonFilename,
+    explicit StackingPool(QString _outputFilename, QString _outputMetadataFilename,
                            qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
                            qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _integrityCheck, bool _verbose, QObject *parent = nullptr);
 
@@ -60,7 +60,7 @@ public:
 
 private:
     QString outputFilename;
-    QString outputJsonFilename;
+    QString outputMetadataFilename;
     qint32 maxThreads;
     qint32 mode;
     qint32 smartThreshold;

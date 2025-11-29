@@ -2,7 +2,7 @@
 
     closedcaptions.cpp
 
-    ld-export-metadata - Export JSON metadata into other formats
+    ld-export-metadata - Export ld-decode metadata into other formats
     Copyright (C) 2019-2020 Adam Sampson
     Copyright (C) 2021 Simon Inns
 

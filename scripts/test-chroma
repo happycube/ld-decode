@@ -67,7 +67,7 @@ def test_encode(args, source, sc_locked, png_suffix):
         suffix = '.rgb'
         PIX_FORMAT = RGB_FORMAT
 
-    clean(args, [suffix, png_suffix, '.tbc'])
+    clean(args, [suffix, png_suffix, '.tbc', '.tbc.db'])
 
     if args.system == 'ntsc':
         FILTER_ARGS = ['-filter:v', 'pad=758:486:-1:-1']

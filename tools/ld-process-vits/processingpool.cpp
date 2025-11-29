@@ -3,7 +3,7 @@
     processingpool.cpp
 
     ld-process-vits - Vertical Interval Test Signal processing
-    Copyright (C) 2020 Simon Inns
+    Copyright (C) 2020-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -24,9 +24,9 @@
 
 #include "processingpool.h"
 
-ProcessingPool::ProcessingPool(QString _inputFilename, QString _outputJsonFilename,
+ProcessingPool::ProcessingPool(QString _inputFilename, QString _outputMetadataFilename,
                          qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)
-    : inputFilename(_inputFilename), outputJsonFilename(_outputJsonFilename),
+    : inputFilename(_inputFilename), outputMetadataFilename(_outputMetadataFilename),
       maxThreads(_maxThreads), ldDecodeMetaData(_ldDecodeMetaData)
 {
 }
@@ -45,10 +45,10 @@ bool ProcessingPool::process()
         return false;
     }
 
-    // Check TBC and JSON field numbers match
+    // Check TBC and metadata field numbers match
     if (sourceVideo.getNumberOfAvailableFields() != ldDecodeMetaData.getNumberOfFields()) {
         qWarning() << "Warning: TBC file contains" << sourceVideo.getNumberOfAvailableFields() <<
-                   "fields but the JSON indicates" << ldDecodeMetaData.getNumberOfFields() <<
+                   "fields but the metadata indicates" << ldDecodeMetaData.getNumberOfFields() <<
                    "fields - some fields will be ignored";
     }
 
@@ -85,9 +85,9 @@ bool ProcessingPool::process()
     qInfo() << "VITS Processing complete -" << lastFieldNumber << "fields in" << totalSecs << "seconds (" <<
                lastFieldNumber / totalSecs << "FPS )";
 
-    // Write the JSON metadata file
-    qInfo() << "Writing JSON metadata file...";
-    ldDecodeMetaData.write(outputJsonFilename);
+    // Write the metadata file
+    qInfo() << "Writing metadata file...";
+    ldDecodeMetaData.write(outputMetadataFilename);
     qInfo() << "VITS processing complete";
 
     // Close the source video

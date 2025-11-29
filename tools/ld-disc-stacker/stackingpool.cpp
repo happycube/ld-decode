@@ -3,7 +3,7 @@
     stackingpool.cpp
 
     ld-disc-stacker - Disc stacking for ld-decode
-    Copyright (C) 2020-2022 Simon Inns
+    Copyright (C) 2020-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -25,10 +25,10 @@
 #include "stackingpool.h"
 #include "vbidecoder.h"
 
-StackingPool::StackingPool(QString _outputFilename, QString _outputJsonFilename,
+StackingPool::StackingPool(QString _outputFilename, QString _outputMetadataFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
                              qint32 _mode, qint32 _smartThreshold, bool _reverse, bool _noDiffDod, bool _passThrough, bool _integrityCheck, bool _verbose, QObject *parent)
-    : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
+    : QObject(parent), outputFilename(_outputFilename), outputMetadataFilename(_outputMetadataFilename),
       maxThreads(_maxThreads), mode(_mode), smartThreshold(_smartThreshold), reverse(_reverse), noDiffDod(_noDiffDod), passThrough(_passThrough), integrityCheck(_integrityCheck), verbose(_verbose),
       abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
@@ -54,7 +54,7 @@ bool StackingPool::process()
     }
 
     // If there is a leading field in the TBC which is out of field order, we need to copy it
-    // to ensure the JSON metadata files match up
+    // to ensure the metadata files match up
     qInfo() << "Verifying leading fields match...";
     qint32 firstFieldNumber = ldDecodeMetaData[0]->getFirstFieldNumber(1);
     qint32 secondFieldNumber = ldDecodeMetaData[0]->getSecondFieldNumber(1);
@@ -115,8 +115,8 @@ bool StackingPool::process()
     {
         qInfo() << "Stacking found " << skippedFrame << "corrupted frame";
     }
-    qInfo() << "Creating JSON metadata file for stacked TBC...";
-    correctMetaData().write(outputJsonFilename);
+    qInfo() << "Creating metadata file for stacked TBC...";
+    correctMetaData().write(outputMetadataFilename);
 
     // Close the target video
     targetVideo.close();

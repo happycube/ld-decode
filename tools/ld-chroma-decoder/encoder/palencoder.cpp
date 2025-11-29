@@ -127,7 +127,7 @@ PALEncoder::PALEncoder(QFile &_inputFile, QFile &_tbcFile, QFile &_chromaFile, L
 
 void PALEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData)
 {
-    fieldData.seqNo = fieldNo;
+    fieldData.seqNo = fieldNo + 1;  // Convert 0-indexed fieldNo to 1-indexed seqNo
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
     // Burst peak-to-peak amplitude is 3/7 of black-white range

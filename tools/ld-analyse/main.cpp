@@ -1,40 +1,41 @@
-/************************************************************************
-
-    main.cpp
-
-    ld-analyse - TBC output analysis
-    Copyright (C) 2018-2022 Simon Inns
-
-    This file is part of ld-decode-tools.
-
-    ld-analyse is free software: you can redistribute it and/or
-    modify it under the terms of the GNU General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-************************************************************************/
+/******************************************************************************
+ * main.cpp
+ * ld-analyse - TBC output analysis GUI
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2018-2025 Simon Inns
+ *
+ * This file is part of ld-decode-tools.
+ ******************************************************************************/
 
 #include "mainwindow.h"
 #include <QApplication>
 #include <QDebug>
 #include <QtGlobal>
 #include <QCommandLineParser>
+#include <QLoggingCategory>
 
 #include "logging.h"
 
+// Custom message handler that filters out Wayland warnings
+// Doesn't seem to be any way to disable these from Qt directly at present so
+// this code will filter them out here.
+void filteredDebugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    // Filter out Wayland requestActivate warnings
+    if (msg.contains("Wayland does not support QWindow::requestActivate()")) {
+        return; // Don't output this warning
+    }
+    
+    // Call the original handler for all other messages
+    debugOutputHandler(type, context, msg);
+}
+
 int main(int argc, char *argv[])
 {
-    // Install the local debug message handler
+    // Install the local debug message handler with Wayland filtering
     setDebug(true);
-    qInstallMessageHandler(debugOutputHandler);
+    qInstallMessageHandler(filteredDebugOutputHandler);
 
     QApplication a(argc, argv);
 

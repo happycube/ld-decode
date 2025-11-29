@@ -2,9 +2,9 @@
 
     main.cpp
 
-    ld-export-metadata - Export JSON metadata into other formats
+    ld-export-metadata - Export ld-decode metadata into other formats
     Copyright (C) 2020-2023 Adam Sampson
-    Copyright (C) 2021 Simon Inns
+    Copyright (C) 2021-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -55,10 +55,10 @@ int main(int argc, char *argv[])
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
-                "ld-export-metadata - Export JSON metadata into other formats\n"
+                "ld-export-metadata - Export ld-decode metadata into other formats\n"
                 "\n"
                 "(c)2020-2023 Adam Sampson\n"
-                "(c)2021 Simon Inns\n"
+                "(c)2021-2025 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -97,8 +97,8 @@ int main(int argc, char *argv[])
 
     // -- Positional arguments --
 
-    // Positional argument to specify input video file
-    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input JSON file"));
+    // Positional argument to specify input metadata file
+    parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input metadata file"));
 
     // Process the command line options and arguments given by the user
     parser.process(a);
@@ -112,14 +112,14 @@ int main(int argc, char *argv[])
     if (positionalArguments.count() == 1) {
         inputFileName = positionalArguments.at(0);
     } else {
-        qCritical("You must specify the input JSON file");
+        qCritical("You must specify the input metadata file");
         return 1;
     }
 
     // Load the source video metadata
     LdDecodeMetaData metaData;
     if (!metaData.read(inputFileName)) {
-        qInfo() << "Unable to read JSON file";
+        qInfo() << "Unable to read metadata file";
         return 1;
     }
 

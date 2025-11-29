@@ -1,27 +1,13 @@
-/************************************************************************
-
-    mainwindow.cpp
-
-    ld-analyse - TBC output analysis
-    Copyright (C) 2018-2022 Simon Inns
-    Copyright (C) 2022 Adam Sampson
-
-    This file is part of ld-decode-tools.
-
-    ld-analyse is free software: you can redistribute it and/or
-    modify it under the terms of the GNU General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-************************************************************************/
+/******************************************************************************
+ * mainwindow.cpp
+ * ld-analyse - TBC output analysis GUI
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2018-2025 Simon Inns
+ * SPDX-FileCopyrightText: 2022 Adam Sampson
+ *
+ * This file is part of ld-decode-tools.
+ ******************************************************************************/
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
@@ -171,8 +157,8 @@ void MainWindow::setGuiEnabled(bool enabled)
     ui->actionChroma_decoder_configuration->setEnabled(enabled);
     ui->actionReload_TBC->setEnabled(enabled);
 
-    // "Save JSON" should be disabled by default
-    ui->actionSave_JSON->setEnabled(false);
+    // "Save Metadata" should be disabled by default
+    ui->actionSave_Metadata->setEnabled(false);
 
     // Set zoom button states
     ui->zoomInPushButton->setEnabled(enabled);
@@ -283,8 +269,8 @@ void MainWindow::updateGuiLoaded()
     // Ensure the busy dialogue is hidden
     busyDialog->hide();
 
-    // Disable "Save JSON", now we've loaded the metadata into the GUI
-    ui->actionSave_JSON->setEnabled(false);
+    // Disable "Save Metadata", now we've loaded the metadata into the GUI
+    ui->actionSave_Metadata->setEnabled(false);
 
 	//resize the windows to fit the content in full screen
 	MainWindow::resize_on_aspect();
@@ -734,10 +720,10 @@ void MainWindow::on_actionReload_TBC_triggered()
     }
 }
 
-// Start saving the modified JSON metadata
-void MainWindow::on_actionSave_JSON_triggered()
+// Start saving the modified metadata
+void MainWindow::on_actionSave_Metadata_triggered()
 {
-    tbcSource.saveSourceJson();
+    tbcSource.saveSourceMetadata();
 
     // Saving continues in the background...
 }
@@ -1418,8 +1404,8 @@ void MainWindow::videoParametersChangedSignalHandler(const LdDecodeMetaData::Vid
     // Update the VideoParameters in the source
     tbcSource.setVideoParameters(videoParameters);
 
-    // Enable the "Save JSON" action, since the metadata has been modified
-    ui->actionSave_JSON->setEnabled(true);
+    // Enable the "Save Metadata" action, since the metadata has been modified
+    ui->actionSave_Metadata->setEnabled(true);
 
     // Update the aspect button's label
     updateAspectPushButton();
@@ -1526,8 +1512,8 @@ void MainWindow::on_finishedSaving(bool success)
     busyDialog->hide();
 
     if (success) {
-        // Disable the "Save JSON" action until the metadata is modified again
-        ui->actionSave_JSON->setEnabled(false);
+        // Disable the "Save Metadata" action until the metadata is modified again
+        ui->actionSave_Metadata->setEnabled(false);
     } else {
         // Show the error to the user
         QMessageBox messageBox;
