@@ -3,7 +3,7 @@
     correctorpool.cpp
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2025 Simon Inns
     Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
@@ -26,10 +26,10 @@
 #include "correctorpool.h"
 #include "vbidecoder.h"
 
-CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputJsonFilename,
+CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputMetadataFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
                              bool _reverse, bool _intraField, bool _overCorrect, QObject *parent)
-    : QObject(parent), outputFilename(_outputFilename), outputJsonFilename(_outputJsonFilename),
+    : QObject(parent), outputFilename(_outputFilename), outputMetadataFilename(_outputMetadataFilename),
       maxThreads(_maxThreads), reverse(_reverse), intraField(_intraField), overCorrect(_overCorrect),
       abort(false), ldDecodeMetaData(_ldDecodeMetaData), sourceVideos(_sourceVideos)
 {
@@ -55,7 +55,7 @@ bool CorrectorPool::process()
     }
 
     // If there is a leading field in the TBC which is out of field order, we need to copy it
-    // to ensure the JSON metadata files match up
+    // to ensure the metadata files match up
     qInfo() << "Verifying leading fields match...";
     qint32 firstFieldNumber = ldDecodeMetaData[0]->getFirstFieldNumber(1);
     qint32 secondFieldNumber = ldDecodeMetaData[0]->getSecondFieldNumber(1);
@@ -120,8 +120,8 @@ bool CorrectorPool::process()
     qInfo() << "Dropout correction complete -" << lastFrameNumber << "frames in" << totalSecs << "seconds (" <<
                lastFrameNumber / totalSecs << "FPS )";
 
-    qInfo() << "Creating JSON metadata file for drop-out corrected TBC...";
-    ldDecodeMetaData[0]->write(outputJsonFilename);
+    qInfo() << "Creating metadata file for drop-out corrected TBC...";
+    ldDecodeMetaData[0]->write(outputMetadataFilename);
 
     // Close the target video
     targetVideo.close();

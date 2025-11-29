@@ -3,7 +3,7 @@
     main.cpp
 
     ld-dropout-correct - Dropout correction for ld-decode
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2025 Simon Inns
     Copyright (C) 2019-2020 Adam Sampson
 
     This file is part of ld-decode-tools.
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-dropout-correct - Multi-source dropout correction for ld-decode\n"
                 "\n"
-                "(c)2018-2020 Simon Inns\n"
+                "(c)2018-2025 Simon Inns\n"
                 "(C)2019-2020 Adam Sampson\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
@@ -63,17 +63,17 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Option to specify a different JSON input file
-    QCommandLineOption inputJsonOption(QStringList() << "input-json",
-                                       QCoreApplication::translate("main", "Specify the input JSON file for the first input file (default input.json)"),
+    // Option to specify a different metadata input file
+    QCommandLineOption inputMetadataOption(QStringList() << "input-metadata",
+                                       QCoreApplication::translate("main", "Specify the input metadata file for the first input file (default input.db)"),
                                        QCoreApplication::translate("main", "filename"));
-    parser.addOption(inputJsonOption);
+    parser.addOption(inputMetadataOption);
 
-    // Option to specify a different JSON output file
-    QCommandLineOption outputJsonOption(QStringList() << "output-json",
-                                        QCoreApplication::translate("main", "Specify the output JSON file (default output.json)"),
+    // Option to specify a different metadata output file
+    QCommandLineOption outputMetadataOption(QStringList() << "output-metadata",
+                                        QCoreApplication::translate("main", "Specify the output metadata file (default output.db)"),
                                         QCoreApplication::translate("main", "filename"));
-    parser.addOption(outputJsonOption);
+    parser.addOption(outputMetadataOption);
 
     // Option to reverse the field order (-r)
     QCommandLineOption setReverseOption(QStringList() << "r" << "reverse",
@@ -157,17 +157,17 @@ int main(int argc, char *argv[])
     // Get the output TBC (should be the last argument of the command line
     outputFilename = positionalArguments.at(positionalArguments.count() - 1);
 
-    // If the first input filename is "-" (piped input) - verify a JSON file has been specified
-    if (inputFilenames[0] == "-" && !parser.isSet(inputJsonOption)) {
+    // If the first input filename is "-" (piped input) - verify a metadata file has been specified
+    if (inputFilenames[0] == "-" && !parser.isSet(inputMetadataOption)) {
         // Quit with error
-        qCritical("With piped input, you must also specify the input JSON file with --input-json");
+        qCritical("With piped input, you must also specify the input metadata file with --input-metadata");
         return -1;
     }
 
-    // If the output filename is "-" (piped output) - verify a JSON file has been specified
-    if (outputFilename == "-" && !parser.isSet(outputJsonOption)) {
+    // If the output filename is "-" (piped output) - verify a metadata file has been specified
+    if (outputFilename == "-" && !parser.isSet(outputMetadataOption)) {
         // Quit with error
-        qCritical("With piped output, you must also specify the output JSON file with --output-json");
+        qCritical("With piped output, you must also specify the output metadata file with --output-metadata");
         return -1;
     }
 
@@ -204,9 +204,9 @@ int main(int argc, char *argv[])
     }
 
     // Metadata filename for output TBC
-    QString outputJsonFilename = outputFilename + ".json";
-    if (parser.isSet(outputJsonOption)) {
-        outputJsonFilename = parser.value(outputJsonOption);
+    QString outputMetadataFilename = outputFilename + ".db";
+    if (parser.isSet(outputMetadataOption)) {
+        outputMetadataFilename = parser.value(outputMetadataOption);
     }
 
     // Prepare for DOC process ----------------------------------------------------------------------------------------
@@ -223,13 +223,13 @@ int main(int argc, char *argv[])
 
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
         // Work out the metadata filename
-        QString jsonFilename = inputFilenames[i] + ".json";
-        if (parser.isSet(inputJsonOption) && i == 0) jsonFilename = parser.value(inputJsonOption);
-        qInfo().nospace().noquote() << "Reading input #" << i << " JSON metadata from " << jsonFilename;
+        QString metadataFilename = inputFilenames[i] + ".db";
+        if (parser.isSet(inputMetadataOption) && i == 0) metadataFilename = parser.value(inputMetadataOption);
+        qInfo().nospace().noquote() << "Reading input #" << i << " metadata from " << metadataFilename;
 
         // Open it
-        if (!ldDecodeMetaData[i]->read(jsonFilename)) {
-            qCritical() << "Unable to open TBC JSON metadata file - cannot continue";
+        if (!ldDecodeMetaData[i]->read(metadataFilename)) {
+            qCritical() << "Unable to open TBC metadata file - cannot continue";
             return -1;
         }
     }
@@ -274,19 +274,19 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        // Verify TBC and JSON input fields match
+        // Verify TBC and metadata input fields match
         if (sourceVideos[i]->getNumberOfAvailableFields() != ldDecodeMetaData[i]->getNumberOfFields()) {
             qInfo() << "Warning: TBC file contains" << sourceVideos[i]->getNumberOfAvailableFields() <<
-                       "fields but the JSON indicates" << ldDecodeMetaData[i]->getNumberOfFields() <<
+                       "fields but the metadata indicates" << ldDecodeMetaData[i]->getNumberOfFields() <<
                        "fields - some fields will be ignored";
-            qInfo() << "Update your copy of ld-decode and try again, this shouldn't happen unless the JSON metadata has been corrupted";
+            qInfo() << "Update your copy of ld-decode and try again, this shouldn't happen unless the metadata has been corrupted";
         }
 
         // Additional checks when using multiple input sources
         if (totalNumberOfInputFiles > 1) {
             // Ensure source video has VBI data
             if (!ldDecodeMetaData[i]->getFieldVbi(1).inUse) {
-                qInfo() << "Source video" << i << "does not appear to have valid VBI data in the JSON metadata.";
+                qInfo() << "Source video" << i << "does not appear to have valid VBI data in the metadata.";
                 qInfo() << "Please try running ld-process-vbi on the source video and then try again";
                 return 1;
             }
@@ -308,7 +308,7 @@ int main(int argc, char *argv[])
     // Perform the DOC process ----------------------------------------------------------------------------------------
     qInfo() << "Initial source checks are ok and sources are loaded";
     qint32 result = 0;
-    CorrectorPool correctorPool(outputFilename, outputJsonFilename, maxThreads,
+    CorrectorPool correctorPool(outputFilename, outputMetadataFilename, maxThreads,
                                 ldDecodeMetaData, sourceVideos,
                                 reverse, intraField, overCorrect);
     if (!correctorPool.process()) result = 1;

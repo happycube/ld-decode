@@ -1,0 +1,9 @@
+# Ignore test directory
+test_json/
+
+# Ignore JSON files
+*.json
+
+# Ignore database files
+*.db
+*.sqlite

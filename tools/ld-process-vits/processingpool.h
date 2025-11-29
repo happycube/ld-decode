@@ -3,7 +3,7 @@
     processingpool.cpp
 
     ld-process-vits - Vertical Interval Test Signal processing
-    Copyright (C) 2020 Simon Inns
+    Copyright (C) 2020-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -37,7 +37,7 @@
 class ProcessingPool
 {
 public:
-    explicit ProcessingPool(QString _inputFilename, QString _outputJsonFilename,
+    explicit ProcessingPool(QString _inputFilename, QString _outputMetadataFilename,
                         qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData);
     bool process();
 
@@ -47,7 +47,7 @@ public:
 
 private:
     QString inputFilename;
-    QString outputJsonFilename;
+    QString outputMetadataFilename;
     qint32 maxThreads;
     QElapsedTimer totalTimer;
 
@@ -64,7 +64,7 @@ private:
 
     // Output stream information (all guarded by outputMutex while threads are running)
     QMutex outputMutex;
-    QFile targetJson;
+    QFile targetMetadata;
 };
 
 #endif // PROCESSINGPOOL_H

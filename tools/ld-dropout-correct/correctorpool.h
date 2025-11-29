@@ -65,7 +65,7 @@ public:
 
 private:
     QString outputFilename;
-    QString outputJsonFilename;
+    QString outputMetadataFilename;
     qint32 maxThreads;
     bool reverse;
     bool intraField;

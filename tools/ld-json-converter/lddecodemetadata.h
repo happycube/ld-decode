@@ -1,14 +1,30 @@
-/******************************************************************************
- * lddecodemetadata.h
- * ld-decode-tools TBC library
- *
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2018-2025 Simon Inns
- * SPDX-FileCopyrightText: 2022 Ryan Holtz
- * SPDX-FileCopyrightText: 2022-2023 Adam Sampson
- *
- * This file is part of ld-decode-tools.
- ******************************************************************************/
+/************************************************************************
+
+    lddecodemetadata.h
+
+    ld-decode-tools TBC library
+    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2022 Ryan Holtz
+    Copyright (C) 2022-2023 Adam Sampson
+
+    This file is part of ld-decode-tools.
+
+    ld-decode-tools is free software: you can redistribute it and/or
+    modify it under the terms of the GNU General Public License as
+    published by the Free Software Foundation, either version 3 of the
+    License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+************************************************************************/
+
+// Note: Copied from the TBC library so the JSON handling code is local to the application
 
 #ifndef LDDECODEMETADATA_H
 #define LDDECODEMETADATA_H
@@ -21,8 +37,8 @@
 
 #include "dropouts.h"
 
-class SqliteReader;
-class SqliteWriter;
+class JsonReader;
+class JsonWriter;
 
 // The video system (combination of a line standard and a colour standard)
 // Note: If you update this, be sure to update VIDEO_SYSTEM_DEFAULTS also
@@ -43,13 +59,13 @@ public:
         bool inUse = false;
         std::array<qint32, 3> vbiData { 0, 0, 0 };
 
-        void read(SqliteReader &reader, int captureId, int fieldId);
-        void write(SqliteWriter &writer, int captureId, int fieldId) const;
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // Video metadata definition
     struct VideoParameters {
-        // -- Members stored in the metadata --
+        // -- Members stored in the JSON metadata --
 
         qint32 numberOfSequentialFields = -1;
 
@@ -94,8 +110,8 @@ public:
         // Flags if our data has been initialized yet
         bool isValid = false;
 
-        void read(SqliteReader &reader, int captureId);
-        void write(SqliteWriter &writer, int captureId) const;
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // Specification for customising the range of active lines in VideoParameters.
@@ -115,8 +131,8 @@ public:
         double wSNR = 0.0;
         double bPSNR = 0.0;
 
-        void read(SqliteReader &reader, int captureId, int fieldId);
-        void write(SqliteWriter &writer, int captureId, int fieldId) const;
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // NTSC Specific metadata definition
@@ -130,8 +146,8 @@ public:
         qint32 videoIdData = 0;
         bool whiteFlag = false;
 
-        void read(SqliteReader &reader, int captureId, int fieldId, ClosedCaption &closedCaption);
-        void write(SqliteWriter &writer, int captureId, int fieldId) const;
+        void read(JsonReader &reader, ClosedCaption &closedCaption);
+        void write(JsonWriter &writer) const;
     };
 
     // VITC timecode definition
@@ -142,8 +158,8 @@ public:
         // vitcData[0]'s LSB is bit 2; vitcData[7]'s MSB is bit 79.
         std::array<qint32, 8> vitcData;
 
-        void read(SqliteReader &reader, int captureId, int fieldId);
-        void write(SqliteWriter &writer, int captureId, int fieldId) const;
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // Closed Caption definition
@@ -153,8 +169,8 @@ public:
         qint32 data0 = -1;
         qint32 data1 = -1;
 
-        void read(SqliteReader &reader, int captureId, int fieldId);
-        void write(SqliteWriter &writer, int captureId, int fieldId) const;
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // PCM sound metadata definition
@@ -167,8 +183,8 @@ public:
         // Flags if our data has been initialized yet
         bool isValid = false;
 
-        void read(SqliteReader &reader, int captureId);
-        void write(SqliteWriter &writer, int captureId) const;
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // Field metadata definition
@@ -193,8 +209,8 @@ public:
         qint32 decodeFaults = -1;
         qint32 efmTValues = -1;
 
-        void read(SqliteReader &reader, int captureId);
-        void write(SqliteWriter &writer, int captureId) const;
+        void read(JsonReader &reader);
+        void write(JsonWriter &writer) const;
     };
 
     // CLV timecode (used by frame number conversion methods)
@@ -214,8 +230,8 @@ public:
     void clear();
     bool read(QString fileName);
     bool write(QString fileName) const;
-    void readFields(SqliteReader &reader, int captureId);
-    void writeFields(SqliteWriter &writer, int captureId) const;
+    void readFields(JsonReader &reader);
+    void writeFields(JsonWriter &writer) const;
 
     const VideoParameters &getVideoParameters();
     void setVideoParameters(const VideoParameters &videoParameters);

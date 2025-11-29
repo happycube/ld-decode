@@ -1,27 +1,13 @@
-/************************************************************************
-
-    tbcsource.cpp
-
-    ld-analyse - TBC output analysis
-    Copyright (C) 2018-2022 Simon Inns
-    Copyright (C) 2021-2022 Adam Sampson
-
-    This file is part of ld-decode-tools.
-
-    ld-analyse is free software: you can redistribute it and/or
-    modify it under the terms of the GNU General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-************************************************************************/
+/******************************************************************************
+ * tbcsource.cpp
+ * ld-analyse - TBC output analysis GUI
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2018-2025 Simon Inns
+ * SPDX-FileCopyrightText: 2021-2022 Adam Sampson
+ *
+ * This file is part of ld-decode-tools.
+ ******************************************************************************/
 
 #include "tbcsource.h"
 
@@ -71,17 +57,17 @@ void TbcSource::unloadSource()
     resetState();
 }
 
-// Start saving the JSON file for the current source
-void TbcSource::saveSourceJson()
+// Start saving the metadata file for the current source
+void TbcSource::saveSourceMetadata()
 {
     // Start a background saving thread
-    qDebug() << "TbcSource::saveSourceJson(): Starting background save thread";
+    qDebug() << "TbcSource::saveSourceMetadata(): Starting background save thread";
     disconnect(&watcher, &QFutureWatcher<bool>::finished, nullptr, nullptr);
     connect(&watcher, &QFutureWatcher<bool>::finished, this, &TbcSource::finishBackgroundSave);
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    future = QtConcurrent::run(this, &TbcSource::startBackgroundSave, currentJsonFilename);
+    future = QtConcurrent::run(this, &TbcSource::startBackgroundSave, currentMetadataFilename);
 #else
-    future = QtConcurrent::run(&TbcSource::startBackgroundSave, this, currentJsonFilename);
+    future = QtConcurrent::run(&TbcSource::startBackgroundSave, this, currentMetadataFilename);
 #endif
     watcher.setFuture(future);
 }
@@ -1176,19 +1162,19 @@ void TbcSource::generateData()
 bool TbcSource::startBackgroundLoad(QString sourceFilename)
 {
     // Open the TBC metadata file
-    qDebug() << "TbcSource::startBackgroundLoad(): Processing JSON metadata...";
-    emit busy("Processing JSON metadata...");
+    qDebug() << "TbcSource::startBackgroundLoad(): Processing SQLite metadata...";
+    emit busy("Processing SQLite metadata...");
 
-    QString jsonFileName = sourceFilename + ".json";
+    QString metadataFileName = sourceFilename + ".db";
 
     const bool isChromaTbc = sourceFilename.endsWith("_chroma.tbc");
-    if (isChromaTbc && !QFileInfo::exists(jsonFileName)) {
-        // The user specified a _chroma.tbc file, and it doesn't have a .json.
+    if (isChromaTbc && !QFileInfo::exists(metadataFileName)) {
+        // The user specified a _chroma.tbc file, and it doesn't have a .db.
 
-        // The corresponding luma file should have a .json, so use that.
+        // The corresponding luma file should have a .db, so use that.
         QString baseFilename = sourceFilename;
         baseFilename.chop(11);
-        jsonFileName = baseFilename + ".tbc.json";
+        metadataFileName = baseFilename + ".tbc.db";
 
         // But does the luma file itself exist?
         QString lumaFilename = baseFilename + ".tbc";
@@ -1198,13 +1184,13 @@ bool TbcSource::startBackgroundLoad(QString sourceFilename)
         }
     }
 
-    if (!ldDecodeMetaData.read(jsonFileName)) {
+    if (!ldDecodeMetaData.read(metadataFileName)) {
         // Open failed
-        qWarning() << "Open TBC JSON metadata failed for filename" << sourceFilename;
+        qWarning() << "Open TBC SQLite metadata failed for filename" << metadataFileName;
         currentSourceFilename.clear();
 
         // Show an error to the user and give up
-        lastIOError = "Could not load source TBC JSON metadata file";
+        lastIOError = "Could not load source TBC SQLite metadata file";
         return false;
     }
 
@@ -1249,7 +1235,7 @@ bool TbcSource::startBackgroundLoad(QString sourceFilename)
     // Both the video and metadata files are now open
     sourceReady = true;
     currentSourceFilename = sourceFilename;
-    currentJsonFilename = jsonFileName;
+    currentMetadataFilename = metadataFileName;
 
     // Configure the chroma decoder
     if (videoParameters.system == PAL || videoParameters.system == PAL_M) {
@@ -1275,45 +1261,45 @@ void TbcSource::finishBackgroundLoad()
     emit finishedLoading(future.result());
 }
 
-bool TbcSource::startBackgroundSave(QString jsonFilename)
+bool TbcSource::startBackgroundSave(QString metadataFilename)
 {
-    qDebug() << "TbcSource::startBackgroundSave(): Saving to" << jsonFilename;
-    emit busy("Saving JSON metadata...");
+    qDebug() << "TbcSource::startBackgroundSave(): Saving to" << metadataFilename;
+    emit busy("Saving SQLite metadata...");
 
     // The general idea here is that decoding takes a long time -- so we want
-    // to be careful not to destroy the user's only copy of their JSON file if
+    // to be careful not to destroy the user's only copy of their metadata file if
     // something goes wrong!
 
     // Write the metadata out to a new temporary file
-    QString newJsonFilename = jsonFilename + ".new";
-    if (!ldDecodeMetaData.write(newJsonFilename)) {
+    QString newMetadataFilename = metadataFilename + ".new";
+    if (!ldDecodeMetaData.write(newMetadataFilename)) {
         // Writing failed
-        lastIOError = "Could not write to new JSON file";
+        lastIOError = "Could not write to new SQLite file";
         return false;
     }
 
     // If there isn't already a .bup backup file, rename the existing file to that name
     // (matching the behaviour of ld-process-vbi)
-    QString backupFilename = jsonFilename + ".bup";
+    QString backupFilename = metadataFilename + ".bup";
     if (!QFile::exists(backupFilename)) {
-        if (!QFile::rename(jsonFilename, jsonFilename + ".bup")) {
+        if (!QFile::rename(metadataFilename, metadataFilename + ".bup")) {
             // Renaming failed
-            lastIOError = "Could not rename existing JSON file to backup";
+            lastIOError = "Could not rename existing SQLite file to backup";
             return false;
         }
     } else {
         // There is a backup, so it's safe to remove the existing file
-        if (!QFile::remove(jsonFilename)) {
+        if (!QFile::remove(metadataFilename)) {
             // Deleting failed
-            lastIOError = "Could not remove existing JSON file";
+            lastIOError = "Could not remove existing SQLite file";
             return false;
         }
     }
 
     // Rename the new file to the target name
-    if (!QFile::rename(newJsonFilename, jsonFilename)) {
+    if (!QFile::rename(newMetadataFilename, metadataFilename)) {
         // Renaming failed
-        lastIOError = "Could not rename new JSON file to target name";
+        lastIOError = "Could not rename new SQLite file to target name";
         return false;
     }
 

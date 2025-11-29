@@ -1,26 +1,12 @@
-/************************************************************************
-
-    dropouts.h
-
-    ld-decode-tools TBC library
-    Copyright (C) 2018-2020 Simon Inns
-
-    This file is part of ld-decode-tools.
-
-    ld-decode-tools is free software: you can redistribute it and/or
-    modify it under the terms of the GNU General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-************************************************************************/
+/******************************************************************************
+ * dropouts.h
+ * ld-decode-tools TBC library
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2018-2025 Simon Inns
+ *
+ * This file is part of ld-decode-tools.
+ ******************************************************************************/
 
 #ifndef DROPOUTS_H
 #define DROPOUTS_H
@@ -29,8 +15,8 @@
 #include <QtGlobal>
 #include <QMetaType>
 
-class JsonReader;
-class JsonWriter;
+class SqliteReader;
+class SqliteWriter;
 
 class DropOuts
 {
@@ -70,16 +56,13 @@ public:
         return m_fieldLine[index];
     }
 
-    void read(JsonReader &reader);
-    void write(JsonWriter &writer) const;
+    void read(SqliteReader &reader, int captureId, int fieldId);
+    void write(SqliteWriter &writer, int captureId, int fieldId) const;
 
 private:
     QVector<qint32> m_startx;
     QVector<qint32> m_endx;
     QVector<qint32> m_fieldLine;
-
-    void readArray(JsonReader &reader, QVector<qint32> &array);
-    void writeArray(JsonWriter &writer, const QVector<qint32> &array) const;
 };
 
 #endif // DROPOUTS_H
