@@ -418,9 +418,8 @@ deemphasis_options_group.add_argument(
     help=f"Sets the deemphasis low-pass shelf filter bandwidth (default is {DEFAULT_DEEMPHASIS_BANDWIDTH}).",
 )
 
-
-def test_if_ld_ldf_reader_is_installed():
-    shell_command = ["ld-ldf-reader", "--help"]
+def test_ld_tools(ld_tool):
+    shell_command = [ld_tool, "--help"]
     try:
         p = subprocess.Popen(
             shell_command,
@@ -430,12 +429,11 @@ def test_if_ld_ldf_reader_is_installed():
             stderr=subprocess.PIPE,
             universal_newlines=False,
         )
-        print("Found ld-ldf-reader")
+        print(f"Found {ld_tool}")
         p.communicate()
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
-        print("WARN: ld-ldf-reader not installed (or not in PATH)")
-
+        print(f"WARN: {ld_tool} not installed (or not in PATH)")
 
 def test_if_flac_is_installed():
     shell_command = ["flac", "-version"]
@@ -520,9 +518,9 @@ class BufferedInputStream(io.RawIOBase):
         return self.tell()
 
 
-class LDFFileReader(BufferedInputStream):
-    def __init__(self, file_path):
-        shell_command = ["ld-ldf-reader", file_path]
+class LDToolFileReader(BufferedInputStream):
+    def __init__(self, ld_tool, file_path, input_argument=""):
+        shell_command = [ld_tool, input_argument, file_path]
         p = subprocess.Popen(
             shell_command,
             shell=False,
@@ -564,7 +562,8 @@ class FFMpegFileReader(BufferedInputStream):
         shell_command = [
             "ffmpeg",
             "-hide_banner",
-            "-loglevel error",
+            "-loglevel",
+            "error",
             "-ignore_unknown",
             "-i",
             file_path,
@@ -706,9 +705,9 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
         )
     elif "ldf" == extension:
         try:
-            if test_if_ld_ldf_reader_is_installed():
+            if test_ld_tools("ld-ldf-reader"):
                 return UnseekableSoundFile(
-                    LDFFileReader(pathR),
+                    LDToolFileReader("ld-ldf-reader", pathR),
                     "r",
                     channels=1,
                     samplerate=int(sample_rate),
@@ -752,6 +751,25 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
             pathR,
             "r",
         )
+    elif "lds" == extension:
+        try:
+            if test_ld_tools("ld-lds-converter"):
+                return UnseekableSoundFile(
+                    LDToolFileReader("ld-lds-converter", pathR, "-i"),
+                    "r",
+                    channels=1,
+                    samplerate=int(sample_rate),
+                    format="RAW",
+                    subtype="PCM_16",
+                    endian="LITTLE",
+                )
+            print(
+                "ERROR: Unable to decode LDS without ld-lds-converter. Please install the program and try again."
+            )
+        except Exception as e:
+            print(
+                "ERROR: Unexpected error opening ld-lds-converter", e
+            )
     elif "-" == path:
         try:
             return UnseekableSoundFile(

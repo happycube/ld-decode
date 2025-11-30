@@ -2,7 +2,6 @@ import os.path
 import sys
 import math
 
-from scipy import signal
 import numpy as np
 
 import matplotlib
@@ -76,9 +75,10 @@ from vhsdecode.hifi.HiFiDecode import (
     DEMOD_QUADRATURE,
     DEMOD_HILBERT,
     DEFAULT_DEMOD,
-    build_shelf_filter,
     tau_as_freq,
     HiFiDecode,
+    Deemphasis,
+    Expander
 )
 
 STOP_STATE = 0
@@ -1455,14 +1455,8 @@ class PlotWindow(QWidget):
         self.setLayout(layout)
         self.getValues = getValues
 
-    def plot_response(self, label, color, direction, t1, t2, db_per_octave, bandwidth, fs):
+    def plot_response(self, label, color, freq, mag_db, t1, t2):
         # Compute the frequency response
-        b, a = build_shelf_filter(direction, t1, t2, db_per_octave, bandwidth, fs)
-
-        w, h = signal.freqz(b, a)
-        freq = 0.5 * fs * w / np.pi      # Convert rad/sample → Hz
-        mag_db = 20 * np.log10(np.abs(h))
-    
         # Convert taus to frequencies
         t1_f = round(tau_as_freq(t1))
         t2_f = round(tau_as_freq(t2))
@@ -1493,31 +1487,46 @@ class PlotWindow(QWidget):
         self.ax.clear()
         ui_values = self.getValues()
 
-        self.plot_response(
-            "Sideband",
-            "green",
-            "high",
-            ui_values.expander_weighting_shelf_low_tau,
-            ui_values.expander_weighting_shelf_high_tau,
-            ui_values.expander_weighting_db_per_octave,
-            ui_values.expander_weighting_bandwidth,
-            ui_values.audio_sample_rate
-        )
-        self.plot_response(
-            "Deemphasis",
-            "blue",
-            "low",
+        deemphasis = Deemphasis(
+            ui_values.audio_sample_rate,
             ui_values.deemphasis_low_tau,
             ui_values.deemphasis_high_tau,
             ui_values.deemphasis_db_per_octave,
             ui_values.deemphasis_bandwidth,
-            ui_values.audio_sample_rate
+        )
+        deemphasis_freqs, deemphasis_mag_db = deemphasis.get_response()
+
+        expander = Expander(
+            ui_values.audio_sample_rate,
+            weighting_shelf_low_tau = ui_values.expander_weighting_shelf_low_tau,
+            weighting_shelf_high_tau = ui_values.expander_weighting_shelf_high_tau,
+            weighting_db_per_octave = ui_values.expander_weighting_db_per_octave,
+            weighting_bandwidth = ui_values.expander_weighting_bandwidth
+        )
+        expander_freqs, expander_mag_db = expander.get_response()
+
+        self.plot_response(
+            "Sideband",
+            "green",
+            expander_freqs,
+            expander_mag_db,
+            ui_values.expander_weighting_shelf_low_tau,
+            ui_values.expander_weighting_shelf_high_tau,
+        )
+        self.plot_response(
+            "Deemphasis",
+            "blue",
+            deemphasis_freqs,
+            deemphasis_mag_db,
+            ui_values.deemphasis_low_tau,
+            ui_values.deemphasis_high_tau,
         )
 
         self.ax.grid(True, which="both")
         self.ax.set_xlabel("Frequency [Hz]")
         self.ax.set_ylabel("Amplitude [dB]")
         self.ax.set_xlim([1, ui_values.audio_sample_rate/2])
+        self.ax.set_ylim([-20, 3])
         
         self.ax.legend()
         self.canvas.draw()
