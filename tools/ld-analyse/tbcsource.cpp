@@ -583,7 +583,10 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
         scanLineData.chroma.resize(videoParameters.fieldWidth);
         for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
             scanLineData.chroma[xPosition] = chromaFieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition] + offset;
+            // Combine Y and C to "simulate" composite for the scope.
+            scanLineData.composite[xPosition] += scanLineData.chroma[xPosition];
         }
+
     }
 
     return scanLineData;
