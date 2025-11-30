@@ -29,6 +29,7 @@ from scipy.signal import (
     istft,
     fftconvolve,
     find_peaks,
+    freqz
 )
 from scipy.interpolate import interp1d
 from soxr import ResampleStream, resample
@@ -46,7 +47,7 @@ import matplotlib.pyplot as plt
 
 
 # lower increases expander strength and decreases overall gain
-DEFAULT_EXPANDER_GAIN = 16
+DEFAULT_EXPANDER_GAIN = 20
 DEFAULT_EXPANDER_RATIO = 2
 DEFAULT_EXPANDER_ATTACK_TAU = 5e-3
 DEFAULT_EXPANDER_RELEASE_TAU = 70e-3
@@ -62,12 +63,24 @@ DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH = 2
 
 # Low shelf filter for deemphasis
 # low end of shelf curve
-DEFAULT_DEEMPHASIS_TAU_1 = 240e-6
+# T1 standard 240e-6
+DEFAULT_DEEMPHASIS_TAU_1 = 185e-6
 # high end of shelf curve
-DEFAULT_DEEMPHASIS_TAU_2 = 56e-6
+# T2 standard 56e-6
+DEFAULT_DEEMPHASIS_TAU_2 = 22e-6
 # slope of the filter
-DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 8
-DEFAULT_DEEMPHASIS_BANDWIDTH = 3
+DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 6
+DEFAULT_DEEMPHASIS_BANDWIDTH = 2.76
+
+# 240e-6
+# 18e-6
+# 5
+# 2.8
+
+# 120e-6
+# 37e-05
+# 11
+# 2.8
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
@@ -810,7 +823,7 @@ class Deemphasis:
         self.deemphasis_db_per_octave = deemphasis_db_per_octave
         self.deemphasis_bandwidth = deemphasis_bandwidth
 
-        deemph_b, deemph_a = build_shelf_filter(
+        self.deemph_b, self.deemph_a = build_shelf_filter(
             "low",
             self.deemphasis_T1,
             self.deemphasis_T2,
@@ -819,14 +832,22 @@ class Deemphasis:
             self.audio_rate,
         )
 
-        self.DeemphasisLowpass = FiltersClass(np.array(deemph_b), np.array(deemph_a))
+        self.DeemphasisLowpass = FiltersClass(np.array(self.deemph_b), np.array(self.deemph_a))
 
+    def get_response(self):
+        # compute frequency response
+        w, h_total = freqz(self.deemph_b, self.deemph_a, worN=4096, fs=self.audio_rate)
+    
+        magnitude_db = 20 * np.log10(np.abs(h_total))
+
+        return w, magnitude_db
+    
     @staticmethod
     @njit(
         [
             (
-                NumbaAudioArray, 
-                NumbaAudioArray, 
+                NumbaAudioArray,
+                NumbaAudioArray,
             )
         ],
         cache=True,
@@ -874,14 +895,14 @@ class Expander:
         self.Lo_cut = 19e3
         self.Lo_transition = 10e3
 
-        locut_iirb, locut_iira = firdes_lowpass(
+        self.locut_iirb, self.locut_iira = firdes_lowpass(
             self.audio_rate,
             self.Lo_cut,
             self.Lo_transition,
         )
 
         self.WeightedLowpass = FiltersClass(
-            np.array(locut_iirb), np.array(locut_iira), dtype=np.float32
+            np.array(self.locut_iirb), np.array(self.locut_iira), dtype=np.float32
         )
 
         # weighted filter for envelope detector
@@ -890,7 +911,7 @@ class Expander:
         self.weighting_db_per_octave = weighting_db_per_octave
         self.weighting_bandwidth = weighting_bandwidth
 
-        env_iirb, env_iira = build_shelf_filter(
+        self.env_iirb, self.env_iira = build_shelf_filter(
             "high",
             self.weighting_T1,
             self.weighting_T2,
@@ -899,7 +920,18 @@ class Expander:
             self.audio_rate,
         )
 
-        self.WeightedHighpass = FiltersClass(np.array(env_iirb), np.array(env_iira), dtype=np.float32)
+        self.WeightedHighpass = FiltersClass(np.array(self.env_iirb), np.array(self.env_iira), dtype=np.float32)
+
+    def get_response(self):
+        # compute frequency response
+        w, h_low = freqz(self.locut_iirb, self.locut_iira, worN=4096, fs=self.audio_rate)
+        _, h_high = freqz(self.env_iirb, self.env_iira, worN=4096, fs=self.audio_rate)
+    
+        h_total = h_low * h_high
+    
+        magnitude_db = 20 * np.log10(np.abs(h_total))
+
+        return w, magnitude_db
 
     @staticmethod
     @njit(
