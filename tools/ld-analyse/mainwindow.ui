@@ -802,7 +802,7 @@
   </action>
   <action name="toggleAutoResize">
    <property name="text">
-	<string>Toggle Auto Resize</string>
+	<string>Toggle auto-resize on zoom</string>
    </property>
    <property name="checkable">
 	<bool>true</bool>

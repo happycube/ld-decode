@@ -1410,6 +1410,7 @@ void MainWindow::on_zoomInPushButton_clicked()
     }
 
     updateImageViewer();
+    resize_on_aspect();
 }
 
 // Zoom out
@@ -1421,6 +1422,7 @@ void MainWindow::on_zoomOutPushButton_clicked()
     }
 
     updateImageViewer();
+    resize_on_aspect();
 }
 
 // Original size 1:1 zoom
@@ -1428,6 +1430,7 @@ void MainWindow::on_originalSizePushButton_clicked()
 {
     scaleFactor = 1.0;
     updateImageViewer();
+    resize_on_aspect();
 }
 
 // Field stretch mode
