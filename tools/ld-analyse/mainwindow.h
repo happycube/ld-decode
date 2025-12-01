@@ -19,6 +19,7 @@
 #include <QMessageBox>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QTimer>
 
 #include "oscilloscopedialog.h"
 #include "vectorscopedialog.h"
@@ -79,6 +80,8 @@ private slots:
     void on_startPushButton_clicked();
     void on_posNumberSpinBox_editingFinished();
     void on_posHorizontalSlider_valueChanged(int value);
+    void on_posHorizontalSlider_sliderPressed();
+    void on_posHorizontalSlider_sliderReleased();
     void on_videoPushButton_clicked();
     void on_aspectPushButton_clicked();
     void on_dropoutsPushButton_clicked();
@@ -96,6 +99,8 @@ private slots:
     // Miscellaneous handlers
     void scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord);
     void vectorscopeChangedSignalHandler();
+    void onSliderDebounceTimeout();
+    void onDragPauseTimeout();
     void mousePressEvent(QMouseEvent *event);
     void mouseMoveEvent(QMouseEvent *event);
     void videoParametersChangedSignalHandler(const LdDecodeMetaData::VideoParameters &videoParameters);
@@ -141,6 +146,12 @@ private:
     double scaleFactor;
     QPalette buttonPalette;
     QString lastFilename;
+    
+    // Slider debouncing
+    QTimer* sliderDebounceTimer;
+    QTimer* dragPauseTimer;
+    qint32 pendingSliderValue;
+    bool sliderDragging;
 
     // Update GUI methods
     void setGuiEnabled(bool enabled);

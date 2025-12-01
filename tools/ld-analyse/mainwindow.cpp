@@ -84,6 +84,21 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
 
+    // Initialize slider debouncing
+    sliderDebounceTimer = new QTimer(this);
+    sliderDebounceTimer->setSingleShot(true);
+    sliderDebounceTimer->setInterval(100); // 100ms debounce
+    connect(sliderDebounceTimer, &QTimer::timeout, this, &MainWindow::onSliderDebounceTimeout);
+    
+    // Initialize drag pause timer for visual feedback during long drags
+    dragPauseTimer = new QTimer(this);
+    dragPauseTimer->setSingleShot(true);
+    dragPauseTimer->setInterval(150); // 150ms pause before updating during drag
+    connect(dragPauseTimer, &QTimer::timeout, this, &MainWindow::onDragPauseTimeout);
+    
+    sliderDragging = false;
+    pendingSliderValue = -1;
+
     // Set the GUI to unloaded
     updateGuiUnloaded();
 
@@ -1021,20 +1036,72 @@ void MainWindow::on_posNumberSpinBox_editingFinished()
 void MainWindow::on_posHorizontalSlider_valueChanged(int value)
 {
     if (!tbcSource.getIsSourceLoaded()) return;
-    qint32 currentNumber;
-
-    if (tbcSource.getFieldViewEnabled()) {
-        setCurrentField(ui->posHorizontalSlider->value());
-        currentNumber = currentFieldNumber;
-    } else {
-        setCurrentFrame(ui->posHorizontalSlider->value());
-        currentNumber = currentFrameNumber;
-    }
-
-    // If the spinbox is enabled, we can update the current field/frame number
-    // otherwise we just ignore this
+    
+    // Update the spinbox immediately for visual feedback
     if (ui->posNumberSpinBox->isEnabled()) {
-        ui->posNumberSpinBox->setValue(currentNumber);
+        ui->posNumberSpinBox->setValue(value);
+    }
+    
+    // Store the pending value
+    pendingSliderValue = value;
+    
+    // If user is actively dragging, start/restart the drag pause timer
+    if (sliderDragging) {
+        dragPauseTimer->start(); // This will update frame if user pauses during drag
+        return;
+    }
+    
+    // For non-dragging updates (keyboard, clicks), use debounced updates
+    sliderDebounceTimer->start(); // Restart the debounce timer
+}
+
+// User started dragging the slider
+void MainWindow::on_posHorizontalSlider_sliderPressed()
+{
+    sliderDragging = true;
+    dragPauseTimer->stop(); // Stop any existing timer
+}
+
+// User finished dragging the slider - now update
+void MainWindow::on_posHorizontalSlider_sliderReleased()
+{
+    sliderDragging = false;
+    dragPauseTimer->stop(); // Stop the pause timer
+    
+    if (pendingSliderValue != -1) {
+        // Update immediately when drag ends
+        if (tbcSource.getFieldViewEnabled()) {
+            setCurrentField(pendingSliderValue);
+        } else {
+            setCurrentFrame(pendingSliderValue);
+        }
+        pendingSliderValue = -1;
+    }
+}
+
+// Debounced update for non-dragging slider changes
+void MainWindow::onSliderDebounceTimeout()
+{
+    if (!sliderDragging && pendingSliderValue != -1) {
+        if (tbcSource.getFieldViewEnabled()) {
+            setCurrentField(pendingSliderValue);
+        } else {
+            setCurrentFrame(pendingSliderValue);
+        }
+        pendingSliderValue = -1;
+    }
+}
+
+// Update frame when user pauses during drag (for visual hunting)
+void MainWindow::onDragPauseTimeout()
+{
+    if (sliderDragging && pendingSliderValue != -1) {
+        if (tbcSource.getFieldViewEnabled()) {
+            setCurrentField(pendingSliderValue);
+        } else {
+            setCurrentFrame(pendingSliderValue);
+        }
+        // Don't clear pendingSliderValue - we still need it for final release
     }
 }
 
