@@ -39,10 +39,8 @@
 #include "vbidecoder.h"
 #include "videoiddecoder.h"
 #include "vitcdecoder.h"
-#include "filters.h"
 
 // Chroma decoder includes
-#include "configuration.h"
 #include "palcolour.h"
 #include "comb.h"
 #include "monodecoder.h"
@@ -58,6 +56,7 @@ public:
         LineNumber lineNumber;
         QVector<qint32> composite;
         QVector<qint32> luma;
+        QVector<qint32> chroma;
         QVector<bool> isDropout;
         qint32 blackIre;
         qint32 whiteIre;

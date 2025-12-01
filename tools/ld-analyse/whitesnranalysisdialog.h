@@ -25,8 +25,6 @@
 #ifndef WHITESNRANALYSISDIALOG_H
 #define WHITESNRANALYSISDIALOG_H
 
-#include <cmath>
-
 #include <QDialog>
 #include <qwt_plot.h>
 #include <qwt_plot_canvas.h>
@@ -38,8 +36,6 @@
 #include <qwt_scale_widget.h>
 #include <qwt_scale_draw.h>
 #include <qwt_plot_marker.h>
-
-#include "lddecodemetadata.h"
 
 namespace Ui {
 class WhiteSnrAnalysisDialog;

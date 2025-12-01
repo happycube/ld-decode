@@ -22,6 +22,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ************************************************************************/
+#include <limits>
 
 #include "tbcsource.h"
 
@@ -548,13 +549,16 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
                                 && (frameLine -1) < videoParameters.lastActiveFrameLine;
 
     // Get the field video and dropout data
-    const SourceVideo::Data &fieldData = isFirstField ? inputFields[inputStartIndex].data : inputFields[inputStartIndex + 1].data;
+    // Put chroma in "composite" field if using Y/C input.
+    const SourceVideo::Data &fieldData = isFirstField ? inputFields[inputStartIndex].data
+                            : inputFields[inputStartIndex + 1].data;
     const ComponentFrame &componentFrame = getComponentFrame();
     DropOuts &dropouts = isFirstField ? firstField.dropOuts : secondField.dropOuts;
 
     scanLineData.composite.resize(videoParameters.fieldWidth);
     scanLineData.luma.resize(videoParameters.fieldWidth);
     scanLineData.isDropout.resize(videoParameters.fieldWidth);
+
 
     for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
         // Get the 16-bit composite value for the current pixel (frame data is numbered 0-624 or 0-524)
@@ -569,6 +573,20 @@ TbcSource::ScanLineData TbcSource::getScanLineData(qint32 scanLine)
                 if (xPosition >= dropouts.startx(doCount) && xPosition <= dropouts.endx(doCount)) scanLineData.isDropout[xPosition] = true;
             }
         }
+    }
+
+    if (sourceMode == BOTH_SOURCES) {
+        const auto &chromaFieldData = isFirstField ? chromaInputFields[inputStartIndex].data
+                     : chromaInputFields[inputStartIndex + 1].data;
+        // We need to offset by half a word since the input is 16-bit unsigned.
+        const short offset = std::numeric_limits<int16_t>::min();
+        scanLineData.chroma.resize(videoParameters.fieldWidth);
+        for (qint32 xPosition = 0; xPosition < videoParameters.fieldWidth; xPosition++) {
+            scanLineData.chroma[xPosition] = chromaFieldData[(lineNumber.field0() * videoParameters.fieldWidth) + xPosition] + offset;
+            // Combine Y and C to "simulate" composite for the scope.
+            scanLineData.composite[xPosition] += scanLineData.chroma[xPosition];
+        }
+
     }
 
     return scanLineData;
@@ -949,6 +967,7 @@ QImage TbcSource::generateQImage()
         outputWriter.convert(componentFrames[0], outputFrame);
 
         const auto rgb48Ptr = reinterpret_cast<quint16 *>(outputFrame.data());
+        rgbData.reserve(inputHeight * inputWidth * 3);
 
         // Create RGB32 from RGB48
         for (auto i = 0; i < inputHeight * inputWidth * 3; i += 3) {
@@ -978,6 +997,7 @@ QImage TbcSource::generateQImage()
         // Get pointers to the 16-bit greyscale data
         const quint16 *firstFieldPointer = inputFields[inputStartIndex].data.data();
         const quint16 *secondFieldPointer = inputFields[inputStartIndex + 1].data.data();
+        rgbData.reserve(inputHeight * inputWidth * 3);
 
         // Create RGB32 from Gray16
         for (auto y = 0; y < fieldHeight * 2; y++) {
