@@ -705,7 +705,9 @@
     <addaction name="actionZoom_1x"/>
     <addaction name="actionZoom_2x"/>
     <addaction name="actionZoom_3x"/>
+    <addaction name="separator"/>
     <addaction name="toggleAutoResize"/>
+    <addaction name="actionToggleChromaDuringSeek"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -807,6 +809,20 @@
    </property>
    <property name="checked">
 	<bool>true</bool>
+   </property>
+  </action>
+  <action name="actionToggleChromaDuringSeek">
+   <property name="text">
+    <string>Toggle chroma during seek</string>
+   </property>
+   <property name="toolTip">
+    <string>Temporarily disable chroma decoding when holding next/previous frame buttons</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
    </property>
   </action>
   <action name="actionDropout_analysis">

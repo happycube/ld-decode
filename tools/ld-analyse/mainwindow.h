@@ -72,10 +72,15 @@ private slots:
     void on_actionClosed_Captions_triggered();
     void on_actionVideo_parameters_triggered();
     void on_actionChroma_decoder_configuration_triggered();
+    void on_actionToggleChromaDuringSeek_triggered();
 
     // Media control frame handlers
     void on_previousPushButton_clicked();
     void on_nextPushButton_clicked();
+    void on_previousPushButton_pressed();
+    void on_previousPushButton_released();
+    void on_nextPushButton_pressed();
+    void on_nextPushButton_released();
     void on_endPushButton_clicked();
     void on_startPushButton_clicked();
     void on_posNumberSpinBox_editingFinished();
@@ -152,6 +157,11 @@ private:
     QTimer* dragPauseTimer;
     qint32 pendingSliderValue;
     bool sliderDragging;
+    
+    // Chroma toggle during seek
+    bool chromaSeekMode;
+    bool originalChromaState;
+    QTimer *seekTimer;
 
     // Update GUI methods
     void setGuiEnabled(bool enabled);
