@@ -370,28 +370,7 @@
              </property>
             </widget>
            </item>
-           <item>
-            <widget class="QPushButton" name="stretchFieldButton">
-             <property name="minimumSize">
-              <size>
-               <width>30</width>
-               <height>30</height>
-              </size>
-             </property>
-             <property name="baseSize">
-              <size>
-               <width>30</width>
-               <height>30</height>
-              </size>
-             </property>
-             <property name="toolTip">
-              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Stretch field to frame height&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-             </property>
-             <property name="text">
-              <string>2:1</string>
-             </property>
-            </widget>
-           </item>
+
            <item>
             <widget class="QPushButton" name="mouseModePushButton">
              <property name="minimumSize">

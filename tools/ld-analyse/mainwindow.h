@@ -96,7 +96,6 @@ private slots:
     void on_zoomInPushButton_clicked();
     void on_zoomOutPushButton_clicked();
     void on_originalSizePushButton_clicked();
-    void on_stretchFieldButton_clicked();
     void on_mouseModePushButton_clicked();
     //void on_autoResizeButton_clicked();
 	void on_toggleAutoResize_toggled(bool checked);

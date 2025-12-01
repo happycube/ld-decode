@@ -263,7 +263,7 @@ void MainWindow::resetGui()
     ui->zoomOutPushButton->setAutoRepeatDelay(500);
     ui->zoomOutPushButton->setAutoRepeatInterval(100);
 
-    ui->stretchFieldButton->setText(tr("2:1"));
+    // Initialize field stretch to 2:1 by default
     tbcSource.setStretchField(true);
 
     // Update the video parameters dialogue
@@ -649,15 +649,15 @@ void MainWindow::setViewValues()
 			currentNumber = currentFieldNumber;
 			maximum = tbcSource.getNumberOfFields();
 			spinLabel = QString("Field #:");
-			buttonLabel = QString("Field View");
-
-			ui->stretchFieldButton->setEnabled(true);
+			if (tbcSource.getStretchField()) {
+				buttonLabel = QString("Field 2:1");
+			} else {
+				buttonLabel = QString("Field 1:1");
+			}
 		} else {
 			currentNumber = currentFrameNumber;
 			maximum = tbcSource.getNumberOfFrames();
 			spinLabel = QString("Frame #:");
-
-			ui->stretchFieldButton->setEnabled(false);
 
 			if (tbcSource.getSplitViewEnabled()) {
 				buttonLabel = QString("Split View");
@@ -672,15 +672,15 @@ void MainWindow::setViewValues()
 			currentNumber = currentFieldNumber;
 			maximum = tbcSource.getNumberOfFields();
 			spinLabel = QString("Field #:");
-			buttonLabel = QString("Field");
-
-			ui->stretchFieldButton->setEnabled(true);
+			if (tbcSource.getStretchField()) {
+				buttonLabel = QString("Field 2:1");
+			} else {
+				buttonLabel = QString("Field 1:1");
+			}
 		} else {
 			currentNumber = currentFrameNumber;
 			maximum = tbcSource.getNumberOfFrames();
 			spinLabel = QString("Frame #:");
-
-			ui->stretchFieldButton->setEnabled(false);
 
 			if (tbcSource.getSplitViewEnabled()) {
 				buttonLabel = QString("Split");
@@ -1394,23 +1394,28 @@ void MainWindow::on_viewPushButton_clicked()
 
             // Set split mode
             tbcSource.setViewMode(TbcSource::ViewMode::SPLIT_VIEW);
-            //ui->fieldOrderPushButton->setEnabled(false);
             break;
 
         case TbcSource::ViewMode::SPLIT_VIEW:
-            qDebug() << "Changing to FIELD_VIEW mode";
+            qDebug() << "Changing to FIELD_VIEW mode (1:1)";
 
-            // Set field mode
+            // Set field mode with 1:1 aspect
             tbcSource.setViewMode(TbcSource::ViewMode::FIELD_VIEW);
-            //ui->fieldOrderPushButton->setEnabled(false);
+            tbcSource.setStretchField(false);
             break;
 
         case TbcSource::ViewMode::FIELD_VIEW:
-            qDebug() << "Changing to FRAME_VIEW mode";
+            if (!tbcSource.getStretchField()) {
+                qDebug() << "Changing to FIELD_VIEW mode (2:1)";
 
-            // Set frame mode
-            tbcSource.setViewMode(TbcSource::ViewMode::FRAME_VIEW);
-            //ui->fieldOrderPushButton->setEnabled(true);
+                // Set field mode with 2:1 aspect
+                tbcSource.setStretchField(true);
+            } else {
+                qDebug() << "Changing to FRAME_VIEW mode";
+
+                // Set frame mode
+                tbcSource.setViewMode(TbcSource::ViewMode::FRAME_VIEW);
+            }
             break;
     }
 
@@ -1507,19 +1512,7 @@ void MainWindow::on_originalSizePushButton_clicked()
     resize_on_aspect();
 }
 
-// Field stretch mode
-void MainWindow::on_stretchFieldButton_clicked()
-{
-    if (tbcSource.getStretchField()) {
-        tbcSource.setStretchField(false);
-        ui->stretchFieldButton->setText(tr("1:1"));
-    } else {
-        tbcSource.setStretchField(true);
-        ui->stretchFieldButton->setText(tr("2:1"));
-    }
 
-    updateImageViewer();
-}
 
 // Mouse mode button clicked
 void MainWindow::on_mouseModePushButton_clicked()
@@ -1838,12 +1831,12 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 	if (this->width() >= 930)
 	{
 		if (tbcSource.getFieldViewEnabled()) {
-			ui->viewPushButton->setText("Field View");
-
-			ui->stretchFieldButton->setEnabled(true);
+			if (tbcSource.getStretchField()) {
+				ui->viewPushButton->setText("Field 2:1");
+			} else {
+				ui->viewPushButton->setText("Field 1:1");
+			}
 		} else {
-			ui->stretchFieldButton->setEnabled(false);
-
 			if (tbcSource.getSplitViewEnabled()) {
 				ui->viewPushButton->setText("Split View");
 			} else {
@@ -1854,12 +1847,12 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 	else
 	{
 		if (tbcSource.getFieldViewEnabled()) {
-			ui->viewPushButton->setText("Field");
-
-			ui->stretchFieldButton->setEnabled(true);
+			if (tbcSource.getStretchField()) {
+				ui->viewPushButton->setText("Field 2:1");
+			} else {
+				ui->viewPushButton->setText("Field 1:1");
+			}
 		} else {
-			ui->stretchFieldButton->setEnabled(false);
-
 			if (tbcSource.getSplitViewEnabled()) {
 				ui->viewPushButton->setText("Split");
 			} else {
