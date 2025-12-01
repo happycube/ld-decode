@@ -395,11 +395,21 @@ void MainWindow::updateAspectPushButton()
 // Update the source selection button
 void MainWindow::updateSourcesPushButton()
 {
+	// Only show the button if there are multiple sources (not ONE_SOURCE) AND a source is loaded
+	if (tbcSource.getSourceMode() != TbcSource::ONE_SOURCE && tbcSource.getIsSourceLoaded()) {
+		ui->sourcesPushButton->setVisible(true);
+	} else {
+		// Hide the button by default (no source loaded or only one source)
+		ui->sourcesPushButton->setVisible(false);
+		chromaDecoderConfigDialog->updateSourceMode(tbcSource.getSourceMode());
+		return;
+	}
+	
 	if (this->width() >= 930)
 	{
 		switch (tbcSource.getSourceMode()) {
 		case TbcSource::ONE_SOURCE:
-			ui->sourcesPushButton->setText(tr("One Source"));
+			// This case should not be reached due to early return above
 			break;
 		case TbcSource::LUMA_SOURCE:
 			ui->sourcesPushButton->setText(tr("Y Source"));
@@ -416,7 +426,7 @@ void MainWindow::updateSourcesPushButton()
 	{
 		switch (tbcSource.getSourceMode()) {
 		case TbcSource::ONE_SOURCE:
-			ui->sourcesPushButton->setText(tr(".TBC"));
+			// This case should not be reached due to early return above
 			break;
 		case TbcSource::LUMA_SOURCE:
 			ui->sourcesPushButton->setText(tr("Y"));
