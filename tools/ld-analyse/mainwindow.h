@@ -100,6 +100,7 @@ private slots:
     void on_mouseModePushButton_clicked();
     //void on_autoResizeButton_clicked();
 	void on_toggleAutoResize_toggled(bool checked);
+	void on_actionResizeFrameWithWindow_toggled(bool checked);
 
     // Miscellaneous handlers
     void scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord);
@@ -145,6 +146,7 @@ private:
     TbcSource tbcSource;
     bool displayAspectRatio;
 	bool autoResize = true;
+	bool resizeFrameWithWindow = true;
     qint32 lastScopeLine;
     qint32 lastScopeDot;
     qint32 currentFieldNumber, currentFrameNumber;
@@ -155,6 +157,7 @@ private:
     // Slider debouncing
     QTimer* sliderDebounceTimer;
     QTimer* dragPauseTimer;
+    QTimer* resizeTimer;
     qint32 pendingSliderValue;
     bool sliderDragging;
     
@@ -175,14 +178,13 @@ private:
     void setCurrentField(qint32 field);
     void sanitizeCurrentPosition();
 
-    // Image display methods
+	// Image display methods
     void showImage();
     void updateImage();
     qint32 getAspectAdjustment();
     void updateImageViewer();
     void hideImage();
-
-    // TBC source signal handlers
+    void resizeFrameToWindow();    // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
     void updateOscilloscopeDialogue();
     void updateVectorscopeDialogue();

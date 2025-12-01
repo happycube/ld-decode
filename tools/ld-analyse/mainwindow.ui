@@ -707,6 +707,7 @@
     <addaction name="actionZoom_3x"/>
     <addaction name="separator"/>
     <addaction name="toggleAutoResize"/>
+    <addaction name="actionResizeFrameWithWindow"/>
     <addaction name="actionToggleChromaDuringSeek"/>
    </widget>
    <addaction name="menuFile"/>
@@ -803,6 +804,17 @@
   <action name="toggleAutoResize">
    <property name="text">
 	<string>Toggle auto-resize on zoom</string>
+   </property>
+   <property name="checkable">
+	<bool>true</bool>
+   </property>
+   <property name="checked">
+	<bool>true</bool>
+   </property>
+  </action>
+  <action name="actionResizeFrameWithWindow">
+   <property name="text">
+	<string>Resize frame with window</string>
    </property>
    <property name="checkable">
 	<bool>true</bool>

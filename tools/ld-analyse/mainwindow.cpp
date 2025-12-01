@@ -72,6 +72,7 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     // Load the window geometry and settings from the configuration
     restoreGeometry(configuration.getMainWindowGeometry());
     scaleFactor = configuration.getMainWindowScaleFactor();
+
     vbiDialog->restoreGeometry(configuration.getVbiDialogGeometry());
     oscilloscopeDialog->restoreGeometry(configuration.getOscilloscopeDialogGeometry());
     vectorscopeDialog->restoreGeometry(configuration.getVectorscopeDialogGeometry());
@@ -82,6 +83,10 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     closedCaptionDialog->restoreGeometry(configuration.getClosedCaptionDialogGeometry());
     videoParametersDialog->restoreGeometry(configuration.getVideoParametersDialogGeometry());
     chromaDecoderConfigDialog->restoreGeometry(configuration.getChromaDecoderConfigDialogGeometry());
+
+    // Load view options from configuration
+    resizeFrameWithWindow = configuration.getResizeFrameWithWindow();
+    ui->actionResizeFrameWithWindow->setChecked(resizeFrameWithWindow);
 
     // Store the current button palette for the show dropouts button
     buttonPalette = ui->dropoutsPushButton->palette();
@@ -97,6 +102,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     dragPauseTimer->setSingleShot(true);
     dragPauseTimer->setInterval(150); // 150ms pause before updating during drag
     connect(dragPauseTimer, &QTimer::timeout, this, &MainWindow::onDragPauseTimeout);
+    
+    // Initialize resize timer for delayed frame resizing
+    resizeTimer = new QTimer(this);
+    resizeTimer->setSingleShot(true);
+    resizeTimer->setInterval(100); // 100ms delay for resize calculations
+    connect(resizeTimer, &QTimer::timeout, this, &MainWindow::resizeFrameToWindow);
     
     sliderDragging = false;
     
@@ -316,6 +327,11 @@ void MainWindow::updateGuiLoaded()
 
 	//resize the windows to fit the content in full screen
 	MainWindow::resize_on_aspect();
+	
+	// If resizeFrameWithWindow is enabled, resize frame to fit current window
+	if (resizeFrameWithWindow) {
+		resizeTimer->start();
+	}
 }
 
 // Method to update the GUI when a file is unloaded
@@ -1269,6 +1285,50 @@ void MainWindow::resize_on_aspect()
 	}
 }
 
+// Resize the frame to fit within the current window size
+void MainWindow::resizeFrameToWindow()
+{
+	if (!tbcSource.getIsSourceLoaded()) {
+		return;
+	}
+
+	// Get the scroll area size (which contains the imageViewerLabel)
+	QScrollArea* scrollArea = ui->scrollArea;
+	QSize availableSize = scrollArea->viewport()->size();
+	
+	// Ensure we have a valid size - sometimes during resize events the size might be invalid
+	if (availableSize.width() <= 0 || availableSize.height() <= 0) {
+		// Use the central widget size as fallback, accounting for margins and toolbars
+		QSize centralSize = ui->centralWidget->size();
+		availableSize = QSize(centralSize.width() - 40, centralSize.height() - 200); // Account for UI elements
+	}
+	
+	// Get the original image size
+	QImage originalImage = tbcSource.getImage();
+	if (originalImage.isNull()) {
+		return;
+	}
+
+	// Calculate scale factor to fit image within available space while maintaining aspect ratio
+	qint32 adjustment = getAspectAdjustment();
+	double scaleX = static_cast<double>(availableSize.width()) / static_cast<double>(originalImage.width() + adjustment);
+	double scaleY = static_cast<double>(availableSize.height()) / static_cast<double>(originalImage.height());
+	
+	// Use the smaller scale factor to maintain aspect ratio
+	double newScaleFactor = qMin(scaleX, scaleY);
+	
+	// Apply a minimum scale factor to prevent the image from becoming too small
+	if (newScaleFactor < 0.1) {
+		newScaleFactor = 0.1;
+	}
+	
+	// Only update if there's a significant change to avoid constant tiny adjustments
+	if (qAbs(newScaleFactor - scaleFactor) > 0.01) {
+		scaleFactor = newScaleFactor;
+		updateImageViewer();
+	}
+}
+
 // Show/hide dropouts button clicked
 void MainWindow::on_dropoutsPushButton_clicked()
 {
@@ -1399,6 +1459,20 @@ void MainWindow::on_fieldOrderPushButton_clicked()
 void MainWindow::on_toggleAutoResize_toggled(bool checked)
 {
 	autoResize = checked;
+}
+
+void MainWindow::on_actionResizeFrameWithWindow_toggled(bool checked)
+{
+	resizeFrameWithWindow = checked;
+	
+	// Save the setting to configuration
+	configuration.setResizeFrameWithWindow(checked);
+	configuration.writeConfiguration();
+	
+	// If resizeFrameWithWindow is now enabled, resize frame to fit current window
+	if (checked && tbcSource.getIsSourceLoaded()) {
+		resizeTimer->start();
+	}
 }
 
 // Zoom in
@@ -1797,4 +1871,8 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 	//asepec ratio label
 	updateAspectPushButton();
 
+	// Resize frame with window if resizeFrameWithWindow is enabled
+	if (resizeFrameWithWindow && tbcSource.getIsSourceLoaded()) {
+		resizeTimer->start();
+	}
 }

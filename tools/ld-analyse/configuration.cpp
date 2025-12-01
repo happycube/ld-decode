@@ -71,6 +71,7 @@ void Configuration::writeConfiguration(void)
     // View options
     configuration->beginGroup("viewOptions");
     configuration->setValue("toggleChromaDuringSeek", settings.viewOptions.toggleChromaDuringSeek);
+    configuration->setValue("resizeFrameWithWindow", settings.viewOptions.resizeFrameWithWindow);
     configuration->endGroup();
 
     // Sync the settings with disk
@@ -110,6 +111,7 @@ void Configuration::readConfiguration(void)
     // View options
     configuration->beginGroup("viewOptions");
     settings.viewOptions.toggleChromaDuringSeek = configuration->value("toggleChromaDuringSeek", true).toBool();
+    settings.viewOptions.resizeFrameWithWindow = configuration->value("resizeFrameWithWindow", true).toBool();
     configuration->endGroup();
 }
 
@@ -138,6 +140,7 @@ void Configuration::setDefault(void)
 
     // View options
     settings.viewOptions.toggleChromaDuringSeek = true;
+    settings.viewOptions.resizeFrameWithWindow = true;
 
     // Write the configuration
     writeConfiguration();
@@ -296,4 +299,14 @@ void Configuration::setToggleChromaDuringSeek(bool toggleChromaDuringSeek)
 bool Configuration::getToggleChromaDuringSeek(void)
 {
     return settings.viewOptions.toggleChromaDuringSeek;
+}
+
+void Configuration::setResizeFrameWithWindow(bool resizeFrameWithWindow)
+{
+    settings.viewOptions.resizeFrameWithWindow = resizeFrameWithWindow;
+}
+
+bool Configuration::getResizeFrameWithWindow(void)
+{
+    return settings.viewOptions.resizeFrameWithWindow;
 }

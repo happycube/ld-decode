@@ -64,6 +64,8 @@ public:
     // Get and set methods - view options
     void setToggleChromaDuringSeek(bool toggleChromaDuringSeek);
     bool getToggleChromaDuringSeek(void);
+    void setResizeFrameWithWindow(bool resizeFrameWithWindow);
+    bool getResizeFrameWithWindow(void);
 
 signals:
 
@@ -97,6 +99,7 @@ private:
     // View options
     struct ViewOptions {
         bool toggleChromaDuringSeek;
+        bool resizeFrameWithWindow;
     };
 
     // Overall settings structure
