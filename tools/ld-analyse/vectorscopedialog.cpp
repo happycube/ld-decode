@@ -17,6 +17,8 @@
 
 #include <QDebug>
 #include <QPainter>
+#include <QApplication>
+#include <QPalette>
 
 VectorscopeDialog::VectorscopeDialog(QWidget *parent) :
     QDialog(parent),
@@ -25,8 +27,14 @@ VectorscopeDialog::VectorscopeDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    ui->fieldSelectFirstRadioButton->setStyleSheet("color: green;");
-    ui->fieldSelectSecondRadioButton->setStyleSheet("color: darkcyan;");
+    // Set up field selection colors
+    QColor firstFieldColor = QColor(255, 255, 0);   // Yellow for first field
+    QColor secondFieldColor = QColor(0, 255, 255);  // Cyan for second field
+    
+    ui->fieldSelectFirstRadioButton->setStyleSheet(
+        QString("color: %1;").arg(firstFieldColor.name()));
+    ui->fieldSelectSecondRadioButton->setStyleSheet(
+        QString("color: %1;").arg(secondFieldColor.name()));
 }
 
 VectorscopeDialog::~VectorscopeDialog()
