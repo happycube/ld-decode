@@ -163,7 +163,7 @@ private:
     // Chroma toggle during seek
     bool chromaSeekMode;
     bool originalChromaState;
-    QTimer *seekTimer;
+    QTimer* seekTimer;
 
     // Update GUI methods
     void setGuiEnabled(bool enabled);
@@ -184,6 +184,7 @@ private:
     void updateImageViewer();
     void hideImage();
     void resizeFrameToWindow();
+    void enterChromaSeekMode();
 
     // TBC source signal handlers
     void loadTbcFile(QString inputFileName);

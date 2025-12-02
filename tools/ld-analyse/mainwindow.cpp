@@ -120,19 +120,10 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     seekTimer->setInterval(200); // 200ms to distinguish click from hold
     connect(seekTimer, &QTimer::timeout, this, [this]() {
         // Timer expired - enter chroma seek mode
-        if (configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder()) {
-            chromaSeekMode = true;
-            originalChromaState = true;
-            tbcSource.setChromaDecoder(false);
-            ui->videoPushButton->setText(tr("Source"));
-        }
+        enterChromaSeekMode();
     });
     
-    // Connect button press/release signals for chroma seek mode
-    connect(ui->previousPushButton, &QPushButton::pressed, this, &MainWindow::on_previousPushButton_pressed);
-    connect(ui->previousPushButton, &QPushButton::released, this, &MainWindow::on_previousPushButton_released);
-    connect(ui->nextPushButton, &QPushButton::pressed, this, &MainWindow::on_nextPushButton_pressed);
-    connect(ui->nextPushButton, &QPushButton::released, this, &MainWindow::on_nextPushButton_released);
+    // Button press/release signals for chroma seek mode are auto-connected by Qt's auto-connection mechanism
     pendingSliderValue = -1;
 
     // Set the GUI to unloaded
@@ -1339,6 +1330,17 @@ void MainWindow::resizeFrameToWindow()
 		scaleFactor = newScaleFactor;
 		updateImageViewer();
 	}
+}
+
+// Helper method to enter chroma seek mode
+void MainWindow::enterChromaSeekMode()
+{
+    if (configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder()) {
+        chromaSeekMode = true;
+        originalChromaState = true;
+        tbcSource.setChromaDecoder(false);
+        ui->videoPushButton->setText(tr("Source"));
+    }
 }
 
 // Show/hide dropouts button clicked
