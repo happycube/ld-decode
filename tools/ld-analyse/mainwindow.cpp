@@ -637,7 +637,7 @@ void MainWindow::updateOscilloscopeDialogue()
     // Update the oscilloscope dialogue
     oscilloscopeDialog->showTraceImage(tbcSource.getScanLineData(lastScopeLine),
                                        lastScopeDot, lastScopeLine - 1,
-                                       tbcSource.getFrameWidth(), tbcSource.getFrameHeight());
+                                       tbcSource.getFrameWidth(), tbcSource.getFrameHeight(), tbcSource.getSourceMode() == TbcSource::SourceMode::BOTH_SOURCES);
 }
 
 // Method to update the vectorscope

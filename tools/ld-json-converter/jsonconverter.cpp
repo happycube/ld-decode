@@ -656,9 +656,21 @@ bool JsonConverter::insertData(LdDecodeMetaData &metaData)
                 query.bindValue(3, dropouts.endx(i));
                 
                 if (!query.exec()) {
-                    qCritical() << "Failed to insert dropout data for field" << fieldNum << "dropout" << i << ":" << query.lastError().text();
-                    m_database.rollback();
-                    return false;
+                    // Check if this is a UNIQUE constraint violation (duplicate dropout)
+                    QString errorText = query.lastError().text();
+                    if (errorText.contains("UNIQUE constraint failed", Qt::CaseInsensitive)) {
+                        qInfo() << "Skipping duplicate dropout in field" << fieldNum << "dropout" << i << ": "
+                                << "fieldLine=" << dropouts.fieldLine(i) 
+                                << "startx=" << dropouts.startx(i) 
+                                << "endx=" << dropouts.endx(i);
+                        // Continue processing other dropouts instead of failing
+                        continue;
+                    } else {
+                        // This is a different kind of error, still fail
+                        qCritical() << "Failed to insert dropout data for field" << fieldNum << "dropout" << i << ":" << errorText;
+                        m_database.rollback();
+                        return false;
+                    }
                 }
             }
             
