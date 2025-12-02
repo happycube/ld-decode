@@ -131,7 +131,9 @@ bool EfmProcessor::process(const QString &inputFilename, const QString &outputFi
 
     // We are out of data flush the pipeline and process it one last time
     qInfo() << "Flushing decoding pipelines";
-    // Nothing to do here at the moment...
+    if (!m_noAudioConcealment) {
+        m_audioCorrection.flush();
+    }
 
     qInfo() << "Processing final pipeline data";
     processAudioPipeline();
