@@ -12,6 +12,9 @@
 #define WHITESNRANALYSISDIALOG_H
 
 #include <QDialog>
+#include <cmath>
+#include <QPen>
+
 #include <qwt_plot.h>
 #include <qwt_plot_canvas.h>
 #include <qwt_legend.h>
