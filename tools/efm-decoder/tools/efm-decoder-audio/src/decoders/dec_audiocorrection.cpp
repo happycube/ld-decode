@@ -251,3 +251,14 @@ void AudioCorrection::showStatistics() const
     qInfo().nospace() << "  Concealed mono samples: " << m_concealedSamplesCount;
     qInfo().nospace() << "  Silenced mono samples: " << m_silencedSamplesCount;
 }
+
+void AudioCorrection::flush()
+{
+    // Output any remaining sections in the correction buffer
+    // Since we can't perform correction on the last sections (no following data),
+    // we output them as-is
+    while (!m_correctionBuffer.isEmpty()) {
+        m_outputBuffer.enqueue(m_correctionBuffer.first());
+        m_correctionBuffer.removeFirst();
+    }
+}
