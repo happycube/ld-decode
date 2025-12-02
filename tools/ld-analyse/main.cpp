@@ -34,7 +34,6 @@ void filteredDebugOutputHandler(QtMsgType type, const QMessageLogContext &contex
 int main(int argc, char *argv[])
 {
     // Install the local debug message handler with Wayland filtering
-    setDebug(true);
     qInstallMessageHandler(filteredDebugOutputHandler);
 
     QApplication a(argc, argv);
@@ -49,7 +48,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
         "ld-analyse - TBC output analysis\n"
         "\n"
-        "(c)2018-2022 Simon Inns\n"
+        "(c)2018-2025 Simon Inns\n"
         "(c)2020-2022 Adam Sampson\n"
         "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();

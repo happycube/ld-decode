@@ -61,6 +61,12 @@ public:
     void setChromaDecoderConfigDialogGeometry(QByteArray chromaDecoderConfigDialogGeometry);
     QByteArray getChromaDecoderConfigDialogGeometry(void);
 
+    // Get and set methods - view options
+    void setToggleChromaDuringSeek(bool toggleChromaDuringSeek);
+    bool getToggleChromaDuringSeek(void);
+    void setResizeFrameWithWindow(bool resizeFrameWithWindow);
+    bool getResizeFrameWithWindow(void);
+
 signals:
 
 public slots:
@@ -90,11 +96,18 @@ private:
         QByteArray chromaDecoderConfigDialogGeometry;
     };
 
+    // View options
+    struct ViewOptions {
+        bool toggleChromaDuringSeek;
+        bool resizeFrameWithWindow;
+    };
+
     // Overall settings structure
     struct Settings {
         qint32 version;
         Directories directories;
         Windows windows;
+        ViewOptions viewOptions;
     } settings;
 
     void setDefault(void);

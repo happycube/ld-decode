@@ -11,7 +11,7 @@
 #include "configuration.h"
 
 // This define should be incremented if the settings file format changes
-static const qint32 SETTINGSVERSION = 4;
+static const qint32 SETTINGSVERSION = 5;
 
 Configuration::Configuration(QObject *parent) : QObject(parent)
 {
@@ -68,6 +68,12 @@ void Configuration::writeConfiguration(void)
     configuration->setValue("chromaDecoderConfigDialogGeometry", settings.windows.chromaDecoderConfigDialogGeometry);
     configuration->endGroup();
 
+    // View options
+    configuration->beginGroup("viewOptions");
+    configuration->setValue("toggleChromaDuringSeek", settings.viewOptions.toggleChromaDuringSeek);
+    configuration->setValue("resizeFrameWithWindow", settings.viewOptions.resizeFrameWithWindow);
+    configuration->endGroup();
+
     // Sync the settings with disk
     qDebug() << "Configuration::writeConfiguration(): Writing configuration to disk";
     configuration->sync();
@@ -101,6 +107,12 @@ void Configuration::readConfiguration(void)
     settings.windows.videoParametersDialogGeometry = configuration->value("videoParametersDialogGeometry").toByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = configuration->value("chromaDecoderConfigDialogGeometry").toByteArray();
     configuration->endGroup();
+
+    // View options
+    configuration->beginGroup("viewOptions");
+    settings.viewOptions.toggleChromaDuringSeek = configuration->value("toggleChromaDuringSeek", false).toBool();
+    settings.viewOptions.resizeFrameWithWindow = configuration->value("resizeFrameWithWindow", true).toBool();
+    configuration->endGroup();
 }
 
 void Configuration::setDefault(void)
@@ -125,6 +137,10 @@ void Configuration::setDefault(void)
     settings.windows.closedCaptionDialogGeometry = QByteArray();
     settings.windows.videoParametersDialogGeometry = QByteArray();
     settings.windows.chromaDecoderConfigDialogGeometry = QByteArray();
+
+    // View options
+    settings.viewOptions.toggleChromaDuringSeek = false;
+    settings.viewOptions.resizeFrameWithWindow = true;
 
     // Write the configuration
     writeConfiguration();
@@ -272,4 +288,25 @@ void Configuration::setChromaDecoderConfigDialogGeometry(QByteArray chromaDecode
 QByteArray Configuration::getChromaDecoderConfigDialogGeometry(void)
 {
     return settings.windows.chromaDecoderConfigDialogGeometry;
+}
+
+// View options
+void Configuration::setToggleChromaDuringSeek(bool toggleChromaDuringSeek)
+{
+    settings.viewOptions.toggleChromaDuringSeek = toggleChromaDuringSeek;
+}
+
+bool Configuration::getToggleChromaDuringSeek(void)
+{
+    return settings.viewOptions.toggleChromaDuringSeek;
+}
+
+void Configuration::setResizeFrameWithWindow(bool resizeFrameWithWindow)
+{
+    settings.viewOptions.resizeFrameWithWindow = resizeFrameWithWindow;
+}
+
+bool Configuration::getResizeFrameWithWindow(void)
+{
+    return settings.viewOptions.resizeFrameWithWindow;
 }
