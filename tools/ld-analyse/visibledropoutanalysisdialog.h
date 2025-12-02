@@ -23,8 +23,6 @@
 #include <qwt_scale_draw.h>
 #include <qwt_plot_marker.h>
 
-#include "lddecodemetadata.h"
-
 namespace Ui {
 class VisibleDropOutAnalysisDialog;
 }
