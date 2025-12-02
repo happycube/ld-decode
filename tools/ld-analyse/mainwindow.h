@@ -184,7 +184,8 @@ private:
     void updateImageViewer();
     void hideImage();
     void resizeFrameToWindow();
-    void enterChromaSeekMode();
+    void enterChromaSeekMode(QPushButton* button);
+    void exitChromaSeekMode(QPushButton* button);
 
     // TBC source signal handlers
     void loadTbcFile(QString inputFileName);

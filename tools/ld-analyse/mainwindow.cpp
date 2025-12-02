@@ -120,7 +120,12 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     seekTimer->setInterval(200); // 200ms to distinguish click from hold
     connect(seekTimer, &QTimer::timeout, this, [this]() {
         // Timer expired - enter chroma seek mode
-        enterChromaSeekMode();
+        if (configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder()) {
+            chromaSeekMode = true;
+            originalChromaState = true;
+            tbcSource.setChromaDecoder(false);
+            ui->videoPushButton->setText(tr("Source"));
+        }
     });
     
     // Button press/release signals for chroma seek mode are auto-connected by Qt's auto-connection mechanism
@@ -999,14 +1004,8 @@ void MainWindow::on_actionToggleChromaDuringSeek_triggered()
 // Previous field/frame button has been clicked
 void MainWindow::on_previousPushButton_clicked()
 {
-    // Check if we should switch to source mode for fast seeking (only once when first entering)
-    if (!chromaSeekMode && !seekTimer->isActive() && configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder() && ui->previousPushButton->isDown()) {
-        // Enter seek mode by switching to Source mode (simulate chroma button click)
-        chromaSeekMode = true;
-        originalChromaState = true;
-        tbcSource.setChromaDecoder(false);
-        ui->videoPushButton->setText(tr("Source"));
-    }
+    // Enter chroma seek mode if appropriate
+    enterChromaSeekMode(ui->previousPushButton);
     
     // Normal frame navigation (works the same in both Source and Chroma modes)
     qint32 currentNumber;
@@ -1025,14 +1024,8 @@ void MainWindow::on_previousPushButton_clicked()
 // Next field/frame button has been clicked
 void MainWindow::on_nextPushButton_clicked()
 {
-    // Check if we should switch to source mode for fast seeking (only once when first entering)
-    if (!chromaSeekMode && !seekTimer->isActive() && configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder() && ui->nextPushButton->isDown()) {
-        // Enter seek mode by switching to Source mode (simulate chroma button click)
-        chromaSeekMode = true;
-        originalChromaState = true;
-        tbcSource.setChromaDecoder(false);
-        ui->videoPushButton->setText(tr("Source"));
-    }
+    // Enter chroma seek mode if appropriate
+    enterChromaSeekMode(ui->nextPushButton);
     
     // Normal frame navigation (works the same in both Source and Chroma modes)
     qint32 currentNumber;
@@ -1063,18 +1056,7 @@ void MainWindow::on_previousPushButton_released()
     // Stop the hold detection timer if still running
     seekTimer->stop();
     
-    if (chromaSeekMode) {
-        // Use a shorter timer to check if button is truly released (not just auto-repeat)
-        QTimer::singleShot(5, this, [this]() {
-            if (!ui->previousPushButton->isDown()) {
-                // Exit seek mode and restore chroma
-                chromaSeekMode = false;
-                tbcSource.setChromaDecoder(originalChromaState);
-                ui->videoPushButton->setText(tr("Chroma"));
-                updateImage(); // Fast refresh without reloading - frame data already loaded
-            }
-        });
-    }
+    exitChromaSeekMode(ui->previousPushButton);
 }
 
 // Next button pressed (for chroma toggle during seek)
@@ -1092,18 +1074,7 @@ void MainWindow::on_nextPushButton_released()
     // Stop the hold detection timer if still running
     seekTimer->stop();
     
-    if (chromaSeekMode) {
-        // Use a shorter timer to check if button is truly released (not just auto-repeat)
-        QTimer::singleShot(5, this, [this]() {
-            if (!ui->nextPushButton->isDown()) {
-                // Exit seek mode and restore chroma
-                chromaSeekMode = false;
-                tbcSource.setChromaDecoder(originalChromaState);
-                ui->videoPushButton->setText(tr("Chroma"));
-                updateImage(); // Fast refresh without reloading - frame data already loaded
-            }
-        });
-    }
+    exitChromaSeekMode(ui->nextPushButton);
 }
 
 // Skip to the next chapter (note: this button was repurposed from 'end frame')
@@ -1333,13 +1304,30 @@ void MainWindow::resizeFrameToWindow()
 }
 
 // Helper method to enter chroma seek mode
-void MainWindow::enterChromaSeekMode()
+void MainWindow::enterChromaSeekMode(QPushButton* button)
 {
-    if (configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder()) {
+    if (!chromaSeekMode && !seekTimer->isActive() && configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder() && button->isDown()) {
         chromaSeekMode = true;
         originalChromaState = true;
         tbcSource.setChromaDecoder(false);
         ui->videoPushButton->setText(tr("Source"));
+    }
+}
+
+// Helper method to exit chroma seek mode
+void MainWindow::exitChromaSeekMode(QPushButton* button)
+{
+    if (chromaSeekMode) {
+        // Use a shorter timer to check if button is truly released (not just auto-repeat)
+        QTimer::singleShot(5, this, [this, button]() {
+            if (!button->isDown()) {
+                // Exit seek mode and restore chroma
+                chromaSeekMode = false;
+                tbcSource.setChromaDecoder(originalChromaState);
+                ui->videoPushButton->setText(tr("Chroma"));
+                updateImage(); // Fast refresh without reloading - frame data already loaded
+            }
+        });
     }
 }
 
@@ -1875,7 +1863,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 		}
 	}
 
-	//asepec ratio label
+	//aspect ratio label
 	updateAspectPushButton();
 
 	// Resize frame with window if resizeFrameWithWindow is enabled
