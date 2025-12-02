@@ -2096,12 +2096,9 @@ class Field:
             # Failed to find anything useful - the caller is expected to skip ahead and try again
             return None, None, None
 
-    def getpulses(self):
-        # pass one using standard levels
 
-        # pulse_hz range:  vsync_ire - 10, maximum is the 50% crossing point to sync
-        pulse_hz_min = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] - 10)
-        pulse_hz_max = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] / 2)
+    def getpulses(self, do_retry=True):
+        # pass one using standard levels
 
         pulse_hz_min = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] - 20)
         pulse_hz_max = self.rf.iretohz(-20)
@@ -2109,8 +2106,15 @@ class Field:
         pulses = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
         if len(pulses) == 0:
-            # can't do anything about this
-            return pulses
+            if not self.fields_written:
+                # if the first field decoded, recalibrate sync levels and retry
+                ire0 = np.percentile(self.data["video"]["demod_05"], 15)
+                self.rf.DecoderParams["ire0"] = ire0
+
+                return self.getpulses(do_retry=False)
+            else:
+                # otherwise, can't do anything about this
+                return pulses
 
         # determine sync pulses from vsync
         vsync_locs = []
@@ -3685,6 +3689,9 @@ class LDdecode:
             fields_written=self.fields_written,
             readloc=rawdecode["startloc"],
         )
+
+        # set an object-level variable to make notebook debugging easier
+        self.curfield = f
 
         if self.use_profiler:
             if self.system == 'NTSC':
