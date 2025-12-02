@@ -12,7 +12,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QDebug>
-#include <iostream>
 
 MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     QMainWindow(parent),
@@ -115,16 +114,18 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     chromaSeekMode = false;
     originalChromaState = false;
     
-    // Initialize chroma seek mode variables
-    chromaSeekMode = false;
-    originalChromaState = false;
-    
     // Set up button hold detection timer
     seekTimer = new QTimer(this);
     seekTimer->setSingleShot(true);
     seekTimer->setInterval(200); // 200ms to distinguish click from hold
     connect(seekTimer, &QTimer::timeout, this, [this]() {
-        // Timer expired - ready for seek mode if conditions are met
+        // Timer expired - enter chroma seek mode
+        if (configuration.getToggleChromaDuringSeek() && tbcSource.getChromaDecoder()) {
+            chromaSeekMode = true;
+            originalChromaState = true;
+            tbcSource.setChromaDecoder(false);
+            ui->videoPushButton->setText(tr("Source"));
+        }
     });
     
     // Connect button press/release signals for chroma seek mode
@@ -998,6 +999,7 @@ void MainWindow::on_actionToggleChromaDuringSeek_triggered()
 {
     bool enabled = ui->actionToggleChromaDuringSeek->isChecked();
     configuration.setToggleChromaDuringSeek(enabled);
+    configuration.writeConfiguration();
 
 }
 

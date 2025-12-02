@@ -183,7 +183,9 @@ private:
     qint32 getAspectAdjustment();
     void updateImageViewer();
     void hideImage();
-    void resizeFrameToWindow();    // TBC source signal handlers
+    void resizeFrameToWindow();
+
+    // TBC source signal handlers
     void loadTbcFile(QString inputFileName);
     void updateOscilloscopeDialogue();
     void updateVectorscopeDialogue();

@@ -110,7 +110,7 @@ void Configuration::readConfiguration(void)
 
     // View options
     configuration->beginGroup("viewOptions");
-    settings.viewOptions.toggleChromaDuringSeek = configuration->value("toggleChromaDuringSeek", true).toBool();
+    settings.viewOptions.toggleChromaDuringSeek = configuration->value("toggleChromaDuringSeek", false).toBool();
     settings.viewOptions.resizeFrameWithWindow = configuration->value("resizeFrameWithWindow", true).toBool();
     configuration->endGroup();
 }
@@ -139,7 +139,7 @@ void Configuration::setDefault(void)
     settings.windows.chromaDecoderConfigDialogGeometry = QByteArray();
 
     // View options
-    settings.viewOptions.toggleChromaDuringSeek = true;
+    settings.viewOptions.toggleChromaDuringSeek = false;
     settings.viewOptions.resizeFrameWithWindow = true;
 
     // Write the configuration
