@@ -174,7 +174,7 @@ if(BUILD_PYTHON)
 
     add_custom_target(python-build ALL
         # Clean build directory first to avoid permission issues
-        COMMAND ${CMAKE_COMMAND} -E rm -rf ${PYTHON_BUILD_DIR}
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PYTHON_BUILD_DIR}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${PYTHON_BUILD_DIR}
         COMMAND ${PYTHON} ./setup.py --quiet
             build --build-base ${PYTHON_BUILD_DIR}
@@ -196,7 +196,7 @@ if(BUILD_PYTHON)
         )
         # Clean up root-owned files after install to prevent permission issues
         execute_process(
-            COMMAND ${CMAKE_COMMAND} -E rm -rf ${PYTHON_BUILD_DIR}
+            COMMAND ${CMAKE_COMMAND} -E remove_directory ${PYTHON_BUILD_DIR}
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
     ")
