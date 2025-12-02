@@ -96,10 +96,10 @@ void WriterWav::close()
     };
 
     WAVHeader header;
-    header.chunkSize = 36 + m_file.size();
+    header.chunkSize = 36 + (m_file.size() - 44); // Subtract header size
     header.byteRate = header.sampleRate * header.numChannels * header.bitsPerSample / 8;
     header.blockAlign = header.numChannels * header.bitsPerSample / 8;
-    header.subchunk2Size = m_file.size();
+    header.subchunk2Size = m_file.size() - 44; // Subtract header size
 
     // Move to the beginning of the file to write the header
     m_file.seek(0);
