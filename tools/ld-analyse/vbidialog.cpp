@@ -107,7 +107,7 @@ void VbiDialog::updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid)
     if (vbi.clvPicNo != -1) clvTimecodeString += QString("%1").arg(vbi.clvPicNo, 2, 10, QChar('0'));
     else clvTimecodeString += "xx";
 
-    if (clvTimecodeString == "xx:xx:xx.xx") clvTimecodeString = "Unknown";
+    if (clvTimecodeString == "xx:xx:xx.xx") clvTimecodeString = tr("Unknown");
     ui->clvTimeCodeLabel->setText(clvTimecodeString);
 
     // Display original programme status
@@ -223,5 +223,5 @@ void VbiDialog::updateVideoId(VideoIdDecoder::VideoId videoid, bool isVideoIdVal
     if (videoid.vIdAps == VideoIdDecoder::VIdAps::pspOn2Line) ui->apsLabel->setText("On, 2-Line");
     if (videoid.vIdAps == VideoIdDecoder::VIdAps::pspOn4Line) ui->apsLabel->setText("On, 4-Line");
 
-    ui->analogPreRecordedLabel->setText(videoid.analoguePreRecorded ? "True" : "False");
+    ui->analogPreRecordedLabel->setText(videoid.analoguePreRecorded ? tr("True") : tr("False"));
 }

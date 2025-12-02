@@ -169,7 +169,7 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->chromaPhaseValueLabel->setText(QString::number(palConfiguration.chromaPhase, 'f', 1) + QChar(0xB0));
     
     ui->yNRHorizontalSlider->setValue(static_cast<qint32>(ynrLevel * 10));
-    ui->yNRValueLabel->setText(QString::number(ynrLevel, 'f', 1) + " IRE");
+    ui->yNRValueLabel->setText(QString::number(ynrLevel, 'f', 1) + tr(" IRE"));
 	
 	if(sourceMode == TbcSource::BOTH_SOURCES)
 	{
@@ -280,7 +280,7 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->cNRHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.cNRLevel * 10));
 
     ui->cNRValueLabel->setEnabled(isSourceNtsc);
-    ui->cNRValueLabel->setText(QString::number(ntscConfiguration.cNRLevel, 'f', 1) + " IRE");
+    ui->cNRValueLabel->setText(QString::number(ntscConfiguration.cNRLevel, 'f', 1) + tr(" IRE"));
 }
 
 // Methods to handle changes to the dialogue
@@ -393,7 +393,7 @@ void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
 void ChromaDecoderConfigDialog::on_cNRHorizontalSlider_valueChanged(int value)
 {
     ntscConfiguration.cNRLevel = static_cast<double>(value) / 10;
-    ui->cNRValueLabel->setText(QString::number(ntscConfiguration.cNRLevel, 'f', 1) + " IRE");
+    ui->cNRValueLabel->setText(QString::number(ntscConfiguration.cNRLevel, 'f', 1) + tr(" IRE"));
     emit chromaDecoderConfigChanged();
 }
 
@@ -403,7 +403,7 @@ void ChromaDecoderConfigDialog::on_yNRHorizontalSlider_valueChanged(int value)
     ntscConfiguration.yNRLevel = static_cast<double>(value) / 10;
 	monoConfiguration.yNRLevel = static_cast<double>(value) / 10;
 	ynrLevel = static_cast<double>(value) / 10;
-    ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + " IRE");
+    ui->yNRValueLabel->setText(QString::number(ntscConfiguration.yNRLevel, 'f', 1) + tr(" IRE"));
     emit chromaDecoderConfigChanged();
 }
 

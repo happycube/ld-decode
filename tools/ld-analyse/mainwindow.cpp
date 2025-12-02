@@ -287,14 +287,14 @@ void MainWindow::updateGuiLoaded()
 		statusText += (tbcSource.getVideoParameters().tapeFormat + " ");
 	}
     statusText += tbcSource.getSystemDescription();
-    statusText += " source loaded with ";
+    statusText += tr(" source loaded with ");
 
     if (tbcSource.getFieldViewEnabled()) {
         statusText += QString::number(tbcSource.getNumberOfFields());
-        statusText += " fields available";
+        statusText += tr(" fields available");
     } else {
         statusText += QString::number(tbcSource.getNumberOfFrames());
-        statusText += " sequential frames available";
+        statusText += tr(" sequential frames available");
     }
 
     sourceVideoStatus.setText(statusText);
@@ -924,7 +924,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
             qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
 
             QMessageBox messageBox;
-            messageBox.warning(this, "Warning","Could not save a PNG using the specified filename!");
+            messageBox.warning(this, tr("Warning"),tr("Could not save a PNG using the specified filename!"));
         }
 
         // Update the configuration for the PNG directory
@@ -1769,7 +1769,7 @@ void MainWindow::on_finishedSaving(bool success)
     } else {
         // Show the error to the user
         QMessageBox messageBox;
-        messageBox.warning(this, "Error", tbcSource.getLastIOError());
+        messageBox.warning(this, tr("Error"), tbcSource.getLastIOError());
     }
 
     // Enable the main window
@@ -1834,15 +1834,15 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 	{
 		if (tbcSource.getFieldViewEnabled()) {
 			if (tbcSource.getStretchField()) {
-				ui->viewPushButton->setText("Field 2:1");
+				ui->viewPushButton->setText(tr("Field 2:1"));
 			} else {
-				ui->viewPushButton->setText("Field 1:1");
+				ui->viewPushButton->setText(tr("Field 1:1"));
 			}
 		} else {
 			if (tbcSource.getSplitViewEnabled()) {
-				ui->viewPushButton->setText("Split View");
+				ui->viewPushButton->setText(tr("Split View"));
 			} else {
-				ui->viewPushButton->setText("Frame View");
+				ui->viewPushButton->setText(tr("Frame View"));
 			}
 		}
 	}
@@ -1850,15 +1850,15 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 	{
 		if (tbcSource.getFieldViewEnabled()) {
 			if (tbcSource.getStretchField()) {
-				ui->viewPushButton->setText("Field 2:1");
+				ui->viewPushButton->setText(tr("Field 2:1"));
 			} else {
-				ui->viewPushButton->setText("Field 1:1");
+				ui->viewPushButton->setText(tr("Field 1:1"));
 			}
 		} else {
 			if (tbcSource.getSplitViewEnabled()) {
-				ui->viewPushButton->setText("Split");
+				ui->viewPushButton->setText(tr("Split"));
 			} else {
-				ui->viewPushButton->setText("Frame");
+				ui->viewPushButton->setText(tr("Frame"));
 			}
 		}
 	}
