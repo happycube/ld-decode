@@ -3,7 +3,7 @@
     main.cpp
 
     ld-chroma-decoder - Colourisation filter for ld-decode
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2025 Simon Inns
     Copyright (C) 2019-2022 Adam Sampson
     Copyright (C) 2021 Chad Page
     Copyright (C) 2021 Phillip Blucas
@@ -131,11 +131,11 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Option to specify a different JSON input file
-    QCommandLineOption inputJsonOption(QStringList() << "input-json",
-                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+    // Option to specify a different metadata input file
+    QCommandLineOption inputMetadataOption(QStringList() << "input-metadata",
+                                       QCoreApplication::translate("main", "Specify the input metadata file (default input.db)"),
                                        QCoreApplication::translate("main", "filename"));
-    parser.addOption(inputJsonOption);
+    parser.addOption(inputMetadataOption);
 
     // Option to select start frame (sequential) (-s)
     QCommandLineOption startFrameOption(QStringList() << "s" << "start",
@@ -297,9 +297,9 @@ int main(int argc, char *argv[])
     }
 
     // Check filename arguments are reasonable
-    if (inputFileName == "-" && !parser.isSet(inputJsonOption)) {
+    if (inputFileName == "-" && !parser.isSet(inputMetadataOption)) {
         // Quit with error
-        qCritical("With piped input, you must also specify the input JSON file");
+        qCritical("With piped input, you must also specify the input metadata file");
         return -1;
     }
     if (inputFileName == outputFileName && outputFileName != "-") {
@@ -432,15 +432,15 @@ int main(int argc, char *argv[])
     }
 
     // Work out the metadata filename
-    QString inputJsonFileName = inputFileName + ".json";
-    if (parser.isSet(inputJsonOption)) {
-        inputJsonFileName = parser.value(inputJsonOption);
+    QString inputMetadataFileName = inputFileName + ".db";
+    if (parser.isSet(inputMetadataOption)) {
+        inputMetadataFileName = parser.value(inputMetadataOption);
     }
 
     // Load the source video metadata
     LdDecodeMetaData metaData;
-    if (!metaData.read(inputJsonFileName)) {
-        qInfo() << "Unable to open ld-decode metadata file";
+    if (!metaData.read(inputMetadataFileName)) {
+        qCritical() << "Unable to open ld-decode metadata file:" << inputMetadataFileName;
         return -1;
     }
     
@@ -456,10 +456,18 @@ int main(int argc, char *argv[])
     QString decoderName;
     if (parser.isSet(decoderOption)) {
         decoderName = parser.value(decoderOption);
-    } else if (metaData.getVideoParameters().system == NTSC) {
-        decoderName = "ntsc2d";
     } else {
-        decoderName = "pal2d";
+        // Check if video parameters are valid before accessing them
+        try {
+            if (metaData.getVideoParameters().system == NTSC) {
+                decoderName = "ntsc2d";
+            } else {
+                decoderName = "pal2d";
+            }
+        } catch (const std::exception& e) {
+            qCritical() << "Failed to access video parameters from metadata file:" << e.what();
+            return -1;
+        }
     }
 
     // Require ntsc3d if the map overlay is selected

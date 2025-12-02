@@ -112,7 +112,7 @@ NTSCEncoder::NTSCEncoder(QFile &_inputFile, QFile &_tbcFile, QFile &_chromaFile,
 
 void NTSCEncoder::getFieldMetadata(qint32 fieldNo, LdDecodeMetaData::Field &fieldData)
 {
-    fieldData.seqNo = fieldNo;
+    fieldData.seqNo = fieldNo + 1;  // Convert 0-indexed fieldNo to 1-indexed seqNo
     fieldData.isFirstField = (fieldNo % 2) == 0;
     fieldData.syncConf = 100;
     fieldData.medianBurstIRE = 20;

@@ -4,6 +4,7 @@
 
     Unit tests for metadata classes
     Copyright (C) 2022 Adam Sampson
+    Copyright (C) 2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -29,181 +30,7 @@
 #include <iostream>
 #include <sstream>
 
-#include "jsonio.h"
 #include "lddecodemetadata.h"
-
-// Run unit tests for the JSON parser
-void testJsonReader()
-{
-    std::cerr << "Testing JsonReader\n";
-    std::cerr << "Correct syntax\n";
-
-    {
-        std::string s;
-        bool b;
-        int i;
-        double d;
-
-        // This includes all the JSON syntax, with whitespace wherever it is permitted.
-        // See: https://www.rfc-editor.org/rfc/rfc8259.html
-        // XXX Does not include \u escapes or null - JsonReader doesn't support them yet
-        std::istringstream input(
-            " \t\n\r {"
-            " \"emptyArray\" : [ ] ,"
-            " \"oneArray\" : [ 42 ] ,"
-            " \"threeArray\" : [ 33 , 45 , 78 ] ,"
-            " \"emptyObject\" : { } ,"
-            " \"oneObject\" : { \"a\": \"b\" } ,"
-            " \"emptyString\" : \"\" ,"
-            " \"string\" : \"hello world\" ,"
-            " \"escapedString\" : \" \\\\ \\/ \\\" \\b \\f \\n \\r \\t \" ,"
-            " \"number\" : 12345678 ,"
-            " \"floatNumber\" : -123.456e-78 ,"
-            " \"trueBool\" : true ,"
-            " \"falseBool\" : false } ");
-
-        // Check we can discard them
-        JsonReader discardReader(input);
-        discardReader.discard();
-
-        // Check we can parse everything correctly
-        input.seekg(0);
-        JsonReader reader(input);
-
-        reader.beginObject();
-
-        b = reader.readMember(s);
-        assert(b && s == "emptyArray");
-        reader.beginArray();
-        b = reader.readElement();
-        assert(!b);
-        reader.endArray();
-
-        b = reader.readMember(s);
-        assert(b && s == "oneArray");
-        reader.beginArray();
-        b = reader.readElement();
-        assert(b);
-        reader.read(i);
-        assert(i == 42);
-        b = reader.readElement();
-        assert(!b);
-        reader.endArray();
-
-        b = reader.readMember(s);
-        assert(b && s == "threeArray");
-        reader.beginArray();
-        for (int expected : { 33, 45, 78 }) {
-            b = reader.readElement();
-            assert(b);
-            reader.read(i);
-            assert(i == expected);
-        }
-        b = reader.readElement();
-        assert(!b);
-        reader.endArray();
-
-        b = reader.readMember(s);
-        assert(b && s == "emptyObject");
-        reader.beginObject();
-        b = reader.readMember(s);
-        assert(!b);
-        reader.endObject();
-
-        b = reader.readMember(s);
-        assert(b && s == "oneObject");
-        reader.beginObject();
-        b = reader.readMember(s);
-        assert(b && s == "a");
-        reader.read(s);
-        assert(s == "b");
-        b = reader.readMember(s);
-        assert(!b);
-        reader.endObject();
-
-        b = reader.readMember(s);
-        assert(b && s == "emptyString");
-        reader.read(s);
-        assert(s == "");
-
-        b = reader.readMember(s);
-        assert(b && s == "string");
-        reader.read(s);
-        assert(s == "hello world");
-
-        b = reader.readMember(s);
-        assert(b && s == "escapedString");
-        reader.read(s);
-        assert(s == " \\ / \" \b \f \n \r \t ");
-
-        b = reader.readMember(s);
-        assert(b && s == "number");
-        reader.read(i);
-        assert(i == 12345678);
-
-        b = reader.readMember(s);
-        assert(b && s == "floatNumber");
-        reader.read(d);
-        assert(fabs(-123.456e-78 - d) < 1e-80);
-
-        b = reader.readMember(s);
-        assert(b && s == "trueBool");
-        reader.read(b);
-        assert(b);
-
-        b = reader.readMember(s);
-        assert(b && s == "falseBool");
-        reader.read(b);
-        assert(!b);
-
-        b = reader.readMember(s);
-        assert(!b);
-
-        reader.endObject();
-    }
-
-    // These tests try to exercise all the places that call throwError in the parser
-    const char *bad_json[] = {
-        "",
-        "mystery",
-        "terrible",     // i.e. not true
-        "fake",         // i.e. not false
-        "{,}",
-        "{\"a\":42,}",
-        "{\"a\":}",
-        "{\"a\"}",
-        "[,]",
-        "[42,]",
-        "[\"a\":42]",
-        "{33:45}",
-        "{",
-        "{\"a\":42",
-        "[",
-        "[42",
-        "\"incomplete",
-        "\"\\x\"",
-        "-x",
-        "1.x",
-        "1ex",
-        "null",         // XXX should be supported
-        "\"\\u0042\"",  // XXX should be supported
-        "\"\\uABCD\"",  // XXX should be supported
-    };
-    for (const char *json : bad_json) {
-        std::cerr << "Invalid syntax: " << json << "\n";
-
-        // Check that we get an exception when parsing
-        bool got_exception = false;
-        try {
-            std::istringstream input(json);
-            JsonReader reader(input);
-            reader.discard();
-        } catch (JsonReader::Error &e) {
-            got_exception = true;
-        }
-        assert(got_exception);
-    }
-}
 
 // Run unit tests for VideoSystem
 void testVideoSystem() {
@@ -249,10 +76,10 @@ int main(int argc, char *argv[])
     parser.addOption(exitOption);
 
     // Positional argument to specify input video file
-    parser.addPositionalArgument("input", "Input JSON file (omit to run unit tests)");
+    parser.addPositionalArgument("input", "Input SQLite file (omit to run unit tests)");
 
     // Positional argument to specify output video file
-    parser.addPositionalArgument("output", "Output JSON file (omit to only read input)");
+    parser.addPositionalArgument("output", "Output SQLite file (omit to only read input)");
 
     // Parse the command line
     parser.process(app);
@@ -261,7 +88,6 @@ int main(int argc, char *argv[])
     QStringList positionalArguments = parser.positionalArguments();
     if (positionalArguments.count() == 0) {
         // Run unit tests
-        testJsonReader();
         testVideoSystem();
         return 0;
     }

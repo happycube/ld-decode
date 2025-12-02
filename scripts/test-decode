@@ -1,8 +1,9 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
 # test-decode - run the decoding toolchain against an RF sample
 # Copyright (C) 2019-2022 Adam Sampson
 # Copyright (C) 2022 Chad Page
+# Copyright (C) 2025 Simon Inns
 #
 # This file is part of ld-decode.
 #
@@ -26,6 +27,7 @@ import argparse
 import json
 import numpy
 import os
+import sqlite3
 import subprocess
 import sys
 
@@ -108,7 +110,7 @@ def run_ld_cut(args):
 def run_ld_decode(args):
     """Run ld-decode."""
 
-    clean(args, ['.tbc', '.tbc.json', '.efm', '.pcm', '.ac3', '.ac3.log'])
+    clean(args, ['.tbc', '.tbc.json', '.tbc.db', '.doc.tbc.db', '.efm', '.pcm', '.ac3', '.ac3.log'])
 
     cmd = [source_dir + '/ld-decode']
     cmd += ['--ignoreleadout']
@@ -134,7 +136,7 @@ def run_ld_decode(args):
 def run_ld_process_vbi(args):
     """Run ld-process-vbi."""
 
-    clean(args, ['.tbc.json.bup'])
+    clean(args, ['.tbc.json.bup', '.tbc.db.bup'])
 
     cmd = [build_dir + '/tools/ld-process-vbi/ld-process-vbi']
     cmd += [args.output + '.tbc']
@@ -143,57 +145,91 @@ def run_ld_process_vbi(args):
     if dry_run:
         return
 
-    # Read the JSON output
+    # Read the SQLite database output
+    db_file = args.output + '.tbc.db'
+    if not os.path.exists(db_file):
+        die(db_file, 'does not exist')
+    
+    try:
+        conn = sqlite3.connect(db_file)
+        conn.row_factory = sqlite3.Row  # Enable column access by name
+        cursor = conn.cursor()
+
+        # Check black SNR
+        if args.expect_bpsnr is not None:
+            cursor.execute("SELECT b_psnr FROM vits_metrics")
+            bpsnr_values = [row['b_psnr'] for row in cursor.fetchall() if row['b_psnr'] is not None]
+            if bpsnr_values:
+                bpsnr = numpy.median(bpsnr_values)
+                if args.expect_bpsnr > bpsnr:
+                    die(db_file, 'has median bPSNR', bpsnr, 'dB, expected',
+                        args.expect_bpsnr, 'dB')
+
+        # Print VBI data (useful for finding --expect_vbi values)
+        if args.print_vbi:
+            cursor.execute("SELECT vbi0, vbi1, vbi2 FROM vbi ORDER BY field_id")
+            for row in cursor.fetchall():
+                print("VBI data:", [row['vbi0'], row['vbi1'], row['vbi2']])
+
+        # Check for a field with the expected VBI values
+        if args.expect_vbi is not None:
+            cursor.execute("SELECT vbi0, vbi1, vbi2 FROM vbi")  # Check all capture_ids
+            found_vbi = False
+            for row in cursor.fetchall():
+                vbi_data = [row['vbi0'], row['vbi1'], row['vbi2']]
+                if vbi_data == args.expect_vbi:
+                    found_vbi = True
+                    break
+            
+            if not found_vbi:
+                die(db_file, 'did not contain a field with VBI values',
+                    args.expect_vbi)
+
+        # Print VITC data
+        if args.print_vitc:
+            cursor.execute("SELECT vitc0, vitc1, vitc2, vitc3, vitc4, vitc5, vitc6, vitc7 FROM vitc ORDER BY field_id")
+            for row in cursor.fetchall():
+                vitc_data = [row[f'vitc{i}'] for i in range(8)]
+                print("VITC data:", vitc_data)
+
+        # Check for a field with the expected VITC values
+        if args.expect_vitc is not None:
+            cursor.execute("SELECT vitc0, vitc1, vitc2, vitc3, vitc4, vitc5, vitc6, vitc7 FROM vitc")
+            found_vitc = False
+            for row in cursor.fetchall():
+                vitc_data = [row[f'vitc{i}'] for i in range(8)]
+                if vitc_data == args.expect_vitc:
+                    found_vitc = True
+                    break
+            
+            if not found_vitc:
+                die(db_file, 'did not contain a field with VITC values',
+                    args.expect_vitc)
+
+    except sqlite3.Error as e:
+        die(db_file, 'SQLite error:', str(e))
+    finally:
+        if conn:
+            conn.close()
+
+def run_ld_json_converter(args):
+    """Run ld-json-converter to convert JSON metadata to SQLite."""
+
     json_file = args.output + '.tbc.json'
-    if not os.path.exists(json_file):
-        die(json_file, 'does not exist')
-    with open(json_file) as f:
-        data = json.load(f)
-    if "fields" not in data:
-        die(json_file, 'does not contain fields')
-
-    # Check black SNR
-    if args.expect_bpsnr is not None:
-        bpsnr = numpy.median([field["vitsMetrics"]["bPSNR"]
-                              for field in data["fields"]
-                              if ("vitsMetrics" in field)
-                                 and ("bPSNR" in field["vitsMetrics"])])
-        if args.expect_bpsnr > bpsnr:
-            die(json_file, 'has median bPSNR', bpsnr, 'dB, expected',
-                args.expect_bpsnr, 'dB')
-
-    # Print VBI data (useful for finding --expect_vbi values)
-    if args.print_vbi:
-        for field in data["fields"]:
-            print("VBI data:", field["vbi"]["vbiData"])
-
-    # Check for a field with the expected VBI values
-    if args.expect_vbi is not None:
-        for field in data["fields"]:
-            if ("vbi" not in field) or ("vbiData" not in field["vbi"]):
-                pass
-            elif field["vbi"]["vbiData"] == args.expect_vbi:
-                break
-        else:
-            die(json_file, 'did not contain a field with VBI values',
-                args.expect_vbi)
-
-    # Print VITC data
-    if args.print_vitc:
-        for field in data["fields"]:
-            if "vitc" in field:
-                print("VITC data:", field["vitc"]["vitcData"])
-
-    # Check for a field with the expected VITC values
-    if args.expect_vitc is not None:
-        for field in data["fields"]:
-            if ("vitc" not in field) or ("vitcData" not in field["vitc"]):
-                pass
-            elif field["vitc"]["vitcData"] == args.expect_vitc:
-                break
-        else:
-            die(json_file, 'did not contain a field with VITC values',
-                args.expect_vitc)
+    db_file = args.output + '.tbc.db'
+    
+    # Check if JSON file exists
+    if not dry_run:
+        if not os.path.exists(json_file):
+            die(json_file, 'does not exist')
+    
+    # Clean any existing SQLite file
+    clean(args, ['.tbc.db'])
+    
+    cmd = [build_dir + '/tools/ld-json-converter/ld-json-converter']
+    cmd += ['--input-json', json_file]
+    cmd += ['--output-sqlite', db_file]
+    run_command(cmd)
 
 def run_ld_export_metadata(args):
     """Run ld-export-metadata."""
@@ -204,7 +240,7 @@ def run_ld_export_metadata(args):
     cmd += ['--vits-csv', args.output + '.vits.csv']
     cmd += ['--vbi-csv', args.output + '.vbi.csv']
     cmd += ['--ffmetadata', args.output + '.ffmetadata']
-    cmd += [args.output + '.tbc.json']
+    cmd += [args.output + '.tbc.db']
     run_command(cmd)
 
 def run_ld_process_efm(args):
@@ -241,7 +277,7 @@ def run_ld_process_efm(args):
 def run_ld_dropout_correct(args):
     """Run ld-dropout-correct."""
 
-    clean(args, ['.doc.tbc', '.doc.tbc.json'])
+    clean(args, ['.doc.tbc', '.doc.tbc.db'])
 
     cmd = [build_dir + '/tools/ld-dropout-correct/ld-dropout-correct']
     cmd += ['--overcorrect', args.output + '.tbc', args.output + '.doc.tbc']
@@ -372,6 +408,7 @@ def main():
 
     # Run the stages of the decoding toolchain
     run_ld_decode(args)
+    run_ld_json_converter(args)
     run_ld_process_vbi(args)
     run_ld_export_metadata(args)
     run_ld_process_efm(args)

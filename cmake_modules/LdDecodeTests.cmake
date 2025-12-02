@@ -3,7 +3,7 @@
 # Most of the tests expect that you have cloned (or symlinked) the
 # ld-decode-testdata repo within the source directory as "testdata".
 
-# XXX Tests don't work in parallel - needs script changes
+# Chroma tests run sequentially to avoid file conflicts
 
 set(SCRIPTS_DIR ${CMAKE_SOURCE_DIR}/scripts)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
@@ -26,6 +26,7 @@ add_test(
         --expect-psnr-range 0.5
         --input-format yuv
 )
+set_tests_properties(chroma-ntsc-ycbcr PROPERTIES DEPENDS chroma-ntsc-rgb)
 
 add_test(
     NAME chroma-pal-rgb
@@ -35,6 +36,7 @@ add_test(
         --expect-psnr 25
         --expect-psnr-range 0.5
 )
+set_tests_properties(chroma-pal-rgb PROPERTIES DEPENDS chroma-ntsc-ycbcr)
 
 add_test(
     NAME chroma-pal-ycbcr
@@ -45,6 +47,7 @@ add_test(
         --expect-psnr-range 0.5
         --input-format yuv
 )
+set_tests_properties(chroma-pal-ycbcr PROPERTIES DEPENDS chroma-pal-rgb)
 
 add_test(
     NAME ld-cut-ntsc

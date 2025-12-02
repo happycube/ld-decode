@@ -2,7 +2,7 @@
 
     ffmetadata.cpp
 
-    ld-export-metadata - Export JSON metadata into other formats
+    ld-export-metadata - Export ld-decode metadata into other formats
     Copyright (C) 2019-2023 Adam Sampson
 
     This file is part of ld-decode-tools.

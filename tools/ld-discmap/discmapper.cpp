@@ -3,7 +3,7 @@
     discmapper.cpp
 
     ld-discmap - TBC and VBI alignment and correction
-    Copyright (C) 2019-2022 Simon Inns
+    Copyright (C) 2019-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -799,7 +799,7 @@ bool DiscMapper::saveDiscMap(DiscMap &discMap)
 
     // Now save the metadata
     qInfo() << "Saving target video metadata...";
-    QFileInfo outputMetadataFileInfo(outputFileInfo.filePath() + ".json");
+    QFileInfo outputMetadataFileInfo(outputFileInfo.filePath() + ".db");
     if (!discMap.saveTargetMetadata(outputMetadataFileInfo)) {
         qInfo() << "Writing target metadata failed!";
         return false;

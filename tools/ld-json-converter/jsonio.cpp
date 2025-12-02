@@ -22,6 +22,8 @@
 
 ************************************************************************/
 
+// Note: Copied from the TBC library so the JSON handling code is local to the application
+
 #include "jsonio.h"
 
 #include <limits>

@@ -3,7 +3,7 @@
     main.cpp
 
     ld-process-vits - Vertical Interval Test Signal processing
-    Copyright (C) 2020 Simon Inns
+    Copyright (C) 2020-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-process-vits - Vertical Interval Test Signal processing\n"
                 "\n"
-                "(c)2020 Simon Inns\n"
+                "(c)2020-2025 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -64,21 +64,21 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Option to specify a different JSON input file
-    QCommandLineOption inputJsonOption(QStringList() << "input-json",
-                                       QCoreApplication::translate("main", "Specify the input JSON file (default input.json)"),
+    // Option to specify a different metadata input file
+    QCommandLineOption inputMetadataOption(QStringList() << "input-metadata",
+                                       QCoreApplication::translate("main", "Specify the input metadata file (default input.db)"),
                                        QCoreApplication::translate("main", "filename"));
-    parser.addOption(inputJsonOption);
+    parser.addOption(inputMetadataOption);
 
-    // Option to specify a different JSON output file
-    QCommandLineOption outputJsonOption(QStringList() << "output-json",
-                                        QCoreApplication::translate("main", "Specify the output JSON file (default same as input)"),
+    // Option to specify a different metadata output file
+    QCommandLineOption outputMetadataOption(QStringList() << "output-metadata",
+                                        QCoreApplication::translate("main", "Specify the output metadata file (default same as input)"),
                                         QCoreApplication::translate("main", "filename"));
-    parser.addOption(outputJsonOption);
+    parser.addOption(outputMetadataOption);
 
-    // Option to disable JSON back-up (-n)
+    // Option to disable metadata back-up (-n)
     QCommandLineOption showNoBackupOption(QStringList() << "n" << "nobackup",
-                                       QCoreApplication::translate("main", "Do not create a backup of the input JSON metadata"));
+                                       QCoreApplication::translate("main", "Do not create a backup of the input metadata"));
     parser.addOption(showNoBackupOption);
 
     // Option to select the number of threads (-t)
@@ -122,35 +122,35 @@ int main(int argc, char *argv[])
     }
 
     // Work out the metadata filenames
-    QString inputJsonFilename = inputFilename + ".json";
-    if (parser.isSet(inputJsonOption)) {
-        inputJsonFilename = parser.value(inputJsonOption);
+    QString inputMetadataFilename = inputFilename + ".db";
+    if (parser.isSet(inputMetadataOption)) {
+        inputMetadataFilename = parser.value(inputMetadataOption);
     }
-    QString outputJsonFilename = inputJsonFilename;
-    if (parser.isSet(outputJsonOption)) {
-        outputJsonFilename = parser.value(outputJsonOption);
+    QString outputMetadataFilename = inputMetadataFilename;
+    if (parser.isSet(outputMetadataOption)) {
+        outputMetadataFilename = parser.value(outputMetadataOption);
     }
 
     // Open the source video metadata
     LdDecodeMetaData metaData;
-    qInfo().nospace().noquote() << "Reading JSON metadata from " << inputJsonFilename;
-    if (!metaData.read(inputJsonFilename)) {
-        qCritical() << "Unable to open TBC JSON metadata file";
+    qInfo().nospace().noquote() << "Reading metadata from " << inputMetadataFilename;
+    if (!metaData.read(inputMetadataFilename)) {
+        qCritical() << "Unable to open TBC metadata file";
         return 1;
     }
 
-    // If we're overwriting the input JSON file, back it up first
-    if (inputJsonFilename == outputJsonFilename && !noBackup) {
-        qInfo().nospace().noquote() << "Backing up JSON metadata to " << inputJsonFilename << ".vbup";
-        if (!QFile::copy(inputJsonFilename, inputJsonFilename + ".vbup")) {
-            qCritical() << "Unable to back-up input JSON metadata file - back-up already exists?";
+    // If we're overwriting the input metadata file, back it up first
+    if (inputMetadataFilename == outputMetadataFilename && !noBackup) {
+        qInfo().nospace().noquote() << "Backing up metadata to " << inputMetadataFilename << ".vbup";
+        if (!QFile::copy(inputMetadataFilename, inputMetadataFilename + ".vbup")) {
+            qCritical() << "Unable to back-up input metadata file - back-up already exists?";
             return 1;
         }
     }
 
     // Perform the processing
     qInfo() << "Beginning VITS processing...";
-    ProcessingPool processingPool(inputFilename, outputJsonFilename, maxThreads, metaData);
+    ProcessingPool processingPool(inputFilename, outputMetadataFilename, maxThreads, metaData);
     if (!processingPool.process()) return 1;
 
     // Quit with success

@@ -1,19 +1,34 @@
-/******************************************************************************
- * dropouts.cpp
- * ld-decode-tools TBC library
- *
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2018-2025 Simon Inns
- *
- * This file is part of ld-decode-tools.
- ******************************************************************************/
+/************************************************************************
+
+    dropouts.h
+
+    ld-decode-tools TBC library
+    Copyright (C) 2018-2020 Simon Inns
+
+    This file is part of ld-decode-tools.
+
+    ld-decode-tools is free software: you can redistribute it and/or
+    modify it under the terms of the GNU General Public License as
+    published by the Free Software Foundation, either version 3 of the
+    License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+************************************************************************/
+
+// Note: Copied from the TBC library so the JSON handling code is local to the application
 
 #include "dropouts.h"
 
-#include "sqliteio.h"
+#include "jsonio.h"
 
 #include <cassert>
-#include <QSqlQuery>
 
 DropOuts::DropOuts(const QVector<qint32> &startx, const QVector<qint32> &endx, const QVector<qint32> &fieldLine)
     : m_startx(startx), m_endx(endx), m_fieldLine(fieldLine)
@@ -123,28 +138,69 @@ QDebug operator<<(QDebug dbg, DropOuts &dropOuts)
     return dbg.maybeSpace();
 }
 
-// Read DropOuts from SQLite
-void DropOuts::read(SqliteReader &reader, int captureId, int fieldId)
+// Read DropOuts from JSON
+void DropOuts::read(JsonReader &reader)
 {
-    clear();
+    reader.beginObject();
 
-    QSqlQuery dropoutsQuery;
-    if (reader.readFieldDropouts(captureId, fieldId, dropoutsQuery)) {
-        while (dropoutsQuery.next()) {
-            int startx = dropoutsQuery.value("startx").toInt();
-            int endx = dropoutsQuery.value("endx").toInt();
-            int fieldLine = dropoutsQuery.value("field_line").toInt();
-            append(startx, endx, fieldLine);
-        }
+    std::string member;
+    while (reader.readMember(member)) {
+        if (member == "endx") readArray(reader, m_endx);
+        else if (member == "fieldLine") readArray(reader, m_fieldLine);
+        else if (member == "startx") readArray(reader, m_startx);
+        else reader.discard();
     }
+
+    if (m_endx.size() != m_fieldLine.size() || m_endx.size() != m_startx.size()) {
+        reader.throwError("dropout array sizes do not match");
+    }
+
+    reader.endObject();
 }
 
-// Write DropOuts to SQLite
-void DropOuts::write(SqliteWriter &writer, int captureId, int fieldId) const
+// Write DropOuts to JSON
+void DropOuts::write(JsonWriter &writer) const
 {
-    for (int i = 0; i < size(); i++) {
-        writer.writeFieldDropouts(captureId, fieldId, startx(i), endx(i), fieldLine(i));
-    }
+    assert(!empty());
+
+    writer.beginObject();
+
+    // Keep members in alphabetical order
+    writer.writeMember("endx");
+    writeArray(writer, m_endx);
+    writer.writeMember("fieldLine");
+    writeArray(writer, m_fieldLine);
+    writer.writeMember("startx");
+    writeArray(writer, m_startx);
+
+    writer.endObject();
 }
 
+// Read an array of values from JSON
+void DropOuts::readArray(JsonReader &reader, QVector<qint32> &array)
+{
+    array.clear();
 
+    reader.beginArray();
+
+    while (reader.readElement()) {
+        qint32 value;
+        reader.read(value);
+        array.push_back(value);
+    }
+
+    reader.endArray();
+}
+
+// Write an array of values to JSON
+void DropOuts::writeArray(JsonWriter &writer, const QVector<qint32> &array) const
+{
+    writer.beginArray();
+
+    for (auto value : array) {
+        writer.writeElement();
+        writer.write(value);
+    }
+
+    writer.endArray();
+}

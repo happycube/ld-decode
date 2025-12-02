@@ -74,6 +74,7 @@ Makefile
 Testing/
 build-*/
 cmake_install.cmake
+compile_commands.json
 install_manifest.txt
 moc_*.cpp
 moc_*.cpp_parameters

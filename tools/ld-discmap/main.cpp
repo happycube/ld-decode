@@ -3,7 +3,7 @@
     main.cpp
 
     ld-discmap - TBC and VBI alignment and correction
-    Copyright (C) 2019-2022 Simon Inns
+    Copyright (C) 2019-2025 Simon Inns
 
     This file is part of ld-decode-tools.
 
@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription(
                 "ld-discmap - TBC and VBI alignment and correction\n"
                 "\n"
-                "(c)2019-2022 Simon Inns\n"
+                "(c)2019-2025 Simon Inns\n"
                 "GPLv3 Open-Source - github: https://github.com/happycube/ld-decode");
     parser.addHelpOption();
     parser.addVersionOption();
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
     }
 
     // Check that the required input TBC metadata file exists
-    QFileInfo inputMetadataFileInfo(inputFileInfo.filePath() + ".json");
+    QFileInfo inputMetadataFileInfo(inputFileInfo.filePath() + ".db");
     if (!inputMetadataFileInfo.exists()) {
         qCritical("The specified input file metadata does not exist");
         return -1;

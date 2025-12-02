@@ -668,7 +668,7 @@
     </property>
     <addaction name="actionOpen_TBC_file"/>
     <addaction name="actionReload_TBC"/>
-    <addaction name="actionSave_JSON"/>
+    <addaction name="actionSave_Metadata"/>
     <addaction name="separator"/>
     <addaction name="actionSave_frame_as_PNG"/>
     <addaction name="separator"/>
@@ -886,9 +886,9 @@
     <string>Ctrl+A</string>
    </property>
   </action>
-  <action name="actionSave_JSON">
+  <action name="actionSave_Metadata">
    <property name="text">
-    <string>Save JSON</string>
+    <string>Save Metadata</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+S</string>
