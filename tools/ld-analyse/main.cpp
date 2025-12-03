@@ -84,12 +84,13 @@ void applyDarkTheme(QApplication &app) {
     app.setPalette(darkPalette);
 }
 
-// Custom message handler that filters out Wayland warnings
+// Custom message handler that filters out harmless Qt system warnings
 void filteredDebugOutputHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
-    // Filter out Wayland requestActivate warnings
-    if (msg.contains("Wayland does not support QWindow::requestActivate()")) {
-        return; // Don't output this warning
+    // Filter out harmless Qt system warnings that don't affect functionality
+    if (msg.contains("Wayland does not support QWindow::requestActivate()") ||
+        msg.contains("QSocketNotifier: Can only be used with threads started with QThread")) {
+        return; // Don't output these warnings
     }
     
     // Call the original handler for all other messages
@@ -98,7 +99,7 @@ void filteredDebugOutputHandler(QtMsgType type, const QMessageLogContext &contex
 
 int main(int argc, char *argv[])
 {
-    // Install the local debug message handler with Wayland filtering
+    // Install the local debug message handler with Qt system warning filtering
     qInstallMessageHandler(filteredDebugOutputHandler);
 
     QApplication a(argc, argv);
