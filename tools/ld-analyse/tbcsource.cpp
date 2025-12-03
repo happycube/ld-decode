@@ -1096,13 +1096,18 @@ void TbcSource::generateData()
                 // Does the drop out start in the visible area?
                 if ((firstField.dropOuts.fieldLine(i) >= videoParameters.firstActiveFieldLine) &&
                     (firstField.dropOuts.fieldLine(i) <= videoParameters.lastActiveFieldLine)) {
-                    if (firstField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
-                        qint32 startx = firstField.dropOuts.startx(i);
-                        qint32 endx;
-                        if (firstField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = firstField.dropOuts.endx(i);
-                        else endx = videoParameters.activeVideoEnd;
-
-                        visibleDoLength += static_cast<double>(endx - startx);
+                    // Check if dropout overlaps with active video area
+                    qint32 dropStartx = firstField.dropOuts.startx(i);
+                    qint32 dropEndx = firstField.dropOuts.endx(i);
+                    
+                    if (dropStartx < videoParameters.activeVideoEnd && dropEndx > videoParameters.activeVideoStart) {
+                        // Clamp to active video boundaries
+                        qint32 startx = qMax(dropStartx, videoParameters.activeVideoStart);
+                        qint32 endx = qMin(dropEndx, videoParameters.activeVideoEnd);
+                        
+                        if (endx > startx) {
+                            visibleDoLength += static_cast<double>(endx - startx);
+                        }
                     }
                 }
             }
@@ -1115,13 +1120,18 @@ void TbcSource::generateData()
                 // Does the drop out start in the visible area?
                 if ((secondField.dropOuts.fieldLine(i) >= videoParameters.firstActiveFieldLine) &&
                     (secondField.dropOuts.fieldLine(i) <= videoParameters.lastActiveFieldLine)) {
-                    if (secondField.dropOuts.startx(i) >= videoParameters.activeVideoStart) {
-                        qint32 startx = secondField.dropOuts.startx(i);
-                        qint32 endx;
-                        if (secondField.dropOuts.endx(i) < videoParameters.activeVideoEnd) endx = secondField.dropOuts.endx(i);
-                        else endx = videoParameters.activeVideoEnd;
-
-                        visibleDoLength += static_cast<double>(endx - startx);
+                    // Check if dropout overlaps with active video area
+                    qint32 dropStartx = secondField.dropOuts.startx(i);
+                    qint32 dropEndx = secondField.dropOuts.endx(i);
+                    
+                    if (dropStartx < videoParameters.activeVideoEnd && dropEndx > videoParameters.activeVideoStart) {
+                        // Clamp to active video boundaries
+                        qint32 startx = qMax(dropStartx, videoParameters.activeVideoStart);
+                        qint32 endx = qMin(dropEndx, videoParameters.activeVideoEnd);
+                        
+                        if (endx > startx) {
+                            visibleDoLength += static_cast<double>(endx - startx);
+                        }
                     }
                 }
             }

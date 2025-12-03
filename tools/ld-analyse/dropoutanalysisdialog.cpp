@@ -69,15 +69,9 @@ void DropoutAnalysisDialog::removeChartContents()
 // Add a data point to the chart
 void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, double doLength)
 {
-    // Validate that dropout length makes physical sense
-    if (doLength < 0) {
-        qWarning() << "Warning: Frame" << frameNumber << "has negative dropout length:" << doLength;
-        doLength = 0; // Clamp to 0 since negative dropouts don't make sense
-    }
-    
     points.append(QPointF(static_cast<qreal>(frameNumber), static_cast<qreal>(doLength)));
 
-    // Keep track of the maximum Y value (minimum is always 0)
+    // Keep track of the maximum Y value
     if (doLength > maxY) maxY = doLength;
 }
 
