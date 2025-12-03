@@ -243,35 +243,51 @@ def run_ld_export_metadata(args):
     cmd += [args.output + '.tbc.db']
     run_command(cmd)
 
-def run_ld_process_efm(args):
-    """Run ld-process-efm."""
+def run_efm_decoder(args):
+    """Run efm-decoder-f2, efm-decoder-d24, and efm-decoder-audio."""
 
     if args.no_efm:
         return
 
-    clean(args, ['.digital.pcm'])
+    clean(args, ['.digital.wav', '.f2', '.d24'])
     efm_file = args.output + '.efm'
-    pcm_file = args.output + '.digital.pcm'
+    f2_file = args.output + '.f2'
+    d24_file = args.output + '.d24'
+    wav_file = args.output + '.digital.wav'
 
     if not dry_run:
-        # XXX If the input file is empty, ld-process-efm will show a dialogue;
-        # detect this ourselves first
+        # Check if the input file exists and is not empty
         if not os.path.exists(efm_file):
             die(efm_file, 'does not exist')
         if os.stat(efm_file).st_size == 0:
             die(efm_file, 'is empty')
 
-    cmd = [build_dir + '/tools/ld-process-efm/ld-process-efm']
-    cmd += [efm_file, pcm_file]
+    # Run efm-decoder-f2 (EFM T-values to F2 Section)
+    cmd = [build_dir + '/tools/efm-decoder/tools/efm-decoder-f2/efm-decoder-f2']
+    cmd += [efm_file, f2_file]
     run_command(cmd)
 
-    # Check there are enough output samples
+    # Run efm-decoder-d24 (F2 Section to Data24 Section)
+    cmd = [build_dir + '/tools/efm-decoder/tools/efm-decoder-d24/efm-decoder-d24']
+    cmd += [f2_file, d24_file]
+    run_command(cmd)
+
+    # Run efm-decoder-audio (Data24 to Audio WAV)
+    cmd = [build_dir + '/tools/efm-decoder/tools/efm-decoder-audio/efm-decoder-audio']
+    cmd += [d24_file, wav_file]
+    run_command(cmd)
+
+    # Check there are enough output samples in the WAV file
     if (args.expect_efm_samples is not None) and (not dry_run):
-        if not os.path.exists(pcm_file):
-            die(pcm_file, 'does not exist')
-        pcm_samples = os.stat(pcm_file).st_size // (2 * 2)
-        if pcm_samples < args.expect_efm_samples:
-            die(pcm_file, 'contains', pcm_samples,
+        if not os.path.exists(wav_file):
+            die(wav_file, 'does not exist')
+        # WAV file has a 44-byte header, then 16-bit stereo samples (4 bytes per sample pair)
+        wav_size = os.stat(wav_file).st_size
+        if wav_size < 44:
+            die(wav_file, 'is too small to be a valid WAV file')
+        wav_samples = (wav_size - 44) // 4  # 2 bytes per channel * 2 channels
+        if wav_samples < args.expect_efm_samples:
+            die(wav_file, 'contains', wav_samples,
                 'samples; expected at least', args.expect_efm_samples)
 
 def run_ld_dropout_correct(args):
@@ -411,7 +427,7 @@ def main():
     run_ld_json_converter(args)
     run_ld_process_vbi(args)
     run_ld_export_metadata(args)
-    run_ld_process_efm(args)
+    run_efm_decoder(args)
     run_ld_dropout_correct(args)
     for decoder in args.decoders:
         run_ld_chroma_decoder(args, decoder)
