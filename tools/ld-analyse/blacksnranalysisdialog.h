@@ -14,17 +14,7 @@
 #include <cmath>
 
 #include <QDialog>
-#include <qwt_plot.h>
-#include <qwt_plot_canvas.h>
-#include <qwt_legend.h>
-#include <qwt_plot_grid.h>
-#include <qwt_plot_curve.h>
-#include <qwt_plot_zoomer.h>
-#include <qwt_plot_panner.h>
-#include <qwt_scale_widget.h>
-#include <qwt_scale_draw.h>
-#include <qwt_plot_marker.h>
-
+#include "plotwidget.h"
 #include "lddecodemetadata.h"
 
 namespace Ui {
@@ -45,26 +35,22 @@ public:
     void updateFrameMarker(qint32 _currentFrameNumber);
 
 private slots:
-    void scaleDivChangedSlot();
+    void onPlotAreaChanged();
 
 private:
     void removeChartContents();
     void generateTrendLine();
 
     Ui::BlackSnrAnalysisDialog *ui;
-    QwtPlotZoomer *zoomer;
-    QwtPlotPanner *panner;
-    QwtPlot *plot;
-    QwtLegend *legend;
-    QwtPlotGrid *grid;
-    QPolygonF *blackPoints;
-    QwtPlotCurve *blackCurve;
-    QPolygonF *trendPoints;
-    QwtPlotCurve *trendCurve;
-    QwtPlotMarker *plotMarker;
+    PlotWidget *plot;
+    PlotCurve *blackCurve;
+    PlotCurve *trendCurve;
+    PlotMarker *plotMarker;
 
     double maxY;
     qint32 numberOfFrames;
+    QVector<QPointF> blackPoints;
+    QVector<QPointF> trendPoints;
     QVector<double> tlPoint;
 };
 

@@ -12,17 +12,7 @@
 #define DROPOUTANALYSISDIALOG_H
 
 #include <QDialog>
-#include <qwt_plot.h>
-#include <qwt_plot_canvas.h>
-#include <qwt_legend.h>
-#include <qwt_plot_grid.h>
-#include <qwt_plot_curve.h>
-#include <qwt_plot_zoomer.h>
-#include <qwt_plot_panner.h>
-#include <qwt_scale_widget.h>
-#include <qwt_scale_draw.h>
-#include <qwt_plot_marker.h>
-
+#include "plotwidget.h"
 #include "lddecodemetadata.h"
 
 namespace Ui {
@@ -43,23 +33,19 @@ public:
     void updateFrameMarker(qint32 _currentFrameNumber);
 
 private slots:
-    void scaleDivChangedSlot();
+    void onPlotAreaChanged();
 
 private:
     void removeChartContents();
 
     Ui::DropoutAnalysisDialog *ui;
-    QwtPlotZoomer *zoomer;
-    QwtPlotPanner *panner;
-    QwtPlot *plot;
-    QwtLegend *legend;
-    QwtPlotGrid *grid;
-    QPolygonF *points;
-    QwtPlotCurve *curve;
-    QwtPlotMarker *plotMarker;
+    PlotWidget *plot;
+    PlotCurve *curve;
+    PlotMarker *plotMarker;
 
     double maxY;
     qint32 numberOfFrames;
+    QVector<QPointF> points;
 };
 
 #endif // DROPOUTANALYSISDIALOG_H

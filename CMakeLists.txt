@@ -11,10 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Options that can be specified with -D
 
-option(USE_QWT
-    "Use the Qwt library; if OFF, ld-analyse will not be built"
-    ON
-)
+
 
 # Needed for ezpwd as it uses alternative operators
 if(MSVC)
@@ -47,11 +44,7 @@ if(USE_QT_VERSION)
     set(QT_PACKAGE_NAMES Qt${USE_QT_VERSION})
 endif()
 find_package(QT NAMES ${QT_PACKAGE_NAMES} REQUIRED COMPONENTS Core)
-if(USE_QWT)
-    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Gui Widgets Sql)
-else()
-    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Sql)
-endif()
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets Sql)
 message(STATUS "Qt Version: ${QT_VERSION}")
 
 # For Qt < 5.15, emulate 5.15's Qt5CoreConfig.cmake, so we don't have to
@@ -69,17 +62,6 @@ if(QT_VERSION VERSION_LESS 5.15)
 endif()
 
 find_package(PkgConfig REQUIRED)
-if(USE_QWT)
-    # try pkg-config first
-    pkg_check_modules(QWT Qt${QT_VERSION_MAJOR}Qwt6)
-    if(QWT_FOUND)
-        # .....
-        set(QWT_INCLUDE_DIR ${QWT_INCLUDE_DIRS})
-        set(QWT_LIBRARY ${QWT_LIBRARIES})
-    else()
-        find_package(Qwt REQUIRED)
-    endif()
-endif()
 
 if(NOT MSVC)
     pkg_check_modules(FFTW IMPORTED_TARGET fftw3)
@@ -122,9 +104,7 @@ add_compile_definitions(APP_COMMIT=\"${GIT_COMMIT_HASH}\")
 
 # Subdirectories
 
-if(USE_QWT)
-    add_subdirectory(tools/ld-analyse)
-endif()
+add_subdirectory(tools/ld-analyse)
 add_subdirectory(tools/ld-chroma-decoder)
 add_subdirectory(tools/ld-chroma-decoder/encoder)
 add_subdirectory(tools/ld-disc-stacker)

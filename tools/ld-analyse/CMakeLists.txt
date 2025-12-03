@@ -18,6 +18,7 @@ set(ld-analyse_SOURCES
     dropoutanalysisdialog.cpp dropoutanalysisdialog.ui
     visibledropoutanalysisdialog.cpp visibledropoutanalysisdialog.ui
     whitesnranalysisdialog.cpp whitesnranalysisdialog.ui
+    plotwidget.cpp
 )
 
 qt_add_resources(ld-analyse_SOURCES ld-analyse-resources.qrc)
@@ -35,12 +36,11 @@ endif()
 
 
 target_include_directories(ld-analyse PRIVATE
-    ${QWT_INCLUDE_DIR}  ${FFTW_INCLUDE_DIR}
+    ${FFTW_INCLUDE_DIR}
 )
 
 target_link_libraries(ld-analyse PRIVATE
     Qt::Core Qt::Gui Qt::Widgets
-    ${QWT_LIBRARY}
     lddecode-library lddecode-chroma
 )
 
