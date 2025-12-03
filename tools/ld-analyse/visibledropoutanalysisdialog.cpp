@@ -24,6 +24,7 @@ VisibleDropOutAnalysisDialog::VisibleDropOutAnalysisDialog(QWidget *parent) :
 
     // Set up the plot widget
     plot = new PlotWidget(this);
+    plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
 
     // Set up curve and marker
@@ -79,7 +80,7 @@ void VisibleDropOutAnalysisDialog::addDataPoint(qint32 frameNumber, double doLen
 void VisibleDropOutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 {
     // Set up plot properties
-    plot->setCanvasBackground(Qt::white);
+    plot->updateTheme(); // Auto-detect theme and set appropriate background
     plot->setGridEnabled(true);
     plot->setZoomEnabled(true);
     plot->setPanEnabled(true);
@@ -95,8 +96,9 @@ void VisibleDropOutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
     double yMax = (maxY < 10) ? 10 : ceil(maxY + (maxY * 0.1)); // Add 10% padding and round up
     plot->setAxisRange(Qt::Vertical, 0, yMax);
 
-    // Set the visible dropout curve data (change color to dark magenta)
-    curve->setPen(QPen(Qt::darkMagenta, 1));
+    // Set the visible dropout curve data with theme-aware color
+    QColor dataColor = PlotWidget::isDarkTheme() ? Qt::yellow : Qt::darkMagenta;
+    curve->setPen(QPen(dataColor, 2));
     curve->setData(points);
 
     // Set the frame marker position

@@ -24,11 +24,14 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
 
     // Set up the plot widget
     plot = new PlotWidget(this);
+    plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
 
     // Set up curves and marker
     blackCurve = plot->addCurve("Black SNR");
-    blackCurve->setPen(QPen(Qt::black, 1));
+    // Theme-aware color: white in dark mode, black in light mode
+    QColor dataColor = PlotWidget::isDarkTheme() ? Qt::white : Qt::black;
+    blackCurve->setPen(QPen(dataColor, 2));
     
     trendCurve = plot->addCurve("Trend line");
     trendCurve->setPen(QPen(Qt::red, 2));
@@ -93,7 +96,6 @@ void BlackSnrAnalysisDialog::addDataPoint(qint32 frameNumber, double blackSnr)
 void BlackSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 {
     // Set up plot properties
-    plot->setCanvasBackground(Qt::white);
     plot->setGridEnabled(true);
     plot->setZoomEnabled(true);
     plot->setPanEnabled(true);

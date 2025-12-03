@@ -22,6 +22,7 @@ WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
 
     // Set up the plot widget
     plot = new PlotWidget(this);
+    plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
 
     // Set up curves and marker
@@ -91,7 +92,7 @@ void WhiteSnrAnalysisDialog::addDataPoint(qint32 frameNumber, double whiteSnr)
 void WhiteSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 {
     // Set up plot properties
-    plot->setCanvasBackground(Qt::white);
+    plot->updateTheme(); // Auto-detect theme and set appropriate background
     plot->setGridEnabled(true);
     plot->setZoomEnabled(true);
     plot->setPanEnabled(true);

@@ -122,6 +122,10 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
+    // Add theme override options
+    parser.addOption(QCommandLineOption("force-dark-theme", "Force dark theme regardless of system settings"));
+    parser.addOption(QCommandLineOption("force-light-theme", "Force light theme regardless of system settings"));
+
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
 
@@ -131,10 +135,32 @@ int main(int argc, char *argv[])
     // Standard logging options
     processStandardDebugOptions(parser);
 
-    // Apply dark theme if system is in dark mode
-    if (isDarkModeEnabled()) {
+    // Check for mutually exclusive theme options
+    bool forceDarkTheme = parser.isSet("force-dark-theme");
+    bool forceLightTheme = parser.isSet("force-light-theme");
+    
+    if (forceDarkTheme && forceLightTheme) {
+        qCritical() << "Error: Cannot use both --force-dark-theme and --force-light-theme simultaneously";
+        return 1;
+    }
+
+    // Determine theme: command line override takes precedence over system detection
+    bool darkModeEnabled;
+    if (forceDarkTheme) {
+        darkModeEnabled = true;
+    } else if (forceLightTheme) {
+        darkModeEnabled = false;
+    } else {
+        darkModeEnabled = isDarkModeEnabled();
+    }
+    
+    // Apply theme if dark mode is enabled
+    if (darkModeEnabled) {
         applyDarkTheme(a);
     }
+    
+    // Store theme state globally for other components to access
+    a.setProperty("isDarkTheme", darkModeEnabled);
 
     // Get the arguments from the parser
     QString inputFileName;

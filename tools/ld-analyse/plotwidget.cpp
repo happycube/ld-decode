@@ -25,6 +25,7 @@ PlotWidget::PlotWidget(QWidget *parent)
     , m_xAutoScale(true)
     , m_yAutoScale(true)
     , m_yIntegerLabels(false)
+    , m_isDarkTheme(false)
     , m_grid(nullptr)
     , m_legend(nullptr)
     , m_axisLabels(nullptr)
@@ -69,6 +70,9 @@ void PlotWidget::setupView()
     // Create axis labels
     m_axisLabels = new PlotAxisLabels(this);
     m_scene->addItem(m_axisLabels);
+    
+    // Detect and apply theme
+    updateTheme();
     
     connect(m_scene, &QGraphicsScene::selectionChanged, this, &PlotWidget::onSceneSelectionChanged);
     
@@ -218,6 +222,28 @@ void PlotWidget::setCanvasBackground(const QColor &color)
     m_scene->setBackgroundBrush(QBrush(color));
 }
 
+bool PlotWidget::isDarkTheme()
+{
+    // Get theme state from application property set in main.cpp
+    QVariant themeProperty = QApplication::instance()->property("isDarkTheme");
+    return themeProperty.isValid() ? themeProperty.toBool() : false;
+}
+
+void PlotWidget::updateTheme()
+{
+    // Use the static utility function
+    m_isDarkTheme = isDarkTheme();
+    
+    // Auto-set appropriate canvas background if not explicitly set
+    if (m_canvasBackground == Qt::white || m_canvasBackground == QColor(42, 42, 42)) {
+        QColor newBackground = m_isDarkTheme ? QColor(42, 42, 42) : Qt::white;
+        setCanvasBackground(newBackground);
+    }
+    
+    // Update all plot elements for the new theme
+    replot();
+}
+
 void PlotWidget::replot()
 {
     if (m_xAutoScale || m_yAutoScale) {
@@ -237,7 +263,7 @@ void PlotWidget::replot()
     
     // Update grid
     if (m_grid) {
-        m_grid->updateGrid(m_plotRect, m_dataRect);
+        m_grid->updateGrid(m_plotRect, m_dataRect, m_isDarkTheme);
     }
     
     // Update markers
@@ -253,7 +279,7 @@ void PlotWidget::replot()
     // Update axis labels
     if (m_axisLabels) {
         m_axisLabels->updateLabels(m_plotRect, m_dataRect, m_xAxisTitle, m_yAxisTitle, 
-                                  m_xMin, m_xMax, m_yMin, m_yMax, m_yIntegerLabels);
+                                  m_xMin, m_xMax, m_yMin, m_yMax, m_yIntegerLabels, m_isDarkTheme);
     }
     
     // Reset view transformation to 1:1 scale
@@ -405,6 +431,7 @@ PlotGrid::PlotGrid(PlotWidget *parent)
     : QGraphicsItem()
     , m_pen(QPen(Qt::gray, 0.5))
     , m_enabled(true)
+    , m_isDarkTheme(false)
     , m_plotWidget(parent)
 {
     setZValue(-1); // Draw behind curves
@@ -451,10 +478,11 @@ void PlotGrid::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
     }
 }
 
-void PlotGrid::updateGrid(const QRectF &plotRect, const QRectF &dataRect)
+void PlotGrid::updateGrid(const QRectF &plotRect, const QRectF &dataRect, bool isDarkTheme)
 {
     m_plotRect = plotRect;
     m_dataRect = dataRect;
+    m_isDarkTheme = isDarkTheme;
     update();
 }
 
@@ -632,6 +660,7 @@ PlotAxisLabels::PlotAxisLabels(PlotWidget *parent)
     : QGraphicsItem()
     , m_xMin(0), m_xMax(100), m_yMin(0), m_yMax(100)
     , m_yIntegerLabels(false)
+    , m_isDarkTheme(false)
     , m_plotWidget(parent)
 {
     setZValue(2); // Draw on top of grid but below curves
@@ -640,7 +669,7 @@ PlotAxisLabels::PlotAxisLabels(PlotWidget *parent)
 void PlotAxisLabels::updateLabels(const QRectF &plotRect, const QRectF &dataRect, 
                                   const QString &xTitle, const QString &yTitle,
                                   double xMin, double xMax, double yMin, double yMax,
-                                  bool yIntegerLabels)
+                                  bool yIntegerLabels, bool isDarkTheme)
 {
     m_plotRect = plotRect;
     m_xTitle = xTitle;
@@ -650,6 +679,7 @@ void PlotAxisLabels::updateLabels(const QRectF &plotRect, const QRectF &dataRect
     m_yMin = yMin;
     m_yMax = yMax;
     m_yIntegerLabels = yIntegerLabels;
+    m_isDarkTheme = isDarkTheme;
     update();
 }
 
@@ -664,7 +694,10 @@ void PlotAxisLabels::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
     Q_UNUSED(option)
     Q_UNUSED(widget)
     
-    painter->setPen(QPen(Qt::black));
+    // Determine appropriate text color based on theme
+    QColor axisColor = m_isDarkTheme ? Qt::white : Qt::black;
+    
+    painter->setPen(QPen(axisColor));
     QFont font = painter->font();
     font.setPointSize(9);
     painter->setFont(font);
@@ -677,6 +710,7 @@ void PlotAxisLabels::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
         double sceneX = m_plotRect.left() + m_plotRect.width() * i / numXTicks;
         
         // Draw tick mark
+        painter->setPen(QPen(axisColor, 1));
         painter->drawLine(QPointF(sceneX, m_plotRect.bottom()), 
                          QPointF(sceneX, m_plotRect.bottom() + 5));
         
@@ -695,6 +729,7 @@ void PlotAxisLabels::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
         double sceneY = m_plotRect.bottom() - m_plotRect.height() * i / numYTicks;
         
         // Draw tick mark
+        painter->setPen(QPen(axisColor, 1));
         painter->drawLine(QPointF(m_plotRect.left() - 5, sceneY), 
                          QPointF(m_plotRect.left(), sceneY));
         
@@ -725,6 +760,6 @@ void PlotAxisLabels::paint(QPainter *painter, const QStyleOptionGraphicsItem *op
     }
     
     // Draw plot border
-    painter->setPen(QPen(Qt::black, 1));
+    painter->setPen(QPen(axisColor, 1));
     painter->drawRect(m_plotRect);
 }

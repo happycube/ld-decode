@@ -79,6 +79,10 @@ public:
     // Canvas
     void setCanvasBackground(const QColor &color);
     
+    // Theme
+    void updateTheme();
+    static bool isDarkTheme();
+    
     // Replot
     void replot();
 
@@ -109,6 +113,7 @@ private:
     bool m_xAutoScale;
     bool m_yAutoScale;
     bool m_yIntegerLabels;
+    bool m_isDarkTheme;
     
     // Components
     PlotGrid *m_grid;
@@ -176,11 +181,12 @@ public:
     QRectF boundingRect() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
     
-    void updateGrid(const QRectF &plotRect, const QRectF &dataRect);
+    void updateGrid(const QRectF &plotRect, const QRectF &dataRect, bool isDarkTheme = false);
 
 private:
     QPen m_pen;
     bool m_enabled;
+    bool m_isDarkTheme;
     QRectF m_plotRect;
     QRectF m_dataRect;
     PlotWidget *m_plotWidget;
@@ -246,7 +252,7 @@ public:
     void updateLabels(const QRectF &plotRect, const QRectF &dataRect, 
                      const QString &xTitle, const QString &yTitle,
                      double xMin, double xMax, double yMin, double yMax,
-                     bool yIntegerLabels = false);
+                     bool yIntegerLabels = false, bool isDarkTheme = false);
     
     QRectF boundingRect() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
@@ -257,6 +263,7 @@ private:
     QString m_xTitle;
     QString m_yTitle;
     bool m_yIntegerLabels;
+    bool m_isDarkTheme;
     double m_xMin, m_xMax, m_yMin, m_yMax;
     PlotWidget *m_plotWidget;
 };
