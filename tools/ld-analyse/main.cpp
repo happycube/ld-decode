@@ -123,9 +123,8 @@ int main(int argc, char *argv[])
     // Add the standard debug options --debug and --quiet
     addStandardDebugOptions(parser);
 
-    // Add theme override options
+    // Add theme override option
     parser.addOption(QCommandLineOption("force-dark-theme", "Force dark theme regardless of system settings"));
-    parser.addOption(QCommandLineOption("force-light-theme", "Force light theme regardless of system settings"));
 
     // Positional argument to specify input video file
     parser.addPositionalArgument("input", QCoreApplication::translate("main", "Specify input TBC file"));
@@ -136,32 +135,24 @@ int main(int argc, char *argv[])
     // Standard logging options
     processStandardDebugOptions(parser);
 
-    // Check for mutually exclusive theme options
+    // Check for theme override
     bool forceDarkTheme = parser.isSet("force-dark-theme");
-    bool forceLightTheme = parser.isSet("force-light-theme");
-    
-    if (forceDarkTheme && forceLightTheme) {
-        qCritical() << "Error: Cannot use both --force-dark-theme and --force-light-theme simultaneously";
-        return 1;
-    }
 
     // Determine theme: command line override takes precedence over system detection
-    bool darkModeEnabled;
+    bool shouldApplyDarkTheme;
     if (forceDarkTheme) {
-        darkModeEnabled = true;
-    } else if (forceLightTheme) {
-        darkModeEnabled = false;
+        shouldApplyDarkTheme = true;
+        a.setProperty("isDarkTheme", true);
     } else {
-        darkModeEnabled = isDarkModeEnabled();
+        // Qt on Linux doesn't automatically pick up GTK themes, so detect manually
+        shouldApplyDarkTheme = isDarkModeEnabled();
+        // Don't set property - let PlotWidget detect from applied palette
     }
     
-    // Apply theme if dark mode is enabled
-    if (darkModeEnabled) {
+    // Apply dark theme if needed (Qt doesn't do this automatically on Linux)
+    if (shouldApplyDarkTheme) {
         applyDarkTheme(a);
     }
-    
-    // Store theme state globally for other components to access
-    a.setProperty("isDarkTheme", darkModeEnabled);
 
     // Get the arguments from the parser
     QString inputFileName;

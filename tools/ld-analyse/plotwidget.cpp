@@ -224,9 +224,19 @@ void PlotWidget::setCanvasBackground(const QColor &color)
 
 bool PlotWidget::isDarkTheme()
 {
-    // Get theme state from application property set in main.cpp
+    // Check for command line overrides first
     QVariant themeProperty = QApplication::instance()->property("isDarkTheme");
-    return themeProperty.isValid() ? themeProperty.toBool() : false;
+    if (themeProperty.isValid()) {
+        return themeProperty.toBool();
+    }
+    
+    // Otherwise, use Qt's automatic palette detection (OS provides this)
+    QPalette appPalette = QApplication::palette();
+    QColor windowColor = appPalette.color(QPalette::Window);
+    QColor textColor = appPalette.color(QPalette::WindowText);
+    
+    // Simple heuristic: if window is darker than text, we're in dark mode
+    return windowColor.lightness() < textColor.lightness();
 }
 
 void PlotWidget::updateTheme()
