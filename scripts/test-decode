@@ -264,6 +264,8 @@ def run_efm_decoder(args):
 
     # Run efm-decoder-f2 (EFM T-values to F2 Section)
     cmd = [build_dir + '/tools/efm-decoder/tools/efm-decoder-f2/efm-decoder-f2']
+    if args.no_efm_timecodes:
+        cmd += ['--no-timecodes']
     cmd += [efm_file, f2_file]
     run_command(cmd)
 
@@ -354,6 +356,8 @@ def main():
                        help='source is PAL (default NTSC)')
     group.add_argument('--no-efm', action='store_true', dest='no_efm',
                        help='source has no EFM')
+    group.add_argument('--no-efm-timecodes', action='store_true', dest='no_efm_timecodes',
+                       help='source EFM has no timecodes')
     group.add_argument('--AC3', action='store_true', dest='AC3',
                        help='source has AC3 audio')
     group.add_argument('--cut-seek', dest='cutseek', type=int,

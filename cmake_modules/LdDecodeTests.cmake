@@ -67,6 +67,7 @@ add_test(
         --source ${CMAKE_SOURCE_DIR}
         --build ${CMAKE_BINARY_DIR}
         --pal
+        --no-efm  # GGV discs do not contain EFM data
         --cut-seek 760
         --cut-length 4
         --expect-frames 4
@@ -92,6 +93,7 @@ add_test(
     COMMAND ${SCRIPTS_DIR}/test-decode
         --source ${CMAKE_SOURCE_DIR}
         --build ${CMAKE_BINARY_DIR}
+        --no-efm-timecodes
         --expect-frames 4
         --expect-bpsnr 37.6
         --expect-vbi 9167913,15785241,15785241
