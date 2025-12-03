@@ -206,14 +206,20 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             }
 
             // Set the frame time q_data_channel[3-5]
-            sectionMetadata.setSectionTime(SectionTime(
-                    bcd2ToInt(qChannelData[3]), bcd2ToInt(qChannelData[4]), bcd2ToInt(qChannelData[5])));
+            // Validate BCD values to handle edge case where CRC passes but data is corrupt
+            qint32 sectionMinutes = validateAndClampTimeValue(bcd2ToInt(qChannelData[3]), 59, "section minutes", sectionMetadata);
+            qint32 sectionSeconds = validateAndClampTimeValue(bcd2ToInt(qChannelData[4]), 59, "section seconds", sectionMetadata);
+            qint32 sectionFrames = validateAndClampTimeValue(bcd2ToInt(qChannelData[5]), 74, "section frames", sectionMetadata);
+            sectionMetadata.setSectionTime(SectionTime(sectionMinutes, sectionSeconds, sectionFrames));
 
             // Set the zero byte q_data_channel[6] - Not used at the moment
 
             // Set the ap time q_data_channel[7-9]
-            sectionMetadata.setAbsoluteSectionTime(SectionTime(
-                    bcd2ToInt(qChannelData[7]), bcd2ToInt(qChannelData[8]), bcd2ToInt(qChannelData[9])));
+            // Validate BCD values to handle edge case where CRC passes but data is corrupt
+            qint32 absMinutes = validateAndClampTimeValue(bcd2ToInt(qChannelData[7]), 59, "absolute minutes", sectionMetadata);
+            qint32 absSeconds = validateAndClampTimeValue(bcd2ToInt(qChannelData[8]), 59, "absolute seconds", sectionMetadata);
+            qint32 absFrames = validateAndClampTimeValue(bcd2ToInt(qChannelData[9]), 74, "absolute frames", sectionMetadata);
+            sectionMetadata.setAbsoluteSectionTime(SectionTime(absMinutes, absSeconds, absFrames));
         } else if (sectionMetadata.qMode() == SectionMetadata::QMode2) {
             // Extract the 52 bit UPC/EAN code
             // This is a 13 digit BCD code, so we need to convert it to an integer
@@ -236,7 +242,10 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             // Only the absolute frame number is included for Q mode 2
             sectionMetadata.setSectionType(SectionType(SectionType::UserData), 1);
             sectionMetadata.setSectionTime(SectionTime(0, 0, 0));
-            sectionMetadata.setAbsoluteSectionTime(SectionTime(0, 0, bcd2ToInt(qChannelData[9])));
+            
+            // Validate BCD value to handle edge case where CRC passes but data is corrupt
+            qint32 absFrames = validateAndClampTimeValue(bcd2ToInt(qChannelData[9]), 74, "absolute frames (QMode2)", sectionMetadata);
+            sectionMetadata.setAbsoluteSectionTime(SectionTime(0, 0, absFrames));
         } else if (sectionMetadata.qMode() == SectionMetadata::QMode3) {
             // There is no test data for this qmode, so this is untested
             qWarning("Subcode::fromData(): Q-Mode 3 metadata is present on this disc.  This is untested.");
@@ -245,7 +254,10 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             // Only the absolute frame number is included for Q mode 3
             sectionMetadata.setSectionType(SectionType(SectionType::UserData), 1);
             sectionMetadata.setSectionTime(SectionTime(0, 0, 0));
-            sectionMetadata.setAbsoluteSectionTime(SectionTime(0, 0, bcd2ToInt(qChannelData[9])));
+            
+            // Validate BCD value to handle edge case where CRC passes but data is corrupt
+            qint32 absFrames = validateAndClampTimeValue(bcd2ToInt(qChannelData[9]), 74, "absolute frames (QMode3)", sectionMetadata);
+            sectionMetadata.setAbsoluteSectionTime(SectionTime(0, 0, absFrames));
         } else {
             qFatal("Subcode::fromData(): Invalid Q-mode %d", sectionMetadata.qMode());
         }
@@ -615,6 +627,21 @@ quint8 Subcode::intToBcd2(quint8 value)
 
     // Ensure the result is always 2 bytes (00-99)
     return bcd & 0xFF;
+}
+
+// Validate and clamp time component values, marking section as repaired if needed
+// Returns the clamped value
+qint32 Subcode::validateAndClampTimeValue(qint32 value, qint32 maxValue, const QString &valueName, 
+                                          SectionMetadata &sectionMetadata)
+{
+    if (value > maxValue) {
+        if (m_showDebug)
+            qDebug().nospace() << "Subcode::validateAndClampTimeValue(): Invalid " << valueName 
+                               << " value " << value << " - marking section as repaired";
+        sectionMetadata.setRepaired(true);
+        return maxValue;
+    }
+    return value;
 }
 
 // Convert BCD (Binary Coded Decimal) to integer
