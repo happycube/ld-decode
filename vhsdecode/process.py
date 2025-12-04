@@ -166,6 +166,9 @@ class VHSDecode(ldd.LDdecode):
 
         self.debug_plot = debug_plot
         self.field_order_action = field_order_action
+        if tape_format == "TYPEC":
+            # Since typec usually lacks vsync set this to none to avoid dropping fields.
+            self.field_order_action = "none"
         self.duplicate_prev_field = True
 
         # Needs to be overridden since this is overwritten for 405-line.
@@ -239,6 +242,9 @@ class VHSDecode(ldd.LDdecode):
                 and prevfi_2["detectedFirstField"] == prevfi_1["detectedFirstField"]
                 # and this field is within a reasonable distance to be valid
                 and lddu.inrange(distance_from_previous_field, 0.9, 1.1)
+                # Skip on TYPEC since we expect to have missing vsync there and we don't
+                # expect progressive video.
+                and self.rf.options.tape_format != "TYPEC"
             ):
                 # treat this as progressive, and manually flip the field order
                 ldd.logger.error(
@@ -264,9 +270,10 @@ class VHSDecode(ldd.LDdecode):
                         self.duplicate_prev_field = not self.duplicate_prev_field
 
                 if self.field_order_action == "none":
-                    ldd.logger.error(
-                        "Possibly skipped field (Two fields with same isFirstField in a row), manually flipping the field order to compensate"
-                    )
+                    if self.rf.options.tape_format != "TYPEC":
+                        ldd.logger.error(
+                            "Possibly skipped field (Two fields with same isFirstField in a row), manually flipping the field order to compensate"
+                        )
                     decode_faults |= 4
                     fi["syncConf"] = 0
                     fi["isFirstField"] = not prevfi_1["isFirstField"]
