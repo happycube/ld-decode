@@ -12,6 +12,8 @@
 #include "ui_dropoutanalysisdialog.h"
 
 #include <QPen>
+#include <QDebug>
+#include <cmath>
 
 DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     QDialog(parent),
@@ -20,16 +22,18 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     ui->setupUi(this);
     setWindowFlags(Qt::Window);
 
-    // Set up the chart view
-    plot = new QwtPlot();
-    zoomer = new QwtPlotZoomer(plot->canvas());
-    panner = new QwtPlotPanner(plot->canvas());
-    grid = new QwtPlotGrid();
-    curve = new QwtPlotCurve();
-    points = new QPolygonF();
-    plotMarker = new QwtPlotMarker();
-
+    // Set up the plot widget
+    plot = new PlotWidget(this);
+    plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
+
+    // Set up curve and marker
+    curve = plot->addCurve("Dropout Length");
+    curve->setPen(QPen(Qt::red, 1));
+    
+    plotMarker = plot->addMarker();
+    plotMarker->setStyle(PlotMarker::VLine);
+    plotMarker->setPen(QPen(Qt::blue, 2));
 
     // Set the maximum Y scale to 0
     maxY = 0;
@@ -37,16 +41,8 @@ DropoutAnalysisDialog::DropoutAnalysisDialog(QWidget *parent) :
     // Set the default number of frames
     numberOfFrames = 0;
 
-    // Connect to scale changed slot
-#ifdef Q_OS_WIN32
-    // Workaround for linker issue with Qwt on windows
-    connect(
-        plot->axisWidget(QwtPlot::xBottom), SIGNAL( scaleDivChanged() ),
-        this, SLOT( scaleDivChangedSlot() )
-    );
-#else
-    connect(plot->axisWidget(QwtPlot::xBottom), &QwtScaleWidget::scaleDivChanged, this, &DropoutAnalysisDialog::scaleDivChangedSlot);
-#endif
+    // Connect to plot area changed signal
+    connect(plot, &PlotWidget::plotAreaChanged, this, &DropoutAnalysisDialog::onPlotAreaChanged);
 }
 
 DropoutAnalysisDialog::~DropoutAnalysisDialog()
@@ -60,21 +56,21 @@ void DropoutAnalysisDialog::startUpdate(qint32 _numberOfFrames)
 {
     removeChartContents();
     numberOfFrames = _numberOfFrames;
-    points->reserve(numberOfFrames);
+    points.reserve(numberOfFrames);
 }
 
 // Remove the axes and series from the chart, giving ownership back to this object
 void DropoutAnalysisDialog::removeChartContents()
 {
     maxY = 0;
-    points->clear();
+    points.clear();
     plot->replot();
 }
 
 // Add a data point to the chart
 void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, double doLength)
 {
-    points->append(QPointF(static_cast<qreal>(frameNumber), static_cast<qreal>(doLength)));
+    points.append(QPointF(static_cast<qreal>(frameNumber), static_cast<qreal>(doLength)));
 
     // Keep track of the maximum Y value
     if (doLength > maxY) maxY = doLength;
@@ -83,72 +79,45 @@ void DropoutAnalysisDialog::addDataPoint(qint32 frameNumber, double doLength)
 // Finish the update and render the graph
 void DropoutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 {
-    // Set the chart title
-    plot->setTitle("Dropout Loss Analysis");
+    // Set up plot properties
+    plot->updateTheme(); // Auto-detect theme and set appropriate background
+    plot->setGridEnabled(true);
+    plot->setZoomEnabled(true);
+    plot->setPanEnabled(true);
+    plot->setYAxisIntegerLabels(true); // Dropouts should be whole numbers
+    
+    // Set axis titles and ranges
+    plot->setAxisTitle(Qt::Horizontal, "Frame number");
+    plot->setAxisTitle(Qt::Vertical, "Dropout length (in dots)");
+    plot->setAxisRange(Qt::Horizontal, 0, numberOfFrames);
+    
+    // Calculate appropriate Y-axis range (dropout lengths should always be >= 0)
+    // Round to whole numbers since fractions of dropouts aren't meaningful
+    double yMax = (maxY < 10) ? 10 : ceil(maxY + (maxY * 0.1)); // Add 10% padding and round up
+    plot->setAxisRange(Qt::Vertical, 0, yMax);
 
-    // Set the background and grid
-    plot->setCanvasBackground(Qt::white);
-    grid->attach(plot);
+    // Set the dropout curve data with theme-aware color
+    QColor dataColor = PlotWidget::isDarkTheme() ? Qt::yellow : Qt::darkMagenta;
+    curve->setPen(QPen(dataColor, 2));
+    curve->setData(points);
 
-    // Define the x-axis
-    plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
-    plot->setAxisTitle(QwtPlot::xBottom, "Frame number");
+    // Set the frame marker position
+    plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), yMax / 2));
 
-    // Define the y-axis
-    if (maxY < 10) plot->setAxisScale(QwtPlot::yLeft, 0, 10);
-    else plot->setAxisScale(QwtPlot::yLeft, 0, maxY);
-    plot->setAxisTitle(QwtPlot::yLeft, "Dropout length (in dots)");
-
-    // Attach the curve data to the chart
-    curve->setTitle("Dropout length");
-    curve->setPen(Qt::darkMagenta, 1);
-    curve->setRenderHint(QwtPlotItem::RenderAntialiased, true);
-    curve->setSamples(*points);
-    curve->attach(plot);
-
-    // Define the plot marker
-    plotMarker->setLineStyle(QwtPlotMarker::VLine);
-    plotMarker->setLinePen(Qt::blue, 2, Qt::SolidLine);
-    plotMarker->setXValue(static_cast<double>(_currentFrameNumber));
-    plotMarker->attach(plot);
-
-    // Update the axis
-    plot->updateAxes();
-
-    // Update the plot zoomer base
-    zoomer->setZoomBase(true);
-
-    // Set the plot zoomer mouse controls
-    zoomer->setMousePattern(QwtEventPattern::MouseSelect2, Qt::RightButton, Qt::ControlModifier);
-    zoomer->setMousePattern(QwtEventPattern::MouseSelect3, Qt::RightButton);
-
-    // Set the plot zoomer colour
-    zoomer->setRubberBandPen(QPen(Qt::red, 2, Qt::DotLine));
-    zoomer->setTrackerPen(QPen(Qt::red));
-
-    // Update the plot panner
-    panner->setAxisEnabled(QwtPlot::yRight, false);
-    panner->setMouseButton(Qt::MiddleButton);
-
-    // Render the chart
-    plot->maximumSize();
-    plot->show();
+    // Render the plot
+    plot->replot();
 }
 
 // Method to update the frame marker
 void DropoutAnalysisDialog::updateFrameMarker(qint32 _currentFrameNumber)
 {
-    plotMarker->setXValue(static_cast<double>(_currentFrameNumber));
+    double yMax = (maxY < 10) ? 10 : ceil(maxY + (maxY * 0.1));
+    plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), yMax / 2));
     plot->replot();
 }
 
-void DropoutAnalysisDialog::scaleDivChangedSlot()
+void DropoutAnalysisDialog::onPlotAreaChanged()
 {
-    // If user zooms all the way out, reapply axis scale defaults
-    if (zoomer->zoomRectIndex() == 0) {
-        plot->setAxisScale(QwtPlot::xBottom, 0, numberOfFrames, (numberOfFrames / 10));
-        if (maxY < 10) plot->setAxisScale(QwtPlot::yLeft, 0, 10);
-        else plot->setAxisScale(QwtPlot::yLeft, 0, maxY);
-        plot->replot();
-    }
+    // Handle plot area changes if needed
+    // The PlotWidget handles zoom/pan internally
 }

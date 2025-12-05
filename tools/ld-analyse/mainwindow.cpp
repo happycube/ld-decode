@@ -88,7 +88,8 @@ MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     ui->actionResizeFrameWithWindow->setChecked(resizeFrameWithWindow);
 
     // Store the current button palette for the show dropouts button
-    buttonPalette = ui->dropoutsPushButton->palette();
+    // Use application palette to ensure it respects theme settings
+    buttonPalette = QApplication::palette();
 
     // Initialize slider debouncing
     sliderDebounceTimer = new QTimer(this);
