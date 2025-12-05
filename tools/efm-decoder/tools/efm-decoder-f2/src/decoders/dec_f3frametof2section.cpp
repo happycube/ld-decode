@@ -294,14 +294,21 @@ void F3FrameToF2Section::outputSection(bool showAddress)
     // This is a sanity check for that case
     if (sectionMetadata.isRepaired()) {
         // Check the absolute time is within 10 frames of the last section
-        if (sectionMetadata.absoluteSectionTime().frames() - m_lastSectionMetadata.absoluteSectionTime().frames() > 10) {
+        // Compare raw frame values directly to avoid creating invalid SectionTime objects through subtraction
+        qint32 currentFrames = sectionMetadata.absoluteSectionTime().frames();
+        qint32 lastFrames = m_lastSectionMetadata.absoluteSectionTime().frames();
+        qint32 timeDiff = qAbs(currentFrames - lastFrames);
+        if (timeDiff > 10) {
             qWarning() << "F3FrameToF2Section::outputSection - Repaired section has a large time difference from the last section - marking as invalid";
             sectionMetadata.setValid(false);
         }
     }
 
     f2Section.metadata = sectionMetadata;
-    m_lastSectionMetadata = sectionMetadata;
+    // Only update last section metadata if this section is valid
+    if (sectionMetadata.isValid()) {
+        m_lastSectionMetadata = sectionMetadata;
+    }
     m_outputBuffer.enqueue(f2Section);
 
     if (m_showDebug && showAddress) qDebug() << "F3FrameToF2Section::outputSection - Outputting F2 section with address"

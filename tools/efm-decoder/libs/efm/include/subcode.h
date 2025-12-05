@@ -52,6 +52,8 @@ private:
     quint8 countBits(quint8 byteValue);
     quint8 intToBcd2(quint8 value);
     quint8 bcd2ToInt(quint8 bcd);
+    qint32 validateAndClampTimeValue(qint32 value, qint32 maxValue, const QString &valueName,
+                                     SectionMetadata &sectionMetadata);
 
     bool m_showDebug;
 };
