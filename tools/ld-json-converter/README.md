@@ -6,7 +6,8 @@
 
 ld-json-converter converts TBC JSON metadata files into a relational SQLite database for easier querying and analysis.
 
-**⚠️ Important**: The SQLite metadata format is **internal to ld-decode tools only** and subject to change without notice. External tools and scripts should **not** access this database directly. Instead, use `ld-export-metadata` or similar tools to export metadata in stable, documented formats.
+> [!WARNING]  
+> The SQLite metadata format is **internal to ld-decode tools only** and subject to change without notice. External tools and scripts should **not** access this database directly. Instead, use `ld-export-metadata` or similar tools to export metadata in stable, documented formats.
 
 ## Usage
 
