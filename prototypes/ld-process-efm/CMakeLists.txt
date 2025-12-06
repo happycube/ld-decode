@@ -1,6 +1,14 @@
+cmake_minimum_required(VERSION 3.16)
+
+project(ld-process-efm)
+
+# Find Qt5
+find_package(Qt5 REQUIRED COMPONENTS Core)
+
 add_executable(ld-process-efm
     efmprocess.cpp
     main.cpp
+    ../../tools/library/tbc/logging.cpp
     Datatypes/audio.cpp
     Datatypes/f1frame.cpp
     Datatypes/f2frame.cpp
@@ -19,8 +27,14 @@ add_executable(ld-process-efm
     Decoders/syncf3frames.cpp
 )
 
-target_include_directories(ld-process-efm PRIVATE .)
+target_include_directories(ld-process-efm PRIVATE . ../../tools/library/tbc ../../tools/efm-decoder/libs/ezpwd/c++)
 
-target_link_libraries(ld-process-efm PRIVATE Qt::Core lddecode-library)
+# Define application version info
+target_compile_definitions(ld-process-efm PRIVATE 
+    APP_BRANCH="prototypes"
+    APP_COMMIT="unknown"
+)
+
+target_link_libraries(ld-process-efm PRIVATE Qt5::Core)
 
 install(TARGETS ld-process-efm)

@@ -5,8 +5,10 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 )
 
 add_executable(ld-ldf-reader
-  ld-ldf-reader.c)
+    ldfreader.cpp
+    main.cpp
+)
 
-target_link_libraries(ld-ldf-reader PkgConfig::FFMPEG)
+target_link_libraries(ld-ldf-reader PRIVATE Qt::Core PkgConfig::FFMPEG lddecode-library)
 
 install(TARGETS ld-ldf-reader)

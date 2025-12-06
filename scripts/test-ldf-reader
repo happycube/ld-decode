@@ -1,0 +1,112 @@
+#!/bin/bash
+# Test script for ld-ldf-reader
+#
+# This script tests the ld-ldf-reader tool by:
+# 1. Extracting a complete LDF file and verifying the checksum
+# 2. Extracting a partial file with offset and verifying the checksum
+
+set -e
+
+# Default values
+BUILD_DIR="${BUILD_DIR:-build}"
+TESTDATA_DIR="${TESTDATA_DIR:-testdata}"
+INPUT_FILE=""
+FULL_SHA256=""
+PARTIAL_SHA256=""
+OFFSET=0
+PARTIAL_BYTES=0
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --build)
+            BUILD_DIR="$2"
+            shift 2
+            ;;
+        --testdata)
+            TESTDATA_DIR="$2"
+            shift 2
+            ;;
+        --input)
+            INPUT_FILE="$2"
+            shift 2
+            ;;
+        --full-sha256)
+            FULL_SHA256="$2"
+            shift 2
+            ;;
+        --partial-sha256)
+            PARTIAL_SHA256="$2"
+            shift 2
+            ;;
+        --offset)
+            OFFSET="$2"
+            shift 2
+            ;;
+        --partial-bytes)
+            PARTIAL_BYTES="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Validate required parameters
+if [[ -z "$INPUT_FILE" ]]; then
+    echo "Error: --input is required"
+    exit 1
+fi
+
+if [[ -z "$FULL_SHA256" ]]; then
+    echo "Error: --full-sha256 is required"
+    exit 1
+fi
+
+# Construct full paths
+LDF_READER="$BUILD_DIR/tools/ld-ldf-reader/ld-ldf-reader"
+INPUT_PATH="$TESTDATA_DIR/$INPUT_FILE"
+
+# Check if files exist
+if [[ ! -f "$LDF_READER" ]]; then
+    echo "Error: ld-ldf-reader not found at $LDF_READER"
+    exit 1
+fi
+
+if [[ ! -f "$INPUT_PATH" ]]; then
+    echo "Error: Test file not found at $INPUT_PATH"
+    exit 1
+fi
+
+echo "Testing ld-ldf-reader with $INPUT_FILE"
+
+# Test 1: Extract full file and verify checksum
+echo "Test 1: Extracting full file..."
+ACTUAL_FULL_SHA256=$($LDF_READER --quiet "$INPUT_PATH" 2>/dev/null | sha256sum | awk '{print $1}')
+
+if [[ "$ACTUAL_FULL_SHA256" != "$FULL_SHA256" ]]; then
+    echo "FAIL: Full file checksum mismatch"
+    echo "  Expected: $FULL_SHA256"
+    echo "  Got:      $ACTUAL_FULL_SHA256"
+    exit 1
+fi
+echo "PASS: Full file checksum matches"
+
+# Test 2: Extract partial file with offset (if parameters provided)
+if [[ -n "$PARTIAL_SHA256" && "$PARTIAL_BYTES" -gt 0 ]]; then
+    echo "Test 2: Extracting partial file with offset $OFFSET samples, $PARTIAL_BYTES bytes..."
+    ACTUAL_PARTIAL_SHA256=$($LDF_READER --quiet --start-offset "$OFFSET" "$INPUT_PATH" 2>/dev/null | head -c "$PARTIAL_BYTES" | sha256sum | awk '{print $1}')
+    
+    if [[ "$ACTUAL_PARTIAL_SHA256" != "$PARTIAL_SHA256" ]]; then
+        echo "FAIL: Partial file checksum mismatch"
+        echo "  Expected: $PARTIAL_SHA256"
+        echo "  Got:      $ACTUAL_PARTIAL_SHA256"
+        exit 1
+    fi
+    echo "PASS: Partial file checksum matches"
+fi
+
+echo "All tests passed!"
+exit 0

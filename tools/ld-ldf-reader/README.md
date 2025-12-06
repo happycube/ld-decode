@@ -1,69 +1,71 @@
 # ld-ldf-reader
 
-**LaserDisc LDF Format Reader and Extractor**
+**LDF Reader Tool for ld-decode**
 
 ## Overview
 
-ld-ldf-reader extracts 16-bit data from .ldf (.oga compressed) files. LDF is a compressed container format used by ld-decode for storing raw LaserDisc RF data efficiently using OGG/Vorbis compression. This tool streams the decompressed data to standard output.
-
-## Features
-
-### Format Support
-- **LDF Reading**: Native ld-decode RF format (.ldf files)
-- **OGA Decompression**: Decompress .oga compressed RF data
-- **Streaming Output**: Direct to stdout for piping
-- **Seek Support**: Optional seek to specific location in file
+ld-ldf-reader extracts 16-bit data from .ldf (FLAC compressed) files. LDF is a compressed container format used by ld-decode for storing raw LaserDisc RF data efficiently using FLAC compression in an Ogg container. This tool decompresses and streams the raw 16-bit sample data to standard output.
 
 ## Usage
 
 ### Basic Syntax
 ```bash
-ld-ldf-reader [filename] [seek location]
+ld-ldf-reader [options] input
 ```
 
 Output is streamed to standard output.
 
 ## Options
 
-This tool does not use standard command-line options. It has a simplified interface:
+#### Common Options
+- `-h, --help`: Display help on command-line options
+- `-v, --version`: Display version information
+- `-d, --debug`: Show debug information
+- `-q, --quiet`: Suppress info and warning messages
 
-#### Arguments
-- `filename`: LDF file to read (required)
-- `seek location`: Optional sample position to seek to before reading
+#### Input/Output
+- `input`: Input LDF file (positional argument, required)
+- `-s, --start-offset <samples>`: Start offset in samples (default: 0)
 
-### Examples
+## Examples
 
-#### Extract Entire File
+### Extract Entire File
 ```bash
 ld-ldf-reader capture.ldf > output.raw
 ```
 
-#### Seek to Position
+### Extract with Start Offset
 ```bash
-# Seek to sample 1000000 before reading
-ld-ldf-reader capture.ldf 1000000 > segment.raw
+# Skip first 1,000,000 samples before reading
+ld-ldf-reader --start-offset 1000000 capture.ldf > segment.raw
 ```
 
-#### Pipe to ld-decode
+### Pipe to ld-decode
 ```bash
 ld-ldf-reader capture.ldf | ld-decode - output.tbc
 ```
 
-#### Extract Segment
+### Extract Specific Segment
 ```bash
-# Extract from specific position
-ld-ldf-reader capture.ldf 50000000 | head -c 10000000 > segment.raw
+# Extract 10MB starting from sample 50,000,000
+ld-ldf-reader --start-offset 50000000 capture.ldf | head -c 10000000 > segment.raw
 ```
 
-## LDF Format Details
+## Input/Output
 
-### Structure
-LDF files use OGG/Vorbis (.oga) compression to store RF sample data efficiently. The tool decompresses and outputs raw 16-bit signed samples.
+### Input Format
+- LDF files (FLAC audio in Ogg container, `.ldf` extension)
+- Compressed RF sample data
 
 ### Output Format
 - **16-bit Signed**: Little-endian sample data
 - **Raw Stream**: No header, pure sample data
 - **Stdout**: Direct streaming for piping to other tools
+
+## LDF Format Details
+
+### Structure
+LDF files use FLAC compression in an Ogg container to store RF sample data efficiently. The tool decompresses and outputs raw 16-bit signed samples.
 
 ## Technical Details
 
@@ -93,17 +95,10 @@ ld-ldf-reader capture.ldf > capture.raw
 
 ### Segment Extraction
 ```bash
-# Extract from specific position
-ld-ldf-reader capture.ldf 1000000 | head -c 50000000 > segment.raw
+# Extract from specific position using offset
+ld-ldf-reader --start-offset 1000000 capture.ldf | head -c 50000000 > segment.raw
 ```
 
-## Sample Rate Information
-
-### Common Sample Rates
-- **40 MHz**: NTSC captures (typical DomesDay Duplicator)
-- **28 MHz**: PAL captures (some setups)
-- **20 MHz**: NTSC captures (older setups)
-- **14 MHz**: PAL captures (older setups)
 
 ### Duration Calculation
 ```
@@ -120,52 +115,46 @@ Example (NTSC):
 - **NTSC**: ~288 GB per hour (40 MHz)
 - **PAL**: ~201 GB per hour (28 MHz)
 
-### LDF Compressed
+### LDF Compressed (FLAC)
 - **NTSC**: ~150-160 GB per hour
 - **PAL**: ~100-120 GB per hour
-- **Savings**: ~45-50% compression
+- **Compression Ratio**: ~45-50% reduction
 
 ## Troubleshooting
 
-### Issues
+### Common Issues
 
 **Cannot read file:**
-- Verify file is actually LDF format
-- Check file isn't corrupted (--verify)
-- Ensure ld-decode tools are updated
+- Verify file is actually LDF format (use `file` command to check)
+- Check file isn't corrupted
+- Ensure FFmpeg libraries are properly installed
 
 **Decompression errors:**
 - File may be damaged
 - Incomplete download/transfer
 - Disk corruption (run filesystem check)
 
-**Wrong output format:**
-- LDF reader always outputs 16-bit signed LE
-- Use conversion tools if different format needed
+**Output issues:**
+- LDF reader always outputs 16-bit signed little-endian format
+- Use `--quiet` to suppress info messages if piping to another tool
+- Redirect stderr to avoid mixing debug output with data stream
 
 **Performance issues:**
-- Ensure adequate CPU for decompression
-- Check disk I/O speed (use fast storage)
-- Consider extracting ranges for large files
+- Decompression speed limited by CPU and I/O
+- Use `--start-offset` to skip to specific positions efficiently
+- Consider extracting specific segments for large files
 
-**Incomplete extraction:**
-- Verify start/length parameters
-- Check available disk space
-- Ensure file permissions
 
-## Conversion from Other Formats
+## Testing
 
-### Create LDF from Raw
-LDF files are typically created by ld-decode during capture. To create from raw RF:
+A test suite is included to verify proper operation:
 
 ```bash
-# Use ld-decode to process and create LDF
-ld-decode input.raw output.tbc
-
-# Or use custom tools that support LDF writing
+# Run the ld-ldf-reader test
+ctest -R ldf-reader-full
 ```
 
-Note: ld-ldf-reader is read-only. For writing LDF files, use ld-decode or other compatible tools.
+The test validates:
+- Full file decompression and checksum verification
+- Partial extraction with `--start-offset` parameter
 
-
-## Input/Output

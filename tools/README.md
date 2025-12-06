@@ -50,7 +50,8 @@ This directory contains the complete suite of tools for processing LaserDisc cap
 - **Dependencies**: Most tools require FFmpeg and other multimedia libraries
 - **Performance**: Many tools support multi-threading for faster processing
 
-**⚠️ Important**: The SQLite metadata format is **internal to ld-decode tools only** and subject to change without notice. External tools and scripts should **not** access this database directly. Instead, use `ld-export-metadata` or similar tools to export metadata in stable, documented formats.
+> [!WARNING]  
+> The SQLite metadata format is **internal to ld-decode tools only** and subject to change without notice. External tools and scripts should **not** access this database directly. Instead, use `ld-export-metadata` or similar tools to export metadata in stable, documented formats.
 
 ## Documentation
 
