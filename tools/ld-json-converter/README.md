@@ -1,6 +1,49 @@
-# SQLite Schema
+# ld-json-converter
 
+**JSON to SQLite Metadata Converter**
+
+## Overview
+
+ld-json-converter converts TBC JSON metadata files into a relational SQLite database for easier querying and analysis.
+
+**⚠️ Important**: The SQLite metadata format is **internal to ld-decode tools only** and subject to change without notice. External tools and scripts should **not** access this database directly. Instead, use `ld-export-metadata` or similar tools to export metadata in stable, documented formats.
+
+## Usage
+
+### Basic Syntax
+```bash
+ld-json-converter [options]
 ```
+
+## Options
+
+#### Common Options
+- `-h, --help`: Display help on command-line options
+- `-v, --version`: Display version information
+- `-d, --debug`: Show debug information
+- `-q, --quiet`: Suppress info and warning messages
+
+#### Input/Output
+- `--input-json <filename>`: Specify the input JSON file
+- `--output-sqlite <filename>`: Specify the output SQLite file (default same as input but with .db extension)
+
+#### Standard Options
+- `-d, --debug`: Show debug messages
+- `-q, --quiet`: Suppress info and warning messages
+- `-h, --help`: Display help information
+- `-v, --version`: Display version information
+
+## Input/Output
+
+### Input Format
+- TBC JSON metadata files (`.tbc.json`)
+
+### Output Format  
+- SQLite database files (`.tbc.db`)
+
+## SQLite Schema
+
+```sql
 ------------------------------------------------------------------
 -- Schema Versioning
 ------------------------------------------------------------------
@@ -244,7 +287,7 @@ Array of field objects, one per video field:
 ### Nested Objects in Fields
 
 #### vitsMetrics Object (Optional)
-Video Insert Test Signal metrics:
+Vertical Interval Test Signal metrics:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -439,4 +482,5 @@ This section documents how JSON metadata elements map to the SQLite database sch
 5. **Foreign Keys**: All field-related tables reference `field_record(capture_id, field_id)`
 6. **New Fields**: The `decoder` field is SQL-only and must be set during conversion process
 7. **Index from 0**: One will be subtracted from the JSON seqNo to ensure that field_id is zero-indexed
+
 
