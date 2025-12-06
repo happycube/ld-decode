@@ -22,13 +22,13 @@ This directory contains the complete suite of tools for processing LaserDisc cap
 - **ld-analyse** - GUI tool for TBC file analysis and visualization
 - **ld-discmap** - TBC and VBI alignment and correction tool
 - **ld-dropout-correct** - Advanced dropout detection and correction
-- **ld-chroma-decoder** - Color decoder for TBC LaserDisc video to RGB conversion
+- **ld-chroma-decoder** - Color decoder for TBC LaserDisc video to RGB/YUV conversion
 - **ld-disc-stacker** - Combine multiple TBC captures for improved quality
 
 ### Export and Conversion Tools
-- **ld-export-metadata** - Export TBC metadata to human-readable formats
+- **ld-export-metadata** - Export TBC metadata to external formats
 - **ld-lds-converter** - Convert between 10-bit and 16-bit LaserDisc sample formats
-- **ld-json-converter** - Convert between metadata formats
+- **ld-json-converter** - Convert between old internal JSON and new internal SQLite metadata formats
 
 ### Utility Scripts
 - **ld-compress** - Compress TBC files for storage (in scripts/)

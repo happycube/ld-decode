@@ -22,7 +22,6 @@ ld-process-vbi extracts and decodes Vertical Blanking Interval (VBI) data from T
 
 #### Time Codes
 - **IEC Time Code**: Standard time code format (HH:MM:SS:FF)
-- **SMPTE Time Code**: SMPTE format time codes
 - **Vertical Interval Time Code (VITC)**: Where available
 
 #### User Data
