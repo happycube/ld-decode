@@ -31,7 +31,7 @@ jobs:
 
     - name: Set up build dir
       timeout-minutes: 1
-      run: mkdir obj && ln -s ../testdata obj/testdata
+      run: mkdir obj
 
     - name: Configure
       timeout-minutes: 5
@@ -75,7 +75,7 @@ jobs:
 
     - name: Set up build dir
       timeout-minutes: 1
-      run: mkdir obj && ln -s ../testdata obj/testdata
+      run: mkdir obj
 
     - name: Configure
       timeout-minutes: 5
