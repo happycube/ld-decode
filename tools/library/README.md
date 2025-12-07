@@ -285,7 +285,8 @@ Binary file containing sequential field data:
 - Fixed width per line (e.g., 1135 for PAL)
 
 ### SQLite Metadata
-**⚠️ Important**: The SQLite metadata format is **internal to ld-decode tools only** and subject to change without notice. External tools and scripts should **not** access this database directly. Instead, use `ld-export-metadata` or similar tools to export metadata in stable, documented formats.
+> [!WARNING]  
+> The SQLite metadata format is **internal to ld-decode tools only** and subject to change without notice. External tools and scripts should **not** access this database directly. Instead, use `ld-export-metadata` or similar tools to export metadata in stable, documented formats.
 
 Efficient binary format with tables:
 - `video_parameters`: Video system settings  

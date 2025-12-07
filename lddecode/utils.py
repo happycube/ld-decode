@@ -497,7 +497,7 @@ class LoadLDF:
     def _open(self, sample):
         self._close()
 
-        command = ["ld-ldf-reader", self.filename, str(sample)]
+        command = ["ld-ldf-reader", "--quiet", "--start-offset", str(sample), self.filename]
 
         ldfreader = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
