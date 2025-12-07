@@ -12,6 +12,7 @@
 #include <limits>
 
 #include "tbcsource.h"
+#include "logging.h"
 
 #include "sourcefield.h"
 
@@ -37,10 +38,10 @@ void TbcSource::loadSource(QString sourceFilename)
     // Set the current file name
     QFileInfo inFileInfo(sourceFilename);
     currentSourceFilename = inFileInfo.fileName();
-    qDebug() << "TbcSource::loadSource(): Opening TBC source file:" << currentSourceFilename;
+    tbcDebugStream() << "TbcSource::loadSource(): Opening TBC source file:" << currentSourceFilename;
 
     // Set up and fire-off background loading thread
-    qDebug() << "TbcSource::loadSource(): Setting up background loader thread";
+    tbcDebugStream() << "TbcSource::loadSource(): Setting up background loader thread";
     disconnect(&watcher, &QFutureWatcher<bool>::finished, nullptr, nullptr);
     connect(&watcher, &QFutureWatcher<bool>::finished, this, &TbcSource::finishBackgroundLoad);
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -63,7 +64,7 @@ void TbcSource::unloadSource()
 void TbcSource::saveSourceMetadata()
 {
     // Start a background saving thread
-    qDebug() << "TbcSource::saveSourceMetadata(): Starting background save thread";
+    tbcDebugStream() << "TbcSource::saveSourceMetadata(): Starting background save thread";
     disconnect(&watcher, &QFutureWatcher<bool>::finished, nullptr, nullptr);
     connect(&watcher, &QFutureWatcher<bool>::finished, this, &TbcSource::finishBackgroundSave);
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -227,7 +228,7 @@ void TbcSource::load(qint32 frameNumber, qint32 fieldNumber)
             firstFieldNumber = ldDecodeMetaData.getFirstFieldNumber(frameNumber);
             secondFieldNumber = ldDecodeMetaData.getSecondFieldNumber(frameNumber);
         }
-        qDebug() << "TbcSource::load(): Jumping back one frame due to error";
+        tbcDebugStream() << "TbcSource::load(): Jumping back one frame due to error";
     }
 
     // Get the field metadata
@@ -933,11 +934,11 @@ QImage TbcSource::generateQImage()
     if (chromaOn) {
         // Show debug information
         if (getFieldViewEnabled()) {
-            qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from field " << loadedFieldNumber <<
-                        " (" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << ")";
+            tbcDebugStream() << "TbcSource::generateQImage(): Generating a chroma image from field"
+                             << loadedFieldNumber << "(" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << ")";
         } else {
-            qDebug().nospace() << "TbcSource::generateQImage(): Generating a chroma image from frame " << loadedFrameNumber <<
-                        " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
+            tbcDebugStream() << "TbcSource::generateQImage(): Generating a chroma image from frame"
+                             << loadedFrameNumber << "(" << videoParameters.fieldWidth << "x" << frameHeight << ")";
         }
 
         inputHeight = videoParameters.lastActiveFrameLine - videoParameters.firstActiveFrameLine;
@@ -965,11 +966,11 @@ QImage TbcSource::generateQImage()
     } else {
         // Show debug information
         if (getFieldViewEnabled()) {
-            qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from field " << loadedFieldNumber <<
-                        " (" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << ")";
+            tbcDebugStream() << "TbcSource::generateQImage(): Generating a source image from field"
+                             << loadedFieldNumber << "(" << videoParameters.fieldWidth << "x" << videoParameters.fieldHeight << ")";
         } else {
-            qDebug().nospace() << "TbcSource::generateQImage(): Generating a source image from frame " << loadedFrameNumber <<
-                        " (" << videoParameters.fieldWidth << "x" << frameHeight << ")";
+            tbcDebugStream() << "TbcSource::generateQImage(): Generating a source image from frame"
+                             << loadedFrameNumber << "(" << videoParameters.fieldWidth << "x" << frameHeight << ")";
         }
 
         inputHeight = frameHeight;
@@ -1184,7 +1185,7 @@ void TbcSource::generateData()
         }
 
         if (frameNumber == 100 && giveUpCounter < 50) {
-            qDebug() << "Not seeing valid chapter numbers, giving up chapter mapping";
+            tbcDebugStream() << "Not seeing valid chapter numbers, giving up chapter mapping";
             ignoreChapters = true;
         }
     }
@@ -1193,7 +1194,7 @@ void TbcSource::generateData()
 bool TbcSource::startBackgroundLoad(QString sourceFilename)
 {
     // Open the TBC metadata file
-    qDebug() << "TbcSource::startBackgroundLoad(): Processing SQLite metadata...";
+    tbcDebugStream() << "TbcSource::startBackgroundLoad(): Processing SQLite metadata...";
     emit busy("Processing SQLite metadata...");
 
     QString metadataFileName = sourceFilename + ".db";
@@ -1229,7 +1230,7 @@ bool TbcSource::startBackgroundLoad(QString sourceFilename)
     LdDecodeMetaData::VideoParameters videoParameters = ldDecodeMetaData.getVideoParameters();
 
     // Open the new source video
-    qDebug() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
+    tbcDebugStream() << "TbcSource::startBackgroundLoad(): Loading TBC file...";
     emit busy("Loading TBC file...");
     if (!sourceVideo.open(sourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
         // Open failed
@@ -1247,7 +1248,7 @@ bool TbcSource::startBackgroundLoad(QString sourceFilename)
     chromaSourceFilename += "_chroma.tbc";
     if (QFileInfo::exists(chromaSourceFilename)) {
         // Yes! Open it.
-        qDebug() << "TbcSource::startBackgroundLoad(): Loading chroma TBC file...";
+        tbcDebugStream() << "TbcSource::startBackgroundLoad(): Loading chroma TBC file...";
         emit busy("Loading chroma TBC file...");
         if (!chromaSourceVideo.open(chromaSourceFilename, videoParameters.fieldWidth * videoParameters.fieldHeight)) {
             // Open failed
@@ -1294,7 +1295,7 @@ void TbcSource::finishBackgroundLoad()
 
 bool TbcSource::startBackgroundSave(QString metadataFilename)
 {
-    qDebug() << "TbcSource::startBackgroundSave(): Saving to" << metadataFilename;
+    tbcDebugStream() << "TbcSource::startBackgroundSave(): Saving to" << metadataFilename;
     emit busy("Saving SQLite metadata...");
 
     // The general idea here is that decoding takes a long time -- so we want
@@ -1334,7 +1335,7 @@ bool TbcSource::startBackgroundSave(QString metadataFilename)
         return false;
     }
 
-    qDebug() << "TbcSource::startBackgroundSave(): Save complete";
+    tbcDebugStream() << "TbcSource::startBackgroundSave(): Save complete";
     return true;
 }
 

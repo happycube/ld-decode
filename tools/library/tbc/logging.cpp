@@ -24,7 +24,7 @@
 ************************************************************************/
 
 #include "logging.h"
-#include <QLoggingCategory>
+#include <QDateTime>
 
 // Global for debug output
 static bool showDebug = false;
@@ -35,7 +35,7 @@ static QFile *debugFile;
 
 // Define the standard logging command line options
 static QCommandLineOption showDebugOption(QStringList() << "d" << "debug",
-                                          QCoreApplication::translate("main", "Show debug"));
+                                          QCoreApplication::translate("main", "Show application debug messages"));
 static QCommandLineOption setQuietOption({"q", "quiet"},
                                          QCoreApplication::translate("main", "Suppress info and warning messages"));
 
@@ -82,6 +82,7 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
         }
 
         // Display the output message on stderr
+        // Show debug messages only when enabled, otherwise warnings/info/critical/fatal always
         if (showDebug || (type != QtDebugMsg)) QTextStream(stderr) << outputMessage;
     }
 
@@ -92,6 +93,48 @@ void debugOutputHandler(QtMsgType type, const QMessageLogContext &context, const
 
     // If the error was fatal, then we should abort
     if (type == QtFatalMsg) abort();
+}
+
+// Application-level debug output that is not suppressed in release builds
+void tbcDebug(const QString &msg)
+{
+    if (!showDebug || quietDebug) return;
+
+    // First debug output?
+    if (firstDebug) {
+        firstDebug = false;
+        QTextStream(stderr) << QString("[%1] Debug: Version - Git branch: %2 / commit: %3\n")
+                               .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz"),
+                                    APP_BRANCH,
+                                    APP_COMMIT);
+    }
+
+    const QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
+    QString formatted = QString("[%1] Debug: %2\n").arg(timestamp, msg);
+    QTextStream(stderr) << formatted;
+
+    if (saveDebug) {
+        QTextStream(debugFile) << formatted;
+    }
+}
+
+// Stream-style helper implementation -----------------------------------------------------------
+
+TbcDebugStream::TbcDebugStream()
+    : stream(&buffer), enabled(getDebugState()), isFirst(true)
+{
+}
+
+TbcDebugStream::~TbcDebugStream()
+{
+    if (enabled) {
+        tbcDebug(buffer);
+    }
+}
+
+TbcDebugStream tbcDebugStream()
+{
+    return TbcDebugStream();
 }
 
 // Open debug file
@@ -115,12 +158,6 @@ void closeDebugFile(void)
 void setDebug(bool state)
 {
     showDebug = state;
-    
-    // Enable Qt debug logging if debug mode is enabled
-    // In Qt 5.2+, qDebug() is suppressed by default in release builds
-    if (state) {
-        QLoggingCategory::setFilterRules("*.debug=true");
-    }
 }
 
 // Control the quiet flag (if set all output is suppressed)
@@ -141,7 +178,7 @@ void setBinaryMode(void)
 // Method to add the standard debug options to the command line parser
 void addStandardDebugOptions(QCommandLineParser &parser)
 {
-    // Option to show debug (-d / --debug)
+    // Option to show debug (-d / --debug) - application messages only
     parser.addOption(showDebugOption);
 
     // Option to set quiet mode (-q)

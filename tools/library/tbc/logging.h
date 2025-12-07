@@ -29,6 +29,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QString>
+#include <QTextStream>
 #include <QCommandLineParser>
 
 #ifdef _WIN32
@@ -46,5 +47,59 @@ void closeDebugFile(void);
 void addStandardDebugOptions(QCommandLineParser &parser);
 void processStandardDebugOptions(QCommandLineParser &parser);
 bool getDebugState();
+
+// Lightweight application-level debug logger (not suppressed in release builds)
+void tbcDebug(const QString &msg);
+
+// Stream-style debug helper to ease migration from qDebug()
+class TbcDebugStream
+{
+public:
+    TbcDebugStream();
+    ~TbcDebugStream();
+
+    template<typename T>
+    TbcDebugStream &operator<<(const T &value)
+    {
+        if (!enabled) return *this;
+        if (!isFirst) {
+            stream << ' ';
+        }
+        stream << value;
+        isFirst = false;
+        return *this;
+    }
+
+private:
+    QString buffer;
+    QTextStream stream;
+    bool enabled;
+    bool isFirst;
+};
+
+TbcDebugStream tbcDebugStream();
+
+// Helper to stream multiple arguments into tbcDebug without qDebug
+template<typename T>
+inline void tbcDebugAppend(QTextStream &stream, const T &value)
+{
+    stream << value;
+}
+
+template<typename T, typename... Rest>
+inline void tbcDebugAppend(QTextStream &stream, const T &value, const Rest&... rest)
+{
+    stream << value;
+    tbcDebugAppend(stream, rest...);
+}
+
+template<typename... Args>
+inline void tbcDebug(const Args&... args)
+{
+    QString message;
+    QTextStream stream(&message);
+    tbcDebugAppend(stream, args...);
+    tbcDebug(message);
+}
 
 #endif // LOGGING_H
