@@ -14,6 +14,8 @@
 #include <cmath>
 
 #include <QDialog>
+#include <QTimer>
+#include <QShowEvent>
 #include "plotwidget.h"
 #include "lddecodemetadata.h"
 
@@ -34,8 +36,12 @@ public:
     void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
+protected:
+    void showEvent(QShowEvent *event) override;
+
 private slots:
     void onPlotAreaChanged();
+    void onUpdateTimerTimeout();
 
 private:
     void removeChartContents();
@@ -43,14 +49,18 @@ private:
 
     Ui::BlackSnrAnalysisDialog *ui;
     PlotWidget *plot;
-    PlotCurve *blackCurve;
-    PlotCurve *trendCurve;
+    PlotSeries *blackSeries;
+    PlotSeries *trendSeries;
     PlotMarker *plotMarker;
 
     double maxY;
     qint32 numberOfFrames;
     QVector<QPointF> blackPoints;
     QVector<QPointF> trendPoints;
+    
+    QTimer *updateTimer;
+    qint32 pendingFrameNumber;
+    bool hasPendingUpdate;
     QVector<double> tlPoint;
 };
 

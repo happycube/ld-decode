@@ -12,6 +12,8 @@
 #define WHITESNRANALYSISDIALOG_H
 
 #include <QDialog>
+#include <QTimer>
+#include <QShowEvent>
 #include <cmath>
 #include <QPen>
 #include "plotwidget.h"
@@ -33,8 +35,12 @@ public:
     void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
+protected:
+    void showEvent(QShowEvent *event) override;
+
 private slots:
     void onPlotAreaChanged();
+    void onUpdateTimerTimeout();
 
 private:
     void removeChartContents();
@@ -42,14 +48,18 @@ private:
 
     Ui::WhiteSnrAnalysisDialog *ui;
     PlotWidget *plot;
-    PlotCurve *whiteCurve;
-    PlotCurve *trendCurve;
+    PlotSeries *whiteSeries;
+    PlotSeries *trendSeries;
     PlotMarker *plotMarker;
 
     double maxY;
     qint32 numberOfFrames;
     QVector<QPointF> whitePoints;
     QVector<QPointF> trendPoints;
+    
+    QTimer *updateTimer;
+    qint32 pendingFrameNumber;
+    bool hasPendingUpdate;
     QVector<double> tlPoint;
 };
 

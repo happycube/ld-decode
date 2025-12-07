@@ -12,6 +12,7 @@
 #include "ui_blacksnranalysisdialog.h"
 
 #include <QPen>
+#include <QTimer>
 #include <algorithm>
 #include <algorithm>
 
@@ -27,14 +28,14 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
 
-    // Set up curves and marker
-    blackCurve = plot->addCurve("Black SNR");
+    // Set up series and marker
+    blackSeries = plot->addSeries("Black SNR");
     // Theme-aware color: white in dark mode, black in light mode
     QColor dataColor = PlotWidget::isDarkTheme() ? Qt::white : Qt::black;
-    blackCurve->setPen(QPen(dataColor, 2));
+    blackSeries->setPen(QPen(dataColor, 2));
     
-    trendCurve = plot->addCurve("Trend line");
-    trendCurve->setPen(QPen(Qt::red, 2));
+    trendSeries = plot->addSeries("Trend line");
+    trendSeries->setPen(QPen(Qt::red, 2));
     
     plotMarker = plot->addMarker();
     plotMarker->setStyle(PlotMarker::VLine);
@@ -45,6 +46,14 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
 
     // Set the default number of frames
     numberOfFrames = 0;
+
+    // Set up update throttling timer
+    updateTimer = new QTimer(this);
+    updateTimer->setSingleShot(true);
+    updateTimer->setInterval(16); // ~60fps max update rate
+    connect(updateTimer, &QTimer::timeout, this, &BlackSnrAnalysisDialog::onUpdateTimerTimeout);
+    hasPendingUpdate = false;
+    pendingFrameNumber = 0;
 
     // Connect to plot area changed signal
     connect(plot, &PlotWidget::plotAreaChanged, this, &BlackSnrAnalysisDialog::onPlotAreaChanged);
@@ -106,12 +115,12 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
     plot->setAxisRange(Qt::Horizontal, 0, numberOfFrames);
     plot->setAxisRange(Qt::Vertical, 20, maxY);
 
-    // Set the black curve data
-    blackCurve->setData(blackPoints);
+    // Set the black series data
+    blackSeries->setData(blackPoints);
 
     // Generate and set the trend line
     generateTrendLine();
-    trendCurve->setData(trendPoints);
+    trendSeries->setData(trendPoints);
 
     // Set the frame marker position
     plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), (maxY + 20) / 2));
@@ -120,11 +129,40 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
     plot->replot();
 }
 
-// Method to update the frame marker
+// Method to update the frame marker (throttled for performance)
 void BlackSnrAnalysisDialog::updateFrameMarker(qint32 _currentFrameNumber)
 {
-    plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), (maxY + 20) / 2));
-    plot->replot();
+    // Always store the pending frame number
+    pendingFrameNumber = _currentFrameNumber;
+    hasPendingUpdate = true;
+    
+    // Skip timer start if dialog is not visible - update will happen on show
+    if (!isVisible()) return;
+    
+    // Start or restart the timer
+    if (!updateTimer->isActive()) {
+        updateTimer->start();
+    }
+}
+
+void BlackSnrAnalysisDialog::onUpdateTimerTimeout()
+{
+    if (!hasPendingUpdate) return;
+    
+    plotMarker->setPosition(QPointF(static_cast<double>(pendingFrameNumber), (maxY + 20) / 2));
+    // No need to call plot->replot() - marker update() handles the redraw
+    
+    hasPendingUpdate = false;
+}
+
+void BlackSnrAnalysisDialog::showEvent(QShowEvent *event)
+{
+    QDialog::showEvent(event);
+    
+    // Force immediate marker update if we have a pending position
+    if (hasPendingUpdate) {
+        onUpdateTimerTimeout();
+    }
 }
 
 void BlackSnrAnalysisDialog::onPlotAreaChanged()
