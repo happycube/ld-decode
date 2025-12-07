@@ -1,16 +1,18 @@
 # What is ld-decode?
 
-**ld-decode** is a software-defined decoder for LaserDisc RF captures made using modified LaserDisc players and capture devices such as the DomesdayDuplicator
+**ld-decode** is a software-defined decoder for LaserDisc RF captures made using modified LaserDisc players and capture devices such as the [DomesdayDuplicator](https://github.com/simoninns/DomesdayDuplicator)
 
 ld-decode recovers video, analog audio, digital audio and metadata content from raw RF samples captured directly from LaserDisc players, bypassing the analog signal chain to achieve preservation-quality digital transfers.
 
-Although ld-decode was originally dedicated to LaserDiscs it has become part of a larger ecosystem including **vhs-decode** (for videotape formats), **cvbs-decode** (for composite video), and **hifi-decode** (for audio processing), amongst others.  All sharing common tools and techniques by being active forks of this repository.
+Although ld-decode was originally dedicated to LaserDiscs it has become part of a larger ecosystem including:
+
+- **[vhs-decode](https://github.com/oyvindln/vhs-decode)** (for videotape formats)
+- **[cvbs-decode](https://github.com/oyvindln/cvbs-decode)** (for composite video)
+- **[hifi-decode](https://github.com/oyvindln/hifi-decode)** (for audio processing)
+
+All sub-projects share common tools and techniques by being active forks of this repository.
 
 ld-decode is a GPL3 open-source project run entirely by volunteers and provided for free (as in freedom).
-
----
-
-This is the GitHub repository for ld-decode - the (hopefully stable) merged development branch.
 
 
 # Installation & Downloads 
@@ -39,7 +41,7 @@ The wiki includes details of the ld-decode community's Discord / IRC Bridge and 
 
 If you are interested in contributing or have general questions please join the [Discord server](https://discord.gg/pVVrrxd) which has the entire family of decode projects developers on it (or IRC if you must) as the Facebook group is mostly inactive.
 
-There is a VHS specific subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active. 
+There is also a VHS specific subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active. 
 
 
 # Source code structure
