@@ -11,6 +11,7 @@
 #include "whitesnranalysisdialog.h"
 #include "ui_whitesnranalysisdialog.h"
 
+#include <QTimer>
 #include <algorithm>
 
 WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
@@ -41,6 +42,14 @@ WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
 
     // Set the default number of frames
     numberOfFrames = 0;
+
+    // Set up update throttling timer
+    updateTimer = new QTimer(this);
+    updateTimer->setSingleShot(true);
+    updateTimer->setInterval(16); // ~60fps max update rate
+    connect(updateTimer, &QTimer::timeout, this, &WhiteSnrAnalysisDialog::onUpdateTimerTimeout);
+    hasPendingUpdate = false;
+    pendingFrameNumber = 0;
 
     // Connect to plot area changed signal
     connect(plot, &PlotWidget::plotAreaChanged, this, &WhiteSnrAnalysisDialog::onPlotAreaChanged);
@@ -118,11 +127,40 @@ void WhiteSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
     plot->replot();
 }
 
-// Method to update the frame marker
+// Method to update the frame marker (throttled for performance)
 void WhiteSnrAnalysisDialog::updateFrameMarker(qint32 _currentFrameNumber)
 {
-    plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), (maxY + 14) / 2));
-    plot->replot();
+    // Always store the pending frame number
+    pendingFrameNumber = _currentFrameNumber;
+    hasPendingUpdate = true;
+    
+    // Skip timer start if dialog is not visible - update will happen on show
+    if (!isVisible()) return;
+    
+    // Start or restart the timer
+    if (!updateTimer->isActive()) {
+        updateTimer->start();
+    }
+}
+
+void WhiteSnrAnalysisDialog::onUpdateTimerTimeout()
+{
+    if (!hasPendingUpdate) return;
+    
+    plotMarker->setPosition(QPointF(static_cast<double>(pendingFrameNumber), (maxY + 14) / 2));
+    // No need to call plot->replot() - marker update() handles the redraw
+    
+    hasPendingUpdate = false;
+}
+
+void WhiteSnrAnalysisDialog::showEvent(QShowEvent *event)
+{
+    QDialog::showEvent(event);
+    
+    // Force immediate marker update if we have a pending position
+    if (hasPendingUpdate) {
+        onUpdateTimerTimeout();
+    }
 }
 
 void WhiteSnrAnalysisDialog::onPlotAreaChanged()

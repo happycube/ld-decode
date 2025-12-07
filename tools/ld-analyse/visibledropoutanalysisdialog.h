@@ -12,6 +12,8 @@
 #define VISIBLEDROPOUTANALYSISDIALOG_H
 
 #include <QDialog>
+#include <QTimer>
+#include <QShowEvent>
 #include "plotwidget.h"
 
 namespace Ui {
@@ -31,8 +33,12 @@ public:
     void finishUpdate(qint32 _currentFrameNumber);
     void updateFrameMarker(qint32 _currentFrameNumber);
 
+protected:
+    void showEvent(QShowEvent *event) override;
+
 private slots:
     void onPlotAreaChanged();
+    void onUpdateTimerTimeout();
 
 private:
     void removeChartContents();
@@ -45,6 +51,10 @@ private:
     double maxY;
     qint32 numberOfFrames;
     QVector<QPointF> points;
+    
+    QTimer *updateTimer;
+    qint32 pendingFrameNumber;
+    bool hasPendingUpdate;
 };
 
 #endif // VISIBLEDROPOUTANALYSISDIALOG_H
