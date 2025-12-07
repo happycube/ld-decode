@@ -540,6 +540,7 @@ void PlotMarker::setPen(const QPen &pen)
 
 void PlotMarker::setPosition(const QPointF &pos)
 {
+    prepareGeometryChange();
     m_dataPos = pos;
     update();
 }
@@ -552,7 +553,26 @@ void PlotMarker::setLabel(const QString &label)
 
 QRectF PlotMarker::boundingRect() const
 {
-    return m_plotRect;
+    if (!m_plotWidget || m_plotRect.isEmpty()) return QRectF();
+    
+    QPointF scenePos = m_plotWidget->mapFromData(m_dataPos);
+    
+    // Only return the actual area occupied by the marker line (plus small margin)
+    // This prevents unnecessary repainting of the entire plot
+    const qreal margin = 2.0;
+    
+    switch (m_style) {
+    case VLine:
+        return QRectF(scenePos.x() - margin, m_plotRect.top(), 
+                     margin * 2, m_plotRect.height());
+    case HLine:
+        return QRectF(m_plotRect.left(), scenePos.y() - margin,
+                     m_plotRect.width(), margin * 2);
+    case Cross:
+        return m_plotRect; // Cross needs full area
+    }
+    
+    return QRectF();
 }
 
 void PlotMarker::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
