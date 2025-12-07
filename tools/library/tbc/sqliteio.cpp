@@ -593,7 +593,7 @@ bool SqliteWriter::writeField(int captureId, int fieldId, int audioSamples, int 
                             bool ntscIsVideoIdDataValid, int ntscVideoIdData, bool ntscWhiteFlag)
 {
     QSqlQuery query(db);
-    query.prepare("INSERT INTO field_record (capture_id, field_id, audio_samples, decode_faults, "
+    query.prepare("INSERT OR REPLACE INTO field_record (capture_id, field_id, audio_samples, decode_faults, "
                  "disk_loc, efm_t_values, field_phase_id, file_loc, is_first_field, "
                  "median_burst_ire, pad, sync_conf, ntsc_is_fm_code_data_valid, "
                  "ntsc_fm_code_data, ntsc_field_flag, ntsc_is_video_id_data_valid, "
@@ -705,7 +705,7 @@ bool SqliteWriter::writeFieldClosedCaption(int captureId, int fieldId, int data0
 bool SqliteWriter::writeFieldDropouts(int captureId, int fieldId, int startx, int endx, int fieldLine)
 {
     QSqlQuery query(db);
-    query.prepare("INSERT INTO drop_outs (capture_id, field_id, startx, endx, field_line) VALUES (?, ?, ?, ?, ?)");
+    query.prepare("INSERT OR REPLACE INTO drop_outs (capture_id, field_id, startx, endx, field_line) VALUES (?, ?, ?, ?, ?)");
 
     query.addBindValue(captureId);
     query.addBindValue(fieldId);
