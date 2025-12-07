@@ -30,6 +30,7 @@
 #include "videoid.h"
 #include "vitccode.h"
 #include "whiteflag.h"
+#include "tbc/logging.h"
 
 VbiLineDecoder::VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
     : QThread(parent), abort(_abort), decoderPool(_decoderPool)
@@ -59,8 +60,8 @@ void VbiLineDecoder::run()
             qInfo() << "Processing field" << fieldNumber;
         }
 
-        if (fieldMetadata.isFirstField) qDebug() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
-        else qDebug() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
+        if (fieldMetadata.isFirstField) tbcDebugStream() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
+        else tbcDebugStream() << "VbiLineDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
 
         // Get the 24-bit biphase-coded data from field lines 16-18
         BiphaseCode biphaseCode;

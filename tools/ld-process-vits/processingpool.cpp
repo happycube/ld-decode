@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "processingpool.h"
+#include "tbc/logging.h"
 
 ProcessingPool::ProcessingPool(QString _inputFilename, QString _outputMetadataFilename,
                          qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)
@@ -113,7 +114,7 @@ bool ProcessingPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &field
     inputFieldNumber++;
 
     // Show what we are about to process
-    //qDebug() << "Processing field number" << fieldNumber;
+    //tbcDebugStream() << "Processing field number" << fieldNumber;
 
     // Fetch the input data
     fieldVideoData = sourceVideo.getVideoField(fieldNumber);

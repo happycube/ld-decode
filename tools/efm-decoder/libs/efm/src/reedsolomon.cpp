@@ -25,6 +25,7 @@
 #include "ezpwd/rs_base"
 #include "ezpwd/rs"
 #include "reedsolomon.h"
+#include "tbc/logging.h"
 
 // ezpwd C1 ECMA-130 CIRC configuration
 template <size_t SYMBOLS, size_t PAYLOAD>
@@ -82,7 +83,7 @@ void ReedSolomon::c1Decode(QVector<quint8> &inputData, QVector<bool> &errorData,
         // If there are more than 2 erasures, then we can't correct the data - copy the input data
         // to the output data and flag it with errors
         // if (m_showDebug)
-        //     qDebug() << "ReedSolomon::c1Decode - Too many erasures to correct";
+        //     tbcDebugStream() << "ReedSolomon::c1Decode - Too many erasures to correct";
         inputData = QVector<quint8>(tmpData.begin(), tmpData.end() - 4);
         errorData.resize(inputData.size());
         errorData.fill(true);
@@ -111,7 +112,7 @@ void ReedSolomon::c1Decode(QVector<quint8> &inputData, QVector<bool> &errorData,
     }
 
     // If result < 0, the Reed-Solomon decode completely failed and the data is corrupt
-    // if (m_showDebug) qDebug() << "ReedSolomon::c1Decode - C1 corrupt and could not be fixed";
+    // if (m_showDebug) tbcDebugStream() << "ReedSolomon::c1Decode - C1 corrupt and could not be fixed";
 
     // Mark all the data as corrupt
     errorData.fill(true);
@@ -155,7 +156,7 @@ void ReedSolomon::c2Decode(QVector<quint8> &inputData, QVector<bool> &errorData,
         // If there are more than 4 erasures, then we can't correct the data - copy the input data
         // to the output data and flag it with errors
         // if (m_showDebug)
-        //     qDebug().noquote() << "ReedSolomon::c2Decode - Too many erasures to correct";
+        //     tbcDebugStream().noquote() << "ReedSolomon::c2Decode - Too many erasures to correct";
         inputData = QVector<quint8>(tmpData.begin(), tmpData.begin() + 12)
                 + QVector<quint8>(tmpData.begin() + 16, tmpData.end());
         errorData.resize(inputData.size());
@@ -191,7 +192,7 @@ void ReedSolomon::c2Decode(QVector<quint8> &inputData, QVector<bool> &errorData,
 
     // If result < 0, then the Reed-Solomon decode failed and the data should be flagged as corrupt
     // if (m_showDebug)
-    //     qDebug().noquote() << "ReedSolomon::c2Decode - C2 corrupt and could not be fixed"
+    //     tbcDebugStream().noquote() << "ReedSolomon::c2Decode - C2 corrupt and could not be fixed"
     //                        << result;
     
     // Set the error data

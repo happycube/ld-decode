@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_f2section.h"
+#include "tbc/logging.h"
 
 WriterF2Section::WriterF2Section() : m_dataStream(nullptr), m_usingStdout(false) { }
 
@@ -40,7 +41,7 @@ bool WriterF2Section::open(const QString &filename)
             qCritical() << "WriterF2Section::open() - Could not open stdout for writing";
             return false;
         }
-        qDebug() << "WriterF2Section::open() - Opened stdout for data writing";
+        tbcDebugStream() << "WriterF2Section::open() - Opened stdout for data writing";
     } else {
         // Use regular file
         m_usingStdout = false;
@@ -49,7 +50,7 @@ bool WriterF2Section::open(const QString &filename)
             qCritical() << "WriterF2Section::open() - Could not open file" << filename << "for writing";
             return false;
         }
-        qDebug() << "WriterF2Section::open() - Opened file" << filename << "for data writing";
+        tbcDebugStream() << "WriterF2Section::open() - Opened file" << filename << "for data writing";
     }
 
     // Create a data stream for writing
@@ -80,9 +81,9 @@ void WriterF2Section::close()
     }
 
     if (m_usingStdout) {
-        qDebug() << "WriterF2Section::close(): Closed stdout";
+        tbcDebugStream() << "WriterF2Section::close(): Closed stdout";
     } else {
-        qDebug() << "WriterF2Section::close(): Closed the data file" << m_file.fileName();
+        tbcDebugStream() << "WriterF2Section::close(): Closed the data file" << m_file.fileName();
     }
     m_file.close();
     m_usingStdout = false;

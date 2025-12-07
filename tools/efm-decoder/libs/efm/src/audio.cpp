@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "audio.h"
+#include "tbc/logging.h"
 
 // Audio class
 // Set the data for the audio, ensuring it matches the frame size
@@ -54,7 +55,7 @@ void Audio::setDataLeftRight(const QVector<qint16> &dataLeft, const QVector<qint
 QVector<qint16> Audio::data() const
 {
     if (m_audioData.isEmpty()) {
-        qDebug() << "Audio::data(): Frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Audio::data(): Frame is empty, returning zero-filled vector";
         return QVector<qint16>(frameSize(), 0);
     }
     return m_audioData;
@@ -64,7 +65,7 @@ QVector<qint16> Audio::data() const
 QVector<qint16> Audio::dataLeft() const
 {
     if (m_audioData.isEmpty()) {
-        qDebug() << "Audio::dataLeft(): Frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Audio::dataLeft(): Frame is empty, returning zero-filled vector";
         return QVector<qint16>(frameSize(), 0);
     }
     
@@ -79,7 +80,7 @@ QVector<qint16> Audio::dataLeft() const
 QVector<qint16> Audio::dataRight() const
 {
     if (m_audioData.isEmpty()) {
-        qDebug() << "Audio::dataRight(): Frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Audio::dataRight(): Frame is empty, returning zero-filled vector";
         return QVector<qint16>(frameSize(), 0);
     }
     
@@ -119,7 +120,7 @@ void Audio::setErrorDataLeftRight(const QVector<bool> &errorDataLeft, const QVec
 QVector<bool> Audio::errorData() const
 {
     if (m_audioErrorData.isEmpty()) {
-        qDebug() << "Audio::errorData(): Error frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Audio::errorData(): Error frame is empty, returning zero-filled vector";
         return QVector<bool>(frameSize(), false);
     }
     return m_audioErrorData;
@@ -129,7 +130,7 @@ QVector<bool> Audio::errorData() const
 QVector<bool> Audio::errorDataLeft() const
 {
     if (m_audioErrorData.isEmpty()) {
-        qDebug() << "Audio::errorDataLeft(): Error frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Audio::errorDataLeft(): Error frame is empty, returning zero-filled vector";
         return QVector<bool>(frameSize(), false);
     }
     
@@ -144,7 +145,7 @@ QVector<bool> Audio::errorDataLeft() const
 QVector<bool> Audio::errorDataRight() const
 {
     if (m_audioErrorData.isEmpty()) {
-        qDebug() << "Audio::errorDataRight(): Error frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Audio::errorDataRight(): Error frame is empty, returning zero-filled vector";
         return QVector<bool>(frameSize(), false);
     }
     
@@ -217,7 +218,7 @@ void Audio::showData()
         }
     }
 
-    qDebug().noquote() << dataString.trimmed().toUpper();
+    tbcDebugStream().noquote() << dataString.trimmed().toUpper();
 }
 
 int Audio::frameSize() const
@@ -237,7 +238,7 @@ void Audio::setConcealedData(const QVector<bool> &concealedData)
 QVector<bool> Audio::concealedData() const
 {
     if (m_audioConcealedData.isEmpty()) {
-        qDebug() << "Audio::concealedData(): Concealed data is empty, returning zero-filled vector";
+        tbcDebugStream() << "Audio::concealedData(): Concealed data is empty, returning zero-filled vector";
         return QVector<bool>(frameSize(), false);
     }
     return m_audioConcealedData;

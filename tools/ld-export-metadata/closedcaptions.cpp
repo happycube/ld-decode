@@ -32,6 +32,7 @@
 #include <QTextStream>
 #include <set>
 #include <vector>
+#include "tbc/logging.h"
 
 using std::set;
 using std::vector;
@@ -105,7 +106,7 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
     // Open the output file
     QFile file(fileName);
     if (!file.open(QFile::WriteOnly | QFile::Text)) {
-        qDebug("writeClosedCaptions: Could not open file for output");
+        tbcDebug(QStringLiteral("writeClosedCaptions: Could not open file for output"));
         return false;
     }
     QTextStream stream(&file);
@@ -180,7 +181,7 @@ bool writeClosedCaptions(LdDecodeMetaData &metaData, const QString &fileName)
                 if (captionInProgress) {
                     // End of current caption
                     debugCaption = debugCaption + "]";
-                    qDebug() << debugCaption;
+                    tbcDebugStream() << debugCaption;
                 }
                 captionInProgress = false;
             }

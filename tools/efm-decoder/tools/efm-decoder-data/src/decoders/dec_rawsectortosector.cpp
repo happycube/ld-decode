@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dec_rawsectortosector.h"
+#include "tbc/logging.h"
 
 // This table is the CRC32 look-up for the EDC data
 static constexpr quint32 crc32Lut[256] = {
@@ -103,21 +104,21 @@ void RawSectorToSector::processQueue()
         // Verify the data sizes (sanity check)
         if (rawSector.data().size() != 2352) {
             if (m_showDebug) {
-                qDebug() << "RawSectorToSector::processQueue(): Sector data size is incorrect. Expected 2352 bytes, got" << rawSector.data().size() << "bytes";
+                tbcDebugStream() << "RawSectorToSector::processQueue(): Sector data size is incorrect. Expected 2352 bytes, got" << rawSector.data().size() << "bytes";
                 qFatal("RawSectorToSector::processQueue(): Sector data size is incorrect");
             }
         }
 
         if (rawSector.errorData().size() != 2352) {
             if (m_showDebug) {
-                qDebug() << "RawSectorToSector::processQueue(): Sector error data size is incorrect. Expected 2352 bytes, got" << rawSector.errorData().size() << "bytes";
+                tbcDebugStream() << "RawSectorToSector::processQueue(): Sector error data size is incorrect. Expected 2352 bytes, got" << rawSector.errorData().size() << "bytes";
                 qFatal("RawSectorToSector::processQueue(): Sector error data size is incorrect");
             }
         }
 
         if (rawSector.paddedData().size() != 2352) {
             if (m_showDebug) {
-                qDebug() << "RawSectorToSector::processQueue(): Sector padded data size is incorrect. Expected 2352 bytes, got" << rawSector.paddedData().size() << "bytes";
+                tbcDebugStream() << "RawSectorToSector::processQueue(): Sector padded data size is incorrect. Expected 2352 bytes, got" << rawSector.paddedData().size() << "bytes";
                 qFatal("RawSectorToSector::processQueue(): Sector padded data size is incorrect");
             }
         }
@@ -128,7 +129,7 @@ void RawSectorToSector::processQueue()
         // Is the mode byte valid (not error or padding)?
         if (static_cast<quint8>(rawSector.errorData()[15]) != 0) {
             // Mode byte is invalid
-            if (m_showDebug) qDebug() << "RawSectorToSector::processQueue(): Sector mode byte is invalid. Assuming it's mode 1";
+            if (m_showDebug) tbcDebugStream() << "RawSectorToSector::processQueue(): Sector mode byte is invalid. Assuming it's mode 1";
             mode = -1;
         } else {
             // Extract the sector mode data
@@ -138,7 +139,7 @@ void RawSectorToSector::processQueue()
             else mode = -1;
 
             if (mode != 1) {
-                if (m_showDebug) qDebug() << "RawSectorToSector::processQueue(): Sector mode byte is valid, but mode isn't? Mode reported as" << static_cast<quint8>(rawSector.data()[15]);
+                if (m_showDebug) tbcDebugStream() << "RawSectorToSector::processQueue(): Sector mode byte is valid, but mode isn't? Mode reported as" << static_cast<quint8>(rawSector.data()[15]);
             }
         }
 
@@ -157,7 +158,7 @@ void RawSectorToSector::processQueue()
             // If the CRC32 of the sector data is incorrect, attempt to correct it using Q and P parity
             if (originalEdcWord != edcWord) {
                 if (m_showDebug) {
-                    qDebug() << "RawSectorToSector::processQueue(): CRC32 error - sector data is corrupt. EDC:" << originalEdcWord << "Calculated:" << edcWord << "attempting to correct";
+                    tbcDebugStream() << "RawSectorToSector::processQueue(): CRC32 error - sector data is corrupt. EDC:" << originalEdcWord << "Calculated:" << edcWord << "attempting to correct";
                 }
 
                 // Attempt Q and P parity error correction on the sector data
@@ -188,18 +189,18 @@ void RawSectorToSector::processQueue()
                     // Error correction failed - sector is invalid and there's nothing more we can do
 
                     if (mode == 1) {
-                        if (m_showDebug) qDebug() << "RawSectorToSector::processQueue(): CRC32 error - sector data cannot be recovered. EDC:" << correctedEdcWord << "Calculated:" << edcWord << "post correction";
+                        if (m_showDebug) tbcDebugStream() << "RawSectorToSector::processQueue(): CRC32 error - sector data cannot be recovered. EDC:" << correctedEdcWord << "Calculated:" << edcWord << "post correction";
                         m_mode1Sectors++;
                         rawSectorValid = false;
                     } else {
                         // Mode was invalid as the sector is completely invalid.  This is probably padding of some sort
-                        if (m_showDebug) qDebug() << "RawSectorToSector::processQueue(): Sector mode was invalid and the sector doesn't appear to be mode 1";
+                        if (m_showDebug) tbcDebugStream() << "RawSectorToSector::processQueue(): Sector mode was invalid and the sector doesn't appear to be mode 1";
                         m_invalidModeSectors++;
                         rawSectorValid = false;
                     }
                 } else {
                     // Sector was invalid, but now corrected
-                    if (m_showDebug) qDebug() << "RawSectorToSector::processQueue(): Sector data corrected. EDC:" << correctedEdcWord << "Calculated:" << edcWord << "";
+                    if (m_showDebug) tbcDebugStream() << "RawSectorToSector::processQueue(): Sector data corrected. EDC:" << correctedEdcWord << "Calculated:" << edcWord << "";
                     m_correctedSectors++;
                     rawSectorValid = true;
                     mode = 1; // If error correction worked... this a mode 1 sector
@@ -220,7 +221,7 @@ void RawSectorToSector::processQueue()
                 else if (mode == 1) m_mode1Sectors++;
                 else if (mode == 2) m_mode2Sectors++;
                 else {
-                    qDebug() << "RawSectorToSector::processQueue(): EDC:" << originalEdcWord << "Calculated:" << edcWord << "Mode byte:" << static_cast<quint8>(rawSector.data()[15]);
+                    tbcDebugStream() << "RawSectorToSector::processQueue(): EDC:" << originalEdcWord << "Calculated:" << edcWord << "Mode byte:" << static_cast<quint8>(rawSector.data()[15]);
                     qFatal("RawSectorToSector::processQueue(): Invalid sector mode of %d - even though sector data was valid - bug?", mode);
                 }
             }

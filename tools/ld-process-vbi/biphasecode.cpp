@@ -24,6 +24,7 @@
 
 #include "biphasecode.h"
 #include "vbiutilities.h"
+#include "tbc/logging.h"
 
 // Decode the three biphase code lines, writing the result into fieldMetadata.
 // Return true if any line was decoded successfully, false if none were.
@@ -38,7 +39,7 @@ bool BiphaseCode::decodeLines(const SourceVideo::Data& line16Data, const SourceV
     success |= decodeLine(1, line17Data, videoParameters, fieldMetadata);
     success |= decodeLine(2, line18Data, videoParameters, fieldMetadata);
     if (!success) {
-        qDebug() << "VbiLineDecoder::process(): No biphase VBI present";
+        tbcDebugStream() << "VbiLineDecoder::process(): No biphase VBI present";
     }
 
     // Mark VBI as present if any was decoded successfully
@@ -119,7 +120,7 @@ qint32 BiphaseCode::manchesterDecoder(const SourceVideo::Data &lineData, qint32 
         result = 0;
 
         if (decodeCount != 0) {
-            qDebug() << "BiphaseCode::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
+            tbcDebugStream() << "BiphaseCode::manchesterDecoder(): Manchester decode failed!  Got" << decodeCount << "bits, expected 24";
 			// -1 is a good choice to indicate a parse error because it does not conflict with 0 (black line) or >0 (successfully parsed data)
 			// differentiating between parse errors and black lines is useful because if parse errors are known, they can be autofixed by studying the surrounding picture number cadence
 			result = -1;

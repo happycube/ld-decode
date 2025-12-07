@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dec_sectorcorrection.h"
+#include "tbc/logging.h"
 
 SectorCorrection::SectorCorrection()
     : m_haveLastSectorInfo(false),
@@ -61,9 +62,9 @@ void SectorCorrection::processQueue()
             if (sector.address().frameNumber() != 0) {
                 // Fill the missing leading sectors from address 0 to the first decoded sector address
                 if (m_showDebug) {
-                    qDebug().nospace().noquote() << "SectorCorrection::processQueue(): First received frame address is "
+                    tbcDebugStream().nospace().noquote() << "SectorCorrection::processQueue(): First received frame address is "
                         << sector.address().address() << " (" << sector.address().toString() << ")";
-                    qDebug() << "SectorCorrection::processQueue(): Filling missing leading sectors with"
+                    tbcDebugStream() << "SectorCorrection::processQueue(): Filling missing leading sectors with"
                         << sector.address().address() << "sectors";
                 }
                 for (int i = 0; i < sector.address().address(); i++) {
@@ -88,7 +89,7 @@ void SectorCorrection::processQueue()
                 qint32 gap = sector.address().address() - m_lastSectorAddress.address() - 1;
 
                 if (m_showDebug) {
-                    qDebug() << "SectorCorrection::processQueue(): Sector is not in the correct position. Last good sector address:"
+                    tbcDebugStream() << "SectorCorrection::processQueue(): Sector is not in the correct position. Last good sector address:"
                         << m_lastSectorAddress.address() << m_lastSectorAddress.toString()
                         << "Current sector address:" << sector.address().address() << sector.address().toString() << "Gap:" << gap;
                 }

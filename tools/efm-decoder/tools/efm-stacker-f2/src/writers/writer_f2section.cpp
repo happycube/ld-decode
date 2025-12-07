@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_f2section.h"
+#include "tbc/logging.h"
 
 WriterF2Section::WriterF2Section() { }
 
@@ -43,7 +44,7 @@ bool WriterF2Section::open(const QString &filename)
 
     // Create a data stream for writing
     m_dataStream = new QDataStream(&m_file);
-    qDebug() << "WriterData::open() - Opened file" << filename << "for data writing";
+    tbcDebugStream() << "WriterData::open() - Opened file" << filename << "for data writing";
     return true;
 }
 
@@ -68,7 +69,7 @@ void WriterF2Section::close()
     m_dataStream = nullptr;
 
     m_file.close();
-    qDebug() << "WriterF2Section::close(): Closed the data file" << m_file.fileName();
+    tbcDebugStream() << "WriterF2Section::close(): Closed the data file" << m_file.fileName();
 }
 
 qint64 WriterF2Section::size() const

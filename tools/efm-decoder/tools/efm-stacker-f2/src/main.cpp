@@ -30,7 +30,7 @@
 #include <QFileInfo>
 #include <QLoggingCategory>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "f2_stacker.h"
 
 int main(int argc, char *argv[])

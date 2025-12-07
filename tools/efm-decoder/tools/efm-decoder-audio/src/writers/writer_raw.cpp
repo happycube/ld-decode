@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_raw.h"
+#include "tbc/logging.h"
 
 // This writer class writes audio data to a file in raw format (no header)
 // This is used when the output is stereo audio data without WAV header
@@ -45,7 +46,7 @@ bool WriterRaw::open(const QString &filename)
             qCritical() << "WriterRaw::open() - Could not open stdout for writing";
             return false;
         }
-        qDebug() << "WriterRaw::open() - Opened stdout for raw audio data writing";
+        tbcDebugStream() << "WriterRaw::open() - Opened stdout for raw audio data writing";
     } else {
         // Use regular file
         m_usingStdout = false;
@@ -54,7 +55,7 @@ bool WriterRaw::open(const QString &filename)
             qCritical() << "WriterRaw::open() - Could not open file" << filename << "for writing";
             return false;
         }
-        qDebug() << "WriterRaw::open() - Opened file" << filename << "for raw audio data writing";
+        tbcDebugStream() << "WriterRaw::open() - Opened file" << filename << "for raw audio data writing";
     }
 
     return true;
@@ -84,9 +85,9 @@ void WriterRaw::close()
     // For raw audio, we just close the file - no header to write
     m_file.close();
     if (m_usingStdout) {
-        qDebug() << "WriterRaw::close(): Closed stdout";
+        tbcDebugStream() << "WriterRaw::close(): Closed stdout";
     } else {
-        qDebug() << "WriterRaw::close(): Closed the raw audio file" << m_file.fileName();
+        tbcDebugStream() << "WriterRaw::close(): Closed the raw audio file" << m_file.fileName();
     }
     m_usingStdout = false;
 }

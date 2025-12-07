@@ -24,6 +24,7 @@
 
 #include "stackingpool.h"
 #include "vbidecoder.h"
+#include "tbc/logging.h"
 
 StackingPool::StackingPool(QString _outputFilename, QString _outputMetadataFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
@@ -148,7 +149,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
     // Determine the number of sources available (included padded sources)
     qint32 numberOfSources = sourceVideos.size();
 
-    if(verbose){qDebug().nospace() << "Processing sequential frame number #" <<
+    if(verbose){tbcDebugStream().nospace() << "Processing sequential frame number #" <<
                           frameNumber << " from " << numberOfSources << " possible source(s)";}
 
     // Prepare the vectors
@@ -173,7 +174,7 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
             // No need to perform VBI frame number mapping on the first source
             firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(frameNumber);
             secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(frameNumber);
-            if(verbose){qDebug().nospace() << "Source #0 fields are " <<
+            if(verbose){tbcDebugStream().nospace() << "Source #0 fields are " <<
                                   firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];}
         } else if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
             // Use VBI frame number mapping to get the same frame from the
@@ -185,16 +186,16 @@ bool StackingPool::getInputFrame(qint32& frameNumber,
                 firstFieldNumber[sourceNo] = -1;
                 secondFieldNumber[sourceNo] = -1;
 
-                if(verbose){qDebug().nospace() << "Source #" << sourceNo << " does not contain VBI frame number " << currentVbiFrame;}
+                if(verbose){tbcDebugStream().nospace() << "Source #" << sourceNo << " does not contain VBI frame number " << currentVbiFrame;}
             } else {
                 firstFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(currentSourceFrameNumber);
                 secondFieldNumber[sourceNo] = ldDecodeMetaData[sourceNo]->getSecondFieldNumber(currentSourceFrameNumber);
 
-                if(verbose){qDebug().nospace() << "Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+                if(verbose){tbcDebugStream().nospace() << "Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
                             " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo];}
             }
         } else if(verbose){
-            qDebug().nospace() << "Source #" << sourceNo << " does not contain a usable frame";
+            tbcDebugStream().nospace() << "Source #" << sourceNo << " does not contain a usable frame";
         }
 
         // If the field numbers are valid - get the rest of the required data
@@ -331,7 +332,7 @@ bool StackingPool::setOutputFrame(qint32 frameNumber,
         ldDecodeMetaData[0]->updateFieldDropOuts(outputFrame.secondTargetFieldDropOuts, outputFrame.secondFieldSeqNo);
 
         // Show debug
-        qDebug().nospace() << "Processed frame " << outputFrameNumber;
+        tbcDebugStream().nospace() << "Processed frame " << outputFrameNumber;
 
         if (outputFrameNumber % 100 == 0) {
             qInfo() << "Processed and written frame" << outputFrameNumber;
@@ -402,25 +403,25 @@ bool StackingPool::setMinAndMaxVbiFrames()
                 if (cvFrameNumber > clvMax) clvMax = cvFrameNumber;
             }
         }
-        qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
+        tbcDebugStream() << "StackingPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
 
         // If the metadata has no picture numbers or time-codes, we cannot use the source
         if (cavCount == 0 && clvCount == 0) {
-            qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
+            tbcDebugStream() << "StackingPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
             return false;
         }
 
         // Determine disc type
         if (cavCount > clvCount) {
             sourceDiscTypeCav[sourceNumber] = true;
-            qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
+            tbcDebugStream() << "StackingPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
             qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CAV (uses VBI frame numbers)";
 
             sourceMaximumVbiFrame[sourceNumber] = cavMax;
             sourceMinimumVbiFrame[sourceNumber] = cavMin;
         } else {
             sourceDiscTypeCav[sourceNumber] = false;
-            qDebug() << "StackingPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
+            tbcDebugStream() << "StackingPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
             qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CLV (uses VBI time codes)";
 
             sourceMaximumVbiFrame[sourceNumber] = clvMax;
@@ -481,7 +482,7 @@ QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
             if (ldDecodeMetaData[sourceNo]->getNumberOfFrames() < sequentialFrameNumber)
             {
                 // Sequential frame is out of bounds
-                qDebug() << "VBI Frame number" << vbiFrameNumber << "is out of bounds for source " << sourceNo;
+                tbcDebugStream() << "VBI Frame number" << vbiFrameNumber << "is out of bounds for source " << sourceNo;
             } else {
                 // Sequential frame is in bounds
                 qint32 firstFieldNumber = ldDecodeMetaData[sourceNo]->getFirstFieldNumber(sequentialFrameNumber);
@@ -491,8 +492,8 @@ QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
                 if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == false && ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == false) {
                     availableSourcesForFrame.append(sourceNo);
                 } else if(verbose){
-                    if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == true) qDebug() << "First field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
-                    if (ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == true) qDebug() << "Second field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
+                    if (ldDecodeMetaData[sourceNo]->getField(firstFieldNumber).pad == true) tbcDebugStream() << "First field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
+                    if (ldDecodeMetaData[sourceNo]->getField(secondFieldNumber).pad == true) tbcDebugStream() << "Second field number" << firstFieldNumber << "of source" << sourceNo << "is padded";
                 }
             }
         }
@@ -500,7 +501,7 @@ QVector<qint32> StackingPool::getAvailableSourcesForFrame(qint32 vbiFrameNumber)
 
     if (availableSourcesForFrame.size() != sourceVideos.size() && verbose) {
         if (availableSourcesForFrame.size() > 0) {
-            qDebug() << "VBI Frame number" << vbiFrameNumber << "has only" << availableSourcesForFrame.size() << "available sources";
+            tbcDebugStream() << "VBI Frame number" << vbiFrameNumber << "has only" << availableSourcesForFrame.size() << "available sources";
         } else {
             qInfo() << "Warning: VBI Frame number" << vbiFrameNumber << "has ZERO available sources (all sources padded?)";
         }

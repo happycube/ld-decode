@@ -10,6 +10,7 @@
 
 #include "vbidialog.h"
 #include "ui_vbidialog.h"
+#include "tbc/logging.h"
 
 VbiDialog::VbiDialog(QWidget *parent) :
     QDialog(parent),
@@ -26,7 +27,7 @@ VbiDialog::~VbiDialog()
 
 void VbiDialog::updateVbi(VbiDecoder::Vbi vbi, bool isVbiValid)
 {
-    qDebug() << "VbiDialog::updateVbi(): Called";
+    tbcDebugStream() << "VbiDialog::updateVbi(): Called";
 
     if (!isVbiValid) {
         // VBI data is not valid

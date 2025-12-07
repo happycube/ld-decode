@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "frame.h"
+#include "tbc/logging.h"
 
 // Frame class
 // --------------------------------------------------------------------------------------------------------
@@ -41,7 +42,7 @@ void Frame::setData(const QVector<quint8> &data)
 QVector<quint8> Frame::data() const
 {
     if (m_frameData.isEmpty()) {
-        qDebug() << "Frame::getData(): Frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Frame::getData(): Frame is empty, returning zero-filled vector";
         return QVector<quint8>(frameSize(), 0);
     }
     return m_frameData;
@@ -64,7 +65,7 @@ void Frame::setErrorData(const QVector<bool> &errorData)
 QVector<bool> Frame::errorData() const
 {
     if (m_frameErrorData.isEmpty()) {
-        qDebug() << "Frame::getErrorData(): Error frame is empty, returning zero-filled vector";
+        tbcDebugStream() << "Frame::getErrorData(): Error frame is empty, returning zero-filled vector";
         return QVector<bool>(frameSize(), 0);
     }
     return m_frameErrorData;
@@ -99,7 +100,7 @@ void Frame::setPaddedData(const QVector<bool> &paddedData)
 QVector<bool> Frame::paddedData() const
 {
     if (m_framePaddedData.isEmpty()) {
-        qDebug() << "Frame::paddedData(): Padded data is empty, returning zero-filled vector";
+        tbcDebugStream() << "Frame::paddedData(): Padded data is empty, returning zero-filled vector";
         return QVector<bool>(frameSize(), 0);
     }
     return m_framePaddedData;

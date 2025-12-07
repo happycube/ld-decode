@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dec_f2sectiontof1section.h"
+#include "tbc/logging.h"
 
 F2SectionToF1Section::F2SectionToF1Section() :
     m_delayLine1({ 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
@@ -149,7 +150,7 @@ void F2SectionToF1Section::processQueue()
             m_circ.c2Decode(data, errorData, paddedData, m_showDebug);
 
             if (m_showDebug && errorData.contains(true)) {
-                qDebug().noquote().nospace() << "F2SectionToF1Section - F2 Frame [" << index << "]: C2 Failed in section " << f2Section.metadata.absoluteSectionTime().toString();
+                tbcDebugStream().noquote().nospace() << "F2SectionToF1Section - F2 Frame [" << index << "]: C2 Failed in section " << f2Section.metadata.absoluteSectionTime().toString();
             }
 
             m_interleave.deinterleave(data, errorData, paddedData);
@@ -232,7 +233,7 @@ void F2SectionToF1Section::showData(const QString &description, qint32 index, co
         }
     }
 
-    qDebug().nospace().noquote() << "F2SectionToF1Section - " << description << "["
+    tbcDebugStream().nospace().noquote() << "F2SectionToF1Section - " << description << "["
                                  << QString::number(index).rightJustified(2, '0') << "]: ("
                                  << timeString << ") " << dataString << "XX=ERROR";
 }

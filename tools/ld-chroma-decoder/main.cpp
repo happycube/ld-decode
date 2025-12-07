@@ -35,7 +35,7 @@
 
 #include "decoderpool.h"
 #include "lddecodemetadata.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 #include "comb.h"
 #include "monodecoder.h"

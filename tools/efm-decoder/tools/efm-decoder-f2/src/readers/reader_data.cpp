@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "reader_data.h"
+#include "tbc/logging.h"
 
 ReaderData::ReaderData() : m_stdinStream(nullptr), m_usingStdin(false) { }
 
@@ -40,7 +41,7 @@ bool ReaderData::open(const QString &filename)
             qCritical() << "ReaderData::open() - Could not open stdin for reading";
             return false;
         }
-        qDebug() << "ReaderData::open() - Opened stdin for data reading";
+        tbcDebugStream() << "ReaderData::open() - Opened stdin for data reading";
         return true;
     } else {
         // Use regular file
@@ -50,7 +51,7 @@ bool ReaderData::open(const QString &filename)
             qCritical() << "ReaderData::open() - Could not open file" << filename << "for reading";
             return false;
         }
-        qDebug() << "ReaderData::open() - Opened file" << filename << "for data reading with size"
+        tbcDebugStream() << "ReaderData::open() - Opened file" << filename << "for data reading with size"
                  << m_file.size() << "bytes";
         return true;
     }
@@ -73,9 +74,9 @@ void ReaderData::close()
     }
 
     if (m_usingStdin) {
-        qDebug() << "ReaderData::close(): Closed stdin";
+        tbcDebugStream() << "ReaderData::close(): Closed stdin";
     } else {
-        qDebug() << "ReaderData::close(): Closed the data file" << m_file.fileName();
+        tbcDebugStream() << "ReaderData::close(): Closed the data file" << m_file.fileName();
     }
     m_file.close();
     

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "adfs_fsm.h"
+#include "tbc/logging.h"
 
 AdfsFsm::AdfsFsm(QByteArray sectors)
 {
@@ -75,17 +76,17 @@ void AdfsFsm::showStarFree()
 
     quint32 freeSectors = m_numberOfSectors - usedSectors;
 
-    qDebug().noquote() << "*FREE";
-    qDebug().noquote() << " " << toString24bits(usedSectors) << "=" << QString::number(usedSectors * 256) << "Bytes Free";
-    qDebug().noquote() << " " << toString24bits(freeSectors) << "=" << QString::number(freeSectors * 256) << "Bytes Used";
+    tbcDebugStream().noquote() << "*FREE";
+    tbcDebugStream().noquote() << " " << toString24bits(usedSectors) << "=" << QString::number(usedSectors * 256) << "Bytes Free";
+    tbcDebugStream().noquote() << " " << toString24bits(freeSectors) << "=" << QString::number(freeSectors * 256) << "Bytes Used";
 }
 
 void AdfsFsm::showStarMap()
 {
-    qDebug().noquote() << "*MAP";
-    qDebug().noquote() << "  Address   :  Length";
+    tbcDebugStream().noquote() << "*MAP";
+    tbcDebugStream().noquote() << "  Address   :  Length";
     for (int i = 0; i < m_freeSpaceMap.size(); ++i) {
-        qDebug().noquote() << " " << toString24bits(m_freeSpaceMap.at(i)) << " : " << toString24bits(m_freeSpaceLengths.at(i));
+        tbcDebugStream().noquote() << " " << toString24bits(m_freeSpaceMap.at(i)) << " : " << toString24bits(m_freeSpaceLengths.at(i));
     }
 }
 

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_wav_metadata.h"
+#include "tbc/logging.h"
 
 // This writer class writes metadata about audio data to a file
 // This is used when the output is stereo audio data
@@ -52,7 +53,7 @@ bool WriterWavMetadata::open(const QString &filename, bool noAudioConcealment)
         qCritical() << "WriterWavMetadata::open() - Could not open file" << filename << "for writing";
         return false;
     }
-    qDebug() << "WriterWavMetadata::open() - Opened file" << filename << "for data writing";
+    tbcDebugStream() << "WriterWavMetadata::open() - Opened file" << filename << "for data writing";
 
     // If we're not concealing audio, we use "error" metadata instead of "silenced"
     m_noAudioConcealment = noAudioConcealment;
@@ -102,7 +103,7 @@ void WriterWavMetadata::write(const AudioSection &audioSection)
                 }
             }
     
-            qDebug() << "WriterWavMetadata::write() - New track" << metadata.trackNumber()
+            tbcDebugStream() << "WriterWavMetadata::write() - New track" << metadata.trackNumber()
                 << "detected with disc start time" << m_absoluteSectionTime.toString() << "and track start time" << m_sectionTime.toString();
         }
     }
@@ -224,10 +225,10 @@ void WriterWavMetadata::flush()
             m_file.write(outputString.toUtf8());
 
             QString debugString = m_trackAbsStartTimes[i].toString() + " " + m_trackAbsEndTimes[i].toString() + " Track: " + trackNumber + " " + trackTime;
-            qDebug() << "WriterWavMetadata::flush(): Wrote track metadata:" << debugString;
+            tbcDebugStream() << "WriterWavMetadata::flush(): Wrote track metadata:" << debugString;
         }
     } else {
-        qDebug() << "WriterWavMetadata::flush(): Only 1 track present - not writing track metadata";
+        tbcDebugStream() << "WriterWavMetadata::flush(): Only 1 track present - not writing track metadata";
     }
 }
 
@@ -247,7 +248,7 @@ void WriterWavMetadata::close()
     }
 
     m_file.close();
-    qDebug() << "WriterWavMetadata::close(): Closed the WAV metadata file" << m_file.fileName();
+    tbcDebugStream() << "WriterWavMetadata::close(): Closed the WAV metadata file" << m_file.fileName();
 }
 
 qint64 WriterWavMetadata::size() const

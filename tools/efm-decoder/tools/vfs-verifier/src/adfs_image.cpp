@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "adfs_image.h"
+#include "tbc/logging.h"
 
 AdfsImage::AdfsImage() :
     m_isValid(false)
@@ -36,7 +37,7 @@ bool AdfsImage::open(QString filename)
         qCritical() << "AdfsImage::open() - Could not open file" << filename << "for reading";
         return false;
     }
-    qDebug() << "AdfsImage::open() - Opened file" << filename << "for reading";
+    tbcDebugStream() << "AdfsImage::open() - Opened file" << filename << "for reading";
 
     m_isValid = true;
 
@@ -50,7 +51,7 @@ void AdfsImage::close()
 {
     if (m_file->isOpen()) {
         m_file->close();
-        qDebug() << "AdfsImage::close() - Closed file" << m_file->fileName();
+        tbcDebugStream() << "AdfsImage::close() - Closed file" << m_file->fileName();
     }
 }
 
@@ -111,7 +112,7 @@ void AdfsImage::findSector0()
             if (buffer == "Hugo") {
                 // Found the signature
                 m_sector0Position = m_file->pos() - 5;
-                qDebug().nospace().noquote() << "AdfsImage::findSector0() - Found ADFS signature Hugo at offset 0x" << QString::number(m_sector0Position, 16).toUpper();
+                tbcDebugStream().nospace().noquote() << "AdfsImage::findSector0() - Found ADFS signature Hugo at offset 0x" << QString::number(m_sector0Position, 16).toUpper();
                 break;
             }
         }
@@ -124,7 +125,7 @@ void AdfsImage::findSector0()
         m_sector0Position -= 512;
     } else {
         // Not a valid image file
-        qDebug() << "AdfsImage::findSector0() - Could not find ADFS signature Hugo in file" << m_file->fileName() << "- input file is not a valid ADFS image";
+        tbcDebugStream() << "AdfsImage::findSector0() - Could not find ADFS signature Hugo in file" << m_file->fileName() << "- input file is not a valid ADFS image";
         m_isValid = false;
     }
 }

@@ -42,6 +42,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include "tbc/logging.h"
 
 /*!
     \class PalColour
@@ -450,7 +451,7 @@ void PalColour::decodeLine(const SourceField &inputField, const ChromaSample *ch
     // Clamp end position to max width so we don't go out of bounds.
     const auto endPos = std::min(videoParameters.activeVideoEnd, MAX_WIDTH);
     if (endPos < videoParameters.activeVideoEnd) {
-        qDebug() << "Warning: Tried to decode video outside max width!";
+        tbcDebugStream() << "Warning: Tried to decode video outside max width!";
     }
 
     double pu[MAX_WIDTH], qu[MAX_WIDTH], pv[MAX_WIDTH], qv[MAX_WIDTH], py[MAX_WIDTH], qy[MAX_WIDTH];

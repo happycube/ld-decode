@@ -20,6 +20,7 @@
 #include <QDebug>
 #include <QMap>
 #include <QMultiMap>
+#include "tbc/logging.h"
 
 // Default values used when configuring VideoParameters for a particular video system.
 // See the comments in VideoParameters for the meanings of these values.
@@ -375,7 +376,7 @@ bool LdDecodeMetaData::write(QString fileName) const
                                          existingColourBurstStart, existingColourBurstEnd,
                                          existingIsMapped, existingIsSubcarrierLocked, existingIsWidescreen,
                                          existingWhite16bIre, existingBlack16bIre, existingCaptureNotes)) {
-                qDebug() << "Updating existing SQLite file with capture_id:" << captureId;
+                tbcDebugStream() << "Updating existing SQLite file with capture_id:" << captureId;
             } else {
                 qWarning() << "Could not read existing capture metadata, treating as new file";
                 isUpdate = false;
@@ -1171,7 +1172,7 @@ void LdDecodeMetaData::generatePcmAudioMap()
     pcmAudioFieldStartSampleMap.clear();
     pcmAudioFieldLengthMap.clear();
 
-    qDebug() << "LdDecodeMetaData::generatePcmAudioMap(): Generating PCM audio map...";
+    tbcDebugStream() << "LdDecodeMetaData::generatePcmAudioMap(): Generating PCM audio map...";
 
     // Get the number of fields and resize the maps
     qint32 numberOfFields = getVideoParameters().numberOfSequentialFields;

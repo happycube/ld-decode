@@ -11,7 +11,7 @@
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include <QDebug>
+#include "tbc/logging.h"
 
 MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     QMainWindow(parent),
@@ -754,7 +754,7 @@ void MainWindow::sanitizeCurrentPosition()
 
 void MainWindow::on_actionExit_triggered()
 {
-    qDebug() << "MainWindow::on_actionExit_triggered(): Called";
+    tbcDebugStream() << "MainWindow::on_actionExit_triggered(): Called";
 
     // Quit the application
     qApp->quit();
@@ -763,7 +763,7 @@ void MainWindow::on_actionExit_triggered()
 // Load a TBC file based on the file selection from the GUI
 void MainWindow::on_actionOpen_TBC_file_triggered()
 {
-    qDebug() << "MainWindow::on_actionOpen_TBC_file_triggered(): Called";
+    tbcDebugStream() << "MainWindow::on_actionOpen_TBC_file_triggered(): Called";
 
     QString inputFileName = QFileDialog::getOpenFileName(this,
                 tr("Open TBC file"),
@@ -860,7 +860,7 @@ void MainWindow::on_actionWhite_SNR_analysis_triggered()
 // Save current frame as PNG
 void MainWindow::on_actionSave_frame_as_PNG_triggered()
 {
-    qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Called";
+    tbcDebugStream() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Called";
 
     // Create a suggestion for the filename
     QString filenameSuggestion = configuration.getPngDirectory();
@@ -907,7 +907,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
     // Was a filename specified?
     if (!pngFilename.isEmpty() && !pngFilename.isNull()) {
         // Save the current frame as a PNG
-        qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
+        tbcDebugStream() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Saving current frame as" << pngFilename;
 
         // Generate QImage for the current frame
         QImage imageToSave = tbcSource.getImage();
@@ -922,7 +922,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
 
         // Save the QImage as PNG
         if (!imageToSave.save(pngFilename)) {
-            qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
+            tbcDebugStream() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Failed to save file as" << pngFilename;
 
             QMessageBox messageBox;
             messageBox.warning(this, tr("Warning"),tr("Could not save a PNG using the specified filename!"));
@@ -931,7 +931,7 @@ void MainWindow::on_actionSave_frame_as_PNG_triggered()
         // Update the configuration for the PNG directory
         QFileInfo pngFileInfo(pngFilename);
         configuration.setPngDirectory(pngFileInfo.absolutePath());
-        qDebug() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Setting PNG directory to:" << pngFileInfo.absolutePath();
+        tbcDebugStream() << "MainWindow::on_actionSave_frame_as_PNG_triggered(): Setting PNG directory to:" << pngFileInfo.absolutePath();
         configuration.writeConfiguration();
     }
 }
@@ -1393,14 +1393,14 @@ void MainWindow::on_viewPushButton_clicked()
 {
     switch (tbcSource.getViewMode()) {
         case TbcSource::ViewMode::FRAME_VIEW:
-            qDebug() << "Changing to SPLIT_VIEW mode";
+            tbcDebugStream() << "Changing to SPLIT_VIEW mode";
 
             // Set split mode
             tbcSource.setViewMode(TbcSource::ViewMode::SPLIT_VIEW);
             break;
 
         case TbcSource::ViewMode::SPLIT_VIEW:
-            qDebug() << "Changing to FIELD_VIEW mode (1:1)";
+            tbcDebugStream() << "Changing to FIELD_VIEW mode (1:1)";
 
             // Set field mode with 1:1 aspect
             tbcSource.setViewMode(TbcSource::ViewMode::FIELD_VIEW);
@@ -1409,12 +1409,12 @@ void MainWindow::on_viewPushButton_clicked()
 
         case TbcSource::ViewMode::FIELD_VIEW:
             if (!tbcSource.getStretchField()) {
-                qDebug() << "Changing to FIELD_VIEW mode (2:1)";
+                tbcDebugStream() << "Changing to FIELD_VIEW mode (2:1)";
 
                 // Set field mode with 2:1 aspect
                 tbcSource.setStretchField(true);
             } else {
-                qDebug() << "Changing to FRAME_VIEW mode";
+                tbcDebugStream() << "Changing to FRAME_VIEW mode";
 
                 // Set frame mode
                 tbcSource.setViewMode(TbcSource::ViewMode::FRAME_VIEW);
@@ -1537,7 +1537,7 @@ void MainWindow::on_mouseModePushButton_clicked()
 // Handler called when another class changes the currently selected scan line
 void MainWindow::scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord)
 {
-    qDebug() << "MainWindow::scanLineChangedSignalHandler(): Called with xCoord =" << xCoord << "and yCoord =" << yCoord;
+    tbcDebugStream() << "MainWindow::scanLineChangedSignalHandler(): Called with xCoord =" << xCoord << "and yCoord =" << yCoord;
 
     if (tbcSource.getIsSourceLoaded()) {
         // Show the oscilloscope dialogue for the selected scan-line
@@ -1554,7 +1554,7 @@ void MainWindow::scopeCoordsChangedSignalHandler(qint32 xCoord, qint32 yCoord)
 // Handler called when vectorscope settings are changed
 void MainWindow::vectorscopeChangedSignalHandler()
 {
-    qDebug() << "MainWindow::vectorscopeChangedSignalHandler(): Called";
+    tbcDebugStream() << "MainWindow::vectorscopeChangedSignalHandler(): Called";
 
     if (tbcSource.getIsSourceLoaded()) {
         // Update the vectorscope
@@ -1684,7 +1684,7 @@ void MainWindow::chromaDecoderConfigChangedSignalHandler()
 // Signal handler for busy signal from TbcSource class
 void MainWindow::on_busy(QString infoMessage)
 {
-    qDebug() << "MainWindow::on_busy(): Got signal with message" << infoMessage;
+    tbcDebugStream() << "MainWindow::on_busy(): Got signal with message" << infoMessage;
     // Set the busy message and centre the dialog in the parent window
     busyDialog->setMessage(infoMessage);
     busyDialog->move(this->geometry().center() - busyDialog->rect().center());
@@ -1701,7 +1701,7 @@ void MainWindow::on_busy(QString infoMessage)
 // Signal handler for finishedLoading signal from TbcSource class
 void MainWindow::on_finishedLoading(bool success)
 {
-    qDebug() << "MainWindow::on_finishedLoading(): Called";
+    tbcDebugStream() << "MainWindow::on_finishedLoading(): Called";
 
     // Hide the busy dialogue
     busyDialog->hide();
@@ -1741,7 +1741,7 @@ void MainWindow::on_finishedLoading(bool success)
         // Update the configuration for the source directory
         QFileInfo inFileInfo(tbcSource.getCurrentSourceFilename());
         configuration.setSourceDirectory(inFileInfo.absolutePath());
-        qDebug() << "MainWindow::loadTbcFile(): Setting source directory to:" << inFileInfo.absolutePath();
+        tbcDebugStream() << "MainWindow::loadTbcFile(): Setting source directory to:" << inFileInfo.absolutePath();
         configuration.writeConfiguration();
     } else {
         // Load failed
@@ -1759,7 +1759,7 @@ void MainWindow::on_finishedLoading(bool success)
 // Signal handler for finishedSaving signal from TbcSource class
 void MainWindow::on_finishedSaving(bool success)
 {
-    qDebug() << "MainWindow::on_finishedSaving(): Called";
+    tbcDebugStream() << "MainWindow::on_finishedSaving(): Called";
 
     // Hide the busy dialogue
     busyDialog->hide();

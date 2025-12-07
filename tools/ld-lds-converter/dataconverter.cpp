@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dataconverter.h"
+#include "tbc/logging.h"
 
 DataConverter::DataConverter(QString inputFileNameParam, QString outputFileNameParam, bool isPackingParam, bool isRIFFParam, QObject *parent) : QObject(parent)
 {
@@ -68,23 +69,23 @@ bool DataConverter::openInputFile(void)
     // Do we have a file name for the input file?
     if (inputFileName.isEmpty()) {
         // No source input file name was specified, using stdin instead
-        qDebug() << "No input filename was provided, using stdin";
+        tbcDebugStream() << "No input filename was provided, using stdin";
         inputFileHandle = new QFile;
         if (!inputFileHandle->open(stdin, QIODevice::ReadOnly)) {
             // Failed to open stdin
             qWarning() << "Could not open stdin as input file";
             return false;
         }
-        qDebug() << "Reading input data from stdin";
+        tbcDebugStream() << "Reading input data from stdin";
     } else {
         // Open input file for reading
         inputFileHandle = new QFile(inputFileName);
         if (!inputFileHandle->open(QIODevice::ReadOnly)) {
             // Failed to open source sample file
-            qDebug() << "Could not open" << inputFileName << "as input file";
+            tbcDebugStream() << "Could not open" << inputFileName << "as input file";
             return false;
         }
-        qDebug() << "DataConverter::openInputFile(): Input file is" << inputFileName << "and is" << inputFileHandle->size() << "bytes in length";
+        tbcDebugStream() << "DataConverter::openInputFile(): Input file is" << inputFileName << "and is" << inputFileHandle->size() << "bytes in length";
     }
 
     // Exit with success
@@ -110,14 +111,14 @@ bool DataConverter::openOutputFile(void)
     // Do we have a file name for the output file?
     if (outputFileName.isEmpty()) {
         // No output file name was specified, using stdin instead
-        qDebug() << "No output filename was provided, using stdout";
+        tbcDebugStream() << "No output filename was provided, using stdout";
         outputFileHandle = new QFile;
         if (!outputFileHandle->open(stdout, QIODevice::WriteOnly)) {
             // Failed to open stdout
             qWarning() << "Could not open stdout as output file";
             return false;
         }
-        qDebug() << "Writing output data to stdout";
+        tbcDebugStream() << "Writing output data to stdout";
 
     } else {
         // Open the output file for writing
@@ -125,10 +126,10 @@ bool DataConverter::openOutputFile(void)
 
         if (!outputFileHandle->open(QIODevice::WriteOnly)) {
             // Failed to open output file
-            qDebug() << "DataConverter::openOutputFile(): Could not open" << outputFileName << "as output file";
+            tbcDebugStream() << "DataConverter::openOutputFile(): Could not open" << outputFileName << "as output file";
             return false;
         }
-        qDebug() << "DataConverter::openOutputFile(): Output file is" << outputFileName;
+        tbcDebugStream() << "DataConverter::openOutputFile(): Output file is" << outputFileName;
     }
 
     // Exit with success
@@ -151,7 +152,7 @@ void DataConverter::closeOutputFile(void)
 // Method to pack 16-bit data into 10-bit data
 void DataConverter::packFile(void)
 {
-    qDebug() << "DataConverter::packFile(): Packing";
+    tbcDebugStream() << "DataConverter::packFile(): Packing";
     QByteArray inputBuffer;
     QByteArray outputBuffer;
     bool isComplete = false;
@@ -181,7 +182,7 @@ void DataConverter::packFile(void)
                 inputBuffer.resize(totalReceivedBytes);
                 outputBuffer.resize((totalReceivedBytes / 8) * 5);
             }
-            qDebug() << "DataConverter::packFile(): Got" << totalReceivedBytes << "bytes from input file";
+            tbcDebugStream() << "DataConverter::packFile(): Got" << totalReceivedBytes << "bytes from input file";
 
             qint32 word0, word1, word2, word3;
             qint32 outputBufferPointer = 0;
@@ -211,10 +212,10 @@ void DataConverter::packFile(void)
                 // File write failed
                 qCritical("Could not write to output file!");
             }
-            qDebug() << "DataConverter::packFile(): Wrote" << outputBuffer.size() << "bytes to output file";
+            tbcDebugStream() << "DataConverter::packFile(): Wrote" << outputBuffer.size() << "bytes to output file";
         } else {
             // Input file is empty
-            qDebug() << "DataConverter::packFile(): Got zero bytes from input file";
+            tbcDebugStream() << "DataConverter::packFile(): Got zero bytes from input file";
             isComplete = true;
         }
     }
@@ -223,7 +224,7 @@ void DataConverter::packFile(void)
 // Method to unpack 10-bit data into 16-bit data
 void DataConverter::unpackFile(void)
 {
-    qDebug() << "DataConversion::unpackFile(): Unpacking";
+    tbcDebugStream() << "DataConversion::unpackFile(): Unpacking";
     QByteArray inputBuffer;
     QByteArray outputBuffer;
     bool isComplete = false;
@@ -262,7 +263,7 @@ void DataConverter::unpackFile(void)
                 inputBuffer.resize(totalReceivedBytes);
                 outputBuffer.resize((totalReceivedBytes / 5) * 8);
             }
-            qDebug() << "DataConverter::unpackFile(): Got" << totalReceivedBytes << "bytes from input file";
+            tbcDebugStream() << "DataConverter::unpackFile(): Got" << totalReceivedBytes << "bytes from input file";
 
             char byte0, byte1, byte2, byte3, byte4;
             qint32 word0, word1, word2, word3;
@@ -306,10 +307,10 @@ void DataConverter::unpackFile(void)
                 // File write failed
                 qCritical("Could not write to output file!");
             }
-            qDebug() << "DataConverter::unpackFile(): Wrote" << outputBuffer.size() << "bytes to output file";
+            tbcDebugStream() << "DataConverter::unpackFile(): Wrote" << outputBuffer.size() << "bytes to output file";
         } else {
             // Input file is empty
-            qDebug() << "DataConverter::unpackFile(): Got zero bytes from input file";
+            tbcDebugStream() << "DataConverter::unpackFile(): Got zero bytes from input file";
             isComplete = true;
         }
     }

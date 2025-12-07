@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "reader_data24section.h"
+#include "tbc/logging.h"
 
 ReaderData24Section::ReaderData24Section() :
     m_dataStream(nullptr),
@@ -46,7 +47,7 @@ bool ReaderData24Section::open(const QString &filename)
             qCritical() << "ReaderData24Section::open() - Could not open stdin for reading";
             return false;
         }
-        qDebug() << "ReaderData24Section::open() - Opened stdin for data reading";
+        tbcDebugStream() << "ReaderData24Section::open() - Opened stdin for data reading";
         
         // Create a data stream for reading
         m_dataStream = new QDataStream(&m_file);
@@ -84,7 +85,7 @@ bool ReaderData24Section::open(const QString &filename)
         // Restore original position
         m_file.seek(currentPos);  
 
-        qDebug() << "ReaderData24Section::open() - Opened file" << filename << "for data reading containing" << size() << "Data24 Section objects";
+        tbcDebugStream() << "ReaderData24Section::open() - Opened file" << filename << "for data reading containing" << size() << "Data24 Section objects";
         return true;
     }
 }
@@ -112,9 +113,9 @@ void ReaderData24Section::close()
     m_dataStream = nullptr;
 
     if (m_usingStdin) {
-        qDebug() << "ReaderData24Section::close(): Closed stdin";
+        tbcDebugStream() << "ReaderData24Section::close(): Closed stdin";
     } else {
-        qDebug() << "ReaderData24Section::close(): Closed the data file" << m_file.fileName();
+        tbcDebugStream() << "ReaderData24Section::close(): Closed the data file" << m_file.fileName();
     }
     m_file.close();
     m_usingStdin = false;

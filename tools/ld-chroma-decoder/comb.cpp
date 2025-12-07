@@ -37,6 +37,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include "tbc/logging.h"
 
 // Indexes for the candidates considered in 3D adaptive mode
 enum CandidateIndex : qint32 {
@@ -822,7 +823,7 @@ void Comb::FrameBuffer::transformIQ(double chromaGain, double chromaPhase)
 // Overlay the 3D filter map onto the output
 void Comb::FrameBuffer::overlayMap(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame)
 {
-    qDebug() << "Comb::FrameBuffer::overlayMap(): Overlaying map onto output";
+    tbcDebugStream() << "Comb::FrameBuffer::overlayMap(): Overlaying map onto output";
 
     // Create a canvas for colour conversion
     FrameCanvas canvas(*componentFrame, videoParameters);

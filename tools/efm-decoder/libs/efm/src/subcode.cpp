@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "subcode.h"
+#include "tbc/logging.h"
 
 // Takes 98 bytes of subcode data and returns a FrameMetadata object
 SectionMetadata Subcode::fromData(const QByteArray &data)
@@ -60,7 +61,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
 
     // if (oneCount != 96 && oneCount != 0) {
     //     if (m_showDebug) {
-    //         qDebug() << "Subcode::fromData(): P channel data contains" << 96-oneCount << "zeros and"
+    //         tbcDebugStream() << "Subcode::fromData(): P channel data contains" << 96-oneCount << "zeros and"
     //                  << oneCount << "ones - indicating some p-channel corruption";
     //     }
     // }
@@ -103,7 +104,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             break;
         default:
             if (m_showDebug)
-                qDebug() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex();
+                tbcDebugStream() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex();
             qFatal("Subcode::fromData(): Invalid Q-mode nybble! Must be 1, 2, 3 or 4 not %d",
                    modeNybble);
         }
@@ -182,7 +183,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             break;
         default:
             if (m_showDebug)
-                qDebug() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex();
+                tbcDebugStream() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex();
             qFatal("Subcode::fromData(): Invalid control nybble! Must be 0-3, 4-7 or 8-11 not %d",
                    controlNybble);
         }
@@ -197,10 +198,10 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             // If the track number is 1-99, then this is a user data frame
             if (trackNumber == 0) {
                 sectionMetadata.setSectionType(SectionType(SectionType::LeadIn), 0);
-                qDebug() << "Subcode::fromData(): Q-Mode 1/4 has track number 0 - this is a lead-in frame";
+                tbcDebugStream() << "Subcode::fromData(): Q-Mode 1/4 has track number 0 - this is a lead-in frame";
             } else if (trackNumber == 0xAA) {
                 sectionMetadata.setSectionType(SectionType(SectionType::LeadOut), 0);
-                qDebug() << "Subcode::fromData(): Q-Mode 1/4 has track number 0xAA - this is a lead-out frame";
+                tbcDebugStream() << "Subcode::fromData(): Q-Mode 1/4 has track number 0xAA - this is a lead-out frame";
             } else {
                 sectionMetadata.setSectionType(SectionType(SectionType::UserData), trackNumber);
             }
@@ -236,7 +237,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
                     upcString = "0" + upcString;
                 }
 
-                qDebug() << "Subcode::fromData(): Q-Mode 2 has UPC/EAN code of:" << upcString;
+                tbcDebugStream() << "Subcode::fromData(): Q-Mode 2 has UPC/EAN code of:" << upcString;
             }
 
             // Only the absolute frame number is included for Q mode 2
@@ -267,7 +268,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
         // Set the q-channel data to invalid leaving the rest of
         // the metadata as default values
         if (m_showDebug)
-            qDebug() << "Subcode::fromData(): Invalid CRC in Q-channel data - expected:"
+            tbcDebugStream() << "Subcode::fromData(): Invalid CRC in Q-channel data - expected:"
                      << QString::number(getQChannelCrc(qChannelData), 16)
                      << "calculated:" << QString::number(calculateQChannelCrc16(qChannelData), 16);
 
@@ -285,7 +286,7 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
 
         SectionTime badAbsTime = SectionTime(minutes, seconds, frames);
         if (m_showDebug)
-            qDebug().noquote() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex()
+            tbcDebugStream().noquote() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex()
                                << "potentially corrupt absolute time is:"
                                << badAbsTime.toString();
         sectionMetadata.setValid(false);
@@ -299,20 +300,19 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
     if (sectionMetadata.trackNumber() == 0
         && sectionMetadata.sectionType().type() != SectionType::LeadIn) {
         if (m_showDebug)
-            qDebug("Subcode::fromData(): Track number 0 is only valid for lead-in frames");
+            tbcDebug(QStringLiteral("Subcode::fromData(): Track number 0 is only valid for lead-in frames"));
     } else if (sectionMetadata.trackNumber() == 0xAA
                && sectionMetadata.sectionType().type() != SectionType::LeadOut) {
         if (m_showDebug)
-            qDebug("Subcode::fromData(): Track number 0xAA is only valid for lead-out frames");
+            tbcDebug(QStringLiteral("Subcode::fromData(): Track number 0xAA is only valid for lead-out frames"));
     } else if (sectionMetadata.trackNumber() > 99) {
         if (m_showDebug)
-            qDebug("Subcode::fromData(): Track number %d is out of range",
-                   sectionMetadata.trackNumber());
+            tbcDebugStream() << "Subcode::fromData(): Track number" << sectionMetadata.trackNumber() << "is out of range";
     }
 
     if (sectionMetadata.isRepaired()) {
         if (m_showDebug)
-            qDebug().noquote()
+            tbcDebugStream().noquote()
                     << "Subcode::fromData(): Q-channel repaired for section with absolute time:"
                     << sectionMetadata.absoluteSectionTime().toString()
                     << "track number:" << sectionMetadata.trackNumber()
@@ -636,7 +636,7 @@ qint32 Subcode::validateAndClampTimeValue(qint32 value, qint32 maxValue, const Q
 {
     if (value > maxValue) {
         if (m_showDebug)
-            qDebug().nospace() << "Subcode::validateAndClampTimeValue(): Invalid " << valueName 
+            tbcDebugStream().nospace() << "Subcode::validateAndClampTimeValue(): Invalid " << valueName 
                                << " value " << value << " - marking section as repaired";
         sectionMetadata.setRepaired(true);
         return maxValue;

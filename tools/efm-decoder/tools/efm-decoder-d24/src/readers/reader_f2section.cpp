@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "reader_f2section.h"
+#include "tbc/logging.h"
 
 ReaderF2Section::ReaderF2Section() :
     m_dataStream(nullptr),
@@ -53,7 +54,7 @@ bool ReaderF2Section::open(const QString &filename)
         // Cannot determine size for stdin
         m_fileSizeInSections = -1;
         
-        qDebug() << "ReaderF2Section::open() - Opened stdin for F2 Section data reading";
+        tbcDebugStream() << "ReaderF2Section::open() - Opened stdin for F2 Section data reading";
         return true;
     } else {
         // Use regular file
@@ -85,7 +86,7 @@ bool ReaderF2Section::open(const QString &filename)
         // Restore original position
         m_file.seek(currentPos);
 
-        qDebug() << "ReaderF2Section::open() - Opened file" << filename << "for data reading containing" << size() << "F2 Section objects";
+        tbcDebugStream() << "ReaderF2Section::open() - Opened file" << filename << "for data reading containing" << size() << "F2 Section objects";
         return true;
     }
 }
@@ -102,7 +103,7 @@ F2Section ReaderF2Section::read()
     
     // Check for stream errors, especially important when reading from stdin
     if (m_dataStream->status() != QDataStream::Ok) {
-        qDebug() << "ReaderF2Section::read() - Data stream error occurred while reading F2Section";
+        tbcDebugStream() << "ReaderF2Section::read() - Data stream error occurred while reading F2Section";
         // Return an empty/invalid section to signal error
         F2Section emptySection;
         return emptySection;
@@ -122,9 +123,9 @@ void ReaderF2Section::close()
     m_dataStream = nullptr;
 
     if (m_usingStdin) {
-        qDebug() << "ReaderF2Section::close(): Closed stdin";
+        tbcDebugStream() << "ReaderF2Section::close(): Closed stdin";
     } else {
-        qDebug() << "ReaderF2Section::close(): Closed the data file" << m_file.fileName();
+        tbcDebugStream() << "ReaderF2Section::close(): Closed the data file" << m_file.fileName();
     }
     m_file.close();
     m_usingStdin = false;

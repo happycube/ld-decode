@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "discmap.h"
+#include "tbc/logging.h"
 
 DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder,
                  const bool noStrict)
@@ -35,7 +36,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     // Open the TBC metadata file
     if (!ldDecodeMetaData->read(metadataFileInfo.filePath())) {
         // Open failed
-        qDebug() << "Cannot load metadata from" << metadataFileInfo.filePath();
+        tbcDebugStream() << "Cannot load metadata from" << metadataFileInfo.filePath();
         m_tbcValid = false;
         return;
     }
@@ -48,13 +49,13 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     m_numberOfFrames = ldDecodeMetaData->getNumberOfFrames();
 
     if (m_numberOfFrames < 2) {
-        qDebug() << "Metadata contains only" << m_numberOfFrames << "frames - too small";
+        tbcDebugStream() << "Metadata contains only" << m_numberOfFrames << "frames - too small";
         m_tbcValid = false;
         return;
     }
 
     if (m_numberOfFrames > 108000) {
-        qDebug() << "Metadata contains" << m_numberOfFrames << "frames - too big";
+        tbcDebugStream() << "Metadata contains" << m_numberOfFrames << "frames - too big";
         m_tbcValid = false;
         return;
     }
@@ -89,7 +90,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     if (ldDecodeMetaData->getVideoParameters().system == PAL) m_isDiscPal = true;
     else if (ldDecodeMetaData->getVideoParameters().system == NTSC) m_isDiscPal = false;
     else {
-        qDebug() << "Input TBC video system" << m_videoSystemDescription << "is not supported";
+        tbcDebugStream() << "Input TBC video system" << m_videoSystemDescription << "is not supported";
         qCritical("Video system must be PAL or NTSC");
     }
 
@@ -115,7 +116,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     // Get the disc type (CAV/CLV)
     qint32 framesToCheck = 100;
     if (m_numberOfFrames < framesToCheck) framesToCheck = m_numberOfFrames;
-    qDebug() << "Checking first" << framesToCheck << "sequential frames for disc CAV/CLV type determination";
+    tbcDebugStream() << "Checking first" << framesToCheck << "sequential frames for disc CAV/CLV type determination";
 
     qint32 cavCount = 0;
     qint32 clvCount = 0;
@@ -129,7 +130,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
 
     // If the metadata has no picture numbers or time-codes, we cannot use the source
     if (cavCount == 0 && clvCount == 0) {
-        qDebug() << "Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot map";
+        tbcDebugStream() << "Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot map";
         m_tbcValid = false;
         return;
     }
@@ -138,17 +139,17 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     if (cavCount > clvCount) {
         m_isDiscCav = true;
         m_discType = "CAV";
-        qDebug() << "Got" << cavCount << "valid CAV picture numbers from" << framesToCheck << "frames - source disc type is CAV";
+        tbcDebugStream() << "Got" << cavCount << "valid CAV picture numbers from" << framesToCheck << "frames - source disc type is CAV";
     } else {
         m_isDiscCav = false;
         m_discType = "CLV";
-        qDebug() << "Got" << clvCount << "valid CLV picture numbers from" << framesToCheck << "frames - source disc type is CLV";
+        tbcDebugStream() << "Got" << clvCount << "valid CLV picture numbers from" << framesToCheck << "frames - source disc type is CLV";
     }
 
     // If the disc type is CLV, convert the timecodes into frame numbers and update the stored VBI
     // otherwise just store the CAV picture numbers
-    if (m_isDiscCav)  qDebug() << "Storing VBI CAV picture numbers as frame numbers";
-    else qDebug() << "Converting VBI CLV timecodes into frame numbers";
+    if (m_isDiscCav)  tbcDebugStream() << "Storing VBI CAV picture numbers as frame numbers";
+    else tbcDebugStream() << "Converting VBI CLV timecodes into frame numbers";
     qint32 iecOffset = -1;
     for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
         if (!m_isDiscCav) {
@@ -168,7 +169,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
                 if (isNtscAmendment2ClvFrameNumber(m_frames[frameNumber].vbiFrameNumber() - iecOffset)) {
                     m_frames[frameNumber].isClvOffset(true);
                     iecOffset++;
-                    //qDebug() << "CLV offset set for frame" << m_frames[frameNumber].seqFrameNumber() << "with VBI of" << m_frames[frameNumber].vbiFrameNumber();
+                    //tbcDebugStream() << "CLV offset set for frame" << m_frames[frameNumber].seqFrameNumber() << "with VBI of" << m_frames[frameNumber].vbiFrameNumber();
                 }
             }
         } else {
@@ -179,7 +180,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     // Check for the presence of pull-down frames (if NTSC CAV)
     m_numberOfPulldowns = false;
     if (!m_isDiscPal && m_isDiscCav) {
-        qDebug() << "Disc type is NTSC CAV - checking for pull-down frames";
+        tbcDebugStream() << "Disc type is NTSC CAV - checking for pull-down frames";
 
         for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
             bool isPulldown = false;
@@ -239,15 +240,15 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
                              isPulldown = true;
                          } else {
                              // Probably not a pull-down frame
-                             qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "is not in phase sequence with the subsequent frame!";
+                             tbcDebugStream() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "is not in phase sequence with the subsequent frame!";
                          }
                     } else {
                         // Probably not a pull-down frame
-                        qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "is not in phase sequence with the preceding frame!";
+                        tbcDebugStream() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "is not in phase sequence with the preceding frame!";
                     }
                 } else {
                     // Probably not a pull-down frame
-                    qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "has an incorrect intra-frame phaseID!";
+                    tbcDebugStream() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() << "has an incorrect intra-frame phaseID!";
                 }
 
                 if (isPulldown) {
@@ -264,11 +265,11 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
 
                     if (doubleCheckCounter < 1) {
                         if (!m_noStrict) {
-                            qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
+                            tbcDebugStream() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
                                         "looks like a pull-down, but there is no pull-down sequence in the surrounding frames - marking as false-positive";
                             isPulldown = false;
                         } else {
-                            qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
+                            tbcDebugStream() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber() <<
                                         "looks like a pull-down, but there is no pull-down sequence in the surrounding frames" <<
                                         "- strict checking is disabled, so marking as pulldown anyway";
                             isPulldown = true;
@@ -277,7 +278,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
 
                     m_frames[frameNumber].isPullDown(isPulldown);
                     if (m_frames[frameNumber].isPullDown()) {
-                        //qDebug() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber << "marked as pulldown";
+                        //tbcDebugStream() << "Seq. frame" << m_frames[frameNumber].seqFrameNumber << "marked as pulldown";
                         m_numberOfPulldowns++;
                     }
                 }
@@ -286,7 +287,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
     }
 
     // Measure and record a quality value for each frame
-    qDebug() << "Performing a frame quality analysis for each frame";
+    tbcDebugStream() << "Performing a frame quality analysis for each frame";
     for (qint32 frameNumber = 0; frameNumber < m_numberOfFrames; frameNumber++) {
         // If the frame following the current one has a lower VBI number, give the current
         // frame a quality penalty as the likelihood the player skipped is higher
@@ -328,7 +329,7 @@ DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder
                                   ldDecodeMetaData->getField(ldDecodeMetaData->getSecondFieldNumber(frameNumber + 1)).syncConf) / 2;
 
         m_frames[frameNumber].frameQuality((bsnrPercent + penaltyPercent + static_cast<double>(syncConfPercent) + (frameDoPercent * 1000.0)) / 1004.0);
-        //qDebug() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
+        //tbcDebugStream() << "Frame:" << frameNumber << bsnrPercent << penaltyPercent << syncConfPercent << frameDoPercent << "quality =" << m_frames[frameNumber].frameQuality();
     }
 
     // Record the phase for both fields of each frame
@@ -403,7 +404,7 @@ QString DiscMap::discFormat() const
 qint32 DiscMap::vbiFrameNumber(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "vbiFrameNumber out of frameNumber range";
+        tbcDebugStream() << "vbiFrameNumber out of frameNumber range";
         return -1;
     }
     return m_frames[frameNumber].vbiFrameNumber();
@@ -413,7 +414,7 @@ qint32 DiscMap::vbiFrameNumber(qint32 frameNumber) const
 void DiscMap::setVbiFrameNumber(qint32 frameNumber, qint32 vbiFrameNumber)
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "setVbiFrameNumber out of frameNumber range";
+        tbcDebugStream() << "setVbiFrameNumber out of frameNumber range";
         return;
     }
     m_frames[frameNumber].vbiFrameNumber(vbiFrameNumber);
@@ -423,7 +424,7 @@ void DiscMap::setVbiFrameNumber(qint32 frameNumber, qint32 vbiFrameNumber)
 qint32 DiscMap::seqFrameNumber(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "seqFrameNumber out of frameNumber range";
+        tbcDebugStream() << "seqFrameNumber out of frameNumber range";
         return -1;
     }
     return m_frames[frameNumber].seqFrameNumber();
@@ -433,7 +434,7 @@ qint32 DiscMap::seqFrameNumber(qint32 frameNumber) const
 bool DiscMap::isPulldown(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "isPulldown out of frameNumber range";
+        tbcDebugStream() << "isPulldown out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].isPullDown();
@@ -443,7 +444,7 @@ bool DiscMap::isPulldown(qint32 frameNumber) const
 bool DiscMap::isPictureStop(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "isPictureStop out of frameNumber range";
+        tbcDebugStream() << "isPictureStop out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].isPictureStop();
@@ -459,7 +460,7 @@ qint32 DiscMap::numberOfPulldowns() const
 bool DiscMap::isLeadInOut(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "isLeadInOut out of frameNumber range";
+        tbcDebugStream() << "isLeadInOut out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].isLeadInOrOut();
@@ -469,7 +470,7 @@ bool DiscMap::isLeadInOut(qint32 frameNumber) const
 double DiscMap::frameQuality(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "frameQuality out of frameNumber range";
+        tbcDebugStream() << "frameQuality out of frameNumber range";
         return -1;
     }
     return m_frames[frameNumber].frameQuality();
@@ -479,7 +480,7 @@ double DiscMap::frameQuality(qint32 frameNumber) const
 bool DiscMap::isPadded(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "isPadded out of frameNumber range";
+        tbcDebugStream() << "isPadded out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].isPadded();
@@ -489,7 +490,7 @@ bool DiscMap::isPadded(qint32 frameNumber) const
 void DiscMap::setMarkedForDeletion(qint32 frameNumber)
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "setMarkedForDeletion out of frameNumber range";
+        tbcDebugStream() << "setMarkedForDeletion out of frameNumber range";
         return;
     }
     m_frames[frameNumber].isMarkedForDeletion(true);
@@ -499,7 +500,7 @@ void DiscMap::setMarkedForDeletion(qint32 frameNumber)
 bool DiscMap::isClvOffset(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "isClvOffset out of frameNumber range";
+        tbcDebugStream() << "isClvOffset out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].isClvOffset();
@@ -514,7 +515,7 @@ bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
     qint32 expectedNextPhase = -1;
 
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "isPhaseCorrect out of frameNumber range";
+        tbcDebugStream() << "isPhaseCorrect out of frameNumber range";
         return false;
     }
 
@@ -525,7 +526,7 @@ bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
         if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
         if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
         if (m_frames[frameNumber].firstFieldPhase() != expectedNextPhase) {
-            qDebug() << "Frame number" << frameNumber << "phase sequence does not match preceding frame! -"
+            tbcDebugStream() << "Frame number" << frameNumber << "phase sequence does not match preceding frame! -"
             << expectedNextPhase << "expected but got" << m_frames[frameNumber].firstFieldPhase();
             return false;
         }
@@ -538,7 +539,7 @@ bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
         if (m_isDiscPal && expectedNextPhase == 9) expectedNextPhase = 1;
         if (!m_isDiscPal && expectedNextPhase == 5) expectedNextPhase = 1;
         if (m_frames[frameNumber + 1].firstFieldPhase() != expectedNextPhase) {
-            qDebug() << "Frame number" << frameNumber << "phase sequence does not match following frame! -"
+            tbcDebugStream() << "Frame number" << frameNumber << "phase sequence does not match following frame! -"
             << expectedNextPhase << "expected but got" << m_frames[frameNumber].secondFieldPhase();
             return false;
         }
@@ -551,7 +552,7 @@ bool DiscMap::isPhaseCorrect(qint32 frameNumber) const
 bool DiscMap::isPhaseRepeating(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "isPhaseCorrect out of frameNumber range";
+        tbcDebugStream() << "isPhaseCorrect out of frameNumber range";
         return false;
     }
 
@@ -603,10 +604,10 @@ void DiscMap::sort()
 void DiscMap::debugFrameDetails(qint32 frameNumber)
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "debugFrameDetails out of frameNumber range";
+        tbcDebugStream() << "debugFrameDetails out of frameNumber range";
         return;
     }
-    qDebug() << m_frames[frameNumber];
+    tbcDebugStream() << m_frames[frameNumber];
 }
 
 // Check if frame number matches IEC 60857-1986 LaserVision NTSC Amendment 2
@@ -662,7 +663,7 @@ qint32 DiscMap::getApproximateAudioFieldLength()
 qint32 DiscMap::getFirstFieldNumber(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getFirstFieldNumber out of frameNumber range";
+        tbcDebugStream() << "getFirstFieldNumber out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].firstField();
@@ -672,7 +673,7 @@ qint32 DiscMap::getFirstFieldNumber(qint32 frameNumber) const
 qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getFirstFieldNumber out of frameNumber range";
+        tbcDebugStream() << "getFirstFieldNumber out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].secondField();
@@ -682,7 +683,7 @@ qint32 DiscMap::getSecondFieldNumber(qint32 frameNumber) const
 qint32 DiscMap::getFirstFieldPhase(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getFirstFieldPhase out of frameNumber range";
+        tbcDebugStream() << "getFirstFieldPhase out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].firstFieldPhase();
@@ -692,7 +693,7 @@ qint32 DiscMap::getFirstFieldPhase(qint32 frameNumber) const
 qint32 DiscMap::getSecondFieldPhase(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getSecondFieldPhase out of frameNumber range";
+        tbcDebugStream() << "getSecondFieldPhase out of frameNumber range";
         return false;
     }
     return m_frames[frameNumber].secondFieldPhase();
@@ -702,7 +703,7 @@ qint32 DiscMap::getSecondFieldPhase(qint32 frameNumber) const
 qint32 DiscMap::getFirstFieldAudioDataStart(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getFirstFieldAudioDataStart out of frameNumber range";
+        tbcDebugStream() << "getFirstFieldAudioDataStart out of frameNumber range";
         return false;
     }
     return ldDecodeMetaData->getFieldPcmAudioStart(m_frames[frameNumber].firstField());
@@ -712,7 +713,7 @@ qint32 DiscMap::getFirstFieldAudioDataStart(qint32 frameNumber) const
 qint32 DiscMap::getFirstFieldAudioDataLength(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getFirstFieldAudioDataLength out of frameNumber range";
+        tbcDebugStream() << "getFirstFieldAudioDataLength out of frameNumber range";
         return false;
     }
     return ldDecodeMetaData->getFieldPcmAudioLength(m_frames[frameNumber].firstField());
@@ -722,7 +723,7 @@ qint32 DiscMap::getFirstFieldAudioDataLength(qint32 frameNumber) const
 qint32 DiscMap::getSecondFieldAudioDataStart(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getSecondFieldAudioDataStart out of frameNumber range";
+        tbcDebugStream() << "getSecondFieldAudioDataStart out of frameNumber range";
         return false;
     }
     return ldDecodeMetaData->getFieldPcmAudioStart(m_frames[frameNumber].secondField());
@@ -732,7 +733,7 @@ qint32 DiscMap::getSecondFieldAudioDataStart(qint32 frameNumber) const
 qint32 DiscMap::getSecondFieldAudioDataLength(qint32 frameNumber) const
 {
     if (frameNumber < 0 || frameNumber >= m_numberOfFrames) {
-        qDebug() << "getSecondFieldAudioDataLength out of frameNumber range";
+        tbcDebugStream() << "getSecondFieldAudioDataLength out of frameNumber range";
         return false;
     }
     return ldDecodeMetaData->getFieldPcmAudioLength(m_frames[frameNumber].secondField());

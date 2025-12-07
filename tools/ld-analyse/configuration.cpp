@@ -9,6 +9,7 @@
  ******************************************************************************/
 
 #include "configuration.h"
+#include "tbc/logging.h"
 
 // This define should be incremented if the settings file format changes
 static const qint32 SETTINGSVERSION = 5;
@@ -28,8 +29,8 @@ Configuration::Configuration(QObject *parent) : QObject(parent)
 
     // Are the configuration settings valid?
     if (settings.version != SETTINGSVERSION) {
-        qDebug() << "Configuration::Configuration(): Configuration invalid or wrong version (" <<
-                    settings.version << "!= " << SETTINGSVERSION <<").  Setting to default values";
+        tbcDebugStream() << "Configuration::Configuration(): Configuration invalid or wrong version ("
+                         << settings.version << "!=" << SETTINGSVERSION << "). Setting to default values";
 
         // Set default configuration
         setDefault();
@@ -75,13 +76,13 @@ void Configuration::writeConfiguration(void)
     configuration->endGroup();
 
     // Sync the settings with disk
-    qDebug() << "Configuration::writeConfiguration(): Writing configuration to disk";
+    tbcDebugStream() << "Configuration::writeConfiguration(): Writing configuration to disk";
     configuration->sync();
 }
 
 void Configuration::readConfiguration(void)
 {
-    qDebug() << "Configuration::readConfiguration(): Reading configuration from" << configuration->fileName();
+    tbcDebugStream() << "Configuration::readConfiguration(): Reading configuration from" << configuration->fileName();
 
     // Read the valid configuration flag
     settings.version = configuration->value("version").toInt();

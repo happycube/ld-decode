@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "adfs_directory.h"
+#include "tbc/logging.h"
 
 AdfsDirectoryEntry::AdfsDirectoryEntry(QByteArray data)
 {
@@ -190,5 +191,5 @@ QVector<AdfsDirectoryEntry> AdfsDirectory::entries() const
 
 void AdfsDirectory::show()
 {
-    qDebug() << "AdfsDirectory::show() - Showing directory";
+    tbcDebugStream() << "AdfsDirectory::show() - Showing directory";
 }

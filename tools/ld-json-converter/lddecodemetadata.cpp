@@ -32,6 +32,7 @@
 
 #include <cassert>
 #include <fstream>
+#include "tbc/logging.h"
 
 // Default values used when configuring VideoParameters for a particular video system.
 // See the comments in VideoParameters for the meanings of these values.
@@ -1218,7 +1219,7 @@ void LdDecodeMetaData::generatePcmAudioMap()
     pcmAudioFieldStartSampleMap.clear();
     pcmAudioFieldLengthMap.clear();
 
-    qDebug() << "LdDecodeMetaData::generatePcmAudioMap(): Generating PCM audio map...";
+    tbcDebugStream() << "LdDecodeMetaData::generatePcmAudioMap(): Generating PCM audio map...";
 
     // Get the number of fields and resize the maps
     qint32 numberOfFields = getVideoParameters().numberOfSequentialFields;

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "bad_sectors.h"
+#include "tbc/logging.h"
 
 BadSectors::BadSectors() :
     m_isOpen(false)
@@ -35,7 +36,7 @@ bool BadSectors::open(QString filename)
         qCritical() << "BadSectors::open() - Could not open file" << filename << "for reading";
         return false;
     }
-    qDebug() << "BadSectors::open() - Opened file" << filename << "for reading";
+    tbcDebugStream() << "BadSectors::open() - Opened file" << filename << "for reading";
 
     // Read the bad sector list (this is a text file with one sector number per line)
     while (!m_file.atEnd()) {
@@ -44,7 +45,7 @@ bool BadSectors::open(QString filename)
         m_badSectors.append(sector);
     }
 
-    qDebug() << "BadSectors::open() - Read" << m_badSectors.size() << "bad sectors from file" << filename;
+    tbcDebugStream() << "BadSectors::open() - Read" << m_badSectors.size() << "bad sectors from file" << filename;
 
     m_isOpen = true;
     return true;

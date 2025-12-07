@@ -14,6 +14,7 @@
 
 #include <cassert>
 #include <QSqlQuery>
+#include "tbc/logging.h"
 
 DropOuts::DropOuts(const QVector<qint32> &startx, const QVector<qint32> &endx, const QVector<qint32> &fieldLine)
     : m_startx(startx), m_endx(endx), m_fieldLine(fieldLine)
@@ -107,7 +108,7 @@ void DropOuts::concatenate(const bool verbose)
         i++;
     }
 
-    if(verbose){qDebug() << "Concatenated dropouts: was" << sizeAtStart << "now" << m_startx.size() << "dropouts";}
+    if(verbose){tbcDebugStream() << "Concatenated dropouts: was" << sizeAtStart << "now" << m_startx.size() << "dropouts";}
 }
 
 // Custom debug streaming operator

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "f2_stacker.h"
+#include "tbc/logging.h"
 
 F2Stacker::F2Stacker() :
     m_noValidValueForByte(0),
@@ -48,7 +49,7 @@ bool F2Stacker::process(const QVector<QString> &inputFilenames, const QString &o
             return false;
         }
         m_inputFiles.append(reader);
-        qDebug() << "Opened input file" << inputFilenames[index];
+        tbcDebugStream() << "Opened input file" << inputFilenames[index];
     }
 
     // Figure out the time range covered by the input files
@@ -105,7 +106,7 @@ bool F2Stacker::process(const QVector<QString> &inputFilenames, const QString &o
             sectionList.append(inputReaderList[inputFileIdx]->read());
         }
 
-        qDebug().noquote() << "F2Stacker::process() - Stacking section" << sectionList.at(0).metadata.absoluteSectionTime().toString();
+        tbcDebugStream().noquote() << "F2Stacker::process() - Stacking section" << sectionList.at(0).metadata.absoluteSectionTime().toString();
 
         F2Section stackedF2Section = stackSections(sectionList);
 
@@ -197,7 +198,7 @@ F2Section F2Stacker::stackSections(const QVector<F2Section> &f2Sections)
         }
 
         if (isPadding) {
-            qDebug().noquote() << "F2Stacker::stackSections - Section" << sectionIndex << "is just padding";
+            tbcDebugStream().noquote() << "F2Stacker::stackSections - Section" << sectionIndex << "is just padding";
         } else {
             validF2Sections.append(f2Sections[sectionIndex]);
         }
@@ -254,7 +255,7 @@ F2Frame F2Stacker::stackFrames(QVector<F2Frame> &f2Frames)
             // All bytes are errors - can't correct
             stackedFrameData.append(f2Frames.at(0).data().at(byteIndex));
             stackedFrameErrorData.append(true);
-            qDebug() << "F2Stacker::stackFrames - No valid byte value for index" << byteIndex;
+            tbcDebugStream() << "F2Stacker::stackFrames - No valid byte value for index" << byteIndex;
             m_noValidValueForByte++;
         } else {
             // Are all the valid bytes the same value?
@@ -297,7 +298,7 @@ F2Frame F2Stacker::stackFrames(QVector<F2Frame> &f2Frames)
                     validBytesString.append(QString("%1 ").arg(validBytes.at(byteIndex), 2, 16, QChar('0')).toUpper());
                 }
                 QString mostCommonByteString = QString("%1").arg(mostCommonByte, 2, 16, QChar('0')).toUpper();
-                qDebug().noquote() << "F2Stacker::stackFrames - Valid byte values differ - using"
+                tbcDebugStream().noquote() << "F2Stacker::stackFrames - Valid byte values differ - using"
                     << mostCommonByteString << "from" << validBytesString;
 
                 stackedFrameData.append(mostCommonByte);

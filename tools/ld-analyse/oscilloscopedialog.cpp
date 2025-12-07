@@ -10,6 +10,7 @@
 
 #include "oscilloscopedialog.h"
 #include "ui_oscilloscopedialog.h"
+#include "tbc/logging.h"
 
 #include <cassert>
 
@@ -49,7 +50,7 @@ OscilloscopeDialog::~OscilloscopeDialog()
 
 void OscilloscopeDialog::showTraceImage(TbcSource::ScanLineData scanLineData, qint32 xCoord, qint32 yCoord, qint32 frameWidth, qint32 frameHeight, bool bothSources)
 {
-    qDebug() << "OscilloscopeDialog::showTraceImage(): Called with xCoord =" << xCoord << "and yCoord =" << yCoord;
+    tbcDebugStream() << "OscilloscopeDialog::showTraceImage(): Called with xCoord =" << xCoord << "and yCoord =" << yCoord;
 
     // Store coordinates
     maximumX = frameWidth;

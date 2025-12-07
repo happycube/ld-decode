@@ -11,6 +11,7 @@
 
 #include "vectorscopedialog.h"
 #include "ui_vectorscopedialog.h"
+#include "tbc/logging.h"
 
 #include <cmath>
 #include <random>
@@ -45,7 +46,7 @@ VectorscopeDialog::~VectorscopeDialog()
 void VectorscopeDialog::showTraceImage(const ComponentFrame &componentFrame, const LdDecodeMetaData::VideoParameters &videoParameters,
                                        const TbcSource::ViewMode& viewMode, const bool isFirstField)
 {
-    qDebug() << "VectorscopeDialog::showTraceImage(): Called";
+    tbcDebugStream() << "VectorscopeDialog::showTraceImage(): Called";
 
     // Set/enable/disable controls based on view
     switch (viewMode) {

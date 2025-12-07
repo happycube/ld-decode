@@ -25,6 +25,7 @@
 
 #include "correctorpool.h"
 #include "vbidecoder.h"
+#include "tbc/logging.h"
 
 CorrectorPool::CorrectorPool(QString _outputFilename, QString _outputMetadataFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,
@@ -153,7 +154,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
     // Determine the number of sources available
     qint32 numberOfSources = sourceVideos.size();
 
-    qDebug().nospace() << "CorrectorPool::getInputFrame(): Processing sequential frame number #" <<
+    tbcDebugStream().nospace() << "CorrectorPool::getInputFrame(): Processing sequential frame number #" <<
                           frameNumber << " from " << numberOfSources << " possible source(s)";
 
     // Prepare the vectors
@@ -185,7 +186,7 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
             double secondFrameSnr = ldDecodeMetaData[sourceNo]->getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
             sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
 
-            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #0 fields are " <<
+            tbcDebugStream().nospace() << "CorrectorPool::getInputFrame(): Source #0 fields are " <<
                                   firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
                                   " (quality is " << sourceFrameQuality[sourceNo] << ")";
         } else if (currentVbiFrame >= sourceMinimumVbiFrame[sourceNo] && currentVbiFrame <= sourceMaximumVbiFrame[sourceNo]) {
@@ -200,11 +201,11 @@ bool CorrectorPool::getInputFrame(qint32& frameNumber,
             double secondFrameSnr = ldDecodeMetaData[sourceNo]->getField(secondFieldNumber[sourceNo]).vitsMetrics.bPSNR;
             sourceFrameQuality[sourceNo] = (firstFrameSnr + secondFrameSnr) / 2.0;
 
-            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
+            tbcDebugStream().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " has VBI frame number " << currentVbiFrame <<
                         " and fields " << firstFieldNumber[sourceNo] << "/" << secondFieldNumber[sourceNo] <<
                         " (quality is " << sourceFrameQuality[sourceNo] << ")";
         } else {
-            qDebug().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
+            tbcDebugStream().nospace() << "CorrectorPool::getInputFrame(): Source #" << sourceNo << " does not contain a usable frame";
         }
 
         // If the field numbers are valid - get the rest of the required data
@@ -301,7 +302,7 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
             avgReplacementDistance = static_cast<double>(outputFrame.totalReplacementDistance) /
                             static_cast<double>(outputFrame.sameSourceConcealment + outputFrame.multiSourceConcealment +
                                                outputFrame.multiSourceCorrection);
-            qDebug().nospace() << "Processed frame " << outputFrameNumber << " with " << outputFrame.sameSourceConcealment +
+            tbcDebugStream().nospace() << "Processed frame " << outputFrameNumber << " with " << outputFrame.sameSourceConcealment +
                         outputFrame.multiSourceConcealment +
                         outputFrame.multiSourceCorrection << " changes ("  <<
                         outputFrame.sameSourceConcealment << ", " <<
@@ -309,7 +310,7 @@ bool CorrectorPool::setOutputFrame(qint32 frameNumber,
                         outputFrame.multiSourceCorrection << " - avg dist. " <<
                         avgReplacementDistance << ")";
         } else {
-            qDebug() << "Processed frame" << outputFrameNumber << "- no dropouts";
+            tbcDebugStream() << "Processed frame" << outputFrameNumber << "- no dropouts";
         }
 
         // Tally the statistics
@@ -386,25 +387,25 @@ bool CorrectorPool::setMinAndMaxVbiFrames()
                 if (cvFrameNumber > clvMax) clvMax = cvFrameNumber;
             }
         }
-        qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
+        tbcDebugStream() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "CAV picture codes and" << clvCount << "CLV timecodes";
 
         // If the metadata has no picture numbers or time-codes, we cannot use the source
         if (cavCount == 0 && clvCount == 0) {
-            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
+            tbcDebugStream() << "CorrectorPool::setMinAndMaxVbiFrames(): Source does not seem to contain valid CAV picture numbers or CLV time-codes - cannot process";
             return false;
         }
 
         // Determine disc type
         if (cavCount > clvCount) {
             sourceDiscTypeCav[sourceNumber] = true;
-            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
+            tbcDebugStream() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << cavCount << "valid CAV picture numbers - source disc type is CAV";
             qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CAV (uses VBI frame numbers)";
 
             sourceMaximumVbiFrame[sourceNumber] = cavMax;
             sourceMinimumVbiFrame[sourceNumber] = cavMin;
         } else {
             sourceDiscTypeCav[sourceNumber] = false;
-            qDebug() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
+            tbcDebugStream() << "CorrectorPool::setMinAndMaxVbiFrames(): Got" << clvCount << "valid CLV picture numbers - source disc type is CLV";
             qInfo().nospace() << "Source #" << sourceNumber << " has a disc type of CLV (uses VBI time codes)";
 
             sourceMaximumVbiFrame[sourceNumber] = clvMax;

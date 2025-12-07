@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "discmapper.h"
+#include "tbc/logging.h"
 
 DiscMapper::DiscMapper()
 {
@@ -69,7 +70,7 @@ bool DiscMapper::process(QFileInfo _inputFileInfo, QFileInfo _inputMetadataFileI
         qInfo() << "Could not process TBC metadata successfully - cannot map this disc";
         return false;
     }
-    qDebug() << discMap;
+    tbcDebugStream() << discMap;
 
     // Show the disc type and video format:
     qInfo().noquote() << "Input TBC is a" << discMap.discType() << "disc using" << discMap.discFormat();
@@ -172,10 +173,10 @@ void DiscMapper::removeInvalidFramesByPhase(DiscMap &discMap)
         if (!discMap.isDiscPal() && expectedNextPhase == 5) expectedNextPhase = 1;
         if (discMap.getSecondFieldPhase(frameNumber) != expectedNextPhase) {
             if (discMap.vbiFrameNumber(frameNumber) != -1) {
-                qDebug() << "Marking frame" << frameNumber << "for deletion (VBI Frame#" << discMap.vbiFrameNumber(frameNumber) << ") as first and second field phases are not in sequence! -"
+                tbcDebugStream() << "Marking frame" << frameNumber << "for deletion (VBI Frame#" << discMap.vbiFrameNumber(frameNumber) << ") as first and second field phases are not in sequence! -"
                 << expectedNextPhase << "expected but got" << discMap.getSecondFieldPhase(frameNumber);
             } else {
-                qDebug() << "Marking frame" << frameNumber << "for deletion (VBI Frame# invalid) as first and second field phases are not in sequence! -"
+                tbcDebugStream() << "Marking frame" << frameNumber << "for deletion (VBI Frame# invalid) as first and second field phases are not in sequence! -"
                 << expectedNextPhase << "expected but got" << discMap.getSecondFieldPhase(frameNumber);
             }
 
@@ -252,7 +253,7 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
                 if (check1 >= 2 && check2 >= 2) {
                     // We have enough leading and trailing good frame numbers to be sure we are looking
                     // at a real error.  Now correct the error
-                    qDebug() << "Broken VBI frame number sequence detected:";
+                    tbcDebugStream() << "Broken VBI frame number sequence detected:";
 
                     bool inError = false;
                     expectedIncrement = 1;
@@ -265,7 +266,7 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
 
                                 // Ensure this is an error, not a repeating frame
                                 if ((discMap.vbiFrameNumber(frameNumber + i + 1) != discMap.vbiFrameNumber(frameNumber + i)) && discMap.isPhaseCorrect(frameNumber + i + 1)) {
-                                    qDebug() << "  Position BAD   " << i << "Seq." <<
+                                    tbcDebugStream() << "  Position BAD   " << i << "Seq." <<
                                                 discMap.seqFrameNumber(frameNumber + i + 1) <<
                                                 "VBI was" << discMap.vbiFrameNumber(frameNumber + i + 1) << "now" << (startOfSequence + expectedIncrement)  <<
                                                 "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
@@ -277,12 +278,12 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
                                     // Look at the phases to ensure this really is a repeating frame
                                     if (discMap.isPhaseRepeating(frameNumber + i + 1)) {
                                         // Repeating frame
-                                        qDebug() << "  Position REPEAT" << i << "Seq." <<
+                                        tbcDebugStream() << "  Position REPEAT" << i << "Seq." <<
                                                     discMap.seqFrameNumber(frameNumber + i + 1) <<
                                                     "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1)  <<
                                                     "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
                                                     discMap.getSecondFieldPhase(frameNumber + i + 1);
-                                        qDebug() << "  Ignoring sequence break as frame is repeating (VBI and phase) rather than out of sequence";
+                                        tbcDebugStream() << "  Ignoring sequence break as frame is repeating (VBI and phase) rather than out of sequence";
 
                                         // If we have a repeat, this probably isn't a sequence issue, so we give up
                                         if (inError) break;
@@ -290,7 +291,7 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
                                 }
                             } else {
                                 // A pulldown (no frame number)
-                                qDebug() << "  Position BAD   " << i << "Seq." <<
+                                tbcDebugStream() << "  Position BAD   " << i << "Seq." <<
                                             discMap.seqFrameNumber(frameNumber + i + 1) <<
                                             "VBI pulldown" <<
                                             "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
@@ -299,11 +300,11 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
                         } else {
                             // In sequence frame number
                             if (!discMap.isPulldown(frameNumber + i + 1))
-                                qDebug() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                                tbcDebugStream() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
                                             "VBI" << discMap.vbiFrameNumber(frameNumber + i + 1) <<
                                             "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
                                             discMap.getSecondFieldPhase(frameNumber + i + 1);
-                            else qDebug() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
+                            else tbcDebugStream() << "  Position GOOD  " << i << "Seq." << discMap.seqFrameNumber(frameNumber + i + 1) <<
                                              "VBI pulldown"  <<
                                              "- Phase" << discMap.getFirstFieldPhase(frameNumber + i + 1) << "/" <<
                                              discMap.getSecondFieldPhase(frameNumber + i + 1);
@@ -326,7 +327,7 @@ void DiscMapper::correctVbiFrameNumbersUsingSequenceAnalysis(DiscMap &discMap)
 void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
 {
     qInfo() << "Searching for duplicate frames";
-    qDebug() << "Building list of VBIs that have more than one entry in the discmap...";
+    tbcDebugStream() << "Building list of VBIs that have more than one entry in the discmap...";
     QVector<qint32> duplicatedFrameList;
     duplicatedFrameList.reserve(discMap.numberOfFrames()); // just to speed things up a little
     for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
@@ -340,34 +341,34 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
         }
     }
 
-    qDebug() << "Sorting the duplicated frame list into numerical order...";
+    tbcDebugStream() << "Sorting the duplicated frame list into numerical order...";
     std::sort(duplicatedFrameList.begin(), duplicatedFrameList.end());
-    qDebug() << "Removing any repeated frame numbers from the duplicated frame list...";
+    tbcDebugStream() << "Removing any repeated frame numbers from the duplicated frame list...";
     auto last = std::unique(duplicatedFrameList.begin(), duplicatedFrameList.end());
     duplicatedFrameList.erase(last, duplicatedFrameList.end());
 
-    qDebug() << "Found" << duplicatedFrameList.size() << "VBI frame numbers with more than 1 entry in the discmap";
+    tbcDebugStream() << "Found" << duplicatedFrameList.size() << "VBI frame numbers with more than 1 entry in the discmap";
 
     // The duplicated frame list is a list of VBI frame numbers that have duplicates
 
     // Process the list of duplications one by one
     for (qint32 i = 0; i < duplicatedFrameList.size(); i++) {
         if (duplicatedFrameList[i] != -1) {
-            qDebug() << "VBI Frame number" << duplicatedFrameList[i] << "has duplicates; searching for them...";
+            tbcDebugStream() << "VBI Frame number" << duplicatedFrameList[i] << "has duplicates; searching for them...";
             QVector<qint32> discMapDuplicateAddress;
             for (qint32 frameNumber = 0; frameNumber < discMap.numberOfFrames(); frameNumber++) {
                 // Does the current frameNumber's VBI match the VBI in the duplicated frame list?
                 if (discMap.vbiFrameNumber(frameNumber) == duplicatedFrameList[i]) {
                     // Add the frame number to the duplicate disc map address list
                     discMapDuplicateAddress.append(frameNumber);
-//                    qDebug() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
+//                    tbcDebugStream() << "  Seq frame" << discMap.seqFrameNumber(frameNumber) << "is a duplicate of" <<
 //                                duplicatedFrameList[i] <<
 //                                "with a quality of" << discMap.frameQuality(frameNumber);
                 }
             }
 
             // Show the number of duplicates in the discMap that were found
-            qDebug() << "  Found" << discMapDuplicateAddress.size() << "duplicates of VBI frame" << duplicatedFrameList[i];
+            tbcDebugStream() << "  Found" << discMapDuplicateAddress.size() << "duplicates of VBI frame" << duplicatedFrameList[i];
 
             // Pick the sequential frame duplicate with the best quality
             qint32 bestDiscMapFrame = discMapDuplicateAddress.first();
@@ -377,14 +378,14 @@ void DiscMapper::removeDuplicateNumberedFrames(DiscMap &discMap)
                 }
             }
 
-            qDebug() << "  Highest quality duplicate of VBI" << duplicatedFrameList[i] << "is sequential frame" <<
+            tbcDebugStream() << "  Highest quality duplicate of VBI" << duplicatedFrameList[i] << "is sequential frame" <<
                         discMap.seqFrameNumber(bestDiscMapFrame) << "with a quality of" << discMap.frameQuality(bestDiscMapFrame);
 
             // Delete all duplicates except the best sequential frame
             for (qint32 i = 0; i < discMapDuplicateAddress.size(); i++) {
                 if (discMapDuplicateAddress[i] != bestDiscMapFrame) {
                     discMap.setMarkedForDeletion(discMapDuplicateAddress[i]);
-                    //qDebug() << " Seq. frame" << discMap.seqFrameNumber(discMapDuplicateAddress[i]) << "marked for deletion";
+                    //tbcDebugStream() << " Seq. frame" << discMap.seqFrameNumber(discMapDuplicateAddress[i]) << "marked for deletion";
                 }
             }
         } else {
@@ -503,7 +504,7 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                 if (discMap.isPulldown(frameNumber + 1)) {
                     if (discMap.vbiFrameNumber(frameNumber) + 1 != discMap.vbiFrameNumber(frameNumber + 2)) {
                         if ((discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber)) != 0) {
-                            qDebug() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
+                            tbcDebugStream() << "Sequence break over pulldown: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
                                         "next frame (+1) is" << discMap.vbiFrameNumber(frameNumber + 2) << "gap of" <<
                                         discMap.vbiFrameNumber(frameNumber + 2) - discMap.vbiFrameNumber(frameNumber) << "frames";
 
@@ -533,7 +534,7 @@ void DiscMapper::padDiscMap(DiscMap &discMap)
                     if (!discMap.isClvOffset(frameNumber)) {
                         // Not a CLV offset frame
                         qint32 gapLength = discMap.vbiFrameNumber(frameNumber + 1) - discMap.vbiFrameNumber(frameNumber) - 1;
-                        qDebug() << "Sequence break: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
+                        tbcDebugStream() << "Sequence break: Current VBI frame is" << discMap.vbiFrameNumber(frameNumber) <<
                                     "next frame is" << discMap.vbiFrameNumber(frameNumber + 1) << "gap of" <<
                                     gapLength << "frames";
 
@@ -625,7 +626,7 @@ void DiscMapper::deleteUnmappableFrames(DiscMap &discMap)
         // For CLV discs a timecode of 00:00:00.00 is valid, so technically a frame number of 0 is legal
         // (only for CLV discs, but it probably doesn't matter if we apply that to CAV too here)
         if (discMap.vbiFrameNumber(frameNumber) < 0 && !discMap.isPulldown(frameNumber)) {
-            qDebug() << "Marking frame" << frameNumber << "for deletion (unmappable)";
+            tbcDebugStream() << "Marking frame" << frameNumber << "for deletion (unmappable)";
             discMap.setMarkedForDeletion(frameNumber);
         }
     }
