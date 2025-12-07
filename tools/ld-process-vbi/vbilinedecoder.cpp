@@ -30,7 +30,7 @@
 #include "videoid.h"
 #include "vitccode.h"
 #include "whiteflag.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 VbiLineDecoder::VbiLineDecoder(QAtomicInt& _abort, DecoderPool& _decoderPool, QObject *parent)
     : QThread(parent), abort(_abort), decoderPool(_decoderPool)

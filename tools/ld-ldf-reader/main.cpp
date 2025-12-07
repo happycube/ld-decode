@@ -22,7 +22,7 @@
 #include <QtGlobal>
 #include <QCommandLineParser>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "ldfreader.h"
 
 int main(int argc, char *argv[])

@@ -9,7 +9,7 @@
  ******************************************************************************/
 
 #include "configuration.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 // This define should be incremented if the settings file format changes
 static const qint32 SETTINGSVERSION = 5;

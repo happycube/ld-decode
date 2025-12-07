@@ -16,7 +16,7 @@
 #include <QFileInfo>
 #include <QThread>
 #include <QStringList>
-#include "logging.h"
+#include "tbc/logging.h"
 
 // SQL schema as per documentation
 static const QString SCHEMA_SQL = R"(

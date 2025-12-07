@@ -10,7 +10,7 @@
 
 #include "closedcaptionsdialog.h"
 #include "ui_closedcaptionsdialog.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 ClosedCaptionsDialog::ClosedCaptionsDialog(QWidget *parent) :
     QDialog(parent),

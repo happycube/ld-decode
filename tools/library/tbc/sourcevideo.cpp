@@ -25,7 +25,7 @@
 #include "sourcevideo.h"
 
 #include <cstdio>
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Class constructor
 SourceVideo::SourceVideo()

@@ -37,7 +37,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Indexes for the candidates considered in 3D adaptive mode
 enum CandidateIndex : qint32 {

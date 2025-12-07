@@ -24,7 +24,7 @@
 
 #include "stackingpool.h"
 #include "vbidecoder.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 StackingPool::StackingPool(QString _outputFilename, QString _outputMetadataFilename,
                              qint32 _maxThreads, QVector<LdDecodeMetaData *> &_ldDecodeMetaData, QVector<SourceVideo *> &_sourceVideos,

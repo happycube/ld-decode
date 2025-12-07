@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "discmap.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 DiscMap::DiscMap(const QFileInfo &metadataFileInfo, const bool reverseFieldOrder,
                  const bool noStrict)

@@ -12,7 +12,7 @@
 #include <limits>
 
 #include "tbcsource.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 #include "sourcefield.h"
 

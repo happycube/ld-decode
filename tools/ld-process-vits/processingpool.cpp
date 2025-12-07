@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "processingpool.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 ProcessingPool::ProcessingPool(QString _inputFilename, QString _outputMetadataFilename,
                          qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)

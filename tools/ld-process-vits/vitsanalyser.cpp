@@ -24,7 +24,7 @@
 
 #include "vitsanalyser.h"
 #include "processingpool.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 VitsAnalyser::VitsAnalyser(QAtomicInt& _abort, ProcessingPool& _processingPool, QObject *parent)
     : QThread(parent), abort(_abort), processingPool(_processingPool)

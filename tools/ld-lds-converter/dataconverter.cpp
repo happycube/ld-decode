@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "dataconverter.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 DataConverter::DataConverter(QString inputFileNameParam, QString outputFileNameParam, bool isPackingParam, bool isRIFFParam, QObject *parent) : QObject(parent)
 {

@@ -13,5 +13,6 @@ add_library(lddecode-library STATIC
 )
 
 target_include_directories(lddecode-library PUBLIC filter tbc)
+target_include_directories(lddecode-library PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(lddecode-library PRIVATE Qt::Core Qt::Sql)

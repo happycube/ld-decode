@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "whiteflag.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Public method to read the white flag status from a field-line.
 // Return true if the flag is detected, false otherwise.

@@ -23,7 +23,7 @@
 #include <QProcess>
 #endif
 
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Cross-platform function to detect if system is in dark mode
 bool isDarkModeEnabled() {

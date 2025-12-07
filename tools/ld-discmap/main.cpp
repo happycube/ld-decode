@@ -28,7 +28,7 @@
 #include <QCommandLineParser>
 #include <QFileInfo>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "discmapper.h"
 
 int main(int argc, char *argv[])

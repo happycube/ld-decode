@@ -24,7 +24,7 @@
 
 #include "biphasecode.h"
 #include "vbiutilities.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Decode the three biphase code lines, writing the result into fieldMetadata.
 // Return true if any line was decoded successfully, false if none were.

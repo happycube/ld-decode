@@ -30,7 +30,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QTextStream>
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Create an 'escaped string' for safe CSV output of QStrings
 static QString escapedString(const QString &unescapedString)

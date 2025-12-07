@@ -20,7 +20,7 @@
 #include <QDebug>
 #include <QMap>
 #include <QMultiMap>
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Default values used when configuring VideoParameters for a particular video system.
 // See the comments in VideoParameters for the meanings of these values.

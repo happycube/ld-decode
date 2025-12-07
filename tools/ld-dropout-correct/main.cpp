@@ -30,7 +30,7 @@
 #include <QFileInfo>
 #include <QThread>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "correctorpool.h"
 
 int main(int argc, char *argv[])

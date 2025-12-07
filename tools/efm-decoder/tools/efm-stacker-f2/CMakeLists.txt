@@ -18,14 +18,10 @@ target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/readers
     ${CMAKE_CURRENT_SOURCE_DIR}/src/writers
     ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/efm/include
-    ${CMAKE_SOURCE_DIR}/tools/library
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/ezpwd/c++
 )
 
-# Link the Qt libraries
-target_link_libraries(${TARGET_NAME} PRIVATE Qt::Core)
-
-# Link the efm library to your target
-target_link_libraries(${TARGET_NAME} PRIVATE efm)
+target_link_libraries(${TARGET_NAME} PRIVATE Qt::Core lddecode-library efm)
 
 # Add the library directory for the EFM library
 target_link_directories(${TARGET_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/../../libs/efm/lib)

@@ -23,7 +23,7 @@
 
 ************************************************************************/
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include <QDateTime>
 #include <QTextStream>
 

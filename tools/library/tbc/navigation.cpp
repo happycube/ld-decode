@@ -25,7 +25,7 @@
 #include "navigation.h"
 
 #include "vbidecoder.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Construct a NavigationInfo from a disc's metadata
 NavigationInfo::NavigationInfo(LdDecodeMetaData &metaData)

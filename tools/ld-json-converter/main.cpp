@@ -14,7 +14,7 @@
 #include <QCommandLineParser>
 #include <QThread>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "jsonconverter.h"
 
 int main(int argc, char *argv[])

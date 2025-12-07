@@ -24,7 +24,7 @@
 
 #include "fmcode.h"
 #include "vbiutilities.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 // Public method to read a 40-bit FM coded signal from a field line.
 // Return true if decoding was successful, false otherwise.

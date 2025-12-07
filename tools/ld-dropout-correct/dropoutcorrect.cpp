@@ -26,7 +26,7 @@
 #include "dropoutcorrect.h"
 #include "correctorpool.h"
 #include "filters.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 DropOutCorrect::DropOutCorrect(QAtomicInt& _abort, CorrectorPool& _correctorPool, QObject *parent)
     : QThread(parent), abort(_abort), correctorPool(_correctorPool)

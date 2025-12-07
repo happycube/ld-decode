@@ -29,7 +29,7 @@
 #include <QtGlobal>
 #include <QFile>
 #include <QTextStream>
-#include "logging.h"
+#include "tbc/logging.h"
 
 bool writeFfmetadata(LdDecodeMetaData &metaData, const QString &fileName)
 {

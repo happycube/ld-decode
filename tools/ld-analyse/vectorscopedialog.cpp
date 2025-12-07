@@ -11,7 +11,7 @@
 
 #include "vectorscopedialog.h"
 #include "ui_vectorscopedialog.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 #include <cmath>
 #include <random>

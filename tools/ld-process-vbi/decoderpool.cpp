@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "decoderpool.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 DecoderPool::DecoderPool(QString _inputFilename, QString _outputMetadataFilename,
                          qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)

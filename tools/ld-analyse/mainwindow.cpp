@@ -11,7 +11,7 @@
 
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 MainWindow::MainWindow(QString inputFilenameParam, QWidget *parent) :
     QMainWindow(parent),

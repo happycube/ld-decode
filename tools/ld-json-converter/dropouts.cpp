@@ -29,7 +29,7 @@
 #include "jsonio.h"
 
 #include <cassert>
-#include "logging.h"
+#include "tbc/logging.h"
 
 DropOuts::DropOuts(const QVector<qint32> &startx, const QVector<qint32> &endx, const QVector<qint32> &fieldLine)
     : m_startx(startx), m_endx(endx), m_fieldLine(fieldLine)

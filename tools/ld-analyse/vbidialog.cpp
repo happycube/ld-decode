@@ -10,7 +10,7 @@
 
 #include "vbidialog.h"
 #include "ui_vbidialog.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 VbiDialog::VbiDialog(QWidget *parent) :
     QDialog(parent),

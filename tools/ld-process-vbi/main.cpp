@@ -28,7 +28,7 @@
 #include <QCommandLineParser>
 #include <QThread>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "decoderpool.h"
 
 int main(int argc, char *argv[])

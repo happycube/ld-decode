@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "discmapper.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 DiscMapper::DiscMapper()
 {

@@ -25,7 +25,7 @@
 #include "sourceaudio.h"
 
 #include <QDataStream>
-#include "logging.h"
+#include "tbc/logging.h"
 
 SourceAudio::SourceAudio()
 {

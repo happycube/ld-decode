@@ -10,7 +10,7 @@
 
 #include "oscilloscopedialog.h"
 #include "ui_oscilloscopedialog.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 #include <cassert>
 

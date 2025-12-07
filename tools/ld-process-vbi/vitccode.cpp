@@ -27,7 +27,7 @@
 
 #include <algorithm>
 #include <array>
-#include "logging.h"
+#include "tbc/logging.h"
 
 /*!
     \class VitcCode

@@ -30,7 +30,7 @@
 #include <QFile>
 #include <QFileInfo>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "lddecodemetadata.h"
 #include "sourcevideo.h"
 #include "stackingpool.h"

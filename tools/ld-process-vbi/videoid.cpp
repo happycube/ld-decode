@@ -25,7 +25,7 @@
 
 #include "videoid.h"
 #include "vbiutilities.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 /*!
     \class VideoID

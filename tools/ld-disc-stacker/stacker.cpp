@@ -24,7 +24,7 @@
 
 #include "stacker.h"
 #include "stackingpool.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 Stacker::Stacker(QAtomicInt& _abort, StackingPool& _stackingPool, QObject *parent)
     : QThread(parent), abort(_abort), stackingPool(_stackingPool)

@@ -42,7 +42,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
-#include "logging.h"
+#include "tbc/logging.h"
 
 /*!
     \class PalColour

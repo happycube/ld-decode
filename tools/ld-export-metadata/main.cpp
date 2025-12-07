@@ -33,7 +33,7 @@
 #include "ffmetadata.h"
 #include "closedcaptions.h"
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "lddecodemetadata.h"
 
 int main(int argc, char *argv[])

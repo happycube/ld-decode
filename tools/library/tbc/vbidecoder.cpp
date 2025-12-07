@@ -23,7 +23,7 @@
 ************************************************************************/
 
 #include "vbidecoder.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 VbiDecoder::VbiDecoder()
 {

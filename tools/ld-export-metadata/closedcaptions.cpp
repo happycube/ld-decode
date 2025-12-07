@@ -32,7 +32,7 @@
 #include <QTextStream>
 #include <set>
 #include <vector>
-#include "logging.h"
+#include "tbc/logging.h"
 
 using std::set;
 using std::vector;

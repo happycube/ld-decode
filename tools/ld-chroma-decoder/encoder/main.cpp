@@ -31,7 +31,7 @@
 #include <cstdio>
 
 #include "lddecodemetadata.h"
-#include "logging.h"
+#include "tbc/logging.h"
 
 #include "ntscencoder.h"
 #include "palencoder.h"
