@@ -24,6 +24,7 @@
 ************************************************************************/
 
 #include "logging.h"
+#include <QLoggingCategory>
 
 // Global for debug output
 static bool showDebug = false;
@@ -114,6 +115,12 @@ void closeDebugFile(void)
 void setDebug(bool state)
 {
     showDebug = state;
+    
+    // Enable Qt debug logging if debug mode is enabled
+    // In Qt 5.2+, qDebug() is suppressed by default in release builds
+    if (state) {
+        QLoggingCategory::setFilterRules("*.debug=true");
+    }
 }
 
 // Control the quiet flag (if set all output is suppressed)
