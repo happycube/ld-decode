@@ -25,6 +25,7 @@
 
 #include "logging.h"
 #include <QDateTime>
+#include <QTextStream>
 
 // Global for debug output
 static bool showDebug = false;
@@ -121,8 +122,10 @@ void tbcDebug(const QString &msg)
 // Stream-style helper implementation -----------------------------------------------------------
 
 TbcDebugStream::TbcDebugStream()
-    : stream(&buffer), enabled(getDebugState()), isFirst(true)
+    : buffer(), enabled(getDebugState()), debug(&buffer)
 {
+    // Match qDebug default spacing
+    debug.setAutoInsertSpaces(true);
 }
 
 TbcDebugStream::~TbcDebugStream()
@@ -130,6 +133,18 @@ TbcDebugStream::~TbcDebugStream()
     if (enabled) {
         tbcDebug(buffer);
     }
+}
+
+TbcDebugStream &TbcDebugStream::nospace()
+{
+    debug.nospace();
+    return *this;
+}
+
+TbcDebugStream &TbcDebugStream::noquote()
+{
+    debug.noquote();
+    return *this;
 }
 
 TbcDebugStream tbcDebugStream()
@@ -144,7 +159,7 @@ void openDebugFile(QString filename)
     debugFile = new QFile(filename);
     if (!debugFile->open(QIODevice::WriteOnly)) {
         // Failed to open source sample file
-        qDebug() << "Could not open" << filename << "as debug output file";
+        tbcDebugStream() << "Could not open" << filename << "as debug output file";
     } else saveDebug = true;
 }
 

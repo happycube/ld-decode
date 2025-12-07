@@ -14,6 +14,7 @@ add_executable(${TARGET_NAME} ${SRC_FILES})
 target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/efm/include
+    ${CMAKE_SOURCE_DIR}/tools/library
 )
 
 # Link the Qt libraries

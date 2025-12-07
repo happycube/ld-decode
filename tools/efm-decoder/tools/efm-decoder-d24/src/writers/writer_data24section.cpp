@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_data24section.h"
+#include "tbc/logging.h"
 
 // This writer class writes the Data24 sections to a file
 
@@ -45,7 +46,7 @@ bool WriterData24Section::open(const QString &filename)
             qCritical() << "WriterData24Section::open() - Could not open stdout for writing";
             return false;
         }
-        qDebug() << "WriterData24Section::open() - Opened stdout for data writing";
+        tbcDebugStream() << "WriterData24Section::open() - Opened stdout for data writing";
     } else {
         // Use regular file
         m_usingStdout = false;
@@ -54,7 +55,7 @@ bool WriterData24Section::open(const QString &filename)
             qCritical() << "WriterData24Section::open() - Could not open file" << filename << "for writing";
             return false;
         }
-        qDebug() << "WriterData24Section::open() - Opened file" << filename << "for data writing";
+        tbcDebugStream() << "WriterData24Section::open() - Opened file" << filename << "for data writing";
     }
 
     // Create a data stream for writing
@@ -85,9 +86,9 @@ void WriterData24Section::close()
     }
 
     if (m_usingStdout) {
-        qDebug() << "WriterData24Section::close(): Closed stdout";
+        tbcDebugStream() << "WriterData24Section::close(): Closed stdout";
     } else {
-        qDebug() << "WriterData24Section::close(): Closed the data file" << m_file.fileName();
+        tbcDebugStream() << "WriterData24Section::close(): Closed the data file" << m_file.fileName();
     }
     m_file.close();
     m_usingStdout = false;

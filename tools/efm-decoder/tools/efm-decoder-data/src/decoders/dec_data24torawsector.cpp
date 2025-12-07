@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dec_data24torawsector.h"
+#include "tbc/logging.h"
 
 // See https://www.domesday86.com/?page_id=2678#CD_Sector_descrambling
 // for the code used to generate this look-up table
@@ -256,7 +257,7 @@ Data24ToRawSector::State Data24ToRawSector::waitingForSync()
     // Is there enough data in the buffer to form a sector?
     if (m_sectorData.size() < 2352) {
         // Not enough data
-        if (m_showDebug) qDebug() << "Data24ToRawSector::waitingForSync(): Not enough data in sectorData to form a sector, waiting for more data";
+        if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::waitingForSync(): Not enough data in sectorData to form a sector, waiting for more data";
 
         // Get more data and try again
         nextState = WaitingForSync;
@@ -267,7 +268,7 @@ Data24ToRawSector::State Data24ToRawSector::waitingForSync()
     int syncPatternPosition = m_sectorData.indexOf(m_syncPattern);
     if (syncPatternPosition == -1) {
         // No sync pattern found
-        //if (m_showDebug) qDebug() << "Data24ToRawSector::waitingForSync(): No sync pattern found in sectorData, discarding" << m_sectorData.size() - 11 << "bytes";
+        //if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::waitingForSync(): No sync pattern found in sectorData, discarding" << m_sectorData.size() - 11 << "bytes";
 
         // Clear the sector data buffer (except the last 11 bytes)
         m_discardedBytes += m_sectorData.size() - 11;
@@ -284,7 +285,7 @@ Data24ToRawSector::State Data24ToRawSector::waitingForSync()
         m_sectorData = m_sectorData.right(m_sectorData.size() - syncPatternPosition);
         m_sectorErrorData = m_sectorErrorData.right(m_sectorErrorData.size() - syncPatternPosition);
         m_sectorPaddedData = m_sectorPaddedData.right(m_sectorPaddedData.size() - syncPatternPosition);
-        if (m_showDebug) qDebug() << "Data24ToRawSector::waitingForSync(): Possible sync pattern found in sectorData at position:" << syncPatternPosition << "discarding" << syncPatternPosition << "bytes";
+        if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::waitingForSync(): Possible sync pattern found in sectorData at position:" << syncPatternPosition << "discarding" << syncPatternPosition << "bytes";
 
         // Do we really have a valid sector or is this a false positive?
 
@@ -301,10 +302,10 @@ Data24ToRawSector::State Data24ToRawSector::waitingForSync()
         }
 
         if (errorByteCount > 1000 || paddingByteCount > 1000) {
-            if (m_showDebug) qDebug() << "Data24ToRawSector::waitingForSync(): Discarding sync as false positive due to" << errorByteCount << "error bytes and" << paddingByteCount << "padding bytes";
+            if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::waitingForSync(): Discarding sync as false positive due to" << errorByteCount << "error bytes and" << paddingByteCount << "padding bytes";
             nextState = WaitingForSync;
         } else {
-            if (m_showDebug) qDebug() << "Data24ToRawSector::waitingForSync(): Valid sector sync found with" << errorByteCount << "error bytes and" << paddingByteCount << "padding bytes";
+            if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::waitingForSync(): Valid sector sync found with" << errorByteCount << "error bytes and" << paddingByteCount << "padding bytes";
             nextState = InSync;
         }
     }
@@ -319,7 +320,7 @@ Data24ToRawSector::State Data24ToRawSector::inSync()
     // Is there enough data in the buffer to form a sector?
     if (m_sectorData.size() < 2352) {
         // Not enough data
-        if (m_showDebug) qDebug() << "Data24ToRawSector::inSync(): Not enough data in sectorData to form a sector, waiting for more data";
+        if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::inSync(): Not enough data in sectorData to form a sector, waiting for more data";
 
         // Get more data and try again
         nextState = InSync;
@@ -340,7 +341,7 @@ Data24ToRawSector::State Data24ToRawSector::inSync()
             }
 
             if (m_showDebug) {
-                qDebug() << "Data24ToRawSector::inSync(): Sector header corrupt. Sector contains" << errorByteCount
+                tbcDebugStream() << "Data24ToRawSector::inSync(): Sector header corrupt. Sector contains" << errorByteCount
                     << "error bytes and" << paddingByteCount << "padding bytes";
             }
         }
@@ -353,13 +354,13 @@ Data24ToRawSector::State Data24ToRawSector::inSync()
 
             if (m_missedSyncPatternCount > 4) {
                 // Too many missed sync patterns, lost sync
-                if (m_showDebug) qDebug() << "Data24ToRawSector::inSync(): Too many missed sync patterns (4 missed), lost sync. Valid sector count:" << m_validSectorCount;
+                if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::inSync(): Too many missed sync patterns (4 missed), lost sync. Valid sector count:" << m_validSectorCount;
                 nextState = LostSync;
                 return nextState;
             } else {
                 if (m_showDebug) {
                     QString foundPattern = m_sectorData.left(12).toHex(' ').toUpper();
-                    qDebug() << "Data24ToRawSector::inSync(): Sync pattern mismatch:"
+                    tbcDebugStream() << "Data24ToRawSector::inSync(): Sync pattern mismatch:"
                         << "Found:" << foundPattern
                         << "Sector count:" << m_validSectorCount
                         << "Missed sync patterns:" << m_missedSyncPatternCount;
@@ -370,7 +371,7 @@ Data24ToRawSector::State Data24ToRawSector::inSync()
             m_goodSyncPatternCount++;
 
             if (m_showDebug && m_missedSyncPatternCount) {
-                qDebug() << "Data24ToRawSector::inSync(): Sync pattern found after" << m_missedSyncPatternCount << "missed sync patterns (resynced)";
+                tbcDebugStream() << "Data24ToRawSector::inSync(): Sync pattern found after" << m_missedSyncPatternCount << "missed sync patterns (resynced)";
             }
 
             m_missedSyncPatternCount = 0;
@@ -415,7 +416,7 @@ Data24ToRawSector::State Data24ToRawSector::lostSync()
 {
     State nextState = WaitingForSync;
     m_missedSyncPatternCount = 0;
-    if (m_showDebug) qDebug() << "Data24ToRawSector::lostSync(): Lost sync";
+    if (m_showDebug) tbcDebugStream() << "Data24ToRawSector::lostSync(): Lost sync";
     m_syncLostCount++;
     return nextState;
 }

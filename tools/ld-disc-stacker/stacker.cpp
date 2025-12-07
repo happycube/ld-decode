@@ -24,6 +24,7 @@
 
 #include "stacker.h"
 #include "stackingpool.h"
+#include "logging.h"
 
 Stacker::Stacker(QAtomicInt& _abort, StackingPool& _stackingPool, QObject *parent)
     : QThread(parent), abort(_abort), stackingPool(_stackingPool)
@@ -818,11 +819,11 @@ QVector<quint16> Stacker::diffDod(const QVector<quint16>& inputValues, const LdD
     // Show debug
     if(verbose)
     {
-        qDebug() << "diffDOD:  Input" << inputValues;
+        tbcDebugStream() << "diffDOD:  Input" << inputValues;
         if (outputValues.size() == 0) {
-            qDebug().nospace() << "diffDOD: Empty output... Range was " << minValue << "-" << maxValue << " with a median of " << medianValue;
+            tbcDebugStream().nospace() << "diffDOD: Empty output... Range was " << minValue << "-" << maxValue << " with a median of " << medianValue;
         } else {
-            qDebug() << "diffDOD: Output" << outputValues;
+            tbcDebugStream() << "diffDOD: Output" << outputValues;
         }
     }
 

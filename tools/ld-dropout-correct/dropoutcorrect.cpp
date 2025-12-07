@@ -26,6 +26,7 @@
 #include "dropoutcorrect.h"
 #include "correctorpool.h"
 #include "filters.h"
+#include "logging.h"
 
 DropOutCorrect::DropOutCorrect(QAtomicInt& _abort, CorrectorPool& _correctorPool, QObject *parent)
     : QThread(parent), abort(_abort), correctorPool(_correctorPool)
@@ -66,7 +67,7 @@ void DropOutCorrect::run()
         statistics.totalReplacementDistance = 0;
 
         qint32 totalAvailableSources = firstFieldSeqNo.size();
-        qDebug().nospace() << "DropOutCorrect::process(): Frame #" << frameNumber << " - There are " << totalAvailableSources << " sources available of which " <<
+        tbcDebugStream().nospace() << "DropOutCorrect::process(): Frame #" << frameNumber << " - There are " << totalAvailableSources << " sources available of which " <<
                               availableSourcesForFrame.size() << " contain the required frame";
 
         // Copy the input frames' data to the target frames.
@@ -78,11 +79,11 @@ void DropOutCorrect::run()
         // Check if the frame contains drop-outs
         if (firstFieldMetadata[0].dropOuts.empty() && secondFieldMetadata[0].dropOuts.empty()) {
             // No correction required...
-            qDebug() << "DropOutCorrect::process(): Skipping fields [" <<
+            tbcDebugStream() << "DropOutCorrect::process(): Skipping fields [" <<
                         firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "]";
         } else {
             // Perform correction...
-            qDebug().nospace() << "DropOutCorrect::process(): Correcting fields [" <<
+            tbcDebugStream().nospace() << "DropOutCorrect::process(): Correcting fields [" <<
                         firstFieldSeqNo[0] << "/" << secondFieldSeqNo[0] << "] containing " <<
                         firstFieldMetadata[0].dropOuts.size() + secondFieldMetadata[0].dropOuts.size() <<
                         " drop-outs";
@@ -348,7 +349,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
         }
     }
 
-    qDebug() << (isColourBurst ? "Colourburst" : "Visible video") << "dropout on line"
+    tbcDebugStream() << (isColourBurst ? "Colourburst" : "Visible video") << "dropout on line"
              << thisFieldDropouts[0][dropOutIndex].fieldLine << "of" << (thisFieldIsFirst ? "first" : "second") << "field";
 
     // If no candidate is found, return no replacement
@@ -369,7 +370,7 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
                                                                                               : (thisFieldIsFirst ? 1 : 0));
 
             const qint32 distance = qAbs(dropoutFrameLine - sourceFrameLine);
-            qDebug() << (candidate.isSameField ? "This" : "Other") << "field replacement candidate for line" <<
+            tbcDebugStream() << (candidate.isSameField ? "This" : "Other") << "field replacement candidate for line" <<
                         thisFieldDropouts[0][dropOutIndex].fieldLine << "is line" <<
                         candidate.fieldLine << "distance" << distance << "of source" << candidate.sourceNumber <<
                         "with a quality of" << candidate.quality;
@@ -389,12 +390,12 @@ DropOutCorrect::Replacement DropOutCorrect::findReplacementLine(const QVector<QV
     }
 
     if (replacement.fieldLine != -1) {
-        qDebug() << "Selected replacement is" <<
+        tbcDebugStream() << "Selected replacement is" <<
                     (replacement.isSameField ? "same" : "other") << "field, line" <<
                     replacement.fieldLine << "of source" << replacement.sourceNumber << (matchChromaPhase ? "(chroma phase matched)" : "(whole signal)") <<
                     "with a quality of" << replacement.quality;
     } else {
-        qDebug() << "No viable replacement selected for" << thisFieldDropouts[0][dropOutIndex].fieldLine;
+        tbcDebugStream() << "No viable replacement selected for" << thisFieldDropouts[0][dropOutIndex].fieldLine;
     }
 
 
@@ -415,7 +416,7 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
     // Is the line within the active range?
     if ((sourceLine - 1) < videoParameters[sourceNo].firstActiveFieldLine
         || (sourceLine - 1) >= videoParameters[sourceNo].lastActiveFieldLine) {
-        qDebug() << "Line" << sourceLine << "is not in active range - ignoring";
+        tbcDebugStream() << "Line" << sourceLine << "is not in active range - ignoring";
         return;
     }
 
@@ -472,7 +473,7 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
     // Don't use chroma if the source of the replacement is > 0 and coming from the same line in another source
     if ((chromaReplacement.fieldLine == -1) || ((dropOut.fieldLine == replacement.fieldLine) && (dropOut.fieldLine == chromaReplacement.fieldLine))) {
         // No separate chroma replacement; just copy the whole signal
-        qDebug() << "Whole signal replacement - Source is fieldline" << replacement.fieldLine << "from source" << replacement.sourceNumber;
+        tbcDebugStream() << "Whole signal replacement - Source is fieldline" << replacement.fieldLine << "from source" << replacement.sourceNumber;
 
         for (qint32 pixel = dropOut.startx; pixel < dropOut.endx; pixel++) {
             targetLine[pixel] = sourceLine[pixel];
@@ -482,8 +483,8 @@ void DropOutCorrect::correctDropOut(const DropOutLocation &dropOut,
         // frequencies (mostly chroma) from chromaReplacement. As this is only
         // a 1D filter, it won't achieve very good separation, but it's good
         // enough for the purposes of replacing a dropout.
-        qDebug() << "Luma replacement - Source is fieldline" << replacement.fieldLine << "from source" << replacement.sourceNumber;
-        qDebug() << "Chroma replacement - Source is fieldline" << chromaReplacement.fieldLine << "from source" << chromaReplacement.sourceNumber;
+        tbcDebugStream() << "Luma replacement - Source is fieldline" << replacement.fieldLine << "from source" << replacement.sourceNumber;
+        tbcDebugStream() << "Chroma replacement - Source is fieldline" << chromaReplacement.fieldLine << "from source" << chromaReplacement.sourceNumber;
 
         Filters filters;
         QVector<quint16> lineBuf(videoParameters[0].fieldWidth);

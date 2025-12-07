@@ -29,7 +29,7 @@
 #include <QThread>
 #include <QLoggingCategory>
 
-#include "logging.h"
+#include "tbc/logging.h"
 #include "adfs_verifier.h"
 
 int main(int argc, char *argv[])

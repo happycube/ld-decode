@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_wav.h"
+#include "tbc/logging.h"
 
 // This writer class writes audio data to a file in WAV format
 // This is used when the output is stereo audio data
@@ -43,7 +44,7 @@ bool WriterWav::open(const QString &filename)
         qCritical() << "WriterWav::open() - Could not open file" << filename << "for writing";
         return false;
     }
-    qDebug() << "WriterWav::open() - Opened file" << filename << "for data writing";
+    tbcDebugStream() << "WriterWav::open() - Opened file" << filename << "for data writing";
 
     // Add 44 bytes of blank header data to the file
     // (we will fill this in later once we know the size of the data)
@@ -75,7 +76,7 @@ void WriterWav::close()
     }
 
     // Fill out the WAV header
-    qDebug() << "WriterWav::close(): Filling out the WAV header before closing the wav file";
+    tbcDebugStream() << "WriterWav::close(): Filling out the WAV header before closing the wav file";
 
     // WAV file header
     struct WAVHeader
@@ -107,7 +108,7 @@ void WriterWav::close()
 
     // Now close the file
     m_file.close();
-    qDebug() << "WriterWav::close(): Closed the WAV file" << m_file.fileName();
+    tbcDebugStream() << "WriterWav::close(): Closed the WAV file" << m_file.fileName();
 }
 
 qint64 WriterWav::size() const

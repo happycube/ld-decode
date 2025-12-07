@@ -25,6 +25,7 @@
 #include "ezpwd/rs_base"
 #include "ezpwd/rs"
 #include "rspc.h"
+#include "tbc/logging.h"
 
 // ECMA-130 Q and P specific CIRC configuration for Reed-Solomon forward error correction
 template < size_t SYMBOLS, size_t PAYLOAD > struct QRS;
@@ -112,9 +113,9 @@ void Rspc::qParityEcc(QByteArray &inputData, QByteArray &errorData, bool m_showD
 
     // Show Q-Parity correction result to debug
     if (successfulCorrections >= 52) {
-        //if (m_showDebug) qDebug() << "Rspc::qParityEcc(): Q-Parity correction successful with" << successfulCorrections << "corrected codewords";
+        //if (m_showDebug) tbcDebugStream() << "Rspc::qParityEcc(): Q-Parity correction successful with" << successfulCorrections << "corrected codewords";
     } else {
-        if (m_showDebug) qDebug() << "Rspc::qParityEcc(): Q-Parity correction failed! Got" << successfulCorrections << "correct out of 52 possible codewords";
+        if (m_showDebug) tbcDebugStream() << "Rspc::qParityEcc(): Q-Parity correction failed! Got" << successfulCorrections << "correct out of 52 possible codewords";
     }
 }
 
@@ -186,8 +187,8 @@ void Rspc::pParityEcc(QByteArray &inputData, QByteArray &errorData, bool m_showD
 
     // Show P-Parity correction result to debug
     if (successfulCorrections >= 86) {
-        //if (m_showDebug) qDebug() << "Rspc::pParityEcc(): P-Parity correction successful with" << successfulCorrections << "corrected codewords";
+        //if (m_showDebug) tbcDebugStream() << "Rspc::pParityEcc(): P-Parity correction successful with" << successfulCorrections << "corrected codewords";
     } else {
-        if (m_showDebug) qDebug() << "Rspc::pParityEcc(): P-Parity correction failed! Got" << successfulCorrections << "correct out of 86 possible codewords";
+        if (m_showDebug) tbcDebugStream() << "Rspc::pParityEcc(): P-Parity correction failed! Got" << successfulCorrections << "correct out of 86 possible codewords";
     }
 }

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dec_f3frametof2section.h"
+#include "tbc/logging.h"
 
 F3FrameToF2Section::F3FrameToF2Section() :
     m_badSyncCounter(0),
@@ -100,7 +101,7 @@ F3FrameToF2Section::State F3FrameToF2Section::expectingInitialSync()
     }
 
     if (foundSync0) {
-        qDebug() << "F3FrameToF2Section::expectingInitialSync - Found sync0 frame after discarding" << m_presyncDiscardedF3Frames << "frames";
+        tbcDebugStream() << "F3FrameToF2Section::expectingInitialSync - Found sync0 frame after discarding" << m_presyncDiscardedF3Frames << "frames";
         m_presyncDiscardedF3Frames = 0;
         nextState = ExpectingSync;
     } else {
@@ -135,7 +136,7 @@ F3FrameToF2Section::State F3FrameToF2Section::expectingSync()
             // Extract the section frames and remove them from the internal buffer
             m_sectionFrames = m_internalBuffer.mid(0,  m_internalBuffer.size() - 2);
             m_internalBuffer = m_internalBuffer.mid(m_internalBuffer.size() - 2, 1);
-            if (m_showDebug) qDebug() << "F3FrameToF2Section::expectingSync - Got sync1 frame without a sync0 frame - section frame size is" << m_sectionFrames.size();
+            if (m_showDebug) tbcDebugStream() << "F3FrameToF2Section::expectingSync - Got sync1 frame without a sync0 frame - section frame size is" << m_sectionFrames.size();
         }
     } else {
         // Keep waiting for a sync0 frame
@@ -187,14 +188,14 @@ F3FrameToF2Section::State F3FrameToF2Section::handleUndershoot()
     int padding = 98 - m_sectionFrames.size();
 
     if (padding > 4) {
-        if (m_showDebug) qDebug() << "F3FrameToF2Section::handleUndershoot - Undershoot is" << padding << "frames; ignoring sync0 frame";
+        if (m_showDebug) tbcDebugStream() << "F3FrameToF2Section::handleUndershoot - Undershoot is" << padding << "frames; ignoring sync0 frame";
         // Put the section frames back into the internal buffer
         m_internalBuffer.append(m_sectionFrames);
         m_sectionFrames.clear();
         nextState = ExpectingSync;
     } else {
         m_paddedF3Frames += padding;
-        if (m_showDebug) qDebug() << "F3FrameToF2Section::handleUndershoot - Padding section with" << padding << "frames";
+        if (m_showDebug) tbcDebugStream() << "F3FrameToF2Section::handleUndershoot - Padding section with" << padding << "frames";
 
         // If we are padding, we are introducing errors... The CIRC can correct these
         // provided they are distributed across the section; so the best policy here
@@ -226,7 +227,7 @@ F3FrameToF2Section::State F3FrameToF2Section::handleOvershoot()
     // How many sections worth of data do we have?
     int frameCount = m_sectionFrames.size() / 98;
     int remainder = m_sectionFrames.size() % 98;
-    if (m_showDebug) qDebug() << "F3FrameToF2Section::handleOvershoot - Got" << m_sectionFrames.size()
+    if (m_showDebug) tbcDebugStream() << "F3FrameToF2Section::handleOvershoot - Got" << m_sectionFrames.size()
         << "frames, which is" << frameCount << "sections with a remainder of" << remainder << "frames";
 
     if (frameCount == 1) {
@@ -258,7 +259,7 @@ F3FrameToF2Section::State F3FrameToF2Section::handleOvershoot()
 F3FrameToF2Section::State F3FrameToF2Section::lostSync()
 {
     State nextState = ExpectingInitialSync;
-    if (m_showDebug) qDebug() << "F3FrameToF2Section::lostSync - Lost section sync";
+    if (m_showDebug) tbcDebugStream() << "F3FrameToF2Section::lostSync - Lost section sync";
     m_lostSyncCounter++;
     m_badSyncCounter = 0;
     m_internalBuffer.clear();
@@ -311,7 +312,7 @@ void F3FrameToF2Section::outputSection(bool showAddress)
     }
     m_outputBuffer.enqueue(f2Section);
 
-    if (m_showDebug && showAddress) qDebug() << "F3FrameToF2Section::outputSection - Outputting F2 section with address"
+    if (m_showDebug && showAddress) tbcDebugStream() << "F3FrameToF2Section::outputSection - Outputting F2 section with address"
         << sectionMetadata.absoluteSectionTime().toString();
 }
 

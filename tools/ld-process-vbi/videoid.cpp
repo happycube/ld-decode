@@ -25,6 +25,7 @@
 
 #include "videoid.h"
 #include "vbiutilities.h"
+#include "logging.h"
 
 /*!
     \class VideoID
@@ -77,12 +78,12 @@ bool VideoID::decodeLine(const SourceVideo::Data& lineData,
 
     // Find the start bits (10)
     if (!findTransition(transitionMap, true, x, xLimit)) {
-        qDebug() << "VideoID::decodeLine(): No reference bit found (1)";
+        tbcDebugStream() << "VideoID::decodeLine(): No reference bit found (1)";
         return false;
     }
     x += samplesPerBit * 1.5;
     if (transitionMap[static_cast<qint32>(x)]){
-        qDebug() << "VideoID::decodeLine(): No start code found (10)";
+        tbcDebugStream() << "VideoID::decodeLine(): No start code found (10)";
         return false;
     }
 
@@ -95,7 +96,7 @@ bool VideoID::decodeLine(const SourceVideo::Data& lineData,
     }
 
     // Show the 20-bit codeword
-    qDebug() << "VideoID::decodeLine(): 20-bit code is" << QStringLiteral("%1").arg(codeWord, 20, 2, QLatin1Char('0'));
+    tbcDebugStream() << "VideoID::decodeLine(): 20-bit code is" << QStringLiteral("%1").arg(codeWord, 20, 2, QLatin1Char('0'));
 
     // Split the result into the required fields
     word0 = (codeWord & 0xC0000) >> 18;
@@ -104,10 +105,10 @@ bool VideoID::decodeLine(const SourceVideo::Data& lineData,
     crcc =  codeWord & 0x3F;
     message = codeWord >> 6;
 
-    qDebug() << "VideoID::decodeLine(): word0 =" << QStringLiteral("%1").arg(word0, 2, 2, QLatin1Char('0'));
-    qDebug() << "VideoID::decodeLine(): word1 =" << QStringLiteral("%1").arg(word1, 4, 2, QLatin1Char('0'));
-    qDebug() << "VideoID::decodeLine(): word2 =" << QStringLiteral("%1").arg(word2, 8, 2, QLatin1Char('0'));
-    qDebug() << "VideoID::decodeLine(): crcc  =" << QStringLiteral("%1").arg(crcc, 6, 2, QLatin1Char('0'));
+    tbcDebugStream() << "VideoID::decodeLine(): word0 =" << QStringLiteral("%1").arg(word0, 2, 2, QLatin1Char('0'));
+    tbcDebugStream() << "VideoID::decodeLine(): word1 =" << QStringLiteral("%1").arg(word1, 4, 2, QLatin1Char('0'));
+    tbcDebugStream() << "VideoID::decodeLine(): word2 =" << QStringLiteral("%1").arg(word2, 8, 2, QLatin1Char('0'));
+    tbcDebugStream() << "VideoID::decodeLine(): crcc  =" << QStringLiteral("%1").arg(crcc, 6, 2, QLatin1Char('0'));
 
     // Calculate the CRC [IEC p11]
     // x^6 + x + 1, initialized with all-ones
@@ -123,7 +124,7 @@ bool VideoID::decodeLine(const SourceVideo::Data& lineData,
 
     // Quit if the calculated CRC doesn't match
     if (crc != crcc) {
-        qDebug() << "VideoID::decodeLine(): Invalid CRC" << QStringLiteral("%1").arg(crc, 6, 2, QLatin1Char('0'));
+        tbcDebugStream() << "VideoID::decodeLine(): Invalid CRC" << QStringLiteral("%1").arg(crc, 6, 2, QLatin1Char('0'));
         return false;
     }
 

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "decoderpool.h"
+#include "logging.h"
 
 DecoderPool::DecoderPool(QString _inputFilename, QString _outputMetadataFilename,
                          qint32 _maxThreads, LdDecodeMetaData &_ldDecodeMetaData)
@@ -114,7 +115,7 @@ bool DecoderPool::getInputField(qint32 &fieldNumber, SourceVideo::Data &fieldVid
     inputFieldNumber++;
 
     // Show what we are about to process
-    qDebug() << "DecoderPool::process(): Processing field number" << fieldNumber;
+    tbcDebugStream() << "DecoderPool::process(): Processing field number" << fieldNumber;
 
     // Fetch the input data
     fieldVideoData = sourceVideo.getVideoField(fieldNumber, VbiLineDecoder::startFieldLine, VbiLineDecoder::endFieldLine);

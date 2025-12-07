@@ -29,6 +29,7 @@
 #include <QtGlobal>
 #include <QFile>
 #include <QTextStream>
+#include "logging.h"
 
 bool writeAudacityLabels(LdDecodeMetaData &metaData, const QString &fileName)
 {
@@ -44,7 +45,7 @@ bool writeAudacityLabels(LdDecodeMetaData &metaData, const QString &fileName)
     // Open the output file
     QFile file(fileName);
     if (!file.open(QFile::WriteOnly | QFile::Text)) {
-        qDebug("writeAudacityLabels: Could not open file for output");
+        tbcDebug(QStringLiteral("writeAudacityLabels: Could not open file for output"));
         return false;
     }
     QTextStream stream(&file);

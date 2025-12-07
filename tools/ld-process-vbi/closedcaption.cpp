@@ -25,6 +25,7 @@
 
 #include "closedcaption.h"
 #include "vbiutilities.h"
+#include "logging.h"
 
 /*!
     \class ClosedCaption
@@ -69,7 +70,7 @@ bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
     double lastOne = x;
     while ((x - lastOne) < (1.5 * samplesPerBit)) {
         if (x >= xLimit) {
-            qDebug() << "ClosedCaption::decodeLine(): No start bits found (00)";
+            tbcDebugStream() << "ClosedCaption::decodeLine(): No start bits found (00)";
             return false;
         }
         if (transitionMap[static_cast<qint32>(x)] == true) lastOne = x;
@@ -78,11 +79,11 @@ bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
 
     // Resynchronise on the 1 transition
     if (!findTransition(transitionMap, true, x, xLimit)) {
-        qDebug() << "ClosedCaption::decodeLine(): No start bits found (1)";
+        tbcDebugStream() << "ClosedCaption::decodeLine(): No start bits found (1)";
         return false;
     }
 
-    qDebug() << "ClosedCaption::decodeLine(): Found start bit transition at" << x;
+    tbcDebugStream() << "ClosedCaption::decodeLine(): Found start bit transition at" << x;
 
     // Skip the the start bit and move to the centre of the first payload bit
     x += 1.5 * samplesPerBit;
@@ -115,18 +116,18 @@ bool ClosedCaption::decodeLine(const SourceVideo::Data& lineData,
     if (transitionMap[static_cast<qint32>(x)]) byte1Parity = 1;
     x += samplesPerBit;
 
-    qDebug().nospace() << "ClosedCaption::decodeLine(): Bytes are: " << byte0 << " (" << byte0Parity << ") - "
+    tbcDebugStream().nospace() << "ClosedCaption::decodeLine(): Bytes are: " << byte0 << " (" << byte0Parity << ") - "
                        << byte1 << " (" << byte1Parity << ")";
 
     if (isEvenParity(byte0) && byte0Parity != 1) {
-        qDebug() << "ClosedCaption::decodeLine(): First byte failed parity check!";
+        tbcDebugStream() << "ClosedCaption::decodeLine(): First byte failed parity check!";
     } else {
         fieldMetadata.closedCaption.data0 = byte0;
         fieldMetadata.closedCaption.inUse = true;
     }
 
     if (isEvenParity(byte1) && byte1Parity != 1) {
-        qDebug() << "ClosedCaption::decodeLine(): Second byte failed parity check!";
+        tbcDebugStream() << "ClosedCaption::decodeLine(): Second byte failed parity check!";
     } else {
         fieldMetadata.closedCaption.data1 = byte1;
         fieldMetadata.closedCaption.inUse = true;

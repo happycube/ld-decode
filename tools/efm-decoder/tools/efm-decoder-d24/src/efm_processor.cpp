@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "efm_processor.h"
+#include "tbc/logging.h"
 
 EfmProcessor::EfmProcessor() : 
     m_showData24(false),
@@ -31,12 +32,12 @@ EfmProcessor::EfmProcessor() :
 
 bool EfmProcessor::process(const QString &inputFilename, const QString &outputFilename)
 {
-    qDebug() << "EfmProcessor::process(): Decoding F2 Sections from file:" << inputFilename
+    tbcDebugStream() << "EfmProcessor::process(): Decoding F2 Sections from file:" << inputFilename
              << "to file:" << outputFilename;
 
     // Prepare the input file reader
     if (!m_readerF2Section.open(inputFilename)) {
-        qDebug() << "EfmProcessor::process(): Failed to open input F2 Section file:" << inputFilename;
+        tbcDebugStream() << "EfmProcessor::process(): Failed to open input F2 Section file:" << inputFilename;
         return false;
     }
 

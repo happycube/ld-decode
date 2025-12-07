@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include "logging.h"
 
 /*!
     \class VitcCode
@@ -83,11 +84,11 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
     double byteStart = videoParameters.colourBurstEnd;
     double byteStartLimit = static_cast<double>(lineData.size()) - (90 * bitSamples);
     if (!findTransition(dataBits, false, byteStart, byteStartLimit)) {
-        qDebug() << "VitcCode::decodeLine(): No leading zero found";
+        tbcDebugStream() << "VitcCode::decodeLine(): No leading zero found";
         return false;
     }
     if (!findTransition(dataBits, true, byteStart, byteStartLimit)) {
-        qDebug() << "VitcCode::decodeLine(): No leading edge found";
+        tbcDebugStream() << "VitcCode::decodeLine(): No leading edge found";
         return false;
     }
 
@@ -98,7 +99,7 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
         byteStart += bitSamples * 0.5;
         byteStartLimit += 10 * bitSamples;
         if (!findTransition(dataBits, false, byteStart, byteStartLimit)) {
-            qDebug() << "VitcCode::decodeLine(): No transition found for byte" << byteNum;
+            tbcDebugStream() << "VitcCode::decodeLine(): No transition found for byte" << byteNum;
             return false;
         }
         byteStart -= bitSamples;
@@ -115,7 +116,7 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
 
         // Check for, and remove, the synchronisation sequence
         if ((vitcData[byteNum] & 3) != 1) {
-            qDebug() << "VitcCode::decodeLine(): No synchronisation sequence found for byte" << byteNum;
+            tbcDebugStream() << "VitcCode::decodeLine(): No synchronisation sequence found for byte" << byteNum;
             return false;
         }
         vitcData[byteNum] >>= 2;
@@ -128,14 +129,14 @@ bool VitcCode::decodeLine(const SourceVideo::Data &lineData,
     qint32 crcTotal = 0;
     for (qint32 crcValue: crcData) crcTotal ^= crcValue;
     if (crcTotal != 0) {
-        qDebug() << "VitcCode::decodeLine(): Invalid CRC" << crcTotal;
+        tbcDebugStream() << "VitcCode::decodeLine(): Invalid CRC" << crcTotal;
         return false;
     }
 
     // Everything looks good -- update the metadata
     fieldMetadata.vitc.inUse = true;
     std::copy(vitcData.begin(), vitcData.begin() + 8, fieldMetadata.vitc.vitcData.begin());
-    qDebug() << "VitcCode::decodeLine(): Found VITC";
+    tbcDebugStream() << "VitcCode::decodeLine(): Found VITC";
 
     return true;
 }

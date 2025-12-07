@@ -25,6 +25,7 @@
 #include "navigation.h"
 
 #include "vbidecoder.h"
+#include "logging.h"
 
 // Construct a NavigationInfo from a disc's metadata
 NavigationInfo::NavigationInfo(LdDecodeMetaData &metaData)
@@ -75,7 +76,7 @@ NavigationInfo::NavigationInfo(LdDecodeMetaData &metaData)
         if ((nextChapter.startField - chapter.startField) < 10) {
             // Chapters should be at least 30 tracks (= 60 or more fields) long. So
             // this is too short -- drop it.
-            qDebug() << "NavigationInfo::NavigationInfo: Dropped too-short chapter" << chapter.number << "at field" << chapter.startField;
+            tbcDebugStream() << "NavigationInfo::NavigationInfo: Dropped too-short chapter" << chapter.number << "at field" << chapter.startField;
         } else if ((!chapters.empty()) && (chapter.number == chapters.back().number)) {
             // Change to the same chapter - drop
         } else {

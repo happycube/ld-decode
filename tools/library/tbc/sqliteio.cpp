@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QThread>
 #include <QStringList>
+#include "logging.h"
 
 // SQL schema as per documentation
 static const QString SCHEMA_SQL = R"(
@@ -452,18 +453,18 @@ void SqliteWriter::close()
 
 bool SqliteWriter::createSchema()
 {
-    qDebug() << "SqliteWriter::createSchema(): Starting schema creation";
+    tbcDebugStream() << "SqliteWriter::createSchema(): Starting schema creation";
     
     // Split schema into individual statements and execute them
     QStringList statements = SCHEMA_SQL.split(";", Qt::SkipEmptyParts);
     
-    qDebug() << "Schema has" << statements.size() << "statements";
+    tbcDebugStream() << "Schema has" << statements.size() << "statements";
     
     for (int i = 0; i < statements.size(); ++i) {
         QString trimmed = statements[i].trimmed();
         if (trimmed.isEmpty()) continue;
         
-        qDebug() << "Executing statement" << i+1 << ":" << trimmed.left(50) << "...";
+        tbcDebugStream() << "Executing statement" << i+1 << ":" << trimmed.left(50) << "...";
         
         QSqlQuery query(db);
         if (!query.exec(trimmed)) {
@@ -474,7 +475,7 @@ bool SqliteWriter::createSchema()
         }
     }
     
-    qDebug() << "Schema creation completed successfully";
+    tbcDebugStream() << "Schema creation completed successfully";
     return true;
 }
 
@@ -514,7 +515,7 @@ int SqliteWriter::writeCaptureMetadata(const QString &system, const QString &dec
     query.addBindValue(captureNotes.isEmpty() ? QVariant(QVariant::String) : captureNotes);
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert capture metadata:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert capture metadata:" << query.lastError().text();
         return -1;
     }
 
@@ -558,7 +559,7 @@ bool SqliteWriter::updateCaptureMetadata(int captureId, const QString &system, c
     query.addBindValue(captureId);
 
     if (!query.exec()) {
-        qDebug() << "Failed to update capture metadata:" << query.lastError().text();
+        tbcDebugStream() << "Failed to update capture metadata:" << query.lastError().text();
         return false;
     }
 
@@ -579,7 +580,7 @@ bool SqliteWriter::writePcmAudioParameters(int captureId, int bits, bool isSigne
     query.addBindValue(sampleRate);
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert PCM audio parameters:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert PCM audio parameters:" << query.lastError().text();
         return false;
     }
 
@@ -620,7 +621,7 @@ bool SqliteWriter::writeField(int captureId, int fieldId, int audioSamples, int 
     query.addBindValue(ntscWhiteFlag ? 1 : 0);
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert field record:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert field record:" << query.lastError().text();
         return false;
     }
 
@@ -638,7 +639,7 @@ bool SqliteWriter::writeFieldVitsMetrics(int captureId, int fieldId, double wSnr
     query.addBindValue(bPsnr);
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert VITS metrics:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert VITS metrics:" << query.lastError().text();
         return false;
     }
 
@@ -657,7 +658,7 @@ bool SqliteWriter::writeFieldVbi(int captureId, int fieldId, int vbi0, int vbi1,
     query.addBindValue(vbi2);
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert VBI:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert VBI:" << query.lastError().text();
         return false;
     }
 
@@ -677,7 +678,7 @@ bool SqliteWriter::writeFieldVitc(int captureId, int fieldId, const int vitcData
     }
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert VITC:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert VITC:" << query.lastError().text();
         return false;
     }
 
@@ -695,7 +696,7 @@ bool SqliteWriter::writeFieldClosedCaption(int captureId, int fieldId, int data0
     query.addBindValue(data1);
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert closed caption:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert closed caption:" << query.lastError().text();
         return false;
     }
 
@@ -714,7 +715,7 @@ bool SqliteWriter::writeFieldDropouts(int captureId, int fieldId, int startx, in
     query.addBindValue(fieldLine);
 
     if (!query.exec()) {
-        qDebug() << "Failed to insert dropout:" << query.lastError().text();
+        tbcDebugStream() << "Failed to insert dropout:" << query.lastError().text();
         return false;
     }
 

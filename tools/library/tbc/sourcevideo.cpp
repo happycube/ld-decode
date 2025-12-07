@@ -25,6 +25,7 @@
 #include "sourcevideo.h"
 
 #include <cstdio>
+#include "logging.h"
 
 // Class constructor
 SourceVideo::SourceVideo()
@@ -57,7 +58,7 @@ bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineL
     if (_fieldLineLength != -1) {
         fieldLineLength = _fieldLineLength * 2;
     } else fieldLineLength = -1;
-    qDebug() << "SourceVideo::open(): Called with field byte length =" << fieldByteLength;
+    tbcDebugStream() << "SourceVideo::open(): Called with field byte length =" << fieldByteLength;
 
     if (isSourceVideoOpen) {
         // Video file is already open, close it
@@ -86,7 +87,7 @@ bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineL
         // File open successful - configure source video parameters
         qint64 tAvailableFields = (inputFile.size() / fieldByteLength);
         availableFields = static_cast<qint32>(tAvailableFields);
-        qDebug() << "SourceVideo::open(): Successful -" << availableFields << "fields available";
+        tbcDebugStream() << "SourceVideo::open(): Successful -" << availableFields << "fields available";
     }
 
     // Initialise cache
@@ -102,16 +103,16 @@ bool SourceVideo::open(QString filename, qint32 _fieldLength, qint32 _fieldLineL
 void SourceVideo::close()
 {
     if (!isSourceVideoOpen) {
-        qDebug() << "SourceVideo::close(): Called but no source video input file is open";
+        tbcDebugStream() << "SourceVideo::close(): Called but no source video input file is open";
         return;
     }
 
-    qDebug() << "SourceVideo::close(): Called, closing the source video file and emptying the frame cache";
+    tbcDebugStream() << "SourceVideo::close(): Called, closing the source video file and emptying the frame cache";
     inputFile.close();
     isSourceVideoOpen = false;
     inputFilePos = -1;
 
-    qDebug() << "SourceVideo::close(): Source video input file closed";
+    tbcDebugStream() << "SourceVideo::close(): Source video input file closed";
 }
 
 // Get the validity of the source video file

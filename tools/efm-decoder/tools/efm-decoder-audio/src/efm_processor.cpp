@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "efm_processor.h"
+#include "tbc/logging.h"
 
 EfmProcessor::EfmProcessor() : 
     m_showAudio(false),
@@ -33,12 +34,12 @@ EfmProcessor::EfmProcessor() :
 
 bool EfmProcessor::process(const QString &inputFilename, const QString &outputFilename)
 {
-    qDebug() << "EfmProcessor::process(): Decoding Data24 Sections from file:" << inputFilename
+    tbcDebugStream() << "EfmProcessor::process(): Decoding Data24 Sections from file:" << inputFilename
              << "to wav file:" << outputFilename;
 
     // Prepare the input file reader
     if (!m_readerData24Section.open(inputFilename)) {
-        qDebug() << "EfmProcessor::process(): Failed to open input Data24 Section file:" << inputFilename;
+        tbcDebugStream() << "EfmProcessor::process(): Failed to open input Data24 Section file:" << inputFilename;
         return false;
     }
 

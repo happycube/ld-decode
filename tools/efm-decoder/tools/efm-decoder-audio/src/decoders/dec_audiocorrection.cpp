@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dec_audiocorrection.h"
+#include "tbc/logging.h"
 
 AudioCorrection::AudioCorrection() :
     m_firstSectionFlag(true),
@@ -128,7 +129,7 @@ void AudioCorrection::processQueue()
                     // Do we have a valid preceding and following sample?
                     if (precedingLeftSampleError || followingLeftSampleError) {
                         // Silence the sample
-                        qDebug().noquote().nospace() << "AudioCorrection::processQueue() -  Left  Silencing: "
+                        tbcDebugStream().noquote().nospace() << "AudioCorrection::processQueue() -  Left  Silencing: "
                             << "Section address " << m_correctionBuffer.at(1).metadata.absoluteSectionTime().toString()
                             << " - Frame " << subSection << ", sample " << sampleOffset;
                         correctedLeftSamples.append(0);
@@ -137,7 +138,7 @@ void AudioCorrection::processQueue()
                         ++m_silencedSamplesCount;
                     } else {
                         // Conceal the sample
-                        qDebug().noquote().nospace() << "AudioCorrection::processQueue() -  Left Concealing: "
+                        tbcDebugStream().noquote().nospace() << "AudioCorrection::processQueue() -  Left Concealing: "
                             << "Section address " << m_correctionBuffer.at(1).metadata.absoluteSectionTime().toString()
                             << " - Frame " << subSection << ", sample " << sampleOffset
                             << " - Preceding = " << precedingLeftSample << ", Following = " << followingLeftSample
@@ -183,7 +184,7 @@ void AudioCorrection::processQueue()
                     // Do we have a valid preceding and following sample?
                     if (precedingRightSampleError || followingRightSampleError) {
                         // Silence the sample
-                        qDebug().noquote().nospace() << "AudioCorrection::processQueue() - Right  Silencing: "
+                        tbcDebugStream().noquote().nospace() << "AudioCorrection::processQueue() - Right  Silencing: "
                             << "Section address " << m_correctionBuffer.at(1).metadata.absoluteSectionTime().toString()
                             << " - Frame " << subSection << ", sample " << sampleOffset;
                         correctedRightSamples.append(0);
@@ -192,7 +193,7 @@ void AudioCorrection::processQueue()
                         ++m_silencedSamplesCount;
                     } else {
                         // Conceal the sample
-                        qDebug().noquote().nospace() << "AudioCorrection::processQueue() - Right Concealing: "
+                        tbcDebugStream().noquote().nospace() << "AudioCorrection::processQueue() - Right Concealing: "
                             << "Section address " << m_correctionBuffer.at(1).metadata.absoluteSectionTime().toString()
                             << " - Frame " << subSection << ", sample " << sampleOffset
                             << " - Preceding = " << precedingRightSample << ", Following = " << followingRightSample

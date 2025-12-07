@@ -24,6 +24,7 @@
 
 #include "vitsanalyser.h"
 #include "processingpool.h"
+#include "logging.h"
 
 VitsAnalyser::VitsAnalyser(QAtomicInt& _abort, ProcessingPool& _processingPool, QObject *parent)
     : QThread(parent), abort(_abort), processingPool(_processingPool)
@@ -97,7 +98,7 @@ void VitsAnalyser::run()
         fieldMetadata.vitsMetrics.bPSNR = roundDouble(bPSNR, 1);
 
         // Show the result as debug
-        qDebug().nospace() << "Field #" << fieldNumber << " has wSNR of " << fieldMetadata.vitsMetrics.wSNR << " (" << old_wSNR << ")"
+        tbcDebugStream().nospace() << "Field #" << fieldNumber << " has wSNR of " << fieldMetadata.vitsMetrics.wSNR << " (" << old_wSNR << ")"
                  << " and bPSNR of " << fieldMetadata.vitsMetrics.bPSNR << " (" << old_bPSNR << ")";
 
         // Write the result to the output metadata

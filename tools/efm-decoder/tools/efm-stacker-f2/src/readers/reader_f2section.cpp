@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "reader_f2section.h"
+#include "tbc/logging.h"
 
 ReaderF2Section::ReaderF2Section() :
     m_dataStream(nullptr),
@@ -65,7 +66,7 @@ bool ReaderF2Section::open(const QString &filename)
     // Restore original position
     m_file.seek(currentPos);
 
-    qDebug() << "ReaderF2Section::open() - Opened file" << filename << "for data reading containing" << size() << "F2 Section objects";
+    tbcDebugStream() << "ReaderF2Section::open() - Opened file" << filename << "for data reading containing" << size() << "F2 Section objects";
     return true;
 }
 
@@ -92,7 +93,7 @@ void ReaderF2Section::close()
     m_dataStream = nullptr;
 
     m_file.close();
-    qDebug() << "ReaderF2Section::close(): Closed the data file" << m_file.fileName();
+    tbcDebugStream() << "ReaderF2Section::close(): Closed the data file" << m_file.fileName();
 }
 
 qint64 ReaderF2Section::size()

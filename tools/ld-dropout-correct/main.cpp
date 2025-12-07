@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
 
     qInfo() << "Starting preparation for dropout correction processes...";
     // Open the source video metadata
-    qDebug() << "main(): Opening source video metadata files..";
+    tbcDebugStream() << "main(): Opening source video metadata files..";
     QVector<LdDecodeMetaData *> ldDecodeMetaData;
     ldDecodeMetaData.resize(totalNumberOfInputFiles);
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {
@@ -252,7 +252,7 @@ int main(int argc, char *argv[])
     }
 
     // Show and open input source TBC files
-    qDebug() << "main(): Opening source video files...";
+    tbcDebugStream() << "main(): Opening source video files...";
     QVector<SourceVideo *> sourceVideos;
     sourceVideos.resize(totalNumberOfInputFiles);
     for (qint32 i = 0; i < totalNumberOfInputFiles; i++) {

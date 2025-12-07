@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "dec_channeltof3frame.h"
+#include "tbc/logging.h"
 
 ChannelToF3Frame::ChannelToF3Frame()
 {
@@ -73,7 +74,7 @@ void ChannelToF3Frame::processQueue()
 
         // Generate statistics
         if (bitCount != 588 && m_showDebug)
-            qDebug() << "ChannelToF3Frame::processQueue() - Frame data is" << bitCount
+            tbcDebugStream() << "ChannelToF3Frame::processQueue() - Frame data is" << bitCount
                      << "bits (should be 588)";
         if (bitCount == 588)
             m_goodFrames++;

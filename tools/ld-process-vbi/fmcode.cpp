@@ -24,6 +24,7 @@
 
 #include "fmcode.h"
 #include "vbiutilities.h"
+#include "logging.h"
 
 // Public method to read a 40-bit FM coded signal from a field line.
 // Return true if decoding was successful, false otherwise.
@@ -104,13 +105,13 @@ bool FmCode::decodeLine(const SourceVideo::Data &lineData,
 
     // We must have 40-bits if the decode was successful
     if (decodeCount != 40) {
-        if (decodeCount == 0) qDebug() << "FmCode::fmDecoder(): No FM code data found in the field line";
-        else qDebug() << "FmCode::fmDecoder(): FM decode failed!  Only got" << decodeCount << "bits";
+        if (decodeCount == 0) tbcDebugStream() << "FmCode::fmDecoder(): No FM code data found in the field line";
+        else tbcDebugStream() << "FmCode::fmDecoder(): FM decode failed!  Only got" << decodeCount << "bits";
         return false;
     }
 
     // Show the 40-bit FM coded data as hexadecimal
-    qDebug() << "FmCode::fmDecoder(): 40-bit FM code is" << QString::number(decodedBytes, 16);
+    tbcDebugStream() << "FmCode::fmDecoder(): 40-bit FM code is" << QString::number(decodedBytes, 16);
 
     // Split the result into the required fields
     receiverClockSyncBits = (decodedBytes & 0xF000000000) >> 36;
@@ -120,12 +121,12 @@ bool FmCode::decodeLine(const SourceVideo::Data &lineData,
     dataParityBit = (decodedBytes & 0x0000000080) >> 7;
     trailingDataRecognitionBits = (decodedBytes & 0x000000007F);
 
-    qDebug() << "FmCode::fmDecoder(): receiverClockSyncBits =" << receiverClockSyncBits;
-    qDebug() << "FmCode::fmDecoder(): videoFieldIndicator =" << videoFieldIndicator;
-    qDebug() << "FmCode::fmDecoder(): leadingDataRecognitionBits =" << leadingDataRecognitionBits;
-    qDebug() << "FmCode::fmDecoder(): dataValue =" << dataValue;
-    qDebug() << "FmCode::fmDecoder(): dataParityBit =" << dataParityBit;
-    qDebug() << "FmCode::fmDecoder(): trailingDataRecognitionBits =" << trailingDataRecognitionBits;
+    tbcDebugStream() << "FmCode::fmDecoder(): receiverClockSyncBits =" << receiverClockSyncBits;
+    tbcDebugStream() << "FmCode::fmDecoder(): videoFieldIndicator =" << videoFieldIndicator;
+    tbcDebugStream() << "FmCode::fmDecoder(): leadingDataRecognitionBits =" << leadingDataRecognitionBits;
+    tbcDebugStream() << "FmCode::fmDecoder(): dataValue =" << dataValue;
+    tbcDebugStream() << "FmCode::fmDecoder(): dataParityBit =" << dataParityBit;
+    tbcDebugStream() << "FmCode::fmDecoder(): trailingDataRecognitionBits =" << trailingDataRecognitionBits;
 
     // Sanity check the data
     if (receiverClockSyncBits != 3 || leadingDataRecognitionBits != 114 || trailingDataRecognitionBits != 13) {

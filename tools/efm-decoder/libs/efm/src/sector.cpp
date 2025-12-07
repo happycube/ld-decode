@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "sector.h"
+#include "tbc/logging.h"
 
 // Sector address class
 // ---------------------------------------------------------------------------------------------------
@@ -62,17 +63,17 @@ void SectorAddress::setTime(quint8 minutes, quint8 seconds, quint8 frames)
 
     // Ensure the time is sane
     if (minutes >= 60) {
-        qDebug().nospace() << "SectorAddress::setTime(): Invalid minutes value " << minutes
+        tbcDebugStream().nospace() << "SectorAddress::setTime(): Invalid minutes value " << minutes
             << ", setting to 59";
         minutes = 59;
     }
     if (seconds >= 60) {
-        qDebug().nospace() << "SectorAddress::setTime(): Invalid seconds value " << seconds
+        tbcDebugStream().nospace() << "SectorAddress::setTime(): Invalid seconds value " << seconds
             << ", setting to 59";
         seconds = 59;
     }
     if (frames >= 75) {
-        qDebug().nospace() << "SectorAddress::setTime(): Invalid frames value " << frames
+        tbcDebugStream().nospace() << "SectorAddress::setTime(): Invalid frames value " << frames
             << ", setting to 74";
         frames = 74;
     }

@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "whiteflag.h"
+#include "logging.h"
 
 // Public method to read the white flag status from a field-line.
 // Return true if the flag is detected, false otherwise.
@@ -40,7 +41,7 @@ bool WhiteFlag::decodeLine(const SourceVideo::Data& lineData,
 
     // Mark the line as a white flag if at least 50% of the data is above the zc point
     if (whiteCount > ((videoParameters.activeVideoEnd - videoParameters.activeVideoStart) / 2)) {
-        qDebug() << "WhiteFlag::getWhiteFlag(): White-flag detected: White count was" << whiteCount << "out of" <<
+        tbcDebugStream() << "WhiteFlag::getWhiteFlag(): White-flag detected: White count was" << whiteCount << "out of" <<
                     (videoParameters.activeVideoEnd - videoParameters.activeVideoStart);
         fieldMetadata.ntsc.whiteFlag = true;
         return true;

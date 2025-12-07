@@ -30,6 +30,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QTextStream>
+#include "logging.h"
 
 // Create an 'escaped string' for safe CSV output of QStrings
 static QString escapedString(const QString &unescapedString)
@@ -45,7 +46,7 @@ bool writeVitsCsv(LdDecodeMetaData &metaData, const QString &fileName)
     // Open a file for the CSV output
     QFile csvFile(fileName);
     if (!csvFile.open(QFile::WriteOnly | QFile::Text)) {
-        qDebug("LdDecodeMetaData::writeVitsCsv(): Could not open CSV file for output!");
+        tbcDebug(QStringLiteral("LdDecodeMetaData::writeVitsCsv(): Could not open CSV file for output!"));
         return false;
     }
 
@@ -89,7 +90,7 @@ bool writeVbiCsv(LdDecodeMetaData &metaData, const QString &fileName)
     // Open a file for the CSV output
     QFile csvFile(fileName);
     if (!csvFile.open(QFile::WriteOnly | QFile::Text)) {
-        qDebug("LdDecodeMetaData::writeVbiCsv(): Could not open CSV file for output!");
+        tbcDebug(QStringLiteral("LdDecodeMetaData::writeVbiCsv(): Could not open CSV file for output!"));
         return false;
     }
 

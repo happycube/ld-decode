@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "adfs_verifier.h"
+#include "tbc/logging.h"
 
 AdfsVerifier::AdfsVerifier()
 {}
@@ -60,7 +61,7 @@ bool AdfsVerifier::process(const QString &filename, const QString &bsmFilename)
         qint32 sectorLength = (byteLength + 255) / 256;
 
         // Show the file data
-        qDebug() << "Directory entry" << i << "start sector" << startSector << "length" << sectorLength << "sectors - object name" << adfsDirectory.entries().at(i).objectName();
+        tbcDebugStream() << "Directory entry" << i << "start sector" << startSector << "length" << sectorLength << "sectors - object name" << adfsDirectory.entries().at(i).objectName();
 
         // Ensure that all the used sectors are not in the bad sector list
         for (int j = 0; j < sectorLength; ++j) {
@@ -113,6 +114,6 @@ void AdfsVerifier::hexDump(QByteArray &data, qint32 startSector) const
         }
         line += "|";
         
-        qDebug().noquote() << line;
+        tbcDebugStream().noquote() << line;
     }
 }

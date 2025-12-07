@@ -80,13 +80,13 @@ metadata.read("video.tbc.db");
 
 // Access video parameters
 VideoParameters params = metadata.getVideoParameters();
-qDebug() << "System:" << params.system;
-qDebug() << "Field width:" << params.fieldWidth;
+tbcDebugStream() << "System:" << params.system;
+tbcDebugStream() << "Field width:" << params.fieldWidth;
 
 // Access field information
 qint32 firstField = metadata.getFirstFieldNumber(1);
 FieldMetadata field = metadata.getField(firstField);
-qDebug() << "SNR:" << field.vitsMetrics.snr;
+tbcDebugStream() << "SNR:" << field.vitsMetrics.snr;
 ```
 
 ##### `SourceVideo`

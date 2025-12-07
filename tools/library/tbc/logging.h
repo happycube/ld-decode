@@ -22,14 +22,13 @@
 
 ************************************************************************/
 
-#ifndef LOGGING_H
-#define LOGGING_H
+#ifndef TBC_LOGGING_H
+#define TBC_LOGGING_H
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
 #include <QString>
-#include <QTextStream>
 #include <QCommandLineParser>
 
 #ifdef _WIN32
@@ -51,7 +50,7 @@ bool getDebugState();
 // Lightweight application-level debug logger (not suppressed in release builds)
 void tbcDebug(const QString &msg);
 
-// Stream-style debug helper to ease migration from qDebug()
+// Stream-style debug helper to ease migration from tbcDebugStream()
 class TbcDebugStream
 {
 public:
@@ -62,22 +61,24 @@ public:
     TbcDebugStream &operator<<(const T &value)
     {
         if (!enabled) return *this;
-        if (!isFirst) {
-            stream << ' ';
-        }
-        stream << value;
-        isFirst = false;
+        debug << value;
         return *this;
     }
 
+    // Match tbcDebugStream().nospace() semantics
+    TbcDebugStream &nospace();
+    // noquote is a no-op for our QTextStream-based logger
+    TbcDebugStream &noquote();
+
 private:
     QString buffer;
-    QTextStream stream;
     bool enabled;
-    bool isFirst;
+    QDebug debug;
 };
 
 TbcDebugStream tbcDebugStream();
+
+// No aliasing of qDebug; use tbcDebugStream() explicitly in code for clarity
 
 // Helper to stream multiple arguments into tbcDebug without qDebug
 template<typename T>
@@ -102,4 +103,4 @@ inline void tbcDebug(const Args&... args)
     tbcDebug(message);
 }
 
-#endif // LOGGING_H
+#endif // TBC_LOGGING_H

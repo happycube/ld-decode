@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_sector_metadata.h"
+#include "tbc/logging.h"
 
 // This writer class writes metadata about sector data to a file
 
@@ -43,7 +44,7 @@ bool WriterSectorMetadata::open(const QString &filename)
         qCritical() << "WriterSectorMetadata::open() - Could not open file" << filename << "for writing";
         return false;
     }
-    qDebug() << "WriterSectorMetadata::open() - Opened file" << filename << "for metadata writing";
+    tbcDebugStream() << "WriterSectorMetadata::open() - Opened file" << filename << "for metadata writing";
 
     return true;
 }
@@ -70,7 +71,7 @@ void WriterSectorMetadata::close()
     }
 
     m_file.close();
-    qDebug() << "WriterSectorMetadata::close(): Closed the bad sector map metadata file" << m_file.fileName();
+    tbcDebugStream() << "WriterSectorMetadata::close(): Closed the bad sector map metadata file" << m_file.fileName();
 }
 
 qint64 WriterSectorMetadata::size() const

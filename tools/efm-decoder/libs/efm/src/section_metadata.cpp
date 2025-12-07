@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "section_metadata.h"
+#include "tbc/logging.h"
 
 // SectionType class
 // ---------------------------------------------------------------------------------------------------
@@ -93,17 +94,17 @@ void SectionTime::setTime(quint8 minutes, quint8 seconds, quint8 frames)
 
     // Ensure the time is sane
     if (minutes >= 60) {
-        qDebug().nospace() << "SectionTime::setTime(): Invalid minutes value " << minutes
+        tbcDebugStream().nospace() << "SectionTime::setTime(): Invalid minutes value " << minutes
             << ", setting to 59";
         minutes = 59;
     }
     if (seconds >= 60) {
-        qDebug().nospace() << "SectionTime::setTime(): Invalid seconds value " << seconds
+        tbcDebugStream().nospace() << "SectionTime::setTime(): Invalid seconds value " << seconds
             << ", setting to 59";
         seconds = 59;
     }
     if (frames >= 75) {
-        qDebug().nospace() << "SectionTime::setTime(): Invalid frames value " << frames
+        tbcDebugStream().nospace() << "SectionTime::setTime(): Invalid frames value " << frames
             << ", setting to 74";
         frames = 74;
     }
@@ -180,18 +181,18 @@ void SectionMetadata::setSectionType(const SectionType &sectionType, quint8 trac
     // Ensure track number is sane
     if (m_sectionType.type() == SectionType::LeadIn) {
         if (m_trackNumber != 0) {
-            qDebug() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadIn section (was" << m_trackNumber << ")";
+            tbcDebugStream() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadIn section (was" << m_trackNumber << ")";
             m_trackNumber = 0;
         }
     }
     if (m_sectionType.type() == SectionType::LeadOut) {
         if (m_trackNumber != 0) {
-            qDebug() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadOut section (was" << m_trackNumber << ")";
+            tbcDebugStream() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadOut section (was" << m_trackNumber << ")";
             m_trackNumber = 0;
         }
     }
     if ((m_sectionType.type() == SectionType::UserData) && (m_trackNumber < 1 || m_trackNumber > 98)) {
-        qDebug() << "SectionMetadata::setSectionType(): Setting track number to 1 for UserData section (was" << m_trackNumber << ")";
+        tbcDebugStream() << "SectionMetadata::setSectionType(): Setting track number to 1 for UserData section (was" << m_trackNumber << ")";
         m_trackNumber = 1;
     }
 }
@@ -203,18 +204,18 @@ void SectionMetadata::setTrackNumber(quint8 trackNumber)
     // Ensure track number is sane
     if (m_sectionType.type() == SectionType::LeadIn) {
         if (m_trackNumber != 0) {
-            qDebug() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadIn section (was" << m_trackNumber << ")";
+            tbcDebugStream() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadIn section (was" << m_trackNumber << ")";
             m_trackNumber = 0;
         }
     }
     if (m_sectionType.type() == SectionType::LeadOut) {
         if (m_trackNumber != 0) {
-            qDebug() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadOut section (was" << m_trackNumber << ")";
+            tbcDebugStream() << "SectionMetadata::setSectionType(): Setting track number to 0 for LeadOut section (was" << m_trackNumber << ")";
             m_trackNumber = 0;
         }
     }
     if ((m_sectionType.type() == SectionType::UserData) && (m_trackNumber < 1 || m_trackNumber > 98)) {
-        qDebug() << "SectionMetadata::setSectionType(): Setting track number to 1 for UserData section (was" << m_trackNumber << ")";
+        tbcDebugStream() << "SectionMetadata::setSectionType(): Setting track number to 1 for UserData section (was" << m_trackNumber << ")";
         m_trackNumber = 1;
     }
 }

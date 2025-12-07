@@ -18,6 +18,7 @@ target_include_directories(${TARGET_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/readers
     ${CMAKE_CURRENT_SOURCE_DIR}/src/writers
     ${CMAKE_CURRENT_SOURCE_DIR}/../../libs/efm/include
+    ${CMAKE_SOURCE_DIR}/tools/library
 )
 
 # Link the Qt libraries

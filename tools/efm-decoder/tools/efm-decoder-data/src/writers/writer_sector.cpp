@@ -23,6 +23,7 @@
 ************************************************************************/
 
 #include "writer_sector.h"
+#include "tbc/logging.h"
 
 // This writer class writes raw data to a file directly from the Data24 sections
 // This is (generally) used when the output is not stereo audio data
@@ -45,7 +46,7 @@ bool WriterSector::open(const QString &filename)
             qCritical() << "WriterSector::open() - Could not open stdout for writing";
             return false;
         }
-        qDebug() << "WriterSector::open() - Opened stdout for data writing";
+        tbcDebugStream() << "WriterSector::open() - Opened stdout for data writing";
     } else {
         // Use regular file
         m_usingStdout = false;
@@ -54,7 +55,7 @@ bool WriterSector::open(const QString &filename)
             qCritical() << "WriterSector::open() - Could not open file" << filename << "for writing";
             return false;
         }
-        qDebug() << "WriterSector::open() - Opened file" << filename << "for data writing";
+        tbcDebugStream() << "WriterSector::open() - Opened file" << filename << "for data writing";
     }
     return true;
 }
@@ -78,9 +79,9 @@ void WriterSector::close()
     }
 
     if (m_usingStdout) {
-        qDebug() << "WriterSector::close(): Closed stdout";
+        tbcDebugStream() << "WriterSector::close(): Closed stdout";
     } else {
-        qDebug() << "WriterSector::close(): Closed the data file" << m_file.fileName();
+        tbcDebugStream() << "WriterSector::close(): Closed the data file" << m_file.fileName();
     }
     m_file.close();
     m_usingStdout = false;
