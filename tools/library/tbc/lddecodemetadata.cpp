@@ -900,7 +900,10 @@ void LdDecodeMetaData::clearFieldDropOuts(qint32 sequentialFieldNumber)
 // This method appends a new field to the existing metadata
 void LdDecodeMetaData::appendField(const LdDecodeMetaData::Field &field)
 {
-    fields.append(field);
+    // Ensure sequential numbering stays contiguous when writing out
+    LdDecodeMetaData::Field fieldCopy = field;
+    fieldCopy.seqNo = fields.size() + 1;
+    fields.append(fieldCopy);
 
     videoParameters.numberOfSequentialFields = fields.size();
 }
