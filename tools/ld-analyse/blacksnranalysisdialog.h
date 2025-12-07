@@ -43,8 +43,8 @@ private:
 
     Ui::BlackSnrAnalysisDialog *ui;
     PlotWidget *plot;
-    PlotCurve *blackCurve;
-    PlotCurve *trendCurve;
+    PlotSeries *blackSeries;
+    PlotSeries *trendSeries;
     PlotMarker *plotMarker;
 
     double maxY;

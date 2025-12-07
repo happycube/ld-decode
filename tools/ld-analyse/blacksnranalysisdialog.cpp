@@ -27,14 +27,14 @@ BlackSnrAnalysisDialog::BlackSnrAnalysisDialog(QWidget *parent) :
     plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
 
-    // Set up curves and marker
-    blackCurve = plot->addCurve("Black SNR");
+    // Set up series and marker
+    blackSeries = plot->addSeries("Black SNR");
     // Theme-aware color: white in dark mode, black in light mode
     QColor dataColor = PlotWidget::isDarkTheme() ? Qt::white : Qt::black;
-    blackCurve->setPen(QPen(dataColor, 2));
+    blackSeries->setPen(QPen(dataColor, 2));
     
-    trendCurve = plot->addCurve("Trend line");
-    trendCurve->setPen(QPen(Qt::red, 2));
+    trendSeries = plot->addSeries("Trend line");
+    trendSeries->setPen(QPen(Qt::red, 2));
     
     plotMarker = plot->addMarker();
     plotMarker->setStyle(PlotMarker::VLine);
@@ -106,12 +106,12 @@ void BlackSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
     plot->setAxisRange(Qt::Horizontal, 0, numberOfFrames);
     plot->setAxisRange(Qt::Vertical, 20, maxY);
 
-    // Set the black curve data
-    blackCurve->setData(blackPoints);
+    // Set the black series data
+    blackSeries->setData(blackPoints);
 
     // Generate and set the trend line
     generateTrendLine();
-    trendCurve->setData(trendPoints);
+    trendSeries->setData(trendPoints);
 
     // Set the frame marker position
     plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), (maxY + 20) / 2));

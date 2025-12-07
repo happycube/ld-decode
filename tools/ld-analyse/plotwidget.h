@@ -35,7 +35,7 @@
 #include <QPointF>
 
 class PlotGrid;
-class PlotCurve;
+class PlotSeries;
 class PlotMarker;
 class PlotLegend;
 class PlotAxisLabels;
@@ -58,10 +58,10 @@ public:
     void setGridEnabled(bool enabled);
     void setGridPen(const QPen &pen);
     
-    // Curves
-    PlotCurve* addCurve(const QString &title = QString());
-    void removeCurve(PlotCurve *curve);
-    void clearCurves();
+    // Series
+    PlotSeries* addSeries(const QString &title = QString());
+    void removeSeries(PlotSeries *series);
+    void clearSeries();
     
     // Markers
     PlotMarker* addMarker();
@@ -88,7 +88,7 @@ public:
 
 signals:
     void plotAreaChanged(const QRectF &rect);
-    void curveClicked(PlotCurve *curve, const QPointF &point);
+    void seriesClicked(PlotSeries *series, const QPointF &point);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -119,7 +119,7 @@ private:
     PlotGrid *m_grid;
     PlotLegend *m_legend;
     PlotAxisLabels *m_axisLabels;
-    QList<PlotCurve*> m_curves;
+    QList<PlotSeries*> m_series;
     QList<PlotMarker*> m_markers;
     
     // Settings
@@ -142,17 +142,25 @@ private:
     void calculateDataRange();
 };
 
-// Plot curve class for drawing data series
-class PlotCurve : public QGraphicsPathItem
+// Plot series class for drawing data series
+class PlotSeries : public QGraphicsPathItem
 {
 public:
-    explicit PlotCurve(PlotWidget *parent = nullptr);
+    enum PlotStyle {
+        Lines,  // Connect points with lines (default)
+        Bars    // Draw vertical bars from x-axis to each point
+    };
+    
+    explicit PlotSeries(PlotWidget *parent = nullptr);
     
     void setTitle(const QString &title);
     QString title() const { return m_title; }
     
     void setPen(const QPen &pen);
     void setBrush(const QBrush &brush);
+    
+    void setStyle(PlotStyle style);
+    PlotStyle style() const { return m_style; }
     
     void setData(const QVector<QPointF> &data);
     void setData(const QVector<double> &xData, const QVector<double> &yData);
@@ -166,6 +174,7 @@ public:
 private:
     QString m_title;
     QVector<QPointF> m_data;
+    PlotStyle m_style;
     PlotWidget *m_plotWidget;
 };
 
@@ -231,14 +240,14 @@ public:
     explicit PlotLegend(PlotWidget *parent = nullptr);
     
     void setEnabled(bool enabled);
-    void updateLegend(const QList<PlotCurve*> &curves, const QRectF &plotRect);
+    void updateLegend(const QList<PlotSeries*> &series, const QRectF &plotRect);
     
     QRectF boundingRect() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 
 private:
     bool m_enabled;
-    QList<PlotCurve*> m_curves;
+    QList<PlotSeries*> m_series;
     QRectF m_boundingRect;
     PlotWidget *m_plotWidget;
 };

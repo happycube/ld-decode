@@ -40,7 +40,7 @@ private:
 
     Ui::DropoutAnalysisDialog *ui;
     PlotWidget *plot;
-    PlotCurve *curve;
+    PlotSeries *series;
     PlotMarker *plotMarker;
 
     double maxY;

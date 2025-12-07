@@ -39,7 +39,7 @@ private:
 
     Ui::VisibleDropOutAnalysisDialog *ui;
     PlotWidget *plot;
-    PlotCurve *curve;
+    PlotSeries *series;
     PlotMarker *plotMarker;
 
     double maxY;

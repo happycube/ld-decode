@@ -27,9 +27,10 @@ VisibleDropOutAnalysisDialog::VisibleDropOutAnalysisDialog(QWidget *parent) :
     plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
 
-    // Set up curve and marker
-    curve = plot->addCurve("Visible Dropout Length");
-    curve->setPen(QPen(Qt::red, 1));
+    // Set up series and marker
+    series = plot->addSeries("Visible Dropout Length");
+    series->setPen(QPen(Qt::red, 1));
+    series->setStyle(PlotSeries::Bars);
     
     plotMarker = plot->addMarker();
     plotMarker->setStyle(PlotMarker::VLine);
@@ -98,8 +99,8 @@ void VisibleDropOutAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
 
     // Set the visible dropout curve data with theme-aware color
     QColor dataColor = PlotWidget::isDarkTheme() ? Qt::yellow : Qt::darkMagenta;
-    curve->setPen(QPen(dataColor, 2));
-    curve->setData(points);
+    series->setPen(QPen(dataColor, 2));
+    series->setData(points);
 
     // Set the frame marker position
     plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), yMax / 2));

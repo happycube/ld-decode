@@ -25,12 +25,12 @@ WhiteSnrAnalysisDialog::WhiteSnrAnalysisDialog(QWidget *parent) :
     plot->updateTheme();
     ui->verticalLayout->addWidget(plot);
 
-    // Set up curves and marker
-    whiteCurve = plot->addCurve("White SNR");
-    whiteCurve->setPen(QPen(Qt::black, 1));
+    // Set up series and marker
+    whiteSeries = plot->addSeries("White SNR");
+    whiteSeries->setPen(QPen(Qt::black, 1));
     
-    trendCurve = plot->addCurve("Trend line");
-    trendCurve->setPen(QPen(Qt::red, 2));
+    trendSeries = plot->addSeries("Trend line");
+    trendSeries->setPen(QPen(Qt::red, 2));
     
     plotMarker = plot->addMarker();
     plotMarker->setStyle(PlotMarker::VLine);
@@ -103,13 +103,13 @@ void WhiteSnrAnalysisDialog::finishUpdate(qint32 _currentFrameNumber)
     plot->setAxisRange(Qt::Horizontal, 0, numberOfFrames);
     plot->setAxisRange(Qt::Vertical, 14, maxY);
 
-    // Set the white curve data (change color to dark gray)
-    whiteCurve->setPen(QPen(Qt::darkGray, 1));
-    whiteCurve->setData(whitePoints);
+    // Set the white series data (change color to dark gray)
+    whiteSeries->setPen(QPen(Qt::darkGray, 1));
+    whiteSeries->setData(whitePoints);
 
     // Generate and set the trend line
     generateTrendLine();
-    trendCurve->setData(trendPoints);
+    trendSeries->setData(trendPoints);
 
     // Set the frame marker position
     plotMarker->setPosition(QPointF(static_cast<double>(_currentFrameNumber), (maxY + 14) / 2));

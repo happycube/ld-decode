@@ -40,7 +40,7 @@ PlotWidget::PlotWidget(QWidget *parent)
 
 PlotWidget::~PlotWidget()
 {
-    clearCurves();
+    clearSeries();
     clearMarkers();
 }
 
@@ -137,31 +137,31 @@ void PlotWidget::setGridPen(const QPen &pen)
     }
 }
 
-PlotCurve* PlotWidget::addCurve(const QString &title)
+PlotSeries* PlotWidget::addSeries(const QString &title)
 {
-    PlotCurve *curve = new PlotCurve(this);
-    curve->setTitle(title);
-    m_curves.append(curve);
-    m_scene->addItem(curve);
-    return curve;
+    PlotSeries *series = new PlotSeries(this);
+    series->setTitle(title);
+    m_series.append(series);
+    m_scene->addItem(series);
+    return series;
 }
 
-void PlotWidget::removeCurve(PlotCurve *curve)
+void PlotWidget::removeSeries(PlotSeries *series)
 {
-    if (curve && m_curves.contains(curve)) {
-        m_curves.removeAll(curve);
-        m_scene->removeItem(curve);
-        delete curve;
+    if (series && m_series.contains(series)) {
+        m_series.removeAll(series);
+        m_scene->removeItem(series);
+        delete series;
     }
 }
 
-void PlotWidget::clearCurves()
+void PlotWidget::clearSeries()
 {
-    for (PlotCurve *curve : m_curves) {
-        m_scene->removeItem(curve);
-        delete curve;
+    for (PlotSeries *series : m_series) {
+        m_scene->removeItem(series);
+        delete series;
     }
-    m_curves.clear();
+    m_series.clear();
 }
 
 PlotMarker* PlotWidget::addMarker()
@@ -266,9 +266,9 @@ void PlotWidget::replot()
     QRectF sceneRect = QRectF(0, 0, m_view->width(), m_view->height());
     m_scene->setSceneRect(sceneRect);
     
-    // Update all curves
-    for (PlotCurve *curve : m_curves) {
-        curve->updatePath(m_plotRect, m_dataRect);
+    // Update all series
+    for (PlotSeries *series : m_series) {
+        series->updatePath(m_plotRect, m_dataRect);
     }
     
     // Update grid
@@ -283,7 +283,7 @@ void PlotWidget::replot()
     
     // Update legend
     if (m_legend) {
-        m_legend->updateLegend(m_curves, m_plotRect);
+        m_legend->updateLegend(m_series, m_plotRect);
     }
     
     // Update axis labels
@@ -326,13 +326,13 @@ void PlotWidget::updatePlotArea()
 
 void PlotWidget::calculateDataRange()
 {
-    if (m_curves.isEmpty()) return;
+    if (m_series.isEmpty()) return;
     
     bool firstPoint = true;
     double xMin = 0, xMax = 0, yMin = 0, yMax = 0;
     
-    for (PlotCurve *curve : m_curves) {
-        const QVector<QPointF> &data = curve->data();
+    for (PlotSeries *series : m_series) {
+        const QVector<QPointF> &data = series->data();
         for (const QPointF &point : data) {
             if (firstPoint) {
                 xMin = xMax = point.x();
@@ -373,35 +373,41 @@ QPointF PlotWidget::mapFromData(const QPointF &dataPos) const
     return QPointF(x, y);
 }
 
-// PlotCurve implementation
-PlotCurve::PlotCurve(PlotWidget *parent)
+// PlotSeries implementation
+PlotSeries::PlotSeries(PlotWidget *parent)
     : QGraphicsPathItem()
     , m_plotWidget(parent)
+    , m_style(Lines)
 {
     setPen(QPen(Qt::blue, 1.0));
 }
 
-void PlotCurve::setTitle(const QString &title)
+void PlotSeries::setTitle(const QString &title)
 {
     m_title = title;
 }
 
-void PlotCurve::setPen(const QPen &pen)
+void PlotSeries::setPen(const QPen &pen)
 {
     QGraphicsPathItem::setPen(pen);
 }
 
-void PlotCurve::setBrush(const QBrush &brush)
+void PlotSeries::setBrush(const QBrush &brush)
 {
     QGraphicsPathItem::setBrush(brush);
 }
 
-void PlotCurve::setData(const QVector<QPointF> &data)
+void PlotSeries::setStyle(PlotStyle style)
+{
+    m_style = style;
+}
+
+void PlotSeries::setData(const QVector<QPointF> &data)
 {
     m_data = data;
 }
 
-void PlotCurve::setData(const QVector<double> &xData, const QVector<double> &yData)
+void PlotSeries::setData(const QVector<double> &xData, const QVector<double> &yData)
 {
     m_data.clear();
     int count = qMin(xData.size(), yData.size());
@@ -410,26 +416,40 @@ void PlotCurve::setData(const QVector<double> &xData, const QVector<double> &yDa
     }
 }
 
-void PlotCurve::setVisible(bool visible)
+void PlotSeries::setVisible(bool visible)
 {
     QGraphicsPathItem::setVisible(visible);
 }
 
-void PlotCurve::updatePath(const QRectF &plotRect, const QRectF &dataRect)
+void PlotSeries::updatePath(const QRectF &plotRect, const QRectF &dataRect)
 {
     if (m_data.isEmpty() || !m_plotWidget) return;
     
     QPainterPath path;
-    bool firstPoint = true;
     
-    for (const QPointF &dataPoint : m_data) {
-        QPointF scenePoint = m_plotWidget->mapFromData(dataPoint);
-        
-        if (firstPoint) {
-            path.moveTo(scenePoint);
-            firstPoint = false;
-        } else {
+    if (m_style == Bars) {
+        // Draw vertical bars from x-axis (y=0) to each data point
+        for (const QPointF &dataPoint : m_data) {
+            QPointF scenePoint = m_plotWidget->mapFromData(dataPoint);
+            QPointF basePoint = m_plotWidget->mapFromData(QPointF(dataPoint.x(), 0.0));
+            
+            // Draw vertical line from base (y=0) to the data point
+            path.moveTo(basePoint);
             path.lineTo(scenePoint);
+        }
+    } else {
+        // Default Lines style: connect points with continuous line
+        bool firstPoint = true;
+        
+        for (const QPointF &dataPoint : m_data) {
+            QPointF scenePoint = m_plotWidget->mapFromData(dataPoint);
+            
+            if (firstPoint) {
+                path.moveTo(scenePoint);
+                firstPoint = false;
+            } else {
+                path.lineTo(scenePoint);
+            }
         }
     }
     
@@ -594,11 +614,11 @@ void PlotLegend::setEnabled(bool enabled)
     setVisible(enabled);
 }
 
-void PlotLegend::updateLegend(const QList<PlotCurve*> &curves, const QRectF &plotRect)
+void PlotLegend::updateLegend(const QList<PlotSeries*> &series, const QRectF &plotRect)
 {
-    m_curves = curves;
+    m_series = series;
     
-    if (!m_enabled || curves.isEmpty()) {
+    if (!m_enabled || series.isEmpty()) {
         m_boundingRect = QRectF();
         return;
     }
@@ -610,9 +630,9 @@ void PlotLegend::updateLegend(const QList<PlotCurve*> &curves, const QRectF &plo
     int maxWidth = 0;
     int totalHeight = 0;
     
-    for (PlotCurve *curve : curves) {
-        if (!curve->title().isEmpty()) {
-            int width = fm.horizontalAdvance(curve->title()) + 30; // 30 for line sample
+    for (PlotSeries *s : series) {
+        if (!s->title().isEmpty()) {
+            int width = fm.horizontalAdvance(s->title()) + 30; // 30 for line sample
             maxWidth = qMax(maxWidth, width);
             totalHeight += fm.height() + 2;
         }
@@ -636,7 +656,7 @@ void PlotLegend::paint(QPainter *painter, const QStyleOptionGraphicsItem *option
     Q_UNUSED(option)
     Q_UNUSED(widget)
     
-    if (!m_enabled || m_curves.isEmpty()) return;
+    if (!m_enabled || m_series.isEmpty()) return;
     
     // Draw legend background
     painter->fillRect(m_boundingRect, QColor(255, 255, 255, 200));
@@ -649,16 +669,16 @@ void PlotLegend::paint(QPainter *painter, const QStyleOptionGraphicsItem *option
     
     int y = m_boundingRect.top() + 5;
     
-    for (PlotCurve *curve : m_curves) {
-        if (!curve->title().isEmpty()) {
+    for (PlotSeries *series : m_series) {
+        if (!series->title().isEmpty()) {
             // Draw line sample
-            painter->setPen(curve->pen());
+            painter->setPen(series->pen());
             painter->drawLine(QPointF(m_boundingRect.left() + 5, y + fm.height()/2),
                              QPointF(m_boundingRect.left() + 25, y + fm.height()/2));
             
             // Draw text
             painter->setPen(QPen(Qt::black));
-            painter->drawText(QPointF(m_boundingRect.left() + 30, y + fm.ascent()), curve->title());
+            painter->drawText(QPointF(m_boundingRect.left() + 30, y + fm.ascent()), series->title());
             
             y += fm.height() + 2;
         }

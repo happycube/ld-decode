@@ -42,8 +42,8 @@ private:
 
     Ui::WhiteSnrAnalysisDialog *ui;
     PlotWidget *plot;
-    PlotCurve *whiteCurve;
-    PlotCurve *trendCurve;
+    PlotSeries *whiteSeries;
+    PlotSeries *trendSeries;
     PlotMarker *plotMarker;
 
     double maxY;
