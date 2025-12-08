@@ -2,8 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(ld-process-efm)
 
-# Find Qt5
-find_package(Qt5 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core)
 
 add_executable(ld-process-efm
     efmprocess.cpp
@@ -35,6 +34,6 @@ target_compile_definitions(ld-process-efm PRIVATE
     APP_COMMIT="unknown"
 )
 
-target_link_libraries(ld-process-efm PRIVATE Qt5::Core)
+target_link_libraries(ld-process-efm PRIVATE Qt6::Core)
 
 install(TARGETS ld-process-efm)

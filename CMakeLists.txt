@@ -18,10 +18,6 @@ if(MSVC)
     add_compile_options(/permissive-)
 endif()
 
-set(USE_QT_VERSION "" CACHE STRING
-    "Version of Qt to use, 5 or 6 (Which is used by default can vary due to how cmake find functions work, but will often default to Qt6)"
-)
-
 option(BUILD_LDF_READER
     "build ld_ldf_reader"
     ON
@@ -39,27 +35,8 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 set(CMAKE_AUTOUIC ON)
 
-set(QT_PACKAGE_NAMES Qt5 Qt6)
-if(USE_QT_VERSION)
-    set(QT_PACKAGE_NAMES Qt${USE_QT_VERSION})
-endif()
-find_package(QT NAMES ${QT_PACKAGE_NAMES} REQUIRED COMPONENTS Core)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Core Gui Widgets Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Sql)
 message(STATUS "Qt Version: ${QT_VERSION}")
-
-# For Qt < 5.15, emulate 5.15's Qt5CoreConfig.cmake, so we don't have to
-# specify Qt5/Qt6 elsewhere.
-if(QT_VERSION VERSION_LESS 5.15)
-    function(qt_add_resources outfiles)
-        qt5_add_resources("${outfiles}" ${ARGN})
-        set("${outfiles}" "${${outfiles}}" PARENT_SCOPE)
-    endfunction()
-    foreach(library Core Gui Widgets)
-        add_library(Qt::${library} INTERFACE IMPORTED)
-        set_target_properties(Qt::${library} PROPERTIES
-            INTERFACE_LINK_LIBRARIES "Qt5::${library}")
-    endforeach()
-endif()
 
 find_package(PkgConfig REQUIRED)
 

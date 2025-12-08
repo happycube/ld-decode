@@ -73,6 +73,7 @@ DartConfiguration.tcl
 Makefile
 Testing/
 build-*/
+obj/
 cmake_install.cmake
 compile_commands.json
 install_manifest.txt
