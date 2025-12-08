@@ -497,8 +497,8 @@ int SqliteWriter::writeCaptureMetadata(const QString &system, const QString &dec
 
     query.addBindValue(system);
     query.addBindValue(decoder);
-    query.addBindValue(gitBranch.isEmpty() ? QVariant(QVariant::String) : gitBranch);
-    query.addBindValue(gitCommit.isEmpty() ? QVariant(QVariant::String) : gitCommit);
+    query.addBindValue(gitBranch.isEmpty() ? QVariant() : gitBranch);
+    query.addBindValue(gitCommit.isEmpty() ? QVariant() : gitCommit);
     query.addBindValue(videoSampleRate);
     query.addBindValue(activeVideoStart);
     query.addBindValue(activeVideoEnd);
@@ -512,7 +512,7 @@ int SqliteWriter::writeCaptureMetadata(const QString &system, const QString &dec
     query.addBindValue(isWidescreen ? 1 : 0);
     query.addBindValue(white16bIre);
     query.addBindValue(black16bIre);
-    query.addBindValue(captureNotes.isEmpty() ? QVariant(QVariant::String) : captureNotes);
+    query.addBindValue(captureNotes.isEmpty() ? QVariant() : captureNotes);
 
     if (!query.exec()) {
         tbcDebugStream() << "Failed to insert capture metadata:" << query.lastError().text();
@@ -540,8 +540,8 @@ bool SqliteWriter::updateCaptureMetadata(int captureId, const QString &system, c
 
     query.addBindValue(system);
     query.addBindValue(decoder);
-    query.addBindValue(gitBranch.isEmpty() ? QVariant(QVariant::String) : gitBranch);
-    query.addBindValue(gitCommit.isEmpty() ? QVariant(QVariant::String) : gitCommit);
+    query.addBindValue(gitBranch.isEmpty() ? QVariant() : gitBranch);
+    query.addBindValue(gitCommit.isEmpty() ? QVariant() : gitCommit);
     query.addBindValue(videoSampleRate);
     query.addBindValue(activeVideoStart);
     query.addBindValue(activeVideoEnd);
@@ -555,7 +555,7 @@ bool SqliteWriter::updateCaptureMetadata(int captureId, const QString &system, c
     query.addBindValue(isWidescreen ? 1 : 0);
     query.addBindValue(white16bIre);
     query.addBindValue(black16bIre);
-    query.addBindValue(captureNotes.isEmpty() ? QVariant(QVariant::String) : captureNotes);
+    query.addBindValue(captureNotes.isEmpty() ? QVariant() : captureNotes);
     query.addBindValue(captureId);
 
     if (!query.exec()) {
