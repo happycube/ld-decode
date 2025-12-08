@@ -1,14 +1,48 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(ld-decode-tools)
-
-# Enforce out-of-source builds
+# Enforce out-of-source builds before project() to catch issues early
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "In-source builds are not allowed. Please create a build directory and run:
     mkdir build
     cd build
     cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..")
 endif()
+
+# Also prevent building directly in subdirectories of the source tree
+# Exception: Allow 'build' and 'build-*' directories as they are gitignored
+get_filename_component(REAL_SOURCE_DIR "${CMAKE_SOURCE_DIR}" REALPATH)
+get_filename_component(REAL_BINARY_DIR "${CMAKE_BINARY_DIR}" REALPATH)
+get_filename_component(BUILD_DIR_NAME "${CMAKE_BINARY_DIR}" NAME)
+file(RELATIVE_PATH REL_PATH "${REAL_SOURCE_DIR}" "${REAL_BINARY_DIR}")
+
+# Check if build directory is inside source tree (rel path doesn't start with ..)
+# but allow 'build' or 'build-*' directory names
+if(NOT REL_PATH MATCHES "^\\.\\." AND 
+   NOT BUILD_DIR_NAME STREQUAL "build" AND 
+   NOT BUILD_DIR_NAME MATCHES "^build-")
+    message(FATAL_ERROR "Building within the source tree (except 'build/' or 'build-*/') is not allowed.
+    Build directory: ${REAL_BINARY_DIR}
+    Source directory: ${REAL_SOURCE_DIR}
+    
+    Please use one of these approaches:
+    
+    1. Standard build directory (recommended):
+       mkdir build
+       cd build
+       cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+    
+    2. Named build directory:
+       mkdir build-release
+       cd build-release
+       cmake -DCMAKE_BUILD_TYPE=Release ..
+    
+    3. Out-of-tree build:
+       mkdir ../ld-decode-build
+       cd ../ld-decode-build
+       cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ../ld-decode")
+endif()
+
+project(ld-decode-tools)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake_modules")
 include(CTest)
