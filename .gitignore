@@ -59,21 +59,18 @@ Benchfile*
 perf.data*
 
 # CMake related things
+build/
+build-*/
 *-qt/
 *.depends
 *.ninja
 *_autogen/
 .ninja_*
 .qt/
+CMakeLists.txt.user
 CMakeCache.txt
 CMakeFiles/
-CMakeLists.txt.user
 CTestTestfile.cmake
-DartConfiguration.tcl
-Makefile
-Testing/
-build-*/
-obj/
 cmake_install.cmake
 compile_commands.json
 install_manifest.txt

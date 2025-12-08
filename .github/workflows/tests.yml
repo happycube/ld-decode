@@ -31,20 +31,20 @@ jobs:
 
     - name: Set up build dir
       timeout-minutes: 1
-      run: mkdir obj
+      run: mkdir build
 
     - name: Configure
       timeout-minutes: 5
-      run: cd obj && cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+      run: cd build && cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
 
     - name: Build
       timeout-minutes: 15
-      run: make -C obj VERBOSE=1
+      run: make -C build VERBOSE=1
 
     - name: Install
       timeout-minutes: 5
-      run: make -C obj install DESTDIR=/tmp/staging && ls -lR /tmp/staging
+      run: make -C build install DESTDIR=/tmp/staging && ls -lR /tmp/staging
 
     - name: Run tests
       timeout-minutes: 10
-      run: cd obj && ctest --output-on-failure
+      run: cd build && ctest --output-on-failure

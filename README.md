@@ -21,6 +21,24 @@ Note that the main repo is under constant development and, while we strive to ke
 
 If you'd like to download binaries or compile the project from source please see the project's wiki for detailed instructions.
 
+## Building from Source
+
+For detailed build instructions, see **[BUILD.md](BUILD.md)** which includes:
+- Quick start guide
+- Step-by-step build process
+- Building individual tools
+- Build options (Debug, Release, Qt debug symbols, etc.)
+- Troubleshooting
+
+## Installation
+
+For installation instructions after building, see **[INSTALL.md](INSTALL.md)** which covers:
+- Installation directories and targets
+- System-wide vs. staging directory installation
+- Custom installation prefixes
+- Python module installation
+- Verification and troubleshooting
+
 
 # Documentation
 
