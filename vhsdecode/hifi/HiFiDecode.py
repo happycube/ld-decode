@@ -64,23 +64,21 @@ DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH = 2
 # Low shelf filter for deemphasis
 # low end of shelf curve
 # T1 standard 240e-6
-DEFAULT_DEEMPHASIS_TAU_1 = 185e-6
+DEFAULT_VHS_DEEMPHASIS_TAU_1 = 185e-6
 # high end of shelf curve
 # T2 standard 56e-6
-DEFAULT_DEEMPHASIS_TAU_2 = 22e-6
+DEFAULT_VHS_DEEMPHASIS_TAU_2 = 22e-6
 # slope of the filter
-DEFAULT_DEEMPHASIS_DB_PER_OCTAVE = 6
-DEFAULT_DEEMPHASIS_BANDWIDTH = 2.76
+DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE = 6
+DEFAULT_VHS_DEEMPHASIS_BANDWIDTH = 2.76
 
-# 240e-6
-# 18e-6
-# 5
-# 2.8
-
-# 120e-6
-# 37e-05
-# 11
-# 2.8
+# low end of shelf curve
+DEFAULT_8MM_DEEMPHASIS_TAU_1 = 1e-4
+# high end of shelf curve
+DEFAULT_8MM_DEEMPHASIS_TAU_2 = 1.27e-5
+# slope of the filter
+DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE = 6
+DEFAULT_8MM_DEEMPHASIS_BANDWIDTH = 2.4
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
@@ -810,10 +808,10 @@ class Deemphasis:
     def __init__(
         self,
         audio_rate,
-        deemphasis_low_tau: float = DEFAULT_DEEMPHASIS_TAU_1,
-        deemphasis_high_tau: float = DEFAULT_DEEMPHASIS_TAU_2,
-        deemphasis_db_per_octave: float = DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
-        deemphasis_bandwidth: float = DEFAULT_DEEMPHASIS_BANDWIDTH,
+        deemphasis_low_tau: float,
+        deemphasis_high_tau: float,
+        deemphasis_db_per_octave: float,
+        deemphasis_bandwidth: float,
     ):
         self.audio_rate = audio_rate
 
