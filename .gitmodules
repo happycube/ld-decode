@@ -1,3 +1,6 @@
 [submodule "ezpwd"]
 	path = tools/efm-decoder/libs/ezpwd
 	url = https://github.com/pjkundert/ezpwd-reed-solomon.git
+[submodule "testdata"]
+	path = testdata
+	url = https://github.com/happycube/ld-decode-testdata

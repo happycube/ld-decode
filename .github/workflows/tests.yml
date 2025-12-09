@@ -16,11 +16,6 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-    - uses: actions/checkout@v2
-      with:
-        repository: happycube/ld-decode-testdata
-        path: testdata
-
     - name: Install dependencies
       timeout-minutes: 10
       run: |
