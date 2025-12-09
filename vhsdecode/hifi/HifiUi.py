@@ -66,10 +66,14 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_EXPANDER_WEIGHTING_TAU_2,
     DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
     DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
-    DEFAULT_DEEMPHASIS_TAU_1,
-    DEFAULT_DEEMPHASIS_TAU_2,
-    DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
-    DEFAULT_DEEMPHASIS_BANDWIDTH,
+    DEFAULT_VHS_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_DEEMPHASIS_TAU_2,
+    DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE,
+    DEFAULT_VHS_DEEMPHASIS_BANDWIDTH,
+    DEFAULT_8MM_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_DEEMPHASIS_TAU_2,
+    DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE,
+    DEFAULT_8MM_DEEMPHASIS_BANDWIDTH,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEMOD_QUADRATURE,
@@ -99,10 +103,10 @@ class MainUIParameters:
         self.expander_weighting_shelf_high_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_2
         self.expander_weighting_db_per_octave: float = DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE
         self.expander_weighting_bandwidth: float = DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH
-        self.deemphasis_low_tau: float = DEFAULT_DEEMPHASIS_TAU_1
-        self.deemphasis_high_tau: float = DEFAULT_DEEMPHASIS_TAU_2
-        self.deemphasis_db_per_octave: float = DEFAULT_DEEMPHASIS_DB_PER_OCTAVE
-        self.deemphasis_bandwidth: float = DEFAULT_DEEMPHASIS_BANDWIDTH
+        self.deemphasis_low_tau: float = DEFAULT_VHS_DEEMPHASIS_TAU_1
+        self.deemphasis_high_tau: float = DEFAULT_VHS_DEEMPHASIS_TAU_2
+        self.deemphasis_db_per_octave: float = DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE
+        self.deemphasis_bandwidth: float = DEFAULT_VHS_DEEMPHASIS_BANDWIDTH
         self.afe_vco_deviation = 0
         self.afe_left_carrier = 0
         self.afe_right_carrier = 0
@@ -748,7 +752,7 @@ class HifiUi(QMainWindow):
             "Low Shelf (𝜏)",
             QtGui.QDoubleValidator(),
             10e5,
-            DEFAULT_DEEMPHASIS_TAU_2,
+            DEFAULT_VHS_DEEMPHASIS_TAU_2,
             10e-4,
         )
         deemphasis_layout.addWidget(self.deemphasis_low_tau_dial_control)
@@ -758,7 +762,7 @@ class HifiUi(QMainWindow):
             QtGui.QDoubleValidator(),
             10e5,
             10e-7,
-            DEFAULT_DEEMPHASIS_TAU_1,
+            DEFAULT_VHS_DEEMPHASIS_TAU_1,
         )
         deemphasis_layout.addWidget(self.deemphasis_high_tau_dial_control)
         self.deemphasis_db_per_octave_dial_control = DialControl(
@@ -902,6 +906,7 @@ class HifiUi(QMainWindow):
             values.afe_left_carrier,
             values.afe_right_carrier,
         )
+        self.update_deemphasis_values(values.format)
 
         self.input_file = values.input_file
         self.output_file = values.output_file
@@ -978,6 +983,18 @@ class HifiUi(QMainWindow):
         self.afe_left_carrier_spinbox.setValue(int(standard.LCarrierRef))
         self.afe_right_carrier_spinbox.setValue(int(standard.RCarrierRef))
 
+    def update_deemphasis_values(self, format):
+        if format == "VHS":
+            self.deemphasis_low_tau_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_TAU_1)
+            self.deemphasis_high_tau_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_TAU_2)
+            self.deemphasis_db_per_octave_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE)
+            self.deemphasis_bandwidth_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_BANDWIDTH)
+        else:
+            self.deemphasis_low_tau_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_TAU_1)
+            self.deemphasis_high_tau_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_TAU_2)
+            self.deemphasis_db_per_octave_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE)
+            self.deemphasis_bandwidth_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_BANDWIDTH)
+
     def on_standard_change(self):
         self.update_afe_values(
             format=self.format_combo.currentText(),
@@ -989,6 +1006,7 @@ class HifiUi(QMainWindow):
             format=self.format_combo.currentText(),
             standard=self.standard_combo.currentText(),
         )
+        self.update_deemphasis_values(self.format_combo.currentText())
 
     def change_button_color(self, button, color):
         button.setStyleSheet(

@@ -55,10 +55,14 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_EXPANDER_WEIGHTING_TAU_2,
     DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
     DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
-    DEFAULT_DEEMPHASIS_TAU_1,
-    DEFAULT_DEEMPHASIS_TAU_2,
-    DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
-    DEFAULT_DEEMPHASIS_BANDWIDTH,
+    DEFAULT_VHS_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_DEEMPHASIS_TAU_2,
+    DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE,
+    DEFAULT_VHS_DEEMPHASIS_BANDWIDTH,
+    DEFAULT_8MM_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_DEEMPHASIS_TAU_2,
+    DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE,
+    DEFAULT_8MM_DEEMPHASIS_BANDWIDTH,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
@@ -136,7 +140,7 @@ parser.add_argument(
     dest="inputfreq",
     metavar="FREQ",
     type=lddu.parse_frequency,
-    default=40000000,
+    default=40,
     help="RF sampling frequency in source file (default is 40MHz)",
 )
 parser.add_argument(
@@ -393,29 +397,25 @@ deemphasis_options_group.add_argument(
     "--deemphasis_low_tau",
     dest="deemphasis_low_tau",
     type=float,
-    default=DEFAULT_DEEMPHASIS_TAU_1,
-    help=f"Sets the deemphasis low-pass shelf filter low point in tau (default is {DEFAULT_DEEMPHASIS_TAU_1}).",
+    help=f"Sets the deemphasis low-pass shelf filter low point in tau (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_TAU_1}] [8mm: {DEFAULT_8MM_DEEMPHASIS_TAU_1}])",
 )
 deemphasis_options_group.add_argument(
     "--deemphasis_high_tau",
     dest="deemphasis_high_tau",
     type=float,
-    default=DEFAULT_DEEMPHASIS_TAU_2,
-    help=f"Sets the deemphasis low-pass shelf filter high point in tau (default is {DEFAULT_DEEMPHASIS_TAU_2}).",
+    help=f"Sets the deemphasis low-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_TAU_2}] [8mm: {DEFAULT_8MM_DEEMPHASIS_TAU_2}])",
 )
 deemphasis_options_group.add_argument(
     "--deemphasis_db_per_octave",
     dest="deemphasis_db_per_octave",
     type=float,
-    default=DEFAULT_DEEMPHASIS_DB_PER_OCTAVE,
-    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (default is {DEFAULT_DEEMPHASIS_DB_PER_OCTAVE}).",
+    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE}] [8mm: {DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE}])",
 )
 deemphasis_options_group.add_argument(
     "--deemphasis_bandwidth",
     dest="deemphasis_bandwidth",
     type=float,
-    default=DEFAULT_DEEMPHASIS_BANDWIDTH,
-    help=f"Sets the deemphasis low-pass shelf filter bandwidth (default is {DEFAULT_DEEMPHASIS_BANDWIDTH}).",
+    help=f"Sets the deemphasis low-pass shelf filter bandwidth (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_BANDWIDTH}] [8mm: {DEFAULT_8MM_DEEMPHASIS_BANDWIDTH}])",
 )
 
 def test_ld_tools(ld_tool):
@@ -1175,10 +1175,6 @@ class PostProcessor:
                     # prime the expander's gain if this is the first block
                     expander.process(pre, np.copy(post))
                 expander.process(pre, post)
-            else:
-                DecoderSharedMemory.copy_data_float32(
-                    pre, post, len(post)
-                )
 
             buffer.close()
             out_conn.send(decoder_state)
@@ -1963,10 +1959,23 @@ def main() -> int:
     else:
         resampler_quality = DEFAULT_RESAMPLER_QUALITY
 
+    if args.format_8mm:
+        tape_format = "8mm"
+        default_deemphasis_low_tau = DEFAULT_8MM_DEEMPHASIS_TAU_1
+        default_deemphasis_high_tau = DEFAULT_8MM_DEEMPHASIS_TAU_2
+        default_deemphasis_db_per_octave = DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE
+        default_deemphasis_bandwidth = DEFAULT_8MM_DEEMPHASIS_BANDWIDTH
+    else:
+        tape_format = "vhs"
+        default_deemphasis_low_tau = DEFAULT_VHS_DEEMPHASIS_TAU_1
+        default_deemphasis_high_tau = DEFAULT_VHS_DEEMPHASIS_TAU_2
+        default_deemphasis_db_per_octave = DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE
+        default_deemphasis_bandwidth = DEFAULT_VHS_DEEMPHASIS_BANDWIDTH
+
     decode_options = {
         "input_rate": sample_freq * 1e6,
         "standard": "p" if system == "PAL" else "n",
-        "format": "vhs" if not args.format_8mm else "8mm",
+        "format": tape_format,
         "preview": args.preview,
         "preview_available": SOUNDDEVICE_AVAILABLE,
         "demod_type": args.demod_type,
@@ -1990,10 +1999,10 @@ def main() -> int:
         "expander_weighting_shelf_high_tau": args.expander_weighting_shelf_high_tau,
         "expander_weighting_db_per_octave": args.expander_weighting_db_per_octave,
         "expander_weighting_bandwidth": args.expander_weighting_bandwidth,
-        "deemphasis_low_tau": args.deemphasis_low_tau,
-        "deemphasis_high_tau": args.deemphasis_high_tau,
-        "deemphasis_db_per_octave": args.deemphasis_db_per_octave,
-        "deemphasis_bandwidth": args.deemphasis_bandwidth,
+        "deemphasis_low_tau": args.deemphasis_low_tau or default_deemphasis_low_tau,
+        "deemphasis_high_tau": args.deemphasis_high_tau or default_deemphasis_high_tau,
+        "deemphasis_db_per_octave": args.deemphasis_db_per_octave or default_deemphasis_db_per_octave,
+        "deemphasis_bandwidth": args.deemphasis_bandwidth or default_deemphasis_bandwidth,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,
