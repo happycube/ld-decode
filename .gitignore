@@ -51,7 +51,6 @@ __pycache__
 
 # ld-decode data files
 *.tbc
-testdata
 testout
 
 # Temporary files
