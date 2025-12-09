@@ -21,6 +21,24 @@ Note that the main repo is under constant development and, while we strive to ke
 
 If you'd like to download binaries or compile the project from source please see the project's wiki for detailed instructions.
 
+## Building from Source
+
+For detailed build instructions, see **[BUILD.md](BUILD.md)** which includes:
+- Quick start guide
+- Step-by-step build process
+- Building individual tools
+- Build options (Debug, Release, Qt debug symbols, etc.)
+- Troubleshooting
+
+## Installation
+
+For installation instructions after building, see **[INSTALL.md](INSTALL.md)** which covers:
+- Installation directories and targets
+- System-wide vs. staging directory installation
+- Custom installation prefixes
+- Python module installation
+- Verification and troubleshooting
+
 
 # Documentation
 
@@ -40,6 +58,8 @@ You can find the wiki here: [ld-decode Wiki](https://github.com/happycube/ld-dec
 The wiki includes details of the ld-decode community's Discord / IRC Bridge and the now legacy Facebook group.  
 
 If you are interested in contributing or have general questions please join the [Domesday86 Discord server](https://discord.gg/pVVrrxd) which has the entire family of decode projects developers on it (or IRC if you must) as the Facebook group is mostly inactive.
+
+For detailed information on how to contribute code, report bugs, or suggest enhancements, please see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 There is also a VHS specific subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active. 
 
