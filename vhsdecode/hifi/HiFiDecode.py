@@ -792,6 +792,50 @@ class SpectralNoiseReduction:
             nr, audio_out, len(nr) - len(audio_out) - self.end_padding, len(audio_out)
         )
 
+class DCBlocker:
+    def __init__(self, sample_rate, cutoff):
+        # Compute pole R so cutoff is approximately fc Hz:
+        R = 1 - (2 * np.pi * cutoff) / sample_rate
+        if R < 0:
+            R = 0
+        if R > 0.999999:
+            R = 0.999999  # numerical stability
+
+        self.R = R
+
+        # State
+        self.prev_x = 0.0
+        self.prev_y = 0.0
+
+    @staticmethod
+    @njit(
+        [
+            numba.types.UniTuple(numba.types.float32, 2)(
+                NumbaAudioArray,
+                numba.types.float32,
+                numba.types.float32,
+                numba.types.float32
+            )
+        ],
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def dc_block(audio, px, py, R):
+        for i in range(len(audio)):
+            y = audio[i] - px + R * py
+
+            px = audio[i]
+            py = y
+
+            audio[i] = y
+
+        return px, py
+
+    def process(self, audio):
+        self.prev_x, self.prev_y = DCBlocker.dc_block(audio, self.prev_x, self.prev_y, self.R)
+        
+
 class Deemphasis:
     def __init__(
         self,

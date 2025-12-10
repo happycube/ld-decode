@@ -45,6 +45,7 @@ from vhsdecode.cmdcommons import (
 from vhsdecode.hifi.HiFiDecode import (
     HiFiDecode,
     SpectralNoiseReduction,
+    DCBlocker,
     Expander,
     Deemphasis,
     DEFAULT_EXPANDER_GAIN,
@@ -936,8 +937,8 @@ class PostProcessor:
             atexit.register(shared_memory.close)
             atexit.register(shared_memory.unlink)
 
-        spec_nr_worker_l_in_rx, spec_nr_worker_l_in_tx = Pipe(duplex=False)
-        spec_nr_worker_r_in_rx, spec_nr_worker_r_in_tx = Pipe(duplex=False)
+        block_sort_l_in_rx, block_sort_l_in_tx = Pipe(duplex=False)
+        block_sort_r_in_rx, block_sort_r_in_tx = Pipe(duplex=False)
         self.block_sorter_process = Process(
             target=PostProcessor.block_sorter_worker,
             name="hifi_block_sort",
@@ -946,20 +947,48 @@ class PostProcessor:
                 self.decoder_shared_memory_idle_queue,
                 self.blocks_enqueued,
                 self.post_processor_shared_memory_idle_queue,
-                spec_nr_worker_l_in_tx,
-                spec_nr_worker_r_in_tx,
+                block_sort_l_in_tx,
+                block_sort_r_in_tx,
             ),
         )
         self.block_sorter_process.start()
         atexit.register(self.block_sorter_process.terminate)
         atexit.register(self.block_sorter_process.join)
 
+        dc_blocker_worker_l_rx, dc_blocker_worker_l_tx = Pipe(duplex=False)
+        self.dc_blocker_worker_l = Process(
+            target=PostProcessor.dc_block_worker,
+            name="hifi_dc_block_l",
+            args=(
+                block_sort_l_in_rx,
+                dc_blocker_worker_l_tx,
+                self.final_audio_rate,
+            ),
+        )
+        self.dc_blocker_worker_l.start()
+        atexit.register(self.dc_blocker_worker_l.terminate)
+        atexit.register(self.dc_blocker_worker_l.join)
+
+        dc_blocker_worker_r_rx, dc_blocker_worker_r_tx = Pipe(duplex=False)
+        self.dc_blocker_worker_r = Process(
+            target=PostProcessor.dc_block_worker,
+            name="hifi_dc_block_r",
+            args=(
+                block_sort_r_in_rx,
+                dc_blocker_worker_r_tx,
+                self.final_audio_rate,
+            ),
+        )
+        self.dc_blocker_worker_r.start()
+        atexit.register(self.dc_blocker_worker_r.terminate)
+        atexit.register(self.dc_blocker_worker_r.join)
+
         spectral_nr_worker_l_rx, spectral_nr_worker_l_tx = Pipe(duplex=False)
         self.spectral_nr_worker_l = Process(
             target=PostProcessor.spectral_noise_reduction_worker,
             name="hifi_spec_nr_l",
             args=(
-                spec_nr_worker_l_in_rx,
+                dc_blocker_worker_l_rx,
                 spectral_nr_worker_l_tx,
                 self.spectral_nr_amount,
                 self.final_audio_rate,
@@ -974,7 +1003,7 @@ class PostProcessor:
             target=PostProcessor.spectral_noise_reduction_worker,
             name="hifi_spec_nr_r",
             args=(
-                spec_nr_worker_r_in_rx,
+                dc_blocker_worker_r_rx,
                 spectral_nr_worker_r_tx,
                 self.spectral_nr_amount,
                 self.final_audio_rate,
@@ -1068,6 +1097,39 @@ class PostProcessor:
             audio[i] = audio[i] * gain
 
     @staticmethod
+    def dc_block_worker(
+        in_conn,
+        out_conn,
+        final_audio_rate
+    ):
+        setproctitle(current_process().name)
+        dc_blocker = DCBlocker(
+            final_audio_rate,
+            8
+        )
+
+        while True:
+            while True:
+                try:
+                    decoder_state, channel_num = in_conn.recv()
+                    break
+                except InterruptedError:
+                    pass
+                except EOFError:
+                    return
+
+            buffer = PostProcessorSharedMemory(decoder_state)
+            if channel_num == 0:
+                pre = buffer.get_pre_left()
+            else:
+                pre = buffer.get_pre_right()
+
+            dc_blocker.process(pre)
+
+            buffer.close()
+            out_conn.send((decoder_state, channel_num))
+        
+    @staticmethod
     def spectral_noise_reduction_worker(
         in_conn,
         out_conn,
@@ -1129,6 +1191,14 @@ class PostProcessor:
         deemphasis_bandwidth
     ):
         setproctitle(current_process().name)
+        deemphasis = Deemphasis(
+            final_audio_rate,
+            deemphasis_low_tau,
+            deemphasis_high_tau,
+            deemphasis_db_per_octave,
+            deemphasis_bandwidth
+        )
+
         expander = Expander(
             final_audio_rate,
             expander_gain,
@@ -1139,14 +1209,6 @@ class PostProcessor:
             expander_weighting_high_tau,
             expander_weighting_db_per_octave,
             expander_weighting_bandwidth
-        )
-
-        deemphasis = Deemphasis(
-            final_audio_rate,
-            deemphasis_low_tau,
-            deemphasis_high_tau,
-            deemphasis_db_per_octave,
-            deemphasis_bandwidth
         )
 
         while True:
@@ -1368,6 +1430,8 @@ class PostProcessor:
 
     def close(self):
         cleanup_process(self.block_sorter_process)
+        cleanup_process(self.dc_blocker_worker_l)
+        cleanup_process(self.dc_blocker_worker_r)
         cleanup_process(self.spectral_nr_worker_l)
         cleanup_process(self.spectral_nr_worker_r)
         cleanup_process(self.expander_worker_l)
