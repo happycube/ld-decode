@@ -52,31 +52,29 @@ DEFAULT_EXPANDER_RATIO = 2
 DEFAULT_EXPANDER_ATTACK_TAU = 5e-3
 DEFAULT_EXPANDER_RELEASE_TAU = 70e-3
 
-# High shelf filter parameters for weighted sidechain input to expander
-# low end of shelf curve
-DEFAULT_EXPANDER_WEIGHTING_TAU_1 = 240e-6
-# high end of shelf curve
-DEFAULT_EXPANDER_WEIGHTING_TAU_2 = 24e-6
-# slope of the filter
-DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 3
-DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH = 2
+# TAU_1         low end of shelf curve
+# TAU_2         high end of shelf curve
+# DB_PER_OCTAVE slope of the filter
+
+# High shelf filter filter for weighted input to expander
+DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1 = 240e-6
+DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2 = 6.4e-5
+DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 6
+DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH = 2.58
+
+DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1 = 5.5e-5
+DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2 = 2.35e-5
+DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 6
+DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH = 2.4
 
 # Low shelf filter for deemphasis
-# low end of shelf curve
-# T1 standard 240e-6
-DEFAULT_VHS_DEEMPHASIS_TAU_1 = 185e-6
-# high end of shelf curve
-# T2 standard 56e-6
-DEFAULT_VHS_DEEMPHASIS_TAU_2 = 22e-6
-# slope of the filter
+DEFAULT_VHS_DEEMPHASIS_TAU_1 = 230e-6
+DEFAULT_VHS_DEEMPHASIS_TAU_2 = 21.8e-6
 DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE = 6
-DEFAULT_VHS_DEEMPHASIS_BANDWIDTH = 2.76
+DEFAULT_VHS_DEEMPHASIS_BANDWIDTH = 2.9
 
-# low end of shelf curve
-DEFAULT_8MM_DEEMPHASIS_TAU_1 = 1e-4
-# high end of shelf curve
-DEFAULT_8MM_DEEMPHASIS_TAU_2 = 1.27e-5
-# slope of the filter
+DEFAULT_8MM_DEEMPHASIS_TAU_1 = 1.1e-4
+DEFAULT_8MM_DEEMPHASIS_TAU_2 = 1.3e-5
 DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE = 6
 DEFAULT_8MM_DEEMPHASIS_BANDWIDTH = 2.4
 
@@ -874,10 +872,10 @@ class Expander:
         ratio: float = DEFAULT_EXPANDER_RATIO,
         attack_tau: float = DEFAULT_EXPANDER_ATTACK_TAU,
         release_tau: float = DEFAULT_EXPANDER_RELEASE_TAU,
-        weighting_shelf_low_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_1,
-        weighting_shelf_high_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_2,
-        weighting_db_per_octave: float = DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-        weighting_bandwidth: float = DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
+        weighting_low_tau: float = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
+        weighting_high_tau: float = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
+        weighting_db_per_octave: float = DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+        weighting_bandwidth: float = DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
     ):
         self.audio_rate = audio_rate
 
@@ -904,8 +902,8 @@ class Expander:
         )
 
         # weighted filter for envelope detector
-        self.weighting_T1 = weighting_shelf_low_tau
-        self.weighting_T2 = weighting_shelf_high_tau
+        self.weighting_T1 = weighting_low_tau
+        self.weighting_T2 = weighting_high_tau
         self.weighting_db_per_octave = weighting_db_per_octave
         self.weighting_bandwidth = weighting_bandwidth
 

@@ -51,10 +51,14 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_EXPANDER_RATIO,
     DEFAULT_EXPANDER_ATTACK_TAU,
     DEFAULT_EXPANDER_RELEASE_TAU,
-    DEFAULT_EXPANDER_WEIGHTING_TAU_1,
-    DEFAULT_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH,
     DEFAULT_VHS_DEEMPHASIS_TAU_1,
     DEFAULT_VHS_DEEMPHASIS_TAU_2,
     DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE,
@@ -355,32 +359,32 @@ expander_options_group.add_argument(
     help=f"Sets the expander release speed in tau (default is {DEFAULT_EXPANDER_RELEASE_TAU}).",
 )
 expander_options_group.add_argument(
-    "--expander_weighting_shelf_low_tau",
-    dest="expander_weighting_shelf_low_tau",
+    "--expander_weighting_low_tau",
+    dest="expander_weighting_low_tau",
     type=float,
-    default=DEFAULT_EXPANDER_WEIGHTING_TAU_1,
-    help=f"Sets the expander sidechain high-pass shelf filter low point in tau (default is {DEFAULT_EXPANDER_WEIGHTING_TAU_1}).",
+    default=DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
+    help=f"Sets the expander weighting high-pass shelf filter low point in tau (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1}]).",
 )
 expander_options_group.add_argument(
-    "--expander_weighting_shelf_high_tau",
-    dest="expander_weighting_shelf_high_tau",
+    "--expander_weighting_high_tau",
+    dest="expander_weighting_high_tau",
     type=float,
-    default=DEFAULT_EXPANDER_WEIGHTING_TAU_2,
-    help=f"Sets the expander sidechain high-pass shelf filter high point in tau (default is {DEFAULT_EXPANDER_WEIGHTING_TAU_2}).",
+    default=DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
+    help=f"Sets the expander weighting high-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2}]).",
 )
 expander_options_group.add_argument(
     "--expander_weighting_db_per_octave",
     dest="expander_weighting_db_per_octave",
     type=float,
-    default=DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    help=f"Sets the expander sidechain high-pass shelf filter cutoff rate (default is {DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE}).",
+    default=DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+    help=f"Sets the expander weighting high-pass shelf filter cutoff rate (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE}]).",
 )
 expander_options_group.add_argument(
     "--expander_weighting_bandwidth",
     dest="expander_weighting_bandwidth",
     type=float,
-    default=DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
-    help=f"Sets the expander sidechain high-pass shelf filter bandwidth (default is {DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH}).",
+    default=DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
+    help=f"Sets the expander weighting high-pass shelf filter bandwidth (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH}]).",
 )
 
 deemphasis_options_group = parser.add_argument_group(
@@ -998,8 +1002,8 @@ class PostProcessor:
                 decode_options["expander_ratio"],
                 decode_options["expander_attack_tau"],
                 decode_options["expander_release_tau"],
-                decode_options["expander_weighting_shelf_low_tau"],
-                decode_options["expander_weighting_shelf_high_tau"],
+                decode_options["expander_weighting_low_tau"],
+                decode_options["expander_weighting_high_tau"],
                 decode_options["expander_weighting_db_per_octave"],
                 decode_options["expander_weighting_bandwidth"],
                 decode_options["deemphasis_low_tau"],
@@ -1026,8 +1030,8 @@ class PostProcessor:
                 decode_options["expander_ratio"],
                 decode_options["expander_attack_tau"],
                 decode_options["expander_release_tau"],
-                decode_options["expander_weighting_shelf_low_tau"],
-                decode_options["expander_weighting_shelf_high_tau"],
+                decode_options["expander_weighting_low_tau"],
+                decode_options["expander_weighting_high_tau"],
                 decode_options["expander_weighting_db_per_octave"],
                 decode_options["expander_weighting_bandwidth"],
                 decode_options["deemphasis_low_tau"],
@@ -1119,8 +1123,8 @@ class PostProcessor:
         expander_ratio,
         expander_attack_tau,
         expander_release_tau,
-        expander_weighting_shelf_low_tau,
-        expander_weighting_shelf_high_tau,
+        expander_weighting_low_tau,
+        expander_weighting_high_tau,
         expander_weighting_db_per_octave,
         expander_weighting_bandwidth,
         deemphasis_low_tau,
@@ -1135,8 +1139,8 @@ class PostProcessor:
             expander_ratio,
             expander_attack_tau,
             expander_release_tau,
-            expander_weighting_shelf_low_tau,
-            expander_weighting_shelf_high_tau,
+            expander_weighting_low_tau,
+            expander_weighting_high_tau,
             expander_weighting_db_per_octave,
             expander_weighting_bandwidth
         )
@@ -1965,12 +1969,20 @@ def main() -> int:
         default_deemphasis_high_tau = DEFAULT_8MM_DEEMPHASIS_TAU_2
         default_deemphasis_db_per_octave = DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE
         default_deemphasis_bandwidth = DEFAULT_8MM_DEEMPHASIS_BANDWIDTH
+        default_expander_weighting_low_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1
+        default_expander_weighting_high_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2
+        default_expander_weighting_db_per_octave = DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE
+        default_expander_weighting_bandwidth = DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH
     else:
         tape_format = "vhs"
         default_deemphasis_low_tau = DEFAULT_VHS_DEEMPHASIS_TAU_1
         default_deemphasis_high_tau = DEFAULT_VHS_DEEMPHASIS_TAU_2
         default_deemphasis_db_per_octave = DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE
         default_deemphasis_bandwidth = DEFAULT_VHS_DEEMPHASIS_BANDWIDTH
+        default_expander_weighting_low_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1
+        default_expander_weighting_high_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2
+        default_expander_weighting_db_per_octave = DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE
+        default_expander_weighting_bandwidth = DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
@@ -1995,10 +2007,10 @@ def main() -> int:
         "expander_ratio": args.expander_ratio,
         "expander_attack_tau": args.expander_attack_tau,
         "expander_release_tau": args.expander_release_tau,
-        "expander_weighting_shelf_low_tau": args.expander_weighting_shelf_low_tau,
-        "expander_weighting_shelf_high_tau": args.expander_weighting_shelf_high_tau,
-        "expander_weighting_db_per_octave": args.expander_weighting_db_per_octave,
-        "expander_weighting_bandwidth": args.expander_weighting_bandwidth,
+        "expander_weighting_low_tau": args.expander_weighting_low_tau or default_expander_weighting_low_tau,
+        "expander_weighting_high_tau": args.expander_weighting_high_tau or default_expander_weighting_high_tau,
+        "expander_weighting_db_per_octave": args.expander_weighting_db_per_octave or default_expander_weighting_db_per_octave,
+        "expander_weighting_bandwidth": args.expander_weighting_bandwidth or default_expander_weighting_bandwidth,
         "deemphasis_low_tau": args.deemphasis_low_tau or default_deemphasis_low_tau,
         "deemphasis_high_tau": args.deemphasis_high_tau or default_deemphasis_high_tau,
         "deemphasis_db_per_octave": args.deemphasis_db_per_octave or default_deemphasis_db_per_octave,
