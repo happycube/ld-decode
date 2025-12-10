@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, log10, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm
+from math import log, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm, exp
 from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
@@ -52,31 +52,29 @@ DEFAULT_EXPANDER_RATIO = 2
 DEFAULT_EXPANDER_ATTACK_TAU = 5e-3
 DEFAULT_EXPANDER_RELEASE_TAU = 70e-3
 
-# High shelf filter parameters for weighted sidechain input to expander
-# low end of shelf curve
-DEFAULT_EXPANDER_WEIGHTING_TAU_1 = 240e-6
-# high end of shelf curve
-DEFAULT_EXPANDER_WEIGHTING_TAU_2 = 24e-6
-# slope of the filter
-DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 3
-DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH = 2
+# TAU_1         low end of shelf curve
+# TAU_2         high end of shelf curve
+# DB_PER_OCTAVE slope of the filter
+
+# High shelf filter filter for weighted input to expander
+DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1 = 240e-6
+DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2 = 6.4e-5
+DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 6
+DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH = 2.58
+
+DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1 = 5.5e-5
+DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2 = 2.35e-5
+DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE = 6
+DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH = 2.4
 
 # Low shelf filter for deemphasis
-# low end of shelf curve
-# T1 standard 240e-6
-DEFAULT_VHS_DEEMPHASIS_TAU_1 = 185e-6
-# high end of shelf curve
-# T2 standard 56e-6
-DEFAULT_VHS_DEEMPHASIS_TAU_2 = 22e-6
-# slope of the filter
+DEFAULT_VHS_DEEMPHASIS_TAU_1 = 230e-6
+DEFAULT_VHS_DEEMPHASIS_TAU_2 = 21.8e-6
 DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE = 6
-DEFAULT_VHS_DEEMPHASIS_BANDWIDTH = 2.76
+DEFAULT_VHS_DEEMPHASIS_BANDWIDTH = 2.9
 
-# low end of shelf curve
-DEFAULT_8MM_DEEMPHASIS_TAU_1 = 1e-4
-# high end of shelf curve
-DEFAULT_8MM_DEEMPHASIS_TAU_2 = 1.27e-5
-# slope of the filter
+DEFAULT_8MM_DEEMPHASIS_TAU_1 = 1.1e-4
+DEFAULT_8MM_DEEMPHASIS_TAU_2 = 1.3e-5
 DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE = 6
 DEFAULT_8MM_DEEMPHASIS_BANDWIDTH = 2.4
 
@@ -235,6 +233,7 @@ class AFEFilterable:
             self.filter_reject_other.filtfilt(self.filter_reject_image.filtfilt(data))
         )
 
+QUADRATURE_LP_ORDER = 5
 
 class FMdemod:
     def __init__(
@@ -250,7 +249,7 @@ class FMdemod:
         self.min_float = float_info.min + float_info.epsneg
 
         if self.type == DEMOD_QUADRATURE:
-            quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.sample_rate / 2)
+            quadrature_lp_b, quadrature_lp_a = butter(QUADRATURE_LP_ORDER, self.carrier / self.sample_rate / 2)
             self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
             self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
         
@@ -449,24 +448,23 @@ class FMdemod:
         # demod = inst_freq - carrier
 
         # constants
-        two_pi: numba.types.Literal = 2 * pi
+        two_pi = 2 * pi
         diff_divisor = two_pi * (1 / sample_rate)
-        order = len(filter_b) - 1
         iq_len = len(i_osc)
         rf_len = len(in_rf)
 
         #
         # low pass filter history
         #
-        i_in_hist = np.zeros(order, dtype=np.float64)
-        q_in_hist = np.zeros(order, dtype=np.float64)
-        i_filtered_hist = np.zeros(order, dtype=np.float64)
-        q_filtered_hist = np.zeros(order, dtype=np.float64)
+        i_in_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
+        q_in_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
+        i_filtered_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
+        q_filtered_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
 
         prev_angle = 0  # doesn't matter since the final chunks have overlap
         prev_unwrapped = prev_angle
 
-        for i in range(1, rf_len - order):
+        for i in range(1, rf_len - QUADRATURE_LP_ORDER):
             #
             # mix in i/q, reflect the sine and cosine
             #
@@ -482,25 +480,20 @@ class FMdemod:
             i_filtered = filter_b[0] * i_in
             q_filtered = filter_b[0] * q_in
 
-            f_idx = order - 1
-            next_f_idx = order
-            while f_idx >= 0:
-                i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx]
-                i_filtered -= filter_a[next_f_idx] * i_filtered_hist[f_idx]
+            i_filtered += filter_b[QUADRATURE_LP_ORDER] * i_in_hist[QUADRATURE_LP_ORDER - 1] - filter_a[QUADRATURE_LP_ORDER] * i_filtered_hist[QUADRATURE_LP_ORDER - 1]
+            q_filtered += filter_b[QUADRATURE_LP_ORDER] * q_in_hist[QUADRATURE_LP_ORDER - 1] - filter_a[QUADRATURE_LP_ORDER] * q_filtered_hist[QUADRATURE_LP_ORDER - 1]
 
-                q_filtered += filter_b[next_f_idx] * q_in_hist[f_idx]
-                q_filtered -= filter_a[next_f_idx] * q_filtered_hist[f_idx]
+            for f_idx in range(QUADRATURE_LP_ORDER - 2, -1, -1):
+                next_f_idx = f_idx + 1
+                i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx] - filter_a[next_f_idx] * i_filtered_hist[f_idx]
+                q_filtered += filter_b[next_f_idx] * q_in_hist[f_idx] - filter_a[next_f_idx] * q_filtered_hist[f_idx]
 
                 # Shift histories forward
-                if next_f_idx < order:
-                    i_in_hist[next_f_idx] = i_in_hist[f_idx]
-                    i_filtered_hist[next_f_idx] = i_filtered_hist[f_idx]
+                i_in_hist[next_f_idx] = i_in_hist[f_idx]
+                i_filtered_hist[next_f_idx] = i_filtered_hist[f_idx]
 
-                    q_in_hist[next_f_idx] = q_in_hist[f_idx]
-                    q_filtered_hist[next_f_idx] = q_filtered_hist[f_idx]
-
-                next_f_idx = f_idx
-                f_idx -= 1
+                q_in_hist[next_f_idx] = q_in_hist[f_idx]
+                q_filtered_hist[next_f_idx] = q_filtered_hist[f_idx]
 
             i_in_hist[0] = i_in
             i_filtered_hist[0] = i_filtered
@@ -514,18 +507,13 @@ class FMdemod:
             current_angle = atan2(q_filtered, i_filtered)
             delta = current_angle - prev_angle
 
-            if delta > pi:
-                corrected = current_angle - two_pi
-            elif delta < -pi:
-                corrected = current_angle + two_pi
-            else:
-                corrected = current_angle
+            correction = -two_pi * (delta > pi) + two_pi * (delta < -pi)
+            unwrapped = prev_unwrapped + delta + correction
 
-            unwrapped = prev_unwrapped + (corrected - prev_angle)
             diff = prev_unwrapped - unwrapped
             out = (carrier - diff / diff_divisor) / deviation
 
-            out_demod[i - 1] = max(min_float, min(max_float, out))
+            out_demod[i - 1] = min(max(out, min_float), max_float)
 
             prev_angle = current_angle
             prev_unwrapped = unwrapped
@@ -804,6 +792,50 @@ class SpectralNoiseReduction:
             nr, audio_out, len(nr) - len(audio_out) - self.end_padding, len(audio_out)
         )
 
+class DCBlocker:
+    def __init__(self, sample_rate, cutoff):
+        # Compute pole R so cutoff is approximately fc Hz:
+        R = 1 - (2 * np.pi * cutoff) / sample_rate
+        if R < 0:
+            R = 0
+        if R > 0.999999:
+            R = 0.999999  # numerical stability
+
+        self.R = R
+
+        # State
+        self.prev_x = 0.0
+        self.prev_y = 0.0
+
+    @staticmethod
+    @njit(
+        [
+            numba.types.UniTuple(numba.types.float32, 2)(
+                NumbaAudioArray,
+                numba.types.float32,
+                numba.types.float32,
+                numba.types.float32
+            )
+        ],
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def dc_block(audio, px, py, R):
+        for i in range(len(audio)):
+            y = audio[i] - px + R * py
+
+            px = audio[i]
+            py = y
+
+            audio[i] = y
+
+        return px, py
+
+    def process(self, audio):
+        self.prev_x, self.prev_y = DCBlocker.dc_block(audio, self.prev_x, self.prev_y, self.R)
+        
+
 class Deemphasis:
     def __init__(
         self,
@@ -874,12 +906,14 @@ class Expander:
         ratio: float = DEFAULT_EXPANDER_RATIO,
         attack_tau: float = DEFAULT_EXPANDER_ATTACK_TAU,
         release_tau: float = DEFAULT_EXPANDER_RELEASE_TAU,
-        weighting_shelf_low_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_1,
-        weighting_shelf_high_tau: float = DEFAULT_EXPANDER_WEIGHTING_TAU_2,
-        weighting_db_per_octave: float = DEFAULT_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-        weighting_bandwidth: float = DEFAULT_EXPANDER_WEIGHTING_BANDWIDTH,
+        weighting_low_tau: float = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
+        weighting_high_tau: float = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
+        weighting_db_per_octave: float = DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
+        weighting_bandwidth: float = DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
     ):
         self.audio_rate = audio_rate
+        self.linear_to_db = 20 / log(10)
+        self.db_to_linear = log(10) / 20
 
         # makeup gain to apply after expansion
         self.gain = 10 ** (gain / 20)
@@ -887,7 +921,7 @@ class Expander:
         self.atkCoeff = np.exp(-1.0 / (attack_tau * self.audio_rate))
         self.relCoeff = np.exp(-1.0 / (release_tau * self.audio_rate))
 
-        self.env = 0.0
+        self.env_db = -120.0
 
         # this is set to avoid high frequency noise to interfere with the NR envelope tracking
         self.Lo_cut = 19e3
@@ -904,8 +938,8 @@ class Expander:
         )
 
         # weighted filter for envelope detector
-        self.weighting_T1 = weighting_shelf_low_tau
-        self.weighting_T2 = weighting_shelf_high_tau
+        self.weighting_T1 = weighting_low_tau
+        self.weighting_T2 = weighting_high_tau
         self.weighting_db_per_octave = weighting_db_per_octave
         self.weighting_bandwidth = weighting_bandwidth
 
@@ -940,6 +974,8 @@ class Expander:
             numba.types.float32,
             numba.types.float32,
             numba.types.float32,
+            numba.types.float32,
+            numba.types.float32,
             numba.types.float32
         )],
         cache=True,
@@ -949,7 +985,9 @@ class Expander:
     def expand(
         audio,
         side_chain,
-        env,
+        env_db,
+        linear_to_db,
+        db_to_linear,
         atkCoeff,
         relCoeff,
         gain,
@@ -957,27 +995,19 @@ class Expander:
     ):
         audio_len = audio.shape[0]
         ratio_m1 = ratio - 1
-        cutoff_threshold = 1e-12
 
         for i in range(audio_len):
-            sc_abs = abs(side_chain[i])
+            # envelope in db
+            sc_db = log(abs(side_chain[i]) + 1e-20) * linear_to_db
 
-            # Envelope follower
-            if sc_abs > env:
-                # attack
-                env = atkCoeff * env + (1.0 - atkCoeff) * sc_abs
-            else:
-                # release
-                env = relCoeff * env + (1.0 - relCoeff) * sc_abs
+            coeff = relCoeff + (atkCoeff - relCoeff) * (sc_db > env_db)
+            env_db = coeff * env_db + (1.0 - coeff) * sc_db
 
-            if env < cutoff_threshold:
-                env_gain = 0.0
-            else:
-                env_gain = env ** ratio_m1
+            gain_db = ratio_m1 * env_db
+
+            audio[i] *= exp(gain_db * db_to_linear) * gain
     
-            audio[i] *= env_gain * gain
-    
-        return env
+        return env_db
 
     def process(self, pre_in, audio_out):
         # prevent high frequency noise from interfering with envelope detector
@@ -986,10 +1016,12 @@ class Expander:
         # high pass weighted input to envelope detector
         side_chain = self.WeightedHighpass.lfilt(pre_in_low_pass)
 
-        self.env = Expander.expand(
+        self.env_db = Expander.expand(
             audio_out,
             side_chain,
-            self.env,
+            self.env_db,
+            self.linear_to_db,
+            self.db_to_linear,
             self.atkCoeff,
             self.relCoeff,
             self.gain,
