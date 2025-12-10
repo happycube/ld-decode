@@ -2,8 +2,6 @@ import os.path
 import sys
 import math
 
-from scipy.io import wavfile
-from scipy.fft import rfft, rfftfreq
 import numpy as np
 
 import matplotlib
