@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, log10, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm
+from math import log, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm, exp
 from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
@@ -480,9 +480,8 @@ class FMdemod:
             i_filtered = filter_b[0] * i_in
             q_filtered = filter_b[0] * q_in
 
-            f_idx = order - 1
-            next_f_idx = order
-            while f_idx >= 0:
+            for f_idx in range(order - 1, -1, -1):
+                next_f_idx = f_idx + 1
                 i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx]
                 i_filtered -= filter_a[next_f_idx] * i_filtered_hist[f_idx]
 
@@ -497,9 +496,6 @@ class FMdemod:
                     q_in_hist[next_f_idx] = q_in_hist[f_idx]
                     q_filtered_hist[next_f_idx] = q_filtered_hist[f_idx]
 
-                next_f_idx = f_idx
-                f_idx -= 1
-
             i_in_hist[0] = i_in
             i_filtered_hist[0] = i_filtered
 
@@ -512,18 +508,13 @@ class FMdemod:
             current_angle = atan2(q_filtered, i_filtered)
             delta = current_angle - prev_angle
 
-            if delta > pi:
-                corrected = current_angle - two_pi
-            elif delta < -pi:
-                corrected = current_angle + two_pi
-            else:
-                corrected = current_angle
+            correction = -two_pi * (delta > pi) + two_pi * (delta < -pi)
+            unwrapped = prev_unwrapped + delta + correction
 
-            unwrapped = prev_unwrapped + (corrected - prev_angle)
             diff = prev_unwrapped - unwrapped
             out = (carrier - diff / diff_divisor) / deviation
 
-            out_demod[i - 1] = max(min_float, min(max_float, out))
+            out_demod[i - 1] = min(max(out, min_float), max_float)
 
             prev_angle = current_angle
             prev_unwrapped = unwrapped
@@ -878,6 +869,8 @@ class Expander:
         weighting_bandwidth: float = DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
     ):
         self.audio_rate = audio_rate
+        self.linear_to_db = 20 / log(10)
+        self.db_to_linear = log(10) / 20
 
         # makeup gain to apply after expansion
         self.gain = 10 ** (gain / 20)
@@ -885,7 +878,7 @@ class Expander:
         self.atkCoeff = np.exp(-1.0 / (attack_tau * self.audio_rate))
         self.relCoeff = np.exp(-1.0 / (release_tau * self.audio_rate))
 
-        self.env = 0.0
+        self.env_db = -120.0
 
         # this is set to avoid high frequency noise to interfere with the NR envelope tracking
         self.Lo_cut = 19e3
@@ -938,6 +931,8 @@ class Expander:
             numba.types.float32,
             numba.types.float32,
             numba.types.float32,
+            numba.types.float32,
+            numba.types.float32,
             numba.types.float32
         )],
         cache=True,
@@ -947,7 +942,9 @@ class Expander:
     def expand(
         audio,
         side_chain,
-        env,
+        env_db,
+        linear_to_db,
+        db_to_linear,
         atkCoeff,
         relCoeff,
         gain,
@@ -955,27 +952,19 @@ class Expander:
     ):
         audio_len = audio.shape[0]
         ratio_m1 = ratio - 1
-        cutoff_threshold = 1e-12
 
         for i in range(audio_len):
-            sc_abs = abs(side_chain[i])
+            # envelope in db
+            sc_db = log(abs(side_chain[i]) + 1e-20) * linear_to_db
 
-            # Envelope follower
-            if sc_abs > env:
-                # attack
-                env = atkCoeff * env + (1.0 - atkCoeff) * sc_abs
-            else:
-                # release
-                env = relCoeff * env + (1.0 - relCoeff) * sc_abs
+            coeff = relCoeff + (atkCoeff - relCoeff) * (sc_db > env_db)
+            env_db = coeff * env_db + (1.0 - coeff) * sc_db
 
-            if env < cutoff_threshold:
-                env_gain = 0.0
-            else:
-                env_gain = env ** ratio_m1
+            gain_db = ratio_m1 * env_db
+
+            audio[i] *= exp(gain_db * db_to_linear) * gain
     
-            audio[i] *= env_gain * gain
-    
-        return env
+        return env_db
 
     def process(self, pre_in, audio_out):
         # prevent high frequency noise from interfering with envelope detector
@@ -984,10 +973,12 @@ class Expander:
         # high pass weighted input to envelope detector
         side_chain = self.WeightedHighpass.lfilt(pre_in_low_pass)
 
-        self.env = Expander.expand(
+        self.env_db = Expander.expand(
             audio_out,
             side_chain,
-            self.env,
+            self.env_db,
+            self.linear_to_db,
+            self.db_to_linear,
             self.atkCoeff,
             self.relCoeff,
             self.gain,

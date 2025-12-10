@@ -362,28 +362,24 @@ expander_options_group.add_argument(
     "--expander_weighting_low_tau",
     dest="expander_weighting_low_tau",
     type=float,
-    default=DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
     help=f"Sets the expander weighting high-pass shelf filter low point in tau (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1}]).",
 )
 expander_options_group.add_argument(
     "--expander_weighting_high_tau",
     dest="expander_weighting_high_tau",
     type=float,
-    default=DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
     help=f"Sets the expander weighting high-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2}]).",
 )
 expander_options_group.add_argument(
     "--expander_weighting_db_per_octave",
     dest="expander_weighting_db_per_octave",
     type=float,
-    default=DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
     help=f"Sets the expander weighting high-pass shelf filter cutoff rate (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE}]).",
 )
 expander_options_group.add_argument(
     "--expander_weighting_bandwidth",
     dest="expander_weighting_bandwidth",
     type=float,
-    default=DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
     help=f"Sets the expander weighting high-pass shelf filter bandwidth (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH}]).",
 )
 
@@ -1964,21 +1960,25 @@ def main() -> int:
         resampler_quality = DEFAULT_RESAMPLER_QUALITY
 
     if args.format_8mm:
+        print("using 8mm")
         tape_format = "8mm"
         default_deemphasis_low_tau = DEFAULT_8MM_DEEMPHASIS_TAU_1
         default_deemphasis_high_tau = DEFAULT_8MM_DEEMPHASIS_TAU_2
         default_deemphasis_db_per_octave = DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE
         default_deemphasis_bandwidth = DEFAULT_8MM_DEEMPHASIS_BANDWIDTH
+
         default_expander_weighting_low_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1
         default_expander_weighting_high_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2
         default_expander_weighting_db_per_octave = DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE
         default_expander_weighting_bandwidth = DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH
     else:
+        print("using vhs")
         tape_format = "vhs"
         default_deemphasis_low_tau = DEFAULT_VHS_DEEMPHASIS_TAU_1
         default_deemphasis_high_tau = DEFAULT_VHS_DEEMPHASIS_TAU_2
         default_deemphasis_db_per_octave = DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE
         default_deemphasis_bandwidth = DEFAULT_VHS_DEEMPHASIS_BANDWIDTH
+
         default_expander_weighting_low_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1
         default_expander_weighting_high_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2
         default_expander_weighting_db_per_octave = DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE
