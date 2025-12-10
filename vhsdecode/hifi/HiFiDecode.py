@@ -233,6 +233,7 @@ class AFEFilterable:
             self.filter_reject_other.filtfilt(self.filter_reject_image.filtfilt(data))
         )
 
+QUADRATURE_LP_ORDER = 5
 
 class FMdemod:
     def __init__(
@@ -248,7 +249,7 @@ class FMdemod:
         self.min_float = float_info.min + float_info.epsneg
 
         if self.type == DEMOD_QUADRATURE:
-            quadrature_lp_b, quadrature_lp_a = butter(5, self.carrier / self.sample_rate / 2)
+            quadrature_lp_b, quadrature_lp_a = butter(QUADRATURE_LP_ORDER, self.carrier / self.sample_rate / 2)
             self.quadrature_lp_b = quadrature_lp_b.astype(DEMOD_DTYPE_NP)
             self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
         
@@ -447,24 +448,23 @@ class FMdemod:
         # demod = inst_freq - carrier
 
         # constants
-        two_pi: numba.types.Literal = 2 * pi
+        two_pi = 2 * pi
         diff_divisor = two_pi * (1 / sample_rate)
-        order = len(filter_b) - 1
         iq_len = len(i_osc)
         rf_len = len(in_rf)
 
         #
         # low pass filter history
         #
-        i_in_hist = np.zeros(order, dtype=np.float64)
-        q_in_hist = np.zeros(order, dtype=np.float64)
-        i_filtered_hist = np.zeros(order, dtype=np.float64)
-        q_filtered_hist = np.zeros(order, dtype=np.float64)
+        i_in_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
+        q_in_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
+        i_filtered_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
+        q_filtered_hist = np.zeros(QUADRATURE_LP_ORDER, dtype=np.float64)
 
         prev_angle = 0  # doesn't matter since the final chunks have overlap
         prev_unwrapped = prev_angle
 
-        for i in range(1, rf_len - order):
+        for i in range(1, rf_len - QUADRATURE_LP_ORDER):
             #
             # mix in i/q, reflect the sine and cosine
             #
@@ -480,21 +480,20 @@ class FMdemod:
             i_filtered = filter_b[0] * i_in
             q_filtered = filter_b[0] * q_in
 
-            for f_idx in range(order - 1, -1, -1):
-                next_f_idx = f_idx + 1
-                i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx]
-                i_filtered -= filter_a[next_f_idx] * i_filtered_hist[f_idx]
+            i_filtered += filter_b[QUADRATURE_LP_ORDER] * i_in_hist[QUADRATURE_LP_ORDER - 1] - filter_a[QUADRATURE_LP_ORDER] * i_filtered_hist[QUADRATURE_LP_ORDER - 1]
+            q_filtered += filter_b[QUADRATURE_LP_ORDER] * q_in_hist[QUADRATURE_LP_ORDER - 1] - filter_a[QUADRATURE_LP_ORDER] * q_filtered_hist[QUADRATURE_LP_ORDER - 1]
 
-                q_filtered += filter_b[next_f_idx] * q_in_hist[f_idx]
-                q_filtered -= filter_a[next_f_idx] * q_filtered_hist[f_idx]
+            for f_idx in range(QUADRATURE_LP_ORDER - 2, -1, -1):
+                next_f_idx = f_idx + 1
+                i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx] - filter_a[next_f_idx] * i_filtered_hist[f_idx]
+                q_filtered += filter_b[next_f_idx] * q_in_hist[f_idx] - filter_a[next_f_idx] * q_filtered_hist[f_idx]
 
                 # Shift histories forward
-                if next_f_idx < order:
-                    i_in_hist[next_f_idx] = i_in_hist[f_idx]
-                    i_filtered_hist[next_f_idx] = i_filtered_hist[f_idx]
+                i_in_hist[next_f_idx] = i_in_hist[f_idx]
+                i_filtered_hist[next_f_idx] = i_filtered_hist[f_idx]
 
-                    q_in_hist[next_f_idx] = q_in_hist[f_idx]
-                    q_filtered_hist[next_f_idx] = q_filtered_hist[f_idx]
+                q_in_hist[next_f_idx] = q_in_hist[f_idx]
+                q_filtered_hist[next_f_idx] = q_filtered_hist[f_idx]
 
             i_in_hist[0] = i_in
             i_filtered_hist[0] = i_filtered
