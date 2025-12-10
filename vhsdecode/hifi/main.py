@@ -1380,7 +1380,7 @@ class AppWindow:
         self._app, self._window = self.open_ui(argv, decode_options)
 
     def __del__(self):
-        self._window.close()
+        # self._window.close()
         self._app.quit()
 
     def open_ui(self, argv, decode_options):
