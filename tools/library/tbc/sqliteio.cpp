@@ -18,6 +18,34 @@
 #include <QStringList>
 #include "tbc/logging.h"
 
+namespace SqliteValue
+{
+    // Keep legacy "-1 means missing" semantics when SQLite stores NULL
+    int toIntOrDefault(const QSqlQuery &query, const char *column, int defaultValue)
+    {
+        const QVariant value = query.value(column);
+        return value.isNull() ? defaultValue : value.toInt();
+    }
+
+    qint64 toLongLongOrDefault(const QSqlQuery &query, const char *column, qint64 defaultValue)
+    {
+        const QVariant value = query.value(column);
+        return value.isNull() ? defaultValue : value.toLongLong();
+    }
+
+    double toDoubleOrDefault(const QSqlQuery &query, const char *column, double defaultValue)
+    {
+        const QVariant value = query.value(column);
+        return value.isNull() ? defaultValue : value.toDouble();
+    }
+
+    bool toBoolOrDefault(const QSqlQuery &query, const char *column, bool defaultValue)
+    {
+        const QVariant value = query.value(column);
+        return value.isNull() ? defaultValue : value.toInt() == 1;
+    }
+}
+
 // SQL schema as per documentation
 static const QString SCHEMA_SQL = R"(
 PRAGMA user_version = 1;
@@ -218,19 +246,19 @@ bool SqliteReader::readCaptureMetadata(int &captureId, QString &system, QString 
     decoder = query.value("decoder").toString();
     gitBranch = query.value("git_branch").toString();
     gitCommit = query.value("git_commit").toString();
-    videoSampleRate = query.value("video_sample_rate").toDouble();
-    activeVideoStart = query.value("active_video_start").toInt();
-    activeVideoEnd = query.value("active_video_end").toInt();
-    fieldWidth = query.value("field_width").toInt();
-    fieldHeight = query.value("field_height").toInt();
-    numberOfSequentialFields = query.value("number_of_sequential_fields").toInt();
-    colourBurstStart = query.value("colour_burst_start").toInt();
-    colourBurstEnd = query.value("colour_burst_end").toInt();
-    isMapped = query.value("is_mapped").toInt() == 1;
-    isSubcarrierLocked = query.value("is_subcarrier_locked").toInt() == 1;
-    isWidescreen = query.value("is_widescreen").toInt() == 1;
-    white16bIre = query.value("white_16b_ire").toInt();
-    black16bIre = query.value("black_16b_ire").toInt();
+    videoSampleRate = SqliteValue::toDoubleOrDefault(query, "video_sample_rate");
+    activeVideoStart = SqliteValue::toIntOrDefault(query, "active_video_start");
+    activeVideoEnd = SqliteValue::toIntOrDefault(query, "active_video_end");
+    fieldWidth = SqliteValue::toIntOrDefault(query, "field_width");
+    fieldHeight = SqliteValue::toIntOrDefault(query, "field_height");
+    numberOfSequentialFields = SqliteValue::toIntOrDefault(query, "number_of_sequential_fields");
+    colourBurstStart = SqliteValue::toIntOrDefault(query, "colour_burst_start");
+    colourBurstEnd = SqliteValue::toIntOrDefault(query, "colour_burst_end");
+    isMapped = SqliteValue::toBoolOrDefault(query, "is_mapped");
+    isSubcarrierLocked = SqliteValue::toBoolOrDefault(query, "is_subcarrier_locked");
+    isWidescreen = SqliteValue::toBoolOrDefault(query, "is_widescreen");
+    white16bIre = SqliteValue::toIntOrDefault(query, "white_16b_ire");
+    black16bIre = SqliteValue::toIntOrDefault(query, "black_16b_ire");
     captureNotes = query.value("capture_notes").toString();
 
     return true;
@@ -248,10 +276,10 @@ bool SqliteReader::readPcmAudioParameters(int captureId, int &bits, bool &isSign
         return false;
     }
 
-    bits = query.value("bits").toInt();
-    isSigned = query.value("is_signed").toInt() == 1;
-    isLittleEndian = query.value("is_little_endian").toInt() == 1;
-    sampleRate = query.value("sample_rate").toDouble();
+    bits = SqliteValue::toIntOrDefault(query, "bits");
+    isSigned = SqliteValue::toBoolOrDefault(query, "is_signed");
+    isLittleEndian = SqliteValue::toBoolOrDefault(query, "is_little_endian");
+    sampleRate = SqliteValue::toDoubleOrDefault(query, "sample_rate");
 
     return true;
 }
