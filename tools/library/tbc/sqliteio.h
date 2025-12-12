@@ -18,6 +18,14 @@
 #include <QVariant>
 #include <stdexcept>
 
+namespace SqliteValue
+{
+    int toIntOrDefault(const QSqlQuery &query, const char *column, int defaultValue = -1);
+    qint64 toLongLongOrDefault(const QSqlQuery &query, const char *column, qint64 defaultValue = -1);
+    double toDoubleOrDefault(const QSqlQuery &query, const char *column, double defaultValue = -1.0);
+    bool toBoolOrDefault(const QSqlQuery &query, const char *column, bool defaultValue = false);
+}
+
 class SqliteReader
 {
 public:

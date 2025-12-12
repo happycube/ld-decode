@@ -20,6 +20,7 @@
 #include <QDebug>
 #include <QMap>
 #include <QMultiMap>
+#include <QVariant>
 #include "tbc/logging.h"
 
 // Default values used when configuring VideoParameters for a particular video system.
@@ -539,16 +540,16 @@ void LdDecodeMetaData::readFields(SqliteReader &reader, int captureId)
         // Note: field_id in database is 0-indexed, but seqNo should be 1-indexed
         int fieldId = fieldsQuery.value("field_id").toInt();
         field.seqNo = fieldId + 1;
-        field.isFirstField = fieldsQuery.value("is_first_field").toInt() == 1;
-        field.syncConf = fieldsQuery.value("sync_conf").toInt();
-        field.medianBurstIRE = fieldsQuery.value("median_burst_ire").toDouble();
-        field.fieldPhaseID = fieldsQuery.value("field_phase_id").toInt();
-        field.audioSamples = fieldsQuery.value("audio_samples").toInt();
-        field.diskLoc = fieldsQuery.value("disk_loc").toDouble();
-        field.fileLoc = fieldsQuery.value("file_loc").toLongLong();
-        field.decodeFaults = fieldsQuery.value("decode_faults").toInt();
-        field.efmTValues = fieldsQuery.value("efm_t_values").toInt();
-        field.pad = fieldsQuery.value("pad").toInt() == 1;
+        field.isFirstField = SqliteValue::toBoolOrDefault(fieldsQuery, "is_first_field");
+        field.syncConf = SqliteValue::toIntOrDefault(fieldsQuery, "sync_conf", 0);
+        field.medianBurstIRE = SqliteValue::toDoubleOrDefault(fieldsQuery, "median_burst_ire", 0.0);
+        field.fieldPhaseID = SqliteValue::toIntOrDefault(fieldsQuery, "field_phase_id");
+        field.audioSamples = SqliteValue::toIntOrDefault(fieldsQuery, "audio_samples");
+        field.diskLoc = SqliteValue::toDoubleOrDefault(fieldsQuery, "disk_loc");
+        field.fileLoc = SqliteValue::toLongLongOrDefault(fieldsQuery, "file_loc");
+        field.decodeFaults = SqliteValue::toIntOrDefault(fieldsQuery, "decode_faults");
+        field.efmTValues = SqliteValue::toIntOrDefault(fieldsQuery, "efm_t_values");
+        field.pad = SqliteValue::toBoolOrDefault(fieldsQuery, "pad");
 
         // Read NTSC data from the main field record
         field.ntsc.isFmCodeDataValid = fieldsQuery.value("ntsc_is_fm_code_data_valid").toInt() == 1;
