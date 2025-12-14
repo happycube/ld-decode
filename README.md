@@ -19,7 +19,7 @@ ld-decode is a GPL3 open-source project run entirely by volunteers and provided 
 
 Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  Contributors maintain ready-made binary builds which are far more suitable for end-users and are available for platforms such as Windows and Apple MacOS.  The main ld-decode repo targets only Ubuntu (generally the current LTS version - although it's possible to compile the project on most Linux flavors).
 
-If you'd like to download binaries or compile the project from source please see the project's wiki for detailed instructions.
+If you'd like to download binaries or compile the project from source please see the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/) for detailed instructions.
 
 ## Building from Source
 
@@ -43,9 +43,9 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 # Documentation
 
 > [!Important]
-> If in doubt read the wiki!
+> If in doubt read the documentation!
 
-You can find the wiki here: [ld-decode Wiki](https://github.com/happycube/ld-decode/wiki)
+You can find the documentation here: [ld-decode documentation](https://happycube.github.io/ld-decode-docs/)
 
 
 # The decoding tool-chain
@@ -55,11 +55,13 @@ You can find the wiki here: [ld-decode Wiki](https://github.com/happycube/ld-dec
 
 # Want to get involved?
 
-The wiki includes details of the ld-decode community's Discord / IRC Bridge and the now legacy Facebook group.  
+The documentation includes details of the ld-decode community's Discord / IRC Bridge and the now legacy Facebook group.  
 
 If you are interested in contributing or have general questions please join the [Domesday86 Discord server](https://discord.gg/pVVrrxd) which has the entire family of decode projects developers on it (or IRC if you must) as the Facebook group is mostly inactive.
 
 For detailed information on how to contribute code, report bugs, or suggest enhancements, please see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+You can also contribute to the project documentation, see the [ld-decode documentation github](https://github.com/happycube/ld-decode-docs) for details.
 
 There is also a VHS specific subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active. 
 
