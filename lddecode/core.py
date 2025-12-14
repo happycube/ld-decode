@@ -3777,7 +3777,6 @@ class LDdecode:
 
         c_id = self.capture_id 
         f_id = fi['seqNo'] - 1
-        print(c_id, f_id)
 
         # Insert parent record into 'field_record'
         # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
