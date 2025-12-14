@@ -1,12 +1,15 @@
 import copy
 import itertools
+import os
 import platform
+import sqlite3
 import sys
 import threading
 import time
 import types
 
 from queue import Queue
+from textwrap import dedent
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -3442,11 +3445,20 @@ class LDdecode:
                 self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
                 self.do_rftbc = True
 
+            if os.path.exists(fname_out + '.tbc.db'):
+                os.unlink(fname_out + '.tbc.db')
+            self.dbconn = sqlite3.connect(fname_out + '.tbc.db')
+            self.create_db_schema()
+
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
         if self.pipe_rftbc:
             self.do_rftbc = True
 
         self.fname_out = fname_out
+
+        # TODO:  set this uniquely?
+        self.wrote_metadata = False
+        self.capture_id = 1
 
         self.firstfield = None  # In frame output mode, the first field goes here
 
@@ -3539,6 +3551,134 @@ class LDdecode:
             self.lpf.print_stats()
 
         self.print_stats()
+
+    def create_db_schema(self):
+        cur = self.dbconn.cursor()
+
+        # Enforce foreign key constraints (SQLite default is usually OFF)
+        # cur.execute("PRAGMA foreign_keys = ON;")
+
+        cur.executescript(dedent('''\
+            PRAGMA user_version = 1;
+
+            CREATE TABLE capture (
+                capture_id INTEGER PRIMARY KEY,
+                system TEXT NOT NULL CHECK (system IN ('NTSC','PAL','PAL_M')),
+                decoder TEXT NOT NULL CHECK (decoder IN ('ld-decode','vhs-decode')),
+                git_branch TEXT,
+                git_commit TEXT,
+                video_sample_rate REAL,
+                active_video_start INTEGER,
+                active_video_end INTEGER,
+                field_width INTEGER,
+                field_height INTEGER,
+                number_of_sequential_fields INTEGER,
+                colour_burst_start INTEGER,
+                colour_burst_end INTEGER,
+                is_mapped INTEGER CHECK (is_mapped IN (0,1)),
+                is_subcarrier_locked INTEGER CHECK (is_subcarrier_locked IN (0,1)),
+                is_widescreen INTEGER CHECK (is_widescreen IN (0,1)),
+                white_16b_ire INTEGER,
+                black_16b_ire INTEGER,
+                capture_notes TEXT
+            );
+
+            CREATE TABLE pcm_audio_parameters (
+                capture_id INTEGER PRIMARY KEY REFERENCES capture(capture_id) ON DELETE CASCADE,
+                bits INTEGER,
+                is_signed INTEGER CHECK (is_signed IN (0,1)),
+                is_little_endian INTEGER CHECK (is_little_endian IN (0,1)),
+                sample_rate REAL
+            );
+
+            CREATE TABLE field_record (
+                capture_id INTEGER NOT NULL REFERENCES capture(capture_id) ON DELETE CASCADE,
+                field_id INTEGER NOT NULL,
+                audio_samples INTEGER,
+                decode_faults INTEGER,
+                disk_loc REAL,
+                efm_t_values INTEGER,
+                field_phase_id INTEGER,
+                file_loc INTEGER,
+                is_first_field INTEGER CHECK (is_first_field IN (0,1)),
+                median_burst_ire REAL,
+                pad INTEGER CHECK (pad IN (0,1)),
+                sync_conf INTEGER,
+                ntsc_is_fm_code_data_valid INTEGER CHECK (ntsc_is_fm_code_data_valid IN (0,1)),
+                ntsc_fm_code_data INTEGER,
+                ntsc_field_flag INTEGER CHECK (ntsc_field_flag IN (0,1)),
+                ntsc_is_video_id_data_valid INTEGER CHECK (ntsc_is_video_id_data_valid IN (0,1)),
+                ntsc_video_id_data INTEGER,
+                ntsc_white_flag INTEGER CHECK (ntsc_white_flag IN (0,1)),
+                PRIMARY KEY (capture_id, field_id)
+            );
+
+            CREATE TABLE vits_metrics (
+                capture_id INTEGER NOT NULL,
+                field_id INTEGER NOT NULL,
+                b_psnr REAL,
+                w_snr REAL,
+                FOREIGN KEY (capture_id, field_id) 
+                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
+                PRIMARY KEY (capture_id, field_id)
+            );
+
+            CREATE TABLE vbi (
+                capture_id INTEGER NOT NULL,
+                field_id INTEGER NOT NULL,
+                vbi0 INTEGER NOT NULL,
+                vbi1 INTEGER NOT NULL,
+                vbi2 INTEGER NOT NULL,
+                FOREIGN KEY (capture_id, field_id) 
+                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
+                PRIMARY KEY (capture_id, field_id)
+            );
+
+            CREATE TABLE drop_outs (
+                capture_id INTEGER NOT NULL,
+                field_id INTEGER NOT NULL,
+                field_line INTEGER NOT NULL,
+                startx INTEGER NOT NULL,
+                endx INTEGER NOT NULL,
+                FOREIGN KEY (capture_id, field_id) 
+                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
+                PRIMARY KEY (capture_id, field_id, field_line, startx, endx)
+            );
+
+            CREATE TABLE vitc (
+                capture_id INTEGER NOT NULL,
+                field_id INTEGER NOT NULL,
+                vitc0 INTEGER NOT NULL,
+                vitc1 INTEGER NOT NULL,
+                vitc2 INTEGER NOT NULL,
+                vitc3 INTEGER NOT NULL,
+                vitc4 INTEGER NOT NULL,
+                vitc5 INTEGER NOT NULL,
+                vitc6 INTEGER NOT NULL,
+                vitc7 INTEGER NOT NULL,
+                FOREIGN KEY (capture_id, field_id) 
+                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
+                PRIMARY KEY (capture_id, field_id)
+            );
+
+            CREATE TABLE closed_caption (
+                capture_id INTEGER NOT NULL,
+                field_id INTEGER NOT NULL,
+                data0 INTEGER,
+                data1 INTEGER,
+                FOREIGN KEY (capture_id, field_id) 
+                    REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
+                PRIMARY KEY (capture_id, field_id)
+            );
+        '''))
+
+        self.dbconn.commit()
+
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cur.fetchall()
+        #print([table[0] for table in tables])
+
+        cur.close()
 
     def roughseek(self, location, isField=True):
         self.prevPhaseID = None
@@ -3634,6 +3774,51 @@ class LDdecode:
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
         self.fieldinfo.append(fi)
+
+        c_id = self.capture_id 
+        f_id = fi['seqNo'] - 1
+        print(c_id, f_id)
+
+        # Insert parent record into 'field_record'
+        # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
+        self.dbconn.execute('''
+            INSERT INTO field_record (
+                capture_id, field_id, is_first_field, sync_conf, disk_loc, 
+                file_loc, median_burst_ire, field_phase_id, decode_faults, 
+                audio_samples, efm_t_values
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+            (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'], 
+                fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], fi['decodeFaults'], 
+                fi['audioSamples'], fi['efmTValues']))
+
+        w_snr = fi['vitsMetrics'].get('wSNR', -1)
+        b_psnr = fi['vitsMetrics'].get('bPSNR', -1)
+        
+        self.dbconn.execute('''
+            INSERT INTO vits_metrics (
+                capture_id, field_id, w_snr, b_psnr
+            ) VALUES (?, ?, ?, ?)''',
+            (c_id, f_id, w_snr, b_psnr))
+
+        # Insert dropouts (if any) into 'drop_outs'
+        if self.doDOD and fi.get("dropOuts"):
+            dropout_lines = fi["dropOuts"]["fieldLine"]
+            dropout_starts = fi["dropOuts"]["startx"]
+            dropout_ends = fi["dropOuts"]["endx"]
+
+            # Use executemany for cleaner/faster insertion of multiple rows
+            dropout_data = [
+                (c_id, f_id, line, start, end) 
+                for line, start, end in zip(dropout_lines, dropout_starts, dropout_ends)
+            ]
+
+            self.dbconn.executemany('''
+                INSERT INTO drop_outs (
+                    capture_id, field_id, field_line, startx, endx
+                ) VALUES (?, ?, ?, ?, ?)''', 
+                dropout_data)
+            
+        self.dbconn.commit()
 
         self.outfile_video.write(picture)
         self.fields_written += 1
@@ -4322,13 +4507,16 @@ class LDdecode:
 
     def build_json(self):
         """ build up the JSON structure for file output. """
-        jout = {}
-        jout["pcmAudioParameters"] = {
+        pcmAudioParameters = {
             "bits": 16,
             "isLittleEndian": True,
             "isSigned": True,
             "sampleRate": self.analog_audio,
         }
+
+        jout = {}
+
+        jout["pcmAudioParameters"] = pcmAudioParameters
 
         vp = {}
 
@@ -4373,5 +4561,47 @@ class LDdecode:
         ))
 
         jout["videoParameters"] = vp
+
+        if not self.wrote_metadata:
+            self.wrote_metadata = True
+
+            cursor = self.dbconn.cursor()
+            decoder_val = vp.get('decoder', 'ld-decode')
+
+            cursor.execute("""
+                INSERT INTO capture (
+                    system, decoder, git_branch, git_commit, 
+                    video_sample_rate, active_video_start, active_video_end, 
+                    field_width, field_height, number_of_sequential_fields, 
+                    colour_burst_start, colour_burst_end, 
+                    white_16b_ire, black_16b_ire
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                vp["system"], decoder_val, vp["gitBranch"], vp["gitCommit"],
+                vp["sampleRate"], vp["activeVideoStart"], vp["activeVideoEnd"],
+                vp["fieldWidth"], vp["fieldHeight"], vp["numberOfSequentialFields"],
+                vp["colourBurstStart"], vp["colourBurstEnd"],
+                vp["white16bIre"], vp["black16bIre"]
+            ))
+
+            self.capture_id = cursor.lastrowid
+
+            # 2. Insert into 'pcm_audio_parameters'
+            # Now requires capture_id as a Foreign Key.
+            # Booleans are cast to int() to satisfy CHECK(x IN (0,1))
+            cursor.execute("""
+                INSERT INTO pcm_audio_parameters (
+                    capture_id, bits, is_little_endian, is_signed, sample_rate
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (
+                self.capture_id,
+                pcmAudioParameters["bits"], 
+                int(pcmAudioParameters["isLittleEndian"]), 
+                int(pcmAudioParameters["isSigned"]), 
+                pcmAudioParameters["sampleRate"]
+            ))
+
+            self.dbconn.commit()
+            cursor.close()
 
         return jout
