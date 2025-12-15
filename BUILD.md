@@ -2,6 +2,21 @@
 
 This project uses CMake and enforces out-of-source builds. All build artifacts are kept in a separate `build/` directory, keeping the source tree clean.
 
+## Cloning the Repository
+
+This project uses git submodules for test data and dependencies. Clone the repository with `--recursive` to automatically fetch all submodules:
+
+```bash
+git clone --recursive https://github.com/happycube/ld-decode.git
+cd ld-decode
+```
+
+**If you already cloned without `--recursive`**, initialize and update submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
 ## Quick Start
 
 ```bash
