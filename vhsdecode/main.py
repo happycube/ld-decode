@@ -592,16 +592,16 @@ def main(args=None, use_gui=False):
             output_dir = os.path.dirname(os.path.abspath(outname)) or "."
             try:
                 free_space = shutil.disk_usage(output_dir).free
-                if free_space < 1024 * 1024 * 1024:  # 1GB, 500 fields needs around 675MB, 1GB for a bit of margin.
+                if free_space < 1024 * 1024 * 1024:  # 10GB, 500 fields_written needs around 675MB, 1G0B for some margin because there can be other things writing to the disk as well, the disk might fill before the next check otherwise.
                     print(
-                        "\nLess than 1GB of space is remaining, decoding paused. Decoding will resume once there is more space, or press Ctrl+C to exit.",
+                        "\nLess than 10GB of space is remaining, decoding paused. Decoding will resume once there is more space, or press Ctrl+C to exit.",
                         file=sys.stderr,
                     )
                     while True:
                         try:
                             time.sleep(1)
                             free_space = shutil.disk_usage(output_dir).free
-                            if free_space >= 1024 * 1024 * 1024:
+                            if free_space >= 1024 * 1024 * 1024 * 10:  # 10GB
                                 print("\nDisk space available, resuming decode.", file=sys.stderr)
                                 break
                         except KeyboardInterrupt:
