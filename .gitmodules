@@ -3,4 +3,4 @@
 	url = https://github.com/pjkundert/ezpwd-reed-solomon.git
 [submodule "testdata"]
 	path = testdata
-	url = https://github.com/happycube/ld-decode-testdata
+	url = https://github.com/happycube/ld-decode-testdata-ci
