@@ -589,7 +589,7 @@ def main(args=None, use_gui=False):
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
             jsondumper.write()
             # Check free disk space
-            output_dir = os.path.dirname(os.path.abspath(outname)) or "."
+            output_dir = os.path.dirname(os.path.abspath(outname))
             try:
                 free_space = shutil.disk_usage(output_dir).free
                 if free_space < 1024 * 1024 * 1024 * 10:  # 10GB, 500 fields_written needs around 675MB, 1G0B for some margin because there can be other things writing to the disk as well, the disk might fill before the next check otherwise.
