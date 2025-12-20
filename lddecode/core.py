@@ -3390,7 +3390,6 @@ class LDdecode:
 
         self.blackIRE = 0
 
-
         self.start_time = time.time()
         self.second_decode = None
         self.use_profiler = extra_options.get("use_profiler", False)
@@ -3456,11 +3455,8 @@ class LDdecode:
 
         self.fname_out = fname_out
 
-        # TODO:  set this uniquely?
-        self.wrote_metadata = False
-        self.capture_id = 1
-
         self.firstfield = None  # In frame output mode, the first field goes here
+        self.capture_id = None
 
         self.system = system
         self.rf_opts = {
@@ -3774,6 +3770,9 @@ class LDdecode:
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
         self.fieldinfo.append(fi)
+
+        if not self.capture_id:
+            self.build_sqlite_metadata()
 
         c_id = self.capture_id 
         f_id = fi['seqNo'] - 1
@@ -4561,46 +4560,55 @@ class LDdecode:
 
         jout["videoParameters"] = vp
 
-        if not self.wrote_metadata:
-            self.wrote_metadata = True
-
-            cursor = self.dbconn.cursor()
-            decoder_val = vp.get('decoder', 'ld-decode')
-
-            cursor.execute("""
-                INSERT INTO capture (
-                    system, decoder, git_branch, git_commit, 
-                    video_sample_rate, active_video_start, active_video_end, 
-                    field_width, field_height, number_of_sequential_fields, 
-                    colour_burst_start, colour_burst_end, 
-                    white_16b_ire, black_16b_ire
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                vp["system"], decoder_val, vp["gitBranch"], vp["gitCommit"],
-                vp["sampleRate"], vp["activeVideoStart"], vp["activeVideoEnd"],
-                vp["fieldWidth"], vp["fieldHeight"], vp["numberOfSequentialFields"],
-                vp["colourBurstStart"], vp["colourBurstEnd"],
-                vp["white16bIre"], vp["black16bIre"]
-            ))
-
-            self.capture_id = cursor.lastrowid
-
-            # 2. Insert into 'pcm_audio_parameters'
-            # Now requires capture_id as a Foreign Key.
-            # Booleans are cast to int() to satisfy CHECK(x IN (0,1))
-            cursor.execute("""
-                INSERT INTO pcm_audio_parameters (
-                    capture_id, bits, is_little_endian, is_signed, sample_rate
-                ) VALUES (?, ?, ?, ?, ?)
-            """, (
-                self.capture_id,
-                pcmAudioParameters["bits"], 
-                int(pcmAudioParameters["isLittleEndian"]), 
-                int(pcmAudioParameters["isSigned"]), 
-                pcmAudioParameters["sampleRate"]
-            ))
-
-            self.dbconn.commit()
-            cursor.close()
-
         return jout
+    
+    def build_sqlite_metadata(self):
+        ''' this runs only once to write metadata, setting self.capture_id '''
+        if self.capture_id:
+            return
+            
+        cursor = self.dbconn.cursor()
+
+        js = self.build_json()
+        vp = js.get("videoParameters", None)
+
+        decoder_val = vp.get('decoder', 'ld-decode')
+
+        cursor.execute("""
+            INSERT INTO capture (
+                system, decoder, git_branch, git_commit, 
+                video_sample_rate, active_video_start, active_video_end, 
+                field_width, field_height, number_of_sequential_fields, 
+                colour_burst_start, colour_burst_end, 
+                white_16b_ire, black_16b_ire
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            vp["system"], decoder_val, vp["gitBranch"], vp["gitCommit"],
+            vp["sampleRate"], vp["activeVideoStart"], vp["activeVideoEnd"],
+            vp["fieldWidth"], vp["fieldHeight"], vp["numberOfSequentialFields"],
+            vp["colourBurstStart"], vp["colourBurstEnd"],
+            vp["white16bIre"], vp["black16bIre"]
+        ))
+
+        self.capture_id = cursor.lastrowid
+
+        pcmAudioParameters = js.get("pcmAudioParameters", None)
+
+        # 2. Insert into 'pcm_audio_parameters'
+        # Now requires capture_id as a Foreign Key.
+        # Booleans are cast to int() to satisfy CHECK(x IN (0,1))
+        cursor.execute("""
+            INSERT INTO pcm_audio_parameters (
+                capture_id, bits, is_little_endian, is_signed, sample_rate
+            ) VALUES (?, ?, ?, ?, ?)
+        """, (
+            self.capture_id,
+            pcmAudioParameters["bits"], 
+            int(pcmAudioParameters["isLittleEndian"]), 
+            int(pcmAudioParameters["isSigned"]), 
+            pcmAudioParameters["sampleRate"]
+        ))
+
+        self.dbconn.commit()
+        cursor.close()            
+
