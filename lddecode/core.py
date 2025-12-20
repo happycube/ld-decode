@@ -3777,26 +3777,41 @@ class LDdecode:
         c_id = self.capture_id 
         f_id = fi['seqNo'] - 1
 
+        decodeFaults = None if fi.get('decodeFaults') == 0 else fi.get('decodeFaults')
+
         # Insert parent record into 'field_record'
         # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
         self.dbconn.execute('''
             INSERT INTO field_record (
                 capture_id, field_id, is_first_field, sync_conf, disk_loc, 
                 file_loc, median_burst_ire, field_phase_id, decode_faults, 
-                audio_samples, efm_t_values
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                audio_samples, efm_t_values, pad
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
             (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'], 
-                fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], fi['decodeFaults'], 
-                fi['audioSamples'], fi['efmTValues']))
+                fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults, 
+                fi['audioSamples'], fi['efmTValues'], 0))
 
-        w_snr = fi['vitsMetrics'].get('wSNR', -1)
-        b_psnr = fi['vitsMetrics'].get('bPSNR', -1)
+        w_snr = fi['vitsMetrics'].get('wSNR', 0)
+        b_psnr = fi['vitsMetrics'].get('bPSNR', 0)
         
         self.dbconn.execute('''
             INSERT INTO vits_metrics (
                 capture_id, field_id, w_snr, b_psnr
             ) VALUES (?, ?, ?, ?)''',
             (c_id, f_id, w_snr, b_psnr))
+
+        # Insert VBI data if present
+        vbi_data = fi.get("vbi", {}).get("vbiData", [])
+        if vbi_data:
+            # Ensure we have exactly 3 values for the vbi0, vbi1, vbi2 columns
+            # This pads with 0 if fewer than 3 are found
+            vbi_row = (vbi_data + [0, 0, 0])[:3]
+            
+            self.dbconn.execute('''
+                INSERT INTO vbi (
+                    capture_id, field_id, vbi0, vbi1, vbi2
+                ) VALUES (?, ?, ?, ?, ?)''', 
+                (c_id, f_id, vbi_row[0], vbi_row[1], vbi_row[2]))
 
         # Insert dropouts (if any) into 'drop_outs'
         if self.doDOD and fi.get("dropOuts"):
@@ -3816,6 +3831,7 @@ class LDdecode:
                 ) VALUES (?, ?, ?, ?, ?)''', 
                 dropout_data)
             
+        self.build_sqlite_metadata()
         self.dbconn.commit()
 
         self.outfile_video.write(picture)
@@ -4561,54 +4577,78 @@ class LDdecode:
         jout["videoParameters"] = vp
 
         return jout
-    
+
     def build_sqlite_metadata(self):
-        ''' this runs only once to write metadata, setting self.capture_id '''
-        if self.capture_id:
-            return
-            
+        ''' Writes metadata to SQLite. Updates existing rows if capture_id is set, otherwise inserts. '''
         cursor = self.dbconn.cursor()
 
         js = self.build_json()
-        vp = js.get("videoParameters", None)
-
+        vp = js.get("videoParameters", {})
+        pcm = js.get("pcmAudioParameters", {})
         decoder_val = vp.get('decoder', 'ld-decode')
 
-        cursor.execute("""
-            INSERT INTO capture (
-                system, decoder, git_branch, git_commit, 
-                video_sample_rate, active_video_start, active_video_end, 
-                field_width, field_height, number_of_sequential_fields, 
-                colour_burst_start, colour_burst_end, 
-                white_16b_ire, black_16b_ire
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        # Prepare Video Parameters data tuple
+        video_values = (
             vp["system"], decoder_val, vp["gitBranch"], vp["gitCommit"],
             vp["sampleRate"], vp["activeVideoStart"], vp["activeVideoEnd"],
             vp["fieldWidth"], vp["fieldHeight"], vp["numberOfSequentialFields"],
             vp["colourBurstStart"], vp["colourBurstEnd"],
-            vp["white16bIre"], vp["black16bIre"]
-        ))
+            vp["white16bIre"], vp["black16bIre"], 
+            # is_mapped, is_subcarrier_locked, is_widescreen
+            0, vp['system']=='NTSC', 0,
+        )
+        
 
-        self.capture_id = cursor.lastrowid
+        # Prepare PCM Audio data tuple
+        pcm_values = (
+            pcm["bits"], 
+            int(pcm["isLittleEndian"]), 
+            int(pcm["isSigned"]), 
+            pcm["sampleRate"]
+        )
 
-        pcmAudioParameters = js.get("pcmAudioParameters", None)
+        if self.capture_id:
+            # 1. Update 'capture' table 
+            # Changed 'WHERE id = ?' to 'WHERE capture_id = ?'
+            cursor.execute("""
+                UPDATE capture SET 
+                    system=?, decoder=?, git_branch=?, git_commit=?, 
+                    video_sample_rate=?, active_video_start=?, active_video_end=?, 
+                    field_width=?, field_height=?, number_of_sequential_fields=?, 
+                    colour_burst_start=?, colour_burst_end=?, 
+                    white_16b_ire=?, black_16b_ire=?, 
+                    is_mapped=?, is_subcarrier_locked=?, is_widescreen=?
+                WHERE capture_id = ?
+            """, video_values + (self.capture_id,))
 
-        # 2. Insert into 'pcm_audio_parameters'
-        # Now requires capture_id as a Foreign Key.
-        # Booleans are cast to int() to satisfy CHECK(x IN (0,1))
-        cursor.execute("""
-            INSERT INTO pcm_audio_parameters (
-                capture_id, bits, is_little_endian, is_signed, sample_rate
-            ) VALUES (?, ?, ?, ?, ?)
-        """, (
-            self.capture_id,
-            pcmAudioParameters["bits"], 
-            int(pcmAudioParameters["isLittleEndian"]), 
-            int(pcmAudioParameters["isSigned"]), 
-            pcmAudioParameters["sampleRate"]
-        ))
+            # 2. Update 'pcm_audio_parameters' table
+            cursor.execute("""
+                UPDATE pcm_audio_parameters SET 
+                    bits=?, is_little_endian=?, is_signed=?, sample_rate=?
+                WHERE capture_id = ?
+            """, pcm_values + (self.capture_id,))
+            
+        else:
+            # 1. Insert into 'capture' table
+            cursor.execute("""
+                INSERT INTO capture (
+                    system, decoder, git_branch, git_commit, 
+                    video_sample_rate, active_video_start, active_video_end, 
+                    field_width, field_height, number_of_sequential_fields, 
+                    colour_burst_start, colour_burst_end, 
+                    white_16b_ire, black_16b_ire,
+                    is_mapped, is_subcarrier_locked, is_widescreen
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, video_values)
+
+            self.capture_id = cursor.lastrowid
+
+            # 2. Insert into 'pcm_audio_parameters' table
+            cursor.execute("""
+                INSERT INTO pcm_audio_parameters (
+                    capture_id, bits, is_little_endian, is_signed, sample_rate
+                ) VALUES (?, ?, ?, ?, ?)
+            """, (self.capture_id,) + pcm_values)
 
         self.dbconn.commit()
-        cursor.close()            
-
+        cursor.close()
