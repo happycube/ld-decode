@@ -88,9 +88,9 @@ int main(int argc, char *argv[])
     } else {
         // Remove .json extension if present, then add .db
         if (inputSqliteFilename.endsWith(".db", Qt::CaseInsensitive)) {
-            outputJsonFilename = inputSqliteFilename.left(inputSqliteFilename.length() - 3) + "-export.json";
+            outputJsonFilename = inputSqliteFilename.left(inputSqliteFilename.length() - 3) + ".export.json";
         } else {
-            outputJsonFilename = inputSqliteFilename + "-export.json";
+            outputJsonFilename = inputSqliteFilename + ".export.json";
         }
     }
 
