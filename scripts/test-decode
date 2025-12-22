@@ -243,6 +243,117 @@ def run_ld_export_metadata(args):
     cmd += [args.output + '.tbc.db']
     run_command(cmd)
 
+def run_ld_export_decode_metadata(args):
+    """Run ld-export-decode-metadata."""
+
+    json_file = args.output + '.tbc.export.json'
+    db_file = args.output + '.tbc.db'
+
+    # Check if SQLite DB exists
+    if not dry_run:
+        if not os.path.exists(db_file):
+            die(db_file, 'does not exist')
+
+    clean(args, ['.tbc.export.json'])
+
+    cmd = [build_dir + '/tools/ld-export-decode-metadata/ld-export-decode-metadata']
+    cmd += ['--input-sqlite', db_file]
+    run_command(cmd)
+
+    if dry_run:
+        return
+
+    if not os.path.exists(json_file):
+        die(json_file, 'does not exist')
+
+    try:
+        with open(json_file) as fjson:
+            json_data = json.load(fjson)
+    except UnicodeDecodeError as e:
+        die(json_file, 'Failed to decode Unicode:', str(e))
+    except JSONDecodeError as e:
+        die(json_file, 'Failed to decode JSON:', str(e))
+    except:
+        die(json_file, 'reading failed for unknown reason')
+
+    try:
+        conn = sqlite3.connect(db_file)
+        conn.row_factory = sqlite3.Row  # Enable column access by name
+        cursor = conn.cursor()
+
+        video_params = [ ('video_sample_rate','sampleRate'), ('active_video_start','activeVideoStart'),
+            ('active_video_end','activeVideoEnd'), ('field_width','fieldWidth'), ('field_height','fieldHeight'),
+            ('number_of_sequential_fields', 'numberOfSequentialFields'), ('colour_burst_start','colourBurstStart'),
+            ('colour_burst_end','colourBurstEnd') ]
+
+        # check video parameters
+        cursor.execute("SELECT " + ", ".join([vp[0] for vp in video_params]) + " FROM capture WHERE capture_id == 1")
+        rows = cursor.fetchall()
+        if len(rows) != 1:
+            die(db_file, 'could not find capture with id 1')
+        try:
+            for vp in video_params:
+                # float types have rounding issues when comparing, therfore this code
+                if abs(rows[0][vp[0]] - json_data['videoParameters'][vp[1]]) > 0.05:
+                    die(json_file, vp[0], 'incorrect', rows[0][vp[0]], 'vs.', json_data['videoParameters'][vp[1]])
+        except TypeError as e:
+            die(json_file, 'could not find index:', str(e))
+
+        field_params = [ ('disk_loc','diskLoc'), ('field_phase_id','fieldPhaseID'), ('file_loc','fileLoc'),
+            ('is_first_field','isFirstField'), ('sync_conf','syncConf') ]
+
+        # check field params
+        cursor.execute("SELECT field_id, " + ", ".join([fp[0] for fp in field_params]) + " FROM field_record WHERE capture_id == 1 ORDER BY field_id")
+        rows = cursor.fetchall()
+
+        if len(rows) != len(json_data['fields']):
+            die(json_file, 'incorrect number of fields:', len(rows), 'vs.', len(json_data['fields']))
+        try:
+            for row in rows:
+                for fp in field_params:
+                    if row[fp[0]] != json_data['fields'][row['field_id']][fp[1]]:
+                        die(json_file, 'field', row['field_id'], ':', fp[0], 'incorrect', row[fp[0]], 'vs.', json_data['fields'][row['field_id']][fp[1]])
+        except TypeError as e:
+            die(json_file, 'could not find index:', str(e))
+
+        # check dropouts
+        cursor.execute("SELECT field_id, field_line, startx, endx FROM drop_outs WHERE capture_id == 1 ORDER BY field_id")
+
+        try:
+            for row in cursor.fetchall():
+                jdo = json_data['fields'][row['field_id']]['dropOuts']
+                line_idx = [i for i in range(len(jdo['fieldLine'])) if jdo['fieldLine'][i] == row['field_line']]
+                if len(line_idx) == 0:
+                    die('could not find dropout for field', row['field_id'], 'in line', row['field_line'])
+                found_dout = False
+                for i in line_idx:
+                    if jdo['startx'][i] == row['startx'] and jdo['endx'][i] == row['endx']:
+                        found_dout = True
+                        break
+                if not found_dout:
+                    die('could not find dropout for field', row['field_id'], 'in line', row['field_line'], 'for range', row['startx'], 'to', row['endx'])
+        except TypeError as e:
+            die(json_file, 'could not find index:', str(e))
+
+        vits_metrics_params = [ ('b_psnr','bPSNR'), ('w_snr','wSNR') ]
+
+        # check vits metrics
+        cursor.execute("SELECT field_id, " + ", ".join([vmp[0] for vmp in vits_metrics_params]) + " FROM vits_metrics WHERE capture_id == 1 ORDER BY field_id")
+
+        try:
+            for row in cursor.fetchall():
+                for vmp in vits_metrics_params:
+                    if row[vmp[0]] != 0.0 and abs(row[vmp[0]] - json_data['fields'][row['field_id']]['vitsMetrics'][vmp[1]]) > 0.05:
+                        die(json_file, 'field', row['field_id'], ':', vmp[0], 'incorrect', row[vmp[0]], 'vs.', json_data['fields'][row['field_id']]['vitsMetrics'][vmp[1]])
+        except TypeError as e:
+            die(json_file, 'could not find index:', str(e))
+
+    except sqlite3.Error as e:
+        die(db_file, 'SQLite error:', str(e))
+    finally:
+        if conn:
+            conn.close()
+
 def run_efm_decoder(args):
     """Run efm-decoder-f2, efm-decoder-d24, and efm-decoder-audio."""
 
@@ -431,6 +542,7 @@ def main():
     run_ld_json_converter(args)
     run_ld_process_vbi(args)
     run_ld_export_metadata(args)
+    run_ld_export_decode_metadata(args)
     run_efm_decoder(args)
     run_ld_dropout_correct(args)
     for decoder in args.decoders:
