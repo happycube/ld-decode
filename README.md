@@ -1,3 +1,12 @@
+# Documentation
+
+> [!Important]
+> If in doubt read the comprehensive [documentation web-site](https://happycube.github.io/ld-decode-docs/)!
+
+You can find the documentation here: [ld-decode documentation](https://happycube.github.io/ld-decode-docs/)
+
+Check the documentation first, the [discord server](https://discord.com/invite/pVVrrxd) second and then raise issues.
+
 # What is ld-decode?
 
 **ld-decode** is a software-defined decoder for LaserDisc RF captures made using modified LaserDisc players and capture devices such as the [DomesdayDuplicator](https://github.com/simoninns/DomesdayDuplicator)
@@ -38,14 +47,6 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 - Custom installation prefixes
 - Python module installation
 - Verification and troubleshooting
-
-
-# Documentation
-
-> [!Important]
-> If in doubt read the documentation!
-
-You can find the documentation here: [ld-decode documentation](https://happycube.github.io/ld-decode-docs/)
 
 
 # The decoding tool-chain
