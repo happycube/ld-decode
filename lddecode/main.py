@@ -3,6 +3,8 @@ import signal
 import sys
 import argparse
 import traceback
+import subprocess
+import numpy as np
 
 from lddecode.core import *
 from lddecode.utils import *
@@ -276,6 +278,14 @@ def main(args=None):
         help="Enable line_profiler on select functions",
     )
 
+    parser.add_argument(
+        "--write-test-ldf",
+        dest="write_test_ldf",
+        metavar="output.ldf",
+        type=str,
+        default=None,
+        help="Write the input portion being decoded to a .ldf file for bug reporting",
+    )
 
     args = parser.parse_args(args)
     # print(args)
@@ -288,6 +298,17 @@ def main(args=None):
     if args.pal and (args.ntsc or args.ntscj):
         print("ERROR: Can only be PAL or NTSC")
         sys.exit(1)
+
+    # Safety check: ensure --write-test-ldf doesn't overwrite the input file
+    if args.write_test_ldf is not None:
+        import os.path
+        input_path = os.path.abspath(filename)
+        output_path = os.path.abspath(args.write_test_ldf)
+        if input_path == output_path:
+            print("ERROR: --write-test-ldf output file cannot be the same as input file", file=sys.stderr)
+            print(f"Input:  {filename}", file=sys.stderr)
+            print(f"Output: {args.write_test_ldf}", file=sys.stderr)
+            sys.exit(1)
 
     audio_pipe = None
 
@@ -366,6 +387,10 @@ def main(args=None):
 
     signal.signal(signal.SIGINT, original_sigint_handler)
 
+    # Store the starting sample position for --write-input-ldf
+    start_sample_position = None
+    end_sample_position = None
+
     if args.start_fileloc != -1:
         ldd.roughseek(args.start_fileloc, False)
     else:
@@ -380,6 +405,10 @@ def main(args=None):
         if ldd.seek(args.seek if firstframe == 0 else firstframe, args.seek) is None:
             print("ERROR: Seeking failed", file=sys.stderr)
             sys.exit(1)
+
+    # Capture the start sample position after all seeking
+    if args.write_test_ldf is not None:
+        start_sample_position = int(ldd.fdoffset)
 
     if args.verboseVITS:
         ldd.verboseVITS = True
@@ -425,6 +454,74 @@ def main(args=None):
     else:
         print(f"\nCompleted without handling any frames.", file=sys.stderr)
 
+    # Write the input .ldf file if requested
+    if args.write_test_ldf is not None and start_sample_position is not None:
+        # Add buffer for decoder lookahead - approximately 1.5 field's worth
+        # The decoder needs to read ahead for proper field decoding
+        # NTSC: ~665K samples/field, PAL: ~1.05M samples/field
+        buffer_samples = 1100000  # Safe for both NTSC and PAL
+        end_sample_position = int(ldd.fdoffset) + buffer_samples
+        write_input_ldf_file(
+            ldd,
+            args.write_test_ldf,
+            start_sample_position,
+            end_sample_position,
+            filename
+        )
+
     cleanup()
 
 #    print(time.time()-firstdecode)
+
+
+def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_filename):
+    """
+    Write the input samples that were decoded to a .ldf file.
+    This creates a reproducible test case for bug reporting.
+    """
+    print(f"\nWriting input samples to {output_filename}...", file=sys.stderr)
+    print(f"  Start sample: {start_sample}", file=sys.stderr)
+    print(f"  End sample: {end_sample}", file=sys.stderr)
+    
+    sample_count = end_sample - start_sample
+    if sample_count <= 0:
+        print("WARNING: No samples to write", file=sys.stderr)
+        return
+    
+    # Create a new loader for reading the input file independently
+    try:
+        input_loader = make_loader(input_filename, None)
+    except ValueError as e:
+        print(f"ERROR: Cannot open input file for writing .ldf: {e}", file=sys.stderr)
+        return
+    
+    # Use compression level 6 (balanced between size and speed)
+    process, fd = ldf_pipe(output_filename, compression_level=6)
+    
+    try:
+        # Write samples in chunks to avoid memory issues
+        chunk_size = 16384
+        samples_written = 0
+        
+        for i in range(start_sample, end_sample, chunk_size):
+            remaining = end_sample - i
+            read_len = min(chunk_size, remaining)
+            
+            # Read the data from the input file using the independent loader
+            data = input_loader(input_filename, i, read_len)
+            if data is not None and len(data) == read_len:
+                dataout = np.array(data, dtype=np.int16)
+                fd.write(dataout)
+                samples_written += read_len
+            else:
+                print(f"WARNING: Short read at sample {i}", file=sys.stderr)
+                break
+        
+        print(f"  Samples written: {samples_written}", file=sys.stderr)
+        
+    finally:
+        fd.close()
+        # Wait for ffmpeg to finish encoding
+        process.wait()
+        
+    print(f"Successfully wrote {output_filename}", file=sys.stderr)
