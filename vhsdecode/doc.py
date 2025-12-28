@@ -26,59 +26,38 @@ def find_crossings(data, threshold):
     return crossings
 
 
-def find_crossings_dir(data, threshold, look_for_down):
-    """Find where the data crosses the set threshold
-    the look_for_down parameters determines if the crossings returned are down
-    or up crossings.
-    ."""
-    crossings = find_crossings(data, threshold)
-    crossings_pos = np.argwhere(crossings)[:, 0]
-    if len(crossings_pos) <= 0:
-        return []
-    first_cross = crossings_pos[0]
-    if first_cross >= len(data):
-        return []
-    first_crossing_is_down = data[first_cross] > data[first_cross + 1]
-    if first_crossing_is_down == look_for_down:
-        return crossings_pos[::2]
-    else:
-        return crossings_pos[1::2]
+@njit(cache=True, nogil=True, fastmath=True)
+def find_dropouts(env, threshold, hysteresis, merge_threshold):
+    # list of tuples containing start and end
+    down_thresh = threshold
+    up_thresh = threshold * hysteresis
 
+    dropouts = []
+    dropout_idx = -1
+    
+    n = len(env)
+    for i in range(n):
+        v = env[i]
+        dropout_ended = False
 
-@njit(cache=True)
-def combine_to_dropouts(crossings_down, crossings_up, merge_threshold):
-    """Combine arrays of up and down crossings, and merge ones with small gaps between them.
-    Intended to be used where up and down crossing levels are different, the two lists will not
-    always alternate or have the same length.
-    Returns a list of start/end tuples.
-    """
-    used = []
-    # TODO: Fix when ending on dropout
+        if v <= down_thresh:
+            if dropout_idx == -1 or (dropout_ended := dropouts[dropout_idx][1] != -1 and i - dropouts[dropout_idx][1] > merge_threshold):
+                # start dropout if none exist or distance from previous is greater than the merge threshold
+                dropout_idx += 1
+                dropouts.append((i, -1))
+            elif dropout_ended:
+                # continue existing dropout
+                dropouts[dropout_idx] = (dropouts[dropout_idx][0], -1)
+        elif v >= up_thresh:
+            # end dropout
+            if dropout_idx != -1 and dropouts[dropout_idx][1] == -1:
+                dropouts[dropout_idx] = (dropouts[dropout_idx][0], i)
 
-    cr_up = iter(crossings_up)
-    last_u = 0
-    # Loop through crossings and combine
-    # TODO: Doing this via a loop is probably not ideal in python,
-    # we may want to look for a way to more directly generate a list of down/up crossings
-    # with hysteresis.
-    for d in crossings_down:
-        if d < last_u:
-            continue
+    if dropout_idx != -1 and dropouts[dropout_idx][1] == -1:
+        # set the dropout ending to the last sample when the dropout happens at the end of the field
+        dropouts[dropout_idx] = (dropouts[dropout_idx][0], n-1)
 
-        # If the distance between two dropouts is very small, we merge them.
-        if d - last_u < merge_threshold and len(used) > 0:
-            # Pop the last added dropout and use it's starting point
-            # as the start of the merged one.
-            last = used.pop()
-            d = last[0]
-
-        for u in cr_up:
-            if u > d:
-                used.append((d, u))
-                last_u = u
-                break
-
-    return used
+    return dropouts
 
 
 def detect_dropouts_rf(field, dod_options):
@@ -104,25 +83,7 @@ def detect_dropouts_rf(field, dod_options):
         # to avoid the threshold ending too low.
         threshold = field_average * threshold_p
 
-    errlist = []
-
-    crossings_down = find_crossings_dir(env, threshold, True)
-    crossings_up = find_crossings_dir(env, threshold * hysteresis, False)
-
-    if (
-        len(crossings_down) > 0
-        and len(crossings_up) > 0
-        and crossings_down[0] > crossings_up[0]
-        and env[0] < threshold
-    ):
-        # Handle if we start on a dropout by adding a zero at the start since we won't have any
-        # down crossing for it in the data.
-        crossings_down = np.concatenate((np.array([0]), crossings_down), axis=None)
-
-    if len(crossings_down) > 0 and len(crossings_up) > 0:
-        errlist = combine_to_dropouts(
-            crossings_down, crossings_up, vhs_formats.DOD_MERGE_THRESHOLD
-        )
+    errlist = find_dropouts(env, threshold, hysteresis, vhs_formats.DOD_MERGE_THRESHOLD)
 
     # Drop very short dropouts that were not merged.
     # We do this after mergin to avoid removing short consecutive dropouts that
