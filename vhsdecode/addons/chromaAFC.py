@@ -55,7 +55,7 @@ class ChromaAFC:
         )
 
         self.cc_freq_mhz = 0
-        self.chroma_heterodyne = np.array([])
+        self.chroma_heterodyne = np.array([], dtype=np.float32)
 
         if do_cafc:
             self.narrowband = self.get_narrowband_bandpass()
@@ -192,7 +192,7 @@ class ChromaAFC:
                     + (np.pi * 3 / 2)
                     + phase_drift
                 ),
-            ]
+            ], dtype=np.float32
         )
 
     #    # As this is done on the tbced signal, we need the sampling frequency of that,

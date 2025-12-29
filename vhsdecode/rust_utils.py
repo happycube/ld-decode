@@ -1,7 +1,5 @@
 from vhsd_rust import sosfiltfilt, sosfiltfilt_f32
 import numpy as np
-import scipy.signal as sps
-
 
 def sos_filter_as_array_and_order(filter):
     """Convert the sos filter to a array derive the filter order for use inside
