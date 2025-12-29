@@ -111,7 +111,7 @@ def comb_c_ntsc(data, line_len):
     return data
 
 
-@njit(cache=True, nogil=True)
+@njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
     chroma,
     lineoffset,
@@ -121,7 +121,7 @@ def upconvert_chroma(
     phase_rotation,
     starting_phase,
 ):
-    uphet = np.zeros(len(chroma), dtype=np.double)
+    uphet = np.zeros(len(chroma), dtype=np.float32)
     if phase_rotation == 0:
         # Track 1 - for PAL, phase doesn't change.
         start = lineoffset
@@ -163,6 +163,13 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
 
     return chroma
 
+@njit(cache=True, nogil=True, fastmath=True)
+def shift_chroma_and_remove_dc(out_chroma, move):
+    out_chroma = np.roll(out_chroma, move)
+    # crude DC offset removal
+    out_chroma -= np.mean(out_chroma)
+    return out_chroma
+
 
 def demod_chroma_filt(
     data, filter, blocklen, notch, do_notch=None, move=10, audio_notch=None
@@ -186,10 +193,7 @@ def demod_chroma_filt(
     # Move chroma to compensate for Y filter delay.
     # value needs tweaking, ideally it should be calculated if possible.
     # TODO: Not sure if we need this after hilbert filter change, needs check.
-    out_chroma = np.roll(out_chroma, move).astype(np.single)
-    # crude DC offset removal
-    out_chroma -= np.mean(out_chroma)
-    return out_chroma
+    return shift_chroma_and_remove_dc(out_chroma, move)
 
 
 def process_chroma(
