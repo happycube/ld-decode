@@ -27,7 +27,7 @@ def find_crossings(data, threshold):
 
 
 @njit(cache=True, nogil=True, fastmath=True)
-def find_dropouts_rf(env, start, end, threshold, hysteresis, merge_threshold):
+def find_dropouts_rf(env, start_rf, end_rf, threshold, hysteresis, merge_threshold):
     # list of tuples containing start and end
     down_thresh = threshold
     up_thresh = threshold * hysteresis
@@ -35,7 +35,7 @@ def find_dropouts_rf(env, start, end, threshold, hysteresis, merge_threshold):
     dropouts = []
     dropout_idx = -1
     
-    for i in range(start, end):
+    for i in range(start_rf, end_rf):
         v = env[i]
         dropout_ended = False
 
@@ -54,7 +54,7 @@ def find_dropouts_rf(env, start, end, threshold, hysteresis, merge_threshold):
 
     if dropout_idx != -1 and dropouts[dropout_idx][1] == -1:
         # set the dropout ending to the last sample when the dropout happens at the end of the field
-        dropouts[dropout_idx] = (dropouts[dropout_idx][0], end)
+        dropouts[dropout_idx] = (dropouts[dropout_idx][0], end_rf)
 
     return dropouts
 
@@ -82,65 +82,68 @@ def detect_dropouts_rf(field, dod_options):
         # to avoid the threshold ending too low.
         threshold = field_average * threshold_p
 
-    start = field.linelocs[field.lineoffset]
-    end = field.linelocs[field.linecount + field.lineoffset]
+    start_line = field.lineoffset
+    end_line = min(len(field.linelocs) - 1, field.linecount + start_line + 1)
 
-    dropouts_rf = find_dropouts_rf(env, start, end, threshold, hysteresis, vhs_formats.DOD_MERGE_THRESHOLD)
+    start_rf = math.floor(field.linelocs[start_line])
+    end_rf = min(len(env), math.ceil(field.linelocs[end_line]))
+
+    dropouts_rf = find_dropouts_rf(env, start_rf, end_rf, threshold, hysteresis, vhs_formats.DOD_MERGE_THRESHOLD)
 
     # Drop very short dropouts that were not merged.
     # We do this after mergin to avoid removing short consecutive dropouts that
     # could be merged.
     dropouts_rf = list(filter(lambda s: s[1] - s[0] > vhs_formats.DOD_MIN_LENGTH, dropouts_rf))
 
-    return map_dropouts_rf_to_tbc(dropouts_rf, field.linelocs, field.lineoffset, field.linecount, field.outlinelen)
+    return map_dropouts_rf_to_tbc(dropouts_rf, start_line, end_line, field.linelocs, field.outlinelen)
 
-def map_dropouts_rf_to_tbc(errlist, linelocs, lineoffset, linecount, outlinelen):
+def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outlinelen):
     rv_lines = []
     rv_starts = []
     rv_ends = []
-    last_line = min(lineoffset + linecount, len(linelocs) - 1 - lineoffset)
 
-    current_line_idx = lineoffset
-    current_line_start = linelocs[current_line_idx]
-    next_line_start = linelocs[current_line_idx+1]
+    line_idx = start_line_idx
+    line_start_rf = linelocs[line_idx]
+    line_end_rf = linelocs[line_idx + 1]
 
-    for (start, end) in errlist:
-        while current_line_idx < last_line:
+    for (start_rf, end_rf) in errlist:
+        while line_idx < end_line_idx:
             # find the line that contains start of the dropout
-            if start >= current_line_start and start < next_line_start:
-                rv_lines.append(current_line_idx)
+            if (start_rf >= line_start_rf or line_idx == start_line_idx) and start_rf < line_end_rf:
+                rv_lines.append(line_idx)
                 
                 # scale down to tbc line position
-                start_rf_linepos = start - current_line_start
-                start_linepos = math.floor(start_rf_linepos / (next_line_start - current_line_start) * outlinelen)
+                start_rf_linepos = start_rf - line_start_rf
+                start_linepos = math.floor(start_rf_linepos / (line_end_rf - line_start_rf) * outlinelen)
 
-                rv_starts.append(start_linepos)
+                rv_starts.append(max(0, start_linepos))
                 break
             else:
-                current_line_idx += 1
-                current_line_start = linelocs[current_line_idx]
-                next_line_start = linelocs[current_line_idx + 1]
+                line_idx += 1
+                line_start_rf = linelocs[line_idx]
+                line_end_rf = linelocs[line_idx + 1]
 
-        while current_line_idx < last_line:
-            if end < next_line_start:
+        while line_idx < end_line_idx:
+            if end_rf < line_end_rf:
                 # dropout is contained within this line
                 # scale down to tbc line position
-                end_rf_linepos = end - current_line_start
-                end_linepos = math.ceil(end_rf_linepos / (next_line_start - current_line_start) * outlinelen)
+                end_rf_linepos = end_rf - line_start_rf
+                end_linepos = math.ceil(end_rf_linepos / (line_end_rf - line_start_rf) * outlinelen)
 
                 rv_ends.append(min(outlinelen, end_linepos))
                 break
             else:
                 # dropout spans multiple lines
                 rv_ends.append(outlinelen)
-                current_line_idx += 1
+                line_idx += 1
 
-                if current_line_idx < last_line:
-                    current_line_start = linelocs[current_line_idx]
-                    next_line_start = linelocs[current_line_idx + 1]
+                if line_idx < end_line_idx:
+                    # continue the dropout to the next line
+                    line_start_rf = linelocs[line_idx]
+                    line_end_rf = linelocs[line_idx + 1]
                     
                     rv_starts.append(0)
-                    rv_lines.append(current_line_idx)
+                    rv_lines.append(line_idx)
 
     return rv_lines, rv_starts, rv_ends
 
