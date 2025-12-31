@@ -53,7 +53,7 @@ static constexpr VideoSystemDefaults ntscDefaults {
     "NTSC",
     315.0e6 / 88.0,
     1,
-    20, 259,
+    20, 263,
     // Interlaced line 40 is NTSC line 21 (the closed-caption line before the first active half-line)
     // Interlaced line 524 is NTSC line 263 (the last active half-line)
     40, 525,
