@@ -82,7 +82,7 @@ def detect_dropouts_rf(field, dod_options):
         # to avoid the threshold ending too low.
         threshold = field_average * threshold_p
 
-    start_line = field.lineoffset
+    start_line = field.lineoffset + 1
     end_line = min(len(field.linelocs) - 1, field.linecount + start_line + 1)
 
     start_rf = math.floor(field.linelocs[start_line])
