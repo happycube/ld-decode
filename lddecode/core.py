@@ -1487,6 +1487,9 @@ class Field:
         self.dspicture = None
         self.dsaudio = None
 
+        self.interpolated_pixel_locs = None
+        self.wowfactors = None
+
         # On NTSC linecount rounds up to 263, and PAL 313
         self.outlinecount = (self.rf.SysParams["frame_lines"] // 2) + 1
         # this is eventually set to 262/263 and 312/313 for audio timing
@@ -2453,35 +2456,36 @@ class Field:
         """Compute how much the line deviates fron expected,
            and scale input samples to output samples
         """
-        actual_linelocs = np.array(self.linelocs, dtype=np.float64)
-        expected_linelocs = np.array([i * self.inlinelen for i in range(len(actual_linelocs))], dtype=np.float64)
+        if self.interpolated_pixel_locs is None:
+            actual_linelocs = np.array(self.linelocs, dtype=np.float64)
+            expected_linelocs = np.array([i * self.inlinelen for i in range(len(actual_linelocs))], dtype=np.float64)
 
-        outscale = self.inlinelen / self.outlinelen
-        outsamples = self.outlinecount * self.outlinelen
-        outline_offset = (self.lineoffset + 1) * self.outlinelen
+            outscale = self.inlinelen / self.outlinelen
+            outsamples = self.outlinecount * self.outlinelen
+            outline_offset = (self.lineoffset + 1) * self.outlinelen
 
-        if kind == 'linear':
-            k=1
-            bc_type=None
-        elif kind == 'quadratic':
-            k=2
-            bc_type=None
-        elif kind == 'cubic':
-            k=3
-            bc_type='natural'
+            if kind == 'linear':
+                k=1
+                bc_type=None
+            elif kind == 'quadratic':
+                k=2
+                bc_type=None
+            elif kind == 'cubic':
+                k=3
+                bc_type='natural'
 
-        # create a spline that interpolates the exact sample value based on expected vs. actual line locations
-        spl = interpolate.make_interp_spline(expected_linelocs, actual_linelocs, k=k, bc_type=bc_type, check_finite=False)
+            # create a spline that interpolates the exact sample value based on expected vs. actual line locations
+            spl = interpolate.make_interp_spline(expected_linelocs, actual_linelocs, k=k, bc_type=bc_type, check_finite=False)
 
-        # scale up to compute where the output pixel would fall on the interpolated line loc
-        scaled_pixel_locs = np.arange(outsamples + outline_offset) * outscale
+            # scale up to compute where the output pixel would fall on the interpolated line loc
+            scaled_pixel_locs = np.arange(outsamples + outline_offset) * outscale
 
-        # interpolate the expected pixel location
-        interpolated_pixel_locs = spl(scaled_pixel_locs)
-        # amount of wow for each scaled pixel
-        wowfactors = spl(scaled_pixel_locs, 1)
+            # interpolate the expected pixel location
+            self.interpolated_pixel_locs = spl(scaled_pixel_locs)
+            # amount of wow for each scaled pixel
+            self.wowfactors = spl(scaled_pixel_locs, 1)
 
-        return interpolated_pixel_locs, wowfactors
+        return self.interpolated_pixel_locs, self.wowfactors
 
     #@profile
     def downscale(
