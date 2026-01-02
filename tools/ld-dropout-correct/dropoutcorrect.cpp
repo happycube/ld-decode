@@ -420,9 +420,9 @@ void DropOutCorrect::findPotentialReplacementLine(const QVector<QVector<DropOutL
         return;
     }
 
-    // Hunt for a replacement
+    // Hunt for a replacement, stopping at the last full line before the half-line between fields
     while ((sourceLine - 1) >= videoParameters[sourceNo].firstActiveFieldLine
-           && (sourceLine - 1) < videoParameters[sourceNo].lastActiveFieldLine) {
+           && sourceLine < videoParameters[sourceNo].lastActiveFieldLine) {
         // Is there a dropout that overlaps the one we're trying to replace?
         bool hasOverlap = false;
         for (qint32 sourceIndex = 0; sourceIndex < sourceDropouts[sourceNo].size(); sourceIndex++) {
