@@ -84,6 +84,36 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
         quint8 controlNybble = qChannelData[0] >> 4;
         quint8 modeNybble = qChannelData[0] & 0x0F;
 
+        // Validate the mode nybble before processing
+        bool validMode = (modeNybble >= 0x0 && modeNybble <= 0x4);
+        
+        if (!validMode) {
+            // Invalid mode nybble - treat as corrupted data even though CRC passed
+            if (m_showDebug)
+                tbcDebugStream() << "Subcode::fromData(): Invalid Q-mode nybble! Must be 0-4, got"
+                                 << modeNybble << "- Q channel data is:" << qChannelData.toHex();
+            
+            // Set the q-channel data to invalid and use default values
+            // Extract absolute time for diagnostic purposes
+            qint32 minutes = bcd2ToInt(qChannelData[7]);
+            qint32 seconds = bcd2ToInt(qChannelData[8]);
+            qint32 frames = bcd2ToInt(qChannelData[9]);
+
+            if (minutes < 0) minutes = 0;
+            if (minutes > 59) minutes = 59;
+            if (seconds < 0) seconds = 0;
+            if (seconds > 59) seconds = 59;
+            if (frames < 0) frames = 0;
+            if (frames > 74) frames = 74;
+
+            SectionTime badAbsTime = SectionTime(minutes, seconds, frames);
+            if (m_showDebug)
+                tbcDebugStream() << "Subcode::fromData(): Potentially corrupt absolute time is:"
+                                 << badAbsTime.toString();
+            sectionMetadata.setValid(false);
+            return sectionMetadata;
+        }
+
         // Set the q-channel mode
         switch (modeNybble) {
         case 0x0:
@@ -102,11 +132,36 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
         case 0x4:
             sectionMetadata.setQMode(SectionMetadata::QMode4);
             break;
-        default:
+        }
+
+        // Validate the control nybble before processing
+        bool validControl = (controlNybble <= 0x4) || (controlNybble == 0x6) || 
+                            (controlNybble >= 0x8 && controlNybble <= 0xB);
+        
+        if (!validControl) {
+            // Invalid control nybble - treat as corrupted data even though CRC passed
             if (m_showDebug)
-                tbcDebugStream() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex();
-            qFatal("Subcode::fromData(): Invalid Q-mode nybble! Must be 1, 2, 3 or 4 not %d",
-                   modeNybble);
+                tbcDebugStream() << "Subcode::fromData(): Invalid control nybble! Must be 0-4, 6, or 8-11, got"
+                                 << controlNybble << "- Q channel data is:" << qChannelData.toHex();
+            
+            // Set the q-channel data to invalid
+            qint32 minutes = bcd2ToInt(qChannelData[7]);
+            qint32 seconds = bcd2ToInt(qChannelData[8]);
+            qint32 frames = bcd2ToInt(qChannelData[9]);
+
+            if (minutes < 0) minutes = 0;
+            if (minutes > 59) minutes = 59;
+            if (seconds < 0) seconds = 0;
+            if (seconds > 59) seconds = 59;
+            if (frames < 0) frames = 0;
+            if (frames > 74) frames = 74;
+
+            SectionTime badAbsTime = SectionTime(minutes, seconds, frames);
+            if (m_showDebug)
+                tbcDebugStream() << "Subcode::fromData(): Potentially corrupt absolute time is:"
+                                 << badAbsTime.toString();
+            sectionMetadata.setValid(false);
+            return sectionMetadata;
         }
 
         // Set the q-channel control settings
@@ -181,11 +236,6 @@ SectionMetadata Subcode::fromData(const QByteArray &data)
             sectionMetadata.setPreemphasis(true);
             sectionMetadata.set2Channel(false);
             break;
-        default:
-            if (m_showDebug)
-                tbcDebugStream() << "Subcode::fromData(): Q channel data is:" << qChannelData.toHex();
-            qFatal("Subcode::fromData(): Invalid control nybble! Must be 0-3, 4-7 or 8-11 not %d",
-                   controlNybble);
         }
 
         if (sectionMetadata.qMode() == SectionMetadata::QMode1
