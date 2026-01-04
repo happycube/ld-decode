@@ -306,8 +306,10 @@ void F2SectionCorrection::waitingForSection(F2Section &f2Section)
                 missingSection.metadata.setSectionType(f2Section.metadata.sectionType(), f2Section.metadata.trackNumber());
 
                 // Ensure we don't end up with negative time...
-                if (f2Section.metadata.sectionTime().frames() - (i + 1) >= 0) {
-                    missingSection.metadata.setSectionTime(f2Section.metadata.sectionTime() - (i + 1));
+                // Calculate the new frame value before constructing SectionTime to avoid triggering qFatal
+                qint32 newFrames = f2Section.metadata.sectionTime().frames() - (i + 1);
+                if (newFrames >= 0) {
+                    missingSection.metadata.setSectionTime(SectionTime(newFrames));
                 } else {
                     missingSection.metadata.setSectionTime(SectionTime(0, 0, 0));
                     if (m_showDebug) tbcDebugStream() << "F2SectionCorrection::waitingForSection(): Negative section time detected, "
@@ -684,14 +686,24 @@ void F2SectionCorrection::showStatistics() const
     qInfo() << "  Absolute Time:";
     qInfo().noquote() << "    Start time:" << m_absoluteStartTime.toString();
     qInfo().noquote() << "    End time:" << m_absoluteEndTime.toString();
-    qInfo().noquote() << "    Duration:" << (m_absoluteEndTime - m_absoluteStartTime).toString();
+    // Only calculate duration if we have valid sections (otherwise start time > end time)
+    if (m_totalSections > 0 && m_absoluteEndTime >= m_absoluteStartTime) {
+        qInfo().noquote() << "    Duration:" << (m_absoluteEndTime - m_absoluteStartTime).toString();
+    } else {
+        qInfo().noquote() << "    Duration: N/A";
+    }
 
     // Show each track in order of appearance
     for (int i = 0; i < m_trackNumbers.size(); i++) {
         qInfo().nospace() << "  Track " << m_trackNumbers[i] << ":";
         qInfo().noquote() << "    Start time:" << m_trackStartTimes[i].toString();
         qInfo().noquote() << "    End time:" << m_trackEndTimes[i].toString();
-        qInfo().noquote() << "    Duration:"
-                          << (m_trackEndTimes[i] - m_trackStartTimes[i]).toString();
+        // Only calculate duration if end time is valid
+        if (m_trackEndTimes[i] >= m_trackStartTimes[i]) {
+            qInfo().noquote() << "    Duration:"
+                              << (m_trackEndTimes[i] - m_trackStartTimes[i]).toString();
+        } else {
+            qInfo().noquote() << "    Duration: N/A";
+        }
     }
 }
