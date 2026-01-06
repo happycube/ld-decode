@@ -52,6 +52,11 @@ ld-chroma-decoder [options] <input.tbc> <output.rgb>
 - `--luma-nr <number>`: Luma noise reduction level in dB (default 0.0)
 - `--ntsc-phase-comp`: NTSC: Adjust phase per-line using burst phase
 
+#### NTSC-Specific 3D Options for Adaptive Threshold:
+- `-f ntsc3d`:  Default behavior (threshold = 1.0)
+- `-f ntsc3d --adapt-threshold 1.5`: More aggressive 3D filtering (less fallback to 2D/1D)
+- `-f ntsc3d --adapt-threshold 0.1`: More conservative (more likely to use 2D/1D on motion)
+
 #### Transform Decoder Options
 - `--simple-pal`: Transform: Use 1D UV filter (default 2D)
 - `--transform-threshold <number>`: Transform: Uniform similarity threshold (default 0.4)

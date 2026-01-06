@@ -429,9 +429,10 @@ void Comb::FrameBuffer::getBestCandidate(qint32 lineNumber, qint32 h,
     Candidate candidates[8];
 
     // Bias the comparison so that we prefer 3D results, then 2D, then 1D
-    static constexpr double LINE_BONUS = -2.0;
-    static constexpr double FIELD_BONUS = LINE_BONUS - 2.0;
-    static constexpr double FRAME_BONUS = FIELD_BONUS - 2.0;
+    // adaptThreshold scales these bonuses: higher = stronger 3D preference
+    const double LINE_BONUS = -2.0 * configuration.adaptThreshold;
+    const double FIELD_BONUS = LINE_BONUS - (2.0 * configuration.adaptThreshold);
+    const double FRAME_BONUS = FIELD_BONUS - (2.0 * configuration.adaptThreshold);
 
     // 1D: Same line, 2 samples left and right
     candidates[CAND_LEFT]  = getCandidate(lineNumber, h, *this, lineNumber, h - 2, 0);

@@ -243,6 +243,12 @@ int main(int argc, char *argv[])
                                            QCoreApplication::translate("main", "NTSC: Adjust phase per-line using burst phase"));
     parser.addOption(ntscPhaseCompOption);
 
+    // Option to set the 3D adaptive filter threshold
+    QCommandLineOption adaptThresholdOption(QStringList() << "adapt-threshold",
+                                            QCoreApplication::translate("main", "NTSC: 3D adaptive filter threshold (default 1.0, higher = more 3D)"),
+                                            QCoreApplication::translate("main", "number"));
+    parser.addOption(adaptThresholdOption);
+
     // -- PAL decoder options --
 
     // Option to use Simple PAL UV filter
@@ -398,6 +404,15 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(ntscPhaseCompOption)) {
         combConfig.phaseCompensation = true;
+    }
+
+    if (parser.isSet(adaptThresholdOption)) {
+        combConfig.adaptThreshold = parser.value(adaptThresholdOption).toDouble();
+
+        if (combConfig.adaptThreshold <= 0.0) {
+            qCritical("Adapt threshold must be greater than 0");
+            return -1;
+        }
     }
 
     if (parser.isSet(simplePALOption)) {
