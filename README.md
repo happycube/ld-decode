@@ -11,7 +11,7 @@ Check the documentation first, the [discord server](https://discord.com/invite/p
 
 **ld-decode** is a software-defined decoder for LaserDisc RF captures made using modified LaserDisc players and capture devices such as the [DomesdayDuplicator](https://github.com/simoninns/DomesdayDuplicator)
 
-ld-decode recovers video, analog audio, digital audio and metadata content from raw RF samples captured directly from LaserDisc players, bypassing the analog signal chain to achieve preservation-quality digital transfers.
+ld-decode recovers video, analog audio, digital audio and metadata content from RAW PCM format (or FLAC compressed) RF samples captured directly from LaserDisc players, bypassing the analog signal chain to achieve preservation-quality digital transfers.
 
 Although ld-decode was originally dedicated to LaserDiscs it has become part of a larger ecosystem including:
 
@@ -26,7 +26,7 @@ ld-decode is a GPL3 open-source project run entirely by volunteers and provided 
 
 # Installation & Downloads 
 
-Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  Contributors maintain ready-made binary builds which are far more suitable for end-users and are available for platforms such as Windows and Apple MacOS.  The main ld-decode repo targets only Ubuntu (generally the current LTS version - although it's possible to compile the project on most Linux flavors).
+Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  Contributors maintain [ready-made binary builds](https://github.com/oyvindln/vhs-decode/releases) which are far more suitable for end-users and are available for platforms such as Windows and Apple MacOS.  The main ld-decode repo targets only Ubuntu (generally the current LTS version - although it's possible to compile the project on most Linux flavors).
 
 If you'd like to download binaries or compile the project from source please see the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/) for detailed instructions.
 
@@ -64,7 +64,7 @@ For detailed information on how to contribute code, report bugs, or suggest enha
 
 You can also contribute to the project documentation, see the [ld-decode documentation github](https://github.com/happycube/ld-decode-docs) for details.
 
-There is also a VHS specific subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active. 
+There is also a subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active fouced around videotape capture & decoding.
 
 
 # Source code structure
