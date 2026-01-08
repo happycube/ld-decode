@@ -64,7 +64,7 @@ For detailed information on how to contribute code, report bugs, or suggest enha
 
 You can also contribute to the project documentation, see the [ld-decode documentation github](https://github.com/happycube/ld-decode-docs) for details.
 
-There is also a subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active fouced around videotape capture & decoding.
+There is also a subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active focused around videotape capture & decoding.
 
 
 # Source code structure
