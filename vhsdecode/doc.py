@@ -95,9 +95,9 @@ def detect_dropouts_rf(field, dod_options):
     # could be merged.
     dropouts_rf = list(filter(lambda s: s[1] - s[0] > vhs_formats.DOD_MIN_LENGTH, dropouts_rf))
 
-    return map_dropouts_rf_to_tbc(dropouts_rf, start_line, end_line, field.linelocs, field.outlinelen)
+    return map_dropouts_rf_to_tbc(dropouts_rf, start_line, end_line, field.linelocs, field.outlinelen, field.lineoffset)
 
-def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outlinelen):
+def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outlinelen, lineoffset):
     rv_lines = []
     rv_starts = []
     rv_ends = []
@@ -110,7 +110,7 @@ def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outl
         while line_idx < end_line_idx:
             # find the line that contains start of the dropout
             if (start_rf >= line_start_rf or line_idx == start_line_idx) and start_rf < line_end_rf:
-                rv_lines.append(line_idx)
+                rv_lines.append(line_idx - lineoffset)
                 
                 # scale down to tbc line position
                 start_rf_linepos = start_rf - line_start_rf
@@ -143,7 +143,7 @@ def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outl
                     line_end_rf = linelocs[line_idx + 1]
                     
                     rv_starts.append(0)
-                    rv_lines.append(line_idx)
+                    rv_lines.append(line_idx - lineoffset)
 
     return rv_lines, rv_starts, rv_ends
 
