@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Upgrade pip tooling
+        run: python3 -m pip install --upgrade pip setuptools wheel
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
@@ -36,8 +39,9 @@ jobs:
         env:
           SETUPTOOLS_RUST_CARGO_PROFILE: release
         run: |
-          pip3 install ".[hifi_gui_qt6,hifi_gnuradio]" setuptools Cython pyinstaller -r ./requirements.txt
-          pip3 install -e .
+          python3 -m pip install -r ./requirements.txt
+          python3 -m pip install pyinstaller
+          python3 -m pip install -e ".[hifi_gui_qt6,hifi_gnuradio]"
 
       - name: Build binary
         run: |
