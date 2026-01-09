@@ -11,10 +11,12 @@ jobs:
   build-tbc-tools:
     strategy:
       matrix:
-        os: [macos-latest]
+        os: [macos-latest, macos-15-intel]
         include:
           - os: macos-latest
             arch: arm64
+          - os: macos-15-intel
+            arch: x86_64
 
     name: Build tbc-tools (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}

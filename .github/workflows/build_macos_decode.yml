@@ -7,10 +7,15 @@ jobs:
   build-decode:
     strategy:
       matrix:
-        os: [macos-latest]
+        os: [macos-latest, macos-15-intel]
         include:
           - os: macos-latest
             arch: arm64
+            python: "3.12"
+          - os: macos-15-intel
+            arch: x86_64
+            # Use a Python version with reliable wheels for llvmlite/numba on Intel macOS
+            python: "3.11"
 
     name: Build vhs-decode (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
@@ -23,7 +28,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "${{ matrix.python }}"
 
       - name: Upgrade pip tooling
         run: python3 -m pip install --upgrade pip setuptools wheel
