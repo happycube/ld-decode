@@ -47,6 +47,9 @@ Homepage = "https://www.domesday86.com"
 [tool.setuptools_scm]
 write_to = "vhsdecode/_version.py"
 local_scheme = "no-local-version"
+# Restrict git describe/version parsing to real version tags (avoid tags like "rev4.0" breaking builds)
+git_describe_command = "git describe --dirty --tags --long --match [0-9]* --match v[0-9]*"
+tag_regex = '^(?:v)?(?P<version>\d+(?:\.\d+)*(?:rc\d+)?)$'
 
 [tool.setuptools.package-data]
 vhs_decode = ["*.txt"]
