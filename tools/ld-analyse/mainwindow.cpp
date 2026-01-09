@@ -566,7 +566,7 @@ void MainWindow::updateImageViewer()
 {
     QImage image = tbcSource.getImage();
 
-    if (ui->mouseModePushButton->isChecked()) {
+    if (ui->mouseModePushButton->isChecked() && !image.isNull() && image.width() > 0 && image.height() > 0) {
         // Create a painter object
         QPainter imagePainter;
         imagePainter.begin(&image);
