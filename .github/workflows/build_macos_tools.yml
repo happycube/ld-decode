@@ -11,10 +11,8 @@ jobs:
   build-tbc-tools:
     strategy:
       matrix:
-        os: [macos-15-intel, macos-latest]
+        os: [macos-latest]
         include:
-          - os: macos-15-intel
-            arch: x86_64
           - os: macos-latest
             arch: arm64
 
