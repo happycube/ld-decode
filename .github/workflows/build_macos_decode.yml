@@ -41,7 +41,7 @@ jobs:
 
       - name: Install LLVM (Intel only)
         if: matrix.arch == 'x86_64'
-        run: brew install llvm
+        run: brew install llvm@20
 
       - name: Build Python module
         shell: bash
@@ -52,8 +52,8 @@ jobs:
 
           # llvmlite may fall back to source builds on Intel macOS; ensure it can find Homebrew LLVM
           if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
-            export LLVM_CONFIG="$(brew --prefix llvm)/bin/llvm-config"
-            export CMAKE_PREFIX_PATH="$(brew --prefix llvm)"
+            export LLVM_CONFIG="$(brew --prefix llvm@20)/bin/llvm-config"
+            export CMAKE_PREFIX_PATH="$(brew --prefix llvm@20)"
           fi
 
           python3 -m pip install -r ./requirements.txt
