@@ -33,7 +33,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: brew install create-dmg
+        run: brew install create-dmg libsndfile
 
       - name: Build Python module
         env:
