@@ -39,13 +39,27 @@ target_include_directories(ld-analyse PRIVATE
 )
 
 
-# Include homebrew folders manually for qwt on macos
-# as it seems the find scripts don't handle it
-# properly.
+# Include Homebrew folders manually for qwt on macOS.
+# (Some setups expose Qwt as a framework under the Homebrew prefix.)
 if(APPLE)
-    target_include_directories(ld-analyse PRIVATE
-    /opt/homebrew/lib/qwt.framework/Headers
-    )
+    if(EXISTS "/opt/homebrew/lib/qwt.framework/Headers")
+        target_include_directories(ld-analyse PRIVATE
+            /opt/homebrew/lib/qwt.framework/Headers
+        )
+    endif()
+
+    if(EXISTS "/usr/local/lib/qwt.framework/Headers")
+        target_include_directories(ld-analyse PRIVATE
+            /usr/local/lib/qwt.framework/Headers
+        )
+    endif()
+
+    # Fallback: some installations keep the framework under the qwt keg.
+    if(EXISTS "/usr/local/opt/qwt/lib/qwt.framework/Headers")
+        target_include_directories(ld-analyse PRIVATE
+            /usr/local/opt/qwt/lib/qwt.framework/Headers
+        )
+    endif()
 endif()
 
 target_link_libraries(ld-analyse PRIVATE
