@@ -33,6 +33,14 @@ void VideoParametersDialog::setVideoParameters(const LdDecodeMetaData::VideoPara
     originalActiveVideoStart = videoParameters.activeVideoStart;
     originalActiveVideoWidth = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
 
+    // Block signals while updating the UI to prevent spurious videoParametersChanged emissions
+    ui->blackLevelSpinBox->blockSignals(true);
+    ui->whiteLevelSpinBox->blockSignals(true);
+    ui->activeVideoWidthSpinBox->blockSignals(true);
+    ui->activeVideoStartSpinBox->blockSignals(true);
+    ui->aspectRatio169RadioButton->blockSignals(true);
+    ui->aspectRatio43RadioButton->blockSignals(true);
+
     // Transfer values to the dialogue
     ui->blackLevelSpinBox->setValue(videoParameters.black16bIre);
     ui->whiteLevelSpinBox->setValue(videoParameters.white16bIre);
@@ -45,6 +53,14 @@ void VideoParametersDialog::setVideoParameters(const LdDecodeMetaData::VideoPara
 
     if (videoParameters.isWidescreen) ui->aspectRatio169RadioButton->setChecked(true);
     else ui->aspectRatio43RadioButton->setChecked(true);
+
+    // Unblock signals
+    ui->blackLevelSpinBox->blockSignals(false);
+    ui->whiteLevelSpinBox->blockSignals(false);
+    ui->activeVideoWidthSpinBox->blockSignals(false);
+    ui->activeVideoStartSpinBox->blockSignals(false);
+    ui->aspectRatio169RadioButton->blockSignals(false);
+    ui->aspectRatio43RadioButton->blockSignals(false);
 
     // Update the dialogue
     updateDialog();
