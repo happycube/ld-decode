@@ -6,6 +6,7 @@ on:
 jobs:
   build-decode:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, macos-15-intel]
         include:
@@ -38,10 +39,23 @@ jobs:
       - name: Install dependencies
         run: brew install create-dmg libsndfile
 
+      - name: Install LLVM (Intel only)
+        if: matrix.arch == 'x86_64'
+        run: brew install llvm
+
       - name: Build Python module
+        shell: bash
         env:
           SETUPTOOLS_RUST_CARGO_PROFILE: release
         run: |
+          set -euxo pipefail
+
+          # llvmlite may fall back to source builds on Intel macOS; ensure it can find Homebrew LLVM
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+            export LLVM_CONFIG="$(brew --prefix llvm)/bin/llvm-config"
+            export CMAKE_PREFIX_PATH="$(brew --prefix llvm)"
+          fi
+
           python3 -m pip install -r ./requirements.txt
           python3 -m pip install pyinstaller
           python3 -m pip install -e ".[hifi_gui_qt6,hifi_gnuradio]"

@@ -10,6 +10,7 @@ env:
 jobs:
   build-tbc-tools:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, macos-15-intel]
         include:
