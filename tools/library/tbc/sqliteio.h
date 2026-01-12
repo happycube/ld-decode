@@ -54,7 +54,7 @@ public:
                            int &fieldWidth, int &fieldHeight, int &numberOfSequentialFields,
                            int &colourBurstStart, int &colourBurstEnd,
                            bool &isMapped, bool &isSubcarrierLocked, bool &isWidescreen,
-                           int &white16bIre, int &black16bIre, QString &captureNotes);
+                           int &white16bIre, int &black16bIre, int &blanking16bIre, QString &captureNotes);
 
     // Read PCM audio parameters
     bool readPcmAudioParameters(int captureId, int &bits, bool &isSigned,
@@ -113,7 +113,7 @@ public:
                            int fieldWidth, int fieldHeight, int numberOfSequentialFields,
                            int colourBurstStart, int colourBurstEnd,
                            bool isMapped, bool isSubcarrierLocked, bool isWidescreen,
-                           int white16bIre, int black16bIre, const QString &captureNotes);
+                           int white16bIre, int black16bIre, int blanking16bIre, const QString &captureNotes);
 
     // Update existing capture metadata  
     bool updateCaptureMetadata(int captureId, const QString &system, const QString &decoder,
@@ -122,7 +122,7 @@ public:
                              int fieldWidth, int fieldHeight, int numberOfSequentialFields,
                              int colourBurstStart, int colourBurstEnd,
                              bool isMapped, bool isSubcarrierLocked, bool isWidescreen,
-                             int white16bIre, int black16bIre, const QString &captureNotes);
+                             int white16bIre, int black16bIre, int blanking16bIre, const QString &captureNotes);
 
     // Write PCM audio parameters
     bool writePcmAudioParameters(int captureId, int bits, bool isSigned,

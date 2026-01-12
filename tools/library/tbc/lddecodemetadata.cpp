@@ -286,7 +286,7 @@ bool LdDecodeMetaData::read(QString fileName)
         QString system, decoder, gitBranch, gitCommit, captureNotes;
         double videoSampleRate;
         int activeVideoStart, activeVideoEnd, fieldWidth, fieldHeight, numberOfSequentialFields;
-        int colourBurstStart, colourBurstEnd, white16bIre, black16bIre;
+        int colourBurstStart, colourBurstEnd, white16bIre, black16bIre, blanking16bIre;
         bool isMapped, isSubcarrierLocked, isWidescreen;
 
         // Read capture metadata
@@ -295,7 +295,7 @@ bool LdDecodeMetaData::read(QString fileName)
                                        fieldWidth, fieldHeight, numberOfSequentialFields,
                                        colourBurstStart, colourBurstEnd, isMapped,
                                        isSubcarrierLocked, isWidescreen, white16bIre,
-                                       black16bIre, captureNotes)) {
+                                       black16bIre, blanking16bIre, captureNotes)) {
             qCritical() << "Failed to read capture metadata from SQLite file";
             return false;
         }
@@ -314,6 +314,7 @@ bool LdDecodeMetaData::read(QString fileName)
         videoParameters.activeVideoEnd = activeVideoEnd;
         videoParameters.white16bIre = white16bIre;
         videoParameters.black16bIre = black16bIre;
+        videoParameters.blanking16bIre = blanking16bIre;
         videoParameters.fieldWidth = fieldWidth;
         videoParameters.fieldHeight = fieldHeight;
         videoParameters.sampleRate = videoSampleRate;
@@ -367,7 +368,7 @@ bool LdDecodeMetaData::write(QString fileName) const
             double existingVideoSampleRate;
             int existingActiveVideoStart, existingActiveVideoEnd, existingFieldWidth, existingFieldHeight;
             int existingNumberOfSequentialFields, existingColourBurstStart, existingColourBurstEnd;
-            int existingWhite16bIre, existingBlack16bIre;
+            int existingWhite16bIre, existingBlack16bIre, existingBlanking16bIre;
             bool existingIsMapped, existingIsSubcarrierLocked, existingIsWidescreen;
             
             if (reader.readCaptureMetadata(captureId, existingSystem, existingDecoder, 
@@ -376,7 +377,7 @@ bool LdDecodeMetaData::write(QString fileName) const
                                          existingFieldWidth, existingFieldHeight, existingNumberOfSequentialFields,
                                          existingColourBurstStart, existingColourBurstEnd,
                                          existingIsMapped, existingIsSubcarrierLocked, existingIsWidescreen,
-                                         existingWhite16bIre, existingBlack16bIre, existingCaptureNotes)) {
+                                         existingWhite16bIre, existingBlack16bIre, existingBlanking16bIre, existingCaptureNotes)) {
                 tbcDebugStream() << "Updating existing SQLite file with capture_id:" << captureId;
             } else {
                 qWarning() << "Could not read existing capture metadata, treating as new file";
@@ -418,7 +419,7 @@ bool LdDecodeMetaData::write(QString fileName) const
                                             videoParameters.colourBurstStart, videoParameters.colourBurstEnd,
                                             videoParameters.isMapped, videoParameters.isSubcarrierLocked,
                                             videoParameters.isWidescreen, videoParameters.white16bIre,
-                                            videoParameters.black16bIre, videoParameters.tapeFormat)) {
+                                            videoParameters.black16bIre, videoParameters.blanking16bIre, videoParameters.tapeFormat)) {
                 writer.rollbackTransaction();
                 return false;
             }
@@ -433,7 +434,7 @@ bool LdDecodeMetaData::write(QString fileName) const
                 videoParameters.colourBurstStart, videoParameters.colourBurstEnd,
                 videoParameters.isMapped, videoParameters.isSubcarrierLocked,
                 videoParameters.isWidescreen, videoParameters.white16bIre,
-                videoParameters.black16bIre, videoParameters.tapeFormat);
+                videoParameters.black16bIre, videoParameters.blanking16bIre, videoParameters.tapeFormat);
 
             if (captureId == -1) {
                 writer.rollbackTransaction();

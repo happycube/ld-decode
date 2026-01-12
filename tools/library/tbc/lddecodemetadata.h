@@ -64,6 +64,7 @@ public:
 
         qint32 white16bIre = -1;
         qint32 black16bIre = -1;
+        qint32 blanking16bIre = -1;
 
         qint32 fieldWidth = -1;
         qint32 fieldHeight = -1;

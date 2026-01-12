@@ -212,24 +212,7 @@ def run_ld_process_vbi(args):
         if conn:
             conn.close()
 
-def run_ld_json_converter(args):
-    """Run ld-json-converter to convert JSON metadata to SQLite."""
 
-    json_file = args.output + '.tbc.json'
-    db_file = args.output + '.tbc.db'
-    
-    # Check if JSON file exists
-    if not dry_run:
-        if not os.path.exists(json_file):
-            die(json_file, 'does not exist')
-    
-    # Clean any existing SQLite file
-    clean(args, ['.tbc.db'])
-    
-    cmd = [build_dir + '/tools/ld-json-converter/ld-json-converter']
-    cmd += ['--input-json', json_file]
-    cmd += ['--output-sqlite', db_file]
-    run_command(cmd)
 
 def run_ld_export_metadata(args):
     """Run ld-export-metadata."""
@@ -539,7 +522,6 @@ def main():
 
     # Run the stages of the decoding toolchain
     run_ld_decode(args)
-    run_ld_json_converter(args)
     run_ld_process_vbi(args)
     run_ld_export_metadata(args)
     run_ld_export_decode_metadata(args)

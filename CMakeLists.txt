@@ -170,32 +170,34 @@ if(BUILD_PYTHON)
         set(PYTHON_PREFIX_LINE "--prefix ${CMAKE_INSTALL_PREFIX}")
     endif()
 
+    # Build Python package during make (as user, not root)
     add_custom_target(python-build ALL
-        # Clean build directory first to avoid permission issues
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${PYTHON_BUILD_DIR}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${PYTHON_BUILD_DIR}
         COMMAND ${PYTHON} ./setup.py --quiet
             build --build-base ${PYTHON_BUILD_DIR}
+            egg_info --egg-base ${CMAKE_CURRENT_BINARY_DIR}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Building Python package"
     )
 
-    # We must run build/egg_info here to specify the directories.
+    # Install only - reuses build artifacts from python-build target
     install(CODE "
         if(NOT DEFINED ENV{DESTDIR})
             set(ENV{DESTDIR} /)
         endif()
+        message(STATUS \"Installing Python package\")
         execute_process(
             COMMAND ${PYTHON} ./setup.py --quiet
                 build --build-base ${PYTHON_BUILD_DIR}
                 egg_info --egg-base ${CMAKE_CURRENT_BINARY_DIR}
                 install ${PYTHON_PREFIX_LINE}
                         --root \$ENV{DESTDIR}
+                        --skip-build
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            RESULT_VARIABLE _install_result
         )
-        # Clean up root-owned files after install to prevent permission issues
-        execute_process(
-            COMMAND ${CMAKE_COMMAND} -E remove_directory ${PYTHON_BUILD_DIR}
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        )
+        if(NOT _install_result EQUAL 0)
+            message(FATAL_ERROR \"Python package installation failed\")
+        endif()
     ")
 endif()
