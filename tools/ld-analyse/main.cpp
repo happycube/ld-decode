@@ -109,6 +109,10 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationVersion(QString("Branch: %1 / Commit: %2").arg(APP_BRANCH, APP_COMMIT));
     QCoreApplication::setOrganizationDomain("domesday86.com");
 
+    // Set application icon (for window decorations and taskbar)
+    // QIcon::fromTheme will find the icon we installed to /usr/local/share/icons/hicolor/
+    a.setWindowIcon(QIcon::fromTheme("ld-analyse"));
+
     // Set up the command line parser
     QCommandLineParser parser;
     parser.setApplicationDescription(
