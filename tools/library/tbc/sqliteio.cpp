@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS capture (
         CHECK (is_widescreen IN (0,1)),
     white_16b_ire INTEGER,
     black_16b_ire INTEGER,
+    blanking_16b_ire INTEGER,
 
     capture_notes TEXT
 );
@@ -221,15 +222,34 @@ bool SqliteReader::readCaptureMetadata(int &captureId, QString &system, QString 
                                      int &fieldWidth, int &fieldHeight, int &numberOfSequentialFields,
                                      int &colourBurstStart, int &colourBurstEnd,
                                      bool &isMapped, bool &isSubcarrierLocked, bool &isWidescreen,
-                                     int &white16bIre, int &black16bIre, QString &captureNotes)
+                                     int &white16bIre, int &black16bIre, int &blanking16bIre, QString &captureNotes)
 {
+    // Check if blanking_16b_ire column exists (for backward compatibility)
+    bool hasBlankingColumn = false;
+    QSqlQuery checkQuery(db);
+    checkQuery.prepare("PRAGMA table_info(capture)");
+    if (checkQuery.exec()) {
+        while (checkQuery.next()) {
+            QString columnName = checkQuery.value("name").toString();
+            if (columnName == "blanking_16b_ire") {
+                hasBlankingColumn = true;
+                break;
+            }
+        }
+    }
+
     QSqlQuery query(db);
-    query.prepare("SELECT capture_id, system, decoder, git_branch, git_commit, "
-                 "video_sample_rate, active_video_start, active_video_end, "
-                 "field_width, field_height, number_of_sequential_fields, "
-                 "colour_burst_start, colour_burst_end, is_mapped, is_subcarrier_locked, "
-                 "is_widescreen, white_16b_ire, black_16b_ire, capture_notes "
-                 "FROM capture LIMIT 1");
+    QString queryStr = "SELECT capture_id, system, decoder, git_branch, git_commit, "
+                       "video_sample_rate, active_video_start, active_video_end, "
+                       "field_width, field_height, number_of_sequential_fields, "
+                       "colour_burst_start, colour_burst_end, is_mapped, is_subcarrier_locked, "
+                       "is_widescreen, white_16b_ire, black_16b_ire";
+    if (hasBlankingColumn) {
+        queryStr += ", blanking_16b_ire";
+    }
+    queryStr += ", capture_notes FROM capture LIMIT 1";
+    
+    query.prepare(queryStr);
 
     if (!query.exec()) {
         qCritical() << "Failed to execute capture metadata query:" << query.lastError().text();
@@ -259,6 +279,15 @@ bool SqliteReader::readCaptureMetadata(int &captureId, QString &system, QString 
     isWidescreen = SqliteValue::toBoolOrDefault(query, "is_widescreen");
     white16bIre = SqliteValue::toIntOrDefault(query, "white_16b_ire");
     black16bIre = SqliteValue::toIntOrDefault(query, "black_16b_ire");
+    
+    // Handle blanking_16b_ire field (may not exist in old metadata files)
+    if (hasBlankingColumn) {
+        blanking16bIre = SqliteValue::toIntOrDefault(query, "blanking_16b_ire");
+    } else {
+        qWarning() << "blanking_16b_ire field not found in metadata - using black_16b_ire value";
+        blanking16bIre = black16bIre;
+    }
+    
     captureNotes = query.value("capture_notes").toString();
 
     return true;
@@ -513,15 +542,15 @@ int SqliteWriter::writeCaptureMetadata(const QString &system, const QString &dec
                                      int fieldWidth, int fieldHeight, int numberOfSequentialFields,
                                      int colourBurstStart, int colourBurstEnd,
                                      bool isMapped, bool isSubcarrierLocked, bool isWidescreen,
-                                     int white16bIre, int black16bIre, const QString &captureNotes)
+                                     int white16bIre, int black16bIre, int blanking16bIre, const QString &captureNotes)
 {
     QSqlQuery query(db);
     query.prepare("INSERT INTO capture (system, decoder, git_branch, git_commit, "
                  "video_sample_rate, active_video_start, active_video_end, "
                  "field_width, field_height, number_of_sequential_fields, "
                  "colour_burst_start, colour_burst_end, is_mapped, is_subcarrier_locked, "
-                 "is_widescreen, white_16b_ire, black_16b_ire, capture_notes) "
-                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                 "is_widescreen, white_16b_ire, black_16b_ire, blanking_16b_ire, capture_notes) "
+                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
     query.addBindValue(system);
     query.addBindValue(decoder);
@@ -540,6 +569,7 @@ int SqliteWriter::writeCaptureMetadata(const QString &system, const QString &dec
     query.addBindValue(isWidescreen ? 1 : 0);
     query.addBindValue(white16bIre);
     query.addBindValue(black16bIre);
+    query.addBindValue(blanking16bIre);
     query.addBindValue(captureNotes.isEmpty() ? QVariant() : captureNotes);
 
     if (!query.exec()) {
@@ -556,14 +586,14 @@ bool SqliteWriter::updateCaptureMetadata(int captureId, const QString &system, c
                                        int fieldWidth, int fieldHeight, int numberOfSequentialFields,
                                        int colourBurstStart, int colourBurstEnd,
                                        bool isMapped, bool isSubcarrierLocked, bool isWidescreen,
-                                       int white16bIre, int black16bIre, const QString &captureNotes)
+                                       int white16bIre, int black16bIre, int blanking16bIre, const QString &captureNotes)
 {
     QSqlQuery query(db);
     query.prepare("UPDATE capture SET system=?, decoder=?, git_branch=?, git_commit=?, "
                  "video_sample_rate=?, active_video_start=?, active_video_end=?, "
                  "field_width=?, field_height=?, number_of_sequential_fields=?, "
                  "colour_burst_start=?, colour_burst_end=?, is_mapped=?, is_subcarrier_locked=?, "
-                 "is_widescreen=?, white_16b_ire=?, black_16b_ire=?, capture_notes=? "
+                 "is_widescreen=?, white_16b_ire=?, black_16b_ire=?, blanking_16b_ire=?, capture_notes=? "
                  "WHERE capture_id=?");
 
     query.addBindValue(system);
@@ -583,6 +613,7 @@ bool SqliteWriter::updateCaptureMetadata(int captureId, const QString &system, c
     query.addBindValue(isWidescreen ? 1 : 0);
     query.addBindValue(white16bIre);
     query.addBindValue(black16bIre);
+    query.addBindValue(blanking16bIre);
     query.addBindValue(captureNotes.isEmpty() ? QVariant() : captureNotes);
     query.addBindValue(captureId);
 
