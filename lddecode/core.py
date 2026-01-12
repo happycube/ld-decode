@@ -3580,6 +3580,7 @@ class LDdecode:
                 is_widescreen INTEGER CHECK (is_widescreen IN (0,1)),
                 white_16b_ire INTEGER,
                 black_16b_ire INTEGER,
+                blanking_16b_ire INTEGER,
                 capture_notes TEXT
             );
 
@@ -4557,8 +4558,9 @@ class LDdecode:
         vp["fieldWidth"] = f.rf.SysParams["outlinelen"]
         vp["sampleRate"] = f.rf.SysParams["outfreq"] * 1000000
 
-        vp["black16bIre"] = float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
-        vp["white16bIre"] = float(f.hz_to_output(f.rf.iretohz(100)))
+        vp["black16bIre"]    = float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
+        vp["white16bIre"]    = float(f.hz_to_output(f.rf.iretohz(100)))
+        vp["blanking16bIre"] = float(f.hz_to_output(f.rf.iretohz(0)))
 
         vp["fieldHeight"] = f.outlinecount
 
@@ -4597,7 +4599,7 @@ class LDdecode:
             vp["sampleRate"], vp["activeVideoStart"], vp["activeVideoEnd"],
             vp["fieldWidth"], vp["fieldHeight"], vp["numberOfSequentialFields"],
             vp["colourBurstStart"], vp["colourBurstEnd"],
-            vp["white16bIre"], vp["black16bIre"], 
+            vp["white16bIre"], vp["black16bIre"], vp["blanking16bIre"],
             # is_mapped, is_subcarrier_locked, is_widescreen
             0, vp['system']=='NTSC', 0,
         )
@@ -4620,7 +4622,7 @@ class LDdecode:
                     video_sample_rate=?, active_video_start=?, active_video_end=?, 
                     field_width=?, field_height=?, number_of_sequential_fields=?, 
                     colour_burst_start=?, colour_burst_end=?, 
-                    white_16b_ire=?, black_16b_ire=?, 
+                    white_16b_ire=?, black_16b_ire=?, blanking_16b_ire=?,
                     is_mapped=?, is_subcarrier_locked=?, is_widescreen=?
                 WHERE capture_id = ?
             """, video_values + (self.capture_id,))
@@ -4640,9 +4642,9 @@ class LDdecode:
                     video_sample_rate, active_video_start, active_video_end, 
                     field_width, field_height, number_of_sequential_fields, 
                     colour_burst_start, colour_burst_end, 
-                    white_16b_ire, black_16b_ire,
+                    white_16b_ire, black_16b_ire, blanking_16b_ire,
                     is_mapped, is_subcarrier_locked, is_widescreen
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, video_values)
 
             self.capture_id = cursor.lastrowid
