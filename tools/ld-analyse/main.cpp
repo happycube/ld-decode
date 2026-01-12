@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
 
     // Set desktop file name for proper GNOME integration
     // This must match the installed .desktop file name (without .desktop extension)
-    QGuiApplication::setDesktopFileName("ld-analyse.desktop");
+    QGuiApplication::setDesktopFileName("ld-analyse");
     
     // Set application icon (for window decorations and taskbar)
     // QIcon::fromTheme will find the icon we installed to /usr/local/share/icons/hicolor/
