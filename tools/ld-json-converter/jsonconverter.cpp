@@ -264,6 +264,7 @@ bool JsonConverter::createSchema()
         "        CHECK (is_widescreen IN (0,1)),"
         "    white_16b_ire INTEGER,"
         "    black_16b_ire INTEGER,"
+        "    blanking_16b_ire INTEGER,"
         "    capture_notes TEXT"
         ");"
     )) {
@@ -455,9 +456,9 @@ bool JsonConverter::insertData(LdDecodeMetaData &metaData)
             "field_width, field_height, number_of_sequential_fields, "
             "colour_burst_start, colour_burst_end, is_mapped, "
             "is_subcarrier_locked, is_widescreen, white_16b_ire, "
-            "black_16b_ire, capture_notes"
+            "black_16b_ire, blanking_16b_ire, capture_notes"
             ") VALUES ("
-            "1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+            "1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
             ")"
         );
         
@@ -478,7 +479,8 @@ bool JsonConverter::insertData(LdDecodeMetaData &metaData)
         query.bindValue(14, videoParams.isWidescreen ? 1 : 0);
         query.bindValue(15, videoParams.white16bIre);
         query.bindValue(16, videoParams.black16bIre);
-        query.bindValue(17, videoParams.tapeFormat.isEmpty() ? QVariant() : videoParams.tapeFormat);
+        query.bindValue(17, videoParams.black16bIre); // Legacy JSON doesn't have blanking_16b_ire, use black_16b_ire
+        query.bindValue(18, videoParams.tapeFormat.isEmpty() ? QVariant() : videoParams.tapeFormat);
         
         if (!query.exec()) {
             qCritical() << "Failed to insert capture record:" << query.lastError().text();
