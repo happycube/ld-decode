@@ -1740,7 +1740,12 @@ async def decode_parallel(
         buffer = DecoderSharedMemory(decoder_state)
         # read input data into the shared memory buffer
         block_in = buffer.get_block_in()
-        frames_read = f.buffer_read_into(block_in, "int16")
+        try:
+            frames_read = f.buffer_read_into(block_in, "int16")
+        except sf.LibsndfileError as e:
+            print("Error decoding input rf:", e)
+            print("Stopping decode...")
+            frames_read = 0
         
         decoder_state.block_frames_read = frames_read
         decoder_state.is_last_block = frames_read < len(block_in) or exit_requested or stop_requested.value
