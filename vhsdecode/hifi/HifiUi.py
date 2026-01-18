@@ -149,8 +149,8 @@ class MainUIParameters:
 def decode_options_to_ui_parameters(decode_options):
     if decode_options["mode"] == "s":
         mode = "Stereo"
-    elif decode_options["mode"] == "mpx":
-        mode = "Stereo MPX"
+    elif decode_options["mode"] == "ms":
+        mode = "Stereo Mid/Side"
     elif decode_options["mode"] == "l":
         mode = "L"
     elif decode_options["mode"] == "r":
@@ -199,8 +199,8 @@ def decode_options_to_ui_parameters(decode_options):
 def ui_parameters_to_decode_options(values: MainUIParameters):
     if values.audio_mode == "Stereo":
         mode = "s"
-    elif values.audio_mode == "Stereo MPX":
-        mode = "mpx"
+    elif values.audio_mode == "Stereo Mid/Side":
+        mode = "ms"
     elif values.audio_mode == "L":
         mode = "l"
     elif values.audio_mode == "R":
@@ -668,11 +668,11 @@ class HifiUi(QMainWindow):
         normalize_layout.addWidget(self.normalize_checkbox)
         gain_section_layout.addLayout(normalize_layout, 1)
 
-        # Audio mode (mono L/mono R/stereo/stereo mpx)
+        # Audio mode (mono L/mono R/stereo/stereo ms)
         audio_mode_layout = QHBoxLayout()
         audio_mode_label = QLabel("Output Channel Mode")
         self.audio_mode_combo = QComboBox(self)
-        self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo MPX", "Sum"])
+        self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo Mid/Side", "Sum"])
         audio_mode_layout.addWidget(audio_mode_label)
         audio_mode_layout.addWidget(self.audio_mode_combo)
         advanced_format_options_frame.inner_layout.addLayout(audio_mode_layout)

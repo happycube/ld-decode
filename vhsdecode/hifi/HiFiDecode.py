@@ -2071,7 +2071,7 @@ class HiFiDecode:
     def mix_for_mode_stereo(
         l_raw: np.array, r_raw: np.array, decode_mode: str
     ) -> Tuple[np.array, np.array]:
-        if decode_mode == "mpx":
+        if decode_mode == "ms":
             l = np.multiply(np.add(l_raw, r_raw), 0.5)
             r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
         elif decode_mode == "l":

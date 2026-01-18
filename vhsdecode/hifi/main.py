@@ -279,9 +279,7 @@ audio_processing_options_group.add_argument(
     dest="mode",
     type=str,
     help=(
-        "Audio mode (s: stereo, mpx: stereo with mpx, l: left channel, r: right channel, sum: mono sum) - "
-        "defaults to s other than on 8mm which defaults to mpx."
-        " 8mm mono is not auto detected currently so has to be manually specified as l."
+        "Audio mode (s: stereo, ms: stereo mid/side, l: left mono, r: right mono, sum: left+right sum) (defaults: [VHS: s] [8mm: ms])."
     ),
 )
 audio_processing_options_group.add_argument(
@@ -2128,7 +2126,7 @@ def main() -> int:
 
     # 8mm AFM uses a mono channel, or L-R/L+R rather than L/R channels
     # The spec defines a dual audio mode but not sure if it was ever used.
-    default_mode = "s" if not args.format_8mm else "mpx"
+    default_mode = "s" if not args.format_8mm else "ms"
 
     real_mode = default_mode if not args.mode else args.mode
 
