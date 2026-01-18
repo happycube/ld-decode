@@ -48,26 +48,38 @@ from vhsdecode.hifi.HiFiDecode import (
     DCBlocker,
     Expander,
     Deemphasis,
-    DEFAULT_EXPANDER_GAIN,
-    DEFAULT_EXPANDER_RATIO,
-    DEFAULT_EXPANDER_ATTACK_TAU,
-    DEFAULT_EXPANDER_RELEASE_TAU,
+    DEFAULT_VHS_EXPANDER_GAIN,
+    DEFAULT_VHS_EXPANDER_RATIO,
+    DEFAULT_VHS_EXPANDER_ATTACK_TAU,
+    DEFAULT_VHS_EXPANDER_HOLD_TAU,
+    DEFAULT_VHS_EXPANDER_RELEASE_TAU,
+
+    DEFAULT_8MM_EXPANDER_GAIN,
+    DEFAULT_8MM_EXPANDER_RATIO,
+    DEFAULT_8MM_EXPANDER_ATTACK_TAU,
+    DEFAULT_8MM_EXPANDER_HOLD_TAU,
+    DEFAULT_8MM_EXPANDER_RELEASE_TAU,
+
     DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
     DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
+
     DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1,
     DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
+
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_2,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_2,
+
     DEFAULT_VHS_DEEMPHASIS_TAU_1,
     DEFAULT_VHS_DEEMPHASIS_TAU_2,
-    DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE,
-    DEFAULT_VHS_DEEMPHASIS_BANDWIDTH,
     DEFAULT_8MM_DEEMPHASIS_TAU_1,
     DEFAULT_8MM_DEEMPHASIS_TAU_2,
-    DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE,
-    DEFAULT_8MM_DEEMPHASIS_BANDWIDTH,
+
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
@@ -328,36 +340,35 @@ expander_options_group.add_argument(
     default="on",
     help="Set expander block on/off",
 )
-
 expander_options_group.add_argument(
     "--expander_gain",
     dest="expander_gain",
     type=float,
-    default=DEFAULT_EXPANDER_GAIN,
-    help=f"Sets the expander gain (default is {DEFAULT_EXPANDER_GAIN}). "
-    f"Range (0~30): Higher values increase output gain of the expander",
+    help=f"Sets the expander gain (defaults: [VHS: {DEFAULT_VHS_EXPANDER_GAIN}] [8mm: {DEFAULT_8MM_EXPANDER_GAIN}]).",
 )
 expander_options_group.add_argument(
     "--expander_ratio",
     dest="expander_ratio",
     type=float,
-    default=DEFAULT_EXPANDER_RATIO,
-    help=f"Sets the ratio (default is {DEFAULT_EXPANDER_RATIO}). "
-    f"Range (1~2): Higher values increase the ratio of the expander",
+    help=f"Sets the expander ratio (defaults: [VHS: {DEFAULT_VHS_EXPANDER_RATIO}] [8mm: {DEFAULT_8MM_EXPANDER_RATIO}]).",
 )
 expander_options_group.add_argument(
     "--expander_attack_tau",
     dest="expander_attack_tau",
     type=float,
-    default=DEFAULT_EXPANDER_ATTACK_TAU,
-    help=f"Sets the expander attack speed in tau (default is {DEFAULT_EXPANDER_ATTACK_TAU}).",
+    help=f"Sets the expander attack speed in seconds (defaults: [VHS: {DEFAULT_VHS_EXPANDER_ATTACK_TAU}] [8mm: {DEFAULT_8MM_EXPANDER_ATTACK_TAU}]).",
+)
+expander_options_group.add_argument(
+    "--expander_hold_tau",
+    dest="expander_hold_tau",
+    type=float,
+    help=f"Sets the expander hold time in seconds (defaults: [VHS: {DEFAULT_VHS_EXPANDER_HOLD_TAU}] [8mm: {DEFAULT_8MM_EXPANDER_HOLD_TAU}]).",
 )
 expander_options_group.add_argument(
     "--expander_release_tau",
     dest="expander_release_tau",
     type=float,
-    default=DEFAULT_EXPANDER_RELEASE_TAU,
-    help=f"Sets the expander release speed in tau (default is {DEFAULT_EXPANDER_RELEASE_TAU}).",
+    help=f"Sets the expander release speed in seconds (defaults: [VHS: {DEFAULT_VHS_EXPANDER_RELEASE_TAU}] [8mm: {DEFAULT_8MM_EXPANDER_RELEASE_TAU}]).",
 )
 expander_options_group.add_argument(
     "--expander_weighting_low_tau",
@@ -372,16 +383,16 @@ expander_options_group.add_argument(
     help=f"Sets the expander weighting high-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2}]).",
 )
 expander_options_group.add_argument(
-    "--expander_weighting_db_per_octave",
-    dest="expander_weighting_db_per_octave",
+    "--expander_weighting_low_pass",
+    dest="expander_weighting_low_pass",
     type=float,
-    help=f"Sets the expander weighting high-pass shelf filter cutoff rate (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE}]).",
+    help=f"Sets the expander weighting low-pass filter cutoff frequency in Hz (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS}]).",
 )
 expander_options_group.add_argument(
-    "--expander_weighting_bandwidth",
-    dest="expander_weighting_bandwidth",
+    "--expander_weighting_low_pass_transition",
+    dest="expander_weighting_low_pass_transition",
     type=float,
-    help=f"Sets the expander weighting high-pass shelf filter bandwidth (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH}]).",
+    help=f"Sets the expander weighting low-pass filter cutoff rate in Hz (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION}]).",
 )
 
 deemphasis_options_group = parser.add_argument_group(
@@ -407,16 +418,16 @@ deemphasis_options_group.add_argument(
     help=f"Sets the deemphasis low-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_TAU_2}] [8mm: {DEFAULT_8MM_DEEMPHASIS_TAU_2}])",
 )
 deemphasis_options_group.add_argument(
-    "--deemphasis_db_per_octave",
-    dest="deemphasis_db_per_octave",
+    "--nr_deemphasis_low_tau",
+    dest="nr_deemphasis_low_tau",
     type=float,
-    help=f"Sets the deemphasis low-pass shelf filter cutoff rate (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE}] [8mm: {DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE}])",
+    help=f"Sets the noise reduction deemphasis low-pass shelf filter low point in tau (defaults: [VHS: {DEFAULT_VHS_NR_DEEMPHASIS_TAU_1}] [8mm: {DEFAULT_8MM_NR_DEEMPHASIS_TAU_1}])",
 )
 deemphasis_options_group.add_argument(
-    "--deemphasis_bandwidth",
-    dest="deemphasis_bandwidth",
+    "--nr_deemphasis_high_tau",
+    dest="nr_deemphasis_high_tau",
     type=float,
-    help=f"Sets the deemphasis low-pass shelf filter bandwidth (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_BANDWIDTH}] [8mm: {DEFAULT_8MM_DEEMPHASIS_BANDWIDTH}])",
+    help=f"Sets the noise reduction deemphasis low-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_NR_DEEMPHASIS_TAU_2}] [8mm: {DEFAULT_8MM_NR_DEEMPHASIS_TAU_2}])",
 )
 
 def test_ld_tools(ld_tool):
@@ -907,6 +918,7 @@ class PostProcessor:
         self.enable_expander = decode_options["enable_expander"]
         self.enable_deemphasis = decode_options["enable_deemphasis"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
+        self.format = decode_options["format"]
         self.peak_gain = peak_gain
 
         # create processes and wire up queues
@@ -1013,28 +1025,31 @@ class PostProcessor:
         atexit.register(self.spectral_nr_worker_r.terminate)
         atexit.register(self.spectral_nr_worker_r.join)
 
+        expander_worker = PostProcessor.expander_8mm_worker if self.format == "8mm" else PostProcessor.expander_vhs_worker
+
         expander_worker_l_out_rx, expander_worker_l_out_tx = Pipe(duplex=False)
         self.expander_worker_l = Process(
-            target=PostProcessor.expander_worker,
+            target=expander_worker,
             name="hifi_expander_l",
             args=(
                 spectral_nr_worker_l_rx,
                 expander_worker_l_out_tx,
-                self.enable_expander,
                 self.enable_deemphasis,
+                self.enable_expander,
                 self.final_audio_rate,
+                decode_options["deemphasis_low_tau"],
+                decode_options["deemphasis_high_tau"],
+                decode_options["nr_deemphasis_low_tau"],
+                decode_options["nr_deemphasis_high_tau"],
                 decode_options["expander_gain"],
                 decode_options["expander_ratio"],
                 decode_options["expander_attack_tau"],
+                decode_options["expander_hold_tau"],
                 decode_options["expander_release_tau"],
                 decode_options["expander_weighting_low_tau"],
                 decode_options["expander_weighting_high_tau"],
-                decode_options["expander_weighting_db_per_octave"],
-                decode_options["expander_weighting_bandwidth"],
-                decode_options["deemphasis_low_tau"],
-                decode_options["deemphasis_high_tau"],
-                decode_options["deemphasis_db_per_octave"],
-                decode_options["deemphasis_bandwidth"],
+                decode_options["expander_weighting_low_pass"],
+                decode_options["expander_weighting_low_pass_transition"]
             ),
         )
         self.expander_worker_l.start()
@@ -1043,26 +1058,27 @@ class PostProcessor:
 
         expander_worker_r_out_rx, expander_worker_r_out_tx = Pipe(duplex=False)
         self.expander_worker_r = Process(
-            target=PostProcessor.expander_worker,
+            target=expander_worker,
             name="hifi_expander_r",
             args=(
                 spectral_nr_worker_r_rx,
                 expander_worker_r_out_tx,
-                self.enable_expander,
                 self.enable_deemphasis,
+                self.enable_expander,
                 self.final_audio_rate,
+                decode_options["deemphasis_low_tau"],
+                decode_options["deemphasis_high_tau"],
+                decode_options["nr_deemphasis_low_tau"],
+                decode_options["nr_deemphasis_high_tau"],
                 decode_options["expander_gain"],
                 decode_options["expander_ratio"],
                 decode_options["expander_attack_tau"],
+                decode_options["expander_hold_tau"],
                 decode_options["expander_release_tau"],
                 decode_options["expander_weighting_low_tau"],
                 decode_options["expander_weighting_high_tau"],
-                decode_options["expander_weighting_db_per_octave"],
-                decode_options["expander_weighting_bandwidth"],
-                decode_options["deemphasis_low_tau"],
-                decode_options["deemphasis_high_tau"],
-                decode_options["deemphasis_db_per_octave"],
-                decode_options["deemphasis_bandwidth"],
+                decode_options["expander_weighting_low_pass"],
+                decode_options["expander_weighting_low_pass_transition"]
             ),
         )
         self.expander_worker_r.start()
@@ -1171,44 +1187,53 @@ class PostProcessor:
             out_conn.send((decoder_state, channel_num))
 
     @staticmethod
-    def expander_worker(
+    def expander_vhs_worker(
         in_conn,
         out_conn,
-        enable_expander,
         enable_deemphasis,
+        enable_expander,
         final_audio_rate,
+        deemphasis_low_tau,
+        deemphasis_high_tau,
+        nr_deemphasis_low_tau,
+        nr_deemphasis_high_tau,
         expander_gain,
         expander_ratio,
         expander_attack_tau,
+        expander_hold_tau,
         expander_release_tau,
         expander_weighting_low_tau,
         expander_weighting_high_tau,
-        expander_weighting_db_per_octave,
-        expander_weighting_bandwidth,
-        deemphasis_low_tau,
-        deemphasis_high_tau,
-        deemphasis_db_per_octave,
-        deemphasis_bandwidth
+        expander_weighting_low_pass,
+        expander_weighting_low_pass_transition,
     ):
         setproctitle(current_process().name)
-        deemphasis = Deemphasis(
+        deemphasis_pre_1 = Deemphasis(
             final_audio_rate,
             deemphasis_low_tau,
             deemphasis_high_tau,
-            deemphasis_db_per_octave,
-            deemphasis_bandwidth
         )
-
+        deemphasis_pre_2 = Deemphasis(
+            final_audio_rate,
+            deemphasis_low_tau,
+            deemphasis_high_tau,
+        )
+        nr_deemphasis = Deemphasis(
+            final_audio_rate,
+            nr_deemphasis_low_tau,
+            nr_deemphasis_high_tau,
+        )
         expander = Expander(
             final_audio_rate,
             expander_gain,
             expander_ratio,
             expander_attack_tau,
+            expander_hold_tau,
             expander_release_tau,
             expander_weighting_low_tau,
             expander_weighting_high_tau,
-            expander_weighting_db_per_octave,
-            expander_weighting_bandwidth
+            expander_weighting_low_pass,
+            expander_weighting_low_pass_transition,
         )
 
         while True:
@@ -1230,13 +1255,101 @@ class PostProcessor:
                 post = buffer.get_post_right()
 
             if enable_deemphasis:
-                deemphasis.process(post)
+                # first deemphasis stage happens before the noise reduction block
+                # IEC 60774-2 Figure 2, pg.15 (pre-emphasis parameters)
+                # IEC 60774-2 Figure 4, pg.17 (pre-emphasis location)
+                deemphasis_pre_1.process(pre)
+                deemphasis_pre_2.process(post)
+
+                # second deemphasis stage only happens on the audio (not the weighted input)
+                # IEC 60774-2 Figure 5, pg.19 (noise reduction layout)
+                nr_deemphasis.process(post)
 
             if enable_expander:
                 if decoder_state.block_num == 0:
                     # prime the expander's gain if this is the first block
                     expander.process(pre, np.copy(post))
                 expander.process(pre, post)
+
+            buffer.close()
+            out_conn.send(decoder_state)
+
+    @staticmethod
+    def expander_8mm_worker(
+        in_conn,
+        out_conn,
+        enable_deemphasis,
+        enable_expander,
+        final_audio_rate,
+        deemphasis_low_tau,
+        deemphasis_high_tau,
+        nr_deemphasis_low_tau,
+        nr_deemphasis_high_tau,
+        expander_gain,
+        expander_ratio,
+        expander_attack_tau,
+        expander_hold_tau,
+        expander_release_tau,
+        expander_weighting_low_tau,
+        expander_weighting_high_tau,
+        expander_weighting_low_pass,
+        expander_weighting_low_pass_transition,
+    ):
+        setproctitle(current_process().name)
+        deemphasis_2 = Deemphasis(
+            final_audio_rate,
+            deemphasis_low_tau,
+            deemphasis_high_tau,
+        )
+        deemphasis_1 = Deemphasis(
+            final_audio_rate,
+            nr_deemphasis_low_tau,
+            nr_deemphasis_high_tau,
+        )
+        expander = Expander(
+            final_audio_rate,
+            expander_gain,
+            expander_ratio,
+            expander_attack_tau,
+            expander_hold_tau,
+            expander_release_tau,
+            expander_weighting_low_tau,
+            expander_weighting_high_tau,
+            expander_weighting_low_pass,
+            expander_weighting_low_pass_transition,
+        )
+
+        while True:
+            while True:
+                try:
+                    decoder_state, channel_num = in_conn.recv()
+                    break
+                except InterruptedError:
+                    pass
+                except EOFError:
+                    return
+
+            buffer = PostProcessorSharedMemory(decoder_state)
+            if channel_num == 0:
+                pre = buffer.get_pre_left()
+                post = buffer.get_post_left()
+            else:
+                pre = buffer.get_pre_right()
+                post = buffer.get_post_right()
+
+            # IEC 60843-1-1993 Figure 34, pg.101
+            if enable_deemphasis:
+                deemphasis_2.process(post)
+
+            if enable_expander:
+                if decoder_state.block_num == 0:
+                    # prime the expander's gain if this is the first block
+                    expander.process(pre, np.copy(post))
+                expander.process(pre, post)
+
+            if enable_deemphasis:
+                # reverse noise reduction pre-emphasis
+                deemphasis_1.process(post)
 
             buffer.close()
             out_conn.send(decoder_state)
@@ -2029,29 +2142,41 @@ def main() -> int:
         resampler_quality = DEFAULT_RESAMPLER_QUALITY
 
     if args.format_8mm:
-        print("using 8mm")
         tape_format = "8mm"
+        default_expander_gain = DEFAULT_8MM_EXPANDER_GAIN
+        default_expander_ratio = DEFAULT_8MM_EXPANDER_RATIO
+        default_expander_attack_tau = DEFAULT_8MM_EXPANDER_ATTACK_TAU
+        default_expander_hold_tau = DEFAULT_8MM_EXPANDER_HOLD_TAU
+        default_expander_release_tau = DEFAULT_8MM_EXPANDER_RELEASE_TAU
+
         default_deemphasis_low_tau = DEFAULT_8MM_DEEMPHASIS_TAU_1
         default_deemphasis_high_tau = DEFAULT_8MM_DEEMPHASIS_TAU_2
-        default_deemphasis_db_per_octave = DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE
-        default_deemphasis_bandwidth = DEFAULT_8MM_DEEMPHASIS_BANDWIDTH
+
+        default_nr_deemphasis_low_tau = DEFAULT_8MM_NR_DEEMPHASIS_TAU_1
+        default_nr_deemphasis_high_tau = DEFAULT_8MM_NR_DEEMPHASIS_TAU_2
 
         default_expander_weighting_low_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1
         default_expander_weighting_high_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2
-        default_expander_weighting_db_per_octave = DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE
-        default_expander_weighting_bandwidth = DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH
+        default_expander_weighting_low_pass = DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS
+        default_expander_weighting_low_pass_transition = DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION
     else:
-        print("using vhs")
         tape_format = "vhs"
+        default_expander_gain = DEFAULT_VHS_EXPANDER_GAIN
+        default_expander_ratio = DEFAULT_VHS_EXPANDER_RATIO
+        default_expander_attack_tau = DEFAULT_VHS_EXPANDER_ATTACK_TAU
+        default_expander_hold_tau = DEFAULT_VHS_EXPANDER_HOLD_TAU
+        default_expander_release_tau = DEFAULT_VHS_EXPANDER_RELEASE_TAU
+
         default_deemphasis_low_tau = DEFAULT_VHS_DEEMPHASIS_TAU_1
         default_deemphasis_high_tau = DEFAULT_VHS_DEEMPHASIS_TAU_2
-        default_deemphasis_db_per_octave = DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE
-        default_deemphasis_bandwidth = DEFAULT_VHS_DEEMPHASIS_BANDWIDTH
+
+        default_nr_deemphasis_low_tau = DEFAULT_VHS_NR_DEEMPHASIS_TAU_1
+        default_nr_deemphasis_high_tau = DEFAULT_VHS_NR_DEEMPHASIS_TAU_2
 
         default_expander_weighting_low_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1
         default_expander_weighting_high_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2
-        default_expander_weighting_db_per_octave = DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE
-        default_expander_weighting_bandwidth = DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH
+        default_expander_weighting_low_pass = DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS
+        default_expander_weighting_low_pass_transition = DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
@@ -2072,18 +2197,19 @@ def main() -> int:
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,
         "bias_guess": args.bias_guess,
         "normalize": args.normalize,
-        "expander_gain": args.expander_gain,
-        "expander_ratio": args.expander_ratio,
-        "expander_attack_tau": args.expander_attack_tau,
-        "expander_release_tau": args.expander_release_tau,
+        "expander_gain": args.expander_gain or default_expander_gain,
+        "expander_ratio": args.expander_ratio or default_expander_ratio,
+        "expander_attack_tau": args.expander_attack_tau or default_expander_attack_tau,
+        "expander_hold_tau": args.expander_hold_tau or default_expander_hold_tau,
+        "expander_release_tau": args.expander_release_tau or default_expander_release_tau,
         "expander_weighting_low_tau": args.expander_weighting_low_tau or default_expander_weighting_low_tau,
         "expander_weighting_high_tau": args.expander_weighting_high_tau or default_expander_weighting_high_tau,
-        "expander_weighting_db_per_octave": args.expander_weighting_db_per_octave or default_expander_weighting_db_per_octave,
-        "expander_weighting_bandwidth": args.expander_weighting_bandwidth or default_expander_weighting_bandwidth,
+        "expander_weighting_low_pass": args.expander_weighting_low_pass or default_expander_weighting_low_pass,
+        "expander_weighting_low_pass_transition": args.expander_weighting_low_pass_transition or default_expander_weighting_low_pass_transition,
+        "nr_deemphasis_low_tau": args.nr_deemphasis_low_tau or default_nr_deemphasis_low_tau,
+        "nr_deemphasis_high_tau": args.nr_deemphasis_high_tau or default_nr_deemphasis_high_tau,
         "deemphasis_low_tau": args.deemphasis_low_tau or default_deemphasis_low_tau,
         "deemphasis_high_tau": args.deemphasis_high_tau or default_deemphasis_high_tau,
-        "deemphasis_db_per_octave": args.deemphasis_db_per_octave or default_deemphasis_db_per_octave,
-        "deemphasis_bandwidth": args.deemphasis_bandwidth or default_deemphasis_bandwidth,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,
