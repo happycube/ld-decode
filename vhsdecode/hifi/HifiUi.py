@@ -58,27 +58,37 @@ except ImportError:
     from PyQt5 import QtGui, QtCore
 
 from vhsdecode.hifi.HiFiDecode import (
-    DEFAULT_EXPANDER_GAIN,
-    DEFAULT_EXPANDER_RATIO,
-    DEFAULT_EXPANDER_ATTACK_TAU,
-    DEFAULT_EXPANDER_RELEASE_TAU,
-    DEFAULT_VHS_DEEMPHASIS_TAU_1,
-    DEFAULT_VHS_DEEMPHASIS_TAU_2,
-    DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE,
-    DEFAULT_VHS_DEEMPHASIS_BANDWIDTH,
+    DEFAULT_VHS_EXPANDER_GAIN,
+    DEFAULT_VHS_EXPANDER_RATIO,
+    DEFAULT_VHS_EXPANDER_ATTACK_TAU,
+    DEFAULT_VHS_EXPANDER_HOLD_TAU,
+    DEFAULT_VHS_EXPANDER_RELEASE_TAU,
+
+    DEFAULT_8MM_EXPANDER_GAIN,
+    DEFAULT_8MM_EXPANDER_RATIO,
+    DEFAULT_8MM_EXPANDER_ATTACK_TAU,
+    DEFAULT_8MM_EXPANDER_HOLD_TAU,
+    DEFAULT_8MM_EXPANDER_RELEASE_TAU,
+
     DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
     DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
 
-    DEFAULT_8MM_DEEMPHASIS_TAU_1,
-    DEFAULT_8MM_DEEMPHASIS_TAU_2,
-    DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE,
-    DEFAULT_8MM_DEEMPHASIS_BANDWIDTH,
     DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1,
     DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
+
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_2,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_2,
+
+    DEFAULT_VHS_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_DEEMPHASIS_TAU_2,
+    DEFAULT_8MM_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_DEEMPHASIS_TAU_2,
 
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
@@ -101,18 +111,19 @@ class MainUIParameters:
     def __init__(self):
         self.volume: float = 1.0
         self.normalize = False
-        self.expander_gain: float = DEFAULT_EXPANDER_GAIN
-        self.expander_ratio: float = DEFAULT_EXPANDER_RATIO
-        self.expander_attack_tau: float = DEFAULT_EXPANDER_ATTACK_TAU
-        self.expander_release_tau: float = DEFAULT_EXPANDER_RELEASE_TAU
+        self.expander_gain: float = DEFAULT_VHS_EXPANDER_GAIN
+        self.expander_ratio: float = DEFAULT_VHS_EXPANDER_RATIO
+        self.expander_attack_tau: float = DEFAULT_VHS_EXPANDER_ATTACK_TAU
+        self.expander_hold_tau: float = DEFAULT_VHS_EXPANDER_HOLD_TAU
+        self.expander_release_tau: float = DEFAULT_VHS_EXPANDER_RELEASE_TAU
         self.expander_weighting_low_tau: float = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1
         self.expander_weighting_high_tau: float = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2
-        self.expander_weighting_db_per_octave: float = DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE
-        self.expander_weighting_bandwidth: float = DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH
+        self.expander_weighting_low_pass: float = DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS
+        self.expander_weighting_low_pass_transition: float = DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION
         self.deemphasis_low_tau: float = DEFAULT_VHS_DEEMPHASIS_TAU_1
         self.deemphasis_high_tau: float = DEFAULT_VHS_DEEMPHASIS_TAU_2
-        self.deemphasis_db_per_octave: float = DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE
-        self.deemphasis_bandwidth: float = DEFAULT_VHS_DEEMPHASIS_BANDWIDTH
+        self.nr_deemphasis_low_tau: float = DEFAULT_VHS_NR_DEEMPHASIS_TAU_1
+        self.nr_deemphasis_high_tau: float = DEFAULT_VHS_NR_DEEMPHASIS_TAU_2
         self.afe_vco_deviation = 0
         self.afe_left_carrier = 0
         self.afe_right_carrier = 0
@@ -136,6 +147,17 @@ class MainUIParameters:
 
 
 def decode_options_to_ui_parameters(decode_options):
+    if decode_options["mode"] == "s":
+        mode = "Stereo"
+    elif decode_options["mode"] == "ms":
+        mode = "Stereo Mid/Side"
+    elif decode_options["mode"] == "l":
+        mode = "L"
+    elif decode_options["mode"] == "r":
+        mode = "R"
+    elif decode_options["mode"] == "sum":
+        mode = "Sum"
+
     values = MainUIParameters()
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
@@ -144,15 +166,16 @@ def decode_options_to_ui_parameters(decode_options):
     values.expander_gain = decode_options["expander_gain"]
     values.expander_ratio = decode_options["expander_ratio"]
     values.expander_attack_tau = decode_options["expander_attack_tau"]
+    values.expander_hold_tau = decode_options["expander_hold_tau"]
     values.expander_release_tau = decode_options["expander_release_tau"]
     values.expander_weighting_low_tau = decode_options["expander_weighting_low_tau"]
     values.expander_weighting_high_tau = decode_options["expander_weighting_high_tau"]
-    values.expander_weighting_db_per_octave = decode_options["expander_weighting_db_per_octave"]
-    values.expander_weighting_bandwidth = decode_options["expander_weighting_bandwidth"]
+    values.expander_weighting_low_pass = decode_options["expander_weighting_low_pass"]
+    values.expander_weighting_low_pass_transition = decode_options["expander_weighting_low_pass_transition"]
     values.deemphasis_low_tau = decode_options["deemphasis_low_tau"]
     values.deemphasis_high_tau = decode_options["deemphasis_high_tau"]
-    values.deemphasis_db_per_octave = decode_options["deemphasis_db_per_octave"]
-    values.deemphasis_bandwidth = decode_options["deemphasis_bandwidth"]
+    values.nr_deemphasis_low_tau = decode_options["nr_deemphasis_low_tau"]
+    values.nr_deemphasis_high_tau = decode_options["nr_deemphasis_high_tau"]
     values.afe_vco_deviation = decode_options["afe_vco_deviation"]
     values.afe_left_carrier = decode_options["afe_left_carrier"]
     values.afe_right_carrier = decode_options["afe_right_carrier"]
@@ -162,7 +185,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.audio_sample_rate = decode_options["audio_rate"]
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
-    values.audio_mode = "Stereo"
+    values.audio_mode = mode
     values.resampler_quality = decode_options["resampler_quality"]
     values.demod_type = decode_options["demod_type"].capitalize()
     values.input_sample_rate = decode_options["input_rate"]
@@ -174,6 +197,17 @@ def decode_options_to_ui_parameters(decode_options):
 
 
 def ui_parameters_to_decode_options(values: MainUIParameters):
+    if values.audio_mode == "Stereo":
+        mode = "s"
+    elif values.audio_mode == "Stereo Mid/Side":
+        mode = "ms"
+    elif values.audio_mode == "L":
+        mode = "l"
+    elif values.audio_mode == "R":
+        mode = "r"
+    elif values.audio_mode == "Sum":
+        mode = "sum"
+
     decode_options = {
         "input_rate": float(values.input_sample_rate) * 1e6,
         "standard": "p" if values.standard == "PAL" else "n",
@@ -186,15 +220,16 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "expander_gain": values.expander_gain,
         "expander_ratio": values.expander_ratio,
         "expander_attack_tau": values.expander_attack_tau,
+        "expander_hold_tau": values.expander_hold_tau,
         "expander_release_tau": values.expander_release_tau,
         "expander_weighting_low_tau": values.expander_weighting_low_tau,
         "expander_weighting_high_tau": values.expander_weighting_high_tau,
-        "expander_weighting_db_per_octave": values.expander_weighting_db_per_octave,
-        "expander_weighting_bandwidth": values.expander_weighting_bandwidth,
+        "expander_weighting_low_pass": values.expander_weighting_low_pass,
+        "expander_weighting_low_pass_transition": values.expander_weighting_low_pass_transition,
         "deemphasis_low_tau": values.deemphasis_low_tau,
         "deemphasis_high_tau": values.deemphasis_high_tau,
-        "deemphasis_db_per_octave": values.deemphasis_db_per_octave,
-        "deemphasis_bandwidth": values.deemphasis_bandwidth,
+        "nr_deemphasis_low_tau": values.nr_deemphasis_low_tau,
+        "nr_deemphasis_high_tau": values.nr_deemphasis_high_tau,
         "afe_vco_deviation": values.afe_vco_deviation,
         "afe_left_carrier": values.afe_left_carrier,
         "afe_right_carrier": values.afe_right_carrier,
@@ -208,19 +243,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "resampler_quality": values.resampler_quality,
         "head_switching_interpolation": values.head_switching_interpolation,
         "muting": values.muting,
-        "mode": (
-            "s"
-            if values.audio_mode == "Stereo"
-            else (
-                "l"
-                if values.audio_mode == "L"
-                else (
-                    "r"
-                    if values.audio_mode == "R"
-                    else "mpx" if values.audio_mode == "Stereo MPX" else "sum"
-                )
-            )
-        ),
+        "mode": mode
     }
     return decode_options
 
@@ -645,11 +668,11 @@ class HifiUi(QMainWindow):
         normalize_layout.addWidget(self.normalize_checkbox)
         gain_section_layout.addLayout(normalize_layout, 1)
 
-        # Audio mode (mono L/mono R/stereo/stereo mpx)
+        # Audio mode (mono L/mono R/stereo/stereo ms)
         audio_mode_layout = QHBoxLayout()
         audio_mode_label = QLabel("Output Channel Mode")
         self.audio_mode_combo = QComboBox(self)
-        self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo MPX", "Sum"])
+        self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo Mid/Side", "Sum"])
         audio_mode_layout.addWidget(audio_mode_label)
         audio_mode_layout.addWidget(self.audio_mode_combo)
         advanced_format_options_frame.inner_layout.addLayout(audio_mode_layout)
@@ -689,19 +712,23 @@ class HifiUi(QMainWindow):
         expander_controls_frame.inner_layout.addWidget(self.enable_expander_checkbox)
         expander_controls_layout = QHBoxLayout()
         self.expander_gain_dial_control = DialControl(
-            self, "Gain (db)", QtGui.QDoubleValidator(), 1, 0, 30
+            self, "Gain (db)", QtGui.QDoubleValidator(), 1, 1, 60, width=2
         )
         expander_controls_layout.addWidget(self.expander_gain_dial_control)
         self.expander_ratio_dial_control = DialControl(
-            self, "Ratio", QtGui.QDoubleValidator(), 100, 1, 10
+            self, "Ratio", QtGui.QDoubleValidator(), 10, 1, 10, width=2
         )
         expander_controls_layout.addWidget(self.expander_ratio_dial_control)
         self.expander_attack_tau_dial_control = DialControl(
-            self, "Attack (𝜏)", QtGui.QDoubleValidator(), 10e3, 10e-4, 10e-3
+            self, "Attack (𝜏)", QtGui.QDoubleValidator(), 10e3, 10e-4, 10e-3, width=4
         )
         expander_controls_layout.addWidget(self.expander_attack_tau_dial_control)
+        self.expander_hold_tau_dial_control = DialControl(
+            self, "Hold (𝜏)", QtGui.QDoubleValidator(), 10e3, 10e-4, 10e-3, width=4
+        )
+        expander_controls_layout.addWidget(self.expander_hold_tau_dial_control)
         self.expander_release_tau_dial_control = DialControl(
-            self, "Release (𝜏)", QtGui.QDoubleValidator(), 10e2, 10e-3, 10e-2
+            self, "Release (𝜏)", QtGui.QDoubleValidator(), 10e2, 10e-3, 10e-2, width=4
         )
         expander_controls_layout.addWidget(self.expander_release_tau_dial_control)
         expander_controls_frame.inner_layout.addLayout(expander_controls_layout)
@@ -720,6 +747,7 @@ class HifiUi(QMainWindow):
             10e5,
             DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
             10e-4,
+            width=5
         )
         weighting_layout.addWidget(self.expander_weighting_low_tau_dial_control)
         self.expander_weighting_high_tau_dial_control = DialControl(
@@ -729,16 +757,17 @@ class HifiUi(QMainWindow):
             10e5,
             10e-7,
             DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
+            width=5
         )
         weighting_layout.addWidget(self.expander_weighting_high_tau_dial_control)
-        self.expander_weighting_db_per_octave_dial_control = DialControl(
-            self, "Slope (db/oct)", QtGui.QDoubleValidator(), 10, 0, 12
+        self.expander_weighting_low_pass_dial_control = DialControl(
+            self, "Low Pass (Hz)", QtGui.QDoubleValidator(), 1, 5000, 21000, 100, width=4
         )
-        weighting_layout.addWidget(self.expander_weighting_db_per_octave_dial_control)
-        self.expander_weighting_bandwidth_dial_control = DialControl(
-            self, "Bandwidth", QtGui.QDoubleValidator(), 50, 0, 12
+        weighting_layout.addWidget(self.expander_weighting_low_pass_dial_control)
+        self.expander_weighting_low_pass_transition_dial_control = DialControl(
+            self, "Low Pass Transition (Hz)", QtGui.QDoubleValidator(), 1, 5000, 100000, 100, width=5
         )
-        weighting_layout.addWidget(self.expander_weighting_bandwidth_dial_control)
+        weighting_layout.addWidget(self.expander_weighting_low_pass_transition_dial_control)
         expander_sideband_frame.inner_layout.addLayout(weighting_layout)
 
         show_plot_btn_weighting = QPushButton("Plot")
@@ -760,6 +789,7 @@ class HifiUi(QMainWindow):
             10e5,
             DEFAULT_VHS_DEEMPHASIS_TAU_2,
             10e-4,
+            width=5
         )
         deemphasis_layout.addWidget(self.deemphasis_low_tau_dial_control)
         self.deemphasis_high_tau_dial_control = DialControl(
@@ -769,16 +799,30 @@ class HifiUi(QMainWindow):
             10e5,
             10e-7,
             DEFAULT_VHS_DEEMPHASIS_TAU_1,
+            width=5
         )
         deemphasis_layout.addWidget(self.deemphasis_high_tau_dial_control)
-        self.deemphasis_db_per_octave_dial_control = DialControl(
-            self, "Slope (db/oct)", QtGui.QDoubleValidator(), 10, 0, 12
+
+        self.nr_deemphasis_low_tau_dial_control = DialControl(
+            self,
+            "NR Low Shelf (𝜏)",
+            QtGui.QDoubleValidator(),
+            10e5,
+            DEFAULT_VHS_NR_DEEMPHASIS_TAU_2,
+            10e-4,
+            width=5
         )
-        deemphasis_layout.addWidget(self.deemphasis_db_per_octave_dial_control)
-        self.deemphasis_bandwidth_dial_control = DialControl(
-            self, "Bandwidth", QtGui.QDoubleValidator(), 50, 0, 12
+        deemphasis_layout.addWidget(self.nr_deemphasis_low_tau_dial_control)
+        self.nr_deemphasis_high_tau_dial_control = DialControl(
+            self,
+            "NR High Shelf (𝜏)",
+            QtGui.QDoubleValidator(),
+            10e5,
+            10e-7,
+            DEFAULT_VHS_NR_DEEMPHASIS_TAU_1,
+            width=5
         )
-        deemphasis_layout.addWidget(self.deemphasis_bandwidth_dial_control)
+        deemphasis_layout.addWidget(self.nr_deemphasis_high_tau_dial_control)
 
         show_plot_btn_deemphasis = QPushButton("Plot")
         show_plot_btn_deemphasis.clicked.connect(self.show_plot)
@@ -798,17 +842,25 @@ class HifiUi(QMainWindow):
         self._plot_update_timer.setSingleShot(True)
         self._plot_update_timer.timeout.connect(self.weighting_deemphasis_plot.update_plot)
 
+        self.expander_gain_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_ratio_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_attack_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_hold_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_release_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_ratio_dial_control.valueChanged.connect(self.schedule_plot_update)
+
         self.expander_weighting_low_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
         self.expander_weighting_high_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
-        self.expander_weighting_db_per_octave_dial_control.valueChanged.connect(self.schedule_plot_update)
-        self.expander_weighting_bandwidth_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_weighting_low_pass_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.expander_weighting_low_pass_transition_dial_control.valueChanged.connect(self.schedule_plot_update)
 
         self.deemphasis_low_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
         self.deemphasis_high_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
-        self.deemphasis_db_per_octave_dial_control.valueChanged.connect(self.schedule_plot_update)
-        self.deemphasis_bandwidth_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.nr_deemphasis_low_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
+        self.nr_deemphasis_high_tau_dial_control.valueChanged.connect(self.schedule_plot_update)
 
         self.audio_mode_combo.currentIndexChanged.connect(self.schedule_plot_update)
+        self.sample_rate_combo.currentIndexChanged.connect(self.schedule_plot_update)
     
     def show_plot(self):
         geo = self.geometry()
@@ -839,6 +891,7 @@ class HifiUi(QMainWindow):
         self.expander_gain_dial_control.setValue(values.expander_gain)
         self.expander_ratio_dial_control.setValue(values.expander_ratio)
         self.expander_attack_tau_dial_control.setValue(values.expander_attack_tau)
+        self.expander_hold_tau_dial_control.setValue(values.expander_hold_tau)
         self.expander_release_tau_dial_control.setValue(values.expander_release_tau)
         self.expander_weighting_low_tau_dial_control.setValue(
             values.expander_weighting_low_tau
@@ -846,20 +899,16 @@ class HifiUi(QMainWindow):
         self.expander_weighting_high_tau_dial_control.setValue(
             values.expander_weighting_high_tau
         )
-        self.expander_weighting_db_per_octave_dial_control.setValue(
-            values.expander_weighting_db_per_octave
+        self.expander_weighting_low_pass_dial_control.setValue(
+            values.expander_weighting_low_pass
         )
-        self.expander_weighting_bandwidth_dial_control.setValue(
-            values.expander_weighting_bandwidth
+        self.expander_weighting_low_pass_transition_dial_control.setValue(
+            values.expander_weighting_low_pass_transition
         )
         self.deemphasis_low_tau_dial_control.setValue(values.deemphasis_low_tau)
         self.deemphasis_high_tau_dial_control.setValue(values.deemphasis_high_tau)
-        self.deemphasis_db_per_octave_dial_control.setValue(
-            values.deemphasis_db_per_octave
-        )
-        self.deemphasis_bandwidth_dial_control.setValue(
-            values.deemphasis_bandwidth
-        )
+        self.nr_deemphasis_low_tau_dial_control.setValue(values.nr_deemphasis_low_tau)
+        self.nr_deemphasis_high_tau_dial_control.setValue(values.nr_deemphasis_high_tau)
         self.spectral_nr_amount_dial_control.setValue(values.spectral_nr_amount)
         self.normalize_checkbox.setChecked(values.normalize)
         self.muting_checkbox.setChecked(values.muting)
@@ -924,6 +973,7 @@ class HifiUi(QMainWindow):
         values.expander_gain = self.expander_gain_dial_control.value()
         values.expander_ratio = self.expander_ratio_dial_control.value()
         values.expander_attack_tau = self.expander_attack_tau_dial_control.value()
+        values.expander_hold_tau = self.expander_hold_tau_dial_control.value()
         values.expander_release_tau = self.expander_release_tau_dial_control.value()
         values.expander_weighting_low_tau = (
             self.expander_weighting_low_tau_dial_control.value()
@@ -931,20 +981,16 @@ class HifiUi(QMainWindow):
         values.expander_weighting_high_tau = (
             self.expander_weighting_high_tau_dial_control.value()
         )
-        values.expander_weighting_db_per_octave = (
-            self.expander_weighting_db_per_octave_dial_control.value()
+        values.expander_weighting_low_pass = (
+            self.expander_weighting_low_pass_dial_control.value()
         )
-        values.expander_weighting_bandwidth = (
-            self.expander_weighting_bandwidth_dial_control.value()
+        values.expander_weighting_low_pass_transition = (
+            self.expander_weighting_low_pass_transition_dial_control.value()
         )
         values.deemphasis_low_tau = self.deemphasis_low_tau_dial_control.value()
         values.deemphasis_high_tau = self.deemphasis_high_tau_dial_control.value()
-        values.deemphasis_db_per_octave = (
-            self.deemphasis_db_per_octave_dial_control.value()
-        )
-        values.deemphasis_bandwidth = (
-            self.deemphasis_bandwidth_dial_control.value()
-        )
+        values.nr_deemphasis_low_tau = self.nr_deemphasis_low_tau_dial_control.value()
+        values.nr_deemphasis_high_tau = self.nr_deemphasis_high_tau_dial_control.value()
         values.afe_vco_deviation = self.afe_vco_deviation_spinbox.value()
         values.afe_left_carrier = self.afe_left_carrier_spinbox.value()
         values.afe_right_carrier = self.afe_right_carrier_spinbox.value()
@@ -994,21 +1040,31 @@ class HifiUi(QMainWindow):
         if format == "VHS":
             self.deemphasis_low_tau_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_TAU_1)
             self.deemphasis_high_tau_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_TAU_2)
-            self.deemphasis_db_per_octave_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_DB_PER_OCTAVE)
-            self.deemphasis_bandwidth_dial_control.setValue(DEFAULT_VHS_DEEMPHASIS_BANDWIDTH)
+            self.nr_deemphasis_low_tau_dial_control.setValue(DEFAULT_VHS_NR_DEEMPHASIS_TAU_1)
+            self.nr_deemphasis_high_tau_dial_control.setValue(DEFAULT_VHS_NR_DEEMPHASIS_TAU_2)
+            self.expander_gain_dial_control.setValue(DEFAULT_VHS_EXPANDER_GAIN)
+            self.expander_ratio_dial_control.setValue(DEFAULT_VHS_EXPANDER_RATIO)
+            self.expander_attack_tau_dial_control.setValue(DEFAULT_VHS_EXPANDER_ATTACK_TAU)
+            self.expander_hold_tau_dial_control.setValue(DEFAULT_VHS_EXPANDER_HOLD_TAU)
+            self.expander_release_tau_dial_control.setValue(DEFAULT_VHS_EXPANDER_RELEASE_TAU)
             self.expander_weighting_low_tau_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1)
             self.expander_weighting_high_tau_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2)
-            self.expander_weighting_db_per_octave_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_DB_PER_OCTAVE)
-            self.expander_weighting_bandwidth_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_BANDWIDTH)
+            self.expander_weighting_low_pass_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS)
+            self.expander_weighting_low_pass_transition_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION)
         else:
             self.deemphasis_low_tau_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_TAU_1)
             self.deemphasis_high_tau_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_TAU_2)
-            self.deemphasis_db_per_octave_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_DB_PER_OCTAVE)
-            self.deemphasis_bandwidth_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_BANDWIDTH)
+            self.nr_deemphasis_low_tau_dial_control.setValue(DEFAULT_8MM_NR_DEEMPHASIS_TAU_1)
+            self.nr_deemphasis_high_tau_dial_control.setValue(DEFAULT_8MM_NR_DEEMPHASIS_TAU_2)
+            self.expander_gain_dial_control.setValue(DEFAULT_8MM_EXPANDER_GAIN)
+            self.expander_ratio_dial_control.setValue(DEFAULT_8MM_EXPANDER_RATIO)
+            self.expander_attack_tau_dial_control.setValue(DEFAULT_8MM_EXPANDER_ATTACK_TAU)
+            self.expander_hold_tau_dial_control.setValue(DEFAULT_8MM_EXPANDER_HOLD_TAU)
+            self.expander_release_tau_dial_control.setValue(DEFAULT_8MM_EXPANDER_RELEASE_TAU)
             self.expander_weighting_low_tau_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1)
             self.expander_weighting_high_tau_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2)
-            self.expander_weighting_db_per_octave_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_DB_PER_OCTAVE)
-            self.expander_weighting_bandwidth_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_BANDWIDTH)
+            self.expander_weighting_low_pass_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS)
+            self.expander_weighting_low_pass_transition_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION)
 
     def on_standard_change(self):
         self.update_afe_values(
@@ -1238,6 +1294,7 @@ class DialControl(QWidget):
         min_value=0,
         max_value=1,
         scroll_step_size=1,
+        width=None
     ):
         super(QWidget, self).__init__()
         layout = QHBoxLayout(self)
@@ -1248,7 +1305,7 @@ class DialControl(QWidget):
         label = QLabel(label_text)
         self.scale = scale
 
-        textbox_character_width = max(int(math.log10(self.scale)) + 1, 3)
+        textbox_character_width = max(int(math.log10(self.scale)) + 1, 3) if width is None else width
         self.textbox = QLineEdit(main_window)
         self.textbox.setValidator(validator)
         metrics = QtGui.QFontMetrics(self.textbox.font())
@@ -1524,17 +1581,27 @@ class PlotWindow(QWidget):
             ui_values.audio_sample_rate,
             ui_values.deemphasis_low_tau,
             ui_values.deemphasis_high_tau,
-            ui_values.deemphasis_db_per_octave,
-            ui_values.deemphasis_bandwidth,
         )
         deemphasis_freqs, deemphasis_mag_db = deemphasis.get_response()
 
+        nr_deemphasis = Deemphasis(
+            ui_values.audio_sample_rate,
+            ui_values.nr_deemphasis_low_tau,
+            ui_values.nr_deemphasis_high_tau,
+        )
+        nr_deemphasis_freqs, nr_deemphasis_mag_db = nr_deemphasis.get_response()
+
         expander = Expander(
             ui_values.audio_sample_rate,
-            weighting_low_tau = ui_values.expander_weighting_low_tau,
-            weighting_high_tau = ui_values.expander_weighting_high_tau,
-            weighting_db_per_octave = ui_values.expander_weighting_db_per_octave,
-            weighting_bandwidth = ui_values.expander_weighting_bandwidth
+            ui_values.expander_gain,
+            ui_values.expander_ratio,
+            ui_values.expander_attack_tau,
+            ui_values.expander_hold_tau,
+            ui_values.expander_release_tau,
+            ui_values.expander_weighting_low_tau,
+            ui_values.expander_weighting_high_tau,
+            ui_values.expander_weighting_low_pass,
+            ui_values.expander_weighting_low_pass_transition,
         )
         expander_freqs, expander_mag_db = expander.get_response()
 
@@ -1548,13 +1615,20 @@ class PlotWindow(QWidget):
         )
         self.plot_response(
             "Deemphasis",
-            "blue",
+            "red",
             deemphasis_freqs,
             deemphasis_mag_db,
             ui_values.deemphasis_low_tau,
             ui_values.deemphasis_high_tau,
         )
-
+        self.plot_response(
+            "NR Deemphasis",
+            "blue",
+            nr_deemphasis_freqs,
+            nr_deemphasis_mag_db,
+            ui_values.nr_deemphasis_low_tau,
+            ui_values.nr_deemphasis_high_tau,
+        )
         self.ax.grid(True, which="both")
         self.ax.set_xlabel("Frequency [Hz]")
         self.ax.set_ylabel("Amplitude [dB]")
