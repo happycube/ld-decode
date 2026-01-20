@@ -80,6 +80,9 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_8MM_DEEMPHASIS_TAU_1,
     DEFAULT_8MM_DEEMPHASIS_TAU_2,
 
+    DEFAULT_VHS_AUDIO_MODE,
+    DEFAULT_8MM_AUDIO_MODE,
+    audio_mode_to_ui,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
     DEFAULT_FINAL_AUDIO_RATE,
@@ -130,7 +133,8 @@ NORMALIZE_FILE_SUFFIX = "tmp_normalize.raw"
 
 default_threads = cpu_count()
 parser = argparse.ArgumentParser(
-    description="Extracts audio from RAW HiFi FM RF captures"
+    description="Extracts audio from RAW HiFi FM RF captures",
+    formatter_class=argparse.RawTextHelpFormatter
 )
 
 parser.add_argument(
@@ -155,10 +159,10 @@ parser.add_argument(
     "--frequency",
     "-f",
     dest="inputfreq",
-    metavar="FREQ",
+    metavar='',
     type=lddu.parse_frequency,
     default=40,
-    help="RF sampling frequency in source file (default is 40MHz)",
+    help="RF sampling frequency in source file \n(default is 40MHz)",
 )
 parser.add_argument(
     "--overwrite",
@@ -170,7 +174,7 @@ parser.add_argument(
 parser.add_argument(
     "--threads",
     "-t",
-    metavar="threads",
+    metavar='',
     type=int,
     default=default_threads,
     help="number of CPU threads to use",
@@ -224,9 +228,10 @@ demod_options = parser.add_argument_group("Demodulation options")
 demod_options.add_argument(
     "--demod",
     dest="demod_type",
+    metavar='',
     type=str.lower,
     default=DEFAULT_DEMOD,
-    help=f"Set the FM demodulation type (default: {DEFAULT_DEMOD}) ({DEMOD_QUADRATURE}, {DEMOD_HILBERT})",
+    help=f"Set the FM demodulation type \n  {DEMOD_QUADRATURE} [default]\n  {DEMOD_HILBERT}",
 )
 demod_options.add_argument(
     "--bias_guess",
@@ -239,6 +244,7 @@ demod_options.add_argument(
 demod_options.add_argument(
     "--auto_fine_tune",
     dest="auto_fine_tune",
+    metavar='',
     type=str.lower,
     default="on",
     help="Set auto tuning of the analog front end on/off",
@@ -246,6 +252,7 @@ demod_options.add_argument(
 demod_options.add_argument(
     "--AFE_vco_deviation",
     dest="afe_vco_deviation",
+    metavar='',
     type=lddu.parse_frequency,
     default=0,
     help="Overrides the VCO maximum deviation. This represents the maximum frequency offset + or - from the center frequency.",
@@ -253,6 +260,7 @@ demod_options.add_argument(
 demod_options.add_argument(
     "--AFE_left_carrier",
     dest="afe_left_carrier",
+    metavar='',
     type=lddu.parse_frequency,
     default=0,
     help="Overrides the left carrier center frequency.",
@@ -260,6 +268,7 @@ demod_options.add_argument(
 demod_options.add_argument(
     "--AFE_right_carrier",
     dest="afe_right_carrier",
+    metavar='',
     type=lddu.parse_frequency,
     default=0,
     help="Overrides the right carrier center frequency.",
@@ -267,35 +276,11 @@ demod_options.add_argument(
 
 audio_processing_options_group = parser.add_argument_group("Audio processing options")
 audio_processing_options_group.add_argument(
-    "--audio_rate",
-    "--ar",
-    dest="rate",
-    type=int,
-    default=DEFAULT_FINAL_AUDIO_RATE,
-    help=f"Output sample rate in Hz (default {DEFAULT_FINAL_AUDIO_RATE})",
-)
-audio_processing_options_group.add_argument(
-    "--audio_mode",
-    dest="mode",
-    type=str,
-    help=(
-        "Audio mode (s: stereo, ms: stereo mid/side, l: left mono, r: right mono, sum: left+right sum) (defaults: [VHS: s] [8mm: ms])."
-    ),
-)
-audio_processing_options_group.add_argument(
-    "--resampler_quality",
-    dest="resampler_quality",
-    type=str,
-    default=DEFAULT_RESAMPLER_QUALITY,
-    help=f"Sets quality of resampling to use in the audio chain. (default is {DEFAULT_RESAMPLER_QUALITY}). "
-    f"Range (low, medium, high): low being faster, and high having best quality",
-)
-audio_processing_options_group.add_argument(
     "--normalize",
     dest="normalize",
     action="store_true",
     default=False,
-    help=f"Automatically amplifies the audio to the peak gain of the decode. "
+    help=f"(recommended) Automatically amplifies the audio to the peak gain of the decode. \n"
     f'This will create a temporary file ending in "{NORMALIZE_FILE_SUFFIX}" that is deleted after the amplification step is complete.',
 )
 audio_processing_options_group.add_argument(
@@ -303,7 +288,35 @@ audio_processing_options_group.add_argument(
     dest="gain",
     type=float,
     default=1.0,
-    help="Manually adjust the gain/volume of the output audio (default is 1.0).",
+    metavar='',
+    help="Manually adjust the gain/volume of the output audio. \n  1.0 [default]",
+)
+audio_processing_options_group.add_argument(
+    "--audio_mode",
+    dest="mode",
+    type=str.lower,
+    metavar='',
+    help=(
+        f'Audio modes \n{"\n".join([f"  {k} \t{v} {"[VHS default]" if k == DEFAULT_VHS_AUDIO_MODE else ''}{"[8mm default]" if k == DEFAULT_8MM_AUDIO_MODE else ''}" for k, v in audio_mode_to_ui.items()])}'
+    ),
+)
+audio_processing_options_group.add_argument(
+    "--audio_rate",
+    "--ar",
+    dest="rate",
+    metavar='',
+    type=int,
+    default=DEFAULT_FINAL_AUDIO_RATE,
+    help=f"Output sample rate in Hz \n  192000\n  96000\n  {DEFAULT_FINAL_AUDIO_RATE} [default]\n  41000",
+)
+audio_processing_options_group.add_argument(
+    "--resampler_quality",
+    dest="resampler_quality",
+    type=str,
+    default=DEFAULT_RESAMPLER_QUALITY,
+    metavar='',
+    help=f"Sets quality of resampling to use in the audio chain."
+    f"\n  high \tslowest, best quality [default]\n  medium\n  low \tfast, low quality",
 )
 
 noise_reduction_options_group = parser.add_argument_group("Noise reduction options")
@@ -312,22 +325,25 @@ noise_reduction_options_group.add_argument(
     dest="head_switching_interpolation",
     type=str.lower,
     default="on",
-    help='Enables head switching noise interpolation. (defaults to "on").',
+    metavar='',
+    help='Enables head switching noise interpolation. \n  on \tenabled [default]\n  off \tdisabled'
 )
 noise_reduction_options_group.add_argument(
     "--muting",
     dest="muting",
     type=str.lower,
     default="on",
-    help='Mutes the audio when there is no hifi carrier. (defaults to "on").',
+    metavar='',
+    help='Mutes the audio when there is no hifi carrier. \n  on \tenabled [default]\n  off \tdisabled'
 )
 noise_reduction_options_group.add_argument(
     "--NR_spectral_amount",
     dest="spectral_nr_amount",
     type=float,
     default=DEFAULT_SPECTRAL_NR_AMOUNT,
-    help=f"Sets the amount of broadband spectral noise reduction to apply. (default is {DEFAULT_SPECTRAL_NR_AMOUNT}). "
-    f"Range (0~1): 0 being off, 1 being full spectral noise reduction",
+    metavar='',
+    help=f"Sets the amount of broadband spectral noise reduction to apply"
+    f"\n  0.0 \toff\n  {DEFAULT_SPECTRAL_NR_AMOUNT} \t[default]\n  1.0 \tfull spectral noise reduction",
 )
 
 expander_options_group = parser.add_argument_group("Expander tuning options (advanced)")
@@ -336,61 +352,71 @@ expander_options_group.add_argument(
     dest="enable_expander",
     type=str.lower,
     default="on",
-    help="Set expander block on/off",
+    metavar='',
+    help="Enable / Disable Expander \n  on \tenabled [default]\n  off \tdisabled",
 )
 expander_options_group.add_argument(
     "--expander_gain",
     dest="expander_gain",
     type=float,
-    help=f"Sets the expander gain (defaults: [VHS: {DEFAULT_VHS_EXPANDER_GAIN}] [8mm: {DEFAULT_8MM_EXPANDER_GAIN}]).",
+    metavar='',
+    help=f"Sets the expander gain \n  {DEFAULT_VHS_EXPANDER_GAIN} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_GAIN}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_ratio",
     dest="expander_ratio",
     type=float,
-    help=f"Sets the expander ratio (defaults: [VHS: {DEFAULT_VHS_EXPANDER_RATIO}] [8mm: {DEFAULT_8MM_EXPANDER_RATIO}]).",
+    metavar='',
+    help=f"Sets the expander ratio \n  {DEFAULT_VHS_EXPANDER_RATIO} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_RATIO}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_attack_tau",
     dest="expander_attack_tau",
     type=float,
-    help=f"Sets the expander attack speed in seconds (defaults: [VHS: {DEFAULT_VHS_EXPANDER_ATTACK_TAU}] [8mm: {DEFAULT_8MM_EXPANDER_ATTACK_TAU}]).",
+    metavar='',
+    help=f"Sets the expander attack speed in seconds \n  {DEFAULT_VHS_EXPANDER_ATTACK_TAU} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_ATTACK_TAU}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_hold_tau",
     dest="expander_hold_tau",
     type=float,
-    help=f"Sets the expander hold time in seconds (defaults: [VHS: {DEFAULT_VHS_EXPANDER_HOLD_TAU}] [8mm: {DEFAULT_8MM_EXPANDER_HOLD_TAU}]).",
+    metavar='',
+    help=f"Sets the expander hold time in seconds \n  {DEFAULT_VHS_EXPANDER_HOLD_TAU} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_HOLD_TAU}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_release_tau",
     dest="expander_release_tau",
     type=float,
-    help=f"Sets the expander release speed in seconds (defaults: [VHS: {DEFAULT_VHS_EXPANDER_RELEASE_TAU}] [8mm: {DEFAULT_8MM_EXPANDER_RELEASE_TAU}]).",
+    metavar='',
+    help=f"Sets the expander release speed in seconds \n  {DEFAULT_VHS_EXPANDER_RELEASE_TAU} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_RELEASE_TAU}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_weighting_low_tau",
     dest="expander_weighting_low_tau",
     type=float,
-    help=f"Sets the expander weighting high-pass shelf filter low point in tau (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1}]).",
+    metavar='',
+    help=f"Sets the expander weighting high-pass shelf filter low point in tau \n  {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_weighting_high_tau",
     dest="expander_weighting_high_tau",
     type=float,
-    help=f"Sets the expander weighting high-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2}]).",
+    metavar='',
+    help=f"Sets the expander weighting high-pass shelf filter high point in tau \n  {DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_weighting_low_pass",
     dest="expander_weighting_low_pass",
     type=float,
-    help=f"Sets the expander weighting low-pass filter cutoff frequency in Hz (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS}]).",
+    metavar='',
+    help=f"Sets the expander weighting low-pass filter cutoff frequency in Hz \n  {DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS}\t[8mm default]",
 )
 expander_options_group.add_argument(
     "--expander_weighting_low_pass_transition",
     dest="expander_weighting_low_pass_transition",
     type=float,
-    help=f"Sets the expander weighting low-pass filter cutoff rate in Hz (defaults: [VHS: {DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION}] [8mm: {DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION}]).",
+    metavar='',
+    help=f"Sets the expander weighting low-pass filter cutoff rate in Hz \n  {DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION}\t[8mm default]",
 )
 
 deemphasis_options_group = parser.add_argument_group(
@@ -401,31 +427,36 @@ deemphasis_options_group.add_argument(
     dest="enable_deemphasis",
     type=str.lower,
     default="on",
-    help="Set deemphasis block on/off",
+    metavar='',
+    help="Enable / Disable Deemphasis \n  on \tenabled [default]\n  off \tdisabled",
 )
 deemphasis_options_group.add_argument(
     "--deemphasis_low_tau",
     dest="deemphasis_low_tau",
     type=float,
-    help=f"Sets the deemphasis low-pass shelf filter low point in tau (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_TAU_1}] [8mm: {DEFAULT_8MM_DEEMPHASIS_TAU_1}])",
+    metavar='',
+    help=f"Sets the deemphasis low-pass shelf filter low point in tau \n  {DEFAULT_VHS_DEEMPHASIS_TAU_1} \t[VHS default]\n  {DEFAULT_8MM_DEEMPHASIS_TAU_1}\t[8mm default]",
 )
 deemphasis_options_group.add_argument(
     "--deemphasis_high_tau",
     dest="deemphasis_high_tau",
     type=float,
-    help=f"Sets the deemphasis low-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_DEEMPHASIS_TAU_2}] [8mm: {DEFAULT_8MM_DEEMPHASIS_TAU_2}])",
+    metavar='',
+    help=f"Sets the deemphasis low-pass shelf filter high point in tau \n  {DEFAULT_VHS_DEEMPHASIS_TAU_2} \t[VHS default]\n  {DEFAULT_8MM_DEEMPHASIS_TAU_2}\t[8mm default]",
 )
 deemphasis_options_group.add_argument(
     "--nr_deemphasis_low_tau",
     dest="nr_deemphasis_low_tau",
     type=float,
-    help=f"Sets the noise reduction deemphasis low-pass shelf filter low point in tau (defaults: [VHS: {DEFAULT_VHS_NR_DEEMPHASIS_TAU_1}] [8mm: {DEFAULT_8MM_NR_DEEMPHASIS_TAU_1}])",
+    metavar='',
+    help=f"Sets the noise reduction deemphasis low-pass shelf filter low point in tau \n  {DEFAULT_VHS_NR_DEEMPHASIS_TAU_1} \t[VHS default]\n  {DEFAULT_8MM_NR_DEEMPHASIS_TAU_1}\t[8mm default]",
 )
 deemphasis_options_group.add_argument(
     "--nr_deemphasis_high_tau",
     dest="nr_deemphasis_high_tau",
     type=float,
-    help=f"Sets the noise reduction deemphasis low-pass shelf filter high point in tau (defaults: [VHS: {DEFAULT_VHS_NR_DEEMPHASIS_TAU_2}] [8mm: {DEFAULT_8MM_NR_DEEMPHASIS_TAU_2}])",
+    metavar='',
+    help=f"Sets the noise reduction deemphasis low-pass shelf filter high point in tau \n  {DEFAULT_VHS_NR_DEEMPHASIS_TAU_2} \t[VHS default]\n  {DEFAULT_8MM_NR_DEEMPHASIS_TAU_2}\t[8mm default]",
 )
 
 def test_ld_tools(ld_tool):
