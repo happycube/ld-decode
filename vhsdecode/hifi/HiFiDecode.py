@@ -43,6 +43,34 @@ from vhsdecode.hifi.utils import DecoderSharedMemory, NumbaAudioArray
 
 import matplotlib.pyplot as plt
 
+AUDIO_MODE_STEREO = "s"
+AUDIO_MODE_STEREO_MS = "ms"
+AUDIO_MODE_MONO_L = "l"
+AUDIO_MODE_MONO_R = "r"
+AUDIO_MODE_MONO_SUM = "sum"
+
+UI_STEREO = "Stereo (L, R)"
+UI_STEREO_MS = "Stereo (L+R, L-R)"
+UI_MONO_L = "Mono (L)"
+UI_MONO_R = "Mono (R)"
+UI_MONO_SUM = "Mono Sum (L+R)"
+
+audio_mode_to_ui = {
+    AUDIO_MODE_STEREO: UI_STEREO,
+    AUDIO_MODE_STEREO_MS: UI_STEREO_MS,
+    AUDIO_MODE_MONO_L: UI_MONO_L,
+    AUDIO_MODE_MONO_R: UI_MONO_R,
+    AUDIO_MODE_MONO_SUM: UI_MONO_SUM,
+}
+
+ui_to_audio_mode = {
+    UI_STEREO: AUDIO_MODE_STEREO,
+    UI_STEREO_MS: AUDIO_MODE_STEREO_MS,
+    UI_MONO_L: AUDIO_MODE_MONO_L,
+    UI_MONO_R: AUDIO_MODE_MONO_R,
+    UI_MONO_SUM: AUDIO_MODE_MONO_SUM,
+}
+
 # TAU_1         low end of shelf curve
 # TAU_2         high end of shelf curve
 
@@ -109,6 +137,8 @@ DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2 = 27e-6
 DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS = 20000
 DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION = 100000
 
+DEFAULT_VHS_AUDIO_MODE = AUDIO_MODE_STEREO
+DEFAULT_8MM_AUDIO_MODE = AUDIO_MODE_STEREO_MS
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
@@ -1614,9 +1644,9 @@ class HiFiDecode:
         devL = (self.standard_original.LCarrierRef - self.standard.LCarrierRef) / 1e3
         devR = (self.standard_original.RCarrierRef - self.standard.RCarrierRef) / 1e3
 
-        if self.audio_process_params.decode_mode == 'l':
+        if self.audio_process_params.decode_mode == AUDIO_MODE_MONO_L:
             print("Bias L %.02f kHz" % (devL), end=" ")
-        elif self.audio_process_params.decode_mode == 'r':
+        elif self.audio_process_params.decode_mode == AUDIO_MODE_MONO_R:
             print("Bias R %.02f kHz" % (devR), end=" ")
         else:
             print("Bias L %.02f kHz, R %.02f kHz" % (devL, devR), end=" ")
@@ -1660,7 +1690,7 @@ class HiFiDecode:
     def auto_fine_tune(
         self, dcL: float, dcR: float
     ) -> Tuple[AFEFilterable, AFEFilterable, FMdemod, FMdemod]:
-        if self.audio_process_params.decode_mode != 'r':
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
             left_carrier_dc_offset = (
                 self.standard.LCarrierRef - dcL * self.standard.VCODeviation
             )
@@ -1670,7 +1700,7 @@ class HiFiDecode:
                 self.standard_original.LCarrierRef - 10e3,
             )
             
-        if self.audio_process_params.decode_mode != 'l':
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
             right_carrier_dc_offset = (
                 self.standard.RCarrierRef - dcR * self.standard.VCODeviation
             )
@@ -2071,19 +2101,19 @@ class HiFiDecode:
     def mix_for_mode_stereo(
         l_raw: np.array, r_raw: np.array, decode_mode: str
     ) -> Tuple[np.array, np.array]:
-        if decode_mode == "ms":
+        if decode_mode == AUDIO_MODE_STEREO_MS:
             l = np.multiply(np.add(l_raw, r_raw), 0.5)
             r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
-        elif decode_mode == "l":
+        elif decode_mode == AUDIO_MODE_MONO_L:
             l = l_raw
             r = l_raw
-        elif decode_mode == "r":
+        elif decode_mode == AUDIO_MODE_MONO_R:
             l = r_raw
             r = r_raw
-        elif decode_mode == "sum":
+        elif decode_mode == AUDIO_MODE_MONO_SUM:
             l = np.multiply(np.add(l_raw, r_raw), 0.5)
             r = np.multiply(np.add(l_raw, r_raw), 0.5)
-        else:
+        else: # AUDIO_MODE_STEREO
             l = l_raw
             r = r_raw
 
@@ -2209,15 +2239,15 @@ class HiFiDecode:
 
         if measure_perf:
             start_carrier_filter = perf_counter()
-        if self.audio_process_params.decode_mode != 'r': filterL = self.afeL.work(rf_data_resampled)
-        if self.audio_process_params.decode_mode != 'l': filterR = self.afeR.work(rf_data_resampled)
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_R: filterL = self.afeL.work(rf_data_resampled)
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_L: filterR = self.afeR.work(rf_data_resampled)
         if measure_perf:
             end_carrier_filter = perf_counter()
 
         if self.options["grc"] and ZMQ_AVAILABLE:
             self.grc.send(filterL + filterR)
 
-        if self.audio_process_params.decode_mode != 'r': 
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_R: 
             preL, dcL, perf_measurements_l = HiFiDecode.demod_process_audio(
                 filterL, self.fmL, self.audio_process_params, self.audio_resampler_l, self.audio_final_resampler_l, measure_perf
             )
@@ -2225,7 +2255,7 @@ class HiFiDecode:
             preL = None
             dcL = 0
             perf_measurements_l = 0
-        if self.audio_process_params.decode_mode != 'l': 
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_L: 
             preR, dcR, perf_measurements_r = HiFiDecode.demod_process_audio(
                 filterR, self.fmR, self.audio_process_params, self.audio_resampler_r, self.audio_final_resampler_r, measure_perf
             )

@@ -92,6 +92,10 @@ from vhsdecode.hifi.HiFiDecode import (
 
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
+    DEFAULT_VHS_AUDIO_MODE,
+    DEFAULT_8MM_AUDIO_MODE,
+    audio_mode_to_ui,
+    ui_to_audio_mode,
     DEMOD_QUADRATURE,
     DEMOD_HILBERT,
     DEFAULT_DEMOD,
@@ -136,7 +140,7 @@ class MainUIParameters:
         self.audio_sample_rate: int = 48000
         self.standard: str = "NTSC"
         self.format: str = "VHS"
-        self.audio_mode: str = "Stereo"
+        self.audio_mode: str = audio_mode_to_ui[DEFAULT_VHS_AUDIO_MODE]
         self.resampler_quality = DEFAULT_RESAMPLER_QUALITY
         self.demod_type: str = DEFAULT_DEMOD.capitalize()
         self.input_sample_rate: float = 40.0
@@ -147,17 +151,6 @@ class MainUIParameters:
 
 
 def decode_options_to_ui_parameters(decode_options):
-    if decode_options["mode"] == "s":
-        mode = "Stereo"
-    elif decode_options["mode"] == "ms":
-        mode = "Stereo Mid/Side"
-    elif decode_options["mode"] == "l":
-        mode = "L"
-    elif decode_options["mode"] == "r":
-        mode = "R"
-    elif decode_options["mode"] == "sum":
-        mode = "Sum"
-
     values = MainUIParameters()
     values.volume = decode_options["gain"]
     values.normalize = decode_options["normalize"]
@@ -185,7 +178,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.audio_sample_rate = decode_options["audio_rate"]
     values.standard = "PAL" if decode_options["standard"] == "p" else "NTSC"
     values.format = "VHS" if decode_options["format"] == "vhs" else "Video8/Hi8"
-    values.audio_mode = mode
+    values.audio_mode = audio_mode_to_ui[decode_options["mode"]]
     values.resampler_quality = decode_options["resampler_quality"]
     values.demod_type = decode_options["demod_type"].capitalize()
     values.input_sample_rate = decode_options["input_rate"]
@@ -197,17 +190,6 @@ def decode_options_to_ui_parameters(decode_options):
 
 
 def ui_parameters_to_decode_options(values: MainUIParameters):
-    if values.audio_mode == "Stereo":
-        mode = "s"
-    elif values.audio_mode == "Stereo Mid/Side":
-        mode = "ms"
-    elif values.audio_mode == "L":
-        mode = "l"
-    elif values.audio_mode == "R":
-        mode = "r"
-    elif values.audio_mode == "Sum":
-        mode = "sum"
-
     decode_options = {
         "input_rate": float(values.input_sample_rate) * 1e6,
         "standard": "p" if values.standard == "PAL" else "n",
@@ -243,7 +225,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "resampler_quality": values.resampler_quality,
         "head_switching_interpolation": values.head_switching_interpolation,
         "muting": values.muting,
-        "mode": mode
+        "mode": ui_to_audio_mode[values.audio_mode]
     }
     return decode_options
 
@@ -672,7 +654,7 @@ class HifiUi(QMainWindow):
         audio_mode_layout = QHBoxLayout()
         audio_mode_label = QLabel("Output Channel Mode")
         self.audio_mode_combo = QComboBox(self)
-        self.audio_mode_combo.addItems(["Stereo", "L", "R", "Stereo Mid/Side", "Sum"])
+        self.audio_mode_combo.addItems(ui_to_audio_mode.keys())
         audio_mode_layout.addWidget(audio_mode_label)
         audio_mode_layout.addWidget(self.audio_mode_combo)
         advanced_format_options_frame.inner_layout.addLayout(audio_mode_layout)
@@ -1051,6 +1033,7 @@ class HifiUi(QMainWindow):
             self.expander_weighting_high_tau_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2)
             self.expander_weighting_low_pass_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS)
             self.expander_weighting_low_pass_transition_dial_control.setValue(DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION)
+            self.audio_mode_combo.setCurrentText(audio_mode_to_ui[DEFAULT_VHS_AUDIO_MODE])
         else:
             self.deemphasis_low_tau_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_TAU_1)
             self.deemphasis_high_tau_dial_control.setValue(DEFAULT_8MM_DEEMPHASIS_TAU_2)
@@ -1065,6 +1048,7 @@ class HifiUi(QMainWindow):
             self.expander_weighting_high_tau_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2)
             self.expander_weighting_low_pass_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS)
             self.expander_weighting_low_pass_transition_dial_control.setValue(DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION)
+            self.audio_mode_combo.setCurrentText(audio_mode_to_ui[DEFAULT_8MM_AUDIO_MODE])
 
     def on_standard_change(self):
         self.update_afe_values(
