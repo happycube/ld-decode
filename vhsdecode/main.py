@@ -4,6 +4,8 @@ import sys
 import signal
 import traceback
 import json
+import shutil
+import time
 
 import numpy
 
@@ -586,6 +588,28 @@ def main(args=None, use_gui=False):
 
         if vhsd.fields_written < 100 or ((vhsd.fields_written % 500) == 0):
             jsondumper.write()
+            # Check free disk space
+            output_dir = os.path.dirname(os.path.abspath(outname))
+            try:
+                free_space = shutil.disk_usage(output_dir).free
+                if free_space < 1024 * 1024 * 1024 * 10:  # 10GB, 500 fields_written needs around 675MB, 1G0B for some margin because there can be other things writing to the disk as well, the disk might fill before the next check otherwise.
+                    print(
+                        "\nLess than 10GB of free disk space is remaining, decoding paused. Decoding will resume once there is more space, or press Ctrl+C to exit.",
+                        file=sys.stderr,
+                    )
+                    while True:
+                        try:
+                            time.sleep(1)
+                            free_space = shutil.disk_usage(output_dir).free
+                            if free_space >= 1024 * 1024 * 1024 * 10:  # 10GB
+                                print("\nDisk space available, resuming decode.", file=sys.stderr)
+                                break
+                        except KeyboardInterrupt:
+                            print("\nTerminated, saving JSON and exiting")
+                            cleanup()
+                            sys.exit(1)
+            except OSError:
+                pass  # Ignore if we can't check disk space
 
     if vhsd.fields_written:
         print("\nCompleted: saving JSON and exiting.", file=sys.stderr)
