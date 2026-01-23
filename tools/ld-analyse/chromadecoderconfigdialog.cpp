@@ -62,6 +62,12 @@ ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     ui->cNRHorizontalSlider->setMinimum(0);
     ui->cNRHorizontalSlider->setMaximum(100);
 
+    ui->adaptThresholdHorizontalSlider->setMinimum(10);
+    ui->adaptThresholdHorizontalSlider->setMaximum(200);
+
+    ui->chromaWeightHorizontalSlider->setMinimum(0);
+    ui->chromaWeightHorizontalSlider->setMaximum(200);
+
     ui->yNRHorizontalSlider->setMinimum(0);
     ui->yNRHorizontalSlider->setMaximum(100);
     
@@ -100,6 +106,9 @@ void ChromaDecoderConfigDialog::setConfiguration(VideoSystem _system, const PalC
     palConfiguration.yNRLevel = qBound(0.0, yNRLevel, 10.0);
     ntscConfiguration.cNRLevel = qBound(0.0, ntscConfiguration.cNRLevel, 10.0);
     ntscConfiguration.yNRLevel = qBound(0.0, yNRLevel, 10.0);
+
+    ntscConfiguration.adaptThreshold = qBound(0.1, ntscConfiguration.adaptThreshold, 2.0);
+    ntscConfiguration.chromaWeight = qBound(0.0, ntscConfiguration.chromaWeight, 2.0);    
 
     // For settings that both decoders share, the PAL default takes precedence
     ntscConfiguration.chromaGain = palConfiguration.chromaGain;
@@ -274,6 +283,18 @@ void ChromaDecoderConfigDialog::updateDialog()
     ui->showMapCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
     ui->showMapCheckBox->setChecked(ntscConfiguration.showMap);
 
+    ui->adaptThresholdLabel->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->adaptThresholdHorizontalSlider->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->adaptThresholdHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.adaptThreshold * 100));
+    ui->adaptThresholdValueLabel->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->adaptThresholdValueLabel->setText(QString::number(ntscConfiguration.adaptThreshold, 'f', 2));
+
+    ui->chromaWeightLabel->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->chromaWeightHorizontalSlider->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->chromaWeightHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.chromaWeight * 100));
+    ui->chromaWeightValueLabel->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
+    ui->chromaWeightValueLabel->setText(QString::number(ntscConfiguration.chromaWeight, 'f', 2));
+
     ui->cNRLabel->setEnabled(isSourceNtsc);
 
     ui->cNRHorizontalSlider->setEnabled(isSourceNtsc && ntscConfiguration.dimensions != 0);
@@ -387,6 +408,20 @@ void ChromaDecoderConfigDialog::on_adaptiveCheckBox_clicked()
 void ChromaDecoderConfigDialog::on_showMapCheckBox_clicked()
 {
     ntscConfiguration.showMap = ui->showMapCheckBox->isChecked();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_adaptThresholdHorizontalSlider_valueChanged(int value)
+{
+    ntscConfiguration.adaptThreshold = static_cast<double>(value) / 100;
+    ui->adaptThresholdValueLabel->setText(QString::number(ntscConfiguration.adaptThreshold, 'f', 2));
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_chromaWeightHorizontalSlider_valueChanged(int value)
+{
+    ntscConfiguration.chromaWeight = static_cast<double>(value) / 100;
+    ui->chromaWeightValueLabel->setText(QString::number(ntscConfiguration.chromaWeight, 'f', 2));
     emit chromaDecoderConfigChanged();
 }
 

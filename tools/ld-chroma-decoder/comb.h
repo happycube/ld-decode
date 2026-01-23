@@ -59,6 +59,7 @@ public:
         // Adaptation sensitivity for 3D filter (higher = prefer 3D, lower = prefer 1D/2D)
         // Default 1.0, range typically 0.5-2.0
         double adaptThreshold = 1.0;
+        double chromaWeight = 1.0;
 
         qint32 getLookBehind() const;
         qint32 getLookAhead() const;
