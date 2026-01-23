@@ -523,7 +523,7 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
     // Weaken this relative to luma, to avoid spurious colour in the 2D result from showing through
     iqPenalty = (iqPenalty / 2 / irescale) * 0.28;
 
-    result.penalty = yPenalty + iqPenalty + adjustPenalty;
+    result.penalty = yPenalty + iqPenalty + adjustPenalty * configuration.chromaWeight;
     return result;
 }
 

@@ -386,6 +386,80 @@
         </spacer>
        </item>
        <item>
+        <widget class="QLabel" name="adaptThresholdLabel">
+         <property name="text">
+          <string>Adaptive Filter Threshold:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="adaptThresholdHorizontalSlider">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="adaptThresholdValueLabel">
+         <property name="text">
+          <string>1.0</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_10">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>15</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="chromaWeightLabel">
+         <property name="text">
+          <string>Chroma Weight:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="chromaWeightHorizontalSlider">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="chromaWeightValueLabel">
+         <property name="text">
+          <string>1.0</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_11">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>15</height>
+          </size>
+         </property>
+        </spacer>
+       </item>       
+       <item>
         <widget class="QLabel" name="cNRLabel">
          <property name="text">
           <string>Chroma noise reduction:</string>

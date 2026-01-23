@@ -249,6 +249,12 @@ int main(int argc, char *argv[])
                                             QCoreApplication::translate("main", "number"));
     parser.addOption(adaptThresholdOption);
 
+    // Option to set the chroma weight for 3D adaptive filter
+    QCommandLineOption chromaWeightOption(QStringList() << "chroma-weight",
+                                          QCoreApplication::translate("main", "NTSC: Chroma weight for 3D adaptive filter (default 1.0, higher = more 2D)"),
+                                          QCoreApplication::translate("main", "number"));
+    parser.addOption(chromaWeightOption);
+
     // -- PAL decoder options --
 
     // Option to use Simple PAL UV filter
@@ -411,6 +417,15 @@ int main(int argc, char *argv[])
 
         if (combConfig.adaptThreshold <= 0.0) {
             qCritical("Adapt threshold must be greater than 0");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(chromaWeightOption)) {
+        combConfig.chromaWeight = parser.value(chromaWeightOption).toDouble();
+
+        if (combConfig.chromaWeight < 0.0) {
+            qCritical("Chroma weight must be greater than or equal to 0");
             return -1;
         }
     }
