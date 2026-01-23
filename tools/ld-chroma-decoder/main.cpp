@@ -3,7 +3,7 @@
     main.cpp
 
     ld-chroma-decoder - Colourisation filter for ld-decode
-    Copyright (C) 2018-2020 Simon Inns
+    Copyright (C) 2018-2025 Simon Inns
     Copyright (C) 2019-2022 Adam Sampson
     Copyright (C) 2021 Chad Page
     Copyright (C) 2021 Phillip Blucas
@@ -243,6 +243,18 @@ int main(int argc, char *argv[])
                                            QCoreApplication::translate("main", "NTSC: Adjust phase per-line using burst phase"));
     parser.addOption(ntscPhaseCompOption);
 
+    // Option to set the 3D adaptive filter threshold
+    QCommandLineOption adaptThresholdOption(QStringList() << "adapt-threshold",
+                                            QCoreApplication::translate("main", "NTSC: 3D adaptive filter threshold (default 1.0, higher = more 3D)"),
+                                            QCoreApplication::translate("main", "number"));
+    parser.addOption(adaptThresholdOption);
+
+    // Option to set the chroma weight for 3D adaptive filter
+    QCommandLineOption chromaWeightOption(QStringList() << "chroma-weight",
+                                          QCoreApplication::translate("main", "NTSC: Chroma weight for 3D adaptive filter (default 1.0, higher = more 2D)"),
+                                          QCoreApplication::translate("main", "number"));
+    parser.addOption(chromaWeightOption);
+
     // -- PAL decoder options --
 
     // Option to use Simple PAL UV filter
@@ -398,6 +410,24 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(ntscPhaseCompOption)) {
         combConfig.phaseCompensation = true;
+    }
+
+    if (parser.isSet(adaptThresholdOption)) {
+        combConfig.adaptThreshold = parser.value(adaptThresholdOption).toDouble();
+
+        if (combConfig.adaptThreshold <= 0.0) {
+            qCritical("Adapt threshold must be greater than 0");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(chromaWeightOption)) {
+        combConfig.chromaWeight = parser.value(chromaWeightOption).toDouble();
+
+        if (combConfig.chromaWeight < 0.0) {
+            qCritical("Chroma weight must be greater than or equal to 0");
+            return -1;
+        }
     }
 
     if (parser.isSet(simplePALOption)) {
