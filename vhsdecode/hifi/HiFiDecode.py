@@ -511,7 +511,8 @@ class FMdemod:
 
         # constants
         two_pi = 2 * pi
-        diff_divisor = two_pi * (1 / sample_rate)
+        phase_scale = sample_rate / (two_pi * deviation)
+        carrier_scaled = carrier / deviation
         iq_len = len(i_osc)
         rf_len = len(in_rf)
 
@@ -531,10 +532,11 @@ class FMdemod:
             # mix in i/q, reflect the sine and cosine
             #
             iq_index = i % iq_len
-            sign = 1 - 2 * ((i // iq_len) % 2)
+            sign = 1 - 2 * ((i // iq_len) & 1)
 
-            i_in = in_rf[i] * i_osc[iq_index] * sign
-            q_in = in_rf[i] * q_osc[iq_index] * sign
+            rf_signed = in_rf[i] * sign
+            i_in = rf_signed * i_osc[iq_index]
+            q_in = rf_signed * q_osc[iq_index]
 
             #
             # low pass filter
@@ -547,8 +549,10 @@ class FMdemod:
 
             for f_idx in range(QUADRATURE_LP_ORDER - 2, -1, -1):
                 next_f_idx = f_idx + 1
-                i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx] - filter_a[next_f_idx] * i_filtered_hist[f_idx]
-                q_filtered += filter_b[next_f_idx] * q_in_hist[f_idx] - filter_a[next_f_idx] * q_filtered_hist[f_idx]
+                b = filter_b[next_f_idx]
+                a = filter_a[next_f_idx]
+                i_filtered += b * i_in_hist[f_idx] - a * i_filtered_hist[f_idx]
+                q_filtered += b * q_in_hist[f_idx] - a * q_filtered_hist[f_idx]
 
                 # Shift histories forward
                 i_in_hist[next_f_idx] = i_in_hist[f_idx]
@@ -568,12 +572,10 @@ class FMdemod:
             #
             current_angle = atan2(q_filtered, i_filtered)
             delta = current_angle - prev_angle
+            delta += two_pi * ((delta < -pi) - (delta > pi))
+            unwrapped = prev_unwrapped + delta
 
-            correction = -two_pi * (delta > pi) + two_pi * (delta < -pi)
-            unwrapped = prev_unwrapped + delta + correction
-
-            diff = prev_unwrapped - unwrapped
-            out = (carrier - diff / diff_divisor) / deviation
+            out = carrier_scaled + delta * phase_scale
 
             out_demod[i - 1] = min(max(out, min_float), max_float)
 
