@@ -661,9 +661,11 @@ class SpectralNoiseReduction:
             #   b**2  + (1 - b) / t_frames  - 2 = 0
             # which approximates the full-width half-max of the
             # squared frequency response of the IIR low-pass filt
-            b = (np.sqrt(1 + 4 * self.t_frames**2) - 1) / (2 * self.t_frames**2)
+            b = 2 / (sqrt(1 + 4 * self.t_frames ** 2) + 1)
             self.smooth_filter_b = [b]
             self.smooth_filter_a = [1, b - 1]
+            self._noverlap = self._win_length - self._hop_length
+            self._epsilon = np.finfo(np.float64).eps
 
         @staticmethod
         @njit(
@@ -672,6 +674,7 @@ class SpectralNoiseReduction:
                 numba.types.Array(numba.types.float32, 2, "F"),
                 numba.types.int64,
                 numba.types.int64,
+                numba.types.float64,
             ),
             cache=True,
             fastmath=True,
@@ -682,23 +685,19 @@ class SpectralNoiseReduction:
             abs_sig_stft,
             thresh_n_mult_nonstationary,
             sigmoid_slope_nonstationary,
+            epsilon # prevent divide by zero
         ):
             # get the number of X above the mean the signal is
             sig_stft_smooth_x, sig_stft_smooth_y = sig_stft_smooth.shape
-            # prevent divide by zero
-            epsilon = np.finfo(np.float64).eps
 
             for x in range(sig_stft_smooth_x):
                 for y in range(sig_stft_smooth_y):
                     sig_stft_smooth[x][y] = 1 / (
-                        1
-                        + np.exp(
+                        1 + exp(
                             (
-                                thresh_n_mult_nonstationary
-                                - (abs_sig_stft[x][y] - sig_stft_smooth[x][y])
-                                / (sig_stft_smooth[x][y] + epsilon)
-                            )
-                            * sigmoid_slope_nonstationary
+                                thresh_n_mult_nonstationary + 1 
+                                - abs_sig_stft[x][y] / (sig_stft_smooth[x][y] + epsilon)
+                            ) * sigmoid_slope_nonstationary
                         )
                     )
 
@@ -719,16 +718,14 @@ class SpectralNoiseReduction:
 
             for x in range(sig_mask_x):
                 for y in range(sig_mask_y):
-                    sig_stft[x][y] = sig_stft[x][y] * (
-                        sig_mask[x][y] * prop_decrease + 1 * (1.0 - prop_decrease)
-                    )
+                    sig_stft[x][y] *= 1 + prop_decrease * (sig_mask[x][y] - 1)
 
         def spectral_gating_nonstationary_single_channel(self, chunk):
             """non-stationary version of spectral gating"""
             _, _, sig_stft = stft(
                 chunk,
                 nfft=self._n_fft,
-                noverlap=self._win_length - self._hop_length,
+                noverlap=self._noverlap,
                 nperseg=self._win_length,
                 padded=False,
             )
@@ -749,6 +746,7 @@ class SpectralNoiseReduction:
                 abs_sig_stft,
                 self._thresh_n_mult_nonstationary,
                 self._sigmoid_slope_nonstationary,
+                self._epsilon
             )
             sig_mask = sig_stft_smooth
 
