@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import log, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm, exp
+from math import exp, log10, pi, sqrt, ceil, floor, atan2, log1p, cos, sin, lcm
 from typing import Tuple
 from time import perf_counter
 from setproctitle import setproctitle
@@ -80,7 +80,7 @@ ui_to_audio_mode = {
 DEFAULT_VHS_EXPANDER_GAIN = 30
 # IEC 60774-2 5.1: Noise Reduction
 DEFAULT_VHS_EXPANDER_RATIO = 2 #           2:1 logarithmic
-DEFAULT_VHS_EXPANDER_ATTACK_TAU = 10e-3 #  3ms to 10ms
+DEFAULT_VHS_EXPANDER_ATTACK_TAU = 6.5e-3 #   3ms to 10ms
 DEFAULT_VHS_EXPANDER_HOLD_TAU = 0 #        None (only used for 8mm)
 DEFAULT_VHS_EXPANDER_RELEASE_TAU = 70e-3 # 70ms +-20%
 
@@ -511,7 +511,8 @@ class FMdemod:
 
         # constants
         two_pi = 2 * pi
-        diff_divisor = two_pi * (1 / sample_rate)
+        phase_scale = sample_rate / (two_pi * deviation)
+        carrier_scaled = carrier / deviation
         iq_len = len(i_osc)
         rf_len = len(in_rf)
 
@@ -531,10 +532,11 @@ class FMdemod:
             # mix in i/q, reflect the sine and cosine
             #
             iq_index = i % iq_len
-            sign = 1 - 2 * ((i // iq_len) % 2)
+            sign = 1 - 2 * ((i // iq_len) & 1)
 
-            i_in = in_rf[i] * i_osc[iq_index] * sign
-            q_in = in_rf[i] * q_osc[iq_index] * sign
+            rf_signed = in_rf[i] * sign
+            i_in = rf_signed * i_osc[iq_index]
+            q_in = rf_signed * q_osc[iq_index]
 
             #
             # low pass filter
@@ -547,8 +549,10 @@ class FMdemod:
 
             for f_idx in range(QUADRATURE_LP_ORDER - 2, -1, -1):
                 next_f_idx = f_idx + 1
-                i_filtered += filter_b[next_f_idx] * i_in_hist[f_idx] - filter_a[next_f_idx] * i_filtered_hist[f_idx]
-                q_filtered += filter_b[next_f_idx] * q_in_hist[f_idx] - filter_a[next_f_idx] * q_filtered_hist[f_idx]
+                b = filter_b[next_f_idx]
+                a = filter_a[next_f_idx]
+                i_filtered += b * i_in_hist[f_idx] - a * i_filtered_hist[f_idx]
+                q_filtered += b * q_in_hist[f_idx] - a * q_filtered_hist[f_idx]
 
                 # Shift histories forward
                 i_in_hist[next_f_idx] = i_in_hist[f_idx]
@@ -568,12 +572,10 @@ class FMdemod:
             #
             current_angle = atan2(q_filtered, i_filtered)
             delta = current_angle - prev_angle
+            delta += two_pi * ((delta < -pi) - (delta > pi))
+            unwrapped = prev_unwrapped + delta
 
-            correction = -two_pi * (delta > pi) + two_pi * (delta < -pi)
-            unwrapped = prev_unwrapped + delta + correction
-
-            diff = prev_unwrapped - unwrapped
-            out = (carrier - diff / diff_divisor) / deviation
+            out = carrier_scaled + delta * phase_scale
 
             out_demod[i - 1] = min(max(out, min_float), max_float)
 
@@ -659,9 +661,11 @@ class SpectralNoiseReduction:
             #   b**2  + (1 - b) / t_frames  - 2 = 0
             # which approximates the full-width half-max of the
             # squared frequency response of the IIR low-pass filt
-            b = (np.sqrt(1 + 4 * self.t_frames**2) - 1) / (2 * self.t_frames**2)
+            b = 2 / (sqrt(1 + 4 * self.t_frames ** 2) + 1)
             self.smooth_filter_b = [b]
             self.smooth_filter_a = [1, b - 1]
+            self._noverlap = self._win_length - self._hop_length
+            self._epsilon = np.finfo(np.float64).eps
 
         @staticmethod
         @njit(
@@ -670,6 +674,7 @@ class SpectralNoiseReduction:
                 numba.types.Array(numba.types.float32, 2, "F"),
                 numba.types.int64,
                 numba.types.int64,
+                numba.types.float64,
             ),
             cache=True,
             fastmath=True,
@@ -680,23 +685,19 @@ class SpectralNoiseReduction:
             abs_sig_stft,
             thresh_n_mult_nonstationary,
             sigmoid_slope_nonstationary,
+            epsilon # prevent divide by zero
         ):
             # get the number of X above the mean the signal is
             sig_stft_smooth_x, sig_stft_smooth_y = sig_stft_smooth.shape
-            # prevent divide by zero
-            epsilon = np.finfo(np.float64).eps
 
             for x in range(sig_stft_smooth_x):
                 for y in range(sig_stft_smooth_y):
                     sig_stft_smooth[x][y] = 1 / (
-                        1
-                        + np.exp(
+                        1 + exp(
                             (
-                                thresh_n_mult_nonstationary
-                                - (abs_sig_stft[x][y] - sig_stft_smooth[x][y])
-                                / (sig_stft_smooth[x][y] + epsilon)
-                            )
-                            * sigmoid_slope_nonstationary
+                                thresh_n_mult_nonstationary + 1 
+                                - abs_sig_stft[x][y] / (sig_stft_smooth[x][y] + epsilon)
+                            ) * sigmoid_slope_nonstationary
                         )
                     )
 
@@ -717,16 +718,14 @@ class SpectralNoiseReduction:
 
             for x in range(sig_mask_x):
                 for y in range(sig_mask_y):
-                    sig_stft[x][y] = sig_stft[x][y] * (
-                        sig_mask[x][y] * prop_decrease + 1 * (1.0 - prop_decrease)
-                    )
+                    sig_stft[x][y] *= 1 + prop_decrease * (sig_mask[x][y] - 1)
 
         def spectral_gating_nonstationary_single_channel(self, chunk):
             """non-stationary version of spectral gating"""
             _, _, sig_stft = stft(
                 chunk,
                 nfft=self._n_fft,
-                noverlap=self._win_length - self._hop_length,
+                noverlap=self._noverlap,
                 nperseg=self._win_length,
                 padded=False,
             )
@@ -747,6 +746,7 @@ class SpectralNoiseReduction:
                 abs_sig_stft,
                 self._thresh_n_mult_nonstationary,
                 self._sigmoid_slope_nonstationary,
+                self._epsilon
             )
             sig_mask = sig_stft_smooth
 
@@ -1003,23 +1003,16 @@ class Expander:
         weighting_low_pass_transition: float
     ):
         self.audio_rate = audio_rate
-        self.linear_to_db = 20 / log(10)
-        self.db_to_linear = log(10) / 20
 
         # makeup gain to apply after expansion
         self.gain = gain
         self.ratio = float(ratio)
 
-        error_db = 20
-        target_db = 2
-        #K = np.log(target_db / error_db)
-        #K = -np.log(9)
-        K = -1
-        self.atkCoeff = np.exp(K / (attack_tau * self.audio_rate))
-        self.relCoeff = np.exp(K / (release_tau * self.audio_rate))
+        self.atkCoeff = exp(-1 / (attack_tau * self.audio_rate))
+        self.relCoeff = exp(-1 / (release_tau * self.audio_rate))
         self.hold_samples = round(hold_tau * self.audio_rate)
 
-        self.env_db = -120.0
+        self.env_lin = 0.0
         self.hold_state = 0
 
         self.lowpass_iirb, self.lowpass_iira = firdes_lowpass(
@@ -1065,8 +1058,6 @@ class Expander:
             numba.types.float64,
             numba.types.float64,
             numba.types.float64,
-            numba.types.float64,
-            numba.types.float64,
             numba.types.int32,
             numba.types.int32,
             numba.types.float64,
@@ -1079,51 +1070,52 @@ class Expander:
     def expand(
         audio,
         side_chain,
-        env_db,
-        linear_to_db,
-        db_to_linear,
+        env_lin,
         atkCoeff,
         relCoeff,
         hold_state,
         hold_samples,
-        gain,
+        makeup_gain_db,
         ratio
     ):
         n = audio.shape[0]
         epsilon = np.finfo(np.float64).eps
         one_minus_atkCoeff = 1 - atkCoeff
-        one_minus_relCoeff = 1 - relCoeff
 
-        # calculate envelope and apply ratio for target db (can be vectorized)
+        ratio_minus_one = ratio - 1
+        inv20 = 0.05 #1 / 20
+
+        # simulates a diode / capacitor peak detector
         for i in range(n):
-            # detect envelope for current sample
-            sc_db = log(max(abs(side_chain[i]), epsilon)) * linear_to_db + gain
-            
-            # apply ratio (target db)
-            side_chain[i] = sc_db * ratio - sc_db
+            # diodes (full wave rectification)
+            sc = abs(side_chain[i])
 
-        # apply attack / release to target db (must be done as scalar, since envelope and hold are stateful)
-        for i in range(n):
-            target_gain_db = side_chain[i]
-
-            is_release = env_db > target_gain_db
-            # apply attack / release
-            if is_release:
+            # capacitor
+            attacking = sc > env_lin
+            if attacking:
+                # capacitor charging
+                # rate is dependent on sc and the attack speed
+                env_lin = atkCoeff * env_lin + one_minus_atkCoeff * sc
+                hold_state = hold_samples
+            else:
+                # capacitor discharging
                 if hold_state > 0:
                     hold_state -= 1
                 else:
-                    env_db = relCoeff * env_db + one_minus_relCoeff * target_gain_db
-            else:
-                hold_state = hold_samples
-                env_db = atkCoeff * env_db + one_minus_atkCoeff * target_gain_db
+                    # rate is dependent only on the release speed
+                    env_lin = relCoeff * env_lin
 
-            side_chain[i] = env_db
+            side_chain[i] = env_lin
 
+        # voltage controlled amplifier, driven by the peak detector
         # apply expansion to audio (can be vectorized)
         for i in range(n):
-            audio[i] *= exp(side_chain[i] * db_to_linear)
+            env_db = 20.0 * log10(max(side_chain[i], epsilon))
+            target_gain_db = ratio_minus_one * env_db + makeup_gain_db
 
-        return env_db, hold_state
+            audio[i] *= 10 ** (target_gain_db * inv20)
+
+        return env_lin, hold_state
 
     def process(self, pre_in, audio_out):
         side_chain = self.WeightedLowcut.lfilt(pre_in)
@@ -1138,12 +1130,10 @@ class Expander:
             self.zi_y
         )
 
-        self.env_db, self.hold_state = Expander.expand(
+        self.env_lin, self.hold_state = Expander.expand(
             audio_out,
             side_chain,
-            self.env_db,
-            self.linear_to_db,
-            self.db_to_linear,
+            self.env_lin,
             self.atkCoeff,
             self.relCoeff,
             self.hold_state,
