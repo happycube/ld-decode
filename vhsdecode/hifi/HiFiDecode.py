@@ -1181,6 +1181,7 @@ class HiFiAudioParams:
     muting_window_size: int
     muting_window_hop_size: int
     muting_fade_samples: int
+    muting_dc_offset_samples: int
     muting_amplitude_threshold: int
     muting_std_threshold: int
     muting_fft_start: int
@@ -1295,6 +1296,8 @@ class HiFiDecode:
         self.muting_audio_rate = self.audio_rate
         # number of samples to fade out before muting, and fade in after muting
         self.muting_fade_samples = 128
+        # number of samples to compensate for dc offset 
+        self.muting_dc_offset_samples = 256
         # muting detection thresholds
         self.muting_window_size = 128
         self.muting_window_hop_size = 128
@@ -1368,6 +1371,7 @@ class HiFiDecode:
             muting_window_size=self.muting_window_size,
             muting_window_hop_size=self.muting_window_hop_size,
             muting_fade_samples=self.muting_fade_samples,
+            muting_dc_offset_samples=self.muting_dc_offset_samples,
             muting_amplitude_threshold=self.muting_amplitude_threshold,
             muting_std_threshold=self.muting_std_threshold,
             muting_fft_start=self.muting_fft_start,
@@ -2011,7 +2015,7 @@ class HiFiDecode:
         return dc
 
     @staticmethod
-    def mute(audio: np.array, audio_process_params: HiFiAudioParams) -> np.array:
+    def _detect_dropouts(audio: np.array, audio_process_params: HiFiAudioParams):
         # Parameters for the sliding window
         window_size = (
             audio_process_params.muting_window_size
@@ -2056,36 +2060,140 @@ class HiFiDecode:
                     full_spectrum_ranges_count += 1
 
         # sort and merge any overlapping boundaries
-        mute_point_boundaries = HiFiDecode.merge_boundaries(mute_point_ranges)
+        return HiFiDecode.merge_boundaries(mute_point_ranges)
+    
+    @staticmethod
+    def _check_other_channel(gaps_to_fill, source_gaps):
+        result = []
 
-        for boundary in mute_point_boundaries:
-            start = boundary[0]
-            fade_start = max(0, start - audio_process_params.muting_fade_samples)
-            fade_start_duration = start - fade_start
-            if fade_start_duration > 0:
-                fade_start_rate = log1p(fade_start_duration)
+        for start, end in gaps_to_fill:
+            # Check overlap with source gaps
+            overlap_found = False
+            for s_start, s_end in source_gaps:
+                # If no overlap, skip
+                if end <= s_start or start >= s_end:
+                    continue
+                overlap_found = True
+                # Safe copy = part of gap outside overlap
+                if start < s_start:
+                    result.append(((start, s_start), None))
+                # Missing in both = overlap
+                overlap_start = max(start, s_start)
+                overlap_end = min(end, s_end)
+                result.append((None, (overlap_start, overlap_end)))
+                start = overlap_end
+            # Remaining part after last overlap
+            if not overlap_found or start < end:
+                result.append(((start, end), None))
 
-            end = boundary[1]
-            fade_end = min(len(audio), end + audio_process_params.muting_fade_samples)
-            fade_end_duration = fade_end - end
-            if fade_end_duration > 0:
-                fade_end_rate = log1p(fade_end_duration)
+        return result
 
-            # fade out
-            for i in range(fade_start_duration):
-                audio[fade_start + i] = (
-                    audio[fade_start + i]
-                    * log1p(fade_start_duration - i)
-                    / fade_start_rate
+    @staticmethod
+    def _mute_or_fill(mute_points, current_channel, other_channel, fade_samples, dc_window):
+        eps = np.finfo(np.float16).eps
+        n = len(current_channel)
+
+        for copy_range, mute_range in mute_points:
+            # cross fade from other channel
+            if copy_range is not None:
+                start, end = map(int, copy_range)
+
+                length = end - start
+                if length <= 0:
+                    continue
+
+                fade_len = min(fade_samples, length // 2)
+                middle_len = max(0, length - 2 * fade_len)
+
+                # DC before and after the gap
+                dc_before = np.mean(current_channel[max(0, start - dc_window):start])
+                dc_after = np.mean(current_channel[end:min(n, end + dc_window)])
+                dc_other = np.mean(other_channel[start:end])
+
+                # Smooth DC interpolation across the gap
+                t = np.linspace(0.0, 1.0, length)
+                smooth_interp = 0.5 * (1 - np.cos(np.pi * t))  # smooth ramp
+                dc_interp = dc_before + (dc_after - dc_before) * smooth_interp - dc_other
+
+                # Apply the crossfade with DC correction
+                fade_curve = np.concatenate([
+                    np.linspace(0.0, 1.0, fade_len, endpoint=False),
+                    np.ones(middle_len),
+                    np.linspace(1.0, 0.0, length - fade_len - middle_len, endpoint=False)
+                ])
+
+                current_channel[start:end] = (
+                    current_channel[start:end] * (1 - fade_curve) +
+                    other_channel[start:end] * fade_curve +
+                    dc_interp
                 )
-            # mute
-            for i in range(start, end):
-                audio[i] = np.finfo(
-                    np.float16
-                ).eps  # not quite zero to prevent issues with noise reduction
-            # fade in
-            for i in range(fade_end_duration):
-                audio[end + i] = audio[end + i] * log1p(i) / fade_end_rate
+
+            # fade to silence
+            if mute_range is not None:
+                start, end = map(int, mute_range)
+
+                fade_start = max(0, start - fade_samples)
+                fade_start_duration = start - fade_start
+                if fade_start_duration > 0:
+                    fade_start_rate = log1p(fade_start_duration)
+
+                fade_end = min(n, end + fade_samples)
+                fade_end_duration = fade_end - end
+                if fade_end_duration > 0:
+                    fade_end_rate = log1p(fade_end_duration)
+
+                # fade out
+                for i in range(fade_start_duration):
+                    current_channel[fade_start + i] = (
+                        current_channel[fade_start + i]
+                        * log1p(fade_start_duration - i)
+                        / fade_start_rate
+                    )
+                # mute
+                for i in range(start, end):
+                    current_channel[i] = eps  # not quite zero to prevent issues with noise reduction
+                # fade in
+                for i in range(fade_end_duration):
+                    current_channel[end + i] = current_channel[end + i] * log1p(i) / fade_end_rate
+
+    @staticmethod
+    def mute(audioL: np.array, audioR: np.array, audio_process_params: HiFiAudioParams) -> np.array:
+        if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
+            mute_point_boundaries_l = HiFiDecode._detect_dropouts(audioL, audio_process_params)
+        else:
+            # fully muted since this is right channel only
+            mute_point_boundaries_l = [(0, len(audioR))]
+
+        if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
+            mute_point_boundaries_r = HiFiDecode._detect_dropouts(audioR, audio_process_params)
+        else:
+            # fully muted since this is left channel only
+            mute_point_boundaries_r = [(0, len(audioL))]
+
+        # check each other channel for any data that can be used as dropout compensation
+        if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
+            mute_points_left = HiFiDecode._check_other_channel(mute_point_boundaries_l, mute_point_boundaries_r)
+
+        if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
+            mute_points_right = HiFiDecode._check_other_channel(mute_point_boundaries_r, mute_point_boundaries_l)
+
+        # apply muting / filling with dropout compensation data
+        if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
+            HiFiDecode._mute_or_fill(
+                mute_points_left,
+                audioL,
+                audioR,
+                audio_process_params.muting_fade_samples,
+                audio_process_params.muting_dc_offset_samples
+            )
+        if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
+            HiFiDecode._mute_or_fill(
+                mute_points_right,
+                audioR,
+                audioL,
+                audio_process_params.muting_fade_samples,
+                audio_process_params.muting_dc_offset_samples
+            )
 
     @staticmethod
     def mix_for_mode_stereo(
@@ -2122,7 +2230,7 @@ class HiFiDecode:
 
     @staticmethod
     def demod_process_audio(
-        filtered: np.array, fm: FMdemod, audio_process_params: dict, audio_resampler, audio_final_resampler, measure_perf: bool
+        filtered: np.array, fm: FMdemod, audio_process_params: HiFiAudioParams, audio_resampler, measure_perf: bool
     ) -> Tuple[np.array, float, dict]:
         perf_measurements = {
             "start_demod": 0,
@@ -2160,14 +2268,16 @@ class HiFiDecode:
         if measure_perf:
             perf_measurements["end_dc_trim"] = perf_counter()
 
-        # mute audio when carrier loss occurs
-        if measure_perf:
-            perf_measurements["start_mute"] = perf_counter()
-        if audio_process_params.muting_enabled:
-            HiFiDecode.mute(audio, audio_process_params)
-        if measure_perf:
-            perf_measurements["end_mute"] = perf_counter()
+        return audio, dc, perf_measurements
 
+    @staticmethod
+    def head_switch_resample(
+        audio: np.array,
+        audio_process_params: HiFiAudioParams,
+        audio_final_resampler,
+        perf_measurements: dict,
+        measure_perf: bool
+    ) -> Tuple[np.array, float, dict]:
         # do head switching noise cancellation if enabled
         if measure_perf:
             perf_measurements["start_headswitch"] = perf_counter()
@@ -2185,7 +2295,7 @@ class HiFiDecode:
         if measure_perf:
             perf_measurements["end_audio_final_resample"] = perf_counter()
 
-        return audio, dc, perf_measurements
+        return audio, perf_measurements
 
     def block_decode(
         self,
@@ -2237,22 +2347,42 @@ class HiFiDecode:
         if self.options["grc"] and ZMQ_AVAILABLE:
             self.grc.send(filterL + filterR)
 
+        # demodulate, resample to audio rate
         if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_R: 
             preL, dcL, perf_measurements_l = HiFiDecode.demod_process_audio(
-                filterL, self.fmL, self.audio_process_params, self.audio_resampler_l, self.audio_final_resampler_l, measure_perf
+                filterL, self.fmL, self.audio_process_params, self.audio_resampler_l, measure_perf
             )
         else:
             preL = None
             dcL = 0
             perf_measurements_l = 0
+
         if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_L: 
             preR, dcR, perf_measurements_r = HiFiDecode.demod_process_audio(
-                filterR, self.fmR, self.audio_process_params, self.audio_resampler_r, self.audio_final_resampler_r, measure_perf
+                filterR, self.fmR, self.audio_process_params, self.audio_resampler_r, measure_perf
             )
         else:
             preR = None
             dcR = 0
             perf_measurements_r = 0
+
+        # dropout compensation
+        # mute audio when carrier loss occurs
+        if measure_perf:
+            perf_measurements_l["start_mute"] = perf_counter()
+            perf_measurements_r["start_mute"] = perf_measurements_l["start_mute"]
+        if self.audio_process_params.muting_enabled:
+            HiFiDecode.mute(preL, preR, self.audio_process_params)
+        if measure_perf:
+            perf_measurements_l["end_mute"] = perf_counter()
+            perf_measurements_r["end_mute"] = perf_measurements_l["end_mute"]
+
+        # headswitch interpolation, resample to final rate
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
+            preL, perf_measurements_l = HiFiDecode.head_switch_resample(preL, self.audio_process_params, self.audio_final_resampler_l, perf_measurements_l, measure_perf)
+
+        if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
+            preR, perf_measurements_r = HiFiDecode.head_switch_resample(preR, self.audio_process_params, self.audio_final_resampler_r, perf_measurements_r, measure_perf)
 
         # fine tune carrier frequency
         if measure_perf:
