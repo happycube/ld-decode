@@ -947,14 +947,16 @@ class PostProcessor:
         decoder_shared_memory_idle_queue,
         blocks_enqueued,
         out_conn,
-        peak_gain,
+        peak_gain_left,
+        peak_gain_right,
     ):
         self.final_audio_rate = decode_options["audio_rate"]
         self.enable_expander = decode_options["enable_expander"]
         self.enable_deemphasis = decode_options["enable_deemphasis"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.format = decode_options["format"]
-        self.peak_gain = peak_gain
+        self.peak_gain_left = peak_gain_left
+        self.peak_gain_right = peak_gain_right
 
         # create processes and wire up queues
         #
@@ -1127,7 +1129,8 @@ class PostProcessor:
                 expander_worker_l_out_rx,
                 expander_worker_r_out_rx,
                 self.mix_to_stereo_worker_output,
-                self.peak_gain,
+                self.peak_gain_left,
+                self.peak_gain_right,
                 self.final_audio_rate,
             ),
         )
@@ -1391,7 +1394,7 @@ class PostProcessor:
 
     @staticmethod
     def mix_to_stereo_worker(
-        expander_l_in_conn, expander_r_in_conn, out_conn, peak_gain, sample_rate
+        expander_l_in_conn, expander_r_in_conn, out_conn, peak_gain_left, peak_gain_right, sample_rate
     ):
         setproctitle(current_process().name)
         while True:
@@ -1423,20 +1426,24 @@ class PostProcessor:
             r = buffer.get_post_right()
             stereo = buffer.get_stereo()
 
-            max_gain = PostProcessor.stereo_interleave(
+            max_gain_left, max_gain_right = PostProcessor.stereo_interleave(
                 l, r, stereo, sample_rate, decoder_state.block_num == 0
             )
 
-            if peak_gain.value < max_gain:
-                with peak_gain.get_lock():
-                    peak_gain.value = max_gain
+            if peak_gain_left.value < max_gain_left:
+                with peak_gain_left.get_lock():
+                    peak_gain_left.value = max_gain_left
+
+            if peak_gain_right.value < max_gain_right:
+                with peak_gain_right.get_lock():
+                    peak_gain_right.value = max_gain_right
 
             buffer.close()
             out_conn.send(decoder_state)
 
     @staticmethod
     @njit(
-        numba.types.float32(
+        numba.types.UniTuple(numba.types.float32, 2)(
             NumbaAudioArray,
             NumbaAudioArray,
             NumbaAudioArray,
@@ -1454,7 +1461,8 @@ class PostProcessor:
         sample_rate: int,
         is_first_block: bool,
     ) -> int:
-        max_gain = 0
+        max_gain_left = 0
+        max_gain_right = 0
         start_sample = 0
 
         # mute the spike that occurs during noise reduction
@@ -1470,16 +1478,16 @@ class PostProcessor:
             audioLSample = audioL[i]
             stereo[i * 2] = audioLSample
             gain = abs(audioLSample)
-            if gain > max_gain:
-                max_gain = gain
+            if gain > max_gain_left:
+                max_gain_left = gain
 
             audioRSample = audioR[i]
             stereo[i * 2 + 1] = audioRSample
             gain = abs(audioRSample)
-            if gain > max_gain:
-                max_gain = gain
+            if gain > max_gain_right:
+                max_gain_right = gain
 
-        return max_gain
+        return max_gain_left, max_gain_right
 
     @staticmethod
     def block_sorter_worker(
@@ -1799,7 +1807,7 @@ def write_soundfile_process_worker(
             channel_1_output.flush()
             channel_2_output.flush()
         else:
-            stereo.flush()
+            stereo_output.flush()
         decode_done.set()
 
 
@@ -1824,7 +1832,8 @@ async def decode_parallel(
     blocks_enqueued = Value("d", 0)
     input_position = Value("d", 0)
     total_samples_decoded = Value("d", 0)
-    peak_gain = Value("d", 0)
+    peak_gain_left = Value("d", 0)
+    peak_gain_right = Value("d", 0)
     stop_requested = Value("d", STOP_NOT_REQUESTED)
     start_time = datetime.now()
 
@@ -1893,7 +1902,8 @@ async def decode_parallel(
         shared_memory_idle_queue,
         blocks_enqueued,
         post_processor_out_tx_conn,
-        peak_gain,
+        peak_gain_left,
+        peak_gain_right,
     )
     atexit.register(post_processor.close)
 
@@ -2098,36 +2108,38 @@ async def decode_parallel(
         atexit.unregister(shared_memory.close)
         atexit.unregister(shared_memory.unlink)
     
-    with peak_gain.get_lock():
-        print(f"\nPeak gain is {(peak_gain.value * 100):.2f}%.", end="")
+    with peak_gain_left.get_lock(), peak_gain_right.get_lock():
+        audio_rate = decode_options["audio_rate"]
 
-        if decode_options["normalize"]:
-            # TODO calculate peak gain per channel for dual mono
-            gain_adjust = (
-                1 / peak_gain.value - np.finfo(np.float16).eps
-            )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
-            print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
-
-            audio_rate = decode_options["audio_rate"]
-            dual_mono = decode_options["mode"] == AUDIO_MODE_DUAL_MONO or decode_options["mode"] == AUDIO_MODE_DUAL_MONO_MS
-
-            if dual_mono:
+        if (
+            decode_options["mode"] == AUDIO_MODE_DUAL_MONO or
+            decode_options["mode"] == AUDIO_MODE_DUAL_MONO_MS
+        ):
+            # Normalize channels independently for dual mono
+            print(f"\nChannel 1: Peak gain is {(peak_gain_left.value * 100):.2f}%.", end="")
+            if decode_options["normalize"]:
                 channel_1_output_file = get_dual_mono_filename(output_file, channel_1_suffix)
                 channel_1_input_file_post_gain = get_normalize_filename(channel_1_output_file, audio_rate)
-                normalize(channel_1_input_file_post_gain, channel_1_output_file, gain_adjust, 1, audio_rate)
+                normalize(channel_1_input_file_post_gain, channel_1_output_file, peak_gain_left.value, 1, audio_rate)
 
+            print(f"\nChannel 2: Peak gain is {(peak_gain_right.value * 100):.2f}%.", end="")
+            if decode_options["normalize"]:
                 channel_2_output_file = get_dual_mono_filename(output_file, channel_2_suffix)
                 channel_2_input_file_post_gain = get_normalize_filename(channel_2_output_file, audio_rate)
-                normalize(channel_2_input_file_post_gain, channel_2_output_file, gain_adjust, 1, audio_rate)
-            else:
+                normalize(channel_2_input_file_post_gain, channel_2_output_file, peak_gain_right.value, 1, audio_rate)
+
+        else:
+            peak_gain_stereo = max(peak_gain_left.value, peak_gain_right.value)
+            print(f"\nPeak gain is {(peak_gain_stereo * 100):.2f}%.", end="")
+            if decode_options["normalize"]:
                 input_file_post_gain = get_normalize_filename(output_file, audio_rate)
-                normalize(input_file_post_gain, output_file, gain_adjust, 2, audio_rate)
+                normalize(input_file_post_gain, output_file, peak_gain_stereo, 2, audio_rate)
 
     elapsed_time = datetime.now() - start_time
     dt_string = elapsed_time.total_seconds()
     print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
-def normalize(input_file_post_gain, output_file, gain_adjust, channels, audio_rate):
+def normalize(input_file_post_gain, output_file, peak_gain, channels, audio_rate):
     try:
         total_frames_read = 0
         buffer = np.empty(2**20, dtype=np.float32)
@@ -2139,11 +2151,16 @@ def normalize(input_file_post_gain, output_file, gain_adjust, channels, audio_ra
             channels=channels,
             **normalize_parameters,
         ) as f, as_outputfile(output_file, channels, audio_rate, False) as w:
+            gain_adjust = (
+                1 / peak_gain - np.finfo(np.float16).eps
+            )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
+            print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
+
             progressB = TimeProgressBar(f.frames, f.frames)
             done = False
             while not done:
                 frames_read = f.buffer_read_into(buffer, dtype="float32")
-                samples_read = frames_read * 2
+                samples_read = frames_read * channels
 
                 if samples_read < len(buffer):
                     buffer = buffer[0:samples_read]
