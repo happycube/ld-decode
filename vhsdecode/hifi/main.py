@@ -82,6 +82,8 @@ from vhsdecode.hifi.HiFiDecode import (
 
     DEFAULT_VHS_AUDIO_MODE,
     DEFAULT_8MM_AUDIO_MODE,
+    AUDIO_MODE_DUAL_MONO,
+    AUDIO_MODE_DUAL_MONO_MS,
     audio_mode_to_ui,
     DEFAULT_SPECTRAL_NR_AMOUNT,
     DEFAULT_RESAMPLER_QUALITY,
@@ -128,6 +130,7 @@ STOP_NOT_REQUESTED = 0
 STOP_REQUESTED = 1
 STOP_IMMEDIATE_REQUESTED = 2
 
+DEFAULT_CHANNEL_SUFFIX = "channel"
 NORMALIZE_FILE_SUFFIX = "tmp_normalize.raw"
 
 
@@ -848,27 +851,30 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
 def get_normalize_filename(path, sample_rate):
     return f"{path}_{int(sample_rate)}_f32_{NORMALIZE_FILE_SUFFIX}"
 
+def get_dual_mono_filename(path, channel_suffix):
+    root, extension = os.path.splitext(path)
+    return f"{root}_{channel_suffix}{extension}"
 
 normalize_parameters = {
-    "channels": 2,
     "format": "RAW",  # TODO: update to FLAC 32 bit when supported by soundfile
     "subtype": "FLOAT",
 }
 
 
-def as_outputfile(path, sample_rate, normalize):
+def as_outputfile(path, channels, sample_rate, normalize):
     if normalize:
         return sf.SoundFile(
             get_normalize_filename(path, sample_rate),
             "w",
             samplerate=int(sample_rate),
+            channels=channels,
             **normalize_parameters,
         )
     elif ".wav" in path.lower():
         return sf.SoundFile(
             path,
             "w",
-            channels=2,
+            channels=channels,
             samplerate=int(sample_rate),
             format="WAV",
             subtype="PCM_16",
@@ -877,7 +883,7 @@ def as_outputfile(path, sample_rate, normalize):
         return sf.SoundFile(
             path,
             "w",
-            channels=2,
+            channels=channels,
             samplerate=int(sample_rate),
             format="FLAC",
             subtype="PCM_24",
@@ -1691,6 +1697,8 @@ def write_soundfile_process_worker(
     total_samples_decoded,
     decode_options,
     output_file: str,
+    channel_1_suffix: str,
+    channel_2_suffix: str,
     stop_requested,
     decode_done,
 ):
@@ -1699,13 +1707,34 @@ def write_soundfile_process_worker(
     input_rate = decode_options["input_rate"]
     preview_mode = decode_options["preview"]
     normalize = decode_options["normalize"]
+    dual_mono = decode_options["mode"] == AUDIO_MODE_DUAL_MONO or decode_options["mode"] == AUDIO_MODE_DUAL_MONO_MS
 
     if preview_mode:
         player = SoundDeviceProcess(audio_rate, stop_requested)
     else:
         player = nullcontext()
 
-    with player, as_outputfile(output_file, audio_rate, normalize) as w:
+    if dual_mono:
+        stereo_output = nullcontext()
+        channel_1_output = as_outputfile(
+            get_dual_mono_filename(output_file, channel_1_suffix),
+            1,
+            audio_rate,
+            normalize
+        )
+
+        channel_2_output = as_outputfile(
+            get_dual_mono_filename(output_file, channel_2_suffix),
+            1,
+            audio_rate,
+            normalize
+        )
+    else:
+        stereo_output = as_outputfile(output_file, 2, audio_rate, normalize)
+        channel_1_output = nullcontext()
+        channel_2_output = nullcontext()
+
+    with player, stereo_output, channel_1_output, channel_2_output:
         done = False
         while not done:
             while True:
@@ -1724,9 +1753,20 @@ def write_soundfile_process_worker(
             # pad the start of the audio due to beginning gap
             if decoder_state.block_num == 0:
                 padding = round(decoder_state.block_audio_final_overlap / 2) * 2 * 4 # 2 channels, 4 bytes per channel
-                w.buffer_write(bytes(padding), dtype="float32")
+                
+                if dual_mono:
+                    channel_1_output.buffer_write(bytes(padding), dtype="float32")
+                    channel_2_output.buffer_write(bytes(padding), dtype="float32")
+                else:
+                    stereo_output.buffer_write(bytes(padding), dtype="float32")
 
-            w.buffer_write(stereo, dtype="float32")
+            if dual_mono:
+                channel_1, channel_2 = stereo[::2], stereo[1::2]
+                channel_1_output.write(channel_1)
+                channel_2_output.write(channel_2)
+            else:
+                stereo_output.buffer_write(stereo, dtype="float32")
+
             if preview_mode:
                 if SOUNDDEVICE_AVAILABLE:
                     stereo_copy = np.empty_like(stereo)
@@ -1755,7 +1795,11 @@ def write_soundfile_process_worker(
 
             done = decoder_state.is_last_block
 
-        w.flush()
+        if dual_mono:
+            channel_1_output.flush()
+            channel_2_output.flush()
+        else:
+            stereo.flush()
         decode_done.set()
 
 
@@ -1771,6 +1815,9 @@ async def decode_parallel(
 
     input_file = decode_options["input_file"]
     output_file = decode_options["output_file"]
+
+    channel_1_suffix = DEFAULT_CHANNEL_SUFFIX + "_1"
+    channel_2_suffix = DEFAULT_CHANNEL_SUFFIX + "_2"
 
     block_size = decoder.initialBlockSize
 
@@ -1863,6 +1910,8 @@ async def decode_parallel(
             total_samples_decoded,
             decode_options,
             output_file,
+            channel_1_suffix,
+            channel_2_suffix,
             stop_requested,
             decode_done,
         ),
@@ -2053,50 +2102,61 @@ async def decode_parallel(
         print(f"\nPeak gain is {(peak_gain.value * 100):.2f}%.", end="")
 
         if decode_options["normalize"]:
+            # TODO calculate peak gain per channel for dual mono
             gain_adjust = (
                 1 / peak_gain.value - np.finfo(np.float16).eps
             )  # subtract epsilon error to prevent appearance of "clipping" in editing tools
             print(f" Adjusting to {(gain_adjust * 100):.2f}%, please wait...")
 
-            input_file_post_gain = get_normalize_filename(
-                output_file, decode_options["audio_rate"]
-            )
-            output_file = decode_options["output_file"]
             audio_rate = decode_options["audio_rate"]
+            dual_mono = decode_options["mode"] == AUDIO_MODE_DUAL_MONO or decode_options["mode"] == AUDIO_MODE_DUAL_MONO_MS
 
-            try:
-                total_frames_read = 0
-                buffer = np.empty(2**20, dtype=np.float32)
+            if dual_mono:
+                channel_1_output_file = get_dual_mono_filename(output_file, channel_1_suffix)
+                channel_1_input_file_post_gain = get_normalize_filename(channel_1_output_file, audio_rate)
+                normalize(channel_1_input_file_post_gain, channel_1_output_file, gain_adjust, 1, audio_rate)
 
-                with sf.SoundFile(
-                    input_file_post_gain,
-                    "r",
-                    samplerate=int(decode_options["audio_rate"]),
-                    **normalize_parameters,
-                ) as f, as_outputfile(output_file, audio_rate, False) as w:
-                    progressB = TimeProgressBar(f.frames, f.frames)
-                    done = False
-                    while not done:
-                        frames_read = f.buffer_read_into(buffer, dtype="float32")
-                        samples_read = frames_read * 2
-
-                        if samples_read < len(buffer):
-                            buffer = buffer[0:samples_read]
-                            done = True
-
-                        PostProcessor.normalize(gain_adjust, buffer, buffer)
-                        w.buffer_write(buffer, "float32")
-
-                        total_frames_read += frames_read
-                        progressB.print(total_frames_read, False)
-                print("")
-            finally:
-                os.remove(input_file_post_gain)
+                channel_2_output_file = get_dual_mono_filename(output_file, channel_2_suffix)
+                channel_2_input_file_post_gain = get_normalize_filename(channel_2_output_file, audio_rate)
+                normalize(channel_2_input_file_post_gain, channel_2_output_file, gain_adjust, 1, audio_rate)
+            else:
+                input_file_post_gain = get_normalize_filename(output_file, audio_rate)
+                normalize(input_file_post_gain, output_file, gain_adjust, 2, audio_rate)
 
     elapsed_time = datetime.now() - start_time
     dt_string = elapsed_time.total_seconds()
     print(f"\nDecode finished, seconds elapsed: {round(dt_string)}")
 
+def normalize(input_file_post_gain, output_file, gain_adjust, channels, audio_rate):
+    try:
+        total_frames_read = 0
+        buffer = np.empty(2**20, dtype=np.float32)
+
+        with sf.SoundFile(
+            input_file_post_gain,
+            "r",
+            samplerate=int(audio_rate),
+            channels=channels,
+            **normalize_parameters,
+        ) as f, as_outputfile(output_file, channels, audio_rate, False) as w:
+            progressB = TimeProgressBar(f.frames, f.frames)
+            done = False
+            while not done:
+                frames_read = f.buffer_read_into(buffer, dtype="float32")
+                samples_read = frames_read * 2
+
+                if samples_read < len(buffer):
+                    buffer = buffer[0:samples_read]
+                    done = True
+
+                PostProcessor.normalize(gain_adjust, buffer, buffer)
+                w.buffer_write(buffer, "float32")
+
+                total_frames_read += frames_read
+                progressB.print(total_frames_read, False)
+        print("")
+    finally:
+        os.remove(input_file_post_gain)
 
 def guess_bias(decoder, input_file, block_size, blocks_limits=10):
     print("Measuring carrier bias ... ")

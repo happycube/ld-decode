@@ -45,12 +45,16 @@ import matplotlib.pyplot as plt
 
 AUDIO_MODE_STEREO = "s"
 AUDIO_MODE_STEREO_MS = "ms"
+AUDIO_MODE_DUAL_MONO = "d"
+AUDIO_MODE_DUAL_MONO_MS = "dms"
 AUDIO_MODE_MONO_L = "l"
 AUDIO_MODE_MONO_R = "r"
 AUDIO_MODE_MONO_SUM = "sum"
 
 UI_STEREO = "Stereo (L, R)"
 UI_STEREO_MS = "Stereo (L+R, L-R)"
+UI_DUAL_MONO = "Dual Mono (L) (R)"
+UI_DUAL_MONO_MS = "Dual Mono (L+R) (L-R)"
 UI_MONO_L = "Mono (L)"
 UI_MONO_R = "Mono (R)"
 UI_MONO_SUM = "Mono Sum (L+R)"
@@ -58,6 +62,8 @@ UI_MONO_SUM = "Mono Sum (L+R)"
 audio_mode_to_ui = {
     AUDIO_MODE_STEREO: UI_STEREO,
     AUDIO_MODE_STEREO_MS: UI_STEREO_MS,
+    AUDIO_MODE_DUAL_MONO: UI_DUAL_MONO,
+    AUDIO_MODE_DUAL_MONO_MS: UI_DUAL_MONO_MS,
     AUDIO_MODE_MONO_L: UI_MONO_L,
     AUDIO_MODE_MONO_R: UI_MONO_R,
     AUDIO_MODE_MONO_SUM: UI_MONO_SUM,
@@ -66,6 +72,8 @@ audio_mode_to_ui = {
 ui_to_audio_mode = {
     UI_STEREO: AUDIO_MODE_STEREO,
     UI_STEREO_MS: AUDIO_MODE_STEREO_MS,
+    UI_DUAL_MONO: AUDIO_MODE_DUAL_MONO,
+    UI_DUAL_MONO_MS: AUDIO_MODE_DUAL_MONO_MS,
     UI_MONO_L: AUDIO_MODE_MONO_L,
     UI_MONO_R: AUDIO_MODE_MONO_R,
     UI_MONO_SUM: AUDIO_MODE_MONO_SUM,
@@ -2158,6 +2166,11 @@ class HiFiDecode:
 
     @staticmethod
     def mute(audioL: np.array, audioR: np.array, audio_process_params: HiFiAudioParams) -> np.array:
+        dual_mono = (
+            audio_process_params.decode_mode == AUDIO_MODE_DUAL_MONO or
+            audio_process_params.decode_mode == AUDIO_MODE_DUAL_MONO_MS
+        )
+
         if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
             mute_point_boundaries_l = HiFiDecode._detect_dropouts(audioL, audio_process_params)
         else:
@@ -2171,11 +2184,22 @@ class HiFiDecode:
             mute_point_boundaries_r = [(0, len(audioL))]
 
         # check each other channel for any data that can be used as dropout compensation
-        if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
-            mute_points_left = HiFiDecode._check_other_channel(mute_point_boundaries_l, mute_point_boundaries_r)
-
-        if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
-            mute_points_right = HiFiDecode._check_other_channel(mute_point_boundaries_r, mute_point_boundaries_l)
+        if dual_mono:
+            # don't fill from other channel
+            mute_points_right = [(None, (start,end)) for start,end in mute_point_boundaries_r]
+            mute_points_left = [(None, (start,end)) for start,end in mute_point_boundaries_l]
+        else:
+            if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
+                mute_points_left = HiFiDecode._check_other_channel(mute_point_boundaries_l, mute_point_boundaries_r)
+            else:
+                # don't fill from other channel
+                mute_points_right = [(None, (start,end)) for start,end in mute_point_boundaries_r]
+    
+            if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
+                mute_points_right = HiFiDecode._check_other_channel(mute_point_boundaries_r, mute_point_boundaries_l)
+            else:
+                # don't fill from other channel
+                mute_points_left = [(None, (start,end)) for start,end in mute_point_boundaries_l]
 
         # apply muting / filling with dropout compensation data
         if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
@@ -2199,7 +2223,10 @@ class HiFiDecode:
     def mix_for_mode_stereo(
         l_raw: np.array, r_raw: np.array, decode_mode: str
     ) -> Tuple[np.array, np.array]:
-        if decode_mode == AUDIO_MODE_STEREO_MS:
+        if (
+            decode_mode == AUDIO_MODE_STEREO_MS or 
+            decode_mode == AUDIO_MODE_DUAL_MONO_MS
+        ):
             l = np.multiply(np.add(l_raw, r_raw), 0.5)
             r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
         elif decode_mode == AUDIO_MODE_MONO_L:
@@ -2211,7 +2238,9 @@ class HiFiDecode:
         elif decode_mode == AUDIO_MODE_MONO_SUM:
             l = np.multiply(np.add(l_raw, r_raw), 0.5)
             r = np.multiply(np.add(l_raw, r_raw), 0.5)
-        else: # AUDIO_MODE_STEREO
+        else:
+            # AUDIO_MODE_STEREO
+            # AUDIO_MODE_DUAL_MONO_STEREO
             l = l_raw
             r = r_raw
 
