@@ -43,6 +43,9 @@ from vhsdecode.hifi.utils import DecoderSharedMemory, NumbaAudioArray
 
 import matplotlib.pyplot as plt
 
+# ******************
+# Audio mode options
+# ******************
 AUDIO_MODE_STEREO = "s"
 AUDIO_MODE_STEREO_MS = "ms"
 AUDIO_MODE_DUAL_MONO = "d"
@@ -58,6 +61,9 @@ UI_DUAL_MONO_MS = "Dual Mono (L+R) (L-R)"
 UI_MONO_L = "Mono (L)"
 UI_MONO_R = "Mono (R)"
 UI_MONO_SUM = "Mono Sum (L+R)"
+
+DEFAULT_VHS_AUDIO_MODE = AUDIO_MODE_STEREO
+DEFAULT_8MM_AUDIO_MODE = AUDIO_MODE_STEREO_MS
 
 audio_mode_to_ui = {
     AUDIO_MODE_STEREO: UI_STEREO,
@@ -79,6 +85,31 @@ ui_to_audio_mode = {
     UI_MONO_SUM: AUDIO_MODE_MONO_SUM,
 }
 
+# ****************************
+# Dropout Compensation Options
+# ****************************
+DOC_MODE_FULL = "full"
+DOC_MODE_MUTE = "mute"
+DOC_MODE_DISABLED = "off"
+
+UI_DOC_MODE_FULL = "Full"
+UI_DOC_MODE_MUTE = "Muting Only"
+UI_DOC_MODE_DISABLED = "Off"
+
+DEFAULT_DOC_MODE = DOC_MODE_FULL
+
+doc_mode_to_ui = {
+    DOC_MODE_FULL: UI_DOC_MODE_FULL,
+    DOC_MODE_MUTE: UI_DOC_MODE_MUTE,
+    DOC_MODE_DISABLED: UI_DOC_MODE_DISABLED,
+}
+
+ui_to_doc_mode = {
+    UI_DOC_MODE_FULL: DOC_MODE_FULL,
+    UI_DOC_MODE_MUTE: DOC_MODE_MUTE,
+    UI_DOC_MODE_DISABLED: DOC_MODE_DISABLED,
+}
+
 # TAU_1         low end of shelf curve
 # TAU_2         high end of shelf curve
 
@@ -88,7 +119,7 @@ ui_to_audio_mode = {
 DEFAULT_VHS_EXPANDER_GAIN = 30
 # IEC 60774-2 5.1: Noise Reduction
 DEFAULT_VHS_EXPANDER_RATIO = 2 #           2:1 logarithmic
-DEFAULT_VHS_EXPANDER_ATTACK_TAU = 6.5e-3 #   3ms to 10ms
+DEFAULT_VHS_EXPANDER_ATTACK_TAU = 6.5e-3 # 3ms to 10ms
 DEFAULT_VHS_EXPANDER_HOLD_TAU = 0 #        None (only used for 8mm)
 DEFAULT_VHS_EXPANDER_RELEASE_TAU = 70e-3 # 70ms +-20%
 
@@ -144,9 +175,6 @@ DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2 = 27e-6
 # this may help to remove any high frequency noise interfering with the expander envelope
 DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS = 20000
 DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION = 100000
-
-DEFAULT_VHS_AUDIO_MODE = AUDIO_MODE_STEREO
-DEFAULT_8MM_AUDIO_MODE = AUDIO_MODE_STEREO_MS
 
 # set the amount of spectral noise reduction to apply to the signal before deemphasis
 DEFAULT_SPECTRAL_NR_AMOUNT = 0.4
@@ -1184,16 +1212,16 @@ class HiFiAudioParams:
     headswitch_interpolation_neighbor_range: int
     hs_b: float
     hs_a: float
-    muting_enabled: bool
-    muting_cutoff_freq: int
-    muting_window_size: int
-    muting_window_hop_size: int
-    muting_fade_samples: int
-    muting_dc_offset_samples: int
-    muting_amplitude_threshold: int
-    muting_std_threshold: int
-    muting_fft_start: int
-    muting_fft_end: int
+    doc_mode: bool
+    doc_cutoff_freq: int
+    doc_window_size: int
+    doc_window_hop_size: int
+    doc_fade_samples: int
+    doc_dc_offset_samples: int
+    doc_amplitude_threshold: int
+    doc_std_threshold: int
+    doc_fft_start: int
+    doc_fft_end: int
 
 
 class HiFiDecode:
@@ -1300,30 +1328,30 @@ class HiFiDecode:
 
         # hifi carrier loss results in broadband noise
         # mute the audio when this broadband noise exists above the audible frequencies
-        self.muting_enabled = self.options["muting"]
-        self.muting_audio_rate = self.audio_rate
-        # number of samples to fade out before muting, and fade in after muting
-        self.muting_fade_samples = 128
+        self.doc_mode = self.options["doc"]
+        self.doc_audio_rate = self.audio_rate
+        # number of samples to fade out before doc, and fade in after doc
+        self.doc_fade_samples = 128
         # number of samples to compensate for dc offset 
-        self.muting_dc_offset_samples = 256
-        # muting detection thresholds
-        self.muting_window_size = 128
-        self.muting_window_hop_size = 128
-        self.muting_amplitude_threshold = 1  # 1 is 100% gain
-        self.muting_std_threshold = 1  # +- standard deviation of fft before muting
+        self.doc_dc_offset_samples = 256
+        # dropout detection thresholds
+        self.doc_window_size = 128
+        self.doc_window_hop_size = 128
+        self.doc_amplitude_threshold = 1  # 1 is 100% gain
+        self.doc_std_threshold = 1  # +- standard deviation of fft before dropout correction
 
         # remove signals that may be from the recorded audio
-        self.muting_cutoff_freq = 40000
-        muting_fft_freqs = np.fft.fftfreq(
-            self.muting_window_size, d=1 / self.muting_audio_rate
+        self.doc_cutoff_freq = 40000
+        doc_fft_freqs = np.fft.fftfreq(
+            self.doc_window_size, d=1 / self.doc_audio_rate
         )
-        for i in range(len(muting_fft_freqs)):
-            freq = muting_fft_freqs[i]
+        for i in range(len(doc_fft_freqs)):
+            freq = doc_fft_freqs[i]
             if freq < 0:
-                self.muting_fft_end = i - 1
+                self.doc_fft_end = i - 1
                 break
-            if freq <= self.muting_cutoff_freq:
-                self.muting_fft_start = i
+            if freq <= self.doc_cutoff_freq:
+                self.doc_fft_start = i
 
         if not bias_guess:
             # defer until carriers can be determined
@@ -1374,16 +1402,16 @@ class HiFiDecode:
             headswitch_interpolation_neighbor_range=self.headswitch_interpolation_neighbor_range,
             hs_b=hs_b,
             hs_a=hs_a,
-            muting_enabled=self.muting_enabled,
-            muting_cutoff_freq=self.muting_cutoff_freq,
-            muting_window_size=self.muting_window_size,
-            muting_window_hop_size=self.muting_window_hop_size,
-            muting_fade_samples=self.muting_fade_samples,
-            muting_dc_offset_samples=self.muting_dc_offset_samples,
-            muting_amplitude_threshold=self.muting_amplitude_threshold,
-            muting_std_threshold=self.muting_std_threshold,
-            muting_fft_start=self.muting_fft_start,
-            muting_fft_end=self.muting_fft_end,
+            doc_mode=self.doc_mode,
+            doc_cutoff_freq=self.doc_cutoff_freq,
+            doc_window_size=self.doc_window_size,
+            doc_window_hop_size=self.doc_window_hop_size,
+            doc_fade_samples=self.doc_fade_samples,
+            doc_dc_offset_samples=self.doc_dc_offset_samples,
+            doc_amplitude_threshold=self.doc_amplitude_threshold,
+            doc_std_threshold=self.doc_std_threshold,
+            doc_fft_start=self.doc_fft_start,
+            doc_fft_end=self.doc_fft_end,
         )
 
     @staticmethod
@@ -2026,17 +2054,17 @@ class HiFiDecode:
     def _detect_dropouts(audio: np.array, audio_process_params: HiFiAudioParams):
         # Parameters for the sliding window
         window_size = (
-            audio_process_params.muting_window_size
+            audio_process_params.doc_window_size
         )  # Size of each window (in samples)
         hop_size = (
-            audio_process_params.muting_window_hop_size
+            audio_process_params.doc_window_hop_size
         )  # Hop size (how much to move the window each time)
 
-        mute_point_ranges = []
+        dropout_ranges = []
         full_spectrum_ranges_count = 0
 
-        fft_start = audio_process_params.muting_fft_start
-        fft_end = audio_process_params.muting_fft_end
+        fft_start = audio_process_params.doc_fft_start
+        fft_end = audio_process_params.doc_fft_end
 
         # Loop through the audio in overlapping windows
         for start in range(0, len(audio) - window_size, hop_size):
@@ -2053,22 +2081,22 @@ class HiFiDecode:
             magnitude_mean, magnitude_std = HiFiDecode.mean_stddev(magnitude)
 
             if (
-                magnitude_mean > audio_process_params.muting_amplitude_threshold
-                and magnitude_std > audio_process_params.muting_std_threshold
+                magnitude_mean > audio_process_params.doc_amplitude_threshold
+                and magnitude_std > audio_process_params.doc_std_threshold
             ):
-                # start the mute point, if not currently muted
-                if len(mute_point_ranges) == full_spectrum_ranges_count:
-                    mute_point_ranges.append(
+                # start the dropout, if not currently in a dropout
+                if len(dropout_ranges) == full_spectrum_ranges_count:
+                    dropout_ranges.append(
                         [start, len(audio)]
-                    )  # default to end muting at the end of the audio
+                    )  # default to end doc at the end of the audio
             else:
-                # end the mute point, if currently muted
-                if len(mute_point_ranges) > full_spectrum_ranges_count:
-                    mute_point_ranges[full_spectrum_ranges_count][1] = end
+                # end the dropout, if currently in a dropout
+                if len(dropout_ranges) > full_spectrum_ranges_count:
+                    dropout_ranges[full_spectrum_ranges_count][1] = end
                     full_spectrum_ranges_count += 1
 
         # sort and merge any overlapping boundaries
-        return HiFiDecode.merge_boundaries(mute_point_ranges)
+        return HiFiDecode.merge_boundaries(dropout_ranges)
     
     @staticmethod
     def _check_other_channel(gaps_to_fill, source_gaps):
@@ -2097,14 +2125,14 @@ class HiFiDecode:
         return result
 
     @staticmethod
-    def _mute_or_fill(mute_points, current_channel, other_channel, fade_samples, dc_window):
+    def _mute_or_fill(dropouts, current_channel, other_channel, fade_samples, dc_window):
         eps = np.finfo(np.float16).eps
         n = len(current_channel)
 
-        for copy_range, mute_range in mute_points:
+        for fill_range, mute_range in dropouts:
             # cross fade from other channel
-            if copy_range is not None:
-                start, end = map(int, copy_range)
+            if fill_range is not None:
+                start, end = map(int, fill_range)
 
                 length = end - start
                 if length <= 0:
@@ -2165,58 +2193,58 @@ class HiFiDecode:
                     current_channel[end + i] = current_channel[end + i] * log1p(i) / fade_end_rate
 
     @staticmethod
-    def mute(audioL: np.array, audioR: np.array, audio_process_params: HiFiAudioParams) -> np.array:
+    def dropout_compensate(audioL: np.array, audioR: np.array, audio_process_params: HiFiAudioParams) -> np.array:
         dual_mono = (
             audio_process_params.decode_mode == AUDIO_MODE_DUAL_MONO or
             audio_process_params.decode_mode == AUDIO_MODE_DUAL_MONO_MS
         )
 
         if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
-            mute_point_boundaries_l = HiFiDecode._detect_dropouts(audioL, audio_process_params)
+            dropout_boundaries_l = HiFiDecode._detect_dropouts(audioL, audio_process_params)
         else:
             # fully muted since this is right channel only
-            mute_point_boundaries_l = [(0, len(audioR))]
+            dropout_boundaries_l = [(0, len(audioR))]
 
         if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
-            mute_point_boundaries_r = HiFiDecode._detect_dropouts(audioR, audio_process_params)
+            dropout_boundaries_r = HiFiDecode._detect_dropouts(audioR, audio_process_params)
         else:
             # fully muted since this is left channel only
-            mute_point_boundaries_r = [(0, len(audioL))]
+            dropout_boundaries_r = [(0, len(audioL))]
 
         # check each other channel for any data that can be used as dropout compensation
-        if dual_mono:
+        if dual_mono or audio_process_params.doc_mode == DOC_MODE_MUTE:
             # don't fill from other channel
-            mute_points_right = [(None, (start,end)) for start,end in mute_point_boundaries_r]
-            mute_points_left = [(None, (start,end)) for start,end in mute_point_boundaries_l]
+            dropouts_right = [(None, (start,end)) for start,end in dropout_boundaries_r]
+            dropouts_left = [(None, (start,end)) for start,end in dropout_boundaries_l]
         else:
             if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
-                mute_points_left = HiFiDecode._check_other_channel(mute_point_boundaries_l, mute_point_boundaries_r)
+                dropouts_left = HiFiDecode._check_other_channel(dropout_boundaries_l, dropout_boundaries_r)
             else:
                 # don't fill from other channel
-                mute_points_right = [(None, (start,end)) for start,end in mute_point_boundaries_r]
+                dropouts_right = [(None, (start,end)) for start,end in dropout_boundaries_r]
     
             if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
-                mute_points_right = HiFiDecode._check_other_channel(mute_point_boundaries_r, mute_point_boundaries_l)
+                dropouts_right = HiFiDecode._check_other_channel(dropout_boundaries_r, dropout_boundaries_l)
             else:
                 # don't fill from other channel
-                mute_points_left = [(None, (start,end)) for start,end in mute_point_boundaries_l]
+                dropouts_left = [(None, (start,end)) for start,end in dropout_boundaries_l]
 
-        # apply muting / filling with dropout compensation data
+        # apply doc / filling with dropout compensation data
         if audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
             HiFiDecode._mute_or_fill(
-                mute_points_left,
+                dropouts_left,
                 audioL,
                 audioR,
-                audio_process_params.muting_fade_samples,
-                audio_process_params.muting_dc_offset_samples
+                audio_process_params.doc_fade_samples,
+                audio_process_params.doc_dc_offset_samples
             )
         if audio_process_params.decode_mode != AUDIO_MODE_MONO_L:
             HiFiDecode._mute_or_fill(
-                mute_points_right,
+                dropouts_right,
                 audioR,
                 audioL,
-                audio_process_params.muting_fade_samples,
-                audio_process_params.muting_dc_offset_samples
+                audio_process_params.doc_fade_samples,
+                audio_process_params.doc_dc_offset_samples
             )
 
     @staticmethod
@@ -2396,15 +2424,16 @@ class HiFiDecode:
             perf_measurements_r = 0
 
         # dropout compensation
+        # try to copy from the other channel otherwise
         # mute audio when carrier loss occurs
         if measure_perf:
-            perf_measurements_l["start_mute"] = perf_counter()
-            perf_measurements_r["start_mute"] = perf_measurements_l["start_mute"]
-        if self.audio_process_params.muting_enabled:
-            HiFiDecode.mute(preL, preR, self.audio_process_params)
+            perf_measurements_l["start_doc"] = perf_counter()
+            perf_measurements_r["start_doc"] = perf_measurements_l["start_doc"]
+        if self.audio_process_params.doc_mode != DOC_MODE_DISABLED:
+            HiFiDecode.dropout_compensate(preL, preR, self.audio_process_params)
         if measure_perf:
-            perf_measurements_l["end_mute"] = perf_counter()
-            perf_measurements_r["end_mute"] = perf_measurements_l["end_mute"]
+            perf_measurements_l["end_doc"] = perf_counter()
+            perf_measurements_r["end_doc"] = perf_measurements_l["end_doc"]
 
         # headswitch interpolation, resample to final rate
         if self.audio_process_params.decode_mode != AUDIO_MODE_MONO_R:
@@ -2462,8 +2491,8 @@ class HiFiDecode:
                 perf_measurements_l["end_dc_trim"]
                 - perf_measurements_l["start_dc_trim"]
             )
-            duration_mute_l = (
-                perf_measurements_l["end_mute"] - perf_measurements_l["start_mute"]
+            duration_doc_l = (
+                perf_measurements_l["end_doc"] - perf_measurements_l["start_doc"]
             )
             duration_headswitch_l = (
                 perf_measurements_l["end_headswitch"]
@@ -2485,8 +2514,8 @@ class HiFiDecode:
                 perf_measurements_r["end_dc_trim"]
                 - perf_measurements_r["start_dc_trim"]
             )
-            duration_mute_r = (
-                perf_measurements_r["end_mute"] - perf_measurements_r["start_mute"]
+            duration_doc_r = (
+                perf_measurements_r["end_doc"] - perf_measurements_r["start_doc"]
             )
             duration_headswitch_r = (
                 perf_measurements_r["end_headswitch"]
@@ -2507,13 +2536,13 @@ class HiFiDecode:
                 ("duration_demod_l", duration_demod_l),
                 ("duration_audio_resample_l", duration_audio_resample_l),
                 ("duration_dc_trim_l", duration_dc_trim_l),
-                ("duration_mute_l", duration_mute_l),
+                ("duration_doc_l", duration_doc_l),
                 ("duration_headswitch_l", duration_headswitch_l),
                 ("duration_audio_final_resample_l", duration_audio_final_resample_l),
                 ("duration_demod_r", duration_demod_r),
                 ("duration_audio_resample_r", duration_audio_resample_r),
                 ("duration_dc_trim_r", duration_dc_trim_r),
-                ("duration_mute_r", duration_mute_r),
+                ("duration_doc_r", duration_doc_r),
                 ("duration_headswitch_r", duration_headswitch_r),
                 ("duration_audio_final_resample_r", duration_audio_final_resample_r),
                 ("duration_auto_fine_tune", duration_auto_fine_tune),

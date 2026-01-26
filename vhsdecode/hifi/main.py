@@ -82,6 +82,10 @@ from vhsdecode.hifi.HiFiDecode import (
 
     DEFAULT_VHS_AUDIO_MODE,
     DEFAULT_8MM_AUDIO_MODE,
+    DEFAULT_DOC_MODE,
+    DOC_MODE_FULL,
+    DOC_MODE_MUTE,
+    DOC_MODE_DISABLED,
     AUDIO_MODE_DUAL_MONO,
     AUDIO_MODE_DUAL_MONO_MS,
     audio_mode_to_ui,
@@ -332,12 +336,12 @@ noise_reduction_options_group.add_argument(
     help='Enables head switching noise interpolation. \n  on \tenabled [default]\n  off \tdisabled'
 )
 noise_reduction_options_group.add_argument(
-    "--muting",
-    dest="muting",
+    "--doc",
+    dest="doc",
     type=str.lower,
-    default="on",
+    default=DEFAULT_DOC_MODE,
     metavar='',
-    help='Mutes the audio when there is no hifi carrier. \n  on \tenabled [default]\n  off \tdisabled'
+    help=f'Dropout compensation method (what happens when there is no hifi carrier) \n  {DOC_MODE_FULL} \tcopies audio from the other channel, or mutes if both channels have a dropout [default]\n  {DOC_MODE_MUTE} \talways mute dropouts\n  {DOC_MODE_DISABLED} \tdisabled'
 )
 noise_reduction_options_group.add_argument(
     "--NR_spectral_amount",
@@ -2127,7 +2131,6 @@ async def decode_parallel(
                 channel_2_output_file = get_dual_mono_filename(output_file, channel_2_suffix)
                 channel_2_input_file_post_gain = get_normalize_filename(channel_2_output_file, audio_rate)
                 normalize(channel_2_input_file_post_gain, channel_2_output_file, peak_gain_right.value, 1, audio_rate)
-
         else:
             peak_gain_stereo = max(peak_gain_left.value, peak_gain_right.value)
             print(f"\nPeak gain is {(peak_gain_stereo * 100):.2f}%.", end="")
@@ -2234,7 +2237,7 @@ def main() -> int:
 
     # 8mm AFM uses a mono channel, or L-R/L+R rather than L/R channels
     # The spec defines a dual audio mode but not sure if it was ever used.
-    default_mode = "s" if not args.format_8mm else "ms"
+    default_mode = DEFAULT_VHS_AUDIO_MODE if not args.format_8mm else DEFAULT_8MM_AUDIO_MODE
 
     real_mode = default_mode if not args.mode else args.mode
 
@@ -2297,7 +2300,7 @@ def main() -> int:
         "resampler_quality": resampler_quality if not args.preview else "low",
         "spectral_nr_amount": args.spectral_nr_amount if not args.preview else 0,
         "head_switching_interpolation": args.head_switching_interpolation == "on",
-        "muting": args.muting == "on",
+        "doc": args.doc,
         "enable_expander": args.enable_expander == "on",
         "enable_deemphasis": args.enable_deemphasis == "on",
         "auto_fine_tune": args.auto_fine_tune == "on" if not args.preview else False,

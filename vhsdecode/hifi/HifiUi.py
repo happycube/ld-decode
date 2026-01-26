@@ -96,6 +96,9 @@ from vhsdecode.hifi.HiFiDecode import (
     DEFAULT_8MM_AUDIO_MODE,
     audio_mode_to_ui,
     ui_to_audio_mode,
+    DEFAULT_DOC_MODE,
+    doc_mode_to_ui,
+    ui_to_doc_mode,
     DEMOD_QUADRATURE,
     DEMOD_HILBERT,
     DEFAULT_DEMOD,
@@ -147,7 +150,7 @@ class MainUIParameters:
         self.input_file: str = ""
         self.output_file: str = ""
         self.head_switching_interpolation = "on"
-        self.muting = "on"
+        self.doc = DEFAULT_DOC_MODE
 
 
 def decode_options_to_ui_parameters(decode_options):
@@ -185,7 +188,7 @@ def decode_options_to_ui_parameters(decode_options):
     values.input_file = decode_options["input_file"]
     values.output_file = decode_options["output_file"]
     values.head_switching_interpolation = decode_options["head_switching_interpolation"]
-    values.muting = decode_options["muting"]
+    values.doc = doc_mode_to_ui[decode_options["doc"]]
     return values
 
 
@@ -224,7 +227,7 @@ def ui_parameters_to_decode_options(values: MainUIParameters):
         "output_file": values.output_file,
         "resampler_quality": values.resampler_quality,
         "head_switching_interpolation": values.head_switching_interpolation,
-        "muting": values.muting,
+        "doc": ui_to_doc_mode[values.doc],
         "mode": ui_to_audio_mode[values.audio_mode]
     }
     return decode_options
@@ -614,9 +617,16 @@ class HifiUi(QMainWindow):
         noise_reduction_checkboxes_layout.addWidget(
             self.head_switching_interpolation_checkbox
         )
-        # Muting checkbox
-        self.muting_checkbox = QCheckBox("Muting")
-        noise_reduction_checkboxes_layout.addWidget(self.muting_checkbox)
+
+        # Dropout compensation combo
+        doc_layout = QHBoxLayout()
+        doc_label = QLabel("Dropout Compensation")
+
+        self.doc_combo = QComboBox(self)
+        self.doc_combo.addItems(ui_to_doc_mode.keys())
+        doc_layout.addWidget(doc_label)
+        doc_layout.addWidget(self.doc_combo)
+        noise_reduction_checkboxes_layout.addLayout(doc_layout)
 
         noise_reduction_options_layout.addWidget(
             self.spectral_nr_amount_dial_control, 1
@@ -893,7 +903,10 @@ class HifiUi(QMainWindow):
         self.nr_deemphasis_high_tau_dial_control.setValue(values.nr_deemphasis_high_tau)
         self.spectral_nr_amount_dial_control.setValue(values.spectral_nr_amount)
         self.normalize_checkbox.setChecked(values.normalize)
-        self.muting_checkbox.setChecked(values.muting)
+        self.doc_combo.setCurrentText(values.doc)
+        self.doc_combo.setCurrentIndex(
+            self.doc_combo.findText(values.doc)
+        )
         self.enable_expander_checkbox.setChecked(values.enable_expander)
         self.enable_deemphasis_checkbox.setChecked(values.enable_deemphasis)
         self.head_switching_interpolation_checkbox.setChecked(
@@ -980,7 +993,7 @@ class HifiUi(QMainWindow):
             self.spectral_nr_amount_dial_control.textbox.text()
         )
         values.normalize = self.normalize_checkbox.isChecked()
-        values.muting = self.muting_checkbox.isChecked()
+        values.doc = self.doc_combo.currentText()
         values.enable_expander = self.enable_expander_checkbox.isChecked()
         values.enable_deemphasis = self.enable_deemphasis_checkbox.isChecked()
         values.head_switching_interpolation = (
