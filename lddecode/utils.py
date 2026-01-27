@@ -208,21 +208,9 @@ def make_loader(filename, inputfreq=None):
         or filename.endswith(".flac")
         or filename.endswith(".vhs")
     ):
-        try:
-            return LoadLDF(filename)
-        except FileNotFoundError:
-            print(
-                "ld-ldf-reader not found in PATH, using ffmpeg instead.",
-                file=sys.stderr,
-            )
-        except Exception:
-            # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
-            traceback.print_exc()
-            print(
-                "Failed to load with ld-ldf-reader, trying ffmpeg instead.",
-                file=sys.stderr,
-            )
+        return LoadLDF(filename)
 
+    # Fallback to LoadFFmpeg for other formats (with stdin input)
     return LoadFFmpeg()
 
 
@@ -444,7 +432,7 @@ class LoadFFmpeg:
 
 
 class LoadLDF:
-    """Load samples from an .ldf file, using ld-ldf-reader which itself uses ffmpeg."""
+    """Load samples from an .ldf file, using ld-ldf-reader-py which itself uses ffmpeg."""
 
     def __init__(self, filename, input_args=[], output_args=[]):
         self.input_args = input_args
@@ -452,7 +440,7 @@ class LoadLDF:
 
         self.filename = filename
 
-        # The number of the next byte ld-ldf-reader will return
+        # The number of the next byte ld-ldf-reader-py will return
 
         self.position = 0
         # Keep a buffer of recently-read data, to allow seeking backwards by
@@ -463,7 +451,7 @@ class LoadLDF:
 
         self.ldfreader = None
 
-        # ld-ldf-reader subprocess
+        # ld-ldf-reader-py subprocess
         self.ldfreader = self._open(0)
 
     def __del__(self):
@@ -497,7 +485,7 @@ class LoadLDF:
     def _open(self, sample):
         self._close()
 
-        command = ["ld-ldf-reader", "--quiet", "--start-offset", str(sample), self.filename]
+        command = ["ld-ldf-reader-py", "--quiet", "--start-offset", str(sample), self.filename]
 
         ldfreader = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -643,6 +631,21 @@ def get_git_info():
         pass
 
     return branch, commit
+
+
+def is_git_dirty():
+    """ Check if git repository has uncommitted changes. """
+    try:
+        sp = subprocess.run(
+            "git status --porcelain", shell=True, capture_output=True
+        )
+        if not sp.returncode:
+            output = sp.stdout.decode("utf-8").strip()
+            return len(output) > 0
+    except Exception:
+        pass
+    
+    return False
 
 
 # Essential (or at least useful) standalone routines and lambdas

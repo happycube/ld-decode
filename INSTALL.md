@@ -1,343 +1,237 @@
 # Installing ld-decode
 
-This document describes how to install ld-decode tools and libraries after building.
+This document describes how to install the ld-decode Python package and its dependencies.
 
 ## Quick Install
 
-### Using Staging Directory (No sudo required)
+### Production Installation
 
 ```bash
-cd build
-make install DESTDIR=/tmp/staging
+pip install .
 ```
 
-This installs all built targets to the staging directory without requiring root privileges.
-
-### System-wide Installation (Requires sudo)
+### Development Installation (Editable)
 
 ```bash
-cd build
-sudo make install
+pip install -e "."
 ```
 
-This installs to `/usr/local` and requires root privileges to write to system directories.
-
-## Installation Overview
-
-ld-decode uses the standard CMake install process. Built binaries, libraries, and Python modules are installed to target directories based on the system type and build configuration.
-
-### Sudo Requirements
-
-- **Staging directory** (`DESTDIR=/tmp/staging` or similar): No sudo needed
-- **System directories** (`/usr/local`, `/usr`, `/opt`): Requires `sudo`
-- **Custom user directory** (e.g., `~/.local`): No sudo needed with appropriate prefix
-
-### Default Installation Directories
-
-When you build ld-decode, the `make install` command will place files in standard system directories:
-
-| Component | Default Location | Notes |
-|-----------|------------------|-------|
-| Executables (tools) | `/usr/local/bin` | Command-line tools like `ld-analyse`, `ld-chroma-decoder` |
-| Libraries | `/usr/local/lib` | Compiled C++ libraries |
-| Python modules | `/usr/local/lib/python*/site-packages` | `lddecode` Python package |
-| Headers | `/usr/local/include` | Development headers |
-| CMake configs | `/usr/local/lib/cmake` | CMake package configuration files |
-
-### Using a Staging Directory (Recommended)
-
-For testing or packaging, install to a staging directory instead:
+### With Development Dependencies
 
 ```bash
-make install DESTDIR=/tmp/staging
+pip install -e ".[dev]"
 ```
 
-This places files in:
-```
-/tmp/staging/
-├── usr/local/bin/         # Executables
-├── usr/local/lib/         # Libraries
-└── usr/local/lib/python3.x/site-packages/  # Python modules
-```
+## Installation Methods
 
-**Advantage:** You can examine and test the installation without affecting your system, or prepare files for packaging.
+### 1. Virtual Environment (Recommended)
 
-### Custom Installation Prefix
-
-To use a different base directory (instead of `/usr/local`):
+Create an isolated Python environment:
 
 ```bash
-cd build
-cmake -DCMAKE_INSTALL_PREFIX=/opt/ld-decode ..
-make -j8
-make install
+# Create virtual environment
+python3 -m venv venv
+
+# Activate it
+source venv/bin/activate          # Linux/Mac
+# or
+.\venv\Scripts\activate           # Windows
+
+# Install ld-decode
+pip install .
 ```
 
-This will install to:
-```
-/opt/ld-decode/
-├── bin/         # Executables
-├── lib/         # Libraries
-└── lib/python3.x/site-packages/  # Python modules
-```
+**Advantages:**
+- Isolated dependencies, no conflicts with system Python
+- No sudo required
+- Easy to test different versions
+- Works on any system with Python
 
-**Combining with DESTDIR:**
+### 2. User Installation (No sudo)
+
+Install to your user directory (`~/.local`):
+
 ```bash
-cmake -DCMAKE_INSTALL_PREFIX=/opt/ld-decode ..
-make install DESTDIR=/tmp/staging
+pip install --user .
 ```
 
-Files go to: `/tmp/staging/opt/ld-decode/`
+Executables go to `~/.local/bin` and Python modules to `~/.local/lib/python3.x/site-packages/`.
 
-## Installation Components
+**Advantages:**
+- No system-wide impact
+- No sudo required
+- Single user installation
 
-### Executables
+### 3. System-wide Installation
 
-Tools are installed to `bin/`:
-- `ld-analyse` - GUI analysis tool
-- `ld-chroma-decoder` - Chroma decoder
-- `ld-chroma-encoder` - Chroma encoder
-- `ld-json-converter` - JSON to SQLite converter
-- `ld-process-vbi` - VBI processor
-- `ld-process-vits` - VITS processor
+Install to system Python (requires sudo):
+
+```bash
+sudo pip install .
+```
+
+Installs to `/usr/local/lib/python3.x/site-packages/` and executables to `/usr/local/bin/`.
+
+### 4. Development/Editable Installation
+
+For developers making code changes:
+
+```bash
+pip install -e .
+```
+
+Code changes are immediately reflected without reinstalling. Ideal for active development.
+
+With development tools:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Includes `pytest`, `jupyter`, and `pandas` for testing and notebooks.
+
+## Installed Components
+
+### Python Package
+
+The `lddecode` package containing:
+- `core.py` - Core decoding functions
+- `utils.py` - Utility functions
+- `efm_pll.py` - EFM PLL implementation
+- `commpy_filters.py` - Filter implementations
+- `fft8.py` - FFT implementations
+- `fdls.py` - FDLS decoder
+- `utils_logging.py` - Logging utilities
+- `utils_plotting.py` - Plotting utilities
+
+### Dependencies
+
+Automatically installed:
+- `numpy>=1.17` - Numerical computing
+- `scipy>=1.3` - Scientific computing
+- `matplotlib>=3.0` - Plotting and visualization
+- `numba>=0.48` - High-performance computing
+
+### Command-line Scripts
+
+Available scripts (if entry points are configured):
+- `ld-decode` - Main decoding script
 - `ld-cut` - Cut/segment tool
-- `ld-ldf-reader` - LDF file reader
-- `ld-discmap` - Disc mapper
-- `ld-dropout-correct` - Dropout corrector
-- `ld-lds-converter` - LDS format converter
-- `ld-export-metadata` - Export metadata tool
-- `ld-disc-stacker` - Disc stacker
-
-### Libraries
-
-C++ libraries are installed to `lib/`:
-- `liblddecode-library.a` - Core static library
-- `liblddecode-chroma.a` - Chroma decoding library
-
-### Python Modules
-
-The Python package is installed to `lib/python3.x/site-packages/`:
-- `lddecode/` - Main Python package
-  - `core.py` - Core decoding functions
-  - `utils.py` - Utility functions
-  - `efm_pll.py` - EFM PLL implementation
-  - `commpy_filters.py` - Filter implementations
-  - Other supporting modules
-
-After installation, you can import in Python:
-```python
-import lddecode
-from lddecode.core import LDDecode
-```
+- `ld-compress` - Compression tool
+- `cx-expander` - Expander tool
 
 ## Verifying Installation
 
-### Check Executables
-
-```bash
-# If installed to /usr/local/bin
-which ld-analyse
-ld-analyse --version
-
-# If installed to custom location
-/opt/ld-decode/bin/ld-analyse --version
-```
-
-### Check Python Module
+### Check Python Package
 
 ```bash
 python3 -c "import lddecode; print(lddecode.__file__)"
 ```
 
-### List Installed Files
+### List Installed Package Info
 
-With DESTDIR staging:
 ```bash
-find /tmp/staging -type f
+pip show ld-decode
 ```
 
-This shows all files that would be installed to the system.
+### Check Installed Version
+
+```bash
+python3 -c "import lddecode; print(lddecode.__version__)" 2>/dev/null || echo "Version info not available"
+```
 
 ## Uninstalling
 
-If you installed to system directories and need to uninstall, you'll need to manually remove files. The staging directory approach avoids this:
+Remove the package with:
 
 ```bash
-# With DESTDIR staging, just remove the directory
-rm -rf /tmp/staging
+pip uninstall ld-decode
 ```
 
-For system-wide installations, CMake doesn't provide a built-in uninstall command. You would need to:
-1. Keep track of installed files
-2. Manually remove them
-3. Or use your system's package manager if you packaged it
-
-## Installation Examples
-
-### Development Installation (Staging Directory)
-
-Build and install to a temporary staging directory for testing:
+If installed in a virtual environment, deactivate and delete the environment:
 
 ```bash
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
-make -j8
-make install DESTDIR=/tmp/ld-decode-staging
-
-# Test the installation
-/tmp/ld-decode-staging/usr/local/bin/ld-analyse --version
-```
-
-### System-wide Installation
-
-Install to `/usr/local` (may require sudo):
-
-```bash
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make -j8
-sudo make install
-
-# Test the installation
-ld-analyse --version
-which ld-analyse
-```
-
-### Custom Prefix Installation
-
-Install to a custom location (e.g., `/opt/ld-decode`):
-
-```bash
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/ld-decode ..
-make -j8
-sudo make install
-
-# Add to PATH (add to ~/.bashrc for permanent)
-export PATH=/opt/ld-decode/bin:$PATH
-ld-analyse --version
-```
-
-### Creating a Package
-
-Prepare files for creating an RPM or DEB package:
-
-```bash
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr ..
-make -j8
-make install DESTDIR=./package-root
-
-# Inspect the package structure
-tree ./package-root
+deactivate
+rm -rf venv
 ```
 
 ## Troubleshooting
 
-### Permission Denied
-
-If you get "Permission denied" when installing to system directories:
-
-```bash
-sudo make install
-```
-
-Or use DESTDIR to avoid needing sudo:
-```bash
-make install DESTDIR=$HOME/ld-decode-install
-```
-
 ### Python Module Not Found
 
-If `import lddecode` fails after installation:
+If `import lddecode` fails:
 
-1. Check the Python version used for installation:
+1. Verify the package is installed:
    ```bash
+   pip show ld-decode
+   ```
+
+2. Check you're using the correct Python interpreter:
+   ```bash
+   which python3
    python3 -c "import sys; print(sys.version_info)"
    ```
 
-2. Verify installation location:
+3. If using a virtual environment, ensure it's activated:
    ```bash
-   find /usr/local -name "lddecode" -type d
+   source venv/bin/activate
    ```
 
-3. Check PYTHONPATH if using custom prefix:
+4. Reinstall the package:
    ```bash
-   export PYTHONPATH=/opt/ld-decode/lib/python3.x/site-packages:$PYTHONPATH
-   python3 -c "import lddecode"
+   pip uninstall ld-decode -y
+   pip install .
    ```
 
-4. **Using a Virtual Environment** (Recommended for Development)
-   
-   If you're developing or want to avoid system-wide Python packages, use a virtual environment:
-   
-   ```bash
-   # Create a virtual environment
-   python3 -m venv ~/ld-decode-venv
-   
-   # Activate it
-   source ~/ld-decode-venv/bin/activate
-   
-   # Install dependencies
-   pip install -r requirements.txt
-   
-   # Install ld-decode Python module
-   cd build
-   make install DESTDIR=~/ld-decode-staging
-   
-   # Or install directly into the venv
-   cd ..
-   pip install -e .
-   ```
-   
-   **Benefits of virtual environments:**
-   - Isolated Python dependencies
-   - No sudo required
-   - Easy to test different versions
-   - Won't conflict with system Python packages
-   
-   **Note:** When using a virtual environment, remember to activate it before running ld-decode Python tools:
-   ```bash
-   source ~/ld-decode-venv/bin/activate
-   ```
-   
-   To make this permanent, add the activation command to your `~/.bashrc` or `~/.zshrc`.
+### Permission Denied
 
-5. **System vs. User Installation**
-   
-   If you don't want to use sudo or affect the system Python installation:
-   
-   ```bash
-   # Install to user directory (~/.local)
-   cd build
-   cmake -DCMAKE_INSTALL_PREFIX=~/.local ..
-   make -j8
-   make install
-   
-   # Python will automatically find packages in ~/.local
-   python3 -c "import lddecode"
-   ```
-
-### Tools Not in PATH
-
-If executables are installed but not found:
+If you get permission errors when installing system-wide:
 
 ```bash
-# Check installation
-ls -l /usr/local/bin/ld-*
+# Use --user flag to install to user directory
+pip install --user .
 
-# Add to PATH (add to ~/.bashrc for permanent)
-export PATH=/usr/local/bin:$PATH
-
-# Or use full path
-/usr/local/bin/ld-analyse
+# Or use a virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate
+pip install .
 ```
 
-For custom prefix:
+### Version Conflicts
+
+If you see dependency version warnings:
+
 ```bash
-export PATH=/opt/ld-decode/bin:$PATH
+# Update pip and setuptools
+pip install --upgrade pip setuptools wheel
+
+# Try installing again
+pip install .
 ```
+
+### Scripts Not Found
+
+If command-line scripts aren't accessible:
+
+1. Check if they're installed:
+   ```bash
+   pip show ld-decode -f | grep bin
+   ```
+
+2. If using `--user` install, ensure `~/.local/bin` is in PATH:
+   ```bash
+   export PATH="$HOME/.local/bin:$PATH"
+   ```
+   
+   Add this to `~/.bashrc` or `~/.zshrc` to make it permanent.
+
+3. If using a virtual environment, ensure it's activated:
+   ```bash
+   source venv/bin/activate
+   ```
+
+## Next Steps
+
+- See [BUILD.md](BUILD.md) for development setup and building from source
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines
+- See the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/) for usage

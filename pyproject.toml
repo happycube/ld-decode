@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ld-decode"
+version = "7.0.0"
+description = "Software defined LaserDisc decoder"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+authors = [
+    {name = "ld-decode contributors", email = "happycube@protonmail.com"}
+]
+keywords = ["video", "LaserDisc", "preservation", "RF-capture"]
+classifiers = [
+    "Environment :: Console",
+    "Environment :: X11 Applications :: Qt",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video :: Capture",
+]
+requires-python = ">=3.6"
+
+dependencies = [
+    "av>=8.0",
+    "matplotlib>=3.0",
+    "numba>=0.48",
+    "numpy>=1.17",
+    "scipy>=1.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "jupyter>=1.0",
+    "pandas>=1.0",
+    "pytest>=6.0",
+    "pytest-cov>=2.10",
+]
+docs = [
+    "sphinx>=3.0",
+    "sphinx-rtd-theme>=0.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/happycube/ld-decode"
+Documentation = "https://happycube.github.io/ld-decode-docs/"
+Repository = "https://github.com/happycube/ld-decode.git"
+Issues = "https://github.com/happycube/ld-decode/issues"
+
+[project.scripts]
+ld-decode = "lddecode.main:main"
+ld-ldf-reader-py = "lddecode.ldf_reader:main"
+
+[tool.setuptools]
+packages = ["lddecode"]
+
+[tool.setuptools.package-data]
+lddecode = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ["py36"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pylint]
+max-line-length = 100
+
+[tool.mypy]
+python_version = "3.6"
+warn_return_any = true
+warn_unused_configs = true

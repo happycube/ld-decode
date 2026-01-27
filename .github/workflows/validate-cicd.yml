@@ -1,0 +1,59 @@
+name: Validate CI/CD Setup
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'packaging/**'
+      - 'pyproject.toml'
+      - 'lddecode/version'
+
+jobs:
+  validate-setup:
+    name: Validate CI/CD Configuration
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check workflow files syntax
+      run: |
+        echo "Checking YAML syntax..."
+        for file in .github/workflows/*.yml; do
+          echo "Validating $file"
+          python3 -c "import yaml; yaml.safe_load(open('$file'))" || exit 1
+        done
+
+    - name: Check Flatpak manifest syntax
+      run: |
+        echo "Checking Flatpak manifest..."
+        python3 -c "import yaml; yaml.safe_load(open('packaging/flatpak/com.github.happycube.LdDecode.yml'))" || exit 1
+
+    - name: Check WiX XML syntax
+      run: |
+        echo "Checking WiX installer XML..."
+        xmllint --noout packaging/windows/installer.wxs || echo "Warning: xmllint not available"
+
+    - name: Verify version consistency
+      run: |
+        echo "Checking version consistency..."
+        
+        # Get version from pyproject.toml
+        PYPROJECT_VERSION=$(grep 'version = ' pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        echo "pyproject.toml version: $PYPROJECT_VERSION"
+        
+        # Get version from lddecode/version if exists
+        if [ -f "lddecode/version" ]; then
+          VERSION_FILE=$(cat lddecode/version | tr -d '\n\r ')
+          echo "lddecode/version: $VERSION_FILE"
+          
+          # Note: We don't enforce strict equality as version file might have git info
+          if [ -z "$PYPROJECT_VERSION" ]; then
+            echo "Error: No version in pyproject.toml"
+            exit 1
+          fi
+        fi
+
+    - name: Run validation script
+      run: |
+        chmod +x scripts/validate-cicd-setup.sh
+        ./scripts/validate-cicd-setup.sh

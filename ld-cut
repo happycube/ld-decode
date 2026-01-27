@@ -17,6 +17,11 @@ from lddecode.core import *
 from lddecode.utils import *
 from lddecode.utils_logging import *
 
+# Enable IO debug logging automatically in CI to help diagnose hangs when
+# ffmpeg fallback is used instead of ld-ldf-reader.
+if os.getenv("GITHUB_ACTIONS") and not os.getenv("LDDECODE_DEBUG_IO"):
+    os.environ["LDDECODE_DEBUG_IO"] = "1"
+
 parser = argparse.ArgumentParser(
     description="Extract a sample area from raw RF laserdisc captures.  (Similar to ld-decode, except it outputs samples)"
 )

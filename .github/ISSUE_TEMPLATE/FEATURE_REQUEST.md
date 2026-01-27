@@ -1,6 +1,6 @@
 ---
 name: '🚀 Feature request'
-about: Suggest an idea for improving ld-decode, vhs-decode, hifi-decode, cvbs-decode or tbc-video-export
+about: Suggest an idea for improving ld-decode
 title: ''
 labels: 'enhancement'
 assignees: ''
@@ -16,12 +16,7 @@ assignees: ''
 ### Is your proposal already in the issue tickets?
 
 <!--
-  Please check https://github.com/happycube/ld-decode & https://github.com/oyvindln/vhs-decode/issues"
--->
-
-### Is your proposal related to tbc-video-export?
-
-<!-- if so visit its repo here https://github.com/JuniorIsAJitterbug/tbc-video-export/issues."
+  Please check https://github.com/happycube/ld-decode"
 -->
 
 ### Describe the solution you'd like
