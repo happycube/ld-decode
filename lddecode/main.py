@@ -536,3 +536,7 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
         process.wait()
         
     print(f"Successfully wrote {output_filename}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
