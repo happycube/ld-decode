@@ -2125,72 +2125,131 @@ class HiFiDecode:
         return result
 
     @staticmethod
+    @njit(
+        numba.types.void(
+            numba.types.int64,
+            numba.types.int64,
+            NumbaAudioArray,
+            NumbaAudioArray,
+            numba.types.int64,
+            numba.types.int64,
+            numba.types.boolean,
+            numba.types.float32
+        ),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def _fill(start, end, outer, inner, fade_samples, dc_window, mute, epsilon):
+        # ------- calculate the start of the fade --------
+        fade_start = max(0, start - fade_samples)
+        fade_start_duration = start - fade_start
+
+        dc_before_start = max(0, fade_start - dc_window)
+        dc_before_end = start
+        if dc_before_start < dc_before_end:
+            dc_before = np.mean(outer[dc_before_start:dc_before_end])
+        else:
+            dc_before = 0
+
+        # ------- calculate the end of the fade --------
+        fade_end = min(len(outer), end + fade_samples)
+        fade_end_duration = fade_end - end
+
+        dc_after_start = end
+        dc_after_end = min(len(outer), fade_end + dc_window)
+        if dc_after_start < dc_after_end:
+            dc_after = np.mean(outer[dc_after_start:dc_after_end])
+        else:
+            dc_after = 0
+
+        # DC of inner data over the gap
+        dc_inner = 0 if mute else np.mean(inner[fade_start:fade_end])
+
+        # interpolate DC across the gap
+        # prevents artifacts introduced with dc offset difference between the channels
+        dc_total_len = fade_end - fade_start
+        dc_interp_full = np.zeros(dc_total_len, dtype=REAL_DTYPE)
+
+        if dc_total_len > 1:
+            denom = float(dc_total_len - 1)
+            delta = dc_after - dc_before
+        
+            for i in range(dc_total_len):
+                t = i / denom
+                smooth = 0.5 * (1.0 - np.cos(np.pi * t))
+                dc_interp_full[i] = dc_before + delta * smooth
+        else:
+            dc_interp_full[0] = dc_before
+
+        # -------- cross fade outer -> inner (before gap) --------
+        for i in range(fade_start_duration):
+            idx = fade_start + i
+            dc_idx = idx - fade_start
+
+            fade_in_factor = i / fade_start_duration
+            fade_out_factor = 1 - fade_in_factor
+
+            outer_sample = outer[idx] * fade_out_factor
+            inner_sample = (epsilon if mute else inner[idx] - dc_inner + dc_interp_full[dc_idx]) * fade_in_factor
+
+            outer[idx] = outer_sample + inner_sample
+
+        # -------- copy inner (gap) --------
+        for i in range(start, end):
+            dc_idx = i - fade_start
+
+            inner_sample = epsilon if mute else inner[i]
+            outer[i] = (
+                inner_sample
+                - dc_inner # subtract current dc offset
+                + dc_interp_full[dc_idx] # add interpolated dc offset
+            )
+
+        # -------- cross fade inner -> outer (after gap) --------
+        for i in range(fade_end_duration):
+            idx = end + i
+            dc_idx = idx - fade_start
+
+            fade_in_factor = (i + 1) / fade_end_duration
+            fade_out_factor = 1 - fade_in_factor
+
+            outer_sample = outer[idx] * fade_in_factor
+            inner_sample = (epsilon if mute else inner[idx] - dc_inner + dc_interp_full[dc_idx]) * fade_out_factor
+
+            outer[idx] = outer_sample + inner_sample
+
+
+    @staticmethod
     def _mute_or_fill(dropouts, current_channel, other_channel, fade_samples, dc_window):
-        eps = np.finfo(np.float16).eps
-        n = len(current_channel)
+        epsilon = np.finfo(np.float16).eps
 
         for fill_range, mute_range in dropouts:
             # cross fade from other channel
             if fill_range is not None:
-                start, end = map(int, fill_range)
-
-                length = end - start
-                if length <= 0:
-                    continue
-
-                fade_len = min(fade_samples, length // 2)
-                middle_len = max(0, length - 2 * fade_len)
-
-                # DC before and after the gap
-                dc_before = np.mean(current_channel[max(0, start - dc_window):start])
-                dc_after = np.mean(current_channel[end:min(n, end + dc_window)])
-                dc_other = np.mean(other_channel[start:end])
-
-                # Smooth DC interpolation across the gap
-                t = np.linspace(0.0, 1.0, length)
-                smooth_interp = 0.5 * (1 - np.cos(np.pi * t))  # smooth ramp
-                dc_interp = dc_before + (dc_after - dc_before) * smooth_interp - dc_other
-
-                # Apply the crossfade with DC correction
-                fade_curve = np.concatenate([
-                    np.linspace(0.0, 1.0, fade_len, endpoint=False),
-                    np.ones(middle_len),
-                    np.linspace(1.0, 0.0, length - fade_len - middle_len, endpoint=False)
-                ])
-
-                current_channel[start:end] = (
-                    current_channel[start:end] * (1 - fade_curve) +
-                    other_channel[start:end] * fade_curve +
-                    dc_interp
+                HiFiDecode._fill(
+                    fill_range[0],
+                    fill_range[1],
+                    current_channel,
+                    other_channel,
+                    fade_samples,
+                    dc_window,
+                    False,
+                    epsilon
                 )
 
             # fade to silence
             if mute_range is not None:
-                start, end = map(int, mute_range)
-
-                fade_start = max(0, start - fade_samples)
-                fade_start_duration = start - fade_start
-                if fade_start_duration > 0:
-                    fade_start_rate = log1p(fade_start_duration)
-
-                fade_end = min(n, end + fade_samples)
-                fade_end_duration = fade_end - end
-                if fade_end_duration > 0:
-                    fade_end_rate = log1p(fade_end_duration)
-
-                # fade out
-                for i in range(fade_start_duration):
-                    current_channel[fade_start + i] = (
-                        current_channel[fade_start + i]
-                        * log1p(fade_start_duration - i)
-                        / fade_start_rate
-                    )
-                # mute
-                for i in range(start, end):
-                    current_channel[i] = eps  # not quite zero to prevent issues with noise reduction
-                # fade in
-                for i in range(fade_end_duration):
-                    current_channel[end + i] = current_channel[end + i] * log1p(i) / fade_end_rate
+                HiFiDecode._fill(
+                    mute_range[0],
+                    mute_range[1],
+                    current_channel,
+                    other_channel,
+                    fade_samples,
+                    dc_window,
+                    True,
+                    epsilon
+                )
 
     @staticmethod
     def dropout_compensate(audioL: np.array, audioR: np.array, audio_process_params: HiFiAudioParams) -> np.array:
