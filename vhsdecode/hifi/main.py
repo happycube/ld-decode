@@ -2196,16 +2196,22 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
     sample_freq = decode_options["input_rate"]
 
     if sample_freq is not None:
-        # work around for Windows not creating an event loop for the main thread
-        try:
-            asyncio.get_event_loop()
-        except RuntimeError as e:
-            if str(e).startswith('There is no current event loop in thread'):
-                asyncio.set_event_loop(asyncio.new_event_loop())
-            else:
-                raise
+        with ThreadPoolExecutor(4) as async_executor:
+            # work around for Windows not creating an event loop for the main thread
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError as e:
+                if str(e).startswith('There is no current event loop in thread'):
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                else:
+                    raise
 
-        asyncio.run(decode_parallel(decode_options, threads=args.threads, ui_t=ui_t))
+            loop.set_default_executor(async_executor)
+            loop.run_until_complete(
+                decode_parallel(decode_options, threads=args.threads, ui_t=ui_t)
+            )
+
         print("Decode finished successfully")
         return 0
     else:
