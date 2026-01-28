@@ -6,9 +6,13 @@ from importlib import resources as _resources
 try:
     _version_path = _resources.files(__package__) / "version"
     __version__ = _version_path.read_text().strip()
-except AttributeError:
-    # Python <3.9 lacks resources.files; fall back to read_text
-    __version__ = _resources.read_text(__package__, "version").strip()
+except (AttributeError, FileNotFoundError):
+    # Python <3.9 lacks resources.files or version file doesn't exist
+    try:
+        __version__ = _resources.read_text(__package__, "version").strip()
+    except FileNotFoundError:
+        # Version file not present (packaged builds); will be read from pyproject.toml by utils module
+        __version__ = "unknown"
 except Exception:
     # Ensure attribute exists even if the version file cannot be read
     __version__ = "unknown"
