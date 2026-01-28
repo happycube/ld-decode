@@ -39,18 +39,19 @@ Before contributing, make sure you have:
 See [BUILD.md](BUILD.md) for complete build instructions. Quick reference:
 
 ```bash
-# Clone the repository
-git clone https://github.com/happycube/ld-decode.git
+# Clone the repository with submodules
+git clone --recurse-submodules https://github.com/happycube/ld-decode.git
 cd ld-decode
 
-# Build
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
-make -j8
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install for development
+pip install -e ".[dev]"
 
 # Run tests
-ctest --output-on-failure
+pytest --output-on-failure
 ```
 
 ### Using a Virtual Environment (Python Development)
@@ -131,11 +132,14 @@ Areas where contributions are particularly welcome:
 
 ```bash
 # Fork the repository on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/ld-decode.git
+git clone --recurse-submodules https://github.com/YOUR_USERNAME/ld-decode.git
 cd ld-decode
 
 # Add upstream remote
 git remote add upstream https://github.com/happycube/ld-decode.git
+
+# If you already cloned without --recurse-submodules, initialize testdata:
+git submodule update --init --recursive
 ```
 
 ### 2. Create a Branch
@@ -168,18 +172,17 @@ Branch naming conventions:
 ### 4. Test Your Changes
 
 ```bash
-# Build with your changes
-cd build
-make -j8
-
 # Run all tests
-ctest --output-on-failure
+pytest --output-on-failure
 
-# Run specific tests related to your changes
-ctest -R chroma --output-on-failure
+# Run specific tests
+pytest tests/test_chroma.py --output-on-failure
 
-# Test manually with real files if applicable
-./tools/ld-analyse/ld-analyse test.tbc
+# Run with coverage
+pytest --cov=lddecode
+
+# Test manually with your changes
+python -c "import lddecode; print('Import successful')"
 ```
 
 ### 5. Commit Your Changes
@@ -307,26 +310,45 @@ target_link_libraries(ld-analyse
 
 ```bash
 # Run all tests
-cd build
-ctest --output-on-failure
-
-# Run specific test suite
-ctest -R chroma
+pytest
 
 # Run with verbose output
-ctest -V
+pytest -v
 
-# Run tests in parallel (may cause issues)
-ctest -j8  # Not recommended - tests share testout/
+# Run specific test file
+pytest tests/test_core.py
+
+# Run with coverage report
+pytest --cov=lddecode --cov-report=html
+
+# Run in parallel
+pytest -n auto
 ```
 
 ### Writing Tests
 
 When adding new features:
 
-1. Add tests to verify functionality
-2. Ensure tests are deterministic
-3. Tests should run quickly
+1. Add pytest test files in `tests/` directory
+2. Name test files `test_*.py`
+3. Use descriptive test function names starting with `test_`
+4. Ensure tests are deterministic
+5. Tests should run quickly
+
+Example test:
+```python
+import pytest
+from lddecode.core import LDDecode
+
+def test_basic_import():
+    """Test that the module can be imported."""
+    assert LDDecode is not None
+
+def test_decode_frame():
+    """Test basic frame decoding."""
+    # Your test implementation
+    pass
+```
 4. Use descriptive test names
 
 Example test structure:
@@ -350,9 +372,8 @@ add_test(
 
 1. **Ensure your code builds and tests pass**
    ```bash
-   cd build
-   make -j8
-   ctest --output-on-failure
+   pip install -e ".[dev]"
+   pytest
    ```
 
 2. **Update documentation**

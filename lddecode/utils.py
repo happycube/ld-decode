@@ -208,21 +208,9 @@ def make_loader(filename, inputfreq=None):
         or filename.endswith(".flac")
         or filename.endswith(".vhs")
     ):
-        try:
-            return LoadLDF(filename)
-        except FileNotFoundError:
-            print(
-                "ld-ldf-reader not found in PATH, using ffmpeg instead.",
-                file=sys.stderr,
-            )
-        except Exception:
-            # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
-            traceback.print_exc()
-            print(
-                "Failed to load with ld-ldf-reader, trying ffmpeg instead.",
-                file=sys.stderr,
-            )
+        return LoadLDF(filename)
 
+    # Fallback to LoadFFmpeg for other formats (with stdin input)
     return LoadFFmpeg()
 
 
@@ -444,7 +432,7 @@ class LoadFFmpeg:
 
 
 class LoadLDF:
-    """Load samples from an .ldf file, using ld-ldf-reader which itself uses ffmpeg."""
+    """Load samples from an .ldf file, using ld-ldf-reader-py which itself uses ffmpeg."""
 
     def __init__(self, filename, input_args=[], output_args=[]):
         self.input_args = input_args
@@ -452,7 +440,7 @@ class LoadLDF:
 
         self.filename = filename
 
-        # The number of the next byte ld-ldf-reader will return
+        # The number of the next byte ld-ldf-reader-py will return
 
         self.position = 0
         # Keep a buffer of recently-read data, to allow seeking backwards by
@@ -463,7 +451,7 @@ class LoadLDF:
 
         self.ldfreader = None
 
-        # ld-ldf-reader subprocess
+        # ld-ldf-reader-py subprocess
         self.ldfreader = self._open(0)
 
     def __del__(self):
@@ -497,7 +485,7 @@ class LoadLDF:
     def _open(self, sample):
         self._close()
 
-        command = ["ld-ldf-reader", "--quiet", "--start-offset", str(sample), self.filename]
+        command = ["ld-ldf-reader-py", "--quiet", "--start-offset", str(sample), self.filename]
 
         ldfreader = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -601,48 +589,154 @@ def ac3_pipe(outname: str):
 # Git helpers
 
 def get_version():
-    """ get version info stashed in this directory's version file """
+    """ Get version info from version file (preferred), pyproject.toml, or importlib.metadata.
+    
+    The version file should contain version info in format: branch:commit[:dirty]
+    This allows embedding complete build information.
+    """
 
+    # First, try reading the version file (contains branch:commit:dirty info)
     try:
-        # get the directory this file was pulled from, then add /version
         scriptdir = os.path.dirname(os.path.realpath(__file__))
-        fd = open(os.path.join(scriptdir, 'version'), 'r')
-
-        fdata = fd.read()
-        return fdata.strip() # remove trailing \n etc
+        version_file = os.path.join(scriptdir, 'version')
+        if os.path.exists(version_file):
+            with open(version_file, 'r') as fd:
+                fdata = fd.read().strip()
+                if fdata:
+                    return fdata  # return full format: branch:commit:dirty
     except (FileNotFoundError, OSError):
-        # Just return 'unknown' if we fail to find anything.
-        return "unknown"
+        pass
+
+    # Fall back to reading from pyproject.toml (for packaged builds)
+    try:
+        scriptdir = os.path.dirname(os.path.realpath(__file__))
+        pyproject_path = os.path.join(scriptdir, "..", "pyproject.toml")
+        
+        if os.path.exists(pyproject_path):
+            # Simple TOML parsing for version (since toml library may not be installed)
+            with open(pyproject_path, 'r') as f:
+                for line in f:
+                    if line.strip().startswith('version ='):
+                        # Extract version string like: version = "7.0.0"
+                        version = line.split('=')[1].strip().strip('"\'')
+                        return version
+    except Exception:
+        pass
+
+    # Fall back to importlib.metadata (for installed packages)
+    try:
+        from importlib.metadata import version as get_package_version
+        return get_package_version("ld-decode")
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    # If all else fails, return 'unknown'
+    return "unknown"
 
 
 def get_git_info():
-    """ Return git branch and commit for current directory, if available. """
+    """ Return git branch and commit for current directory, if available.
+    
+    Priority:
+    1. Try to read from version file (format: branch:commit[:dirty])
+    2. Query actual git repository
+    3. Fall back to defaults (release/unknown)
+    
+    Returns:
+        tuple: (branch, commit) where both are strings
+    """
 
-    branch = "UNKNOWN"
-    commit = "UNKNOWN"
+    branch = "release"
+    commit = "unknown"
 
+    # First, try to get info from version file
     version = get_version()
     if ':' in version:
-        branch, commit = version.split(':')[0:2]
+        parts = version.split(':')
+        branch = parts[0]
+        commit = parts[1]
+        # If version file has all required info, return it
+        if branch and branch != "unknown" and commit and commit != "unknown":
+            return branch, commit
 
+    # Try to get actual git info if in a git repository
     try:
-        sp = subprocess.run(
-            "git rev-parse --abbrev-ref HEAD", shell=True, capture_output=True
-        )
-        if not sp.returncode:
-            branch = sp.stdout.decode("utf-8").strip()
-
-        sp = subprocess.run(
-            "git rev-parse --short HEAD", shell=True, capture_output=True
-        )
-        if not sp.returncode:
-            commit = sp.stdout.decode("utf-8").strip()
+        # First, try to get the version tag for the current commit (e.g., v7.1.0)
+        try:
+            sp = subprocess.run(
+                "git describe --tags --exact-match", 
+                shell=True, 
+                capture_output=True, 
+                timeout=2,
+                cwd=os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            )
+            if not sp.returncode:
+                tag = sp.stdout.decode("utf-8").strip()
+                # Remove 'v' prefix if present (v7.0.2 -> 7.0.2)
+                if tag.startswith('v'):
+                    tag = tag[1:]
+                commit = tag
+                branch = "release"
+                return branch, commit
+        except Exception:
+            pass
+        
+        # If not on a tag, use regular git describe (which includes commits since last tag)
+        try:
+            sp = subprocess.run(
+                "git describe --tags --always", 
+                shell=True, 
+                capture_output=True, 
+                timeout=2,
+                cwd=os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            )
+            if not sp.returncode:
+                git_describe = sp.stdout.decode("utf-8").strip()
+                # Remove 'v' prefix if present (v7.0.2-5-gf123456 -> 7.0.2-5-gf123456)
+                if git_describe.startswith('v'):
+                    git_describe = git_describe[1:]
+                commit = git_describe
+        except Exception:
+            pass
+            
+        # Get the branch name
+        try:
+            sp = subprocess.run(
+                "git rev-parse --abbrev-ref HEAD", 
+                shell=True, 
+                capture_output=True, 
+                timeout=2,
+                cwd=os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            )
+            if not sp.returncode:
+                branch = sp.stdout.decode("utf-8").strip()
+                # If we're in detached HEAD state (e.g., from a tag), use "release"
+                if branch == "HEAD":
+                    branch = "release"
+        except Exception:
+            pass
     except Exception:
-        print("Something went wrong when trying to read git info...", file=sys.stderr)
-        traceback.print_exc()
+        # If git commands fail (e.g., no git repo in packaged builds), use version file values
         pass
 
     return branch, commit
+
+
+def is_git_dirty():
+    """ Check if git repository has uncommitted changes. """
+    try:
+        sp = subprocess.run(
+            "git status --porcelain", shell=True, capture_output=True
+        )
+        if not sp.returncode:
+            output = sp.stdout.decode("utf-8").strip()
+            return len(output) > 0
+    except Exception:
+        pass
+    
+    return False
 
 
 # Essential (or at least useful) standalone routines and lambdas
