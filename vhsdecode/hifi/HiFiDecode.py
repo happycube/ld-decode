@@ -839,50 +839,16 @@ class SpectralNoiseReduction:
         for i in range(self.chunk_count):
             self.chunks.append(np.zeros(self.chunk_size, dtype=REAL_DTYPE, order="C"))
 
-    @staticmethod
-    @njit(
-        numba.types.Tuple((NumbaAudioArray, NumbaAudioArray))(
-            numba.types.int64,
-            NumbaAudioArray,
-            NumbaAudioArray,
-            NumbaAudioArray,
-        ),
-        cache=True,
-        fastmath=True,
-        nogil=True,
-    )
-    def _get_chunk(end_padding, audio, chunk1, chunk2):
-        # merge the chunks into one array for processing
-        chunks = [chunk1, chunk2]
-        chunk = np.zeros(
-            len(chunk1) + len(chunk2) + len(audio) + end_padding, dtype=REAL_DTYPE
-        )
-
-        chunk_offset = 0
-        for i in range(len(chunks)):
-            chunk_data = chunks[i]
-
-            for j in range(len(chunk_data)):
-                chunk[j + chunk_offset] = chunk_data[j]
-
-            chunk_offset += len(chunk_data)
-
-        # add the input audio to the chunks
-        audio_copy = np.empty_like(audio)
-        for i in range(len(audio)):
-            audio_copy[i] = audio[i]
-            chunk[i + chunk_offset] = audio[i]
-
-        return np.ascontiguousarray(chunk), np.ascontiguousarray(audio_copy)
-
     def spectral_nr(self, audio_in, audio_out):
-        chunk, audio_copy = SpectralNoiseReduction._get_chunk(
-            self.end_padding,
-            audio_in,
-            self.chunks[0],
-            self.chunks[1],
+        chunk = np.ascontiguousarray(
+            np.concatenate([
+                self.chunks[0],
+                self.chunks[1],
+                audio_in,
+                np.zeros(self.end_padding)
+            ], dtype=REAL_DTYPE)
         )
-        self.chunks.append(audio_copy)
+        self.chunks.append(audio_in.copy())
         self.chunks.pop(0)
 
         nr = self.spectral_gate.spectral_gating_nonstationary_single_channel(chunk)
