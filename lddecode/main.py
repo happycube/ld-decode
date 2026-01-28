@@ -15,18 +15,8 @@ def main(args=None):
     # Handle --version early before argparse requires positional arguments
     check_args = args if args is not None else sys.argv[1:]
     if "--version" in check_args or "-v" in check_args:
-        branch, commit = get_git_info()
-        if branch == "release":
-            # For release builds, just show the version number
-            version_str = f"{commit}"
-        else:
-            # For development builds, show branch and commit
-            version_str = f"{branch}/{commit}"
-        
-        if is_git_dirty():
-            version_str += "-dirty"
-        
-        print(version_str)
+        from lddecode.utils import get_version_string
+        print(get_version_string())
         sys.exit(0)
     options_epilog = """FREQ can be a bare number in MHz, or a number with one of the case-insensitive suffixes Hz, kHz, MHz, GHz, fSC (meaning NTSC) or fSCPAL."""
     parser = argparse.ArgumentParser(

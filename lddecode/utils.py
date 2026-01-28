@@ -739,6 +739,41 @@ def is_git_dirty():
     return False
 
 
+def get_version_string():
+    """ Get a formatted version string for display purposes.
+    
+    Reads from version file (which may have been generated at build time)
+    and returns a formatted string suitable for --version output.
+    
+    Returns:
+        str: Version string in the format "branch/commit" or "commit" for release builds,
+             with "-dirty" suffix if applicable.
+    """
+    version = get_version()
+    
+    # Parse version file format: branch:commit[:dirty]
+    if ':' in version:
+        parts = version.split(':')
+        branch = parts[0]
+        commit = parts[1]
+        is_dirty = len(parts) > 2 and parts[2] == "dirty"
+    else:
+        # Fallback for old format without colons
+        branch, commit = get_git_info()
+        is_dirty = is_git_dirty()
+    
+    # Format the output
+    if branch == "release":
+        version_str = commit
+    else:
+        version_str = f"{branch}/{commit}"
+    
+    if is_dirty:
+        version_str += "-dirty"
+    
+    return version_str
+
+
 # Essential (or at least useful) standalone routines and lambdas
 
 pi = np.pi

@@ -89,6 +89,9 @@ ui_*.h
 # Installation tool things
 ld_decode.egg-info/
 
+# Build-generated version file
+lddecode/version
+
 # Compilation script
 compile.bat
 

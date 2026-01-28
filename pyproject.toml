@@ -63,7 +63,7 @@ ld-ldf-reader-py = "lddecode.ldf_reader:main"
 packages = ["lddecode"]
 
 [tool.setuptools.package-data]
-lddecode = ["py.typed"]
+lddecode = ["py.typed", "version"]
 
 [tool.black]
 line-length = 100
