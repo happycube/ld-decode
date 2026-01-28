@@ -2197,12 +2197,7 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
 
     if sample_freq is not None:
         # set_start_method("spawn")
-        with ThreadPoolExecutor(args.threads) as async_executor:
-            loop = asyncio.get_event_loop()
-            loop.set_default_executor(async_executor)
-            loop.run_until_complete(
-                decode_parallel(decode_options, threads=args.threads, ui_t=ui_t)
-            )
+        asyncio.run(decode_parallel(decode_options, threads=args.threads, ui_t=ui_t))
         print("Decode finished successfully")
         return 0
     else:
