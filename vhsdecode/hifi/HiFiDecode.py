@@ -352,8 +352,8 @@ class FMdemod:
             self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
         
             iq_len = self._get_min_iq_length(max_iq_len)
-            self.i_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
-            self.q_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
+            self.i_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP, order="C")
+            self.q_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP, order="C")
             FMdemod._generate_iq_oscillators(
                 self.i_osc,
                 self.q_osc,
@@ -803,7 +803,7 @@ class SpectralNoiseReduction:
                 nperseg=self._win_length,
             )
 
-            return denoised_signal.astype(REAL_DTYPE)
+            return np.ascontiguousarray(denoised_signal, dtype=REAL_DTYPE)
 
     def __init__(self, audio_rate, nr_reduction_amount):
         self.chunk_size = int(audio_rate / BLOCKS_PER_SECOND)
@@ -837,7 +837,7 @@ class SpectralNoiseReduction:
         )
         self.chunks = []
         for i in range(self.chunk_count):
-            self.chunks.append(np.zeros(self.chunk_size, dtype=REAL_DTYPE))
+            self.chunks.append(np.zeros(self.chunk_size, dtype=REAL_DTYPE, order="C"))
 
     @staticmethod
     @njit(
@@ -873,7 +873,7 @@ class SpectralNoiseReduction:
             audio_copy[i] = audio[i]
             chunk[i + chunk_offset] = audio[i]
 
-        return chunk, audio_copy
+        return np.ascontiguousarray(chunk), np.ascontiguousarray(audio_copy)
 
     def spectral_nr(self, audio_in, audio_out):
         chunk, audio_copy = SpectralNoiseReduction._get_chunk(
@@ -1638,8 +1638,8 @@ class HiFiDecode:
 
             filterL = afeL.work(data)
             filterR = afeR.work(data)
-            preL = np.empty(len(filterL), dtype=REAL_DTYPE)
-            preR = np.empty(len(filterR), dtype=REAL_DTYPE)
+            preL = np.empty(len(filterL), dtype=REAL_DTYPE, order="C")
+            preR = np.empty(len(filterR), dtype=REAL_DTYPE, order="C")
 
             fmL.work(filterL.astype(DEMOD_DTYPE_NP), preL)
             fmR.work(filterR.astype(DEMOD_DTYPE_NP), preR)
@@ -1915,8 +1915,8 @@ class HiFiDecode:
     def headswitch_interpolate_boundaries(
         audio: np.array, boundaries: list[list[int, int]]
     ) -> np.array:
-        interpolated_signal = np.empty_like(audio)
-        interpolator_in = np.empty_like(audio)
+        interpolated_signal = np.empty_like(audio, order="C")
+        interpolator_in = np.empty_like(audio, order="C")
         DecoderSharedMemory.copy_data_float32(
             audio, interpolated_signal, len(interpolated_signal)
         )
@@ -1959,7 +1959,7 @@ class HiFiDecode:
                 smoothed_out = interpolated_signal[
                     start - smoothing_size : end + smoothing_size
                 ]
-                smoothed_in = np.empty_like(smoothed_out)
+                smoothed_in = np.empty_like(smoothed_out, order="C")
                 DecoderSharedMemory.copy_data_float32(
                     smoothed_out, smoothed_in, len(smoothed_in)
                 )
@@ -2314,8 +2314,8 @@ class HiFiDecode:
             decode_mode == AUDIO_MODE_STEREO_MS or 
             decode_mode == AUDIO_MODE_DUAL_MONO_MS
         ):
-            l = np.multiply(np.add(l_raw, r_raw), 0.5)
-            r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
+            l = np.multiply(np.add(l_raw, r_raw), 0.5, order="C")
+            r = np.multiply(np.subtract(l_raw, r_raw), 0.5, order="C")
         elif decode_mode == AUDIO_MODE_MONO_L:
             l = l_raw
             r = l_raw
@@ -2323,15 +2323,15 @@ class HiFiDecode:
             l = r_raw
             r = r_raw
         elif decode_mode == AUDIO_MODE_MONO_SUM:
-            l = np.multiply(np.add(l_raw, r_raw), 0.5)
-            r = np.multiply(np.add(l_raw, r_raw), 0.5)
+            l = np.multiply(np.add(l_raw, r_raw), 0.5, order="C")
+            r = np.multiply(np.add(l_raw, r_raw), 0.5, order="C")
         else:
             # AUDIO_MODE_STEREO
             # AUDIO_MODE_DUAL_MONO_STEREO
             l = l_raw
             r = r_raw
 
-        return l, r
+        return np.ascontiguousarray(l), np.ascontiguousarray(r)
 
     @staticmethod
     @njit(
@@ -2364,7 +2364,7 @@ class HiFiDecode:
         # demodulate
         if measure_perf:
             perf_measurements["start_demod"] = perf_counter()
-        audio = np.empty(len(filtered), dtype=REAL_DTYPE)
+        audio = np.empty(len(filtered), dtype=REAL_DTYPE, order="C")
         fm.work(filtered, audio)
         if measure_perf:
             perf_measurements["end_demod"] = perf_counter()

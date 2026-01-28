@@ -1310,7 +1310,7 @@ class PostProcessor:
             if enable_expander:
                 if decoder_state.block_num == 0:
                     # prime the expander's gain if this is the first block
-                    expander.process(pre, np.copy(post))
+                    expander.process(pre, np.copy(post, order="C"))
                 expander.process(pre, post)
 
             buffer.close()
@@ -1386,7 +1386,7 @@ class PostProcessor:
             if enable_expander:
                 if decoder_state.block_num == 0:
                     # prime the expander's gain if this is the first block
-                    expander.process(pre, np.copy(post))
+                    expander.process(pre, np.copy(post, order="C"))
                 expander.process(pre, post)
 
             if enable_deemphasis:
@@ -1523,8 +1523,8 @@ class PostProcessor:
             in_preL_buffer = buffer.get_pre_left()
             in_preR_buffer = buffer.get_pre_right()
 
-            in_preL = np.empty(in_decoder_state.block_audio_final_len, dtype=REAL_DTYPE)
-            in_preR = np.empty(in_decoder_state.block_audio_final_len, dtype=REAL_DTYPE)
+            in_preL = np.empty(in_decoder_state.block_audio_final_len, dtype=REAL_DTYPE, order="C")
+            in_preR = np.empty(in_decoder_state.block_audio_final_len, dtype=REAL_DTYPE, order="C")
 
             DecoderSharedMemory.copy_data_float32(
                 in_preL_buffer, in_preL, len(in_preL)
@@ -1690,8 +1690,8 @@ class SoundDeviceProcess:
                 output_stream.start()
 
             interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
-            interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo)
-            stacked = np.empty((int(len(interleaved) / 2), 2), dtype=np.int16)
+            interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo, order="C")
+            stacked = np.empty((int(len(interleaved) / 2), 2), dtype=np.int16, order="C")
 
             SoundDeviceProcess.build_stereo(interleaved, stacked)
             output_stream.write(stacked)
@@ -1781,7 +1781,7 @@ def write_soundfile_process_worker(
 
             if preview_mode:
                 if SOUNDDEVICE_AVAILABLE:
-                    stereo_copy = np.empty_like(stereo)
+                    stereo_copy = np.empty_like(stereo, order="C")
                     DecoderSharedMemory.copy_data_float32(
                         stereo, stereo_copy, len(stereo_copy)
                     )
@@ -2061,7 +2061,7 @@ async def decode_parallel(
 
             if len(previous_overlap) == 0:
                 previous_overlap = np.empty(
-                    decoder_state.block_read_overlap, dtype=np.int16
+                    decoder_state.block_read_overlap, dtype=np.int16, order="C"
                 )
 
             is_last_block = await loop.run_in_executor(
@@ -2145,7 +2145,7 @@ async def decode_parallel(
 def normalize(input_file_post_gain, output_file, peak_gain, channels, audio_rate):
     try:
         total_frames_read = 0
-        buffer = np.empty(2**20, dtype=np.float32)
+        buffer = np.empty(2**20, dtype=np.float32, order="C")
 
         with sf.SoundFile(
             input_file_post_gain,
@@ -2184,7 +2184,7 @@ def guess_bias(decoder, input_file, block_size, blocks_limits=10):
 
     with as_soundfile(input_file) as f:
         while f.tell() < f.frames and len(blocks) <= blocks_limits:
-            block_buffer = np.empty(block_size, dtype=np.int16)
+            block_buffer = np.empty(block_size, dtype=np.int16, order="C")
             f.buffer_read_into(block_buffer, "int16")
             blocks.append(block_buffer)
 
