@@ -16,7 +16,12 @@ def main(args=None):
     check_args = args if args is not None else sys.argv[1:]
     if "--version" in check_args or "-v" in check_args:
         branch, commit = get_git_info()
-        version_str = f"{commit}"
+        if branch == "release":
+            # For release builds, just show the version number
+            version_str = f"{commit}"
+        else:
+            # For development builds, show branch and commit
+            version_str = f"{branch}/{commit}"
         
         if is_git_dirty():
             version_str += "-dirty"

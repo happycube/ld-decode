@@ -11,6 +11,13 @@ if ($null -ne $Version -and $Version -ne "" -and $Version.StartsWith('v')) {
     $Version = $Version.Substring(1)
 }
 
+# Update pyproject.toml with the version before building
+Write-Host "Updating pyproject.toml with version: $Version" -ForegroundColor Yellow
+$pyprojectPath = "pyproject.toml"
+$pyprojectContent = Get-Content $pyprojectPath -Raw
+$pyprojectContent = $pyprojectContent -replace 'version = "[^"]*"', "version = `"$Version`""
+Set-Content $pyprojectPath $pyprojectContent
+
 # WiX requires version format: x.x.x.x where x is 0-65534
 # Sanitize version for MSI compatibility
 $MsiVersion = $Version

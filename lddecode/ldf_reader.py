@@ -24,6 +24,9 @@ except ImportError:
     print("Error: PyAV library not found. Install with: pip install av", file=sys.stderr)
     sys.exit(1)
 
+from lddecode.utils import get_git_info, is_git_dirty
+
+
 
 class LdfReader:
     """LDF reader that decodes audio from LDF files using FFmpeg"""
@@ -213,8 +216,25 @@ class LdfReader:
         self.audio_stream = None
 
 
-def main():
+def main(args=None):
     """Main entry point"""
+    # Handle --version early before argparse requires positional arguments
+    check_args = args if args is not None else sys.argv[1:]
+    if "--version" in check_args or "-v" in check_args:
+        branch, commit = get_git_info()
+        if branch == "release":
+            # For release builds, just show the version number
+            version_str = f"{commit}"
+        else:
+            # For development builds, show branch and commit
+            version_str = f"{branch}/{commit}"
+        
+        if is_git_dirty():
+            version_str += "-dirty"
+        
+        print(version_str)
+        sys.exit(0)
+    
     parser = argparse.ArgumentParser(
         description='ld-ldf-reader-py - LDF reader tool for ld-decode (Python implementation)\n\n'
                     '(c)2019-2021 Chad Page\n'

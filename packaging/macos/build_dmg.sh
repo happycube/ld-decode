@@ -6,7 +6,17 @@ set -e
 
 VERSION=${1:-7.0.0}
 
+# Extract version from git tag if not provided
+# If VERSION starts with 'v', remove it (e.g., v7.0.2 -> 7.0.2)
+if [[ $VERSION == v* ]]; then
+    VERSION="${VERSION#v}"
+fi
+
 echo "Building ld-decode macOS installer version $VERSION"
+
+# Update pyproject.toml with the version before building
+echo "Updating pyproject.toml with version: $VERSION"
+sed -i.bak "s/version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
 
 # Step 1: Install dependencies
 echo "Installing Python dependencies..."

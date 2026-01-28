@@ -27,7 +27,13 @@ modules:
   - name: ld-decode
     buildsystem: simple
     build-commands:
-      - pip3 install --verbose --exists-action=i --ignore-installed --no-index --find-links="file://${PWD}/wheels" --prefix=${FLATPAK_DEST} .
+      - |
+        # Extract version from git describe or use default
+        VERSION=$(git describe --tags --exact-match 2>/dev/null || echo "7.0.0")
+        VERSION="${VERSION#v}"
+        # Update pyproject.toml with the version
+        sed -i "s/version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
+        pip3 install --verbose --exists-action=i --ignore-installed --no-index --find-links="file://${PWD}/wheels" --prefix=${FLATPAK_DEST} .
     sources:
       - type: dir
         path: ../..

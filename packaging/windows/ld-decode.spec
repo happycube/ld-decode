@@ -17,7 +17,7 @@ a = Analysis(
     pathex=[str(ROOT)],
     binaries=[],
     datas=[
-        (str(ROOT / 'lddecode' / 'version'), 'lddecode'),
+        (str(ROOT / 'pyproject.toml'), '.'),
     ],
     hiddenimports=[
         'numpy',

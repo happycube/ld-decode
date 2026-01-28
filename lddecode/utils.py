@@ -589,45 +589,100 @@ def ac3_pipe(outname: str):
 # Git helpers
 
 def get_version():
-    """ get version info stashed in this directory's version file """
+    """ Get version info from version file or pyproject.toml """
 
+    # First, try reading the version file
     try:
-        # get the directory this file was pulled from, then add /version
         scriptdir = os.path.dirname(os.path.realpath(__file__))
         fd = open(os.path.join(scriptdir, 'version'), 'r')
-
         fdata = fd.read()
-        return fdata.strip() # remove trailing \n etc
+        return fdata.strip()  # remove trailing \n etc
     except (FileNotFoundError, OSError):
-        # Just return 'unknown' if we fail to find anything.
-        return "unknown"
+        pass
+
+    # Fall back to reading from pyproject.toml (for packaged builds)
+    try:
+        scriptdir = os.path.dirname(os.path.realpath(__file__))
+        pyproject_path = os.path.join(scriptdir, "..", "pyproject.toml")
+        
+        if os.path.exists(pyproject_path):
+            # Simple TOML parsing for version (since toml library may not be installed)
+            with open(pyproject_path, 'r') as f:
+                for line in f:
+                    if line.strip().startswith('version ='):
+                        # Extract version string like: version = "7.0.0"
+                        version = line.split('=')[1].strip().strip('"\'')
+                        return version
+    except Exception:
+        pass
+
+    # Fall back to importlib.metadata (for installed packages)
+    try:
+        from importlib.metadata import version as get_package_version
+        return get_package_version("ld-decode")
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    # If all else fails, return 'unknown'
+    return "unknown"
 
 
 def get_git_info():
     """ Return git branch and commit for current directory, if available. """
 
-    branch = "UNKNOWN"
+    branch = "release"
     commit = "UNKNOWN"
 
     version = get_version()
     if ':' in version:
         branch, commit = version.split(':')[0:2]
+    elif version and version.lower() != "unknown":
+        # If version file has a simple version (e.g., "7.0.0"), use it as commit
+        commit = version
+        branch = "release"
 
+    # Try to get actual git info if in a git repository
     try:
+        # First, try to get the version tag for the current commit (e.g., v7.1.0)
+        try:
+            sp = subprocess.run(
+                "git describe --tags --exact-match", shell=True, capture_output=True, timeout=2
+            )
+            if not sp.returncode:
+                tag = sp.stdout.decode("utf-8").strip()
+                # Remove 'v' prefix if present (v7.0.2 -> 7.0.2)
+                if tag.startswith('v'):
+                    tag = tag[1:]
+                commit = tag
+                branch = "release"
+                return branch, commit
+        except Exception:
+            pass
+        
+        # If not on a tag, use regular git describe (which includes commits since last tag)
         sp = subprocess.run(
-            "git rev-parse --abbrev-ref HEAD", shell=True, capture_output=True
+            "git describe --tags --always", shell=True, capture_output=True, timeout=2
+        )
+        if not sp.returncode:
+            git_describe = sp.stdout.decode("utf-8").strip()
+            # Remove 'v' prefix if present (v7.0.2-5-gf123456 -> 7.0.2-5-gf123456)
+            if git_describe.startswith('v'):
+                git_describe = git_describe[1:]
+            commit = git_describe
+            
+        # Get the branch name
+        sp = subprocess.run(
+            "git rev-parse --abbrev-ref HEAD", shell=True, capture_output=True, timeout=2
         )
         if not sp.returncode:
             branch = sp.stdout.decode("utf-8").strip()
-
-        sp = subprocess.run(
-            "git rev-parse --short HEAD", shell=True, capture_output=True
-        )
-        if not sp.returncode:
-            commit = sp.stdout.decode("utf-8").strip()
+            # If we're in detached HEAD state (e.g., from a tag), use "release"
+            if branch == "HEAD":
+                branch = "release"
     except Exception:
-        print("Something went wrong when trying to read git info...", file=sys.stderr)
-        traceback.print_exc()
+        # If git commands fail (e.g., no git repo in packaged builds), use version file values
         pass
 
     return branch, commit
