@@ -12,6 +12,12 @@ from lddecode.utils_logging import init_logging
 
 
 def main(args=None):
+    # Handle --version early before argparse requires positional arguments
+    check_args = args if args is not None else sys.argv[1:]
+    if "--version" in check_args or "-v" in check_args:
+        from lddecode.utils import get_version_string
+        print(get_version_string())
+        sys.exit(0)
     options_epilog = """FREQ can be a bare number in MHz, or a number with one of the case-insensitive suffixes Hz, kHz, MHz, GHz, fSC (meaning NTSC) or fSCPAL."""
     parser = argparse.ArgumentParser(
         description="Extracts audio and video from raw RF laserdisc captures",
@@ -525,3 +531,7 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
         process.wait()
         
     print(f"Successfully wrote {output_filename}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

@@ -17,6 +17,28 @@ from lddecode.core import *
 from lddecode.utils import *
 from lddecode.utils_logging import *
 
+# Handle --version early before argparse requires positional arguments
+check_args = sys.argv[1:]
+if "--version" in check_args or "-v" in check_args:
+    branch, commit = get_git_info()
+    if branch == "release":
+        # For release builds, just show the version number
+        version_str = f"{commit}"
+    else:
+        # For development builds, show branch and commit
+        version_str = f"{branch}/{commit}"
+    
+    if is_git_dirty():
+        version_str += "-dirty"
+    
+    print(version_str)
+    sys.exit(0)
+
+# Enable IO debug logging automatically in CI to help diagnose hangs when
+# ffmpeg fallback is used instead of ld-ldf-reader.
+if os.getenv("GITHUB_ACTIONS") and not os.getenv("LDDECODE_DEBUG_IO"):
+    os.environ["LDDECODE_DEBUG_IO"] = "1"
+
 parser = argparse.ArgumentParser(
     description="Extract a sample area from raw RF laserdisc captures.  (Similar to ld-decode, except it outputs samples)"
 )

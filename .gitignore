@@ -11,6 +11,8 @@ scipy
 /dist
 /python-build
 __pycache__
+.coverage
+coverage.xml
 
 # Prerequisites
 *.d
@@ -87,5 +89,19 @@ ui_*.h
 # Installation tool things
 ld_decode.egg-info/
 
+# Build-generated version file
+lddecode/version
+
 # Compilation script
 compile.bat
+
+# Packaging artifacts
+*.flatpak
+flatpak_app/
+*.msi
+*.dmg
+*.wixobj
+*.wixpdb
+dmg_staging/
+packaging/windows/dist/
+packaging/macos/dist/
