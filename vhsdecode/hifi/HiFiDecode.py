@@ -352,8 +352,8 @@ class FMdemod:
             self.quadrature_lp_a = quadrature_lp_a.astype(DEMOD_DTYPE_NP)
         
             iq_len = self._get_min_iq_length(max_iq_len)
-            self.i_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
-            self.q_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP)
+            self.i_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP, order="C")
+            self.q_osc = np.empty(iq_len, dtype=DEMOD_DTYPE_NP, order="C")
             FMdemod._generate_iq_oscillators(
                 self.i_osc,
                 self.q_osc,
@@ -723,16 +723,16 @@ class SpectralNoiseReduction:
             sigmoid_slope_nonstationary,
             epsilon # prevent divide by zero
         ):
-            # get the number of X above the mean the signal is
             sig_stft_smooth_x, sig_stft_smooth_y = sig_stft_smooth.shape
+            thresh_n_mult_nonstationary_plus_one = thresh_n_mult_nonstationary + 1
 
             for x in range(sig_stft_smooth_x):
                 for y in range(sig_stft_smooth_y):
                     sig_stft_smooth[x][y] = 1 / (
                         1 + exp(
                             (
-                                thresh_n_mult_nonstationary + 1 
-                                - abs_sig_stft[x][y] / (sig_stft_smooth[x][y] + epsilon)
+                                thresh_n_mult_nonstationary_plus_one
+                                - abs_sig_stft[x][y] / max(sig_stft_smooth[x][y], epsilon)
                             ) * sigmoid_slope_nonstationary
                         )
                     )
@@ -803,7 +803,7 @@ class SpectralNoiseReduction:
                 nperseg=self._win_length,
             )
 
-            return denoised_signal.astype(REAL_DTYPE)
+            return np.ascontiguousarray(denoised_signal, dtype=REAL_DTYPE)
 
     def __init__(self, audio_rate, nr_reduction_amount):
         self.chunk_size = int(audio_rate / BLOCKS_PER_SECOND)
@@ -836,53 +836,19 @@ class SpectralNoiseReduction:
             self.denoise_params
         )
         self.chunks = []
-        for i in range(self.chunk_count):
-            self.chunks.append(np.zeros(self.chunk_size, dtype=REAL_DTYPE))
-
-    @staticmethod
-    @njit(
-        numba.types.Tuple((NumbaAudioArray, NumbaAudioArray))(
-            numba.types.int64,
-            NumbaAudioArray,
-            NumbaAudioArray,
-            NumbaAudioArray,
-        ),
-        cache=True,
-        fastmath=True,
-        nogil=True,
-    )
-    def _get_chunk(end_padding, audio, chunk1, chunk2):
-        # merge the chunks into one array for processing
-        chunks = [chunk1, chunk2]
-        chunk = np.zeros(
-            len(chunk1) + len(chunk2) + len(audio) + end_padding, dtype=REAL_DTYPE
-        )
-
-        chunk_offset = 0
-        for i in range(len(chunks)):
-            chunk_data = chunks[i]
-
-            for j in range(len(chunk_data)):
-                chunk[j + chunk_offset] = chunk_data[j]
-
-            chunk_offset += len(chunk_data)
-
-        # add the input audio to the chunks
-        audio_copy = np.empty_like(audio)
-        for i in range(len(audio)):
-            audio_copy[i] = audio[i]
-            chunk[i + chunk_offset] = audio[i]
-
-        return chunk, audio_copy
+        for _ in range(self.chunk_count):
+            self.chunks.append(np.zeros(self.chunk_size, dtype=REAL_DTYPE, order="C"))
 
     def spectral_nr(self, audio_in, audio_out):
-        chunk, audio_copy = SpectralNoiseReduction._get_chunk(
-            self.end_padding,
-            audio_in,
-            self.chunks[0],
-            self.chunks[1],
+        chunk = np.ascontiguousarray(
+            np.concatenate([
+                self.chunks[0],
+                self.chunks[1],
+                audio_in,
+                np.zeros(self.end_padding)
+            ], dtype=REAL_DTYPE)
         )
-        self.chunks.append(audio_copy)
+        self.chunks.append(audio_in.copy())
         self.chunks.pop(0)
 
         nr = self.spectral_gate.spectral_gating_nonstationary_single_channel(chunk)
@@ -1638,8 +1604,8 @@ class HiFiDecode:
 
             filterL = afeL.work(data)
             filterR = afeR.work(data)
-            preL = np.empty(len(filterL), dtype=REAL_DTYPE)
-            preR = np.empty(len(filterR), dtype=REAL_DTYPE)
+            preL = np.empty(len(filterL), dtype=REAL_DTYPE, order="C")
+            preR = np.empty(len(filterR), dtype=REAL_DTYPE, order="C")
 
             fmL.work(filterL.astype(DEMOD_DTYPE_NP), preL)
             fmR.work(filterR.astype(DEMOD_DTYPE_NP), preR)
@@ -1915,8 +1881,8 @@ class HiFiDecode:
     def headswitch_interpolate_boundaries(
         audio: np.array, boundaries: list[list[int, int]]
     ) -> np.array:
-        interpolated_signal = np.empty_like(audio)
-        interpolator_in = np.empty_like(audio)
+        interpolated_signal = np.empty_like(audio, order="C")
+        interpolator_in = np.empty_like(audio, order="C")
         DecoderSharedMemory.copy_data_float32(
             audio, interpolated_signal, len(interpolated_signal)
         )
@@ -1959,7 +1925,7 @@ class HiFiDecode:
                 smoothed_out = interpolated_signal[
                     start - smoothing_size : end + smoothing_size
                 ]
-                smoothed_in = np.empty_like(smoothed_out)
+                smoothed_in = np.empty_like(smoothed_out, order="C")
                 DecoderSharedMemory.copy_data_float32(
                     smoothed_out, smoothed_in, len(smoothed_in)
                 )
@@ -2314,8 +2280,8 @@ class HiFiDecode:
             decode_mode == AUDIO_MODE_STEREO_MS or 
             decode_mode == AUDIO_MODE_DUAL_MONO_MS
         ):
-            l = np.multiply(np.add(l_raw, r_raw), 0.5)
-            r = np.multiply(np.subtract(l_raw, r_raw), 0.5)
+            l = np.multiply(np.add(l_raw, r_raw), 0.5, order="C")
+            r = np.multiply(np.subtract(l_raw, r_raw), 0.5, order="C")
         elif decode_mode == AUDIO_MODE_MONO_L:
             l = l_raw
             r = l_raw
@@ -2323,15 +2289,15 @@ class HiFiDecode:
             l = r_raw
             r = r_raw
         elif decode_mode == AUDIO_MODE_MONO_SUM:
-            l = np.multiply(np.add(l_raw, r_raw), 0.5)
-            r = np.multiply(np.add(l_raw, r_raw), 0.5)
+            l = np.multiply(np.add(l_raw, r_raw), 0.5, order="C")
+            r = np.multiply(np.add(l_raw, r_raw), 0.5, order="C")
         else:
             # AUDIO_MODE_STEREO
             # AUDIO_MODE_DUAL_MONO_STEREO
             l = l_raw
             r = r_raw
 
-        return l, r
+        return np.ascontiguousarray(l), np.ascontiguousarray(r)
 
     @staticmethod
     @njit(
@@ -2364,7 +2330,7 @@ class HiFiDecode:
         # demodulate
         if measure_perf:
             perf_measurements["start_demod"] = perf_counter()
-        audio = np.empty(len(filtered), dtype=REAL_DTYPE)
+        audio = np.empty(len(filtered), dtype=REAL_DTYPE, order="C")
         fm.work(filtered, audio)
         if measure_perf:
             perf_measurements["end_demod"] = perf_counter()
@@ -2651,15 +2617,13 @@ class HiFiDecode:
             r_out = buffer.get_pre_right()
 
             # shift the audio left to remove the block overlap
-            audio_len = len(audioL)
-            expected_len = decoder_state.block_audio_final_len
-            overlap_to_trim = max(0, round((audio_len - expected_len) / 2))
+            overlap_to_trim = max(0, round((len(audioL) - decoder_state.block_audio_final_len) / 2))
 
             DecoderSharedMemory.copy_data_src_offset_float32(
-                audioL, l_out, overlap_to_trim, audio_len
+                audioL, l_out, overlap_to_trim, decoder_state.block_audio_final_len
             )
             DecoderSharedMemory.copy_data_src_offset_float32(
-                audioR, r_out, overlap_to_trim, audio_len
+                audioR, r_out, overlap_to_trim, decoder_state.block_audio_final_len
             )
             if measure_perf:
                 end_final_audio_copy = perf_counter()

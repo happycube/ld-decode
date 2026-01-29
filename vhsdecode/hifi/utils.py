@@ -14,9 +14,7 @@ BLOCK_DTYPE = np.int16
 REAL_DTYPE = np.float32
 ALIGNMENT = 64
 
-NumbaAudioArray = numba.types.Array(numba.types.float32, 1, "C", aligned=True)
-NumbaBlockArray = numba.types.Array(numba.types.int16, 1, "C", aligned=True)
-
+NumbaAudioArray = numba.types.Array(numba.types.float32, 1, "C")
 
 @dataclass
 class DecoderState:
@@ -30,7 +28,7 @@ class DecoderState:
 
         # block data for input rf
         self.block_frames_read = block_frames_read
-        self.block_dtype = np.int16
+        self.block_dtype = BLOCK_DTYPE
         self.block_size = block_sizes["block_size"]
         self.block_overlap = block_overlap["block_overlap"]
         self.block_read_overlap = block_overlap["block_read_overlap"]
@@ -151,6 +149,7 @@ class PostProcessorSharedMemory:
             dtype=self.audio_dtype,
             offset=self.l_pre_offset,
             buffer=self.buf,
+            order="C"
         )
 
     def get_pre_right(self) -> np.array:
@@ -159,6 +158,7 @@ class PostProcessorSharedMemory:
             dtype=self.audio_dtype,
             offset=self.r_pre_offset,
             buffer=self.buf,
+            order="C"
         )
 
     # overlaps with the pre audio
@@ -168,6 +168,7 @@ class PostProcessorSharedMemory:
             dtype=self.audio_dtype,
             offset=self.stereo_offset,
             buffer=self.buf,
+            order="C"
         )
 
     def get_post_left(self) -> np.array:
@@ -176,6 +177,7 @@ class PostProcessorSharedMemory:
             dtype=self.audio_dtype,
             offset=self.l_post_offset,
             buffer=self.buf,
+            order="C"
         )
 
     def get_post_right(self) -> np.array:
@@ -184,6 +186,7 @@ class PostProcessorSharedMemory:
             dtype=self.audio_dtype,
             offset=self.r_post_offset,
             buffer=self.buf,
+            order="C"
         )
 
 
@@ -250,7 +253,7 @@ class DecoderSharedMemory:
         block_overlap,
         block_audio_final_size,
         name,
-        block_dtype=np.int16,
+        block_dtype=BLOCK_DTYPE,
         audio_dtype=REAL_DTYPE,
     ):
         max_audio_size = (
@@ -281,6 +284,7 @@ class DecoderSharedMemory:
             dtype=self.block_dtype,
             offset=self.block_start_overlap_offset,
             buffer=self.buf,
+            order="C"
         )
     
     # block data only including the data that was read
@@ -290,6 +294,7 @@ class DecoderSharedMemory:
             dtype=self.block_dtype,
             offset=self.block_start_overlap_offset,
             buffer=self.buf,
+            order="C"
         )
 
     # block starts after first overlap, goes until the end of the last overlap
@@ -300,6 +305,7 @@ class DecoderSharedMemory:
             dtype=self.block_dtype,
             offset=self.block_offset,
             buffer=self.buf,
+            order="C"
         )
 
     # end overlap is copied into the start overlap
@@ -309,6 +315,7 @@ class DecoderSharedMemory:
             dtype=self.block_dtype,
             offset=self.block_start_overlap_offset,
             buffer=self.buf,
+            order="C"
         )
 
     # end overlap is copied and appended to the beginning of the next block
@@ -318,6 +325,7 @@ class DecoderSharedMemory:
             dtype=self.block_dtype,
             offset=self.block_end_overlap_offset,
             buffer=self.buf,
+            order="C"
         )
 
     def get_pre_left(self) -> np.array:
@@ -326,6 +334,7 @@ class DecoderSharedMemory:
             dtype=self.audio_dtype,
             offset=self.l_pre_offset,
             buffer=self.buf,
+            order="C"
         )
 
     def get_pre_right(self) -> np.array:
@@ -334,6 +343,7 @@ class DecoderSharedMemory:
             dtype=self.audio_dtype,
             offset=self.r_pre_offset,
             buffer=self.buf,
+            order="C"
         )
 
     @staticmethod
