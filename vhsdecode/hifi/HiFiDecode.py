@@ -723,16 +723,16 @@ class SpectralNoiseReduction:
             sigmoid_slope_nonstationary,
             epsilon # prevent divide by zero
         ):
-            # get the number of X above the mean the signal is
             sig_stft_smooth_x, sig_stft_smooth_y = sig_stft_smooth.shape
+            thresh_n_mult_nonstationary_plus_one = thresh_n_mult_nonstationary + 1
 
             for x in range(sig_stft_smooth_x):
                 for y in range(sig_stft_smooth_y):
                     sig_stft_smooth[x][y] = 1 / (
                         1 + exp(
                             (
-                                thresh_n_mult_nonstationary + 1
-                                - abs_sig_stft[x][y] / (epsilon if sig_stft_smooth[x][y] == 0 else sig_stft_smooth[x][y])
+                                thresh_n_mult_nonstationary_plus_one
+                                - abs_sig_stft[x][y] / max(sig_stft_smooth[x][y], epsilon)
                             ) * sigmoid_slope_nonstationary
                         )
                     )
