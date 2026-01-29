@@ -731,8 +731,8 @@ class SpectralNoiseReduction:
                     sig_stft_smooth[x][y] = 1 / (
                         1 + exp(
                             (
-                                thresh_n_mult_nonstationary + 1 
-                                - abs_sig_stft[x][y] / (sig_stft_smooth[x][y] + epsilon)
+                                thresh_n_mult_nonstationary + 1
+                                - abs_sig_stft[x][y] / (epsilon if sig_stft_smooth[x][y] == 0 else sig_stft_smooth[x][y])
                             ) * sigmoid_slope_nonstationary
                         )
                     )
@@ -836,7 +836,7 @@ class SpectralNoiseReduction:
             self.denoise_params
         )
         self.chunks = []
-        for i in range(self.chunk_count):
+        for _ in range(self.chunk_count):
             self.chunks.append(np.zeros(self.chunk_size, dtype=REAL_DTYPE, order="C"))
 
     def spectral_nr(self, audio_in, audio_out):
