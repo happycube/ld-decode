@@ -8,6 +8,7 @@ import string
 from random import SystemRandom
 
 from cProfile import Profile
+import ctypes
 from pstats import SortKey, Stats
 
 BLOCK_DTYPE = np.int16
@@ -432,6 +433,11 @@ class DecoderSharedMemory:
         for i in range(length):
             dst[i] = src[i + src_offset]
 
+class PeakGain(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_float),
+        ("right", ctypes.c_float),
+    ]
 
 def profile(function) -> int:
     def run_profiler(*args, **kwarg):

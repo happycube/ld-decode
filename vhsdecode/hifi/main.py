@@ -32,6 +32,7 @@ from vhsdecode.hifi.utils import (
     DecoderState,
     PostProcessorSharedMemory,
     NumbaAudioArray,
+    PeakGain,
     BLOCK_DTYPE
 )
 
@@ -952,16 +953,14 @@ class PostProcessor:
         decoder_shared_memory_idle_queue,
         blocks_enqueued,
         out_conn,
-        peak_gain_left,
-        peak_gain_right,
+        peak_gain
     ):
         self.final_audio_rate = decode_options["audio_rate"]
         self.enable_expander = decode_options["enable_expander"]
         self.enable_deemphasis = decode_options["enable_deemphasis"]
         self.spectral_nr_amount = decode_options["spectral_nr_amount"]
         self.format = decode_options["format"]
-        self.peak_gain_left = peak_gain_left
-        self.peak_gain_right = peak_gain_right
+        self.peak_gain = peak_gain
 
         # create processes and wire up queues
         #
@@ -1134,8 +1133,7 @@ class PostProcessor:
                 expander_worker_l_out_rx,
                 expander_worker_r_out_rx,
                 self.mix_to_stereo_worker_output,
-                self.peak_gain_left,
-                self.peak_gain_right,
+                self.peak_gain,
                 self.final_audio_rate,
             ),
         )
@@ -1399,7 +1397,7 @@ class PostProcessor:
 
     @staticmethod
     def mix_to_stereo_worker(
-        expander_l_in_conn, expander_r_in_conn, out_conn, peak_gain_left, peak_gain_right, sample_rate
+        expander_l_in_conn, expander_r_in_conn, out_conn, peak_gain, sample_rate
     ):
         setproctitle(current_process().name)
         while True:
@@ -1435,12 +1433,12 @@ class PostProcessor:
                 l, r, stereo, sample_rate, decoder_state.block_num == 0
             )
 
-            with peak_gain_left.get_lock(), peak_gain_right.get_lock():
-                if peak_gain_left.value < max_gain_left:
-                    peak_gain_left.value = max_gain_left
+            with peak_gain.get_lock():
+                if peak_gain.left < max_gain_left:
+                    peak_gain.left = max_gain_left
 
-                if peak_gain_right.value < max_gain_right:
-                    peak_gain_right.value = max_gain_right
+                if peak_gain.right < max_gain_right:
+                    peak_gain.right = max_gain_right
 
             buffer.close()
             out_conn.send(decoder_state)
@@ -1836,8 +1834,7 @@ async def decode_parallel(
     blocks_enqueued = Value("d", 0)
     input_position = Value("d", 0)
     total_samples_decoded = Value("d", 0)
-    peak_gain_left = Value("d", 0)
-    peak_gain_right = Value("d", 0)
+    peak_gain = Value(PeakGain, 0.0, 0.0)
     stop_requested = Value("d", STOP_NOT_REQUESTED)
     start_time = datetime.now()
 
@@ -1906,8 +1903,7 @@ async def decode_parallel(
         shared_memory_idle_queue,
         blocks_enqueued,
         post_processor_out_tx_conn,
-        peak_gain_left,
-        peak_gain_right,
+        peak_gain,
     )
     atexit.register(post_processor.close)
 
@@ -2139,7 +2135,7 @@ async def decode_parallel(
         atexit.unregister(shared_memory.close)
         atexit.unregister(shared_memory.unlink)
     
-    with peak_gain_left.get_lock(), peak_gain_right.get_lock():
+    with peak_gain.get_lock():
         audio_rate = decode_options["audio_rate"]
 
         if (
@@ -2147,19 +2143,19 @@ async def decode_parallel(
             decode_options["mode"] == AUDIO_MODE_DUAL_MONO_MS
         ):
             # Normalize channels independently for dual mono
-            print(f"\nChannel 1: Peak gain is {(peak_gain_left.value * 100):.2f}%.", end="")
+            print(f"\nChannel 1: Peak gain is {(peak_gain.left * 100):.2f}%.", end="")
             if decode_options["normalize"]:
                 channel_1_output_file = get_dual_mono_filename(output_file, channel_1_suffix)
                 channel_1_input_file_post_gain = get_normalize_filename(channel_1_output_file, audio_rate)
-                normalize(channel_1_input_file_post_gain, channel_1_output_file, peak_gain_left.value, 1, audio_rate)
+                normalize(channel_1_input_file_post_gain, channel_1_output_file, peak_gain.left, 1, audio_rate)
 
-            print(f"\nChannel 2: Peak gain is {(peak_gain_right.value * 100):.2f}%.", end="")
+            print(f"\nChannel 2: Peak gain is {(peak_gain.right * 100):.2f}%.", end="")
             if decode_options["normalize"]:
                 channel_2_output_file = get_dual_mono_filename(output_file, channel_2_suffix)
                 channel_2_input_file_post_gain = get_normalize_filename(channel_2_output_file, audio_rate)
-                normalize(channel_2_input_file_post_gain, channel_2_output_file, peak_gain_right.value, 1, audio_rate)
+                normalize(channel_2_input_file_post_gain, channel_2_output_file, peak_gain.right, 1, audio_rate)
         else:
-            peak_gain_stereo = max(peak_gain_left.value, peak_gain_right.value)
+            peak_gain_stereo = max(peak_gain.left, peak_gain.right)
             print(f"\nPeak gain is {(peak_gain_stereo * 100):.2f}%.", end="")
             if decode_options["normalize"]:
                 input_file_post_gain = get_normalize_filename(output_file, audio_rate)
