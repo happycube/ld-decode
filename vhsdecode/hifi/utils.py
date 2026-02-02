@@ -8,6 +8,7 @@ import string
 from random import SystemRandom
 
 from cProfile import Profile
+import ctypes
 from pstats import SortKey, Stats
 
 BLOCK_DTYPE = np.int16
@@ -286,16 +287,6 @@ class DecoderSharedMemory:
             buffer=self.buf,
             order="C"
         )
-    
-    # block data only including the data that was read
-    def get_last_block(self) -> np.array:
-        return np.ndarray(
-            self.block_start_overlap_len + self.block_frames_read,
-            dtype=self.block_dtype,
-            offset=self.block_start_overlap_offset,
-            buffer=self.buf,
-            order="C"
-        )
 
     # block starts after first overlap, goes until the end of the last overlap
     # first part of the block is copied from the previous read
@@ -394,6 +385,24 @@ class DecoderSharedMemory:
     @staticmethod
     @njit(
         numba.types.void(
+            numba.types.Array(numba.int16, 1, "C"),
+            numba.types.Array(numba.int16, 1, "C"),
+            numba.types.int64,
+            numba.types.int64,
+        ),
+        cache=True,
+        fastmath=True,
+        nogil=True,
+    )
+    def copy_data_src_offset_int16(
+        src: np.array, dst: np.array, src_offset: int, length: int
+    ):
+        for i in range(length):
+            dst[i] = src[i + src_offset]
+
+    @staticmethod
+    @njit(
+        numba.types.void(
             NumbaAudioArray,
             NumbaAudioArray,
             numba.types.int64,
@@ -424,6 +433,11 @@ class DecoderSharedMemory:
         for i in range(length):
             dst[i] = src[i + src_offset]
 
+class PeakGain(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_float),
+        ("right", ctypes.c_float),
+    ]
 
 def profile(function) -> int:
     def run_profiler(*args, **kwarg):
