@@ -1,5 +1,0 @@
-av>=8.0
-matplotlib>=3.0
-numba>=0.48
-numpy>=1.17
-scipy>=1.3
