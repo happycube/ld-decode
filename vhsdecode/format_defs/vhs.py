@@ -272,12 +272,12 @@ def get_rfparams_ntsc_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
     RFParams_NTSC_VHS["video_bpf_low"] = 500000
-    RFParams_NTSC_VHS["video_bpf_high"] = 5700000
+    RFParams_NTSC_VHS["video_bpf_high"] = [6500000, 6500000, 6400000][tape_speed]
 
     RFParams_NTSC_VHS["video_bpf_order"] = 8
-    RFParams_NTSC_VHS["video_bpf_supergauss"] = True
+    RFParams_NTSC_VHS["video_bpf_supergauss"] = False
 
-    RFParams_NTSC_VHS["video_lpf_extra"] = 5450000
+    RFParams_NTSC_VHS["video_lpf_extra"] = [6000000, 5900000, 5800000][tape_speed]
     RFParams_NTSC_VHS["video_lpf_extra_order"] = 25
 
     RFParams_NTSC_VHS["video_hpf_extra"] = 1200000

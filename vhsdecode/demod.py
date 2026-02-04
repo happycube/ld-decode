@@ -1,7 +1,6 @@
 from numba import njit
 import numpy as np
 
-import vhsdecode.hilbert as hilbert_test
 import vhsd_rust
 
 

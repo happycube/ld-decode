@@ -21,7 +21,6 @@ def plot_filters(
     sub_emphasis_params=None,
     sub_emphasis_reference=None,
 ):
-    import matplotlib.pyplot as plt
 
     ax = figure.subplots(3, 1, sharex=False)
 
