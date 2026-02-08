@@ -1032,6 +1032,13 @@ def findpulses(sync_ref, _, high):
     )
     return _to_pulses_list(pulses_starts, pulses_lengths), pulses_starts, pulses_lengths
 
+
+def findpulses_raw(sync_ref, high):
+    """Like findpulses but returns only raw arrays (no Pulse list creation).
+    Returns (starts_array, lengths_array).
+    """
+    return findpulses_numba_raw(sync_ref, high)
+
 if False:
     @njit(cache=True,nogil=True)
     def numba_pulse_qualitycheck(prevpulse: Pulse, pulse: Pulse, inlinelen: int):

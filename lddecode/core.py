@@ -27,7 +27,7 @@ from . import efm_pll
 from .utils import ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
-from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
+from .utils import findpeaks, findpulses, findpulses_raw, _to_pulses_list, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, compute_all_burst_offsets_nb, calc_burstmedian_nb, refine_linelocs_hsync_nb, refine_linelocs_burst_nb, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
@@ -1645,7 +1645,6 @@ class Field:
 
     @profile
     def get_timings(self):
-        pulses = self.rawpulses
         hsync_typical = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
 
         # Some disks have odd sync levels resulting in short and/or long pulse lengths.
@@ -1654,12 +1653,11 @@ class Field:
         hsync_checkmin = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"] - 1.75)
         hsync_checkmax = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"] + 2)
 
-        hlens = []
-        for p in pulses:
-            if inrange(p.len, hsync_checkmin, hsync_checkmax):
-                hlens.append(p.len)
+        # Vectorized: filter pulse lengths in range using raw arrays
+        lengths = self.raw_lengths
+        mask = (lengths >= hsync_checkmin) & (lengths <= hsync_checkmax)
+        hlens = lengths[mask]
 
-        LT = {}
         LT = {}
         if len(hlens) > 0:
             LT["hsync_median"] = np.median(hlens)
@@ -1673,7 +1671,6 @@ class Field:
 
         LT["hsync_offset"] = LT["hsync_median"] - hsync_typical
 
-        # ??? - replace self.usectoinpx with local timings?
         eq_min = (
             self.usectoinpx(self.rf.SysParams["eqPulseUS"] - 0.5) + LT["hsync_offset"]
         )
@@ -1800,33 +1797,66 @@ class Field:
     def refinepulses(self):
         self.LT = self.get_timings()
 
+        LT = self.LT
+        hsync_min, hsync_max = LT["hsync"]
+        eq_min, eq_max = LT["eq"]
+
+        raw_starts = self.raw_starts
+        raw_lengths = self.raw_lengths
+        rawpulses = self.rawpulses
+        n_pulses = len(rawpulses)
+        inlinelen = self.inlinelen
+
         i = 0
         valid_pulses = []
         num_vblanks = 0
 
-        while i < len(self.rawpulses):
-            curpulse = self.rawpulses[i]
-            if inrange(curpulse.len, *self.LT["hsync"]):
-                good = (
-                    self.pulse_qualitycheck(valid_pulses[-1], (0, curpulse))
-                    if len(valid_pulses)
-                    else False
-                )
-                valid_pulses.append((HSYNC, curpulse, good))
+        # Track previous pulse info for quality check without method call overhead
+        prev_type = -1
+        prev_start = 0.0
+
+        while i < n_pulses:
+            plen = raw_lengths[i]
+
+            if hsync_min <= plen <= hsync_max:
+                pstart = raw_starts[i]
+
+                # Inline pulse_qualitycheck for HSYNC→HSYNC (99% of cases)
+                if prev_type >= 0:
+                    linelen = (pstart - prev_start) / inlinelen
+                    if prev_type == 0:
+                        # HSYNC→HSYNC: expect ~1H
+                        good = 0.9 <= linelen <= 1.1
+                    elif prev_type > 0:
+                        # vblank→HSYNC: expect 0.4-1.1H
+                        good = 0.4 <= linelen <= 1.1
+                    else:
+                        good = False
+                else:
+                    good = False
+
+                valid_pulses.append((HSYNC, rawpulses[i], good))
+                prev_type = HSYNC
+                prev_start = pstart
                 i += 1
             elif (
                 i > 2
-                and inrange(self.rawpulses[i].len, *self.LT["eq"])
-                and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC)
+                and eq_min <= plen <= eq_max
+                and prev_type == HSYNC
             ):
-                # print(i, self.rawpulses[i])
                 done, vblank_pulses = self.run_vblank_state_machine(
-                    self.rawpulses[i - 2 : i + 24], self.LT
+                    rawpulses[i - 2 : i + 24], LT
                 )
                 if done:
-                    [valid_pulses.append(p) for p in vblank_pulses[2:]]
+                    for vp in vblank_pulses[2:]:
+                        valid_pulses.append(vp)
                     i += len(vblank_pulses) - 2
                     num_vblanks += 1
+                    # Update prev tracking from last vblank pulse
+                    if valid_pulses:
+                        last = valid_pulses[-1]
+                        prev_type = last[0]
+                        prev_start = last[1].start
                 else:
                     i += 1
             else:
@@ -2131,9 +2161,9 @@ class Field:
         pulse_hz_min = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] - 20)
         pulse_hz_max = self.rf.iretohz(-20)
 
-        pulses, pulse_starts, pulse_lengths = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
+        pulse_starts, pulse_lengths = findpulses_raw(self.data["video"]["demod_05"], pulse_hz_max)
 
-        if len(pulses) == 0:
+        if len(pulse_starts) == 0:
             if not self.fields_written:
                 # if the first field decoded, recalibrate sync levels and retry
                 ire0 = np.percentile(self.data["video"]["demod_05"], 15)
@@ -2142,7 +2172,7 @@ class Field:
                 return self.getpulses(do_retry=False)
             else:
                 # otherwise, can't do anything about this
-                return pulses
+                return []
 
         # determine sync pulses from vsync using vectorized array operations
         demod_05 = self.data["video"]["demod_05"]
@@ -2168,8 +2198,10 @@ class Field:
         synclevel = np.median(vsync_means)
 
         if np.abs(self.rf.hztoire(synclevel) - self.rf.DecoderParams["vsync_ire"]) < 5:
-            # sync level is close enough to use
-            return pulses
+            # sync level is close enough to use — build Pulse list and store raw arrays
+            self.raw_starts = pulse_starts
+            self.raw_lengths = pulse_lengths
+            return _to_pulses_list(pulse_starts, pulse_lengths)
 
         if len(vsync_locs) == 0:
             return None
@@ -2202,8 +2234,10 @@ class Field:
         pulse_hz_min = synclevel - (self.rf.DecoderParams["hz_ire"] * 10)
         pulse_hz_max = (blacklevel + synclevel) / 2
 
-        pulses, _, _ = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
-        return pulses
+        pulse_starts2, pulse_lengths2 = findpulses_raw(self.data["video"]["demod_05"], pulse_hz_max)
+        self.raw_starts = pulse_starts2
+        self.raw_lengths = pulse_lengths2
+        return _to_pulses_list(pulse_starts2, pulse_lengths2)
 
     #@profile
     def compute_linelocs(self):
@@ -3386,6 +3420,7 @@ class LDdecode:
             self.lpf.add_function(Field.process)
             self.lpf.add_function(Field.compute_linelocs)
             self.lpf.add_function(Field.getpulses)
+            self.lpf.add_function(Field.refinepulses)
             self.lpf.add_function(DemodCache.read)
             #self.lpf.add_function(self.decodefield)
 
