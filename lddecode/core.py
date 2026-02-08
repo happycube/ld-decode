@@ -28,7 +28,7 @@ from .utils import ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
-from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
+from .utils import LRUupdate, clb_findbursts, compute_all_burst_offsets_nb, calc_burstmedian_nb, refine_linelocs_hsync_nb, refine_linelocs_burst_nb, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
 from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
@@ -61,7 +61,7 @@ except:
 # parallel.  The beginning and end are cut off so that there's
 # no distortion from the FFT and filtering.
 
-BLOCKSIZE = 32 * 1024
+BLOCKSIZE = 40960
 
 # These are constant, system-level parameters for PAL and NTSC
 
@@ -479,6 +479,8 @@ class RFDecode:
         # This high pass filter is intended to detect RF dropouts
         Frfhpf = sps.butter(1, [10 / self.freq_half], btype="highpass")
         self.Filters["Frfhpf"] = filtfft(Frfhpf, self.blocklen)
+        # Half-spectrum version for irfft (only .real output is used)
+        self.Filters["Frfhpf_half"] = self.Filters["Frfhpf"][:self.blocklen // 2 + 1]
 
         # First phase FFT filtering
 
@@ -577,6 +579,24 @@ class RFDecode:
             )
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
 
+        # Build stacked rfft-compatible filters for batch irfft in demodblock.
+        # Bake np.roll offsets into the filters as frequency-domain phase shifts
+        # so the time-domain rolls can be eliminated entirely.
+        N = self.blocklen
+        rfft_len = N // 2 + 1
+        bins = np.arange(rfft_len)
+        phase_shift = lambda k: np.exp(-2j * np.pi * (-k) * bins / N)
+
+        filters = [
+            SF["FVideo"][:rfft_len],
+            SF["FVideo05"][:rfft_len] * phase_shift(SF["F05_offset"]),
+            SF["FVideoBurst"][:rfft_len] * phase_shift(SF["FVideoBurst_offset"]),
+        ]
+        if self.system == "PAL":
+            filters.append(SF["FVideoPilot"][:rfft_len])
+
+        SF["FVideo_rfft_stack"] = np.array(filters)
+
     def computeaudiofilters(self):
         SP = self.SysParams
         DP = self.DecoderParams
@@ -665,7 +685,7 @@ class RFDecode:
         if getattr(self, "delays", None) is not None and "video_rot" in self.delays:
             rotdelay = self.delays["video_rot"]
 
-        rv["rfhpf"] = npfft.ifft(indata_fft * self.Filters["Frfhpf"]).real
+        rv["rfhpf"] = npfft.irfft(indata_fft[:self.blocklen // 2 + 1] * self.Filters["Frfhpf_half"], n=self.blocklen)
         rv["rfhpf"] = rv["rfhpf"][
             self.blockcut - rotdelay : -self.blockcut_end - rotdelay
         ].astype(np.float32)
@@ -702,18 +722,20 @@ class RFDecode:
         demod = unwrap_hilbert(hilbert, self.freq_hz)
 
         # use a clipped demod for video output processing to reduce speckling impact
-        demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
+        # rfft + batch irfft replaces 1 fft + 3-4 ifft with 1 rfft + 1 batch irfft,
+        # and rolls are pre-baked into the filter phase shifts
+        demod_rfft = npfft.rfft(np.clip(demod, 1500000, self.freq_hz * 0.75))
 
-        out_video = npfft.ifft(demod_fft * self.Filters["FVideo"]).real
+        video_results = npfft.irfft(
+            demod_rfft * self.Filters["FVideo_rfft_stack"], n=self.blocklen, axis=1
+        )
 
-        out_video05 = npfft.ifft(demod_fft * self.Filters["FVideo05"]).real
-        out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
-
-        out_videoburst = npfft.ifft(demod_fft * self.Filters["FVideoBurst"]).real
-        out_videoburst = np.roll(out_videoburst, -self.Filters["FVideoBurst_offset"])
+        out_video = video_results[0]
+        out_video05 = video_results[1]
+        out_videoburst = video_results[2]
 
         if self.system == "PAL":
-            out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
+            out_videopilot = video_results[3]
             video_out = np.rec.array(
                 [
                     out_video.astype(np.float32),
@@ -2109,7 +2131,7 @@ class Field:
         pulse_hz_min = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] - 20)
         pulse_hz_max = self.rf.iretohz(-20)
 
-        pulses = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
+        pulses, pulse_starts, pulse_lengths = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
         if len(pulses) == 0:
             if not self.fields_written:
@@ -2122,28 +2144,26 @@ class Field:
                 # otherwise, can't do anything about this
                 return pulses
 
-        # determine sync pulses from vsync
-        vsync_locs = []
-        vsync_means = []
-
+        # determine sync pulses from vsync using vectorized array operations
+        demod_05 = self.data["video"]["demod_05"]
         minlength = self.usectoinpx(10)
+        freq = self.rf.freq
 
-        for i, p in enumerate(pulses):
-            if p.len > minlength:
-                vsync_locs.append(i)
-                vsync_means.append(
-                    np.mean(
-                        self.data["video"]["demod_05"][
-                            int(p.start + self.rf.freq) : int(
-                                p.start + p.len - self.rf.freq
-                            )
-                        ]
-                    )
-                )
+        # Vectorized: find which pulses are vsync (length > minlength)
+        vsync_mask = pulse_lengths > minlength
+        vsync_locs = np.where(vsync_mask)[0]
 
-        # print(len(vsync_means), [self.rf.hztoire(v) for v in vsync_means])
-        if len(vsync_means) == 0:
+        if len(vsync_locs) == 0:
             return None
+
+        # Compute means for vsync pulses using the raw arrays
+        vsync_starts = pulse_starts[vsync_mask]
+        vsync_lengths = pulse_lengths[vsync_mask]
+        vsync_means = np.empty(len(vsync_starts), dtype=np.float64)
+        for j in range(len(vsync_starts)):
+            vsync_means[j] = np.mean(
+                demod_05[int(vsync_starts[j] + freq):int(vsync_starts[j] + vsync_lengths[j] - freq)]
+            )
 
         synclevel = np.median(vsync_means)
 
@@ -2151,7 +2171,7 @@ class Field:
             # sync level is close enough to use
             return pulses
 
-        if vsync_locs is None or not len(vsync_locs):
+        if len(vsync_locs) == 0:
             return None
 
         # Now compute black level and try again
@@ -2161,20 +2181,19 @@ class Field:
         r2 = range(vsync_locs[-1] + 1, vsync_locs[-1] + 6)
 
         black_means = []
+        freq_lo = freq * 0.75
+        freq_hi = freq * 2.5
 
         for i in itertools.chain(r1, r2):
-            if i < 0 or i >= len(pulses):
+            if i < 0 or i >= len(pulse_starts):
                 continue
 
-            p = pulses[i]
-            if inrange(p.len, self.rf.freq * 0.75, self.rf.freq * 2.5):
+            p_len = pulse_lengths[i]
+            if inrange(p_len, freq_lo, freq_hi):
+                p_start = pulse_starts[i]
                 black_means.append(
                     np.mean(
-                        self.data["video"]["demod_05"][
-                            int(p.start + (self.rf.freq * 5)) : int(
-                                p.start + (self.rf.freq * 20)
-                            )
-                        ]
+                        demod_05[int(p_start + (freq * 5)):int(p_start + (freq * 20))]
                     )
                 )
 
@@ -2183,7 +2202,8 @@ class Field:
         pulse_hz_min = synclevel - (self.rf.DecoderParams["hz_ire"] * 10)
         pulse_hz_max = (blacklevel + synclevel) / 2
 
-        return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
+        pulses, _, _ = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
+        return pulses
 
     #@profile
     def compute_linelocs(self):
@@ -2346,72 +2366,17 @@ class Field:
 
     #@profile
     def refine_linelocs_hsync(self):
-        linelocs2 = self.linelocs1.copy()
-
-        for i in range(len(self.linelocs1)):
-            # skip VSYNC lines, since they handle the pulses differently
-            if inrange(i, 3, 6) or (self.rf.system == "PAL" and inrange(i, 1, 2)):
-                self.linebad[i] = True
-                continue
-
-            # refine beginning of hsync
-            ll1 = self.linelocs1[i] - self.rf.freq
-            zc = calczc(
-                self.data["video"]["demod_05"],
-                ll1,
-                self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] / 2),
-                reverse=False,
-                count=self.rf.freq * 2,
-            )
-
-            if zc is not None and not self.linebad[i]:
-                linelocs2[i] = zc
-
-                # The hsync area, burst, and porches should not leave -50 to 30 IRE (on PAL or NTSC)
-                hsync_area = self.data["video"]["demod_05"][
-                    int(zc - (self.rf.freq * 0.75)) : int(zc + (self.rf.freq * 8))
-                ]
-                if nb_min(hsync_area) < self.rf.iretohz(-55) or nb_max(
-                    hsync_area
-                ) > self.rf.iretohz(30):
-                    # don't use the computed value here if it's bad
-                    self.linebad[i] = True
-                    linelocs2[i] = self.linelocs1[i]
-                else:
-                    porch_level = nb_median(
-                        self.data["video"]["demod_05"][
-                            int(zc + (self.rf.freq * 8)) : int(zc + (self.rf.freq * 9))
-                        ]
-                    )
-                    sync_level = nb_median(
-                        self.data["video"]["demod_05"][
-                            int(zc + (self.rf.freq * 1)) : int(
-                                zc + (self.rf.freq * 2.5)
-                            )
-                        ]
-                    )
-
-                    zc2 = calczc(
-                        self.data["video"]["demod_05"],
-                        ll1,
-                        (porch_level + sync_level) / 2,
-                        reverse=False,
-                        count=400,
-                    )
-
-                    # any wild variation here indicates a failure
-                    if zc2 is not None and np.abs(zc2 - zc) < (self.rf.freq / 2):
-                        linelocs2[i] = zc2
-                    else:
-                        self.linebad[i] = True
-            else:
-                self.linebad[i] = True
-
-            if self.linebad[i]:
-                linelocs2[i] = self.linelocs1[
-                    i
-                ]  # don't use the computed value here if it's bad
-
+        linelocs1_arr = np.asarray(self.linelocs1, dtype=np.float64)
+        linelocs2 = refine_linelocs_hsync_nb(
+            self.data["video"]["demod_05"],
+            linelocs1_arr,
+            self.linebad,
+            self.rf.freq,
+            self.rf.iretohz(self.rf.DecoderParams["vsync_ire"] / 2),
+            self.rf.iretohz(-55),
+            self.rf.iretohz(30),
+            self.rf.system == "PAL",
+        )
         return linelocs2
 
     def compute_deriv_error(self, linelocs, baserr):
@@ -2967,17 +2932,23 @@ class FieldPAL(Field):
         return rms(burstarea) * np.sqrt(2)
 
     def calc_burstmedian(self):
-        burstlevel = []
-
-        for l in range(11, 313):
-            lineburst = self.get_burstlevel(l)
-            if lineburst is not None:
-                burstlevel.append(lineburst)
-
-        if burstlevel == []:
+        linelocs_arr = np.asarray(self.linelocs, dtype=np.float64)
+        median = calc_burstmedian_nb(
+            self.data["video"]["demod"],
+            linelocs_arr,
+            self.lineoffset,
+            self.linecount,
+            self.rf.samplesperline,
+            self.rf.linelen,
+            5.5,   # begin_usec for burst area
+            2.4,   # length_usec for burst area
+            11,    # line_start
+            313,   # line_end
+            30.0 * self.rf.DecoderParams["hz_ire"],  # burst_threshold (PAL filtering)
+        )
+        if median == 0.0:
             return 0.0
-
-        return np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]
+        return median / self.rf.DecoderParams["hz_ire"]
 
     def get_following_field_number(self):
         if self.prevfield is not None:
@@ -3222,31 +3193,38 @@ class FieldNTSC(Field):
 
     @profile
     def compute_burst_offsets(self, linelocs):
-        rising_sum = 0
+        # Hoist loop-invariant prev_phaseadjust computation
+        prev_phaseadjust = self.phase_adjust_median
+        if prev_phaseadjust == 0 and self.prevfield:
+            prev_phaseadjust = self.prevfield.phase_adjust_median
+
+        linelocs_arr = np.array(linelocs, dtype=np.float64)
+
+        adjs_arr, rising_sum = compute_all_burst_offsets_nb(
+            self.data["video"]["demod_burst"],
+            self.data["video"]["demod"],
+            linelocs_arr,
+            self.lineoffset,
+            self.linecount,
+            self.rf.samplesperline,
+            self.rf.linelen,
+            self.rf.SysParams["fsc_mhz"],
+            30 * self.rf.DecoderParams["hz_ire"],
+            prev_phaseadjust,
+        )
+
+        # Convert numpy array to dict (only non-NaN entries)
         adjs = {}
-
-        for l in range(0, 266):
-            prev_phaseadjust = self.phase_adjust_median
-
-            if prev_phaseadjust == 0 and self.prevfield:
-                prev_phaseadjust = self.prevfield.phase_adjust_median
-
-            rising, phase_adjust = self.compute_line_bursts(linelocs, l, prev_phaseadjust)
-            if rising is None:
-                continue
-
-            # For adjustments, 1/2 the phase_adjust value is used for better results
-            # (todo: recheck)
-            adjs[l] = phase_adjust / 2
-
-            even_line = not (l % 2)
-            rising_sum += 1 if (even_line and rising) else 0
+        for l in range(266):
+            if not np.isnan(adjs_arr[l]):
+                adjs[l] = adjs_arr[l]
 
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
-        field14 = rising_sum > (len(adjs.keys()) // 4)
+        field14 = rising_sum > (len(adjs) // 4)
 
         # store the full phase adjustment value here so things line up next time
-        self.phase_adjust_median = np.median([adjs[a] for a in adjs]) * 2
+        if len(adjs):
+            self.phase_adjust_median = np.median([adjs[a] for a in adjs]) * 2
 
         return field14, adjs
 
@@ -3255,41 +3233,30 @@ class FieldNTSC(Field):
         if linelocs is None:
             linelocs = self.linelocs2
 
-        linelocs_adj = linelocs.copy()
+        prev_phaseadjust = self.phase_adjust_median
+        if prev_phaseadjust == 0 and self.prevfield:
+            prev_phaseadjust = self.prevfield.phase_adjust_median
 
-        field14, adjs_new = self.compute_burst_offsets(linelocs_adj)
+        linelocs_arr = np.asarray(linelocs, dtype=np.float64)
 
-        adjs = {}
+        linelocs_adj, field14, phase_adjust_median = refine_linelocs_burst_nb(
+            self.data["video"]["demod_burst"],
+            self.data["video"]["demod"],
+            linelocs_arr,
+            self.linebad,
+            self.lineoffset,
+            self.linecount,
+            self.rf.samplesperline,
+            self.rf.linelen,
+            self.rf.SysParams["fsc_mhz"],
+            30 * self.rf.DecoderParams["hz_ire"],
+            prev_phaseadjust,
+            266,
+        )
 
-        for l in range(1, 266):
-            if l not in adjs_new:
-                self.linebad[l] = True
+        self.phase_adjust_median = phase_adjust_median
 
-        # compute the adjustments for each line but *do not* apply, so outliers can be bypassed
-        for l in range(0, 266):
-            if not (np.isnan(linelocs_adj[l]) or self.linebad[l]):
-                lfreq = self.get_linefreq(l, linelocs)
-
-                try:
-                    adjs[l] = adjs_new[l] * lfreq * (1 / self.rf.SysParams["fsc_mhz"])
-                except Exception:
-                    # Not sure if this is an error or just control flow.
-                    # print("Something went wrong when trying to compute line length adjustments...", file=sys.stderr)
-                    # traceback.print_exc()
-                    pass
-
-        if len(adjs.keys()):
-            adjs_median = np.median([adjs[a] for a in adjs])
-            lastvalid_adj = adjs_median
-
-            for l in range(0, 266):
-                if l in adjs and inrange(adjs[l] - adjs_median, -2, 2):
-                    linelocs_adj[l] += adjs[l]
-                    lastvalid_adj = adjs[l]
-                else:
-                    linelocs_adj[l] += lastvalid_adj
-
-            # This map is based on (first field, field14)
+        if phase_adjust_median != 0.0:
             map4 = {
                 (True, True): 1,
                 (False, False): 2,
@@ -3314,9 +3281,23 @@ class FieldNTSC(Field):
         return dsout, dsaudio, dsefm
 
     def calc_burstmedian(self):
-        burstlevel = [self.get_burstlevel(l) for l in range(11, 264)]
-
-        return np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]
+        linelocs_arr = np.asarray(self.linelocs, dtype=np.float64)
+        median = calc_burstmedian_nb(
+            self.data["video"]["demod"],
+            linelocs_arr,
+            self.lineoffset,
+            self.linecount,
+            self.rf.samplesperline,
+            self.rf.linelen,
+            5.5,   # begin_usec for burst area
+            2.4,   # length_usec for burst area
+            11,    # line_start
+            264,   # line_end
+            0.0,   # burst_threshold (no filtering for NTSC)
+        )
+        if median == 0.0:
+            return 0.0
+        return median / self.rf.DecoderParams["hz_ire"]
 
     def apply_offsets(self, linelocs, phaseoffset, picoffset=0):
         # logger.info(phaseoffset, (phaseoffset * (self.rf.freq / (4 * 315 / 88))))
