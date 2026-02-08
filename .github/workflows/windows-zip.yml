@@ -1,0 +1,128 @@
+name: Build Windows Package
+
+on:
+  workflow_call:
+
+jobs:
+  build-windows-package:
+    name: Build Windows Package
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0  # Fetch full history for version info
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy scipy matplotlib numba av
+
+      - name: Prepare installation files
+        shell: pwsh
+        run: |
+          # Copy lddecode module
+          New-Item -ItemType Directory -Force -Path build\package\lddecode
+          Copy-Item -Path lddecode\* -Destination build\package\lddecode -Recurse -Force
+          
+          # Copy the full Python runtime (includes installed dependencies)
+          $pythonRoot = $env:pythonLocation
+          if ([string]::IsNullOrEmpty($pythonRoot)) { throw "pythonLocation not set" }
+          Copy-Item -Path $pythonRoot -Destination build\package\python -Recurse -Force
+          
+          # Generate version info
+          python scripts\generate_version.py | Out-File -FilePath build\package\lddecode\version -Encoding utf8
+          $version = Get-Content build\package\lddecode\version -ErrorAction SilentlyContinue
+          if ([string]::IsNullOrEmpty($version)) { $version = "dev" }
+          $safeVersion = $version -replace ':', '-'
+          echo "VERSION=$safeVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          
+          # Create wrapper batch scripts
+          New-Item -ItemType Directory -Force -Path build\package\bin
+          
+          @"
+          @echo off
+          set SCRIPT_DIR=%~dp0
+          set PYTHONHOME=%SCRIPT_DIR%..\python
+          set PYTHONPATH=%SCRIPT_DIR%..
+          "%PYTHONHOME%\python.exe" "%SCRIPT_DIR%..\lddecode\main.py" %*
+          "@ | Out-File -FilePath build\package\bin\ld-decode.bat -Encoding ascii
+          
+          @"
+          @echo off
+          set SCRIPT_DIR=%~dp0
+          set PYTHONHOME=%SCRIPT_DIR%..\python
+          set PYTHONPATH=%SCRIPT_DIR%..
+          "%PYTHONHOME%\python.exe" -c "from lddecode import ldf_reader; ldf_reader.main()" %*
+          "@ | Out-File -FilePath build\package\bin\ld-ldf-reader-py.bat -Encoding ascii
+
+      - name: Create README for package
+        shell: pwsh
+        run: |
+          @"
+          LD-Decode for Windows
+          =====================
+          
+          This is a portable distribution of LD-Decode. No installation required.
+          
+          Usage:
+          ------
+          1. Extract this archive to any location on your system
+          2. Open a command prompt or PowerShell window
+          3. Navigate to the bin directory
+          4. Run the tools:
+             - ld-decode.bat [options] input.lds output.tbc
+             - ld-ldf-reader-py.bat [options] input.ldf
+          
+          Alternatively, add the bin directory to your PATH environment variable
+          to run the tools from anywhere.
+          
+          Version: $($env:VERSION)
+          "@ | Out-File -FilePath build\package\README.txt -Encoding UTF8
+
+      - name: Create ZIP package
+        shell: pwsh
+        run: |
+          $version = $env:VERSION
+          if ([string]::IsNullOrEmpty($version)) { $version = "dev" }
+          
+          $zipName = "ld-decode-$version-windows.zip"
+          Write-Host "Creating ZIP package: $zipName"
+          
+          # Create the zip file
+          Compress-Archive -Path build\package\* `
+                           -DestinationPath "build\$zipName" `
+                           -CompressionLevel Optimal `
+                           -Force
+          
+          if (Test-Path "build\$zipName") {
+            $zipSize = (Get-Item "build\$zipName").Length
+            Write-Host "ZIP created successfully: $([math]::Round($zipSize/1MB, 2)) MB"
+          } else {
+            Write-Error "Failed to create ZIP package"
+            exit 1
+          }
+
+      - name: Upload ZIP as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ld-decode-windows-portable
+          path: |
+            build/ld-decode-*.zip
+          retention-days: 30
+
+      - name: Upload ZIP to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/ld-decode-*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

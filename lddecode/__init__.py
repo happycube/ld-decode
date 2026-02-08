@@ -1,20 +1,19 @@
 #!/usr/bin/python3
 # Initialisation for the lddecode package.
 
-from importlib import resources as _resources
+import os
 
+# Read PEP-440 compliant version from version file
+# Format: base_version[+local.identifiers]
+# Examples: 7.2.0, 7.2.0+git.abc123, 7.2.0+branch.main.abc123.dirty
 try:
-    _version_path = _resources.files(__package__) / "version"
-    __version__ = _version_path.read_text().strip()
-except (AttributeError, FileNotFoundError):
-    # Python <3.9 lacks resources.files or version file doesn't exist
-    try:
-        __version__ = _resources.read_text(__package__, "version").strip()
-    except FileNotFoundError:
-        # Version file not present (packaged builds); will be read from pyproject.toml by utils module
+    _version_file = os.path.join(os.path.dirname(__file__), "version")
+    if os.path.exists(_version_file):
+        with open(_version_file, 'r') as f:
+            __version__ = f.read().strip()
+    else:
         __version__ = "unknown"
 except Exception:
-    # Ensure attribute exists even if the version file cannot be read
     __version__ = "unknown"
 
 __all__ = [

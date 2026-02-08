@@ -1,0 +1,53 @@
+name: Build and Test
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  release:
+    types: [created, published]
+
+jobs:
+  functional-tests:
+    name: Functional Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
+
+      - name: Run functional tests (Nix)
+        timeout-minutes: 60
+        run: |
+          nix develop .#default -c bash -lc '
+            mkdir -p build/testout
+            cd build
+            cmake -DCMAKE_BUILD_TYPE=Release ..
+            ctest --output-on-failure -V
+          '
+
+  build-appimage:
+    name: Build Linux AppImage
+    needs: functional-tests
+    permissions:
+      contents: write
+    uses: ./.github/workflows/appimage.yml
+
+  build-macos-dmg:
+    name: Build macOS DMG
+    needs: functional-tests
+    permissions:
+      contents: write
+    uses: ./.github/workflows/macos-dmg.yml
+
+  build-windows-zip:
+    name: Build Windows ZIP
+    needs: functional-tests
+    permissions:
+      contents: write
+    uses: ./.github/workflows/windows-zip.yml
