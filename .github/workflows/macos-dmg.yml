@@ -1,0 +1,229 @@
+name: Build macOS DMG
+
+on:
+  workflow_call:
+
+jobs:
+  build-macos-dmg:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0  # Fetch full history for version info
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies and build standalone app
+        run: |
+          # Install build dependencies
+          pip install --upgrade pip setuptools wheel
+          pip install pyinstaller numpy scipy matplotlib av numba
+          
+          # Install the package in development mode
+          pip install -e .
+          
+          # Get version
+          VERSION=$(python3 -c "from lddecode import __version__; print(__version__)")
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "Built version: ${VERSION}"
+          
+          # Create app structure
+          APP_NAME="LD-Decode.app"
+          APP_DIR="build/${APP_NAME}"
+          mkdir -p "${APP_DIR}/Contents/MacOS"
+          mkdir -p "${APP_DIR}/Contents/Resources"
+          
+          # Create entry point scripts for PyInstaller
+          mkdir -p /tmp/ld-decode-entrypoints
+          
+          cat > /tmp/ld-decode-entrypoints/ld-decode-entry.py << 'PYEOF'
+          import sys
+          from lddecode.main import main
+          if __name__ == "__main__":
+              sys.exit(main())
+          PYEOF
+          
+          cat > /tmp/ld-decode-entrypoints/ld-ldf-reader-py-entry.py << 'PYEOF'
+          import sys
+          from lddecode.ldf_reader import main
+          if __name__ == "__main__":
+              sys.exit(main())
+          PYEOF
+          
+          # Build standalone executables with PyInstaller (onefile binaries placed directly in Contents/MacOS)
+          pyinstaller --onefile \
+            --windowed \
+            --hidden-import lddecode \
+            --hidden-import sqlite3 \
+            --collect-all lddecode \
+            --collect-all matplotlib \
+            --collect-all numba \
+            --collect-all scipy \
+            --collect-all av \
+            --name ld-decode \
+            --distpath "${APP_DIR}/Contents/MacOS" \
+            /tmp/ld-decode-entrypoints/ld-decode-entry.py
+          
+          pyinstaller --onefile \
+            --windowed \
+            --hidden-import lddecode \
+            --hidden-import sqlite3 \
+            --collect-all lddecode \
+            --collect-all matplotlib \
+            --collect-all numba \
+            --collect-all scipy \
+            --collect-all av \
+            --name ld-ldf-reader-py \
+            --distpath "${APP_DIR}/Contents/MacOS" \
+            /tmp/ld-decode-entrypoints/ld-ldf-reader-py-entry.py
+
+      - name: Create Info.plist
+        run: |
+          APP_DIR="build/LD-Decode.app"
+          # Create Info.plist
+          cat > "${APP_DIR}/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>LD-Decode</string>
+              <key>CFBundleDisplayName</key>
+              <string>LD-Decode</string>
+              <key>CFBundleIdentifier</key>
+              <string>org.ld-decode.ld-decode</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleExecutable</key>
+              <string>ld-decode</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+          
+          echo "✓ App bundle created successfully at ${APP_DIR}"
+
+      - name: Code sign app bundle
+        run: |
+          APP_DIR="build/LD-Decode.app"
+          
+          # Sign the app bundle with ad-hoc signature
+          # This prevents the "damaged" error and allows macOS to show proper security prompt
+          echo "Signing app bundle..."
+          codesign -s - --deep --force "${APP_DIR}"
+          
+          # Verify signature
+          codesign -vv "${APP_DIR}" 2>&1 || true
+          echo "✓ App bundle signed successfully"
+
+      - name: Test app bundle
+        run: |
+          APP_DIR="build/LD-Decode.app"
+          echo "Testing ld-decode..."
+          "${APP_DIR}/Contents/MacOS/ld-decode" --version
+          echo "✓ App bundle is functional"
+
+      - name: Create DMG
+        run: |
+          VERSION="${{ env.VERSION }}"
+          SAFE_VERSION=${VERSION//:/-}
+          
+          APP_NAME="LD-Decode.app"
+          APP_DIR="build/${APP_NAME}"
+          DMG_NAME="ld-decode-${SAFE_VERSION}-macOS.dmg"
+          TEMP_DMG="temp.dmg"
+          
+          # Create a temporary directory for DMG contents
+          DMG_DIR="build/dmg"
+          mkdir -p "${DMG_DIR}"
+          
+          # Copy the app bundle
+          cp -r "${APP_DIR}" "${DMG_DIR}/"
+          
+          # Create README for users
+          cat > "${DMG_DIR}/README.txt" << 'EOF'
+          LD-Decode for macOS
+          ===================
+          
+          Installation:
+          1. Drag LD-Decode.app to the Applications folder
+          
+          2. On first run, macOS may show a security warning because the app
+             is not notarized. Click "OK", then:
+             - Go to System Settings > Privacy & Security
+             - Scroll down and click "Open Anyway" next to the LD-Decode warning
+             - Click "Open" in the confirmation dialog
+          
+          3. (Optional) Add to PATH for command-line access:
+             echo 'export PATH="/Applications/LD-Decode.app/Contents/MacOS:$PATH"' >> ~/.zshrc
+             source ~/.zshrc
+          
+          Usage:
+          - Run from Terminal: ld-decode [arguments]
+          - Or: /Applications/LD-Decode.app/Contents/MacOS/ld-decode [arguments]
+          
+          All required dependencies are included in the app bundle.
+          EOF
+          
+          # Calculate DMG size (app size + 50MB padding)
+          APP_SIZE=$(du -sm "${DMG_DIR}" | cut -f1)
+          DMG_SIZE=$((APP_SIZE + 50))
+          
+          # Create DMG
+          hdiutil create -size ${DMG_SIZE}m -fs HFS+ -volname "LD-Decode" "${TEMP_DMG}"
+          
+          # Mount DMG
+          MOUNT_DIR=$(hdiutil attach -readwrite -noverify -noautoopen "${TEMP_DMG}" | grep Volumes | cut -f3)
+          
+          # Copy contents
+          cp -r "${DMG_DIR}/"* "${MOUNT_DIR}/"
+          
+          # Create a symlink to /Applications inside the mounted DMG
+          ln -s /Applications "${MOUNT_DIR}/Applications"
+          
+          # Unmount
+          sync
+          hdiutil detach "${MOUNT_DIR}"
+          
+          # Convert to compressed final DMG
+          hdiutil convert "${TEMP_DMG}" -format UDZO -o "${DMG_NAME}"
+          
+          # Clean up
+          rm "${TEMP_DMG}"
+          
+          # Move to build directory
+          mv "${DMG_NAME}" build/
+          
+          echo "DMG created: ${DMG_NAME}"
+          ls -lh "build/${DMG_NAME}"
+
+      - name: Upload DMG as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ld-decode-macos-dmg
+          path: |
+            build/ld-decode-*.dmg
+          retention-days: 30
+
+      - name: Upload DMG to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/ld-decode-*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

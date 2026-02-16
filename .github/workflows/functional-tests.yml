@@ -1,0 +1,26 @@
+name: Functional Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  functional-tests:
+    name: Functional Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
+
+      - name: Run functional tests (Nix)
+        timeout-minutes: 60
+        run: |
+          nix develop .#default -c bash -lc '
+            mkdir -p build/testout
+            cd build
+            cmake -DCMAKE_BUILD_TYPE=Release ..
+            ctest --output-on-failure -V
+          '

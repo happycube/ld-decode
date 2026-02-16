@@ -1,0 +1,198 @@
+name: Build AppImage
+
+on:
+  workflow_call:
+
+jobs:
+  build-appimage:
+    name: Build Linux AppImage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0  # Fetch full history for version info
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
+
+      - name: Build AppImage with Nix
+        run: |
+          LD_DECODE_PATH=$(nix build .#default --out-link result-lddecode --print-out-paths)
+          
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/lib/python3.12/site-packages
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          
+          # Copy Python interpreter
+          echo "Copying Python interpreter..."
+          PYTHON_PATH=$(nix build nixpkgs#python312 --out-link result-python --print-out-paths)
+          cp -r --no-preserve=mode,ownership $PYTHON_PATH/* AppDir/usr/
+          chmod -R u+rwX AppDir/usr
+          chmod +x AppDir/usr/bin/python3.12
+          
+          # Copy ld-decode package itself first
+          echo "Copying ld-decode package..."
+          if [ -d "$LD_DECODE_PATH/lib/python3.12/site-packages" ]; then
+            cp -rL --no-preserve=mode,ownership "$LD_DECODE_PATH/lib/python3.12/site-packages"/* AppDir/usr/lib/python3.12/site-packages/
+          fi
+          
+          # Copy all runtime dependencies (libraries and Python packages)
+          echo "Copying runtime dependencies..."
+          nix-store -qR "$LD_DECODE_PATH" | while read dep; do
+            # Copy shared libraries
+            if [ -d "$dep/lib" ]; then
+              cp -rL --no-preserve=mode,ownership "$dep/lib"/* AppDir/usr/lib/ 2>/dev/null || true
+            fi
+            # Copy Python packages from all dependencies
+            if [ -d "$dep/lib/python3.12/site-packages" ]; then
+              echo "  Copying Python packages from $dep"
+              cp -rL --no-preserve=mode,ownership "$dep/lib/python3.12/site-packages"/* AppDir/usr/lib/python3.12/site-packages/ 2>/dev/null || true
+            fi
+          done
+          
+          # Ensure version file is present in the lddecode package
+          VERSION_FILE="AppDir/usr/lib/python3.12/site-packages/lddecode/version"
+          mkdir -p "$(dirname "$VERSION_FILE")"
+          VERSION_VALUE=$(nix eval --raw .#packages.x86_64-linux.default.version)
+          echo "$VERSION_VALUE" > "$VERSION_FILE"
+          
+          # Create wrapper scripts for the Python tools
+          cat > AppDir/usr/bin/ld-decode << 'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PYTHONPATH="${HERE}/../lib/python3.12/site-packages:${PYTHONPATH}"
+          export PYTHONNOUSERSITE=1
+          exec "${HERE}/../bin/python3.12" -m lddecode.main "$@"
+          EOF
+          chmod +x AppDir/usr/bin/ld-decode
+          
+          cat > AppDir/usr/bin/ld-ldf-reader-py << 'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PYTHONPATH="${HERE}/../lib/python3.12/site-packages:${PYTHONPATH}"
+          export PYTHONNOUSERSITE=1
+          exec "${HERE}/../bin/python3.12" -m lddecode.ldf_reader "$@"
+          EOF
+          chmod +x AppDir/usr/bin/ld-ldf-reader-py
+          
+          # Create a desktop entry
+          cat > AppDir/usr/share/applications/ld-decode.desktop << EOF
+          [Desktop Entry]
+          Name=LD-Decode
+          Exec=ld-decode
+          Icon=ld-decode
+          Type=Application
+          Categories=AudioVideo;
+          Comment=Software defined LaserDisc decoder
+          EOF
+          
+          # Symlink desktop file to root (required by appimagetool)
+          ln -s usr/share/applications/ld-decode.desktop AppDir/ld-decode.desktop
+          
+          # Create a simple icon (you may want to add a real icon to the repo)
+          echo "Icon placeholder" > AppDir/usr/share/icons/hicolor/256x256/apps/ld-decode.png
+          
+          # Symlink icon to root (required by appimagetool)
+          ln -s usr/share/icons/hicolor/256x256/apps/ld-decode.png AppDir/ld-decode.png
+          
+          # Create AppRun
+          cat > AppDir/AppRun << 'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+          export PYTHONPATH="${HERE}/usr/lib/python3.12/site-packages:${PYTHONPATH}"
+          export PYTHONNOUSERSITE=1
+          
+          # If called as a specific binary name, run that; otherwise default to ld-decode
+          BINARY_NAME="$(basename "$0")"
+          if [ "$BINARY_NAME" = "AppRun" ] || [ "$BINARY_NAME" = "ld-decode-x86_64.AppImage" ] || [ "$BINARY_NAME" = "ld-decode" ]; then
+            exec "${HERE}/usr/bin/ld-decode" "$@"
+          else
+            exec "${HERE}/usr/bin/${BINARY_NAME}" "$@"
+          fi
+          EOF
+          chmod +x AppDir/AppRun
+          
+          # Verify all expected binaries are present
+          echo "Verifying binaries in AppDir:"
+          ls -la AppDir/usr/bin/
+          if [ ! -f "AppDir/usr/bin/ld-decode" ]; then
+            echo "ERROR: ld-decode binary not found!"
+            exit 1
+          fi
+          if [ ! -f "AppDir/usr/bin/ld-ldf-reader-py" ]; then
+            echo "ERROR: ld-ldf-reader-py binary not found!"
+            exit 1
+          fi
+          echo "✓ All required binaries present: ld-decode, ld-ldf-reader-py"
+          
+          # Download appimagetool
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          
+          # Extract appimagetool (GitHub Actions doesn't have FUSE)
+          ./appimagetool-x86_64.AppImage --appimage-extract
+          
+          # Build the AppImage using extracted appimagetool
+          # Unset SOURCE_DATE_EPOCH to avoid mksquashfs timestamp conflicts
+          env -u SOURCE_DATE_EPOCH ARCH=x86_64 ./squashfs-root/AppRun AppDir ld-decode-x86_64.AppImage
+          
+          # Make it executable
+          chmod +x ld-decode-x86_64.AppImage
+          
+          # Get version info
+          VERSION=$(cat lddecode/version 2>/dev/null || echo "dev")
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          
+          # Rename with version
+          mv ld-decode-x86_64.AppImage ld-decode-${VERSION}-x86_64.AppImage
+          
+          # Create a README for users
+          cat > AppImage-README.txt << 'EOF'
+          ld-decode AppImage Usage
+          =========================
+          
+          This AppImage contains all ld-decode tools:
+          - ld-decode
+          - ld-ldf-reader-py
+          
+          Usage:
+          
+          1. Run ld-decode (default):
+             ./ld-decode-*.AppImage [arguments]
+          
+          2. Access other tools by adding them to your PATH:
+             ./ld-decode-*.AppImage --appimage-extract
+             export PATH="$PWD/squashfs-root/usr/bin:$PATH"
+             ld-ldf-reader-py [arguments]
+          
+          Or create symlinks:
+             ln -s ld-decode-*.AppImage ld-ldf-reader-py
+             ./ld-ldf-reader-py [arguments]
+          EOF
+
+      - name: Upload AppImage as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ld-decode-appimage
+          path: |
+            ld-decode-*.AppImage
+            AppImage-README.txt
+          retention-days: 30
+
+      - name: Upload AppImage to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ld-decode-*.AppImage
+            AppImage-README.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

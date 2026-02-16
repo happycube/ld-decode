@@ -24,7 +24,7 @@ from scipy import interpolate
 # internal libraries
 
 from . import efm_pll
-from .utils import get_git_info, ac3_pipe, ldf_pipe, traceback
+from .utils import ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
@@ -3379,7 +3379,8 @@ class LDdecode:
         logger = self.logger
         self.demodcache = None
 
-        self.branch, self.commit = get_git_info()
+        from lddecode import __version__
+        self.version = __version__
         if fname_in == '-':
             self.infile = sys.stdin
         else:
@@ -4473,7 +4474,7 @@ class LDdecode:
                     startfield = 0
                     self.roughseek(startfield)
                 else:
-                    return None, startfield
+                    return None, startfield, None
             elif not f.valid:
                 self.fdoffset += offset
             else:
@@ -4550,8 +4551,27 @@ class LDdecode:
         if not f:
             return None
 
-        vp["gitBranch"] = self.branch
-        vp["gitCommit"] = self.commit
+        vp["version"] = self.version
+
+        git_branch = ""
+        git_commit = ""
+        if isinstance(self.version, str) and self.version:
+            if ":" in self.version:
+                parts = self.version.split(":")
+                if len(parts) >= 2:
+                    git_branch = parts[0]
+                    git_commit = parts[1]
+            elif "/" in self.version and self.version.count("/") == 1:
+                git_branch, git_commit = self.version.split("/", 1)
+            elif "+git." in self.version:
+                after = self.version.split("+git.", 1)[1]
+                git_commit = after.split(".", 1)[0]
+                git_branch = "release"
+
+        if git_branch:
+            vp["gitBranch"] = git_branch
+        if git_commit:
+            vp["gitCommit"] = git_commit
 
         vp["system"] = f.rf.system
 
@@ -4595,13 +4615,23 @@ class LDdecode:
 
         # Prepare Video Parameters data tuple
         video_values = (
-            vp["system"], decoder_val, vp["gitBranch"], vp["gitCommit"],
-            vp["sampleRate"], vp["activeVideoStart"], vp["activeVideoEnd"],
-            vp["fieldWidth"], vp["fieldHeight"], vp["numberOfSequentialFields"],
-            vp["colourBurstStart"], vp["colourBurstEnd"],
-            vp["white16bIre"], vp["black16bIre"], vp["blanking16bIre"],
+            vp["system"],
+            decoder_val,
+            vp.get("gitBranch", ""),
+            vp.get("gitCommit", ""),
+            vp["sampleRate"],
+            vp["activeVideoStart"],
+            vp["activeVideoEnd"],
+            vp["fieldWidth"],
+            vp["fieldHeight"],
+            vp["numberOfSequentialFields"],
+            vp["colourBurstStart"],
+            vp["colourBurstEnd"],
+            vp["white16bIre"],
+            vp["black16bIre"],
+            vp["blanking16bIre"],
             # is_mapped, is_subcarrier_locked, is_widescreen
-            0, vp['system']=='NTSC', 0,
+            0, vp["system"] == "NTSC", 0,
         )
         
 
