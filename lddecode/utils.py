@@ -482,10 +482,25 @@ class LoadLDF:
             traceback.print_exc()
             pass
 
+    @staticmethod
+    def _find_ldf_reader():
+        """Find ld-ldf-reader-py, checking the repo root as a fallback."""
+        import shutil
+
+        if shutil.which("ld-ldf-reader-py"):
+            return "ld-ldf-reader-py"
+
+        # Fall back to the script next to this package (i.e. the repo root)
+        repo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ld-ldf-reader-py")
+        if os.path.isfile(repo_path):
+            return repo_path
+
+        raise FileNotFoundError("Cannot find ld-ldf-reader-py on PATH or in the source tree")
+
     def _open(self, sample):
         self._close()
 
-        command = ["ld-ldf-reader-py", "--quiet", "--start-offset", str(sample), self.filename]
+        command = [self._find_ldf_reader(), "--quiet", "--start-offset", str(sample), self.filename]
 
         ldfreader = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
