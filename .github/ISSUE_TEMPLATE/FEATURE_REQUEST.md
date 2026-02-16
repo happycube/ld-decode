@@ -13,6 +13,12 @@ assignees: ''
   For example, "I'm always frustrated when..."
 -->
 
+### Is your proposal already in the issue tickets?
+
+<!--
+  Please check https://github.com/happycube/ld-decode & https://github.com/oyvindln/vhs-decode/issues"
+-->
+
 ### Is your proposal related to tbc-video-export?
 
 <!-- if so visit its repo here https://github.com/JuniorIsAJitterbug/tbc-video-export/issues."

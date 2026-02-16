@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ld-decode
+GenericName=LaserDisc Decoder
+Comment=Software defined LaserDisc decoder
+Exec=ld-decode
+Icon=com.github.happycube.LdDecode
+Terminal=true
+Categories=AudioVideo;Video;
+Keywords=LaserDisc;video;decoder;preservation;

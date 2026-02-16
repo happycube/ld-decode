@@ -1,0 +1,7 @@
+av==16.1.0
+matplotlib==3.8.2
+numba==0.60.0
+numpy==1.26.4
+scipy==1.11.4
+setuptools==70.0.0
+wheel==0.45.1
