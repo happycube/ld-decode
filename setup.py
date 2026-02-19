@@ -53,7 +53,7 @@ setup(
     # of including without making them modules.
     scripts=[
         "ld-cut",
-        "cx-expander",
+        "scripts/cx-expander",
         "decode.py",
     ],
     # scripts=[
