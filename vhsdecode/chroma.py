@@ -110,7 +110,71 @@ def comb_c_ntsc(data, line_len):
         ) / 4
     return data
 
+def get_upconverted_burst(
+    chroma,
+    phase,
+    linenumber,
+    lineoffset,
+    outwidth,
+    burstarea,
+    chroma_heterodyne,
+    chroma_filter,
+):
+    burst_start = (linenumber - lineoffset) * outwidth + burstarea[0]
+    burst_end = burst_start + burstarea[1]
 
+    heterodyne = chroma_heterodyne[phase][burst_start:burst_end]
+    burst = heterodyne * chroma[burst_start:burst_end]
+
+    # filter out noise so only the color burst is present
+    return sosfiltfilt_rust(chroma_filter, burst)
+
+def get_phase_rotation_sequence(
+    chroma,
+    rotation_check_start_line,
+    lineoffset,
+    linesout,
+    outwidth,
+    phase_rotation_offset,
+    chroma_rotation,
+    chroma_heterodyne,
+    starting_phase,
+    burstarea,
+    chroma_filter,
+):
+    # *****************************************************
+    # Gather the phase differences between each color burst
+    # Color burst alternates phase between lines in a field
+    # *****************************************************
+    phase = starting_phase
+    phase_correlation_threshold = 0.5
+    phase_rotations = []
+    phase_rotations.append(phase)
+
+    for linenumber in range(lineoffset, linesout + lineoffset - 1):
+        next_phase = (phase + phase_rotation_offset) % 4
+
+        if linenumber >= rotation_check_start_line:
+            current_burst = get_upconverted_burst(chroma, phase, linenumber, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
+            current_burst_norm = np.linalg.norm(current_burst)
+
+            next_burst = get_upconverted_burst(chroma, next_phase, linenumber + 1, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
+            next_burst_norm = np.linalg.norm(current_burst)
+
+            phase_correlation = np.dot(current_burst, next_burst) / (current_burst_norm * next_burst_norm)
+
+            if phase_correlation > phase_correlation_threshold:
+                # positive correlation -> in phase
+                # negative correlation -> out of phase
+                # burst is more in phase than out of phase, flip rotation so it remains out of phase
+                phase_rotation_offset = chroma_rotation[1] if phase_rotation_offset == chroma_rotation[0] else chroma_rotation[0]
+                next_phase = (phase + phase_rotation_offset) % 4
+
+        phase_rotations.append(next_phase)
+        phase = next_phase
+
+    return phase_rotations
+    
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
     chroma,
@@ -120,6 +184,7 @@ def upconvert_chroma(
     chroma_heterodyne,
     phase_rotation,
     starting_phase,
+    phase_rotation_sequence=None
 ):
     uphet = np.zeros(len(chroma), dtype=np.float32)
     if phase_rotation == 0:
@@ -137,9 +202,15 @@ def upconvert_chroma(
         #        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
         # Track 2 - needs phase rotation or the chroma will be inverted.
         phase = starting_phase
+        phase_index = 0
         for linenumber in range(lineoffset, linesout + lineoffset):
             linestart = (linenumber - lineoffset) * outwidth
             lineend = linestart + outwidth
+            
+            if phase_rotation_sequence is not None:
+                # override calculated phase rotation with the passed in rotation
+                phase = phase_rotation_sequence[phase_index]
+                phase_index += 1
 
             heterodyne = chroma_heterodyne[phase][linestart:lineend]
 
@@ -148,8 +219,8 @@ def upconvert_chroma(
             line = heterodyne * c
 
             uphet[linestart:lineend] = line
-
             phase = (phase + phase_rotation) % 4
+
     return uphet
 
 
@@ -204,6 +275,7 @@ def process_chroma(
     disable_tracking_cafc=False,
     chroma_rotation=None,
     do_chroma_deemphasis=False,
+    detect_chroma_track_phase=False,
 ):
     # Run TBC/downscale on chroma (if new field, else uses cache)
     # Cached if chroma process is run multiple times on one field due to track detection.
@@ -275,18 +347,40 @@ def process_chroma(
         else:
             phase_rotation = chroma_rotation[1]
 
+    chroma_heterodyne = (
+        field.rf.chroma_afc.getChromaHet()
+        if (field.rf.do_cafc and not disable_tracking_cafc)
+        else field.rf.chroma_heterodyne
+    )
+
+    starting_phase = 0 # should this persist on the field so phase order doesn't need to be re-detected?
+
+    if detect_chroma_track_phase and chroma_rotation is not None:
+        phase_rotation_sequence = get_phase_rotation_sequence(
+            chroma,
+            16, # TODO: start after the vbi (system dependent)
+            lineoffset,
+            linesout,
+            outwidth,
+            phase_rotation,
+            chroma_rotation,
+            chroma_heterodyne,
+            starting_phase, 
+            burstarea,
+            field.rf.Filters["FChromaFinal"],
+        )
+    else:
+        phase_rotation_sequence = None
+
     uphet = upconvert_chroma(
         chroma,
         lineoffset,
         linesout,
         outwidth,
-        (
-            field.rf.chroma_afc.getChromaHet()
-            if (field.rf.do_cafc and not disable_tracking_cafc)
-            else field.rf.chroma_heterodyne
-        ),
+        chroma_heterodyne,
         phase_rotation,
         starting_phase,
+        phase_rotation_sequence,
     )
 
     # Filter out unwanted frequencies from the final chroma signal.
@@ -373,7 +467,7 @@ def decode_chroma_simple(field):
     return chroma_to_u16(uphet)
 
 
-def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False):
+def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False, detect_chroma_track_phase=False):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
     field.chroma_tbc_buffer = None
@@ -408,6 +502,7 @@ def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False):
         disable_tracking_cafc=False,
         chroma_rotation=chroma_rotation,
         do_chroma_deemphasis=do_chroma_deemphasis,
+        detect_chroma_track_phase=detect_chroma_track_phase
     )
     field.uphet_temp = uphet
     # Release to avoid keeping this im memory - should do this in a cleaner manner.
