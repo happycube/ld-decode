@@ -172,7 +172,11 @@ class VHSDecode(ldd.LDdecode):
             self.field_order_action = "none"
         self.duplicate_prev_field = True
 
-        self.level_smoothing_lines = level_smoothing_lines if level_smoothing_lines is not None else self.rf.SysParams["frame_lines"] / 2
+        self.level_smoothing_lines = (
+            level_smoothing_lines
+            if level_smoothing_lines is not None
+            else self.rf.SysParams["frame_lines"] / 2
+        )
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -334,7 +338,7 @@ class VHSDecode(ldd.LDdecode):
     def checkMTF(self, field, pfield=None):
         return True
 
-    def writeout(self, dataset):
+    def writeout_b(self, dataset):
         f, fi, (picturey, picturec), audio, efm = dataset
 
         # Remove fields that are currently not used to cut down on space usage.
@@ -348,6 +352,103 @@ class VHSDecode(ldd.LDdecode):
         self.outfile_video.write(picturey)
         if self.rf.options.write_chroma:
             self.outfile_chroma.write(picturec)
+
+        self.fields_written += 1
+
+    def writeout(self, dataset):
+        f, fi, (picturey, picturec), audio, efm = dataset
+
+        # Remove fields that are currently not used to cut down on space usage.
+        # the qt tools will load them as 0 with the current code
+        # if they don't exist.
+        if "audioSamples" in fi:
+            del fi["audioSamples"]
+
+        self.fieldinfo.append(fi)
+
+        if not self.capture_id:
+            self.build_sqlite_metadata()
+
+        c_id = self.capture_id
+        f_id = fi["seqNo"] - 1
+
+        decodeFaults = None if fi.get("decodeFaults") == 0 else fi.get("decodeFaults")
+
+        # Insert parent record into 'field_record'
+        # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
+        self.dbconn.execute(
+            """
+            INSERT INTO field_record (
+                capture_id, field_id, is_first_field, sync_conf, disk_loc,
+                file_loc, field_phase_id, decode_faults,
+                pad
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                c_id,
+                f_id,
+                int(fi["isFirstField"]),
+                fi["syncConf"],
+                fi["diskLoc"],
+                fi["fileLoc"],
+                fi["fieldPhaseID"],
+                decodeFaults,
+                0,
+            ),
+        )
+
+        w_snr = fi["vitsMetrics"].get("wSNR", 0)
+        b_psnr = fi["vitsMetrics"].get("bPSNR", 0)
+
+        self.dbconn.execute(
+            """
+            INSERT INTO vits_metrics (
+                capture_id, field_id, w_snr, b_psnr
+            ) VALUES (?, ?, ?, ?)""",
+            (c_id, f_id, w_snr, b_psnr),
+        )
+
+        # Insert VBI data if present
+        vbi_data = fi.get("vbi", {}).get("vbiData", [])
+        if vbi_data:
+            # Ensure we have exactly 3 values for the vbi0, vbi1, vbi2 columns
+            # This pads with 0 if fewer than 3 are found
+            vbi_row = (vbi_data + [0, 0, 0])[:3]
+
+            self.dbconn.execute(
+                """
+                INSERT INTO vbi (
+                    capture_id, field_id, vbi0, vbi1, vbi2
+                ) VALUES (?, ?, ?, ?, ?)""",
+                (c_id, f_id, vbi_row[0], vbi_row[1], vbi_row[2]),
+            )
+
+        # Insert dropouts (if any) into 'drop_outs'
+        if self.doDOD and fi.get("dropOuts"):
+            dropout_lines = fi["dropOuts"]["fieldLine"]
+            dropout_starts = fi["dropOuts"]["startx"]
+            dropout_ends = fi["dropOuts"]["endx"]
+
+            # Use executemany for cleaner/faster insertion of multiple rows
+            dropout_data = [
+                (c_id, f_id, line, start, end)
+                for line, start, end in zip(dropout_lines, dropout_starts, dropout_ends)
+            ]
+
+            self.dbconn.executemany(
+                """
+                INSERT INTO drop_outs (
+                    capture_id, field_id, field_line, startx, endx
+                ) VALUES (?, ?, ?, ?, ?)""",
+                dropout_data,
+            )
+
+        self.build_sqlite_metadata()
+        self.dbconn.commit()
+
+        self.outfile_video.write(picturey)
+        if self.rf.options.write_chroma:
+            self.outfile_chroma.write(picturec)
+
         self.fields_written += 1
 
     def close(self):
