@@ -120,14 +120,17 @@ def get_upconverted_burst(
     chroma_heterodyne,
     chroma_filter,
 ):
-    burst_start = (linenumber - lineoffset) * outwidth + burstarea[0]
-    burst_end = burst_start + burstarea[1]
+    burst_padding = burstarea[1] - burstarea[0] # pad the area being filtered
+    burst_start = max(0, (linenumber - lineoffset) * outwidth + burstarea[0] - burst_padding)
+    burst_end = min(len(chroma), burst_start + burstarea[1] + burst_padding)
 
-    heterodyne = chroma_heterodyne[phase][burst_start:burst_end]
-    burst = heterodyne * chroma[burst_start:burst_end]
+    burst = chroma_heterodyne[phase][burst_start:burst_end] * chroma[burst_start:burst_end]
 
     # filter out noise so only the color burst is present
-    return sosfiltfilt_rust(chroma_filter, burst)
+    filtered = sosfiltfilt_rust(chroma_filter, burst)
+    burst_without_padding = filtered[burst_padding:-burst_padding]
+
+    return burst_without_padding, burst_start + burst_padding, burst_end - burst_padding
 
 def get_phase_rotation_sequence(
     chroma,
@@ -135,10 +138,14 @@ def get_phase_rotation_sequence(
     lineoffset,
     linesout,
     outwidth,
-    phase_rotation_offset,
+    phase_rotation,
+    is_first_field,
+    color_system,
+    burst_sine,
+    burst_cosine,
+    detect_chroma_track_phase,
     chroma_rotation,
     chroma_heterodyne,
-    starting_phase,
     burstarea,
     chroma_filter,
 ):
@@ -146,47 +153,77 @@ def get_phase_rotation_sequence(
     # Gather the phase differences between each color burst
     # Color burst alternates phase between lines in a field
     # *****************************************************    
-    phase_rotation_1 = phase_rotation_offset
-    phase_rotation_2 = chroma_rotation[1] if phase_rotation_offset == chroma_rotation[0] else chroma_rotation[0]
-
-    phase_correlation_threshold = 0.5
+    track_change_threshold = 0.5
     phase_rotations = []
+    bursts = []
+    burst_check_skip_lines = 16
+    do_phase_rotation_check = detect_chroma_track_phase and chroma_rotation is not None and chroma_heterodyne is not None
 
     # rewind to the previous phase (line -1)
-    current_phase = starting_phase
+    current_phase = 0
     for _ in range(3):
-        current_phase = (current_phase + phase_rotation_1) % 4
+        current_phase = (current_phase + phase_rotation) % 4
     
     end = linesout + lineoffset
 
     for linenumber in range(lineoffset, end):
-        current_phase_with_rotation = (current_phase + phase_rotation_2) % 4
-        current_phase = (current_phase + phase_rotation_1) % 4
-        rotate = False
+        current_phase = (current_phase + phase_rotation) % 4
+        current_burst, current_burst_start, current_burst_end = get_upconverted_burst(chroma, current_phase, linenumber, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
+        current_burst_norm = np.linalg.norm(current_burst)
 
-        if linenumber >= rotation_check_start_line and linenumber < end - 1:
-            current_burst = get_upconverted_burst(chroma, current_phase, linenumber, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
-            current_burst_norm = np.linalg.norm(current_burst)
+        if (
+            burst_check_skip_lines < linenumber and
+            burst_check_skip_lines < end - linenumber
+        ):
+            bursts.append((current_burst, current_burst_start, current_burst_end))
 
+        if (
+            do_phase_rotation_check and
+            linenumber >= rotation_check_start_line and
+            linenumber < end - 1
+        ):
             # get the next burst using the phase rotation for the current track
-            next_phase = (current_phase + phase_rotation_1) % 4
-            next_burst = get_upconverted_burst(chroma, next_phase, linenumber + 1, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
+            next_phase = (current_phase + phase_rotation) % 4
+            next_burst, _, _ = get_upconverted_burst(chroma, next_phase, linenumber + 1, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
             next_burst_norm = np.linalg.norm(next_burst)
 
             phase_correlation = np.dot(current_burst, next_burst) / (current_burst_norm * next_burst_norm)
 
-            if phase_correlation > phase_correlation_threshold:
+            if phase_correlation > track_change_threshold:
                 # positive correlation -> in phase
                 # negative correlation -> out of phase
                 # burst is more in phase than out of phase, flip rotation so it remains out of phase
-                old_rotation_1 = phase_rotation_1
-                phase_rotation_1 = phase_rotation_2
-                phase_rotation_2 = old_rotation_1
-                rotate = True
+                phase_rotation = chroma_rotation[1] if phase_rotation == chroma_rotation[0] else chroma_rotation[0]
 
-        phase_rotations.append((current_phase, current_phase_with_rotation, rotate))
+        phase_rotations.append(current_phase)
 
-    return phase_rotations
+    # detect NTSC starting phase
+    if color_system == "NTSC":
+        # detect phase quadrant of color bursts
+        quadrant = detect_ntsc_color_burst_phase(bursts, burst_sine, burst_cosine)
+
+        # TODO: mathematical way to do this?
+        field_phase_id, ntsc_phase_rotation = {
+            # field 1
+            (True,  3): (1, 3), # if isFirstField == True  and quadrant == 3: field_phase_id = 1; ntsc_phase_rotation = 3
+            (False, 2): (4, 2), # if isFirstField == False and quadrant == 2: field_phase_id = 4; ntsc_phase_rotation = 2
+            # field 2
+            (True,  2): (3, 0), # if isFirstField == True  and quadrant == 2: field_phase_id = 3; ntsc_phase_rotation = 0
+            (False, 3): (2, 1), # if isFirstField == False and quadrant == 3: field_phase_id = 2; ntsc_phase_rotation = 1
+            # field 3
+            (True,  1): (1, 1), # if isFirstField == True  and quadrant == 1: field_phase_id = 1; ntsc_phase_rotation = 1
+            (False, 0): (4, 0), # if isFirstField == False and quadrant == 0: field_phase_id = 4; ntsc_phase_rotation = 0
+            # field 4
+            (True,  0): (3, 2), # if isFirstField == True  and quadrant == 0: field_phase_id = 3; ntsc_phase_rotation = 2
+            (False, 1): (2, 3), # if isFirstField == False and quadrant == 1: field_phase_id = 2; ntsc_phase_rotation = 3
+        }[is_first_field, quadrant]
+
+        # fix the starting phase
+        if ntsc_phase_rotation != 0:
+            for i in range(0, len(phase_rotations)):
+                phase_rotations[i] = (phase_rotations[i] + ntsc_phase_rotation) % 4
+
+    return phase_rotations, field_phase_id
     
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
@@ -196,8 +233,7 @@ def upconvert_chroma(
     outwidth,
     chroma_heterodyne,
     phase_rotation,
-    starting_phase,
-    phase_rotation_sequence=None
+    phase_rotation_sequence
 ):
     uphet = np.zeros(len(chroma), dtype=np.float32)
     if phase_rotation == 0:
@@ -214,7 +250,6 @@ def upconvert_chroma(
     else:
         #        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
         # Track 2 - needs phase rotation or the chroma will be inverted.
-        current_phase = int(starting_phase)
         phase_index = 0
 
         for linenumber in range(lineoffset, linesout + lineoffset):
@@ -222,14 +257,11 @@ def upconvert_chroma(
             lineend = linestart + outwidth
             c = chroma[linestart:lineend]
 
-            if phase_rotation_sequence is not None:
-                # override calculated phase rotation with the passed in rotation
-                current_phase, _, _ = phase_rotation_sequence[phase_index]
-                phase_index += 1
+            current_phase = phase_rotation_sequence[phase_index]
+            phase_index += 1
 
             heterodyne = chroma_heterodyne[current_phase][linestart:lineend]
             uphet[linestart:lineend] = c * heterodyne
-            current_phase = (current_phase + phase_rotation) % 4
 
     return uphet
 
@@ -336,9 +368,6 @@ def process_chroma(
     if field.rf.color_system == "NTSC" and not disable_deemph:
         chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
 
-    # What phase we start on. (Needed for NTSC to get the color phase correct)
-    ntsc_starting_phase = field.field_number % 2 # should this persist on the field so phase order doesn't need to be re-detected?
-
     # Rotation per track
     # VHS PAL: Track1 0, Track2 -90
     # VHS NTSC: Track1 +90, Track2 -90
@@ -349,8 +378,7 @@ def process_chroma(
 
     if track_phase is not None:
         if chroma_rotation:
-            # if field.rf.field_number % 2 == track_phase:
-            if field.field_number % 2 == track_phase:
+            if field.isFirstField:
                 phase_rotation = chroma_rotation[0]
             else:
                 phase_rotation = chroma_rotation[1]
@@ -367,23 +395,26 @@ def process_chroma(
         else field.rf.chroma_heterodyne
     )
 
+    phase_rotation_sequence, field_phase_id = get_phase_rotation_sequence(
+        chroma,
+        lineoffset + linesout - 16, # check for track phase rotation around the headswitching area (bottom of field)
+        lineoffset,
+        linesout,
+        outwidth,
+        phase_rotation,
+        field.isFirstField,
+        field.rf.color_system,
+        field.rf.fsc_wave,
+        field.rf.fsc_cos_wave,
+        detect_chroma_track_phase,
+        chroma_rotation,
+        chroma_heterodyne,
+        burstarea,
+        field.rf.Filters["FChromaFinal"],
+    )
 
-    if detect_chroma_track_phase and chroma_rotation is not None:
-        phase_rotation_sequence = get_phase_rotation_sequence(
-            chroma,
-            16, # check for track phase rotation around the headswitching area (bottom of field)
-            lineoffset,
-            linesout,
-            outwidth,
-            phase_rotation,
-            chroma_rotation,
-            chroma_heterodyne,
-            ntsc_starting_phase, 
-            burstarea,
-            field.rf.Filters["FChromaFinal"],
-        )
-    else:
-        phase_rotation_sequence = None
+    if field.rf.color_system == "NTSC":
+        field.fieldPhaseID = field_phase_id
 
     uphet = upconvert_chroma(
         chroma,
@@ -392,7 +423,6 @@ def process_chroma(
         outwidth,
         chroma_heterodyne,
         phase_rotation,
-        ntsc_starting_phase,
         phase_rotation_sequence,
     )
 
@@ -676,98 +706,37 @@ def detect_burst_pal_line(
 
     return LineInfo(line_number, line_bp, line_bq, line_vsw, line_burst_norm)
 
-
-@njit(cache=True, nogil=True)
-def detect_burst_ntsc(
-    chroma_data, sine_wave, cosine_wave, burst_area, line_length, lines
+@njit(fastmath=True, cache=True, nogil=True)
+def detect_ntsc_color_burst_phase(
+    bursts, sine_wave, cosine_wave
 ):
-    """Check the phase of the color burst."""
-
+    """ Detects the phase rotation quadrant using the color burst phase"""
     # Ignore the first and last 16 lines of the field.
     # first ones contain sync and often doesn't have color burst,
     # while the last lines of the field will contain the head switch and may be distorted.
-    IGNORED_LINES = 16
-    odd_i_acc = 0
-    even_i_acc = 0
+    I_total = 0
+    Q_total = 0
 
-    for linenumber in range(IGNORED_LINES, lines - IGNORED_LINES):
-        bi, _, _ = detect_burst_ntsc_line(
-            chroma_data, sine_wave, cosine_wave, burst_area, line_length, linenumber
-        )
-        #        line_data.append((bi, bq, linenumber))
-        if linenumber % 2 == 0:
-            even_i_acc += bi
-        else:
-            odd_i_acc += bi
+    for burst, burst_start, burst_end in bursts:
+        I = 0
+        Q = 0
 
-    num_lines = lines - (IGNORED_LINES * 2)
+        for i in range(burst_end - burst_start):
+            I += burst[i] * cosine_wave[i + burst_start]
+            Q += burst[i] * sine_wave[i + burst_start]
 
-    return even_i_acc / num_lines, odd_i_acc / num_lines
+        magnitude = np.hypot(I, Q) + 1e-12
+        I_total += I / magnitude
+        Q_total += Q / magnitude
 
+    # Global field phase
+    avg_phase = np.arctan2(Q_total, I_total)
+    avg_phase_deg = np.degrees(avg_phase) % 360
 
-@njit(cache=True, nogil=True)
-def detect_burst_ntsc_line(
-    chroma_data, sine, cosine, burst_area, line_length, line_number
-):
-    bi = 0
-    bq = 0
-    # TODO:
-    sine = sine[burst_area[0] :]
-    cosine = cosine[burst_area[0] :]
-    line = get_line(chroma_data, line_length, line_number)
-    for i in range(burst_area[0], burst_area[1]):
-        bi += line[i] * sine[i]
-        bq += line[i] * cosine[i]
+    # Quantize to nearest 90 degrees
+    quadrant = int(np.round(avg_phase_deg / 90)) % 4
 
-    burst_length = burst_area[1] - burst_area[0]
-
-    bi /= burst_length
-    bq /= burst_length
-
-    burst_norm = max(math.sqrt(bi * bi + bq * bq), 130000.0 / 128)
-    bi /= burst_norm
-    bq /= burst_norm
-    return bi, bq, burst_norm
-
-
-def get_field_phase_id(field):
-    """Try to determine which of the 4 NTSC phase cycles the field is.
-    For tapes the result seem to not be cyclical at all, not sure if that's normal
-    or if something is off.
-    The most relevant thing is which lines the burst phase is positive or negative on.
-    TODO: Current code does not give the correct result!!!!
-    """
-    burst_area = get_burst_area(field)
-
-    sine_wave = field.rf.fsc_wave
-    cosine_wave = field.rf.fsc_cos_wave
-
-    # Try to detect the average burst phase of odd and even lines.
-    even, odd = detect_burst_ntsc(
-        field.uphet_temp,
-        sine_wave,
-        cosine_wave,
-        burst_area,
-        field.outlinelen,
-        field.outlinecount,
-    )
-
-    # This map is based on (first field, field14)
-    map4 = {
-        (True, True): 1,
-        (False, False): 2,
-        (True, False): 3,
-        (False, True): 4,
-    }
-
-    phase_id = (
-        map4[(field.isFirstField, even < odd)] if field.isFirstField is not None else 0
-    )
-
-    # ldd.logger.info("Field: %i, Odd I %f , Even I %f, phase id %i, field first %i",
-    #                field.rf.field_number, even, odd, phase_id, field.isFirstField)
-
-    return phase_id
+    return quadrant
 
 
 # Phase comprensation stuff - needs rework.
