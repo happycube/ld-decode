@@ -145,21 +145,33 @@ def get_phase_rotation_sequence(
     # *****************************************************
     # Gather the phase differences between each color burst
     # Color burst alternates phase between lines in a field
-    # *****************************************************
-    phase = starting_phase
+    # *****************************************************    
+    phase_rotation_1 = phase_rotation_offset
+    phase_rotation_2 = chroma_rotation[1] if phase_rotation_offset == chroma_rotation[0] else chroma_rotation[0]
+
     phase_correlation_threshold = 0.5
     phase_rotations = []
-    phase_rotations.append(phase)
 
-    for linenumber in range(lineoffset, linesout + lineoffset - 1):
-        next_phase = (phase + phase_rotation_offset) % 4
+    # rewind to the previous phase (line -1)
+    current_phase = starting_phase
+    for _ in range(3):
+        current_phase = (current_phase + phase_rotation_1) % 4
+    
+    end = linesout + lineoffset
 
-        if linenumber >= rotation_check_start_line:
-            current_burst = get_upconverted_burst(chroma, phase, linenumber, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
+    for linenumber in range(lineoffset, end):
+        current_phase_with_rotation = (current_phase + phase_rotation_2) % 4
+        current_phase = (current_phase + phase_rotation_1) % 4
+        rotate = False
+
+        if linenumber >= rotation_check_start_line and linenumber < end - 1:
+            current_burst = get_upconverted_burst(chroma, current_phase, linenumber, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
             current_burst_norm = np.linalg.norm(current_burst)
 
+            # get the next burst using the phase rotation for the current track
+            next_phase = (current_phase + phase_rotation_1) % 4
             next_burst = get_upconverted_burst(chroma, next_phase, linenumber + 1, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
-            next_burst_norm = np.linalg.norm(current_burst)
+            next_burst_norm = np.linalg.norm(next_burst)
 
             phase_correlation = np.dot(current_burst, next_burst) / (current_burst_norm * next_burst_norm)
 
@@ -167,11 +179,12 @@ def get_phase_rotation_sequence(
                 # positive correlation -> in phase
                 # negative correlation -> out of phase
                 # burst is more in phase than out of phase, flip rotation so it remains out of phase
-                phase_rotation_offset = chroma_rotation[1] if phase_rotation_offset == chroma_rotation[0] else chroma_rotation[0]
-                next_phase = (phase + phase_rotation_offset) % 4
+                old_rotation_1 = phase_rotation_1
+                phase_rotation_1 = phase_rotation_2
+                phase_rotation_2 = old_rotation_1
+                rotate = True
 
-        phase_rotations.append(next_phase)
-        phase = next_phase
+        phase_rotations.append((current_phase, current_phase_with_rotation, rotate))
 
     return phase_rotations
     
@@ -201,25 +214,22 @@ def upconvert_chroma(
     else:
         #        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
         # Track 2 - needs phase rotation or the chroma will be inverted.
-        phase = starting_phase
+        current_phase = int(starting_phase)
         phase_index = 0
+
         for linenumber in range(lineoffset, linesout + lineoffset):
             linestart = (linenumber - lineoffset) * outwidth
             lineend = linestart + outwidth
-            
-            if phase_rotation_sequence is not None:
-                # override calculated phase rotation with the passed in rotation
-                phase = phase_rotation_sequence[phase_index]
-                phase_index += 1
-
-            heterodyne = chroma_heterodyne[phase][linestart:lineend]
-
             c = chroma[linestart:lineend]
 
-            line = heterodyne * c
+            if phase_rotation_sequence is not None:
+                # override calculated phase rotation with the passed in rotation
+                current_phase, _, _ = phase_rotation_sequence[phase_index]
+                phase_index += 1
 
-            uphet[linestart:lineend] = line
-            phase = (phase + phase_rotation) % 4
+            heterodyne = chroma_heterodyne[current_phase][linestart:lineend]
+            uphet[linestart:lineend] = c * heterodyne
+            current_phase = (current_phase + phase_rotation) % 4
 
     return uphet
 
@@ -326,11 +336,8 @@ def process_chroma(
     if field.rf.color_system == "NTSC" and not disable_deemph:
         chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
 
-    # Track 2 is rotated ccw in both NTSC and PAL for VHS
-    # u-matic has no phase rotation.
-    phase_rotation = -1 if track_phase is not None else 0
     # What phase we start on. (Needed for NTSC to get the color phase correct)
-    starting_phase = 0
+    ntsc_starting_phase = field.field_number % 2 # should this persist on the field so phase order doesn't need to be re-detected?
 
     # Rotation per track
     # VHS PAL: Track1 0, Track2 -90
@@ -340,12 +347,19 @@ def process_chroma(
     # Video8 NTSC: Track1 0, Track2 180
     # Video8 PAL: Track1 0, Track2 -90
 
-    if track_phase is not None and chroma_rotation:
-        # if field.rf.field_number % 2 == track_phase:
-        if field.field_number % 2 == track_phase:
-            phase_rotation = chroma_rotation[0]
+    if track_phase is not None:
+        if chroma_rotation:
+            # if field.rf.field_number % 2 == track_phase:
+            if field.field_number % 2 == track_phase:
+                phase_rotation = chroma_rotation[0]
+            else:
+                phase_rotation = chroma_rotation[1]
         else:
-            phase_rotation = chroma_rotation[1]
+            phase_rotation = track_phase
+    else:
+        # Track 2 is rotated ccw in both NTSC and PAL for VHS
+        # u-matic has no phase rotation.
+        phase_rotation = 0
 
     chroma_heterodyne = (
         field.rf.chroma_afc.getChromaHet()
@@ -353,19 +367,18 @@ def process_chroma(
         else field.rf.chroma_heterodyne
     )
 
-    starting_phase = 0 # should this persist on the field so phase order doesn't need to be re-detected?
 
     if detect_chroma_track_phase and chroma_rotation is not None:
         phase_rotation_sequence = get_phase_rotation_sequence(
             chroma,
-            16, # TODO: start after the vbi (system dependent)
+            16, # check for track phase rotation around the headswitching area (bottom of field)
             lineoffset,
             linesout,
             outwidth,
             phase_rotation,
             chroma_rotation,
             chroma_heterodyne,
-            starting_phase, 
+            ntsc_starting_phase, 
             burstarea,
             field.rf.Filters["FChromaFinal"],
         )
@@ -379,7 +392,7 @@ def process_chroma(
         outwidth,
         chroma_heterodyne,
         phase_rotation,
-        starting_phase,
+        ntsc_starting_phase,
         phase_rotation_sequence,
     )
 
