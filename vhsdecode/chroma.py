@@ -197,33 +197,35 @@ def get_phase_rotation_sequence(
 
         phase_rotations.append(current_phase)
 
-    # detect NTSC starting phase
     if color_system == "NTSC":
-        # detect phase quadrant of color bursts
-        quadrant = detect_ntsc_color_burst_phase(bursts, burst_sine, burst_cosine)
+        # detect the correct starting phase using the expected phase quadrant of the color bursts
+        quadrant, burst_detected = detect_ntsc_color_burst_phase(bursts, burst_sine, burst_cosine)
 
         # TODO: mathematical way to do this?
         field_phase_id, ntsc_phase_rotation = {
             # field 1
-            (True,  3): (1, 3), # if isFirstField == True  and quadrant == 3: field_phase_id = 1; ntsc_phase_rotation = 3
-            (False, 2): (4, 2), # if isFirstField == False and quadrant == 2: field_phase_id = 4; ntsc_phase_rotation = 2
+            (True,  3): (1, 3),
+            (False, 2): (4, 2),
             # field 2
-            (True,  2): (3, 0), # if isFirstField == True  and quadrant == 2: field_phase_id = 3; ntsc_phase_rotation = 0
-            (False, 3): (2, 1), # if isFirstField == False and quadrant == 3: field_phase_id = 2; ntsc_phase_rotation = 1
+            (True,  2): (3, 0),
+            (False, 3): (2, 1),
             # field 3
-            (True,  1): (1, 1), # if isFirstField == True  and quadrant == 1: field_phase_id = 1; ntsc_phase_rotation = 1
-            (False, 0): (4, 0), # if isFirstField == False and quadrant == 0: field_phase_id = 4; ntsc_phase_rotation = 0
+            (True,  1): (1, 1),
+            (False, 0): (4, 0),
             # field 4
-            (True,  0): (3, 2), # if isFirstField == True  and quadrant == 0: field_phase_id = 3; ntsc_phase_rotation = 2
-            (False, 1): (2, 3), # if isFirstField == False and quadrant == 1: field_phase_id = 2; ntsc_phase_rotation = 3
+            (True,  0): (3, 2),
+            (False, 1): (2, 3),
         }[is_first_field, quadrant]
 
-        # fix the starting phase
+        # adjust the starting phase
         if ntsc_phase_rotation != 0:
             for i in range(0, len(phase_rotations)):
                 phase_rotations[i] = (phase_rotations[i] + ntsc_phase_rotation) % 4
+    else:
+        field_phase_id = None
+        burst_detected = None
 
-    return phase_rotations, field_phase_id
+    return phase_rotations, field_phase_id, burst_detected
     
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
@@ -232,36 +234,21 @@ def upconvert_chroma(
     linesout,
     outwidth,
     chroma_heterodyne,
-    phase_rotation,
     phase_rotation_sequence
 ):
     uphet = np.zeros(len(chroma), dtype=np.float32)
-    if phase_rotation == 0:
-        # Track 1 - for PAL, phase doesn't change.
-        start = lineoffset
-        end = lineoffset + (outwidth * linesout)
-        heterodyne = chroma_heterodyne[0][start:end]
-        c = chroma[start:end]
-        # Mixing the chroma signal with a signal at the frequency of colour under + fsc gives us
-        # a signal with frequencies at the difference and sum, the difference is what we want as
-        # it's at the right frequency.
-        uphet[start:end] = heterodyne * c
+    phase_index = 0
 
-    else:
-        #        rotation = [(0,0),(90,-270),(180,-180),(270,-90)]
-        # Track 2 - needs phase rotation or the chroma will be inverted.
-        phase_index = 0
+    for linenumber in range(lineoffset, linesout + lineoffset):
+        current_phase = phase_rotation_sequence[phase_index]
+        phase_index += 1
 
-        for linenumber in range(lineoffset, linesout + lineoffset):
-            linestart = (linenumber - lineoffset) * outwidth
-            lineend = linestart + outwidth
-            c = chroma[linestart:lineend]
+        linestart = (linenumber - lineoffset) * outwidth
+        lineend = linestart + outwidth
 
-            current_phase = phase_rotation_sequence[phase_index]
-            phase_index += 1
-
-            heterodyne = chroma_heterodyne[current_phase][linestart:lineend]
-            uphet[linestart:lineend] = c * heterodyne
+        heterodyne = chroma_heterodyne[current_phase][linestart:lineend]
+        c = chroma[linestart:lineend]
+        uphet[linestart:lineend] = c * heterodyne
 
     return uphet
 
@@ -395,7 +382,7 @@ def process_chroma(
         else field.rf.chroma_heterodyne
     )
 
-    phase_rotation_sequence, field_phase_id = get_phase_rotation_sequence(
+    phase_rotation_sequence, field_phase_id, burst_detected = get_phase_rotation_sequence(
         chroma,
         lineoffset + linesout - 16, # check for track phase rotation around the headswitching area (bottom of field)
         lineoffset,
@@ -415,6 +402,9 @@ def process_chroma(
 
     if field.rf.color_system == "NTSC":
         field.fieldPhaseID = field_phase_id
+        # TODO: possibly use this to enable a color killer
+        # if not burst_detected:
+        #     ldd.logger.info("Color burst was not detected.")
 
     uphet = upconvert_chroma(
         chroma,
@@ -422,7 +412,6 @@ def process_chroma(
         linesout,
         outwidth,
         chroma_heterodyne,
-        phase_rotation,
         phase_rotation_sequence,
     )
 
@@ -708,7 +697,10 @@ def detect_burst_pal_line(
 
 @njit(fastmath=True, cache=True, nogil=True)
 def detect_ntsc_color_burst_phase(
-    bursts, sine_wave, cosine_wave
+    bursts,
+    sine_wave,
+    cosine_wave,
+    coherence_threshold=0.3
 ):
     """ Detects the phase rotation quadrant using the color burst phase"""
     # Ignore the first and last 16 lines of the field.
@@ -725,9 +717,15 @@ def detect_ntsc_color_burst_phase(
             I += burst[i] * cosine_wave[i + burst_start]
             Q += burst[i] * sine_wave[i + burst_start]
 
-        magnitude = np.hypot(I, Q) + 1e-12
-        I_total += I / magnitude
-        Q_total += Q / magnitude
+        magnitude = np.hypot(I, Q)
+        if magnitude > 0:
+            I_total += I / magnitude
+            Q_total += Q / magnitude
+
+    # Check that burst phase is consistent
+    # If phase is not consistent, then likely there is no color burst present
+    coherence = np.hypot(I_total, Q_total) / len(bursts)
+    burst_detected = coherence >= coherence_threshold        
 
     # Global field phase
     avg_phase = np.arctan2(Q_total, I_total)
@@ -736,7 +734,7 @@ def detect_ntsc_color_burst_phase(
     # Quantize to nearest 90 degrees
     quadrant = int(np.round(avg_phase_deg / 90)) % 4
 
-    return quadrant
+    return quadrant, burst_detected
 
 
 # Phase comprensation stuff - needs rework.
