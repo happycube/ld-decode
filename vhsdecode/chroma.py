@@ -365,7 +365,7 @@ def process_chroma(
 
     if track_phase is not None:
         if chroma_rotation:
-            if field.isFirstField:
+            if field.field_number % 2 == track_phase:
                 phase_rotation = chroma_rotation[0]
             else:
                 phase_rotation = chroma_rotation[1]
