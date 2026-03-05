@@ -57,6 +57,11 @@ jobs:
           fi
 
           python3 -m pip install -r ./requirements.txt
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+            # Keep Intel on a numba version that resolves to prebuilt llvmlite wheels.
+            # This avoids llvmlite source builds failing under current setuptools internals.
+            python3 -m pip install "numba==0.62.1"
+          fi
           python3 -m pip install pyinstaller
           python3 -m pip install -e ".[hifi_gui_qt6,hifi_gnuradio]"
 
