@@ -6,13 +6,17 @@ on:
 jobs:
   build-decode:
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-13, macos-14]
+        os: [macos-latest, macos-15-intel]
         include:
-          - os: macos-13
-            arch: x86_64
-          - os: macos-14
+          - os: macos-latest
             arch: arm64
+            python: "3.12"
+          - os: macos-15-intel
+            arch: x86_64
+            # Use a Python version with reliable wheels for llvmlite/numba on Intel macOS
+            python: "3.11"
 
     name: Build vhs-decode (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
@@ -25,19 +29,39 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "${{ matrix.python }}"
+
+      - name: Upgrade pip tooling
+        run: python3 -m pip install --upgrade pip setuptools wheel
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: brew install create-dmg
+        run: brew install create-dmg libsndfile
+
+      - name: Install LLVM (Intel only)
+        if: matrix.arch == 'x86_64'
+        run: brew install llvm@20
 
       - name: Build Python module
+        shell: bash
         env:
           SETUPTOOLS_RUST_CARGO_PROFILE: release
         run: |
-          pip3 install ".[hifi_gui_qt6,hifi_gnuradio]" setuptools Cython pyinstaller -r ./requirements.txt
-          pip3 install -e .
+          set -euxo pipefail
+
+          # llvmlite may fall back to source builds on Intel macOS; ensure it can find Homebrew LLVM
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+            export LLVM_CONFIG="$(brew --prefix llvm@20)/bin/llvm-config"
+            export CMAKE_PREFIX_PATH="$(brew --prefix llvm@20)"
+            # Keep Intel on a numba/llvmlite pair with published x86_64 wheels.
+            # Installing this first avoids llvmlite source builds with setuptools API incompatibilities.
+            python3 -m pip install "numba==0.60.0"
+          fi
+
+          python3 -m pip install -r ./requirements.txt
+          python3 -m pip install pyinstaller
+          python3 -m pip install -e ".[hifi_gui_qt6,hifi_gnuradio]"
 
       - name: Build binary
         run: |
