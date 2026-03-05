@@ -54,14 +54,12 @@ jobs:
           if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
             export LLVM_CONFIG="$(brew --prefix llvm@20)/bin/llvm-config"
             export CMAKE_PREFIX_PATH="$(brew --prefix llvm@20)"
+            # Keep Intel on a numba/llvmlite pair with published x86_64 wheels.
+            # Installing this first avoids llvmlite source builds with setuptools API incompatibilities.
+            python3 -m pip install "numba==0.60.0"
           fi
 
           python3 -m pip install -r ./requirements.txt
-          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
-            # Keep Intel on a numba version that resolves to prebuilt llvmlite wheels.
-            # This avoids llvmlite source builds failing under current setuptools internals.
-            python3 -m pip install "numba==0.62.1"
-          fi
           python3 -m pip install pyinstaller
           python3 -m pip install -e ".[hifi_gui_qt6,hifi_gnuradio]"
 
