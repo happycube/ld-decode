@@ -727,7 +727,8 @@ class DecodeLauncherWindow(QWidget):
             if tool.prefer_native_gui and not self.force_terminal_check.isChecked():
                 if os.name == "nt":
                     if getattr(sys, "frozen", False):
-                        subprocess.Popen(command, cwd=str(working_directory))
+                        os.chdir(str(working_directory))
+                        os.execv(command[0], command)
                     else:
                         start_command = f'start "" {_shell_join_windows(command)}'
                         subprocess.Popen(
