@@ -134,8 +134,8 @@ def main(args=None, use_gui=False):
         help=(
             "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. "
             "\nWow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
-            "\nDefault is (video system lines / 2) i.e. NTSC=525/2, PAL=625/2, etc.",
-            "\nSet to `0` to disable smoothing (only recommended for low noise video)",
+            "\nDefault is (video system lines / 2) i.e. NTSC=525/2, PAL=625/2, etc."
+            "\nSet to `0` to disable smoothing (only recommended for low noise video)"
         )
     )
     luma_group.add_argument(
