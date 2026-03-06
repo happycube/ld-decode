@@ -9,24 +9,44 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (
-    QApplication,
-    QCheckBox,
-    QComboBox,
-    QFileDialog,
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
-    QPushButton,
-    QSpinBox,
-    QVBoxLayout,
-    QWidget,
-)
+try:
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import (
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QFileDialog,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QMessageBox,
+        QPushButton,
+        QSpinBox,
+        QVBoxLayout,
+        QWidget,
+    )
+    ALIGN_TOP = Qt.AlignmentFlag.AlignTop
+except ImportError:
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtWidgets import (
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QFileDialog,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QMessageBox,
+        QPushButton,
+        QSpinBox,
+        QVBoxLayout,
+        QWidget,
+    )
+    ALIGN_TOP = Qt.AlignTop
 
 
 @dataclass(frozen=True)
@@ -212,7 +232,7 @@ class DecodeLauncherWindow(QWidget):
 
     def _build_layout(self) -> None:
         root = QVBoxLayout()
-        root.setAlignment(Qt.AlignmentFlag.AlignTop)
+        root.setAlignment(ALIGN_TOP)
 
         launch_group = QGroupBox("")
         launch_layout = QGridLayout()
@@ -548,7 +568,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     app = QApplication(sys.argv)
     window = DecodeLauncherWindow()
     window.show()
-    return app.exec()
+    return app.exec() if hasattr(app, "exec") else app.exec_()
 
 
 if __name__ == "__main__":
