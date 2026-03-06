@@ -295,6 +295,16 @@ def _open_linux_terminal(shell_command: str) -> None:
 
 def _open_terminal(command_parts: list[str], working_directory: Path) -> None:
     if os.name == "nt":
+        if getattr(sys, "frozen", False):
+            # In bundled Windows builds, avoid cmd string parsing edge-cases by
+            # launching the process directly in a dedicated console.
+            creation_flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+            subprocess.Popen(
+                command_parts,
+                cwd=str(working_directory),
+                creationflags=creation_flags,
+            )
+            return
         command = _shell_join_windows(command_parts)
         cwd = str(working_directory).replace('"', '""')
         shell_command = (
@@ -716,8 +726,13 @@ class DecodeLauncherWindow(QWidget):
 
             if tool.prefer_native_gui and not self.force_terminal_check.isChecked():
                 if os.name == "nt":
-                    start_command = f'start "" {_shell_join_windows(command)}'
-                    subprocess.Popen(["cmd.exe", "/c", start_command], cwd=str(working_directory))
+                    if getattr(sys, "frozen", False):
+                        subprocess.Popen(command, cwd=str(working_directory))
+                    else:
+                        start_command = f'start "" {_shell_join_windows(command)}'
+                        subprocess.Popen(
+                            ["cmd.exe", "/c", start_command], cwd=str(working_directory)
+                        )
                 else:
                     subprocess.Popen(command, cwd=str(working_directory))
             else:
