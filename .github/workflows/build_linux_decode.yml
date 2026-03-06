@@ -35,7 +35,11 @@ jobs:
           cp resources/appimage/decode/vhs-decode.desktop _build_appimage/
           cp resources/appimage/decode/vhs-decode.appdata.xml _build_appimage/
 
-          echo "$(pwd)[hifi_gui_qt6,hifi_gnuradio]" > _build_appimage/requirements.txt
+          cat > _build_appimage/requirements.txt <<EOF
+          $(pwd)[hifi_gui_qt6,hifi_gnuradio]
+          PyQt6<6.10
+          PyQt6-Qt6<6.10
+          EOF
 
           python-appimage build app -p 3.12 _build_appimage
 
