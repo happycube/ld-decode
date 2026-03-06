@@ -474,7 +474,7 @@ class RFDecode:
         DP = self.DecoderParams
 
         # This high pass filter is intended to detect RF dropouts
-        Frfhpf = sps.butter(1, [10 / self.freq_half], btype="highpass")
+        Frfhpf = sps.butter(1, 10 / self.freq_half, btype="highpass")
         self.Filters["Frfhpf"] = filtfft(Frfhpf, self.blocklen)
 
         # First phase FFT filtering
