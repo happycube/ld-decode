@@ -4,7 +4,10 @@
 import sys
 import os
 
-from llvmlite.binding import load_library_permanently
+try:
+    from llvmlite.binding import load_library_permanently
+except Exception:
+    load_library_permanently = None
 
 # load intel intrinsics library for numba
 ON_LINUX = sys.platform.startswith("linux")
@@ -14,7 +17,7 @@ ON_WINDOWS = sys.platform.startswith("win")
 os_lib_dir = os.path.join(sys.prefix, *(["Library", "bin"] if ON_WINDOWS else ["lib"]))
 
 try:
-    if 32 << bool(sys.maxsize >> 32) == 64:
+    if load_library_permanently is not None and 32 << bool(sys.maxsize >> 32) == 64:
         _nb_svml_dir = os.environ.get("NB_SVML_LIBS_DIR") or os_lib_dir
         _nb_loader = lambda so: load_library_permanently(os.path.join(_nb_svml_dir, so))
 

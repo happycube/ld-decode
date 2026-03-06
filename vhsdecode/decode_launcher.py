@@ -7,6 +7,7 @@ import shutil
 import shlex
 import subprocess
 import sys
+import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -108,21 +109,119 @@ SYSTEM_OPTIONS_DECODE = [
     "NLINHA",
 ]
 SYSTEM_OPTIONS_LD = ["NTSC", "NTSCJ", "PAL"]
+TOOL_ENTRYPOINTS = {
+    "hifi": "hifi-decode",
+    "filter-tune": "filter-tune",
+    "vhs": "vhs-decode",
+    "cvbs": "cvbs-decode",
+    "ld": "ld-decode",
+}
 
-def _decode_prefix_command() -> list[str]:
+
+def _split_user_args(extra_args: str, *, strict: bool = True) -> list[str]:
+    if not extra_args.strip():
+        return []
+    try:
+        parsed = shlex.split(extra_args, posix=os.name != "nt")
+        if os.name == "nt":
+            return [
+                arg[1:-1]
+                if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in {"\"", "'"}
+                else arg
+                for arg in parsed
+            ]
+        return parsed
+    except ValueError:
+        if strict:
+            raise
+        return [extra_args]
+
+
+def _candidate_script_directories() -> list[Path]:
+    candidates: list[Path] = []
+    scripts_path = sysconfig.get_path("scripts")
+    if scripts_path:
+        candidates.append(Path(scripts_path))
+
+    exe_dir = Path(sys.executable).resolve().parent
+    candidates.append(exe_dir)
+    if os.name == "nt":
+        candidates.append(exe_dir / "Scripts")
+    else:
+        candidates.append(exe_dir / "bin")
+
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = str(path.resolve(strict=False))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(path)
+    return deduped
+
+
+def _resolve_command_binary(command_name: str) -> Optional[list[str]]:
+    candidate_names = [
+        f"{command_name}.exe",
+        command_name,
+        f"{command_name}-script.py",
+        f"{command_name}.py",
+    ]
+
+    for directory in _candidate_script_directories():
+        for candidate_name in candidate_names:
+            candidate = directory / candidate_name
+            if not candidate.exists() or not candidate.is_file():
+                continue
+            if candidate.suffix.lower() == ".py":
+                return [sys.executable, str(candidate)]
+            return [str(candidate)]
+
+    on_path = shutil.which(command_name)
+    if on_path:
+        return [on_path]
+    on_path_py = shutil.which(f"{command_name}.py")
+    if on_path_py:
+        return [sys.executable, on_path_py]
+    return None
+
+
+def _decode_prefix_command() -> Optional[list[str]]:
     if getattr(sys, "frozen", False):
         # In bundled binaries, the executable is the decode dispatcher itself.
         return [sys.executable]
 
     # Source/dev mode: run through decode.py so subcommands resolve consistently.
     decode_script = Path(__file__).resolve().parents[1] / "decode.py"
-    return [sys.executable, str(decode_script)]
+    if decode_script.is_file():
+        return [sys.executable, str(decode_script)]
+
+    # Installed mode fallback (common on Windows): resolve decode entrypoint from
+    # the active Python scripts directory or PATH.
+    return _resolve_command_binary("decode")
+
+
+def _resolve_tool_entrypoint(tool: ToolSpec) -> Optional[list[str]]:
+    command_name = TOOL_ENTRYPOINTS.get(tool.subcommand)
+    if not command_name:
+        return None
+    return _resolve_command_binary(command_name)
 
 
 def _build_decode_command(tool: ToolSpec, extra_args: str) -> list[str]:
-    command = _decode_prefix_command() + [tool.subcommand] + list(tool.default_args)
+    decode_prefix = _decode_prefix_command()
+    if decode_prefix is not None:
+        command = decode_prefix + [tool.subcommand] + list(tool.default_args)
+    else:
+        fallback_command = _resolve_tool_entrypoint(tool)
+        if fallback_command is None:
+            raise RuntimeError(
+                "Could not locate decode dispatcher or per-tool entrypoints "
+                f"for '{tool.subcommand}'."
+            )
+        command = fallback_command + list(tool.default_args)
     if extra_args:
-        command += shlex.split(extra_args)
+        command += _split_user_args(extra_args)
     return command
 
 
@@ -349,7 +448,7 @@ class DecodeLauncherWindow(QWidget):
         )
         extra = self.extra_args_edit.text().strip()
         if extra:
-            basic_args += shlex.split(extra)
+            basic_args += _split_user_args(extra, strict=False)
         return _shell_join_platform(base_cmd + basic_args)
 
     def _refresh_tool_state(self) -> None:
@@ -613,7 +712,7 @@ class DecodeLauncherWindow(QWidget):
 
             command += basic_args
             if extra:
-                command += shlex.split(extra)
+                command += _split_user_args(extra)
 
             if tool.prefer_native_gui and not self.force_terminal_check.isChecked():
                 if os.name == "nt":
