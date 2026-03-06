@@ -1162,7 +1162,7 @@ class HifiUi(QMainWindow):
         return False
 
     def on_play_clicked(self):
-        print("▶ Play command issued.")
+        print("[PLAY] Play command issued.")
         if self.confirm_overwrite():
             return
 
@@ -1174,7 +1174,7 @@ class HifiUi(QMainWindow):
         self._set_status_window_icon("document-save")
 
     def on_preview_clicked(self):
-        print("▶ Preview command issued.")
+        print("[PREVIEW] Preview command issued.")
         if self.confirm_overwrite():
             return
 
@@ -1199,7 +1199,7 @@ class HifiUi(QMainWindow):
         self.default_button_color(self.preview_button)
         self.default_button_color(self.play_button)
         self.default_button_color(self.pause_button)
-        print("■ Stop command issued.")
+        print("[STOP] Stop command issued.")
         self._transport_state = STOP_STATE
 
     def on_input_samplerate_changed(self):
