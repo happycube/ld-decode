@@ -132,6 +132,46 @@ def get_upconverted_burst(
 
     return burst_without_padding, burst_start + burst_padding, burst_end - burst_padding
 
+# input
+# (
+#    isFirstField
+#    detected color burst phase quadrant: (0=0, 1=90, 2=180, 3=270)
+#    phase delta from previous color burst: (0=0, 1=90, 2=180, 3=270)
+# )
+#
+# output
+# (
+#    fieldPhaseId
+#    startingPhase
+# )
+ntsc_phase_rotation_sequence = {
+    # frame 1
+    (1, 3, 2): (1, 3),
+    (0, 2, 3): (4, 2),
+    # frame 2
+    (1, 2, 0): (3, 0),
+    (0, 3, 1): (2, 1),
+    # frame 3
+    (1, 1, 2): (1, 1),
+    (0, 0, 3): (4, 0),
+    # frame 4
+    (1, 0, 0): (3, 2),
+    (0, 1, 1): (2, 3),
+    # copy of the above, but without phase delta for the first field
+    # frame 1
+    (1, 3, -1): (1, 3),
+    (0, 2, -1): (4, 2),
+    # frame 2
+    (1, 2, -1): (3, 0),
+    (0, 3, -1): (2, 1),
+    # frame 3
+    (1, 1, -1): (1, 1),
+    (0, 0, -1): (4, 0),
+    # frame 4
+    (1, 0, -1): (3, 2),
+    (0, 1, -1): (2, 3),
+}
+
 def get_phase_rotation_sequence(
     chroma,
     rotation_check_start_line,
@@ -140,6 +180,7 @@ def get_phase_rotation_sequence(
     outwidth,
     phase_rotation,
     is_first_field,
+    prev_burst_phase,
     color_system,
     burst_sine,
     burst_cosine,
@@ -199,23 +240,36 @@ def get_phase_rotation_sequence(
 
     if color_system == "NTSC":
         # detect the correct starting phase using the expected phase quadrant of the color bursts
-        quadrant, burst_detected = detect_ntsc_color_burst_phase(bursts, burst_sine, burst_cosine)
+        burst_phase, burst_detected = detect_ntsc_color_burst_phase(bursts, burst_sine, burst_cosine)
 
-        # TODO: mathematical way to do this?
-        field_phase_id, ntsc_phase_rotation = {
-            # field 1
-            (True,  3): (1, 3),
-            (False, 2): (4, 2),
-            # field 2
-            (True,  2): (3, 0),
-            (False, 3): (2, 1),
-            # field 3
-            (True,  1): (1, 1),
-            (False, 0): (4, 0),
-            # field 4
-            (True,  0): (3, 2),
-            (False, 1): (2, 3),
-        }[is_first_field, quadrant]
+        if prev_burst_phase is not None:
+            # if we have the phase difference between the previous burst and this burst, we further refine the detection based on the known phase delta between rotations
+            delta = (burst_phase - prev_burst_phase) % 360
+            phase_delta = int(round(delta / 90)) % 4
+        else:
+            # since there is no prior phase to determine the phase delta, only use isFirstField and quadrant
+            phase_delta = -1
+
+        # quantize to 90 degrees
+        quadrant = int(round(burst_phase) / 90) % 4
+
+        # match the phase using the first field, detected color burst phase quadrant, and the phase difference from the previous burst
+        phase_info = ntsc_phase_rotation_sequence.get(
+            (is_first_field, quadrant, phase_delta),
+            # if no matches, try without phase delta populated, possible if there is a gap in field cadence
+            # results may be incorrect
+            ntsc_phase_rotation_sequence.get((is_first_field, quadrant, -1), None)
+        )
+
+        if phase_info:
+            field_phase_id, ntsc_phase_rotation = phase_info
+        else:
+            # something is really wrong with the color, log an error
+            # with the current phase sequence, this condition should never be hit
+            ldd.logger.error(f"Invalid NTSC color sequence: isFirstField: {is_first_field}, colorBurstPhase: {burst_phase}, previousColorBurstPhase: {prev_burst_phase}")
+            # use the entry for frame 1
+            field_phase_id = 1
+            ntsc_phase_rotation = 3
 
         # adjust the starting phase
         if ntsc_phase_rotation != 0:
@@ -223,9 +277,10 @@ def get_phase_rotation_sequence(
                 phase_rotations[i] = (phase_rotations[i] + ntsc_phase_rotation) % 4
     else:
         field_phase_id = None
+        burst_phase = None
         burst_detected = None
 
-    return phase_rotations, field_phase_id, burst_detected
+    return phase_rotations, field_phase_id, burst_phase, burst_detected
     
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
@@ -352,8 +407,14 @@ def process_chroma(
     # chroma[lstart:lend][burstarea[0]:burstarea[1]] = narrow_filtered[lstart:lend][burstarea[0]:burstarea[1]] * 2
 
     # For NTSC, the color burst amplitude is doubled when recording, so we have to undo that.
-    if field.rf.color_system == "NTSC" and not disable_deemph:
-        chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
+    prev_burst_phase = None
+    
+    if field.rf.color_system == "NTSC":
+        if field.prevfield is not None:
+            prev_burst_phase = field.prevfield.burstPhase
+
+        if not disable_deemph:
+            chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
 
     # Rotation per track
     # VHS PAL: Track1 0, Track2 -90
@@ -382,7 +443,7 @@ def process_chroma(
         else field.rf.chroma_heterodyne
     )
 
-    phase_rotation_sequence, field_phase_id, burst_detected = get_phase_rotation_sequence(
+    phase_rotation_sequence, field_phase_id, burst_phase, burst_detected = get_phase_rotation_sequence(
         chroma,
         lineoffset + linesout - 16, # check for track phase rotation around the headswitching area (bottom of field)
         lineoffset,
@@ -390,6 +451,7 @@ def process_chroma(
         outwidth,
         phase_rotation,
         field.isFirstField,
+        prev_burst_phase,
         field.rf.color_system,
         field.rf.fsc_wave,
         field.rf.fsc_cos_wave,
@@ -402,6 +464,7 @@ def process_chroma(
 
     if field.rf.color_system == "NTSC":
         field.fieldPhaseID = field_phase_id
+        field.burstPhase = burst_phase
         # TODO: possibly use this to enable a color killer
         # if not burst_detected:
         #     ldd.logger.info("Color burst was not detected.")
@@ -731,10 +794,7 @@ def detect_ntsc_color_burst_phase(
     avg_phase = np.arctan2(Q_total, I_total)
     avg_phase_deg = np.degrees(avg_phase) % 360
 
-    # Quantize to nearest 90 degrees
-    quadrant = int(np.round(avg_phase_deg / 90)) % 4
-
-    return quadrant, burst_detected
+    return avg_phase_deg, burst_detected
 
 
 # Phase comprensation stuff - needs rework.
