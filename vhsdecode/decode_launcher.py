@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import shlex
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 try:
     from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QColor, QPalette
     from PyQt6.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -24,12 +26,14 @@ try:
         QMessageBox,
         QPushButton,
         QSpinBox,
+        QStyleFactory,
         QVBoxLayout,
         QWidget,
     )
     ALIGN_TOP = Qt.AlignmentFlag.AlignTop
 except ImportError:
     from PyQt5.QtCore import Qt
+    from PyQt5.QtGui import QColor, QPalette
     from PyQt5.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -43,6 +47,7 @@ except ImportError:
         QMessageBox,
         QPushButton,
         QSpinBox,
+        QStyleFactory,
         QVBoxLayout,
         QWidget,
     )
@@ -156,14 +161,55 @@ def _build_basic_decoder_args(
 def _shell_join(parts: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
+def _shell_join_windows(parts: list[str]) -> str:
+    return subprocess.list2cmdline(parts)
+
+
+def _open_linux_terminal(shell_command: str) -> None:
+    shell = os.environ.get("SHELL", "/bin/bash")
+    shell_args = [shell, "-lc", shell_command]
+    terminal_candidates: list[tuple[str, list[str]]] = [
+        ("x-terminal-emulator", ["x-terminal-emulator", "-e", *shell_args]),
+        ("gnome-terminal", ["gnome-terminal", "--", *shell_args]),
+        ("kgx", ["kgx", "--", *shell_args]),
+        ("konsole", ["konsole", "-e", *shell_args]),
+        ("mate-terminal", ["mate-terminal", "--", *shell_args]),
+        ("xfce4-terminal", ["xfce4-terminal", "--command", f"{shell} -lc {shlex.quote(shell_command)}"]),
+        ("lxterminal", ["lxterminal", "-e", f"{shell} -lc {shlex.quote(shell_command)}"]),
+        ("kitty", ["kitty", "--hold", *shell_args]),
+        ("alacritty", ["alacritty", "-e", *shell_args]),
+        ("xterm", ["xterm", "-hold", "-e", *shell_args]),
+    ]
+
+    for binary, command in terminal_candidates:
+        if shutil.which(binary):
+            subprocess.Popen(command)
+            return
+
+    raise RuntimeError(
+        "Could not find a supported Linux terminal emulator (e.g. gnome-terminal, konsole, xterm)."
+    )
+
 
 def _open_terminal(command_parts: list[str], working_directory: Path) -> None:
+    if os.name == "nt":
+        command = _shell_join_windows(command_parts)
+        cwd = str(working_directory).replace('"', '""')
+        shell_command = (
+            f'cd /d "{cwd}" && {command} '
+            "& echo. "
+            "& echo [decode-launcher] process finished with exit code %ERRORLEVEL%"
+        )
+        subprocess.Popen(["cmd.exe", "/k", shell_command])
+        return
+
     command = _shell_join(command_parts)
+    shell = os.environ.get("SHELL", "/bin/bash")
     shell_command = (
         f"cd {shlex.quote(str(working_directory))} && {command}; "
         "echo; "
         'echo "[decode-launcher] process finished with exit code $?"; '
-        "exec $SHELL -l"
+        f"exec {shlex.quote(shell)} -l"
     )
 
     if sys.platform == "darwin":
@@ -179,13 +225,7 @@ def _open_terminal(command_parts: list[str], working_directory: Path) -> None:
         )
         return
 
-    if os.name == "nt":
-        subprocess.Popen(["cmd.exe", "/k", shell_command])
-        return
-
-    raise RuntimeError(
-        "Terminal launching is implemented for macOS and Windows in this launcher."
-    )
+    _open_linux_terminal(shell_command)
 
 
 class DecodeLauncherWindow(QWidget):
@@ -498,15 +538,6 @@ class DecodeLauncherWindow(QWidget):
             QMessageBox.critical(self, "Launch failed", str(exc))
             return
 
-        if tbc_candidate is not None:
-            QMessageBox.information(
-                self,
-                "tbc-tools launched",
-                f"Started ld-analyse with:\n{tbc_candidate}",
-            )
-        else:
-            QMessageBox.information(self, "tbc-tools launched", "Started ld-analyse.")
-
     def _launch_selected_tool(self) -> None:
         tool = self._selected_tool()
         working_directory = self._effective_working_directory()
@@ -549,23 +580,57 @@ class DecodeLauncherWindow(QWidget):
                 command += shlex.split(extra)
 
             if tool.prefer_native_gui and not self.force_terminal_check.isChecked():
-                subprocess.Popen(command, cwd=str(working_directory))
+                if os.name == "nt":
+                    start_command = f'start "" {_shell_join_windows(command)}'
+                    subprocess.Popen(["cmd.exe", "/c", start_command], cwd=str(working_directory))
+                else:
+                    subprocess.Popen(command, cwd=str(working_directory))
             else:
                 _open_terminal(command, working_directory)
         except Exception as exc:
             QMessageBox.critical(self, "Launch failed", str(exc))
             return
 
-        QMessageBox.information(self, "Launch started", f"Started: {tool.label}")
+def _apply_fusion_dark_mode(app: QApplication) -> None:
+    fusion_style = QStyleFactory.create("Fusion")
+    if fusion_style is not None:
+        app.setStyle(fusion_style)
+    else:
+        app.setStyle("Fusion")
+
+    role = QPalette.ColorRole if hasattr(QPalette, "ColorRole") else QPalette
+    group = QPalette.ColorGroup if hasattr(QPalette, "ColorGroup") else QPalette
+
+    palette = QPalette()
+    palette.setColor(role.Window, QColor(53, 53, 53))
+    palette.setColor(role.WindowText, QColor(225, 225, 225))
+    palette.setColor(role.Base, QColor(35, 35, 35))
+    palette.setColor(role.AlternateBase, QColor(53, 53, 53))
+    palette.setColor(role.ToolTipBase, QColor(30, 30, 30))
+    palette.setColor(role.ToolTipText, QColor(225, 225, 225))
+    palette.setColor(role.Text, QColor(225, 225, 225))
+    palette.setColor(role.Button, QColor(53, 53, 53))
+    palette.setColor(role.ButtonText, QColor(225, 225, 225))
+    palette.setColor(role.BrightText, QColor(255, 80, 80))
+    palette.setColor(role.Highlight, QColor(42, 130, 218))
+    palette.setColor(role.HighlightedText, QColor(20, 20, 20))
+    palette.setColor(group.Disabled, role.Text, QColor(120, 120, 120))
+    palette.setColor(group.Disabled, role.ButtonText, QColor(120, 120, 120))
+    palette.setColor(group.Disabled, role.WindowText, QColor(120, 120, 120))
+    app.setPalette(palette)
+    app.setStyleSheet(
+        "QToolTip { color: #e1e1e1; background-color: #2b2b2b; border: 1px solid #4a4a4a; }"
+    )
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Decode Launcher (Qt6) for starting decode/tools commands"
+        description="Decode Launcher (Qt) for starting decode/tools commands"
     )
     parser.parse_args(argv)
 
     app = QApplication(sys.argv)
+    _apply_fusion_dark_mode(app)
     window = DecodeLauncherWindow()
     window.show()
     return app.exec() if hasattr(app, "exec") else app.exec_()
