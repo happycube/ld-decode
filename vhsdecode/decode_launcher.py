@@ -164,6 +164,9 @@ def _shell_join(parts: list[str]) -> str:
 def _shell_join_windows(parts: list[str]) -> str:
     return subprocess.list2cmdline(parts)
 
+def _shell_join_platform(parts: list[str]) -> str:
+    return _shell_join_windows(parts) if os.name == "nt" else _shell_join(parts)
+
 
 def _open_linux_terminal(shell_command: str) -> None:
     shell = os.environ.get("SHELL", "/bin/bash")
@@ -347,7 +350,7 @@ class DecodeLauncherWindow(QWidget):
         extra = self.extra_args_edit.text().strip()
         if extra:
             basic_args += shlex.split(extra)
-        return _shell_join(base_cmd + basic_args)
+        return _shell_join_platform(base_cmd + basic_args)
 
     def _refresh_tool_state(self) -> None:
         tool = self._selected_tool()
@@ -453,7 +456,16 @@ class DecodeLauncherWindow(QWidget):
 
     def _find_tbc_tools_executable(self) -> Optional[Path]:
         search_roots: list[Path] = []
-        search_roots.extend([Path("/Applications"), Path.home() / "Applications"])
+        if sys.platform == "darwin":
+            search_roots.extend([Path("/Applications"), Path.home() / "Applications"])
+        elif os.name == "nt":
+            search_roots.extend(
+                [
+                    Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
+                    Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
+                    Path.home() / "AppData" / "Local" / "Programs",
+                ]
+            )
 
         if getattr(sys, "frozen", False):
             decode_exe = Path(sys.executable).resolve()
@@ -478,39 +490,63 @@ class DecodeLauncherWindow(QWidget):
             if key not in seen:
                 seen.add(key)
                 deduped_roots.append(root)
-
-        for root in deduped_roots:
-            candidates = [
-                root / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
-                root / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
-                root / "ld-analyse.exe",
+        def root_candidates(root: Path) -> list[Path]:
+            if os.name == "nt":
+                return [
+                    root / "ld-analyse.exe",
+                    root / "tbc-tools.exe",
+                    root / "tbc-tools" / "ld-analyse.exe",
+                ]
+            if sys.platform == "darwin":
+                return [
+                    root / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
+                    root / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
+                    root / "ld-analyse",
+                ]
+            return [
                 root / "ld-analyse",
                 root / "tbc-tools.AppImage",
                 root / "tbc-tools.appimage",
+                root / "tbc-tools" / "ld-analyse",
             ]
 
-            # Also check one level down from the root (common unpack layouts).
-            for child in root.iterdir() if root.exists() else []:
-                if not child.is_dir():
-                    continue
+        def child_candidates(child: Path) -> list[Path]:
+            if os.name == "nt":
+                return [
+                    child / "ld-analyse.exe",
+                    child / "tbc-tools.exe",
+                    child / "tbc-tools" / "ld-analyse.exe",
+                ]
+            if sys.platform == "darwin":
                 if child.suffix.lower() == ".app":
-                    candidates.extend(
-                        [
-                            child / "Contents" / "MacOS" / "ld-analyse",
-                            child / "Contents" / "MacOS" / "tbc-tools",
-                        ]
-                    )
-                    continue
-                candidates.extend(
-                    [
-                        child / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
-                        child / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
-                        child / "ld-analyse.exe",
-                        child / "ld-analyse",
-                        child / "tbc-tools.AppImage",
-                        child / "tbc-tools.appimage",
+                    return [
+                        child / "Contents" / "MacOS" / "ld-analyse",
+                        child / "Contents" / "MacOS" / "tbc-tools",
                     ]
-                )
+                return [
+                    child / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
+                    child / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
+                    child / "ld-analyse",
+                ]
+            return [
+                child / "ld-analyse",
+                child / "tbc-tools.AppImage",
+                child / "tbc-tools.appimage",
+                child / "tbc-tools" / "ld-analyse",
+            ]
+
+        for root in deduped_roots:
+            candidates = root_candidates(root)
+
+            # Also check one level down from the root (common unpack layouts).
+            try:
+                children = list(root.iterdir()) if root.exists() else []
+            except OSError:
+                children = []
+
+            for child in children:
+                if child.is_dir():
+                    candidates.extend(child_candidates(child))
 
             for candidate in candidates:
                 if candidate.exists() and candidate.is_file():
