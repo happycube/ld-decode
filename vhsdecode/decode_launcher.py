@@ -212,7 +212,7 @@ def _resolve_command_binary(command_name: str) -> Optional[list[str]]:
 
 
 def _decode_prefix_command() -> Optional[list[str]]:
-    if getattr(sys, "frozen", False):
+    if _is_self_dispatch_runtime():
         # In bundled binaries, the executable is the decode dispatcher itself.
         return [sys.executable]
 
@@ -226,6 +226,20 @@ def _decode_prefix_command() -> Optional[list[str]]:
     return _resolve_command_binary("decode")
 
 
+def _is_self_dispatch_runtime() -> bool:
+    if getattr(sys, "frozen", False):
+        return True
+
+    if os.name != "nt" and sys.platform != "darwin":
+        executable_name = Path(sys.executable).name.lower()
+        if executable_name.endswith(".appimage"):
+            return True
+        if os.environ.get("APPIMAGE"):
+            return True
+
+    return False
+
+
 def _resolve_tool_entrypoint(tool: ToolSpec) -> Optional[list[str]]:
     command_name = TOOL_ENTRYPOINTS.get(tool.subcommand)
     if not command_name:
@@ -234,28 +248,19 @@ def _resolve_tool_entrypoint(tool: ToolSpec) -> Optional[list[str]]:
 
 
 def _build_decode_command(tool: ToolSpec, extra_args: str) -> list[str]:
-    # Use the same direct CLI invocation strategy on all platforms: first target
-    # the active decode launcher context, then fall back to per-tool entrypoints.
-    if getattr(sys, "frozen", False):
-        command = [sys.executable, tool.subcommand] + list(tool.default_args)
+    # Use direct decode dispatch whenever available; this keeps argument shape
+    # consistent with manual CLI usage and avoids AppImage double-script paths.
+    decode_prefix = _decode_prefix_command()
+    if decode_prefix is not None:
+        command = decode_prefix + [tool.subcommand] + list(tool.default_args)
     else:
-        decode_script = Path(__file__).resolve().parents[1] / "decode.py"
-        if decode_script.is_file():
-            command = [sys.executable, str(decode_script), tool.subcommand] + list(
-                tool.default_args
+        fallback_command = _resolve_tool_entrypoint(tool)
+        if fallback_command is None:
+            raise RuntimeError(
+                "Could not locate decode dispatcher or per-tool entrypoints "
+                f"for '{tool.subcommand}'."
             )
-        else:
-            decode_prefix = _decode_prefix_command()
-            if decode_prefix is not None:
-                command = decode_prefix + [tool.subcommand] + list(tool.default_args)
-            else:
-                fallback_command = _resolve_tool_entrypoint(tool)
-                if fallback_command is None:
-                    raise RuntimeError(
-                        "Could not locate decode dispatcher or per-tool entrypoints "
-                        f"for '{tool.subcommand}'."
-                    )
-                command = fallback_command + list(tool.default_args)
+        command = fallback_command + list(tool.default_args)
     if extra_args:
         command += _split_user_args(extra_args)
     return command
