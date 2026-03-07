@@ -211,11 +211,30 @@ def _resolve_command_binary(command_name: str) -> Optional[list[str]]:
     return None
 
 
-def _decode_prefix_command() -> Optional[list[str]]:
-    if _is_self_dispatch_runtime():
-        # In bundled binaries, the executable is the decode dispatcher itself.
-        return [sys.executable]
+def _self_dispatch_executable() -> Optional[str]:
+    # In AppImage runtime, APPIMAGE points to the user-invoked image path.
+    appimage_path = os.environ.get("APPIMAGE", "").strip()
+    if appimage_path:
+        return appimage_path
 
+    executable = Path(sys.executable).resolve(strict=False)
+    executable_name = executable.name.lower()
+
+    if getattr(sys, "frozen", False):
+        return str(executable)
+
+    if os.name != "nt" and sys.platform != "darwin":
+        if executable_name.endswith(".appimage"):
+            return str(executable)
+
+    return None
+
+
+def _decode_prefix_command() -> Optional[list[str]]:
+    self_dispatch = _self_dispatch_executable()
+    if self_dispatch is not None:
+        # In bundled binaries/AppImage runtime, the executable is the decode dispatcher.
+        return [self_dispatch]
     # Source/dev mode: run through decode.py so subcommands resolve consistently.
     decode_script = Path(__file__).resolve().parents[1] / "decode.py"
     if decode_script.is_file():
@@ -224,20 +243,6 @@ def _decode_prefix_command() -> Optional[list[str]]:
     # Installed mode fallback (common on Windows): resolve decode entrypoint from
     # the active Python scripts directory or PATH.
     return _resolve_command_binary("decode")
-
-
-def _is_self_dispatch_runtime() -> bool:
-    if getattr(sys, "frozen", False):
-        return True
-
-    if os.name != "nt" and sys.platform != "darwin":
-        executable_name = Path(sys.executable).name.lower()
-        if executable_name.endswith(".appimage"):
-            return True
-        if os.environ.get("APPIMAGE"):
-            return True
-
-    return False
 
 
 def _resolve_tool_entrypoint(tool: ToolSpec) -> Optional[list[str]]:
