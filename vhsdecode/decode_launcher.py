@@ -159,14 +159,38 @@ def _candidate_script_directories() -> list[Path]:
             deduped.append(path)
     return deduped
 
+def _appimage_name_variants(command_name: str) -> list[str]:
+    if os.name == "nt" or sys.platform == "darwin":
+        return []
+
+    base_name = command_name
+    if base_name.lower().endswith(".appimage"):
+        base_name = base_name[: -len(".appimage")]
+
+    variants = [
+        f"{base_name}.AppImage",
+        f"{base_name}.appimage",
+        f"{base_name}-x86_64.AppImage",
+        f"{base_name}-x86_64.appimage",
+    ]
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for variant in variants:
+        if variant not in seen:
+            seen.add(variant)
+            deduped.append(variant)
+    return deduped
+
 
 def _resolve_command_binary(command_name: str) -> Optional[list[str]]:
+    appimage_variants = _appimage_name_variants(command_name)
     candidate_names = [
         f"{command_name}.exe",
         command_name,
         f"{command_name}-script.py",
         f"{command_name}.py",
-    ]
+    ] + appimage_variants
 
     for directory in _candidate_script_directories():
         for candidate_name in candidate_names:
@@ -176,13 +200,14 @@ def _resolve_command_binary(command_name: str) -> Optional[list[str]]:
             if candidate.suffix.lower() == ".py":
                 return [sys.executable, str(candidate)]
             return [str(candidate)]
-
-    on_path = shutil.which(command_name)
-    if on_path:
+    path_candidates = [command_name, f"{command_name}.py"] + appimage_variants
+    for candidate_name in path_candidates:
+        on_path = shutil.which(candidate_name)
+        if not on_path:
+            continue
+        if on_path.lower().endswith(".py"):
+            return [sys.executable, on_path]
         return [on_path]
-    on_path_py = shutil.which(f"{command_name}.py")
-    if on_path_py:
-        return [sys.executable, on_path_py]
     return None
 
 
@@ -209,43 +234,28 @@ def _resolve_tool_entrypoint(tool: ToolSpec) -> Optional[list[str]]:
 
 
 def _build_decode_command(tool: ToolSpec, extra_args: str) -> list[str]:
-    # Keep Windows behavior straightforward and predictable: invoke decode with the
-    # same argument shape users would type manually in CLI.
-    if os.name == "nt":
-        if getattr(sys, "frozen", False):
-            command = [sys.executable, tool.subcommand] + list(tool.default_args)
-        else:
-            decode_script = Path(__file__).resolve().parents[1] / "decode.py"
-            if decode_script.is_file():
-                command = [sys.executable, str(decode_script), tool.subcommand] + list(
-                    tool.default_args
-                )
-            else:
-                decode_prefix = _decode_prefix_command()
-                if decode_prefix is not None:
-                    command = decode_prefix + [tool.subcommand] + list(tool.default_args)
-                else:
-                    fallback_command = _resolve_tool_entrypoint(tool)
-                    if fallback_command is None:
-                        raise RuntimeError(
-                            "Could not locate decode dispatcher or per-tool entrypoints "
-                            f"for '{tool.subcommand}'."
-                        )
-                    command = fallback_command + list(tool.default_args)
-        if extra_args:
-            command += _split_user_args(extra_args)
-        return command
-    decode_prefix = _decode_prefix_command()
-    if decode_prefix is not None:
-        command = decode_prefix + [tool.subcommand] + list(tool.default_args)
+    # Use the same direct CLI invocation strategy on all platforms: first target
+    # the active decode launcher context, then fall back to per-tool entrypoints.
+    if getattr(sys, "frozen", False):
+        command = [sys.executable, tool.subcommand] + list(tool.default_args)
     else:
-        fallback_command = _resolve_tool_entrypoint(tool)
-        if fallback_command is None:
-            raise RuntimeError(
-                "Could not locate decode dispatcher or per-tool entrypoints "
-                f"for '{tool.subcommand}'."
+        decode_script = Path(__file__).resolve().parents[1] / "decode.py"
+        if decode_script.is_file():
+            command = [sys.executable, str(decode_script), tool.subcommand] + list(
+                tool.default_args
             )
-        command = fallback_command + list(tool.default_args)
+        else:
+            decode_prefix = _decode_prefix_command()
+            if decode_prefix is not None:
+                command = decode_prefix + [tool.subcommand] + list(tool.default_args)
+            else:
+                fallback_command = _resolve_tool_entrypoint(tool)
+                if fallback_command is None:
+                    raise RuntimeError(
+                        "Could not locate decode dispatcher or per-tool entrypoints "
+                        f"for '{tool.subcommand}'."
+                    )
+                command = fallback_command + list(tool.default_args)
     if extra_args:
         command += _split_user_args(extra_args)
     return command
@@ -632,6 +642,8 @@ class DecodeLauncherWindow(QWidget):
                 root / "ld-analyse",
                 root / "tbc-tools.AppImage",
                 root / "tbc-tools.appimage",
+                root / "tbc-tools-x86_64.AppImage",
+                root / "tbc-tools-x86_64.appimage",
                 root / "tbc-tools" / "ld-analyse",
             ]
 
@@ -657,6 +669,8 @@ class DecodeLauncherWindow(QWidget):
                 child / "ld-analyse",
                 child / "tbc-tools.AppImage",
                 child / "tbc-tools.appimage",
+                child / "tbc-tools-x86_64.AppImage",
+                child / "tbc-tools-x86_64.appimage",
                 child / "tbc-tools" / "ld-analyse",
             ]
 
@@ -676,6 +690,19 @@ class DecodeLauncherWindow(QWidget):
             for candidate in candidates:
                 if candidate.exists() and candidate.is_file():
                     return candidate
+
+        # Global path fallback for non-local installs.
+        for name in (
+            "ld-analyse",
+            "tbc-tools",
+            "tbc-tools.AppImage",
+            "tbc-tools.appimage",
+            "tbc-tools-x86_64.AppImage",
+            "tbc-tools-x86_64.appimage",
+        ):
+            on_path = shutil.which(name)
+            if on_path:
+                return Path(on_path)
         return None
 
     def _launch_tbc_tools(self) -> None:
