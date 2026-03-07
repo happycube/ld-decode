@@ -35,6 +35,7 @@ try:
         QScrollArea,
         QSlider,
         QSpinBox,
+        QStyleFactory,
         QSplitter,
         QSizePolicy,
         QVBoxLayout,
@@ -70,6 +71,7 @@ except ImportError:
             QScrollArea,
             QSlider,
             QSpinBox,
+            QStyleFactory,
             QSplitter,
             QSizePolicy,
             QVBoxLayout,
@@ -1287,6 +1289,11 @@ def main():
     if QT_VERSION == 5:
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     app = QApplication(sys.argv)
+    fusion_style = QStyleFactory.create("Fusion")
+    if fusion_style is not None:
+        app.setStyle(fusion_style)
+    else:
+        app.setStyle("Fusion")
     logger = logging.getLogger("vhstune")
     tape_format = "VHS"
     if len(sys.argv) > 1:

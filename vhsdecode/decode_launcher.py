@@ -73,10 +73,10 @@ TOOLS = [
         notes="Launches hifi-decode with --gui.",
     ),
     ToolSpec(
-        label="filter-tune (native GUI)",
+        label="Filter Tune (native GUI)",
         subcommand="filter-tune",
         prefer_native_gui=True,
-        notes="Launches filter-tune Qt frontend.",
+        notes="Launches Filter Tune Qt frontend.",
     ),
     ToolSpec(
         label="vhs-decode (terminal)",
@@ -209,6 +209,32 @@ def _resolve_tool_entrypoint(tool: ToolSpec) -> Optional[list[str]]:
 
 
 def _build_decode_command(tool: ToolSpec, extra_args: str) -> list[str]:
+    # Keep Windows behavior straightforward and predictable: invoke decode with the
+    # same argument shape users would type manually in CLI.
+    if os.name == "nt":
+        if getattr(sys, "frozen", False):
+            command = [sys.executable, tool.subcommand] + list(tool.default_args)
+        else:
+            decode_script = Path(__file__).resolve().parents[1] / "decode.py"
+            if decode_script.is_file():
+                command = [sys.executable, str(decode_script), tool.subcommand] + list(
+                    tool.default_args
+                )
+            else:
+                decode_prefix = _decode_prefix_command()
+                if decode_prefix is not None:
+                    command = decode_prefix + [tool.subcommand] + list(tool.default_args)
+                else:
+                    fallback_command = _resolve_tool_entrypoint(tool)
+                    if fallback_command is None:
+                        raise RuntimeError(
+                            "Could not locate decode dispatcher or per-tool entrypoints "
+                            f"for '{tool.subcommand}'."
+                        )
+                    command = fallback_command + list(tool.default_args)
+        if extra_args:
+            command += _split_user_args(extra_args)
+        return command
     decode_prefix = _decode_prefix_command()
     if decode_prefix is not None:
         command = decode_prefix + [tool.subcommand] + list(tool.default_args)
@@ -295,24 +321,14 @@ def _open_linux_terminal(shell_command: str) -> None:
 
 def _open_terminal(command_parts: list[str], working_directory: Path) -> None:
     if os.name == "nt":
-        if getattr(sys, "frozen", False):
-            # In bundled Windows builds, avoid cmd string parsing edge-cases by
-            # launching the process directly in a dedicated console.
-            creation_flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-            subprocess.Popen(
-                command_parts,
-                cwd=str(working_directory),
-                creationflags=creation_flags,
-            )
-            return
-        command = _shell_join_windows(command_parts)
-        cwd = str(working_directory).replace('"', '""')
-        shell_command = (
-            f'cd /d "{cwd}" && {command} '
-            "& echo. "
-            "& echo [decode-launcher] process finished with exit code %ERRORLEVEL%"
+        # Direct argument-array launch for Windows to avoid cmd/start parsing
+        # edge-cases and keep behavior equivalent to standard CLI invocation.
+        creation_flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        subprocess.Popen(
+            command_parts,
+            cwd=str(working_directory),
+            creationflags=creation_flags,
         )
-        subprocess.Popen(["cmd.exe", "/k", shell_command])
         return
 
     command = _shell_join(command_parts)
@@ -726,14 +742,7 @@ class DecodeLauncherWindow(QWidget):
 
             if tool.prefer_native_gui and not self.force_terminal_check.isChecked():
                 if os.name == "nt":
-                    if getattr(sys, "frozen", False):
-                        os.chdir(str(working_directory))
-                        os.execv(command[0], command)
-                    else:
-                        start_command = f'start "" {_shell_join_windows(command)}'
-                        subprocess.Popen(
-                            ["cmd.exe", "/c", start_command], cwd=str(working_directory)
-                        )
+                    subprocess.Popen(command, cwd=str(working_directory))
                 else:
                     subprocess.Popen(command, cwd=str(working_directory))
             else:
