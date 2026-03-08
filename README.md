@@ -418,6 +418,20 @@ To update the tools to the latest versions, the steps under "Compile and Install
 
 
 Note with WSL2 & Ubuntu, `./` in front of applications and scripts may be needed to run them or to run scripts within the folder.
+### Decode Launcher (Qt6)
+
+For a basic click-to-open launcher that lets you select common tools and open them in a terminal (or start native GUI tools), use:
+
+    decode-launcher
+
+or from source checkout:
+
+    ./decode-launcher
+
+Current native GUI launch targets include:
+
+* `hifi-decode --gui`
+* `filter-tune`
 
 Use `cd vhs-decode` to enter into the directory to run commands, `cd ..` to go back a directory.
 

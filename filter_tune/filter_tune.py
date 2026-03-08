@@ -35,6 +35,7 @@ try:
         QScrollArea,
         QSlider,
         QSpinBox,
+        QStyleFactory,
         QSplitter,
         QSizePolicy,
         QVBoxLayout,
@@ -44,6 +45,8 @@ try:
         QGuiApplication,
         QImage,
         QPixmap,
+        QColor,
+        QPalette,
     )
 except ImportError:
     try:
@@ -70,6 +73,7 @@ except ImportError:
             QScrollArea,
             QSlider,
             QSpinBox,
+            QStyleFactory,
             QSplitter,
             QSizePolicy,
             QVBoxLayout,
@@ -78,6 +82,8 @@ except ImportError:
         from PyQt5.QtGui import (
             QImage,
             QPixmap,
+            QColor,
+            QPalette,
         )
     except ImportError:
         print("Neither PyQt5 and PyQt6 not found! can't start filter-tune")
@@ -1282,11 +1288,44 @@ class VHStune(QDialog):
         layout.addStretch(1)
         self.filterGroupBox.setLayout(layout)
 
+def _apply_fusion_dark_mode(app: QApplication) -> None:
+    fusion_style = QStyleFactory.create("Fusion")
+    if fusion_style is not None:
+        app.setStyle(fusion_style)
+    else:
+        app.setStyle("Fusion")
+
+    role = QPalette.ColorRole if hasattr(QPalette, "ColorRole") else QPalette
+    group = QPalette.ColorGroup if hasattr(QPalette, "ColorGroup") else QPalette
+
+    palette = QPalette()
+    palette.setColor(role.Window, QColor(53, 53, 53))
+    palette.setColor(role.WindowText, QColor(225, 225, 225))
+    palette.setColor(role.Base, QColor(35, 35, 35))
+    palette.setColor(role.AlternateBase, QColor(53, 53, 53))
+    palette.setColor(role.ToolTipBase, QColor(30, 30, 30))
+    palette.setColor(role.ToolTipText, QColor(225, 225, 225))
+    palette.setColor(role.Text, QColor(225, 225, 225))
+    palette.setColor(role.Button, QColor(53, 53, 53))
+    palette.setColor(role.ButtonText, QColor(225, 225, 225))
+    palette.setColor(role.BrightText, QColor(255, 80, 80))
+    palette.setColor(role.Highlight, QColor(42, 130, 218))
+    palette.setColor(role.HighlightedText, QColor(20, 20, 20))
+    palette.setColor(group.Disabled, role.Text, QColor(120, 120, 120))
+    palette.setColor(group.Disabled, role.ButtonText, QColor(120, 120, 120))
+    palette.setColor(group.Disabled, role.WindowText, QColor(120, 120, 120))
+    app.setPalette(palette)
+    app.setStyleSheet(
+        "QToolTip { color: #e1e1e1; background-color: #2b2b2b; border: 1px solid #4a4a4a; }"
+    )
+
 
 def main():
     if QT_VERSION == 5:
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    os.environ["QT_STYLE_OVERRIDE"] = "Fusion"
     app = QApplication(sys.argv)
+    _apply_fusion_dark_mode(app)
     logger = logging.getLogger("vhstune")
     tape_format = "VHS"
     if len(sys.argv) > 1:

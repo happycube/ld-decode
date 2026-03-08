@@ -6,12 +6,14 @@ from multiprocessing import freeze_support
 
 
 def print_options():
-    print("Options are vhs, cvbs, ld, hifi, filter-tune")
+    print("Options are vhs, cvbs, ld, hifi, filter-tune, decode-launcher")
 
 
 def main(argv):
     if len(argv) < 1:
-        print_options()
+        from vhsdecode.decode_launcher import main as decodelaunchermain
+
+        decodelaunchermain(sys.argv[1:])
         return
 
     # This seems a bit hacky but it works
@@ -40,6 +42,10 @@ def main(argv):
         from filter_tune.filter_tune import main as filtertunemain
 
         filtertunemain()
+    elif to_run in {"decode-launcher", "decode_launcher", "launcher"}:
+        from vhsdecode.decode_launcher import main as decodelaunchermain
+
+        decodelaunchermain(sys.argv[1:])
     else:
         print_options()
         print(f"Instead got: {to_run}")

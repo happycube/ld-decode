@@ -46,6 +46,7 @@ setup(
         "vhsdecode/format_defs",
         "cvbsdecode",
         "vhsdecode/hifi",
+        "filter_tune",
     ],
     # TODO: should be done in pyproject.toml but did not find any way
     # of including without making them modules.
@@ -53,6 +54,7 @@ setup(
         "ld-cut",
         "cx-expander",
         "decode.py",
+        "decode-launcher",
     ],
     # scripts=[
     #    'cx-expander',

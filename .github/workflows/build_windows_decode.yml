@@ -17,14 +17,14 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: "3.13"
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build Python module
         run: |
           pip install pyinstaller pyinstaller-versionfile
-          pip install -e ".[hifi_gui]"
+          pip install -e ".[hifi_gui_qt6]"
 
       - name: Build Windows binary
         run: |
