@@ -1284,16 +1284,20 @@ class VHStune(QDialog):
         layout.addStretch(1)
         self.filterGroupBox.setLayout(layout)
 
-
-def main():
-    if QT_VERSION == 5:
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    app = QApplication(sys.argv)
+def _apply_fusion_style(app: QApplication) -> None:
     fusion_style = QStyleFactory.create("Fusion")
     if fusion_style is not None:
         app.setStyle(fusion_style)
     else:
         app.setStyle("Fusion")
+
+
+def main():
+    if QT_VERSION == 5:
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    os.environ["QT_STYLE_OVERRIDE"] = "Fusion"
+    app = QApplication(sys.argv)
+    _apply_fusion_style(app)
     logger = logging.getLogger("vhstune")
     tape_format = "VHS"
     if len(sys.argv) > 1:
