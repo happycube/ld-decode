@@ -3,6 +3,9 @@ from pathlib import Path
 import PyInstaller.__main__
 import PyQt6
 from pyinstaller_versionfile import create_versionfile
+# Release/performance safety: never default Windows release artifacts to a
+# debug Rust profile when invoked locally outside CI.
+os.environ.setdefault("SETUPTOOLS_RUST_CARGO_PROFILE", "release")
 
 print("Building Windows binary")
 
