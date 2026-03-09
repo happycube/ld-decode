@@ -145,19 +145,19 @@ def get_upconverted_burst(
 #    startingPhase
 # )
 ntsc_phase_rotation_sequence = {
-                       # field # | burst phase |        phase delta | fieldPhaseId |
-    # frame 1          #         |             | (prev vs. current) |              |
-    (1, 2, 0): (3, 0), # field 1 |         180 |                 +0 |            3 |
-    (0, 3, 1): (2, 1), # field 2 |         270 |                +90 |            2 |
+                       # frame # | field # | burst phase |        phase delta | fieldPhaseId |
+    # frame 1          #         |         |             | (prev vs. current) |              |
+    (1, 2, 0): (3, 0), # frame 1 | field 1 |         180 |                 +0 |            3 |
+    (0, 3, 1): (2, 1), # frame 1 | field 2 |         270 |                +90 |            2 |
     # frame 2
-    (1, 1, 2): (1, 1), # field 1 |          90 |               +180 |            1 |
-    (0, 0, 3): (4, 0), # field 2 |           0 |               +270 |            4 |
+    (1, 1, 2): (1, 1), # frame 2 | field 1 |          90 |               +180 |            1 |
+    (0, 0, 3): (4, 0), # frame 2 | field 2 |           0 |               +270 |            4 |
     # frame 3
-    (1, 0, 0): (3, 2), # field 1 |           0 |                 +0 |            3 |
-    (0, 1, 1): (2, 3), # field 2 |          90 |                +90 |            2 |
+    (1, 0, 0): (3, 2), # frame 3 | field 1 |           0 |                 +0 |            3 |
+    (0, 1, 1): (2, 3), # frame 3 | field 2 |          90 |                +90 |            2 |
     # frame 4
-    (1, 3, 2): (1, 3), # field 1 |         270 |               +180 |            1 |
-    (0, 2, 3): (4, 2), # field 2 |         180 |               +270 |            4 |
+    (1, 3, 2): (1, 3), # frame 4 | field 1 |         270 |               +180 |            1 |
+    (0, 2, 3): (4, 2), # frame 4 | field 2 |         180 |               +270 |            4 |
     # copy of the above, but without phase delta for the first field
     # frame 1
     (1, 2, -1): (3, 0),
