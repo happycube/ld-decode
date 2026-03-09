@@ -2,18 +2,21 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import logging
 import os
 import shutil
 import shlex
 import subprocess
 import sys
 import sysconfig
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 try:
-    from PyQt6.QtCore import Qt
-    from PyQt6.QtGui import QColor, QPalette
+    from PyQt6.QtCore import Qt, QTimer
+    from PyQt6.QtGui import QColor, QIcon, QPalette
     from PyQt6.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -33,8 +36,8 @@ try:
     )
     ALIGN_TOP = Qt.AlignmentFlag.AlignTop
 except ImportError:
-    from PyQt5.QtCore import Qt
-    from PyQt5.QtGui import QColor, QPalette
+    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtGui import QColor, QIcon, QPalette
     from PyQt5.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -116,6 +119,43 @@ TOOL_ENTRYPOINTS = {
     "cvbs": "cvbs-decode",
     "ld": "ld-decode",
 }
+
+
+def _load_app_icon() -> QIcon:
+    icon_dir = Path(__file__).resolve().parents[1] / "assets" / "icons"
+
+    if sys.platform == "darwin":
+        candidates = (
+            icon_dir / "vhs-decode.icns",
+            icon_dir / "vhs-decode.png",
+        )
+    elif os.name == "nt":
+        candidates = (
+            icon_dir / "vhs-decode.ico",
+            icon_dir / "vhs-decode.png",
+        )
+    else:
+        candidates = (
+            icon_dir / "vhs-decode.png",
+            icon_dir / "vhs-decode.ico",
+        )
+
+    for candidate in candidates:
+        if candidate.is_file():
+            icon = QIcon(str(candidate))
+            if not icon.isNull():
+                return icon
+
+    return QIcon()
+
+
+def _current_app_icon() -> QIcon:
+    app = QApplication.instance()
+    if app is not None:
+        icon = app.windowIcon()
+        if icon is not None and not icon.isNull():
+            return icon
+    return _load_app_icon()
 
 
 def _split_user_args(extra_args: str, *, strict: bool = True) -> list[str]:
@@ -381,6 +421,9 @@ class DecodeLauncherWindow(QWidget):
         super().__init__()
         self._tools = TOOLS
         self.setWindowTitle("Decode Launcher")
+        icon = _current_app_icon()
+        if icon is not None and not icon.isNull():
+            self.setWindowIcon(icon)
         self.resize(720, 280)
 
         self.tool_combo = QComboBox()
@@ -409,6 +452,9 @@ class DecodeLauncherWindow(QWidget):
         self._output_manually_set = False
         self._last_decoder_tbc_path: Optional[Path] = None
         self._has_launched_decoder = False
+        self._hosted_launches: list[object] = []
+        self._native_gui_warmup_started = False
+        self._native_gui_warmup_done = threading.Event()
 
         self.launch_button = QPushButton("Launch selected tool")
         self.launch_tbc_tools_button = QPushButton("Launch tbc-tools / ld-analyse")
@@ -417,6 +463,12 @@ class DecodeLauncherWindow(QWidget):
         self._build_layout()
         self._wire_events()
         self._refresh_tool_state()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._native_gui_warmup_started:
+            self._native_gui_warmup_started = True
+            QTimer.singleShot(250, self._start_native_gui_warmup)
 
     def _build_layout(self) -> None:
         root = QVBoxLayout()
@@ -481,6 +533,74 @@ class DecodeLauncherWindow(QWidget):
 
     def _selected_tool(self) -> ToolSpec:
         return self._tools[self.tool_combo.currentIndex()]
+
+    def _track_hosted_launch(self, tracked_object: object, window: QWidget) -> None:
+        self._hosted_launches.append(tracked_object)
+
+        def _cleanup(*_args):
+            try:
+                self._hosted_launches.remove(tracked_object)
+            except ValueError:
+                pass
+
+        window.destroyed.connect(_cleanup)
+
+    def _delete_on_close_attribute(self):
+        if hasattr(Qt, "WidgetAttribute"):
+            return Qt.WidgetAttribute.WA_DeleteOnClose
+        return Qt.WA_DeleteOnClose
+
+    def _start_native_gui_warmup(self) -> None:
+        threading.Thread(
+            target=self._warm_native_gui_modules,
+            name="decode_launcher_native_gui_warmup",
+            daemon=True,
+        ).start()
+
+    def _warm_native_gui_modules(self) -> None:
+        try:
+            importlib.import_module("filter_tune.filter_tune")
+            importlib.import_module("vhsdecode.hifi.main")
+        finally:
+            self._native_gui_warmup_done.set()
+
+    def _launch_filter_tune_in_process(self, extra: str) -> None:
+        extra_args = _split_user_args(extra) if extra else []
+        tape_format = extra_args[0] if extra_args else "VHS"
+
+        from filter_tune.filter_tune import VHStune
+
+        window = VHStune(tape_format, logging.getLogger("vhstune"))
+        icon = _current_app_icon()
+        if icon is not None and not icon.isNull():
+            window.setWindowIcon(icon)
+        window.setAttribute(self._delete_on_close_attribute(), True)
+        window.show()
+        pos = window.pos()
+        if pos.x() < 0 or pos.y() < 0:
+            window.move(0, 0)
+        self._track_hosted_launch(window, window)
+
+    def _launch_hifi_in_process(self, extra: str) -> None:
+        extra_args = _split_user_args(extra) if extra else []
+
+        from vhsdecode.hifi.main import launch_hosted_ui
+
+        controller = launch_hosted_ui(extra_args, app=QApplication.instance())
+        icon = _current_app_icon()
+        if icon is not None and not icon.isNull():
+            controller.window.setWindowIcon(icon)
+        controller.window.setAttribute(self._delete_on_close_attribute(), True)
+        self._track_hosted_launch(controller, controller.window)
+
+    def _launch_native_gui_in_process(self, tool: ToolSpec, extra: str) -> bool:
+        if tool.subcommand == "filter-tune":
+            self._launch_filter_tune_in_process(extra)
+            return True
+        if tool.subcommand == "hifi":
+            self._launch_hifi_in_process(extra)
+            return True
+        return False
 
     def _terminal_preview_command(self, tool: ToolSpec) -> str:
         base_cmd = _build_decode_command(tool, "")
@@ -778,6 +898,11 @@ class DecodeLauncherWindow(QWidget):
                 command += _split_user_args(extra)
 
             if tool.prefer_native_gui and not self.force_terminal_check.isChecked():
+                try:
+                    if self._launch_native_gui_in_process(tool, extra):
+                        return
+                except Exception as hosted_exc:
+                    print(f"[decode-launcher] hosted GUI launch fallback: {hosted_exc}")
                 if os.name == "nt":
                     subprocess.Popen(command, cwd=str(working_directory))
                 else:
@@ -827,6 +952,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.parse_args(argv)
 
     app = QApplication(sys.argv)
+    icon = _load_app_icon()
+    if icon is not None and not icon.isNull():
+        app.setWindowIcon(icon)
     _apply_fusion_dark_mode(app)
     window = DecodeLauncherWindow()
     window.show()
