@@ -5,10 +5,12 @@ import itertools
 import json
 import math
 import os
+import errno
 import subprocess
 import sys
 import traceback
 import signal
+import time
 import warnings
 
 from multiprocessing import Event, Pipe, Process
@@ -1473,7 +1475,20 @@ class JSONDumper:
 
             f.write('\n')
             f.close()
-            os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
+            tmp_path = outname + ".tbc.json.tmp"
+            final_path = outname + ".tbc.json"
+            for attempt in range(20):
+                try:
+                    os.replace(tmp_path, final_path)
+                    break
+                except PermissionError:
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.1)
+                except OSError as e:
+                    if e.errno not in (errno.EACCES, errno.EPERM) or attempt == 19:
+                        raise
+                    time.sleep(0.1)
 
             ready.clear()
 

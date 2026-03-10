@@ -3505,6 +3505,7 @@ class LDdecode:
 
         self.autoMTF = True
         self.useAGC = extra_options.get("useAGC", True)
+        self.level_smoothing_lines = extra_options.get("level_smoothing_lines", 0)
 
         self.verboseVITS = False
 
