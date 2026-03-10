@@ -110,6 +110,26 @@ def comb_c_ntsc(data, line_len):
         ) / 4
     return data
 
+@njit(cache=True, nogil=True, fastmath=True)
+def _demod_burst(
+    burst,
+    burst_start,
+    burst_end,
+    burst_sin,
+    burst_cos
+):
+    I = 0
+    Q = 0
+
+    for i in range(burst_end - burst_start):
+        I += burst[i] * burst_cos[i + burst_start]
+        Q += burst[i] * burst_sin[i + burst_start]
+
+    burst_phase = np.arctan2(Q, I)
+    burst_phase_deg = np.degrees(burst_phase) % 360
+
+    return burst_phase_deg, I, Q
+
 def get_upconverted_burst(
     chroma,
     phase,
@@ -119,18 +139,30 @@ def get_upconverted_burst(
     burstarea,
     chroma_heterodyne,
     chroma_filter,
+    burst_sin,
+    burst_cos
 ):
     burst_padding = burstarea[1] - burstarea[0] # pad the area being filtered
-    burst_start = max(0, (linenumber - lineoffset) * outwidth + burstarea[0] - burst_padding)
-    burst_end = min(len(chroma), burst_start + burstarea[1] + burst_padding)
 
-    burst = chroma_heterodyne[phase][burst_start:burst_end] * chroma[burst_start:burst_end]
+    line_start = (linenumber - lineoffset) * outwidth
+    burst_start = line_start + burstarea[0]
+    burst_start_padding = burst_start - max(0, burst_start - burst_padding)
+    burst_start_with_padding = burst_start - burst_start_padding
+
+    burst_end = line_start + burstarea[1]
+    burst_end_padding = min(len(chroma), burst_end + burst_padding) - burst_end
+    burst_end_with_padding = burst_end + burst_end_padding
+
+    burst_padded = chroma_heterodyne[phase][burst_start_with_padding:burst_end_with_padding] * chroma[burst_start_with_padding:burst_end_with_padding]
 
     # filter out noise so only the color burst is present
-    filtered = sosfiltfilt_rust(chroma_filter, burst)
-    burst_without_padding = filtered[burst_padding:-burst_padding]
+    burst_padded_filtered =  sosfiltfilt_rust(chroma_filter, burst_padded)
 
-    return burst_without_padding, burst_start + burst_padding, burst_end - burst_padding
+    burst_filtered = burst_padded_filtered[burst_start_padding:-burst_end_padding]
+
+    burst_phase_deg, I, Q = _demod_burst(burst_filtered, burst_start, burst_end, burst_sin, burst_cos)
+
+    return burst_phase_deg, I, Q, burst_start, burst_end
 
 # input
 # (
@@ -173,20 +205,92 @@ ntsc_phase_rotation_sequence = {
     (0, 2, -1): (4, 2),
 }
 
+def _get_phase_sequence(
+    chroma,
+    chroma_heterodyne,
+    track_rotation,
+    chroma_rotation,
+    chroma_filter,
+    burst_sin,
+    burst_cos,
+    burstarea,
+    lineoffset,
+    outwidth,
+    linesout,
+    last_line,
+    do_phase_rotation_check,
+    track_change_threshold,
+    rotation_check_start_line,
+):
+    phase_sequence = []
+    burst_phases = []
+
+    # rewind to the previous phase (line -1)
+    current_phase = 0
+    for _ in range(3):
+        current_phase = (current_phase + track_rotation) % 4
+
+    for linenumber in range(lineoffset, last_line):
+        current_phase = (current_phase + track_rotation) % 4
+        current_burst_phase, current_burst_I, current_burst_Q, current_burst_start, current_burst_end = get_upconverted_burst(
+            chroma,
+            current_phase,
+            linenumber,
+            lineoffset,
+            outwidth,
+            burstarea,
+            chroma_heterodyne,
+            chroma_filter,
+            burst_sin,
+            burst_cos
+        )
+
+        if (
+            do_phase_rotation_check and
+            linenumber >= rotation_check_start_line and
+            linenumber < last_line - 1
+        ):
+            # get the next burst using the phase rotation for the current track
+            next_phase = (current_phase + track_rotation) % 4
+            next_burst_phase, _, _, _, _ = get_upconverted_burst(
+                chroma,
+                next_phase,
+                linenumber + 1,
+                lineoffset,
+                outwidth,
+                burstarea,
+                chroma_heterodyne,
+                chroma_filter,
+                burst_sin,
+                burst_cos
+            )
+
+            phase_delta = abs((next_burst_phase - current_burst_phase + 180) % 360 - 180)
+            if phase_delta > track_change_threshold:
+                # positive correlation -> in phase
+                # negative correlation -> out of phase
+                # burst is more in phase than out of phase, flip rotation so it remains out of phase
+                track_rotation = chroma_rotation[1] if track_rotation == chroma_rotation[0] else chroma_rotation[0]
+        
+        phase_sequence.append((linenumber, current_phase))
+        burst_phases.append((linenumber, current_burst_phase, current_burst_I, current_burst_Q, current_burst_start, current_burst_end))
+
+    return phase_sequence, burst_phases
+
 def get_phase_rotation_sequence(
     chroma,
     rotation_check_start_line,
     lineoffset,
     linesout,
     outwidth,
-    phase_rotation,
     is_first_field,
-    prev_burst_phase,
+    prev_burst_phase_avg,
     color_system,
-    burst_sine,
-    burst_cosine,
+    burst_sin,
+    burst_cos,
     detect_chroma_track_phase,
-    chroma_rotation,
+    track_rotation,
+    chroma_rotations,
     chroma_heterodyne,
     burstarea,
     chroma_filter,
@@ -195,64 +299,107 @@ def get_phase_rotation_sequence(
     # Gather the phase differences between each color burst
     # Color burst alternates phase between lines in a field
     # *****************************************************    
-    track_change_threshold = 0.5
-    phase_rotations = []
-    bursts = []
+    track_change_threshold = 90
     burst_check_skip_lines = 16
-    do_phase_rotation_check = detect_chroma_track_phase and chroma_rotation is not None and chroma_heterodyne is not None
+    coherence_threshold = 0.3
 
-    # rewind to the previous phase (line -1)
-    current_phase = 0
-    for _ in range(3):
-        current_phase = (current_phase + phase_rotation) % 4
-    
+    do_phase_rotation_check = detect_chroma_track_phase and chroma_rotations is not None and chroma_heterodyne is not None
+
     end = linesout + lineoffset
+    phase_sequence, burst_phases = _get_phase_sequence(
+        chroma,
+        chroma_heterodyne,
+        track_rotation,
+        chroma_rotations,
+        chroma_filter,
+        burst_sin,
+        burst_cos,
+        burstarea,
+        lineoffset,
+        outwidth,
+        linesout,
+        end,
+        do_phase_rotation_check,
+        track_change_threshold,
+        rotation_check_start_line,
+    )
 
-    for linenumber in range(lineoffset, end):
-        current_phase = (current_phase + phase_rotation) % 4
-        current_burst, current_burst_start, current_burst_end = get_upconverted_burst(chroma, current_phase, linenumber, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
-        current_burst_norm = np.linalg.norm(current_burst)
+    # detect the track phase, and recalculate if needed
+    burst_check_start = burst_check_skip_lines
+    burst_check_end = end - burst_check_skip_lines
 
-        if (
-            burst_check_skip_lines < linenumber and
-            burst_check_skip_lines < end - linenumber
-        ):
-            bursts.append((current_burst, current_burst_start, current_burst_end))
+    if chroma_rotations:
+        # get the average difference in phase across color bursts
+        avg_delta = 0
+        burst_count = 0
 
-        if (
-            do_phase_rotation_check and
-            linenumber >= rotation_check_start_line and
-            linenumber < end - 1
-        ):
-            # get the next burst using the phase rotation for the current track
-            next_phase = (current_phase + phase_rotation) % 4
-            next_burst, _, _ = get_upconverted_burst(chroma, next_phase, linenumber + 1, lineoffset, outwidth, burstarea, chroma_heterodyne, chroma_filter)
-            next_burst_norm = np.linalg.norm(next_burst)
+        for i in range(1, len(burst_phases)):
+            _,                         previous_burst, _, _, _, _ = burst_phases[i-1]
+            current_burst_line_number, current_burst, _, _, _, _  = burst_phases[i]
 
-            phase_correlation = np.dot(current_burst, next_burst) / (current_burst_norm * next_burst_norm)
+            if (
+                current_burst_line_number > burst_check_start and
+                current_burst_line_number < burst_check_end
+            ):
+                avg_delta = avg_delta + ((current_burst - previous_burst) % 360)
+                burst_count += 1
 
-            if phase_correlation > track_change_threshold:
-                # positive correlation -> in phase
-                # negative correlation -> out of phase
-                # burst is more in phase than out of phase, flip rotation so it remains out of phase
-                phase_rotation = chroma_rotation[1] if phase_rotation == chroma_rotation[0] else chroma_rotation[0]
+        avg_delta /= burst_count
+        
+        # if the bursts are in phase, the track was miss-detected, flip phase and recalculate sequence
+        # TODO: make work for PAL
+        if avg_delta < 90:
+            track_rotation = chroma_rotations[1] if track_rotation == chroma_rotations[0] else chroma_rotations[0]
+            # recalculate with the fixed track rotation
+            phase_sequence, burst_phases = _get_phase_sequence(
+                chroma,
+                chroma_heterodyne,
+                track_rotation,
+                chroma_rotations,
+                chroma_filter,
+                burst_sin,
+                burst_cos,
+                burstarea,
+                lineoffset,
+                outwidth,
+                linesout,
+                end,
+                do_phase_rotation_check,
+                track_change_threshold,
+                rotation_check_start_line,
+            )
 
-        phase_rotations.append(current_phase)
-
+    # ***************************************************************************************
+    # detect the correct starting phase using the expected phase quadrant of the color bursts
+    # ***************************************************************************************
     if color_system == "NTSC":
-        # detect the correct starting phase using the expected phase quadrant of the color bursts
-        burst_phase, burst_detected = detect_ntsc_color_burst_phase(bursts, burst_sine, burst_cosine)
+        # find the phase of the color burst for the entire field
+        I_total = 0
+        Q_total = 0
+        for linenumber, _, I, Q, _, _ in burst_phases:
+            if (
+                linenumber > burst_check_start and
+                linenumber < burst_check_end
+            ):
+                magnitude = np.hypot(I, Q) + 1e-12
+                I_total += I / magnitude
+                Q_total += Q / magnitude  
 
-        if prev_burst_phase is not None:
+        burst_phase_avg = np.degrees(np.arctan2(Q_total, I_total)) % 360
+
+        coherence = np.hypot(I_total, Q_total) / len(burst_phases)
+        burst_detected = coherence >= coherence_threshold      
+
+        if prev_burst_phase_avg is not None:
             # if we have the phase difference between the previous burst and this burst, we further refine the detection based on the known phase delta between rotations
-            delta = (burst_phase - prev_burst_phase) % 360
+            delta = (burst_phase_avg - prev_burst_phase_avg) % 360
             phase_delta = int(round(delta / 90)) % 4
         else:
             # since there is no prior phase to determine the phase delta, only use isFirstField and quadrant
             phase_delta = -1
 
         # quantize to 90 degrees
-        quadrant = int(round(burst_phase) / 90) % 4
+        quadrant = int(round(burst_phase_avg) / 90) % 4
 
         # match the phase using the first field, detected color burst phase quadrant, and the phase difference from the previous burst
         phase_info = ntsc_phase_rotation_sequence.get(
@@ -267,21 +414,24 @@ def get_phase_rotation_sequence(
         else:
             # something is really wrong with the color, log an error
             # with the current phase sequence, this condition should never be hit
-            ldd.logger.error(f"Invalid NTSC color sequence: isFirstField: {is_first_field}, colorBurstPhase: {burst_phase}, previousColorBurstPhase: {prev_burst_phase}")
+            ldd.logger.error(f"Invalid NTSC color sequence: isFirstField: {is_first_field}, colorBurstPhase: {burst_phase_avg}, previousColorBurstPhase: {prev_burst_phase_avg}")
             # use the entry for frame 1
             field_phase_id = 1
             ntsc_phase_rotation = 3
 
         # adjust the starting phase
         if ntsc_phase_rotation != 0:
-            for i in range(0, len(phase_rotations)):
-                phase_rotations[i] = (phase_rotations[i] + ntsc_phase_rotation) % 4
+            shifted_phase_sequence = []
+            for linenumber, rotation in phase_sequence:
+                shifted_phase_sequence.append((linenumber, (rotation + ntsc_phase_rotation) % 4))
+            phase_sequence = shifted_phase_sequence
     else:
+        burst_phases = None
         field_phase_id = None
-        burst_phase = None
+        burst_phase_avg = None
         burst_detected = None
 
-    return phase_rotations, field_phase_id, burst_phase, burst_detected
+    return track_rotation, phase_sequence, field_phase_id, burst_phases, burst_phase_avg, burst_detected
     
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
@@ -295,10 +445,7 @@ def upconvert_chroma(
     uphet = np.zeros(len(chroma), dtype=np.float32)
     phase_index = 0
 
-    for linenumber in range(lineoffset, linesout + lineoffset):
-        current_phase = phase_rotation_sequence[phase_index]
-        phase_index += 1
-
+    for linenumber, current_phase in phase_rotation_sequence:
         linestart = (linenumber - lineoffset) * outwidth
         lineend = linestart + outwidth
 
@@ -352,15 +499,82 @@ def demod_chroma_filt(
     return shift_chroma_and_remove_dc(out_chroma, move)
 
 
+def decode_chroma_phase_rotation(
+    field,
+    disable_tracking_cafc=False,
+    chroma_rotation=None,
+    detect_chroma_track_phase=False,
+):
+    chroma, _, _ = ldd.Field.downscale(field, channel="demod_burst")
+
+    lineoffset = field.lineoffset + 1
+    linesout = field.outlinecount
+    outwidth = field.outlinelen
+
+    burst_area_init = get_burst_area(field)
+    burstarea = burst_area_init[0] - 5, burst_area_init[1] + 10
+
+    prev_burst_phase = None
+    if field.rf.color_system == "NTSC":
+        if field.prevfield is not None:
+            prev_burst_phase = field.prevfield.burst_phase_avg
+
+    # Rotation per track
+    # VHS PAL: Track1 0, Track2 -90
+    # VHS NTSC: Track1 +90, Track2 -90
+    # Betamax PAL: None - uses frequency offset instead
+    # Betamax NTSC: Track1 180, Track2 0
+    # Video8 NTSC: Track1 0, Track2 180
+    # Video8 PAL: Track1 0, Track2 -90
+
+    if field.rf.track_phase is None:
+        # guess something for the first field
+        if chroma_rotation:
+            track_rotation = chroma_rotation[0]
+        else:
+            # Track 2 is rotated ccw in both NTSC and PAL for VHS
+            # u-matic has no phase rotation.
+            track_rotation = 0
+    elif chroma_rotation:
+        # flip
+        if field.rf.track_phase == chroma_rotation[0]:
+            track_rotation = chroma_rotation[1]
+        else:
+            track_rotation = chroma_rotation[0]
+    else:
+        track_rotation = field.rf.track_phase
+
+    chroma_heterodyne = (
+        field.rf.chroma_afc.getChromaHet()
+        if (field.rf.do_cafc and not disable_tracking_cafc)
+        else field.rf.chroma_heterodyne
+    )
+
+    return get_phase_rotation_sequence(
+        chroma,
+        lineoffset + linesout - 16, # check for track phase rotation around the headswitching area (bottom of field)
+        lineoffset,
+        linesout,
+        outwidth,
+        field.isFirstField,
+        prev_burst_phase,
+        field.rf.color_system,
+        field.rf.fsc_wave,
+        field.rf.fsc_cos_wave,
+        detect_chroma_track_phase,
+        track_rotation,
+        chroma_rotation,
+        chroma_heterodyne,
+        burstarea,
+        field.rf.Filters["FChromaFinal"],
+    )
+
 def process_chroma(
     field,
-    track_phase,
     disable_deemph=False,
     disable_comb=False,
     disable_tracking_cafc=False,
-    chroma_rotation=None,
     do_chroma_deemphasis=False,
-    detect_chroma_track_phase=False,
 ):
     # Run TBC/downscale on chroma (if new field, else uses cache)
     # Cached if chroma process is run multiple times on one field due to track detection.
@@ -399,44 +613,10 @@ def process_chroma(
     burst_area_init = get_burst_area(field)
     burstarea = burst_area_init[0] - 5, burst_area_init[1] + 10
 
-    # narrow_filtered = utils.filter_simple(chroma, field.rf.Filters["FBurstNarrow"])
-
-    # for line_num in range(16, linesout - 2):
-    # lstart = line_num * outwidth
-    # lend = (line_num + 1) * outwidth
-    #
-    # chroma[lstart:lend][burstarea[0]:burstarea[1]] = narrow_filtered[lstart:lend][burstarea[0]:burstarea[1]] * 2
-
     # For NTSC, the color burst amplitude is doubled when recording, so we have to undo that.
-    prev_burst_phase = None
-    
     if field.rf.color_system == "NTSC":
-        if field.prevfield is not None:
-            prev_burst_phase = field.prevfield.burstPhase
-
         if not disable_deemph:
             chroma = burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea)
-
-    # Rotation per track
-    # VHS PAL: Track1 0, Track2 -90
-    # VHS NTSC: Track1 +90, Track2 -90
-    # Betamax PAL: None - uses frequency offset instead
-    # Betamax NTSC: Track1 180, Track2 0
-    # Video8 NTSC: Track1 0, Track2 180
-    # Video8 PAL: Track1 0, Track2 -90
-
-    if track_phase is not None:
-        if chroma_rotation:
-            if field.field_number % 2 == track_phase:
-                phase_rotation = chroma_rotation[0]
-            else:
-                phase_rotation = chroma_rotation[1]
-        else:
-            phase_rotation = track_phase
-    else:
-        # Track 2 is rotated ccw in both NTSC and PAL for VHS
-        # u-matic has no phase rotation.
-        phase_rotation = 0
 
     chroma_heterodyne = (
         field.rf.chroma_afc.getChromaHet()
@@ -444,39 +624,13 @@ def process_chroma(
         else field.rf.chroma_heterodyne
     )
 
-    phase_rotation_sequence, field_phase_id, burst_phase, burst_detected = get_phase_rotation_sequence(
-        chroma,
-        lineoffset + linesout - 16, # check for track phase rotation around the headswitching area (bottom of field)
-        lineoffset,
-        linesout,
-        outwidth,
-        phase_rotation,
-        field.isFirstField,
-        prev_burst_phase,
-        field.rf.color_system,
-        field.rf.fsc_wave,
-        field.rf.fsc_cos_wave,
-        detect_chroma_track_phase,
-        chroma_rotation,
-        chroma_heterodyne,
-        burstarea,
-        field.rf.Filters["FChromaFinal"],
-    )
-
-    if field.rf.color_system == "NTSC":
-        field.fieldPhaseID = field_phase_id
-        field.burstPhase = burst_phase
-        # TODO: possibly use this to enable a color killer
-        # if not burst_detected:
-        #     ldd.logger.info("Color burst was not detected.")
-
     uphet = upconvert_chroma(
         chroma,
         lineoffset,
         linesout,
         outwidth,
         chroma_heterodyne,
-        phase_rotation_sequence,
+        field.phase_sequence,
     )
 
     # Filter out unwanted frequencies from the final chroma signal.
@@ -553,58 +707,28 @@ def decode_chroma_simple(field):
     raw_loc = check_increment_field_no(field.rf, field)
 
     uphet = process_chroma(
-        field, None, True, field.rf.options.disable_comb, disable_tracking_cafc=False
+        field, True, field.rf.options.disable_comb, disable_tracking_cafc=False
     )
     # Release to avoid keeping this im memory - TODO: should do this in a cleaner manner.
     field.chroma_tbc_buffer = None
     field.uphet_temp = uphet
-    # Store previous raw location so we can detect if we moved in the next call.
-    field.rf.last_raw_loc = raw_loc
     return chroma_to_u16(uphet)
 
 
-def decode_chroma(field, chroma_rotation=None, do_chroma_deemphasis=False, detect_chroma_track_phase=False):
+def decode_chroma(field, do_chroma_deemphasis=False):
     """Do track detection if needed and upconvert the chroma signal"""
     rf = field.rf
     field.chroma_tbc_buffer = None
 
-    # Use field number based on raw data position
-    # This may not be 100% accurate, so we may want to add some more logic to
-    # make sure we re-check the phase occasionally.
-    raw_loc = check_increment_field_no(rf, field)
-
-    # If we moved significantly more than the length of one field, re-check phase
-    # as we may have skipped fields.
-    # if raw_loc - rf.last_raw_loc > 1.3:
-    if (
-        not field.prevfield
-        or ((field.readloc - field.prevfield.readloc) / rf.decoder.bytes_per_field)
-        > 1.3
-        or rf.compute_linelocs_issues
-    ):
-        if rf.detect_track and not rf.needs_detect:
-            ldd.logger.info(
-                "Possibly skipped a track, re-checking phase.. %s", rf.track_phase
-            )
-            rf.needs_detect = True
-
-    if rf.detect_track and rf.needs_detect or rf.recheck_phase:
-        rf.track_phase, rf.needs_detect = field.try_detect_track()
-
     uphet = process_chroma(
         field,
-        track_phase=rf.track_phase,
         disable_comb=rf.options.disable_comb,
         disable_tracking_cafc=False,
-        chroma_rotation=chroma_rotation,
         do_chroma_deemphasis=do_chroma_deemphasis,
-        detect_chroma_track_phase=detect_chroma_track_phase
     )
     field.uphet_temp = uphet
     # Release to avoid keeping this im memory - should do this in a cleaner manner.
     field.chroma_tbc_buffer = None
-    # Store previous raw location so we can detect if we moved in the next call.
-    rf.last_raw_loc = raw_loc
     return chroma_to_u16(uphet)
 
 
@@ -759,44 +883,6 @@ def detect_burst_pal_line(
 
     return LineInfo(line_number, line_bp, line_bq, line_vsw, line_burst_norm)
 
-@njit(fastmath=True, cache=True, nogil=True)
-def detect_ntsc_color_burst_phase(
-    bursts,
-    sine_wave,
-    cosine_wave,
-    coherence_threshold=0.3
-):
-    """ Detects the phase rotation quadrant using the color burst phase"""
-    # Ignore the first and last 16 lines of the field.
-    # first ones contain sync and often doesn't have color burst,
-    # while the last lines of the field will contain the head switch and may be distorted.
-    I_total = 0
-    Q_total = 0
-
-    for burst, burst_start, burst_end in bursts:
-        I = 0
-        Q = 0
-
-        for i in range(burst_end - burst_start):
-            I += burst[i] * cosine_wave[i + burst_start]
-            Q += burst[i] * sine_wave[i + burst_start]
-
-        magnitude = np.hypot(I, Q)
-        if magnitude > 0:
-            I_total += I / magnitude
-            Q_total += Q / magnitude
-
-    # Check that burst phase is consistent
-    # If phase is not consistent, then likely there is no color burst present
-    coherence = np.hypot(I_total, Q_total) / len(bursts)
-    burst_detected = coherence >= coherence_threshold        
-
-    # Global field phase
-    avg_phase = np.arctan2(Q_total, I_total)
-    avg_phase_deg = np.degrees(avg_phase) % 360
-
-    return avg_phase_deg, burst_detected
-
 
 # Phase comprensation stuff - needs rework.
 # def phase_shift(data, angle):
@@ -835,8 +921,8 @@ def try_detect_track_vhs_pal(field, chroma_rotation=None):
 
     # Upconvert chroma twice, once for each possible track phase
     uphet = [
-        process_chroma(field, 0, True, True, chroma_rotation=chroma_rotation),
-        process_chroma(field, 1, True, True, chroma_rotation=chroma_rotation),
+        process_chroma(field, True, True),
+        process_chroma(field, True, True),
     ]
 
     sine_wave = field.rf.fsc_wave
@@ -864,48 +950,3 @@ def try_detect_track_vhs_pal(field, chroma_rotation=None):
 
     return assumed_phase, needs_recheck(phase0_mean, phase1_mean)
 
-
-def try_detect_track_ntsc(field, chroma_rotation=None):
-    """Try to detect which track the current field was read from.
-    returns 0 or 1 depending on detected track phase.
-
-    We use the fact that the color burst in NTSC is inverted on every line, so
-    in a perfect signal, the burst from one line and the previous one should cancel
-    each other out when summed together. When upconverting with the wrong phase rotation,
-    the bursts will have the same phase instead, and thus the mean absolute
-    sum will be much higher. This seem to give a reasonably good guess, but could probably
-    be improved.
-
-    assumed_phase is 0 if field number % 2 matches second track,
-     1 if it matches settings for the first track.
-
-    """
-    ldd.logger.debug("Trying to detect NTSC track phase ...")
-    burst_area = get_burstarea(field)
-
-    # Upconvert chroma twice, once for each possible track phase
-
-    uphet = [
-        process_chroma(field, 0, True, chroma_rotation=chroma_rotation),
-        process_chroma(field, 1, True, chroma_rotation=chroma_rotation),
-    ]
-
-    # Look at the bursts from each upconversion and see which one looks most
-    # normal.
-    burst_mean_sum = list()
-    for ix, uph in enumerate(uphet):
-        burst_mean_sum.append(
-            mean_of_burst_sums(
-                uph, field.outlinelen, field.outlinecount, burst_area[0], burst_area[1]
-            )
-        )
-
-    burst_mean_sum_0, burst_mean_sum_1 = burst_mean_sum[0], burst_mean_sum[1]
-
-    assumed_phase = int(burst_mean_sum_1 < burst_mean_sum_0)
-
-    log_track_phase(
-        field.rf.track_phase, burst_mean_sum_0, burst_mean_sum_1, assumed_phase
-    )
-
-    return assumed_phase, needs_recheck(burst_mean_sum_0, burst_mean_sum_1)
