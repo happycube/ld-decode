@@ -24,6 +24,10 @@ else:
     extra_compile_args=[]
     extra_link_args=[]
 
+# Release/performance safety: default Rust extension builds to cargo's
+# release profile unless a caller explicitly overrides it.
+os.environ.setdefault("SETUPTOOLS_RUST_CARGO_PROFILE", "release")
+
 setup(
     # name='ld-decode',
     # version='7',

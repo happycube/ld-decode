@@ -5,10 +5,13 @@ import itertools
 import json
 import math
 import os
+import errno
 import subprocess
 import sys
 import traceback
 import signal
+import time
+import warnings
 
 from multiprocessing import Event, Pipe, Process
 
@@ -20,11 +23,29 @@ import numpy as np
 import scipy.signal as sps
 from scipy import interpolate
 
-# Try to make sure ffmpeg is available
-try:
-    import static_ffmpeg
-except ImportError:
-    pass
+def _ensure_ffmpeg_on_path():
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Unable to find acceptable character detection dependency.*",
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message="urllib3 .* or chardet .*charset_normalizer .* doesn't match a supported version!",
+            )
+            import static_ffmpeg
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
+    try:
+        static_ffmpeg.add_paths(weak=True)
+    except Exception:
+        return False
+
+    return True
 
 # If profiling is not enabled, make it a pass-through wrapper
 try:
@@ -409,6 +430,7 @@ class LoadFFmpeg:
         readlen_bytes = readlen * 2
 
         if self.ffmpeg is None:
+            _ensure_ffmpeg_on_path()
             command = ["ffmpeg", "-hide_banner", "-loglevel", "quiet"]
             command += self.input_args
             command += ["-i", "-"]
@@ -564,6 +586,7 @@ class LoadLDF:
 
 
 def ffmpeg_pipe(outname: str, opts: str):
+    _ensure_ffmpeg_on_path()
     cmd = f"ffmpeg -y -hide_banner -loglevel quiet -f s16le -ar 40k -ac 1 -i -"
     if opts and len(opts):
         cmd += f" {opts}"
@@ -1452,7 +1475,20 @@ class JSONDumper:
 
             f.write('\n')
             f.close()
-            os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
+            tmp_path = outname + ".tbc.json.tmp"
+            final_path = outname + ".tbc.json"
+            for attempt in range(20):
+                try:
+                    os.replace(tmp_path, final_path)
+                    break
+                except PermissionError:
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.1)
+                except OSError as e:
+                    if e.errno not in (errno.EACCES, errno.EPERM) or attempt == 19:
+                        raise
+                    time.sleep(0.1)
 
             ready.clear()
 

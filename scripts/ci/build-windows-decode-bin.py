@@ -1,6 +1,11 @@
 import os
+from pathlib import Path
 import PyInstaller.__main__
+import PyQt6
 from pyinstaller_versionfile import create_versionfile
+# Release/performance safety: never default Windows release artifacts to a
+# debug Rust profile when invoked locally outside CI.
+os.environ.setdefault("SETUPTOOLS_RUST_CARGO_PROFILE", "release")
 
 print("Building Windows binary")
 
@@ -17,6 +22,43 @@ create_versionfile(
     # version=version,
 )
 
+
+def _pyqt_runtime_binaries() -> list[str]:
+    pyqt_root = Path(PyQt6.__file__).resolve().parent
+    qt_bin_candidates = (pyqt_root / "Qt6" / "bin", pyqt_root / "Qt" / "bin")
+
+    qt_bin = None
+    for candidate in qt_bin_candidates:
+        if candidate.is_dir():
+            qt_bin = candidate
+            break
+
+    if qt_bin is None:
+        return []
+
+    runtime_dlls = sorted(qt_bin.glob("Qt6*.dll"))
+    runtime_dlls += [
+        qt_bin / "libEGL.dll",
+        qt_bin / "libGLESv2.dll",
+        qt_bin / "opengl32sw.dll",
+        qt_bin / "d3dcompiler_47.dll",
+    ]
+
+    extra_args: list[str] = []
+    seen: set[str] = set()
+    for dll_path in runtime_dlls:
+        if not dll_path.is_file():
+            continue
+
+        dll_key = str(dll_path).lower()
+        if dll_key in seen:
+            continue
+
+        seen.add(dll_key)
+        extra_args.extend(["--add-binary", f"{dll_path};PyQt6"])
+
+    return extra_args
+
 PyInstaller.__main__.run(
     [
         "decode.py",
@@ -30,6 +72,7 @@ PyInstaller.__main__.run(
         "numba",
         "--collect-all",
         "llvmlite",
+        *_pyqt_runtime_binaries(),
         "--hidden-import",
         "vhsdecode.decode_launcher",
         "--hidden-import",
