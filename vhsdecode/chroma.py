@@ -230,20 +230,32 @@ def _get_phase_sequence(
     for _ in range(3):
         current_phase = (current_phase + track_rotation) % 4
 
+    use_next_phase = False
     for linenumber in range(lineoffset, last_line):
-        current_phase = (current_phase + track_rotation) % 4
-        current_burst_phase, current_burst_I, current_burst_Q, current_burst_start, current_burst_end = _get_upconverted_burst(
-            chroma,
-            chroma_heterodyne,
-            chroma_filter,
-            current_phase,
-            burstarea,
-            burst_sin,
-            burst_cos,
-            linenumber,
-            lineoffset,
-            outwidth,
-        )
+        if use_next_phase:
+            # reuse the calculated phase from the previous iteration
+            current_phase = next_phase
+            current_burst_phase = next_burst_phase
+            current_burst_I = next_burst_I
+            current_burst_Q = next_burst_Q
+            current_burst_start = next_burst_start
+            current_burst_end  = next_burst_end
+
+            use_next_phase = False
+        else:
+            current_phase = (current_phase + track_rotation) % 4
+            current_burst_phase, current_burst_I, current_burst_Q, current_burst_start, current_burst_end = _get_upconverted_burst(
+                chroma,
+                chroma_heterodyne,
+                chroma_filter,
+                current_phase,
+                burstarea,
+                burst_sin,
+                burst_cos,
+                linenumber,
+                lineoffset,
+                outwidth,
+            )
 
         # check if the track has rotated around the head switching area
         if (
@@ -253,7 +265,7 @@ def _get_phase_sequence(
         ):
             # get the next burst using the phase rotation for the current track
             next_phase = (current_phase + track_rotation) % 4
-            next_burst_phase, _, _, _, _ = _get_upconverted_burst(
+            next_burst_phase, next_burst_I, next_burst_Q, next_burst_start, next_burst_end  = _get_upconverted_burst(
                 chroma,
                 chroma_heterodyne,
                 chroma_filter,
@@ -273,6 +285,8 @@ def _get_phase_sequence(
                 # burst is more in phase than out of phase, flip rotation so it remains out of phase
                 chroma_rotation_index = (chroma_rotation_index + 1) % 2
                 track_rotation = chroma_rotation[chroma_rotation_index]
+            else:
+                use_next_phase = True
         
         phase_sequence.append((linenumber, current_phase))
         burst_phases.append((linenumber, current_burst_phase, current_burst_I, current_burst_Q, current_burst_start, current_burst_end))
