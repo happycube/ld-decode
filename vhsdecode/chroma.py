@@ -372,7 +372,7 @@ def get_phase_rotation_sequence(
 
         if color_system == "NTSC":
             # if the bursts are out of phase with each other, the track was miss-detected, flip phase and recalculate sequence
-            should_flip = delta_0 < (delta_90 + delta_180 + delta_270)
+            should_flip = delta_0 < delta_180
         elif color_system == "PAL":
             # each line should alternate phase, if there are repeated sequences of phase, recalculate
             alt1 = delta_90 + delta_270
