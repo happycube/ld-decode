@@ -34,7 +34,8 @@ from vhsdecode.hifi.utils import (
     PostProcessorSharedMemory,
     NumbaAudioArray,
     PeakGain,
-    BLOCK_DTYPE
+    BLOCK_DTYPE,
+    REAL_DTYPE,
 )
 
 import argparse
