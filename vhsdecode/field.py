@@ -1,4 +1,5 @@
 import numpy as np
+from numba import njit
 
 import lddecode.core as ldd
 import lddecode.utils as lddu
@@ -1140,7 +1141,7 @@ class FieldShared:
 
     def lock_to_burst(self):
         self.chroma_tbc_buffer = None
-        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phases, self.burst_phase_avg, _ = decode_chroma_phase_rotation(
+        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phases, self.burst_phase_expected, self.burst_phase_avg, _ = decode_chroma_phase_rotation(
             self,
             chroma_rotation=self.rf.DecoderParams["chroma_rotation"],
             detect_chroma_track_phase=self.rf.options.detect_chroma_track_phase
@@ -1841,6 +1842,32 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         self.fieldPhaseID = 0
         self.ire0_backporch = (74, 124)
 
+    @staticmethod
+    @njit(cache=True, fastmath=True, nogil=True)
+    def _sync_to_burst(
+        linelocs,
+        outlinelen,
+        expected_quadrant,
+        burst_phase_avg,
+        burst_phases
+    ):
+        measured_quadrant = int(round(burst_phase_avg) / 90) % 4
+        measured_quadrant_phase = measured_quadrant * 90
+        expected_quadrant_phase = expected_quadrant * 90
+
+        for line_number, burst_phase, _, _ in burst_phases[16:]:
+            # phase delta relative to expected phase (0, 90, 180, 270)
+            phase_delta = (expected_quadrant_phase - burst_phase + 180) % 360 - 180
+
+            # scale up burst fsc for each line
+            line_start = linelocs[line_number]
+            line_end = linelocs[line_number + 1]
+            line_length = line_end - line_start
+            scale = line_length / outlinelen
+
+            line_adjust = (phase_delta / 360.0 * 4)
+            linelocs[line_number] += line_adjust * scale # 4fsc, then scaled up to the input line length
+
     def refine_linelocs_burst(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2.copy()
@@ -1851,20 +1878,13 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         self.lock_to_burst()
 
         if self.burst_phases:
-            for line_number, burst_phase, _, _, _, _ in self.burst_phases:
-                # scale up burst fsc
-                line_start = self.linelocs2[line_number]
-                line_end = self.linelocs2[line_number + 1]
-                line_length = line_end - line_start
-
-                scale = line_length / self.outlinelen
-
-                phase_delta = (self.burst_phase_avg - burst_phase + 180) % 360 - 180
-                line_adjust = (phase_delta / 360.0 * 4) * scale # 4fsc, then scaled up to the input line length
-
-                # TODO try to match up color burst more than +-180 degrees using cross correlation
-                linelocs[line_number] += line_adjust
-                #print(line_number, line_adjust, scale, self.burst_phase_avg, burst_phase, phase_delta)
+            FieldNTSCShared._sync_to_burst(
+                linelocs,
+                self.outlinelen,
+                self.burst_phase_expected,
+                self.burst_phase_avg,
+                self.burst_phases,
+            )
 
         return linelocs
 
