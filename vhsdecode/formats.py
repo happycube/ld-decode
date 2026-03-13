@@ -199,7 +199,7 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             )
 
             return get_sysparams_pal_hi8(SysParams_PAL), get_rfparams_pal_hi8(
-                FilterParams_PAL
+                FilterParams_PAL, tape_speed
             )
         elif tape_format == "EIAJ":
             from vhsdecode.format_defs.eiaj import (
@@ -357,7 +357,7 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             )
 
             return get_sysparams_ntsc_hi8(SysParams_NTSC), get_rfparams_ntsc_hi8(
-                FilterParams_NTSC
+                FilterParams_NTSC, tape_speed
             )
         elif tape_format == "TYPEB":
             from vhsdecode.format_defs.typec import (
