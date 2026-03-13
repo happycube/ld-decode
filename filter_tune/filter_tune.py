@@ -762,7 +762,7 @@ class VHStune(QDialog):
             },
             "nonlinear_linear_scale": {
                 "value": rf_params.get("nonlinear_scaling_1", 1.0),
-                "step": 0.05,
+                "step": 0.01,
                 "min": 0.05,
                 "max": 10.0,
                 "desc": "Non-linear linear scale ({:.2f}):",

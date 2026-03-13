@@ -37,9 +37,9 @@ def fill_rfparams_video8_shared(rfparams):
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
     # 198943.67
-    rfparams["nonlinear_highpass_freq"] = 260000
-    rfparams["nonlinear_exp_scaling"] = 0.53
-    rfparams["nonlinear_scaling_1"] = 0.45
+    rfparams["nonlinear_highpass_freq"] = 265000
+    rfparams["nonlinear_exp_scaling"] = 0.43 # 0.53
+    rfparams["nonlinear_scaling_1"] = 0.25 # 0.35
     # rfparams["nonlinear_scaling_2"] = 0.65
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
@@ -104,17 +104,17 @@ def fill_rfparams_hi8_shared(rfparams: dict, tape_speed: int):
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
     rfparams["deemph_mid"] = (
-        880000  # 615000  # TODO: Not correct, needs to be fixed properly
+        760000  # 615000  # TODO: Not correct, needs to be fixed properly
     )
-    rfparams["deemph_gain"] = 13.9794  # 13.5794
-    rfparams["deemph_q"] = 0.4613901
+    rfparams["deemph_gain"] = 11.5794
+    rfparams["deemph_q"] = 0.5#0.4613901
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
     # 198943.67
     rfparams["nonlinear_highpass_freq"] = 260000
-    rfparams["nonlinear_exp_scaling"] = 0.53
-    rfparams["nonlinear_scaling_1"] = 0.35  # 0.45
+    rfparams["nonlinear_exp_scaling"] = 0.43
+    rfparams["nonlinear_scaling_1"] = 0.25  # 0.45
 
     rfparams["use_sub_deemphasis"] = True
 
