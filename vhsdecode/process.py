@@ -613,7 +613,6 @@ class VHSRFDecode(ldd.RFDecode):
             tape_format == "BETAMAX" or tape_format == "BETAMAX_HIFI"
         )
         track_phase = None if is_secam(system) else rf_options.get("track_phase", None)
-        self._recheck_phase = rf_options.get("recheck_phase", False)
         high_boost = rf_options.get("high_boost", None)
         self._notch = rf_options.get("notch", None)
         self._notch_q = rf_options.get("notch_q", 10.0)
@@ -627,19 +626,11 @@ class VHSRFDecode(ldd.RFDecode):
             if (tape_format == "BETAMAX" and system != "NTSC")
             else rf_options.get("cafc", False)
         )
-        # cafc requires --recheck_phase
-        self._recheck_phase = True if self._do_cafc else self._recheck_phase
 
-        self.detect_track = False
-        self.needs_detect = False
-        if track_phase is None:
-            self.track_phase = 0
-            if not is_secam(system):
-                self.detect_track = True
-                self.needs_detect = True
-        elif track_phase == 0 or track_phase == 1:
+        self.track_phase = None
+        if track_phase == 0 or track_phase == 1:
             self.track_phase = track_phase
-        else:
+        elif track_phase is not None:
             raise Exception("Track phase can only be 0, 1 or None")
 
         self.hsync_tolerance = 0.8
@@ -933,10 +924,6 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def do_cafc(self):
         return self._do_cafc
-
-    @property
-    def recheck_phase(self):
-        return self._recheck_phase
 
     @property
     def color_system(self):

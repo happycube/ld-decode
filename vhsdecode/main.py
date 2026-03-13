@@ -218,7 +218,7 @@ def main(args=None, use_gui=False):
         help=(
             "Tries to detect the chroma carrier frequency on a field basis within some"
             " limit instead of using the default one for the format. Mainly useful for"
-            " debug purposes and used on PAL betamax. implies --recheck_phase"
+            " debug purposes and used on PAL betamax."
         ),
     )
     chroma_group.add_argument(
@@ -236,13 +236,6 @@ def main(args=None, use_gui=False):
         action="store_true",
         default=False,
         help="Detect and correct chroma phase consistency for each track / field. Corrects chroma artifacts around head-switching area for VHS. (Experimental feature)",
-    )
-    chroma_group.add_argument(
-        "--recheck_phase",
-        dest="recheck_phase",
-        action="store_true",
-        default=False,
-        help="Re-check chroma phase on every field. (No effect on U-matic)",
     )
     chroma_group.add_argument(
         "--no_comb",
@@ -493,7 +486,6 @@ def main(args=None, use_gui=False):
     rf_options["dod_threshold_a"] = args.dod_threshold_a
     rf_options["dod_hysteresis"] = args.dod_hysteresis
     rf_options["track_phase"] = args.track_phase
-    rf_options["recheck_phase"] = args.recheck_phase
     rf_options["high_boost"] = args.high_boost
     rf_options["disable_diff_demod"] = args.disable_diff_demod
     rf_options["fm_audio_notch"] = args.fm_audio_notch

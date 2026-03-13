@@ -1855,7 +1855,7 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         measured_quadrant_phase = measured_quadrant * 90
         expected_quadrant_phase = expected_quadrant * 90
 
-        for line_number, burst_phase, _, _ in burst_phases[16:]:
+        for line_number, burst_phase, _, _, _ in burst_phases[16:]:
             # phase delta relative to expected phase (0, 90, 180, 270)
             phase_delta = (expected_quadrant_phase - burst_phase + 180) % 360 - 180
 
