@@ -114,14 +114,14 @@ def comb_c_ntsc(data, line_len):
 def _demod_burst(
     burst,
     burst_start,
-    burst_end,
+    burst_len,
     burst_sin,
     burst_cos
 ):
     I = 0
     Q = 0
 
-    for i in range(burst_end - burst_start):
+    for i in range(burst_len):
         I += burst[i] * burst_cos[i + burst_start]
         Q += burst[i] * burst_sin[i + burst_start]
 
@@ -144,24 +144,18 @@ def _get_upconverted_burst(
     outwidth,
 ):
     burst_padding = burstarea[1] - burstarea[0] # pad the area being filtered
+    burst_start = max(0, (linenumber - lineoffset) * outwidth + burstarea[0] - burst_padding)
+    burst_end = min(len(chroma), burst_start + burstarea[1] + burst_padding)
 
-    line_start = (linenumber - lineoffset) * outwidth
-    burst_start = line_start + burstarea[0]
-    burst_start_padding = burst_start - max(0, burst_start - burst_padding)
-    burst_start_with_padding = burst_start - burst_start_padding
-
-    burst_end = line_start + burstarea[1]
-    burst_end_padding = min(len(chroma), burst_end + burst_padding) - burst_end
-    burst_end_with_padding = burst_end + burst_end_padding
-
-    burst_padded = chroma_heterodyne[current_phase][burst_start_with_padding:burst_end_with_padding] * chroma[burst_start_with_padding:burst_end_with_padding]
+    burst = chroma_heterodyne[current_phase][burst_start:burst_end] * chroma[burst_start:burst_end]
 
     # filter out noise so only the color burst is present
-    burst_padded_filtered =  sosfiltfilt_rust(chroma_filter, burst_padded)
+    filtered_padded = sosfiltfilt_rust(chroma_filter, burst)
+    filtered = filtered_padded[burst_padding:-burst_padding]
 
-    burst_filtered = burst_padded_filtered[burst_start_padding:-burst_end_padding]
+    burst_len = len(filtered)
 
-    return _demod_burst(burst_filtered, burst_start, burst_end, burst_sin, burst_cos)
+    return _demod_burst(filtered, burst_start + burst_padding, burst_len, burst_sin, burst_cos)
 
 def _get_phase_sequence(
     chroma,
@@ -176,6 +170,7 @@ def _get_phase_sequence(
     outwidth,
     last_line,
     detect_chroma_track_phase,
+    rotation_check_start_line,
     track_change_threshold,
 ):
     do_phase_rotation_check = detect_chroma_track_phase and chroma_rotation is not None and chroma_heterodyne is not None
@@ -328,9 +323,8 @@ def _check_ntsc_phase_rotation(is_first_field, burst_avg, prev_burst_avg):
     quadrant = int(round(burst_avg) / 90) % 4
     quadrant_error = (quadrant * 90 - burst_avg + 180) % 360 - 180
 
-    burst_avg = (burst_avg + quadrant_error) % 360
-
-    quadrant = int(round(burst_avg) / 90) % 4
+    # burst_avg = (burst_avg + quadrant_error) % 360
+    # quadrant = int(round(burst_avg) / 90) % 4
 
     if prev_burst_avg is None:
         # cannot use the previous burst if this is the first frame
@@ -353,7 +347,7 @@ def _check_ntsc_phase_rotation(is_first_field, burst_avg, prev_burst_avg):
     else:
         order = -1
     
-    # print("phase rotation", "I" if phase_data else "O", order, phase_key, burst_avg, phase_delta, phase_delta_error, quadrant_error)
+    print("phase rotation", "I" if phase_data else "O", order, phase_key, burst_avg, phase_delta)
 
     # check of this current phase rotation sequence is valid
     return phase_delta, phase_delta_error, phase_data
@@ -401,6 +395,7 @@ def get_phase_rotation_sequence(
         outwidth,
         end,
         detect_chroma_track_phase,
+        rotation_check_start_line,
         track_change_threshold
     )
 
@@ -449,7 +444,6 @@ def get_phase_rotation_sequence(
         flip_track_phase = False
 
     if flip_track_phase:
-        print("flipping", chroma_rotation_index)
         # recalculate with the corrected track rotation
         chroma_rotation_index, phase_sequence, burst_phases = _get_phase_sequence(
             chroma,
@@ -464,6 +458,7 @@ def get_phase_rotation_sequence(
             outwidth,
             end,
             detect_chroma_track_phase,
+            rotation_check_start_line,
             track_change_threshold
         )
 
