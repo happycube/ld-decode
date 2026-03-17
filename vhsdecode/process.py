@@ -91,7 +91,7 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
         field_order_action="detect",
-        level_smoothing_lines=None,
+        wow_level_adjust_smoothing=None,
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -172,9 +172,9 @@ class VHSDecode(ldd.LDdecode):
             self.field_order_action = "none"
         self.duplicate_prev_field = True
 
-        self.level_smoothing_lines = (
-            level_smoothing_lines
-            if level_smoothing_lines is not None
+        self.wow_level_adjust_smoothing = (
+            wow_level_adjust_smoothing
+            if wow_level_adjust_smoothing is not None
             else self.rf.SysParams["frame_lines"] / 2
         )
 
