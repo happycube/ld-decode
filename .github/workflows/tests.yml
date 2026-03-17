@@ -6,6 +6,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  test_python_unit:
+    name: test_python_unit
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install system dependencies
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libportaudio2
+
+    - uses: dtolnay/rust-toolchain@stable
+
+    - name: Install package with test dependencies
+      timeout-minutes: 10
+      run: pip install ".[test]"
+
+    - name: Verify Cython extensions compiled
+      run: cd /tmp && python -c "import vhsdecode.linear_filter; import vhsdecode.sync; import vhsdecode.hilbert; print('Cython OK')"
+
+    - name: Run unit tests
+      timeout-minutes: 5
+      # Run from /tmp so Python imports the installed package (with compiled
+      # Cython/Rust extensions) rather than the source tree.
+      run: cd /tmp && python -m pytest --rootdir=$GITHUB_WORKSPACE $GITHUB_WORKSPACE/tests/unit -v
+
   test_core_build:
     name: test_core_build (Qt${{ matrix.qt }})
     runs-on: ubuntu-22.04
