@@ -26,9 +26,9 @@ ld-decode is a GPL3 open-source project run entirely by volunteers and provided 
 
 # Installation & Downloads 
 
-Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  Contributors maintain [ready-made binary builds](https://github.com/oyvindln/vhs-decode/releases) which are far more suitable for end-users and are available for platforms such as Windows and Apple MacOS.  The main ld-decode repo targets only Ubuntu (generally the current LTS version - although it's possible to compile the project on most Linux flavors).
+Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  You will find [ready-made binary builds](https://github.com/happycube/ld-decode) in the releases section of this repository.  The main ld-decode repo targets the nix development environment (suitable for a wide-range of Linux distributions and Mac OS)
 
-If you'd like to download binaries or compile the project from source please see the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/) for detailed instructions.
+If you would like installation instructions or details on how to compile the project from source please see the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/) for detailed instructions.
 
 ## Building from Source
 
@@ -52,7 +52,7 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 # The decoding tool-chain
 
 > [!IMPORTANT]  
-> ld-decode is the front-end RF decoder for LaserDisc sources.  Once you have an decoded TBC file you will need Decode-Orc in order to process this and turn it back into picture and source.
+> ld-decode is the front-end RF decoder for LaserDisc sources.  Once you have a decoded TBC file you will need Decode-Orc in order to process this and turn it back into video, sound, etc.
 >
 > Please see [Decode-Orc](https://github.com/simoninns/decode-orc) for details of how to obtain and install the Decode-Orc tools
 
@@ -68,9 +68,7 @@ You can also contribute to the project documentation, see the [ld-decode documen
 
 # Source code structure
 
-The source is split roughly into three sections:
+The source is split roughly into two sections:
 
 - ld-decode - The main Python application responsible for decoding lds/ldf LaserDisc RF samples into tbc files (time-base corrected framed video) and generating the initial metadata
-- ld-decode-tools (under the tools/ directory) - The Qt based tool-chain for processing tbc files and associated metadata in various ways
 - scripts (under the scripts/ directory) - Various scripts to assist with development and decoding
-- prototypes (under the prototypes/ directory) - Tools under development that are not yet suitable for inclusion in the main tools build environment
