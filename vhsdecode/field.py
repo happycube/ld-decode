@@ -1141,7 +1141,7 @@ class FieldShared:
 
     def lock_to_burst(self):
         self.chroma_tbc_buffer = None
-        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phases, self.burst_phase_expected, self.burst_phase_avg, _ = decode_chroma_phase_rotation(
+        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phase_avg, _ = decode_chroma_phase_rotation(
             self,
             chroma_rotation=self.rf.DecoderParams["chroma_rotation"],
             detect_chroma_track_phase=self.rf.options.detect_chroma_track_phase
@@ -1847,17 +1847,13 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def _sync_to_burst(
         linelocs,
         outlinelen,
-        expected_quadrant,
-        burst_phase_avg,
-        burst_phases
+        burst_avg_phase,
+        phase_sequence
     ):
-        measured_quadrant = int(round(burst_phase_avg) / 90) % 4
-        measured_quadrant_phase = measured_quadrant * 90
-        expected_quadrant_phase = expected_quadrant * 90
+        for line_number, _, burst_phase, _, _, _ in phase_sequence[16:]:
+            phase_delta = (burst_avg_phase - burst_phase + 180) % 360 - 180
 
-        for line_number, burst_phase, _, _, _ in burst_phases[16:]:
-            # phase delta relative to expected phase (0, 90, 180, 270)
-            phase_delta = (expected_quadrant_phase - burst_phase + 180) % 360 - 180
+            phase_delta = max(-45, min(45, phase_delta))
 
             # scale up burst fsc for each line
             line_start = linelocs[line_number]
@@ -1877,13 +1873,12 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         # populates color burst info for hsync refinement the step below
         self.lock_to_burst()
 
-        if self.burst_phases:
+        if self.phase_sequence is not None:
             FieldNTSCShared._sync_to_burst(
                 linelocs,
                 self.outlinelen,
-                self.burst_phase_expected,
                 self.burst_phase_avg,
-                self.burst_phases,
+                self.phase_sequence,
             )
 
         return linelocs
