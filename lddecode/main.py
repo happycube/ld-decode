@@ -213,7 +213,7 @@ def main(args=None):
 
     parser.add_argument(
         "--wow_level_adjust_smoothing",
-        type=int,
+        type=float,
         default=0,
         help=(
             "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. (default 0)"
