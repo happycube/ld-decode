@@ -90,7 +90,7 @@ Create a detailed bug report including:
 - Qt version: 6.x.x
 
 **Steps to Reproduce:**
-1. Run `ld-analyse file.tbc`
+1. Run `ld-decode myfile.ldf`
 2. Click on X
 3. Observe Y
 
@@ -461,7 +461,7 @@ By contributing to ld-decode, you agree that your contributions will be licensed
 
 If you have questions about contributing:
 
-1. Check the [Wiki](https://github.com/happycube/ld-decode/wiki)
+1. Check the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/)
 2. Search [existing issues](https://github.com/happycube/ld-decode/issues)
 3. Ask in the [Discord server](https://discord.gg/pVVrrxd)
 4. Open a new issue with your question

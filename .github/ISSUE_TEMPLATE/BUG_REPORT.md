@@ -15,7 +15,7 @@ assignees: ''
 - [ ] I have searched the issues page for any duplicate issues open or closed and confirmed that this bug has not been reported before.
 - [ ] I have tested the issue with the current build.
 - [ ] I have attached log files, uploaded sample data, and commands used so that the issue can be easily reproduced by the developers.
-
+- [ ] This issues is only related to ld-decode - see the [Decode-Orc Issues](https://github.com/simoninns/decode-orc/issues) if your issue is tool-chain related.
 
 ### Bug Description
 
@@ -51,7 +51,7 @@ Explain what actually happened when performing the steps above. Include any erro
 Include information on your environment.
 -->
 
-- Decode version: [e.g., 1.2.3]
+- ld-decode version: [e.g., 1.2.3]
 - Operating System: [e.g., Windows 10, macOS Big Sur, Linux Ubuntu]
 - Hardware Used: [e.g., Ryzen 7 7950x, 16GB DDDR5-4400mhz, SSD NVME Gen 3 etc]
 
