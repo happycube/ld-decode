@@ -128,14 +128,26 @@ def main(args=None, use_gui=False):
         ),
     )
     luma_group.add_argument(
-        "--wow_adjust_smoothing_lines",
-        type=float,
+        "--wow_level_adjust_smoothing",
+        type=int,
         default=None,
         help=(
-            "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. "
-            "\nWow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
-            "\nDefault is (video system lines / 2) i.e. NTSC=525/2, PAL=625/2, etc."
-            "\nSet to `0` to disable smoothing (only recommended for low noise video)"
+            "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow."
+            "\n  Default is (video system lines / 2) i.e. NTSC=525/2, PAL=625/2, etc."
+            "\n  Wow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
+            "\n  If you see vertical brightness variations (banding), setting to a value larger than 0 will smooth the wow adjustment."
+        )
+    )
+    luma_group.add_argument(
+        "--wow_interpolation_method",
+        type=str,
+        default="linear",
+        choices=["linear", "quadratic", "cubic"],
+        help=(
+            "Sets the type of interpolation spline used to correct wow."
+            "\n  linear     [default]"
+            "\n  quadratic"
+            "\n  cubic"
         )
     )
     luma_group.add_argument(
@@ -555,7 +567,6 @@ def main(args=None, use_gui=False):
         extra_options=extra_options,
         debug_plot=debug_plot,
         field_order_action=args.field_order_action,
-        level_smoothing_lines=args.wow_adjust_smoothing_lines
     )
 
     if check_debug():

@@ -92,7 +92,6 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
         field_order_action="detect",
-        level_smoothing_lines=None,
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -176,11 +175,10 @@ class VHSDecode(ldd.LDdecode):
             self.field_order_action = "none"
         self.duplicate_prev_field = True
 
-        self.level_smoothing_lines = (
-            level_smoothing_lines
-            if level_smoothing_lines is not None
-            else self.rf.SysParams["frame_lines"] / 2
-        )
+        # For tape, it is recommended to use `--ire0_adjust` to fix brightness variations between lines
+        # This method usually gives false positives for noisy signals, so smooth the correction out by an entire field to avoid banding
+        if self.wow_level_adjust_smoothing is None:
+            self.wow_level_adjust_smoothing = self.rf.SysParams["frame_lines"] / 2
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
