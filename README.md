@@ -52,7 +52,7 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 # The decoding tool-chain
 
 > [!IMPORTANT]  
-> ld-decode is the front-end RF decoder for LaserDisc sources.  Once you have an decoded TBC file you will need a Decode-Orc in order to process this and turn it back into picture and source.
+> ld-decode is the front-end RF decoder for LaserDisc sources.  Once you have an decoded TBC file you will need Decode-Orc in order to process this and turn it back into picture and source.
 >
 > Please see [Decode-Orc](https://github.com/simoninns/decode-orc) for details of how to obtain and install the Decode-Orc tools
 
