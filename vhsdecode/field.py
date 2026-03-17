@@ -1843,17 +1843,14 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         self.ire0_backporch = (74, 124)
 
     @staticmethod
-    @njit(cache=True, fastmath=True, nogil=True)
     def _sync_to_burst(
         linelocs,
         outlinelen,
         burst_avg_phase,
         phase_sequence
     ):
-        for line_number, _, burst_phase, _, _, _ in phase_sequence[16:]:
+        for line_number, _, burst_phase, _, _, _ in phase_sequence[9:]:
             phase_delta = (burst_avg_phase - burst_phase + 180) % 360 - 180
-
-            phase_delta = max(-45, min(45, phase_delta))
 
             # scale up burst fsc for each line
             line_start = linelocs[line_number]
@@ -1873,7 +1870,7 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         # populates color burst info for hsync refinement the step below
         self.lock_to_burst()
 
-        if self.phase_sequence is not None:
+        if not self.rf.options.disable_burst_hsync and self.phase_sequence is not None:
             FieldNTSCShared._sync_to_burst(
                 linelocs,
                 self.outlinelen,

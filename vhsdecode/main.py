@@ -230,12 +230,20 @@ def main(args=None, use_gui=False):
         help="If set to 0 or 1, force use of video track phase. (No effect on U-matic)",
     )
     chroma_group.add_argument(
-        "-dctp",
+        "--dctp",
         "--detect_chroma_track_phase",
         dest="detect_chroma_track_phase",
         action="store_true",
         default=False,
-        help="Detect and correct chroma phase consistency for each track / field. Corrects chroma artifacts around head-switching area for VHS. (Experimental feature)",
+        help="Detects and corrects color-under heterodyne rotation change around head-switching area. Corrects chroma artifacts around head-switching area for color-under formats. (Experimental feature)",
+    )
+    chroma_group.add_argument(
+        "--dbh",
+        "--disable_burst_hsync",
+        dest="disable_burst_hsync",
+        action="store_true",
+        default=False,
+        help="Disables using the color burst phase to refine hsync. (currently only applicable to NTSC)",
     )
     chroma_group.add_argument(
         "--no_comb",
@@ -507,6 +515,7 @@ def main(args=None, use_gui=False):
     rf_options["tape_speed"] = args.tape_speed
     rf_options["ire0_adjust"] = args.ire0_adjust
     rf_options["detect_chroma_track_phase"] = args.detect_chroma_track_phase
+    rf_options["disable_burst_hsync"] = args.disable_burst_hsync
     rf_options["gnrc_afe"] = args.gnrc_afe
 
     extra_options = get_extra_options(args, not use_gui)
