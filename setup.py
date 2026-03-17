@@ -26,6 +26,10 @@ else:
     extra_compile_args=[]
     extra_link_args=[]
 
+# Release/performance safety: default Rust extension builds to cargo's
+# release profile unless a caller explicitly overrides it.
+os.environ.setdefault("SETUPTOOLS_RUST_CARGO_PROFILE", "release")
+
 setup(
     # name='ld-decode',
     # version='7',
@@ -48,6 +52,7 @@ setup(
         "vhsdecode/format_defs",
         "cvbsdecode",
         "vhsdecode/hifi",
+        "filter_tune",
     ],
     # TODO: should be done in pyproject.toml but did not find any way
     # of including without making them modules.
@@ -55,6 +60,7 @@ setup(
         "ld-cut",
         "scripts/cx-expander",
         "decode.py",
+        "decode-launcher",
     ],
     # scripts=[
     #    'cx-expander',

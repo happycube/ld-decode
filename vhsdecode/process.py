@@ -828,7 +828,10 @@ class VHSRFDecode(ldd.RFDecode):
             # TODO: This should be used for everything eventually but needs proper testing
             True,
             export_raw_tbc,
-            rf_options.get("fm_audio_notch", 0),
+            # Optional on VHS/Beta/video8
+            # always enable for hi8 since should pretty much always have the second audio
+            # channel. May want to enable for video8 as well.
+            rf_options.get("fm_audio_notch", 0) or (tape_format == "HI8"),
             self.DecoderParams.get("chroma_audio_notch_freq", 0) > 0,
             int(self.DecoderParams.get("chroma_offset", 5) * (self.freq / 40.0)),
             ire0_adjust,

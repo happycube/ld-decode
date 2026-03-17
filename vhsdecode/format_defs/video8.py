@@ -37,9 +37,9 @@ def fill_rfparams_video8_shared(rfparams):
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
     # 198943.67
-    rfparams["nonlinear_highpass_freq"] = 260000
-    rfparams["nonlinear_exp_scaling"] = 0.53
-    rfparams["nonlinear_scaling_1"] = 0.45
+    rfparams["nonlinear_highpass_freq"] = 265000
+    rfparams["nonlinear_exp_scaling"] = 0.43 # 0.53
+    rfparams["nonlinear_scaling_1"] = 0.25 # 0.35
     # rfparams["nonlinear_scaling_2"] = 0.65
     rfparams["nonlinear_highpass_limit_h"] = 5000
     rfparams["nonlinear_highpass_limit_l"] = -20000
@@ -86,7 +86,7 @@ def fill_rfparams_video8_shared(rfparams):
     rfparams["boost_bpf_mult"] = None
 
 
-def fill_rfparams_hi8_shared(rfparams):
+def fill_rfparams_hi8_shared(rfparams: dict, tape_speed: int):
     """Fill in parameters that are shared between systems for VHS"""
 
     fill_rfparams_8mm_shared(rfparams)
@@ -94,39 +94,45 @@ def fill_rfparams_hi8_shared(rfparams):
     # sync 5.7 mhz
     # peak white 7.7 mhz
 
+    # white clip 220% - 10.1mhz?
+    # dark clip 90%
+
     # no half-shift?
 
     # PAL and NTSC uses the same main de-emphasis
     # Temporary video emphasis filter constants
     # Ideally we would calculate this based on tau and 'x' value, for now
     # it's eyeballed based on graph and output.
-    rfparams["deemph_mid"] = 605000  # TODO: Not correct, needs to be fixed properly
+    rfparams["deemph_mid"] = (
+        760000  # 615000  # TODO: Not correct, needs to be fixed properly
+    )
     rfparams["deemph_gain"] = 11.5794
-    rfparams["deemph_q"] = 0.4613901
+    rfparams["deemph_q"] = 0.5#0.4613901
 
     # Parameters for high-pass filter used for non-linear deemphasis, these are
     # probably not correct.
     # 198943.67
     rfparams["nonlinear_highpass_freq"] = 260000
-    rfparams["nonlinear_exp_scaling"] = 0.53
-    rfparams["nonlinear_scaling_1"] = 0.45
+    rfparams["nonlinear_exp_scaling"] = 0.43
+    rfparams["nonlinear_scaling_1"] = 0.25  # 0.45
 
     rfparams["use_sub_deemphasis"] = True
 
     # Band-pass filter for Video rf.
     # TODO: Needs tweaking
-    rfparams["video_bpf_low"] = 1820000
-    rfparams["video_bpf_high"] = 9010000
+    rfparams["video_bpf_low"] = 1120000
+    rfparams["video_bpf_high"] = 18210000
     rfparams["video_bpf_supergauss"] = False
     # Band-pass filter order.
     # Order may be fine as is.
-    rfparams["video_bpf_order"] = 1
+    rfparams["video_bpf_order"] = None
     # Sharper upper cutoff to get rid of high-frequency junk.
-    rfparams["video_lpf_extra"] = 9010000
-    rfparams["video_lpf_extra_order"] = 12
+    # Put some lower values for LP and non-existent EP mode atm for iffy samples
+    rfparams["video_lpf_extra"] = [10310000, 9510000, 9510000][tape_speed]
+    rfparams["video_lpf_extra_order"] = 16
 
-    rfparams["video_hpf_extra"] = 1820000
-    rfparams["video_hpf_extra_order"] = 12
+    rfparams["video_hpf_extra"] = 1850000
+    rfparams["video_hpf_extra_order"] = 16
 
     # Low-pass filter on Y after demodulation
     rfparams["video_lpf_freq"] = 5000000
@@ -144,9 +150,13 @@ def fill_rfparams_hi8_shared(rfparams):
     # Multiplier for the boosted signal to add in.
     rfparams["boost_bpf_mult"] = 0
 
+    rfparams["video_rf_peak_freq"] = 6.700000
+    rfparams["video_rf_peak_gain"] = 2
+    rfparams["video_rf_peak_bandwidth"] = 2.0e7
+
     # Use linear ramp to boost RF
     rfparams["boost_rf_linear_0"] = 0.25
-    rfparams["boost_rf_linear_20"] = 80
+    rfparams["boost_rf_linear_20"] = 1
 
     # Video EQ after FM demod (PAL VHS)
     rfparams["video_eq"] = {
@@ -245,11 +255,11 @@ def get_sysparams_ntsc_video8(sysparams_ntsc):
     return sysparams
 
 
-def get_rfparams_pal_hi8(rfparams_pal):
+def get_rfparams_pal_hi8(rfparams_pal: dict, tape_speed: int):
     rfparams = {**rfparams_pal}
 
     fill_chroma_params_pal(rfparams)
-    fill_rfparams_hi8_shared(rfparams)
+    fill_rfparams_hi8_shared(rfparams, tape_speed)
 
     return rfparams
 
@@ -266,14 +276,14 @@ def get_sysparams_pal_hi8(sysparams_pal):
     return sysparams
 
 
-def get_rfparams_ntsc_hi8(rfparams_ntsc):
+def get_rfparams_ntsc_hi8(rfparams_ntsc: dict, tape_speed: int):
     """Get RF params for NTSC video8"""
 
     rfparams = {**rfparams_ntsc}
 
     fill_chroma_params_ntsc(rfparams)
 
-    fill_rfparams_hi8_shared(rfparams)
+    fill_rfparams_hi8_shared(rfparams, tape_speed)
 
     return rfparams
 

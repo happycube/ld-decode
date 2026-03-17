@@ -1,8 +1,12 @@
+import os
 import PyInstaller.__main__
 import PyInstaller.utils.osx as osxutils
 import plistlib
 from pathlib import Path
 from shutil import move
+# Release/performance safety: never default macOS release artifacts to a
+# debug Rust profile when invoked locally outside CI.
+os.environ.setdefault("SETUPTOOLS_RUST_CARGO_PROFILE", "release")
 
 print("Building macOS binary version")
 

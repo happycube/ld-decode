@@ -15,6 +15,7 @@ from multiprocessing.sharedctypes import Value
 from datetime import datetime, timedelta
 import os
 import sys
+import threading
 from typing import Optional
 import signal
 from numba import njit, guvectorize
@@ -33,81 +34,123 @@ from vhsdecode.hifi.utils import (
     PostProcessorSharedMemory,
     NumbaAudioArray,
     PeakGain,
-    BLOCK_DTYPE
+    BLOCK_DTYPE,
+    REAL_DTYPE,
 )
 
 import argparse
-import lddecode.utils as lddu
 from vhsdecode.cmdcommons import (
     test_input_file,
     test_output_file,
     TestInputFile,
     TestOutputFile,
 )
-from vhsdecode.hifi.HiFiDecode import (
-    HiFiDecode,
-    SpectralNoiseReduction,
-    DCBlocker,
-    Expander,
-    Deemphasis,
-    DEFAULT_VHS_EXPANDER_GAIN,
-    DEFAULT_VHS_EXPANDER_RATIO,
-    DEFAULT_VHS_EXPANDER_ATTACK_TAU,
-    DEFAULT_VHS_EXPANDER_HOLD_TAU,
-    DEFAULT_VHS_EXPANDER_RELEASE_TAU,
-
-    DEFAULT_8MM_EXPANDER_GAIN,
-    DEFAULT_8MM_EXPANDER_RATIO,
-    DEFAULT_8MM_EXPANDER_ATTACK_TAU,
-    DEFAULT_8MM_EXPANDER_HOLD_TAU,
-    DEFAULT_8MM_EXPANDER_RELEASE_TAU,
-
-    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
-
-    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
-
-    DEFAULT_VHS_NR_DEEMPHASIS_TAU_1,
-    DEFAULT_VHS_NR_DEEMPHASIS_TAU_2,
-    DEFAULT_8MM_NR_DEEMPHASIS_TAU_1,
-    DEFAULT_8MM_NR_DEEMPHASIS_TAU_2,
-
-    DEFAULT_VHS_DEEMPHASIS_TAU_1,
-    DEFAULT_VHS_DEEMPHASIS_TAU_2,
-    DEFAULT_8MM_DEEMPHASIS_TAU_1,
-    DEFAULT_8MM_DEEMPHASIS_TAU_2,
-
-    DEFAULT_VHS_AUDIO_MODE,
-    DEFAULT_8MM_AUDIO_MODE,
-    DEFAULT_DOC_MODE,
-    DOC_MODE_FULL,
-    DOC_MODE_MUTE,
-    DOC_MODE_DISABLED,
+from vhsdecode.hifi.constants import (
     AUDIO_MODE_DUAL_MONO,
     AUDIO_MODE_DUAL_MONO_MS,
-    audio_mode_to_ui,
-    DEFAULT_SPECTRAL_NR_AMOUNT,
-    DEFAULT_RESAMPLER_QUALITY,
-    DEFAULT_FINAL_AUDIO_RATE,
-    REAL_DTYPE,
-    DEMOD_QUADRATURE,
-    DEMOD_HILBERT,
+    DEFAULT_8MM_AUDIO_MODE,
+    DEFAULT_8MM_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_DEEMPHASIS_TAU_2,
+    DEFAULT_8MM_EXPANDER_ATTACK_TAU,
+    DEFAULT_8MM_EXPANDER_GAIN,
+    DEFAULT_8MM_EXPANDER_HOLD_TAU,
+    DEFAULT_8MM_EXPANDER_RATIO,
+    DEFAULT_8MM_EXPANDER_RELEASE_TAU,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_2,
     DEFAULT_DEMOD,
+    DEFAULT_DOC_MODE,
+    DEFAULT_FINAL_AUDIO_RATE,
+    DEFAULT_RESAMPLER_QUALITY,
+    DEFAULT_SPECTRAL_NR_AMOUNT,
+    DEFAULT_VHS_AUDIO_MODE,
+    DEFAULT_VHS_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_DEEMPHASIS_TAU_2,
+    DEFAULT_VHS_EXPANDER_ATTACK_TAU,
+    DEFAULT_VHS_EXPANDER_GAIN,
+    DEFAULT_VHS_EXPANDER_HOLD_TAU,
+    DEFAULT_VHS_EXPANDER_RATIO,
+    DEFAULT_VHS_EXPANDER_RELEASE_TAU,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_2,
+    DEMOD_HILBERT,
+    DEMOD_QUADRATURE,
+    DOC_MODE_DISABLED,
+    DOC_MODE_FULL,
+    DOC_MODE_MUTE,
+    audio_mode_to_ui,
 )
 from vhsdecode.hifi.TimeProgressBar import TimeProgressBar
 import io
+HiFiDecode = None
+SpectralNoiseReduction = None
+DCBlocker = None
+Expander = None
+Deemphasis = None
+sd = None
+SOUNDDEVICE_AVAILABLE = None
 
-try:
-    import sounddevice as sd
 
-    SOUNDDEVICE_AVAILABLE = True
-except (ImportError, OSError):
-    SOUNDDEVICE_AVAILABLE = False
+def _ensure_hifi_engine_imported():
+    global HiFiDecode, SpectralNoiseReduction, DCBlocker, Expander, Deemphasis
+
+    if HiFiDecode is None:
+        from vhsdecode.hifi.HiFiDecode import (
+            DCBlocker as ImportedDCBlocker,
+            Deemphasis as ImportedDeemphasis,
+            Expander as ImportedExpander,
+            HiFiDecode as ImportedHiFiDecode,
+            SpectralNoiseReduction as ImportedSpectralNoiseReduction,
+        )
+
+        HiFiDecode = ImportedHiFiDecode
+        SpectralNoiseReduction = ImportedSpectralNoiseReduction
+        DCBlocker = ImportedDCBlocker
+        Expander = ImportedExpander
+        Deemphasis = ImportedDeemphasis
+
+
+def _sounddevice_available():
+    global sd, SOUNDDEVICE_AVAILABLE
+
+    if SOUNDDEVICE_AVAILABLE is None:
+        try:
+            import sounddevice as imported_sounddevice
+        except (ImportError, OSError):
+            SOUNDDEVICE_AVAILABLE = False
+        else:
+            sd = imported_sounddevice
+            SOUNDDEVICE_AVAILABLE = True
+
+    return SOUNDDEVICE_AVAILABLE
+
+
+frequency_suffixes = [
+    ("ghz", 1.0e9),
+    ("mhz", 1.0e6),
+    ("khz", 1.0e3),
+    ("hz", 1.0),
+    ("fsc", 315.0e6 / 88.0),
+    ("fscpal", (283.75 * 15625) + 25),
+]
+
+
+def parse_frequency(string):
+    multiplier = 1.0e6
+    for suffix, mult in frequency_suffixes:
+        if string.lower().endswith(suffix):
+            multiplier = mult
+            string = string[: -len(suffix)]
+            break
+    return (multiplier * float(string)) / 1.0e6
 
 try:
     try:
@@ -169,7 +212,7 @@ parser.add_argument(
     "-f",
     dest="inputfreq",
     metavar='',
-    type=lddu.parse_frequency,
+    type=parse_frequency,
     default=40,
     help="RF sampling frequency in source file \n(default is 40MHz)",
 )
@@ -262,7 +305,7 @@ demod_options.add_argument(
     "--AFE_vco_deviation",
     dest="afe_vco_deviation",
     metavar='',
-    type=lddu.parse_frequency,
+    type=parse_frequency,
     default=0,
     help="Overrides the VCO maximum deviation. This represents the maximum frequency offset + or - from the center frequency.",
 )
@@ -270,7 +313,7 @@ demod_options.add_argument(
     "--AFE_left_carrier",
     dest="afe_left_carrier",
     metavar='',
-    type=lddu.parse_frequency,
+    type=parse_frequency,
     default=0,
     help="Overrides the left carrier center frequency.",
 )
@@ -278,7 +321,7 @@ demod_options.add_argument(
     "--AFE_right_carrier",
     dest="afe_right_carrier",
     metavar='',
-    type=lddu.parse_frequency,
+    type=parse_frequency,
     default=0,
     help="Overrides the right carrier center frequency.",
 )
@@ -1160,6 +1203,7 @@ class PostProcessor:
         final_audio_rate
     ):
         setproctitle(current_process().name)
+        _ensure_hifi_engine_imported()
         dc_blocker = DCBlocker(
             final_audio_rate,
             8
@@ -1194,6 +1238,7 @@ class PostProcessor:
         final_audio_rate,
     ):
         setproctitle(current_process().name)
+        _ensure_hifi_engine_imported()
         spectral_nr = SpectralNoiseReduction(
             nr_reduction_amount=spectral_nr_amount,
             audio_rate=final_audio_rate,
@@ -1249,6 +1294,7 @@ class PostProcessor:
         expander_weighting_low_pass_transition,
     ):
         setproctitle(current_process().name)
+        _ensure_hifi_engine_imported()
         deemphasis_pre_1 = Deemphasis(
             final_audio_rate,
             deemphasis_low_tau,
@@ -1337,6 +1383,7 @@ class PostProcessor:
         expander_weighting_low_pass_transition,
     ):
         setproctitle(current_process().name)
+        _ensure_hifi_engine_imported()
         deemphasis_2 = Deemphasis(
             final_audio_rate,
             deemphasis_low_tau,
@@ -1598,15 +1645,19 @@ class PostProcessor:
 
 
 class AppWindow:
-    def __init__(self, argv, decode_options):
-        self._app, self._window = self.open_ui(argv, decode_options)
+    def __init__(self, argv, decode_options, app=None):
+        self._owns_app = app is None and QApplication.instance() is None
+        self._app, self._window = self.open_ui(argv, decode_options, app)
 
     def __del__(self):
         # self._window.close()
-        self._app.quit()
+        if getattr(self, "_owns_app", False):
+            self._app.quit()
 
-    def open_ui(self, argv, decode_options):
-        app = QApplication(argv)
+    def open_ui(self, argv, decode_options, app=None):
+        app = app if app is not None else QApplication.instance()
+        if app is None:
+            app = QApplication(argv)
         print("Opening hifi-ui...")
         if decode_options["input_file"] == "-":
             window = FileOutputDialogUI(decode_options_to_ui_parameters(decode_options))
@@ -1625,6 +1676,54 @@ class AppWindow:
     @property
     def app(self):
         return self._app
+
+
+class HostedHifiController:
+    def __init__(self, argv, args, decode_options, app=None):
+        try:
+            from PyQt6.QtCore import QTimer
+        except ImportError:
+            from PyQt5.QtCore import QTimer
+
+        self._args = args
+        self._decoder_state = 0
+        self._decode_active = False
+        self._ui = AppWindow(argv, decode_options, app=app)
+        self._poll_timer = QTimer(self.window)
+        self._poll_timer.setInterval(10)
+        self._poll_timer.timeout.connect(self._poll_transport)
+        self._poll_timer.start()
+
+    @property
+    def window(self):
+        return self._ui.window
+
+    @property
+    def app(self):
+        return self._ui.app
+
+    @property
+    def decoder_state(self):
+        return self._decoder_state
+
+    def _poll_transport(self):
+        if not self.window.isVisible():
+            self._poll_timer.stop()
+            return
+
+        if self._decode_active:
+            return
+
+        if self.window.transport_state not in (PLAY_STATE, PREVIEW_STATE):
+            return
+
+        self._decode_active = True
+        try:
+            self._decoder_state = _run_ui_transport_action(self._args, self._ui)
+        except (KeyboardInterrupt, RuntimeError):
+            pass
+        finally:
+            self._decode_active = False
 
 
 class SoundDeviceProcess:
@@ -1665,6 +1764,8 @@ class SoundDeviceProcess:
     @staticmethod
     def play_worker(conn, sample_rate, stop_requested):
         setproctitle(current_process().name)
+        if not _sounddevice_available():
+            return
         output_stream = None
         while True:
             while True:
@@ -1687,8 +1788,10 @@ class SoundDeviceProcess:
                 )
                 output_stream.start()
 
-            interleaved_len = int(len(stereo) / np.dtype(REAL_DTYPE).itemsize)
-            interleaved = np.ndarray(interleaved_len, dtype=REAL_DTYPE, buffer=stereo, order="C")
+            interleaved_len = int(len(stereo) / np.dtype(np.float32).itemsize)
+            interleaved = np.ndarray(
+                interleaved_len, dtype=np.float32, buffer=stereo, order="C"
+            )
             stacked = np.empty((int(len(interleaved) / 2), 2), dtype=np.int16, order="C")
 
             SoundDeviceProcess.build_stereo(interleaved, stacked)
@@ -1716,12 +1819,14 @@ def write_soundfile_process_worker(
     audio_rate = decode_options["audio_rate"]
     input_rate = decode_options["input_rate"]
     preview_mode = decode_options["preview"]
+    preview_playback_enabled = preview_mode and _sounddevice_available()
     normalize = decode_options["normalize"]
     dual_mono = decode_options["mode"] == AUDIO_MODE_DUAL_MONO or decode_options["mode"] == AUDIO_MODE_DUAL_MONO_MS
-
-    if preview_mode:
+    if preview_playback_enabled:
         player = SoundDeviceProcess(audio_rate, stop_requested)
     else:
+        if preview_mode:
+            print("Import of sounddevice failed, preview is not available!")
         player = nullcontext()
 
     if dual_mono:
@@ -1777,15 +1882,12 @@ def write_soundfile_process_worker(
             else:
                 stereo_output.buffer_write(stereo, dtype="float32")
 
-            if preview_mode:
-                if SOUNDDEVICE_AVAILABLE:
-                    stereo_copy = np.empty_like(stereo, order="C")
-                    DecoderSharedMemory.copy_data_float32(
-                        stereo, stereo_copy, len(stereo_copy)
-                    )
-                    player.play(stereo_copy)
-                else:
-                    print("Import of sounddevice failed, preview is not available!")
+            if preview_playback_enabled:
+                stereo_copy = np.empty_like(stereo, order="C")
+                DecoderSharedMemory.copy_data_float32(
+                    stereo, stereo_copy, len(stereo_copy)
+                )
+                player.play(stereo_copy)
 
             buffer.close()
             post_processor_shared_memory_idle_queue.put(decoder_state.name)
@@ -1818,6 +1920,7 @@ async def decode_parallel(
     threads: int = 8,
     ui_t: Optional[AppWindow] = None,
 ):
+    _ensure_hifi_engine_imported()
     decoder = HiFiDecode(options=decode_options, is_main_process=True, bias_guess=decode_options["bias_guess"])
     # TODO: reprocess data read in this step
     if decode_options["bias_guess"]:
@@ -2242,34 +2345,18 @@ def run_decoder(args, decode_options, ui_t: Optional[AppWindow] = None):
         return 0
 
 
-def main() -> int:
-    args = parser.parse_args()
-
+def build_decode_options_from_args(args):
     system = "PAL" if args.pal else "NTSC"
     sample_freq = args.inputfreq
-
-    if not "UI" in args:
-        if not test_input_file(args.infile):
-            raise FileNotFoundError("Input file error")
-        if not test_output_file(args.outfile):
-            raise FileNotFoundError("Output file error")
 
     filename = args.infile
     outname = args.outfile
 
-    if not args.UI and not args.overwrite:
-        if os.path.isfile(outname):
-            print(
-                "Existing decode files found, remove them or run command with --overwrite"
-            )
-            print("\t", outname)
-            return 1
-
-    print("Initializing ...")
-
     # 8mm AFM uses a mono channel, or L-R/L+R rather than L/R channels
     # The spec defines a dual audio mode but not sure if it was ever used.
-    default_mode = DEFAULT_VHS_AUDIO_MODE if not args.format_8mm else DEFAULT_8MM_AUDIO_MODE
+    default_mode = (
+        DEFAULT_VHS_AUDIO_MODE if not args.format_8mm else DEFAULT_8MM_AUDIO_MODE
+    )
 
     real_mode = default_mode if not args.mode else args.mode
 
@@ -2299,7 +2386,9 @@ def main() -> int:
         default_expander_weighting_low_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1
         default_expander_weighting_high_tau = DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2
         default_expander_weighting_low_pass = DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS
-        default_expander_weighting_low_pass_transition = DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION
+        default_expander_weighting_low_pass_transition = (
+            DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION
+        )
     else:
         tape_format = "vhs"
         default_expander_gain = DEFAULT_VHS_EXPANDER_GAIN
@@ -2317,14 +2406,16 @@ def main() -> int:
         default_expander_weighting_low_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1
         default_expander_weighting_high_tau = DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2
         default_expander_weighting_low_pass = DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS
-        default_expander_weighting_low_pass_transition = DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION
+        default_expander_weighting_low_pass_transition = (
+            DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION
+        )
 
     decode_options = {
         "input_rate": sample_freq * 1e6,
         "standard": "p" if system == "PAL" else "n",
         "format": tape_format,
         "preview": args.preview,
-        "preview_available": SOUNDDEVICE_AVAILABLE,
+        "preview_available": _sounddevice_available() if args.preview else False,
         "demod_type": args.demod_type,
         "afe_vco_deviation": args.afe_vco_deviation * 10e5,
         "afe_left_carrier": args.afe_left_carrier * 10e5,
@@ -2340,17 +2431,26 @@ def main() -> int:
         "normalize": args.normalize,
         "expander_gain": args.expander_gain or default_expander_gain,
         "expander_ratio": args.expander_ratio or default_expander_ratio,
-        "expander_attack_tau": args.expander_attack_tau or default_expander_attack_tau,
+        "expander_attack_tau": args.expander_attack_tau
+        or default_expander_attack_tau,
         "expander_hold_tau": args.expander_hold_tau or default_expander_hold_tau,
-        "expander_release_tau": args.expander_release_tau or default_expander_release_tau,
-        "expander_weighting_low_tau": args.expander_weighting_low_tau or default_expander_weighting_low_tau,
-        "expander_weighting_high_tau": args.expander_weighting_high_tau or default_expander_weighting_high_tau,
-        "expander_weighting_low_pass": args.expander_weighting_low_pass or default_expander_weighting_low_pass,
-        "expander_weighting_low_pass_transition": args.expander_weighting_low_pass_transition or default_expander_weighting_low_pass_transition,
-        "nr_deemphasis_low_tau": args.nr_deemphasis_low_tau or default_nr_deemphasis_low_tau,
-        "nr_deemphasis_high_tau": args.nr_deemphasis_high_tau or default_nr_deemphasis_high_tau,
+        "expander_release_tau": args.expander_release_tau
+        or default_expander_release_tau,
+        "expander_weighting_low_tau": args.expander_weighting_low_tau
+        or default_expander_weighting_low_tau,
+        "expander_weighting_high_tau": args.expander_weighting_high_tau
+        or default_expander_weighting_high_tau,
+        "expander_weighting_low_pass": args.expander_weighting_low_pass
+        or default_expander_weighting_low_pass,
+        "expander_weighting_low_pass_transition": args.expander_weighting_low_pass_transition
+        or default_expander_weighting_low_pass_transition,
+        "nr_deemphasis_low_tau": args.nr_deemphasis_low_tau
+        or default_nr_deemphasis_low_tau,
+        "nr_deemphasis_high_tau": args.nr_deemphasis_high_tau
+        or default_nr_deemphasis_high_tau,
         "deemphasis_low_tau": args.deemphasis_low_tau or default_deemphasis_low_tau,
-        "deemphasis_high_tau": args.deemphasis_high_tau or default_deemphasis_high_tau,
+        "deemphasis_high_tau": args.deemphasis_high_tau
+        or default_deemphasis_high_tau,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,
@@ -2358,6 +2458,89 @@ def main() -> int:
         "output_file": outname,
         "mode": real_mode,
     }
+
+    return decode_options, real_mode
+
+
+def _run_ui_transport_action(args, ui_t):
+    print("Starting decode...")
+    options = ui_parameters_to_decode_options(ui_t.window.getValues())
+    previous_state = ui_t.window.transport_state
+    options["preview"] = previous_state == PREVIEW_STATE
+
+    working_directory = os.getcwd()
+    try:
+        output_directory = os.path.dirname(options["output_file"])
+        if output_directory != "":
+            os.chdir(output_directory)
+
+        if test_input_file(options["input_file"]) and test_output_file(
+            options["output_file"]
+        ):
+            decoder_state = run_decoder(args, options, ui_t=ui_t)
+            ui_t.window.transport_state = STOP_STATE
+
+            if previous_state == PLAY_STATE:
+                ui_t.window.on_decode_finished()
+        else:
+            message = None
+            if not test_input_file(options["input_file"]):
+                message = f"Input file '{options['input_file']}' not found"
+            elif not test_output_file(options["output_file"]):
+                message = (
+                    f"Output file '{options['output_file']}' cannot be created "
+                    "nor overwritten"
+                )
+
+            ui_t.window.generic_message_box(
+                "I/O Error", message, QMessageBox.Icon.Critical
+            )
+            ui_t.window.on_stop_clicked()
+            decoder_state = 1
+    finally:
+        os.chdir(working_directory)
+
+    return decoder_state
+
+
+def launch_hosted_ui(argv=None, app=None):
+    launch_args = list(argv or [])
+    if "--gui" not in launch_args:
+        launch_args.insert(0, "--gui")
+
+    args = parser.parse_args(launch_args)
+    decode_options, _ = build_decode_options_from_args(args)
+    qt_app = app if app is not None else QApplication.instance()
+    if qt_app is None:
+        qt_app = QApplication([sys.argv[0]] + launch_args)
+    return HostedHifiController(
+        [sys.argv[0]] + launch_args, args, decode_options, qt_app
+    )
+
+
+def main(argv=None) -> int:
+    args = parser.parse_args(argv)
+    decode_options, real_mode = build_decode_options_from_args(args)
+    system = "PAL" if decode_options["standard"] == "p" else "NTSC"
+
+    if not hasattr(args, "UI"):
+        if not test_input_file(args.infile):
+            raise FileNotFoundError("Input file error")
+        if not test_output_file(args.outfile):
+            raise FileNotFoundError("Output file error")
+    filename = decode_options["input_file"]
+    outname = decode_options["output_file"]
+
+    if not args.UI and not args.overwrite:
+        if os.path.isfile(outname):
+            print(
+                "Existing decode files found, remove them or run command with --overwrite"
+            )
+            print("\t", outname)
+            return 1
+
+    print("Initializing ...")
+
 
     if args.UI and not HIFI_UI:
         print(
@@ -2376,40 +2559,7 @@ def main() -> int:
                     ui_t.window.transport_state == PLAY_STATE
                     or ui_t.window.transport_state == PREVIEW_STATE
                 ):
-                    print("Starting decode...")
-                    options = ui_parameters_to_decode_options(ui_t.window.getValues())
-                    if ui_t.window.transport_state == PREVIEW_STATE:
-                        options["preview"] = True
-                    else:
-                        options["preview"] = False
-
-                    print("options", options)
-
-                    # change to output file directory
-                    if os.path.dirname(options["output_file"]) != "":
-                        os.chdir(os.path.dirname(options["output_file"]))
-
-                    # test input and output files
-                    if test_input_file(options["input_file"]) and test_output_file(
-                        options["output_file"]
-                    ):
-                        decoder_state = run_decoder(args, options, ui_t=ui_t)
-                        previous_state = ui_t.window.transport_state
-                        ui_t.window.transport_state = STOP_STATE
-
-                        if previous_state == PLAY_STATE:
-                            ui_t.window.on_decode_finished()
-                    else:
-                        message = None
-                        if not test_input_file(options["input_file"]):
-                            message = f"Input file '{options['input_file']}' not found"
-                        elif not test_output_file(options["output_file"]):
-                            message = f"Output file '{options['output_file']}' cannot be created nor overwritten"
-
-                        ui_t.window.generic_message_box(
-                            "I/O Error", message, QMessageBox.Icon.Critical
-                        )
-                        ui_t.window.on_stop_clicked()
+                    decoder_state = _run_ui_transport_action(args, ui_t)
 
                 ui_t.app.processEvents()
                 time.sleep(0.01)
@@ -2479,11 +2629,17 @@ def child_signal_handler(sig, frame):
         sys.exit(1)
     signal_count += 1
 
+def _register_signal_handlers_if_supported():
+    if threading.current_thread() is not threading.main_thread():
+        return
 
-if current_process().name == "MainProcess":
-    signal.signal(signal.SIGINT, parent_signal_handler)
-else:
-    signal.signal(signal.SIGINT, child_signal_handler)
+    if current_process().name == "MainProcess":
+        signal.signal(signal.SIGINT, parent_signal_handler)
+    else:
+        signal.signal(signal.SIGINT, child_signal_handler)
+
+
+_register_signal_handlers_if_supported()
 
 if __name__ == "__main__":
     freeze_support()

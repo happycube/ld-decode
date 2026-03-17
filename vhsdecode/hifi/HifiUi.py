@@ -1,14 +1,9 @@
 import os.path
 import sys
 import math
+from pathlib import Path
 
 import numpy as np
-
-import matplotlib
-matplotlib.use("Qt5Agg")  # Must come before importing pyplot
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-import matplotlib.pyplot as plt
 
 try:
     from PyQt6.QtGui import QIcon, QPalette
@@ -57,56 +52,63 @@ except ImportError:
     )
     from PyQt5 import QtGui, QtCore
 
-from vhsdecode.hifi.HiFiDecode import (
-    DEFAULT_VHS_EXPANDER_GAIN,
-    DEFAULT_VHS_EXPANDER_RATIO,
-    DEFAULT_VHS_EXPANDER_ATTACK_TAU,
-    DEFAULT_VHS_EXPANDER_HOLD_TAU,
-    DEFAULT_VHS_EXPANDER_RELEASE_TAU,
-
-    DEFAULT_8MM_EXPANDER_GAIN,
-    DEFAULT_8MM_EXPANDER_RATIO,
-    DEFAULT_8MM_EXPANDER_ATTACK_TAU,
-    DEFAULT_8MM_EXPANDER_HOLD_TAU,
-    DEFAULT_8MM_EXPANDER_RELEASE_TAU,
-
-    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS,
-    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
-
-    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS,
-    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
-
-    DEFAULT_VHS_NR_DEEMPHASIS_TAU_1,
-    DEFAULT_VHS_NR_DEEMPHASIS_TAU_2,
-    DEFAULT_8MM_NR_DEEMPHASIS_TAU_1,
-    DEFAULT_8MM_NR_DEEMPHASIS_TAU_2,
-
-    DEFAULT_VHS_DEEMPHASIS_TAU_1,
-    DEFAULT_VHS_DEEMPHASIS_TAU_2,
+from vhsdecode.hifi.constants import (
+    DEFAULT_8MM_AUDIO_MODE,
     DEFAULT_8MM_DEEMPHASIS_TAU_1,
     DEFAULT_8MM_DEEMPHASIS_TAU_2,
-
-    DEFAULT_SPECTRAL_NR_AMOUNT,
-    DEFAULT_RESAMPLER_QUALITY,
-    DEFAULT_VHS_AUDIO_MODE,
-    DEFAULT_8MM_AUDIO_MODE,
-    audio_mode_to_ui,
-    ui_to_audio_mode,
-    DEFAULT_DOC_MODE,
-    doc_mode_to_ui,
-    ui_to_doc_mode,
-    DEMOD_QUADRATURE,
-    DEMOD_HILBERT,
+    DEFAULT_8MM_EXPANDER_ATTACK_TAU,
+    DEFAULT_8MM_EXPANDER_GAIN,
+    DEFAULT_8MM_EXPANDER_HOLD_TAU,
+    DEFAULT_8MM_EXPANDER_RATIO,
+    DEFAULT_8MM_EXPANDER_RELEASE_TAU,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_8MM_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_8MM_NR_DEEMPHASIS_TAU_2,
     DEFAULT_DEMOD,
+    DEFAULT_DOC_MODE,
+    DEFAULT_RESAMPLER_QUALITY,
+    DEFAULT_SPECTRAL_NR_AMOUNT,
+    DEFAULT_VHS_AUDIO_MODE,
+    DEFAULT_VHS_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_DEEMPHASIS_TAU_2,
+    DEFAULT_VHS_EXPANDER_ATTACK_TAU,
+    DEFAULT_VHS_EXPANDER_GAIN,
+    DEFAULT_VHS_EXPANDER_HOLD_TAU,
+    DEFAULT_VHS_EXPANDER_RATIO,
+    DEFAULT_VHS_EXPANDER_RELEASE_TAU,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_LOW_PASS_TRANSITION,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_1,
+    DEFAULT_VHS_EXPANDER_WEIGHTING_TAU_2,
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_1,
+    DEFAULT_VHS_NR_DEEMPHASIS_TAU_2,
+    DEMOD_HILBERT,
+    DEMOD_QUADRATURE,
+    audio_mode_to_ui,
+    doc_mode_to_ui,
     tau_as_freq,
-    HiFiDecode,
-    Deemphasis,
-    Expander
+    ui_to_audio_mode,
+    ui_to_doc_mode,
 )
+from vhsdecode.hifi.afe import get_standard
+
+_PLOT_DEEMPHASIS = None
+_PLOT_EXPANDER = None
+
+
+def _ensure_plot_helpers():
+    global _PLOT_DEEMPHASIS, _PLOT_EXPANDER
+
+    if _PLOT_DEEMPHASIS is None or _PLOT_EXPANDER is None:
+        from vhsdecode.hifi.HiFiDecode import Deemphasis, Expander
+
+        _PLOT_DEEMPHASIS = Deemphasis
+        _PLOT_EXPANDER = Expander
+
+    return _PLOT_DEEMPHASIS, _PLOT_EXPANDER
 
 STOP_STATE = 0
 PLAY_STATE = 1
@@ -395,12 +397,41 @@ class HifiUi(QMainWindow):
         )
         self.resize_window()
         # sets default window icon
-        self.setWindowIcon(QIcon.fromTheme("document-open"))
+        self._set_status_window_icon("document-open")
         self.setValues(params)
 
         # update this at the end so the window width is calculated with everything expanded
         for collapsableSection in self.collapsableSections:
             collapsableSection.setDefaultCollapseState()
+
+    def _fallback_window_icon(self):
+        current_icon = self.windowIcon()
+        if current_icon is not None and not current_icon.isNull():
+            return current_icon
+
+        app = QApplication.instance()
+        if app is not None:
+            app_icon = app.windowIcon()
+            if app_icon is not None and not app_icon.isNull():
+                return app_icon
+
+        repo_icon = Path(__file__).resolve().parents[2] / "assets" / "icons" / "vhs-decode.png"
+        if repo_icon.is_file():
+            file_icon = QIcon(str(repo_icon))
+            if not file_icon.isNull():
+                return file_icon
+
+        return QIcon()
+
+    def _set_status_window_icon(self, theme_name: str):
+        themed_icon = QIcon.fromTheme(theme_name)
+        if themed_icon is not None and not themed_icon.isNull():
+            self.setWindowIcon(themed_icon)
+            return
+
+        fallback_icon = self._fallback_window_icon()
+        if fallback_icon is not None and not fallback_icon.isNull():
+            self.setWindowIcon(fallback_icon)
 
     def resize_window(self, axis="hv"):
         self.central_widget.adjustSize()
@@ -825,14 +856,17 @@ class HifiUi(QMainWindow):
         return layout
     
     def schedule_plot_update(self):
-        self._plot_update_timer.start(50)
+        if (
+            self.weighting_deemphasis_plot is not None
+            and self.weighting_deemphasis_plot.isVisible()
+        ):
+            self._plot_update_timer.start(50)
     
     def build_plot_window(self):
-        # Sideband / Deemphasis plot window
-        self.weighting_deemphasis_plot = PlotWindow("Weighting / Deemphasis", self.getValues)
+        self.weighting_deemphasis_plot = None
         self._plot_update_timer = QtCore.QTimer()
         self._plot_update_timer.setSingleShot(True)
-        self._plot_update_timer.timeout.connect(self.weighting_deemphasis_plot.update_plot)
+        self._plot_update_timer.timeout.connect(self._update_visible_plot)
 
         self.expander_gain_dial_control.valueChanged.connect(self.schedule_plot_update)
         self.expander_ratio_dial_control.valueChanged.connect(self.schedule_plot_update)
@@ -853,8 +887,19 @@ class HifiUi(QMainWindow):
 
         self.audio_mode_combo.currentIndexChanged.connect(self.schedule_plot_update)
         self.sample_rate_combo.currentIndexChanged.connect(self.schedule_plot_update)
+
+    def _update_visible_plot(self):
+        if (
+            self.weighting_deemphasis_plot is not None
+            and self.weighting_deemphasis_plot.isVisible()
+        ):
+            self.weighting_deemphasis_plot.update_plot()
     
     def show_plot(self):
+        if self.weighting_deemphasis_plot is None:
+            self.weighting_deemphasis_plot = PlotWindow(
+                "Weighting / Deemphasis", self.getValues
+            )
         geo = self.geometry()
         self.weighting_deemphasis_plot.move(geo.x() + geo.width() + 20, geo.y())
         self.weighting_deemphasis_plot.update_plot()
@@ -1020,7 +1065,7 @@ class HifiUi(QMainWindow):
         afe_left_carrier=0,
         afe_right_carrier=0,
     ):
-        standard, _ = HiFiDecode.get_standard(
+        standard, _ = get_standard(
             "vhs" if format == "VHS" else "8mm",
             "p" if standard == "PAL" else "n",
             afe_vco_deviation,
@@ -1132,7 +1177,7 @@ class HifiUi(QMainWindow):
         return False
 
     def on_play_clicked(self):
-        print("▶ Play command issued.")
+        print("[PLAY] Play command issued.")
         if self.confirm_overwrite():
             return
 
@@ -1141,10 +1186,10 @@ class HifiUi(QMainWindow):
         self.default_button_color(self.preview_button)
         self.default_button_color(self.pause_button)
         self.default_button_color(self.stop_button)
-        self.setWindowIcon(QIcon.fromTheme("document-save"))
+        self._set_status_window_icon("document-save")
 
     def on_preview_clicked(self):
-        print("▶ Preview command issued.")
+        print("[PREVIEW] Preview command issued.")
         if self.confirm_overwrite():
             return
 
@@ -1153,14 +1198,14 @@ class HifiUi(QMainWindow):
         self.default_button_color(self.play_button)
         self.default_button_color(self.pause_button)
         self.default_button_color(self.stop_button)
-        self.setWindowIcon(QIcon.fromTheme("document-save"))
+        self._set_status_window_icon("document-save")
 
     def on_pause_clicked(self):
         self.change_button_color(self.pause_button, "#eee")
         self.default_button_color(self.preview_button)
         self.default_button_color(self.play_button)
         self.default_button_color(self.stop_button)
-        self.setWindowIcon(QIcon.fromTheme("document-open"))
+        self._set_status_window_icon("document-open")
         print("|| Pause command issued.")
         self._transport_state = PAUSE_STATE
 
@@ -1169,7 +1214,7 @@ class HifiUi(QMainWindow):
         self.default_button_color(self.preview_button)
         self.default_button_color(self.play_button)
         self.default_button_color(self.pause_button)
-        print("■ Stop command issued.")
+        print("[STOP] Stop command issued.")
         self._transport_state = STOP_STATE
 
     def on_input_samplerate_changed(self):
@@ -1217,7 +1262,7 @@ class HifiUi(QMainWindow):
         message_box.exec()
 
     def on_decode_finished(self, decoded_filename: str = "input stream"):
-        self.setWindowIcon(QIcon.fromTheme("document-open"))
+        self._set_status_window_icon("document-open")
         # alerts user that decode is finished
         self.generic_message_box(
             "Decode Finished", f"Decode of {decoded_filename} finished."
@@ -1529,9 +1574,16 @@ class PlotWindow(QWidget):
         super(QWidget, self).__init__()
 
         self.setWindowTitle(title)
+        import matplotlib
 
-        # Matplotlib figure
-        fig, self.ax = plt.subplots(figsize=(12, 8))
+        matplotlib.use("Qt5Agg")
+
+        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+        from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+        from matplotlib.figure import Figure
+
+        fig = Figure(figsize=(12, 8))
+        self.ax = fig.subplots()
         self.canvas = FigureCanvas(fig)
 
         self.toolbar = NavigationToolbar(self.canvas, self)
@@ -1573,6 +1625,7 @@ class PlotWindow(QWidget):
     def update_plot(self):
         self.ax.clear()
         ui_values = self.getValues()
+        Deemphasis, Expander = _ensure_plot_helpers()
 
         deemphasis = Deemphasis(
             ui_values.audio_sample_rate,

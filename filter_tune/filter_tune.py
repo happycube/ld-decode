@@ -5,7 +5,6 @@
 import math
 import numpy as np
 import numpy.fft as npfft
-import scipy.signal as signal
 import os
 import sys
 import logging
@@ -18,6 +17,7 @@ try:
         Qt,
         QObject,
         QSize,
+        QTimer,
         QThread,
         pyqtSignal,
     )
@@ -35,6 +35,7 @@ try:
         QScrollArea,
         QSlider,
         QSpinBox,
+        QStyleFactory,
         QSplitter,
         QSizePolicy,
         QVBoxLayout,
@@ -44,6 +45,8 @@ try:
         QGuiApplication,
         QImage,
         QPixmap,
+        QColor,
+        QPalette,
     )
 except ImportError:
     try:
@@ -53,6 +56,7 @@ except ImportError:
             Qt,
             QObject,
             QSize,
+            QTimer,
             QThread,
             pyqtSignal,
         )
@@ -70,6 +74,7 @@ except ImportError:
             QScrollArea,
             QSlider,
             QSpinBox,
+            QStyleFactory,
             QSplitter,
             QSizePolicy,
             QVBoxLayout,
@@ -78,21 +83,36 @@ except ImportError:
         from PyQt5.QtGui import (
             QImage,
             QPixmap,
+            QColor,
+            QPalette,
         )
     except ImportError:
         print("Neither PyQt5 and PyQt6 not found! can't start filter-tune")
         sys.exit(1)
 
-from matplotlib.backends.backend_qtagg import FigureCanvas
-from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
+SUPPORTED_TAPE_FORMATS = (
+    "VHS",
+    "VHSHQ",
+    "SVHS",
+    "SVHS_ET",
+    "UMATIC",
+    "UMATIC_HI",
+    "BETAMAX",
+    "BETAMAX_HIFI",
+    "SUPERBETA",
+    "VIDEO8",
+    "HI8",
+    "EIAJ",
+    "QUADRUPLEX",
+    "VCR",
+    "VCR_LP",
+    "TYPEC",
+    "TYPEB",
+    "VIDEO2000",
+)
 
-from vhsdecode.utils import filtfft
-from vhsdecode.formats import get_format_params
-from vhsdecode import compute_video_filters
-from vhsdecode.main import supported_tape_formats
-from vhsdecode.nonlinear_filter import sub_deemphasis_inner
-from vhsdecode.filter_plot import plot_filters, SubEmphPlotter
+_compute_video_filters = None
+_sub_deemphasis_inner = None
 
 BLOCK_LEN = 32768
 SAMPLE_RATE = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
@@ -119,20 +139,34 @@ def _hz_to_output(inp, sys_params, phase=0):
     return np.uint16(
         np.clip((reduced * out_scale) + sys_params["outputZero"], 0, 65535) + 0.5
     )
+def _get_compute_video_filters():
+    global _compute_video_filters
+
+    if _compute_video_filters is None:
+        from vhsdecode import compute_video_filters as imported_compute_video_filters
+
+        _compute_video_filters = imported_compute_video_filters
+
+    return _compute_video_filters
 
 
-def genHighpass(freq, fs_hz):
-    nyq = fs_hz / 2.0
-    return filtfft(
-        signal.butter(1, [freq / nyq], btype="highpass"), BLOCK_LEN, whole=False
-    )
+def _get_format_params(system, tape_format, logger):
+    from vhsdecode.formats import get_format_params
+
+    return get_format_params(system, tape_format, 0, logger)
 
 
-def genLowpass(freq, fs_hz):
-    nyq = fs_hz / 2.0
-    return filtfft(
-        signal.butter(1, [freq / nyq], btype="lowpass"), BLOCK_LEN, whole=False
-    )
+def _get_sub_deemphasis_inner():
+    global _sub_deemphasis_inner
+
+    if _sub_deemphasis_inner is None:
+        from vhsdecode.nonlinear_filter import (
+            sub_deemphasis_inner as imported_sub_deemphasis_inner,
+        )
+
+        _sub_deemphasis_inner = imported_sub_deemphasis_inner
+
+    return _sub_deemphasis_inner
 
 
 #####
@@ -188,6 +222,7 @@ def metadata_from_json(json_data):
 
 
 def _gen_sub_emphasis_params_from_sliders(format_params, filter_params):
+    compute_video_filters = _get_compute_video_filters()
     rf_params = {
         "nonlinear_exp_scaling": filter_params["nonlinear_exponential_scale"]["value"],
         "nonlinear_scaling_1": filter_params["nonlinear_linear_scale"]["value"],
@@ -274,6 +309,12 @@ class FilterPlot:
     }
 
     def __init__(self, filters, filter_params, format_params, layout, parent):
+        from matplotlib.backends.backend_qtagg import FigureCanvas
+        from matplotlib.backends.backend_qtagg import (
+            NavigationToolbar2QT as NavigationToolbar,
+        )
+        from matplotlib.figure import Figure
+        from vhsdecode.filter_plot import SubEmphPlotter, plot_filters
         self._canvas = None
         self._canvas = FigureCanvas(Figure(figsize=(5, 3)))
         layout.addWidget(self._canvas)
@@ -284,6 +325,7 @@ class FilterPlot:
         self.sub_emph_plotter = SubEmphPlotter(
             filters.block_len, format_params.fs, filters.filters
         )
+        self._plot_filters = plot_filters
 
         self.update(filters, filter_params, format_params)
 
@@ -304,7 +346,7 @@ class FilterPlot:
             if reference["apply_custom_filters"]:
                 signal_filters *= filters.filters["FCustomVideo"]
             self.sub_emph_plotter.update_signal_filters(signal_filters)
-        plot_filters(
+        self._plot_filters(
             filters.filters,
             filters.block_len,
             format_params.fs,
@@ -327,12 +369,11 @@ class FormatParams:
         self.field_width = field_width
 
     def change_format(self, system, tape_format, fs, logger):
+        compute_video_filters = _get_compute_video_filters()
         self.fs = fs
         self.system = system
         # TODO: tape speed
-        self.sys_params, self.rf_params = get_format_params(
-            system, tape_format, 0, logger
-        )
+        self.sys_params, self.rf_params = _get_format_params(system, tape_format, logger)
         self.field_lines = max(self.sys_params["field_lines"])
         self.field_width = int(np.round(self.sys_params["line_period"] * (fs / 1e6)))
 
@@ -368,6 +409,7 @@ class DeemphasisFilters:
         self.update_nonlinear_deemphasis(filter_params, fs, block_len)
 
     def update_deemphasis(self, filter_params, rf_params, fs, block_len):
+        compute_video_filters = _get_compute_video_filters()
         if filter_params["video_lpf_supergauss"]["value"]:
             lpf = compute_video_filters.gen_video_lpf_supergauss(
                 filter_params["video_lpf_freq"]["value"],
@@ -418,6 +460,7 @@ class DeemphasisFilters:
             self._filters["FCustomVideo"] = 1
 
     def update_nonlinear_deemphasis(self, filter_params, fs, block_len):
+        compute_video_filters = _get_compute_video_filters()
         bandpass = None
         if filter_params["nonlinear_bandpass_upper"]["value"] != 0:
             bandpass = filter_params["nonlinear_bandpass_upper"]["value"]
@@ -488,6 +531,9 @@ class VHStune(QDialog):
         self.filter_params = None
         self._format_params = FormatParams("PAL", tape_format, SAMPLE_RATE, logger)
         self._deemphasis = DeemphasisFilters()
+        self._filters_ready = False
+        self._filter_plot = None
+        self._finish_initialization_scheduled = False
 
         self.originalPalette = QApplication.palette()
 
@@ -511,6 +557,9 @@ class VHStune(QDialog):
         # main_layout.addLayout(self._right_layout, 0, 1)
         img_widget.setLayout(self._right_layout)
         self.plot_layout = QGridLayout()
+        self._plot_placeholder = QLabel("Loading filter plot...")
+        self._plot_placeholder.setMinimumSize(400, 240)
+        self.plot_layout.addWidget(self._plot_placeholder, 0, 0)
         # main_layout.addLayout(self.plot_layout, 0, 2)
         plot_widget.setLayout(self.plot_layout)
         img_plot_splitter.addWidget(img_widget)
@@ -524,7 +573,21 @@ class VHStune(QDialog):
 
         self.setWindowTitle(self.title)
 
+        self.fftData = []
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._finish_initialization_scheduled:
+            self._finish_initialization_scheduled = True
+            QTimer.singleShot(50, self._finish_initialization)
+
+    def _finish_initialization(self):
         self.initFilters()
+
+        if self._plot_placeholder is not None:
+            self.plot_layout.removeWidget(self._plot_placeholder)
+            self._plot_placeholder.deleteLater()
+            self._plot_placeholder = None
 
         self._filter_plot = FilterPlot(
             self._deemphasis,
@@ -533,8 +596,8 @@ class VHStune(QDialog):
             self.plot_layout,
             self,
         )
-
-        self.fftData = []
+        self._filters_ready = True
+        self.adjustSize()
 
     def _update_format(self):
         self.makeFilterParams()
@@ -544,6 +607,7 @@ class VHStune(QDialog):
         self.updateImage()
 
     def makeFilterParams(self):
+        compute_video_filters = _get_compute_video_filters()
         rf_params = self._format_params.rf_params
 
         if self.filter_params is not None:
@@ -698,7 +762,7 @@ class VHStune(QDialog):
             },
             "nonlinear_linear_scale": {
                 "value": rf_params.get("nonlinear_scaling_1", 1.0),
-                "step": 0.05,
+                "step": 0.01,
                 "min": 0.05,
                 "max": 10.0,
                 "desc": "Non-linear linear scale ({:.2f}):",
@@ -845,6 +909,8 @@ class VHStune(QDialog):
             for p in self.filter_params[k]["onchange"]:
                 p()
         else:
+            if not self._filters_ready:
+                return
             self.loadImage()
             self.apply_both_deemph_filters()
             self.drawImage()
@@ -966,6 +1032,8 @@ class VHStune(QDialog):
         self.update_filter_plot()
 
     def update_filter_plot(self):
+        if self._filter_plot is None:
+            return
         self._filter_plot.update(
             self._deemphasis,
             self.filter_params,
@@ -978,6 +1046,7 @@ class VHStune(QDialog):
         self.applyNLDeemphFilterA()
 
     def applyNLDeemphFilterA(self):
+        sub_deemphasis_inner = _get_sub_deemphasis_inner()
         self.NLDeemphAmplitude = []
         self.NLDeemphPart = []
         self.NLProcessed = []
@@ -1164,7 +1233,7 @@ class VHStune(QDialog):
         layout.addWidget(self.saveProTBCFileButton)
 
         self.systemComboBox = QComboBox()
-        supported_tape_formats_list = list(supported_tape_formats)
+        supported_tape_formats_list = list(SUPPORTED_TAPE_FORMATS)
         index_of_vhs = supported_tape_formats_list.index(
             self._format_params.tape_format
         )
@@ -1282,11 +1351,44 @@ class VHStune(QDialog):
         layout.addStretch(1)
         self.filterGroupBox.setLayout(layout)
 
+def _apply_fusion_dark_mode(app: QApplication) -> None:
+    fusion_style = QStyleFactory.create("Fusion")
+    if fusion_style is not None:
+        app.setStyle(fusion_style)
+    else:
+        app.setStyle("Fusion")
+
+    role = QPalette.ColorRole if hasattr(QPalette, "ColorRole") else QPalette
+    group = QPalette.ColorGroup if hasattr(QPalette, "ColorGroup") else QPalette
+
+    palette = QPalette()
+    palette.setColor(role.Window, QColor(53, 53, 53))
+    palette.setColor(role.WindowText, QColor(225, 225, 225))
+    palette.setColor(role.Base, QColor(35, 35, 35))
+    palette.setColor(role.AlternateBase, QColor(53, 53, 53))
+    palette.setColor(role.ToolTipBase, QColor(30, 30, 30))
+    palette.setColor(role.ToolTipText, QColor(225, 225, 225))
+    palette.setColor(role.Text, QColor(225, 225, 225))
+    palette.setColor(role.Button, QColor(53, 53, 53))
+    palette.setColor(role.ButtonText, QColor(225, 225, 225))
+    palette.setColor(role.BrightText, QColor(255, 80, 80))
+    palette.setColor(role.Highlight, QColor(42, 130, 218))
+    palette.setColor(role.HighlightedText, QColor(20, 20, 20))
+    palette.setColor(group.Disabled, role.Text, QColor(120, 120, 120))
+    palette.setColor(group.Disabled, role.ButtonText, QColor(120, 120, 120))
+    palette.setColor(group.Disabled, role.WindowText, QColor(120, 120, 120))
+    app.setPalette(palette)
+    app.setStyleSheet(
+        "QToolTip { color: #e1e1e1; background-color: #2b2b2b; border: 1px solid #4a4a4a; }"
+    )
+
 
 def main():
     if QT_VERSION == 5:
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    os.environ["QT_STYLE_OVERRIDE"] = "Fusion"
     app = QApplication(sys.argv)
+    _apply_fusion_dark_mode(app)
     logger = logging.getLogger("vhstune")
     tape_format = "VHS"
     if len(sys.argv) > 1:

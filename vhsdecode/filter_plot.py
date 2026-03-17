@@ -59,6 +59,7 @@ def plot_filters(
                     color=colors[idx % 10],
                     marker="x",
                 )
+            ax[1].legend()
 
 
 class SubEmphPlotter:
@@ -95,4 +96,4 @@ class SubEmphPlotter:
             from_db(amplitude_db),
             sub_emphasis_params,
         )
-        ax.plot(self.freqs, to_db(npfft.rfft(filtered) / self.chirp_fft), **kwargs)
+        ax.plot(self.freqs, to_db(npfft.rfft(filtered) / self.chirp_fft), label=f'{amplitude_db} dB', **kwargs)

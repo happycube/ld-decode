@@ -90,7 +90,7 @@ def main(args=None):
         help=(
             "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. "
             "\nWow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
-            "\nSet to `0` to disable smoothing (only recommended for low noise video)",
+            "\nSet to `0` to disable smoothing (only recommended for low noise video)"
         )
     )
 

@@ -10,13 +10,14 @@ env:
 jobs:
   build-tbc-tools:
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-13, macos-14]
+        os: [macos-latest, macos-15-intel]
         include:
-          - os: macos-13
-            arch: x86_64
-          - os: macos-14
+          - os: macos-latest
             arch: arm64
+          - os: macos-15-intel
+            arch: x86_64
 
     name: Build tbc-tools (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
@@ -57,10 +58,21 @@ jobs:
           cp flaldf dist/tbc-tools.app/Contents/MacOS/
 
       - name: Copy scripts
-        run: find scripts scripts/linux -maxdepth 1 -perm +111 -type f -exec cp {} dist/tbc-tools.app/Contents/MacOS/ \;
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for f in scripts/* scripts/linux/*; do
+            if [[ -f "$f" && -x "$f" ]]; then
+              cp "$f" dist/tbc-tools.app/Contents/MacOS/
+            fi
+          done
 
       - name: Copy dependencies
-        run: macdeployqt dist/tbc-tools.app -libpath=/usr/local/lib/
+        shell: bash
+        run: |
+          BREW_PREFIX="$(brew --prefix)"
+          QT_PREFIX="$(brew --prefix qt)"
+          "$QT_PREFIX/bin/macdeployqt" dist/tbc-tools.app -libpath="$BREW_PREFIX/lib"
 
       - name: Build DMG file
         run: >-

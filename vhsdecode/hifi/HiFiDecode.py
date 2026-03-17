@@ -2096,7 +2096,7 @@ class HiFiDecode:
             numba.types.int64,
             numba.types.int64,
             NumbaAudioArray,
-            NumbaAudioArray,
+            numba.optional(NumbaAudioArray),
             numba.types.int64,
             numba.types.int64,
             numba.types.boolean,
