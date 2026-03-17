@@ -6,11 +6,14 @@ labels: 'enhancement'
 assignees: ''
 ---
 
-### Is your proposal related to a problem?
+### Is your proposal related to a problem with ld-decode?
 
 <!--
   Provide a clear and concise description of what the problem is.
   For example, "I'm always frustrated when..."
+
+  Note that feature request for Decode-Orc should be placed in the
+  Decode-Orc repo's issues.
 -->
 
 ### Is your proposal already in the issue tickets?

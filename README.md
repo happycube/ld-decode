@@ -1,8 +1,11 @@
 <img src="assets/icons/Cross-Platform-VHS-Decode-Trasparent.png" width="300" height="">
 
+> [!Important]
+> If in doubt read the comprehensive [documentation web-site](https://happycube.github.io/ld-decode-docs/)!
 
 # VHS-Decode (It does more than VHS now!)
 
+Check the documentation first, the [discord server](https://discord.com/invite/pVVrrxd) second and then raise issues.
 
 A fork of [LD-Decode](https://github.com/happycube/ld-decode), the decoding software powering the [Domesday86 Project](https://www.domesday86.com/).  
 
@@ -13,6 +16,9 @@ This version has been modified to work with the differences found in [FM RF sign
 > [!CAUTION]
 > FM RF Archival captures and capturing is not to be confused with the TV Modulator/Demodulator pack's signals, i.e the **"antenna connectors"** on the back of a VCR!
 
+- **[vhs-decode](https://github.com/oyvindln/vhs-decode/wiki)** (for videotape formats)
+- **[cvbs-decode](https://github.com/oyvindln/vhs-decode/wiki/CVBS-Composite-Decode)** (for composite video)
+- **[hifi-decode](https://github.com/oyvindln/vhs-decode/wiki/hifi-decode)** (for audio processing)
 
 <img src="assets/images/ld-analyse-vhs-decode-svhs-&-scopes.png" width="" height="">
 
@@ -21,6 +27,7 @@ This version has been modified to work with the differences found in [FM RF sign
 
 # [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
 
+Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  Contributors maintain [ready-made binary builds](https://github.com/oyvindln/vhs-decode/releases) which are far more suitable for end-users and are available for platforms such as Windows and Apple MacOS.  The main ld-decode repo targets only Ubuntu (generally the current LTS version - although it's possible to compile the project on most Linux flavors).
 
 **VHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M. **Generally well supported**
 
@@ -108,15 +115,18 @@ However, the only **critical requirement** is available test points or a head am
 > - Its good practice to avoid cross contamination of tapes, especially if dealing with mouldy or contaminated tapes.  
 > - It also helps to make sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate greases and oils to avoid mechanical failures. 
 
+# Want to get involved?
 
 ## An RF Capture Device
 
+If you are interested in contributing or have general questions please join the [Domesday86 Discord server](https://discord.gg/pVVrrxd) which has the entire family of decode projects developers on it (or IRC if you must) as the Facebook group is mostly inactive.
 
 > [!TIP]  
 > Currently there are a couple of standardised hardware workflows, but.. [you need to read and select one based off what format(s) you are actually going to be capturing](https://github.com/oyvindln/vhs-decode/wiki/Workflow-Guide).
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Hardware/DdD-Rev3-CX-White-Sony-ILCE-7RM3-2022.12.20-21.54.48.png" width="600" height="">
 
+There is also a subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active focused around videotape capture & decoding.
 
 ## [CX Card & CXADC](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards) (30-250USD) 
 
