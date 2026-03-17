@@ -22,6 +22,7 @@ def main(args=None):
     parser = argparse.ArgumentParser(
         description="Extracts audio and video from raw RF laserdisc captures",
         epilog=options_epilog,
+        formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("infile", metavar="infile", type=str, help="source file")
     parser.add_argument(
@@ -211,6 +212,29 @@ def main(args=None):
     )
 
     parser.add_argument(
+        "--wow_level_adjust_smoothing",
+        type=int,
+        default=0,
+        help=(
+            "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. (default 0)"
+            "\nWow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
+            "\nIf you see vertical brightness variations (banding), setting to a value larger than 0 will smooth the wow adjustment."
+        )
+    )
+    parser.add_argument(
+        "--wow_interpolation_method",
+        type=str,
+        default="linear",
+        choices=["linear", "quadratic", "cubic"],
+        help=(
+            "Sets the type of interpolation spline used to correct wow."
+            "\n  linear     [default]"
+            "\n  quadratic"
+            "\n  cubic"
+        )
+    )
+
+    parser.add_argument(
         "-t",
         "--threads",
         metavar="threads",
@@ -330,6 +354,8 @@ def main(args=None):
         "audio_filterwidth": args.audio_filterwidth,
         "AC3": args.AC3,
         "use_profiler": args.use_profiler,
+        "wow_level_adjust_smoothing": args.wow_level_adjust_smoothing,
+        "wow_interpolation_method": args.wow_interpolation_method
     }
 
     if vid_standard == "NTSC" and args.NTSC_color_notch_filter:

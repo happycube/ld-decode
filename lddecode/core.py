@@ -1463,7 +1463,8 @@ class Field:
         fields_written=0,
         readloc=0,
         use_threads=True,
-        level_smoothing_lines=0
+        wow_level_adjust_smoothing=0,
+        wow_interpolation_method="linear"
     ):
         self.rawdata = decode["input"]
         self.data = decode
@@ -1498,7 +1499,8 @@ class Field:
 
         self.use_threads = use_threads
 
-        self.level_smoothing_lines = level_smoothing_lines
+        self.wow_level_adjust_smoothing = wow_level_adjust_smoothing
+        self.wow_interpolation_method = wow_interpolation_method
 
     @profile
     def process(self):
@@ -2455,38 +2457,37 @@ class Field:
 
         return linelocs
 
-    def computewow_scaled(self, kind='linear'):
+    def computewow_scaled(self):
         """Compute how much the line deviates fron expected,
            and scale input samples to output samples
         """
-        if self.interpolated_pixel_locs is None:
-            actual_linelocs = np.array(self.linelocs, dtype=np.float64)
-            expected_linelocs = np.array([i * self.inlinelen for i in range(len(actual_linelocs))], dtype=np.float64)
+        actual_linelocs = np.array(self.linelocs, dtype=np.float64)
+        expected_linelocs = np.array([i * self.inlinelen for i in range(len(actual_linelocs))], dtype=np.float64)
 
-            outscale = self.inlinelen / self.outlinelen
-            outsamples = self.outlinecount * self.outlinelen
-            outline_offset = (self.lineoffset + 1) * self.outlinelen
+        outscale = self.inlinelen / self.outlinelen
+        outsamples = self.outlinecount * self.outlinelen
+        outline_offset = (self.lineoffset + 1) * self.outlinelen
 
-            if kind == 'linear':
-                k=1
-                bc_type=None
-            elif kind == 'quadratic':
-                k=2
-                bc_type=None
-            elif kind == 'cubic':
-                k=3
-                bc_type='natural'
+        if self.wow_interpolation_method == 'linear':
+            k=1
+            bc_type=None
+        elif self.wow_interpolation_method == 'quadratic':
+            k=2
+            bc_type=None
+        elif self.wow_interpolation_method == 'cubic':
+            k=3
+            bc_type='natural'
 
-            # create a spline that interpolates the exact sample value based on expected vs. actual line locations
-            spl = interpolate.make_interp_spline(expected_linelocs, actual_linelocs, k=k, bc_type=bc_type, check_finite=False)
+        # create a spline that interpolates the exact sample value based on expected vs. actual line locations
+        spl = interpolate.make_interp_spline(expected_linelocs, actual_linelocs, k=k, bc_type=bc_type, check_finite=False)
 
-            # scale up to compute where the output pixel would fall on the interpolated line loc
-            scaled_pixel_locs = np.arange(outsamples + outline_offset) * outscale
+        # scale up to compute where the output pixel would fall on the interpolated line loc
+        scaled_pixel_locs = np.arange(outsamples + outline_offset) * outscale
 
-            # interpolate the expected pixel location
-            self.interpolated_pixel_locs = spl(scaled_pixel_locs)
-            # amount of wow for each scaled pixel
-            self.wowfactors = spl(scaled_pixel_locs, 1)
+        # interpolate the expected pixel location
+        self.interpolated_pixel_locs = spl(scaled_pixel_locs)
+        # amount of wow for each scaled pixel
+        self.wowfactors = spl(scaled_pixel_locs, 1)
 
         return self.interpolated_pixel_locs, self.wowfactors
 
@@ -2565,7 +2566,7 @@ class Field:
             wowfactors,
             self.lineoffset,
             outwidth,
-            level_smoothing_lines=self.level_smoothing_lines
+            wow_level_adjust_smoothing=self.wow_level_adjust_smoothing
         )
 
         if self.rf.decode_digital_audio:
@@ -3514,6 +3515,8 @@ class LDdecode:
 
         self.autoMTF = True
         self.useAGC = extra_options.get("useAGC", True)
+        self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
+        self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
 
         self.verboseVITS = False
 
@@ -3897,7 +3900,8 @@ class LDdecode:
             initphase=initphase,
             fields_written=self.fields_written,
             readloc=rawdecode["startloc"],
-            level_smoothing_lines=self.level_smoothing_lines
+            wow_level_adjust_smoothing=self.wow_level_adjust_smoothing,
+            wow_interpolation_method=self.wow_interpolation_method
         )
 
         # set an object-level variable to make notebook debugging easier
