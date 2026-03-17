@@ -52,7 +52,9 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 # The decoding tool-chain
 
 > [!IMPORTANT]  
-> The decoders and tools are primarily command line based, only the ld-analyse tool provides a GUI (Graphical User Interface)
+> ld-decode is the front-end RF decoder for LaserDisc sources.  Once you have an decoded TBC file you will need a Decode-Orc in order to process this and turn it back into picture and source.
+>
+> Please see [Decode-Orc](https://github.com/simoninns/decode-orc) for details of how to obtain and install the Decode-Orc tools
 
 # Want to get involved?
 
@@ -63,9 +65,6 @@ If you are interested in contributing or have general questions please join the 
 For detailed information on how to contribute code, report bugs, or suggest enhancements, please see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 You can also contribute to the project documentation, see the [ld-decode documentation github](https://github.com/happycube/ld-decode-docs) for details.
-
-There is also a subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active focused around videotape capture & decoding.
-
 
 # Source code structure
 
