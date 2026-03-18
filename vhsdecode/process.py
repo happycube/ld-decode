@@ -5,6 +5,7 @@ import traceback
 import scipy.signal as sps
 import threading
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
 
 import lddecode.core as ldd
 
@@ -99,6 +100,7 @@ class VHSDecode(ldd.LDdecode):
         # This is kinda hacky and should be sorted in a better way ideally.
         temp_init = ldd.DemodCache.__init__
         ldd.DemodCache.__init__ = _demodcache_dummy
+        self._processing_thread_pool = ThreadPoolExecutor(max_workers=threads + 1)
 
         if system == "405":
             sys_params_pal_temp = ldd.SysParams_PAL.copy()
@@ -133,6 +135,7 @@ class VHSDecode(ldd.LDdecode):
         self.level_adjust = level_adjust
         # Overwrite the rf  with the VHS-altered one
         self.rf = VHSRFDecode(
+            processing_thread_pool=self._processing_thread_pool,
             system=system,
             tape_format=tape_format,
             inputfreq=inputfreq,
@@ -142,7 +145,8 @@ class VHSDecode(ldd.LDdecode):
         )
 
         if system == "405":
-            SysParams_PAL = sys_params_pal_temp
+            # TODO: oln 18/03/2026 This wasn't reset correctly, not sure if it's relevant or not.
+            ldd.SysParams_PAL = sys_params_pal_temp
 
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -172,7 +176,11 @@ class VHSDecode(ldd.LDdecode):
             self.field_order_action = "none"
         self.duplicate_prev_field = True
 
-        self.level_smoothing_lines = level_smoothing_lines if level_smoothing_lines is not None else self.rf.SysParams["frame_lines"] / 2
+        self.level_smoothing_lines = (
+            level_smoothing_lines
+            if level_smoothing_lines is not None
+            else self.rf.SysParams["frame_lines"] / 2
+        )
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -566,6 +574,7 @@ class VHSDecode(ldd.LDdecode):
 class VHSRFDecode(ldd.RFDecode):
     def __init__(
         self,
+        processing_thread_pool,
         inputfreq=40,
         system="NTSC",
         tape_format="VHS",
@@ -573,6 +582,7 @@ class VHSRFDecode(ldd.RFDecode):
         extra_options={},
         debug_plot=None,
     ):
+
         # First init the rf decoder normally.
         super(VHSRFDecode, self).__init__(
             inputfreq,
@@ -697,7 +707,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "ire0_adjust",
                 "gnrc_afe",
                 "relaxed_line0",
-                "detect_chroma_track_phase"
+                "detect_chroma_track_phase",
             ],
         )(
             self.iretohz(100) * 2,
@@ -736,7 +746,7 @@ class VHSRFDecode(ldd.RFDecode):
             ire0_adjust,
             rf_options.get("gnrc_afe", False),
             rf_options.get("relaxed_line0", False),
-            rf_options.get("detect_chroma_track_phase", False)
+            rf_options.get("detect_chroma_track_phase", False),
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -880,6 +890,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.freq_hz,
             self.SysParams,
             self._sysparams_const,
+            processing_thread_pool,
             divisor=level_detect_divisor,
             debug=self.debug,
         )
