@@ -23,6 +23,7 @@ from scipy import interpolate
 # Try to make sure ffmpeg is available
 try:
     import static_ffmpeg
+    static_ffmpeg.add_paths()  # adds static ffmpeg/ffprobe binaries to PATH
 except ImportError:
     pass
 
@@ -509,10 +510,20 @@ class LoadLDF:
     def _open(self, sample):
         self._close()
 
-        command = [self._find_ldf_reader(), "--quiet", "--start-offset", str(sample), self.filename]
+        if sys.platform == "win32":
+            # On Windows, .bat wrappers cannot be launched directly by CreateProcess.
+            # Use the current Python interpreter to run ldf_reader as a module instead.
+            # sys.executable is always valid, and the subprocess inherits PYTHONHOME/
+            # PYTHONPATH from the parent process so lddecode is importable.
+            command = [
+                sys.executable, "-m", "lddecode.ldf_reader",
+                "--quiet", "--start-offset", str(sample), self.filename,
+            ]
+        else:
+            command = [self._find_ldf_reader(), "--quiet", "--start-offset", str(sample), self.filename]
 
         ldfreader = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         self.position = sample * 2
         self.rewind_buf = b""
