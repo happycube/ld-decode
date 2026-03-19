@@ -128,14 +128,26 @@ def main(args=None, use_gui=False):
         ),
     )
     luma_group.add_argument(
-        "--wow_adjust_smoothing_lines",
-        type=float,
+        "--wow_level_adjust_smoothing",
+        type=int,
         default=None,
         help=(
-            "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. "
-            "\nWow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
-            "\nDefault is (video system lines / 2) i.e. NTSC=525/2, PAL=625/2, etc."
-            "\nSet to `0` to disable smoothing (only recommended for low noise video)"
+            "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow."
+            "\n  Default is (video system lines / 2) i.e. NTSC=525/2, PAL=625/2, etc."
+            "\n  Wow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
+            "\n  If you see vertical brightness variations (banding), setting to a value larger than 0 will smooth the wow adjustment."
+        )
+    )
+    luma_group.add_argument(
+        "--wow_interpolation_method",
+        type=str,
+        default="linear",
+        choices=["linear", "quadratic", "cubic"],
+        help=(
+            "Sets the type of interpolation spline used to correct wow."
+            "\n  linear     [default]"
+            "\n  quadratic"
+            "\n  cubic"
         )
     )
     luma_group.add_argument(
@@ -218,7 +230,7 @@ def main(args=None, use_gui=False):
         help=(
             "Tries to detect the chroma carrier frequency on a field basis within some"
             " limit instead of using the default one for the format. Mainly useful for"
-            " debug purposes and used on PAL betamax. implies --recheck_phase"
+            " debug purposes and used on PAL betamax."
         ),
     )
     chroma_group.add_argument(
@@ -230,19 +242,20 @@ def main(args=None, use_gui=False):
         help="If set to 0 or 1, force use of video track phase. (No effect on U-matic)",
     )
     chroma_group.add_argument(
-        "-dctp",
+        "--dctp",
         "--detect_chroma_track_phase",
         dest="detect_chroma_track_phase",
         action="store_true",
         default=False,
-        help="Detect and correct chroma phase consistency for each track / field. Corrects chroma artifacts around head-switching area for VHS. (Experimental feature)",
+        help="Detects and corrects color-under heterodyne rotation change around head-switching area. Corrects chroma artifacts around head-switching area for color-under formats. (Experimental feature)",
     )
     chroma_group.add_argument(
-        "--recheck_phase",
-        dest="recheck_phase",
+        "--dbh",
+        "--disable_burst_hsync",
+        dest="disable_burst_hsync",
         action="store_true",
         default=False,
-        help="Re-check chroma phase on every field. (No effect on U-matic)",
+        help="Disables using the color burst phase to refine hsync. (currently only applicable to NTSC)",
     )
     chroma_group.add_argument(
         "--no_comb",
@@ -493,7 +506,6 @@ def main(args=None, use_gui=False):
     rf_options["dod_threshold_a"] = args.dod_threshold_a
     rf_options["dod_hysteresis"] = args.dod_hysteresis
     rf_options["track_phase"] = args.track_phase
-    rf_options["recheck_phase"] = args.recheck_phase
     rf_options["high_boost"] = args.high_boost
     rf_options["disable_diff_demod"] = args.disable_diff_demod
     rf_options["fm_audio_notch"] = args.fm_audio_notch
@@ -515,6 +527,7 @@ def main(args=None, use_gui=False):
     rf_options["tape_speed"] = args.tape_speed
     rf_options["ire0_adjust"] = args.ire0_adjust
     rf_options["detect_chroma_track_phase"] = args.detect_chroma_track_phase
+    rf_options["disable_burst_hsync"] = args.disable_burst_hsync
     rf_options["gnrc_afe"] = args.gnrc_afe
 
     extra_options = get_extra_options(args, not use_gui)
@@ -554,7 +567,6 @@ def main(args=None, use_gui=False):
         extra_options=extra_options,
         debug_plot=debug_plot,
         field_order_action=args.field_order_action,
-        level_smoothing_lines=args.wow_adjust_smoothing_lines
     )
 
     if check_debug():

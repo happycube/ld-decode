@@ -92,7 +92,6 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
         field_order_action="detect",
-        level_smoothing_lines=None,
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -176,11 +175,10 @@ class VHSDecode(ldd.LDdecode):
             self.field_order_action = "none"
         self.duplicate_prev_field = True
 
-        self.level_smoothing_lines = (
-            level_smoothing_lines
-            if level_smoothing_lines is not None
-            else self.rf.SysParams["frame_lines"] / 2
-        )
+        # For tape, it is recommended to use `--ire0_adjust` to fix brightness variations between lines
+        # This method usually gives false positives for noisy signals, so smooth the correction out by an entire field to avoid banding
+        if self.wow_level_adjust_smoothing is None:
+            self.wow_level_adjust_smoothing = self.rf.SysParams["frame_lines"] / 2
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -613,7 +611,6 @@ class VHSRFDecode(ldd.RFDecode):
             tape_format == "BETAMAX" or tape_format == "BETAMAX_HIFI"
         )
         track_phase = None if is_secam(system) else rf_options.get("track_phase", None)
-        self._recheck_phase = rf_options.get("recheck_phase", False)
         high_boost = rf_options.get("high_boost", None)
         self._notch = rf_options.get("notch", None)
         self._notch_q = rf_options.get("notch_q", 10.0)
@@ -627,19 +624,11 @@ class VHSRFDecode(ldd.RFDecode):
             if (tape_format == "BETAMAX" and system != "NTSC")
             else rf_options.get("cafc", False)
         )
-        # cafc requires --recheck_phase
-        self._recheck_phase = True if self._do_cafc else self._recheck_phase
 
-        self.detect_track = False
-        self.needs_detect = False
-        if track_phase is None:
-            self.track_phase = 0
-            if not is_secam(system):
-                self.detect_track = True
-                self.needs_detect = True
-        elif track_phase == 0 or track_phase == 1:
+        self.track_phase = None
+        if track_phase == 0 or track_phase == 1:
             self.track_phase = track_phase
-        else:
+        elif track_phase is not None:
             raise Exception("Track phase can only be 0, 1 or None")
 
         self.hsync_tolerance = 0.8
@@ -708,6 +697,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "gnrc_afe",
                 "relaxed_line0",
                 "detect_chroma_track_phase",
+                "disable_burst_hsync"
             ],
         )(
             self.iretohz(100) * 2,
@@ -747,6 +737,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("gnrc_afe", False),
             rf_options.get("relaxed_line0", False),
             rf_options.get("detect_chroma_track_phase", False),
+            rf_options.get("disable_burst_hsync", False)
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -933,10 +924,6 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def do_cafc(self):
         return self._do_cafc
-
-    @property
-    def recheck_phase(self):
-        return self._recheck_phase
 
     @property
     def color_system(self):
