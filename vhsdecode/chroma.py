@@ -403,21 +403,25 @@ def get_phase_rotation_sequence(
                     avg_count += 1
 
         coherence = np.hypot(I_total, Q_total) / avg_count
-
         burst_detected = coherence >= coherence_threshold
         burst_phase_avg = np.degrees(np.arctan2(Q_total, I_total)) % 360
-        burst_rising = rotation_sum > 0
+
+        # color burst phase should be normalized to be within 0 to 90 degrees
+        heterodyne_offset = int(burst_phase_avg // 90) % 4
+        heterodyned_burst_avg = burst_phase_avg % 90
+
+        # if the corrected burst is in the +45 area of the quadrant, the rising check switches direction
+        # this isn't completely perfect, if the phase is really close to 45, noise can throw off this measurement
+        # any miss-detection here only only affects the NTSC 3D decoder,
+        # since there is a bug that prevents phase correction from working properly when the field phase id is miss-detected
+        burst_rising = rotation_sum < 0 if heterodyned_burst_avg > 45 else rotation_sum > 0
 
         field_phase_id = {
-            (1, 1): (1),
-            (0, 0): (2),
-            (1, 0): (3),
-            (0, 1): (4),
+            (1, 1): 1,
+            (0, 0): 2,
+            (1, 0): 3,
+            (0, 1): 4,
         }[(is_first_field, burst_rising)]
-
-        # color burst phase should be normalized to be at 0 degrees
-        heterodyne_offset = int(round(burst_phase_avg / 90)) % 4
-        heterodyned_burst_avg = (burst_phase_avg - heterodyne_offset * 90) % 360
         
         # adjust the starting phase
         if heterodyne_offset != 0:
