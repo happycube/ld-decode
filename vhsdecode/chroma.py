@@ -175,6 +175,7 @@ def _get_phase_sequence(
         track_rotation = chroma_rotation[chroma_rotation_index]
     else:
         # format that uses a fixed heterodyne phase, or does not rotate
+        chroma_rotation_index = 0
         track_rotation = chroma_rotation_starting_index
     """
     "...a signal that represents phase zero with respect to the chroma signal phase 
@@ -408,13 +409,13 @@ def get_phase_rotation_sequence(
 
         # color burst phase should be normalized to be within 0 to 90 degrees
         heterodyne_offset = int(burst_phase_avg // 90) % 4
-        heterodyned_burst_avg = burst_phase_avg % 90
+        corrected_burst_avg = burst_phase_avg % 90
 
         # if the corrected burst is in the +45 area of the quadrant, the rising check switches direction
         # this isn't completely perfect, if the phase is really close to 45, noise can throw off this measurement
         # any miss-detection here only only affects the NTSC 3D decoder,
         # since there is a bug that prevents phase correction from working properly when the field phase id is miss-detected
-        burst_rising = rotation_sum < 0 if heterodyned_burst_avg > 45 else rotation_sum > 0
+        burst_rising = rotation_sum < 0 if corrected_burst_avg > 45 else rotation_sum > 0
 
         field_phase_id = {
             (1, 1): 1,
@@ -444,11 +445,11 @@ def get_phase_rotation_sequence(
                     burst_Q
                 )
     else:
-        heterodyned_burst_avg = None
+        corrected_burst_avg = None
         field_phase_id = None
         burst_detected = None
 
-    return chroma_rotation_index, phase_sequence, field_phase_id, heterodyned_burst_avg, burst_detected
+    return chroma_rotation_index, phase_sequence, field_phase_id, corrected_burst_avg, burst_detected
 
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
