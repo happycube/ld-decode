@@ -9,6 +9,7 @@ import os
 import sys
 import logging
 import json
+from pathlib import Path
 
 try:
     QT_VERSION = 6
@@ -121,6 +122,33 @@ SAMPLE_RATE = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
 # 2560
 # FRAME_WIDTH = 1135
 OUT_SCALE_DIVIDEND = np.double(0xC800 - 0x0400)
+
+
+def _configure_matplotlib_cache_dir() -> None:
+    if os.environ.get("MPLCONFIGDIR", "").strip():
+        return
+
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA", "").strip()
+        if not base:
+            base = str(Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = str(Path.home() / "Library" / "Caches")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME", "").strip()
+        if not base:
+            base = str(Path.home() / ".cache")
+
+    matplotlib_cache_dir = Path(base) / "vhs-decode" / "matplotlib"
+    try:
+        matplotlib_cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_dir)
+    except Exception:
+        # Fall back to matplotlib defaults if cache directory setup fails.
+        pass
+
+
+_configure_matplotlib_cache_dir()
 
 
 def multicall(l=[]):
