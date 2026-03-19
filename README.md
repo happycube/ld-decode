@@ -611,7 +611,7 @@ Decode your captured tape to `.tbc` by using:
 
 Full Usage Example:
 
-    vhs-decode --debug --ire0_adjust --recheck_phase --frequency 28.6 --pal --threads 8 --tape_format VHS CX-White-2022.10.25.u8 my-first-decode-2022.10.25
+    vhs-decode --debug --ire0_adjust --frequency 28.6 --pal --threads 8 --tape_format VHS CX-White-2022.10.25.flac my-first-decode-2022.10.25
 
 Use the analyse tool during or after decoding to inspect & adjust  decoded data:
 
@@ -848,8 +848,6 @@ Useful to recover decoding after a crash, or for limiting processing time by pro
 `--ire0_adjust` Automatically adjust the black/video level on a per-field basis, using the back porch level. Unlike `--clamp` this is done after time base correction. Therefore it can fix the per-field variations caused by the slight carrier shift of VHS-HQ and S-VHS. [more info](https://github.com/oyvindln/vhs-decode/pull/163).
 
 `--ct` enables a *chroma trap*, a filter intended to reduce chroma interference on the main luma signal. Use if seeing banding or checkerboarding on the main luma .tbc in ld-analyse.
-
-`--recheck_phase` re-check chroma phase on every field, fixes most colour issues. (No effect on Umatic.)
 
 `--sl` defines the output *sharpness level*, as an integer from 0-100, the default being 0. Higher values are better suited for plain, flat images i.e. cartoons and animated material, as strong ghosting can occur. (Akin to cranking up the sharpness on any regular TV set.)
 
