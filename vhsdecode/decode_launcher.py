@@ -901,7 +901,9 @@ class DecodeLauncherWindow(QWidget):
             if sys.platform == "darwin":
                 return [
                     root / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
+                    root / "tbc-tools.app" / "Contents" / "MacOS" / "tbc-tools",
                     root / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
+                    root / "ld-analyse.app" / "Contents" / "MacOS" / "tbc-tools",
                     root / "ld-analyse",
                 ]
             return [
@@ -928,6 +930,7 @@ class DecodeLauncherWindow(QWidget):
                     ]
                 return [
                     child / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
+                    child / "tbc-tools.app" / "Contents" / "MacOS" / "tbc-tools",
                     child / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
                     child / "ld-analyse",
                 ]
@@ -971,6 +974,14 @@ class DecodeLauncherWindow(QWidget):
                 return Path(on_path)
         return None
 
+    def _macos_app_bundle_for_binary(self, executable: Path) -> Optional[Path]:
+        if sys.platform != "darwin":
+            return None
+        for parent in executable.resolve(strict=False).parents:
+            if parent.suffix.lower() == ".app":
+                return parent
+        return None
+
     def _launch_tbc_tools(self) -> None:
         executable = self._find_tbc_tools_executable()
         if executable is None:
@@ -980,11 +991,16 @@ class DecodeLauncherWindow(QWidget):
                 "Could not find tbc-tools / ld-analyse near the decode binary or working folder.",
             )
             return
-
-        command = [str(executable)]
         tbc_candidate = self._candidate_tbc_path()
-        if tbc_candidate is not None:
-            command.append(str(tbc_candidate))
+        app_bundle = self._macos_app_bundle_for_binary(executable)
+        if app_bundle is not None:
+            command = ["open", "-a", str(app_bundle)]
+            if tbc_candidate is not None:
+                command += ["--args", str(tbc_candidate)]
+        else:
+            command = [str(executable)]
+            if tbc_candidate is not None:
+                command.append(str(tbc_candidate))
 
         try:
             subprocess.Popen(command, cwd=str(self._effective_working_directory()))
