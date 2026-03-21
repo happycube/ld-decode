@@ -411,9 +411,18 @@ def get_phase_rotation_sequence(
 
         # shift the phase +-[0, 90, 180, 270] degrees so that the burst_phase_avg is as close as possible to prev_burst_phase_avg
         if prev_burst_phase_avg is not None:
-            # Possible shifts in degrees
             delta = (burst_phase_avg - prev_burst_phase_avg + 180) % 360 - 180
             best_shift = round(-delta / 90) * 90
+
+            # prevent phase from drifting +-45 away from the quadrant
+            shifted_phase = (burst_phase_avg + best_shift) % 360
+            # if outside of +- 45 of quadrant 0: (315) 0 to 90 (135)
+            if shifted_phase > 135 and shifted_phase < 315:
+                # shift the phase back into quadrant 0 using the shortest possible distance
+                if shifted_phase < 180:
+                    best_shift -= 1
+                else:
+                    best_shift += 1
 
             burst_phase_avg = (burst_phase_avg + best_shift) % 360
             heterodyne_offset = best_shift // 90
