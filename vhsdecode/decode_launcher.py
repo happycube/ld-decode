@@ -856,7 +856,10 @@ class DecodeLauncherWindow(QWidget):
         return None
 
     def _find_tbc_tools_executable(self) -> Optional[Path]:
-        search_roots: list[Path] = []
+        search_roots: list[Path] = [
+            self._effective_working_directory(),
+            Path(os.getcwd()).resolve(strict=False),
+        ]
         if sys.platform == "darwin":
             search_roots.extend([Path("/Applications"), Path.home() / "Applications"])
         elif os.name == "nt":
@@ -895,8 +898,12 @@ class DecodeLauncherWindow(QWidget):
             if os.name == "nt":
                 return [
                     root / "ld-analyse.exe",
+                    root / "tbc-analyse.exe",
                     root / "tbc-tools.exe",
                     root / "tbc-tools" / "ld-analyse.exe",
+                    root / "tbc-tools" / "tbc-analyse.exe",
+                    root / "release" / "ld-analyse.exe",
+                    root / "release" / "tbc-analyse.exe",
                 ]
             if sys.platform == "darwin":
                 return [
@@ -919,8 +926,12 @@ class DecodeLauncherWindow(QWidget):
             if os.name == "nt":
                 return [
                     child / "ld-analyse.exe",
+                    child / "tbc-analyse.exe",
                     child / "tbc-tools.exe",
                     child / "tbc-tools" / "ld-analyse.exe",
+                    child / "tbc-tools" / "tbc-analyse.exe",
+                    child / "release" / "ld-analyse.exe",
+                    child / "release" / "tbc-analyse.exe",
                 ]
             if sys.platform == "darwin":
                 if child.suffix.lower() == ".app":
@@ -963,6 +974,7 @@ class DecodeLauncherWindow(QWidget):
         # Global path fallback for non-local installs.
         for name in (
             "ld-analyse",
+            "tbc-analyse",
             "tbc-tools",
             "tbc-tools.AppImage",
             "tbc-tools.appimage",
