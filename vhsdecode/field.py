@@ -1141,7 +1141,7 @@ class FieldShared:
 
     def lock_to_burst(self):
         self.chroma_tbc_buffer = None
-        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phase_avg, _ = decode_chroma_phase_rotation(
+        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phase_avg, self.burst_rising, _ = decode_chroma_phase_rotation(
             self,
             chroma_rotation=self.rf.DecoderParams.get("chroma_rotation", None),
             detect_chroma_track_phase=self.rf.options.detect_chroma_track_phase
