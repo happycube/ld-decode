@@ -1870,7 +1870,11 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         # populates color burst info for hsync refinement the step below
         self.lock_to_burst()
 
-        if not self.rf.options.disable_burst_hsync and self.phase_sequence is not None:
+        if (
+            not self.rf.options.disable_burst_hsync and
+            self.phase_sequence is not None and
+            self.rf.color_system == "NTSC" # disable for NLINHA, since that uses PAL style phase rotation
+        ):
             FieldNTSCShared._sync_to_burst(
                 linelocs,
                 self.outlinelen,

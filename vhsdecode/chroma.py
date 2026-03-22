@@ -285,10 +285,8 @@ def get_phase_rotation_sequence(
     prev_burst_phase_avg,
     prev_burst_rising
 ):
-    # *****************************************************
-    # Gather the phase differences between each color burst
-    # Color burst alternates phase between lines in a field
-    # *****************************************************    
+    # Detects the correct color-under heterodyne starting phase and rotation direction
+    # Additional for NTSC, this function calculates the color burst average for burst-locked TBC later on
     track_change_threshold = 90
     burst_check_skip_lines = 16
     coherence_threshold = 0.3
@@ -345,7 +343,7 @@ def get_phase_rotation_sequence(
         if color_system == "NTSC":
             # if the bursts are out of phase with each other, the track was miss-detected, flip phase and recalculate sequence
             flip_track_phase = delta_0 < delta_180
-        elif color_system == "PAL":
+        elif color_system == "PAL" or color_system == "NLINHA":
             # each line should alternate phase, if there are repeated sequences of phase, recalculate
             alt1 = delta_90 + delta_270
             alt2 = delta_0 + delta_180
@@ -375,10 +373,11 @@ def get_phase_rotation_sequence(
             track_change_threshold
         )
 
-    # ***************************************************************************************
-    # detect the correct starting phase using the expected phase quadrant of the color bursts
-    # ***************************************************************************************
-    if color_system == "NTSC":
+    # detect the correct NTSC starting heterodyne phase and fieldPhaseId
+    if (
+        color_system == "NTSC" or
+        color_system == "NLINHA" # these measurements are not used by NLINHA, but they need to be calculated so the downstream NTSC code works
+    ):
         # find the phase of the color burst for the entire field, and detect if the burst is rising or falling
         I_total = 0
         Q_total = 0
@@ -462,6 +461,8 @@ def get_phase_rotation_sequence(
                 )
     else:
         field_phase_id = None
+        burst_phase_avg = None
+        burst_rising = None
         burst_detected = None
 
     return chroma_rotation_index, phase_sequence, field_phase_id, burst_phase_avg, burst_rising, burst_detected
