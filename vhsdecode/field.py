@@ -1141,7 +1141,7 @@ class FieldShared:
 
     def lock_to_burst(self):
         self.chroma_tbc_buffer = None
-        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phase_avg, _ = decode_chroma_phase_rotation(
+        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phase_avg, self.burst_rising, _ = decode_chroma_phase_rotation(
             self,
             chroma_rotation=self.rf.DecoderParams.get("chroma_rotation", None),
             detect_chroma_track_phase=self.rf.options.detect_chroma_track_phase
@@ -1870,7 +1870,11 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         # populates color burst info for hsync refinement the step below
         self.lock_to_burst()
 
-        if not self.rf.options.disable_burst_hsync and self.phase_sequence is not None:
+        if (
+            not self.rf.options.disable_burst_hsync and
+            self.phase_sequence is not None and
+            self.rf.color_system == "NTSC" # only enable for normal NTSC (disabled for NLINHA, etc.)
+        ):
             FieldNTSCShared._sync_to_burst(
                 linelocs,
                 self.outlinelen,

@@ -282,11 +282,11 @@ def get_phase_rotation_sequence(
     rotation_check_start_line,
     color_system,
     is_first_field,
+    prev_burst_phase_avg,
+    prev_burst_rising
 ):
-    # *****************************************************
-    # Gather the phase differences between each color burst
-    # Color burst alternates phase between lines in a field
-    # *****************************************************    
+    # Detects the correct color-under heterodyne starting phase and rotation direction
+    # Additional for NTSC, this function calculates the color burst average for burst-locked TBC later on
     track_change_threshold = 90
     burst_check_skip_lines = 16
     coherence_threshold = 0.3
@@ -343,7 +343,7 @@ def get_phase_rotation_sequence(
         if color_system == "NTSC":
             # if the bursts are out of phase with each other, the track was miss-detected, flip phase and recalculate sequence
             flip_track_phase = delta_0 < delta_180
-        elif color_system == "PAL":
+        else: # color_system in ("PAL", "MPAL", "PALM", "NLINHA", "MESECAM")
             # each line should alternate phase, if there are repeated sequences of phase, recalculate
             alt1 = delta_90 + delta_270
             alt2 = delta_0 + delta_180
@@ -373,9 +373,7 @@ def get_phase_rotation_sequence(
             track_change_threshold
         )
 
-    # ***************************************************************************************
-    # detect the correct starting phase using the expected phase quadrant of the color bursts
-    # ***************************************************************************************
+    # detect the correct NTSC starting heterodyne phase and fieldPhaseId
     if color_system == "NTSC":
         # find the phase of the color burst for the entire field, and detect if the burst is rising or falling
         I_total = 0
@@ -407,15 +405,29 @@ def get_phase_rotation_sequence(
         burst_detected = coherence >= coherence_threshold
         burst_phase_avg = np.degrees(np.arctan2(Q_total, I_total)) % 360
 
-        # color burst phase should be normalized to be within 0 to 90 degrees
-        heterodyne_offset = int(burst_phase_avg // 90) % 4
-        corrected_burst_avg = burst_phase_avg % 90
+        # shift the phase +-[0, 90, 180, 270] degrees so that the burst_phase_avg is as close as possible to prev_burst_phase_avg
+        if prev_burst_phase_avg is not None:
+            delta = (burst_phase_avg - prev_burst_phase_avg + 180) % 360 - 180
+            best_shift = round(-delta / 90) * 90
 
-        # if the corrected burst is in the +45 area of the quadrant, the rising check switches direction
-        # this isn't completely perfect, if the phase is really close to 45, noise can throw off this measurement
-        # any miss-detection here only only affects the NTSC 3D decoder,
-        # since there is a bug that prevents phase correction from working properly when the field phase id is miss-detected
-        burst_rising = rotation_sum < 0 if corrected_burst_avg > 45 else rotation_sum > 0
+            burst_phase_avg = (burst_phase_avg + best_shift) % 360
+            heterodyne_offset = best_shift // 90
+
+            # rising/falling calculation
+            # if the corrected burst is in the +45 area of the quadrant, the rising check switches direction
+            # this isn't completely perfect, if the phase is really close to 45, noise can throw off this measurement
+            # so use the predicted next burst_rising value when the calculation is not confident enough
+            # rotation sum indicates how many rising vs. falling waves were detected
+            if -8 < rotation_sum < 8:
+                burst_rising = prev_burst_rising if is_first_field else not prev_burst_rising
+            else:
+                burst_rising = rotation_sum < 0 if burst_phase_avg > 45 else rotation_sum > 0
+        else:
+            heterodyne_offset = -(int(burst_phase_avg // 90) % 4)
+            burst_phase_avg = burst_phase_avg % 90
+
+            # rising/falling calculation
+            burst_rising = rotation_sum < 0 if burst_phase_avg > 45 else rotation_sum > 0
 
         field_phase_id = {
             (1, 1): 1,
@@ -423,7 +435,7 @@ def get_phase_rotation_sequence(
             (1, 0): 3,
             (0, 1): 4,
         }[(is_first_field, burst_rising)]
-        
+
         # adjust the starting phase
         if heterodyne_offset != 0:
             for i in range(len(phase_sequence)):
@@ -438,18 +450,26 @@ def get_phase_rotation_sequence(
 
                 phase_sequence[i] = (
                     line_number,
-                    (phase - heterodyne_offset) % 4,
-                    (burst_phase - (heterodyne_offset * 90)) % 360,
+                    (phase + heterodyne_offset) % 4,
+                    (burst_phase + (heterodyne_offset * 90)) % 360,
                     burst_magnitude,
                     burst_I,
                     burst_Q
                 )
+    elif color_system in ("MPAL", "NLINHA"):
+        # fieldPhaseID needs to be populated for these color systems so code downstream works.
+        # As far as I can tell, it is not used for anything since PAL decoding works without proper color framing
+        field_phase_id = 0
+        burst_phase_avg = None
+        burst_rising = None
+        burst_detected = None
     else:
-        corrected_burst_avg = None
         field_phase_id = None
+        burst_phase_avg = None
+        burst_rising = None
         burst_detected = None
 
-    return chroma_rotation_index, phase_sequence, field_phase_id, corrected_burst_avg, burst_detected
+    return chroma_rotation_index, phase_sequence, field_phase_id, burst_phase_avg, burst_rising, burst_detected
 
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
@@ -546,7 +566,13 @@ def decode_chroma_phase_rotation(
         else field.rf.chroma_heterodyne
     )
 
-    track_phase, phase_sequence, field_phase_id, burst_phase_avg, burst_detected = get_phase_rotation_sequence(
+    prev_burst_phase_avg = None
+    prev_burst_rising = None
+    if field.prevfield is not None:
+        prev_burst_phase_avg = field.prevfield.burst_phase_avg
+        prev_burst_rising = field.prevfield.burst_rising
+
+    track_phase, phase_sequence, field_phase_id, burst_phase_avg, burst_rising, burst_detected = get_phase_rotation_sequence(
         chroma,
         chroma_heterodyne,
         field.rf.Filters["FChromaFinal"],
@@ -562,9 +588,11 @@ def decode_chroma_phase_rotation(
         rotation_check_start_line, # check for track phase rotation around the headswitching area (bottom of field)
         field.rf.color_system,
         field.isFirstField,
+        prev_burst_phase_avg,
+        prev_burst_rising
     )
 
-    return track_phase, phase_sequence, field_phase_id, burst_phase_avg, burst_detected
+    return track_phase, phase_sequence, field_phase_id, burst_phase_avg, burst_rising, burst_detected
 
 def process_chroma(
     field,
