@@ -374,10 +374,7 @@ def get_phase_rotation_sequence(
         )
 
     # detect the correct NTSC starting heterodyne phase and fieldPhaseId
-    if (
-        color_system == "NTSC" or
-        color_system == "NLINHA" # these measurements are not used by NLINHA, but they need to be calculated so the downstream NTSC code works
-    ):
+    if color_system == "NTSC":
         # find the phase of the color burst for the entire field, and detect if the burst is rising or falling
         I_total = 0
         Q_total = 0
@@ -459,6 +456,13 @@ def get_phase_rotation_sequence(
                     burst_I,
                     burst_Q
                 )
+    elif color_system in ("MPAL", "NLINHA"):
+        # fieldPhaseID needs to be populated for these color systems so code downstream works.
+        # As far as I can tell, it is not used for anything since PAL decoding works without proper color framing
+        field_phase_id = 0
+        burst_phase_avg = None
+        burst_rising = None
+        burst_detected = None
     else:
         field_phase_id = None
         burst_phase_avg = None
