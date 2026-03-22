@@ -1873,7 +1873,7 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         if (
             not self.rf.options.disable_burst_hsync and
             self.phase_sequence is not None and
-            self.rf.color_system == "NTSC" # disable for NLINHA, since that uses PAL style phase rotation
+            self.rf.color_system == "NTSC" # only enable for normal NTSC (disabled for NLINHA, etc.)
         ):
             FieldNTSCShared._sync_to_burst(
                 linelocs,
