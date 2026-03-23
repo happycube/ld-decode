@@ -219,8 +219,18 @@ class VHSDecode(ldd.LDdecode):
             "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
             "fileLoc": int(np.floor(f.readloc)),
-            "fieldPhaseID": f.fieldPhaseID,
         }
+
+        if f.fieldPhaseID is None:
+            fi["fieldPhaseID"] = {
+                (1, 0): 1,
+                (0, 1): 2,
+                (1, 1): 3,
+                (0, 0): 4,
+            }[(fi["isFirstField"], (fi["seqNo"] // 2) % 2)]
+        else:
+            fi["fieldPhaseID"] = f.fieldPhaseID
+
         write_field = True
 
         if self.doDOD:
@@ -697,7 +707,8 @@ class VHSRFDecode(ldd.RFDecode):
                 "gnrc_afe",
                 "relaxed_line0",
                 "detect_chroma_track_phase",
-                "disable_burst_hsync"
+                "disable_burst_hsync",
+                "disable_phase_correction"
             ],
         )(
             self.iretohz(100) * 2,
@@ -737,7 +748,8 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("gnrc_afe", False),
             rf_options.get("relaxed_line0", False),
             rf_options.get("detect_chroma_track_phase", False),
-            rf_options.get("disable_burst_hsync", False)
+            rf_options.get("disable_burst_hsync", False),
+            rf_options.get("disable_phase_correction", False)
         )
 
         # As agc can alter these sysParams values, store a copy to then
