@@ -15,7 +15,6 @@ from vhsdecode.linear_filter import FiltersClass, chainfiltfilt_b
 import numpy as np
 from scipy.signal import argrelextrema
 from os import getpid
-from concurrent.futures import ThreadPoolExecutor
 from numba import njit
 
 import lddecode.core as ldd
@@ -53,17 +52,24 @@ def _chainfiltfilt(data, filters):
 #     clip_len = locs_len[where_all_syncs]
 #     for ix, begin in enumerate(clip_from):
 #         data[begin : begin + clip_len[ix]] = sync
-# 
+#
 #     return data
-
 
 
 # encapsulates the serration search logic
 class VsyncSerration:
-    def __init__(self, fs, sysparams, divisor=1, show_decoded_serration=False):
+    def __init__(
+        self,
+        fs,
+        sysparams,
+        thread_pool_executor,
+        divisor=1,
+        show_decoded_serration=False,
+    ):
         self._divisor = divisor
         self.show_decoded = show_decoded_serration
         self.samp_rate = fs / self._divisor
+        self._thread_pool_executor = thread_pool_executor
         fv = sysparams["FPS"] * 2
         fh = sysparams["FPS"] * sysparams["frame_lines"]
 
@@ -127,7 +133,6 @@ class VsyncSerration:
         self.fieldcount = 0
         self.pid = getpid()
         self.found_serration = False
-        self.executor = ThreadPoolExecutor(max_workers=3)
 
     def getEQpulselen(self):
         return self.eq_pulselen * self._divisor
@@ -180,9 +185,11 @@ class VsyncSerration:
             return np.flip(self.vsyncEnvFilter.filtfilt(np.flip(hp)))
 
         # Do the two filter operations on separate threads for a speedup.
-        forward_f = self.executor.submit(self._vsync_envelope_simple, hi_part)
-        # reverse_t_f = self.executor.submit(self.vsync_envelope_simple, np.flip(hi_part))
-        reverse_t_f = self.executor.submit(vsync_env_rev, hi_part)
+        forward_f = self._thread_pool_executor.submit(
+            self._vsync_envelope_simple, hi_part
+        )
+        # reverse_t_f = self._thread_pool_executor.submit(self.vsync_envelope_simple, np.flip(hi_part))
+        reverse_t_f = self._thread_pool_executor.submit(vsync_env_rev, hi_part)
         forward = forward_f.result()
         reverse = reverse_t_f.result()
         # # Non-threaded version:
@@ -228,10 +235,7 @@ class VsyncSerration:
                         valid_serrations.append(edge)
 
             for serration in valid_serrations:
-                if (
-                    serration - vsynclen >= 0
-                    or serration + vsynclen <= datalen - 1
-                ):
+                if serration - vsynclen >= 0 or serration + vsynclen <= datalen - 1:
                     result.append(serration)
         elif len(where_allmin) == 1:
             if where_allmin[0] + vsynclen < datalen - 1:
@@ -324,14 +328,19 @@ class VsyncSerration:
         where_allmin = argrelextrema(diff, np.less)[0]
         if len(where_allmin) > 0:
             serrations = self._power_ratio_search(padded)
-            where_min = VsyncSerration._vsync_arbitrage(self.vsynclen, where_allmin, serrations, len(padded))
+            where_min = VsyncSerration._vsync_arbitrage(
+                self.vsynclen, where_allmin, serrations, len(padded)
+            )
             serration_locs = list()
             if len(where_min) > 0:
                 mask_len = self.linelen * 5
                 state = False
-                tasks = []
-                for w_min in where_min:
-                    self.executor.submit(self._search_eq_pulses, data, w_min)
+                tasks = [
+                    self._thread_pool_executor.submit(
+                        self._search_eq_pulses, data, w_min
+                    )
+                    for w_min in where_min
+                ]
 
                 for task in tasks:
                     state, serr_loc, serr_len = task.result()

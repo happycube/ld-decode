@@ -429,6 +429,8 @@ def get_extra_options(args, checkagc=False):
         # Only used for ld, but could maybe be used for vhs too.
         "deemp_coeff": (0, 0),
         "debug": args.debug,
+        "wow_level_adjust_smoothing": args.wow_level_adjust_smoothing,
+        "wow_interpolation_method": args.wow_interpolation_method
     }
     if checkagc:
         extra_options["useAGC"]: args.AGC and not args.noAGC

@@ -84,13 +84,25 @@ def main(args=None):
         help="Additionally use right hand side of hsync for line start detection. Improves accuracy on tape sources but might cause issues on high bandwidth stable ones",
     )
     parser.add_argument(
-        "--wow_adjust_smoothing_lines",
+        "--wow_level_adjust_smoothing",
         type=float,
         default=0,
         help=(
-            "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. "
-            "\nWow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
-            "\nSet to `0` to disable smoothing (only recommended for low noise video)"
+            "Adjusts the amount of smoothing in lines that is performed when compensating for brightness variations caused by wow. (default 0)"
+            "\n  Wow calculation is based on position of hsync pulses which is affected by the accuracy of the TBC. "
+            "\n  If you see vertical brightness variations (banding), setting to a value larger than 0 will smooth the wow adjustment."
+        )
+    )
+    parser.add_argument(
+        "--wow_interpolation_method",
+        type=str,
+        default="linear",
+        choices=["linear", "quadratic", "cubic"],
+        help=(
+            "Sets the type of interpolation spline used to correct wow."
+            "\n  linear     [default]"
+            "\n  quadratic"
+            "\n  cubic"
         )
     )
 
@@ -169,7 +181,6 @@ def main(args=None):
         # level_adjust=args.level_adjust,
         rf_options=rf_options,
         extra_options=extra_options,
-        level_smoothing_lines=args.wow_adjust_smoothing_lines
     )
 
     signal.signal(signal.SIGINT, original_sigint_handler)

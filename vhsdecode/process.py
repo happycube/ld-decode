@@ -5,6 +5,7 @@ import traceback
 import scipy.signal as sps
 import threading
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
 
 import lddecode.core as ldd
 
@@ -91,7 +92,7 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
         field_order_action="detect",
-        wow_level_adjust_smoothing=None,
+        level_smoothing_lines=None,
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
@@ -99,6 +100,7 @@ class VHSDecode(ldd.LDdecode):
         # This is kinda hacky and should be sorted in a better way ideally.
         temp_init = ldd.DemodCache.__init__
         ldd.DemodCache.__init__ = _demodcache_dummy
+        self._processing_thread_pool = ThreadPoolExecutor(max_workers=threads + 1)
 
         if system == "405":
             sys_params_pal_temp = ldd.SysParams_PAL.copy()
@@ -133,6 +135,7 @@ class VHSDecode(ldd.LDdecode):
         self.level_adjust = level_adjust
         # Overwrite the rf  with the VHS-altered one
         self.rf = VHSRFDecode(
+            processing_thread_pool=self._processing_thread_pool,
             system=system,
             tape_format=tape_format,
             inputfreq=inputfreq,
@@ -142,7 +145,8 @@ class VHSDecode(ldd.LDdecode):
         )
 
         if system == "405":
-            SysParams_PAL = sys_params_pal_temp
+            # TODO: oln 18/03/2026 This wasn't reset correctly, not sure if it's relevant or not.
+            ldd.SysParams_PAL = sys_params_pal_temp
 
         # Store reference to ourself in the rf decoder - needed to access data location for track
         # phase, may want to do this in a better way later.
@@ -172,11 +176,10 @@ class VHSDecode(ldd.LDdecode):
             self.field_order_action = "none"
         self.duplicate_prev_field = True
 
-        self.wow_level_adjust_smoothing = (
-            wow_level_adjust_smoothing
-            if wow_level_adjust_smoothing is not None
-            else self.rf.SysParams["frame_lines"] / 2
-        )
+        # For tape, it is recommended to use `--ire0_adjust` to fix brightness variations between lines
+        # This method usually gives false positives for noisy signals, so smooth the correction out by an entire field to avoid banding
+        if self.wow_level_adjust_smoothing is None:
+            self.wow_level_adjust_smoothing = self.rf.SysParams["frame_lines"] / 2
 
         # Needs to be overridden since this is overwritten for 405-line.
         # self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -338,23 +341,6 @@ class VHSDecode(ldd.LDdecode):
     def checkMTF(self, field, pfield=None):
         return True
 
-    def writeout_b(self, dataset):
-        f, fi, (picturey, picturec), audio, efm = dataset
-
-        # Remove fields that are currently not used to cut down on space usage.
-        # the qt tools will load them as 0 with the current code
-        # if they don't exist.
-        if "audioSamples" in fi:
-            del fi["audioSamples"]
-
-        self.fieldinfo.append(fi)
-
-        self.outfile_video.write(picturey)
-        if self.rf.options.write_chroma:
-            self.outfile_chroma.write(picturec)
-
-        self.fields_written += 1
-
     def writeout(self, dataset):
         f, fi, (picturey, picturec), audio, efm = dataset
 
@@ -448,7 +434,6 @@ class VHSDecode(ldd.LDdecode):
         self.outfile_video.write(picturey)
         if self.rf.options.write_chroma:
             self.outfile_chroma.write(picturec)
-
         self.fields_written += 1
 
     def close(self):
@@ -667,6 +652,7 @@ class VHSDecode(ldd.LDdecode):
 class VHSRFDecode(ldd.RFDecode):
     def __init__(
         self,
+        processing_thread_pool,
         inputfreq=40,
         system="NTSC",
         tape_format="VHS",
@@ -704,7 +690,6 @@ class VHSRFDecode(ldd.RFDecode):
             tape_format == "BETAMAX" or tape_format == "BETAMAX_HIFI"
         )
         track_phase = None if is_secam(system) else rf_options.get("track_phase", None)
-        self._recheck_phase = rf_options.get("recheck_phase", False)
         high_boost = rf_options.get("high_boost", None)
         self._notch = rf_options.get("notch", None)
         self._notch_q = rf_options.get("notch_q", 10.0)
@@ -718,19 +703,11 @@ class VHSRFDecode(ldd.RFDecode):
             if (tape_format == "BETAMAX" and system != "NTSC")
             else rf_options.get("cafc", False)
         )
-        # cafc requires --recheck_phase
-        self._recheck_phase = True if self._do_cafc else self._recheck_phase
 
-        self.detect_track = False
-        self.needs_detect = False
-        if track_phase is None:
-            self.track_phase = 0
-            if not is_secam(system):
-                self.detect_track = True
-                self.needs_detect = True
-        elif track_phase == 0 or track_phase == 1:
+        self.track_phase = None
+        if track_phase == 0 or track_phase == 1:
             self.track_phase = track_phase
-        else:
+        elif track_phase is not None:
             raise Exception("Track phase can only be 0, 1 or None")
 
         self.hsync_tolerance = 0.8
@@ -798,7 +775,8 @@ class VHSRFDecode(ldd.RFDecode):
                 "ire0_adjust",
                 "gnrc_afe",
                 "relaxed_line0",
-                "detect_chroma_track_phase"
+                "detect_chroma_track_phase",
+                "disable_burst_hsync"
             ],
         )(
             self.iretohz(100) * 2,
@@ -837,7 +815,8 @@ class VHSRFDecode(ldd.RFDecode):
             ire0_adjust,
             rf_options.get("gnrc_afe", False),
             rf_options.get("relaxed_line0", False),
-            rf_options.get("detect_chroma_track_phase", False)
+            rf_options.get("detect_chroma_track_phase", False),
+            rf_options.get("disable_burst_hsync", False)
         )
 
         # As agc can alter these sysParams values, store a copy to then
@@ -981,6 +960,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.freq_hz,
             self.SysParams,
             self._sysparams_const,
+            processing_thread_pool,
             divisor=level_detect_divisor,
             debug=self.debug,
         )
@@ -1023,10 +1003,6 @@ class VHSRFDecode(ldd.RFDecode):
     @property
     def do_cafc(self):
         return self._do_cafc
-
-    @property
-    def recheck_phase(self):
-        return self._recheck_phase
 
     @property
     def color_system(self):

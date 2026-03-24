@@ -315,14 +315,24 @@ class FieldState:
 
 
 class Resync:
-    def __init__(self, fs, sysparams, sysparams_const, divisor=1, debug=False):
+    def __init__(
+        self,
+        fs,
+        sysparams,
+        sysparams_const,
+        thread_pool_executor,
+        divisor=1,
+        debug=False,
+    ):
         self.divisor = divisor
         self.debug = debug
         self.samp_rate = fs
 
         if debug:
             self.SysParams = sysparams.copy()
-        self._vsync_serration = VsyncSerration(fs, sysparams, divisor)
+        self._vsync_serration = VsyncSerration(
+            fs, sysparams, thread_pool_executor, divisor
+        )
         self._field_state = FieldState(sysparams)
         self.eq_pulselen = self._vsync_serration.getEQpulselen()
         self.linelen = self._vsync_serration.get_line_len()
