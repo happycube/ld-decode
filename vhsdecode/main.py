@@ -567,7 +567,6 @@ def main(args=None, use_gui=False):
         extra_options=extra_options,
         debug_plot=debug_plot,
         field_order_action=args.field_order_action,
-        level_smoothing_lines=args.wow_level_adjust_smoothing
     )
 
     if check_debug():

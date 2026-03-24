@@ -92,7 +92,6 @@ class VHSDecode(ldd.LDdecode):
         extra_options={},
         debug_plot=None,
         field_order_action="detect",
-        level_smoothing_lines=None,
     ):
 
         # monkey patch init with a dummy to prevent calling set_start_method twice on macos
