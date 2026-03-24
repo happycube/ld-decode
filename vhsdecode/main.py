@@ -6,6 +6,8 @@ import traceback
 import json
 import shutil
 import time
+import faulthandler
+import signal
 
 import numpy
 
@@ -55,6 +57,9 @@ supported_tape_formats = {
 
 
 def main(args=None, use_gui=False):
+    # allows user to send SIGUSR1 via `kill -USR1 <pid>` to show a stack trace of the currently running code without killing the app
+    faulthandler.register(signal.SIGUSR1) 
+
     import vhsdecode.formats as f
 
     format_help = "Tape format - " + " ".join(supported_tape_formats) + "are supported"
