@@ -1873,17 +1873,17 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
         if self.rf.options.write_chroma:
             self.lock_to_burst()
 
-        if (
-            not self.rf.options.disable_burst_hsync and
-            self.phase_sequence is not None and
-            self.rf.color_system == "NTSC" # only enable for normal NTSC (disabled for NLINHA, etc.)
-        ):
-            FieldNTSCShared._sync_to_burst(
-                linelocs,
-                self.outlinelen,
-                self.burst_phase_avg,
-                self.phase_sequence,
-            )
+            if (
+                not self.rf.options.disable_burst_hsync and
+                self.phase_sequence is not None and
+                self.rf.color_system == "NTSC" # only enable for normal NTSC (disabled for NLINHA, etc.)
+            ):
+                FieldNTSCShared._sync_to_burst(
+                    linelocs,
+                    self.outlinelen,
+                    self.burst_phase_avg,
+                    self.phase_sequence,
+                )
 
         return linelocs
 
