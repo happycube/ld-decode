@@ -1814,6 +1814,7 @@ class FieldPALShared(FieldShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALShared, self).__init__(*args, **kwargs)
         self.track_phase_set = False
+        self.rf.track_phase = 0
         self.ire0_backporch = (96, 160)
 
     def refine_linelocs_pilot(self, linelocs=None):
@@ -1839,6 +1840,7 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCShared, self).__init__(*args, **kwargs)
         self.track_phase_set = False
+        self.rf.track_phase = 0
         self.fieldPhaseID = None
         self.ire0_backporch = (74, 124)
 
@@ -1953,7 +1955,6 @@ class FieldPALVideo8(FieldPALShared):
 class FieldPALTypeC(FieldPALShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALTypeC, self).__init__(*args, **kwargs)
-        self.rf.track_phase = 0
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALTypeC, self).downscale(
@@ -2020,7 +2021,6 @@ class FieldNTSCUMatic(FieldNTSCShared):
 class FieldNTSCTypeC(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCTypeC, self).__init__(*args, **kwargs)
-        self.rf.track_phase = 0
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldNTSCTypeC, self).downscale(

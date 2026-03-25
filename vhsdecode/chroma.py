@@ -657,20 +657,22 @@ def process_chroma(
 
 
 def decode_chroma(field, do_chroma_deemphasis=False):
-    """Do track detection if needed and upconvert the chroma signal"""
-    field.chroma_tbc_buffer = None
+    if field.rf.options.write_chroma:
+        """Do track detection if needed and upconvert the chroma signal"""
+        field.chroma_tbc_buffer = None
 
-    uphet = process_chroma(
-        field,
-        disable_comb=field.rf.options.disable_comb,
-        disable_tracking_cafc=False,
-        do_chroma_deemphasis=do_chroma_deemphasis,
-    )
-    field.uphet_temp = uphet
-    # Release to avoid keeping this im memory - should do this in a cleaner manner.
-    field.chroma_tbc_buffer = None
-    return chroma_to_u16(uphet)
+        uphet = process_chroma(
+            field,
+            disable_comb=field.rf.options.disable_comb,
+            disable_tracking_cafc=False,
+            do_chroma_deemphasis=do_chroma_deemphasis,
+        )
+        field.uphet_temp = uphet
+        # Release to avoid keeping this im memory - should do this in a cleaner manner.
+        field.chroma_tbc_buffer = None
+        return chroma_to_u16(uphet)
 
+    return None
 
 def get_burst_area(field):
     return (
