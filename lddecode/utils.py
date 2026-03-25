@@ -455,7 +455,10 @@ class LoadFFmpeg:
         while sample_bytes > self.position:
             # Seeking forwards - read and discard samples
             count = min(sample_bytes - self.position, self.rewind_size)
-            self._read_data(count)
+            data = self._read_data(count)
+            if len(data) == 0:
+                # EOF
+                return None
 
         if readlen_bytes > 0:
             # Read some new data from ffmpeg
@@ -566,7 +569,10 @@ class LoadLDF:
         while sample_bytes > self.position:
             # Seeking forwards - read and discard samples
             count = min(sample_bytes - self.position, self.rewind_size)
-            self._read_data(count)
+            data = self._read_data(count)
+            if len(data) == 0:
+                # EOF
+                return None
 
         if readlen_bytes > 0:
             # Read some new data from ffmpeg

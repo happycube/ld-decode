@@ -1141,7 +1141,7 @@ class FieldShared:
 
     def lock_to_burst(self):
         self.chroma_tbc_buffer = None
-        self.rf.track_phase, self.phase_sequence, self.fieldPhaseID, self.burst_phase_avg, self.burst_rising, _ = decode_chroma_phase_rotation(
+        self.rf.track_phase, self.phase_sequence, self.burst_phase_avg, self.burst_detected = decode_chroma_phase_rotation(
             self,
             chroma_rotation=self.rf.DecoderParams.get("chroma_rotation", None),
             detect_chroma_track_phase=self.rf.options.detect_chroma_track_phase
@@ -1823,7 +1823,7 @@ class FieldPALShared(FieldShared, ldd.FieldPAL):
         else:
             linelocs = linelocs.copy()
 
-        if not self.track_phase_set:
+        if not self.track_phase_set and self.rf.options.write_chroma:
             # only do this once, since this does not affect hsync currently
             self.lock_to_burst()
 
@@ -1839,7 +1839,7 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCShared, self).__init__(*args, **kwargs)
         self.track_phase_set = False
-        self.fieldPhaseID = 0
+        self.fieldPhaseID = None
         self.ire0_backporch = (74, 124)
 
     @staticmethod
@@ -1868,7 +1868,8 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
             linelocs = linelocs.copy()
 
         # populates color burst info for hsync refinement the step below
-        self.lock_to_burst()
+        if self.rf.options.write_chroma:
+            self.lock_to_burst()
 
         if (
             not self.rf.options.disable_burst_hsync and
@@ -1952,6 +1953,7 @@ class FieldPALVideo8(FieldPALShared):
 class FieldPALTypeC(FieldPALShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALTypeC, self).__init__(*args, **kwargs)
+        self.rf.track_phase = 0
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldPALTypeC, self).downscale(
@@ -2018,13 +2020,12 @@ class FieldNTSCUMatic(FieldNTSCShared):
 class FieldNTSCTypeC(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCTypeC, self).__init__(*args, **kwargs)
+        self.rf.track_phase = 0
 
     def downscale(self, final=False, *args, **kwargs):
         dsout, dsaudio, dsefm = super(FieldNTSCTypeC, self).downscale(
             final=final, *args, **kwargs
         )
-
-        self.fieldPhaseID = 0
 
         return (dsout, None), dsaudio, dsefm
 
