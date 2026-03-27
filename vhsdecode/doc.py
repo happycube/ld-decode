@@ -109,12 +109,13 @@ def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outl
     for (start_rf, end_rf) in errlist:
         while line_idx < end_line_idx:
             # find the line that contains start of the dropout
-            if (start_rf >= line_start_rf or line_idx == start_line_idx) and start_rf < line_end_rf:
+            line_len = line_end_rf - line_start_rf
+            if (start_rf >= line_start_rf or line_idx == start_line_idx) and start_rf < line_end_rf and line_len > 0::
                 rv_lines.append(line_idx - lineoffset)
                 
                 # scale down to tbc line position
                 start_rf_linepos = start_rf - line_start_rf
-                start_linepos = math.floor(start_rf_linepos / (line_end_rf - line_start_rf) * outlinelen)
+                start_linepos = math.floor(start_rf_linepos / line_len * outlinelen)
 
                 rv_starts.append(max(0, start_linepos))
                 break
@@ -124,11 +125,12 @@ def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outl
                 line_end_rf = linelocs[line_idx + 1]
 
         while line_idx < end_line_idx:
-            if end_rf < line_end_rf:
+            line_len = line_end_rf - line_start_rf
+            if end_rf < line_end_rf and line_len > 0:
                 # dropout is contained within this line
                 # scale down to tbc line position
                 end_rf_linepos = end_rf - line_start_rf
-                end_linepos = math.ceil(end_rf_linepos / (line_end_rf - line_start_rf) * outlinelen)
+                end_linepos = math.ceil(end_rf_linepos / line_len * outlinelen)
 
                 rv_ends.append(min(outlinelen, end_linepos))
                 break
