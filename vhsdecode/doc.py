@@ -110,7 +110,7 @@ def map_dropouts_rf_to_tbc(errlist, start_line_idx, end_line_idx, linelocs, outl
         while line_idx < end_line_idx:
             # find the line that contains start of the dropout
             line_len = line_end_rf - line_start_rf
-            if (start_rf >= line_start_rf or line_idx == start_line_idx) and start_rf < line_end_rf and line_len > 0::
+            if (start_rf >= line_start_rf or line_idx == start_line_idx) and start_rf < line_end_rf and line_len > 0:
                 rv_lines.append(line_idx - lineoffset)
                 
                 # scale down to tbc line position
