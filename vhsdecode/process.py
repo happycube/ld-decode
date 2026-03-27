@@ -48,6 +48,7 @@ from vhsdecode.compute_video_filters import (
 from vhsdecode import compute_video_filters as cvf
 from vhsdecode.demodcache import DemodCacheTape
 from vhsdecode.rust_utils import sosfiltfilt_rust
+from vhsdecode.dbwriter import DBWriter
 
 
 def is_secam(system: str):
@@ -162,6 +163,9 @@ class VHSDecode(ldd.LDdecode):
             self.rf_opts,
             num_worker_threads=self.numthreads,
         )
+
+        self._db_writer = DBWriter() if extra_options.get("write_db") else None
+        # self._io_thread_pool = ThreadPoolExecutor(2)
 
         if fname_out is not None and self.rf.options.write_chroma:
             self.outfile_chroma = open(fname_out + "_chroma.tbc", "wb")
@@ -353,82 +357,10 @@ class VHSDecode(ldd.LDdecode):
 
         if not self.capture_id:
             self.build_sqlite_metadata()
-
-        c_id = self.capture_id
-        f_id = fi["seqNo"] - 1
-
-        decodeFaults = None if fi.get("decodeFaults") == 0 else fi.get("decodeFaults")
-
-        # Insert parent record into 'field_record'
-        # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
-        self.dbconn.execute(
-            """
-            INSERT INTO field_record (
-                capture_id, field_id, is_first_field, sync_conf, disk_loc,
-                file_loc, field_phase_id, decode_faults,
-                pad
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                c_id,
-                f_id,
-                int(fi["isFirstField"]),
-                fi["syncConf"],
-                fi["diskLoc"],
-                fi["fileLoc"],
-                fi["fieldPhaseID"],
-                decodeFaults,
-                0,
-            ),
-        )
-
-        w_snr = fi["vitsMetrics"].get("wSNR", 0)
-        b_psnr = fi["vitsMetrics"].get("bPSNR", 0)
-
-        self.dbconn.execute(
-            """
-            INSERT INTO vits_metrics (
-                capture_id, field_id, w_snr, b_psnr
-            ) VALUES (?, ?, ?, ?)""",
-            (c_id, f_id, w_snr, b_psnr),
-        )
-
-        # Insert VBI data if present
-        vbi_data = fi.get("vbi", {}).get("vbiData", [])
-        if vbi_data:
-            # Ensure we have exactly 3 values for the vbi0, vbi1, vbi2 columns
-            # This pads with 0 if fewer than 3 are found
-            vbi_row = (vbi_data + [0, 0, 0])[:3]
-
-            self.dbconn.execute(
-                """
-                INSERT INTO vbi (
-                    capture_id, field_id, vbi0, vbi1, vbi2
-                ) VALUES (?, ?, ?, ?, ?)""",
-                (c_id, f_id, vbi_row[0], vbi_row[1], vbi_row[2]),
-            )
-
-        # Insert dropouts (if any) into 'drop_outs'
-        if self.doDOD and fi.get("dropOuts"):
-            dropout_lines = fi["dropOuts"]["fieldLine"]
-            dropout_starts = fi["dropOuts"]["startx"]
-            dropout_ends = fi["dropOuts"]["endx"]
-
-            # Use executemany for cleaner/faster insertion of multiple rows
-            dropout_data = [
-                (c_id, f_id, line, start, end)
-                for line, start, end in zip(dropout_lines, dropout_starts, dropout_ends)
-            ]
-
-            self.dbconn.executemany(
-                """
-                INSERT INTO drop_outs (
-                    capture_id, field_id, field_line, startx, endx
-                ) VALUES (?, ?, ?, ?, ?)""",
-                dropout_data,
-            )
-
-        self.build_sqlite_metadata()
-        self.dbconn.commit()
+        if self._db_writer:
+            self._db_writer.write_field(fi, self.dbconn, self.doDOD, self.capture_id)
+            # NOTE: this calls commit so we don't call it in dbwriter.write_field.
+            self.build_sqlite_metadata()
 
         self.outfile_video.write(picturey)
         if self.rf.options.write_chroma:
@@ -775,7 +707,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "gnrc_afe",
                 "relaxed_line0",
                 "detect_chroma_track_phase",
-                "disable_burst_hsync"
+                "disable_burst_hsync",
             ],
         )(
             self.iretohz(100) * 2,
@@ -815,7 +747,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("gnrc_afe", False),
             rf_options.get("relaxed_line0", False),
             rf_options.get("detect_chroma_track_phase", False),
-            rf_options.get("disable_burst_hsync", False)
+            rf_options.get("disable_burst_hsync", False),
         )
 
         # As agc can alter these sysParams values, store a copy to then
