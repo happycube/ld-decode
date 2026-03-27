@@ -1,8 +1,16 @@
+from sqlite3 import Connection
+
+
 class DBWriter:
+    """Class for unifying sqlite writing between cvbs and vhs. Currently doesn't store anything."""
+
     def __init__(self):
         pass
 
-    def write_field(self, field_data, db_connection, capture_id, do_dod):
+    @staticmethod
+    def write_field(
+        field_data: dict, db_connection: Connection, capture_id: int, do_dod
+    ):
         field_id = field_data["seqNo"] - 1
 
         decodeFaults = (
