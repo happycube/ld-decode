@@ -102,6 +102,13 @@ def main(args=None, use_gui=False):
         default=None,
         help="Override format/system parameters with specified json file.",
     )
+    parser.add_argument(
+        "--orc",
+        dest="orc",
+        action="store_true",
+        default=False,
+        help="Use new naming tbc file convention for decode orc (command name subject to change).",
+    )
     luma_group = parser.add_argument_group("Luma decoding options")
     luma_group.add_argument(
         "-L",
@@ -546,6 +553,7 @@ def main(args=None, use_gui=False):
 
     extra_options = get_extra_options(args, not use_gui)
     extra_options["params_file"] = args.params_file
+    extra_options["orc"] = args.orc
 
     # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
     # allowing SIGINT/control-C's to be handled cleanly

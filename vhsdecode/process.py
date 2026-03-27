@@ -165,10 +165,25 @@ class VHSDecode(ldd.LDdecode):
         )
 
         self._db_writer = DBWriter() if extra_options.get("write_db") else None
+        # disconnect and nuke db file to prevent issue when loading with orc
+        # TODO: add option to prevent creating db in the first place..
+        if not self._db_writer and extra_options.get("orc"):
+            self.dbconn.close()
+            if os.path.exists(fname_out + ".tbc.db"):
+                os.unlink(fname_out + ".tbc.db")
         # self._io_thread_pool = ThreadPoolExecutor(2)
 
         if fname_out is not None and self.rf.options.write_chroma:
-            self.outfile_chroma = open(fname_out + "_chroma.tbc", "wb")
+            extension = "_chroma.tbc"
+            if extra_options.get("orc"):
+                extension = ".tbcc"
+                self.outfile_video.close()
+                # Delete empty .tbc File
+                # TODO: Fix this upstream so we don't
+                # have to do this...
+                os.unlink(fname_out + ".tbc")
+                self.outfile_video = open(fname_out + ".tbcy", "wb")
+            self.outfile_chroma = open(fname_out + extension, "wb")
         else:
             self.outfile_chroma = None
 
@@ -365,9 +380,9 @@ class VHSDecode(ldd.LDdecode):
 
         self.fieldinfo.append(fi)
 
-        if not self.capture_id:
-            self.build_sqlite_metadata()
         if self._db_writer:
+            if not self.capture_id:
+                self.build_sqlite_metadata()
             self._db_writer.write_field(fi, self.dbconn, self.doDOD, self.capture_id)
             # NOTE: this calls commit so we don't call it in dbwriter.write_field.
             self.build_sqlite_metadata()
@@ -719,7 +734,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "relaxed_line0",
                 "detect_chroma_track_phase",
                 "disable_burst_hsync",
-                "disable_phase_correction"
+                "disable_phase_correction",
             ],
         )(
             self.iretohz(100) * 2,
@@ -760,7 +775,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("relaxed_line0", False),
             rf_options.get("detect_chroma_track_phase", False),
             rf_options.get("disable_burst_hsync", False),
-            rf_options.get("disable_phase_correction", False)
+            rf_options.get("disable_phase_correction", False),
         )
 
         # As agc can alter these sysParams values, store a copy to then
