@@ -6,6 +6,8 @@ import traceback
 import json
 import shutil
 import time
+import faulthandler
+import signal
 
 import numpy
 
@@ -55,6 +57,9 @@ supported_tape_formats = {
 
 
 def main(args=None, use_gui=False):
+    # allows user to send SIGUSR1 via `kill -USR1 <pid>` to show a stack trace of the currently running code without killing the app
+    faulthandler.register(signal.SIGUSR1) 
+
     import vhsdecode.formats as f
 
     format_help = "Tape format - " + " ".join(supported_tape_formats) + "are supported"
@@ -248,6 +253,14 @@ def main(args=None, use_gui=False):
         action="store_true",
         default=False,
         help="Detects and corrects color-under heterodyne rotation change around head-switching area. Corrects chroma artifacts around head-switching area for color-under formats. (Experimental feature)",
+    )
+    chroma_group.add_argument(
+        "--dpc",
+        "--disable_phase_correction",
+        dest="disable_phase_correction",
+        action="store_true",
+        default=False,
+        help="Disables phase correction after up-heterodyning color under formats. This can safely be disabled if not using the NTSC 3D decoder. (currently only applicable to NTSC)",
     )
     chroma_group.add_argument(
         "--dbh",
@@ -528,6 +541,7 @@ def main(args=None, use_gui=False):
     rf_options["ire0_adjust"] = args.ire0_adjust
     rf_options["detect_chroma_track_phase"] = args.detect_chroma_track_phase
     rf_options["disable_burst_hsync"] = args.disable_burst_hsync
+    rf_options["disable_phase_correction"] = args.disable_phase_correction
     rf_options["gnrc_afe"] = args.gnrc_afe
 
     extra_options = get_extra_options(args, not use_gui)
