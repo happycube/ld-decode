@@ -1095,12 +1095,12 @@ class FieldShared:
                 ):
                     blank_levels = np.empty(self.outlinecount)
                     for i in range(0, self.outlinecount):
+                        line_offset = i * self.outlinelen
+                        ire0_adjust_start = line_offset + self.ire0_backporch[0]
+                        ire0_adjust_end =   line_offset + self.ire0_backporch[1]
+
                         blank_levels[i] = np.median(
-                            input[
-                                i * self.outlinelen
-                                + self.ire0_backporch[0] : i * self.outlinelen
-                                + self.ire0_backporch[1]
-                            ]
+                            input[ire0_adjust_start:ire0_adjust_end]
                         )
                     blank_levels = np.sort(blank_levels)
                     ire0 = np.mean(
@@ -1109,12 +1109,13 @@ class FieldShared:
                         ]
                     )
                     ldd.logger.debug("calculated ire0: %.02f", ire0)
+
+                if self.rf.track_phase is not None:
+                    ire0 += self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ (self.field_number % 2)]
+
                 return hz_to_output_array(
                     input,
-                    ire0
-                    + self.rf.DecoderParams["track_ire0_offset"][
-                        self.rf.track_phase ^ (self.field_number % 2)
-                    ],
+                    ire0,
                     self.rf.DecoderParams["hz_ire"],
                     self.rf.SysParams["outputZero"],
                     self.rf.DecoderParams["vsync_ire"],
@@ -1814,7 +1815,6 @@ class FieldPALShared(FieldShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALShared, self).__init__(*args, **kwargs)
         self.track_phase_set = False
-        self.rf.track_phase = 0
         self.ire0_backporch = (96, 160)
 
     def refine_linelocs_pilot(self, linelocs=None):
@@ -1840,7 +1840,6 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCShared, self).__init__(*args, **kwargs)
         self.track_phase_set = False
-        self.rf.track_phase = 0
         self.fieldPhaseID = None
         self.ire0_backporch = (74, 124)
 
