@@ -1093,21 +1093,14 @@ class FieldShared:
                     self.rf.options.ire0_adjust
                     and input.size == self.outlinecount * self.outlinelen
                 ):
-                    blank_levels = np.empty(self.outlinecount)
-                    for i in range(0, self.outlinecount):
-                        line_offset = i * self.outlinelen
-                        ire0_adjust_start = line_offset + self.ire0_backporch[0]
-                        ire0_adjust_end =   line_offset + self.ire0_backporch[1]
+                    hsync_start, hsync_end = self.ire0_backporch
+                    blank_levels = np.sort([
+                        np.median(input[i * self.outlinelen + hsync_start :
+                                        i * self.outlinelen + hsync_end])
+                        for i in range(0, self.outlinecount)
+                    ])
+                    ire0 = np.mean(blank_levels[self.outlinecount // 3 : (self.outlinecount * 2) // 3])
 
-                        blank_levels[i] = np.median(
-                            input[ire0_adjust_start:ire0_adjust_end]
-                        )
-                    blank_levels = np.sort(blank_levels)
-                    ire0 = np.mean(
-                        blank_levels[
-                            int(self.outlinecount / 3) : int(self.outlinecount * 2 / 3)
-                        ]
-                    )
                     ldd.logger.debug("calculated ire0: %.02f", ire0)
 
                 if self.rf.track_phase is not None:
