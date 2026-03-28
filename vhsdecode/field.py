@@ -1094,6 +1094,11 @@ class FieldShared:
                     and input.size == self.outlinecount * self.outlinelen
                 ):
                     hsync_start, hsync_end = self.ire0_backporch
+
+                    ire0_adjust_padding = 4 # 4fsc, prevents noise around the hsync transition from interfering with this measurement
+                    hsync_start += ire0_adjust_padding
+                    hsync_end -= ire0_adjust_padding
+
                     blank_levels = np.sort([
                         np.median(input[i * self.outlinelen + hsync_start :
                                         i * self.outlinelen + hsync_end])
