@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 try:
-    from PyQt6.QtCore import Qt, QTimer
+    from PyQt6.QtCore import QTimer, QUrl, Qt, pyqtSignal
     from PyQt6.QtGui import QColor, QIcon, QPalette
     from PyQt6.QtWidgets import (
         QApplication,
@@ -36,7 +36,7 @@ try:
     )
     ALIGN_TOP = Qt.AlignmentFlag.AlignTop
 except ImportError:
-    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtCore import QTimer, QUrl, Qt, pyqtSignal
     from PyQt5.QtGui import QColor, QIcon, QPalette
     from PyQt5.QtWidgets import (
         QApplication,
@@ -208,6 +208,52 @@ def _split_user_args(extra_args: str, *, strict: bool = True) -> list[str]:
         if strict:
             raise
         return [extra_args]
+
+def _is_json_file_path(path: str) -> bool:
+    return Path(path).suffix.lower() == ".json"
+
+
+def _extract_dropped_file_paths(mime_data) -> list[str]:
+    paths: list[str] = []
+    if mime_data is None:
+        return paths
+
+    if mime_data.hasUrls():
+        for url in mime_data.urls():
+            if not url.isLocalFile():
+                continue
+            local_path = url.toLocalFile().strip()
+            if local_path:
+                paths.append(local_path)
+
+    if not paths and mime_data.hasText():
+        raw_text = mime_data.text().strip()
+        if raw_text:
+            for line in raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+                candidate = line.strip()
+                if not candidate:
+                    continue
+                if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {"\"", "'"}:
+                    candidate = candidate[1:-1].strip()
+                local_path = QUrl(candidate).toLocalFile() if candidate.startswith("file:") else ""
+                path = local_path or candidate
+                if path:
+                    paths.append(path)
+
+    deduped_paths: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        expanded = str(Path(path).expanduser())
+        expanded_key = expanded.casefold() if os.name == "nt" else expanded
+        if expanded_key in seen:
+            continue
+        seen.add(expanded_key)
+        as_path = Path(expanded)
+        if as_path.exists() and as_path.is_dir():
+            continue
+        deduped_paths.append(expanded)
+    return deduped_paths
+
 
 
 def _candidate_script_directories() -> list[Path]:
@@ -458,9 +504,65 @@ def _open_terminal(command_parts: list[str], working_directory: Path) -> None:
     _open_linux_terminal(shell_command)
 
 
+class FileDropLineEdit(QLineEdit):
+    fileDropped = pyqtSignal(str)
+    def __init__(self, *, json_only: bool = False, allow_json: bool = True):
+        super().__init__()
+        self._json_only = json_only
+        self._allow_json = allow_json
+        self.setAcceptDrops(True)
+
+    def _accepts_path(self, path: str) -> bool:
+        is_json = _is_json_file_path(path)
+        if self._json_only and not is_json:
+            return False
+        if not self._allow_json and is_json:
+            return False
+        return True
+
+    def _matching_path(self, dropped_paths: list[str]) -> Optional[str]:
+        for path in dropped_paths:
+            if self._accepts_path(path):
+                return path
+        return None
+
+    def dragEnterEvent(self, event) -> None:
+        dropped_paths = _extract_dropped_file_paths(event.mimeData())
+        if self._matching_path(dropped_paths) is not None:
+            event.acceptProposedAction()
+            return
+        if dropped_paths:
+            event.ignore()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        dropped_paths = _extract_dropped_file_paths(event.mimeData())
+        if self._matching_path(dropped_paths) is not None:
+            event.acceptProposedAction()
+            return
+        if dropped_paths:
+            event.ignore()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        dropped_paths = _extract_dropped_file_paths(event.mimeData())
+        dropped_path = self._matching_path(dropped_paths)
+        if dropped_path is None:
+            if dropped_paths:
+                event.ignore()
+                return
+            super().dropEvent(event)
+            return
+        self.setText(dropped_path)
+        self.fileDropped.emit(dropped_path)
+        event.acceptProposedAction()
+
 class DecodeLauncherWindow(QWidget):
     def __init__(self):
         super().__init__()
+        self.setAcceptDrops(True)
         self._tools = TOOLS
         self.setWindowTitle("Decode Launcher")
         icon = _current_app_icon()
@@ -480,7 +582,8 @@ class DecodeLauncherWindow(QWidget):
         self.extra_args_edit = QLineEdit("")
         self.params_json_check = QCheckBox("Use params JSON file")
         self.params_json_label = QLabel("Params JSON")
-        self.params_json_edit = QLineEdit("")
+        self.params_json_edit = FileDropLineEdit(json_only=True)
+        self.params_json_edit.setPlaceholderText("Drop params .json file here")
         self.params_json_browse_button = QPushButton("Params JSON…")
         self.params_json_label.setVisible(False)
         self.params_json_edit.setVisible(False)
@@ -488,7 +591,8 @@ class DecodeLauncherWindow(QWidget):
         self.force_terminal_check = QCheckBox("Force terminal launch")
         self.command_preview = QLineEdit("")
         self.command_preview.setReadOnly(True)
-        self.input_edit = QLineEdit("")
+        self.input_edit = FileDropLineEdit(allow_json=False)
+        self.input_edit.setPlaceholderText("Drop RF input file here")
         self.input_browse_button = QPushButton("Input…")
         self.output_edit = QLineEdit("")
         self.output_browse_button = QPushButton("Output…")
@@ -587,6 +691,7 @@ class DecodeLauncherWindow(QWidget):
         self.extra_args_edit.textChanged.connect(self._refresh_tool_state)
         self.params_json_check.toggled.connect(self._refresh_tool_state)
         self.params_json_edit.textChanged.connect(self._refresh_tool_state)
+        self.params_json_edit.fileDropped.connect(self._on_params_json_dropped)
         self.input_edit.textChanged.connect(self._on_input_changed)
         self.output_edit.textChanged.connect(self._refresh_tool_state)
         self.output_edit.textEdited.connect(self._on_output_edited)
@@ -621,6 +726,7 @@ class DecodeLauncherWindow(QWidget):
         if hasattr(Qt, "WidgetAttribute"):
             return Qt.WidgetAttribute.WA_DeleteOnClose
         return Qt.WA_DeleteOnClose
+
     def _params_json_args(self, tool: ToolSpec, *, strict: bool) -> list[str]:
         if tool.subcommand != "vhs" or not self.params_json_check.isChecked():
             return []
@@ -786,6 +892,55 @@ class DecodeLauncherWindow(QWidget):
 
     def _on_output_edited(self, value: str) -> None:
         self._output_manually_set = bool(value.strip())
+
+
+    def _on_params_json_dropped(self, dropped_path: str) -> None:
+        if not _is_json_file_path(dropped_path):
+            return
+        if not self.params_json_check.isChecked():
+            self.params_json_check.setChecked(True)
+
+    def _split_window_drop_paths(self, mime_data) -> tuple[Optional[str], Optional[str]]:
+        input_path: Optional[str] = None
+        params_json_path: Optional[str] = None
+        for dropped_path in _extract_dropped_file_paths(mime_data):
+            if _is_json_file_path(dropped_path):
+                if params_json_path is None:
+                    params_json_path = dropped_path
+            elif input_path is None:
+                input_path = dropped_path
+            if input_path and params_json_path:
+                break
+        return input_path, params_json_path
+
+    def dragEnterEvent(self, event) -> None:
+        input_path, params_json_path = self._split_window_drop_paths(event.mimeData())
+        if input_path or params_json_path:
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        input_path, params_json_path = self._split_window_drop_paths(event.mimeData())
+        if input_path or params_json_path:
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        input_path, params_json_path = self._split_window_drop_paths(event.mimeData())
+        handled = False
+        if input_path:
+            self.input_edit.setText(input_path)
+            handled = True
+        if params_json_path:
+            self.params_json_check.setChecked(True)
+            self.params_json_edit.setText(params_json_path)
+            handled = True
+        if handled:
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
 
     def _effective_working_directory(self) -> Path:
         input_path = self.input_edit.text().strip()
