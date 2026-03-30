@@ -52,6 +52,7 @@ supported_tape_formats = {
     "VCR_LP",
     "TYPEC",
     "TYPEB",
+    "VHD",
     "VIDEO2000",
 }
 

@@ -83,7 +83,7 @@ def get_sys_params_819():
 
 
 def is_color_under(tape_format: str) -> str:
-    return tape_format not in ["TYPEC", "TYPEB", "QUADRUPLEX"]
+    return tape_format not in ["TYPEC", "TYPEB", "QUADRUPLEX", "VHD"]
 
 
 def parent_system(system: str) -> str:
@@ -119,7 +119,7 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
     # We base the parameters off the original laserdisc ones and override the ones
     # we need.
 
-    # TODO: This should be made cleaner.
+    # TODO: This needs to be reworked and made cleaner.
 
     assert tape_speed <= 4, "Tape speed was > 4!"
 
@@ -375,6 +375,15 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             )
 
             return get_sysparams_ntsc_typec(SysParams_NTSC), get_rfparams_ntsc_typec(
+                FilterParams_NTSC
+            )
+        elif tape_format == "VHD":
+            from vhsdecode.format_defs.vhd import (
+                get_rfparams_ntsc_vhd,
+                get_sysparams_ntsc_vhd,
+            )
+
+            return get_sysparams_ntsc_vhd(SysParams_NTSC), get_rfparams_ntsc_vhd(
                 FilterParams_NTSC
             )
         else:

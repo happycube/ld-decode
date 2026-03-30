@@ -108,6 +108,7 @@ SUPPORTED_TAPE_FORMATS = (
     "VCR_LP",
     "TYPEC",
     "TYPEB",
+    "VHD",
     "VIDEO2000",
 )
 
@@ -466,8 +467,8 @@ class DeemphasisFilters:
             bandpass = filter_params["nonlinear_bandpass_upper"]["value"]
         self.filters["NLHighPassF"] = compute_video_filters.gen_nonlinear_bandpass(
             bandpass,
-            filter_params["nonlinear_highpass_freq"]["value"],
-            filter_params["nonlinear_bandpass_order"]["value"],
+            filter_params["nonlinear_highpass_freq"].get("value", 1000),
+            filter_params["nonlinear_bandpass_order"].get("value", 1),
             fs / 2.0,
             block_len,
         )
@@ -725,7 +726,7 @@ class VHStune(QDialog):
                 "onchange": [self.drawImage],
             },
             "nonlinear_highpass_freq": {
-                "value": rf_params["nonlinear_highpass_freq"],
+                "value": rf_params.get("nonlinear_highpass_freq", 10000),
                 "step": 5000,
                 "min": 10000,
                 "max": 4000000,
