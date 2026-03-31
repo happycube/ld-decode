@@ -1,0 +1,6 @@
+nav:
+  - index.md
+  - Installation: installation
+  - User Guide: user-guide
+  - Technical Reference: technical
+  - Miscellaneous: misc

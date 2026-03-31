@@ -461,7 +461,7 @@ By contributing to ld-decode, you agree that your contributions will be licensed
 
 If you have questions about contributing:
 
-1. Check the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/)
+1. Check the [ld-decode documentation](https://happycube.github.io/ld-decode/)
 2. Search [existing issues](https://github.com/happycube/ld-decode/issues)
 3. Ask in the [Discord server](https://discord.gg/pVVrrxd)
 4. Open a new issue with your question

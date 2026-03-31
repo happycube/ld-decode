@@ -27,6 +27,12 @@
         # dirtyShortRev format is "abc1234-dirty", so replace "-" with "."
         fullVersion = "${version}+git.${builtins.replaceStrings ["-"] ["."] gitCommit}";
         
+        docsEnv = pkgs.python3.withPackages (ps: with ps; [
+          ps.mkdocs
+          ps.mkdocs-material
+          ps.mkdocs-awesome-nav
+        ]);
+
         ld-decode = pythonPackages.buildPythonPackage {
           pname = "ld-decode";
           inherit version;
@@ -69,6 +75,14 @@
         packages = {
           default = ld-decode;
           ld-decode = ld-decode;
+          docs = pkgs.stdenv.mkDerivation {
+            pname = "ld-decode-docs";
+            version = version;
+            src = ./.;
+            nativeBuildInputs = [ docsEnv ];
+            buildPhase = ''mkdocs build'';
+            installPhase = ''cp -r site $out'';
+          };
         };
         
         apps = {
@@ -101,6 +115,7 @@
             pythonPackages.pandas
             pythonPackages.pytest
             pythonPackages.pytest-cov
+            docsEnv
           ];
           
           shellHook = ''

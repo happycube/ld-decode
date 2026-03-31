@@ -1,0 +1,54 @@
+site_name: ld-decode Documentation
+site_url: https://happycube.github.io/ld-decode
+repo_url: https://github.com/happycube/ld-decode
+repo_name: happycube/ld-decode
+
+theme:
+  name: material
+  logo: assets/lddecode_logo_512px.png
+  palette:
+    # Light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+extra_css:
+  - assets/custom.css
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - awesome-nav
+
+# This file intentionally left minimal - navigation is auto-generated from docs/ folder structure
+# You can optionally add explicit nav: section here if you want custom ordering
