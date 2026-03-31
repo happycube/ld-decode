@@ -10,7 +10,7 @@ import sys
 import traceback
 import signal
 
-from multiprocessing import Event, Pipe, Process
+from multiprocessing import Event, Pipe, Process, get_context
 
 from numba import jit, njit
 import numba
@@ -1352,7 +1352,13 @@ class JSONDumper:
         self._get_field_info = ldd.fieldinfo.read
 
         self._outname = outname
-        self._dumper = Process(target=JSONDumper._consume, args=(self._rx, self._writing, self._outname, ldd.verboseVITS,), name="lddecode-json-dumper")
+        # On macOS (and other non-Windows Unix platforms), Python uses 'spawn'
+        # as the default multiprocessing start method. This causes the main
+        # module to be re-imported in the child process, which re-runs argparse
+        # and fails with "unrecognized arguments: --multiprocessing-fork".
+        # Using 'fork' avoids this by directly copying the parent process state.
+        _mp_ctx = get_context("fork" if sys.platform != "win32" else "spawn")
+        self._dumper = _mp_ctx.Process(target=JSONDumper._consume, args=(self._rx, self._writing, self._outname, ldd.verboseVITS,), name="lddecode-json-dumper")
         self._dumper.start()
     
     def write(self):
