@@ -3,7 +3,7 @@ name: Deploy Docs to GitHub Pages
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
           python-version: '3.x'
 
       - name: Install MkDocs dependencies
-        run: pip install mkdocs-material mkdocs-awesome-nav-plugin
+        run: pip install mkdocs-material mkdocs-awesome-nav
 
       - name: Build docs
         run: mkdocs build --strict
