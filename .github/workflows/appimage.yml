@@ -31,7 +31,7 @@ jobs:
           
           # Copy Python interpreter
           echo "Copying Python interpreter..."
-          PYTHON_PATH=$(nix build nixpkgs#python312 --out-link result-python --print-out-paths)
+          PYTHON_PATH=$(nix build github:NixOS/nixpkgs/nixos-25.11#python312 --out-link result-python --print-out-paths)
           cp -r --no-preserve=mode,ownership $PYTHON_PATH/* AppDir/usr/
           chmod -R u+rwX AppDir/usr
           chmod +x AppDir/usr/bin/python3.12
