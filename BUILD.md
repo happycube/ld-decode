@@ -1,10 +1,10 @@
 # Building ld-decode (Nix)
 
-This project is built with Nix. The flake provides a reproducible build and generates the version file automatically.
+This project is built with [Nix](https://nixos.org/). The flake provides a reproducible build and generates the version file automatically.
 
 ## Requirements
 
-- Nix with flakes enabled
+- [Nix](https://nixos.org/) — a purely functional package manager that provides reproducible, declarative builds. Flakes must be enabled.
 
 ## Build
 
