@@ -999,16 +999,18 @@ def roundfloat(fl, places=3):
     return np.round(fl * r) / r
 
 
-@njit(nogil=True, cache=True)
+@njit(nogil=True, cache=True, fastmath=True)
 def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
-    reduced = (input - ire0) / hz_ire
-    reduced -= vsync_ire
+    n = len(input)
+    out = np.empty(n, dtype=np.uint16)
 
-    return (
-        np.clip((reduced * out_scale) + outputZero, 0, 65535) + 0.5
-    ).astype(np.uint16)
+    scale = out_scale / hz_ire
+    offset = outputZero - vsync_ire * out_scale - ire0 * scale
 
+    for i in range(n):
+        out[i] = np.uint16(max(0, min(65535, input[i] * scale + offset)))
 
+    return out
 
 # Something like this should be a numpy function, but I can't find it.
 @jit(cache=True, nopython=True)
