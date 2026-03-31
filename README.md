@@ -1,9 +1,9 @@
 # Documentation
 
 > [!Important]
-> If in doubt read the comprehensive [documentation web-site](https://happycube.github.io/ld-decode-docs/)!
+> If in doubt read the comprehensive [documentation web-site](https://happycube.github.io/ld-decode/)!
 
-You can find the documentation here: [ld-decode documentation](https://happycube.github.io/ld-decode-docs/)
+You can find the documentation here: [ld-decode documentation](https://happycube.github.io/ld-decode/)
 
 Check the documentation first, the [discord server](https://discord.com/invite/pVVrrxd) second and then raise issues.
 
@@ -28,7 +28,7 @@ ld-decode is a GPL3 open-source project run entirely by volunteers and provided 
 
 Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  You will find [ready-made binary builds](https://github.com/happycube/ld-decode) in the releases section of this repository.  The main ld-decode repo targets the nix development environment (suitable for a wide-range of Linux distributions and Mac OS)
 
-If you would like installation instructions or details on how to compile the project from source please see the [ld-decode documentation](https://happycube.github.io/ld-decode-docs/) for detailed instructions.
+If you would like installation instructions or details on how to compile the project from source please see the [ld-decode documentation](https://happycube.github.io/ld-decode/) for detailed instructions.
 
 ## Building from Source
 
@@ -64,7 +64,7 @@ If you are interested in contributing or have general questions please join the 
 
 For detailed information on how to contribute code, report bugs, or suggest enhancements, please see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
-You can also contribute to the project documentation, see the [ld-decode documentation github](https://github.com/happycube/ld-decode-docs) for details.
+You can also contribute to the project documentation, see the [docs/ directory in this repository](https://github.com/happycube/ld-decode/tree/main/docs) for details.
 
 # Source code structure
 

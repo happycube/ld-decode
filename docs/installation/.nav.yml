@@ -1,0 +1,5 @@
+nav:
+  - linux.md
+  - windows.md
+  - macos.md
+  - build-from-source.md

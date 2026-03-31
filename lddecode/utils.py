@@ -10,7 +10,8 @@ import sys
 import traceback
 import signal
 
-from multiprocessing import Event, Pipe, Process
+import threading
+from queue import Queue
 
 from numba import jit, njit
 import numba
@@ -1346,34 +1347,41 @@ class FieldInfo:
 
 class JSONDumper:
     def __init__(self, ldd, outname):
-        self._rx, self._tx = Pipe(False)
-        self._writing = Event()
+        # Use a thread instead of a subprocess to avoid macOS multiprocessing
+        # spawn issues (forking after threads are started is unsafe on macOS,
+        # and spawn re-runs the entry point causing argparse errors).
+        self._queue = Queue()
+        self._writing = threading.Event()
         self._build_json = ldd.build_json
         self._get_field_info = ldd.fieldinfo.read
 
         self._outname = outname
-        self._dumper = Process(target=JSONDumper._consume, args=(self._rx, self._writing, self._outname, ldd.verboseVITS,), name="lddecode-json-dumper")
+        self._dumper = threading.Thread(
+            target=JSONDumper._consume,
+            args=(self._queue, self._writing, self._outname, ldd.verboseVITS),
+            name="lddecode-json-dumper",
+            daemon=True,
+        )
         self._dumper.start()
-    
+
     def write(self):
         if not self._writing.is_set():
             json_data = self._build_json()
             field_info = self._get_field_info()
-            self._tx.send(json_data)
-            self._tx.send(field_info)
+            self._queue.put((json_data, field_info))
 
     def close(self):
         json_data = self._build_json()
         field_info = self._get_field_info()
-        self._tx.send(json_data)
-        self._tx.send(field_info)
-
-        self._tx.send(None)
+        self._queue.put((json_data, field_info))
+        self._queue.put(None)  # sentinel to stop the consumer
         self._dumper.join()
 
     @staticmethod
-    def _consume(conn, ready, outname, verboseVITS):
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    def _consume(queue, ready, outname, verboseVITS):
+        # Signal handling is intentionally omitted here: signal handlers can
+        # only be set from the main thread in Python. The main thread already
+        # ignores SIGINT during LDdecode setup, so this thread is unaffected.
 
         indent = 4 if verboseVITS else None
         linebreak = '\n' if verboseVITS else ''
@@ -1383,13 +1391,13 @@ class JSONDumper:
 
         while True:
             try:
-                jsondict = conn.recv()
-                if jsondict is None:
+                item = queue.get()
+                if item is None:
                     break
 
-                next_field_info = conn.recv()
+                jsondict, next_field_info = item
                 ready.set()
-            except (InterruptedError, KeyboardInterrupt, EOFError):
+            except (InterruptedError, KeyboardInterrupt):
                 break
 
             # json serialize each field info object to a string
