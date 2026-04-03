@@ -7,6 +7,7 @@ from vhsdecode.rust_utils import sosfiltfilt_rust
 
 from numba import njit
 
+
 @njit(cache=True, nogil=True)
 def chroma_to_u16(chroma):
     """Scale the chroma output array to a 16-bit value for output."""
@@ -97,14 +98,9 @@ def comb_c_ntsc(data, line_len):
         ) / 4
     return data
 
+
 @njit(cache=True, nogil=True, fastmath=True)
-def _demod_burst(
-    burst,
-    burst_start,
-    burst_len,
-    burst_sin,
-    burst_cos
-):
+def _demod_burst(burst, burst_start, burst_len, burst_sin, burst_cos):
     I = 0
     Q = 0
 
@@ -118,6 +114,7 @@ def _demod_burst(
 
     return burst_phase_deg, burst_magnitude, I, Q
 
+
 def _get_upconverted_burst(
     chroma,
     chroma_heterodyne,
@@ -130,11 +127,16 @@ def _get_upconverted_burst(
     lineoffset,
     outwidth,
 ):
-    burst_padding = burstarea[1] - burstarea[0] # pad the area being filtered
-    burst_start = max(0, (linenumber - lineoffset) * outwidth + burstarea[0] - burst_padding)
+    burst_padding = burstarea[1] - burstarea[0]  # pad the area being filtered
+    burst_start = max(
+        0, (linenumber - lineoffset) * outwidth + burstarea[0] - burst_padding
+    )
     burst_end = min(len(chroma), burst_start + burstarea[1] + burst_padding)
 
-    burst = chroma_heterodyne[current_phase][burst_start:burst_end] * chroma[burst_start:burst_end]
+    burst = (
+        chroma_heterodyne[current_phase][burst_start:burst_end]
+        * chroma[burst_start:burst_end]
+    )
 
     # filter out noise so only the color burst is present
     filtered_padded = sosfiltfilt_rust(chroma_filter, burst)
@@ -142,7 +144,10 @@ def _get_upconverted_burst(
 
     burst_len = len(filtered)
 
-    return _demod_burst(filtered, burst_start + burst_padding, burst_len, burst_sin, burst_cos)
+    return _demod_burst(
+        filtered, burst_start + burst_padding, burst_len, burst_sin, burst_cos
+    )
+
 
 def _get_phase_sequence(
     chroma,
@@ -160,7 +165,11 @@ def _get_phase_sequence(
     rotation_check_start_line,
     track_change_threshold,
 ):
-    do_phase_rotation_check = detect_chroma_track_phase and chroma_rotation is not None and chroma_heterodyne is not None
+    do_phase_rotation_check = (
+        detect_chroma_track_phase
+        and chroma_rotation is not None
+        and chroma_heterodyne is not None
+    )
 
     phase_sequence = []
 
@@ -208,7 +217,12 @@ def _get_phase_sequence(
             use_next_phase = False
         else:
             current_phase = (current_phase + track_rotation) % 4
-            current_burst_phase, current_burst_magnitude, current_burst_I, current_burst_Q = _get_upconverted_burst(
+            (
+                current_burst_phase,
+                current_burst_magnitude,
+                current_burst_I,
+                current_burst_Q,
+            ) = _get_upconverted_burst(
                 chroma,
                 chroma_heterodyne,
                 chroma_filter,
@@ -223,41 +237,47 @@ def _get_phase_sequence(
 
         # check if the track has rotated around the head switching area
         if (
-            do_phase_rotation_check and
-            linenumber >= rotation_check_start_line and
-            linenumber < last_line - 1
+            do_phase_rotation_check
+            and linenumber >= rotation_check_start_line
+            and linenumber < last_line - 1
         ):
             # get the next burst using the phase rotation for the current track
             next_phase = (current_phase + track_rotation) % 4
-            next_burst_phase, next_burst_magnitude, next_burst_I, next_burst_Q = _get_upconverted_burst(
-                chroma,
-                chroma_heterodyne,
-                chroma_filter,
-                next_phase,
-                burstarea,
-                burst_sin,
-                burst_cos,
-                linenumber + 1,
-                lineoffset,
-                outwidth,
+            next_burst_phase, next_burst_magnitude, next_burst_I, next_burst_Q = (
+                _get_upconverted_burst(
+                    chroma,
+                    chroma_heterodyne,
+                    chroma_filter,
+                    next_phase,
+                    burstarea,
+                    burst_sin,
+                    burst_cos,
+                    linenumber + 1,
+                    lineoffset,
+                    outwidth,
+                )
             )
 
-            phase_delta_quadrant = abs((next_burst_phase - current_burst_phase + 180) % 360 - 180)
+            phase_delta_quadrant = abs(
+                (next_burst_phase - current_burst_phase + 180) % 360 - 180
+            )
             if phase_delta_quadrant > track_change_threshold:
                 # burst is more in phase than out of phase, flip rotation so it remains out of phase
                 chroma_rotation_index = (chroma_rotation_index + 1) % 2
                 track_rotation = chroma_rotation[chroma_rotation_index]
             else:
                 use_next_phase = True
-        
-        phase_sequence.append((
-            linenumber,
-            current_phase,
-            current_burst_phase,
-            current_burst_magnitude,
-            current_burst_I,
-            current_burst_Q
-        ))
+
+        phase_sequence.append(
+            (
+                linenumber,
+                current_phase,
+                current_burst_phase,
+                current_burst_magnitude,
+                current_burst_I,
+                current_burst_Q,
+            )
+        )
 
     if chroma_rotation and chroma_rotation_index == chroma_rotation_starting_index:
         # rotate the phase for the next field, if rotation was not detected
@@ -304,7 +324,7 @@ def get_phase_rotation_sequence(
         end,
         detect_chroma_track_phase,
         rotation_check_start_line,
-        track_change_threshold
+        track_change_threshold,
     )
 
     burst_check_start = burst_check_skip_lines
@@ -318,13 +338,10 @@ def get_phase_rotation_sequence(
         delta_270 = 0
 
         for i in range(1, len(phase_sequence)):
-            _,           _, previous_burst_phase, _, _, _ = phase_sequence[i-1]
-            line_number, _, current_burst_phase,  _, _, _ = phase_sequence[i]
+            _, _, previous_burst_phase, _, _, _ = phase_sequence[i - 1]
+            line_number, _, current_burst_phase, _, _, _ = phase_sequence[i]
 
-            if (
-                line_number > burst_check_start and
-                line_number < burst_check_end
-            ):
+            if line_number > burst_check_start and line_number < burst_check_end:
                 delta = (current_burst_phase - previous_burst_phase) % 360
                 bucket = int((delta + 45) // 90) % 4
 
@@ -340,7 +357,7 @@ def get_phase_rotation_sequence(
         if color_system == "NTSC":
             # if the bursts are out of phase with each other, the track was miss-detected, flip phase and recalculate sequence
             flip_track_phase = delta_0 < delta_180
-        else: # color_system in ("PAL", "MPAL", "PALM", "NLINHA", "MESECAM")
+        else:  # color_system in ("PAL", "MPAL", "PALM", "NLINHA", "MESECAM")
             # each line should alternate phase, if there are repeated sequences of phase, recalculate
             alt1 = delta_90 + delta_270
             alt2 = delta_0 + delta_180
@@ -367,7 +384,7 @@ def get_phase_rotation_sequence(
             end,
             detect_chroma_track_phase,
             rotation_check_start_line,
-            track_change_threshold
+            track_change_threshold,
         )
 
     if color_system == "NTSC":
@@ -376,10 +393,7 @@ def get_phase_rotation_sequence(
         Q_total = 0
         avg_count = 0
         for line_number, _, _, magnitude, I, Q in phase_sequence:
-            if (
-                line_number > burst_check_start and
-                line_number < burst_check_end
-            ):
+            if line_number > burst_check_start and line_number < burst_check_end:
                 if magnitude != 0:
                     I_total += I / magnitude
                     Q_total += Q / magnitude
@@ -398,13 +412,10 @@ def get_phase_rotation_sequence(
 
     return chroma_rotation_index, phase_sequence, burst_phase_avg, burst_detected
 
+
 @njit(cache=True, nogil=True, fastmath=True)
 def upconvert_chroma(
-    chroma,
-    lineoffset,
-    outwidth,
-    chroma_heterodyne,
-    phase_rotation_sequence
+    chroma, lineoffset, outwidth, chroma_heterodyne, phase_rotation_sequence
 ):
     uphet = np.zeros(len(chroma), dtype=np.float32)
 
@@ -418,13 +429,9 @@ def upconvert_chroma(
 
     return uphet
 
+
 @njit(cache=True, nogil=True, fastmath=True)
-def adjust_phase(
-    input_data,
-    output_data,
-    input_phase,
-    target_phase
-):
+def adjust_phase(input_data, output_data, input_phase, target_phase):
     # rotates the phase of the chroma signal
     phase_adjustment = np.deg2rad(target_phase) - np.deg2rad(input_phase)
     rotation = np.exp(1j * phase_adjustment)
@@ -434,22 +441,15 @@ def adjust_phase(
         # Convert back to real and store
         output_data[i] = (input_data[i] * rotation).real
 
-def ntsc_phase_comp(
-    uphet,
-    burst_phase_avg,
-    target_phase = 0
-):
+
+def ntsc_phase_comp(uphet, burst_phase_avg, target_phase=0):
     # TODO: Can we use the Rust version here?
     uphet_hilbert = sps.hilbert(uphet)
 
-    adjust_phase(
-        uphet_hilbert,
-        uphet,
-        burst_phase_avg,
-        target_phase
-    )
+    adjust_phase(uphet_hilbert, uphet, burst_phase_avg, target_phase)
 
     return uphet
+
 
 @njit(cache=True, nogil=True)
 def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
@@ -460,6 +460,7 @@ def burst_deemphasis(chroma, lineoffset, linesout, outwidth, burstarea):
         chroma[linestart + burstarea[1] + 5 : lineend] *= 2
 
     return chroma
+
 
 @njit(cache=True, nogil=True, fastmath=True)
 def shift_chroma_and_remove_dc(out_chroma, move):
@@ -525,24 +526,27 @@ def decode_chroma_phase_rotation(
         else field.rf.chroma_heterodyne
     )
 
-    track_phase, phase_sequence, burst_phase_avg, burst_detected = get_phase_rotation_sequence(
-        chroma,
-        chroma_heterodyne,
-        field.rf.Filters["FChromaFinal"],
-        chroma_rotation,
-        field.rf.track_phase, # index for chroma rotation, and static if there is no chroma rotation
-        lineoffset,
-        linesout,
-        outwidth,
-        burstarea,
-        field.rf.fsc_wave,
-        field.rf.fsc_cos_wave,
-        detect_chroma_track_phase,
-        rotation_check_start_line, # check for track phase rotation around the headswitching area (bottom of field)
-        field.rf.color_system,
+    track_phase, phase_sequence, burst_phase_avg, burst_detected = (
+        get_phase_rotation_sequence(
+            chroma,
+            chroma_heterodyne,
+            field.rf.Filters["FChromaFinal"],
+            chroma_rotation,
+            field.rf.track_phase,  # index for chroma rotation, and static if there is no chroma rotation
+            lineoffset,
+            linesout,
+            outwidth,
+            burstarea,
+            field.rf.fsc_wave,
+            field.rf.fsc_cos_wave,
+            detect_chroma_track_phase,
+            rotation_check_start_line,  # check for track phase rotation around the headswitching area (bottom of field)
+            field.rf.color_system,
+        )
     )
 
     return track_phase, phase_sequence, burst_phase_avg, burst_detected
+
 
 def process_chroma(
     field,
@@ -608,15 +612,12 @@ def process_chroma(
     )
 
     if (
-        field.rf.color_system == "NTSC" and
-        not field.rf.options.disable_phase_correction
+        field.rf.color_system == "NTSC"
+        and not field.rf.options.disable_phase_correction
     ):
         # it's not possible to know the color framing, due to the color under heterodyne starting at an unknown rotation
         # instead shift the color phase consistently to 0 degrees and let the chroma decoder fine tune it
-        uphet = ntsc_phase_comp(
-            uphet,
-            field.burst_phase_avg
-        )
+        uphet = ntsc_phase_comp(uphet, field.burst_phase_avg)
 
     # Filter out unwanted frequencies from the final chroma signal.
     # Mixing the signals will produce waves at the difference and sum of the
@@ -673,6 +674,7 @@ def decode_chroma(field, do_chroma_deemphasis=False):
         return chroma_to_u16(uphet)
 
     return None
+
 
 def get_burst_area(field):
     return (

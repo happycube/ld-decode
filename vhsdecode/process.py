@@ -848,8 +848,7 @@ class VHSRFDecode(ldd.RFDecode):
             if self._do_cafc:
                 self.Filters["FChromaAudioNotch"] = sps.iirnotch(
                     DP["chroma_audio_notch_freq"]
-                    / self._chroma_afc.getOutFreqHalf()
-                    * 1e6,
+                    / (self._chroma_afc.getOutFreqHalf() * 1e6),
                     CHROMA_AUDIO_NOTCH_Q,
                 )
             else:
