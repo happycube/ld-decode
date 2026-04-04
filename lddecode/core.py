@@ -24,7 +24,12 @@ from scipy import interpolate
 # internal libraries
 
 from . import efm_pll
-from .utils import ac3_pipe, ldf_pipe, traceback
+from .utils import ldf_pipe, traceback
+
+try:
+    import ac3rf as _ac3rf
+except ImportError:
+    _ac3rf = None
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
@@ -386,26 +391,6 @@ class RFDecode:
 
         if self.decode_digital_audio:
             self.computeefmfilter()
-
-        if self.SysParams['AC3']:
-            apass = 288000 * .5
-
-            fpass = lambda apass: [(self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
-                                   (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half]
-
-            # This analog audio bandpass filter is an approximation of
-            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm,
-            # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
-            # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
-
-            # However, the above didn't work, and we wound up with two IIR filters
-            self.Filters['AC3_bp1'] = sps.butter(3, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
-            self.Filters['AC3_bp2'] = sps.butter(3, fpass(apass), btype='bandpass')
-
-            filt1 = filtfft(self.Filters['AC3_bp1'], self.blocklen)
-            filt2 = filtfft(self.Filters['AC3_bp2'], self.blocklen)
-
-            self.Filters['AC3'] = filt1 * filt2
 
         self.computedelays()
 
@@ -3432,7 +3417,10 @@ class LDdecode:
         self.outfile_audio = None
         self.outfile_efm = None
         self.outfile_pre_efm = None
-        self.outfile_ac3 = None
+        self.outfile_ac3sym = None
+        self.ac3_demodulator = None
+        self.ac3_collector = None
+        self.ac3_processed_samples = 0
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
 
@@ -3448,10 +3436,6 @@ class LDdecode:
                     self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
                 self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + ".tbc.ldf")
-                self.do_rftbc = True
-            if self.ac3:
-                self.AC3Collector = StridedCollector(cut_begin=1024, cut_end=0)
-                self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
                 self.do_rftbc = True
 
             if os.path.exists(fname_out + '.tbc.db'):
@@ -3481,6 +3465,18 @@ class LDdecode:
         }
 
         self.rf = RFDecode(**self.rf_opts)
+
+        if fname_out is not None and self.ac3:
+            if _ac3rf is None:
+                raise RuntimeError("ac3rf Python module not found; rebuild ac3rf-decode with BUILD_PYTHON=ON")
+            block_size = 32768
+            ac3_log = _ac3rf.StreamLogger(_ac3rf.StreamLogger.LOG_WARN)
+            self.ac3_demodulator = _ac3rf.Ac3RfDemodulator(
+                ac3_log, self.rf.freq_hz, block_size, _ac3rf.simd_supported()
+            )
+            assert block_size % self.ac3_demodulator.input_sample_alignment() == 0
+            self.ac3_collector = StridedCollector(blocklen=block_size, cut_begin=0, cut_end=0)
+            self.outfile_ac3sym = open(fname_out + ".ac3sym", "wb")
 
         if system == "PAL":
             self.FieldClass = FieldPAL
@@ -3549,7 +3545,7 @@ class LDdecode:
             "outfile_json",
             "outfile_efm",
             "outfile_rftbc",
-            "outfile_ac3",
+            "outfile_ac3sym",
         ]:
             setattr(self, outfiles, None)
 
@@ -3607,6 +3603,7 @@ class LDdecode:
                 decode_faults INTEGER,
                 disk_loc REAL,
                 efm_t_values INTEGER,
+                ac3_symbols INTEGER,
                 field_phase_id INTEGER,
                 file_loc INTEGER,
                 is_first_field INTEGER CHECK (is_first_field IN (0,1)),
@@ -3756,19 +3753,25 @@ class LDdecode:
 
         return m_synchz, m_ire0hz, m_ire100hz
 
-    def AC3filter(self, rftbc):
-        self.AC3Collector.add(rftbc)
+    def AC3demodulate(self, f):
+        raw = f.rawdata
+        block_start = (f.readloc // self.demodcache.blocksize) * self.demodcache.blocksize
+        new_start = max(0, self.ac3_processed_samples - block_start)
+        self.ac3_processed_samples = block_start + len(raw)
 
-        blk = self.AC3Collector.get_block()
-        while blk is not None:
-            fftdata = np.fft.fft(blk)
-            filtdata = np.fft.ifft(fftdata * self.rf.Filters['AC3']).real
-            odata = self.AC3Collector.cut(filtdata)
-            odata = np.clip(odata / 64, -100, 100)
+        sym_before = self.outfile_ac3sym.tell()
 
-            self.outfile_ac3.write(np.int8(odata))
+        if new_start < len(raw):
+            self.ac3_collector.add(raw[new_start:])
+            blk = self.ac3_collector.get_block()
+            while blk is not None:
+                symbols = self.ac3_demodulator.demodulate_to_symbols(
+                    blk.astype(np.float32)
+                )
+                self.outfile_ac3sym.write(symbols)
+                blk = self.ac3_collector.get_block()
 
-            blk = self.AC3Collector.get_block()
+        return self.outfile_ac3sym.tell() - sym_before
 
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
@@ -3781,6 +3784,11 @@ class LDdecode:
 
         fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
+
+        if self.outfile_ac3sym is not None:
+            fi["ac3Symbols"] = self.AC3demodulate(f)
+        else:
+            fi["ac3Symbols"] = 0
 
         self.fieldinfo.append(fi)
 
@@ -3796,13 +3804,13 @@ class LDdecode:
         # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
         self.dbconn.execute('''
             INSERT INTO field_record (
-                capture_id, field_id, is_first_field, sync_conf, disk_loc, 
-                file_loc, median_burst_ire, field_phase_id, decode_faults, 
-                audio_samples, efm_t_values, pad
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-            (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'], 
-                fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults, 
-                fi['audioSamples'], fi['efmTValues'], 0))
+                capture_id, field_id, is_first_field, sync_conf, disk_loc,
+                file_loc, median_burst_ire, field_phase_id, decode_faults,
+                audio_samples, efm_t_values, ac3_symbols, pad
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'],
+                fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults,
+                fi['audioSamples'], fi['efmTValues'], fi['ac3Symbols'], 0))
 
         w_snr = fi['vitsMetrics'].get('wSNR', 0)
         b_psnr = fi['vitsMetrics'].get('bPSNR', 0)
@@ -3855,9 +3863,6 @@ class LDdecode:
 
             if self.outfile_rftbc is not None:
                 self.outfile_rftbc.write(rftbc)
-
-            if self.outfile_ac3 is not None:
-                self.AC3filter(rftbc)
 
             if self.pipe_rftbc is not None:
                 self.pipe_rftbc.send(rftbc)
