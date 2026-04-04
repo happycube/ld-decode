@@ -12,7 +12,7 @@
     # nanobind v2.4.0 — pre-fetched as a flake input so CMake's FetchContent
     # step can run offline inside the Nix sandbox without network access.
     nanobind-src = {
-      url = "github:wjakob/nanobind/v2.4.0";
+      url = "git+https://github.com/wjakob/nanobind?ref=refs/tags/v2.4.0&submodules=1";
       flake = false;
     };
   };
@@ -21,12 +21,6 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-
-        # On macOS, the default SDK (10.12) predates aligned_alloc (10.15).
-        # Bump to 11.0 so C++17 features used by ac3rf are available.
-        stdenv = if pkgs.stdenv.isDarwin
-                 then pkgs.overrideSDK pkgs.stdenv "11.0"
-                 else pkgs.stdenv;
 
         python = pkgs.python312;
         pythonPackages = python.pkgs;
@@ -53,7 +47,7 @@
         # Build the ac3rf Python extension (nanobind-based C++ module).
         # The FetchContent step for nanobind is satisfied by pointing CMake at
         # the pre-fetched nanobind-src flake input so no network is needed.
-        ac3rfPython = python.pkgs.toPythonModule (stdenv.mkDerivation {
+        ac3rfPython = python.pkgs.toPythonModule (pkgs.stdenv.mkDerivation {
           pname = "ac3rf-python";
           version = "0.1.0";
 
@@ -138,6 +132,7 @@
             buildPhase = ''mkdocs build'';
             installPhase = ''cp -r site $out'';
           };
+          ac3rf-python = ac3rfPython;
         };
         
         apps = {

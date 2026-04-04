@@ -18,6 +18,43 @@
         "type": "github"
       }
     },
+    "ldaudio": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1775267416,
+        "narHash": "sha256-moCkqtTp1D2crJpHFX6ND8UTbpF7zgBKanZPxLLYoAU=",
+        "ref": "refs/heads/master",
+        "rev": "1d976d7e1f095c4c24d02c3dfa3804d4208da628",
+        "revCount": 465,
+        "submodules": true,
+        "type": "git",
+        "url": "https://bitbucket.org/staffanulfberg/ldaudio"
+      },
+      "original": {
+        "submodules": true,
+        "type": "git",
+        "url": "https://bitbucket.org/staffanulfberg/ldaudio"
+      }
+    },
+    "nanobind-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1733439979,
+        "narHash": "sha256-9OpDsjFEeJGtbti4Q9HHl78XaGf8M3lG4ukvHCMzyMU=",
+        "ref": "refs/tags/v2.4.0",
+        "rev": "0f9ce749b257fdfe701edb3cf6f7027ba029434a",
+        "revCount": 1015,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/wjakob/nanobind"
+      },
+      "original": {
+        "ref": "refs/tags/v2.4.0",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/wjakob/nanobind"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1774799055,
@@ -37,6 +74,8 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "ldaudio": "ldaudio",
+        "nanobind-src": "nanobind-src",
         "nixpkgs": "nixpkgs"
       }
     },
