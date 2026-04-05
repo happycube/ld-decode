@@ -10,12 +10,12 @@ jobs:
     name: test_python_unit
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
         fetch-tags: true
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@v6
       with:
         python-version: "3.12"
 
@@ -45,12 +45,12 @@ jobs:
       matrix:
         qt: [5, 6]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: true
         fetch-depth: 0
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         repository: happycube/ld-decode-testdata
         path: testdata
@@ -96,12 +96,12 @@ jobs:
     name: test_real_data
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         submodules: true
         fetch-depth: 0
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         repository: happycube/ld-decode-testdata
         path: testdata
