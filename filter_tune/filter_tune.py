@@ -9,6 +9,7 @@ import os
 import sys
 import logging
 import json
+from pathlib import Path
 
 try:
     QT_VERSION = 6
@@ -121,6 +122,33 @@ SAMPLE_RATE = (((1 / 64) * 283.75) + (25 / 1000000)) * 4e6
 # 2560
 # FRAME_WIDTH = 1135
 OUT_SCALE_DIVIDEND = np.double(0xC800 - 0x0400)
+
+
+def _configure_matplotlib_cache_dir() -> None:
+    if os.environ.get("MPLCONFIGDIR", "").strip():
+        return
+
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA", "").strip()
+        if not base:
+            base = str(Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = str(Path.home() / "Library" / "Caches")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME", "").strip()
+        if not base:
+            base = str(Path.home() / ".cache")
+
+    matplotlib_cache_dir = Path(base) / "vhs-decode" / "matplotlib"
+    try:
+        matplotlib_cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_dir)
+    except Exception:
+        # Fall back to matplotlib defaults if cache directory setup fails.
+        pass
+
+
+_configure_matplotlib_cache_dir()
 
 
 def multicall(l=[]):
@@ -518,6 +546,7 @@ class VHStune(QDialog):
     exportWorker = None
     exportThread = None
     outfile_video = None
+    saveParamsFilename = ""
 
     def __init__(self, tape_format, logger, parent=None):
         super(VHStune, self).__init__(
@@ -995,6 +1024,79 @@ class VHStune(QDialog):
         else:
             self.exportWorker.abortExportSig.emit()
 
+    def _build_params_file_payload(self):
+        rf_params = {
+            "video_lpf_freq": self.filter_params["video_lpf_freq"]["value"],
+            "video_lpf_order": self.filter_params["video_lpf_order"]["value"],
+            "video_lpf_supergauss": self.filter_params["video_lpf_supergauss"]["value"],
+            "deemph_mid": self.filter_params["deemph_mid"]["value"],
+            "deemph_gain": self.filter_params["deemph_gain"]["value"],
+            "deemph_q": self.filter_params["deemph_q"]["value"],
+            "use_sub_deemphasis": self.filter_params["nonlinear_deemph_enable"][
+                "value"
+            ],
+            "nonlinear_highpass_freq": self.filter_params["nonlinear_highpass_freq"][
+                "value"
+            ],
+            "nonlinear_bandpass_order": self.filter_params[
+                "nonlinear_bandpass_order"
+            ]["value"],
+            "nonlinear_bandpass_upper": self.filter_params[
+                "nonlinear_bandpass_upper"
+            ]["value"],
+            "nonlinear_scaling_1": self.filter_params["nonlinear_linear_scale"][
+                "value"
+            ],
+            "nonlinear_scaling_2": self.filter_params["nonlinear_linear_scale_b"][
+                "value"
+            ],
+            "nonlinear_exp_scaling": self.filter_params[
+                "nonlinear_exponential_scale"
+            ]["value"],
+            "nonlinear_static_factor": self.filter_params[
+                "nonlinear_static_factor"
+            ]["value"],
+            "nonlinear_amp_lpf_freq": self.filter_params[
+                "nonlinear_amplitude_lpf"
+            ]["value"],
+            "nonlinear_logistic_mid": self.filter_params["nonlinear_logistic_mid"][
+                "value"
+            ],
+            "nonlinear_logistic_rate": self.filter_params["nonlinear_logistic_rate"][
+                "value"
+            ],
+        }
+
+        if self.filter_params["custom_video_filters"]["value"]:
+            rf_params["video_custom_luma_filters"] = self._format_params.rf_params.get(
+                "video_custom_luma_filters", None
+            )
+        else:
+            rf_params["video_custom_luma_filters"] = None
+
+        return {"sys_params": {}, "rf_params": rf_params}
+
+    def exportParamsJSONFile(self):
+        fileName = QFileDialog.getSaveFileName(
+            self,
+            "Export params JSON for vhs-decode --params_file",
+            self.saveParamsFilename,
+            "JSON files (*.json)",
+        )
+        if fileName is None or fileName[0] == "":
+            return
+
+        target_path = fileName[0]
+        if not target_path.lower().endswith(".json"):
+            target_path += ".json"
+
+        payload = self._build_params_file_payload()
+        with open(target_path, "w", encoding="utf-8") as output:
+            json.dump(payload, output, indent=2, sort_keys=True)
+            output.write("\n")
+
+        self.saveParamsFilename = target_path
+
     def loadImage(self):
         self.refFieldA, self.refFieldB = readRefFrame(
             self.refTBCFilename,
@@ -1228,10 +1330,13 @@ class VHStune(QDialog):
         openProTBCFileButton.clicked.connect(self.openProTBCFile)
         self.saveProTBCFileButton = QPushButton("Process and save TBC")
         self.saveProTBCFileButton.clicked.connect(self.saveProTBCFile)
+        exportParamsJSONButton = QPushButton("Export params JSON")
+        exportParamsJSONButton.clicked.connect(self.exportParamsJSONFile)
 
         layout.addWidget(openRefTBCFileButton)
         layout.addWidget(openProTBCFileButton)
         layout.addWidget(self.saveProTBCFileButton)
+        layout.addWidget(exportParamsJSONButton)
 
         self.systemComboBox = QComboBox()
         supported_tape_formats_list = list(SUPPORTED_TAPE_FORMATS)

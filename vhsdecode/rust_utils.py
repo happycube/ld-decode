@@ -1,5 +1,15 @@
-from vhsd_rust import sosfiltfilt, sosfiltfilt_f32
 import numpy as np
+import scipy.signal as sps
+
+try:
+    from vhsd_rust import sosfiltfilt, sosfiltfilt_f32
+
+    _HAS_VHSD_RUST = True
+except ModuleNotFoundError:
+    sosfiltfilt = None
+    sosfiltfilt_f32 = None
+    _HAS_VHSD_RUST = False
+
 
 def sos_filter_as_array_and_order(filter):
     """Convert the sos filter to a array derive the filter order for use inside
@@ -14,13 +24,16 @@ def sos_filter_as_array_and_order(filter):
 
 def sosfiltfilt_rust(sos, input):
     assert input.dtype != np.complex128
-    order, filter = sos_filter_as_array_and_order(sos)
     if input.dtype == np.complex128:
         input = abs(input)
+
+    if not _HAS_VHSD_RUST:
+        return sps.sosfiltfilt(sos, input)
+
+    order, filter = sos_filter_as_array_and_order(sos)
 
     if input.dtype == np.float64:
         return sosfiltfilt(order, filter, input)
     # if input.dtype == np.float32:
     #    return sosfiltfilt_f32(order, filter, input)
-    else:
-        return sosfiltfilt_f32(order, filter, input.astype(np.float32))
+    return sosfiltfilt_f32(order, filter, input.astype(np.float32))
