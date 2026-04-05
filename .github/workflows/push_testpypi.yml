@@ -18,18 +18,18 @@ jobs:
       CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v3.1.3
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vhs-decode-wheels-${{ matrix.os }}-${{ strategy.job-index }}
           path: ./wheelhouse/*.whl
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -49,7 +49,7 @@ jobs:
           pipx run build --sdist
 
       - name: Store the sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vhs-decode-sdist
           path: dist/*.tar.gz
@@ -71,7 +71,7 @@ jobs:
 
     steps:
       - name: Download all the artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: vhs-decode-*
           path: dist

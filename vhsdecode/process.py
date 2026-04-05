@@ -582,7 +582,7 @@ class VHSDecode(ldd.LDdecode):
 class VHSRFDecode(ldd.RFDecode):
     def __init__(
         self,
-        processing_thread_pool,
+        processing_thread_pool=None,
         inputfreq=40,
         system="NTSC",
         tape_format="VHS",
@@ -599,6 +599,9 @@ class VHSRFDecode(ldd.RFDecode):
             has_analog_audio=False,
             extra_options=extra_options,
         )
+        if processing_thread_pool is None:
+            processing_thread_pool = ThreadPoolExecutor(max_workers=1)
+        self._processing_thread_pool = processing_thread_pool
 
         # Store a separate setting for *color* system as opposed to 525/625 line here.
         # TODO: Fix upstream so we don't have to fake tell ld-decode code that we are using ntsc for
@@ -892,7 +895,7 @@ class VHSRFDecode(ldd.RFDecode):
             self.freq_hz,
             self.SysParams,
             self._sysparams_const,
-            processing_thread_pool,
+            self._processing_thread_pool,
             divisor=level_detect_divisor,
             debug=self.debug,
         )

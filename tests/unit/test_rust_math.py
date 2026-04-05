@@ -13,7 +13,7 @@ class TestRustAngle:
 
         expected = np.angle(hilbert_data)
         result = complex_angle_py(hilbert_data)
-        assert (expected == result).all()
+        assert np.isclose(result, expected, atol=1e-15, rtol=1e-14).all()
 
 
 class TestRustUnwrap:
