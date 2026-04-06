@@ -6,7 +6,7 @@ labels: 'enhancement'
 assignees: ''
 ---
 
-### Is your proposal related to a problem with ld-decode?
+### Is your proposal related to a problem?
 
 <!--
   Provide a clear and concise description of what the problem is.

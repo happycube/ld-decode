@@ -51,7 +51,7 @@ Explain what actually happened when performing the steps above. Include any erro
 Include information on your environment.
 -->
 
-- ld-decode version: [e.g., 1.2.3]
+- Decode version: [e.g., 1.2.3]
 - Operating System: [e.g., Windows 10, macOS Big Sur, Linux Ubuntu]
 - Hardware Used: [e.g., Ryzen 7 7950x, 16GB DDDR5-4400mhz, SSD NVME Gen 3 etc]
 
@@ -59,4 +59,9 @@ Include information on your environment.
 
 <!--
 Include any additional information that might be relevant to the bug report, such as screenshots or related issues/Pull-Requests.
+-->
+
+### Is it related to tbc-video-export?
+
+<!-- if so visit its repo here https://github.com/JuniorIsAJitterbug/tbc-video-export/issues."
 -->
