@@ -1,0 +1,167 @@
+/* Keep documentation compact and readable across themes. */
+html,
+body {
+    font-size: 18px;
+    line-height: 1.6;
+}
+
+[data-md-color-scheme="default"] {
+    --md-default-bg-color: #ffffff;
+    --md-default-fg-color: #24292f;
+    --md-default-fg-color--light: #57606a;
+    --md-default-fg-color--lighter: #6e7781;
+    --md-default-fg-color--lightest: #8c959f;
+    --md-typeset-a-color: #0969da;
+    --md-accent-fg-color: #0969da;
+    --md-primary-fg-color: #ffffff;
+    --md-primary-bg-color: #24292f;
+}
+
+[data-md-color-scheme="slate"] {
+    --md-default-bg-color: #0d1117;
+    --md-default-fg-color: #e6edf3;
+    --md-default-fg-color--light: #9da7b3;
+    --md-default-fg-color--lighter: #7d8590;
+    --md-default-fg-color--lightest: #6e7681;
+    --md-typeset-a-color: #58a6ff;
+    --md-accent-fg-color: #58a6ff;
+    --md-primary-fg-color: #0d1117;
+    --md-primary-bg-color: #e6edf3;
+}
+
+.md-header {
+    box-shadow: none;
+    border-bottom: 1px solid #d8dee4;
+}
+
+[data-md-color-scheme="slate"] .md-header {
+    border-bottom-color: #30363d;
+}
+
+.md-header__inner {
+    min-height: 2.8rem;
+}
+
+.md-header__title {
+    font-size: 0.8rem;
+}
+
+.md-main__inner {
+    margin-top: 0;
+}
+
+.md-grid {
+    max-width: 96rem;
+}
+
+.md-sidebar {
+    width: 13rem;
+}
+
+.md-sidebar__scrollwrap {
+    padding-top: 0.6rem;
+}
+
+.md-nav--primary .md-nav__title {
+    display: none;
+}
+
+.md-nav--primary .md-nav__item {
+    margin: 0;
+}
+
+.md-nav--primary .md-nav__link {
+    font-size: 0.88rem;
+    margin-top: 0;
+    padding-top: 0.24rem;
+    padding-bottom: 0.24rem;
+}
+
+.md-nav__item--section > .md-nav__link {
+    font-size: 0.84rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #57606a;
+    margin-top: 0.85rem;
+}
+
+.md-nav__link--active,
+.md-nav__link:hover {
+    color: #0969da;
+}
+
+.md-sidebar--secondary {
+    width: 11rem;
+}
+
+.md-nav--secondary .md-nav__title {
+    font-size: 0.84rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: #57606a;
+}
+
+.md-nav--secondary .md-nav__link {
+    font-size: 0.88rem;
+    padding-top: 0.18rem;
+    padding-bottom: 0.18rem;
+}
+
+.md-content {
+    max-width: 68rem;
+}
+
+.md-content__inner {
+    margin: 0 auto;
+    padding-top: 1.2rem;
+}
+
+h1 {
+    font-size: 2.05rem;
+    margin: 0.6rem 0 0.8rem;
+}
+
+h2 {
+    font-size: 1.62rem;
+    margin: 1.2rem 0 0.6rem;
+}
+
+h3 {
+    font-size: 1.34rem;
+    margin: 1rem 0 0.5rem;
+}
+
+h4 {
+    font-size: 1.16rem;
+    margin: 0.85rem 0 0.45rem;
+}
+
+p,
+ul,
+ol {
+    margin-bottom: 0.7rem;
+}
+
+li {
+    margin-bottom: 0.25rem;
+}
+
+code,
+pre,
+kbd {
+    font-size: 0.9em;
+}
+
+.md-typeset code {
+    border-radius: 3px;
+}
+
+.md-typeset pre > code {
+    font-size: 0.96rem;
+}
+
+img {
+    height: auto;
+}

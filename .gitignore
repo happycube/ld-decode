@@ -122,6 +122,9 @@ ld_decode.egg-info/
 # Build-generated version file
 lddecode/version
 
+# MkDocs generated site
+site/
+
 # Compilation script
 compile.bat
 

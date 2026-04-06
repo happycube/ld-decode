@@ -1,7 +1,8 @@
 <img src="assets/icons/Cross-Platform-VHS-Decode-Trasparent.png" width="300" height="">
 
 > [!Important]
-> If in doubt read the comprehensive [documentation web-site](https://happycube.github.io/ld-decode-docs/)!
+> If in doubt read the comprehensive [documentation web-site](https://happycube.github.io/ld-decode/)!
+
 
 # VHS-Decode (It does more than VHS now!)
 
