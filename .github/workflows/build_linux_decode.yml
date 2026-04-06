@@ -16,10 +16,12 @@ jobs:
         run: |
           dnf install --assumeyes git python3.12-pip gcc-c++ file
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -40,7 +42,7 @@ jobs:
           python-appimage build app -p 3.12 _build_appimage
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vhs-decode_linux_x86_64
           path: vhs-decode-x86_64.AppImage

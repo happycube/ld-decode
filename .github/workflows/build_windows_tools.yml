@@ -23,7 +23,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -98,7 +98,7 @@ jobs:
       #    Compress-Archive -Path .\tbc-tools -DestinationPath tbc-tools.zip
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tbc-tools_windows_x86_64
           path: release

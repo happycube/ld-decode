@@ -10,12 +10,12 @@ jobs:
     env:
         SETUPTOOLS_RUST_CARGO_PROFILE: release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
@@ -31,7 +31,7 @@ jobs:
           python .\scripts\ci\build-windows-decode-bin.py
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vhs-decode_windows_x86_64
           path: dist/decode.exe

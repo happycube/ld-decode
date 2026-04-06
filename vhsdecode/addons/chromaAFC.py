@@ -56,6 +56,7 @@ class ChromaAFC:
 
         self.cc_freq_mhz = 0
         self.chroma_heterodyne = np.array([], dtype=np.float32)
+        self.fft_plot = plot
 
         if do_cafc:
             self.narrowband = self.get_narrowband_bandpass()
@@ -78,7 +79,6 @@ class ChromaAFC:
 
         self.setCC(color_under_carrier_f)
 
-        self.fft_plot = plot
         self.cc_wave = np.array([])
 
     # applies a filtfilt to the data over the array of filters
@@ -192,7 +192,8 @@ class ChromaAFC:
                     + (np.pi * 3 / 2)
                     + phase_drift
                 ),
-            ], dtype=np.float32
+            ],
+            dtype=np.float32,
         )
 
     #    # As this is done on the tbced signal, we need the sampling frequency of that,
@@ -367,7 +368,7 @@ class ChromaAFC:
 
             where_selected = np.where(sample_freq == carrier_freq)[0]
             self.cc_phase = (
-                phase[where_selected] if len(phase[where_selected]) > 0 else 0
+                phase[where_selected][0] if len(phase[where_selected]) > 0 else 0
             )
 
         # An inner plot to show the peak frequency
@@ -529,10 +530,10 @@ class ChromaAFC:
             self.samp_rate, self.color_under, trans_hi, order_limit=200
         )
 
-        return {
+        return [
             FiltersClass(iir_narrow_lo[0], iir_narrow_lo[1], self.samp_rate),
             FiltersClass(iir_narrow_hi[0], iir_narrow_hi[1], self.samp_rate),
-        }
+        ]
 
     def get_band_tolerance(self):
         return (100 - self.max_f_dev_percents[0]) / 100, (

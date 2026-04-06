@@ -83,7 +83,7 @@ def field_class_from_formats(system: str, tape_format: str):
     elif system == "NTSC":
         if tape_format == "UMATIC":
             field_class = FieldNTSCUMatic
-        elif tape_format == "TYPEC" or tape_format == "TYPEB":
+        elif tape_format == "TYPEC" or tape_format == "TYPEB" or tape_format == "VHD":
             field_class = FieldNTSCTypeC
         elif tape_format == "SVHS" or tape_format == "SVHS_ET":
             field_class = FieldNTSCSVHS
@@ -1093,28 +1093,27 @@ class FieldShared:
                     self.rf.options.ire0_adjust
                     and input.size == self.outlinecount * self.outlinelen
                 ):
-                    blank_levels = np.empty(self.outlinecount)
-                    for i in range(0, self.outlinecount):
-                        blank_levels[i] = np.median(
-                            input[
-                                i * self.outlinelen
-                                + self.ire0_backporch[0] : i * self.outlinelen
-                                + self.ire0_backporch[1]
-                            ]
-                        )
-                    blank_levels = np.sort(blank_levels)
-                    ire0 = np.mean(
-                        blank_levels[
-                            int(self.outlinecount / 3) : int(self.outlinecount * 2 / 3)
-                        ]
-                    )
+                    hsync_start, hsync_end = self.ire0_backporch
+
+                    ire0_adjust_padding = 4 # 4fsc, prevents noise around the hsync transition from interfering with this measurement
+                    hsync_start += ire0_adjust_padding
+                    hsync_end -= ire0_adjust_padding
+
+                    blank_levels = np.sort([
+                        np.median(input[i * self.outlinelen + hsync_start :
+                                        i * self.outlinelen + hsync_end])
+                        for i in range(0, self.outlinecount)
+                    ])
+                    ire0 = np.mean(blank_levels[self.outlinecount // 3 : (self.outlinecount * 2) // 3])
+
                     ldd.logger.debug("calculated ire0: %.02f", ire0)
+
+                if self.rf.track_phase is not None:
+                    ire0 += self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ (self.field_number % 2)]
+
                 return hz_to_output_array(
                     input,
-                    ire0
-                    + self.rf.DecoderParams["track_ire0_offset"][
-                        self.rf.track_phase ^ (self.field_number % 2)
-                    ],
+                    ire0,
                     self.rf.DecoderParams["hz_ire"],
                     self.rf.SysParams["outputZero"],
                     self.rf.DecoderParams["vsync_ire"],
@@ -1814,7 +1813,6 @@ class FieldPALShared(FieldShared, ldd.FieldPAL):
     def __init__(self, *args, **kwargs):
         super(FieldPALShared, self).__init__(*args, **kwargs)
         self.track_phase_set = False
-        self.rf.track_phase = 0
         self.ire0_backporch = (96, 160)
 
     def refine_linelocs_pilot(self, linelocs=None):
@@ -1840,7 +1838,6 @@ class FieldNTSCShared(FieldShared, ldd.FieldNTSC):
     def __init__(self, *args, **kwargs):
         super(FieldNTSCShared, self).__init__(*args, **kwargs)
         self.track_phase_set = False
-        self.rf.track_phase = 0
         self.fieldPhaseID = None
         self.ire0_backporch = (74, 124)
 

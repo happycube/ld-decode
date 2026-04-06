@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 try:
-    from PyQt6.QtCore import Qt, QTimer
+    from PyQt6.QtCore import QTimer, QUrl, Qt, pyqtSignal
     from PyQt6.QtGui import QColor, QIcon, QPalette
     from PyQt6.QtWidgets import (
         QApplication,
@@ -36,7 +36,7 @@ try:
     )
     ALIGN_TOP = Qt.AlignmentFlag.AlignTop
 except ImportError:
-    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtCore import QTimer, QUrl, Qt, pyqtSignal
     from PyQt5.QtGui import QColor, QIcon, QPalette
     from PyQt5.QtWidgets import (
         QApplication,
@@ -112,6 +112,39 @@ SYSTEM_OPTIONS_DECODE = [
     "NLINHA",
 ]
 SYSTEM_OPTIONS_LD = ["NTSC", "NTSCJ", "PAL"]
+
+# Tape format options are (menu label, CLI value)
+TAPE_FORMATS_VHS = [
+    ("VHS", "VHS"),
+    ("VHSHQ", "VHSHQ"),
+    ("SVHS", "SVHS"),
+    ("SVHS_ET", "SVHS_ET"),
+    ("UMATIC", "UMATIC"),
+    ("UMATIC_HI", "UMATIC_HI"),
+    ("βetamax", "BETAMAX"),
+    ("βetamax HiFi", "BETAMAX_HIFI"),
+    ("SUPERBETA", "SUPERBETA"),
+    ("Video8", "VIDEO8"),
+    ("Hi8", "HI8"),
+    ("EIAJ", "EIAJ"),
+    ("Quaduplex", "QUADRUPLEX"),
+    ("Phlips VCR", "VCR"),
+    ("Phlips VCR_LP", "VCR_LP"),
+    ("SMPTE-C", "TYPEC"),
+    ("SMPTE-B", "TYPEB"),
+    ("VIDEO2000", "VIDEO2000"),
+]
+TAPE_FORMATS_CVBS = [("CVBS", "CVBS")]
+TAPE_FORMATS_LD = [("LASERDISC", "LASERDISC")]
+TAPE_FORMATS_BY_TOOL = {
+    "vhs": TAPE_FORMATS_VHS,
+    "cvbs": TAPE_FORMATS_CVBS,
+    "ld": TAPE_FORMATS_LD,
+}
+
+# Supported tape speeds
+TAPE_SPEEDS = ["SP", "LP", "EP", "SLP", "VP"]
+
 TOOL_ENTRYPOINTS = {
     "hifi": "hifi-decode",
     "filter-tune": "filter-tune",
@@ -175,6 +208,52 @@ def _split_user_args(extra_args: str, *, strict: bool = True) -> list[str]:
         if strict:
             raise
         return [extra_args]
+
+def _is_json_file_path(path: str) -> bool:
+    return Path(path).suffix.lower() == ".json"
+
+
+def _extract_dropped_file_paths(mime_data) -> list[str]:
+    paths: list[str] = []
+    if mime_data is None:
+        return paths
+
+    if mime_data.hasUrls():
+        for url in mime_data.urls():
+            if not url.isLocalFile():
+                continue
+            local_path = url.toLocalFile().strip()
+            if local_path:
+                paths.append(local_path)
+
+    if not paths and mime_data.hasText():
+        raw_text = mime_data.text().strip()
+        if raw_text:
+            for line in raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+                candidate = line.strip()
+                if not candidate:
+                    continue
+                if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {"\"", "'"}:
+                    candidate = candidate[1:-1].strip()
+                local_path = QUrl(candidate).toLocalFile() if candidate.startswith("file:") else ""
+                path = local_path or candidate
+                if path:
+                    paths.append(path)
+
+    deduped_paths: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        expanded = str(Path(path).expanduser())
+        expanded_key = expanded.casefold() if os.name == "nt" else expanded
+        if expanded_key in seen:
+            continue
+        seen.add(expanded_key)
+        as_path = Path(expanded)
+        if as_path.exists() and as_path.is_dir():
+            continue
+        deduped_paths.append(expanded)
+    return deduped_paths
+
 
 
 def _candidate_script_directories() -> list[Path]:
@@ -317,8 +396,12 @@ def _build_basic_decoder_args(
     output_path: str,
     frequency: str,
     system: str,
+    tape_format: str,
+    tape_speed: str,
     threads: int,
 ) -> list[str]:
+    if tool.subcommand == "hifi":
+        return ["-t", str(threads)]
     if tool.subcommand not in DECODER_SUBCOMMANDS:
         return []
 
@@ -328,6 +411,11 @@ def _build_basic_decoder_args(
         args += ["-f", frequency.strip()]
 
     args += ["-t", str(threads)]
+
+    # Add tape format for VHS decoder
+    if tool.subcommand == "vhs":
+        args += ["--tape_format", tape_format]
+        args += ["--tape_speed", tape_speed.lower()]
 
     if tool.subcommand in {"vhs", "cvbs"}:
         if system == "NTSCJ":
@@ -416,9 +504,65 @@ def _open_terminal(command_parts: list[str], working_directory: Path) -> None:
     _open_linux_terminal(shell_command)
 
 
+class FileDropLineEdit(QLineEdit):
+    fileDropped = pyqtSignal(str)
+    def __init__(self, *, json_only: bool = False, allow_json: bool = True):
+        super().__init__()
+        self._json_only = json_only
+        self._allow_json = allow_json
+        self.setAcceptDrops(True)
+
+    def _accepts_path(self, path: str) -> bool:
+        is_json = _is_json_file_path(path)
+        if self._json_only and not is_json:
+            return False
+        if not self._allow_json and is_json:
+            return False
+        return True
+
+    def _matching_path(self, dropped_paths: list[str]) -> Optional[str]:
+        for path in dropped_paths:
+            if self._accepts_path(path):
+                return path
+        return None
+
+    def dragEnterEvent(self, event) -> None:
+        dropped_paths = _extract_dropped_file_paths(event.mimeData())
+        if self._matching_path(dropped_paths) is not None:
+            event.acceptProposedAction()
+            return
+        if dropped_paths:
+            event.ignore()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        dropped_paths = _extract_dropped_file_paths(event.mimeData())
+        if self._matching_path(dropped_paths) is not None:
+            event.acceptProposedAction()
+            return
+        if dropped_paths:
+            event.ignore()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        dropped_paths = _extract_dropped_file_paths(event.mimeData())
+        dropped_path = self._matching_path(dropped_paths)
+        if dropped_path is None:
+            if dropped_paths:
+                event.ignore()
+                return
+            super().dropEvent(event)
+            return
+        self.setText(dropped_path)
+        self.fileDropped.emit(dropped_path)
+        event.acceptProposedAction()
+
 class DecodeLauncherWindow(QWidget):
     def __init__(self):
         super().__init__()
+        self.setAcceptDrops(True)
         self._tools = TOOLS
         self.setWindowTitle("Decode Launcher")
         icon = _current_app_icon()
@@ -436,16 +580,33 @@ class DecodeLauncherWindow(QWidget):
         self.note_label.setWordWrap(True)
 
         self.extra_args_edit = QLineEdit("")
+        self.params_json_check = QCheckBox("Use params JSON file")
+        self.params_json_label = QLabel("Params JSON")
+        self.params_json_edit = FileDropLineEdit(json_only=True)
+        self.params_json_edit.setPlaceholderText("Drop params .json file here")
+        self.params_json_browse_button = QPushButton("Params JSON…")
+        self.params_json_label.setVisible(False)
+        self.params_json_edit.setVisible(False)
+        self.params_json_browse_button.setVisible(False)
         self.force_terminal_check = QCheckBox("Force terminal launch")
         self.command_preview = QLineEdit("")
         self.command_preview.setReadOnly(True)
-        self.input_edit = QLineEdit("")
+        self.input_edit = FileDropLineEdit(allow_json=False)
+        self.input_edit.setPlaceholderText("Drop RF input file here")
         self.input_browse_button = QPushButton("Input…")
         self.output_edit = QLineEdit("")
         self.output_browse_button = QPushButton("Output…")
         self.frequency_edit = QLineEdit("40")
         self.system_combo = QComboBox()
         self.system_combo.addItems(SYSTEM_OPTIONS_DECODE)
+        self.tape_format_combo = QComboBox()
+        self._active_tape_format_options = list(TAPE_FORMATS_VHS)
+        for label, _value in self._active_tape_format_options:
+            self.tape_format_combo.addItem(label)
+        self.tape_format_combo.setCurrentIndex(0)
+        self.tape_speed_combo = QComboBox()
+        self.tape_speed_combo.addItems(TAPE_SPEEDS)
+        self.tape_speed_combo.setCurrentText("SP")
         self.threads_spin = QSpinBox()
         self.threads_spin.setRange(1, 64)
         self.threads_spin.setValue(4)
@@ -493,18 +654,28 @@ class DecodeLauncherWindow(QWidget):
         launch_layout.addWidget(QLabel("TV system"), 4, 2)
         launch_layout.addWidget(self.system_combo, 4, 3)
 
-        launch_layout.addWidget(QLabel("Threads"), 5, 0)
-        launch_layout.addWidget(self.threads_spin, 5, 1)
+        launch_layout.addWidget(QLabel("Tape format"), 5, 0)
+        launch_layout.addWidget(self.tape_format_combo, 5, 1)
+        launch_layout.addWidget(QLabel("Tape speed"), 5, 2)
+        launch_layout.addWidget(self.tape_speed_combo, 5, 3)
 
-        launch_layout.addWidget(QLabel("Extra arguments"), 6, 0)
-        launch_layout.addWidget(self.extra_args_edit, 6, 1, 1, 3)
+        launch_layout.addWidget(QLabel("Threads"), 6, 0)
+        launch_layout.addWidget(self.threads_spin, 6, 1)
 
-        launch_layout.addWidget(self.force_terminal_check, 7, 0, 1, 4)
+        launch_layout.addWidget(QLabel("Extra arguments"), 7, 0)
+        launch_layout.addWidget(self.extra_args_edit, 7, 1, 1, 3)
+        launch_layout.addWidget(self.params_json_check, 8, 0, 1, 4)
 
-        launch_layout.addWidget(QLabel("Terminal preview"), 8, 0)
-        launch_layout.addWidget(self.command_preview, 8, 1, 1, 3)
+        launch_layout.addWidget(self.params_json_label, 9, 0)
+        launch_layout.addWidget(self.params_json_edit, 9, 1, 1, 2)
+        launch_layout.addWidget(self.params_json_browse_button, 9, 3)
 
-        launch_layout.addWidget(self.note_label, 9, 0, 1, 4)
+        launch_layout.addWidget(self.force_terminal_check, 10, 0, 1, 4)
+
+        launch_layout.addWidget(QLabel("Terminal preview"), 11, 0)
+        launch_layout.addWidget(self.command_preview, 11, 1, 1, 3)
+
+        launch_layout.addWidget(self.note_label, 12, 0, 1, 4)
 
         action_row = QHBoxLayout()
         action_row.addWidget(self.launch_button)
@@ -518,13 +689,19 @@ class DecodeLauncherWindow(QWidget):
     def _wire_events(self) -> None:
         self.tool_combo.currentIndexChanged.connect(self._refresh_tool_state)
         self.extra_args_edit.textChanged.connect(self._refresh_tool_state)
+        self.params_json_check.toggled.connect(self._refresh_tool_state)
+        self.params_json_edit.textChanged.connect(self._refresh_tool_state)
+        self.params_json_edit.fileDropped.connect(self._on_params_json_dropped)
         self.input_edit.textChanged.connect(self._on_input_changed)
         self.output_edit.textChanged.connect(self._refresh_tool_state)
         self.output_edit.textEdited.connect(self._on_output_edited)
         self.frequency_edit.textChanged.connect(self._refresh_tool_state)
         self.system_combo.currentIndexChanged.connect(self._refresh_tool_state)
+        self.tape_format_combo.currentIndexChanged.connect(self._refresh_tool_state)
+        self.tape_speed_combo.currentIndexChanged.connect(self._refresh_tool_state)
         self.threads_spin.valueChanged.connect(self._refresh_tool_state)
         self.force_terminal_check.toggled.connect(self._refresh_tool_state)
+        self.params_json_browse_button.clicked.connect(self._browse_params_json_file)
         self.input_browse_button.clicked.connect(self._browse_input_file)
         self.output_browse_button.clicked.connect(self._browse_output_file)
         self.launch_button.clicked.connect(self._launch_selected_tool)
@@ -550,6 +727,16 @@ class DecodeLauncherWindow(QWidget):
             return Qt.WidgetAttribute.WA_DeleteOnClose
         return Qt.WA_DeleteOnClose
 
+    def _params_json_args(self, tool: ToolSpec, *, strict: bool) -> list[str]:
+        if tool.subcommand != "vhs" or not self.params_json_check.isChecked():
+            return []
+        params_json = self.params_json_edit.text().strip()
+        if not params_json:
+            if strict:
+                raise RuntimeError("Select a params JSON file.")
+            return []
+        return ["--params_file", params_json]
+
     def _start_native_gui_warmup(self) -> None:
         threading.Thread(
             target=self._warm_native_gui_modules,
@@ -559,8 +746,12 @@ class DecodeLauncherWindow(QWidget):
 
     def _warm_native_gui_modules(self) -> None:
         try:
+            # Only warm Filter Tune. Importing hifi here can trigger substantial
+            # optional-runtime initialization side effects even when the user is
+            # not launching hifi from the launcher.
             importlib.import_module("filter_tune.filter_tune")
-            importlib.import_module("vhsdecode.hifi.main")
+        except Exception as exc:
+            print(f"[decode-launcher] native GUI warmup skipped: {exc}")
         finally:
             self._native_gui_warmup_done.set()
 
@@ -581,8 +772,9 @@ class DecodeLauncherWindow(QWidget):
             window.move(0, 0)
         self._track_hosted_launch(window, window)
 
-    def _launch_hifi_in_process(self, extra: str) -> None:
+    def _launch_hifi_in_process(self, extra: str, threads: int) -> None:
         extra_args = _split_user_args(extra) if extra else []
+        extra_args = ["-t", str(threads)] + extra_args
 
         from vhsdecode.hifi.main import launch_hosted_ui
 
@@ -593,12 +785,14 @@ class DecodeLauncherWindow(QWidget):
         controller.window.setAttribute(self._delete_on_close_attribute(), True)
         self._track_hosted_launch(controller, controller.window)
 
-    def _launch_native_gui_in_process(self, tool: ToolSpec, extra: str) -> bool:
+    def _launch_native_gui_in_process(
+        self, tool: ToolSpec, extra: str, threads: int
+    ) -> bool:
         if tool.subcommand == "filter-tune":
             self._launch_filter_tune_in_process(extra)
             return True
         if tool.subcommand == "hifi":
-            self._launch_hifi_in_process(extra)
+            self._launch_hifi_in_process(extra, threads)
             return True
         return False
 
@@ -610,8 +804,11 @@ class DecodeLauncherWindow(QWidget):
             output_path=self.output_edit.text().strip(),
             frequency=self.frequency_edit.text().strip(),
             system=self.system_combo.currentText(),
+            tape_format=self._selected_tape_format_value(),
+            tape_speed=self.tape_speed_combo.currentText(),
             threads=self.threads_spin.value(),
         )
+        basic_args += self._params_json_args(tool, strict=False)
         extra = self.extra_args_edit.text().strip()
         if extra:
             basic_args += _split_user_args(extra, strict=False)
@@ -620,9 +817,17 @@ class DecodeLauncherWindow(QWidget):
     def _refresh_tool_state(self) -> None:
         tool = self._selected_tool()
         self._sync_system_options_for_tool(tool)
+        self._sync_tape_format_options_for_tool(tool)
+        params_json_allowed = tool.subcommand == "vhs"
+        params_json_visible = params_json_allowed and self.params_json_check.isChecked()
+        self.params_json_check.setEnabled(params_json_allowed)
+        self.params_json_label.setVisible(params_json_visible)
+        self.params_json_edit.setVisible(params_json_visible)
+        self.params_json_browse_button.setVisible(params_json_visible)
         self.command_preview.setText(self._terminal_preview_command(tool))
         self.note_label.setText(tool.notes)
         decoder_selected = tool.subcommand in DECODER_SUBCOMMANDS
+        hifi_selected = tool.subcommand == "hifi"
         for widget in (
             self.input_edit,
             self.input_browse_button,
@@ -630,9 +835,11 @@ class DecodeLauncherWindow(QWidget):
             self.output_browse_button,
             self.frequency_edit,
             self.system_combo,
-            self.threads_spin,
         ):
             widget.setEnabled(decoder_selected)
+        self.tape_format_combo.setEnabled(tool.subcommand == "vhs")
+        self.tape_speed_combo.setEnabled(tool.subcommand == "vhs")
+        self.threads_spin.setEnabled(decoder_selected or hifi_selected)
 
     def _sync_system_options_for_tool(self, tool: ToolSpec) -> None:
         current = self.system_combo.currentText()
@@ -645,6 +852,30 @@ class DecodeLauncherWindow(QWidget):
         self.system_combo.addItems(wanted)
         self.system_combo.setCurrentText(current if current in wanted else "NTSC")
         self.system_combo.blockSignals(False)
+
+    def _sync_tape_format_options_for_tool(self, tool: ToolSpec) -> None:
+        current_value = self._selected_tape_format_value()
+        wanted = list(TAPE_FORMATS_BY_TOOL.get(tool.subcommand, TAPE_FORMATS_VHS))
+        if self._active_tape_format_options == wanted:
+            return
+        self._active_tape_format_options = wanted
+        self.tape_format_combo.blockSignals(True)
+        self.tape_format_combo.clear()
+        for label, _value in wanted:
+            self.tape_format_combo.addItem(label)
+        if wanted:
+            next_index = next(
+                (i for i, (_label, value) in enumerate(wanted) if value == current_value),
+                0,
+            )
+            self.tape_format_combo.setCurrentIndex(next_index)
+        self.tape_format_combo.blockSignals(False)
+
+    def _selected_tape_format_value(self) -> str:
+        current_index = self.tape_format_combo.currentIndex()
+        if 0 <= current_index < len(self._active_tape_format_options):
+            return self._active_tape_format_options[current_index][1]
+        return self.tape_format_combo.currentText()
 
     def _infer_default_output_base(self, input_path: str) -> str:
         if not input_path.strip():
@@ -661,6 +892,55 @@ class DecodeLauncherWindow(QWidget):
 
     def _on_output_edited(self, value: str) -> None:
         self._output_manually_set = bool(value.strip())
+
+
+    def _on_params_json_dropped(self, dropped_path: str) -> None:
+        if not _is_json_file_path(dropped_path):
+            return
+        if not self.params_json_check.isChecked():
+            self.params_json_check.setChecked(True)
+
+    def _split_window_drop_paths(self, mime_data) -> tuple[Optional[str], Optional[str]]:
+        input_path: Optional[str] = None
+        params_json_path: Optional[str] = None
+        for dropped_path in _extract_dropped_file_paths(mime_data):
+            if _is_json_file_path(dropped_path):
+                if params_json_path is None:
+                    params_json_path = dropped_path
+            elif input_path is None:
+                input_path = dropped_path
+            if input_path and params_json_path:
+                break
+        return input_path, params_json_path
+
+    def dragEnterEvent(self, event) -> None:
+        input_path, params_json_path = self._split_window_drop_paths(event.mimeData())
+        if input_path or params_json_path:
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        input_path, params_json_path = self._split_window_drop_paths(event.mimeData())
+        if input_path or params_json_path:
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        input_path, params_json_path = self._split_window_drop_paths(event.mimeData())
+        handled = False
+        if input_path:
+            self.input_edit.setText(input_path)
+            handled = True
+        if params_json_path:
+            self.params_json_check.setChecked(True)
+            self.params_json_edit.setText(params_json_path)
+            handled = True
+        if handled:
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
 
     def _effective_working_directory(self) -> Path:
         input_path = self.input_edit.text().strip()
@@ -688,6 +968,17 @@ class DecodeLauncherWindow(QWidget):
         if selected:
             self._output_manually_set = True
             self.output_edit.setText(selected)
+
+    def _browse_params_json_file(self) -> None:
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select params JSON file",
+            self.params_json_edit.text().strip()
+            or str(self._effective_working_directory()),
+            "JSON files (*.json);;All files (*)",
+        )
+        if selected:
+            self.params_json_edit.setText(selected)
     def _output_to_tbc_candidate(self, output_value: str) -> Optional[Path]:
         if not output_value.strip():
             return None
@@ -720,7 +1011,10 @@ class DecodeLauncherWindow(QWidget):
         return None
 
     def _find_tbc_tools_executable(self) -> Optional[Path]:
-        search_roots: list[Path] = []
+        search_roots: list[Path] = [
+            self._effective_working_directory(),
+            Path(os.getcwd()).resolve(strict=False),
+        ]
         if sys.platform == "darwin":
             search_roots.extend([Path("/Applications"), Path.home() / "Applications"])
         elif os.name == "nt":
@@ -759,13 +1053,19 @@ class DecodeLauncherWindow(QWidget):
             if os.name == "nt":
                 return [
                     root / "ld-analyse.exe",
+                    root / "tbc-analyse.exe",
                     root / "tbc-tools.exe",
                     root / "tbc-tools" / "ld-analyse.exe",
+                    root / "tbc-tools" / "tbc-analyse.exe",
+                    root / "release" / "ld-analyse.exe",
+                    root / "release" / "tbc-analyse.exe",
                 ]
             if sys.platform == "darwin":
                 return [
                     root / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
+                    root / "tbc-tools.app" / "Contents" / "MacOS" / "tbc-tools",
                     root / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
+                    root / "ld-analyse.app" / "Contents" / "MacOS" / "tbc-tools",
                     root / "ld-analyse",
                 ]
             return [
@@ -781,8 +1081,12 @@ class DecodeLauncherWindow(QWidget):
             if os.name == "nt":
                 return [
                     child / "ld-analyse.exe",
+                    child / "tbc-analyse.exe",
                     child / "tbc-tools.exe",
                     child / "tbc-tools" / "ld-analyse.exe",
+                    child / "tbc-tools" / "tbc-analyse.exe",
+                    child / "release" / "ld-analyse.exe",
+                    child / "release" / "tbc-analyse.exe",
                 ]
             if sys.platform == "darwin":
                 if child.suffix.lower() == ".app":
@@ -792,6 +1096,7 @@ class DecodeLauncherWindow(QWidget):
                     ]
                 return [
                     child / "tbc-tools.app" / "Contents" / "MacOS" / "ld-analyse",
+                    child / "tbc-tools.app" / "Contents" / "MacOS" / "tbc-tools",
                     child / "ld-analyse.app" / "Contents" / "MacOS" / "ld-analyse",
                     child / "ld-analyse",
                 ]
@@ -824,6 +1129,7 @@ class DecodeLauncherWindow(QWidget):
         # Global path fallback for non-local installs.
         for name in (
             "ld-analyse",
+            "tbc-analyse",
             "tbc-tools",
             "tbc-tools.AppImage",
             "tbc-tools.appimage",
@@ -835,6 +1141,14 @@ class DecodeLauncherWindow(QWidget):
                 return Path(on_path)
         return None
 
+    def _macos_app_bundle_for_binary(self, executable: Path) -> Optional[Path]:
+        if sys.platform != "darwin":
+            return None
+        for parent in executable.resolve(strict=False).parents:
+            if parent.suffix.lower() == ".app":
+                return parent
+        return None
+
     def _launch_tbc_tools(self) -> None:
         executable = self._find_tbc_tools_executable()
         if executable is None:
@@ -844,11 +1158,16 @@ class DecodeLauncherWindow(QWidget):
                 "Could not find tbc-tools / ld-analyse near the decode binary or working folder.",
             )
             return
-
-        command = [str(executable)]
         tbc_candidate = self._candidate_tbc_path()
-        if tbc_candidate is not None:
-            command.append(str(tbc_candidate))
+        app_bundle = self._macos_app_bundle_for_binary(executable)
+        if app_bundle is not None:
+            command = ["open", "-a", str(app_bundle)]
+            if tbc_candidate is not None:
+                command += ["--args", str(tbc_candidate)]
+        else:
+            command = [str(executable)]
+            if tbc_candidate is not None:
+                command.append(str(tbc_candidate))
 
         try:
             subprocess.Popen(command, cwd=str(self._effective_working_directory()))
@@ -878,6 +1197,8 @@ class DecodeLauncherWindow(QWidget):
                 output_path=self.output_edit.text().strip(),
                 frequency=self.frequency_edit.text().strip(),
                 system=self.system_combo.currentText(),
+                tape_format=self._selected_tape_format_value(),
+                tape_speed=self.tape_speed_combo.currentText(),
                 threads=self.threads_spin.value(),
             )
 
@@ -894,12 +1215,15 @@ class DecodeLauncherWindow(QWidget):
                 self._has_launched_decoder = self._last_decoder_tbc_path is not None
 
             command += basic_args
+            command += self._params_json_args(tool, strict=True)
             if extra:
                 command += _split_user_args(extra)
 
             if tool.prefer_native_gui and not self.force_terminal_check.isChecked():
                 try:
-                    if self._launch_native_gui_in_process(tool, extra):
+                    if self._launch_native_gui_in_process(
+                        tool, extra, self.threads_spin.value()
+                    ):
                         return
                 except Exception as hosted_exc:
                     print(f"[decode-launcher] hosted GUI launch fallback: {hosted_exc}")
