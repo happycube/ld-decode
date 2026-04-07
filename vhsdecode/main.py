@@ -564,6 +564,9 @@ def main(args=None, use_gui=False):
 
         debug_plot = DebugPlot(args.debug_plot)
 
+    if args.cxadc:
+        logger.warning("--cxadc is deprecated! use -f 8fsc instead!")
+
     # Initialize VHS decoder
     # Note, we pass 40 as sample frequency, as any other will be resampled by the
     # loader function.
