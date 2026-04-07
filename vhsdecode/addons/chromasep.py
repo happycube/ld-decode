@@ -4,6 +4,7 @@ import numpy as np
 from scipy import signal
 from soxr import resample
 
+
 def signal_resample(data, output_rate, input_rate, converter_type="linear"):
     upsize = len(data) * output_rate
     downsize = round(upsize / input_rate)
@@ -22,6 +23,7 @@ def signal_resample(data, output_rate, input_rate, converter_type="linear"):
     else:
         upscaled = signal.resample(data, upsize)
         return signal.resample(upscaled, downsize)
+
 
 # In ascending quality/complexity order:
 #   https://sourceforge.net/p/soxr/code/ci/master/tree/src/soxr.h#l283

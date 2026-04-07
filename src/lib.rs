@@ -125,7 +125,7 @@ fn complex_angle_py<'py>(
     input_array: PyReadonlyArray1<'py, Complex64>,
 ) -> Bound<'py, PyArray1<f64>> {
     let input_array = input_array.as_array();
-    let output_array = py.allow_threads(|| complex_angle(input_array));
+    let output_array = py.detach(|| complex_angle(input_array));
     output_array.into_pyarray(py)
 }
 
@@ -135,14 +135,14 @@ fn unwrap_angles<'py>(
     input_array: PyReadonlyArray1<'py, f64>,
 ) -> Bound<'py, PyArray1<f64>> {
     let input_array = input_array.as_array();
-    let output_array = py.allow_threads(|| unwrap_angles_impl(input_array));
+    let output_array = py.detach(|| unwrap_angles_impl(input_array));
     output_array.into_pyarray(py)
 }
 
 #[pyfunction]
 fn diff_forward_in_place<'py>(py: Python<'py>, mut input_array: PyReadwriteArray1<'py, f64>) {
     let input_array = input_array.as_array_mut();
-    py.allow_threads(|| diff_forward_in_place_impl(input_array));
+    py.detach(|| diff_forward_in_place_impl(input_array));
 }
 
 #[pyfunction]
@@ -152,7 +152,7 @@ fn unwrap_hilbert<'py>(
     freq: f64,
 ) -> Bound<'py, PyArray1<f64>> {
     let input_array = input_array.as_array();
-    let output_array = py.allow_threads(|| unwrap_hilbert_impl(input_array, freq));
+    let output_array = py.detach(|| unwrap_hilbert_impl(input_array, freq));
     output_array.into_pyarray(py)
 }
 
@@ -180,7 +180,7 @@ fn sosfiltfilt<'py>(
 ) -> Bound<'py, PyArray1<f64>> {
     let sos_filter = sos_filter.as_array();
     let input_array = input_array.as_array();
-    let output_array = py.allow_threads(|| sos_filtfilt(order, sos_filter, input_array));
+    let output_array = py.detach(|| sos_filtfilt(order, sos_filter, input_array));
     output_array.into_pyarray(py)
 }
 
@@ -193,7 +193,7 @@ fn sosfiltfilt_f32<'py>(
 ) -> Bound<'py, PyArray1<f32>> {
     let sos_filter = sos_filter.as_array();
     let input_array = input_array.as_array();
-    let output_array = py.allow_threads(|| sos_filtfilt_f32(order, sos_filter, input_array));
+    let output_array = py.detach(|| sos_filtfilt_f32(order, sos_filter, input_array));
     output_array.into_pyarray(py)
 }
 

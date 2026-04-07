@@ -43,7 +43,8 @@ def get_sys_params_405():
     sys_params_405["activeVideoUS"] = (16.5, 98.765 - 1.75)
     sys_params_405["firstFieldH"] = (1, 0.0)  # TODO: find out if correct
     # "blacksnr_slice": (22, 12, 50),
-    sys_params_405["numPulses"]: 8  # number of equalization pulses per section
+    # TODO: This causes some odd behaviour, need to fix
+    # sys_params_405["numPulses"] = 8  # number of equalization pulses per section
     sys_params_405["hsyncPulseUS"] = 9.0
     sys_params_405["eqPulseUS"] = 10.0
     sys_params_405["vsyncPulseUS"] = 40.0
@@ -71,7 +72,8 @@ def get_sys_params_819():
         -0.5,
     )  # TODO: find out if correct - test if -0.5, -0.5 works
     # "blacksnr_slice": (22, 12, 50),
-    sys_params_819["numPulses"]: 1  # or should possibly be 0 - 7 for System F
+    # TODO this causes rolling on sample, need to fix
+    # sys_params_819["numPulses"] = 1  # or should possibly be 0 - 7 for System F
     sys_params_819["hsyncPulseUS"] = 2.5
     sys_params_819["eqPulseUS"] = 2.5
     # For the system E half line field pulse - not sure if it technically counts as a vsync pulse

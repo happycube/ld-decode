@@ -145,7 +145,7 @@ def design_filter(samp_rate, passband, stopband, order_limit=20):
     max_loss_passband = 3  # The maximum loss allowed in the passband
     min_loss_stopband = 30  # The minimum loss allowed in the stopband
     order, normal_cutoff = signal.buttord(
-        passband, stopband, max_loss_passband, min_loss_stopband, samp_rate
+        passband, stopband, max_loss_passband, min_loss_stopband, analog=False, fs=samp_rate
     )
     if order > order_limit:
         print("WARN: Limiting order of the filter from %d to %d" % (order, order_limit))
