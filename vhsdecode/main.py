@@ -7,7 +7,7 @@ import json
 import shutil
 import time
 import faulthandler
-import signal
+import math
 
 import numpy
 
@@ -512,7 +512,9 @@ def main(args=None, use_gui=False):
         loader = lddu.LoadFFmpeg()
 
     dod_threshold_p = f.DEFAULT_THRESHOLD_P_DDD
-    if args.cxadc or args.cxadc3 or args.cxadc_tenbit or args.cxadc3_tenbit:
+    # Guesstimate a sample rate of around 28 is cx card and use different doc threshold
+    # may want to change this now that people use amps.
+    if math.floor(sample_freq) == 28:
         dod_threshold_p = f.DEFAULT_THRESHOLD_P_CXADC
 
     rf_options = get_rf_options(args)
