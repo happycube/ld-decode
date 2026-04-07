@@ -397,7 +397,7 @@ def get_sysparams_ntsc_vhshq(sysparams_ntsc: dict, tape_speed: int = 0) -> dict:
     return SysParams_NTSC_VHSHQ
 
 
-def get_rfparams_mpal_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
+def get_rfparams_palm_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
     params = get_rfparams_ntsc_vhs(rfparams_ntsc, tape_speed)
     # Same as NTSC other than color carrier
     params["color_under_carrier"] = 631.337e3
@@ -406,7 +406,7 @@ def get_rfparams_mpal_vhs(rfparams_ntsc: dict, tape_speed: int = 0) -> dict:
     return params
 
 
-def get_sysparams_mpal_vhs(sysparams_ntsc: dict, tape_speed: int = 0) -> dict:
+def get_sysparams_palm_vhs(sysparams_ntsc: dict, tape_speed: int = 0) -> dict:
     from lddecode.core import calclinelen
 
     params = get_sysparams_ntsc_vhs(sysparams_ntsc, tape_speed)

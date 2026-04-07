@@ -90,7 +90,7 @@ def is_color_under(tape_format: str) -> str:
 
 def parent_system(system: str) -> str:
     """Returns 'PAL' for 625 line systems and 405 line, and 'NTSC' for 525-line systems"""
-    if system == "MPAL" or system == "NLINHA":
+    if system == "PAL_M" or system == "NLINHA":
         parent_system = "NTSC"
     elif system == "MESECAM" or system == "SECAM" or system == "405" or system == "819":
         parent_system = "PAL"
@@ -116,7 +116,7 @@ def get_cvbs_params(system: str) -> dict:
 
 def get_format_params(system: str, tape_format: str, tape_speed: int, logger) -> dict:
     """Get format parameters based on video system and tape format.
-    Will raise an exception if the system is not one of PAL, NTSC and MPAL
+    Will raise an exception if the system is not one of PAL, NTSC and PAL_M
     """
     # We base the parameters off the original laserdisc ones and override the ones
     # we need.
@@ -124,11 +124,6 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
     # TODO: This needs to be reworked and made cleaner.
 
     assert tape_speed <= 4, "Tape speed was > 4!"
-
-    # TBC/JSON uses "PAL-M" instead of "MPAL".
-    # For later: define color systems codename (i.e. refer to it as "PAL-M" only)
-    if system == "PAL-M":
-        system = "MPAL"
 
     if system == "PAL":
         if tape_format == "UMATIC":
@@ -401,17 +396,17 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             return get_sysparams_ntsc_vhs(
                 SysParams_NTSC, tape_speed
             ), get_rfparams_ntsc_vhs(FilterParams_NTSC, tape_speed)
-    elif system == "MPAL":
+    elif system == "PAL_M":
         if tape_format != "VHS":
-            logger.warning('Tape format "%s" not supported for MPAL yet', tape_format)
+            logger.warning('Tape format "%s" not supported for PAL-M yet', tape_format)
         from vhsdecode.format_defs.vhs import (
-            get_rfparams_mpal_vhs,
-            get_sysparams_mpal_vhs,
+            get_rfparams_palm_vhs,
+            get_sysparams_palm_vhs,
         )
 
-        return get_sysparams_mpal_vhs(
+        return get_sysparams_palm_vhs(
             SysParams_NTSC, tape_speed
-        ), get_rfparams_mpal_vhs(FilterParams_NTSC, tape_speed)
+        ), get_rfparams_palm_vhs(FilterParams_NTSC, tape_speed)
     elif system == "NLINHA":
         # NLINHA - hacky unofficial system used on old brazilian vcrs that
         # uses PAL-M color but NTSC carrier freq and rotation.
@@ -419,10 +414,10 @@ def get_format_params(system: str, tape_format: str, tape_speed: int, logger) ->
             logger.warning('Tape format "%s" not supported for NLINHA yet', tape_format)
         from vhsdecode.format_defs.vhs import (
             get_rfparams_ntsc_vhs,
-            get_sysparams_mpal_vhs,
+            get_sysparams_palm_vhs,
         )
 
-        return get_sysparams_mpal_vhs(
+        return get_sysparams_palm_vhs(
             SysParams_NTSC, tape_speed
         ), get_rfparams_ntsc_vhs(FilterParams_NTSC, tape_speed)
     elif system == "MESECAM":

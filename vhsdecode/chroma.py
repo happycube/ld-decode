@@ -357,7 +357,7 @@ def get_phase_rotation_sequence(
         if color_system == "NTSC":
             # if the bursts are out of phase with each other, the track was miss-detected, flip phase and recalculate sequence
             flip_track_phase = delta_0 < delta_180
-        else:  # color_system in ("PAL", "MPAL", "PALM", "NLINHA", "MESECAM")
+        else:  # color_system in ("PAL", "PAL_M", "NLINHA", "MESECAM")
             # each line should alternate phase, if there are repeated sequences of phase, recalculate
             alt1 = delta_90 + delta_270
             alt2 = delta_0 + delta_180
@@ -403,7 +403,7 @@ def get_phase_rotation_sequence(
         burst_detected = coherence >= coherence_threshold
         burst_phase_avg = np.degrees(np.arctan2(Q_total, I_total)) % 360
 
-    elif color_system in ("MPAL", "NLINHA"):
+    elif color_system in ("PAL_M", "NLINHA"):
         burst_phase_avg = None
         burst_detected = None
     else:

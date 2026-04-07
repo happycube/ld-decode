@@ -101,8 +101,8 @@ def field_class_from_formats(system: str, tape_format: str):
                     "Tape format unimplemented for NTSC, using VHS field class."
                 )
             field_class = FieldNTSCVHS
-    elif (system == "MPAL" or system == "NLINHA") and tape_format == "VHS":
-        field_class = FieldMPALVHS
+    elif (system == "PAL_M" or system == "NLINHA") and tape_format == "VHS":
+        field_class = FieldPALMVHS
     elif system == "MESECAM" and tape_format == "VHS":
         field_class = FieldMESECAMVHS
     elif system == "405":
@@ -1997,9 +1997,9 @@ class FieldNTSCBetamax(FieldNTSCShared):
         return (dsout, dschroma), dsaudio, dsefm
 
 
-class FieldMPALVHS(FieldNTSCVHS):
+class FieldPALMVHS(FieldNTSCVHS):
     def __init__(self, *args, **kwargs):
-        super(FieldMPALVHS, self).__init__(*args, **kwargs)
+        super(FieldPALMVHS, self).__init__(*args, **kwargs)
 
 
 class FieldNTSCUMatic(FieldNTSCShared):
