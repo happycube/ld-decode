@@ -59,7 +59,7 @@ class ChromaAFC:
         self.fft_plot = plot
 
         if do_cafc:
-            self.narrowband = self.get_narrowband_bandpass()
+            self.narrowband = self._get_narrowband_bandpass()
             self.meas_stack = utils.StackableMA(min_watermark=0, window_average=8192)
             self.chroma_log_drift = utils.StackableMA(
                 min_watermark=0, window_average=8192
@@ -516,7 +516,7 @@ class ChromaAFC:
     #        block_len,
     #    )
 
-    def get_narrowband_bandpass(self):
+    def _get_narrowband_bandpass(self):
         min_f, max_f = self.get_band_tolerance()
         trans_lo, trans_hi = self.color_under * self.transition_expand * (
             max_f - 1

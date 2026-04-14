@@ -104,8 +104,7 @@ SYSTEM_OPTIONS_DECODE = [
     "NTSC",
     "NTSCJ",
     "PAL",
-    "PALM",
-    "MPAL",
+    "PAL_M"
     "MESECAM",
     "405",
     "819",

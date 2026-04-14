@@ -16,6 +16,13 @@ DEFAULT_INPUT_FILENAME = ""
 DEFAULT_OUTPUT_FILENAME = ""
 
 
+def _parse_frequency(frequency: str) -> float:
+    if frequency == "cxadc":
+        return CXADC_FREQ
+    else:
+        return lddu.parse_frequency(frequency)
+
+
 # size bytes to human-readable string
 def sizeof_fmt(num: int, suffix: str = "B") -> str:
     for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
@@ -184,7 +191,7 @@ def common_parser_inner(parser, use_gui=False, default_threads=DEFAULT_THREADS):
         type=str.upper,
         help="video system (overriden by individual options)",
         default="NTSC",
-        choices=["PAL", "MPAL", "PALM", "NTSC", "MESECAM", "405", "819", "NLINHA"],
+        choices=["PAL", "PAL_M", "PALM", "NTSC", "MESECAM", "405", "819", "NLINHA"],
     )
     file_options_group = parser.add_argument_group("File options")
     file_options_group.add_argument(
@@ -217,46 +224,19 @@ def common_parser_inner(parser, use_gui=False, default_threads=DEFAULT_THREADS):
         default=False,
         help="Overwrite existing decode files.",
     )
-    file_options_group.add_argument(
-        "--write_db",
-        dest="write_db",
-        action="store_true",
-        default=False,
-        help="Enable sqlite output (slow on hdds), not finalized, option may change")
     input_format_group = parser.add_argument_group("Input format")
     input_format_group.add_argument(
         "-f",
         "--frequency",
         dest="inputfreq",
         metavar="FREQ",
-        type=lddu.parse_frequency,
+        type=_parse_frequency,
         default=None,
         help="RF sampling frequency in source file (default is 40MHz)",
     )
     input_format_group.add_argument(
         "--cxadc",
         dest="cxadc",
-        action="store_true",
-        default=False,
-        help="Use cxadc input frequency (~28,63 Mhz)",
-    )
-    input_format_group.add_argument(
-        "--cxadc3",
-        dest="cxadc3",
-        action="store_true",
-        default=False,
-        help=argparse.SUPPRESS,
-    )
-    input_format_group.add_argument(
-        "--10cxadc",
-        dest="cxadc_tenbit",
-        action="store_true",
-        default=False,
-        help=argparse.SUPPRESS,
-    )
-    input_format_group.add_argument(
-        "--10cxadc3",
-        dest="cxadc3_tenbit",
         action="store_true",
         default=False,
         help=argparse.SUPPRESS,
@@ -361,19 +341,7 @@ def select_sample_freq(args):
     sample_freq = (
         CXADC_FREQ
         if args.cxadc
-        else (
-            CXADC_FREQ_HIGH
-            if args.cxadc3
-            else (
-                CXADC_TENBIT_FREQ
-                if args.cxadc_tenbit
-                else (
-                    CXADC_TENBIT_FREQ_HIGH
-                    if args.cxadc3_tenbit
-                    else args.inputfreq if args.inputfreq is not None else DDD_FREQ
-                )
-            )
-        )
+        else args.inputfreq if args.inputfreq is not None else DDD_FREQ
     )
     return sample_freq
 
@@ -382,13 +350,13 @@ def select_system(args):
     if args.pal:
         system = "PAL"
     elif args.palm:
-        system = "MPAL"
+        system = "PAL_M"
     elif args.ntsc:
         system = "NTSC"
     elif args.system:
         system = args.system
         if system == "PALM":
-            system = "MPAL"
+            system = "PAL_M"
     else:
         system = "NTSC"
 
