@@ -224,6 +224,12 @@ def common_parser_inner(parser, use_gui=False, default_threads=DEFAULT_THREADS):
         default=False,
         help="Overwrite existing decode files.",
     )
+    file_options_group.add_argument(
+        "--write_db",
+        dest="write_db",
+        action="store_true",
+        default=False,
+        help="Enable sqlite output (slow on hdds), not finalized, option may change")
     input_format_group = parser.add_argument_group("Input format")
     input_format_group.add_argument(
         "-f",
