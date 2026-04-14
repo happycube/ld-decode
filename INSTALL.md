@@ -1,3 +1,9 @@
+See build/install instructions in main readme
+
+
+# Building with nix is broken at the moment - do not bother with this yet
+
+
 # Installing ld-decode (Nix)
 
 The recommended installation method is via Nix flakes.

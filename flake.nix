@@ -10,12 +10,13 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        pname = "vhs-decode";
         
         python = pkgs.python312;
         pythonPackages = python.pkgs;
         
         # PEP-440 compatible version string (for package metadata)
-        version = "7.2.0";
+        version = "3.10.0";
         
         # Use flake's built-in git properties
         # dirtyShortRev already includes "-dirty" suffix, so we need to handle it
@@ -33,8 +34,13 @@
           ps.mkdocs-awesome-nav
         ]);
 
-        ld-decode = pythonPackages.buildPythonPackage {
-          pname = "ld-decode";
+        cargoDeps = pkgs.rust.rustPlatform.fetchCargoVendor {
+          name = "${pname}-${version}";
+          hash = "sha256-miW//pnOmww2i6SOGbkrAIdc/JMDT4FJLqdMFojZeoY=";
+        };
+
+        vhs-decode = pythonPackages.buildPythonPackage {
+          inherit pname;
           inherit version;
           
           src = ./.;
@@ -42,9 +48,15 @@
           pyproject = true;
           
           nativeBuildInputs = with pythonPackages; [
+            pkgs.cargo
+            pkgs.rustPlatform.cargoSetupHook
             setuptools
+            setuptools-rust
+            setuptools-scm
             wheel
             pkgs.git
+            cython
+            pkgs.rustc
           ];
           
           propagatedBuildInputs = with pythonPackages; [
@@ -53,6 +65,10 @@
             numba
             numpy
             scipy
+            setproctitle
+            sounddevice
+            soundfile
+            soxr
           ];
           
           # Write PEP-440 compliant version file with git info
@@ -64,8 +80,8 @@
           doCheck = false;
           
           meta = with pkgs.lib; {
-            description = "Software defined LaserDisc decoder";
-            homepage = "https://github.com/happycube/ld-decode";
+            description = "Software defined LaserDisc and videotape decoder";
+            homepage = "https://github.com/oyvindln/vhs-decode";
             license = licenses.gpl3Plus;
             maintainers = [ ];
           };
@@ -73,8 +89,8 @@
       in
       {
         packages = {
-          default = ld-decode;
-          ld-decode = ld-decode;
+          default = vhs-decode;
+          vhs-decode = vhs-decode;
           docs = pkgs.stdenv.mkDerivation {
             pname = "ld-decode-docs";
             version = version;
@@ -88,15 +104,23 @@
         apps = {
           default = {
             type = "app";
-            program = "${ld-decode}/bin/ld-decode";
+            program = "${vhs-decode}/bin/vhs-decode";
+          };
+          vhs-decode = {
+            type = "app";
+            program = "${vhs-decode}/bin/ld-decode";
+          };
+          cvbs-decode = {
+            type = "app";
+            program = "${vhs-decode}/bin/cvbs-decode";
           };
           ld-decode = {
             type = "app";
-            program = "${ld-decode}/bin/ld-decode";
+            program = "${vhs-decode}/bin/ld-decode";
           };
           ld-ldf-reader-py = {
             type = "app";
-            program = "${ld-decode}/bin/ld-ldf-reader-py";
+            program = "${vhs-decode}/bin/ld-ldf-reader-py";
           };
         };
         
@@ -104,7 +128,7 @@
           buildInputs = [
             pkgs.cmake
             pkgs.ffmpeg
-            ld-decode
+            vhs-decode
             python
             pythonPackages.av
             pythonPackages.matplotlib
@@ -119,7 +143,7 @@
           ];
           
           shellHook = ''
-            echo "ld-decode development environment"
+            echo "vhs-decode development environment"
           '';
         };
       }

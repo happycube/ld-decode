@@ -1,3 +1,8 @@
+See build instructions in main readme
+
+
+# Building with nix is broken at the moment - do not bother with this yet
+
 # Building ld-decode (Nix)
 
 This project is built with [Nix](https://nixos.org/). The flake provides a reproducible build and generates the version file automatically.
