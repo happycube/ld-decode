@@ -215,6 +215,11 @@ class VHSDecode(ldd.LDdecode):
             "isFirstField": True if f.isFirstField else False,
             "detectedFirstField": True if f.isFirstField else False,
             "isDuplicateField": False,
+            # burstStartLine description:
+            # -1                    -> Color killer is active, no color for entire field
+            #  0                    -> Color killer is inactive, color for the entire field
+            #  1 to num_field_lines -> Color killer is active until this line, then it is deactivated and color is returned for this and all following lines
+            "burstStartLine": f.burst_detected_line,
             "syncConf": f.compute_syncconf(),
             "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
@@ -710,6 +715,7 @@ class VHSRFDecode(ldd.RFDecode):
                 "gnrc_afe",
                 "relaxed_line0",
                 "detect_chroma_track_phase",
+                "enable_color_killer",
                 "disable_burst_hsync",
                 "disable_phase_correction",
             ],
@@ -751,6 +757,7 @@ class VHSRFDecode(ldd.RFDecode):
             rf_options.get("gnrc_afe", False),
             rf_options.get("relaxed_line0", False),
             rf_options.get("detect_chroma_track_phase", False),
+            rf_options.get("enable_color_killer", False),
             rf_options.get("disable_burst_hsync", False),
             rf_options.get("disable_phase_correction", False),
         )
