@@ -1,10 +1,10 @@
-See build/install instructions in main readme
+See build/install instructions in BUILD.MD
 
 
-# Building with nix is broken at the moment - do not bother with this yet
+# Building with nix not properly tested yet.
 
 
-# Installing ld-decode (Nix)
+# Installing vhs-decode (Nix)
 
 The recommended installation method is via Nix flakes.
 
