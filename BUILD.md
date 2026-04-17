@@ -129,9 +129,18 @@ You don't actually type `<` and `>` on your input & output files.
       source "$HOME/.cargo/env" && echo "Rust version: $(rustc --version)" && echo "Cargo version: $(cargo --version)"
       
 ### Windows
-  Install [python](https://www.python.org/downloads/) and [rust](https://rust-lang.org/).
-  (NOTE: Due to the numba library that is used by vhs-decode taking some time to support the latest python version do not install a major version not supported by numba yet. Currently the latest supported version is 3.14. See the [numba repository](https://github.com/numba/numba/issues) if unsure.)
-  
+  1. Install Python 3.13
+   * Download the [python installer](https://www.python.org/downloads/)
+   * **Make sure to check the box requesting Python be added to the PATH**
+   * (NOTE: Due to the numba library that is used by vhs-decode taking some time to support the latest python version do not install a major version not supported by numba yet. Currently the latest supported version is 3.14. See the [numba repository](https://github.com/numba/numba/issues) if unsure.)
+  1. Install Rust
+   * Download the [Rust installer](https://www.rust-lang.org/tools/install) follow the wizard to install Rust
+  1. Install Visual Studio Build Tools
+   * Download the [Visual Studio Installer](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   * In the installer, select `Visual Studio Build Tools 2022`
+     * If there are multiple versions, select the latest year
+   * Click on the `Desktop Development with C++` and a list of default components will be selected
+   * Click `Install` to install them
   
 ## Create a virtual python environment
 
