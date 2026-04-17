@@ -879,9 +879,14 @@ class Expander:
         self.atkCoeff = exp(-1 / (attack_tau * self.audio_rate))
         self.relCoeff = exp(-1 / (release_tau * self.audio_rate))
         self.hold_samples = round(hold_tau * self.audio_rate)
-        self.use_rms = env_detection == ENV_DETECTION_RMS
 
-        self.env_lin = 0.0
+        if env_detection == ENV_DETECTION_RMS:
+            self.use_rms = True
+            self.env_lin = 1e-12
+        else:
+            self.use_rms = False
+            self.env_lin = 0.0
+
         self.hold_state = 0
 
         self.lowpass_iirb, self.lowpass_iira = firdes_lowpass(
@@ -961,8 +966,8 @@ class Expander:
             # rms detector
             for i in range(n):
                 sc = side_chain[i]
-
                 sc_squared = sc * sc
+
                 attacking = sc_squared > env_lin
 
                 if attacking:

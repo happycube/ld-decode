@@ -48,8 +48,8 @@ from vhsdecode.cmdcommons import (
 from vhsdecode.hifi.constants import (
     AUDIO_MODE_DUAL_MONO,
     AUDIO_MODE_DUAL_MONO_MS,
-    ENV_DETECTION_RMS,
     ENV_DETECTION_PEAK,
+    ENV_DETECTION_RMS,
     DEFAULT_ENV_DETECTION,
     DEFAULT_8MM_AUDIO_MODE,
     DEFAULT_8MM_DEEMPHASIS_TAU_1,
@@ -428,7 +428,7 @@ expander_options_group.add_argument(
     dest="expander_env_detection",
     type=str.lower,
     metavar='',
-    help=f'Set the expander envelope detection method  \n  {ENV_DETECTION_PEAK} \tuses peak detection (JVC standard, IEC 60774-2) [default]\n  {ENV_DETECTION_RMS} \tuses rms peak detection (Some Panasonic and early VCRs)'
+    help=f'Set the expander envelope detection method  \n  {ENV_DETECTION_PEAK} \tuses peak detection (JVC standard, IEC 60774-2) [default]\n  {ENV_DETECTION_RMS} \tuses rms detection (Some Panasonic and early VCRs)'
 )
 expander_options_group.add_argument(
     "--expander_attack_tau",
