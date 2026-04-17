@@ -48,6 +48,9 @@ from vhsdecode.cmdcommons import (
 from vhsdecode.hifi.constants import (
     AUDIO_MODE_DUAL_MONO,
     AUDIO_MODE_DUAL_MONO_MS,
+    ENV_DETECTION_RMS,
+    ENV_DETECTION_PEAK,
+    DEFAULT_ENV_DETECTION,
     DEFAULT_8MM_AUDIO_MODE,
     DEFAULT_8MM_DEEMPHASIS_TAU_1,
     DEFAULT_8MM_DEEMPHASIS_TAU_2,
@@ -116,7 +119,6 @@ def _ensure_hifi_engine_imported():
         DCBlocker = ImportedDCBlocker
         Expander = ImportedExpander
         Deemphasis = ImportedDeemphasis
-
 
 def _sounddevice_available():
     global sd, SOUNDDEVICE_AVAILABLE
@@ -420,6 +422,13 @@ expander_options_group.add_argument(
     type=float,
     metavar='',
     help=f"Sets the expander ratio \n  {DEFAULT_VHS_EXPANDER_RATIO} \t[VHS default]\n  {DEFAULT_8MM_EXPANDER_RATIO}\t[8mm default]",
+)
+expander_options_group.add_argument(
+    "--expander_env_detection",
+    dest="expander_env_detection",
+    type=str.lower,
+    metavar='',
+    help=f'Set the expander envelope detection method  \n  {ENV_DETECTION_PEAK} \tuses peak detection (JVC standard, IEC 60774-2) [default]\n  {ENV_DETECTION_RMS} \tuses rms peak detection (Some Panasonic and early VCRs)'
 )
 expander_options_group.add_argument(
     "--expander_attack_tau",
@@ -1127,6 +1136,7 @@ class PostProcessor:
                 decode_options["nr_deemphasis_high_tau"],
                 decode_options["expander_gain"],
                 decode_options["expander_ratio"],
+                decode_options["expander_env_detection"],
                 decode_options["expander_attack_tau"],
                 decode_options["expander_hold_tau"],
                 decode_options["expander_release_tau"],
@@ -1156,6 +1166,7 @@ class PostProcessor:
                 decode_options["nr_deemphasis_high_tau"],
                 decode_options["expander_gain"],
                 decode_options["expander_ratio"],
+                decode_options["expander_env_detection"],
                 decode_options["expander_attack_tau"],
                 decode_options["expander_hold_tau"],
                 decode_options["expander_release_tau"],
@@ -1285,6 +1296,7 @@ class PostProcessor:
         nr_deemphasis_high_tau,
         expander_gain,
         expander_ratio,
+        expander_env_detection,
         expander_attack_tau,
         expander_hold_tau,
         expander_release_tau,
@@ -1314,6 +1326,7 @@ class PostProcessor:
             final_audio_rate,
             expander_gain,
             expander_ratio,
+            expander_env_detection,
             expander_attack_tau,
             expander_hold_tau,
             expander_release_tau,
@@ -1374,6 +1387,7 @@ class PostProcessor:
         nr_deemphasis_high_tau,
         expander_gain,
         expander_ratio,
+        expander_env_detection,
         expander_attack_tau,
         expander_hold_tau,
         expander_release_tau,
@@ -1398,6 +1412,7 @@ class PostProcessor:
             final_audio_rate,
             expander_gain,
             expander_ratio,
+            expander_env_detection,
             expander_attack_tau,
             expander_hold_tau,
             expander_release_tau,
@@ -2369,6 +2384,8 @@ def build_decode_options_from_args(args):
     else:
         resampler_quality = DEFAULT_RESAMPLER_QUALITY
 
+    default_expander_env_detection = DEFAULT_ENV_DETECTION
+
     if args.format_8mm:
         tape_format = "8mm"
         default_expander_gain = DEFAULT_8MM_EXPANDER_GAIN
@@ -2431,26 +2448,18 @@ def build_decode_options_from_args(args):
         "normalize": args.normalize,
         "expander_gain": args.expander_gain or default_expander_gain,
         "expander_ratio": args.expander_ratio or default_expander_ratio,
-        "expander_attack_tau": args.expander_attack_tau
-        or default_expander_attack_tau,
+        "expander_env_detection": args.expander_env_detection or default_expander_env_detection,
+        "expander_attack_tau": args.expander_attack_tau or default_expander_attack_tau,
         "expander_hold_tau": args.expander_hold_tau or default_expander_hold_tau,
-        "expander_release_tau": args.expander_release_tau
-        or default_expander_release_tau,
-        "expander_weighting_low_tau": args.expander_weighting_low_tau
-        or default_expander_weighting_low_tau,
-        "expander_weighting_high_tau": args.expander_weighting_high_tau
-        or default_expander_weighting_high_tau,
-        "expander_weighting_low_pass": args.expander_weighting_low_pass
-        or default_expander_weighting_low_pass,
-        "expander_weighting_low_pass_transition": args.expander_weighting_low_pass_transition
-        or default_expander_weighting_low_pass_transition,
-        "nr_deemphasis_low_tau": args.nr_deemphasis_low_tau
-        or default_nr_deemphasis_low_tau,
-        "nr_deemphasis_high_tau": args.nr_deemphasis_high_tau
-        or default_nr_deemphasis_high_tau,
+        "expander_release_tau": args.expander_release_tau or default_expander_release_tau,
+        "expander_weighting_low_tau": args.expander_weighting_low_tau or default_expander_weighting_low_tau,
+        "expander_weighting_high_tau": args.expander_weighting_high_tau or default_expander_weighting_high_tau,
+        "expander_weighting_low_pass": args.expander_weighting_low_pass or default_expander_weighting_low_pass,
+        "expander_weighting_low_pass_transition": args.expander_weighting_low_pass_transition or default_expander_weighting_low_pass_transition,
+        "nr_deemphasis_low_tau": args.nr_deemphasis_low_tau or default_nr_deemphasis_low_tau,
+        "nr_deemphasis_high_tau": args.nr_deemphasis_high_tau or default_nr_deemphasis_high_tau,
         "deemphasis_low_tau": args.deemphasis_low_tau or default_deemphasis_low_tau,
-        "deemphasis_high_tau": args.deemphasis_high_tau
-        or default_deemphasis_high_tau,
+        "deemphasis_high_tau": args.deemphasis_high_tau or default_deemphasis_high_tau,
         "grc": args.GRC,
         "audio_rate": args.rate if not args.preview else 44100,
         "gain": args.gain,
