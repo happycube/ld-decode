@@ -34,23 +34,23 @@ jobs:
             ctest --output-on-failure -V
           '
 
-  build-appimage:
-    name: Build Linux AppImage
-    needs: functional-tests
-    permissions:
-      contents: write
-    uses: ./.github/workflows/appimage.yml
+#  build-appimage:
+#    name: Build Linux AppImage
+#    needs: functional-tests
+#    permissions:
+#      contents: write
+#    uses: ./.github/workflows/appimage.yml
 
-  build-macos-dmg:
-    name: Build macOS DMG
-    needs: functional-tests
-    permissions:
-      contents: write
-    uses: ./.github/workflows/macos-dmg.yml
+#  build-macos-dmg:
+#    name: Build macOS DMG
+#    needs: functional-tests
+#    permissions:
+#      contents: write
+#    uses: ./.github/workflows/macos-dmg.yml
 
-  build-windows-zip:
-    name: Build Windows ZIP
-    needs: functional-tests
-    permissions:
-      contents: write
-    uses: ./.github/workflows/windows-zip.yml
+#  build-windows-zip:
+#    name: Build Windows ZIP
+#    needs: functional-tests
+#    permissions:
+#      contents: write
+#    uses: ./.github/workflows/windows-zip.yml
