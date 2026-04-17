@@ -21,27 +21,26 @@
         # Use flake's built-in git properties
         # dirtyShortRev already includes "-dirty" suffix, so we need to handle it
         gitCommit = if self ? dirtyShortRev then self.dirtyShortRev else self.shortRev;
-        gitDirty = self ? dirtyRev;
         
         # Build PEP-440 compliant version string with git info
         # Format: base_version+git.commit[.dirty]
         # dirtyShortRev format is "abc1234-dirty", so replace "-" with "."
         fullVersion = "${version}+git.${builtins.replaceStrings ["-"] ["."] gitCommit}";
         
-        docsEnv = pkgs.python3.withPackages (ps: with ps; [
-          ps.mkdocs
-          ps.mkdocs-material
-          ps.mkdocs-awesome-nav
+        docsEnv = python.withPackages (ps: with ps; [
+          mkdocs
+          mkdocs-material
+          mkdocs-awesome-nav
         ]);
 
-        cargoDeps = pkgs.rust.rustPlatform.fetchCargoVendor {
-          name = "${pname}-${version}";
-          hash = "sha256-miW//pnOmww2i6SOGbkrAIdc/JMDT4FJLqdMFojZeoY=";
+        cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+          inherit pname version;
+          src = ./.;
+          hash = "sha256-yryE7R0A95Uok6Pv6/UBsIG8p9pvaP3Nv8AGQugrEOc=";
         };
 
         vhs-decode = pythonPackages.buildPythonPackage {
-          inherit pname;
-          inherit version;
+          inherit pname version cargoDeps;
           
           src = ./.;
           
@@ -54,14 +53,15 @@
             setuptools-rust
             setuptools-scm
             wheel
-            pkgs.git
             cython
             pkgs.rustc
           ];
           
           propagatedBuildInputs = with pythonPackages; [
             av
+            cython
             matplotlib
+            noisereduce
             numba
             numpy
             scipy
@@ -71,6 +71,12 @@
             soxr
           ];
           
+          # static-ffmpeg is not in nixpkgs; ffmpeg is provided via pkgs.ffmpeg
+          postPatch = ''
+            substituteInPlace pyproject.toml \
+              --replace-fail '    "static-ffmpeg",' ""
+          '';
+
           # Write PEP-440 compliant version file with git info
           preBuild = ''
             echo "${fullVersion}" > lddecode/version
@@ -83,7 +89,6 @@
             description = "Software defined LaserDisc and videotape decoder";
             homepage = "https://github.com/oyvindln/vhs-decode";
             license = licenses.gpl3Plus;
-            maintainers = [ ];
           };
         };
       in
@@ -93,7 +98,7 @@
           vhs-decode = vhs-decode;
           docs = pkgs.stdenv.mkDerivation {
             pname = "ld-decode-docs";
-            version = version;
+            inherit version;
             src = ./.;
             nativeBuildInputs = [ docsEnv ];
             buildPhase = ''mkdocs build'';
@@ -108,7 +113,7 @@
           };
           vhs-decode = {
             type = "app";
-            program = "${vhs-decode}/bin/ld-decode";
+            program = "${vhs-decode}/bin/vhs-decode";
           };
           cvbs-decode = {
             type = "app";
@@ -129,12 +134,6 @@
             pkgs.cmake
             pkgs.ffmpeg
             vhs-decode
-            python
-            pythonPackages.av
-            pythonPackages.matplotlib
-            pythonPackages.numba
-            pythonPackages.numpy
-            pythonPackages.scipy
             pythonPackages.jupyter
             pythonPackages.pandas
             pythonPackages.pytest
