@@ -13,7 +13,8 @@ import signal
 import time
 import warnings
 
-from multiprocessing import Event, Pipe, Process
+import threading
+from queue import Queue
 
 from numba import jit, njit
 import numba
@@ -238,21 +239,9 @@ def make_loader(filename, inputfreq=None):
         or filename.endswith(".flac")
         or filename.endswith(".vhs")
     ):
-        try:
-            return LoadLDF(filename)
-        except FileNotFoundError:
-            print(
-                "ld-ldf-reader not found in PATH, using ffmpeg instead.",
-                file=sys.stderr,
-            )
-        except Exception:
-            # print("Please build and install ld-ldf-reader in your PATH for improved performance", file=sys.stderr)
-            traceback.print_exc()
-            print(
-                "Failed to load with ld-ldf-reader, trying ffmpeg instead.",
-                file=sys.stderr,
-            )
+        return LoadLDF(filename)
 
+    # Fallback to LoadFFmpeg for other formats (with stdin input)
     return LoadFFmpeg()
 
 
@@ -478,7 +467,7 @@ class LoadFFmpeg:
 
 
 class LoadLDF:
-    """Load samples from an .ldf file, using ld-ldf-reader which itself uses ffmpeg."""
+    """Load samples from an .ldf file, using ld-ldf-reader-py which itself uses ffmpeg."""
 
     def __init__(self, filename, input_args=[], output_args=[]):
         self.input_args = input_args
@@ -486,7 +475,7 @@ class LoadLDF:
 
         self.filename = filename
 
-        # The number of the next byte ld-ldf-reader will return
+        # The number of the next byte ld-ldf-reader-py will return
 
         self.position = 0
         # Keep a buffer of recently-read data, to allow seeking backwards by
@@ -497,7 +486,7 @@ class LoadLDF:
 
         self.ldfreader = None
 
-        # ld-ldf-reader subprocess
+        # ld-ldf-reader-py subprocess
         self.ldfreader = self._open(0)
 
     def __del__(self):
@@ -528,13 +517,38 @@ class LoadLDF:
             traceback.print_exc()
             pass
 
+    @staticmethod
+    def _find_ldf_reader():
+        """Find ld-ldf-reader-py, checking the repo root as a fallback."""
+        import shutil
+
+        if shutil.which("ld-ldf-reader-py"):
+            return "ld-ldf-reader-py"
+
+        # Fall back to the script next to this package (i.e. the repo root)
+        repo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ld-ldf-reader-py")
+        if os.path.isfile(repo_path):
+            return repo_path
+
+        raise FileNotFoundError("Cannot find ld-ldf-reader-py on PATH or in the source tree")
+
     def _open(self, sample):
         self._close()
 
-        command = ["ld-ldf-reader", self.filename, str(sample)]
+        if sys.platform == "win32":
+            # On Windows, .bat wrappers cannot be launched directly by CreateProcess.
+            # Use the current Python interpreter to run ldf_reader as a module instead.
+            # sys.executable is always valid, and the subprocess inherits PYTHONHOME/
+            # PYTHONPATH from the parent process so lddecode is importable.
+            command = [
+                sys.executable, "-m", "lddecode.ldf_reader",
+                "--quiet", "--start-offset", str(sample), self.filename,
+            ]
+        else:
+            command = [self._find_ldf_reader(), "--quiet", "--start-offset", str(sample), self.filename]
 
         ldfreader = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         self.position = sample * 2
         self.rewind_buf = b""
@@ -635,52 +649,6 @@ def ac3_pipe(outname: str):
                                       stdout=processes[-1].stdin))
 
     return processes, processes[-1].stdin
-
-# Git helpers
-
-def get_version():
-    """ get version info stashed in this directory's version file """
-
-    try:
-        # get the directory this file was pulled from, then add /version
-        scriptdir = os.path.dirname(os.path.realpath(__file__))
-        fd = open(os.path.join(scriptdir, 'version'), 'r')
-
-        fdata = fd.read()
-        return fdata.strip() # remove trailing \n etc
-    except (FileNotFoundError, OSError):
-        # Just return 'unknown' if we fail to find anything.
-        return "unknown"
-
-
-def get_git_info():
-    """ Return git branch and commit for current directory, if available. """
-
-    branch = "UNKNOWN"
-    commit = "UNKNOWN"
-
-    version = get_version()
-    if ':' in version:
-        branch, commit = version.split(':')[0:2]
-
-    try:
-        sp = subprocess.run(
-            "git rev-parse --abbrev-ref HEAD", shell=True, capture_output=True
-        )
-        if not sp.returncode:
-            branch = sp.stdout.decode("utf-8").strip()
-
-        sp = subprocess.run(
-            "git rev-parse --short HEAD", shell=True, capture_output=True
-        )
-        if not sp.returncode:
-            commit = sp.stdout.decode("utf-8").strip()
-    except Exception:
-        print("Something went wrong when trying to read git info...", file=sys.stderr)
-        traceback.print_exc()
-        pass
-
-    return branch, commit
 
 
 # Essential (or at least useful) standalone routines and lambdas
@@ -1403,34 +1371,41 @@ class FieldInfo:
 
 class JSONDumper:
     def __init__(self, ldd, outname):
-        self._rx, self._tx = Pipe(False)
-        self._writing = Event()
+        # Use a thread instead of a subprocess to avoid macOS multiprocessing
+        # spawn issues (forking after threads are started is unsafe on macOS,
+        # and spawn re-runs the entry point causing argparse errors).
+        self._queue = Queue()
+        self._writing = threading.Event()
         self._build_json = ldd.build_json
         self._get_field_info = ldd.fieldinfo.read
 
         self._outname = outname
-        self._dumper = Process(target=JSONDumper._consume, args=(self._rx, self._writing, self._outname, ldd.verboseVITS,), name="lddecode-json-dumper")
+        self._dumper = threading.Thread(
+            target=JSONDumper._consume,
+            args=(self._queue, self._writing, self._outname, ldd.verboseVITS),
+            name="lddecode-json-dumper",
+            daemon=True,
+        )
         self._dumper.start()
-    
+
     def write(self):
         if not self._writing.is_set():
             json_data = self._build_json()
             field_info = self._get_field_info()
-            self._tx.send(json_data)
-            self._tx.send(field_info)
+            self._queue.put((json_data, field_info))
 
     def close(self):
         json_data = self._build_json()
         field_info = self._get_field_info()
-        self._tx.send(json_data)
-        self._tx.send(field_info)
-
-        self._tx.send(None)
+        self._queue.put((json_data, field_info))
+        self._queue.put(None)  # sentinel to stop the consumer
         self._dumper.join()
 
     @staticmethod
-    def _consume(conn, ready, outname, verboseVITS):
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    def _consume(queue, ready, outname, verboseVITS):
+        # Signal handling is intentionally omitted here: signal handlers can
+        # only be set from the main thread in Python. The main thread already
+        # ignores SIGINT during LDdecode setup, so this thread is unaffected.
 
         indent = 4 if verboseVITS else None
         linebreak = '\n' if verboseVITS else ''
@@ -1440,13 +1415,13 @@ class JSONDumper:
 
         while True:
             try:
-                jsondict = conn.recv()
-                if jsondict is None:
+                item = queue.get()
+                if item is None:
                     break
 
-                next_field_info = conn.recv()
+                jsondict, next_field_info = item
                 ready.set()
-            except (InterruptedError, KeyboardInterrupt, EOFError):
+            except (InterruptedError, KeyboardInterrupt):
                 break
 
             # json serialize each field info object to a string

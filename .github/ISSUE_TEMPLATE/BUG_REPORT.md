@@ -15,7 +15,7 @@ assignees: ''
 - [ ] I have searched the issues page for any duplicate issues open or closed and confirmed that this bug has not been reported before.
 - [ ] I have tested the issue with the current build.
 - [ ] I have attached log files, uploaded sample data, and commands used so that the issue can be easily reproduced by the developers.
-
+- [ ] This issues is only related to ld-decode - see the [Decode-Orc Issues](https://github.com/simoninns/decode-orc/issues) if your issue is tool-chain related.
 
 ### Bug Description
 

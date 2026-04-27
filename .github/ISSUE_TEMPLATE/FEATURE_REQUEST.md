@@ -11,6 +11,15 @@ assignees: ''
 <!--
   Provide a clear and concise description of what the problem is.
   For example, "I'm always frustrated when..."
+
+  Note that feature request for Decode-Orc should be placed in the
+  Decode-Orc repo's issues.
+-->
+
+### Is your proposal already in the issue tickets?
+
+<!--
+  Please check https://github.com/happycube/ld-decode & https://github.com/oyvindln/vhs-decode/issues"
 -->
 
 ### Is your proposal related to tbc-video-export?

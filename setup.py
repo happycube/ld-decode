@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from setuptools import setup
 import shutil
 import os
@@ -56,9 +58,8 @@ setup(
     # of including without making them modules.
     scripts=[
         "ld-cut",
-        "cx-expander",
+        "scripts/cx-expander",
         "decode.py",
-        "decode-launcher",
     ],
     # scripts=[
     #    'cx-expander',

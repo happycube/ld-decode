@@ -1,8 +1,12 @@
 <img src="assets/icons/Cross-Platform-VHS-Decode-Trasparent.png" width="300" height="">
 
+> [!Important]
+> If in doubt read the comprehensive [documentation web-site](https://happycube.github.io/ld-decode/)!
+
 
 # VHS-Decode (It does more than VHS now!)
 
+Check the documentation first, the [discord server](https://discord.com/invite/pVVrrxd) second and then raise issues.
 
 A fork of [LD-Decode](https://github.com/happycube/ld-decode), the decoding software powering the [Domesday86 Project](https://www.domesday86.com/).  
 
@@ -13,6 +17,9 @@ This version has been modified to work with the differences found in [FM RF sign
 > [!CAUTION]
 > FM RF Archival captures and capturing is not to be confused with the TV Modulator/Demodulator pack's signals, i.e the **"antenna connectors"** on the back of a VCR!
 
+- **[vhs-decode](https://github.com/oyvindln/vhs-decode/wiki)** (for videotape formats)
+- **[cvbs-decode](https://github.com/oyvindln/vhs-decode/wiki/CVBS-Composite-Decode)** (for composite video)
+- **[hifi-decode](https://github.com/oyvindln/vhs-decode/wiki/hifi-decode)** (for audio processing)
 
 <img src="assets/images/ld-analyse-vhs-decode-svhs-&-scopes.png" width="" height="">
 
@@ -21,6 +28,7 @@ This version has been modified to work with the differences found in [FM RF sign
 
 # [Supported Tape Formats](https://github.com/oyvindln/vhs-decode/wiki/Tape-Support-List)
 
+Note that the main repo is under constant development and, while we strive to keep it stable, it is a part of the active development cycle.  Contributors maintain [ready-made binary builds](https://github.com/oyvindln/vhs-decode/releases) which are far more suitable for end-users and are available for platforms such as Windows and Apple MacOS.  The main ld-decode repo targets only Ubuntu (generally the current LTS version - although it's possible to compile the project on most Linux flavors).
 
 **VHS** 625-line and 525-line - NTSC, NTSC-J, PAL and PAL-M. **Generally well supported**
 
@@ -108,15 +116,18 @@ However, the only **critical requirement** is available test points or a head am
 > - Its good practice to avoid cross contamination of tapes, especially if dealing with mouldy or contaminated tapes.  
 > - It also helps to make sure to re-lubricate metal and plastic moving joints cogs and bearings with appropriate greases and oils to avoid mechanical failures. 
 
+# Want to get involved?
 
 ## An RF Capture Device
 
+If you are interested in contributing or have general questions please join the [Domesday86 Discord server](https://discord.gg/pVVrrxd) which has the entire family of decode projects developers on it (or IRC if you must) as the Facebook group is mostly inactive.
 
 > [!TIP]  
 > Currently there are a couple of standardised hardware workflows, but.. [you need to read and select one based off what format(s) you are actually going to be capturing](https://github.com/oyvindln/vhs-decode/wiki/Workflow-Guide).
 
 <img src="https://github.com/oyvindln/vhs-decode/wiki/assets/images/Hardware/DdD-Rev3-CX-White-Sony-ILCE-7RM3-2022.12.20-21.54.48.png" width="600" height="">
 
+There is also a subreddit [r/vhs-decode](https://new.reddit.com/r/vhsdecode/) that is fairly active focused around videotape capture & decoding.
 
 ## [CX Card & CXADC](https://github.com/oyvindln/vhs-decode/wiki/CX-Cards) (30-250USD) 
 
@@ -303,170 +314,12 @@ Decoders & TBC Video Export has a mainly self-contained binary appimage package 
 
 
 </details>
-
-
 <details closed>
-<summary>Build from Source Linux (Ubuntu/Debian-based)</summary>
+<summary>Build from Source</summary>
+see [BUILD.md](BUILD.md)
 <br>
-
-
-Install all dependencies required by the decode suite.
-
-> [!TIP]
-> If you are having installation problems or want automated installation assistance, use Agent mode with [Warp terminal](https://app.warp.dev/referral/WDW45K). If it manages to solve an installation issue please make an issue ticket, and post your entire start to finish process dialogue on the terminal, this allows documentation to be updated.
-
-Install all dependencies required by LD-Decode and VHS-Decode:
-
-    sudo apt install git qtbase5-dev libqwt-qt5-dev libfftw3-dev libavformat-dev libavcodec-dev libavutil-dev ffmpeg pv pkg-config make cmake sox pipx g++ python3-dev
-
-Install [Rust Compiler](https://www.rust-lang.org/tools/install) (required for decode v0.3.5 onwards)
-
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
-Verify Rust Compiler 
-
-    source "$HOME/.cargo/env" && echo "Rust version: $(rustc --version)" && echo "Cargo version: $(cargo --version)"
-
-Ubuntu 22.04/Linux Mint 21/Debian may also need this library installed if one wants to use the GUI version of hifi-decode:
-
-    sudo apt install libxcb-cursor0
-
-For Arch Linux
-
-    pacman -S base-devel git qt5-base qwt fftw ffmpeg pv cmake sox python python-pipx
-
-Set up pipx
-
-    pipx ensurepath
-
-Install TBC-Video-Export
-
-    pipx install tbc-video-export
-
-(There is also [self-contained builds](https://github.com/JuniorIsAJitterbug/tbc-video-export/releases) if install issues arise)
-
-Optional dependencies for GPU (Nvidia Cards) FLAC compression support:
-
-    sudo apt install make ocl-icd-opencl-dev mono-runtime
-
-Also Requires FlaLDF [Download & Install via .deb for Linux](https://github.com/TokugawaHeavyIndustries/FlaLDF/releases/tag/v0.1b)
-
-
-### NOTES!!
-
-
-NixOS Linux has pre-made [nur-packages](https://github.com/JuniorIsAJitterbug/nur-packages) for vhs-decode, cxadc and outer tools within the projects.
-
-HiFi-Decode preview function - the python library sounddevice requires portaudio (libportaudio2 on Ubuntu). This is not included in the self-contained binaries and has to be installed locally if not already installed. (Included with most desktop environments.)
-
-Debian/Ubuntu does not have a qt6 version of qwt in repositories as of yet so you have to inform the build script to use Qt5 if both qt5 and qt6 are installed with `-DUSE_QT_VERSION=5` as it might otherwise try to compile with qt6 instead and failing to locate qwt. The option is otherwise not needed.
-
-
-## Build VHS-Decode & LD-Tools Suite
-
-
-The vhs-decode repository also has hifi-decode, cvbs-decode, ld-decode included.
-
-Download VHS-Decode:
-
-    git clone https://github.com/oyvindln/vhs-decode.git vhs-decode
-
-Install VHS-Decode:
-
-    cd vhs-decode
-
-Build and install vhs-decode via pipx, using **one** of the below scripts.
-
-### Base installation
-
-    pipx install .
-
-### With hifi-decode gui
-
-    pipx install .[hifi_gui_qt6]
-
-### With Intel specific cpu optimizations
-
-    pipx install .[intel]
-
-### If updating or reinstalling, you may need to add the `--force` flag to overwrite/update the previous installation.
-
-    pipx install .[intel,hifi_gui_qt6] --force
-
-Compile and Install ld-tools suite: (Required)
-
-    mkdir build2
-    cd build2
-    CXXFLAGS="-march=native" CFLAGS="-march=native" cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_QT_VERSION=5
-    make -j4
-    sudo make install
-
-Go back to the main directory with 
-
-    cd .. 
-
-
-## How to Update
-
-
-To update your local repository enter `git pull` into the terminal while inside the vhs-decode directory, and then do `pipx install .[hifi_gui_qt6] --force`  - it will overwrite your previous installation and deploy the current version of the decoders.
-
-To update the tools to the latest versions, the steps under "Compile and Install ld-tools suite: (Required)" has to be re-ran after a `git pull`. The tools are not updated very often.
-
-
-# Usage
-
-
-Note with WSL2 & Ubuntu, `./` in front of applications and scripts may be needed to run them or to run scripts within the folder.
-### Decode Launcher (Qt6)
-
-For a basic click-to-open launcher that lets you select common tools and open them in a terminal (or start native GUI tools), use:
-
-    decode-launcher
-
-or from source checkout:
-
-    ./decode-launcher
-You can drag and drop RF input files onto the launcher window or input field, and drop `.json` files to auto-fill the params JSON field.
-
-Current native GUI launch targets include:
-
-* `hifi-decode --gui`
-* `filter-tune`
-
-Use `cd vhs-decode` to enter into the directory to run commands, `cd ..` to go back a directory.
-
-Use <kbd>Ctrl</kbd>+<kbd>C</kbd> to stop the current process.
-
-You don't actually type `<` and `>` on your input & output files.
-
-
 </details>
 
-
-<details closed>
-<summary>Build from Source Windows</summary>
-<br>
-
-1. Install Python 3.13
-   * Download the [python installer](https://www.python.org/downloads/)
-   * **Make sure to check the box requesting Python be added to the PATH**
-1. Install Visual Studio Build Tools for 
-   * Download the [Visual Studio Installer](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-   * In the installer, select `Visual Studio Build Tools 2022`
-     * If there are multiple versions, select the latest year
-   * Click on the `Desktop Development with C++` and a list of default components will be selected
-   * Click `Install` to install them
-1. Install Rust
-   * Download the [Rust installer](https://www.rust-lang.org/tools/install) follow the wizard to install Rust
-1. Build vhs-decode
-   * Clone the repo if you have not already done so
-   * `cd C:\path\to\vhs-decode`
-   * `pip install .[hifi_gui_qt6]`
-1. Now you will be able to run the decode suite from the source code.
-   * Example `python C:\path\to\vhs-decode\decode.py hifi --gui`
-
-</details>
 
 
 # FM RF Capture 

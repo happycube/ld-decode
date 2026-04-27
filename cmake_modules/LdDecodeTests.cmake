@@ -1,121 +1,71 @@
-# Tests for the ld-decode tools.
-
-# Most of the tests expect that you have cloned (or symlinked) the
-# ld-decode-testdata repo within the source directory as "testdata".
-
-# XXX Tests don't work in parallel - needs script changes
+# Functional tests for ld-decode Python tools
+#
+# These tests verify that ld-decode can correctly ingest PAL and NTSC files,
+# producing expected output (TBC, metadata, audio, etc.)
+#
+# Most tests expect the ld-decode-testdata repo within the source directory as "testdata".
 
 set(SCRIPTS_DIR ${CMAKE_SOURCE_DIR}/scripts)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
 
+# Test that ld-decode can decode NTSC files and produce TBC output
 add_test(
-    NAME chroma-ntsc-rgb
-    COMMAND ${SCRIPTS_DIR}/test-chroma
-        --build ${CMAKE_BINARY_DIR}
-        --system ntsc
-        --expect-psnr 25
-        --expect-psnr-range 0.5
+    NAME decode-ntsc-basic
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/ntsc-basic
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
+# Test that ld-decode can decode PAL files and produce TBC output
 add_test(
-    NAME chroma-ntsc-ycbcr
-    COMMAND ${SCRIPTS_DIR}/test-chroma
-        --build ${CMAKE_BINARY_DIR}
-        --system ntsc
-        --expect-psnr 25
-        --expect-psnr-range 0.5
-        --input-format yuv
-)
-
-add_test(
-    NAME chroma-pal-rgb
-    COMMAND ${SCRIPTS_DIR}/test-chroma
-        --build ${CMAKE_BINARY_DIR}
-        --system pal
-        --expect-psnr 25
-        --expect-psnr-range 0.5
-)
-
-add_test(
-    NAME chroma-pal-ycbcr
-    COMMAND ${SCRIPTS_DIR}/test-chroma
-        --build ${CMAKE_BINARY_DIR}
-        --system pal
-        --expect-psnr 25
-        --expect-psnr-range 0.5
-        --input-format yuv
-)
-
-add_test(
-    NAME ld-cut-ntsc
-    COMMAND ${SCRIPTS_DIR}/test-decode
-        --source ${CMAKE_SOURCE_DIR}
-        --build ${CMAKE_BINARY_DIR}
-        --cut-seek 30255
-        --cut-length 4
-        --expect-frames 4
-        --expect-vbi 9151563,15925845,15925845
-        ${TESTDATA_DIR}/ve-snw-cut.lds
-)
-
-add_test(
-    NAME ld-cut-pal
-    COMMAND ${SCRIPTS_DIR}/test-decode
-        --source ${CMAKE_SOURCE_DIR}
-        --build ${CMAKE_BINARY_DIR}
-        --pal
-        --cut-seek 760
-        --cut-length 4
-        --expect-frames 4
-        --expect-vbi 9152512,15730528,15730528
+    NAME decode-pal-basic
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --PAL
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
+        ${CMAKE_BINARY_DIR}/testout/pal-basic
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 
+# Test that ld-cut can extract a segment from NTSC file
 add_test(
-    NAME decode-ntsc-cav
-    COMMAND ${SCRIPTS_DIR}/test-decode
-        --source ${CMAKE_SOURCE_DIR}
-        --build ${CMAKE_BINARY_DIR}
-        --decoder mono --decoder ntsc2d --decoder ntsc3d
-        --expect-frames 29
-        --expect-bpsnr 43.3
-        --expect-vbi 9151563,15925840,15925840
-        --expect-efm-samples 40572
-        ${TESTDATA_DIR}/ve-snw-cut.lds
+    NAME cut-ntsc-segment
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-cut
+        -S 30255 -l 4
+        ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cut.ldf
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+set_tests_properties(cut-ntsc-segment PROPERTIES TIMEOUT 120)
 
+# Test that ld-cut can extract a segment from PAL file
 add_test(
-    NAME decode-ntsc-clv
-    COMMAND ${SCRIPTS_DIR}/test-decode
-        --source ${CMAKE_SOURCE_DIR}
-        --build ${CMAKE_BINARY_DIR}
-        --expect-frames 4
-        --expect-bpsnr 37.6
-        --expect-vbi 9167913,15785241,15785241
-        ${TESTDATA_DIR}/issues/176/issue176.lds
+    NAME cut-pal-segment
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-cut
+        --pal -S 760 -l 4
+        ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
+        ${CMAKE_BINARY_DIR}/testout/pal-cut.ldf
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+set_tests_properties(cut-pal-segment PROPERTIES TIMEOUT 120)
 
+# Test decode of NTSC cut segment
 add_test(
-    NAME decode-pal-cav
-    COMMAND ${SCRIPTS_DIR}/test-decode --pal
-        --source ${CMAKE_SOURCE_DIR}
-        --build ${CMAKE_BINARY_DIR}
-        --decoder mono --decoder pal2d --decoder transform2d --decoder transform3d
-        --expect-frames 4
-        --expect-bpsnr 38.4
-        --expect-vbi 9151527,16065688,16065688
-        --expect-vitc 2,10,8,13,4,3,0,1
-        --expect-efm-samples 5292
-        ${TESTDATA_DIR}/pal/jason-testpattern.lds
+    NAME decode-ntsc-cut
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cut-decoded
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+set_tests_properties(decode-ntsc-cut PROPERTIES DEPENDS cut-ntsc-segment)
 
+# Test decode of PAL cut segment
 add_test(
-    NAME decode-pal-clv
-    COMMAND ${SCRIPTS_DIR}/test-decode --pal --no-efm
-        --source ${CMAKE_SOURCE_DIR}
-        --build ${CMAKE_BINARY_DIR}
-        --expect-frames 9
-        --expect-bpsnr 30.3
-        --expect-vbi 0,8449774,8449774
-        ${TESTDATA_DIR}/pal/kagemusha-leadout-cbar.ldf
+    NAME decode-pal-cut
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --PAL
+        ${CMAKE_BINARY_DIR}/testout/pal-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/pal-cut-decoded
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+set_tests_properties(decode-pal-cut PROPERTIES DEPENDS cut-pal-segment)

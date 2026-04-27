@@ -1,5 +1,6 @@
 import math
 import traceback
+import os
 import numpy as np
 import scipy.signal as sps
 
@@ -14,6 +15,7 @@ import vhsdecode.formats as vhs_formats
 import vhsdecode.sync as sync
 from vhsdecode.addons.chromasep import ChromaSepClass
 from vhsdecode.formats import parent_system
+from vhsdecode.dbwriter import DBWriter
 
 from lddecode.core import npfft
 
@@ -573,6 +575,15 @@ class CVBSDecode(ldd.LDdecode):
             self.rf, self.infile, self.freader, None, num_worker_threads=self.numthreads
         )
 
+        self._db_writer = DBWriter() if extra_options.get("write_db") else None
+
+        # disconnect and nuke db file to prevent issue when loading with orc
+        # TODO: add option to prevent creating db in the first place..
+        if not self._db_writer:
+            self.dbconn.close()
+            if os.path.exists(fname_out + '.tbc.db'):
+                os.unlink(fname_out + '.tbc.db')
+
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice):
         data = f.output_to_ire(f.dspicture[snrslice])
@@ -639,6 +650,27 @@ class CVBSDecode(ldd.LDdecode):
             traceback.print_exc()
             print("Cannot build json: %s" % e)
             return None
+
+    def writeout(self, dataset: tuple):
+        f, fi, picture, audio, efm = dataset
+
+        # Remove fields that are currently not used to cut down on space usage.
+        # the qt tools will load them as 0 with the current code
+        # if they don't exist.
+        if "audioSamples" in fi:
+            del fi["audioSamples"]
+
+        self.fieldinfo.append(fi)
+
+        if self._db_writer:
+            if not self.capture_id:
+                self.build_sqlite_metadata()
+            self._db_writer.write_field(fi, self.dbconn, self.doDOD, self.capture_id)
+            # NOTE: this calls commit so we don't call it in dbwriter.write_field.
+            self.build_sqlite_metadata()
+
+        self.outfile_video.write(picture)
+        self.fields_written += 1
 
 
 class CVBSDecodeInner(ldd.RFDecode):

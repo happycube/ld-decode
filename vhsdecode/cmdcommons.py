@@ -224,6 +224,12 @@ def common_parser_inner(parser, use_gui=False, default_threads=DEFAULT_THREADS):
         default=False,
         help="Overwrite existing decode files.",
     )
+    file_options_group.add_argument(
+        "--write_db",
+        dest="write_db",
+        action="store_true",
+        default=False,
+        help="Enable sqlite output (slow on hdds), not finalized, option may change")
     input_format_group = parser.add_argument_group("Input format")
     input_format_group.add_argument(
         "-f",
@@ -405,6 +411,7 @@ def get_extra_options(args, checkagc=False):
         "debug": args.debug,
         "wow_level_adjust_smoothing": args.wow_level_adjust_smoothing,
         "wow_interpolation_method": args.wow_interpolation_method,
+        "write_db": args.write_db
     }
     if checkagc:
         extra_options["useAGC"]: args.AGC and not args.noAGC

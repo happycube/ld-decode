@@ -48,6 +48,7 @@ from vhsdecode.compute_video_filters import (
 from vhsdecode import compute_video_filters as cvf
 from vhsdecode.demodcache import DemodCacheTape
 from vhsdecode.rust_utils import sosfiltfilt_rust
+from vhsdecode.dbwriter import DBWriter
 
 
 def is_secam(system: str):
@@ -163,8 +164,26 @@ class VHSDecode(ldd.LDdecode):
             num_worker_threads=self.numthreads,
         )
 
+        self._db_writer = DBWriter() if extra_options.get("write_db") else None
+        # disconnect and nuke db file to prevent issue when loading with orc
+        # TODO: add option to prevent creating db in the first place..
+        if not self._db_writer and extra_options.get("orc"):
+            self.dbconn.close()
+            if os.path.exists(fname_out + ".tbc.db"):
+                os.unlink(fname_out + ".tbc.db")
+        # self._io_thread_pool = ThreadPoolExecutor(2)
+
         if fname_out is not None and self.rf.options.write_chroma:
-            self.outfile_chroma = open(fname_out + "_chroma.tbc", "wb")
+            extension = "_chroma.tbc"
+            if extra_options.get("orc"):
+                extension = ".tbcc"
+                self.outfile_video.close()
+                # Delete empty .tbc File
+                # TODO: Fix this upstream so we don't
+                # have to do this...
+                os.unlink(fname_out + ".tbc")
+                self.outfile_video = open(fname_out + ".tbcy", "wb")
+            self.outfile_chroma = open(fname_out + extension, "wb")
         else:
             self.outfile_chroma = None
 
@@ -365,6 +384,13 @@ class VHSDecode(ldd.LDdecode):
             del fi["audioSamples"]
 
         self.fieldinfo.append(fi)
+
+        if self._db_writer:
+            if not self.capture_id:
+                self.build_sqlite_metadata()
+            self._db_writer.write_field(fi, self.dbconn, self.doDOD, self.capture_id)
+            # NOTE: this calls commit so we don't call it in dbwriter.write_field.
+            self.build_sqlite_metadata()
 
         self.outfile_video.write(picturey)
         if self.rf.options.write_chroma:

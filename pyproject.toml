@@ -36,6 +36,7 @@ dependencies = [
     "soundfile>=0.13.1",
     "soxr",
     "static-ffmpeg",
+    "av",
 ]
 dynamic = ["version"]
 # version = "0.2.1dev0"
