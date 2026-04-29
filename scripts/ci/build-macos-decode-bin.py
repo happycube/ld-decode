@@ -80,20 +80,20 @@ PyInstaller.__main__.run(
         "--onedir",
         "--windowed",
         "--name",
-        "vhs-decode",
+        "decode",
     ]
 )
-macos_dir = Path("dist/vhs-decode.app/Contents/MacOS")
-source_binary = macos_dir / "vhs-decode"
+macos_dir = Path("dist/decode.app/Contents/MacOS")
 target_binary = macos_dir / "decode"
-if source_binary.exists():
+legacy_binary = macos_dir / "vhs-decode"
+if legacy_binary.exists():
     if target_binary.exists():
         target_binary.unlink()
-    move(str(source_binary), str(target_binary))
+    move(str(legacy_binary), str(target_binary))
 elif not target_binary.exists():
-    raise FileNotFoundError(f"Expected bundled binary at {source_binary} or {target_binary}")
+    raise FileNotFoundError(f"Expected bundled binary at {target_binary} or {legacy_binary}")
 
-with Path("dist/vhs-decode.app/Contents/Info.plist").open(mode="rb+") as file:
+with Path("dist/decode.app/Contents/Info.plist").open(mode="rb+") as file:
     plist = plistlib.load(file)
 
     # update binary location
@@ -104,4 +104,4 @@ with Path("dist/vhs-decode.app/Contents/Info.plist").open(mode="rb+") as file:
     file.truncate()
 
 # re-sign
-osxutils.sign_binary("dist/vhs-decode.app", deep=True)
+osxutils.sign_binary("dist/decode.app", deep=True)

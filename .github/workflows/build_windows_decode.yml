@@ -5,7 +5,7 @@ on:
 
 jobs:
   build-decode:
-    name: Build vhs-decode (x86_64)
+    name: Build decode (x86_64)
     runs-on: windows-2022
     env:
         SETUPTOOLS_RUST_CARGO_PROFILE: release
@@ -33,6 +33,6 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: vhs-decode_windows_x86_64
+          name: decode_windows_x86_64
           path: dist/decode.exe
           if-no-files-found: error

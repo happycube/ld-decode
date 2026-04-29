@@ -22,7 +22,7 @@ jobs:
             # Use a Python version with reliable wheels for llvmlite/numba on Intel macOS
             python: "3.11"
 
-    name: Build vhs-decode (${{ matrix.arch }})
+    name: Build decode (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -56,7 +56,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: brew install create-dmg libsndfile
+        run: brew install create-dmg libsndfile libomp
 
       - name: Install LLVM (Intel only)
         if: matrix.arch == 'x86_64'
@@ -73,6 +73,7 @@ jobs:
           if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
             export LLVM_CONFIG="$(brew --prefix llvm@20)/bin/llvm-config"
             export CMAKE_PREFIX_PATH="$(brew --prefix llvm@20)"
+            export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix libomp)/lib:$(brew --prefix llvm@20)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
             # Keep Intel on a numba/llvmlite pair with published x86_64 wheels.
             # Installing this first avoids llvmlite source builds with setuptools API incompatibilities.
             python3 -m pip install "numba==0.60.0"
@@ -89,8 +90,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+            export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix libomp)/lib:$(brew --prefix llvm@20)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
+          fi
 
-          APP_BIN="dist/vhs-decode.app/Contents/MacOS/decode"
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
           file "${APP_BIN}"
           BIN_ARCHS="$(lipo -archs "${APP_BIN}")"
           echo "Detected architectures: ${BIN_ARCHS}"
@@ -112,25 +116,25 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          DMG_NAME="vhs-decode-${SAFE_VERSION}-${{ matrix.arch }}-macos.dmg"
+          DMG_NAME="decode-${SAFE_VERSION}-${{ matrix.arch }}-macos.dmg"
           echo "DMG_NAME=${DMG_NAME}" >> "${GITHUB_ENV}"
           create-dmg \
-            --volname "vhs-decode" \
+            --volname "decode" \
             --volicon "assets/icons/vhs-decode.icns" \
             --window-pos 200 128 \
             --window-size 600 300 \
             --icon-size 100 \
-            --icon "vhs-decode.app" 172 120 \
+            --icon "decode.app" 172 120 \
             --app-drop-link 425 128 \
             --skip-jenkins \
-            --hide-extension "vhs-decode.app" \
+            --hide-extension "decode.app" \
             "${DMG_NAME}" \
-            "dist/vhs-decode.app"
+            "dist/decode.app"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: vhs-decode_macos_${{ matrix.arch }}
+          name: decode_macos_${{ matrix.arch }}
           path: ${{ env.DMG_NAME }}
           if-no-files-found: error
       - name: Upload DMG to Release
