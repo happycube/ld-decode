@@ -86,30 +86,56 @@ jobs:
       - name: Build binary
         run: |
           python3 scripts/ci/build-macos-decode-bin.py
-      - name: Smoke test bundled binary
+      - name: Configure x86 runtime library path
+        if: matrix.arch == 'x86_64'
         shell: bash
         run: |
           set -euxo pipefail
-          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
-            export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix libomp)/lib:$(brew --prefix llvm@20)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
-          fi
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix libomp)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}" >> "${GITHUB_ENV}"
 
+      - name: Smoke test bundled binary path and architecture
+        shell: bash
+        run: |
+          set -euxo pipefail
           APP_BIN="dist/decode.app/Contents/MacOS/decode"
           file "${APP_BIN}"
           BIN_ARCHS="$(lipo -archs "${APP_BIN}")"
           echo "Detected architectures: ${BIN_ARCHS}"
-
           if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
             [[ "${BIN_ARCHS}" == *"x86_64"* ]]
           else
             [[ "${BIN_ARCHS}" == *"arm64"* ]]
           fi
+
+      - name: Smoke test bundled binary ld version
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
           VERSION_OUTPUT="$("${APP_BIN}" ld --version)"
           echo "ld --version: ${VERSION_OUTPUT}"
           [[ "${VERSION_OUTPUT}" != "unknown" ]]
           "${APP_BIN}" ld --version
+
+      - name: Smoke test bundled binary vhs cli
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
           "${APP_BIN}" vhs --help >/dev/null
+
+      - name: Smoke test bundled binary hifi cli
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
           "${APP_BIN}" hifi --help >/dev/null
+
+      - name: Smoke test bundled binary decode launcher cli
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
           "${APP_BIN}" decode-launcher --help >/dev/null
 
       - name: Build DMG file
