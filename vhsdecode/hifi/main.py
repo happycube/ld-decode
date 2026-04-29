@@ -345,14 +345,23 @@ audio_processing_options_group.add_argument(
     metavar='',
     help="Manually adjust the gain/volume of the output audio. \n  1.0 [default]",
 )
+audio_mode_help_lines = []
+for mode_key, mode_description in audio_mode_to_ui.items():
+    mode_suffix = ""
+    if mode_key == DEFAULT_VHS_AUDIO_MODE:
+        mode_suffix += " [VHS default]"
+    if mode_key == DEFAULT_8MM_AUDIO_MODE:
+        mode_suffix += " [8mm default]"
+    audio_mode_help_lines.append(
+        f"  {mode_key} \t{mode_description}{mode_suffix}"
+    )
+audio_mode_help = "Audio modes \n" + "\n".join(audio_mode_help_lines)
 audio_processing_options_group.add_argument(
     "--audio_mode",
     dest="mode",
     type=str.lower,
     metavar='',
-    help=(
-        f'Audio modes \n{"\n".join([f"  {k} \t{v} {"[VHS default]" if k == DEFAULT_VHS_AUDIO_MODE else ''}{"[8mm default]" if k == DEFAULT_8MM_AUDIO_MODE else ''}" for k, v in audio_mode_to_ui.items()])}'
-    ),
+    help=audio_mode_help,
 )
 audio_processing_options_group.add_argument(
     "--audio_rate",
