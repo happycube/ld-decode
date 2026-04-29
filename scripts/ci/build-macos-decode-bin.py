@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import PyInstaller.__main__
 import PyInstaller.utils.osx as osxutils
 import plistlib
@@ -8,19 +10,68 @@ from shutil import move
 # debug Rust profile when invoked locally outside CI.
 os.environ.setdefault("SETUPTOOLS_RUST_CARGO_PROFILE", "release")
 
+def _ensure_lddecode_version_file() -> None:
+    version_path = Path("lddecode/version")
+    if version_path.is_file() and version_path.read_text(encoding="utf-8").strip():
+        return
+
+    version = "unknown"
+    version_script = Path("scripts/generate_version.py")
+    if version_script.is_file():
+        try:
+            version = (
+                subprocess.check_output([sys.executable, str(version_script)], text=True)
+                .strip()
+                or "unknown"
+            )
+        except Exception:
+            version = "unknown"
+
+    version_path.parent.mkdir(parents=True, exist_ok=True)
+    version_path.write_text(f"{version}\n", encoding="utf-8")
+    print(f"Wrote {version_path} = {version}")
+
+
 print("Building macOS binary version")
+_ensure_lddecode_version_file()
 
 PyInstaller.__main__.run(
     [
         "decode.py",
-        "--collect-submodules",
-        "application",
         "--collect-all",
         "vhsd_rust",
+        "--collect-all",
+        "PyQt6",
+        "--collect-all",
+        "numba",
+        "--collect-all",
+        "llvmlite",
         "--add-data",
         "vhsdecode/format_defs:vhsdecode/format_defs",
+        "--add-data",
+        "assets:assets",
+        "--hidden-import",
+        "vhsdecode.windows_bootstrap",
+        "--hidden-import",
+        "vhsdecode.decode_launcher",
+        "--hidden-import",
+        "vhsdecode.main",
+        "--hidden-import",
+        "cvbsdecode.main",
+        "--hidden-import",
+        "lddecode.main",
+        "--hidden-import",
+        "vhsdecode.hifi.main",
+        "--hidden-import",
+        "filter_tune.filter_tune",
+        "--hidden-import",
+        "numba._dispatcher",
+        "--hidden-import",
+        "numba.core.runtime._nrt_python",
         "--icon",
         "assets/icons/vhs-decode.icns",
+        "--add-data",
+        "lddecode/version:lddecode",
         "--onefile",
         "--windowed",
         "--name",
