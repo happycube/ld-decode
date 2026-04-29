@@ -6,12 +6,15 @@ on:
 
 jobs:
   build-decode:
+    timeout-minutes: 90
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-15-intel]
+        os: [macos-15, macos-15-intel]
         include:
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             python: "3.12"
           - os: macos-15-intel
@@ -33,12 +36,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "${{ matrix.python }}"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
       - name: Generate version metadata
         shell: bash
         run: |
           set -euxo pipefail
           VERSION="$(python3 scripts/generate_version.py)"
-          SAFE_VERSION="${VERSION//:/-}"
+          SAFE_VERSION="$(printf '%s' "${VERSION}" | tr ':/ ' '---')"
           printf '%s\n' "${VERSION}" > lddecode/version
           echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
           echo "SAFE_VERSION=${SAFE_VERSION}" >> "${GITHUB_ENV}"
@@ -72,7 +79,7 @@ jobs:
           fi
 
           python3 -m pip install -r ./requirements.txt
-          python3 -m pip install pyinstaller
+          python3 -m pip install "pyinstaller>=6.20"
           python3 -m pip install -e ".[hifi_gui_qt6,hifi_gnuradio]"
 
       - name: Build binary
@@ -98,6 +105,7 @@ jobs:
           [[ "${VERSION_OUTPUT}" != "unknown" ]]
           "${APP_BIN}" ld --version
           "${APP_BIN}" vhs --help >/dev/null
+          "${APP_BIN}" hifi --help >/dev/null
           "${APP_BIN}" decode-launcher --help >/dev/null
 
       - name: Build DMG file
