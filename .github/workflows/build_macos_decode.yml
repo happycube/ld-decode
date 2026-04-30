@@ -51,7 +51,10 @@ jobs:
           echo "SAFE_VERSION=${SAFE_VERSION}" >> "${GITHUB_ENV}"
 
       - name: Upgrade pip tooling
-        run: python3 -m pip install --upgrade pip setuptools wheel
+        run: |
+          # setuptools>=82 removes pkg_resources.NullProvider, which breaks
+          # PyInstaller's pyi_rth_pkgres runtime hook in the bundled binary.
+          python3 -m pip install --upgrade pip "setuptools<82" wheel
 
       - uses: dtolnay/rust-toolchain@stable
 
