@@ -14,8 +14,9 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from vhsdecode.drop_paths import extract_dropped_file_paths
 try:
-    from PyQt6.QtCore import QTimer, QUrl, Qt, pyqtSignal
+    from PyQt6.QtCore import QTimer, Qt, pyqtSignal
     from PyQt6.QtGui import QColor, QIcon, QPalette
     from PyQt6.QtWidgets import (
         QApplication,
@@ -36,7 +37,7 @@ try:
     )
     ALIGN_TOP = Qt.AlignmentFlag.AlignTop
 except ImportError:
-    from PyQt5.QtCore import QTimer, QUrl, Qt, pyqtSignal
+    from PyQt5.QtCore import QTimer, Qt, pyqtSignal
     from PyQt5.QtGui import QColor, QIcon, QPalette
     from PyQt5.QtWidgets import (
         QApplication,
@@ -213,45 +214,7 @@ def _is_json_file_path(path: str) -> bool:
 
 
 def _extract_dropped_file_paths(mime_data) -> list[str]:
-    paths: list[str] = []
-    if mime_data is None:
-        return paths
-
-    if mime_data.hasUrls():
-        for url in mime_data.urls():
-            if not url.isLocalFile():
-                continue
-            local_path = url.toLocalFile().strip()
-            if local_path:
-                paths.append(local_path)
-
-    if not paths and mime_data.hasText():
-        raw_text = mime_data.text().strip()
-        if raw_text:
-            for line in raw_text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
-                candidate = line.strip()
-                if not candidate:
-                    continue
-                if len(candidate) >= 2 and candidate[0] == candidate[-1] and candidate[0] in {"\"", "'"}:
-                    candidate = candidate[1:-1].strip()
-                local_path = QUrl(candidate).toLocalFile() if candidate.startswith("file:") else ""
-                path = local_path or candidate
-                if path:
-                    paths.append(path)
-
-    deduped_paths: list[str] = []
-    seen: set[str] = set()
-    for path in paths:
-        expanded = str(Path(path).expanduser())
-        expanded_key = expanded.casefold() if os.name == "nt" else expanded
-        if expanded_key in seen:
-            continue
-        seen.add(expanded_key)
-        as_path = Path(expanded)
-        if as_path.exists() and as_path.is_dir():
-            continue
-        deduped_paths.append(expanded)
-    return deduped_paths
+    return extract_dropped_file_paths(mime_data)
 
 
 
