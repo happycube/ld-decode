@@ -58,8 +58,15 @@ supported_tape_formats = {
 
 
 def main(args=None, use_gui=False):
-    # allows user to send SIGUSR1 via `kill -USR1 <pid>` to show a stack trace of the currently running code without killing the app
-    faulthandler.register(signal.SIGUSR1) 
+    # Allows stack-dump on Unix via `kill -USR1 <pid>` when supported.
+    # Windows does not provide SIGUSR1.
+    sigusr1 = getattr(signal, "SIGUSR1", None)
+    if sigusr1 is not None:
+        try:
+            faulthandler.register(sigusr1)
+        except (RuntimeError, ValueError, OSError):
+            # Ignore unsupported/runtime-specific registration failures and continue.
+            pass
 
     import vhsdecode.formats as f
 

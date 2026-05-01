@@ -23,12 +23,17 @@ jobs:
 
       - name: Build Python module
         run: |
+          python -m pip install --upgrade pip "setuptools<82" wheel
           pip install pyinstaller pyinstaller-versionfile
           pip install -e ".[hifi_gui_qt6]"
 
       - name: Build Windows binary
         run: |
           python .\scripts\ci\build-windows-decode-bin.py
+
+      - name: Smoke test binary startup
+        run: |
+          .\dist\decode.exe vhs --help
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
