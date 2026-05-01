@@ -398,8 +398,14 @@ class VHSDecode(ldd.LDdecode):
         self.fields_written += 1
 
     def close(self):
+        if self.decodethread and self.decodethread.is_alive():
+            self.decodethread.join()
+            self.decodethread = None
         if self.rf.options.write_chroma:
             setattr(self, "outfile_chroma", None)
+
+        if self._processing_thread_pool is not None:
+            self._processing_thread_pool.shutdown(wait=True)
         super(VHSDecode, self).close()
 
     def computeMetricsPAL(self, metrics, f, fp=None):
