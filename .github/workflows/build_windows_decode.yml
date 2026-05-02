@@ -5,7 +5,7 @@ on:
 
 jobs:
   build-decode:
-    name: Build vhs-decode (x86_64)
+    name: Build decode (x86_64)
     runs-on: windows-2022
     env:
         SETUPTOOLS_RUST_CARGO_PROFILE: release
@@ -23,6 +23,7 @@ jobs:
 
       - name: Build Python module
         run: |
+          python -m pip install --upgrade pip "setuptools<82" wheel
           pip install pyinstaller pyinstaller-versionfile
           pip install -e ".[hifi_gui_qt6]"
 
@@ -30,9 +31,13 @@ jobs:
         run: |
           python .\scripts\ci\build-windows-decode-bin.py
 
+      - name: Smoke test binary startup
+        run: |
+          .\dist\decode.exe vhs --help
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: vhs-decode_windows_x86_64
+          name: decode_windows_x86_64
           path: dist/decode.exe
           if-no-files-found: error

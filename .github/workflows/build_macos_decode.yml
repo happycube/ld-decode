@@ -2,15 +2,19 @@ name: "Build macOS decode"
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build-decode:
+    timeout-minutes: 90
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-15-intel]
+        os: [macos-15, macos-15-intel]
         include:
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             python: "3.12"
           - os: macos-15-intel
@@ -18,8 +22,10 @@ jobs:
             # Use a Python version with reliable wheels for llvmlite/numba on Intel macOS
             python: "3.11"
 
-    name: Build vhs-decode (${{ matrix.arch }})
+    name: Build decode (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v5
@@ -30,14 +36,30 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "${{ matrix.python }}"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+      - name: Generate version metadata
+        shell: bash
+        run: |
+          set -euxo pipefail
+          VERSION="$(python3 scripts/generate_version.py)"
+          SAFE_VERSION="$(printf '%s' "${VERSION}" | tr ':/ ' '---')"
+          printf '%s\n' "${VERSION}" > lddecode/version
+          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo "SAFE_VERSION=${SAFE_VERSION}" >> "${GITHUB_ENV}"
 
       - name: Upgrade pip tooling
-        run: python3 -m pip install --upgrade pip setuptools wheel
+        run: |
+          # setuptools>=82 removes pkg_resources.NullProvider, which breaks
+          # PyInstaller's pyi_rth_pkgres runtime hook in the bundled binary.
+          python3 -m pip install --upgrade pip "setuptools<82" wheel
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
-        run: brew install create-dmg libsndfile
+        run: brew install create-dmg libsndfile libomp
 
       - name: Install LLVM (Intel only)
         if: matrix.arch == 'x86_64'
@@ -54,37 +76,100 @@ jobs:
           if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
             export LLVM_CONFIG="$(brew --prefix llvm@20)/bin/llvm-config"
             export CMAKE_PREFIX_PATH="$(brew --prefix llvm@20)"
+            export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix libomp)/lib:$(brew --prefix llvm@20)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
             # Keep Intel on a numba/llvmlite pair with published x86_64 wheels.
             # Installing this first avoids llvmlite source builds with setuptools API incompatibilities.
             python3 -m pip install "numba==0.60.0"
           fi
 
           python3 -m pip install -r ./requirements.txt
-          python3 -m pip install pyinstaller
+          python3 -m pip install "pyinstaller>=6.20"
           python3 -m pip install -e ".[hifi_gui_qt6,hifi_gnuradio]"
 
       - name: Build binary
         run: |
           python3 scripts/ci/build-macos-decode-bin.py
+      - name: Configure x86 runtime library path
+        if: matrix.arch == 'x86_64'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix libomp)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}" >> "${GITHUB_ENV}"
+
+      - name: Smoke test bundled binary path and architecture
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
+          file "${APP_BIN}"
+          BIN_ARCHS="$(lipo -archs "${APP_BIN}")"
+          echo "Detected architectures: ${BIN_ARCHS}"
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+            [[ "${BIN_ARCHS}" == *"x86_64"* ]]
+          else
+            [[ "${BIN_ARCHS}" == *"arm64"* ]]
+          fi
+
+      - name: Smoke test bundled binary ld version
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
+          VERSION_OUTPUT="$("${APP_BIN}" ld --version)"
+          echo "ld --version: ${VERSION_OUTPUT}"
+          [[ "${VERSION_OUTPUT}" != "unknown" ]]
+          "${APP_BIN}" ld --version
+
+      - name: Smoke test bundled binary vhs cli
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
+          "${APP_BIN}" vhs --help >/dev/null
+
+      - name: Smoke test bundled binary hifi cli
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
+          "${APP_BIN}" hifi --help >/dev/null
+
+      - name: Smoke test bundled binary decode launcher cli
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APP_BIN="dist/decode.app/Contents/MacOS/decode"
+          "${APP_BIN}" decode-launcher --help >/dev/null
 
       - name: Build DMG file
-        run: >-
-          create-dmg
-          --volname "vhs-decode"
-          --volicon "assets/icons/vhs-decode.icns"
-          --window-pos 200 128
-          --window-size 600 300
-          --icon-size 100
-          --icon "vhs-decode.app" 172 120
-          --app-drop-link 425 128
-          --skip-jenkins
-          --hide-extension "vhs-decode.app"
-          "vhs-decode.dmg"
-          "dist/vhs-decode.app"
+        shell: bash
+        run: |
+          set -euxo pipefail
+          DMG_NAME="decode-${SAFE_VERSION}-${{ matrix.arch }}-macos.dmg"
+          echo "DMG_NAME=${DMG_NAME}" >> "${GITHUB_ENV}"
+          create-dmg \
+            --volname "decode" \
+            --volicon "assets/icons/vhs-decode.icns" \
+            --window-pos 200 128 \
+            --window-size 600 300 \
+            --icon-size 100 \
+            --icon "decode.app" 172 120 \
+            --app-drop-link 425 128 \
+            --skip-jenkins \
+            --hide-extension "decode.app" \
+            "${DMG_NAME}" \
+            "dist/decode.app"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: vhs-decode_macos_${{ matrix.arch }}
-          path: vhs-decode.dmg
+          name: decode_macos_${{ matrix.arch }}
+          path: ${{ env.DMG_NAME }}
           if-no-files-found: error
+      - name: Upload DMG to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.DMG_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

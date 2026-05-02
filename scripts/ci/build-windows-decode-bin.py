@@ -16,9 +16,9 @@ if not os.path.isdir(build_path):
 
 create_versionfile(
     output_file="build\\versionfile.txt",
-    product_name="vhs-decode",
+    product_name="decode",
     original_filename="decode.exe",
-    file_description="Software defined VHS decoder",
+    file_description="Software defined decoder",
     # version=version,
 )
 
