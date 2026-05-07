@@ -111,9 +111,10 @@ class VHSDecode(ldd.LDdecode):
             # If we are using 819-line we need to override this so the superclasses are initialized with the right values.
             ldd.SysParams_PAL = vhs_formats.get_sys_params_819()
 
+        # We pass None as output filename to avoid superclass creating output file and database here.
         super(VHSDecode, self).__init__(
             fname_in,
-            fname_out,
+            None,
             freader,
             logger,
             analog_audio=False,
@@ -164,28 +165,27 @@ class VHSDecode(ldd.LDdecode):
             num_worker_threads=self.numthreads,
         )
 
-        self._db_writer = DBWriter() if extra_options.get("write_db") else None
-        # disconnect and nuke db file to prevent issue when loading with orc
-        # TODO: add option to prevent creating db in the first place..
-        if not self._db_writer and extra_options.get("orc"):
-            self.dbconn.close()
-            if os.path.exists(fname_out + ".tbc.db"):
-                os.unlink(fname_out + ".tbc.db")
+        self._db_writer = DBWriter(fname_out) if extra_options.get("write_db") else None
+        self.dbconn = None
+        if self._db_writer:
+            self.dbconn = self._db_writer.db_connection
+            self.create_db_schema()
+
         # self._io_thread_pool = ThreadPoolExecutor(2)
 
+        self.outfile_chroma = None
+
+        self.fname_out = fname_out
+
         if fname_out is not None and self.rf.options.write_chroma:
-            extension = "_chroma.tbc"
             if extra_options.get("orc"):
-                extension = ".tbcc"
-                self.outfile_video.close()
-                # Delete empty .tbc File
-                # TODO: Fix this upstream so we don't
-                # have to do this...
-                os.unlink(fname_out + ".tbc")
                 self.outfile_video = open(fname_out + ".tbcy", "wb")
-            self.outfile_chroma = open(fname_out + extension, "wb")
-        else:
-            self.outfile_chroma = None
+                self.outfile_chroma = open(fname_out + ".tbcc", "wb")
+            else:
+                self.outfile_video = open(fname_out + ".tbc", "wb")
+                self.outfile_chroma = open(fname_out + "_chroma.tbc", "wb")
+        elif fname_out:
+            self.outfile_video = open(fname_out + ".tbc", "wb")
 
         self.debug_plot = debug_plot
         self.field_order_action = field_order_action
@@ -388,7 +388,7 @@ class VHSDecode(ldd.LDdecode):
         if self._db_writer:
             if not self.capture_id:
                 self.build_sqlite_metadata()
-            self._db_writer.write_field(fi, self.dbconn, self.doDOD, self.capture_id)
+            self._db_writer.write_field(fi, self.doDOD, self.capture_id)
             # NOTE: this calls commit so we don't call it in dbwriter.write_field.
             self.build_sqlite_metadata()
 
@@ -858,7 +858,7 @@ class VHSRFDecode(ldd.RFDecode):
 
             out_freq_half = self._chroma_afc.getOutFreqHalf()
 
-            (b, a) = peaking(
+            b, a = peaking(
                 self.sys_params["fsc_mhz"] / out_freq_half,
                 3.4,
                 BW=0.5 / out_freq_half,
@@ -1150,7 +1150,7 @@ class VHSRFDecode(ldd.RFDecode):
                 DP, self.freq_hz_half, self.blocklen
             )
         else:
-            (_, filter_video_lpf) = gen_video_lpf_params(
+            _, filter_video_lpf = gen_video_lpf_params(
                 DP, self.freq_hz_half, self.blocklen
             )
 

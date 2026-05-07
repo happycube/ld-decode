@@ -1,16 +1,21 @@
+import sqlite3
+import os
 from sqlite3 import Connection
 
 
 class DBWriter:
     """Class for unifying sqlite writing between cvbs and vhs. Currently doesn't store anything."""
 
-    def __init__(self):
-        pass
+    def __init__(self, fname_out):
+        if os.path.exists(fname_out + ".tbc.db"):
+            os.unlink(fname_out + ".tbc.db")
+        self._db_connection = sqlite3.connect(fname_out + ".tbc.db")
 
-    @staticmethod
-    def write_field(
-        field_data: dict, db_connection: Connection, capture_id: int, do_dod
-    ):
+    @property
+    def db_connection(self) -> Connection:
+        return self._db_connection
+
+    def write_field(self, field_data: dict, capture_id: int, do_dod):
         field_id = field_data["seqNo"] - 1
 
         decodeFaults = (
@@ -21,7 +26,7 @@ class DBWriter:
 
         # Insert parent record into 'field_record'
         # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
-        db_connection.execute(
+        self._db_connection.execute(
             """
             INSERT INTO field_record (
                 capture_id, field_id, is_first_field, sync_conf, disk_loc,
@@ -44,7 +49,7 @@ class DBWriter:
         w_snr = field_data["vitsMetrics"].get("wSNR", 0)
         b_psnr = field_data["vitsMetrics"].get("bPSNR", 0)
 
-        db_connection.execute(
+        self._db_connection.execute(
             """
             INSERT INTO vits_metrics (
                 capture_id, field_id, w_snr, b_psnr
@@ -59,7 +64,7 @@ class DBWriter:
             # This pads with 0 if fewer than 3 are found
             vbi_row = (vbi_data + [0, 0, 0])[:3]
 
-            db_connection.execute(
+            self._db_connection.execute(
                 """
                 INSERT INTO vbi (
                     capture_id, field_id, vbi0, vbi1, vbi2
@@ -79,7 +84,7 @@ class DBWriter:
                 for line, start, end in zip(dropout_lines, dropout_starts, dropout_ends)
             ]
 
-            db_connection.executemany(
+            self._db_connection.executemany(
                 """
                 INSERT INTO drop_outs (
                     capture_id, field_id, field_line, startx, endx
