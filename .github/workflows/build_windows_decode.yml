@@ -41,7 +41,7 @@ jobs:
       - name: Smoke test binary startup
         shell: pwsh
         run: |
-          python -c "import subprocess,sys; subprocess.run([r'.\\dist\\decode.exe','vhs','--help'], timeout=120, check=True)"
+          python -c "import subprocess,sys; subprocess.run([r'.\\dist\\decode.exe','ld','--version'], timeout=120, check=True)"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7

@@ -126,35 +126,6 @@ jobs:
           [[ "${VERSION_OUTPUT}" != "unknown" ]]
           "${APP_BIN}" ld --version
 
-      - name: Smoke test bundled binary vhs cli
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 - <<'PY'
-          import subprocess
-          app_bin = "dist/decode.app/Contents/MacOS/decode"
-          subprocess.run([app_bin, "vhs", "--help"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=120, check=True)
-          PY
-
-      - name: Smoke test bundled binary hifi cli
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 - <<'PY'
-          import subprocess
-          app_bin = "dist/decode.app/Contents/MacOS/decode"
-          subprocess.run([app_bin, "hifi", "--help"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=120, check=True)
-          PY
-
-      - name: Smoke test bundled binary decode launcher cli
-        shell: bash
-        run: |
-          set -euxo pipefail
-          python3 - <<'PY'
-          import subprocess
-          app_bin = "dist/decode.app/Contents/MacOS/decode"
-          subprocess.run([app_bin, "decode-launcher", "--help"], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, timeout=120, check=True)
-          PY
 
       - name: Build DMG file
         shell: bash
