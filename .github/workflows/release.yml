@@ -116,7 +116,6 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.resolve-tag.outputs.release_tag }}
       GITHUB_TOKEN: ${{ github.token }}
-      TBC_TOOLS_REPO: ${{ env.TBC_TOOLS_REPO }}
 
     steps:
       - name: Download Linux decode artifact
