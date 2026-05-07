@@ -1,0 +1,215 @@
+name: "Release"
+
+permissions:
+  contents: write
+  actions: write
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Create a GitHub release and upload built assets"
+        required: false
+        default: false
+        type: boolean
+      tag_name:
+        description: "Tag to release when manually dispatched (example: v0.6.0)"
+        required: false
+        type: string
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  TBC_TOOLS_REPO: "harrypm/tbc-tools"
+
+jobs:
+  resolve-tag:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      checkout_ref: ${{ steps.resolve.outputs.checkout_ref }}
+      publish_release: ${{ steps.resolve.outputs.publish_release }}
+    steps:
+      - name: Resolve and validate release tag
+        id: resolve
+        run: |
+          PUBLISH_RELEASE="true"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.create_release }}" = "true" ]; then
+              RAW_TAG="${{ github.event.inputs.tag_name }}"
+              if [ -z "$RAW_TAG" ]; then
+                echo "tag_name is required when Create a GitHub release and upload built assets is enabled."
+                exit 1
+              fi
+            else
+              PUBLISH_RELEASE="false"
+              RAW_TAG="${{ github.ref }}"
+            fi
+          else
+            RAW_TAG="${{ github.ref_name }}"
+          fi
+
+          if [ "$PUBLISH_RELEASE" = "true" ]; then
+            RAW_TAG="${RAW_TAG#refs/tags/}"
+            if [[ "$RAW_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              RAW_TAG="v${RAW_TAG}"
+            fi
+            RELEASE_TAG="${RAW_TAG#refs/tags/}"
+            if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Invalid tag '$RELEASE_TAG'. Expected vMAJOR.MINOR.PATCH"
+              exit 1
+            fi
+            TAG_READY="false"
+            for attempt in $(seq 1 12); do
+              if git ls-remote --exit-code --tags "https://github.com/${{ github.repository }}.git" "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+                TAG_READY="true"
+                break
+              fi
+              echo "Tag refs/tags/${RELEASE_TAG} not visible on origin yet (attempt ${attempt}/12); waiting 5s..."
+              sleep 5
+            done
+            if [ "$TAG_READY" != "true" ]; then
+              echo "Tag refs/tags/${RELEASE_TAG} does not exist on origin."
+              echo "Create it first via Prepare Release Draft, then re-run Release for that tag."
+              exit 1
+            fi
+            CHECKOUT_REF="refs/tags/${RELEASE_TAG}"
+          else
+            RELEASE_TAG=""
+            CHECKOUT_REF="${{ github.ref }}"
+          fi
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=${CHECKOUT_REF}" >> "$GITHUB_OUTPUT"
+          echo "publish_release=${PUBLISH_RELEASE}" >> "$GITHUB_OUTPUT"
+
+  build-linux:
+    name: Build Linux decode
+    uses: ./.github/workflows/build_linux_decode.yml
+    needs: resolve-tag
+    with:
+      checkout_ref: ${{ needs.resolve-tag.outputs.checkout_ref }}
+    secrets: inherit
+
+  build-windows:
+    name: Build Windows decode
+    uses: ./.github/workflows/build_windows_decode.yml
+    needs: resolve-tag
+    with:
+      checkout_ref: ${{ needs.resolve-tag.outputs.checkout_ref }}
+    secrets: inherit
+
+  build-macos:
+    name: Build macOS decode
+    uses: ./.github/workflows/build_macos_decode.yml
+    needs: resolve-tag
+    with:
+      checkout_ref: ${{ needs.resolve-tag.outputs.checkout_ref }}
+    secrets: inherit
+
+  upload-release-assets:
+    name: Upload release assets
+    needs: [resolve-tag, build-linux, build-windows, build-macos]
+    if: ${{ needs.resolve-tag.outputs.publish_release == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ needs.resolve-tag.outputs.release_tag }}
+      GITHUB_TOKEN: ${{ github.token }}
+      TBC_TOOLS_REPO: ${{ env.TBC_TOOLS_REPO }}
+
+    steps:
+      - name: Download Linux decode artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: decode_linux_x86_64
+          path: ./artifacts/decode/linux/
+
+      - name: Download Windows decode artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: decode_windows_x86_64
+          path: ./artifacts/decode/windows/
+
+      - name: Download macOS x86_64 decode artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: decode_macos_x86_64
+          path: ./artifacts/decode/macos-x86_64/
+
+      - name: Download macOS arm64 decode artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: decode_macos_arm64
+          path: ./artifacts/decode/macos-arm64/
+
+      - name: Build versioned decode release assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts/release
+
+          APPIMAGE_PATH="$(find ./artifacts/decode/linux -maxdepth 3 -type f -name '*.AppImage' | head -n 1)"
+          if [ -z "${APPIMAGE_PATH}" ]; then
+            echo "Failed to locate Linux AppImage artifact."
+            exit 1
+          fi
+          cp "${APPIMAGE_PATH}" "./artifacts/release/decode_${RELEASE_TAG}_linux_x86_64.AppImage"
+
+          mkdir -p ./artifacts/release/windows
+          cp -R ./artifacts/decode/windows/. ./artifacts/release/windows/
+          (
+            cd ./artifacts/release/windows
+            zip -r "../decode_${RELEASE_TAG}_windows_x86_64.zip" .
+          )
+          rm -rf ./artifacts/release/windows
+
+          MACOS_X86_PATH="$(find ./artifacts/decode/macos-x86_64 -maxdepth 3 -type f -name '*.dmg' | head -n 1)"
+          MACOS_ARM_PATH="$(find ./artifacts/decode/macos-arm64 -maxdepth 3 -type f -name '*.dmg' | head -n 1)"
+          if [ -z "${MACOS_X86_PATH}" ] || [ -z "${MACOS_ARM_PATH}" ]; then
+            echo "Failed to locate one or more macOS DMG artifacts."
+            exit 1
+          fi
+          cp "${MACOS_X86_PATH}" "./artifacts/release/decode_${RELEASE_TAG}_macos_x86_64.dmg"
+          cp "${MACOS_ARM_PATH}" "./artifacts/release/decode_${RELEASE_TAG}_macos_arm64.dmg"
+
+      - name: Download latest tbc-tools release assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p ./artifacts/tbc-tools
+          TBC_TOOLS_TAG="$(gh api "repos/${TBC_TOOLS_REPO}/releases/latest" --jq '.tag_name')"
+          if [ -z "${TBC_TOOLS_TAG}" ]; then
+            echo "Unable to resolve latest tbc-tools release tag."
+            exit 1
+          fi
+          echo "Using tbc-tools release: ${TBC_TOOLS_TAG}"
+          gh release download "${TBC_TOOLS_TAG}" \
+            --repo "${TBC_TOOLS_REPO}" \
+            --dir "./artifacts/tbc-tools"
+
+      - name: Stage tbc-tools assets for upload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if ! compgen -G "./artifacts/tbc-tools/*" > /dev/null; then
+            echo "No assets downloaded from latest tbc-tools release."
+            exit 1
+          fi
+          cp ./artifacts/tbc-tools/* ./artifacts/release/
+
+      - name: Ensure GitHub release exists
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$RELEASE_TAG" \
+              --draft \
+              --generate-notes
+          fi
+
+      - name: Upload release assets
+        run: |
+          gh release upload "$RELEASE_TAG" ./artifacts/release/* --repo "${{ github.repository }}" --clobber

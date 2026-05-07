@@ -1,0 +1,92 @@
+name: "Prepare Release Draft"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (example: 7.3.0 or v7.3.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: prepare-release-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  prepare-release:
+    name: Create release tag and draft
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: true
+
+      - name: Normalize and validate version input
+        id: version
+        run: |
+          RAW_INPUT="${{ github.event.inputs.version }}"
+          NORMALIZED_VERSION="${RAW_INPUT#v}"
+          if [[ ! "$NORMALIZED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: '$RAW_INPUT'. Use SemVer like 7.3.0 or v7.3.0."
+            exit 1
+          fi
+          TAG_NAME="v${NORMALIZED_VERSION}"
+          echo "version=${NORMALIZED_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure tag and release do not already exist
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
+            echo "Tag '${TAG_NAME}' already exists on origin."
+            exit 1
+          fi
+          if gh release view "${TAG_NAME}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release '${TAG_NAME}' already exists."
+            exit 1
+          fi
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push release tag
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag }}"
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
+          git push origin "${TAG_NAME}"
+
+      - name: Create draft release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag }}"
+          gh release create "${TAG_NAME}" \
+            --repo "${{ github.repository }}" \
+            --title "${TAG_NAME}" \
+            --draft \
+            --generate-notes
+
+      - name: Dispatch Release workflow for artifact build/upload
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          TAG_NAME="${{ steps.version.outputs.tag }}"
+          gh workflow run release.yml \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" \
+            -f create_release=true \
+            -f tag_name="${TAG_NAME}"

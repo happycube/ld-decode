@@ -41,12 +41,6 @@ jobs:
 #      contents: write
 #    uses: ./.github/workflows/appimage.yml
 
-#  build-macos-dmg:
-#    name: Build macOS DMG
-#    needs: functional-tests
-#    permissions:
-#      contents: write
-#    uses: ./.github/workflows/macos-dmg.yml
 
 #  build-windows-zip:
 #    name: Build Windows ZIP

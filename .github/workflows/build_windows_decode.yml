@@ -2,6 +2,12 @@ name: "Build Windows decode"
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to checkout when invoked as a reusable workflow"
+        required: false
+        type: string
 
 jobs:
   build-decode:
@@ -14,6 +20,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ inputs.checkout_ref || github.ref }}
 
       - uses: actions/setup-python@v6
         with:

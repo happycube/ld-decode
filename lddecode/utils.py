@@ -581,18 +581,23 @@ class LoadLDF:
 
     @staticmethod
     def _find_ldf_reader():
-        """Find ld-ldf-reader-py, checking the repo root as a fallback."""
+        """Find an LDF reader executable, checking the repo root as a fallback."""
         import shutil
 
-        if shutil.which("ld-ldf-reader-py"):
-            return "ld-ldf-reader-py"
+        for command_name in ("ld-ldf-reader", "ld-ldf-reader-py"):
+            if shutil.which(command_name):
+                return command_name
 
-        # Fall back to the script next to this package (i.e. the repo root)
-        repo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ld-ldf-reader-py")
-        if os.path.isfile(repo_path):
-            return repo_path
+        # Fall back to scripts next to this package (i.e. the repo root)
+        repo_root = os.path.dirname(os.path.dirname(__file__))
+        for script_name in ("ld-ldf-reader", "ld-ldf-reader-py"):
+            repo_path = os.path.join(repo_root, script_name)
+            if os.path.isfile(repo_path):
+                return repo_path
 
-        raise FileNotFoundError("Cannot find ld-ldf-reader-py on PATH or in the source tree")
+        raise FileNotFoundError(
+            "Cannot find ld-ldf-reader or ld-ldf-reader-py on PATH or in the source tree"
+        )
 
     def _open(self, sample):
         self._close()
