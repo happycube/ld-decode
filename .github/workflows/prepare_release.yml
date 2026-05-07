@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (example: 7.3.0 or v7.3.0)"
+        description: "Release version (examples: 7.3.0, 7.3.0b1, v7.3.0rc1)"
         required: true
         type: string
 
@@ -36,8 +36,9 @@ jobs:
         run: |
           RAW_INPUT="${{ github.event.inputs.version }}"
           NORMALIZED_VERSION="${RAW_INPUT#v}"
-          if [[ ! "$NORMALIZED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid version: '$RAW_INPUT'. Use SemVer like 7.3.0 or v7.3.0."
+          VERSION_REGEX='^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?((a|b|rc)[0-9]*)?$'
+          if [[ ! "$NORMALIZED_VERSION" =~ $VERSION_REGEX ]]; then
+            echo "Invalid version: '$RAW_INPUT'. Use versions like 7.3.0, 7.3.0.1, 7.3.0b1, 7.3.0rc1 (optionally prefixed with v)."
             exit 1
           fi
           TAG_NAME="v${NORMALIZED_VERSION}"

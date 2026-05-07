@@ -16,7 +16,7 @@ on:
         default: false
         type: boolean
       tag_name:
-        description: "Tag to release when manually dispatched (example: v0.6.0)"
+        description: "Tag to release when manually dispatched (examples: v0.6.0, v0.6.0b1, v0.6.0rc1)"
         required: false
         type: string
 env:
@@ -52,13 +52,15 @@ jobs:
           fi
 
           if [ "$PUBLISH_RELEASE" = "true" ]; then
+            VERSION_REGEX='^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?((a|b|rc)[0-9]*)?$'
+            TAG_REGEX='^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?((a|b|rc)[0-9]*)?$'
             RAW_TAG="${RAW_TAG#refs/tags/}"
-            if [[ "$RAW_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            if [[ "$RAW_TAG" =~ $VERSION_REGEX ]]; then
               RAW_TAG="v${RAW_TAG}"
             fi
             RELEASE_TAG="${RAW_TAG#refs/tags/}"
-            if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "Invalid tag '$RELEASE_TAG'. Expected vMAJOR.MINOR.PATCH"
+            if [[ ! "$RELEASE_TAG" =~ $TAG_REGEX ]]; then
+              echo "Invalid tag '$RELEASE_TAG'. Expected vMAJOR.MINOR.PATCH (optionally .BUILD and/or a/b/rc suffix)."
               exit 1
             fi
             TAG_READY="false"
