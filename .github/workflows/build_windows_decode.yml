@@ -39,8 +39,9 @@ jobs:
           python .\scripts\ci\build-windows-decode-bin.py
 
       - name: Smoke test binary startup
+        shell: pwsh
         run: |
-          .\dist\decode.exe vhs --help
+          python -c "import subprocess,sys; subprocess.run([r'.\\dist\\decode.exe','vhs','--help'], timeout=120, check=True)"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
