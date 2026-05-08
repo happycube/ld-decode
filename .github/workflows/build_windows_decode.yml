@@ -18,11 +18,16 @@ jobs:
           - arch: x86_64
             os: windows-2022
             python_arch: x64
+            smoke_timeout_minutes: 15
           - arch: arm64
             os: windows-11-arm
             # numba/llvmlite currently do not publish win_arm64 wheels.
             # Use x64 Python on ARM runners so binary wheels can be installed.
             python_arch: x64
+            # ARM runners can be significantly slower and have occasional
+            # performance jitter; keep the same 300-frame workload but allow
+            # extra headroom to avoid false timeout failures.
+            smoke_timeout_minutes: 30
     name: Build decode (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     env:
@@ -118,7 +123,7 @@ jobs:
           python -c "import subprocess,sys; subprocess.run([r'.\\dist\\decode.exe','ld','--version'], timeout=120, check=True)"
       - name: Smoke test 300-frame VHS decode (crash regression)
         shell: pwsh
-        timeout-minutes: 15
+        timeout-minutes: ${{ matrix.smoke_timeout_minutes }}
         run: |
           $sampleUrl = "https://raw.githubusercontent.com/harrypm/decode-test-data/master/decode-orc-testdata-vhs/flac/pal/yc/SuperBeta_PAL_AndyB_Bars_Sweep_Zone_28p6msps_8bit_5sec_effective.flac"
           $sampleDir = Join-Path $env:RUNNER_TEMP "windows-vhs-crash-sample"
