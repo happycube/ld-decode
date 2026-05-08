@@ -144,7 +144,7 @@ jobs:
             "--length", "300",
             "--threads", "4",
             "--pal",
-            "--tf", "SUPERBETA",
+            "--tf", "BETAMAX",
             "--cxadc",
             $sampleFile.FullName,
             $outputBase
