@@ -77,9 +77,27 @@ jobs:
           HERE="$(dirname "$(readlink -f "${0}")")"
           export PYTHONPATH="${HERE}/../lib/python3.12/site-packages:${PYTHONPATH}"
           export PYTHONNOUSERSITE=1
-          exec "${HERE}/../bin/python3.12" -m lddecode.ldf_reader "$@"
+          exec "${HERE}/ld-ldf-reader" "$@"
           EOF
           chmod +x AppDir/usr/bin/ld-ldf-reader-py
+
+          cat > AppDir/usr/bin/ld-ldf-reader << 'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PYTHONPATH="${HERE}/../lib/python3.12/site-packages:${PYTHONPATH}"
+          export PYTHONNOUSERSITE=1
+          exec "${HERE}/../bin/python3.12" -m lddecode.ldf_reader "$@"
+          EOF
+          chmod +x AppDir/usr/bin/ld-ldf-reader
+
+          cat > AppDir/usr/bin/ld-lds-reader << 'EOF'
+          #!/bin/bash
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PYTHONPATH="${HERE}/../lib/python3.12/site-packages:${PYTHONPATH}"
+          export PYTHONNOUSERSITE=1
+          exec "${HERE}/../bin/python3.12" -m lddecode.lds_reader "$@"
+          EOF
+          chmod +x AppDir/usr/bin/ld-lds-reader
           
           # Create a desktop entry
           cat > AppDir/usr/share/applications/ld-decode.desktop << EOF
@@ -131,7 +149,21 @@ jobs:
             echo "ERROR: ld-ldf-reader-py binary not found!"
             exit 1
           fi
-          echo "✓ All required binaries present: ld-decode, ld-ldf-reader-py"
+          if [ ! -f "AppDir/usr/bin/ld-ldf-reader" ]; then
+            echo "ERROR: ld-ldf-reader binary not found!"
+            exit 1
+          fi
+          if [ ! -f "AppDir/usr/bin/ld-lds-reader" ]; then
+            echo "ERROR: ld-lds-reader binary not found!"
+            exit 1
+          fi
+          echo "✓ All required binaries present: ld-decode, ld-ldf-reader, ld-ldf-reader-py, ld-lds-reader"
+
+          # Sanity check tool entry points
+          AppDir/usr/bin/ld-decode --version >/dev/null
+          AppDir/usr/bin/ld-ldf-reader --version >/dev/null
+          AppDir/usr/bin/ld-ldf-reader-py --version >/dev/null
+          AppDir/usr/bin/ld-lds-reader --version >/dev/null
           
           # Download appimagetool
           wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
@@ -161,7 +193,9 @@ jobs:
           
           This AppImage contains all ld-decode tools:
           - ld-decode
+          - ld-ldf-reader
           - ld-ldf-reader-py
+          - ld-lds-reader
           
           Usage:
           
@@ -171,11 +205,13 @@ jobs:
           2. Access other tools by adding them to your PATH:
              ./ld-decode-*.AppImage --appimage-extract
              export PATH="$PWD/squashfs-root/usr/bin:$PATH"
+             ld-ldf-reader [arguments]
              ld-ldf-reader-py [arguments]
+             ld-lds-reader [arguments]
           
           Or create symlinks:
-             ln -s ld-decode-*.AppImage ld-ldf-reader-py
-             ./ld-ldf-reader-py [arguments]
+             ln -s ld-decode-*.AppImage ld-ldf-reader
+             ./ld-ldf-reader [arguments]
           EOF
 
       - name: Upload AppImage as artifact

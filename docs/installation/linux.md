@@ -9,7 +9,9 @@ Download the appImage which will have a filename similar to ***ld-decode-dev-x86
 This AppImage contains all required ld-decode tools:
 
 - ld-decode
+- ld-ldf-reader
 - ld-ldf-reader-py
+- ld-lds-reader
 
 ## Usage
 
@@ -24,12 +26,14 @@ Access other tools by adding them to your PATH:
 ```
 ./ld-decode-*.AppImage --appimage-extract
 export PATH="$PWD/squashfs-root/usr/bin:$PATH"
+ld-ldf-reader [arguments]
 ld-ldf-reader-py [arguments]
+ld-lds-reader [arguments]
 ```
 
 Or create symlinks:
 
 ```
-ln -s ld-decode-*.AppImage ld-ldf-reader-py
-./ld-ldf-reader-py [arguments]
+ln -s ld-decode-*.AppImage ld-ldf-reader
+./ld-ldf-reader [arguments]
 ```

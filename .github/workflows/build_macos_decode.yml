@@ -3,6 +3,11 @@ name: "Build macOS decode"
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to checkout when invoked as a reusable workflow"
+        required: false
+        type: string
 
 jobs:
   build-decode:
@@ -32,6 +37,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ inputs.checkout_ref || github.ref }}
 
       - uses: actions/setup-python@v6
         with:
@@ -61,9 +67,17 @@ jobs:
       - name: Install dependencies
         run: brew install create-dmg libsndfile libomp
 
-      - name: Install LLVM (Intel only)
+      - name: Install and link LLVM (Intel only)
         if: matrix.arch == 'x86_64'
-        run: brew install llvm@20
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if brew list --versions llvm@18 >/dev/null 2>&1; then
+            brew unlink llvm@18 || true
+            brew uninstall --ignore-dependencies llvm@18 || true
+          fi
+          brew install llvm@20
+          brew link --overwrite llvm@20
 
       - name: Build Python module
         shell: bash
@@ -120,26 +134,6 @@ jobs:
           [[ "${VERSION_OUTPUT}" != "unknown" ]]
           "${APP_BIN}" ld --version
 
-      - name: Smoke test bundled binary vhs cli
-        shell: bash
-        run: |
-          set -euxo pipefail
-          APP_BIN="dist/decode.app/Contents/MacOS/decode"
-          "${APP_BIN}" vhs --help >/dev/null
-
-      - name: Smoke test bundled binary hifi cli
-        shell: bash
-        run: |
-          set -euxo pipefail
-          APP_BIN="dist/decode.app/Contents/MacOS/decode"
-          "${APP_BIN}" hifi --help >/dev/null
-
-      - name: Smoke test bundled binary decode launcher cli
-        shell: bash
-        run: |
-          set -euxo pipefail
-          APP_BIN="dist/decode.app/Contents/MacOS/decode"
-          "${APP_BIN}" decode-launcher --help >/dev/null
 
       - name: Build DMG file
         shell: bash

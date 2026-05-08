@@ -2,11 +2,25 @@ name: "Build Linux decode"
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to checkout when invoked as a reusable workflow"
+        required: false
+        type: string
 
 jobs:
   build-decode:
-    name: Build decode (x86_64)
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-latest
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    name: Build decode (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     container:
       image: oraclelinux:8
       options: --cap-add SYS_ADMIN --cap-add MKNOD --device /dev/fuse:mrw --security-opt apparmor:unconfined --privileged
@@ -20,6 +34,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ inputs.checkout_ref || github.ref }}
       - name: Mark workspace as safe for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
@@ -36,16 +51,22 @@ jobs:
           cp resources/appimage/decode/entrypoint.sh _build_appimage/
           cp resources/appimage/decode/vhs-decode.desktop _build_appimage/
           cp resources/appimage/decode/vhs-decode.appdata.xml _build_appimage/
-
-          echo "$(pwd)[hifi_gui,hifi_gnuradio]" > _build_appimage/requirements.txt
+          {
+            echo "PyQt6==6.7.1"
+            echo "$(pwd)[hifi_gui_qt6,hifi_gnuradio]"
+          } > _build_appimage/requirements.txt
 
           python-appimage build app -p 3.12 _build_appimage
-          APPIMAGE_SRC="$(ls -1 ./*-x86_64.AppImage | head -n 1)"
-          mv "${APPIMAGE_SRC}" ./decode-x86_64.AppImage
+          APPIMAGE_SRC="$(find . -maxdepth 1 -type f -name '*.AppImage' | head -n 1)"
+          if [ -z "${APPIMAGE_SRC}" ]; then
+            echo "Failed to locate generated AppImage."
+            exit 1
+          fi
+          mv "${APPIMAGE_SRC}" "./decode-${{ matrix.arch }}.AppImage"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: decode_linux_x86_64
-          path: decode-x86_64.AppImage
+          name: decode_linux_${{ matrix.arch }}
+          path: decode-${{ matrix.arch }}.AppImage
           if-no-files-found: error
