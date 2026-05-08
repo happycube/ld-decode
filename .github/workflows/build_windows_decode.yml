@@ -41,9 +41,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Add Rust x64 target on ARM runner
+      - name: Use x64 Rust toolchain on ARM runner
         if: matrix.arch == 'arm64' && matrix.python_arch == 'x64'
-        run: rustup target add x86_64-pc-windows-msvc
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc
+          rustup default stable-x86_64-pc-windows-msvc
+          rustc -vV
 
       - name: Ensure DIA SDK path compatibility for arm64
         if: matrix.arch == 'arm64' && matrix.python_arch == 'arm64'
