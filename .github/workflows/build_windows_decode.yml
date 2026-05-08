@@ -120,18 +120,18 @@ jobs:
         shell: pwsh
         timeout-minutes: 15
         run: |
-          $sampleUrl = "https://drive.google.com/file/d/1zJXh1c9KftkFaIsa7OsSEa9XHs6EMBSZ/view?usp=drive_link"
+          $sampleUrl = "https://raw.githubusercontent.com/harrypm/decode-test-data/master/decode-orc-testdata-vhs/flac/pal/yc/SuperBeta_PAL_AndyB_Bars_Sweep_Zone_28p6msps_8bit_5sec_effective.flac"
           $sampleDir = Join-Path $env:RUNNER_TEMP "windows-vhs-crash-sample"
           New-Item -ItemType Directory -Path $sampleDir -Force | Out-Null
+          $samplePath = Join-Path $sampleDir "SuperBeta_PAL_AndyB_Bars_Sweep_Zone_28p6msps_8bit_5sec_effective.flac"
 
-          python -m pip install --upgrade gdown
-          python -m gdown --fuzzy $sampleUrl --output $sampleDir
+          Invoke-WebRequest -Uri $sampleUrl -OutFile $samplePath
 
-          $sampleFile = Get-ChildItem -Path $sampleDir -File | Sort-Object Length -Descending | Select-Object -First 1
-          if ($null -eq $sampleFile) {
+          if (-not (Test-Path $samplePath)) {
             throw "Failed to download the Windows regression sample."
           }
-          if ($sampleFile.Length -lt 1MB) {
+          $sampleFile = Get-Item $samplePath
+          if ($sampleFile.Length -lt 10MB) {
             throw "Downloaded regression sample is unexpectedly small: $($sampleFile.FullName)"
           }
 
@@ -143,6 +143,9 @@ jobs:
             "--overwrite",
             "--length", "300",
             "--threads", "4",
+            "--pal",
+            "--tf", "SUPERBETA",
+            "--cxadc",
             $sampleFile.FullName,
             $outputBase
           )
