@@ -13,7 +13,6 @@ from vhsdecode.utils import (
 
 from vhsdecode.linear_filter import FiltersClass, chainfiltfilt_b
 import numpy as np
-from scipy.signal import argrelextrema
 from os import getpid
 from numba import njit
 
@@ -35,6 +34,23 @@ def _chainfiltfilt(data, filters):
     for filt in filters:
         data = filt.filtfilt(data)
     return data
+
+
+def _local_minima_indices(data):
+    """Return local minima indexes using a low-allocation vectorized comparison."""
+    if len(data) < 3:
+        return np.empty(0, dtype=np.int64)
+
+    mid = data[1:-1]
+    prev = data[:-2]
+    nxt = data[2:]
+
+    # Keep allocations minimal: build one boolean mask and refine it in-place.
+    minima_mask = np.empty(len(mid), dtype=bool)
+    np.less(mid, prev, out=minima_mask)
+    np.less_equal(mid, nxt, out=minima_mask, where=minima_mask)
+
+    return np.nonzero(minima_mask)[0] + 1
 
 
 # clips any sync pulse that satisfies min_synclen < pulse_len < max_synclen
@@ -213,11 +229,17 @@ class VsyncSerration:
 
     # measures the harmonics of the EQ pulses
     def _power_ratio_search(self, data):
-        first_harmonic = chainfiltfilt_b(data, self.serrationFilter_base)
-        # Make sure we do this in place to avoid allocating an extra array.
-        first_harmonic **= 2
-        first_harmonic = self.serrationFilter_envelope.filtfilt(first_harmonic)
-        return argrelextrema(first_harmonic, np.less)[0]
+        try:
+            first_harmonic = chainfiltfilt_b(data, self.serrationFilter_base)
+            # Make sure we do this in place to avoid allocating an extra array.
+            first_harmonic **= 2
+            first_harmonic = self.serrationFilter_envelope.filtfilt(first_harmonic)
+            return _local_minima_indices(first_harmonic)
+        except MemoryError:
+            ldd.logger.warning(
+                "Low-memory condition during serration harmonic minima search; using fallback path."
+            )
+            return np.empty(0, dtype=np.int64)
 
     # fills in missing VBI positions when possible
     @staticmethod
@@ -325,7 +347,13 @@ class VsyncSerration:
         diff = forward[0][padding:]
         # Since we modified this, make sure it's not re-used accidentaly.
         del forward
-        where_allmin = argrelextrema(diff, np.less)[0]
+        try:
+            where_allmin = _local_minima_indices(diff)
+        except MemoryError:
+            ldd.logger.warning(
+                "Low-memory condition during video envelope minima search; using fallback logic."
+            )
+            where_allmin = np.empty(0, dtype=np.int64)
         if len(where_allmin) > 0:
             serrations = self._power_ratio_search(padded)
             where_min = VsyncSerration._vsync_arbitrage(

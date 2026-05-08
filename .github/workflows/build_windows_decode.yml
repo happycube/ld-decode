@@ -136,7 +136,7 @@ jobs:
           }
 
           $outputBase = Join-Path $env:RUNNER_TEMP "windows_300_frame_smoke"
-          $logPath = Join-Path $env:RUNNER_TEMP "windows_300_frame_smoke.log"
+          $runnerLogPath = Join-Path $env:RUNNER_TEMP "windows_300_frame_smoke_ci.log"
 
           $decodeArgs = @(
             "vhs",
@@ -150,16 +150,29 @@ jobs:
             $outputBase
           )
 
-          & .\dist\decode.exe @decodeArgs *> $logPath
+          & .\dist\decode.exe @decodeArgs *> $runnerLogPath
           $decodeExitCode = $LASTEXITCODE
+          $decoderLogPath = $outputBase + ".log"
+          $logsToScan = @()
+          if (Test-Path $runnerLogPath) {
+            $logsToScan += $runnerLogPath
+          }
+          if (Test-Path $decoderLogPath) {
+            $logsToScan += $decoderLogPath
+          }
+          if ($logsToScan.Count -eq 0) {
+            throw "No decode logs were produced."
+          }
 
-          Get-Content $logPath
+          foreach ($logFile in $logsToScan) {
+            Write-Host "---- Tail of $logFile ----"
+            Get-Content $logFile -Tail 200
+          }
 
           if ($decodeExitCode -ne 0) {
             throw "decode.exe exited with code $decodeExitCode"
           }
 
-          $logText = Get-Content $logPath -Raw
           $crashPatterns = @(
             "Exception in thread",
             "Traceback (most recent call last)",
@@ -167,8 +180,10 @@ jobs:
             "MemoryError"
           )
           foreach ($pattern in $crashPatterns) {
-            if ($logText -match [regex]::Escape($pattern)) {
-              throw "Detected crash signature in decode log: $pattern"
+            foreach ($logFile in $logsToScan) {
+              if (Select-String -Path $logFile -SimpleMatch -Pattern $pattern -Quiet) {
+                throw "Detected crash signature in decode log ($logFile): $pattern"
+              }
             }
           }
 
