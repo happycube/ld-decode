@@ -116,6 +116,62 @@ jobs:
         shell: pwsh
         run: |
           python -c "import subprocess,sys; subprocess.run([r'.\\dist\\decode.exe','ld','--version'], timeout=120, check=True)"
+      - name: Smoke test 300-frame VHS decode (crash regression)
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $sampleUrl = "https://drive.google.com/file/d/1zJXh1c9KftkFaIsa7OsSEa9XHs6EMBSZ/view?usp=drive_link"
+          $sampleDir = Join-Path $env:RUNNER_TEMP "windows-vhs-crash-sample"
+          New-Item -ItemType Directory -Path $sampleDir -Force | Out-Null
+
+          python -m pip install --upgrade gdown
+          python -m gdown --fuzzy $sampleUrl --output $sampleDir
+
+          $sampleFile = Get-ChildItem -Path $sampleDir -File | Sort-Object Length -Descending | Select-Object -First 1
+          if ($null -eq $sampleFile) {
+            throw "Failed to download the Windows regression sample."
+          }
+          if ($sampleFile.Length -lt 1MB) {
+            throw "Downloaded regression sample is unexpectedly small: $($sampleFile.FullName)"
+          }
+
+          $outputBase = Join-Path $env:RUNNER_TEMP "windows_300_frame_smoke"
+          $logPath = Join-Path $env:RUNNER_TEMP "windows_300_frame_smoke.log"
+
+          $decodeArgs = @(
+            "vhs",
+            "--overwrite",
+            "--length", "300",
+            "--threads", "4",
+            $sampleFile.FullName,
+            $outputBase
+          )
+
+          & .\dist\decode.exe @decodeArgs *> $logPath
+          $decodeExitCode = $LASTEXITCODE
+
+          Get-Content $logPath
+
+          if ($decodeExitCode -ne 0) {
+            throw "decode.exe exited with code $decodeExitCode"
+          }
+
+          $logText = Get-Content $logPath -Raw
+          $crashPatterns = @(
+            "Exception in thread",
+            "Traceback (most recent call last)",
+            "ArrayMemoryError",
+            "MemoryError"
+          )
+          foreach ($pattern in $crashPatterns) {
+            if ($logText -match [regex]::Escape($pattern)) {
+              throw "Detected crash signature in decode log: $pattern"
+            }
+          }
+
+          if (-not (Test-Path ($outputBase + ".tbc.json"))) {
+            throw "Expected decode output metadata was not created: $($outputBase + '.tbc.json')"
+          }
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
