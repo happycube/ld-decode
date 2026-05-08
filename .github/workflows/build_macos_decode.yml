@@ -74,6 +74,7 @@ jobs:
           set -euxo pipefail
           if brew list --versions llvm@18 >/dev/null 2>&1; then
             brew unlink llvm@18 || true
+            brew uninstall --ignore-dependencies llvm@18 || true
           fi
           brew install llvm@20
           brew link --overwrite llvm@20
