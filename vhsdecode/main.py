@@ -133,9 +133,22 @@ def main(args=None, use_gui=False):
     luma_group.add_argument(
         "--ire0_adjust",
         dest="ire0_adjust",
-        action="store_true",
+        nargs="?",
+        const="backporch",
         default=False,
-        help="Automatic adjust of ire0 based blanking level",
+        type=lambda v: (
+            v.lower()
+            if all(p.strip().lower() in {"hsync", "backporch"} for p in v.split(","))
+            else (_ for _ in ()).throw(
+                argparse.ArgumentTypeError("Allowed values: hsync, backporch")
+            )
+        ),
+        help=(
+            "Automatically adjust video levels after vsync and TBC."
+            "\nAdd this flag with no arguments for the default, or supply one or more of the below options as a comma separated string. "
+            "\n  backporch [default] adjusts the black level based on the backporch level"
+            "\n  hsync               adjusts the level scaling based on the measured hsync / backporch ratio. This can correct automatic gain control issues with second generation tapes."
+        )
     )
     luma_group.add_argument(
         "--high_boost",
