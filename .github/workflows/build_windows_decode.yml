@@ -11,8 +11,16 @@ on:
 
 jobs:
   build-decode:
-    name: Build decode (x86_64)
-    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: windows-2022
+          - arch: arm64
+            os: windows-11-arm
+    name: Build decode (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     env:
         SETUPTOOLS_RUST_CARGO_PROFILE: release
     steps:
@@ -46,6 +54,6 @@ jobs:
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: decode_windows_x86_64
+          name: decode_windows_${{ matrix.arch }}
           path: dist/decode.exe
           if-no-files-found: error

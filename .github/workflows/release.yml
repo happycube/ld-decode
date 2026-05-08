@@ -124,13 +124,25 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: decode_linux_x86_64
-          path: ./artifacts/decode/linux/
+          path: ./artifacts/decode/linux-x86_64/
+
+      - name: Download Linux arm64 decode artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: decode_linux_arm64
+          path: ./artifacts/decode/linux-arm64/
 
       - name: Download Windows decode artifact
         uses: actions/download-artifact@v8
         with:
           name: decode_windows_x86_64
-          path: ./artifacts/decode/windows/
+          path: ./artifacts/decode/windows-x86_64/
+
+      - name: Download Windows arm64 decode artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: decode_windows_arm64
+          path: ./artifacts/decode/windows-arm64/
 
       - name: Download macOS x86_64 decode artifact
         uses: actions/download-artifact@v8
@@ -150,20 +162,27 @@ jobs:
           set -euxo pipefail
           mkdir -p artifacts/release
 
-          APPIMAGE_PATH="$(find ./artifacts/decode/linux -maxdepth 3 -type f -name '*.AppImage' | head -n 1)"
-          if [ -z "${APPIMAGE_PATH}" ]; then
-            echo "Failed to locate Linux AppImage artifact."
+          APPIMAGE_X86_PATH="$(find ./artifacts/decode/linux-x86_64 -maxdepth 3 -type f -name '*.AppImage' | head -n 1)"
+          APPIMAGE_ARM_PATH="$(find ./artifacts/decode/linux-arm64 -maxdepth 3 -type f -name '*.AppImage' | head -n 1)"
+          if [ -z "${APPIMAGE_X86_PATH}" ] || [ -z "${APPIMAGE_ARM_PATH}" ]; then
+            echo "Failed to locate one or more Linux AppImage artifacts."
             exit 1
           fi
-          cp "${APPIMAGE_PATH}" "./artifacts/release/decode_${RELEASE_TAG}_linux_x86_64.AppImage"
+          cp "${APPIMAGE_X86_PATH}" "./artifacts/release/decode_${RELEASE_TAG}_linux_x86_64.AppImage"
+          cp "${APPIMAGE_ARM_PATH}" "./artifacts/release/decode_${RELEASE_TAG}_linux_arm64.AppImage"
 
-          mkdir -p ./artifacts/release/windows
-          cp -R ./artifacts/decode/windows/. ./artifacts/release/windows/
+          mkdir -p ./artifacts/release/windows-x86_64 ./artifacts/release/windows-arm64
+          cp -R ./artifacts/decode/windows-x86_64/. ./artifacts/release/windows-x86_64/
+          cp -R ./artifacts/decode/windows-arm64/. ./artifacts/release/windows-arm64/
           (
-            cd ./artifacts/release/windows
+            cd ./artifacts/release/windows-x86_64
             zip -r "../decode_${RELEASE_TAG}_windows_x86_64.zip" .
           )
-          rm -rf ./artifacts/release/windows
+          (
+            cd ./artifacts/release/windows-arm64
+            zip -r "../decode_${RELEASE_TAG}_windows_arm64.zip" .
+          )
+          rm -rf ./artifacts/release/windows-x86_64 ./artifacts/release/windows-arm64
 
           MACOS_X86_PATH="$(find ./artifacts/decode/macos-x86_64 -maxdepth 3 -type f -name '*.dmg' | head -n 1)"
           MACOS_ARM_PATH="$(find ./artifacts/decode/macos-arm64 -maxdepth 3 -type f -name '*.dmg' | head -n 1)"
