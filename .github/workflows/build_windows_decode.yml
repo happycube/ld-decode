@@ -36,6 +36,40 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Ensure DIA SDK path compatibility for arm64
+        if: matrix.arch == 'arm64'
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found at $vswhere"
+          }
+
+          $vsInstallPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if ([string]::IsNullOrWhiteSpace($vsInstallPath)) {
+            $vsInstallPath = & $vswhere -latest -products * -property installationPath
+          }
+          if ([string]::IsNullOrWhiteSpace($vsInstallPath)) {
+            throw "Unable to locate Visual Studio installation path."
+          }
+
+          $sourceDiaSdk = Join-Path $vsInstallPath "DIA SDK"
+          if (-not (Test-Path $sourceDiaSdk)) {
+            throw "DIA SDK directory not found at $sourceDiaSdk"
+          }
+
+          $communityRoot = "C:\Program Files\Microsoft Visual Studio\2022\Community"
+          $communityDiaSdk = Join-Path $communityRoot "DIA SDK"
+          if (-not (Test-Path $communityDiaSdk)) {
+            New-Item -ItemType Directory -Path $communityRoot -Force | Out-Null
+            Copy-Item -Path $sourceDiaSdk -Destination $communityDiaSdk -Recurse -Force
+          }
+
+          $arm64DiaLib = Join-Path $communityDiaSdk "lib\arm64\diaguids.lib"
+          if (-not (Test-Path $arm64DiaLib)) {
+            throw "Expected DIA SDK library not found at $arm64DiaLib"
+          }
+
       - name: Build Python module
         run: |
           python -m pip install --upgrade pip "setuptools<82" wheel
