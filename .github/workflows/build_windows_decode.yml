@@ -41,12 +41,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Use x64 Rust toolchain on ARM runner
+      - name: Add Rust x64 target on ARM runner
         if: matrix.arch == 'arm64' && matrix.python_arch == 'x64'
-        run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc
-          rustup default stable-x86_64-pc-windows-msvc
-          rustc -vV
+        run: rustup target add x86_64-pc-windows-msvc
 
       - name: Ensure DIA SDK path compatibility for arm64
         if: matrix.arch == 'arm64' && matrix.python_arch == 'arm64'
@@ -87,6 +84,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip "setuptools<82" wheel
           python -m pip install --only-binary=:all: "llvmlite==0.47.0" "numba==0.65.1"
+
+      - name: Configure PyO3 cross-build environment on ARM runner
+        if: matrix.arch == 'arm64' && matrix.python_arch == 'x64'
+        shell: pwsh
+        run: |
+          $pythonBase = python -c "import sys; print(sys.base_prefix)"
+          $pythonVersion = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+          $pythonLibDir = Join-Path $pythonBase "libs"
+          if (-not (Test-Path $pythonLibDir)) {
+            throw "Python libs directory not found at $pythonLibDir"
+          }
+
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-msvc" >> $env:GITHUB_ENV
+          "PYO3_CROSS=1" >> $env:GITHUB_ENV
+          "PYO3_CROSS_PYTHON_IMPLEMENTATION=CPython" >> $env:GITHUB_ENV
+          "PYO3_CROSS_PYTHON_VERSION=$pythonVersion" >> $env:GITHUB_ENV
+          "PYO3_CROSS_LIB_DIR=$pythonLibDir" >> $env:GITHUB_ENV
 
       - name: Build Python module
         run: |
