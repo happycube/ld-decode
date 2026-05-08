@@ -67,9 +67,16 @@ jobs:
       - name: Install dependencies
         run: brew install create-dmg libsndfile libomp
 
-      - name: Install LLVM (Intel only)
+      - name: Install and link LLVM (Intel only)
         if: matrix.arch == 'x86_64'
-        run: brew install llvm@20
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if brew list --versions llvm@18 >/dev/null 2>&1; then
+            brew unlink llvm@18 || true
+          fi
+          brew install llvm@20
+          brew link --overwrite llvm@20
 
       - name: Build Python module
         shell: bash
