@@ -51,8 +51,10 @@ jobs:
           cp resources/appimage/decode/entrypoint.sh _build_appimage/
           cp resources/appimage/decode/vhs-decode.desktop _build_appimage/
           cp resources/appimage/decode/vhs-decode.appdata.xml _build_appimage/
-
-          echo "$(pwd)[hifi_gui_qt6,hifi_gnuradio]" > _build_appimage/requirements.txt
+          {
+            echo "PyQt6==6.7.1"
+            echo "$(pwd)[hifi_gui_qt6,hifi_gnuradio]"
+          } > _build_appimage/requirements.txt
 
           python-appimage build app -p 3.12 _build_appimage
           APPIMAGE_SRC="$(find . -maxdepth 1 -type f -name '*.AppImage' | head -n 1)"

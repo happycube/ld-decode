@@ -17,8 +17,12 @@ jobs:
         include:
           - arch: x86_64
             os: windows-2022
+            python_arch: x64
           - arch: arm64
             os: windows-11-arm
+            # numba/llvmlite currently do not publish win_arm64 wheels.
+            # Use x64 Python on ARM runners so binary wheels can be installed.
+            python_arch: x64
     name: Build decode (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     env:
@@ -33,11 +37,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          architecture: ${{ matrix.python_arch }}
 
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Ensure DIA SDK path compatibility for arm64
-        if: matrix.arch == 'arm64'
+        if: matrix.arch == 'arm64' && matrix.python_arch == 'arm64'
         shell: pwsh
         run: |
           $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -69,6 +74,12 @@ jobs:
           if (-not (Test-Path $arm64DiaLib)) {
             throw "Expected DIA SDK library not found at $arm64DiaLib"
           }
+
+      - name: Preinstall numba and llvmlite wheels on ARM runner
+        if: matrix.arch == 'arm64'
+        run: |
+          python -m pip install --upgrade pip "setuptools<82" wheel
+          python -m pip install --only-binary=:all: "llvmlite==0.47.0" "numba==0.65.1"
 
       - name: Build Python module
         run: |

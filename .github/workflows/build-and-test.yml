@@ -34,17 +34,20 @@ jobs:
             ctest --output-on-failure -V
           '
 
-#  build-appimage:
-#    name: Build Linux AppImage
-#    needs: functional-tests
-#    permissions:
-#      contents: write
-#    uses: ./.github/workflows/appimage.yml
+  build-linux-decode:
+    name: Build Linux decode binaries
+    needs: functional-tests
+    uses: ./.github/workflows/build_linux_decode.yml
+    secrets: inherit
 
+  build-windows-decode:
+    name: Build Windows decode binaries
+    needs: functional-tests
+    uses: ./.github/workflows/build_windows_decode.yml
+    secrets: inherit
 
-#  build-windows-zip:
-#    name: Build Windows ZIP
-#    needs: functional-tests
-#    permissions:
-#      contents: write
-#    uses: ./.github/workflows/windows-zip.yml
+  build-macos-decode:
+    name: Build macOS decode binaries
+    needs: functional-tests
+    uses: ./.github/workflows/build_macos_decode.yml
+    secrets: inherit
