@@ -56,6 +56,50 @@ supported_tape_formats = {
     "VIDEO2000",
 }
 
+_SUPPORTED_IRE0_ADJUST_VALUES = {"hsync", "backporch"}
+
+
+def _parse_ire0_adjust(value):
+    parsed = value.lower()
+    if all(
+        part.strip().lower() in _SUPPORTED_IRE0_ADJUST_VALUES
+        for part in parsed.split(",")
+    ):
+        return parsed
+    raise argparse.ArgumentTypeError("Allowed values: hsync, backporch")
+
+
+def _normalize_ire0_adjust_args(raw_args):
+    normalized = []
+    i = 0
+    while i < len(raw_args):
+        token = raw_args[i]
+        if token == "--ire0_adjust":
+            normalized.append(token)
+            if i + 1 >= len(raw_args):
+                i += 1
+                continue
+
+            next_token = raw_args[i + 1]
+            if next_token.startswith("-"):
+                i += 1
+                continue
+
+            try:
+                _parse_ire0_adjust(next_token)
+                normalized.append(next_token)
+                i += 2
+                continue
+            except argparse.ArgumentTypeError:
+                # If the next token is not a valid ire0_adjust value, treat this
+                # as a flag-only invocation and keep the next token positional.
+                normalized.append("backporch")
+                i += 1
+                continue
+
+        normalized.append(token)
+        i += 1
+    return normalized
 
 def main(args=None, use_gui=False):
     # Allows stack-dump on Unix via `kill -USR1 <pid>` when supported.
@@ -136,13 +180,7 @@ def main(args=None, use_gui=False):
         nargs="?",
         const="backporch",
         default=False,
-        type=lambda v: (
-            v.lower()
-            if all(p.strip().lower() in {"hsync", "backporch"} for p in v.split(","))
-            else (_ for _ in ()).throw(
-                argparse.ArgumentTypeError("Allowed values: hsync, backporch")
-            )
-        ),
+        type=_parse_ire0_adjust,
         help=(
             "Automatically adjust video levels after vsync and TBC."
             "\nAdd this flag with no arguments for the default, or supply one or more of the below options as a comma separated string. "
@@ -487,7 +525,9 @@ def main(args=None, use_gui=False):
         ),
     )
 
-    args = parser.parse_args(args)
+    raw_args = list(args) if args is not None else sys.argv[1:]
+    normalized_args = _normalize_ire0_adjust_args(raw_args)
+    args = parser.parse_args(normalized_args)
 
     try:
         filename, outname, firstframe, req_frames = get_basics(args)

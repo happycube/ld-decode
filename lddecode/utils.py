@@ -15,7 +15,8 @@ import warnings
 
 import threading
 from queue import Queue
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
+import multiprocessing
 
 from numba import jit, njit
 import numba
@@ -145,10 +146,35 @@ kaiser_beta = 5
 sinc_tap_count = 16 # must be multiple of 2
 sinc_phase_count = 2**16
 
-# compute sinc table in a process to so it doesn't block other startup tasks
-sinc_lut_future = ProcessPoolExecutor().submit(
-    build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
-)
+def _build_completed_future(value):
+    future = Future()
+    future.set_result(value)
+    return future
+
+
+def _init_sinc_lut_future():
+    # Avoid process spawning for frozen/Windows startup paths:
+    # on Windows, spawned processes re-import modules, and creating a
+    # ProcessPoolExecutor at import time can recursively spawn workers.
+    if os.name == "nt" or getattr(sys, "frozen", False):
+        return None, _build_completed_future(
+            build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count)
+        )
+
+    # Also avoid nested pool creation inside non-main processes.
+    if multiprocessing.current_process().name != "MainProcess":
+        return None, _build_completed_future(
+            build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count)
+        )
+
+    # Keep startup responsive on non-Windows main processes.
+    executor = ProcessPoolExecutor(max_workers=1)
+    return executor, executor.submit(
+        build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
+    )
+
+
+_sinc_lut_executor, sinc_lut_future = _init_sinc_lut_future()
 
 
 @njit(nogil=True, fastmath=True)

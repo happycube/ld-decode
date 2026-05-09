@@ -707,7 +707,15 @@ class VHSRFDecode(ldd.RFDecode):
         )
 
         export_raw_tbc = rf_options.get("export_raw_tbc", False)
-        ire0_adjust = rf_options.get("ire0_adjust", False)
+        ire0_adjust_raw = rf_options.get("ire0_adjust", "")
+        if isinstance(ire0_adjust_raw, str):
+            ire0_adjust = tuple(
+                mode.strip().lower()
+                for mode in ire0_adjust_raw.split(",")
+                if mode.strip()
+            )
+        else:
+            ire0_adjust = tuple()
         is_color_under = vhs_formats.is_color_under(tape_format)
         write_chroma = (
             is_color_under
