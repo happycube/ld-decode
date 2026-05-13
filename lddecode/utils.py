@@ -12,7 +12,7 @@ import signal
 
 import threading
 from queue import Queue
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 from numba import jit, njit
 import numba
@@ -126,7 +126,7 @@ sinc_tap_count = 16 # must be multiple of 2
 sinc_phase_count = 2**16
 
 # compute sinc table in a process to so it doesn't block other startup tasks
-sinc_lut_future = ProcessPoolExecutor().submit(
+sinc_lut_future = ThreadPoolExecutor().submit(
     build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
 )
 
