@@ -8,7 +8,6 @@ import os
 import subprocess
 import sys
 import traceback
-import signal
 
 import threading
 from queue import Queue
@@ -117,6 +116,7 @@ def build_kaiser_lut(beta, taps, phases):
     table[phases] = table[phases - 1]
 
     return table
+
 
 # Kaiser Beta parameter controls trade-off between sharpness and ringing
 # Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
@@ -1017,9 +1017,8 @@ def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
     ).astype(np.uint16)
 
 
-
 # Something like this should be a numpy function, but I can't find it.
-@jit(cache=True, nopython=True)
+@njit(cache=True)
 def findareas(array, cross):
     """ Find areas where `array` is <= `cross`
 
@@ -1099,6 +1098,7 @@ def findpulses(sync_ref, _, high):
     )
     return _to_pulses_list(pulses_starts, pulses_lengths)
 
+
 if False:
     @njit(cache=True,nogil=True)
     def numba_pulse_qualitycheck(prevpulse: Pulse, pulse: Pulse, inlinelen: int):
@@ -1171,11 +1171,13 @@ def LRUupdate(l, k):
 
 # Lambdas used to shorten filter-building functions
 
+
 # Split out the frequency list given to the filter builder
 freqrange = lambda f1, f2: [
     f1 / self.freq_hz_half,
     f2 / self.freq_hz_half,
 ]
+
 
 # Like freqrange, but for notch filters
 notchrange = lambda f, notchwidth, hz: [
@@ -1183,11 +1185,12 @@ notchrange = lambda f, notchwidth, hz: [
     (f + notchwidth) / self.freq_hz_half if hz else self.freq_half,
 ]
 
-# numba jit functions, used to numba-ify parts of more complex functions
 
+# numba jit functions, used to numba-ify parts of more complex functions
 @njit(cache=True,nogil=True)
 def nb_median(m):
     return np.median(m)
+
 
 # Enabling nogil here kills performance - cache issues?
 @njit(cache=True,nogil=False)
@@ -1202,72 +1205,73 @@ def nb_concatenate(m):
 
     return out
 
-@njit(cache=True,nogil=True)
+
+@njit(cache=True, nogil=True)
 def nb_round(m):
     return int(np.round(m))
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_mean(m):
     return np.mean(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_min(m):
     return np.min(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_max(m):
     return np.max(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_abs(m):
     return np.abs(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_absmax(m):
     return np.max(np.abs(m))
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_std(m):
     return np.std(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_diff(m):
     return np.diff(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_mul(x, y):
     return x * y
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_where(x):
     return np.where(x)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_gt(x, y):
     return (x > y)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def n_orgt(a, x, y):
     a |= (x > y)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def n_orlt(a, x, y):
     a |= (x < y)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def n_ornotrange(a, x, y, z):
     a |= (x < y) | (x > z)
 
@@ -1287,6 +1291,7 @@ def angular_mean_helper(x, cycle_len=1.0, zero_base=True):
     angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
 
     return angles
+
 
 @njit(cache=True)
 def phase_distance(x, c=0.75):
@@ -1323,7 +1328,7 @@ def dsa_rescale_and_clip(infloat):
 # removed so that they can be JIT'd
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart, s_rem, zcburstdiv, phase_adjust):
     zc_count = 0
     rising_count = 0
@@ -1354,6 +1359,7 @@ def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart,
 
     return zc_count, phase_adjust, rising_count
 
+
 @njit(cache=True)
 def distance_from_round(x):
     # Yes, this was a hotspot.
@@ -1376,8 +1382,9 @@ def init_opencl(cl, name = None):
                 break
             if ctx is not None:
                 break
-    #queue = cl.CommandQueue(ctx)
+    # queue = cl.CommandQueue(ctx)
     return ctx
+
 
 class FieldInfo:
     def __init__(self, field_history_size=3):
@@ -1389,7 +1396,7 @@ class FieldInfo:
 
     def __len__(self):
         return self._len
-    
+
     # called like a normal python list, where -1 is the last element, -2 the one before that, etc.
     # using [0] is not allowed since this only stores the end of the list
     def __getitem__(self, key):
@@ -1401,11 +1408,12 @@ class FieldInfo:
         unsent = self._fieldinfo_unsent
         self._fieldinfo_unsent = []
         return unsent
-    
+
     def append(self, value):
         self._fieldinfo[self._len % self._field_history_size] = value
         self._fieldinfo_unsent.append(value)
         self._len += 1
+
 
 class JSONDumper:
     def __init__(self, ldd, outname):
@@ -1499,6 +1507,7 @@ class JSONDumper:
             os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
 
             ready.clear()
+
 
 class StridedCollector:
     # This keeps a numpy buffer and outputs an fft block and keeps the overlap
