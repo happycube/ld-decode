@@ -13,7 +13,7 @@ import threading
 from queue import Queue
 from concurrent.futures import ThreadPoolExecutor
 
-from numba import jit, njit
+from numba import njit
 import numba
 
 # standard numeric/scientific libraries
@@ -34,6 +34,7 @@ try:
 except:
     def profile(fn):
         return fn
+
 
 # This runs a cubic scaler on a line.
 # originally from https://www.paulinternet.nl/?page=bicubic
@@ -1187,13 +1188,13 @@ notchrange = lambda f, notchwidth, hz: [
 
 
 # numba jit functions, used to numba-ify parts of more complex functions
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_median(m):
     return np.median(m)
 
 
 # Enabling nogil here kills performance - cache issues?
-@njit(cache=True,nogil=False)
+@njit(cache=True, nogil=False)
 def nb_concatenate(m):
     tlen = sum([len(i) for i in m])
 
@@ -1364,26 +1365,6 @@ def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart,
 def distance_from_round(x):
     # Yes, this was a hotspot.
     return np.round(x) - x
-
-
-def init_opencl(cl, name = None):
-    # Create some context on the first available GPU
-    if 'PYOPENCL_CTX' in os.environ:
-        ctx = cl.create_some_context()
-    else:
-        ctx = None
-        # Find the first OpenCL GPU available and use it, unless
-        for p in cl.get_platforms():
-            for d in p.get_devices():
-                if d.type & cl.device_type.GPU == 1:
-                    continue
-                print("Selected device: ", d.name)
-                ctx = cl.Context(devices=(d,))
-                break
-            if ctx is not None:
-                break
-    # queue = cl.CommandQueue(ctx)
-    return ctx
 
 
 class FieldInfo:
