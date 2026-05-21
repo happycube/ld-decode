@@ -72,6 +72,13 @@ def scale(buf, begin, end, tgtlen, mult=1):
     return output
 
 
+# Kaiser Beta parameter controls trade-off between sharpness and ringing
+# Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
+# Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff (less ringing))
+kaiser_beta = 5
+sinc_tap_count = 16 # must be multiple of 2
+sinc_phase_count = 2**16
+
 @njit
 def sinc(x):
     if x == 0.0:
@@ -117,18 +124,6 @@ def build_kaiser_lut(beta, taps, phases):
     table[phases] = table[phases - 1]
 
     return table
-
-# Kaiser Beta parameter controls trade-off between sharpness and ringing
-# Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
-# Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff (less ringing))
-kaiser_beta = 5
-sinc_tap_count = 16 # must be multiple of 2
-sinc_phase_count = 2**16
-
-# compute sinc table in a process to so it doesn't block other startup tasks
-sinc_lut_future = ProcessPoolExecutor().submit(
-    build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
-)
 
 
 @njit(nogil=True, fastmath=True)
