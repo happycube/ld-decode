@@ -8,10 +8,9 @@ import threading
 import time
 import types
 
-from concurrent.futures import ProcessPoolExecutor
-
 from queue import Queue
 from textwrap import dedent
+from pathlib import Path
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -34,7 +33,6 @@ from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distanc
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
 from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
-from .utils import build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -291,13 +289,11 @@ class RFDecode:
 
         """
 
-        # create sinc downscaling lookup table in concurrently in a process
-        # Note: threading will work, but will unnecessarily block the GIL
-        executor = ProcessPoolExecutor()
-        self.downscale_sinc_lut_future = executor.submit(
-            build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
-        )
-        executor.shutdown(wait=False)
+        sinc_lut_path = Path(__file__).resolve().parent / "sinc_lut.npz"
+        # uncomment to regenerate the sinc downscaling lookup table 
+        # from .utils import build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
+        # np.savez_compressed(sinc_lut_path, downscale_sinc_lut=build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count))
+        self.downscale_sinc_lut = np.load(sinc_lut_path)["downscale_sinc_lut"]
 
         self.blocklen     = blocklen
         self.blockcut     = 1024
@@ -2575,7 +2571,7 @@ class Field:
             dsout,
             interpolated_pixel_locs,
             wowfactors,
-            self.rf.downscale_sinc_lut_future.result(), # this blocks until the lut generation future is completed
+            self.rf.downscale_sinc_lut,
             self.lineoffset,
             outwidth,
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing
