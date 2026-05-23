@@ -294,7 +294,7 @@ class RFDecode:
 
         """
 
-        sinc_lut_path = files(__package__).joinpath("sinc_lut.npx")
+        sinc_lut_path = files(__package__).joinpath("sinc_lut.npz")
         # uncomment to regenerate the sinc downscaling lookup table 
         # from .utils import build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
         # np.savez_compressed(sinc_lut_path, downscale_sinc_lut=build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count))
