@@ -10,6 +10,7 @@ import types
 
 from queue import Queue
 from textwrap import dedent
+from pathlib import Path
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -31,7 +32,7 @@ try:
 except ImportError:
     _ac3rf = None
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
-from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms, sinc_lut_future
+from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
@@ -292,6 +293,12 @@ class RFDecode:
           - AC3: Supports AC3
 
         """
+
+        sinc_lut_path = Path(__file__).resolve().parent / "sinc_lut.npz"
+        # uncomment to regenerate the sinc downscaling lookup table 
+        # from .utils import build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
+        # np.savez_compressed(sinc_lut_path, downscale_sinc_lut=build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count))
+        self.downscale_sinc_lut = np.load(sinc_lut_path)["downscale_sinc_lut"]
 
         self.blocklen     = blocklen
         self.blockcut     = 1024
@@ -2549,7 +2556,7 @@ class Field:
             dsout,
             interpolated_pixel_locs,
             wowfactors,
-            sinc_lut_future.result(),
+            self.rf.downscale_sinc_lut,
             self.lineoffset,
             outwidth,
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing

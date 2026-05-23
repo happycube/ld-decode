@@ -12,7 +12,6 @@ import signal
 
 import threading
 from queue import Queue
-from concurrent.futures import ProcessPoolExecutor
 
 from numba import jit, njit
 import numba
@@ -72,6 +71,13 @@ def scale(buf, begin, end, tgtlen, mult=1):
     return output
 
 
+# Kaiser Beta parameter controls trade-off between sharpness and ringing
+# Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
+# Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff (less ringing))
+kaiser_beta = 5
+sinc_tap_count = 16 # must be multiple of 2
+sinc_phase_count = 2**16
+
 @njit
 def sinc(x):
     if x == 0.0:
@@ -117,18 +123,6 @@ def build_kaiser_lut(beta, taps, phases):
     table[phases] = table[phases - 1]
 
     return table
-
-# Kaiser Beta parameter controls trade-off between sharpness and ringing
-# Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
-# Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff (less ringing))
-kaiser_beta = 5
-sinc_tap_count = 16 # must be multiple of 2
-sinc_phase_count = 2**16
-
-# compute sinc table in a process to so it doesn't block other startup tasks
-sinc_lut_future = ProcessPoolExecutor().submit(
-    build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
-)
 
 
 @njit(nogil=True, fastmath=True)
@@ -983,16 +977,18 @@ def roundfloat(fl, places=3):
     return np.round(fl * r) / r
 
 
-@njit(nogil=True, cache=True)
+@njit(nogil=True, cache=True, fastmath=True)
 def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
-    reduced = (input - ire0) / hz_ire
-    reduced -= vsync_ire
+    n = len(input)
+    out = np.empty(n, dtype=np.uint16)
 
-    return (
-        np.clip((reduced * out_scale) + outputZero, 0, 65535) + 0.5
-    ).astype(np.uint16)
+    scale = out_scale / hz_ire
+    offset = outputZero - vsync_ire * out_scale - ire0 * scale
 
+    for i in range(n):
+        out[i] = np.uint16(max(0, min(65535, input[i] * scale + offset)))
 
+    return out
 
 # Something like this should be a numpy function, but I can't find it.
 @jit(cache=True, nopython=True)
