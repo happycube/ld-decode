@@ -3795,10 +3795,21 @@ class LDdecode:
         if not self.capture_id:
             self.build_sqlite_metadata()
 
-        c_id = self.capture_id 
+        c_id = self.capture_id
         f_id = fi['seqNo'] - 1
 
         decodeFaults = None if fi.get('decodeFaults') == 0 else fi.get('decodeFaults')
+
+        f_offset = 0
+        while True:
+            # Check to see if the field record already exists (can happen w/skips) and if so bump the field_id by a large offset to avoid primary key conflicts, while still allowing related records (e.g. drop_outs) to be linked to the same field record via the offset field_id
+            cur = self.dbconn.cursor()
+            cur.execute('''SELECT 1 FROM field_record WHERE capture_id = ? AND field_id = ?''', (c_id, f_id + f_offset))
+            if cur.fetchone() is not None:
+                logger.warning(f"Field record for capture_id={c_id} and field_id={f_id+f_offset} already exists. Raising field_id by offset.  Use ld-discmap.")
+                f_offset += 1000000
+            else:
+                break
 
         # Insert parent record into 'field_record'
         # We cast booleans to int because of the CHECK (val IN (0,1)) constraint
@@ -3808,18 +3819,19 @@ class LDdecode:
                 file_loc, median_burst_ire, field_phase_id, decode_faults, 
                 audio_samples, efm_t_values, pad
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-            (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'], 
+            (c_id, f_id + f_offset, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'], 
                 fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults, 
                 fi['audioSamples'], fi['efmTValues'], 0))
 
-        w_snr = fi['vitsMetrics'].get('wSNR', 0)
-        b_psnr = fi['vitsMetrics'].get('bPSNR', 0)
-        
-        self.dbconn.execute('''
-            INSERT INTO vits_metrics (
-                capture_id, field_id, w_snr, b_psnr
-            ) VALUES (?, ?, ?, ?)''',
-            (c_id, f_id, w_snr, b_psnr))
+        if 'vitsMetrics' in fi:
+            w_snr = fi['vitsMetrics'].get('wSNR', 0)
+            b_psnr = fi['vitsMetrics'].get('bPSNR', 0)
+            
+            self.dbconn.execute('''
+                INSERT INTO vits_metrics (
+                    capture_id, field_id, w_snr, b_psnr
+                ) VALUES (?, ?, ?, ?)''',
+                (c_id, f_id + f_offset, w_snr, b_psnr))
 
         # Insert VBI data if present
         vbi_data = fi.get("vbi", {}).get("vbiData", [])
@@ -3832,7 +3844,7 @@ class LDdecode:
                 INSERT INTO vbi (
                     capture_id, field_id, vbi0, vbi1, vbi2
                 ) VALUES (?, ?, ?, ?, ?)''', 
-                (c_id, f_id, vbi_row[0], vbi_row[1], vbi_row[2]))
+                (c_id, f_id + f_offset, vbi_row[0], vbi_row[1], vbi_row[2]))
 
         # Insert dropouts (if any) into 'drop_outs'
         if self.doDOD and fi.get("dropOuts"):
@@ -3842,7 +3854,7 @@ class LDdecode:
 
             # Use executemany for cleaner/faster insertion of multiple rows
             dropout_data = [
-                (c_id, f_id, line, start, end) 
+                (c_id, f_id + f_offset, line, start, end) 
                 for line, start, end in zip(dropout_lines, dropout_starts, dropout_ends)
             ]
 
