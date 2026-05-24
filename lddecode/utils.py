@@ -659,6 +659,30 @@ def ldf_pipe(outname: str, compression_level: int = 6):
     return ffmpeg_pipe(outname, f"-acodec flac -f ogg -compression_level {compression_level}")
 
 
+def ac3_pipe(outname: str):
+    processes = []
+
+    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -".split()
+    cmd2 = "ld-ac3-demodulate -v 3 - -".split()
+    cmd3 = ["ld-ac3-decode", "-", outname]
+
+    logfp = open(outname + '.log', 'w')
+
+    # This is done in reverse order to allow for pipe building
+    processes.append(subprocess.Popen(cmd3,
+                                      stdin=subprocess.PIPE,
+                                      stdout=logfp,
+                                      stderr=subprocess.STDOUT))
+
+    processes.append(subprocess.Popen(cmd2,
+                                      stdin=subprocess.PIPE,
+                                      stdout=processes[-1].stdin))
+
+    processes.append(subprocess.Popen(cmd1,
+                                      stdin=subprocess.PIPE,
+                                      stdout=processes[-1].stdin))
+
+    return processes, processes[-1].stdin
 
 
 # Essential (or at least useful) standalone routines and lambdas
