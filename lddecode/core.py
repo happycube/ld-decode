@@ -1102,14 +1102,14 @@ class DemodCache:
 
     @profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
-        need_blocks = []
-        queuelist = []
+        need_blocks = set()
+        queuelist = set()
         reached_end = False
 
         with self.lock:
             if redo:
                 for b in self.flush_demod():
-                    queuelist.append(b)
+                    queuelist.add(b)
 
             for b in blocknums:
                 if b not in self.blocks:
@@ -1144,10 +1144,10 @@ class DemodCache:
                     continue
 
                 if redo or not waiting:
-                    queuelist.append(b)
-                    need_blocks.append(b)
+                    queuelist.add(b)
+                    need_blocks.add(b)
                 elif waiting:
-                    need_blocks.append(b)
+                    need_blocks.add(b)
 
                 if not prefetch:
                     self.waiting.add(b)
