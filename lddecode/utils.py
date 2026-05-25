@@ -1045,11 +1045,10 @@ def findpulses_numba_raw(sync_ref, high, min_synclen=0, max_synclen=5000):
 
     in_pulse = sync_ref[0] <= high
 
-    # Start/lengths lists
-    # It's possible this could be optimized further by using
-    # a different data structure here.
-    starts = []
-    lengths = []
+    max_pulses = len(sync_ref) // 2
+    starts = np.empty(max_pulses, dtype=np.int64)
+    lengths = np.empty(max_pulses, dtype=np.int64)
+    count = 0
 
     cur_start = 0
 
@@ -1061,22 +1060,15 @@ def findpulses_numba_raw(sync_ref, high, min_synclen=0, max_synclen=5000):
                 length = pos - cur_start
                 # If the pulse is in range, and it's not a starting one
                 if inrange(length, min_synclen, max_synclen) and cur_start != 0:
-                    starts.append(cur_start)
-                    lengths.append(length)
+                    starts[count] = cur_start
+                    lengths[count] = length
+                    count += 1
                 in_pulse = False
         elif value <= high:
             cur_start = pos
             in_pulse = True
 
-    # Not using a possible trailing pulse
-    # if in_pulse:
-    #     # Handle trailing pulse
-    #     length = len(sync_ref) - 1 - cur_start
-    #     if inrange(length, min_synclen, max_synclen):
-    #         starts.append(cur_start)
-    #         lengths.append(length)
-
-    return np.asarray(starts), np.asarray(lengths)
+    return starts[:count], lengths[:count]
 
 
 def _to_pulses_list(pulses_starts, pulses_lengths):
