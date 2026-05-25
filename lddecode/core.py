@@ -3796,7 +3796,7 @@ class LDdecode:
             self.build_sqlite_metadata()
 
         c_id = self.capture_id 
-        f_id = fi['seqNo'] - 1
+        f_id = self.fields_written
 
         decodeFaults = None if fi.get('decodeFaults') == 0 else fi.get('decodeFaults')
 
@@ -3812,14 +3812,15 @@ class LDdecode:
                 fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults, 
                 fi['audioSamples'], fi['efmTValues'], 0))
 
-        w_snr = fi['vitsMetrics'].get('wSNR', 0)
-        b_psnr = fi['vitsMetrics'].get('bPSNR', 0)
-        
-        self.dbconn.execute('''
-            INSERT INTO vits_metrics (
-                capture_id, field_id, w_snr, b_psnr
-            ) VALUES (?, ?, ?, ?)''',
-            (c_id, f_id, w_snr, b_psnr))
+        if vitsMetrics := fi.get('vitsMetrics'):
+            w_snr  = vitsMetrics.get('wSNR', 0)
+            b_psnr = vitsMetrics.get('bPSNR', 0)
+            
+            self.dbconn.execute('''
+                INSERT INTO vits_metrics (
+                    capture_id, field_id, w_snr, b_psnr
+                ) VALUES (?, ?, ?, ?)''',
+                (c_id, f_id, w_snr, b_psnr))
 
         # Insert VBI data if present
         vbi_data = fi.get("vbi", {}).get("vbiData", [])
