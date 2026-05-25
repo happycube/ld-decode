@@ -26,13 +26,13 @@ from scipy import interpolate
 
 from . import efm_pll
 from .utils import ac3_pipe, ldf_pipe, traceback
-from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
+from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, n_orgt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
+from .utils import Pulse, nb_std, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -54,7 +54,7 @@ logger = None
 # If profiling is not enabled, make it a pass-through wrapper
 try:
     profile
-except:
+except NameError:
     def profile(fn):
         return fn
 
@@ -936,16 +936,6 @@ class RFDecode:
             np.round(calczc(vdemod, 6000, rf.iretohz(-10), count=512) - 6000)
         )
 
-        rf.limits = {}
-        rf.limits["sync"] = (
-            np.min(vdemod_raw[1400:2800]),
-            np.max(vdemod_raw[1400:2800]),
-        )
-        rf.limits["viewable"] = (
-            np.min(vdemod_raw[2900:6000]),
-            np.max(vdemod_raw[2900:6000]),
-        )
-
         return fakedecode, fakeoutput_emp
 
 
@@ -993,13 +983,12 @@ class DemodCache:
         self.waiting         = set()
         self.q_out_event     = threading.Event()
 
-        self.threadpipes     = []
         self.threads         = []
 
         self.request         = 0
         self.ended           = False
 
-        self.deqeue_thread      = threading.Thread(target=self.dequeue, daemon=True)
+        self.dequeue_thread      = threading.Thread(target=self.dequeue, daemon=True)
         self.num_worker_threads = num_worker_threads
 
         for i in range(num_worker_threads):
@@ -1009,7 +998,7 @@ class DemodCache:
             t.start()
             self.threads.append(t)
 
-        self.deqeue_thread.start()
+        self.dequeue_thread.start()
 
     def end(self):
         if not self.ended:
@@ -1021,7 +1010,7 @@ class DemodCache:
                 t.join()
 
             self.q_out.put(None)
-            self.deqeue_thread.join()
+            self.dequeue_thread.join()
             # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
             # Might want to do this in a cleaner way later but this works for now.
             if hasattr(self.loader, "_close") and callable(self.loader._close):
@@ -1042,16 +1031,6 @@ class DemodCache:
                     del self.blocks[k]
 
         self.lru = self.lru[: self.lrusize]
-
-    def apply_newparams(self, newparams):
-        for k in newparams.keys():
-            if k in self.rf.SysParams:
-                self.rf.SysParams[k] = newparams[k]
-
-            if k in self.rf.DecoderParams:
-                self.rf.DecoderParams[k] = newparams[k]
-
-        self.rf.computefilters()
 
     def worker(self, return_on_empty=False):
         ''' return_on_empty is used when running non-threaded so this can be
@@ -1081,24 +1060,18 @@ class DemodCache:
                 else:
                     fftdata = block["fft"]
 
-                if True or (
-                    "demod" not in block
-                    or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
-                ):
-                    st = time.time()
-                    output["demod"] = rf.demodblock(
-                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
-                    )
-                    blockstime += time.time() - st
-                    blocksrun += 1
+                st = time.time()
+                output["demod"] = rf.demodblock(
+                    data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
+                )
+                blockstime += time.time() - st
+                blocksrun += 1
 
-                    output["MTF"] = target_MTF
-                    output["request"] = request
+                output["MTF"] = target_MTF
+                output["request"] = request
 
                 # print(blocknum, output)
                 self.q_out.put((blocknum, output))
-            elif item[0] == "NEWPARAMS":
-                self.apply_newparams(item[1])
 
     @profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
@@ -1196,7 +1169,7 @@ class DemodCache:
                     logger.error(
                         "incomplete demodulated block placed on queue, block #%d", blocknum
                     )
-                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
+                    self.q_in.put(("DEMOD", blocknum, self.blocks[blocknum], self.currentMTF, self.request))
                     continue
 
                 if item['request'] == self.blocks[blocknum]['request']:
@@ -1287,14 +1260,6 @@ class DemodCache:
         need_blocks = self.doread(toread_prefetch, MTF, prefetch=True)
 
         return rv
-
-    def setparams(self, params):
-        for p in self.threadpipes:
-            p[0].send(("NEWPARAMS", params))
-
-        # Apply params to the core thread, so they match up with the decoders
-        self.apply_newparams(params)
-
 
 @njit(cache=True, nogil=True)
 def _downscale_audio_compute_locs_and_swow(
@@ -1489,7 +1454,6 @@ class Field:
 
         self.lineoffset = 0
 
-        self.needrerun = False
         self.valid = False
         self.sync_confidence = 100
 
@@ -1584,10 +1548,6 @@ class Field:
     def usectooutpx(self, x):
         return x * self.rf.SysParams["outfreq"]
 
-    def outpxtousec(self, x):
-        return x / self.rf.SysParams["outfreq"]
-
-    #@profile
     def hz_to_output(self, input):
         if type(input) == np.ndarray:
             return hz_to_output_array(
@@ -1650,7 +1610,6 @@ class Field:
                 hlens.append(p.len)
 
         LT = {}
-        LT = {}
         if len(hlens) > 0:
             LT["hsync_median"] = np.median(hlens)
         else:
@@ -1698,7 +1657,6 @@ class Field:
 
         return inorder
 
-    #@profile
     def run_vblank_state_machine(self, pulses, LT):
         """ Determines if a pulse set is a valid vblank by running a state machine """
 
@@ -1824,7 +1782,6 @@ class Field:
 
         return valid_pulses
 
-    #@profile
     def getBlankRange(self, validpulses, start=0):
         vp_type    = np.array([p[0] for p in validpulses])
 
@@ -1963,7 +1920,6 @@ class Field:
 
         return None, None, None, 0
 
-    #@profile
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
         longrun = [-1, -1]
@@ -2029,7 +1985,6 @@ class Field:
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
-    #@profile
     def getLine0(self, validpulses, meanlinelen):
         # Gather the local line 0 location and projected from the previous field
 
@@ -2037,7 +1992,6 @@ class Field:
 
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
-        limit = None
         limit = (
             100
             if (self.prevfield is not None and self.prevfield.skip_check() >= 50)
@@ -2197,7 +2151,6 @@ class Field:
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
-    #@profile
     def compute_linelocs(self):
 
         self.rawpulses = self.getpulses()
@@ -2287,8 +2240,6 @@ class Field:
         ]
         linelocs_filled = linelocs.copy()
 
-        self.linelocs0 = linelocs.copy()
-
         if linelocs_filled[0] < 0:
             next_valid = None
             for i in range(0, self.outlinecount + 1):
@@ -2356,7 +2307,6 @@ class Field:
 
         return rv_ll, rv_err, nextfield
 
-    #@profile
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
 
@@ -2498,7 +2448,6 @@ class Field:
 
         return self.interpolated_pixel_locs, self.wowfactors
 
-    #@profile
     def downscale(
         self,
         lineinfo=None,
@@ -2593,7 +2542,6 @@ class Field:
                 audio_thread.join()
 
             self.dsaudio = audio_rv["dsaudio"]
-            self.audio_next_offset = audio_rv["audio_next_offset"]
 
         return dsout, self.dsaudio, self.efmout
 
@@ -2680,14 +2628,6 @@ class Field:
 
         self.sync_confidence = min(self.sync_confidence, newconf)
         return int(self.sync_confidence)
-
-    def get_vsync_area(self):
-        """ return beginning, length in lines, and end of vsync area """
-        vsync_begin = int(self.linelocs[0])
-        vsync_end_line = int(self.getVBlankLength(self.isFirstField) + 0.6)
-        vsync_end = int(self.linelocs[vsync_end_line]) + 1
-
-        return vsync_begin, vsync_end_line, vsync_end
 
     def get_vsync_lines(self):
         rv = []
@@ -3285,10 +3225,7 @@ class FieldNTSC(Field):
 
                 try:
                     adjs[l] = adjs_new[l] * lfreq * (1 / self.rf.SysParams["fsc_mhz"])
-                except Exception:
-                    # Not sure if this is an error or just control flow.
-                    # print("Something went wrong when trying to compute line length adjustments...", file=sys.stderr)
-                    # traceback.print_exc()
+                except (KeyError, ValueError):
                     pass
 
         if len(adjs.keys()):
@@ -3390,7 +3327,6 @@ class LDdecode:
         global logger
         self.logger = _logger
         logger = self.logger
-        self.demodcache = None
 
         from lddecode import __version__
         self.version = __version__
@@ -3431,8 +3367,6 @@ class LDdecode:
             if analog_audio == 0:
                 self.has_analog_audio = False
 
-        self.outfile_json = None
-
         self.lastvalidfield = {False: None, True: None}
         self.lastFieldWritten = None
 
@@ -3459,7 +3393,7 @@ class LDdecode:
                 self.do_rftbc = True
             if self.ac3:
                 self.AC3Collector = StridedCollector(cut_begin=1024, cut_end=0)
-                self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
+                _, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
                 self.do_rftbc = True
 
             if os.path.exists(fname_out + '.tbc.db'):
@@ -3503,7 +3437,6 @@ class LDdecode:
 
         self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
 
-        self.bytes_per_frame = int(self.rf.freq_hz / self.rf.SysParams["FPS"])
         self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
         self.outwidth = self.rf.SysParams["outlinelen"]
 
@@ -3554,7 +3487,6 @@ class LDdecode:
             "infile",
             "outfile_video",
             "outfile_audio",
-            "outfile_json",
             "outfile_efm",
             "outfile_rftbc",
             "outfile_ac3",
@@ -3698,8 +3630,6 @@ class LDdecode:
         cur.close()
 
     def roughseek(self, location, isField=True):
-        self.prevPhaseID = None
-
         self.fdoffset = location
         if isField:
             self.fdoffset *= self.bytes_per_field
@@ -4027,7 +3957,7 @@ class LDdecode:
                     self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
                     self.bw_ratios = self.bw_ratios[-keep:]
 
-                redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
+                redo = not self.checkMTF(f, self.fieldstack[0])
                 if redo:
                     redo = self.fdoffset - offset
 
@@ -4280,13 +4210,11 @@ class LDdecode:
             self.computeMetricsPAL(metrics, f, fp)
 
         # FIXME: these should probably be computed in the Field class
-        f.whitesnr_slice = None
 
         for l in f.rf.SysParams["LD_VITS_whitelocs"]:
             wl_slice = f.lineslice_tbc(*l)
             # logger.info(l, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
             if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
-                f.whitesnr_slice = l
                 metrics["wSNR"] = self.calcpsnr(f, wl_slice)
                 metrics["whiteIRE"] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
 
