@@ -976,6 +976,8 @@ class DemodCache:
 
         self.lock            = threading.Lock()
 
+        self.loader_lock     = threading.Lock()
+
         self.blocks          = {}
 
         self.q_in            = Queue()
@@ -1091,9 +1093,10 @@ class DemodCache:
                     self.blocks[b] = None
 
         loaded = {}
-        for b in to_load:
-            rawdata = self.loader(self.infile, b * self.blocksize, self.rf.blocklen)
-            loaded[b] = rawdata
+        with self.loader_lock:
+            for b in to_load:
+                rawdata = self.loader(self.infile, b * self.blocksize, self.rf.blocklen)
+                loaded[b] = rawdata
 
         with self.lock:
             for b, rawdata in loaded.items():
