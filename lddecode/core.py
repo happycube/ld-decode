@@ -32,7 +32,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
+from .utils import Pulse, nb_std, n_ornotrange, gen_bpf_supergauss, FieldInfo
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -1078,6 +1078,7 @@ class DemodCache:
         need_blocks = []
         queuelist = []
         reached_end = False
+        to_load = []
 
         with self.lock:
             if redo:
@@ -1086,19 +1087,28 @@ class DemodCache:
 
             for b in blocknums:
                 if b not in self.blocks:
+                    to_load.append(b)
+                    self.blocks[b] = None
+
+        loaded = {}
+        for b in to_load:
+            rawdata = self.loader(self.infile, b * self.blocksize, self.rf.blocklen)
+            loaded[b] = rawdata
+
+        with self.lock:
+            for b, rawdata in loaded.items():
+                if rawdata is None or len(rawdata) < self.rf.blocklen:
+                    self.blocks[b] = None
+                    reached_end = True
+                else:
                     LRUupdate(self.lru, b)
-
-                    rawdata = self.loader(
-                        self.infile, b * self.blocksize, self.rf.blocklen
-                    )
-
-                    if rawdata is None or len(rawdata) < self.rf.blocklen:
-                        self.blocks[b] = None
-                        return None
-
                     self.blocks[b] = {}
                     self.blocks[b]["rawinput"] = rawdata
 
+            if reached_end:
+                return None
+
+            for b in blocknums:
                 if self.blocks[b] is None:
                     reached_end = True
                     break
@@ -1107,7 +1117,6 @@ class DemodCache:
                 if b in self.blocks:
                     waiting = self.blocks[b].get("waiting", False)
 
-                # Until the block is actually ready, this comparison will hit an unknown key
                 if (
                     not redo
                     and not waiting
@@ -1249,7 +1258,7 @@ class DemodCache:
 
         rv = {}
         for k in t.keys():
-            rv[k] = nb_concatenate(t[k]) if len(t[k]) else None
+            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
 
         if rv["audio"] is not None:
             rv["audio_phase1"] = rv["audio"]
@@ -3063,7 +3072,7 @@ class CombNTSC:
 
     def __init__(self, field):
         self.field = field
-        self.cbuffer = self.buildCBuffer()
+        self.cbuffer = None
 
     def getlinephase(self, line):
         """ determine if a line has positive color burst phase.
@@ -3134,7 +3143,9 @@ class CombNTSC:
         if not ((np.max(ire_out1) < 100) and (np.min(ire_out1) > 40)):
             return None, None, None
 
-        cbuffer = self.cbuffer[l19_slice]
+        if self.cbuffer is None:
+            self.cbuffer = self.buildCBuffer(subset=l19_slice)
+        cbuffer = self.cbuffer
 
         if comb_field2 is not None:
             ire_out2 = comb_field2.field.dspicture[l19_slice_i70]
@@ -3142,7 +3153,9 @@ class CombNTSC:
             if not ((np.max(ire_out2) < 100) and (np.min(ire_out2) > 40)):
                 return None, None, None
 
-            cbuffer = (cbuffer - comb_field2.cbuffer[l19_slice]) / 2
+            if comb_field2.cbuffer is None:
+                comb_field2.cbuffer = comb_field2.buildCBuffer(subset=l19_slice)
+            cbuffer = (cbuffer - comb_field2.cbuffer) / 2
 
         si, sq = self.splitIQ_line(cbuffer, 19)
 
