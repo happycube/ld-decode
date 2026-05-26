@@ -49,6 +49,8 @@ This version has been modified to work with the differences found in [FM RF sign
 
 **Philips VCR** & **Philips VCR "LP"**  625-line - PAL. **Basic support**
 
+**Phlips Video2000** 625-line - **Basic support** 
+
 **2" Quad (QUADRUPLEX)** 405-line / 819-line / 625-line **Basic development**
 
 
