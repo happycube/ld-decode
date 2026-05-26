@@ -76,7 +76,7 @@ class FieldCVBSShared:
             meanlinelen,
             self.rf.hsync_tolerance,
             proclines,
-            1.9
+            1.9,
         )
 
         self.linelocs0 = linelocs.copy()
@@ -402,9 +402,7 @@ class FieldPALCVBS(FieldCVBSShared, ldd.FieldPAL):
     def refine_linelocs_hsync(self):
         if not self.rf.options.skip_hsync_refine:
             threshold = self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
-            return sync.refine_linelocs_hsync(
-                self, self.linebad, threshold
-            )
+            return sync.refine_linelocs_hsync(self, self.linebad, threshold)
         else:
             return self.linelocs1.copy()
 
@@ -447,9 +445,7 @@ class FieldNTSCCVBS(FieldCVBSShared, ldd.FieldNTSC):
     def refine_linelocs_hsync(self):
         if not self.rf.options.skip_hsync_refine:
             threshold = self.rf.iretohz(self.rf.SysParams["vsync_ire"] / 2)
-            return sync.refine_linelocs_hsync(
-                self, self.linebad, threshold
-            )
+            return sync.refine_linelocs_hsync(self, self.linebad, threshold)
             return super(FieldNTSCCVBS, self).refine_linelocs_hsync()
         else:
             return self.linelocs1.copy()
@@ -537,7 +533,7 @@ class CVBSDecode(ldd.LDdecode):
 
         super(CVBSDecode, self).__init__(
             fname_in,
-            fname_out,
+            None,
             freader,
             logger,
             analog_audio=False,
@@ -563,7 +559,7 @@ class CVBSDecode(ldd.LDdecode):
             self.FieldClass = FieldPALCVBS
         elif system == "NTSC":
             self.FieldClass = FieldNTSCCVBS
-        elif system == "MPAL":
+        elif system == "PALM":
             self.FieldClass = FieldMPALCVBS
         else:
             raise Exception("Unknown video system!", system)
@@ -575,14 +571,16 @@ class CVBSDecode(ldd.LDdecode):
             self.rf, self.infile, self.freader, None, num_worker_threads=self.numthreads
         )
 
-        self._db_writer = DBWriter() if extra_options.get("write_db") else None
+        self._db_writer = DBWriter(fname_out) if extra_options.get("write_db") else None
+        self.dbconn = None
+        if self._db_writer:
+            self.dbconn = self._db_writer.db_connection
+            self.create_db_schema()
 
-        # disconnect and nuke db file to prevent issue when loading with orc
-        # TODO: add option to prevent creating db in the first place..
-        if not self._db_writer:
-            self.dbconn.close()
-            if os.path.exists(fname_out + '.tbc.db'):
-                os.unlink(fname_out + '.tbc.db')
+        self.fname_out = fname_out
+
+        if fname_out:
+            self.outfile_video = open(fname_out + ".tbc", "wb")
 
     # Override to avoid NaN in JSON.
     def calcsnr(self, f, snrslice):
@@ -665,7 +663,7 @@ class CVBSDecode(ldd.LDdecode):
         if self._db_writer:
             if not self.capture_id:
                 self.build_sqlite_metadata()
-            self._db_writer.write_field(fi, self.dbconn, self.doDOD, self.capture_id)
+            self._db_writer.write_field(fi, self.doDOD, self.capture_id)
             # NOTE: this calls commit so we don't call it in dbwriter.write_field.
             self.build_sqlite_metadata()
 

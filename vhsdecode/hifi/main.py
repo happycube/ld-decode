@@ -345,14 +345,23 @@ audio_processing_options_group.add_argument(
     metavar='',
     help="Manually adjust the gain/volume of the output audio. \n  1.0 [default]",
 )
+audio_mode_help_lines = []
+for mode_key, mode_description in audio_mode_to_ui.items():
+    mode_suffix = ""
+    if mode_key == DEFAULT_VHS_AUDIO_MODE:
+        mode_suffix += " [VHS default]"
+    if mode_key == DEFAULT_8MM_AUDIO_MODE:
+        mode_suffix += " [8mm default]"
+    audio_mode_help_lines.append(
+        f"  {mode_key} \t{mode_description}{mode_suffix}"
+    )
+audio_mode_help = "Audio modes \n" + "\n".join(audio_mode_help_lines)
 audio_processing_options_group.add_argument(
     "--audio_mode",
     dest="mode",
     type=str.lower,
     metavar='',
-    help=(
-        f'Audio modes \n{"\n".join([f"  {k} \t{v} {"[VHS default]" if k == DEFAULT_VHS_AUDIO_MODE else ''}{"[8mm default]" if k == DEFAULT_8MM_AUDIO_MODE else ''}" for k, v in audio_mode_to_ui.items()])}'
-    ),
+    help=audio_mode_help,
 )
 audio_processing_options_group.add_argument(
     "--audio_rate",
@@ -536,6 +545,7 @@ def test_ld_tools(ld_tool):
         return True
     except (FileNotFoundError, subprocess.CalledProcessError):
         print(f"WARN: {ld_tool} not installed (or not in PATH)")
+        return False
 
 def test_if_flac_is_installed():
     shell_command = ["flac", "-version"]
@@ -622,7 +632,10 @@ class BufferedInputStream(io.RawIOBase):
 
 class LDToolFileReader(BufferedInputStream):
     def __init__(self, ld_tool, file_path, input_argument=""):
-        shell_command = [ld_tool, input_argument, file_path]
+        shell_command = [ld_tool]
+        if input_argument:
+            shell_command.append(input_argument)
+        shell_command.append(file_path)
         p = subprocess.Popen(
             shell_command,
             shell=False,
@@ -807,22 +820,23 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
         )
     elif "ldf" == extension:
         try:
-            if test_ld_tools("ld-ldf-reader"):
-                return UnseekableSoundFile(
-                    LDToolFileReader("ld-ldf-reader", pathR),
-                    "r",
-                    channels=1,
-                    samplerate=int(sample_rate),
-                    format="RAW",
-                    subtype="PCM_16",
-                    endian="LITTLE",
-                )
+            for ldf_reader_tool in ("ld-ldf-reader", "ld-ldf-reader-py"):
+                if test_ld_tools(ldf_reader_tool):
+                    return UnseekableSoundFile(
+                        LDToolFileReader(ldf_reader_tool, pathR),
+                        "r",
+                        channels=1,
+                        samplerate=int(sample_rate),
+                        format="RAW",
+                        subtype="PCM_16",
+                        endian="LITTLE",
+                    )
             print(
-                "WARN: ld-ldf-reader is not installed. LDF file format may not decode correctly"
+                "WARN: ld-ldf-reader/ld-ldf-reader-py not installed. LDF file format may not decode correctly"
             )
         except Exception as e:
             print(
-                "WARN: Unexpected error opening ld-ldf-reader, LDF file format may not decode correctly", e
+                "WARN: Unexpected error opening LDF reader tool, LDF file format may not decode correctly", e
             )
         
         try:    
@@ -855,22 +869,26 @@ def as_soundfile(pathR, sample_rate=DEFAULT_FINAL_AUDIO_RATE):
         )
     elif "lds" == extension:
         try:
-            if test_ld_tools("ld-lds-converter"):
-                return UnseekableSoundFile(
-                    LDToolFileReader("ld-lds-converter", pathR, "-i"),
-                    "r",
-                    channels=1,
-                    samplerate=int(sample_rate),
-                    format="RAW",
-                    subtype="PCM_16",
-                    endian="LITTLE",
-                )
+            for lds_reader_tool, input_arg in (
+                ("ld-lds-reader", ""),
+                ("ld-lds-converter", "-i"),
+            ):
+                if test_ld_tools(lds_reader_tool):
+                    return UnseekableSoundFile(
+                        LDToolFileReader(lds_reader_tool, pathR, input_arg),
+                        "r",
+                        channels=1,
+                        samplerate=int(sample_rate),
+                        format="RAW",
+                        subtype="PCM_16",
+                        endian="LITTLE",
+                    )
             print(
-                "ERROR: Unable to decode LDS without ld-lds-converter. Please install the program and try again."
+                "ERROR: Unable to decode LDS without ld-lds-reader or ld-lds-converter. Please install one of them and try again."
             )
         except Exception as e:
             print(
-                "ERROR: Unexpected error opening ld-lds-converter", e
+                "ERROR: Unexpected error opening LDS reader tool", e
             )
     elif "-" == path:
         try:

@@ -15,6 +15,8 @@ import warnings
 
 import threading
 from queue import Queue
+from concurrent.futures import Future, ProcessPoolExecutor
+import multiprocessing
 
 from numba import jit, njit
 import numba
@@ -22,7 +24,7 @@ import numba
 # standard numeric/scientific libraries
 import numpy as np
 import scipy.signal as sps
-from scipy import interpolate
+from scipy.special import i0
 
 def _ensure_ffmpeg_on_path():
     try:
@@ -91,19 +93,92 @@ def scale(buf, begin, end, tgtlen, mult=1):
     return output
 
 
-# Scales and compensates for wow-induced playback-speed variations
-@njit(nogil=True, cache=True, fastmath=True)
-def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, lineoffset, outwidth, wow_level_adjust_smoothing = 0, level_adjust_threshold = 15):
-    # Constants preserved as float32
-    point_5 = np.float32(0.5)
-    two = np.float32(2)
-    three = np.float32(3)
-    four = np.float32(4)
-    five = np.float32(5)
+@njit
+def sinc(x):
+    if x == 0.0:
+        return 1.0
+    x_pi = np.pi * x
+    return math.sin(x_pi) / x_pi
 
-    lineoffset += 1
-    lineoffset_out_samples = outwidth * lineoffset
 
+def kaiser_window(x, a, beta, i0_beta):
+    r = x / a
+    if r < -1.0 or r > 1.0:
+        return 0.0
+
+    t = math.sqrt(1.0 - r * r)
+    return i0(beta * t) / i0_beta
+
+
+# https://ccrma.stanford.edu/~jos/sasp/Kaiser_Windows_Transforms.html
+def build_kaiser_lut(beta, taps, phases):
+    a = taps // 2
+
+    offsets = np.arange(a - 1, -a - 1, -1)
+    offsets_len = len(offsets)
+
+    table = np.zeros((phases + 1, taps), dtype=np.float32)
+    weights = np.empty(offsets_len, dtype=np.float32)
+    i0_beta = i0(beta)
+
+    for i in range(phases):
+        phase = i / phases
+
+        s = 0.0
+        for j in range(offsets_len):
+            x = offsets[j] + phase
+            weight = sinc(x) * kaiser_window(x, a, beta, i0_beta)
+
+            weights[j] = weight
+            s += weight
+
+        table[i, :] = weights / s
+
+    # copy the last phase to avoid bounds checking later on when we do linear interpolation
+    table[phases] = table[phases - 1]
+
+    return table
+
+# Kaiser Beta parameter controls trade-off between sharpness and ringing
+# Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
+# Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff (less ringing))
+kaiser_beta = 5
+sinc_tap_count = 16 # must be multiple of 2
+sinc_phase_count = 2**16
+
+def _build_completed_future(value):
+    future = Future()
+    future.set_result(value)
+    return future
+
+
+def _init_sinc_lut_future():
+    # Avoid process spawning for frozen/Windows startup paths:
+    # on Windows, spawned processes re-import modules, and creating a
+    # ProcessPoolExecutor at import time can recursively spawn workers.
+    if os.name == "nt" or getattr(sys, "frozen", False):
+        return None, _build_completed_future(
+            build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count)
+        )
+
+    # Also avoid nested pool creation inside non-main processes.
+    if multiprocessing.current_process().name != "MainProcess":
+        return None, _build_completed_future(
+            build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count)
+        )
+
+    # Keep startup responsive on non-Windows main processes.
+    executor = ProcessPoolExecutor(max_workers=1)
+    return executor, executor.submit(
+        build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
+    )
+
+
+_sinc_lut_executor, sinc_lut_future = _init_sinc_lut_future()
+
+
+@njit(nogil=True, fastmath=True)
+def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineoffset, outwidth, wow_level_adjust_smoothing = 0, level_adjust_threshold = 15):
     # average out any unusual spikes in wow that happen on a per line basis
     # this indicates an hsync tbc error vs. being normal wow from playback speed variations
     # in this case for level adjusting we just want to fallback to the average wow to avoid a bright or dark line
@@ -124,9 +199,13 @@ def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, lineoffset, out
         one_minus_alpha = 1 - alpha
 
         for i in range(1, len(level_adjusts)):
-            level_adjusts[i] = alpha * level_adjusts[i] + one_minus_alpha * level_adjusts[i-1]       
+            level_adjusts[i] = alpha * level_adjusts[i] + one_minus_alpha * level_adjusts[i-1]
 
-    for i in range(lineoffset_out_samples, len(dsout) + lineoffset_out_samples):
+    half_taps_m1 = (sinc_tap_count // 2) - 1
+
+    dsout_start = outwidth * (lineoffset + 1)
+    dsout_end = len(dsout) + dsout_start
+    for i in range(dsout_start, dsout_end):
         # compensates for the amplitude/frequency shift caused by FM demodulation under varying playback speed.
         level_adjust = level_adjusts[i]
 
@@ -134,18 +213,27 @@ def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, lineoffset, out
         coord = np.float32(interpolated_pixel_locs[i])
         coord_int = int(coord)
 
-        # get the data from the buffer that aligns to the wow factor index
-        p0 = buf[coord_int - 1]
-        p1 = buf[coord_int]
-        p2 = buf[coord_int + 1]
-        p3 = buf[coord_int + 2]
-        x = np.float32(coord - coord_int)
+        # fractional phase
+        frac = coord - coord_int
 
-        # perform cubic scaling
-        a = p2 - p0
-        b = two * p0 - five * p1 + four * p2 - p3
-        c = three * (p1 - p2) + p3 - p0
-        dsout[i-lineoffset_out_samples] = level_adjust * (p1 + point_5 * x * (a + x * (b + x * c)))
+        phase_pos = frac * sinc_phase_count
+        phase_start = int(phase_pos)
+        phase_end = phase_start + 1
+
+        alpha = np.float32(phase_pos - phase_start)
+
+        w_start = sinc_lut[phase_start]
+        w_end = sinc_lut[phase_end]
+
+        start = coord_int - half_taps_m1
+
+        result = 0.0
+        for t in range(sinc_tap_count):
+            # do linear interpolation between pre-computed phases
+            ws = w_start[t]
+            result += buf[start + t] * (ws + alpha * (w_end[t] - ws))
+
+        dsout[i - dsout_start] = level_adjust * result
 
 
 frequency_suffixes = [
@@ -519,18 +607,23 @@ class LoadLDF:
 
     @staticmethod
     def _find_ldf_reader():
-        """Find ld-ldf-reader-py, checking the repo root as a fallback."""
+        """Find an LDF reader executable, checking the repo root as a fallback."""
         import shutil
 
-        if shutil.which("ld-ldf-reader-py"):
-            return "ld-ldf-reader-py"
+        for command_name in ("ld-ldf-reader", "ld-ldf-reader-py"):
+            if shutil.which(command_name):
+                return command_name
 
-        # Fall back to the script next to this package (i.e. the repo root)
-        repo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ld-ldf-reader-py")
-        if os.path.isfile(repo_path):
-            return repo_path
+        # Fall back to scripts next to this package (i.e. the repo root)
+        repo_root = os.path.dirname(os.path.dirname(__file__))
+        for script_name in ("ld-ldf-reader", "ld-ldf-reader-py"):
+            repo_path = os.path.join(repo_root, script_name)
+            if os.path.isfile(repo_path):
+                return repo_path
 
-        raise FileNotFoundError("Cannot find ld-ldf-reader-py on PATH or in the source tree")
+        raise FileNotFoundError(
+            "Cannot find ld-ldf-reader or ld-ldf-reader-py on PATH or in the source tree"
+        )
 
     def _open(self, sample):
         self._close()

@@ -9,7 +9,9 @@ Download the DMG which will have a filename similar to ***ld-decode-dev-macOS.dm
 This package contains all required ld-decode tools:
 
 - ld-decode
+- ld-ldf-reader
 - ld-ldf-reader-py
+- ld-lds-reader
 
 ## Installation
 
@@ -42,5 +44,7 @@ Or add the tools to your PATH:
 ```
 export PATH="/path/to/ld-decode/bin:$PATH"
 ld-decode [arguments]
+ld-ldf-reader [arguments]
 ld-ldf-reader-py [arguments]
+ld-lds-reader [arguments]
 ```

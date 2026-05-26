@@ -52,6 +52,14 @@ jobs:
           set SCRIPT_DIR=%~dp0
           set PYTHONHOME=%SCRIPT_DIR%..\python
           set PYTHONPATH=%SCRIPT_DIR%..
+          "%PYTHONHOME%\python.exe" -c "from lddecode import ldf_reader; ldf_reader.main()" %*
+          "@ | Out-File -FilePath build\package\bin\ld-ldf-reader.bat -Encoding ascii
+
+          @"
+          @echo off
+          set SCRIPT_DIR=%~dp0
+          set PYTHONHOME=%SCRIPT_DIR%..\python
+          set PYTHONPATH=%SCRIPT_DIR%..
           "%PYTHONHOME%\python.exe" "%SCRIPT_DIR%..\lddecode\main.py" %*
           "@ | Out-File -FilePath build\package\bin\ld-decode.bat -Encoding ascii
           
@@ -62,6 +70,22 @@ jobs:
           set PYTHONPATH=%SCRIPT_DIR%..
           "%PYTHONHOME%\python.exe" -c "from lddecode import ldf_reader; ldf_reader.main()" %*
           "@ | Out-File -FilePath build\package\bin\ld-ldf-reader-py.bat -Encoding ascii
+
+          @"
+          @echo off
+          set SCRIPT_DIR=%~dp0
+          set PYTHONHOME=%SCRIPT_DIR%..\python
+          set PYTHONPATH=%SCRIPT_DIR%..
+          "%PYTHONHOME%\python.exe" -c "from lddecode import lds_reader; lds_reader.main()" %*
+          "@ | Out-File -FilePath build\package\bin\ld-lds-reader.bat -Encoding ascii
+
+      - name: Sanity check packaged reader tools
+        shell: pwsh
+        run: |
+          build\package\bin\ld-decode.bat --version
+          build\package\bin\ld-ldf-reader.bat --version
+          build\package\bin\ld-ldf-reader-py.bat --version
+          build\package\bin\ld-lds-reader.bat --version
 
       - name: Create README for package
         shell: pwsh
@@ -79,7 +103,9 @@ jobs:
           3. Navigate to the bin directory
           4. Run the tools:
              - ld-decode.bat [options] input.lds output.tbc
+             - ld-ldf-reader.bat [options] input.ldf
              - ld-ldf-reader-py.bat [options] input.ldf
+             - ld-lds-reader.bat [options] input.lds
           
           Alternatively, add the bin directory to your PATH environment variable
           to run the tools from anywhere.

@@ -1089,24 +1089,38 @@ class FieldShared:
                 return input.astype(np.single)
             else:
                 ire0 = self.rf.DecoderParams["ire0"]
-                if (
-                    self.rf.options.ire0_adjust
-                    and input.size == self.outlinecount * self.outlinelen
-                ):
-                    hsync_start, hsync_end = self.ire0_backporch
+                hz_ire = self.rf.DecoderParams["hz_ire"]
 
-                    ire0_adjust_padding = 4 # 4fsc, prevents noise around the hsync transition from interfering with this measurement
-                    hsync_start += ire0_adjust_padding
-                    hsync_end -= ire0_adjust_padding
+                if input.size == self.outlinecount * self.outlinelen:
+                    ire0_adjust_padding = 4 # 4fsc, prevents noise around the hsync transitions from interfering with this measurement
 
-                    blank_levels = np.sort([
-                        np.median(input[i * self.outlinelen + hsync_start :
-                                        i * self.outlinelen + hsync_end])
-                        for i in range(0, self.outlinecount)
-                    ])
-                    ire0 = np.mean(blank_levels[self.outlinecount // 3 : (self.outlinecount * 2) // 3])
+                    if "backporch" in self.rf.options.ire0_adjust:
+                        backporch_start = self.ire0_backporch[0] + ire0_adjust_padding
+                        backporch_end = self.ire0_backporch[1] - ire0_adjust_padding
+                        blank_levels = np.sort([
+                            np.median(input[i * self.outlinelen + backporch_start :
+                                            i * self.outlinelen + backporch_end])
+                            for i in range(0, self.outlinecount)
+                        ])
+                        ire0 = np.mean(blank_levels[self.outlinecount // 3 : (self.outlinecount * 2) // 3])
 
-                    ldd.logger.debug("calculated ire0: %.02f", ire0)
+                        ldd.logger.debug("calculated ire0: %.02f", ire0)
+
+                    if "hsync" in self.rf.options.ire0_adjust:
+                        # measure the hsync pulse level
+                        hsync_start = ire0_adjust_padding
+                        hsync_end = self.ire0_backporch[0] - ire0_adjust_padding
+                        hsync_levels = np.sort([
+                            np.median(input[i * self.outlinelen + hsync_start :
+                                            i * self.outlinelen + hsync_end])
+                            for i in range(0, self.outlinecount)
+                        ])
+                        hsync_level = np.mean(hsync_levels[self.outlinecount // 3 : (self.outlinecount * 2) // 3])
+
+                        # calculate scaling based difference between hsync pulse and ire0
+                        hz_ire = (ire0 - hsync_level) / -self.rf.DecoderParams["vsync_ire"]
+
+                        ldd.logger.debug("calculated hz_ire: %.02f", hz_ire)
 
                 if self.rf.track_phase is not None:
                     ire0 += self.rf.DecoderParams["track_ire0_offset"][self.rf.track_phase ^ (self.field_number % 2)]
@@ -1114,7 +1128,7 @@ class FieldShared:
                 return hz_to_output_array(
                     input,
                     ire0,
-                    self.rf.DecoderParams["hz_ire"],
+                    hz_ire,
                     self.rf.SysParams["outputZero"],
                     self.rf.DecoderParams["vsync_ire"],
                     self.out_scale,

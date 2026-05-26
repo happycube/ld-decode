@@ -4,11 +4,6 @@ import sys
 import argparse
 import traceback
 import subprocess
-import numpy as np
-
-from lddecode.core import *
-from lddecode.utils import *
-from lddecode.utils_logging import init_logging
 
 
 def main(args=None):
@@ -18,6 +13,12 @@ def main(args=None):
         from lddecode import __version__
         print(__version__)
         sys.exit(0)
+
+    # Delay heavy scientific imports so `ld --version` can run even if
+    # decode/runtime dependencies are unavailable in the current environment.
+    from lddecode.core import LDdecode
+    from lddecode.utils import JSONDumper, make_loader, parse_frequency
+    from lddecode.utils_logging import init_logging
     options_epilog = """FREQ can be a bare number in MHz, or a number with one of the case-insensitive suffixes Hz, kHz, MHz, GHz, fSC (meaning NTSC) or fSCPAL."""
     parser = argparse.ArgumentParser(
         description="Extracts audio and video from raw RF laserdisc captures",
@@ -511,6 +512,8 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
     Write the input samples that were decoded to a .ldf file.
     This creates a reproducible test case for bug reporting.
     """
+    import numpy as np
+    from lddecode.utils import ldf_pipe, make_loader
     print(f"\nWriting input samples to {output_filename}...", file=sys.stderr)
     print(f"  Start sample: {start_sample}", file=sys.stderr)
     print(f"  End sample: {end_sample}", file=sys.stderr)

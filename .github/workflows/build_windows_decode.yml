@@ -2,11 +2,35 @@ name: "Build Windows decode"
 
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Git ref to checkout when invoked as a reusable workflow"
+        required: false
+        type: string
 
 jobs:
   build-decode:
-    name: Build vhs-decode (x86_64)
-    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: windows-2022
+            python_arch: x64
+            smoke_timeout_minutes: 10
+            smoke_length_frames: 60
+          - arch: arm64
+            os: windows-11-arm
+            # numba/llvmlite currently do not publish win_arm64 wheels.
+            # Use x64 Python on ARM runners so binary wheels can be installed.
+            python_arch: x64
+            # Keep this as a short smoke test but allow extra headroom for ARM
+            # runner variability.
+            smoke_timeout_minutes: 15
+            smoke_length_frames: 60
+    name: Build decode (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     env:
         SETUPTOOLS_RUST_CARGO_PROFILE: release
     steps:
@@ -14,15 +38,79 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+          ref: ${{ inputs.checkout_ref || github.ref }}
 
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          architecture: ${{ matrix.python_arch }}
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Add Rust x64 target on ARM runner
+        if: matrix.arch == 'arm64' && matrix.python_arch == 'x64'
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Ensure DIA SDK path compatibility for arm64
+        if: matrix.arch == 'arm64' && matrix.python_arch == 'arm64'
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            throw "vswhere.exe not found at $vswhere"
+          }
+
+          $vsInstallPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if ([string]::IsNullOrWhiteSpace($vsInstallPath)) {
+            $vsInstallPath = & $vswhere -latest -products * -property installationPath
+          }
+          if ([string]::IsNullOrWhiteSpace($vsInstallPath)) {
+            throw "Unable to locate Visual Studio installation path."
+          }
+
+          $sourceDiaSdk = Join-Path $vsInstallPath "DIA SDK"
+          if (-not (Test-Path $sourceDiaSdk)) {
+            throw "DIA SDK directory not found at $sourceDiaSdk"
+          }
+
+          $communityRoot = "C:\Program Files\Microsoft Visual Studio\2022\Community"
+          $communityDiaSdk = Join-Path $communityRoot "DIA SDK"
+          if (-not (Test-Path $communityDiaSdk)) {
+            New-Item -ItemType Directory -Path $communityRoot -Force | Out-Null
+            Copy-Item -Path $sourceDiaSdk -Destination $communityDiaSdk -Recurse -Force
+          }
+
+          $arm64DiaLib = Join-Path $communityDiaSdk "lib\arm64\diaguids.lib"
+          if (-not (Test-Path $arm64DiaLib)) {
+            throw "Expected DIA SDK library not found at $arm64DiaLib"
+          }
+
+      - name: Preinstall numba and llvmlite wheels on ARM runner
+        if: matrix.arch == 'arm64'
+        run: |
+          python -m pip install --upgrade pip "setuptools<82" wheel
+          python -m pip install --only-binary=:all: "llvmlite==0.47.0" "numba==0.65.1"
+
+      - name: Configure PyO3 cross-build environment on ARM runner
+        if: matrix.arch == 'arm64' && matrix.python_arch == 'x64'
+        shell: pwsh
+        run: |
+          $pythonBase = python -c "import sys; print(sys.base_prefix)"
+          $pythonVersion = python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+          $pythonLibDir = Join-Path $pythonBase "libs"
+          if (-not (Test-Path $pythonLibDir)) {
+            throw "Python libs directory not found at $pythonLibDir"
+          }
+
+          "CARGO_BUILD_TARGET=x86_64-pc-windows-msvc" >> $env:GITHUB_ENV
+          "PYO3_CROSS=1" >> $env:GITHUB_ENV
+          "PYO3_CROSS_PYTHON_IMPLEMENTATION=CPython" >> $env:GITHUB_ENV
+          "PYO3_CROSS_PYTHON_VERSION=$pythonVersion" >> $env:GITHUB_ENV
+          "PYO3_CROSS_LIB_DIR=$pythonLibDir" >> $env:GITHUB_ENV
+
       - name: Build Python module
         run: |
+          python -m pip install --upgrade pip "setuptools<82" wheel
           pip install pyinstaller pyinstaller-versionfile
           pip install -e ".[hifi_gui_qt6]"
 
@@ -30,9 +118,87 @@ jobs:
         run: |
           python .\scripts\ci\build-windows-decode-bin.py
 
+      - name: Smoke test binary startup
+        shell: pwsh
+        run: |
+          python -c "import subprocess,sys; subprocess.run([r'.\\dist\\decode.exe','ld','--version'], timeout=120, check=True)"
+      - name: Smoke test short VHS decode (crash regression sanity)
+        shell: pwsh
+        timeout-minutes: ${{ matrix.smoke_timeout_minutes }}
+        run: |
+          $sampleUrl = "https://raw.githubusercontent.com/harrypm/decode-test-data/master/decode-orc-testdata-vhs/flac/pal/yc/SuperBeta_PAL_AndyB_Bars_Sweep_Zone_28p6msps_8bit_5sec_effective.flac"
+          $sampleDir = Join-Path $env:RUNNER_TEMP "windows-vhs-crash-sample"
+          New-Item -ItemType Directory -Path $sampleDir -Force | Out-Null
+          $samplePath = Join-Path $sampleDir "SuperBeta_PAL_AndyB_Bars_Sweep_Zone_28p6msps_8bit_5sec_effective.flac"
+
+          Invoke-WebRequest -Uri $sampleUrl -OutFile $samplePath
+
+          if (-not (Test-Path $samplePath)) {
+            throw "Failed to download the Windows regression sample."
+          }
+          $sampleFile = Get-Item $samplePath
+          if ($sampleFile.Length -lt 10MB) {
+            throw "Downloaded regression sample is unexpectedly small: $($sampleFile.FullName)"
+          }
+
+          $outputBase = Join-Path $env:RUNNER_TEMP "windows_short_smoke"
+          $runnerLogPath = Join-Path $env:RUNNER_TEMP "windows_short_smoke_ci.log"
+          $decodeArgs = @(
+            "vhs",
+            "--overwrite",
+            "--length", "${{ matrix.smoke_length_frames }}",
+            "--threads", "4",
+            "--pal",
+            "--tf", "BETAMAX",
+            "--cxadc",
+            $sampleFile.FullName,
+            $outputBase
+          )
+
+          & .\dist\decode.exe @decodeArgs *> $runnerLogPath
+          $decodeExitCode = $LASTEXITCODE
+          $decoderLogPath = $outputBase + ".log"
+          $logsToScan = @()
+          if (Test-Path $runnerLogPath) {
+            $logsToScan += $runnerLogPath
+          }
+          if (Test-Path $decoderLogPath) {
+            $logsToScan += $decoderLogPath
+          }
+          if ($logsToScan.Count -eq 0) {
+            throw "No decode logs were produced."
+          }
+
+          foreach ($logFile in $logsToScan) {
+            Write-Host "---- Tail of $logFile ----"
+            Get-Content $logFile -Tail 200
+          }
+
+          if ($decodeExitCode -ne 0) {
+            throw "decode.exe exited with code $decodeExitCode"
+          }
+
+          $crashPatterns = @(
+            "Exception in thread",
+            "Traceback (most recent call last)",
+            "ArrayMemoryError",
+            "MemoryError"
+          )
+          foreach ($pattern in $crashPatterns) {
+            foreach ($logFile in $logsToScan) {
+              if (Select-String -Path $logFile -SimpleMatch -Pattern $pattern -Quiet) {
+                throw "Detected crash signature in decode log ($logFile): $pattern"
+              }
+            }
+          }
+
+          if (-not (Test-Path ($outputBase + ".tbc.json"))) {
+            throw "Expected decode output metadata was not created: $($outputBase + '.tbc.json')"
+          }
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: vhs-decode_windows_x86_64
+          name: decode_windows_${{ matrix.arch }}
           path: dist/decode.exe
           if-no-files-found: error

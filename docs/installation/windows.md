@@ -9,7 +9,9 @@ Download the ZIP file which will have a filename similar to ***ld-decode-dev-win
 This archive contains all required ld-decode tools:
 
 - ld-decode
+- ld-ldf-reader
 - ld-ldf-reader-py
+- ld-lds-reader
 
 ## Installation
 
