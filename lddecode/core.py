@@ -2124,7 +2124,7 @@ class Field:
         pulses = findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
         if len(pulses) == 0:
-            if not self.fields_written:
+            if do_retry and not self.fields_written:
                 # if the first field decoded, recalibrate sync levels and retry
                 ire0 = np.percentile(self.data["video"]["demod_05"], 15)
                 self.rf.DecoderParams["ire0"] = ire0
