@@ -225,7 +225,7 @@ FilterParams_PAL = {
 FilterParams_PAL_lowband = FilterParams_PAL.copy()
 FilterParams_PAL_lowband['video_bpf_low']   = 3200000
 FilterParams_PAL_lowband['video_bpf_high']  = 13000000
-FilterParams_PAL_lowband['video_bpf_order'] = 13000000
+FilterParams_PAL_lowband['video_bpf_order'] = 2
 FilterParams_PAL_lowband['video_lpf_freq']  = 4800000
 
 class RFDecode:
