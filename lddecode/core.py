@@ -4507,7 +4507,7 @@ class LDdecode:
 
                     if self.earlyCLV:
                         logger.error("Cannot seek in early CLV disks w/o timecode")
-                        return None, startfield
+                        return None, startfield, None
                     elif fnum is not None:
                         rawloc = np.floor((f.readloc / self.bytes_per_field) / 2)
                         logger.info("seeking: file loc %d frame # %d", rawloc, fnum)
