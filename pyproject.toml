@@ -17,6 +17,11 @@ classifiers = [
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -24,6 +29,7 @@ classifiers = [
     "Topic :: Multimedia :: Video",
     "Topic :: Multimedia :: Video :: Capture",
 ]
+
 dependencies = [
     "cython",
     "matplotlib",
@@ -81,7 +87,23 @@ git_describe_command = "git describe --dirty --tags --long --match [0-9]* --matc
 tag_regex = '^(?:v)?(?P<version>\d+(?:\.\d+)*(?:(?:a|b|rc)\d*)?)$'
 
 [tool.setuptools.package-data]
-vhs_decode = ["*.txt"]
+vhs_decode = ["*.txt", "py.typed", "version", "sinc_lut.npz"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.pylint]
+max-line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
 
 [[tool.setuptools-rust.ext-modules]]
 # Private Rust extension module to be nested into the Python package

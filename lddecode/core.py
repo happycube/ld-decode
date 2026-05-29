@@ -10,6 +10,7 @@ import types
 
 from queue import Queue
 from textwrap import dedent
+from importlib.resources import files
 
 # standard numeric/scientific libraries
 import numpy as np
@@ -26,7 +27,7 @@ from scipy import interpolate
 from . import efm_pll
 from .utils import ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
-from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms, sinc_lut_future
+from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
@@ -287,6 +288,12 @@ class RFDecode:
           - AC3: Supports AC3
 
         """
+
+        sinc_lut_path = files(__package__).joinpath("sinc_lut.npz")
+        # uncomment to regenerate the sinc downscaling lookup table 
+        # from .utils import build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
+        # np.savez_compressed(sinc_lut_path, downscale_sinc_lut=build_kaiser_lut(kaiser_beta, sinc_tap_count, sinc_phase_count))
+        self.downscale_sinc_lut = np.load(sinc_lut_path)["downscale_sinc_lut"]
 
         self.blocklen     = blocklen
         self.blockcut     = 1024
@@ -2564,7 +2571,7 @@ class Field:
             dsout,
             interpolated_pixel_locs,
             wowfactors,
-            sinc_lut_future.result(),
+            self.rf.downscale_sinc_lut,
             self.lineoffset,
             outwidth,
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing
@@ -3789,7 +3796,7 @@ class LDdecode:
             self.build_sqlite_metadata()
 
         c_id = self.capture_id 
-        f_id = fi['seqNo'] - 1
+        f_id = self.fields_written
 
         decodeFaults = None if fi.get('decodeFaults') == 0 else fi.get('decodeFaults')
 
@@ -3805,14 +3812,15 @@ class LDdecode:
                 fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults, 
                 fi['audioSamples'], fi['efmTValues'], 0))
 
-        w_snr = fi['vitsMetrics'].get('wSNR', 0)
-        b_psnr = fi['vitsMetrics'].get('bPSNR', 0)
-        
-        self.dbconn.execute('''
-            INSERT INTO vits_metrics (
-                capture_id, field_id, w_snr, b_psnr
-            ) VALUES (?, ?, ?, ?)''',
-            (c_id, f_id, w_snr, b_psnr))
+        if vitsMetrics := fi.get('vitsMetrics'):
+            w_snr  = vitsMetrics.get('wSNR', 0)
+            b_psnr = vitsMetrics.get('bPSNR', 0)
+            
+            self.dbconn.execute('''
+                INSERT INTO vits_metrics (
+                    capture_id, field_id, w_snr, b_psnr
+                ) VALUES (?, ?, ?, ?)''',
+                (c_id, f_id, w_snr, b_psnr))
 
         # Insert VBI data if present
         vbi_data = fi.get("vbi", {}).get("vbiData", [])
