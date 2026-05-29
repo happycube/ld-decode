@@ -685,6 +685,9 @@ class RFDecode:
                 FFT.  There may be side effects, however, but generally minor compared to the
                 'wibble' itself and only in certain cases.
             """
+            # indata_fft may alias the FFT cached in DemodCache; copy before
+            # zeroing bins so we don't progressively corrupt it across redecodes.
+            indata_fft = indata_fft.copy()
             sl = slice(
                 int(self.blocklen * (8.42 / self.freq)),
                 int(1 + (self.blocklen * (8.6 / self.freq))),
