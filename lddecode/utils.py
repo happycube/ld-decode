@@ -1010,7 +1010,10 @@ def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
     offset = outputZero - vsync_ire * out_scale - ire0 * scale
 
     for i in range(n):
-        out[i] = np.uint16(max(0, min(65535, input[i] * scale + offset)))
+        # +0.5 rounds to nearest, matching the scalar Field.hz_to_output path;
+        # without it np.uint16() truncates and every output pixel is biased
+        # roughly half an LSB low.
+        out[i] = np.uint16(max(0, min(65535, input[i] * scale + offset + 0.5)))
 
     return out
 
