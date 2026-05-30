@@ -822,53 +822,36 @@ if not numba.version_info.major and numba.version_info.minor < 59:
     print("DEPRECATION WARNING: Please upgrade numba to 0.59 or later.", file=sys.stderr)
     print("(follow instructions on the ld-decode wiki to set up a virtualenv)", file=sys.stderr)
 
-    @njit(cache=True,nogil=True)
-    def unwrap_hilbert_getangles(hilbert):
-        tangles = np.angle(hilbert)
-        dangles = np.ediff1d(tangles, to_begin=np.asarray(0, dtype=tangles.dtype)).real
 
-        # make sure unwapping goes the right way
-        if dangles[0] < -pi:
-            dangles[0] += tau
+@njit(cache=True, nogil=True)
+def unwrap_hilbert(hilbert, freq_hz):
+    """Recover the instantaneous frequency (Hz, in the range [0, freq_hz)) of an
+    analytic (complex) signal.
 
-        return dangles
+    Conjugate-product FM discriminator: the per-sample phase increment is taken
+    as the argument of hilbert[n] * conj(hilbert[n-1]).  arctan2 returns that
+    increment already wrapped into (-pi, pi], so there is no need for the
+    np.unwrap() pass nor the subsequent re-wrap "fixangles" clamp that the
+    previous implementation depended on.
 
-    @njit(cache=True,nogil=True)
-    def unwrap_hilbert_fixangles(tdangles2, freq_hz):
-        # With extremely bad data, the unwrapped angles can jump.
-        while np.min(tdangles2) < 0:
-            tdangles2[tdangles2 < 0] += tau
-        while np.max(tdangles2) > tau:
-            tdangles2[tdangles2 > tau] -= tau
+    On well-behaved data this is numerically equivalent to the old
+    angle-difference + unwrap method, but it is local: a single corrupted sample
+    only disturbs its own increment instead of being propagated forward by
+    np.unwrap().  It is also fully numba-jittable (the old deprecation path ran
+    np.unwrap outside numba) and uses a single arctan2 pass instead of an
+    arctan2 pass plus an unwrap pass plus the clamp loops.
+    """
+    out = np.empty(len(hilbert), dtype=np.float64)
+    out[0] = 0.0
 
-        return tdangles2 * (freq_hz / tau)
+    # phase increment between consecutive samples = arg(z[n] * conj(z[n-1]))
+    prod = hilbert[1:] * np.conj(hilbert[:-1])
+    d = np.arctan2(prod.imag, prod.real)
 
-    def unwrap_hilbert(hilbert, freq_hz):
-        dangles = unwrap_hilbert_getangles(hilbert)
+    # preserve the historical [0, tau) convention (positive frequencies only)
+    out[1:] = np.where(d < 0.0, d + tau, d)
 
-        # This can't be run with numba
-        tdangles2 = np.unwrap(dangles)
-
-        return unwrap_hilbert_fixangles(tdangles2, freq_hz) #* (freq_hz / tau)
-else:
-    @njit(cache=True,nogil=True)
-    def unwrap_hilbert(hilbert, freq_hz):
-        tangles = np.angle(hilbert)
-        dangles = np.ediff1d(tangles, to_begin=np.asarray(0, dtype=tangles.dtype)).real
-
-        # make sure unwapping goes the right way
-        if dangles[0] < -pi:
-            dangles[0] += tau
-
-        dangles = np.unwrap(dangles)
-
-        # With extremely bad data, the unwrapped angles can jump.
-        while np.min(dangles) < 0:
-            dangles[dangles < 0] += tau
-        while np.max(dangles) > tau:
-            dangles[dangles > tau] -= tau
-
-        return dangles * (freq_hz / tau)
+    return out * (freq_hz / tau)
 
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
     """ returns the # of sub-bins needed to get center+/-min_bandwidth.
