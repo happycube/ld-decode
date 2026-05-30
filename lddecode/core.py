@@ -218,7 +218,10 @@ FilterParams_PAL = {
     # video_bpf_order is retained for the shared bandpass path (NTSC) and the
     # --lowband override below; the PAL split path uses the two orders above.
     "video_bpf_order": 2,
-    "video_lpf_freq": 5200000,
+    # 5.8 MHz recovers recorded luma detail out to the 5.8 MHz VITS multiburst
+    # (IEC 60856); the extra group delay this Butterworth adds is corrected by
+    # the all-pass equaliser in build_groupdelay_equalizer().
+    "video_lpf_freq": 5800000,
     "video_lpf_order": 7,
     # MTF filter
     "MTF_basemult": 1.0,  # general ** level of the MTF filter for frame 0.
@@ -485,6 +488,62 @@ class RFDecode:
             (f + notchwidth) / (self.freq_hz_half if hz else self.freq_half)
         ]
 
+    def build_groupdelay_equalizer(self, lpf_fft):
+        """All-pass equaliser matching the IEC 60856 sub-clause 9.1.6 video
+        group-delay pre-distortion (PAL).
+
+        The disc is recorded with its video group delay pre-distorted so that
+        the playback low-pass filter brings the overall group delay flat across
+        the chroma band.  ld-decode's Butterworth video LPF undershoots that
+        target (only ~+99 ns at 4.43 MHz where the spec wants +135 ns, and
+        ~+128 vs +200 ns at 4.8 MHz), leaving the chroma sidebands sloped, which
+        smears colour.
+
+        This returns a unit-magnitude (all-pass) FFT-domain filter whose group
+        delay equals target - LPF, so that LPF * equaliser reproduces the 9.1.6
+        curve.  De-emphasis is deliberately left out of the basis: its group
+        delay is cancelled end-to-end by the disc's (inverse) pre-emphasis, so
+        only the LPF's deviation needs correcting.
+        """
+        blocklen = self.blocklen
+        fs = self.freq_hz
+        binfreq = np.abs(np.fft.fftfreq(blocklen, 1.0 / fs))
+
+        # IEC 60856 9.1.6 target group delay relative to 0.5 MHz, in seconds
+        # (the spec tabulates pre-distortion of -10/-35/-85/-135/-200 ns; the
+        # playback chain must supply the inverse, held flat above 4.8 MHz).
+        gd_f = np.array([0.0, 0.5e6, 2.0e6, 3.0e6, 4.0e6, 4.4336e6, 4.8e6, 5.5e6])
+        gd_t = np.array([0.0, 0.0, 10e-9, 35e-9, 85e-9, 135e-9, 200e-9, 200e-9])
+        target = np.interp(binfreq, gd_f, gd_t)
+
+        # actual LPF group delay = -d(phase)/d(omega)
+        phase = np.unwrap(np.angle(lpf_fft))
+        lpf_gd = -np.gradient(phase) / (2 * np.pi * (fs / blocklen))
+        i05 = np.argmin(np.abs(binfreq - 0.5e6))
+        residual = target - (lpf_gd - lpf_gd[i05])
+
+        # only act across the chroma band; taper to zero ~1.3 MHz past the LPF
+        # cut-off (where the LPF has removed the signal) so the equaliser's
+        # impulse response stays compact (well inside blockcut).  Tracking the
+        # cut-off keeps this correct if video_lpf_freq changes.
+        lpf_freq = self.DecoderParams["video_lpf_freq"]
+        t0, t1 = lpf_freq + 0.3e6, lpf_freq + 1.3e6
+        taper = np.clip((t1 - binfreq) / (t1 - t0), 0.0, 1.0)
+        residual = residual * taper
+        residual[binfreq < 0.4e6] = 0.0
+
+        # integrate group delay -> phase over the positive half, then mirror for
+        # a conjugate-symmetric (real impulse response) all-pass
+        half = blocklen // 2
+        dphi = -2 * np.pi * np.cumsum(residual[: half + 1]) * (fs / blocklen)
+        eq = np.ones(blocklen, dtype=complex)
+        eq[: half + 1] = np.exp(1j * dphi)
+        eq[half + 1 :] = np.conj(eq[1:half][::-1])
+        eq[0] = 1.0
+        eq[half] = 1.0  # Nyquist (dead band past the LPF): keep unit-magnitude
+
+        return eq
+
     def computevideofilters(self):
         self.Filters = {}
 
@@ -590,6 +649,15 @@ class RFDecode:
 
         # Post processing:  lowpass filter + deemp
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP['video_deemp_strength'])
+
+        # PAL: correct the post-demod video group delay to the IEC 60856 9.1.6
+        # curve the disc was pre-distorted against (the Butterworth LPF alone
+        # undershoots it across the chroma band, smearing colour).  This is a
+        # pure all-pass, so |FVideo| is unchanged; only the output video path is
+        # equalised (the burst/pilot/sync reference paths are left as-is).
+        if self.system == "PAL":
+            SF["FVideoGD"] = self.build_groupdelay_equalizer(SF["Fvideo_lpf"])
+            SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
