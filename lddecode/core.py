@@ -204,9 +204,19 @@ FilterParams_PAL = {
     "audio_notchwidth": 200000,
     "audio_notchorder": 2,
     "video_deemp": (100e-9, 400e-9),
-    # XXX: guessing here!
+    # PAL builds its RF video filter as a split high-pass (low edge) + low-pass
+    # (high edge) cascade so the two skirts can be shaped independently
+    # (see computevideofilters).  The low edge is kept gentle (order 2) to
+    # protect the lower chroma sideband (~2.67 MHz) and its group delay; the
+    # high edge is a little sharper and a touch higher to better reject HF noise
+    # and the folded upper-J2 product (~16 MHz) while keeping the upper chroma
+    # sideband (~12.3 MHz) flat.
     "video_bpf_low": 2300000,
-    "video_bpf_high": 13500000,
+    "video_bpf_low_order": 2,
+    "video_bpf_high": 14000000,
+    "video_bpf_high_order": 3,
+    # video_bpf_order is retained for the shared bandpass path (NTSC) and the
+    # --lowband override below; the PAL split path uses the two orders above.
     "video_bpf_order": 2,
     "video_lpf_freq": 5200000,
     "video_lpf_order": 7,
@@ -502,13 +512,36 @@ class RFDecode:
         SF["MTF"] = filtfft(MTF, self.blocklen)
 
         # The BPF filter, defined for each system in DecoderParams
-        filt_rfvideo = sps.butter(
-            DP["video_bpf_order"],
-            self.freqrange(DP["video_bpf_low"], DP["video_bpf_high"]),
-            btype="bandpass",
-        )
-        # Start building up the combined FFT filter using the BPF
-        SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
+        if self.system == "PAL":
+            # PAL: build the RF band-pass as a separate high-pass (low edge) and
+            # low-pass (high edge) so each skirt can be ordered independently.
+            # The low edge stays gentle to avoid loading the lower chroma
+            # sideband (~2.67 MHz) with group delay; the high edge is sharper to
+            # trim HF noise and the folded upper-J2 product without touching the
+            # chroma sidebands.  Behaviour on the low edge is identical to the
+            # previous order-2 band-pass.
+            filt_rfvideo_hp = sps.butter(
+                DP["video_bpf_low_order"],
+                DP["video_bpf_low"] / self.freq_hz_half,
+                btype="highpass",
+            )
+            filt_rfvideo_lp = sps.butter(
+                DP["video_bpf_high_order"],
+                DP["video_bpf_high"] / self.freq_hz_half,
+                btype="lowpass",
+            )
+            # Start building up the combined FFT filter using the split BPF
+            SF["RFVideo"] = filtfft(filt_rfvideo_hp, self.blocklen) * filtfft(
+                filt_rfvideo_lp, self.blocklen
+            )
+        else:
+            filt_rfvideo = sps.butter(
+                DP["video_bpf_order"],
+                self.freqrange(DP["video_bpf_low"], DP["video_bpf_high"]),
+                btype="bandpass",
+            )
+            # Start building up the combined FFT filter using the BPF
+            SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
 
         # Notch filters for analog audio RF.  DdD captures on NTSC need this.
         if SP["analog_audio"] and self.system == "NTSC":
