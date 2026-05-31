@@ -1219,16 +1219,9 @@ class DemodCache:
                 if b not in self.blocks:
                     LRUupdate(self.lru, b)
 
-                    rawdata = self.loader(
-                        self.infile, b * self.blocksize, self.rf.blocklen
-                    )
-
-                    if rawdata is None or len(rawdata) < self.rf.blocklen:
-                        self.blocks[b] = None
-                        return None
-
                     self.blocks[b] = {}
-                    self.blocks[b]["rawinput"] = rawdata
+                    self.blocks[b]["rawinput"] = None
+                    queuelist.add(b)
 
                 if self.blocks[b] is None:
                     reached_end = True
@@ -1256,7 +1249,20 @@ class DemodCache:
                 if not prefetch:
                     self.waiting.add(b)
 
-            for b in queuelist:
+        for b in queuelist:
+            if self.blocks[b]['rawinput'] is None:
+                rawdata = self.loader(
+                    self.infile, b * self.blocksize, self.rf.blocklen
+                )
+
+                with self.lock:
+                    if rawdata is None or len(rawdata) < self.rf.blocklen:
+                        self.blocks[b] = None
+                        return None
+                    
+                    self.blocks[b]['rawinput'] = rawdata
+
+            with self.lock:
                 self.blocks[b]['MTF']      = MTF
                 self.blocks[b]['request']  = self.request
                 self.blocks[b]['waiting']  = True
