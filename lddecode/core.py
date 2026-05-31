@@ -1084,7 +1084,7 @@ class DemodCache:
 
         # should be in self.rf, but may not be computed yet
         self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
-        self.prefetch        = int((self.bytes_per_field * 2) / self.blocksize) + 4
+        self.prefetch        = int((self.bytes_per_field * 4) / self.blocksize) + 4
 
         self.lru             = []
 
@@ -1095,13 +1095,15 @@ class DemodCache:
         self.q_in            = Queue()
         self.q_out           = Queue()
         self.waiting         = set()
-        self.q_out_event     = threading.Event()
+        self.q_out_cv        = threading.Condition(self.lock)
 
         self.threadpipes     = []
         self.threads         = []
 
         self.request         = 0
         self.ended           = False
+
+        self.loader_lock   = threading.Lock()
 
         self.deqeue_thread      = threading.Thread(target=self.dequeue, daemon=True)
         self.num_worker_threads = num_worker_threads
@@ -1141,9 +1143,15 @@ class DemodCache:
             return
 
         with self.lock:
+            to_remove = []
             for k in self.lru[self.lrusize :]:
                 if k in self.blocks:
-                    del self.blocks[k]
+                    if self.blocks[k] is not None and self.blocks[k].get("waiting", False):
+                        continue
+                    to_remove.append(k)
+
+            for k in to_remove:
+                del self.blocks[k]
 
         self.lru = self.lru[: self.lrusize]
 
@@ -1160,8 +1168,6 @@ class DemodCache:
     def worker(self, return_on_empty=False):
         ''' return_on_empty is used when running non-threaded so this can be
             directly called '''
-        blocksrun = 0
-        blockstime = 0
 
         rf = RFDecode(**self.rf_args)
 
@@ -1185,26 +1191,23 @@ class DemodCache:
                 else:
                     fftdata = block["fft"]
 
-                if True or (
+                if (
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
-                    st = time.time()
                     output["demod"] = rf.demodblock(
                         data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
-                    blockstime += time.time() - st
-                    blocksrun += 1
 
                     output["MTF"] = target_MTF
                     output["request"] = request
 
-                # print(blocknum, output)
-                self.q_out.put((blocknum, output))
+                if output:
+                    self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
-    @profile
+    #@profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = set()
         queuelist = set()
@@ -1250,16 +1253,24 @@ class DemodCache:
                     self.waiting.add(b)
 
         for b in queuelist:
+            if reached_end:
+                break
+
             if self.blocks[b]['rawinput'] is None:
-                rawdata = self.loader(
-                    self.infile, b * self.blocksize, self.rf.blocklen
-                )
+                with self.loader_lock:
+                    rawdata = self.loader(
+                        self.infile, b * self.blocksize, self.rf.blocklen
+                    )
 
                 with self.lock:
                     if rawdata is None or len(rawdata) < self.rf.blocklen:
                         self.blocks[b] = None
+                        if prefetch:
+                            del self.blocks[b]
+                            reached_end = True
+                            continue
                         return None
-                    
+
                     self.blocks[b]['rawinput'] = rawdata
 
             with self.lock:
@@ -1269,7 +1280,6 @@ class DemodCache:
                 self.blocks[b]['prefetch'] = prefetch
                 self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
-        self.q_out_event.clear()
         return None if reached_end else need_blocks
 
     def flush_demod(self):
@@ -1277,6 +1287,9 @@ class DemodCache:
         blocks_toredo = []
 
         for k in self.blocks.keys():
+            if self.blocks[k] is None:
+                continue
+
             self.blocks[k]['MTF']      = -1
             self.blocks[k]['request']  = -1
             self.blocks[k]['waiting']  = False
@@ -1301,6 +1314,9 @@ class DemodCache:
             with self.lock:
                 blocknum, item = rv
 
+                if blocknum not in self.blocks:
+                    continue
+
                 if "MTF" not in item or "demod" not in item:
                     # This shouldn't happen, but was observed by Simon on a decode
                     logger.error(
@@ -1320,14 +1336,14 @@ class DemodCache:
                         self.waiting.remove(blocknum)
 
                     if not len(self.waiting):
-                        self.q_out_event.set()
+                        self.q_out_cv.notify_all()
 
                 if "input" not in self.blocks[blocknum]:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
                         self.rf.blockcut : -self.rf.blockcut_end
                     ]
 
-    @profile
+    #@profile
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block
         # This is a list of entries in the output from the threaded
@@ -1365,10 +1381,11 @@ class DemodCache:
             if self.num_worker_threads == 0:
                 self.worker(return_on_empty=True)
 
-            self.q_out_event.wait(.01)
+            with self.q_out_cv:
+                while self.waiting:
+                    self.q_out_cv.wait()
+
             need_blocks = self.doread(toread, MTF)
-            if need_blocks:
-                self.q_out_event.clear()
 
         if need_blocks is None:
             # EOF
@@ -1394,7 +1411,7 @@ class DemodCache:
 
         rv["startloc"] = (begin // self.blocksize) * self.blocksize
 
-        need_blocks = self.doread(toread_prefetch, MTF, prefetch=True)
+        self.doread(toread_prefetch, MTF, prefetch=True)
 
         return rv
 
@@ -1619,7 +1636,7 @@ class Field:
         self.wow_level_adjust_smoothing = wow_level_adjust_smoothing
         self.wow_interpolation_method = wow_interpolation_method
 
-    @profile
+    #@profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
 
@@ -1638,7 +1655,7 @@ class Field:
 
         self.valid     = True
 
-    @profile
+    #@profile
     def get_linelen(self, line=None, linelocs=None):
         # compute adjusted frequency from neighboring line lengths
 
@@ -1673,7 +1690,7 @@ class Field:
     def inpxtousec(self, x, line=None):
         return x / self.get_linefreq(line)
 
-    @profile
+    #@profile
     def lineslice(self, l, begin=None, length=None, linelocs=None, begin_offset=0):
         """ return a slice corresponding with pre-TBC line l, begin+length are uSecs """
 
@@ -1743,7 +1760,7 @@ class Field:
 
         return slice(nb_round(_begin), nb_round(_begin + _length))
 
-    @profile
+    #@profile
     def get_timings(self):
         pulses = self.rawpulses
         hsync_typical = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
@@ -1896,7 +1913,7 @@ class Field:
 
         return done, validpulses
 
-    @profile
+    #@profile
     def refinepulses(self):
         self.LT = self.get_timings()
 
@@ -2707,7 +2724,7 @@ class Field:
 
         return dsout, self.dsaudio, self.efmout
 
-    @profile
+    #@profile
     def rf_tbc(self, linelocs=None):
         """ This outputs a TBC'd version of the input RF data, mostly intended
             to assist in audio processing.  Outputs a uint16 array.
@@ -2812,7 +2829,7 @@ class Field:
 
         return rv
 
-    @profile
+    #@profile
     def dropout_detect_demod(self):
         # current field
         f = self
@@ -2872,7 +2889,7 @@ class Field:
 
         return iserr
 
-    @profile
+    #@profile
     def build_errlist(self, errmap):
         errlist = []
 
@@ -2893,7 +2910,7 @@ class Field:
 
         return errlist
 
-    @profile
+    #@profile
     def dropout_errlist_to_tbc(field, errlist):
         """Convert data from raw data coordinates to tbc coordinates, and splits up
         multi-line dropouts.
@@ -2960,7 +2977,7 @@ class Field:
 
         return dropouts
 
-    @profile
+    #@profile
     def dropout_detect(self):
         """ returns dropouts in three arrays, to line up with the JSON output """
 
@@ -2981,7 +2998,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    @profile
+    #@profile
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -3343,7 +3360,8 @@ class FieldNTSC(Field):
             # Should we warn here? (Provided this can actually occur.)
             return 0
 
-    @profile
+    #@profile
+    #@profile
     def compute_burst_offsets(self, linelocs):
         rising_sum = 0
         adjs = {}
@@ -3373,7 +3391,7 @@ class FieldNTSC(Field):
 
         return field14, adjs
 
-    @profile
+    #@profile
     def refine_linelocs_burst(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2
@@ -3454,7 +3472,7 @@ class FieldNTSC(Field):
 
         self.phase_adjust_median = 0
 
-    @profile
+    #@profile
     def process(self):
         super(FieldNTSC, self).process()
 
@@ -3828,7 +3846,7 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < 0.05
 
-    @profile
+    #@profile
     def detectLevels(self, field):
         # Returns sync level, 0IRE, and 100IRE levels of a field
         # computed from HSYNC areas and VITS
@@ -3984,7 +4002,7 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
 
-    @profile
+    #@profile
     def decodefield(self, start, mtf_level, prevfield=None, initphase=False, redo=False, rv=None):
         """ returns field object if valid, and the offset to the next decode """
 
@@ -4054,7 +4072,7 @@ class LDdecode:
 
         return rv['field'], rv['offset']
 
-    @profile
+    #@profile
     def readfield(self, initphase=False):
         done     = False
         adjusted = False
@@ -4451,7 +4469,7 @@ class LDdecode:
 
         return metrics_rounded
 
-    @profile
+    #@profile
     def buildmetadata(self, f, check_phase=True):
         """ returns field information JSON and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
