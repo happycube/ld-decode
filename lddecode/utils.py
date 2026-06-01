@@ -508,9 +508,9 @@ class LoadLDF:
     Eliminates the subprocess and pipe overhead of the previous design.
     """
 
-    def __init__(self, filename, input_args=[], output_args=[]):
+    def __init__(self, filename):
         try:
-            import av
+            import av  # noqa: F401
         except ImportError:
             raise ImportError("PyAV library required for .ldf/.flac files. Install with: pip install av")
 
@@ -520,74 +520,132 @@ class LoadLDF:
         self.rewind_size = 2 * 1024 * 1024
         self.rewind_buf = b""
 
+        # Forward seeks farther than this (in bytes) restart the decoder with a
+        # container seek instead of reading and discarding samples one by one.
+        self.seek_threshold = 40 * 1024 * 1024
+
+        # Soft cap on the decode buffer, to bound memory use.  The reader thread
+        # pauses once the buffer grows past this -- unless a single read needs
+        # more than this many bytes (see _read_data), to avoid a deadlock.
+        self._max_buffer = 64 * 1024 * 1024
+
         self._container = None
+        self._stream = None
+        self._resampler = None
         self._decode_iter = None
         self._buffer = bytearray()
-        self._buffer_sample_offset = 0
+        self._want = 0
         self._cv = threading.Condition()
         self._eof = False
         self._reader_thread = None
-        self._shutdown = False
+        self._stop_event = None
 
         self._start_decoder(0)
 
     def _start_decoder(self, sample):
-        """Start/reset the decoder at a given sample offset."""
+        """Start/reset the decoder so the next sample returned is `sample`."""
         import av
+
         self._stop_decoder()
 
         self._container = av.open(self.filename)
         self._stream = self._container.streams.audio[0]
-        self._resampler = av.audio.resampler.AudioResampler(format='s16', layout='mono')
+        self._resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono")
 
         if sample > 0:
+            # Seek a little before the target; the reader thread discards the
+            # lead-in so the buffer starts exactly at `sample`.
             seek_seconds = sample / self._stream.sample_rate
             seek_time = int(max(0, seek_seconds - 1) * av.time_base)
             self._container.seek(seek_time, any_frame=True)
 
         self._decode_iter = self._container.decode(audio=0)
 
+        # Capture the buffer and stop flag per run so a reader thread left over
+        # from a previous decoder can never touch the current buffer.
+        buf = bytearray()
+        stop_event = threading.Event()
         with self._cv:
-            self._buffer = bytearray()
-            self._buffer_sample_offset = sample
+            self._buffer = buf
+            self._want = 0
             self._eof = False
-            self._shutdown = False
+        self._stop_event = stop_event
 
         self.position = sample * 2
         self.rewind_buf = b""
 
-        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+        self._reader_thread = threading.Thread(
+            target=self._reader_loop,
+            args=(stop_event, buf, sample),
+            daemon=True,
+        )
         self._reader_thread.start()
 
-    def _reader_loop(self):
-        """Background thread: decode FLAC frames into the buffer."""
+    def _reader_loop(self, stop_event, buf, target_sample):
+        """Background thread: decode FLAC frames into `buf`.
+
+        Discards any samples decoded before `target_sample` (the lead-in that
+        results from seeking to a frame before the requested position)."""
         try:
+            skip_samples = None
             for frame in self._decode_iter:
-                if self._shutdown:
-                    break
+                if stop_event.is_set():
+                    return
                 if frame is None:
                     continue
 
-                resampled_frames = self._resampler.resample(frame)
-                for rf in resampled_frames:
-                    if self._shutdown:
-                        break
+                if skip_samples is None:
+                    # The first decoded frame tells us where decoding actually
+                    # resumed after the seek, via its presentation timestamp.
+                    if frame.pts is not None:
+                        base_sample = round(
+                            float(frame.pts * self._stream.time_base)
+                            * self._stream.sample_rate
+                        )
+                    else:
+                        base_sample = target_sample
+                    skip_samples = max(0, target_sample - base_sample)
+
+                for rf in self._resampler.resample(frame):
+                    if stop_event.is_set():
+                        return
                     data = bytes(rf.planes[0])
+
+                    if skip_samples > 0:
+                        skip_bytes = min(skip_samples * 2, len(data))
+                        data = data[skip_bytes:]
+                        skip_samples -= skip_bytes // 2
+                        if not data:
+                            continue
+
                     with self._cv:
-                        self._buffer.extend(data)
-                        self._cv.notify()
+                        # Backpressure: pause while the buffer is over the cap,
+                        # but keep filling if a pending read needs even more.
+                        while (
+                            len(buf) >= self._max_buffer
+                            and len(buf) >= self._want
+                            and not stop_event.is_set()
+                        ):
+                            self._cv.wait()
+                        if stop_event.is_set():
+                            return
+                        buf.extend(data)
+                        self._cv.notify_all()
         except Exception:
-            pass
+            traceback.print_exc()
         finally:
             with self._cv:
                 self._eof = True
-                self._cv.notify()
+                self._cv.notify_all()
 
     def _stop_decoder(self):
-        self._shutdown = True
+        if self._stop_event is not None:
+            self._stop_event.set()
+
         if self._reader_thread is not None and self._reader_thread.is_alive():
             with self._cv:
-                self._cv.notify()
+                # Wake the reader if it is parked on backpressure.
+                self._cv.notify_all()
             self._reader_thread.join(timeout=2)
 
         if self._container is not None:
@@ -598,19 +656,23 @@ class LoadLDF:
             self._container = None
 
         self._reader_thread = None
+        self._stop_event = None
         self._decode_iter = None
 
     def _read_data(self, count):
-        """Read count bytes from the decoded buffer, blocking if needed.
-        Handles start-offset skipping: discards data until we reach the target sample."""
+        """Read up to `count` bytes from the decoded buffer, blocking until they
+        are available or the decoder reaches EOF (so a short read means EOF)."""
         with self._cv:
+            self._want = count
+            self._cv.notify_all()
             while len(self._buffer) < count and not self._eof:
                 self._cv.wait()
 
             available = min(count, len(self._buffer))
             data = bytes(self._buffer[:available])
             del self._buffer[:available]
-            self._buffer_sample_offset += (available // 2)
+            self._want = 0
+            self._cv.notify_all()
 
         self.position += len(data)
 
@@ -629,10 +691,14 @@ class LoadLDF:
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
-        if self._container is None or ((sample_bytes - self.position) > 40000000):
+        # (Re)start the decoder if it isn't running, or if the target is far
+        # enough ahead that seeking beats reading and discarding.
+        if self._container is None or (sample_bytes - self.position) > self.seek_threshold:
             self._start_decoder(sample)
 
         if sample_bytes < self.position:
+            # Seeking backwards - serve from rewind_buf if it reaches back far
+            # enough, otherwise reseek.
             start = len(self.rewind_buf) - (self.position - sample_bytes)
             end = min(start + readlen_bytes, len(self.rewind_buf))
             if start < 0:
@@ -642,13 +708,11 @@ class LoadLDF:
                 buf_data = self.rewind_buf[start:end]
                 sample_bytes += len(buf_data)
                 readlen_bytes -= len(buf_data)
-        elif (sample_bytes - self.position) > (40 * 1024 * 1024 * 2):
-            self._start_decoder(sample)
-            buf_data = b""
         else:
             buf_data = b""
 
         while sample_bytes > self.position:
+            # Seeking forwards within range - read and discard samples.
             count = min(sample_bytes - self.position, self.rewind_size)
             data = self._read_data(count)
             if len(data) == 0:

@@ -1207,7 +1207,7 @@ class DemodCache:
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
-    #@profile
+    @profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
         need_blocks = set()
         queuelist = set()
@@ -1343,7 +1343,7 @@ class DemodCache:
                         self.rf.blockcut : -self.rf.blockcut_end
                     ]
 
-    #@profile
+    @profile
     def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
         # transpose the cache by key, not block
         # This is a list of entries in the output from the threaded
@@ -1636,7 +1636,7 @@ class Field:
         self.wow_level_adjust_smoothing = wow_level_adjust_smoothing
         self.wow_interpolation_method = wow_interpolation_method
 
-    #@profile
+    @profile
     def process(self):
         self.linelocs1, self.linebad, self.nextfieldoffset = self.compute_linelocs()
 
@@ -1655,7 +1655,7 @@ class Field:
 
         self.valid     = True
 
-    #@profile
+    @profile
     def get_linelen(self, line=None, linelocs=None):
         # compute adjusted frequency from neighboring line lengths
 
@@ -1690,7 +1690,7 @@ class Field:
     def inpxtousec(self, x, line=None):
         return x / self.get_linefreq(line)
 
-    #@profile
+    @profile
     def lineslice(self, l, begin=None, length=None, linelocs=None, begin_offset=0):
         """ return a slice corresponding with pre-TBC line l, begin+length are uSecs """
 
@@ -1714,7 +1714,7 @@ class Field:
     def outpxtousec(self, x):
         return x / self.rf.SysParams["outfreq"]
 
-    #@profile
+    @profile
     def hz_to_output(self, input):
         if type(input) == np.ndarray:
             return hz_to_output_array(
@@ -1760,7 +1760,7 @@ class Field:
 
         return slice(nb_round(_begin), nb_round(_begin + _length))
 
-    #@profile
+    @profile
     def get_timings(self):
         pulses = self.rawpulses
         hsync_typical = self.usectoinpx(self.rf.SysParams["hsyncPulseUS"])
@@ -1825,7 +1825,7 @@ class Field:
 
         return inorder
 
-    #@profile
+    @profile
     def run_vblank_state_machine(self, pulses, LT):
         """ Determines if a pulse set is a valid vblank by running a state machine """
 
@@ -1913,7 +1913,7 @@ class Field:
 
         return done, validpulses
 
-    #@profile
+    @profile
     def refinepulses(self):
         self.LT = self.get_timings()
 
@@ -1951,7 +1951,7 @@ class Field:
 
         return valid_pulses
 
-    #@profile
+    @profile
     def getBlankRange(self, validpulses, start=0):
         vp_type    = np.array([p[0] for p in validpulses])
 
@@ -2090,7 +2090,7 @@ class Field:
 
         return None, None, None, 0
 
-    #@profile
+    @profile
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
         longrun = [-1, -1]
@@ -2156,7 +2156,7 @@ class Field:
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
-    #@profile
+    @profile
     def getLine0(self, validpulses, meanlinelen):
         # Gather the local line 0 location and projected from the previous field
 
@@ -2324,7 +2324,7 @@ class Field:
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
-    #@profile
+    @profile
     def compute_linelocs(self):
 
         self.rawpulses = self.getpulses()
@@ -2483,7 +2483,7 @@ class Field:
 
         return rv_ll, rv_err, nextfield
 
-    #@profile
+    @profile
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
 
@@ -2625,7 +2625,7 @@ class Field:
 
         return self.interpolated_pixel_locs, self.wowfactors
 
-    #@profile
+    @profile
     def downscale(
         self,
         lineinfo=None,
@@ -2724,7 +2724,7 @@ class Field:
 
         return dsout, self.dsaudio, self.efmout
 
-    #@profile
+    @profile
     def rf_tbc(self, linelocs=None):
         """ This outputs a TBC'd version of the input RF data, mostly intended
             to assist in audio processing.  Outputs a uint16 array.
@@ -2829,7 +2829,7 @@ class Field:
 
         return rv
 
-    #@profile
+    @profile
     def dropout_detect_demod(self):
         # current field
         f = self
@@ -2889,7 +2889,7 @@ class Field:
 
         return iserr
 
-    #@profile
+    @profile
     def build_errlist(self, errmap):
         errlist = []
 
@@ -2910,7 +2910,7 @@ class Field:
 
         return errlist
 
-    #@profile
+    @profile
     def dropout_errlist_to_tbc(field, errlist):
         """Convert data from raw data coordinates to tbc coordinates, and splits up
         multi-line dropouts.
@@ -2977,7 +2977,7 @@ class Field:
 
         return dropouts
 
-    #@profile
+    @profile
     def dropout_detect(self):
         """ returns dropouts in three arrays, to line up with the JSON output """
 
@@ -2998,7 +2998,7 @@ class Field:
 
         return rv_lines, rv_starts, rv_ends
 
-    #@profile
+    @profile
     def compute_line_bursts(self, linelocs, _line, prev_phaseadjust=0):
         line = _line + self.lineoffset
         # calczc works from integers, so get the start and remainder
@@ -3360,8 +3360,7 @@ class FieldNTSC(Field):
             # Should we warn here? (Provided this can actually occur.)
             return 0
 
-    #@profile
-    #@profile
+    @profile
     def compute_burst_offsets(self, linelocs):
         rising_sum = 0
         adjs = {}
@@ -3391,7 +3390,7 @@ class FieldNTSC(Field):
 
         return field14, adjs
 
-    #@profile
+    @profile
     def refine_linelocs_burst(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2
@@ -3472,7 +3471,7 @@ class FieldNTSC(Field):
 
         self.phase_adjust_median = 0
 
-    #@profile
+    @profile
     def process(self):
         super(FieldNTSC, self).process()
 
@@ -3846,7 +3845,7 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < 0.05
 
-    #@profile
+    @profile
     def detectLevels(self, field):
         # Returns sync level, 0IRE, and 100IRE levels of a field
         # computed from HSYNC areas and VITS
@@ -4002,7 +4001,7 @@ class LDdecode:
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
 
-    #@profile
+    @profile
     def decodefield(self, start, mtf_level, prevfield=None, initphase=False, redo=False, rv=None):
         """ returns field object if valid, and the offset to the next decode """
 
@@ -4072,7 +4071,7 @@ class LDdecode:
 
         return rv['field'], rv['offset']
 
-    #@profile
+    @profile
     def readfield(self, initphase=False):
         done     = False
         adjusted = False
@@ -4094,7 +4093,17 @@ class LDdecode:
                 self.second_decode = time.time()
 
             if redo:
-                # Drop existing thread
+                # A speculative decode thread for the *next* field was started
+                # at the bottom of the previous iteration and may still be
+                # running self.demodcache.read().  We must join it before
+                # re-decoding here: decodefield() below reads the same
+                # (non-reentrant) DemodCache, and the redo's forceredo flush
+                # (request++ / flush_demod) would otherwise corrupt the shared
+                # request/MTF/block state out from under the in-flight reader,
+                # producing nondeterministic output.  The speculative result is
+                # discarded on redo anyway, so we just wait for it to finish.
+                if self.decodethread and self.decodethread.ident:
+                    self.decodethread.join()
                 self.decodethread = None
 
                 f, offset = self.decodefield(redo, self.mtf_level, self.fieldstack[0], initphase, redo)
@@ -4469,7 +4478,7 @@ class LDdecode:
 
         return metrics_rounded
 
-    #@profile
+    @profile
     def buildmetadata(self, f, check_phase=True):
         """ returns field information JSON and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
