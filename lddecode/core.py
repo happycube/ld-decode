@@ -4102,6 +4102,13 @@ class LDdecode:
                 # request/MTF/block state out from under the in-flight reader,
                 # producing nondeterministic output.  The speculative result is
                 # discarded on redo anyway, so we just wait for it to finish.
+                # 
+                # ^ Claude Opus 4.8 wrote that.  This fixed #815 (tested 50x on lds
+                #   and ldf on ve-snw-cut.ld[sf]) - but as discussed on 2025.05.31,
+                #   the current plan is to rewrite all of this into a DAG/controller
+                #   structure which will spawn a new RF decoder w/different settings
+                #   and not overlap anything - Chad
+                
                 if self.decodethread and self.decodethread.ident:
                     self.decodethread.join()
                 self.decodethread = None
