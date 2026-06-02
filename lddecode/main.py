@@ -3,7 +3,6 @@ import signal
 import sys
 import argparse
 import traceback
-import subprocess
 import numpy as np
 
 from lddecode.core import *
