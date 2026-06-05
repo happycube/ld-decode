@@ -3525,7 +3525,10 @@ class LDdecode:
             self.lpf.add_function(DemodCache.read)
             #self.lpf.add_function(self.decodefield)
 
-        self.analog_audio = int(analog_audio)
+        # Negative values are a multiple of the HSYNC frequency (line-locked
+        # output, e.g. -2.8 for NTSC-locked ~44055.944hz) and must keep their
+        # fractional part; positive values are a plain integer rate in hz.
+        self.analog_audio = analog_audio if analog_audio < 0 else int(analog_audio)
         self.digital_audio = digital_audio
         self.ac3 = extra_options.get("AC3", False)
         self.write_rf_tbc = extra_options.get("write_RF_TBC", False)
@@ -4649,11 +4652,18 @@ class LDdecode:
 
     def build_json(self):
         """ build up the JSON structure for file output. """
+        # A negative analog_audio is a multiple of the HSYNC frequency; report
+        # the resolved nominal rate in hz so downstream tools see the real value.
+        if self.analog_audio < 0:
+            audio_sample_rate = (1000000 / self.rf.SysParams["line_period"]) * -self.analog_audio
+        else:
+            audio_sample_rate = self.analog_audio
+
         pcmAudioParameters = {
             "bits": 16,
             "isLittleEndian": True,
             "isSigned": True,
-            "sampleRate": self.analog_audio,
+            "sampleRate": audio_sample_rate,
         }
 
         jout = {}

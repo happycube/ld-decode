@@ -320,6 +320,18 @@ Set the analog audio output sampling frequency.
 ld-decode --analog_audio_frequency 48000 input.ldf output
 ```
 
+#### `--ntsc_audio_rate`
+Output analog audio locked to NTSC line timing instead of the default 44100Hz.
+- **Default:** Off (analog audio is output at 44100Hz)
+- **Effect:** Produces exactly 2.8 samples per line (1470 samples/frame, 735 per field), giving a sample rate of ~44055.944Hz that stays perfectly aligned to the NTSC video timing with no drift. The default 44100Hz rate corresponds to a non-integer 1471.47 samples/frame, which slowly drifts against the video.
+- **Metadata:** The `.tbc.json` reports the resolved `sampleRate` as `44055.944055944055`.
+- **Note:** NTSC only. The flag is ignored (with a warning) for PAL, which is already frame-locked at 44100Hz (1764 samples/frame). Overrides `--analog_audio_frequency`.
+
+**Example:**
+```bash
+ld-decode --ntsc_audio_rate input.ldf output
+```
+
 #### `--audio_filterwidth FREQ`
 Set the analog audio filter width.
 - **Type:** FREQ (see Frequency Format section)
