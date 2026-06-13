@@ -32,7 +32,7 @@ from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
+from .utils import Pulse, nb_std, n_ornotrange, gen_bpf_supergauss, FieldInfo
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -1084,7 +1084,7 @@ class DemodCache:
 
         # should be in self.rf, but may not be computed yet
         self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
-        self.prefetch        = int((self.bytes_per_field * 2) / self.blocksize) + 4
+        self.prefetch        = int((self.bytes_per_field * 4) / self.blocksize) + 4
 
         self.lru             = []
 
@@ -1095,13 +1095,15 @@ class DemodCache:
         self.q_in            = Queue()
         self.q_out           = Queue()
         self.waiting         = set()
-        self.q_out_event     = threading.Event()
+        self.q_out_cv        = threading.Condition(self.lock)
 
         self.threadpipes     = []
         self.threads         = []
 
         self.request         = 0
         self.ended           = False
+
+        self.loader_lock   = threading.Lock()
 
         self.deqeue_thread      = threading.Thread(target=self.dequeue, daemon=True)
         self.num_worker_threads = num_worker_threads
@@ -1141,9 +1143,15 @@ class DemodCache:
             return
 
         with self.lock:
+            to_remove = []
             for k in self.lru[self.lrusize :]:
                 if k in self.blocks:
-                    del self.blocks[k]
+                    if self.blocks[k] is not None and self.blocks[k].get("waiting", False):
+                        continue
+                    to_remove.append(k)
+
+            for k in to_remove:
+                del self.blocks[k]
 
         self.lru = self.lru[: self.lrusize]
 
@@ -1160,8 +1168,6 @@ class DemodCache:
     def worker(self, return_on_empty=False):
         ''' return_on_empty is used when running non-threaded so this can be
             directly called '''
-        blocksrun = 0
-        blockstime = 0
 
         rf = RFDecode(**self.rf_args)
 
@@ -1185,50 +1191,40 @@ class DemodCache:
                 else:
                     fftdata = block["fft"]
 
-                if True or (
+                if (
                     "demod" not in block
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
-                    st = time.time()
                     output["demod"] = rf.demodblock(
                         data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
                     )
-                    blockstime += time.time() - st
-                    blocksrun += 1
 
                     output["MTF"] = target_MTF
                     output["request"] = request
 
-                # print(blocknum, output)
-                self.q_out.put((blocknum, output))
+                if output:
+                    self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
     @profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
-        need_blocks = []
-        queuelist = []
+        need_blocks = set()
+        queuelist = set()
         reached_end = False
 
         with self.lock:
             if redo:
                 for b in self.flush_demod():
-                    queuelist.append(b)
+                    queuelist.add(b)
 
             for b in blocknums:
                 if b not in self.blocks:
                     LRUupdate(self.lru, b)
 
-                    rawdata = self.loader(
-                        self.infile, b * self.blocksize, self.rf.blocklen
-                    )
-
-                    if rawdata is None or len(rawdata) < self.rf.blocklen:
-                        self.blocks[b] = None
-                        return None
-
                     self.blocks[b] = {}
-                    self.blocks[b]["rawinput"] = rawdata
+                    self.blocks[b]["rawinput"] = None
+                    queuelist.add(b)
 
                 if self.blocks[b] is None:
                     reached_end = True
@@ -1248,22 +1244,42 @@ class DemodCache:
                     continue
 
                 if redo or not waiting:
-                    queuelist.append(b)
-                    need_blocks.append(b)
+                    queuelist.add(b)
+                    need_blocks.add(b)
                 elif waiting:
-                    need_blocks.append(b)
+                    need_blocks.add(b)
 
                 if not prefetch:
                     self.waiting.add(b)
 
-            for b in queuelist:
+        for b in queuelist:
+            if reached_end:
+                break
+
+            if self.blocks[b]['rawinput'] is None:
+                with self.loader_lock:
+                    rawdata = self.loader(
+                        self.infile, b * self.blocksize, self.rf.blocklen
+                    )
+
+                with self.lock:
+                    if rawdata is None or len(rawdata) < self.rf.blocklen:
+                        self.blocks[b] = None
+                        if prefetch:
+                            del self.blocks[b]
+                            reached_end = True
+                            continue
+                        return None
+
+                    self.blocks[b]['rawinput'] = rawdata
+
+            with self.lock:
                 self.blocks[b]['MTF']      = MTF
                 self.blocks[b]['request']  = self.request
                 self.blocks[b]['waiting']  = True
                 self.blocks[b]['prefetch'] = prefetch
                 self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
-        self.q_out_event.clear()
         return None if reached_end else need_blocks
 
     def flush_demod(self):
@@ -1271,6 +1287,9 @@ class DemodCache:
         blocks_toredo = []
 
         for k in self.blocks.keys():
+            if self.blocks[k] is None:
+                continue
+
             self.blocks[k]['MTF']      = -1
             self.blocks[k]['request']  = -1
             self.blocks[k]['waiting']  = False
@@ -1295,6 +1314,9 @@ class DemodCache:
             with self.lock:
                 blocknum, item = rv
 
+                if blocknum not in self.blocks:
+                    continue
+
                 if "MTF" not in item or "demod" not in item:
                     # This shouldn't happen, but was observed by Simon on a decode
                     logger.error(
@@ -1314,7 +1336,7 @@ class DemodCache:
                         self.waiting.remove(blocknum)
 
                     if not len(self.waiting):
-                        self.q_out_event.set()
+                        self.q_out_cv.notify_all()
 
                 if "input" not in self.blocks[blocknum]:
                     self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
@@ -1359,10 +1381,11 @@ class DemodCache:
             if self.num_worker_threads == 0:
                 self.worker(return_on_empty=True)
 
-            self.q_out_event.wait(.01)
+            with self.q_out_cv:
+                while self.waiting:
+                    self.q_out_cv.wait()
+
             need_blocks = self.doread(toread, MTF)
-            if need_blocks:
-                self.q_out_event.clear()
 
         if need_blocks is None:
             # EOF
@@ -1380,7 +1403,7 @@ class DemodCache:
 
         rv = {}
         for k in t.keys():
-            rv[k] = nb_concatenate(t[k]) if len(t[k]) else None
+            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
 
         if rv["audio"] is not None:
             rv["audio_phase1"] = rv["audio"]
@@ -1388,7 +1411,7 @@ class DemodCache:
 
         rv["startloc"] = (begin // self.blocksize) * self.blocksize
 
-        need_blocks = self.doread(toread_prefetch, MTF, prefetch=True)
+        self.doread(toread_prefetch, MTF, prefetch=True)
 
         return rv
 
@@ -1691,7 +1714,7 @@ class Field:
     def outpxtousec(self, x):
         return x / self.rf.SysParams["outfreq"]
 
-    #@profile
+    @profile
     def hz_to_output(self, input):
         if type(input) == np.ndarray:
             return hz_to_output_array(
@@ -1802,7 +1825,7 @@ class Field:
 
         return inorder
 
-    #@profile
+    @profile
     def run_vblank_state_machine(self, pulses, LT):
         """ Determines if a pulse set is a valid vblank by running a state machine """
 
@@ -1928,7 +1951,7 @@ class Field:
 
         return valid_pulses
 
-    #@profile
+    @profile
     def getBlankRange(self, validpulses, start=0):
         vp_type    = np.array([p[0] for p in validpulses])
 
@@ -2067,7 +2090,7 @@ class Field:
 
         return None, None, None, 0
 
-    #@profile
+    @profile
     def computeLineLen(self, validpulses):
         # determine longest run of 0's
         longrun = [-1, -1]
@@ -2133,7 +2156,7 @@ class Field:
     # pull the above together into a routine that (should) find line 0, the last line of
     # the previous field.
 
-    #@profile
+    @profile
     def getLine0(self, validpulses, meanlinelen):
         # Gather the local line 0 location and projected from the previous field
 
@@ -2301,7 +2324,7 @@ class Field:
 
         return findpulses(self.data["video"]["demod_05"], pulse_hz_min, pulse_hz_max)
 
-    #@profile
+    @profile
     def compute_linelocs(self):
 
         self.rawpulses = self.getpulses()
@@ -2460,7 +2483,7 @@ class Field:
 
         return rv_ll, rv_err, nextfield
 
-    #@profile
+    @profile
     def refine_linelocs_hsync(self):
         linelocs2 = self.linelocs1.copy()
 
@@ -2602,7 +2625,7 @@ class Field:
 
         return self.interpolated_pixel_locs, self.wowfactors
 
-    #@profile
+    @profile
     def downscale(
         self,
         lineinfo=None,
@@ -4073,7 +4096,24 @@ class LDdecode:
                 self.second_decode = time.time()
 
             if redo:
-                # Drop existing thread
+                # A speculative decode thread for the *next* field was started
+                # at the bottom of the previous iteration and may still be
+                # running self.demodcache.read().  We must join it before
+                # re-decoding here: decodefield() below reads the same
+                # (non-reentrant) DemodCache, and the redo's forceredo flush
+                # (request++ / flush_demod) would otherwise corrupt the shared
+                # request/MTF/block state out from under the in-flight reader,
+                # producing nondeterministic output.  The speculative result is
+                # discarded on redo anyway, so we just wait for it to finish.
+                # 
+                # ^ Claude Opus 4.8 wrote that.  This fixed #815 (tested 50x on lds
+                #   and ldf on ve-snw-cut.ld[sf]) - but as discussed on 2025.05.31,
+                #   the current plan is to rewrite all of this into a DAG/controller
+                #   structure which will spawn a new RF decoder w/different settings
+                #   and not overlap anything - Chad
+                
+                if self.decodethread and self.decodethread.ident:
+                    self.decodethread.join()
                 self.decodethread = None
 
                 f, offset = self.decodefield(redo, self.mtf_level, self.fieldstack[0], initphase, redo)

@@ -501,132 +501,225 @@ class LoadFFmpeg:
 
 
 class LoadLDF:
-    """Load samples from an .ldf file, using ld-ldf-reader-py which itself uses ffmpeg."""
+    """Load samples from an .ldf file using PyAV (FFmpeg) for in-process FLAC decode.
 
-    def __init__(self, filename, input_args=[], output_args=[]):
-        self.input_args = input_args
-        self.output_args = output_args
+    Uses a background thread to decode FLAC frames and fill a buffer.
+    Eliminates the subprocess and pipe overhead of the previous design.
+    """
+
+    def __init__(self, filename):
+        try:
+            import av  # noqa: F401
+        except ImportError:
+            raise ImportError("PyAV library required for .ldf/.flac files. Install with: pip install av")
 
         self.filename = filename
 
-        # The number of the next byte ld-ldf-reader-py will return
-
         self.position = 0
-        # Keep a buffer of recently-read data, to allow seeking backwards by
-        # small amounts. The last byte returned by ffmpeg is at the end of
-        # this buffer.
         self.rewind_size = 2 * 1024 * 1024
         self.rewind_buf = b""
 
-        self.ldfreader = None
+        # Forward seeks farther than this (in bytes) restart the decoder with a
+        # container seek instead of reading and discarding samples one by one.
+        self.seek_threshold = 40 * 1024 * 1024
 
-        # ld-ldf-reader-py subprocess
-        self.ldfreader = self._open(0)
+        # Soft cap on the decode buffer, to bound memory use.  The reader thread
+        # pauses once the buffer grows past this -- unless a single read needs
+        # more than this many bytes (see _read_data), to avoid a deadlock.
+        self._max_buffer = 64 * 1024 * 1024
 
-    def __del__(self):
-        self._close()
+        self._container = None
+        self._stream = None
+        self._resampler = None
+        self._decode_iter = None
+        self._buffer = bytearray()
+        self._want = 0
+        self._cv = threading.Condition()
+        self._eof = False
+        self._reader_thread = None
+        self._stop_event = None
+
+        self._start_decoder(0)
+
+    def _start_decoder(self, sample):
+        """Start/reset the decoder so the next sample returned is `sample`."""
+        import av
+
+        self._stop_decoder()
+
+        self._container = av.open(self.filename)
+        self._stream = self._container.streams.audio[0]
+        self._resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono")
+
+        if sample > 0:
+            # Seek a little before the target; the reader thread discards the
+            # lead-in so the buffer starts exactly at `sample`.
+            seek_seconds = sample / self._stream.sample_rate
+            seek_time = int(max(0, seek_seconds - 1) * av.time_base)
+            self._container.seek(seek_time, any_frame=True)
+
+        self._decode_iter = self._container.decode(audio=0)
+
+        # Capture the buffer and stop flag per run so a reader thread left over
+        # from a previous decoder can never touch the current buffer.
+        buf = bytearray()
+        stop_event = threading.Event()
+        with self._cv:
+            self._buffer = buf
+            self._want = 0
+            self._eof = False
+        self._stop_event = stop_event
+
+        self.position = sample * 2
+        self.rewind_buf = b""
+
+        self._reader_thread = threading.Thread(
+            target=self._reader_loop,
+            args=(stop_event, buf, sample),
+            daemon=True,
+        )
+        self._reader_thread.start()
+
+    def _reader_loop(self, stop_event, buf, target_sample):
+        """Background thread: decode FLAC frames into `buf`.
+
+        Discards any samples decoded before `target_sample` (the lead-in that
+        results from seeking to a frame before the requested position)."""
+        try:
+            skip_samples = None
+            for frame in self._decode_iter:
+                if stop_event.is_set():
+                    return
+                if frame is None:
+                    continue
+
+                if skip_samples is None:
+                    # The first decoded frame tells us where decoding actually
+                    # resumed after the seek, via its presentation timestamp.
+                    if frame.pts is not None:
+                        base_sample = round(
+                            float(frame.pts * self._stream.time_base)
+                            * self._stream.sample_rate
+                        )
+                    else:
+                        base_sample = target_sample
+                    skip_samples = max(0, target_sample - base_sample)
+
+                for rf in self._resampler.resample(frame):
+                    if stop_event.is_set():
+                        return
+                    data = bytes(rf.planes[0])
+
+                    if skip_samples > 0:
+                        skip_bytes = min(skip_samples * 2, len(data))
+                        data = data[skip_bytes:]
+                        skip_samples -= skip_bytes // 2
+                        if not data:
+                            continue
+
+                    with self._cv:
+                        # Backpressure: pause while the buffer is over the cap,
+                        # but keep filling if a pending read needs even more.
+                        while (
+                            len(buf) >= self._max_buffer
+                            and len(buf) >= self._want
+                            and not stop_event.is_set()
+                        ):
+                            self._cv.wait()
+                        if stop_event.is_set():
+                            return
+                        buf.extend(data)
+                        self._cv.notify_all()
+        except Exception:
+            traceback.print_exc()
+        finally:
+            with self._cv:
+                self._eof = True
+                self._cv.notify_all()
+
+    def _stop_decoder(self):
+        if self._stop_event is not None:
+            self._stop_event.set()
+
+        if self._reader_thread is not None and self._reader_thread.is_alive():
+            with self._cv:
+                # Wake the reader if it is parked on backpressure.
+                self._cv.notify_all()
+            self._reader_thread.join(timeout=2)
+
+        if self._container is not None:
+            try:
+                self._container.close()
+            except Exception:
+                pass
+            self._container = None
+
+        self._reader_thread = None
+        self._stop_event = None
+        self._decode_iter = None
 
     def _read_data(self, count):
-        """Read data as bytes from ffmpeg, append it to the rewind buffer, and
-        return it. May return less than count bytes if EOF is reached."""
+        """Read up to `count` bytes from the decoded buffer, blocking until they
+        are available or the decoder reaches EOF (so a short read means EOF)."""
+        with self._cv:
+            self._want = count
+            self._cv.notify_all()
+            while len(self._buffer) < count and not self._eof:
+                self._cv.wait()
 
-        data = self.ldfreader.stdout.read(count)
+            available = min(count, len(self._buffer))
+            data = bytes(self._buffer[:available])
+            del self._buffer[:available]
+            self._want = 0
+            self._cv.notify_all()
+
         self.position += len(data)
 
         self.rewind_buf += data
-        self.rewind_buf = self.rewind_buf[-self.rewind_size :]
+        self.rewind_buf = self.rewind_buf[-self.rewind_size:]
 
         return data
 
     def _close(self):
-        try:
-            if self.ldfreader is not None:
-                self.ldfreader.kill()
-                self.ldfreader.wait()
-                del self.ldfreader
+        self._stop_decoder()
 
-            self.ldfreader = None
-        except Exception:
-            print("Failed to close ldf reader", file=sys.stderr)
-            traceback.print_exc()
-            pass
-
-    @staticmethod
-    def _find_ldf_reader():
-        """Find ld-ldf-reader-py, checking the repo root as a fallback."""
-        import shutil
-
-        if shutil.which("ld-ldf-reader-py"):
-            return "ld-ldf-reader-py"
-
-        # Fall back to the script next to this package (i.e. the repo root)
-        repo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ld-ldf-reader-py")
-        if os.path.isfile(repo_path):
-            return repo_path
-
-        raise FileNotFoundError("Cannot find ld-ldf-reader-py on PATH or in the source tree")
-
-    def _open(self, sample):
+    def __del__(self):
         self._close()
-
-        if sys.platform == "win32":
-            # On Windows, .bat wrappers cannot be launched directly by CreateProcess.
-            # Use the current Python interpreter to run ldf_reader as a module instead.
-            # sys.executable is always valid, and the subprocess inherits PYTHONHOME/
-            # PYTHONPATH from the parent process so lddecode is importable.
-            command = [
-                sys.executable, "-m", "lddecode.ldf_reader",
-                "--quiet", "--start-offset", str(sample), self.filename,
-            ]
-        else:
-            command = [self._find_ldf_reader(), "--quiet", "--start-offset", str(sample), self.filename]
-
-        ldfreader = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
-        self.position = sample * 2
-        self.rewind_buf = b""
-
-        return ldfreader
 
     def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
 
-        if self.ldfreader is None or ((sample_bytes - self.position) > 40000000):
-            self.ldfreader = self._open(sample)
+        # (Re)start the decoder if it isn't running, or if the target is far
+        # enough ahead that seeking beats reading and discarding.
+        if self._container is None or (sample_bytes - self.position) > self.seek_threshold:
+            self._start_decoder(sample)
 
         if sample_bytes < self.position:
-            # Seeking backwards - use data from rewind_buf
+            # Seeking backwards - serve from rewind_buf if it reaches back far
+            # enough, otherwise reseek.
             start = len(self.rewind_buf) - (self.position - sample_bytes)
             end = min(start + readlen_bytes, len(self.rewind_buf))
             if start < 0:
-                # raise IOError("Seeking too far backwards with ffmpeg")
-                self.ldfreader = self._open(sample)
+                self._start_decoder(sample)
                 buf_data = b""
             else:
                 buf_data = self.rewind_buf[start:end]
                 sample_bytes += len(buf_data)
                 readlen_bytes -= len(buf_data)
-        elif (sample_bytes - self.position) > (40 * 1024 * 1024 * 2):
-            self.ldfreader = self._open(sample)
-            buf_data = b""
         else:
             buf_data = b""
 
         while sample_bytes > self.position:
-            # Seeking forwards - read and discard samples
+            # Seeking forwards within range - read and discard samples.
             count = min(sample_bytes - self.position, self.rewind_size)
             data = self._read_data(count)
             if len(data) == 0:
-                # EOF
                 return None
 
         if readlen_bytes > 0:
-            # Read some new data from ffmpeg
             read_data = self._read_data(readlen_bytes)
             if len(read_data) < readlen_bytes:
-                # Short read - end of file
                 return None
         else:
             read_data = b""
@@ -1161,22 +1254,7 @@ def LRUupdate(l, k):
 def nb_median(m):
     return np.median(m)
 
-
-# Enabling nogil here kills performance - cache issues?
-@njit(cache=True, nogil=False)
-def nb_concatenate(m):
-    tlen = sum([len(i) for i in m])
-
-    out = np.empty(tlen, dtype=m[0].dtype)
-    pos = 0
-    for i in m:
-        out[pos : pos + len(i)] = i
-        pos += len(i)
-
-    return out
-
-
-@njit(cache=True, nogil=True)
+@njit(cache=True,nogil=True)
 def nb_round(m):
     return int(np.round(m))
 
