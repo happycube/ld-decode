@@ -3231,13 +3231,22 @@ class LDdecode:
 
         self.rf = RFDecode(**self.rf_opts)
 
+        # Steady-state reads cover one field plus margin.  Each field is
+        # anchored to the previous field's end, so line0 lands only ~20-35 lines
+        # into the buffer and compute_linelocs() (which needs sync pulses out to
+        # proclines, ~273/325 lines past line0) is satisfied with ~25-30 lines of
+        # slack.  The first field - and any re-acquisition with no previous field
+        # to anchor on - has no such guarantee: line0 can be up to a full field
+        # in, so readlen_first reads ~2 fields to reliably capture a whole field.
         if system == "PAL":
             self.FieldClass = FieldPAL
-            self.readlen = self.rf.linelen * 400
+            self.readlen = self.rf.linelen * 340
+            self.readlen_first = self.rf.linelen * 625
             self.clvfps = 25
         else:  # NTSC
             self.FieldClass = FieldNTSC
-            self.readlen = ((self.rf.linelen * 350) // 16384) * 16384
+            self.readlen = ((self.rf.linelen * 300) // 16384) * 16384
+            self.readlen_first = ((self.rf.linelen * 525) // 16384) * 16384
             self.clvfps = 30
 
         self.blocksize = self.rf.blocklen
@@ -3682,8 +3691,13 @@ class LDdecode:
         if readloc < 0:
             readloc = 0
 
+        # With no previous field to anchor on (first field, or re-acquisition
+        # after a dropped field) line0 can be far into the buffer, so read more
+        # to capture the whole field rather than dropping and re-seeking it.
+        readlen = self.readlen_first if prevfield is None else self.readlen
+
         readloc_block = readloc // self.blocksize
-        numblocks = (self.readlen // self.blocksize) + 2
+        numblocks = (readlen // self.blocksize) + 2
 
         rawdecode = self.demod_read(
             readloc_block * self.blocksize,
