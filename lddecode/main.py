@@ -234,15 +234,6 @@ def main(args=None):
     )
 
     parser.add_argument(
-        "-t",
-        "--threads",
-        metavar="threads",
-        type=int,
-        default=4,
-        help="number of CPU threads to use",
-    )
-
-    parser.add_argument(
         "-f",
         "--frequency",
         dest="inputfreq",
@@ -437,7 +428,6 @@ def main(args=None):
         digital_audio=not args.noefm,
         system=vid_standard,
         doDOD=not args.nodod,
-        threads=args.threads,
         extra_options=extra_options,
         DecoderParamsOverride=DecoderParamsOverride,
     )

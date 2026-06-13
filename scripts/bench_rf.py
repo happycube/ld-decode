@@ -3,7 +3,7 @@
 
 Creates a synthetic RF signal (using the same approach as computedelays)
 and benchmarks demodblock_cpu, which is the core demodulation function
-called by the worker threads in DemodCache.
+called by LDdecode.demod_read.
 
 Usage:
     python3 tools/bench_rf.py [--blocks N] [--system NTSC|PAL] [--audio] [--efm]

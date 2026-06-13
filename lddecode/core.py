@@ -4,11 +4,9 @@ import os
 import platform
 import sqlite3
 import sys
-import threading
 import time
 import types
 
-from queue import Queue
 from textwrap import dedent
 from importlib.resources import files
 
@@ -29,7 +27,7 @@ from .utils import ac3_pipe, ldf_pipe, traceback
 from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, n_orgt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
-from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
+from .utils import clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
 from .utils import Pulse, nb_std, n_ornotrange, gen_bpf_supergauss, FieldInfo
@@ -786,8 +784,7 @@ class RFDecode:
                 FFT.  There may be side effects, however, but generally minor compared to the
                 'wibble' itself and only in certain cases.
             """
-            # indata_fft may alias the FFT cached in DemodCache; copy before
-            # zeroing bins so we don't progressively corrupt it across redecodes.
+            # Copy before zeroing bins so we don't mutate the caller's FFT array.
             indata_fft = indata_fft.copy()
             sl = slice(
                 int(self.blocklen * (8.42 / self.freq)),
@@ -1053,380 +1050,6 @@ class RFDecode:
         return fakedecode, fakeoutput_emp
 
 
-''' The DemodCache class keeps track of each block of data, from the raw
-    input to the demodulated output.  This is threaded code and therefore
-    a bit of a mess, full of queues and locks and memory copies.
-'''
-
-class DemodCache:
-    def __init__(
-        self,
-        rf,
-        infile,
-        loader,
-        rf_args,
-        cachesize=256,
-        num_worker_threads=6,
-        MTF_tolerance=0.05,
-    ):
-        self.infile = infile
-        self.loader = loader
-        self.rf = rf
-        self.rf_args = rf_args
-
-        self.currentMTF      = 1
-        self.MTF_tolerance   = MTF_tolerance
-
-        self.blocksize       = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
-
-        # Cache dictionary - key is block #, which holds data for that block
-        self.lrusize         = cachesize
-
-        # should be in self.rf, but may not be computed yet
-        self.bytes_per_field = int(self.rf.freq_hz / (self.rf.SysParams["FPS"] * 2)) + 1
-        self.prefetch        = int((self.bytes_per_field * 4) / self.blocksize) + 4
-
-        self.lru             = []
-
-        self.lock            = threading.Lock()
-
-        self.blocks          = {}
-
-        self.q_in            = Queue()
-        self.q_out           = Queue()
-        self.waiting         = set()
-        self.q_out_cv        = threading.Condition(self.lock)
-
-        self.threadpipes     = []
-        self.threads         = []
-
-        self.request         = 0
-        self.ended           = False
-
-        self.loader_lock   = threading.Lock()
-
-        self.deqeue_thread      = threading.Thread(target=self.dequeue, daemon=True)
-        self.num_worker_threads = num_worker_threads
-
-        for i in range(num_worker_threads):
-            t = threading.Thread(
-                target=self.worker, daemon=True, args=()
-            )
-            t.start()
-            self.threads.append(t)
-
-        self.deqeue_thread.start()
-
-    def end(self):
-        if not self.ended:
-            # stop workers
-            for i in self.threads:
-                self.q_in.put(None)
-
-            for t in self.threads:
-                t.join()
-
-            self.q_out.put(None)
-            self.deqeue_thread.join()
-            # Make sure the reader is closed properly to avoid ffmpeg warnings on exit
-            # Might want to do this in a cleaner way later but this works for now.
-            if hasattr(self.loader, "_close") and callable(self.loader._close):
-                self.loader._close()
-            self.ended = True
-
-    def __del__(self):
-        self.end()
-
-    def prune_cache(self):
-        """ Prune the LRU cache.  Typically run when a new field is loaded """
-        if len(self.lru) < self.lrusize:
-            return
-
-        with self.lock:
-            to_remove = []
-            for k in self.lru[self.lrusize :]:
-                if k in self.blocks:
-                    if self.blocks[k] is not None and self.blocks[k].get("waiting", False):
-                        continue
-                    to_remove.append(k)
-
-            for k in to_remove:
-                del self.blocks[k]
-
-        self.lru = self.lru[: self.lrusize]
-
-    def apply_newparams(self, newparams):
-        for k in newparams.keys():
-            if k in self.rf.SysParams:
-                self.rf.SysParams[k] = newparams[k]
-
-            if k in self.rf.DecoderParams:
-                self.rf.DecoderParams[k] = newparams[k]
-
-        self.rf.computefilters()
-
-    def worker(self, return_on_empty=False):
-        ''' return_on_empty is used when running non-threaded so this can be
-            directly called '''
-
-        rf = RFDecode(**self.rf_args)
-
-        while True:
-            if return_on_empty and self.q_in.qsize() == 0:
-                return
-
-            item = self.q_in.get()
-
-            if item is None or item[0] == "END":
-                return
-
-            if item[0] == "DEMOD":
-                blocknum, block, target_MTF, request = item[1:]
-
-                output = {}
-
-                if "fft" not in block:
-                    output["fft"] = npfft.fft(block["rawinput"])
-                    fftdata = output["fft"]
-                else:
-                    fftdata = block["fft"]
-
-                if (
-                    "demod" not in block
-                    or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
-                ):
-                    output["demod"] = rf.demodblock(
-                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
-                    )
-
-                    output["MTF"] = target_MTF
-                    output["request"] = request
-
-                if output:
-                    self.q_out.put((blocknum, output))
-            elif item[0] == "NEWPARAMS":
-                self.apply_newparams(item[1])
-
-    @profile
-    def doread(self, blocknums, MTF, redo=False, prefetch=False):
-        need_blocks = set()
-        queuelist = set()
-        reached_end = False
-
-        with self.lock:
-            if redo:
-                for b in self.flush_demod():
-                    queuelist.add(b)
-
-            for b in blocknums:
-                if b not in self.blocks:
-                    LRUupdate(self.lru, b)
-
-                    self.blocks[b] = {}
-                    self.blocks[b]["rawinput"] = None
-                    queuelist.add(b)
-
-                if self.blocks[b] is None:
-                    reached_end = True
-                    break
-
-                waiting = False
-                if b in self.blocks:
-                    waiting = self.blocks[b].get("waiting", False)
-
-                # Until the block is actually ready, this comparison will hit an unknown key
-                if (
-                    not redo
-                    and not waiting
-                    and "request" in self.blocks[b]
-                    and "demod"   in self.blocks[b]
-                ):
-                    continue
-
-                if redo or not waiting:
-                    queuelist.add(b)
-                    need_blocks.add(b)
-                elif waiting:
-                    need_blocks.add(b)
-                    # Block is already in flight (possibly from a prefetch, which
-                    # does not register in self.waiting); make sure this non-prefetch
-                    # read blocks on it cleanly instead of spinning.
-                    if not prefetch:
-                        self.waiting.add(b)
-
-        for b in queuelist:
-            if reached_end:
-                break
-
-            if self.blocks[b]['rawinput'] is None:
-                with self.loader_lock:
-                    rawdata = self.loader(
-                        self.infile, b * self.blocksize, self.rf.blocklen
-                    )
-
-                with self.lock:
-                    if rawdata is None or len(rawdata) < self.rf.blocklen:
-                        self.blocks[b] = None
-                        if prefetch:
-                            del self.blocks[b]
-                            reached_end = True
-                            continue
-                        return None
-
-                    self.blocks[b]['rawinput'] = rawdata
-
-            with self.lock:
-                self.blocks[b]['MTF']      = MTF
-                self.blocks[b]['request']  = self.request
-                self.blocks[b]['waiting']  = True
-                self.blocks[b]['prefetch'] = prefetch
-                if not prefetch:
-                    self.waiting.add(b)
-                self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
-
-        return None if reached_end else need_blocks
-
-    def flush_demod(self):
-        """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
-        blocks_toredo = []
-
-        for k in self.blocks.keys():
-            if self.blocks[k] is None:
-                continue
-
-            self.blocks[k]['MTF']      = -1
-            self.blocks[k]['request']  = -1
-            self.blocks[k]['waiting']  = False
-
-            if 'demod' not in self.blocks[k]:
-                continue
-
-            if k not in blocks_toredo:
-                blocks_toredo.append(k)
-
-            del self.blocks[k]['demod']
-
-        return blocks_toredo
-
-    def dequeue(self):
-        # This is the thread's main loop - run until killed.
-        while True:
-            rv = self.q_out.get()
-            if rv is None:
-                return
-
-            with self.lock:
-                blocknum, item = rv
-
-                if blocknum not in self.blocks:
-                    continue
-
-                if "MTF" not in item or "demod" not in item:
-                    # This shouldn't happen, but was observed by Simon on a decode
-                    logger.error(
-                        "incomplete demodulated block placed on queue, block #%d", blocknum
-                    )
-                    self.q_in.put((blocknum, self.blocks[blocknum], self.currentMTF, self.request))
-                    continue
-
-                if item['request'] == self.blocks[blocknum]['request']:
-                    for k in item.keys():
-                        self.blocks[blocknum][k] = item[k]
-
-                    if 'demod' in item.keys():
-                        self.blocks[blocknum]['waiting'] = False
-
-                    if blocknum in self.waiting:
-                        self.waiting.remove(blocknum)
-
-                    if not len(self.waiting):
-                        self.q_out_cv.notify_all()
-
-                if "input" not in self.blocks[blocknum]:
-                    self.blocks[blocknum]["input"] = self.blocks[blocknum]["rawinput"][
-                        self.rf.blockcut : -self.rf.blockcut_end
-                    ]
-
-    @profile
-    def read(self, begin, length, MTF=0, getraw = False, forceredo=False):
-        # transpose the cache by key, not block
-        # This is a list of entries in the output from the threaded
-        # demodblock function that if they exist is to be merged together
-        # to form contiguous arrays for further processing. This excludes "fft"
-        # as while that is contained in the output, it is only there so
-        # it can be reused case mtf checking fails and is not used later and
-        # thus does not need to be concatenated.
-        t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
-
-        self.currentMTF = MTF
-        if forceredo:
-            self.request += 1
-
-        end = begin + length
-
-        toread = range(begin // self.blocksize, (end // self.blocksize) + 1)
-        toread_prefetch = range(
-            end // self.blocksize, (end // self.blocksize) + self.prefetch
-        )
-
-        need_blocks = self.doread(toread, MTF, forceredo)
-
-        if getraw:
-            raw = [self.blocks[toread[0]]["rawinput"][begin % self.blocksize :]]
-            for i in range(toread[1], toread[-2]):
-                raw.append(self.blocks[i]["rawinput"])
-            raw.append(self.blocks[-1]["rawinput"][: end % self.blocksize])
-
-            rv = np.concatenate(raw)
-            self.prune_cache()
-            return rv
-
-        while need_blocks is not None and len(need_blocks):
-            if self.num_worker_threads == 0:
-                self.worker(return_on_empty=True)
-
-            with self.q_out_cv:
-                while self.waiting:
-                    self.q_out_cv.wait()
-
-            need_blocks = self.doread(toread, MTF)
-
-        if need_blocks is None:
-            # EOF
-            return None
-
-        # Now coalesce the output
-        for b in range(begin // self.blocksize, (end // self.blocksize) + 1):
-            for k in t.keys():
-                if k in self.blocks[b]["demod"]:
-                    t[k].append(self.blocks[b]["demod"][k])
-                elif k in self.blocks[b]:
-                    t[k].append(self.blocks[b][k])
-
-        self.prune_cache()
-
-        rv = {}
-        for k in t.keys():
-            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
-
-        if rv["audio"] is not None:
-            rv["audio_phase1"] = rv["audio"]
-            rv["audio"] = self.rf.audio_phase2(rv["audio"])
-
-        rv["startloc"] = (begin // self.blocksize) * self.blocksize
-
-        self.doread(toread_prefetch, MTF, prefetch=True)
-
-        return rv
-
-    def setparams(self, params):
-        for p in self.threadpipes:
-            p[0].send(("NEWPARAMS", params))
-
-        # Apply params to the core thread, so they match up with the decoders
-        self.apply_newparams(params)
-
-
 @njit(cache=True, nogil=True)
 def _downscale_audio_compute_locs_and_swow(
     lineinfo, line_period, linelen, linecount, timeoffset, freq, scale
@@ -1600,7 +1223,6 @@ class Field:
         initphase=False,
         fields_written=0,
         readloc=0,
-        use_threads=True,
         wow_level_adjust_smoothing=0,
         wow_interpolation_method="linear"
     ):
@@ -1634,8 +1256,6 @@ class Field:
         self.outlinecount = (self.rf.SysParams["frame_lines"] // 2) + 1
         # this is eventually set to 262/263 and 312/313 for audio timing
         self.linecount = None
-
-        self.use_threads = use_threads
 
         self.wow_level_adjust_smoothing = wow_level_adjust_smoothing
         self.wow_interpolation_method = wow_interpolation_method
@@ -2676,24 +2296,17 @@ class Field:
             # Either analog audio is disabled, or we're using hsync-locked sampling
             audio_offset = 0
 
-        audio_thread = None
         if audio != 0 and self.rf.decode_analog_audio:
             audio_rv = {}
-            dsa_args = (
+            downscale_audio(
                 self.data["audio"],
                 lineinfo,
                 self.rf,
                 self.linecount,
                 audio_offset,
                 audio,
-                audio_rv)
-
-            if self.use_threads:
-                audio_thread = threading.Thread(target=downscale_audio, args=dsa_args)
-                audio_thread.start()
-            else:
-                # return values will still be in audio_rv later
-                downscale_audio(*dsa_args)
+                audio_rv,
+            )
 
         dsout = np.zeros((linesout * outwidth), dtype=np.float32)
         interpolated_pixel_locs, wowfactors = self.computewow_scaled()
@@ -2720,9 +2333,6 @@ class Field:
             self.dspicture = dsout
 
         if audio != 0 and self.rf.decode_analog_audio:
-            if audio_thread:
-                audio_thread.join()
-
             self.dsaudio = audio_rv["dsaudio"]
             self.audio_next_offset = audio_rv["audio_next_offset"]
 
@@ -3513,7 +3123,6 @@ class LDdecode:
         digital_audio=False,
         system="NTSC",
         doDOD=True,
-        threads=4,
         inputfreq=40,
         extra_options={},
         DecoderParamsOverride={}
@@ -3521,7 +3130,7 @@ class LDdecode:
         global logger
         self.logger = _logger
         logger = self.logger
-        self.demodcache = None
+        self.reader_ended = False
 
         from lddecode import __version__
         self.version = __version__
@@ -3532,8 +3141,6 @@ class LDdecode:
         self.freader = freader
 
         self.est_frames = est_frames
-
-        self.numthreads = threads
 
         self.fields_written = 0
 
@@ -3549,7 +3156,7 @@ class LDdecode:
             self.lpf.add_function(Field.process)
             self.lpf.add_function(Field.compute_linelocs)
             self.lpf.add_function(Field.getpulses)
-            self.lpf.add_function(DemodCache.read)
+            self.lpf.add_function(LDdecode.demod_read)
             #self.lpf.add_function(self.decodefield)
 
         # Negative values are a multiple of the HSYNC frequency (line-locked
@@ -3634,6 +3241,9 @@ class LDdecode:
             self.clvfps = 30
 
         self.blocksize = self.rf.blocklen
+        # Block size used when coalescing demodulated output: each loaded
+        # block of blocklen samples overlaps its neighbour by the cut amounts.
+        self.demod_blocksize = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
 
         self.output_lines = (self.rf.SysParams["frame_lines"] // 2) + 1
 
@@ -3662,17 +3272,27 @@ class LDdecode:
 
         self.verboseVITS = False
 
-        self.demodcache = DemodCache(
-            self.rf, self.infile, self.freader, self.rf_opts, num_worker_threads=self.numthreads
-        )
-
         self.bw_ratios = []
 
-        self.decodethread = None
+        # Holds the field decoded one step ahead of processing (see readfield)
         self.threadreturn = {}
 
     def __del__(self):
-        del self.demodcache
+        try:
+            self._close_reader()
+        except Exception:
+            pass
+
+    def _close_reader(self):
+        """ Close the RF reader (e.g. the ffmpeg subprocess) to avoid warnings
+            on exit.  Idempotent so close() and __del__ can both call it. """
+        if getattr(self, "reader_ended", True):
+            return
+        self.reader_ended = True
+
+        reader = getattr(self, "freader", None)
+        if reader is not None and hasattr(reader, "_close") and callable(reader._close):
+            reader._close()
 
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
@@ -3695,7 +3315,7 @@ class LDdecode:
         ]:
             setattr(self, outfiles, None)
 
-        self.demodcache.end()
+        self._close_reader()
 
         if self.use_profiler:
             self.lpf.print_stats()
@@ -4009,7 +3629,47 @@ class LDdecode:
             self.outfile_audio.write(audio)
 
     @profile
-    def decodefield(self, start, mtf_level, prevfield=None, initphase=False, redo=False, rv=None):
+    def demod_read(self, begin, length, MTF=0):
+        """ Read each input block, demodulate it, and concatenate the per-block
+            outputs into contiguous arrays for further processing.  Returns None
+            at EOF. """
+        blocksize = self.demod_blocksize
+        t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
+
+        end = begin + length
+
+        for b in range(begin // blocksize, (end // blocksize) + 1):
+            rawinput = self.freader(self.infile, b * blocksize, self.rf.blocklen)
+            if rawinput is None or len(rawinput) < self.rf.blocklen:
+                # EOF
+                return None
+
+            demod = self.rf.demodblock(
+                data=rawinput,
+                fftdata=npfft.fft(rawinput),
+                mtf_level=MTF,
+                cut=True,
+            )
+
+            t["input"].append(rawinput[self.rf.blockcut : -self.rf.blockcut_end])
+            for k in ("video", "audio", "efm", "rfhpf"):
+                if k in demod:
+                    t[k].append(demod[k])
+
+        rv = {}
+        for k in t.keys():
+            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
+
+        if rv["audio"] is not None:
+            rv["audio_phase1"] = rv["audio"]
+            rv["audio"] = self.rf.audio_phase2(rv["audio"])
+
+        rv["startloc"] = (begin // blocksize) * blocksize
+
+        return rv
+
+    @profile
+    def decodefield(self, start, mtf_level, prevfield=None, initphase=False, rv=None):
         """ returns field object if valid, and the offset to the next decode """
 
         if rv is None:
@@ -4025,11 +3685,10 @@ class LDdecode:
         readloc_block = readloc // self.blocksize
         numblocks = (self.readlen // self.blocksize) + 2
 
-        rawdecode = self.demodcache.read(
+        rawdecode = self.demod_read(
             readloc_block * self.blocksize,
             numblocks * self.blocksize,
             mtf_level,
-            forceredo=redo
         )
 
         if rawdecode is None:
@@ -4100,42 +3759,32 @@ class LDdecode:
                 self.second_decode = time.time()
 
             if redo:
-                # A speculative decode thread for the *next* field was started
-                # at the bottom of the previous iteration and may still be
-                # running self.demodcache.read().  We must join it before
-                # re-decoding here: decodefield() below reads the same
-                # (non-reentrant) DemodCache, and the redo's forceredo flush
-                # (request++ / flush_demod) would otherwise corrupt the shared
-                # request/MTF/block state out from under the in-flight reader,
-                # producing nondeterministic output.  The speculative result is
-                # discarded on redo anyway, so we just wait for it to finish.
-                # 
-                # ^ Claude Opus 4.8 wrote that.  This fixed #815 (tested 50x on lds
-                #   and ldf on ve-snw-cut.ld[sf]) - but as discussed on 2025.05.31,
-                #   the current plan is to rewrite all of this into a DAG/controller
-                #   structure which will spawn a new RF decoder w/different settings
-                #   and not overlap anything - Chad
-                
-                if self.decodethread and self.decodethread.ident:
-                    self.decodethread.join()
-                self.decodethread = None
-
-                f, offset = self.decodefield(redo, self.mtf_level, self.fieldstack[0], initphase, redo)
+                # The previous iteration decoded the *next* field ahead of time
+                # into self.threadreturn, but a redo discards it: we re-decode
+                # this field with the freshly-adjusted parameters instead.  The
+                # decode is now synchronous and stateless (demod_read reads raw
+                # data fresh each call), so there is nothing to wait on.
+                #
+                # The one-field-ahead ordering below is retained so the field
+                # decode *sequence* matches the old single-threaded path - this
+                # matters because checkMTF() updates self.mtf_level after each
+                # field, and the look-ahead decode must see the pre-update value.
+                # (Note: removing the block cache still changes MTF-dependent
+                # output vs. the old cached path, since that path reused blocks
+                # demodulated at a stale MTF.)  This is also the seam the planned
+                # DAG/controller rewrite will replace - Chad
+                f, offset = self.decodefield(redo, self.mtf_level, self.fieldstack[0], initphase)
 
                 # Only allow one redo, no matter what
                 done = True
                 redo = None
             else:
-                if self.decodethread and self.decodethread.ident:
-                    self.decodethread.join()
-                    self.decodethread = None
-
-                # In non-threaded mode self.threadreturn was filled earlier...
-                # ... but if the first call, this is empty
+                # self.threadreturn was filled by the previous iteration's
+                # decode-ahead (empty only on the very first call).
                 if len(self.threadreturn) > 0:
                     f, offset = self.threadreturn['field'], self.threadreturn['offset']
 
-            # Start new thread
+            # Decode the next field ahead of processing the current one
             self.threadreturn = {}
             if f and f.valid:
                 prevfield = f
@@ -4147,13 +3796,7 @@ class LDdecode:
                 if offset:
                     toffset += offset
 
-            df_args = (toffset, self.mtf_level, prevfield, initphase, False, self.threadreturn)
-
-            if self.numthreads != 0:
-                self.decodethread = threading.Thread(target=self.decodefield, args=df_args)
-                self.decodethread.start()
-            else:
-                self.decodefield(*df_args)
+            self.decodefield(toffset, self.mtf_level, prevfield, initphase, self.threadreturn)
 
             # process previous run
             if f:
@@ -4163,8 +3806,6 @@ class LDdecode:
                 self.fieldstack.insert(0, None)
 
             if f and f.valid:
-                # Downscaling is time consuming, but currently things are
-                # blocking on the decode thread started above finishing
                 picture, audio, efm = f.downscale(
                     linesout=self.output_lines,
                     final=True,
@@ -4227,9 +3868,6 @@ class LDdecode:
             if f is None and offset is None:
                 # EOF, probably
                 return None
-
-            if self.decodethread and not self.decodethread.ident and not redo:
-                self.decodethread.start()
 
         if f is None or f.valid is False:
             return None

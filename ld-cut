@@ -179,14 +179,12 @@ else:
 
 # print(startloc, endloc, startidx, endidx)
 
-for i in range(startidx, endidx + 16384, 16384):
+for i in range(startidx, endidx, 16384):
     l = endidx - i
-
+    if l <= 0:
+        break
     if l > 16384:
         l = 16384
-    else:
-        break
-    # l = 16384 if (l > 16384) else l
 
     data = ldd.freader(ldd.infile, i, l)
     if data is not None and len(data) == l:
