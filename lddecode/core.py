@@ -1249,9 +1249,6 @@ class DemodCache:
                 elif waiting:
                     need_blocks.add(b)
 
-                if not prefetch:
-                    self.waiting.add(b)
-
         for b in queuelist:
             if reached_end:
                 break
@@ -1278,6 +1275,8 @@ class DemodCache:
                 self.blocks[b]['request']  = self.request
                 self.blocks[b]['waiting']  = True
                 self.blocks[b]['prefetch'] = prefetch
+                if not prefetch:
+                    self.waiting.add(b)
                 self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
 
         return None if reached_end else need_blocks
