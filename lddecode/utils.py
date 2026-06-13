@@ -539,8 +539,6 @@ class LoadLDF:
         self._reader_thread = None
         self._stop_event = None
 
-        self._start_decoder(0)
-
     def _start_decoder(self, sample):
         """Start/reset the decoder so the next sample returned is `sample`."""
         import av
@@ -554,9 +552,15 @@ class LoadLDF:
         if sample > 0:
             # Seek a little before the target; the reader thread discards the
             # lead-in so the buffer starts exactly at `sample`.
-            seek_seconds = sample / self._stream.sample_rate
-            seek_time = int(max(0, seek_seconds - 1) * av.time_base)
-            self._container.seek(seek_time, any_frame=True)
+            # The container sample_rate is stored at 40k (an audio-friendly
+            # rate), while the actual RF data is 40 MHz -- 1000x difference.
+            # Convert RF sample offset to stream time_base units:
+            #   1 RF sample = 1/40_000_000 sec
+            #   1 stream unit = 1/40_000 sec
+            #   -> 1 RF sample = 1/1000 stream units
+            seek_offset = sample // 1000
+            seek_offset = max(0, seek_offset - self._stream.sample_rate)
+            self._container.seek(seek_offset, any_frame=True)
 
         self._decode_iter = self._container.decode(audio=0)
 
@@ -596,10 +600,11 @@ class LoadLDF:
                 if skip_samples is None:
                     # The first decoded frame tells us where decoding actually
                     # resumed after the seek, via its presentation timestamp.
+                    # Scale by 1000: container stores 40k rate, RF data is 40 MHz.
                     if frame.pts is not None:
                         base_sample = round(
                             float(frame.pts * self._stream.time_base)
-                            * self._stream.sample_rate
+                            * self._stream.sample_rate * 1000
                         )
                     else:
                         base_sample = target_sample

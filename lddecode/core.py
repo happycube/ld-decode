@@ -1248,6 +1248,11 @@ class DemodCache:
                     need_blocks.add(b)
                 elif waiting:
                     need_blocks.add(b)
+                    # Block is already in flight (possibly from a prefetch, which
+                    # does not register in self.waiting); make sure this non-prefetch
+                    # read blocks on it cleanly instead of spinning.
+                    if not prefetch:
+                        self.waiting.add(b)
 
         for b in queuelist:
             if reached_end:
