@@ -26,13 +26,13 @@ from scipy import interpolate
 
 from . import efm_pll
 from .utils import ac3_pipe, ldf_pipe, traceback
-from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, nb_diff, n_orgt, n_orlt
+from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, n_orgt
 from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
 from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
 from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
 from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
 from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, nb_gt, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
+from .utils import Pulse, nb_std, n_ornotrange, nb_concatenate, gen_bpf_supergauss, FieldInfo
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc

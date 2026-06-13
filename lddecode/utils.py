@@ -8,18 +8,17 @@ import os
 import subprocess
 import sys
 import traceback
-import signal
 
 import threading
 from queue import Queue
+from math import tau
 
-from numba import jit, njit
+from numba import njit
 import numba
 
 # standard numeric/scientific libraries
 import numpy as np
 import scipy.signal as sps
-from scipy.special import i0
 
 # Try to make sure ffmpeg is available
 try:
@@ -31,7 +30,7 @@ except ImportError:
 # If profiling is not enabled, make it a pass-through wrapper
 try:
     profile
-except:
+except NameError:
     def profile(fn):
         return fn
 
@@ -74,55 +73,55 @@ def scale(buf, begin, end, tgtlen, mult=1):
 # Kaiser Beta parameter controls trade-off between sharpness and ringing
 # Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
 # Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff (less ringing))
-kaiser_beta = 5
-sinc_tap_count = 16 # must be multiple of 2
+# kaiser_beta = 5
+sinc_tap_count = 16  # must be multiple of 2
 sinc_phase_count = 2**16
 
-@njit
-def sinc(x):
-    if x == 0.0:
-        return 1.0
-    x_pi = np.pi * x
-    return math.sin(x_pi) / x_pi
+# @njit
+# def sinc(x):
+#     if x == 0.0:
+#         return 1.0
+#     x_pi = np.pi * x
+#     return math.sin(x_pi) / x_pi
 
 
-def kaiser_window(x, a, beta, i0_beta):
-    r = x / a
-    if r < -1.0 or r > 1.0:
-        return 0.0
-
-    t = math.sqrt(1.0 - r * r)
-    return i0(beta * t) / i0_beta
+# def kaiser_window(x, a, beta, i0_beta):
+#     r = x / a
+#     if r < -1.0 or r > 1.0:
+#         return 0.0
+#
+#     t = math.sqrt(1.0 - r * r)
+#     return i0(beta * t) / i0_beta
 
 
 # https://ccrma.stanford.edu/~jos/sasp/Kaiser_Windows_Transforms.html
-def build_kaiser_lut(beta, taps, phases):
-    a = taps // 2
-
-    offsets = np.arange(a - 1, -a - 1, -1)
-    offsets_len = len(offsets)
-
-    table = np.zeros((phases + 1, taps), dtype=np.float32)
-    weights = np.empty(offsets_len, dtype=np.float32)
-    i0_beta = i0(beta)
-
-    for i in range(phases):
-        phase = i / phases
-
-        s = 0.0
-        for j in range(offsets_len):
-            x = offsets[j] + phase
-            weight = sinc(x) * kaiser_window(x, a, beta, i0_beta)
-
-            weights[j] = weight
-            s += weight
-
-        table[i, :] = weights / s
-
-    # copy the last phase to avoid bounds checking later on when we do linear interpolation
-    table[phases] = table[phases - 1]
-
-    return table
+# def build_kaiser_lut(beta, taps, phases):
+#     a = taps // 2
+#
+#     offsets = np.arange(a - 1, -a - 1, -1)
+#     offsets_len = len(offsets)
+#
+#     table = np.zeros((phases + 1, taps), dtype=np.float32)
+#     weights = np.empty(offsets_len, dtype=np.float32)
+#     i0_beta = i0(beta)
+#
+#     for i in range(phases):
+#         phase = i / phases
+#
+#         s = 0.0
+#         for j in range(offsets_len):
+#             x = offsets[j] + phase
+#             weight = sinc(x) * kaiser_window(x, a, beta, i0_beta)
+#
+#             weights[j] = weight
+#             s += weight
+#
+#         table[i, :] = weights / s
+#
+#     # copy the last phase to avoid bounds checking later on when we do linear interpolation
+#     table[phases] = table[phases - 1]
+#
+#     return table
 
 
 @njit(nogil=True, fastmath=True)
@@ -687,12 +686,8 @@ def ac3_pipe(outname: str):
 
 # Essential (or at least useful) standalone routines and lambdas
 
-pi = np.pi
-tau = np.pi * 2
-
 # https://stackoverflow.com/questions/20924085/python-conversion-between-coordinates
 polar2z = lambda r, θ: r * np.exp(1j * θ)
-deg2rad = lambda θ: θ * (np.pi / 180)
 
 
 def emphasis_iir(t1, t2, fs):
@@ -709,6 +704,7 @@ def emphasis_iir(t1, t2, fs):
 
     return rv
 
+
 # This converts a regular B, A filter to an FFT of our selected block length
 def filtfft(filt, blocklen):
     return sps.freqz(filt[0], filt[1], blocklen, whole=1)[1]
@@ -723,7 +719,7 @@ def sqsum(cmplx):
     return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def calczc_findfirst(data, target, rising):
     if rising:
         for i in range(1, len(data)):
@@ -739,7 +735,7 @@ def calczc_findfirst(data, target, rising):
         return None
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def calczc_do(data, _start_offset, target, edge=0, count=16):
     start_offset = int(_start_offset)
     icount = int(count + 1)
@@ -797,6 +793,7 @@ def gen_bpf_supergauss(freq_low, freq_high, order, nyquist_hz, block_len):
 
     return np.concatenate([sg, np.flip(sg)])
 
+
 def supergauss(x, freq, order=1, centerfreq=0):
     return np.exp(
         -2
@@ -805,6 +802,7 @@ def supergauss(x, freq, order=1, centerfreq=0):
             2 * order,
         )
     )
+
 
 # Shamelessly based on https://github.com/scipy/scipy/blob/v1.6.0/scipy/signal/signaltools.py#L2264-2267
 # ... and intended for real FFT, but seems fine with complex as well ;)
@@ -817,6 +815,7 @@ def build_hilbert(fft_size):
     output[1 : fft_size // 2] = 2
 
     return output
+
 
 if not numba.version_info.major and numba.version_info.minor < 59:
     print("DEPRECATION WARNING: Please upgrade numba to 0.59 or later.", file=sys.stderr)
@@ -853,6 +852,7 @@ def unwrap_hilbert(hilbert, freq_hz):
 
     return out * (freq_hz / tau)
 
+
 def fft_determine_slices(center, min_bandwidth, freq_hz, bins_in):
     """ returns the # of sub-bins needed to get center+/-min_bandwidth.
         The returned lowbin is the first bin (symmetrically) needed to be saved.
@@ -888,16 +888,16 @@ def fft_do_slice(fdomain, lowbin, nbins, blocklen):
         ]
     )
 
-'''
-overlap/save [i]fft functions for testing.  use in a jupyter notebook or similar
-like this:
-
-f = overlap_save_fft(fields[0].dspicture)
-invf = overlap_save_ifft(f, round=True).astype(np.uint16)
-sum(invf != fields[0].dspicture) # should be 0
-'''
 
 def overlap_save_fft(data, blocklen=32768, blockcut_begin=1024, blockcut_end=512):
+    '''
+    overlap/save [i]fft functions for testing.  use in a jupyter notebook or similar
+    like this:
+
+    f = overlap_save_fft(fields[0].dspicture)
+    invf = overlap_save_ifft(f, round=True).astype(np.uint16)
+    sum(invf != fields[0].dspicture) # should be 0
+    '''
     blockstride = blocklen - blockcut_begin - blockcut_end
 
     numblocks = (len(data) // blockstride) + 1
@@ -915,6 +915,7 @@ def overlap_save_fft(data, blocklen=32768, blockcut_begin=1024, blockcut_end=512
         fft_out.append(np.fft.fft(dcut))
 
     return fft_out
+
 
 def overlap_save_ifft(ffts, blockcut_begin=1024, blockcut_end=512, round=False):
     # blocklen is inferred from fft size
@@ -966,7 +967,7 @@ def compute_mtf(freq, cavframe=0, laser=780, na=0.52):
 
     freq_mhz = freq / 1000000
 
-    if type(freq_mhz) == np.ndarray:
+    if isinstance(freq_mhz, np.ndarray):
         freq_mhz[freq_mhz > fmax] = fmax
     elif freq_mhz > fmax:
         return 0
@@ -1000,8 +1001,9 @@ def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
 
     return out
 
+
 # Something like this should be a numpy function, but I can't find it.
-@jit(cache=True, nopython=True)
+@njit(cache=True)
 def findareas(array, cross):
     """ Find areas where `array` is <= `cross`
 
@@ -1081,8 +1083,9 @@ def findpulses(sync_ref, _, high):
     )
     return _to_pulses_list(pulses_starts, pulses_lengths)
 
+
 if False:
-    @njit(cache=True,nogil=True)
+    @njit(cache=True, nogil=True)
     def numba_pulse_qualitycheck(prevpulse: Pulse, pulse: Pulse, inlinelen: int):
 
         if prevpulse[0] > 0 and pulse[0] > 0:
@@ -1097,7 +1100,7 @@ if False:
 
         return inorder
 
-    @njit(cache=True,nogil=True)
+    @njit(cache=True, nogil=True)
     def numba_computeLineLen(validpulses, inlinelen):
         # determine longest run of 0's
         longrun = [-1, -1]
@@ -1151,28 +1154,16 @@ def LRUupdate(l, k):
 
     l.insert(0, k)
 
-# Lambdas used to shorten filter-building functions
-
-# Split out the frequency list given to the filter builder
-freqrange = lambda f1, f2: [
-    f1 / self.freq_hz_half,
-    f2 / self.freq_hz_half,
-]
-
-# Like freqrange, but for notch filters
-notchrange = lambda f, notchwidth, hz: [
-    (f - notchwidth) / self.freq_hz_half if hz else self.freq_half,
-    (f + notchwidth) / self.freq_hz_half if hz else self.freq_half,
-]
 
 # numba jit functions, used to numba-ify parts of more complex functions
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_median(m):
     return np.median(m)
 
+
 # Enabling nogil here kills performance - cache issues?
-@njit(cache=True,nogil=False)
+@njit(cache=True, nogil=False)
 def nb_concatenate(m):
     tlen = sum([len(i) for i in m])
 
@@ -1184,72 +1175,53 @@ def nb_concatenate(m):
 
     return out
 
-@njit(cache=True,nogil=True)
+
+@njit(cache=True, nogil=True)
 def nb_round(m):
     return int(np.round(m))
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_mean(m):
     return np.mean(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_min(m):
     return np.min(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_max(m):
     return np.max(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_abs(m):
     return np.abs(m)
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_absmax(m):
     return np.max(np.abs(m))
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_std(m):
     return np.std(m)
 
 
-@njit(cache=True,nogil=True)
-def nb_diff(m):
-    return np.diff(m)
-
-
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def nb_mul(x, y):
     return x * y
 
 
-@njit(cache=True,nogil=True)
-def nb_where(x):
-    return np.where(x)
-
-
-@njit(cache=True,nogil=True)
-def nb_gt(x, y):
-    return (x > y)
-
-
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def n_orgt(a, x, y):
     a |= (x > y)
 
 
-@njit(cache=True,nogil=True)
-def n_orlt(a, x, y):
-    a |= (x < y)
-
-
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def n_ornotrange(a, x, y, z):
     a |= (x < y) | (x > z)
 
@@ -1269,6 +1241,7 @@ def angular_mean_helper(x, cycle_len=1.0, zero_base=True):
     angles = [np.e ** (1j * f * np.pi * 2 / cycle_len) for f in x2]
 
     return angles
+
 
 @njit(cache=True)
 def phase_distance(x, c=0.75):
@@ -1305,7 +1278,7 @@ def dsa_rescale_and_clip(infloat):
 # removed so that they can be JIT'd
 
 
-@njit(cache=True,nogil=True)
+@njit(cache=True, nogil=True)
 def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart, s_rem, zcburstdiv, phase_adjust):
     zc_count = 0
     rising_count = 0
@@ -1336,30 +1309,12 @@ def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart,
 
     return zc_count, phase_adjust, rising_count
 
+
 @njit(cache=True)
 def distance_from_round(x):
     # Yes, this was a hotspot.
     return np.round(x) - x
 
-
-def init_opencl(cl, name = None):
-    # Create some context on the first available GPU
-    if 'PYOPENCL_CTX' in os.environ:
-        ctx = cl.create_some_context()
-    else:
-        ctx = None
-        # Find the first OpenCL GPU available and use it, unless
-        for p in cl.get_platforms():
-            for d in p.get_devices():
-                if d.type & cl.device_type.GPU == 1:
-                    continue
-                print("Selected device: ", d.name)
-                ctx = cl.Context(devices=(d,))
-                break
-            if ctx is not None:
-                break
-    #queue = cl.CommandQueue(ctx)
-    return ctx
 
 class FieldInfo:
     def __init__(self, field_history_size=3):
@@ -1371,7 +1326,7 @@ class FieldInfo:
 
     def __len__(self):
         return self._len
-    
+
     # called like a normal python list, where -1 is the last element, -2 the one before that, etc.
     # using [0] is not allowed since this only stores the end of the list
     def __getitem__(self, key):
@@ -1383,11 +1338,12 @@ class FieldInfo:
         unsent = self._fieldinfo_unsent
         self._fieldinfo_unsent = []
         return unsent
-    
+
     def append(self, value):
         self._fieldinfo[self._len % self._field_history_size] = value
         self._fieldinfo_unsent.append(value)
         self._len += 1
+
 
 class JSONDumper:
     def __init__(self, ldd, outname):
@@ -1481,6 +1437,7 @@ class JSONDumper:
             os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
 
             ready.clear()
+
 
 class StridedCollector:
     # This keeps a numpy buffer and outputs an fft block and keeps the overlap
