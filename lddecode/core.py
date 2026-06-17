@@ -332,25 +332,20 @@ class RFDecode:
         self.mtf_mult   = extra_options.get("MTF_level", 1.0)
         self.mtf_offset = extra_options.get("MTF_offset", 0)
 
-        if system == "NTSC":
-            self.SysParams = copy.deepcopy(SysParams_NTSC)
-            if lowband:
-                self.DecoderParams = copy.deepcopy(FilterParams_NTSC_lowband)
-            else:
-                self.DecoderParams = copy.deepcopy(FilterParams_NTSC)
-        elif system == "PAL":
-            self.SysParams = copy.deepcopy(SysParams_PAL)
-            if lowband:
-                self.DecoderParams = copy.deepcopy(FilterParams_PAL_lowband)
-            else:
-                self.DecoderParams = copy.deepcopy(FilterParams_PAL)
+        SYSTEM_PARAMS = {
+            "NTSC": (SysParams_NTSC, FilterParams_NTSC, FilterParams_NTSC_lowband),
+            "PAL": (SysParams_PAL, FilterParams_PAL, FilterParams_PAL_lowband),
+        }
+
+        sys_params, filt_params, filt_params_lb = SYSTEM_PARAMS[system]
+        self.SysParams = copy.deepcopy(sys_params)
+        self.DecoderParams = copy.deepcopy(filt_params_lb if lowband else filt_params)
 
         # Make (intentionally) mutable copies of HZ<->IRE levels
         for irekey in ['ire0', 'hz_ire', 'vsync_ire']:
             self.DecoderParams[irekey] = self.SysParams[irekey]
 
-        for k in decoder_params_override.keys():
-            self.DecoderParams[k] = decoder_params_override[k]
+        self.DecoderParams.update(decoder_params_override)
 
         self.SysParams["analog_audio"] = has_analog_audio
         self.SysParams["AC3"] = extra_options.get("AC3", False)
@@ -411,10 +406,11 @@ class RFDecode:
             self.computeefmfilter()
 
         if self.SysParams['AC3']:
-            apass = 288000 * .5
+            ac3_center = self.SysParams['audio_rfreq_AC3']
+            ac3_half_bw = 144000  # 288000 * 0.5
 
-            fpass = lambda apass: [(self.SysParams['audio_rfreq_AC3'] - apass) / self.freq_hz_half,
-                                   (self.SysParams['audio_rfreq_AC3'] + apass) / self.freq_hz_half]
+            ac3_range = [(ac3_center - ac3_half_bw) / self.freq_hz_half,
+                         (ac3_center + ac3_half_bw) / self.freq_hz_half]
 
             # This analog audio bandpass filter is an approximation of
             # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm,
@@ -423,7 +419,7 @@ class RFDecode:
 
             # However, the above didn't work, and we wound up with two IIR filters
             self.Filters['AC3_bp1'] = sps.butter(3, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
-            self.Filters['AC3_bp2'] = sps.butter(3, fpass(apass), btype='bandpass')
+            self.Filters['AC3_bp2'] = sps.butter(3, ac3_range, btype='bandpass')
 
             filt1 = filtfft(self.Filters['AC3_bp1'], self.blocklen)
             filt2 = filtfft(self.Filters['AC3_bp2'], self.blocklen)
@@ -471,9 +467,7 @@ class RFDecode:
         bin_phase = p_interp(bin_freqs)
 
         # Scale by the amplitude, rotate by the phase
-        coeffs[:nonzero_bins] = bin_amp * (
-            np.cos(bin_phase) + (complex(0, -1) * np.sin(bin_phase))
-        )
+        coeffs[:nonzero_bins] = polar2z(bin_amp, -bin_phase)
 
         self.Filters["Fefm"] = coeffs * 8
         self.Filters["Fefm"] *= gen_bpf_supergauss(20000, 1600000, 60, 20000000, 32768)
@@ -746,13 +740,16 @@ class RFDecode:
             # Compute the sample rate decimation caused by stage 1 binning
             self.Filters['audio_fdiv'] = self.blocklen // self.audio[channel].nbins
 
+    def _params(self, spec):
+        return self.SysParams if spec else self.DecoderParams
+
     def iretohz(self, ire, spec=False):
-        params = self.SysParams if spec else self.DecoderParams
-        return params["ire0"] + (params["hz_ire"] * ire)
+        p = self._params(spec)
+        return p["ire0"] + (p["hz_ire"] * ire)
 
     def hztoire(self, hz, spec=False):
-        params = self.SysParams if spec else self.DecoderParams
-        return (hz - params["ire0"]) / params["hz_ire"]
+        p = self._params(spec)
+        return (hz - p["ire0"]) / p["hz_ire"]
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
         mtf_level *= self.mtf_mult
@@ -933,7 +930,7 @@ class RFDecode:
         # copy the first block in it's entirety, to keep audio and video samples aligned
         tmp = self.runfilter_audio_phase2(field_audio, 0)
 
-        #print(len(tmp), len(output_audio2), len(field_audio["audio_left"]), len(self.audio['left'].audio2_filter))
+        
 
         if len(tmp) >= len(output_audio2):
             return tmp[: len(output_audio2)]
@@ -1114,7 +1111,6 @@ def _downscale_audio_compute_locs_and_swow(
         sampleloc += (lineloc_next - lineloc_cur) * (linenum - np.floor(linenum))
 
         swow[i] = (lineloc_next - lineloc_cur) / linelen
-        swow[i] = ((swow[i] - 1)) + 1
         # There's almost *no way* the disk is spinning more than 1.5% off, so mask TBC errors here
         # to reduce pops
         if i and np.abs(swow[i] - swow[i - 1]) > 0.015:
@@ -1358,12 +1354,11 @@ class Field:
         reduced = (input - self.rf.DecoderParams["ire0"]) / self.rf.DecoderParams["hz_ire"]
         reduced -= self.rf.DecoderParams["vsync_ire"]
 
-        return np.uint16(
+        return np.uint16(np.round(
             np.clip(
                 (reduced * self.out_scale) + self.rf.SysParams["outputZero"], 0, 65535
             )
-            + 0.5
-        )
+        ))
 
     def output_to_ire(self, output):
         return (
@@ -1564,12 +1559,11 @@ class Field:
                 and inrange(self.rawpulses[i].len, *self.LT["eq"])
                 and (len(valid_pulses) and valid_pulses[-1][0] == HSYNC)
             ):
-                # print(i, self.rawpulses[i])
                 done, vblank_pulses = self.run_vblank_state_machine(
                     self.rawpulses[i - 2 : i + 24], self.LT
                 )
                 if done:
-                    [valid_pulses.append(p) for p in vblank_pulses[2:]]
+                    valid_pulses.extend(vblank_pulses[2:])
                     i += len(vblank_pulses) - 2
                     num_vblanks += 1
                 else:
@@ -1792,12 +1786,7 @@ class Field:
 
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
-        limit = None
-        limit = (
-            100
-            if (self.prevfield is not None and self.prevfield.skip_check() >= 50)
-            else None
-        )
+        limit = 100 if (self.prevfield is not None and self.prevfield.skip_check() >= 50) else None
         line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(
             validpulses, 0, limit
         )
@@ -1829,15 +1818,13 @@ class Field:
         if self.prevfield is not None and self.prevfield.valid:
             frameoffset = self.data["startloc"] - self.prevfield.data["startloc"]
 
-            # print(self.prevfield.linecount)
-
             line0loc_prev = (
                 self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
             )
             isFirstField_prev = not self.prevfield.isFirstField
             conf_prev = self.prevfield.sync_confidence
 
-        # print(line0loc_local, line0loc_next, line0loc_prev)
+        
 
         # Best case - all three line detectors returned something - perform TOOT using median
         if (
@@ -1858,8 +1845,7 @@ class Field:
             self.sync_confidence = min(self.sync_confidence, 90)
             return line0loc_local, self.vblank_next, isFirstField_local
         elif line0loc_prev is not None:
-            new_sync_confidence = max(conf_prev - 10, 0)
-            new_sync_confidence = max(new_sync_confidence, 10)
+            new_sync_confidence = max(conf_prev - 10, 10)
             self.sync_confidence = min(self.sync_confidence, new_sync_confidence)
             return line0loc_prev, self.vblank_next, isFirstField_prev
         elif line0loc_next is not None:
@@ -1908,7 +1894,7 @@ class Field:
                     )
                 )
 
-        # print(len(vsync_means), [self.rf.hztoire(v) for v in vsync_means])
+        
         if len(vsync_means) == 0:
             return None
 
@@ -1918,7 +1904,7 @@ class Field:
             # sync level is close enough to use
             return pulses
 
-        if vsync_locs is None or not len(vsync_locs):
+        if not vsync_locs:
             return None
 
         # Now compute black level and try again
@@ -1987,7 +1973,7 @@ class Field:
         linelocs_dist = {}
 
         if line0loc is None:
-            if self.initphase is False:
+            if not self.initphase:
                 logger.error("Unable to determine start of field - dropping field")
 
             return None, None, self.inlinelen * 200
@@ -2022,7 +2008,7 @@ class Field:
             if lineloc_distance > self.rf.hsync_tolerance or (
                 rlineloc in linelocs_dict and lineloc_distance > linelocs_dist[rlineloc]
             ):
-                # print(rlineloc, p, 'reject')
+                
                 continue
 
             # also skip non-regular lines (non-hsync) that don't seem to be in valid order (p[2])
@@ -2077,7 +2063,7 @@ class Field:
                         next_valid = i
                         break
 
-                # print(l, prev_valid, next_valid)
+                
 
                 if prev_valid is None:
                     avglen = self.inlinelen
@@ -2101,13 +2087,13 @@ class Field:
 
         rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
 
-        # print(self.vblank_next)
+        
         if self.vblank_next is None:
             nextfield = linelocs_filled[self.outlinecount - 7]
         else:
             nextfield = self.vblank_next - (self.inlinelen * 8)
 
-        # print('nf', nextfield, self.vblank_next)
+        
 
         return rv_ll, rv_err, nextfield
 
@@ -2827,9 +2813,6 @@ class FieldPAL(Field):
         # For PAL, each field starts with the line containing the first full VSYNC pulse
         return super(FieldPAL, self).downscale(final=final, *args, **kwargs)
 
-    def __init__(self, *args, **kwargs):
-        super(FieldPAL, self).__init__(*args, **kwargs)
-
     def process(self):
         super(FieldPAL, self).process()
 
@@ -2968,6 +2951,8 @@ class CombNTSC:
 
 
 class FieldNTSC(Field):
+    phase_adjust_median = 0
+
     def get_burstlevel(self, l, linelocs=None):
         burstarea = self.data["video"]["demod"][self.lineslice(l, 5.5, 2.4, linelocs)]
 
@@ -3032,7 +3017,7 @@ class FieldNTSC(Field):
                     adjs[l] = adjs_new[l] * lfreq * (1 / self.rf.SysParams["fsc_mhz"])
                 except Exception:
                     # Not sure if this is an error or just control flow.
-                    # print("Something went wrong when trying to compute line length adjustments...", file=sys.stderr)
+                    
                     # traceback.print_exc()
                     pass
 
@@ -3061,7 +3046,7 @@ class FieldNTSC(Field):
         return linelocs_adj
 
     def downscale(self, lineoffset=0, final=False, *args, **kwargs):
-        if final is False:
+        if not final:
             if "audio" in kwargs:
                 kwargs["audio"] = 0
 
@@ -3083,11 +3068,6 @@ class FieldNTSC(Field):
             + picoffset
             + (phaseoffset * (self.rf.freq / (4 * 315 / 88)))
         )
-
-    def __init__(self, *args, **kwargs):
-        super(FieldNTSC, self).__init__(*args, **kwargs)
-
-        self.phase_adjust_median = 0
 
     @profile
     def process(self):
@@ -3462,7 +3442,7 @@ class LDdecode:
 
         cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = cur.fetchall()
-        #print([table[0] for table in tables])
+        
 
         cur.close()
 
@@ -3745,6 +3725,37 @@ class LDdecode:
 
         return f, offset
 
+    def _adjust_agc(self, f, redo):
+        if not (self.useAGC and f.isFirstField and f.sync_confidence > 80):
+            return redo
+
+        sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
+
+        actualwhiteIRE = f.rf.hztoire(ire100_hz)
+
+        sync_ire_diff = nb_abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
+        whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
+        ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
+
+        acceptable_diff = 2 if self.fields_written else 0.5
+
+        if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
+            hz_ire = (ire100_hz - ire0_hz) / 100
+            vsync_ire = (sync_hz - ire0_hz) / hz_ire
+
+            if vsync_ire > -20:
+                logger.warning(
+                    f"At field #{len(self.fieldinfo)}, Auto-level detection malfunction (vsync IRE computed at {np.round(vsync_ire, 2)}, nominal ~= -40), possible disk skipping"
+                )
+            else:
+                self.rf.DecoderParams["ire0"] = ire0_hz
+                # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                self.rf.DecoderParams["hz_ire"] = hz_ire
+                self.rf.DecoderParams["vsync_ire"] = vsync_ire
+                return True
+
+        return redo
+
     @profile
     def readfield(self, initphase=False):
         adjusted = False
@@ -3791,44 +3802,17 @@ class LDdecode:
             )
 
             metrics = self.computeMetrics(f, None, verbose=True)
-            if "blackToWhiteRFRatio" in metrics and adjusted is False:
+            if "blackToWhiteRFRatio" in metrics and not adjusted:
                 keep = 900 if self.isCLV else 30
                 self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
                 self.bw_ratios = self.bw_ratios[-keep:]
 
             redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
 
-            # Perform AGC changes on first fields only to prevent luma mismatch intra-field
-            if self.useAGC and f.isFirstField and f.sync_confidence > 80:
-                sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
-
-                actualwhiteIRE = f.rf.hztoire(ire100_hz)
-
-                sync_ire_diff = nb_abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
-                whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
-                ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
-
-                acceptable_diff = 2 if self.fields_written else 0.5
-
-                if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
-                    hz_ire = (ire100_hz - ire0_hz) / 100
-                    vsync_ire = (sync_hz - ire0_hz) / hz_ire
-
-                    if vsync_ire > -20:
-                        logger.warning(
-                            "At field #{0}, Auto-level detection malfunction (vsync IRE computed at {1}, nominal ~= -40), possible disk skipping".format(
-                                len(self.fieldinfo), np.round(vsync_ire, 2)
-                            ))
-                    else:
-                        redo = True
-
-                        self.rf.DecoderParams["ire0"] = ire0_hz
-                        # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                        self.rf.DecoderParams["hz_ire"] = hz_ire
-                        self.rf.DecoderParams["vsync_ire"] = vsync_ire
+            redo = self._adjust_agc(f, redo)
 
             # Allow one redo only: re-decode this same field with adjusted params.
-            if adjusted is False and redo:
+            if not adjusted and redo:
                 adjusted = True
                 prevfield = self.fieldstack[0]
                 continue
@@ -3843,10 +3827,10 @@ class LDdecode:
             self.fdoffset += offset
             break
 
-        if f is None or f.valid is False:
+        if f is None or not f.valid:
             return None
 
-        if f is not None and self.fname_out is not None:
+        if self.fname_out is not None:
             # Only write a FirstField first
             if len(self.fieldinfo) == 0 and not f.isFirstField:
                 return f
@@ -3876,9 +3860,8 @@ class LDdecode:
             frames = self.fields_written // 2
             fps = frames / timeused2
 
-            print(
-                f"Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)",
-                file=sys.stderr,
+            logger.info(
+                f"Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)"
             )
 
     def decodeFrameNumber(self, f1, f2):
@@ -4110,7 +4093,7 @@ class LDdecode:
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
         fi = {
-            "isFirstField": True if f.isFirstField else False,
+            "isFirstField": bool(f.isFirstField),
             "syncConf": f.compute_syncconf(),
             "seqNo": len(self.fieldinfo) + 1,
             "diskLoc": np.round((f.readloc / self.bytes_per_field) * 10) / 10,
@@ -4133,17 +4116,13 @@ class LDdecode:
         fi["fieldPhaseID"] = f.fieldPhaseID
 
         if prevfi is not None:
-            if check_phase and (not (
-                (
-                    fi["fieldPhaseID"] == 1
-                    and prevfi["fieldPhaseID"] == f.rf.SysParams["fieldPhases"]
-                )
-                or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1))
-            ):
+            is_phase_sequential = (
+                (fi["fieldPhaseID"] == 1 and prevfi["fieldPhaseID"] == f.rf.SysParams["fieldPhases"])
+                or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1)
+            )
+            if check_phase and not is_phase_sequential:
                 logger.warning(
-                    "At field #{0}, Field phaseID sequence mismatch ({1}->{2}) (player may be paused)".format(
-                        len(self.fieldinfo), prevfi["fieldPhaseID"], fi["fieldPhaseID"]
-                    )
+                    f"At field #{len(self.fieldinfo)}, Field phaseID sequence mismatch ({prevfi['fieldPhaseID']}->{fi['fieldPhaseID']}) (player may be paused)"
                 )
                 decodeFaults |= 2
 
@@ -4183,16 +4162,11 @@ class LDdecode:
                 try:
                     if self.isCLV and self.earlyCLV:  # early CLV
                         disk_TimeCode = f"{self.clvMinutes}:xx"
-                    # print("file frame %d early-CLV minute %d" % (rawloc, self.clvMinutes), file=sys.stderr)
+                    
                     elif self.isCLV and self.frameNumber is not None and self.clvMinutes is not None:
-                        disk_TimeCode = "%d:%.2d.%.2d Frame #%d" % (
-                            self.clvMinutes,
-                            self.clvSeconds,
-                            self.clvFrameNum,
-                            self.frameNumber,
-                        )
+                        disk_TimeCode = f"{self.clvMinutes}:{self.clvSeconds:02d}.{self.clvFrameNum:02d} Frame #{self.frameNumber}"
                     elif self.frameNumber:
-                        # print("file frame %d CAV frame %d" % (rawloc, self.frameNumber), file=sys.stderr)
+                        
                         disk_Frame = f"{self.frameNumber}"
                     elif self.leadIn:
                         special = "Lead In"
@@ -4298,7 +4272,7 @@ class LDdecode:
             cur = int((readloc / self.bytes_per_field))
             if fnr == target:
                 logger.info("Finished seek")
-                print("Finished seeking, starting at frame", fnr, file=sys.stderr)
+                logger.info("Finished seeking, starting at frame %d", fnr)
                 self.roughseek(cur)
                 return cur
 
