@@ -52,7 +52,7 @@ logger = None
 # If profiling is not enabled, make it a pass-through wrapper
 try:
     profile
-except:
+except NameError:
     def profile(fn):
         return fn
 
@@ -106,7 +106,7 @@ SysParams_NTSC = {
 # Calculate the exact line length for a given situation (such as
 # 4FSC)
 def calclinelen(SysParams, mult, mhz):
-    if type(mhz) == str:
+    if isinstance(mhz, str):
         mhz = SysParams[mhz]
 
     return int(nb_round(SysParams["line_period"] * mhz * mult))
@@ -278,8 +278,8 @@ class RFDecode:
         decode_digital_audio    = False,
         decode_analog_audio     = 0,
         has_analog_audio        = True,
-        extra_options           = {},
-        decoder_params_override = {},
+        extra_options           = None,
+        decoder_params_override = None,
     ):
         """Initialize the RF decoder object.
 
@@ -299,6 +299,11 @@ class RFDecode:
           - AC3: Supports AC3
 
         """
+
+        if extra_options is None:
+            extra_options = {}
+        if decoder_params_override is None:
+            decoder_params_override = {}
 
         sinc_lut_path = files(__package__).joinpath("sinc_lut.npz")
         # uncomment to regenerate the sinc downscaling lookup table 
@@ -1340,7 +1345,7 @@ class Field:
 
     @profile
     def hz_to_output(self, input):
-        if type(input) == np.ndarray:
+        if isinstance(input, np.ndarray):
             return hz_to_output_array(
                 input,
                 self.rf.DecoderParams["ire0"],
@@ -1400,7 +1405,6 @@ class Field:
             if inrange(p.len, hsync_checkmin, hsync_checkmax):
                 hlens.append(p.len)
 
-        LT = {}
         LT = {}
         if len(hlens) > 0:
             LT["hsync_median"] = np.median(hlens)
@@ -2525,7 +2529,7 @@ class Field:
         return errlist
 
     @profile
-    def dropout_errlist_to_tbc(field, errlist):
+    def dropout_errlist_to_tbc(self, errlist):
         """Convert data from raw data coordinates to tbc coordinates, and splits up
         multi-line dropouts.
         """
@@ -2536,49 +2540,49 @@ class Field:
 
         # Now convert the above errlist into TBC locations
         errlistc = errlist.copy()
-        lineoffset = -field.lineoffset
+        lineoffset = -self.lineoffset
 
         # Remove dropouts occurring before the start of the frame so they don't
         # cause the rest to be skipped
         curerr = errlistc.pop(0)
-        while len(errlistc) > 0 and curerr[0] < field.linelocs[field.lineoffset]:
+        while len(errlistc) > 0 and curerr[0] < self.linelocs[self.lineoffset]:
             curerr = errlistc.pop(0)
 
         # TODO: This could be reworked to be a bit cleaner and more performant.
 
-        for line in range(field.lineoffset, field.linecount + field.lineoffset):
+        for line in range(self.lineoffset, self.linecount + self.lineoffset):
             while curerr is not None and inrange(
-                curerr[0], field.linelocs[line], field.linelocs[line + 1]
+                curerr[0], self.linelocs[line], self.linelocs[line + 1]
             ):
-                start_rf_linepos = curerr[0] - field.linelocs[line]
+                start_rf_linepos = curerr[0] - self.linelocs[line]
                 start_linepos = start_rf_linepos / (
-                    field.linelocs[line + 1] - field.linelocs[line]
+                    self.linelocs[line + 1] - self.linelocs[line]
                 )
-                start_linepos = int(start_linepos * field.outlinelen)
+                start_linepos = int(start_linepos * self.outlinelen)
 
-                end_rf_linepos = curerr[1] - field.linelocs[line]
+                end_rf_linepos = curerr[1] - self.linelocs[line]
                 end_linepos = end_rf_linepos / (
-                    field.linelocs[line + 1] - field.linelocs[line]
+                    self.linelocs[line + 1] - self.linelocs[line]
                 )
-                end_linepos = nb_round(end_linepos * field.outlinelen)
+                end_linepos = nb_round(end_linepos * self.outlinelen)
 
                 first_line = line + 1 + lineoffset
 
                 # If the dropout spans multiple lines, we need to split it up into one for each line.
-                if end_linepos > field.outlinelen:
-                    num_lines = end_linepos // field.outlinelen
+                if end_linepos > self.outlinelen:
+                    num_lines = end_linepos // self.outlinelen
 
                     # First line.
-                    dropouts.append((first_line, start_linepos, field.outlinelen))
+                    dropouts.append((first_line, start_linepos, self.outlinelen))
                     # Full lines in the middle.
                     for n in range(num_lines - 1):
-                        dropouts.append((first_line + n + 1, 0, field.outlinelen))
+                        dropouts.append((first_line + n + 1, 0, self.outlinelen))
                     # leftover on last line.
                     dropouts.append(
                         (
                             first_line + (num_lines),
                             0,
-                            np.remainder(end_linepos, field.outlinelen),
+                            np.remainder(end_linepos, self.outlinelen),
                         )
                     )
                 else:
@@ -3124,9 +3128,14 @@ class LDdecode:
         system="NTSC",
         doDOD=True,
         inputfreq=40,
-        extra_options={},
-        DecoderParamsOverride={}
+        extra_options=None,
+        DecoderParamsOverride=None
     ):
+        if extra_options is None:
+            extra_options = {}
+        if DecoderParamsOverride is None:
+            DecoderParamsOverride = {}
+
         global logger
         self.logger = _logger
         logger = self.logger
@@ -3282,9 +3291,6 @@ class LDdecode:
         self.verboseVITS = False
 
         self.bw_ratios = []
-
-        # Holds the field decoded one step ahead of processing (see readfield)
-        self.threadreturn = {}
 
     def __del__(self):
         try:
@@ -3678,14 +3684,8 @@ class LDdecode:
         return rv
 
     @profile
-    def decodefield(self, start, mtf_level, prevfield=None, initphase=False, rv=None):
+    def decodefield(self, start, mtf_level, prevfield=None, initphase=False):
         """ returns field object if valid, and the offset to the next decode """
-
-        if rv is None:
-            rv = {}
-
-        rv['field'] = None
-        rv['offset'] = None
 
         readloc = int(start - self.rf.blockcut)
         if readloc < 0:
@@ -3735,30 +3735,20 @@ class LDdecode:
         else:
             lpf_wrapper = f.process
 
-        try:
-            lpf_wrapper()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except Exception as e:
-            raise e
+        lpf_wrapper()
 
-        rv['field'] = f
-        rv['offset'] = f.nextfieldoffset - (readloc - rawdecode["startloc"])
+        offset = f.nextfieldoffset - (readloc - rawdecode["startloc"])
 
         if not f.valid:
             # logger.info("Bad data - jumping one second")
-            rv['offset'] = f.nextfieldoffset
+            offset = f.nextfieldoffset
 
-        return rv['field'], rv['offset']
+        return f, offset
 
     @profile
     def readfield(self, initphase=False):
-        done     = False
         adjusted = False
-        redo     = None
-        df_args  = None
-        f        = None
-        offset   = 0
+        picture = audio = efm = None
 
         if len(self.fieldstack) >= 2:
             # XXX: Need to cut off the previous field here, since otherwise
@@ -3768,120 +3758,90 @@ class LDdecode:
 
             self.fieldstack.pop(-1)
 
-        while done is False:
+        # Decode-then-process, one field at a time.  self.fdoffset is the file
+        # offset of the field to decode; prevfield anchors the next field's sync
+        # search.  On a redo we re-decode the *same* field (fdoffset unchanged)
+        # with the parameters checkMTF()/AGC just adjusted.  Decoding is now
+        # synchronous, so there is no look-ahead - this also changes which
+        # mtf_level a field sees vs. the old one-field-ahead pipeline.
+        prevfield = self.fieldstack[0]
+
+        while True:
             if self.second_decode is None and self.fields_written:
                 self.second_decode = time.time()
 
-            if redo:
-                # The previous iteration decoded the *next* field ahead of time
-                # into self.threadreturn, but a redo discards it: we re-decode
-                # this field with the freshly-adjusted parameters instead.  The
-                # decode is now synchronous and stateless (demod_read reads raw
-                # data fresh each call), so there is nothing to wait on.
-                #
-                # The one-field-ahead ordering below is retained so the field
-                # decode *sequence* matches the old single-threaded path - this
-                # matters because checkMTF() updates self.mtf_level after each
-                # field, and the look-ahead decode must see the pre-update value.
-                # (Note: removing the block cache still changes MTF-dependent
-                # output vs. the old cached path, since that path reused blocks
-                # demodulated at a stale MTF.)  This is also the seam the planned
-                # DAG/controller rewrite will replace - Chad
-                f, offset = self.decodefield(redo, self.mtf_level, self.fieldstack[0], initphase)
+            f, offset = self.decodefield(self.fdoffset, self.mtf_level, prevfield, initphase)
 
-                # Only allow one redo, no matter what
-                done = True
-                redo = None
-            else:
-                # self.threadreturn was filled by the previous iteration's
-                # decode-ahead (empty only on the very first call).
-                if len(self.threadreturn) > 0:
-                    f, offset = self.threadreturn['field'], self.threadreturn['offset']
-
-            # Decode the next field ahead of processing the current one
-            self.threadreturn = {}
-            if f and f.valid:
-                prevfield = f
-                toffset = self.fdoffset + offset
-            else:
-                prevfield = None
-                toffset = self.fdoffset
-
-                if offset:
-                    toffset += offset
-
-            self.decodefield(toffset, self.mtf_level, prevfield, initphase, self.threadreturn)
-
-            # process previous run
-            if f:
-                self.fdoffset += offset
-            elif offset is None:
-                # Probable end, so push an empty field
+            if f is None:
+                # EOF / failed demod (decodefield returns (None, None))
                 self.fieldstack.insert(0, None)
-
-            if f and f.valid:
-                picture, audio, efm = f.downscale(
-                    linesout=self.output_lines,
-                    final=True,
-                    audio=self.analog_audio,
-                    lastfieldwritten=self.lastFieldWritten,
-                )
-
-                metrics = self.computeMetrics(f, None, verbose=True)
-                if "blackToWhiteRFRatio" in metrics and adjusted is False:
-                    keep = 900 if self.isCLV else 30
-                    self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
-                    self.bw_ratios = self.bw_ratios[-keep:]
-
-                redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
-                if redo:
-                    redo = self.fdoffset - offset
-
-                # Perform AGC changes on first fields only to prevent luma mismatch intra-field
-                if self.useAGC and f.isFirstField and f.sync_confidence > 80:
-                    sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
-
-                    actualwhiteIRE = f.rf.hztoire(ire100_hz)
-
-                    sync_ire_diff = nb_abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
-                    whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
-                    ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
-
-                    acceptable_diff = 2 if self.fields_written else 0.5
-
-                    if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
-                        hz_ire = (ire100_hz - ire0_hz) / 100
-                        vsync_ire = (sync_hz - ire0_hz) / hz_ire
-
-                        if vsync_ire > -20:
-                            logger.warning(
-                                "At field #{0}, Auto-level detection malfunction (vsync IRE computed at {1}, nominal ~= -40), possible disk skipping".format(
-                                    len(self.fieldinfo), np.round(vsync_ire, 2)
-                                ))
-                        else:
-                            redo = self.fdoffset - offset
-
-                            self.rf.DecoderParams["ire0"] = ire0_hz
-                            # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
-                            self.rf.DecoderParams["hz_ire"] = hz_ire
-                            self.rf.DecoderParams["vsync_ire"] = vsync_ire
-
-                if adjusted is False and redo:
-                    adjusted = True
-                    self.fdoffset = redo
-                else:
-                    done = True
-                    fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
-                    fieldlength /= f.inlinelen
-                    if ((f.sync_confidence < 50) and not
-                         inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
-                        logger.warning("WARNING: Possible player skip detected - check output")
-
-                    self.fieldstack.insert(0, f)
-
-            if f is None and offset is None:
-                # EOF, probably
                 return None
+
+            if not f.valid:
+                # Bad field - skip past it and try the next one, unanchored.
+                self.fdoffset += offset
+                prevfield = None
+                continue
+
+            picture, audio, efm = f.downscale(
+                linesout=self.output_lines,
+                final=True,
+                audio=self.analog_audio,
+                lastfieldwritten=self.lastFieldWritten,
+            )
+
+            metrics = self.computeMetrics(f, None, verbose=True)
+            if "blackToWhiteRFRatio" in metrics and adjusted is False:
+                keep = 900 if self.isCLV else 30
+                self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
+                self.bw_ratios = self.bw_ratios[-keep:]
+
+            redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
+
+            # Perform AGC changes on first fields only to prevent luma mismatch intra-field
+            if self.useAGC and f.isFirstField and f.sync_confidence > 80:
+                sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
+
+                actualwhiteIRE = f.rf.hztoire(ire100_hz)
+
+                sync_ire_diff = nb_abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
+                whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
+                ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
+
+                acceptable_diff = 2 if self.fields_written else 0.5
+
+                if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
+                    hz_ire = (ire100_hz - ire0_hz) / 100
+                    vsync_ire = (sync_hz - ire0_hz) / hz_ire
+
+                    if vsync_ire > -20:
+                        logger.warning(
+                            "At field #{0}, Auto-level detection malfunction (vsync IRE computed at {1}, nominal ~= -40), possible disk skipping".format(
+                                len(self.fieldinfo), np.round(vsync_ire, 2)
+                            ))
+                    else:
+                        redo = True
+
+                        self.rf.DecoderParams["ire0"] = ire0_hz
+                        # Note that vsync_ire is a negative number, so (sync_hz - ire0_hz) is correct
+                        self.rf.DecoderParams["hz_ire"] = hz_ire
+                        self.rf.DecoderParams["vsync_ire"] = vsync_ire
+
+            # Allow one redo only: re-decode this same field with adjusted params.
+            if adjusted is False and redo:
+                adjusted = True
+                prevfield = self.fieldstack[0]
+                continue
+
+            fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
+            fieldlength /= f.inlinelen
+            if ((f.sync_confidence < 50) and not
+                 inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
+                logger.warning("WARNING: Possible player skip detected - check output")
+
+            self.fieldstack.insert(0, f)
+            self.fdoffset += offset
+            break
 
         if f is None or f.valid is False:
             return None
