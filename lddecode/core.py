@@ -1329,7 +1329,7 @@ class Field:
         _begin = linelocs[l_adj] if linelocs is not None else self.linelocs[l_adj]
         _begin += self.usectoinpx(begin, l_adj) if begin is not None else 0
 
-        _length = length if length else self.rf.SysParams["line_period"]
+        _length = length if length is not None else self.rf.SysParams["line_period"]
         _length = self.usectoinpx(_length)
 
         return slice(
@@ -1858,7 +1858,7 @@ class Field:
             self.sync_confidence = min(self.sync_confidence, 90)
             return line0loc_local, self.vblank_next, isFirstField_local
         elif line0loc_prev is not None:
-            new_sync_confidence = np.max(conf_prev - 10, 0)
+            new_sync_confidence = max(conf_prev - 10, 0)
             new_sync_confidence = max(new_sync_confidence, 10)
             self.sync_confidence = min(self.sync_confidence, new_sync_confidence)
             return line0loc_prev, self.vblank_next, isFirstField_prev
@@ -1968,7 +1968,7 @@ class Field:
         self.validpulses = validpulses = self.refinepulses()
         meanlinelen = self.computeLineLen(validpulses)
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses, meanlinelen)
-        self.linecount = 263 if self.isFirstField else 262
+        self.linecount = self.rf.SysParams["field_lines"][0 if self.isFirstField else 1]
 
         # Number of lines to actually process.  This is set so that the entire following
         # VSYNC is processed
@@ -2419,7 +2419,7 @@ class Field:
         lld2max = np.max(lld2)
 
         if lld2max > 4:
-            newconf = int(50 - (5 * np.sum(lld2max > 4)))
+            newconf = int(50 - (5 * np.sum(lld2 > 4)))
 
         newconf = max(newconf, 0)
 
@@ -2801,7 +2801,7 @@ class FieldPAL(Field):
                 # and on a bad disk, this value could be None...
                 if self.prevfield.phase_adjust[l] is not None:
                     prev_phaseadjust = self.prevfield.phase_adjust[l]
-            except AttributeError:
+            except (AttributeError, KeyError):
                 pass
 
             rising, self.phase_adjust[l] = self.compute_line_bursts(
@@ -2890,7 +2890,7 @@ class CombNTSC:
 
         data = self.field.dspicture
 
-        if subset:
+        if subset is not None:
             data = data[subset]
 
         # this is a translation of this code from tools/ld-chroma-decoder/comb.cpp:
@@ -3477,7 +3477,7 @@ class LDdecode:
         oldmtf = self.mtf_level
 
         if not self.autoMTF:
-            self.mtf_level = np.max(1 - (self.frameNumber / 10000), 0)
+            self.mtf_level = max(1 - ((self.frameNumber or 0) / 10000), 0)
         else:
             if len(self.bw_ratios) == 0:
                 return True
