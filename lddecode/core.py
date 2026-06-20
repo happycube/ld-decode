@@ -3495,10 +3495,11 @@ class FieldNTSC(Field):
 
         self.burstmedian = self.calc_burstmedian()
 
-        # Now adjust the phase to get the downscaled image onto I/Q color axis
-        # (This should be 33 but this is what makes it line up)
-        shift33 = 83 * (np.pi / 180)
-        self.linelocs = self.apply_offsets(self.linelocs4, -shift33 - 0)
+        # Subcarrier phase offset in degrees, calibrated for correct NTSC
+        # burst phase (~147°) at the output.
+        fsc_phase_deg = 122.5
+        shift_samples = (fsc_phase_deg / 360) / self.rf.SysParams["fsc_mhz"] * self.rf.freq
+        self.linelocs = np.array(self.linelocs4) - shift_samples
 
 
 class LDdecode:
