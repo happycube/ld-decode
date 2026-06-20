@@ -195,22 +195,21 @@ def bench_substeps(rf, signal, n_blocks):
             times.append(time.perf_counter() - st)
         steps["5d_FVideoPilot_ifft"] = np.array(times)
 
-    # Step 7: float32 casts + np.rec.array construction + np.roll
+    # Step 7: float32 casts + np.rec.array construction
+    # (np.roll removed: delay compensation is now folded into the freq-domain filters)
     out_video = npfft.ifft(demod_fft * rf.Filters["FVideo"]).real
     out_video05 = npfft.ifft(demod_fft * rf.Filters["FVideo05"]).real
     out_videoburst = npfft.ifft(demod_fft * rf.Filters["FVideoBurst"]).real
     times = []
     for _ in range(n_blocks):
         st = time.perf_counter()
-        ov05 = np.roll(out_video05, -rf.Filters["F05_offset"])
-        ovb = np.roll(out_videoburst, -rf.Filters["FVideoBurst_offset"])
         video_out = np.rec.array(
             [out_video.astype(np.float32), demod.astype(np.float32),
-             ov05.astype(np.float32), ovb.astype(np.float32)],
+             out_video05.astype(np.float32), out_videoburst.astype(np.float32)],
             names=["demod", "demod_raw", "demod_05", "demod_burst"],
         )
         times.append(time.perf_counter() - st)
-    steps["7_roll_cast_recarray"] = np.array(times)
+    steps["7_cast_recarray"] = np.array(times)
 
     # Print results
     print(f"\n=== Substep breakdown ({n_blocks} iterations each) ===")

@@ -41,8 +41,10 @@ from .utils import (
     hz_to_output_array,
     inrange,
     ldf_pipe,
+    _dropout_unflag_sync,
     n_orgt,
     n_ornotrange,
+    n_ornotrange_scalar,
     nb_abs,
     nb_absmax,
     nb_max,
@@ -709,6 +711,13 @@ class RFDecode:
         SF["Fburst"] = filtfft((Fburst, [1.0]), self.blocklen)
         SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"]
 
+        # Fold delay compensation into the frequency-domain filters so demodblock
+        # doesn't need np.roll (which copies the entire array).  A circular shift
+        # of d samples equals multiplying the DFT by exp(j·2π·d·k/N).
+        bins = np.arange(self.blocklen)
+        SF["FVideo05"] *= np.exp(1j * 2 * np.pi * SF["F05_offset"] * bins / self.blocklen)
+        SF["FVideoBurst"] *= np.exp(1j * 2 * np.pi * SF["FVideoBurst_offset"] * bins / self.blocklen)
+
         if self.system == "PAL":
             SF["Fpilot"] = filtfft(
                 sps.butter(
@@ -857,10 +866,8 @@ class RFDecode:
         out_video = npfft.ifft(demod_fft * self.Filters["FVideo"]).real
 
         out_video05 = npfft.ifft(demod_fft * self.Filters["FVideo05"]).real
-        out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
 
         out_videoburst = npfft.ifft(demod_fft * self.Filters["FVideoBurst"]).real
-        out_videoburst = np.roll(out_videoburst, -self.Filters["FVideoBurst_offset"])
 
         if self.system == "PAL":
             out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
@@ -2121,23 +2128,22 @@ class Field:
             if linelocs_filled[0] < self.inlinelen:
                 return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
 
+        # Pre-compute nearest valid line after each position (single forward pass)
+        scan_end = min(proclines, self.outlinecount + 1)
+        next_valid_arr = [None] * proclines
+        last_seen = None
+        for i in range(scan_end - 1, -1, -1):
+            if linelocs[i] > 0:
+                last_seen = i
+            next_valid_arr[i] = last_seen
+
+        prev_valid = 0 if linelocs[0] > 0 else None
+
         for line in range(1, proclines):
             if linelocs_filled[line] < 0:
                 rv_err[line] = True
 
-                prev_valid = None
-                next_valid = None
-
-                for i in range(line, -1, -1):
-                    if linelocs[i] > 0:
-                        prev_valid = i
-                        break
-                for i in range(line, self.outlinecount + 1):
-                    if linelocs[i] > 0:
-                        next_valid = i
-                        break
-
-
+                next_valid = next_valid_arr[line] if line < scan_end else None
 
                 if prev_valid is None:
                     avglen = self.inlinelen
@@ -2156,6 +2162,8 @@ class Field:
                     linelocs_filled[line] = linelocs[prev_valid] + (
                         avglen * (line - prev_valid)
                     )
+            else:
+                prev_valid = line
 
         # *finally* done :)
 
@@ -2530,41 +2538,43 @@ class Field:
             : -self.rf.delays["video_rot"]
         ]
 
-        # build sets of min/max valid levels
-        valid_min = np.full_like(
-            f.data["video"]["demod"], f.rf.iretohz(-70 if isPAL else -50)
-        )
-        valid_max = np.full_like(
-            f.data["video"]["demod"], f.rf.iretohz(150 if isPAL else 160)
-        )
-
-        # Look for slightly longer dropouts...
-        valid_min05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(-30))
-        valid_max05 = np.full_like(f.data["video"]["demod_05"], f.rf.iretohz(115))
-
-        # Account for sync pulses when checking demod
+        # Scalar thresholds for normal video and sync areas
+        normal_min    = f.rf.iretohz(-70 if isPAL else -50)
+        normal_max    = f.rf.iretohz(150 if isPAL else 160)
+        normal_min_05 = f.rf.iretohz(-30)
+        normal_max_05 = f.rf.iretohz(115)
 
         hsync_len   = int(f.LT['hsync'][1])
         vsync_ire   = f.rf.SysParams['vsync_ire']
-        vsync_lines = self.get_vsync_lines()
+        vsync_lines = set(self.get_vsync_lines())
 
-        # In sync areas the minimum IRE is vsync - pilot/burst
         sync_min    = f.rf.iretohz(vsync_ire - 60 if isPAL else vsync_ire - 35)
         sync_min_05 = f.rf.iretohz(vsync_ire - 10)
 
+        # Build sync region lookup: array of (start, end) for sync-min regions
+        # and (start, end) for hsync-only regions
+        demod = f.data["video"]["demod"]
+        demod_05 = f.data["video"]["demod_05"]
+
+        # Check normal regions with scalar comparison (avoids 4 large array allocs)
+        n_ornotrange_scalar(iserr, demod, normal_min, normal_max)
+        n_ornotrange_scalar(iserr, demod_05, normal_min_05, normal_max_05)
+
+        # Un-flag sync areas where the lower thresholds apply
         for line in range(1, len(f.linelocs)):
             if line in vsync_lines:
-                valid_min[int(f.linelocs[line]):int(f.linelocs[line+1])]   = sync_min
-                valid_min05[int(f.linelocs[line]):int(f.linelocs[line+1])] = sync_min_05
+                start = int(f.linelocs[line])
+                end = int(f.linelocs[line + 1])
+                _dropout_unflag_sync(iserr, demod, demod_05, start, end,
+                                     sync_min, normal_max, sync_min_05, normal_max_05)
             else:
-                valid_min[int(f.linelocs[line]):int(f.linelocs[line]) + hsync_len]   = sync_min
-                valid_min05[int(f.linelocs[line]):int(f.linelocs[line]) + hsync_len] = sync_min_05
+                start = int(f.linelocs[line])
+                end = start + hsync_len
+                _dropout_unflag_sync(iserr, demod, demod_05, start, end,
+                                     sync_min, normal_max, sync_min_05, normal_max_05)
 
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.freq_hz_half)
-
-        n_ornotrange(iserr, f.data["video"]["demod"], valid_min, valid_max)
-        n_ornotrange(iserr, f.data["video"]["demod_05"], valid_min05, valid_max05)
 
         # filter out dropouts outside actual field
         iserr[:int(f.linelocs[f.lineoffset + 1])] = False
@@ -3342,10 +3352,24 @@ class LDdecode:
 
         self._close_reader()
 
+        # Final commit for any batched SQLite writes
+        if hasattr(self, 'dbconn') and self.dbconn is not None:
+            try:
+                self.dbconn.commit()
+            except Exception:
+                pass
+
         if self.use_profiler:
             self.lpf.print_stats()
 
         self.print_stats()
+
+    def update_sqlite_field_count(self):
+        if self.capture_id:
+            self.dbconn.execute(
+                "UPDATE capture SET number_of_sequential_fields = ? WHERE capture_id = ?",
+                (len(self.fieldinfo), self.capture_id),
+            )
 
     def create_db_schema(self):
         cur = self.dbconn.cursor()
@@ -3623,8 +3647,11 @@ class LDdecode:
                 ) VALUES (?, ?, ?, ?, ?)''',
                 dropout_data)
 
-        self.build_sqlite_metadata()
-        self.dbconn.commit()
+        self.update_sqlite_field_count()
+
+        # Batch commits: every 10 fields instead of every field
+        if self.fields_written % 10 == 0:
+            self.dbconn.commit()
 
         self.outfile_video.write(picture)
         self.fields_written += 1

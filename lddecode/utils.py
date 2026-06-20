@@ -828,7 +828,7 @@ def inrange(a, mi, ma):
 
 
 def sqsum(cmplx):
-    return np.sqrt((cmplx.real ** 2) + (cmplx.imag ** 2))
+    return np.abs(cmplx)
 
 
 @njit(cache=True, nogil=True)
@@ -1281,6 +1281,21 @@ def n_orgt(a, x, y):
 @njit(cache=True, nogil=True)
 def n_ornotrange(a, x, y, z):
     a |= (x < y) | (x > z)
+
+
+@njit(cache=True, nogil=True)
+def n_ornotrange_scalar(a, x, lo, hi):
+    for i in range(len(a)):
+        if x[i] < lo or x[i] > hi:
+            a[i] = True
+
+
+@njit(cache=True, nogil=True)
+def _dropout_unflag_sync(iserr, demod, demod_05, start, end, sync_min, normal_max, sync_min_05, normal_max_05):
+    for i in range(max(0, start), min(end, len(iserr))):
+        if i < len(demod) and sync_min <= demod[i] <= normal_max:
+            if i < len(demod_05) and sync_min_05 <= demod_05[i] <= normal_max_05:
+                iserr[i] = False
 
 
 @njit(cache=True, nogil=True)
