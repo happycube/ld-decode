@@ -1,7 +1,5 @@
 # A collection of helper functions used in dev notebooks and lddecode_core.py
 
-import itertools
-import json
 import math
 import os
 import subprocess
@@ -1383,7 +1381,6 @@ class FieldInfo:
         self._field_history_size = field_history_size
         # store previous field references in a ring buffer
         self._fieldinfo = np.empty(field_history_size, dtype=object)
-        self._fieldinfo_unsent = []
         self._len = 0
 
     def __len__(self):
@@ -1396,112 +1393,9 @@ class FieldInfo:
         assert key > -self._field_history_size, "Attempted to get a field that is not buffered"
         return self._fieldinfo[(self._len + key) % self._field_history_size]
 
-    def read(self):
-        unsent = self._fieldinfo_unsent
-        self._fieldinfo_unsent = []
-        return unsent
-
     def append(self, value):
         self._fieldinfo[self._len % self._field_history_size] = value
-        self._fieldinfo_unsent.append(value)
         self._len += 1
-
-
-class JSONDumper:
-    def __init__(self, ldd, outname):
-        # Use a thread instead of a subprocess to avoid macOS multiprocessing
-        # spawn issues (forking after threads are started is unsafe on macOS,
-        # and spawn re-runs the entry point causing argparse errors).
-        self._queue = Queue()
-        self._writing = threading.Event()
-        self._build_json = ldd.build_json
-        self._get_field_info = ldd.fieldinfo.read
-
-        self._outname = outname
-        self._dumper = threading.Thread(
-            target=JSONDumper._consume,
-            args=(self._queue, self._writing, self._outname, ldd.verboseVITS),
-            name="lddecode-json-dumper",
-            daemon=True,
-        )
-        self._dumper.start()
-
-    def write(self):
-        if not self._writing.is_set():
-            json_data = self._build_json()
-            field_info = self._get_field_info()
-            self._queue.put((json_data, field_info))
-
-    def close(self):
-        json_data = self._build_json()
-        field_info = self._get_field_info()
-        self._queue.put((json_data, field_info))
-        self._queue.put(None)  # sentinel to stop the consumer
-        self._dumper.join()
-
-    @staticmethod
-    def _consume(queue, ready, outname, verboseVITS):
-        # Signal handling is intentionally omitted here: signal handlers can
-        # only be set from the main thread in Python. The main thread already
-        # ignores SIGINT during LDdecode setup, so this thread is unaffected.
-
-        indent = 4 if verboseVITS else None
-        linebreak = '\n' if verboseVITS else ''
-        separators = None if verboseVITS else (',', ':')
-        separator = ',' + linebreak
-        field_info = []
-
-        while True:
-            try:
-                item = queue.get()
-                if item is None:
-                    break
-
-                jsondict, next_field_info = item
-                ready.set()
-            except (InterruptedError, KeyboardInterrupt):
-                break
-
-            try:
-                # json serialize each field info object to a string
-                serialized_field_info = []
-                for field in next_field_info:
-                    serialized_field_info.append(
-                        json.dumps(
-                            field,
-                            allow_nan=False,
-                            indent=indent,
-                            separators=separators
-                        )
-                    )
-
-                field_info.append(serialized_field_info)
-
-                with open(outname + ".tbc.json.tmp", "w") as f:
-                    f.write('{'+linebreak)
-                    # write the field metadata
-                    for (k, v) in jsondict.items():
-                        json.dump(k, f, allow_nan=False, indent=indent, separators=separators)
-                        f.write(':')
-                        json.dump(v, f, allow_nan=False, indent=indent, separators=separators)
-                        f.write(separator)
-
-                    # Write the field info
-                    f.write('"fields":['+linebreak)
-                    for i, field in enumerate(itertools.chain.from_iterable(field_info)):
-                        if i != 0:
-                            f.write(separator)
-
-                        f.write(field)
-                    f.write(linebreak+']'+linebreak+'}')
-
-                    f.write('\n')
-
-                os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
-            except Exception:
-                traceback.print_exc()
-
-            ready.clear()
 
 
 class StridedCollector:

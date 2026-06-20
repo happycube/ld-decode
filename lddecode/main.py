@@ -152,7 +152,7 @@ def main(args=None):
         dest="verboseVITS",
         action="store_true",
         default=False,
-        help="Enable additional JSON fields",
+        help="Enable additional VITS metrics",
     )
 
     parser.add_argument(
@@ -462,11 +462,7 @@ def main(args=None):
 
     done = False
 
-    jsondumper = JSONDumper(ldd, outname)
-
     def cleanup():
-        # logger.flush()
-        jsondumper.close()
         ldd.close()
         if audio_pipe is not None:
             audio_pipe.close()
@@ -475,7 +471,7 @@ def main(args=None):
         try:
             f = ldd.readfield()
         except KeyboardInterrupt as kbd:
-            print("\nTerminated, saving JSON and exiting", file=sys.stderr)
+            print("\nTerminated, exiting", file=sys.stderr)
             cleanup()
             sys.exit(1)
         except Exception as err:
@@ -493,11 +489,8 @@ def main(args=None):
         if f is None or (args.ignoreleadout == False and ldd.leadOut == True):
             done = True
 
-        if ldd.fields_written < 100 or ((ldd.fields_written % 500) == 0):
-            jsondumper.write()
-
     if ldd.fields_written:
-        print(f"\nCompleted: saving JSON and exiting.", file=sys.stderr)
+        print(f"\nCompleted, exiting.", file=sys.stderr)
     else:
         print(f"\nCompleted without handling any frames.", file=sys.stderr)
 

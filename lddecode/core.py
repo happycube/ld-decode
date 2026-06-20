@@ -1,7 +1,6 @@
 import copy
 import itertools
 import os
-import platform
 import sqlite3
 import sys
 import time
@@ -337,6 +336,8 @@ class RFDecode:
             decoder_params_override = {}
 
         sinc_lut_path = files(__package__).joinpath("sinc_lut.npz")
+        self.downscale_sinc_lut = np.load(sinc_lut_path)["downscale_sinc_lut"]
+
         # uncomment to regenerate the sinc downscaling lookup table
         # from .utils import build_kaiser_lut, kaiser_beta, sinc_tap_count, sinc_phase_count
         # np.savez_compressed(
@@ -345,7 +346,6 @@ class RFDecode:
         #         kaiser_beta, sinc_tap_count, sinc_phase_count
         #     ),
         # )
-        self.downscale_sinc_lut = np.load(sinc_lut_path)["downscale_sinc_lut"]
 
         self.blocklen     = blocklen
         self.blockcut     = 1024
@@ -452,9 +452,8 @@ class RFDecode:
             # This analog audio bandpass filter is an approximation of
             # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm,
             # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
-            # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
-
             # However, the above didn't work, and we wound up with two IIR filters
+            # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
             self.Filters['AC3_bp1'] = sps.butter(3, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
             self.Filters['AC3_bp2'] = sps.butter(3, ac3_range, btype='bandpass')
 
@@ -769,11 +768,6 @@ class RFDecode:
             # Finally create the stage 1 demodulation filter (including hilbert transform)
             self.audio[channel].filt1 = self.audio[channel].slicer(audio1_fir) * sliced_hilbert
 
-            # XXX: look into revisiting/using this for stage 2 audio?
-            #self.audio[channel].audio1_buffer = StridedCollector(
-            #    self.blocklen, self.blockcut + self.blockcut_end
-            #)
-
             # Compute stage 2 audio filters: 20k-ish LPF and deemphasis.
             N, Wn = sps.buttord(
                 20000 / (self.audio[channel].a1_freq / 2),
@@ -804,14 +798,7 @@ class RFDecode:
         return (hz - p["ire0"]) / p["hz_ire"]
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
-        mtf_level *= self.mtf_mult
-        mtf_level += self.mtf_offset
-        mtf_level *= self.DecoderParams["MTF_basemult"]
-
-        return self.demodblock_cpu(data, mtf_level, fftdata, cut)
-
-
-    def demodblock_cpu(self, data=None, mtf_level=0, fftdata=None, cut=False):
+        mtf_level = (mtf_level * self.mtf_mult + self.mtf_offset) * self.DecoderParams["MTF_basemult"]
         rv = {}
 
         if fftdata is not None:
@@ -1079,7 +1066,6 @@ class RFDecode:
         tmp2 = tmp * (filterset["Fvideo_lpf"] ** 1)
         tmp3 = tmp2 * (filterset["Femp"] ** 1)
 
-        # fakeoutput_lpf = npfft.ifft(tmp2).real
         fakeoutput_emp = npfft.ifft(tmp3).real
 
         fakesignal = genwave(fakeoutput_emp, rf.freq_hz / 2)
@@ -1087,7 +1073,7 @@ class RFDecode:
         fakesignal += 8192
         fakesignal[6000:6005] = 0
 
-        fakedecode = rf.demodblock_cpu(fakesignal, mtf_level=mtf_level)
+        fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level)
 
         vdemod = fakedecode["video"]["demod"]
         vdemod_raw = fakedecode["video"]["demod_raw"]
@@ -1282,6 +1268,11 @@ HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
 # The Field class contains common features used by NTSC and PAL
 class Field:
+    burst_lines = (11, 264)  # NTSC default
+    burst_max_ire = None  # PAL overrides to 30
+    output_black = 0x0400  # NTSC default
+    output_white = 0xC800
+
     def __init__(
         self,
         rf,
@@ -1346,6 +1337,10 @@ class Field:
 
         self.valid     = True
 
+        self.out_scale = np.double(self.output_white - self.output_black) / (
+            100 - self.rf.DecoderParams["vsync_ire"]
+        )
+
     @profile
     def get_linelen(self, line=None, linelocs=None):
         # compute adjusted frequency from neighboring line lengths
@@ -1360,17 +1355,31 @@ class Field:
             return self.rf.linelen
 
         if line >= self.linecount + self.lineoffset:
-            length = (linelocs[line + 0] - linelocs[line - 1]) / 1
+            length = linelocs[line] - linelocs[line - 1]
         elif line > 0:
             length = (linelocs[line + 1] - linelocs[line - 1]) / 2
-        elif line == 0:
-            length = (linelocs[line + 1] - linelocs[line - 0]) / 1
+        else:
+            length = linelocs[1] - linelocs[0]
 
         if length <= 0:
             # linelocs aren't monotonic -- probably TBC failure
             return self.rf.linelen
 
         return length
+
+    def get_burstlevel(self, line, linelocs=None):
+        burstarea = self.data["video"]["demod"][self.lineslice(line, 5.5, 2.4, linelocs)].copy()
+        burstarea -= nb_mean(burstarea)
+        if self.burst_max_ire is not None and max(burstarea) > (self.burst_max_ire * self.rf.DecoderParams["hz_ire"]):
+            return None
+        try:
+            return rms(burstarea) * np.sqrt(2)
+        except Exception:
+            return None
+
+    def calc_burstmedian(self):
+        burstlevel = [b for b in (self.get_burstlevel(l) for l in range(*self.burst_lines)) if b is not None]
+        return (np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]) if burstlevel else 0.0
 
     def get_linefreq(self, line=None, linelocs=None):
         return self.rf.samplesperline * self.get_linelen(line, linelocs)
@@ -1479,7 +1488,6 @@ class Field:
 
         LT["hsync_offset"] = LT["hsync_median"] - hsync_typical
 
-        # ??? - replace self.usectoinpx with local timings?
         eq_min = (
             self.usectoinpx(self.rf.SysParams["eqPulseUS"] - 0.5) + LT["hsync_offset"]
         )
@@ -1734,7 +1742,6 @@ class Field:
             # the half-H alignment with the sync/blank pulses
             hdist = nb_round(dist * 2)
 
-            # isfirstfield = not ((hdist % 2) == self.rf.SysParams['firstField1H'][0])
             isfirstfield = (hdist % 2) == (self.rf.SysParams["firstFieldH"][1] != 1)
 
             # for PAL VSYNC, the offset is 2.5H, so the calculation must be reversed
@@ -2285,20 +2292,17 @@ class Field:
         outsamples = self.outlinecount * self.outlinelen
         outline_offset = (self.lineoffset + 1) * self.outlinelen
 
-        if self.wow_interpolation_method == 'linear':
-            k=1
-            bc_type=None
-        elif self.wow_interpolation_method == 'quadratic':
-            k=2
-            bc_type=None
-        elif self.wow_interpolation_method == 'cubic':
-            k=3
-            bc_type='natural'
-        else:
+        WOW_METHODS = {
+            "linear": (1, None),
+            "quadratic": (2, None),
+            "cubic": (3, "natural"),
+        }
+        if self.wow_interpolation_method not in WOW_METHODS:
             raise ValueError(
                 f"Invalid wow_interpolation_method: {self.wow_interpolation_method!r}"
                 " (must be 'linear', 'quadratic', or 'cubic')"
             )
+        k, bc_type = WOW_METHODS[self.wow_interpolation_method]
 
         # create a spline that interpolates the exact sample value based on expected vs. actual
         # line locations
@@ -2518,7 +2522,6 @@ class Field:
         isPAL = self.rf.system == "PAL"
 
         rfstd = nb_std(f.data["rfhpf"])
-        # iserr_rf = np.full(len(f.data['video']['demod']), False, dtype=np.bool)
         iserr_rf1 = (f.data["rfhpf"] < (-rfstd * 3)) | (
             f.data["rfhpf"] > (rfstd * 3)
         )  # | (f.rawdata <= -32000)
@@ -2558,7 +2561,6 @@ class Field:
                 valid_min05[int(f.linelocs[line]):int(f.linelocs[line]) + hsync_len] = sync_min_05
 
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
-        # (current np.diff has a prepend option, but not in ubuntu 18.04's version)
         n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.freq_hz_half)
 
         n_ornotrange(iserr, f.data["video"]["demod"], valid_min, valid_max)
@@ -2661,7 +2663,7 @@ class Field:
 
     @profile
     def dropout_detect(self):
-        """ returns dropouts in three arrays, to line up with the JSON output """
+        """ returns dropouts in three arrays (lines, starts, ends). """
 
         rv_lines = []
         rv_starts = []
@@ -2740,6 +2742,11 @@ class Field:
 
 
 class FieldPAL(Field):
+    burst_lines = (11, 313)
+    burst_max_ire = 30
+    output_black = 0x0100
+    output_white = 0xD300
+
     def refine_linelocs_pilot(self, linelocs=None):
         if linelocs is None:
             linelocs = self.linelocs2.copy()
@@ -2780,30 +2787,6 @@ class FieldPAL(Field):
             linelocs[line] += (phase_distance(zcs[line], am) * plen[line]) * 1
 
         return np.array(linelocs)
-
-    def get_burstlevel(self, line, linelocs=None):
-        lineslice  = self.lineslice(line, 5.5, 2.4, linelocs)
-
-        burstarea  = self.data["video"]["demod"][lineslice].copy()
-        burstarea -= nb_mean(burstarea)
-
-        if max(burstarea) > (30 * self.rf.DecoderParams["hz_ire"]):
-            return None
-
-        return rms(burstarea) * np.sqrt(2)
-
-    def calc_burstmedian(self):
-        burstlevel = []
-
-        for line in range(11, 313):
-            lineburst = self.get_burstlevel(line)
-            if lineburst is not None:
-                burstlevel.append(lineburst)
-
-        if burstlevel == []:
-            return 0.0
-
-        return np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]
 
     def get_following_field_number(self):
         if self.prevfield is not None:
@@ -2891,16 +2874,8 @@ class FieldPAL(Field):
 
         return m4 + (0 if is_firstfour else 4)
 
-    def downscale(self, final=False, *args, **kwargs):
-        # For PAL, each field starts with the line containing the first full VSYNC pulse
-        return super(FieldPAL, self).downscale(final=final, *args, **kwargs)
-
     def process(self):
         super(FieldPAL, self).process()
-
-        self.out_scale = np.double(0xD300 - 0x0100) / (
-            100 - self.rf.DecoderParams["vsync_ire"]
-        )
 
         if not self.valid:
             return
@@ -2921,8 +2896,6 @@ class FieldPAL(Field):
         ]
 
         self.fieldPhaseID = self.determine_field_number()
-
-        # self.downscale(final=True)
 
 
 # ... now for NTSC
@@ -3035,15 +3008,6 @@ class CombNTSC:
 class FieldNTSC(Field):
     phase_adjust_median = 0
 
-    def get_burstlevel(self, line, linelocs=None):
-        burstarea = self.data["video"]["demod"][self.lineslice(line, 5.5, 2.4, linelocs)]
-
-        # Issue #621 - fields w/skips may be complete nonsense, so bail out if so
-        try:
-            return rms(burstarea) * np.sqrt(2)
-        except Exception:
-            return None
-
     @profile
     def compute_burst_offsets(self, linelocs):
         rising_sum = 0
@@ -3137,18 +3101,6 @@ class FieldNTSC(Field):
 
         return dsout, dsaudio, dsefm
 
-    def calc_burstmedian(self):
-        burstlevel = []
-        for line in range(11, 264):
-            lineburst = self.get_burstlevel(line)
-            if lineburst is not None:
-                burstlevel.append(lineburst)
-
-        if not burstlevel:
-            return 0.0
-
-        return np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]
-
     def apply_offsets(self, linelocs, phaseoffset, picoffset=0):
         return (
             np.array(linelocs)
@@ -3159,10 +3111,6 @@ class FieldNTSC(Field):
     @profile
     def process(self):
         super(FieldNTSC, self).process()
-
-        self.out_scale = np.double(0xC800 - 0x0400) / (
-            100 - self.rf.DecoderParams["vsync_ire"]
-        )
 
         if not self.valid:
             return
@@ -3233,7 +3181,6 @@ class LDdecode:
             self.lpf.add_function(Field.compute_linelocs)
             self.lpf.add_function(Field.getpulses)
             self.lpf.add_function(LDdecode.demod_read)
-            #self.lpf.add_function(self.decodefield)
 
         # Negative values are a multiple of the HSYNC frequency (line-locked
         # output, e.g. -2.8 for NTSC-locked ~44055.944hz) and must keep their
@@ -3247,8 +3194,6 @@ class LDdecode:
         if system == "PAL":
             if analog_audio == 0:
                 self.has_analog_audio = False
-
-        self.outfile_json = None
 
         self.lastvalidfield = {False: None, True: None}
         self.lastFieldWritten = None
@@ -3355,7 +3300,7 @@ class LDdecode:
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
 
-        self.verboseVITS = False
+        self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
 
@@ -3390,7 +3335,6 @@ class LDdecode:
             "infile",
             "outfile_video",
             "outfile_audio",
-            "outfile_json",
             "outfile_efm",
             "outfile_rftbc",
             "outfile_ac3",
@@ -3406,9 +3350,6 @@ class LDdecode:
 
     def create_db_schema(self):
         cur = self.dbconn.cursor()
-
-        # Enforce foreign key constraints (SQLite default is usually OFF)
-        # cur.execute("PRAGMA foreign_keys = ON;")
 
         cur.executescript(dedent('''\
             PRAGMA user_version = 1;
@@ -3659,15 +3600,11 @@ class LDdecode:
         # Insert VBI data if present
         vbi_data = fi.get("vbi", {}).get("vbiData", [])
         if vbi_data:
-            # Ensure we have exactly 3 values for the vbi0, vbi1, vbi2 columns
-            # This pads with 0 if fewer than 3 are found
             vbi_row = (vbi_data + [0, 0, 0])[:3]
-
-            self.dbconn.execute('''
-                INSERT INTO vbi (
-                    capture_id, field_id, vbi0, vbi1, vbi2
-                ) VALUES (?, ?, ?, ?, ?)''',
-                (c_id, f_id, vbi_row[0], vbi_row[1], vbi_row[2]))
+            self.dbconn.execute(
+                "INSERT INTO vbi (capture_id, field_id, vbi0, vbi1, vbi2) VALUES (?, ?, ?, ?, ?)",
+                (c_id, f_id, *vbi_row),
+            )
 
         # Insert dropouts (if any) into 'drop_outs'
         if self.doDOD and fi.get("dropOuts"):
@@ -4178,7 +4115,7 @@ class LDdecode:
 
     @profile
     def buildmetadata(self, f, check_phase=True):
-        """ returns field information JSON and whether or not a backfill field is needed """
+        """ returns field information dict and whether or not a backfill field is needed """
         prevfi = self.fieldinfo[-1] if len(self.fieldinfo) else None
 
         fi = {
@@ -4292,18 +4229,6 @@ class LDdecode:
                         outstr += special
 
                     self.logger.status(outstr)
-
-                    # Prepare JSON fields
-                    if self.verboseVITS:
-                        if self.frameNumber is not None:
-                            fi["cavFrameNr"] = int(self.frameNumber)
-
-                        if self.isCLV and self.clvMinutes is not None:
-                            fi["clvMinutes"] = int(self.clvMinutes)
-
-                        if self.isCLV and not self.earlyCLV:
-                            fi["clvSeconds"] = int(self.clvSeconds)
-                            fi["clvFrameNr"] = int(self.clvFrameNum)
                 except Exception:
                     logger.warning("file frame %d : VBI decoding error", rawloc)
                     traceback.print_exc()
@@ -4385,174 +4310,89 @@ class LDdecode:
 
         return None
 
-    def build_json(self):
-        """ build up the JSON structure for file output. """
-        # A negative analog_audio is a multiple of the HSYNC frequency; report
-        # the resolved nominal rate in hz so downstream tools see the real value.
-        if self.analog_audio < 0:
-            audio_sample_rate = (1000000 / self.rf.SysParams["line_period"]) * -self.analog_audio
-        else:
-            audio_sample_rate = self.analog_audio
+    def build_sqlite_metadata(self):
+        cursor = self.dbconn.cursor()
 
-        pcmAudioParameters = {
-            "bits": 16,
-            "isLittleEndian": True,
-            "isSigned": True,
-            "sampleRate": audio_sample_rate,
-        }
-
-        jout = {}
-
-        jout["pcmAudioParameters"] = pcmAudioParameters
-
-        vp = {}
-
-        vp["numberOfSequentialFields"] = len(self.fieldinfo)
-        vp["osInfo"] = f'{platform.system()}:{platform.release()}:{platform.version()}'
-
-        # get the first valid field in the stack if any
         for f in self.fieldstack:
             if f:
                 break
 
         if not f:
-            return None
+            return
 
-        vp["version"] = self.version
-
-        git_branch = ""
-        git_commit = ""
+        git_branch = git_commit = ""
         if isinstance(self.version, str) and self.version:
             if ":" in self.version:
-                parts = self.version.split(":")
-                if len(parts) >= 2:
-                    git_branch = parts[0]
-                    git_commit = parts[1]
+                git_branch, _, git_commit = self.version.partition(":")
             elif "/" in self.version and self.version.count("/") == 1:
                 git_branch, git_commit = self.version.split("/", 1)
             elif "+git." in self.version:
-                after = self.version.split("+git.", 1)[1]
-                git_commit = after.split(".", 1)[0]
+                git_commit = self.version.split("+git.", 1)[1].split(".", 1)[0]
                 git_branch = "release"
 
-        if git_branch:
-            vp["gitBranch"] = git_branch
-        if git_commit:
-            vp["gitCommit"] = git_commit
-
-        vp["system"] = f.rf.system
-
-        vp["fieldWidth"] = f.rf.SysParams["outlinelen"]
-        vp["sampleRate"] = f.rf.SysParams["outfreq"] * 1000000
-
-        vp["black16bIre"]    = float(f.hz_to_output(f.rf.iretohz(self.blackIRE)))
-        vp["white16bIre"]    = float(f.hz_to_output(f.rf.iretohz(100)))
-        vp["blanking16bIre"] = float(f.hz_to_output(f.rf.iretohz(0)))
-
-        vp["fieldHeight"] = f.outlinecount
-
-        # current burst adjustment as of 2/27/19, update when #158 is fixed!
-        badj = -1.4
         spu = f.rf.SysParams["outfreq"]
-        vp["colourBurstStart"] = int(np.round(
-            (f.rf.SysParams["colorBurstUS"][0] * spu) + badj
-        ))
-        vp["colourBurstEnd"] = int(np.round(
-            (f.rf.SysParams["colorBurstUS"][1] * spu) + badj
-        ))
-        vp["activeVideoStart"] = int(np.round(
-            (f.rf.SysParams["activeVideoUS"][0] * spu) + badj
-        ))
-        vp["activeVideoEnd"] = int(np.round(
-            (f.rf.SysParams["activeVideoUS"][1] * spu) + badj
-        ))
+        badj = -1.4
 
-        jout["videoParameters"] = vp
-
-        return jout
-
-    def build_sqlite_metadata(self):
-        ''' Writes metadata to SQLite. Updates existing rows if capture_id is set,
-        otherwise inserts. '''
-        cursor = self.dbconn.cursor()
-
-        js = self.build_json()
-        vp = js.get("videoParameters", {})
-        pcm = js.get("pcmAudioParameters", {})
-        decoder_val = vp.get('decoder', 'ld-decode')
-
-        # Prepare Video Parameters data tuple
         video_values = (
-            vp["system"],
-            decoder_val,
-            vp.get("gitBranch", ""),
-            vp.get("gitCommit", ""),
-            vp["sampleRate"],
-            vp["activeVideoStart"],
-            vp["activeVideoEnd"],
-            vp["fieldWidth"],
-            vp["fieldHeight"],
-            vp["numberOfSequentialFields"],
-            vp["colourBurstStart"],
-            vp["colourBurstEnd"],
-            vp["white16bIre"],
-            vp["black16bIre"],
-            vp["blanking16bIre"],
-            # is_mapped, is_subcarrier_locked, is_widescreen
-            0, vp["system"] == "NTSC", 0,
+            f.rf.system, 'ld-decode',
+            git_branch, git_commit,
+            spu * 1000000,
+            int(np.round(f.rf.SysParams["activeVideoUS"][0] * spu + badj)),
+            int(np.round(f.rf.SysParams["activeVideoUS"][1] * spu + badj)),
+            f.rf.SysParams["outlinelen"], f.outlinecount, len(self.fieldinfo),
+            int(np.round(f.rf.SysParams["colorBurstUS"][0] * spu + badj)),
+            int(np.round(f.rf.SysParams["colorBurstUS"][1] * spu + badj)),
+            float(f.hz_to_output(f.rf.iretohz(100))),
+            float(f.hz_to_output(f.rf.iretohz(self.blackIRE))),
+            float(f.hz_to_output(f.rf.iretohz(0))),
+            0, f.rf.system == "NTSC", 0,
         )
 
+        cursor.execute("""
+            INSERT INTO capture (
+                system, decoder, git_branch, git_commit,
+                video_sample_rate, active_video_start, active_video_end,
+                field_width, field_height, number_of_sequential_fields,
+                colour_burst_start, colour_burst_end,
+                white_16b_ire, black_16b_ire, blanking_16b_ire,
+                is_mapped, is_subcarrier_locked, is_widescreen
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(capture_id) DO UPDATE SET
+                system=excluded.system, decoder=excluded.decoder,
+                git_branch=excluded.git_branch, git_commit=excluded.git_commit,
+                video_sample_rate=excluded.video_sample_rate,
+                active_video_start=excluded.active_video_start,
+                active_video_end=excluded.active_video_end,
+                field_width=excluded.field_width, field_height=excluded.field_height,
+                number_of_sequential_fields=excluded.number_of_sequential_fields,
+                colour_burst_start=excluded.colour_burst_start,
+                colour_burst_end=excluded.colour_burst_end,
+                white_16b_ire=excluded.white_16b_ire,
+                black_16b_ire=excluded.black_16b_ire,
+                blanking_16b_ire=excluded.blanking_16b_ire,
+                is_mapped=excluded.is_mapped,
+                is_subcarrier_locked=excluded.is_subcarrier_locked,
+                is_widescreen=excluded.is_widescreen
+        """, video_values)
 
-        # Prepare PCM Audio data tuple
-        pcm_values = (
-            pcm["bits"],
-            int(pcm["isLittleEndian"]),
-            int(pcm["isSigned"]),
-            pcm["sampleRate"]
-        )
-
-        if self.capture_id:
-            # 1. Update 'capture' table
-            # Changed 'WHERE id = ?' to 'WHERE capture_id = ?'
-            cursor.execute("""
-                UPDATE capture SET
-                    system=?, decoder=?, git_branch=?, git_commit=?,
-                    video_sample_rate=?, active_video_start=?, active_video_end=?,
-                    field_width=?, field_height=?, number_of_sequential_fields=?,
-                    colour_burst_start=?, colour_burst_end=?,
-                    white_16b_ire=?, black_16b_ire=?, blanking_16b_ire=?,
-                    is_mapped=?, is_subcarrier_locked=?, is_widescreen=?
-                WHERE capture_id = ?
-            """, video_values + (self.capture_id,))
-
-            # 2. Update 'pcm_audio_parameters' table
-            cursor.execute("""
-                UPDATE pcm_audio_parameters SET
-                    bits=?, is_little_endian=?, is_signed=?, sample_rate=?
-                WHERE capture_id = ?
-            """, pcm_values + (self.capture_id,))
-
-        else:
-            # 1. Insert into 'capture' table
-            cursor.execute("""
-                INSERT INTO capture (
-                    system, decoder, git_branch, git_commit,
-                    video_sample_rate, active_video_start, active_video_end,
-                    field_width, field_height, number_of_sequential_fields,
-                    colour_burst_start, colour_burst_end,
-                    white_16b_ire, black_16b_ire, blanking_16b_ire,
-                    is_mapped, is_subcarrier_locked, is_widescreen
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, video_values)
-
+        if not self.capture_id:
             self.capture_id = cursor.lastrowid
 
-            # 2. Insert into 'pcm_audio_parameters' table
-            cursor.execute("""
-                INSERT INTO pcm_audio_parameters (
-                    capture_id, bits, is_little_endian, is_signed, sample_rate
-                ) VALUES (?, ?, ?, ?, ?)
-            """, (self.capture_id,) + pcm_values)
+        if self.analog_audio < 0:
+            audio_sample_rate = (1000000 / self.rf.SysParams["line_period"]) * -self.analog_audio
+        else:
+            audio_sample_rate = self.analog_audio
+
+        pcm_values = (16, 1, 1, audio_sample_rate)
+
+        cursor.execute("""
+            INSERT INTO pcm_audio_parameters (
+                capture_id, bits, is_little_endian, is_signed, sample_rate
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(capture_id) DO UPDATE SET
+                bits=excluded.bits, is_little_endian=excluded.is_little_endian,
+                is_signed=excluded.is_signed, sample_rate=excluded.sample_rate
+        """, (self.capture_id,) + pcm_values)
 
         self.dbconn.commit()
         cursor.close()
