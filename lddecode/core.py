@@ -2907,111 +2907,7 @@ class FieldPAL(Field):
         self.fieldPhaseID = self.determine_field_number()
 
 
-# ... now for NTSC
-# This class is a very basic NTSC 1D color decoder, used for alignment etc
-# XXX: make this callable earlier on and/or merge into FieldNTSC?
-class CombNTSC:
-    """ *partial* NTSC comb filter class - only enough to do VITS calculations ATM """
-
-    def __init__(self, field):
-        self.field = field
-        self.cbuffer = self.buildCBuffer()
-
-    def getlinephase(self, line):
-        """ determine if a line has positive color burst phase.
-            This is based on line # and field phase ID """
-        fieldID = self.field.fieldPhaseID
-
-        if (line % 2) == 0:
-            return (fieldID == 1) | (fieldID == 4)
-        else:
-            return (fieldID == 2) | (fieldID == 3)
-
-    def buildCBuffer(self, subset=None):
-        """
-        prev_field: Compute values for previous field
-        subset: a slice computed by lineslice_tbc (default: whole field)
-
-        NOTE:  first and last two returned values will be zero, so slice accordingly
-        """
-
-        data = self.field.dspicture
-
-        if subset is not None:
-            data = data[subset]
-
-        # this is a translation of this code from tools/ld-chroma-decoder/comb.cpp:
-        #
-        # for (qint32 h = configuration.activeVideoStart; h < configuration.activeVideoEnd; h++) {
-        #  double tc1 = (line[h] - ((line[h - 2] + line[h + 2]) / 2.0)) / 2.0;
-
-        fldata = data.astype(np.float32)
-        cbuffer = np.zeros_like(fldata)
-
-        cbuffer[2:-2] = (fldata[:-4] + fldata[4:]) / 2
-        cbuffer[2:-2] -= fldata[2:-2]
-
-        return cbuffer
-
-    def splitIQ_line(self, cbuffer, line=0):
-        """
-        NOTE:  currently? only works on one line
-
-        This returns normalized I and Q arrays, each one half the length of cbuffer
-        """
-        linephase = self.getlinephase(line)
-
-        sq = cbuffer[::2].copy()
-        si = cbuffer[1::2].copy()
-
-        if not linephase:
-            si[0::2] = -si[0::2]
-            sq[1::2] = -sq[1::2]
-        else:
-            si[1::2] = -si[1::2]
-            sq[0::2] = -sq[0::2]
-
-        return si, sq
-
-    def calcLine19Info(self, comb_field2=None):
-        """ returns color burst phase (ideally 147 degrees) and (unfiltered!) SNR """
-
-        # Don't need the whole line here, but start at 0 to definitely have an even #
-        l19_slice = self.field.lineslice_tbc(19, 0, 40)
-        l19_slice_i70 = self.field.lineslice_tbc(19, 14, 18)
-
-        ire_out1 = self.field.output_to_ire(self.field.dspicture[l19_slice_i70])
-
-        # fail out if there is obviously bad data
-        if not ((np.max(ire_out1) < 100) and (np.min(ire_out1) > 40)):
-            return None, None, None
-
-        cbuffer = self.cbuffer[l19_slice]
-
-        if comb_field2 is not None:
-            ire_out2 = comb_field2.field.output_to_ire(comb_field2.field.dspicture[l19_slice_i70])
-            # fail out if there is obviously bad data
-            if not ((np.max(ire_out2) < 100) and (np.min(ire_out2) > 40)):
-                return None, None, None
-
-            cbuffer = (cbuffer - comb_field2.cbuffer[l19_slice]) / 2
-
-        si, sq = self.splitIQ_line(cbuffer, 19)
-
-        sl = slice(110, 230)
-        cdata = np.sqrt((si[sl] ** 2.0) + (sq[sl] ** 2.0))
-
-        phase = np.arctan2(np.mean(si[sl]), np.mean(sq[sl])) * 180 / np.pi
-        if phase < 0:
-            phase += 360
-
-        # compute SNR
-        signal = np.mean(cdata)
-        noise = np.std(cdata)
-
-        snr = 20 * np.log10(signal / noise)
-
-        return signal / (2 * self.field.out_scale), phase, snr
+# CombNTSC and metric functions live in lddecode.metrics
 
 
 class FieldNTSC(Field):
@@ -3293,7 +3189,7 @@ class LDdecode:
         self.fdoffset = 0
         self.mtf_level = 1
 
-        self.fieldstack = [None, None]
+        self.fieldstack = [None, None, None, None]
 
         self.doDOD = doDOD
 
@@ -3435,6 +3331,9 @@ class LDdecode:
                 field_id INTEGER NOT NULL,
                 b_psnr REAL,
                 w_snr REAL,
+                ntsc_line19_burst70_ire REAL,
+                ntsc_line19_color_3d_raw_snr REAL,
+                ntsc_line19_burst0_ire REAL,
                 FOREIGN KEY (capture_id, field_id)
                     REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
                 PRIMARY KEY (capture_id, field_id)
@@ -3613,12 +3512,17 @@ class LDdecode:
         if vitsMetrics := fi.get('vitsMetrics'):
             w_snr  = vitsMetrics.get('wSNR', 0)
             b_psnr = vitsMetrics.get('bPSNR', 0)
+            burst70 = vitsMetrics.get('ntscLine19Burst70IRE')
+            snr3d   = vitsMetrics.get('ntscLine19Color3DRawSNR')
+            burst0  = vitsMetrics.get('ntscLine19Burst0IRE')
 
             self.dbconn.execute('''
                 INSERT INTO vits_metrics (
-                    capture_id, field_id, w_snr, b_psnr
-                ) VALUES (?, ?, ?, ?)''',
-                (c_id, f_id, w_snr, b_psnr))
+                    capture_id, field_id, w_snr, b_psnr,
+                    ntsc_line19_burst70_ire, ntsc_line19_color_3d_raw_snr,
+                    ntsc_line19_burst0_ire
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                (c_id, f_id, w_snr, b_psnr, burst70, snr3d, burst0))
 
         # Insert VBI data if present
         vbi_data = fi.get("vbi", {}).get("vbiData", [])
@@ -3813,7 +3717,7 @@ class LDdecode:
         adjusted = False
         picture = audio = efm = None
 
-        if len(self.fieldstack) >= 2:
+        if len(self.fieldstack) >= 4:
             # XXX: Need to cut off the previous field here, since otherwise
             # it'll leak for now.
             if self.fieldstack[-1]:
@@ -3994,150 +3898,9 @@ class LDdecode:
 
         return None  # seeking won't work w/minutes only
 
-    def calcsnr(self, f, snrslice, psnr=False):
-        # if dspicture isn't converted to float, this underflows at -40IRE
-        data = f.output_to_ire(f.dspicture[snrslice].astype(float))
-
-        signal = np.mean(data) if not psnr else 100
-        noise = np.std(data)
-
-        return 20 * np.log10(signal / noise)
-
-    def calcpsnr(self, f, snrslice):
-        return self.calcsnr(f, snrslice, psnr=True)
-
-    def computeMetricsPAL(self, metrics, f, fp=None):
-
-        if f.isFirstField:
-            # compute IRE50 from field1 l13
-            # Unfortunately this is too short to get a 50IRE RF level
-            wl_slice = f.lineslice_tbc(13, 4.7 + 15.5, 3)
-            metrics["greyPSNR"] = self.calcpsnr(f, wl_slice)
-            metrics["greyIRE"] = nb_mean(f.output_to_ire(f.dspicture[wl_slice]))
-        else:
-            # There's a nice long burst at 50IRE block on field2 l13
-            b50slice = f.lineslice_tbc(13, 36, 20)
-            metrics["palVITSBurst50Level"] = rms(f.dspicture[b50slice]) / f.out_scale
-
-        return metrics
-
-    def computeMetricsNTSC(self, metrics, f, fp=None):
-        # check for a white flag - only on earlier discs, and only on first "frame" fields
-        wf_slice = f.lineslice_tbc(11, 15, 40)
-        if inrange(np.mean(f.output_to_ire(f.dspicture[wf_slice])), 92, 108):
-            metrics["ntscWhiteFlagSNR"] = self.calcpsnr(f, wf_slice)
-
-        # use line 19 to determine 0 and 70 IRE burst levels for MTF compensation later
-        c = CombNTSC(f)
-
-        level, phase, snr = c.calcLine19Info()
-        if level is not None:
-            metrics["ntscLine19ColorPhase"] = phase
-            metrics["ntscLine19ColorRawSNR"] = snr
-
-        ire50_slice = f.lineslice_tbc(19, 36, 10)
-        metrics["greyPSNR"] = self.calcpsnr(f, ire50_slice)
-        metrics["greyIRE"] = nb_mean(f.output_to_ire(f.dspicture[ire50_slice]))
-
-        ire50_rawslice = f.lineslice(19, 36, 10)
-        rawdata = f.rawdata[
-            ire50_rawslice.start
-            - int(self.rf.delays["video_white"]) : ire50_rawslice.stop
-            - int(self.rf.delays["video_white"])
-        ]
-        metrics["greyRFLevel"] = np.std(rawdata)
-
-        if not f.isFirstField and fp is not None:
-            cp = CombNTSC(fp)
-
-            level3d, phase3d, snr3d = c.calcLine19Info(cp)
-            if level3d is not None:
-                metrics["ntscLine19Burst70IRE"] = level3d
-                metrics["ntscLine19Color3DRawSNR"] = snr3d
-
-                sl_cburst = f.lineslice_tbc(19, 4.7 + 0.8, 2.4)
-                diff = (
-                    f.dspicture[sl_cburst].astype(float)
-                    - fp.dspicture[sl_cburst].astype(float)
-                ) / 2
-
-                metrics["ntscLine19Burst0IRE"] = np.sqrt(2) * rms(diff) / f.out_scale
-
-        return metrics
-
     def computeMetrics(self, f, fp=None, verbose=False):
-        system = f.rf.system
-        if self.verboseVITS:
-            verbose = True
-
-        metrics = {}
-
-        if system == "NTSC":
-            self.computeMetricsNTSC(metrics, f, fp)
-        else:
-            self.computeMetricsPAL(metrics, f, fp)
-
-        # FIXME: these should probably be computed in the Field class
-        f.whitesnr_slice = None
-
-        for wl in f.rf.SysParams["LD_VITS_whitelocs"]:
-            wl_slice = f.lineslice_tbc(*wl)
-            # logger.info(wl, np.mean(f.output_to_ire(f.dspicture[wl_slice])))
-            if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
-                f.whitesnr_slice = wl
-                metrics["wSNR"] = self.calcpsnr(f, wl_slice)
-                metrics["whiteIRE"] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
-
-                rawslice = f.lineslice(*wl)
-                rawdata = f.rawdata[
-                    rawslice.start
-                    - int(self.rf.delays["video_white"]) : rawslice.stop
-                    - int(self.rf.delays["video_white"])
-                ]
-                metrics["whiteRFLevel"] = np.std(rawdata)
-
-                break
-
-        bl_slice = f.lineslice(*f.rf.SysParams["blacksnr_slice"])
-        bl_slicetbc = f.lineslice_tbc(*f.rf.SysParams["blacksnr_slice"])
-
-        delay = int(f.rf.delays["video_sync"])
-        bl_sliceraw = slice(bl_slice.start - delay, bl_slice.stop - delay)
-        metrics["blackLineRFLevel"] = np.std(f.rawdata[bl_sliceraw])
-
-        metrics["blackLinePreTBCIRE"] = f.rf.hztoire(
-            np.mean(f.data["video"]["demod"][bl_slice])
-        )
-        metrics["blackLinePostTBCIRE"] = f.output_to_ire(
-            np.mean(f.dspicture[bl_slicetbc])
-        )
-
-        metrics["bPSNR"] = self.calcpsnr(f, bl_slicetbc)
-
-        if "whiteRFLevel" in metrics:
-            metrics["blackToWhiteRFRatio"] = (
-                metrics["blackLineRFLevel"] / metrics["whiteRFLevel"]
-            )
-
-        outputkeys = metrics.keys() if verbose else ["wSNR", "bPSNR"]
-
-        metrics_rounded = {}
-
-        for k in outputkeys:
-            if k not in metrics:
-                continue
-
-            if "Ratio" in k:
-                digits = 4
-            elif "Burst" in k:
-                digits = 3
-            else:
-                digits = 1
-            rounded = roundfloat(metrics[k], places=digits)
-            if np.isfinite(rounded):
-                metrics_rounded[k] = rounded
-
-        return metrics_rounded
+        from .metrics import computeMetrics
+        return computeMetrics(self.rf, f, fp, verbose, self.verboseVITS)
 
     @profile
     def buildmetadata(self, f, check_phase=True):
@@ -4195,7 +3958,8 @@ class LDdecode:
                     return fi, True
 
         fi["decodeFaults"] = decodeFaults
-        fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], self.fieldstack[1])
+        fp_3d = self.fieldstack[2] if len(self.fieldinfo) >= 3 else None
+        fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], fp_3d)
 
         fi["vbi"] = {"vbiData": [int(lc) for lc in f.linecode if lc is not None]}
 
