@@ -1,24 +1,23 @@
 # A collection of helper functions used in dev notebooks and lddecode_core.py
 
-from collections import namedtuple
 import itertools
 import json
 import math
 import os
 import subprocess
 import sys
-import traceback
-
 import threading
-from queue import Queue
+import traceback
+from collections import namedtuple
 from math import tau
+from queue import Queue
 
-from numba import njit
 import numba
 
 # standard numeric/scientific libraries
 import numpy as np
 import scipy.signal as sps
+from numba import njit
 
 # Try to make sure ffmpeg is available
 try:
@@ -71,8 +70,10 @@ def scale(buf, begin, end, tgtlen, mult=1):
 
 
 # Kaiser Beta parameter controls trade-off between sharpness and ringing
-# Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff (more ringing))
-# Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff (less ringing))
+# Small Beta = more sharpness / more ringing (narrow main lobe (more sharp), less side lobe cutoff
+# (more ringing))
+# Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff
+# (less ringing))
 # kaiser_beta = 5
 sinc_tap_count = 16  # must be multiple of 2
 sinc_phase_count = 2**16
@@ -125,10 +126,14 @@ sinc_phase_count = 2**16
 
 
 @njit(nogil=True, fastmath=True)
-def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineoffset, outwidth, wow_level_adjust_smoothing = 0, level_adjust_threshold = 15):
+def scale_field(
+    buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineoffset, outwidth,
+    wow_level_adjust_smoothing = 0, level_adjust_threshold = 15,
+):
     # average out any unusual spikes in wow that happen on a per line basis
     # this indicates an hsync tbc error vs. being normal wow from playback speed variations
-    # in this case for level adjusting we just want to fallback to the average wow to avoid a bright or dark line
+    # in this case for level adjusting we just want to fallback to the average wow to avoid a
+    # bright or dark line
     median = np.median(wowfactors)
     mad = np.median(np.abs(wowfactors - median)) # median absolute deviation
     threshold = level_adjust_threshold * mad if mad > 0 else 0.001  # fallback for no variance
@@ -140,8 +145,10 @@ def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineo
     )
 
     if wow_level_adjust_smoothing > 0:
-        # removes oscillating brightness variations for video with lots of noise around the hsync pulses, i.e. noisy line locations result in noisy wow calculations
-        # applies a low pass filter that smooths any sudden brightness variations while still being reactive enough to compensate for low frequency wow
+        # removes oscillating brightness variations for video with lots of noise around the hsync
+        # pulses, i.e. noisy line locations result in noisy wow calculations
+        # applies a low pass filter that smooths any sudden brightness variations while still being
+        # reactive enough to compensate for low frequency wow
         alpha = 1 / (wow_level_adjust_smoothing * outwidth)
         one_minus_alpha = 1 - alpha
 
@@ -153,10 +160,12 @@ def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineo
     dsout_start = outwidth * (lineoffset + 1)
     dsout_end = len(dsout) + dsout_start
     for i in range(dsout_start, dsout_end):
-        # compensates for the amplitude/frequency shift caused by FM demodulation under varying playback speed.
+        # compensates for the amplitude/frequency shift caused by FM demodulation under varying
+        # playback speed.
         level_adjust = level_adjusts[i]
 
-        # reconstructs the waveform at the proper fractional sample position, undoing wow-induced timing variations
+        # reconstructs the waveform at the proper fractional sample position, undoing wow-induced
+        # timing variations
         coord = np.float32(interpolated_pixel_locs[i])
         coord_int = int(coord)
 
@@ -206,14 +215,16 @@ def parse_frequency(string):
 
 """
 
-For this part of the loader phase I found myself going to function objects that implement this sample API:
+For this part of the loader phase I found myself going to function objects that implement this
+sample API:
 
 ```
 infile: standard readable/seekable python binary file
 sample: starting sample #
 readlen: # of samples
 ```
-Returns data if successful, or None or an upstream exception if not (including if not enough data is available)
+Returns data if successful, or None or an upstream exception if not (including if not enough data
+is available)
 """
 
 
@@ -290,11 +301,11 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     inbuf = infile.read(readlen * samplelength)
 
     if sampletype == 4:
-        indata = np.fromstring(inbuf, "float32", len(inbuf) // 4) * 32768
+        indata = np.frombuffer(inbuf, "float32", len(inbuf) // 4) * 32768
     elif sampletype == 3:
         indata = np.frombuffer(inbuf, "uint16", len(inbuf) // 2)
     elif sampletype == 2:
-        indata = np.fromstring(inbuf, "int16", len(inbuf) // 2)
+        indata = np.frombuffer(inbuf, "int16", len(inbuf) // 2)
     else:
         # NOTE(oln): Can probably use frombuffer for other variants too but
         # didn't have any samples to test with.
@@ -326,7 +337,6 @@ def load_unpacked_data_float32(infile, sample, readlen):
 def load_packed_data_3_32(infile, sample, readlen):
     start = (sample // 3) * 4
     offset = sample % 3
-    start, offset
 
     infile.seek(start)
 
@@ -334,7 +344,7 @@ def load_packed_data_3_32(infile, sample, readlen):
     needed = int(np.ceil(readlen * 3 / 4) * 4) + 4
 
     inbuf = infile.read(needed)
-    indata = np.fromstring(inbuf, "uint32", len(inbuf) // 4)
+    indata = np.frombuffer(inbuf, "uint32", len(inbuf) // 4)
 
     if len(indata) < needed:
         return None
@@ -511,7 +521,9 @@ class LoadLDF:
         try:
             import av  # noqa: F401
         except ImportError:
-            raise ImportError("PyAV library required for .ldf/.flac files. Install with: pip install av")
+            raise ImportError(
+                "PyAV library required for .ldf/.flac files. Install with: pip install av"
+            )
 
         self.filename = filename
 
@@ -738,7 +750,7 @@ class LoadLDF:
 
 
 def ffmpeg_pipe(outname: str, opts: str):
-    cmd = f"ffmpeg -y -hide_banner -loglevel quiet -f s16le -ar 40k -ac 1 -i -"
+    cmd = "ffmpeg -y -hide_banner -loglevel quiet -f s16le -ar 40k -ac 1 -i -"
     if opts and len(opts):
         cmd += f" {opts}"
 
@@ -759,7 +771,10 @@ def ldf_pipe(outname: str, compression_level: int = 6):
 def ac3_pipe(outname: str):
     processes = []
 
-    cmd1 = "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 -e unsigned -c 1 -t raw -".split()
+    cmd1 = (
+        "sox -r 40000000 -b 8 -c 1 -e signed -t raw - -b 8 -r 46080000 "
+        "-e unsigned -c 1 -t raw -"
+    ).split()
     cmd2 = "ld-ac3-demodulate -v 3 - -".split()
     cmd3 = ["ld-ac3-decode", "-", outname]
 
@@ -782,10 +797,11 @@ def ac3_pipe(outname: str):
     return processes, processes[-1].stdin
 
 
-# Essential (or at least useful) standalone routines and lambdas
+# Essential (or at least useful) standalone routines
 
 # https://stackoverflow.com/questions/20924085/python-conversion-between-coordinates
-polar2z = lambda r, θ: r * np.exp(1j * θ)
+def polar2z(r, θ):
+    return r * np.exp(1j * θ)
 
 
 def emphasis_iir(t1, t2, fs):
@@ -1039,10 +1055,10 @@ def genwave(rate, freq, initialphase=0):
     angle = initialphase
 
     for i in range(0, len(rate)):
-        out[i] = np.sin(angle)
+        out[i] = math.sin(angle)
 
-        angle += np.pi * (rate[i] / freq)
-        if angle > np.pi:
+        angle += math.pi * (rate[i] / freq)
+        if angle > math.pi:
             angle -= tau
 
     return out
@@ -1101,7 +1117,6 @@ def hz_to_output_array(input, ire0, hz_ire, outputZero, vsync_ire, out_scale):
 
 
 # Something like this should be a numpy function, but I can't find it.
-@njit(cache=True)
 def findareas(array, cross):
     """ Find areas where `array` is <= `cross`
 
@@ -1110,12 +1125,19 @@ def findareas(array, cross):
     starts = np.where(np.logical_and(array[1:] < cross, array[:-1] >= cross))[0]
     ends = np.where(np.logical_and(array[1:] >= cross, array[:-1] < cross))[0]
 
+    if len(starts) == 0 or len(ends) == 0:
+        return []
+
     # remove 'dangling' beginnings and endings so everything zips up nicely and in order
     if ends[0] < starts[0]:
         ends = ends[1:]
+    if len(ends) == 0:
+        return []
 
     if starts[-1] > ends[-1]:
         starts = starts[:-1]
+    if len(starts) == 0:
+        return []
 
     return [(*z, z[1] - z[0]) for z in zip(starts, ends)]
 
@@ -1182,75 +1204,29 @@ def findpulses(sync_ref, _, high):
     return _to_pulses_list(pulses_starts, pulses_lengths)
 
 
-if False:
-    @njit(cache=True, nogil=True)
-    def numba_pulse_qualitycheck(prevpulse: Pulse, pulse: Pulse, inlinelen: int):
-
-        if prevpulse[0] > 0 and pulse[0] > 0:
-            exprange = (0.4, 0.6)
-        elif prevpulse[0] == 0 and pulse[0] == 0:
-            exprange = (0.9, 1.1)
-        else:  # transition to/from regular hsyncs can be .5 or 1H
-            exprange = (0.4, 1.1)
-
-        linelen = (pulse[1].start - prevpulse[1].start) / inlinelen
-        inorder = inrange(linelen, *exprange)
-
-        return inorder
-
-    @njit(cache=True, nogil=True)
-    def numba_computeLineLen(validpulses, inlinelen):
-        # determine longest run of 0's
-        longrun = [-1, -1]
-        currun = None
-        for i, v in enumerate([p[0] for p in validpulses]):
-            if v != 0:
-                if currun is not None and currun[1] > longrun[1]:
-                    longrun = currun
-                currun = None
-            elif currun is None:
-                currun = [i, 0]
-            else:
-                currun[1] += 1
-
-        if currun is not None and currun[1] > longrun[1]:
-            longrun = currun
-
-        linelens = []
-        for i in range(longrun[0] + 1, longrun[0] + longrun[1]):
-            linelen = validpulses[i][1].start - validpulses[i - 1][1].start
-            if inrange(linelen / inlinelen, 0.95, 1.05):
-                linelens.append(
-                    validpulses[i][1].start - validpulses[i - 1][1].start
-                )
-
-        # Can't prepare the mean here since numba np.mean doesn't work over lists
-        return linelens
-
-
 @njit(cache=True, nogil=True)
 def findpeaks(array, low=0):
     array2 = array.copy()
     array2[np.where(array2 < low)] = 0
 
-    return [
-        loc - 1
-        for loc in np.where(
-            np.logical_and(array2[:-1] > array2[-1], array2[1:] > array2[:-1])
-        )[0]
-    ]
+    # A local maximum at index i satisfies array2[i] > array2[i-1]
+    # and array2[i] > array2[i+1].  The slice array2[1:-1] covers
+    # candidate indices 1..N-2; add 1 to map back to original indices.
+    is_peak = np.logical_and(array2[1:-1] > array2[:-2], array2[1:-1] > array2[2:])
+    return [loc + 1 for loc in np.where(is_peak)[0]]
 
 
-def LRUupdate(l, k):
-    """ This turns a list into an LRU table.  When called it makes sure item 'k' is at the beginning,
+def LRUupdate(lst, k):
+    """ This turns a list into an LRU table.  When called it makes sure item 'k' is at the
+        beginning,
         so the list is in descending order of previous use.
     """
     try:
-        l.remove(k)
+        lst.remove(k)
     except Exception:
         pass
 
-    l.insert(0, k)
+    lst.insert(0, k)
 
 
 # numba jit functions, used to numba-ify parts of more complex functions
@@ -1362,7 +1338,10 @@ def dsa_rescale_and_clip(infloat):
 
 
 @njit(cache=True, nogil=True)
-def clb_findbursts(isrising, zcs, burstarea, i, endburstarea, threshold, bstart, s_rem, zcburstdiv, phase_adjust):
+def clb_findbursts(
+    isrising, zcs, burstarea, i, endburstarea, threshold,
+    bstart, s_rem, zcburstdiv, phase_adjust,
+):
     zc_count = 0
     rising_count = 0
     j = i
@@ -1483,41 +1462,44 @@ class JSONDumper:
             except (InterruptedError, KeyboardInterrupt):
                 break
 
-            # json serialize each field info object to a string
-            serialized_field_info = []
-            for field in next_field_info:
-                serialized_field_info.append(
-                    json.dumps(
-                        field,
-                        allow_nan=False,
-                        indent=indent,
-                        separators=separators
+            try:
+                # json serialize each field info object to a string
+                serialized_field_info = []
+                for field in next_field_info:
+                    serialized_field_info.append(
+                        json.dumps(
+                            field,
+                            allow_nan=False,
+                            indent=indent,
+                            separators=separators
+                        )
                     )
-                )
 
-            field_info.append(serialized_field_info)
+                field_info.append(serialized_field_info)
 
-            f = open(outname + ".tbc.json.tmp", "w")
-            f.write('{'+linebreak)
-            # write the field metadata
-            for (k, v) in jsondict.items():
-                json.dump(k, f, allow_nan=False, indent=indent, separators=separators)
-                f.write(':')
-                json.dump(v, f, allow_nan=False, indent=indent, separators=separators)
-                f.write(separator)
+                with open(outname + ".tbc.json.tmp", "w") as f:
+                    f.write('{'+linebreak)
+                    # write the field metadata
+                    for (k, v) in jsondict.items():
+                        json.dump(k, f, allow_nan=False, indent=indent, separators=separators)
+                        f.write(':')
+                        json.dump(v, f, allow_nan=False, indent=indent, separators=separators)
+                        f.write(separator)
 
-            # Write the field info
-            f.write('"fields":['+linebreak)
-            for i, field in enumerate(itertools.chain.from_iterable(field_info)):
-                if i != 0:
-                    f.write(separator)
+                    # Write the field info
+                    f.write('"fields":['+linebreak)
+                    for i, field in enumerate(itertools.chain.from_iterable(field_info)):
+                        if i != 0:
+                            f.write(separator)
 
-                f.write(field)
-            f.write(linebreak+']'+linebreak+'}')
+                        f.write(field)
+                    f.write(linebreak+']'+linebreak+'}')
 
-            f.write('\n')
-            f.close()
-            os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
+                    f.write('\n')
+
+                os.replace(outname + ".tbc.json.tmp", outname + ".tbc.json")
+            except Exception:
+                traceback.print_exc()
 
             ready.clear()
 
