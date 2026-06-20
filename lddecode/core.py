@@ -2719,10 +2719,9 @@ class Field:
         # Apply phase adjustment from previous frame/line if available.
         phase_adjust = -prev_phaseadjust
 
-        # a proper color burst should have ~12-13 zero crossings, but noisy
-        # bursts can produce more; use 32 to avoid truncating valid data
-        isrising = np.zeros(32, dtype=np.bool_)
-        zcs = np.zeros(32, dtype=np.float32)
+        # a proper color burst should have ~12-13 zero crossings
+        isrising = np.zeros(16, dtype=np.bool_)
+        zcs = np.zeros(16, dtype=np.float32)
 
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
