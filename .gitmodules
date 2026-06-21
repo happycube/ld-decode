@@ -1,3 +1,9 @@
 [submodule "testdata"]
 	path = testdata
 	url = https://github.com/happycube/ld-decode-testdata-ci
+[submodule "analogue-video-specifications"]
+	path = analogue-video-specifications
+	url = https://github.com/simoninns/analogue-video-specifications.git
+[submodule "ld-decode-tools"]
+	path = ld-decode-tools
+	url = https://github.com/simoninns/ld-decode-tools.git

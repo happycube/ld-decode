@@ -206,8 +206,8 @@ def main(args=None):
         "--deemp_strength",
         metavar="deemp_str",
         type=float,
-        default=0.96,
-        help="Strength of deemphasis (default 0.96)",
+        default=None,
+        help="Strength of deemphasis (default: NTSC 0.96, PAL 1.0)",
     )
     parser.add_argument(
         "--chroma_shelf_boost",
@@ -371,7 +371,7 @@ def main(args=None):
         "pipe_RF_TBC": audio_pipe,
         "write_pre_efm": args.prefm,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
-        "deemp_str": args.deemp_strength,
+        "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
         "auto_deemp": False,
         "chroma_shelf_boost": args.chroma_shelf_boost,
         "MTF_level": args.MTF,
