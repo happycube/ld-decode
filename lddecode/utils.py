@@ -560,17 +560,11 @@ class LoadLDF:
         self._resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono")
 
         if sample > 0:
-            # Seek a little before the target; the reader thread discards the
-            # lead-in so the buffer starts exactly at `sample`.
-            # The container sample_rate is stored at 40k (an audio-friendly
-            # rate), while the actual RF data is 40 MHz -- 1000x difference.
-            # Convert RF sample offset to stream time_base units:
-            #   1 RF sample = 1/40_000_000 sec
-            #   1 stream unit = 1/40_000 sec
-            #   -> 1 RF sample = 1/1000 stream units
-            seek_offset = sample // 1000
-            seek_offset = max(0, seek_offset - self._stream.sample_rate)
-            self._container.seek(seek_offset, any_frame=True)
+            # The FLAC stores RF samples 1:1 (labeled 40kHz, actually 40MHz).
+            # frame.pts and seek offsets are in stream time_base (1/40000)
+            # units, which equal the FLAC sample index = RF sample index.
+            seek_sample = max(0, sample - self._stream.sample_rate)
+            self._container.seek(seek_sample, stream=self._stream, any_frame=True)
 
         self._decode_iter = self._container.decode(audio=0)
 
@@ -610,12 +604,8 @@ class LoadLDF:
                 if skip_samples is None:
                     # The first decoded frame tells us where decoding actually
                     # resumed after the seek, via its presentation timestamp.
-                    # Scale by 1000: container stores 40k rate, RF data is 40 MHz.
                     if frame.pts is not None:
-                        base_sample = round(
-                            float(frame.pts * self._stream.time_base)
-                            * self._stream.sample_rate * 1000
-                        )
+                        base_sample = frame.pts
                     else:
                         base_sample = target_sample
                     skip_samples = max(0, target_sample - base_sample)
