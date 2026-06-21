@@ -379,7 +379,8 @@ class RFDecode:
             deemp[0] = 1 / (deemp_high * 1000000)
 
         self.DecoderParams["video_deemp"]          = deemp
-        self.DecoderParams["video_deemp_strength"] = extra_options.get("deemp_str", 1.0)
+        default_deemp_str = 0.96 if system == "NTSC" else 1.0
+        self.DecoderParams["video_deemp_strength"] = extra_options.get("deemp_str", default_deemp_str)
 
         linelen = self.freq_hz / (1000000.0 / self.SysParams["line_period"])
         self.linelen = int(np.round(linelen))
