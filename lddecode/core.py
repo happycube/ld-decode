@@ -25,14 +25,51 @@ from scipy import interpolate
 # internal libraries
 
 from . import efm_pll
-from .utils import ac3_pipe, ldf_pipe, traceback
-from .utils import nb_mean, nb_median, nb_round, nb_min, nb_max, nb_abs, nb_absmax, n_orgt
-from .utils import polar2z, sqsum, genwave, dsa_rescale_and_clip, scale, scale_field, rms
-from .utils import findpeaks, findpulses, calczc, inrange, roundfloat
-from .utils import LRUupdate, clb_findbursts, angular_mean_helper, phase_distance
-from .utils import build_hilbert, unwrap_hilbert, emphasis_iir, filtfft
-from .utils import fft_do_slice, fft_determine_slices, StridedCollector, hz_to_output_array
-from .utils import Pulse, nb_std, n_ornotrange, gen_bpf_supergauss, FieldInfo
+from .utils import (
+    FieldInfo,
+    LRUupdate,
+    Pulse,
+    StridedCollector,
+    ac3_pipe,
+    angular_mean_helper,
+    build_hilbert,
+    calczc,
+    clb_findbursts,
+    compute_mtf,
+    dsa_rescale_and_clip,
+    emphasis_iir,
+    fft_determine_slices,
+    fft_do_slice,
+    filtfft,
+    findpeaks,
+    findpulses,
+    gen_bpf_supergauss,
+    genwave,
+    hz_to_output_array,
+    inrange,
+    ldf_pipe,
+    _dropout_unflag_sync,
+    n_orgt,
+    n_ornotrange,
+    n_ornotrange_scalar,
+    nb_abs,
+    nb_absmax,
+    nb_max,
+    nb_mean,
+    nb_median,
+    nb_min,
+    nb_round,
+    nb_std,
+    phase_distance,
+    polar2z,
+    rms,
+    roundfloat,
+    scale,
+    scale_field,
+    sqsum,
+    traceback,
+    unwrap_hilbert,
+)
 
 try:
     # If Anaconda's numpy is installed, mkl will use all threads for fft etc
@@ -381,6 +418,7 @@ class RFDecode:
         self.DecoderParams["video_deemp"]          = deemp
         default_deemp_str = 0.96 if system == "NTSC" else 1.0
         self.DecoderParams["video_deemp_strength"] = extra_options.get("deemp_str", default_deemp_str)
+        self.DecoderParams["inverse_mtf_strength"] = 0.0
 
         linelen = self.freq_hz / (1000000.0 / self.SysParams["line_period"])
         self.linelen = int(np.round(linelen))
@@ -659,8 +697,34 @@ class RFDecode:
         # The direct opposite of the above, used in test signal generation
         SF["Femp"] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
 
-        # Post processing:  lowpass filter + deemp
-        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP['video_deemp_strength'])
+        fsc_hz = SP["fsc_mhz"] * 1e6
+
+        # Inverse-MTF chroma correction: a zero-phase (real-valued) filter
+        # whose shape comes from the disc's optical MTF.  Frequencies below
+        # ~2 MHz are unity; above, the filter boosts proportionally to the
+        # inverse of the MTF, raised to `inverse_mtf_strength`.  At strength 0
+        # there is no boost; auto-calibration sets the strength from burst
+        # amplitude measurements so that chroma recovers to spec level with
+        # zero differential-phase cost (unlike de-emphasis adjustment).
+        freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
+        crossover = 2.0e6
+        mtf_at_crossover = compute_mtf(crossover, cavframe=0)
+        mtf_vals = compute_mtf(freq_array.copy(), cavframe=0)
+        mtf_norm = np.clip(mtf_vals / mtf_at_crossover, 0.05, 1.0)
+        SF["Finverse_mtf_base"] = 1.0 / mtf_norm
+
+        fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
+        self.inverse_mtf_log_at_fsc = np.log(SF["Finverse_mtf_base"][fsc_bin])
+
+        # Post processing: lowpass filter + full de-emphasis + inverse MTF
+        # chroma correction + group-delay equaliser.  De-emphasis stays at
+        # full strength (1.0) for correct phase; the inverse MTF handles
+        # chroma amplitude separately with zero phase contribution.
+        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
+
+        imtf_strength = DP.get("inverse_mtf_strength", 0.0)
+        if imtf_strength > 0:
+            SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         # Correct the post-demod video group delay to the IEC spec curve the
         # disc was pre-distorted against (PAL: IEC 60856 9.1.6, NTSC: IEC 60857
@@ -697,6 +761,20 @@ class RFDecode:
                 self.blocklen,
             )
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
+
+    def recompute_fvideo(self):
+        """Rebuild only FVideo after an inverse MTF strength change."""
+        SF = self.Filters
+        DP = self.DecoderParams
+
+        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
+
+        imtf_strength = DP.get("inverse_mtf_strength", 0.0)
+        if imtf_strength > 0:
+            SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
+
+        SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
+
 
     def computeaudiofilters(self):
         SP = self.SysParams
@@ -3865,6 +3943,48 @@ class LDdecode:
             self.mtf_level = np.clip((np.mean(self.bw_ratios) - 1.08) / 0.38, 0, 1)
 
         return np.abs(self.mtf_level - oldmtf) < 0.05
+
+    def checkAutoDeemp(self, field):
+        """Calibrate inverse-MTF chroma correction from burst amplitude."""
+        if self.deemp_calibrated:
+            return True
+
+        if field.burstmedian <= 5:
+            return True
+
+        self._deemp_burst_samples.append(field.burstmedian)
+
+        if len(self._deemp_burst_samples) < 3:
+            return True
+
+        expected = self.rf.SysParams["burst_ire"]
+        measured = np.median(self._deemp_burst_samples)
+        log_base = self.rf.inverse_mtf_log_at_fsc
+
+        self.deemp_calibrated = True
+
+        if measured <= 0 or log_base <= 0:
+            return True
+
+        if measured >= expected:
+            return True
+
+        strength = float(np.clip(
+            np.log(expected / measured) / log_base, 0.0, 2.0
+        ))
+
+        if strength < 0.02:
+            return True
+
+        logger.debug(
+            f"Auto inverse-MTF chroma: burst {measured:.1f} IRE "
+            f"(expected {expected:.1f}), "
+            f"inverse_mtf_strength 0.000 → {strength:.3f}"
+        )
+        self.rf.DecoderParams["inverse_mtf_strength"] = strength
+        self.rf.recompute_fvideo()
+        return False
+
 
     @profile
     def detectLevels(self, field):
