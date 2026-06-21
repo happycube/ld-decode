@@ -105,6 +105,7 @@ SysParams_NTSC = {
     "ire0": 8100000,
     "hz_ire": 1700000 / 140.0,
     "vsync_ire": -40,
+    "burst_ire": 20.0,
     # most NTSC disks have analog audio, except CD-V and a few Panasonic demos
     "analog_audio": True,
     # From the spec - audio frequencies are multiples of the (color) line rate
@@ -123,7 +124,7 @@ SysParams_NTSC = {
     "hsyncPulseUS": 4.7,
     "eqPulseUS": 2.3,
     "vsyncPulseUS": 27.1,
-    # What 0 IRE/0V should be in 16-bit digital output
+    # 16-bit digital output value for sync tip (-40 IRE)
     "outputZero": 1024,
     "fieldPhases": 4,
     # Likely locations of solid white in VITS on LD's (line, start, length)
@@ -165,6 +166,7 @@ SysParams_PAL = {
     "line_period": 64,
     "ire0": 7100000,
     "hz_ire": 800000 / 100.0,
+    "burst_ire": 150 / 7.0,
     # only early PAL disks have analog audio
     "analog_audio": True,
     # From the spec - audio frequencies are multiples of the (colour) line rate
@@ -181,7 +183,7 @@ SysParams_PAL = {
     "hsyncPulseUS": 4.7,
     "eqPulseUS": 2.35,
     "vsyncPulseUS": 27.3,
-    # What 0 IRE/0V should be in digitaloutput
+    # 16-bit digital output value for sync tip (-43 IRE)
     "outputZero": 256,
     "fieldPhases": 8,
     # Likely locations of solid white in VITS on LD's
@@ -416,6 +418,8 @@ class RFDecode:
 
         self.DecoderParams["video_deemp"]          = deemp
         self.DecoderParams["video_deemp_strength"] = extra_options.get("deemp_str", 1.0)
+        shelf = extra_options.get("chroma_shelf_boost")
+        self.DecoderParams["chroma_shelf_boost"] = shelf if shelf is not None else 1.0
 
         linelen = self.freq_hz / (1000000.0 / self.SysParams["line_period"])
         self.linelen = int(np.round(linelen))
@@ -695,8 +699,28 @@ class RFDecode:
         # The direct opposite of the above, used in test signal generation
         SF["Femp"] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
 
-        # Post processing:  lowpass filter + deemp
-        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP['video_deemp_strength'])
+        # De-emphasis magnitude at fsc for auto-calibration.
+        fsc_hz = SP["fsc_mhz"] * 1e6
+        fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
+        self.deemp_mag_at_fsc = np.abs(SF["Fdeemp"][fsc_bin])
+
+        # Post processing:  lowpass filter + de-emphasis + optional chroma shelf.
+        # When auto-deemp is active, deemp_strength stays at 1.0 (full
+        # de-emphasis — avoids luma overshoot on sharp transitions) and a
+        # zero-phase chroma shelf boost compensates for disc pre-emphasis
+        # deficit at fsc without affecting low-frequency luma.
+        # When --deemp_strength is set manually, the scalar exponent is used
+        # directly (legacy behaviour).
+        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
+
+        chroma_boost = DP.get("chroma_shelf_boost", 1.0)
+        if chroma_boost != 1.0:
+            freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
+            crossover_lo = 2.0e6
+            crossover_hi = fsc_hz
+            blend = np.clip((freq_array - crossover_lo) / (crossover_hi - crossover_lo), 0.0, 1.0)
+            SF["Fchroma_shelf"] = 1.0 + blend * (chroma_boost - 1.0)
+            SF["FVideo"] = SF["FVideo"] * SF["Fchroma_shelf"]
 
         # Correct the post-demod video group delay to the IEC spec curve the
         # disc was pre-distorted against (PAL: IEC 60856 9.1.6, NTSC: IEC 60857
@@ -740,6 +764,30 @@ class RFDecode:
                 self.blocklen,
             )
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
+
+    def recompute_fvideo(self):
+        """Rebuild only FVideo after a chroma_shelf_boost change.
+
+        Much cheaper than computefilters() — doesn't touch audio, EFM,
+        delays, or any other filter.  Only the main video output path
+        is affected (burst/sync/pilot reference paths are unchanged).
+        """
+        SF = self.Filters
+        DP = self.DecoderParams
+        fsc_hz = self.SysParams["fsc_mhz"] * 1e6
+
+        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
+
+        chroma_boost = DP.get("chroma_shelf_boost", 1.0)
+        if chroma_boost != 1.0:
+            freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
+            crossover_lo = 2.0e6
+            crossover_hi = fsc_hz
+            blend = np.clip((freq_array - crossover_lo) / (crossover_hi - crossover_lo), 0.0, 1.0)
+            SF["Fchroma_shelf"] = 1.0 + blend * (chroma_boost - 1.0)
+            SF["FVideo"] = SF["FVideo"] * SF["Fchroma_shelf"]
+
+        SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 
     def computeaudiofilters(self):
         SP = self.SysParams
@@ -3218,6 +3266,10 @@ class LDdecode:
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
 
+        self.auto_deemp = extra_options.get("auto_deemp", True)
+        self.deemp_calibrated = not self.auto_deemp
+        self._deemp_burst_samples = []
+
         self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
@@ -3425,6 +3477,59 @@ class LDdecode:
             self.mtf_level = np.clip((np.mean(self.bw_ratios) - 1.08) / 0.38, 0, 1)
 
         return np.abs(self.mtf_level - oldmtf) < 0.05
+
+    # Alpha below which full-swing (0-100 IRE) overshoot exceeds ~1% above
+    # the Butterworth LPF baseline (~4%).  Measured on line 20 VITS.
+    AUTO_DEEMP_FLOOR = 0.96
+
+    def checkAutoDeemp(self, field):
+        """Reduce de-emphasis strength to the overshoot-free floor.
+
+        Returns True if no adjustment was needed, False if filters were
+        recomputed (caller should redo the field).  Collects burst
+        measurements over the first few fields (so MTF has time to settle),
+        then calibrates once and stays locked.
+
+        The target alpha is the larger of AUTO_DEEMP_FLOOR and the value
+        that would fully correct burst amplitude.  This improves rise
+        time without introducing overshoot; chroma is only partially
+        corrected (use --chroma_shelf_boost for full correction).
+        """
+        if self.deemp_calibrated:
+            return True
+
+        if field.burstmedian <= 5:
+            return True
+
+        self._deemp_burst_samples.append(field.burstmedian)
+
+        if len(self._deemp_burst_samples) < 3:
+            return True
+
+        expected = self.rf.SysParams["burst_ire"]
+        measured = np.median(self._deemp_burst_samples)
+        D = self.rf.deemp_mag_at_fsc
+
+        self.deemp_calibrated = True
+
+        if measured <= 0 or D <= 0 or D >= 1:
+            return True
+
+        alpha_old = self.rf.DecoderParams["video_deemp_strength"]
+        alpha_full = alpha_old + np.log(expected / measured) / np.log(D)
+        alpha_new = float(np.clip(max(alpha_full, self.AUTO_DEEMP_FLOOR), 0.0, 1.5))
+
+        if abs(alpha_new - alpha_old) < 0.02:
+            return True
+
+        logger.info(
+            f"Auto de-emphasis: burst {measured:.1f} IRE "
+            f"(expected {expected:.1f}), "
+            f"strength {alpha_old:.3f} → {alpha_new:.3f}"
+        )
+        self.rf.DecoderParams["video_deemp_strength"] = alpha_new
+        self.rf.recompute_fvideo()
+        return False
 
     @profile
     def detectLevels(self, field):
@@ -3777,6 +3882,7 @@ class LDdecode:
                 self.bw_ratios = self.bw_ratios[-keep:]
 
             redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
+            redo = redo or not self.checkAutoDeemp(f)
 
             redo = self._adjust_agc(f, redo)
 

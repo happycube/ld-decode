@@ -206,8 +206,15 @@ def main(args=None):
         "--deemp_strength",
         metavar="deemp_str",
         type=float,
-        default=1,
-        help="Strength of deemphasis (default 1.0)",
+        default=0.96,
+        help="Strength of deemphasis (default 0.96)",
+    )
+    parser.add_argument(
+        "--chroma_shelf_boost",
+        metavar="boost",
+        type=float,
+        default=None,
+        help="Zero-phase chroma shelf boost above 2 MHz (e.g., 1.25 for +25%% at fsc)",
     )
 
     parser.add_argument(
@@ -365,6 +372,8 @@ def main(args=None):
         "write_pre_efm": args.prefm,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength,
+        "auto_deemp": False,
+        "chroma_shelf_boost": args.chroma_shelf_boost,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
         "audio_filterwidth": args.audio_filterwidth,
