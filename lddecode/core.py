@@ -48,10 +48,8 @@ from .utils import (
     hz_to_output_array,
     inrange,
     ldf_pipe,
-    _dropout_unflag_sync,
     n_orgt,
     n_ornotrange,
-    n_ornotrange_scalar,
     nb_abs,
     nb_absmax,
     nb_max,
@@ -112,6 +110,7 @@ SysParams_NTSC = {
     "ire0": 8100000,
     "hz_ire": 1700000 / 140.0,
     "vsync_ire": -40,
+    "burst_ire": 20.0,
     # most NTSC disks have analog audio, except CD-V and a few Panasonic demos
     "analog_audio": True,
     # From the spec - audio frequencies are multiples of the (color) line rate
@@ -204,6 +203,7 @@ SysParams_PAL["outlinelen_pilot"] = calclinelen(SysParams_PAL, 4, "pilot_mhz")
 SysParams_PAL["outfreq"] = 4 * SysParams_PAL["fsc_mhz"]
 
 SysParams_PAL["vsync_ire"] = -0.3 * (100 / 0.7)
+SysParams_PAL["burst_ire"] = 150 / 7.0
 
 FilterParams_NTSC = {
     # The audio notch filters are important with DD v3.0+ boards
@@ -1260,7 +1260,7 @@ class DemodCache:
         ''' return_on_empty is used when running non-threaded so this can be
             directly called '''
 
-        rf = RFDecode(**self.rf_args)
+        rf = self.rf if return_on_empty else RFDecode(**self.rf_args)
 
         while True:
             if return_on_empty and self.q_in.qsize() == 0:
@@ -1296,7 +1296,13 @@ class DemodCache:
                 if output:
                     self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
-                self.apply_newparams(item[1])
+                newparams = item[1]
+                for k in newparams.keys():
+                    if k in rf.SysParams:
+                        rf.SysParams[k] = newparams[k]
+                    if k in rf.DecoderParams:
+                        rf.DecoderParams[k] = newparams[k]
+                rf.computefilters()
 
     @profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
@@ -1511,8 +1517,8 @@ class DemodCache:
         return rv
 
     def setparams(self, params):
-        for p in self.threadpipes:
-            p[0].send(("NEWPARAMS", params))
+        for _ in self.threads:
+            self.q_in.put(("NEWPARAMS", params))
 
         # Apply params to the core thread, so they match up with the decoders
         self.apply_newparams(params)
@@ -3752,6 +3758,10 @@ class LDdecode:
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
 
+        self.auto_deemp = extra_options.get("auto_deemp", True)
+        self.deemp_calibrated = not self.auto_deemp
+        self._deemp_burst_samples = []
+
         self.verboseVITS = False
 
         self.demodcache = DemodCache(
@@ -3983,6 +3993,7 @@ class LDdecode:
         )
         self.rf.DecoderParams["inverse_mtf_strength"] = strength
         self.rf.recompute_fvideo()
+        self.demodcache.setparams({"inverse_mtf_strength": strength})
         return False
 
 
@@ -4313,6 +4324,7 @@ class LDdecode:
                     self.bw_ratios = self.bw_ratios[-keep:]
 
                 redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
+                redo = redo or not self.checkAutoDeemp(f)
                 if redo:
                     redo = self.fdoffset - offset
 
