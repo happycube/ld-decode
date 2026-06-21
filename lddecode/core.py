@@ -29,6 +29,7 @@ from .utils import (
     build_hilbert,
     calczc,
     clb_findbursts,
+    compute_mtf,
     dsa_rescale_and_clip,
     emphasis_iir,
     fft_determine_slices,
@@ -418,8 +419,7 @@ class RFDecode:
 
         self.DecoderParams["video_deemp"]          = deemp
         self.DecoderParams["video_deemp_strength"] = extra_options.get("deemp_str", 1.0)
-        shelf = extra_options.get("chroma_shelf_boost")
-        self.DecoderParams["chroma_shelf_boost"] = shelf if shelf is not None else 1.0
+        self.DecoderParams["inverse_mtf_strength"] = 0.0
 
         linelen = self.freq_hz / (1000000.0 / self.SysParams["line_period"])
         self.linelen = int(np.round(linelen))
@@ -699,28 +699,34 @@ class RFDecode:
         # The direct opposite of the above, used in test signal generation
         SF["Femp"] = filtfft(emphasis_iir(deemp2, deemp1, self.freq_hz), self.blocklen)
 
-        # De-emphasis magnitude at fsc for auto-calibration.
         fsc_hz = SP["fsc_mhz"] * 1e6
-        fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
-        self.deemp_mag_at_fsc = np.abs(SF["Fdeemp"][fsc_bin])
 
-        # Post processing:  lowpass filter + de-emphasis + optional chroma shelf.
-        # When auto-deemp is active, deemp_strength stays at 1.0 (full
-        # de-emphasis — avoids luma overshoot on sharp transitions) and a
-        # zero-phase chroma shelf boost compensates for disc pre-emphasis
-        # deficit at fsc without affecting low-frequency luma.
-        # When --deemp_strength is set manually, the scalar exponent is used
-        # directly (legacy behaviour).
+        # Inverse-MTF chroma correction: a zero-phase (real-valued) filter
+        # whose shape comes from the disc's optical MTF.  Frequencies below
+        # ~2 MHz are unity; above, the filter boosts proportionally to the
+        # inverse of the MTF, raised to `inverse_mtf_strength`.  At strength 0
+        # there is no boost; auto-calibration sets the strength from burst
+        # amplitude measurements so that chroma recovers to spec level with
+        # zero differential-phase cost (unlike de-emphasis adjustment).
+        freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
+        crossover = 2.0e6
+        mtf_at_crossover = compute_mtf(crossover, cavframe=0)
+        mtf_vals = compute_mtf(freq_array.copy(), cavframe=0)
+        mtf_norm = np.clip(mtf_vals / mtf_at_crossover, 0.05, 1.0)
+        SF["Finverse_mtf_base"] = 1.0 / mtf_norm
+
+        fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
+        self.inverse_mtf_log_at_fsc = np.log(SF["Finverse_mtf_base"][fsc_bin])
+
+        # Post processing: lowpass filter + full de-emphasis + inverse MTF
+        # chroma correction + group-delay equaliser.  De-emphasis stays at
+        # full strength (1.0) for correct phase; the inverse MTF handles
+        # chroma amplitude separately with zero phase contribution.
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
 
-        chroma_boost = DP.get("chroma_shelf_boost", 1.0)
-        if chroma_boost != 1.0:
-            freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
-            crossover_lo = 2.0e6
-            crossover_hi = fsc_hz
-            blend = np.clip((freq_array - crossover_lo) / (crossover_hi - crossover_lo), 0.0, 1.0)
-            SF["Fchroma_shelf"] = 1.0 + blend * (chroma_boost - 1.0)
-            SF["FVideo"] = SF["FVideo"] * SF["Fchroma_shelf"]
+        imtf_strength = DP.get("inverse_mtf_strength", 0.0)
+        if imtf_strength > 0:
+            SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         # Correct the post-demod video group delay to the IEC spec curve the
         # disc was pre-distorted against (PAL: IEC 60856 9.1.6, NTSC: IEC 60857
@@ -766,7 +772,7 @@ class RFDecode:
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
 
     def recompute_fvideo(self):
-        """Rebuild only FVideo after a chroma_shelf_boost change.
+        """Rebuild only FVideo after an inverse MTF strength change.
 
         Much cheaper than computefilters() — doesn't touch audio, EFM,
         delays, or any other filter.  Only the main video output path
@@ -774,18 +780,12 @@ class RFDecode:
         """
         SF = self.Filters
         DP = self.DecoderParams
-        fsc_hz = self.SysParams["fsc_mhz"] * 1e6
 
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
 
-        chroma_boost = DP.get("chroma_shelf_boost", 1.0)
-        if chroma_boost != 1.0:
-            freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
-            crossover_lo = 2.0e6
-            crossover_hi = fsc_hz
-            blend = np.clip((freq_array - crossover_lo) / (crossover_hi - crossover_lo), 0.0, 1.0)
-            SF["Fchroma_shelf"] = 1.0 + blend * (chroma_boost - 1.0)
-            SF["FVideo"] = SF["FVideo"] * SF["Fchroma_shelf"]
+        imtf_strength = DP.get("inverse_mtf_strength", 0.0)
+        if imtf_strength > 0:
+            SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 
@@ -3478,22 +3478,18 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < 0.05
 
-    # Alpha below which full-swing (0-100 IRE) overshoot exceeds ~1% above
-    # the Butterworth LPF baseline (~4%).  Measured on line 20 VITS.
-    AUTO_DEEMP_FLOOR = 0.96
-
     def checkAutoDeemp(self, field):
-        """Reduce de-emphasis strength to the overshoot-free floor.
+        """Calibrate inverse-MTF chroma correction from burst amplitude.
 
         Returns True if no adjustment was needed, False if filters were
         recomputed (caller should redo the field).  Collects burst
         measurements over the first few fields (so MTF has time to settle),
         then calibrates once and stays locked.
 
-        The target alpha is the larger of AUTO_DEEMP_FLOOR and the value
-        that would fully correct burst amplitude.  This improves rise
-        time without introducing overshoot; chroma is only partially
-        corrected (use --chroma_shelf_boost for full correction).
+        De-emphasis stays at full strength (1.0) for correct phase response.
+        The inverse MTF filter is a zero-phase (real-valued) correction
+        whose shape follows the disc's optical MTF; its strength is set so
+        burst amplitude matches the spec value.
         """
         if self.deemp_calibrated:
             return True
@@ -3508,26 +3504,29 @@ class LDdecode:
 
         expected = self.rf.SysParams["burst_ire"]
         measured = np.median(self._deemp_burst_samples)
-        D = self.rf.deemp_mag_at_fsc
+        log_base = self.rf.inverse_mtf_log_at_fsc
 
         self.deemp_calibrated = True
 
-        if measured <= 0 or D <= 0 or D >= 1:
+        if measured <= 0 or log_base <= 0:
             return True
 
-        alpha_old = self.rf.DecoderParams["video_deemp_strength"]
-        alpha_full = alpha_old + np.log(expected / measured) / np.log(D)
-        alpha_new = float(np.clip(max(alpha_full, self.AUTO_DEEMP_FLOOR), 0.0, 1.5))
-
-        if abs(alpha_new - alpha_old) < 0.02:
+        if measured >= expected:
             return True
 
-        logger.info(
-            f"Auto de-emphasis: burst {measured:.1f} IRE "
+        strength = float(np.clip(
+            np.log(expected / measured) / log_base, 0.0, 2.0
+        ))
+
+        if strength < 0.02:
+            return True
+
+        logger.debug(
+            f"Auto inverse-MTF chroma: burst {measured:.1f} IRE "
             f"(expected {expected:.1f}), "
-            f"strength {alpha_old:.3f} → {alpha_new:.3f}"
+            f"inverse_mtf_strength 0.000 → {strength:.3f}"
         )
-        self.rf.DecoderParams["video_deemp_strength"] = alpha_new
+        self.rf.DecoderParams["inverse_mtf_strength"] = strength
         self.rf.recompute_fvideo()
         return False
 
