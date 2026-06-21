@@ -170,12 +170,20 @@ SysParams_PAL["vsync_ire"] = -0.3 * (100 / 0.7)
 
 FilterParams_NTSC = {
     # The audio notch filters are important with DD v3.0+ boards
-    "audio_notchwidth": 350000,
+    "audio_notchwidth": 200000,
     "audio_notchorder": 2,
     "video_deemp": (120e-9, 320e-9),
-    # This BPF is similar but not *quite* identical to what Pioneer did
+    # NTSC builds its RF video filter as a split high-pass (low edge) + low-pass
+    # (high edge) cascade so the two skirts can be shaped independently
+    # (see computevideofilters).  The low edge is kept gentle (order 2) to
+    # protect the lower chroma sideband (~4.5 MHz at blanking) and its group
+    # delay; the high edge is sharper to reject HF noise while keeping the
+    # upper chroma sideband (~11.7 MHz) flat.
     "video_bpf_low": 3700000,
+    "video_bpf_low_order": 2,
     "video_bpf_high": 13800000,
+    "video_bpf_high_order": 3,
+    # video_bpf_order is retained for the --lowband override.
     "video_bpf_order": 4,
     # This can easily be pushed up to 4.5mhz or even a bit higher on most disks.
     # A sharp 4.8-5.0 is probably the maximum before the audio carriers bleed into 0IRE.
@@ -489,18 +497,19 @@ class RFDecode:
         ]
 
     def build_groupdelay_equalizer(self, lpf_fft):
-        """All-pass equaliser matching the IEC 60856 sub-clause 9.1.6 video
-        group-delay pre-distortion (PAL).
+        """All-pass equaliser matching the IEC video group-delay pre-distortion.
+
+        PAL:  IEC 60856 sub-clause 9.1.6
+        NTSC: IEC 60857 sub-clause 9.1.7
 
         The disc is recorded with its video group delay pre-distorted so that
         the playback low-pass filter brings the overall group delay flat across
-        the chroma band.  ld-decode's Butterworth video LPF undershoots that
-        target (only ~+99 ns at 4.43 MHz where the spec wants +135 ns, and
-        ~+128 vs +200 ns at 4.8 MHz), leaving the chroma sidebands sloped, which
-        smears colour.
+        the chroma band.  ld-decode's Butterworth video LPF undershoots the
+        target, leaving the chroma sidebands sloped, which smears colour and
+        contributes to differential phase.
 
         This returns a unit-magnitude (all-pass) FFT-domain filter whose group
-        delay equals target - LPF, so that LPF * equaliser reproduces the 9.1.6
+        delay equals target - LPF, so that LPF * equaliser reproduces the spec
         curve.  De-emphasis is deliberately left out of the basis: its group
         delay is cancelled end-to-end by the disc's (inverse) pre-emphasis, so
         only the LPF's deviation needs correcting.
@@ -509,11 +518,18 @@ class RFDecode:
         fs = self.freq_hz
         binfreq = np.abs(np.fft.fftfreq(blocklen, 1.0 / fs))
 
-        # IEC 60856 9.1.6 target group delay relative to 0.5 MHz, in seconds
-        # (the spec tabulates pre-distortion of -10/-35/-85/-135/-200 ns; the
-        # playback chain must supply the inverse, held flat above 4.8 MHz).
-        gd_f = np.array([0.0, 0.5e6, 2.0e6, 3.0e6, 4.0e6, 4.4336e6, 4.8e6, 5.5e6])
-        gd_t = np.array([0.0, 0.0, 10e-9, 35e-9, 85e-9, 135e-9, 200e-9, 200e-9])
+        if self.system == "PAL":
+            # IEC 60856 9.1.6 target group delay relative to 0.5 MHz, in seconds
+            # (the spec tabulates pre-distortion of -10/-35/-85/-135/-200 ns; the
+            # playback chain must supply the inverse, held flat above 4.8 MHz).
+            gd_f = np.array([0.0, 0.5e6, 2.0e6, 3.0e6, 4.0e6, 4.4336e6, 4.8e6, 5.5e6])
+            gd_t = np.array([0.0, 0.0, 10e-9, 35e-9, 85e-9, 135e-9, 200e-9, 200e-9])
+        else:
+            # IEC 60857 9.1.7 target group delay relative to 0.5 MHz, in seconds
+            # (the spec tabulates pre-distortion of -15/-45/-80/-135/-200 ns; the
+            # playback chain must supply the inverse, held flat above 4.2 MHz).
+            gd_f = np.array([0.0, 0.5e6, 2.0e6, 3.0e6, 3.58e6, 4.0e6, 4.2e6, 4.8e6])
+            gd_t = np.array([0.0, 0.0, 15e-9, 45e-9, 80e-9, 135e-9, 200e-9, 200e-9])
         target = np.interp(binfreq, gd_f, gd_t)
 
         # actual LPF group delay = -d(phase)/d(omega)
@@ -570,15 +586,12 @@ class RFDecode:
         MTF = sps.zpk2tf([], [to_z(MTF_polef_lo), to_z(MTF_polef_hi)], 1)
         SF["MTF"] = filtfft(MTF, self.blocklen)
 
-        # The BPF filter, defined for each system in DecoderParams
-        if self.system == "PAL":
-            # PAL: build the RF band-pass as a separate high-pass (low edge) and
-            # low-pass (high edge) so each skirt can be ordered independently.
-            # The low edge stays gentle to avoid loading the lower chroma
-            # sideband (~2.67 MHz) with group delay; the high edge is sharper to
-            # trim HF noise and the folded upper-J2 product without touching the
-            # chroma sidebands.  Behaviour on the low edge is identical to the
-            # previous order-2 band-pass.
+        # The BPF filter, defined for each system in DecoderParams.
+        # When split skirt parameters are available, build as independent
+        # high-pass (low edge) + low-pass (high edge) so each can be ordered
+        # separately — gentler low edge protects the lower chroma sideband and
+        # its group delay, sharper high edge rejects HF noise.
+        if "video_bpf_low_order" in DP:
             filt_rfvideo_hp = sps.butter(
                 DP["video_bpf_low_order"],
                 DP["video_bpf_low"] / self.freq_hz_half,
@@ -589,7 +602,6 @@ class RFDecode:
                 DP["video_bpf_high"] / self.freq_hz_half,
                 btype="lowpass",
             )
-            # Start building up the combined FFT filter using the split BPF
             SF["RFVideo"] = filtfft(filt_rfvideo_hp, self.blocklen) * filtfft(
                 filt_rfvideo_lp, self.blocklen
             )
@@ -599,7 +611,6 @@ class RFDecode:
                 self.freqrange(DP["video_bpf_low"], DP["video_bpf_high"]),
                 btype="bandpass",
             )
-            # Start building up the combined FFT filter using the BPF
             SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
 
         # Notch filters for analog audio RF.  DdD captures on NTSC need this.
@@ -650,14 +661,15 @@ class RFDecode:
         # Post processing:  lowpass filter + deemp
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP['video_deemp_strength'])
 
-        # PAL: correct the post-demod video group delay to the IEC 60856 9.1.6
-        # curve the disc was pre-distorted against (the Butterworth LPF alone
-        # undershoots it across the chroma band, smearing colour).  This is a
-        # pure all-pass, so |FVideo| is unchanged; only the output video path is
-        # equalised (the burst/pilot/sync reference paths are left as-is).
-        if self.system == "PAL":
-            SF["FVideoGD"] = self.build_groupdelay_equalizer(SF["Fvideo_lpf"])
-            SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
+        # Correct the post-demod video group delay to the IEC spec curve the
+        # disc was pre-distorted against (PAL: IEC 60856 9.1.6, NTSC: IEC 60857
+        # 9.1.7).  The Butterworth LPF alone undershoots the target across the
+        # chroma band, smearing colour and contributing to differential phase.
+        # This is a pure all-pass, so |FVideo| is unchanged; only the output
+        # video path is equalised (the burst/pilot/sync reference paths are
+        # left as-is).
+        SF["FVideoGD"] = self.build_groupdelay_equalizer(SF["Fvideo_lpf"])
+        SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 
         # additional filters:  0.5mhz and color burst
         # Using an FIR filter here to get a known delay
@@ -3495,10 +3507,11 @@ class FieldNTSC(Field):
 
         self.burstmedian = self.calc_burstmedian()
 
-        # Now adjust the phase to get the downscaled image onto I/Q color axis
-        # (This should be 33 but this is what makes it line up)
-        shift33 = 83 * (np.pi / 180)
-        self.linelocs = self.apply_offsets(self.linelocs4, -shift33 - 0)
+        # Subcarrier phase offset in degrees, calibrated for correct NTSC
+        # burst phase (~147°) at the output.
+        fsc_phase_deg = 117.25
+        shift_samples = (fsc_phase_deg / 360) / self.rf.SysParams["fsc_mhz"] * self.rf.freq
+        self.linelocs = np.array(self.linelocs4) - shift_samples
 
 
 class LDdecode:
