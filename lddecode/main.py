@@ -207,7 +207,7 @@ def main(args=None):
         metavar="deemp_str",
         type=float,
         default=None,
-        help="Strength of deemphasis (default: 1.0; disables auto inverse-MTF chroma calibration)",
+        help="Strength of deemphasis (default: NTSC 0.96, PAL 1.0; disables auto optical EQ)",
     )
 
     parser.add_argument(

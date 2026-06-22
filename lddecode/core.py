@@ -418,7 +418,6 @@ class RFDecode:
         self.DecoderParams["video_deemp"]          = deemp
         default_deemp_str = 0.96 if system == "NTSC" else 1.0
         self.DecoderParams["video_deemp_strength"] = extra_options.get("deemp_str", default_deemp_str)
-        self.DecoderParams["inverse_mtf_strength"] = 0.0
 
         linelen = self.freq_hz / (1000000.0 / self.SysParams["line_period"])
         self.linelen = int(np.round(linelen))
@@ -699,32 +698,23 @@ class RFDecode:
 
         fsc_hz = SP["fsc_mhz"] * 1e6
 
-        # Inverse-MTF chroma correction: a zero-phase (real-valued) filter
-        # whose shape comes from the disc's optical MTF.  Frequencies below
-        # ~2 MHz are unity; above, the filter boosts proportionally to the
-        # inverse of the MTF, raised to `inverse_mtf_strength`.  At strength 0
-        # there is no boost; auto-calibration sets the strength from burst
-        # amplitude measurements so that chroma recovers to spec level with
-        # zero differential-phase cost (unlike de-emphasis adjustment).
+        # Optical EQ: zero-phase (real-valued) filter shaped by the disc's
+        # optical MTF.  Unity below ~2 MHz; above, it boosts proportionally
+        # to the inverse MTF.  Applied as (FOpticalEQ ** strength) in
+        # demodblock, like the existing MTF path.  Auto-calibration sets
+        # strength from burst amplitude so chroma recovers to spec level
+        # with zero differential-phase cost.
         freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
         crossover = 2.0e6
         mtf_at_crossover = compute_mtf(crossover, cavframe=0)
         mtf_vals = compute_mtf(freq_array.copy(), cavframe=0)
         mtf_norm = np.clip(mtf_vals / mtf_at_crossover, 0.05, 1.0)
-        SF["Finverse_mtf_base"] = 1.0 / mtf_norm
+        SF["FOpticalEQ"] = 1.0 / mtf_norm
 
         fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
-        self.inverse_mtf_log_at_fsc = np.log(SF["Finverse_mtf_base"][fsc_bin])
+        self.optical_eq_log_at_fsc = np.log(SF["FOpticalEQ"][fsc_bin])
 
-        # Post processing: lowpass filter + full de-emphasis + inverse MTF
-        # chroma correction + group-delay equaliser.  De-emphasis stays at
-        # full strength (1.0) for correct phase; the inverse MTF handles
-        # chroma amplitude separately with zero phase contribution.
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
-
-        imtf_strength = DP.get("inverse_mtf_strength", 0.0)
-        if imtf_strength > 0:
-            SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         # Correct the post-demod video group delay to the IEC spec curve the
         # disc was pre-distorted against (PAL: IEC 60856 9.1.6, NTSC: IEC 60857
@@ -762,18 +752,6 @@ class RFDecode:
             )
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
 
-    def recompute_fvideo(self):
-        """Rebuild only FVideo after an inverse MTF strength change."""
-        SF = self.Filters
-        DP = self.DecoderParams
-
-        SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
-
-        imtf_strength = DP.get("inverse_mtf_strength", 0.0)
-        if imtf_strength > 0:
-            SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
-
-        SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 
 
     def computeaudiofilters(self):
@@ -842,15 +820,15 @@ class RFDecode:
         params = self.SysParams if spec else self.DecoderParams
         return (hz - params["ire0"]) / params["hz_ire"]
 
-    def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
+    def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False, optical_eq_level=0):
         mtf_level *= self.mtf_mult
         mtf_level += self.mtf_offset
         mtf_level *= self.DecoderParams["MTF_basemult"]
 
-        return self.demodblock_cpu(data, mtf_level, fftdata, cut)
+        return self.demodblock_cpu(data, mtf_level, fftdata, cut, optical_eq_level)
 
 
-    def demodblock_cpu(self, data=None, mtf_level=0, fftdata=None, cut=False):
+    def demodblock_cpu(self, data=None, mtf_level=0, fftdata=None, cut=False, optical_eq_level=0):
         rv = {}
 
         if fftdata is not None:
@@ -906,7 +884,10 @@ class RFDecode:
         # use a clipped demod for video output processing to reduce speckling impact
         demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
 
-        out_video = npfft.ifft(demod_fft * self.Filters["FVideo"]).real
+        fvideo = self.Filters["FVideo"]
+        if optical_eq_level > 0:
+            fvideo = fvideo * (self.Filters["FOpticalEQ"] ** optical_eq_level)
+        out_video = npfft.ifft(demod_fft * fvideo).real
 
         out_video05 = npfft.ifft(demod_fft * self.Filters["FVideo05"]).real
         out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
@@ -1165,8 +1146,9 @@ class DemodCache:
         self.rf = rf
         self.rf_args = rf_args
 
-        self.currentMTF      = 1
-        self.MTF_tolerance   = MTF_tolerance
+        self.currentMTF        = 1
+        self.MTF_tolerance     = MTF_tolerance
+        self.optical_eq_level  = 0
 
         self.blocksize       = self.rf.blocklen - (self.rf.blockcut + self.rf.blockcut_end)
 
@@ -1260,7 +1242,7 @@ class DemodCache:
         ''' return_on_empty is used when running non-threaded so this can be
             directly called '''
 
-        rf = self.rf if return_on_empty else RFDecode(**self.rf_args)
+        rf = RFDecode(**self.rf_args)
 
         while True:
             if return_on_empty and self.q_in.qsize() == 0:
@@ -1272,7 +1254,7 @@ class DemodCache:
                 return
 
             if item[0] == "DEMOD":
-                blocknum, block, target_MTF, request = item[1:]
+                blocknum, block, target_MTF, request, oeq_level = item[1:]
 
                 output = {}
 
@@ -1287,7 +1269,8 @@ class DemodCache:
                     or np.abs(block["MTF"] - target_MTF) > self.MTF_tolerance
                 ):
                     output["demod"] = rf.demodblock(
-                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True
+                        data=block["rawinput"], fftdata=fftdata, mtf_level=target_MTF, cut=True,
+                        optical_eq_level=oeq_level,
                     )
 
                     output["MTF"] = target_MTF
@@ -1296,13 +1279,7 @@ class DemodCache:
                 if output:
                     self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
-                newparams = item[1]
-                for k in newparams.keys():
-                    if k in rf.SysParams:
-                        rf.SysParams[k] = newparams[k]
-                    if k in rf.DecoderParams:
-                        rf.DecoderParams[k] = newparams[k]
-                rf.computefilters()
+                self.apply_newparams(item[1])
 
     @profile
     def doread(self, blocknums, MTF, redo=False, prefetch=False):
@@ -1379,7 +1356,7 @@ class DemodCache:
                 self.blocks[b]['prefetch'] = prefetch
                 if not prefetch:
                     self.waiting.add(b)
-                self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request))
+                self.q_in.put(("DEMOD", b, self.blocks[b], MTF, self.request, self.optical_eq_level))
 
         return None if reached_end else need_blocks
 
@@ -1517,8 +1494,8 @@ class DemodCache:
         return rv
 
     def setparams(self, params):
-        for _ in self.threads:
-            self.q_in.put(("NEWPARAMS", params))
+        for p in self.threadpipes:
+            p[0].send(("NEWPARAMS", params))
 
         # Apply params to the core thread, so they match up with the decoders
         self.apply_newparams(params)
@@ -3758,9 +3735,10 @@ class LDdecode:
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
 
-        self.auto_deemp = extra_options.get("auto_deemp", True)
-        self.deemp_calibrated = not self.auto_deemp
-        self._deemp_burst_samples = []
+        auto_optical_eq = extra_options.get("auto_deemp", True)
+        self.optical_eq_calibrated = not auto_optical_eq
+        self.optical_eq_level = 0
+        self._optical_eq_burst_samples = []
 
         self.verboseVITS = False
 
@@ -3954,24 +3932,29 @@ class LDdecode:
 
         return np.abs(self.mtf_level - oldmtf) < 0.05
 
-    def checkAutoDeemp(self, field):
-        """Calibrate inverse-MTF chroma correction from burst amplitude."""
-        if self.deemp_calibrated:
+    def checkOpticalEQ(self, field):
+        """Calibrate optical EQ from burst amplitude.
+
+        Returns True if no adjustment was needed, False if strength was
+        set (caller should redo the field).  Collects burst measurements
+        over the first few fields, then calibrates once and locks.
+        """
+        if self.optical_eq_calibrated:
             return True
 
         if field.burstmedian <= 5:
             return True
 
-        self._deemp_burst_samples.append(field.burstmedian)
+        self._optical_eq_burst_samples.append(field.burstmedian)
 
-        if len(self._deemp_burst_samples) < 3:
+        if len(self._optical_eq_burst_samples) < 3:
             return True
 
         expected = self.rf.SysParams["burst_ire"]
-        measured = np.median(self._deemp_burst_samples)
-        log_base = self.rf.inverse_mtf_log_at_fsc
+        measured = np.median(self._optical_eq_burst_samples)
+        log_base = self.rf.optical_eq_log_at_fsc
 
-        self.deemp_calibrated = True
+        self.optical_eq_calibrated = True
 
         if measured <= 0 or log_base <= 0:
             return True
@@ -3987,13 +3970,12 @@ class LDdecode:
             return True
 
         logger.debug(
-            f"Auto inverse-MTF chroma: burst {measured:.1f} IRE "
+            f"Auto optical EQ: burst {measured:.1f} IRE "
             f"(expected {expected:.1f}), "
-            f"inverse_mtf_strength 0.000 → {strength:.3f}"
+            f"optical_eq_level 0.000 → {strength:.3f}"
         )
-        self.rf.DecoderParams["inverse_mtf_strength"] = strength
-        self.rf.recompute_fvideo()
-        self.demodcache.setparams({"inverse_mtf_strength": strength})
+        self.optical_eq_level = strength
+        self.demodcache.optical_eq_level = strength
         return False
 
 
@@ -4324,7 +4306,7 @@ class LDdecode:
                     self.bw_ratios = self.bw_ratios[-keep:]
 
                 redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
-                redo = redo or not self.checkAutoDeemp(f)
+                redo = redo or not self.checkOpticalEQ(f)
                 if redo:
                     redo = self.fdoffset - offset
 
