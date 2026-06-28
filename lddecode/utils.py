@@ -426,7 +426,7 @@ class LoadFFmpeg:
         # Keep a buffer of recently-read data, to allow seeking backwards by
         # small amounts. The last byte returned by ffmpeg is at the end of
         # this buffer.
-        self.rewind_size = 2 * 1024 * 1024
+        self.rewind_size = 16 * 1024 * 1024
         self.rewind_buf = b""
 
     def _close(self):
