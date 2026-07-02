@@ -35,7 +35,6 @@ from .utils import (
     fft_determine_slices,
     fft_do_slice,
     filtfft,
-    findpeaks,
     findpulses,
     gen_bpf_supergauss,
     genwave,
@@ -866,8 +865,12 @@ class RFDecode:
         p = self._params(spec)
         return (hz - p["ire0"]) / p["hz_ire"]
 
-    def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False):
-        mtf_level = (mtf_level * self.mtf_mult + self.mtf_offset) * self.DecoderParams["MTF_basemult"]
+    def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False,
+                   raw_mtf=False):
+        # raw_mtf: use mtf_level as-is (delay calibration passes the true
+        # filter level); otherwise scale by the disc/player MTF model.
+        if not raw_mtf:
+            mtf_level = (mtf_level * self.mtf_mult + self.mtf_offset) * self.DecoderParams["MTF_basemult"]
         rv = {}
 
         if fftdata is not None:
@@ -1006,7 +1009,7 @@ class RFDecode:
     def runfilter_audio_phase2(self, frame_audio, start):
         outputs = []
 
-        clips = None
+        clipmask = None
 
         for acname, center_freq, channel in [
             ["audio_left", self.SysParams["audio_lfreq"], "left"],
@@ -1018,11 +1021,21 @@ class RFDecode:
             raw -= center_freq
 
             if acname == "audio_left":
-                clips = findpeaks(raw, 500000)
-
-            for clip in clips:
+                # Flag clip/dropout excursions (>500 kHz deviation), widened
+                # by 8 samples each side.  The whole excursion is blanked,
+                # not just its peak, and the same mask is applied to both
+                # channels.
                 replacelen = 8
-                raw[max(0, clip - replacelen) : min(clip + replacelen, len(raw))] = 0
+                clipmask = raw > 500000
+                if np.any(clipmask):
+                    clipmask = np.convolve(
+                        clipmask.astype(np.float32),
+                        np.ones(2 * replacelen + 1, dtype=np.float32),
+                        mode="same",
+                    ) > 0
+
+            if clipmask is not None:
+                raw[clipmask] = 0
 
             a2_in_real = raw
             if len(a2_in_real) < len(self.audio[channel].audio2_filter):
@@ -1140,7 +1153,7 @@ class RFDecode:
         fakesignal += 8192
         fakesignal[6000:6005] = 0
 
-        fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level)
+        fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level, raw_mtf=True)
 
         vdemod = fakedecode["video"]["demod"]
         vdemod_raw = fakedecode["video"]["demod_raw"]
@@ -1435,11 +1448,13 @@ class Field:
         return length
 
     def get_burstlevel(self, line, linelocs=None):
-        burstarea = self.data["video"]["demod"][self.lineslice(line, 5.5, 2.4, linelocs)].copy()
-        burstarea -= nb_mean(burstarea)
-        if self.burst_max_ire is not None and max(burstarea) > (self.burst_max_ire * self.rf.DecoderParams["hz_ire"]):
-            return None
+        # Fields that pass validity checks can still have nonsense linelocs
+        # (issue #621); an empty slice makes nb_mean/max throw.
         try:
+            burstarea = self.data["video"]["demod"][self.lineslice(line, 5.5, 2.4, linelocs)].copy()
+            burstarea -= nb_mean(burstarea)
+            if self.burst_max_ire is not None and max(burstarea) > (self.burst_max_ire * self.rf.DecoderParams["hz_ire"]):
+                return None
             return rms(burstarea) * np.sqrt(2)
         except Exception:
             return None
@@ -2593,10 +2608,15 @@ class Field:
         iserr_rf1 = (f.data["rfhpf"] < (-rfstd * 3)) | (
             f.data["rfhpf"] > (rfstd * 3)
         )  # | (f.rawdata <= -32000)
-        iserr = np.full_like(iserr_rf1, False)
-        iserr[self.rf.delays["video_rot"] :] = iserr_rf1[
+        iserr_rf = np.full_like(iserr_rf1, False)
+        iserr_rf[self.rf.delays["video_rot"] :] = iserr_rf1[
             : -self.rf.delays["video_rot"]
         ]
+
+        # Demod threshold flags are tracked separately from the RF flags so
+        # that the sync-area unflagging below (which only knows the relaxed
+        # demod thresholds) cannot erase RF-detected rot inside sync pulses.
+        iserr = np.full_like(iserr_rf1, False)
 
         # Scalar thresholds for normal video and sync areas
         normal_min    = f.rf.iretohz(-70 if isPAL else -50)
@@ -2632,6 +2652,8 @@ class Field:
                 end = start + hsync_len
                 _dropout_unflag_sync(iserr, demod, demod_05, start, end,
                                      sync_min, normal_max, sync_min_05, normal_max_05)
+
+        iserr |= iserr_rf
 
         # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
         n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.freq_hz_half)
@@ -3269,6 +3291,7 @@ class LDdecode:
         self.auto_deemp = extra_options.get("auto_deemp", True)
         self.deemp_calibrated = not self.auto_deemp
         self._deemp_burst_samples = []
+        self._deemp_burst_offset = None
 
         self.verboseVITS = extra_options.get("verboseVITS", False)
 
@@ -3313,9 +3336,11 @@ class LDdecode:
 
         self._close_reader()
 
-        # Final commit for any batched SQLite writes
+        # Refresh capture-level metadata with the final calibration values
+        # (AGC may have adjusted levels after the first field) and commit.
         if hasattr(self, 'dbconn') and self.dbconn is not None:
             try:
+                self.build_sqlite_metadata()
                 self.dbconn.commit()
             except Exception:
                 pass
@@ -3494,10 +3519,18 @@ class LDdecode:
         if self.deemp_calibrated:
             return True
 
-        if field.burstmedian <= 5:
+        # NaN must not enter the sample pool: every comparison below fails
+        # open for NaN and would lock in a NaN strength.
+        if not np.isfinite(field.burstmedian) or field.burstmedian <= 5:
             return True
 
-        self._deemp_burst_samples.append(field.burstmedian)
+        # On a redo the same field comes through again (fdoffset unchanged);
+        # replace its sample rather than double-counting it.
+        if self._deemp_burst_offset == self.fdoffset and self._deemp_burst_samples:
+            self._deemp_burst_samples[-1] = field.burstmedian
+        else:
+            self._deemp_burst_samples.append(field.burstmedian)
+            self._deemp_burst_offset = self.fdoffset
 
         if len(self._deemp_burst_samples) < 3:
             return True
@@ -3508,7 +3541,7 @@ class LDdecode:
 
         self.deemp_calibrated = True
 
-        if measured <= 0 or log_base <= 0:
+        if not np.isfinite(measured) or measured <= 0 or log_base <= 0:
             return True
 
         if measured >= expected:
@@ -3670,9 +3703,9 @@ class LDdecode:
 
         self.update_sqlite_field_count()
 
-        # Batch commits: every 10 fields instead of every field
-        if self.fields_written % 10 == 0:
-            self.dbconn.commit()
+        # Commit per field so the .tbc.db never trails the .tbc video if the
+        # decode is killed mid-run.
+        self.dbconn.commit()
 
         self.outfile_video.write(picture)
         self.fields_written += 1
@@ -3883,11 +3916,17 @@ class LDdecode:
             redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
             redo = redo or not self.checkAutoDeemp(f)
 
-            redo = self._adjust_agc(f, redo)
+            agc_adjusted = self._adjust_agc(f, False)
+            redo = redo or agc_adjusted
 
             # Allow one redo only: re-decode this same field with adjusted params.
             if not adjusted and redo:
                 adjusted = True
+                if agc_adjusted and not self.deemp_calibrated:
+                    # The AGC just rewrote ire0/hz_ire, so burst samples
+                    # measured under the old levels are not comparable.
+                    self._deemp_burst_samples.clear()
+                    self._deemp_burst_offset = None
                 prevfield = self.fieldstack[0]
                 continue
 
@@ -4256,15 +4295,19 @@ class LDdecode:
             0, f.rf.system == "NTSC", 0,
         )
 
+        # capture_id is None on the first call (SQLite assigns the rowid);
+        # later calls pass the existing id so ON CONFLICT refreshes the row
+        # with the final calibration values.
         cursor.execute("""
             INSERT INTO capture (
+                capture_id,
                 system, decoder, git_branch, git_commit,
                 video_sample_rate, active_video_start, active_video_end,
                 field_width, field_height, number_of_sequential_fields,
                 colour_burst_start, colour_burst_end,
                 white_16b_ire, black_16b_ire, blanking_16b_ire,
                 is_mapped, is_subcarrier_locked, is_widescreen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(capture_id) DO UPDATE SET
                 system=excluded.system, decoder=excluded.decoder,
                 git_branch=excluded.git_branch, git_commit=excluded.git_commit,
@@ -4281,7 +4324,7 @@ class LDdecode:
                 is_mapped=excluded.is_mapped,
                 is_subcarrier_locked=excluded.is_subcarrier_locked,
                 is_widescreen=excluded.is_widescreen
-        """, video_values)
+        """, (self.capture_id,) + video_values)
 
         if not self.capture_id:
             self.capture_id = cursor.lastrowid

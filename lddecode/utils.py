@@ -1192,18 +1192,6 @@ def findpulses(sync_ref, _, high):
     return _to_pulses_list(pulses_starts, pulses_lengths)
 
 
-@njit(cache=True, nogil=True)
-def findpeaks(array, low=0):
-    array2 = array.copy()
-    array2[np.where(array2 < low)] = 0
-
-    # A local maximum at index i satisfies array2[i] > array2[i-1]
-    # and array2[i] > array2[i+1].  The slice array2[1:-1] covers
-    # candidate indices 1..N-2; add 1 to map back to original indices.
-    is_peak = np.logical_and(array2[1:-1] > array2[:-2], array2[1:-1] > array2[2:])
-    return [loc + 1 for loc in np.where(is_peak)[0]]
-
-
 def LRUupdate(lst, k):
     """ This turns a list into an LRU table.  When called it makes sure item 'k' is at the
         beginning,
