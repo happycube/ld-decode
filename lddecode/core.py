@@ -261,8 +261,9 @@ FilterParams_PAL = {
     # Zero-phase RF BPF + MTF: skirt/pole phase asymmetry across the chroma
     # sidebands demodulates as differential phase (+8..15 deg per 100 IRE
     # measured on test discs); amplitude-only filtering removes it at no SNR
-    # cost.  NTSC keeps phased filters for now - its burst phase calibration
-    # (fsc_phase_deg) is tuned to the phased chain.
+    # cost.  NTSC keeps phased filters: measured DP is worse zero-phased
+    # (-3.4 vs +1.2 deg on he010) because the tuned NTSC chain's filter
+    # phase cancels the second-order DP from sideband amplitude asymmetry.
     "video_rf_zero_phase": True,
     # 5.8 MHz recovers recorded luma detail out to the 5.8 MHz VITS multiburst
     # (IEC 60856); the extra group delay this Butterworth adds is corrected by
@@ -659,17 +660,6 @@ class RFDecode:
             )
             SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
 
-        if DP.get("video_rf_zero_phase", False):
-            # Discard the RF BPF and MTF phase responses, keeping only their
-            # amplitude.  Butterworth skirt (and MTF pole) phase differs at
-            # the two chroma sideband locations, and that asymmetry moves
-            # with the FM carrier (i.e. with luma), which demodulates as
-            # differential phase.  The MTF correction is an amplitude
-            # compensation by design, and the FFT overlap-save pipeline makes
-            # acausal zero-phase filters free.
-            SF["RFVideo"] = np.abs(SF["RFVideo"])
-            SF["MTF"] = np.abs(SF["MTF"])
-
         # Notch filters for analog audio RF.  DdD captures on NTSC need this.
         if SP["analog_audio"] and self.system == "NTSC":
             cut_left = sps.butter(
@@ -687,6 +677,17 @@ class RFDecode:
             SF["Fcutr"] = filtfft(cut_right, self.blocklen)
 
             SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
+
+        if DP.get("video_rf_zero_phase", False):
+            # Discard the phase response of the pre-demod RF chain (BPF,
+            # audio notches, MTF), keeping only its amplitude.  Skirt/notch/
+            # pole phase differs at the two chroma sideband locations, and
+            # that asymmetry moves with the FM carrier (i.e. with luma),
+            # which demodulates as differential phase.  The MTF correction
+            # is an amplitude compensation by design, and the FFT
+            # overlap-save pipeline makes acausal zero-phase filters free.
+            SF["RFVideo"] = np.abs(SF["RFVideo"])
+            SF["MTF"] = np.abs(SF["MTF"])
 
         SF["hilbert"] = build_hilbert(self.blocklen)
         SF["RFVideo"] *= SF["hilbert"]
@@ -3129,8 +3130,9 @@ class FieldNTSC(Field):
         self.burstmedian = self.calc_burstmedian()
 
         # Subcarrier phase offset in degrees, calibrated for correct NTSC
-        # burst phase (~147°) at the output.
-        fsc_phase_deg = 117.25
+        # burst phase (~147°) at the output.  Increasing it decreases the
+        # output burst phase 1:1.  Calibrated per RF filter chain.
+        fsc_phase_deg = self.rf.DecoderParams.get("fsc_phase_deg", 117.25)
         shift_samples = (fsc_phase_deg / 360) / self.rf.SysParams["fsc_mhz"] * self.rf.freq
         self.linelocs = np.array(self.linelocs4) - shift_samples
 
