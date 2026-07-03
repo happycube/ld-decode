@@ -127,6 +127,21 @@ FilterParams_NTSC = {
     "audio_notchwidth": 200000,
     "audio_notchorder": 2,
     "video_deemp": (120e-9, 320e-9),
+    # Zero-phase (magnitude-only) video EQ: (freq_hz, dB) anchors smoothly
+    # interpolated, flat 0 dB outside the anchored range.  Flattens the
+    # residual amplitude ripple left after de-emphasis and the inverse-MTF
+    # chroma correction, calibrated against NTC-7 multiburst VITS on the
+    # he010 and ve-snw test discs.  Applied to the output and burst paths
+    # identically, so burst-based auto-calibration and phase alignment are
+    # unaffected (the EQ is real-valued in the FFT domain).
+    "video_eq": [
+        (0.5e6, -0.02),
+        (1.0e6, 0.14),
+        (2.0e6, 0.50),
+        (3.0e6, -0.15),
+        (3.58e6, -0.39),
+        (4.2e6, -0.05),
+    ],
     # NTSC builds its RF video filter as a split high-pass (low edge) + low-pass
     # (high edge) cascade so the two skirts can be shaped independently
     # (see computevideofilters).  The low edge is kept gentle (order 2) to

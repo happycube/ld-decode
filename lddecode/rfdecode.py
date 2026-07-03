@@ -494,11 +494,18 @@ class RFDecode:
         fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
         self.inverse_mtf_log_at_fsc = np.log(SF["Finverse_mtf_base"][fsc_bin])
 
+        # Zero-phase magnitude EQ from (freq_hz, dB) anchor points.  Real
+        # valued, so it cannot move phase; applied to both the output and
+        # burst reference paths so burst-based auto-calibration measures the
+        # corrected signal.
+        SF["Fvideo_eq"] = self.build_video_eq(DP.get("video_eq"))
+
         # Post processing: lowpass filter + full de-emphasis + inverse MTF
         # chroma correction + group-delay equaliser.  De-emphasis stays at
         # full strength (1.0) for correct phase; the inverse MTF handles
         # chroma amplitude separately with zero phase contribution.
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
+        SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
 
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
         if imtf_strength > 0:
@@ -527,7 +534,7 @@ class RFDecode:
         SF["FVideoBurst_offset"] = 40
 
         SF["Fburst"] = filtfft((Fburst, [1.0]), self.blocklen)
-        SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"]
+        SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"] * SF["Fvideo_eq"]
 
         # Fold delay compensation into the frequency-domain filters so demodblock
         # doesn't need np.roll (which copies the entire array).  A circular shift
@@ -558,12 +565,32 @@ class RFDecode:
         DP = self.DecoderParams
 
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
+        SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
 
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
         if imtf_strength > 0:
             SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
+
+    def build_video_eq(self, points):
+        """Zero-phase magnitude EQ from (freq_hz, gain_db) anchor points.
+
+        Monotone-cubic interpolation in dB vs frequency, pinned to 0 dB at
+        DC and held at 0 dB beyond the last anchor + 0.5 MHz.  Returns a
+        real-valued array over the FFT bins, so applying it cannot change
+        the phase of anything.
+        """
+        if not points:
+            return np.ones(self.blocklen)
+        freqs = np.array([0.0] + [p[0] for p in points]
+                         + [points[-1][0] + 0.5e6, self.freq_hz_half])
+        gains = np.array([0.0] + [p[1] for p in points] + [0.0, 0.0])
+        interp = spi.PchipInterpolator(freqs, gains, extrapolate=False)
+        freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
+        db = interp(np.clip(freq_array, 0, self.freq_hz_half))
+        db = np.nan_to_num(db, nan=0.0)
+        return 10.0 ** (db / 20.0)
 
     def computeaudiofilters(self):
         SP = self.SysParams
