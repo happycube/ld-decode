@@ -26,6 +26,7 @@ __all__ = [
     "fft8",
     "fileio",
     "filters",
+    "params",
     "profiling",
     "pulses",
     "utils",
