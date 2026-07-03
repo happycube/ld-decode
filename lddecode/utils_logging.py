@@ -2,6 +2,12 @@ import logging
 import sys
 import os
 
+# Package-wide logger.  Assigned by LDdecode.__init__ (lddecode/decoder.py);
+# read at call time by other modules via:
+#     from . import utils_logging as logs
+#     logs.logger.warning(...)
+logger = None
+
 
 def init_logging(outfile_name, columns=80):
     """ Sets up a logger with a logfile, status line, and stderr output """

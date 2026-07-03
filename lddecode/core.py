@@ -20,6 +20,8 @@ from scipy import interpolate
 
 # internal libraries
 from . import efm_pll
+from . import utils_logging as logs
+from .profiling import profile
 from .utils import (
     FieldInfo,
     Pulse,
@@ -77,16 +79,6 @@ except ImportError:
 # Uncomment (and add to) to get full traces of numpy warnings
 #import warnings
 #warnings.filterwarnings('error', "Mean of empty slice.")
-
-# This allows ld-decode to set up one logger for the entire program
-logger = None
-
-# If profiling is not enabled, make it a pass-through wrapper
-try:
-    profile
-except NameError:
-    def profile(fn):
-        return fn
 
 # This is the size of each block of data which is processed in
 # parallel.  The beginning and end are cut off so that there's
@@ -1352,7 +1344,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100, rv
     )
 
     if failed:
-        logger.warning("Analog audio processing error, muting samples")
+        logs.logger.warning("Analog audio processing error, muting samples")
 
     if rv is not None:
         rv['dsaudio'] = output16
@@ -2118,10 +2110,10 @@ class Field:
         self.rawpulses = self.getpulses()
         if self.rawpulses is None or len(self.rawpulses) == 0:
             if self.fields_written:
-                logger.error("Unable to find any sync pulses, skipping one field")
+                logs.logger.error("Unable to find any sync pulses, skipping one field")
                 return None, None, None
             else:
-                logger.error("Unable to find any sync pulses, skipping one second")
+                logs.logger.error("Unable to find any sync pulses, skipping one second")
                 return None, None, int(self.rf.freq_hz)
 
 
@@ -2148,7 +2140,7 @@ class Field:
 
         if line0loc is None:
             if not self.initphase:
-                logger.error("Unable to determine start of field - dropping field")
+                logs.logger.error("Unable to determine start of field - dropping field")
 
             return None, None, self.inlinelen * 200
 
@@ -2903,7 +2895,7 @@ class FieldPAL(Field):
             return 1 if newphase == 9 else newphase
         else:
             # This can be triggered by the first pass at the first field
-            # logger.error("Cannot determine PAL field sequence of first field")
+            # logs.logger.error("Cannot determine PAL field sequence of first field")
             return 1
 
     def determine_field_number(self):
@@ -3158,9 +3150,8 @@ class LDdecode:
         if DecoderParamsOverride is None:
             DecoderParamsOverride = {}
 
-        global logger
         self.logger = _logger
-        logger = self.logger
+        logs.logger = self.logger
         self.reader_ended = False
 
         from lddecode import __version__
@@ -3573,7 +3564,7 @@ class LDdecode:
         if strength < 0.02:
             return True
 
-        logger.debug(
+        logs.logger.debug(
             f"Auto inverse-MTF chroma: burst {measured:.1f} IRE "
             f"(expected {expected:.1f}), "
             f"inverse_mtf_strength 0.000 → {strength:.3f}"
@@ -3807,7 +3798,7 @@ class LDdecode:
         )
 
         if rawdecode is None:
-            # logger.info("Failed to demodulate data")
+            # logs.logger.info("Failed to demodulate data")
             return None, None
 
         f = self.FieldClass(
@@ -3843,7 +3834,7 @@ class LDdecode:
         offset = f.nextfieldoffset - (readloc - rawdecode["startloc"])
 
         if not f.valid:
-            # logger.info("Bad data - jumping one second")
+            # logs.logger.info("Bad data - jumping one second")
             offset = f.nextfieldoffset
 
         return f, offset
@@ -3867,7 +3858,7 @@ class LDdecode:
             vsync_ire = (sync_hz - ire0_hz) / hz_ire
 
             if vsync_ire > -20:
-                logger.warning(
+                logs.logger.warning(
                     f"At field #{len(self.fieldinfo)}, Auto-level detection malfunction "
                     f"(vsync IRE computed at {np.round(vsync_ire, 2)}, nominal ~= -40), "
                     f"possible disk skipping"
@@ -3953,7 +3944,7 @@ class LDdecode:
             fieldlength /= f.inlinelen
             if ((f.sync_confidence < 50) and not
                  inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
-                logger.warning("WARNING: Possible player skip detected - check output")
+                logs.logger.warning("WARNING: Possible player skip detected - check output")
 
             self.fieldstack.insert(0, f)
             self.fdoffset += offset
@@ -3992,7 +3983,7 @@ class LDdecode:
             frames = self.fields_written // 2
             fps = frames / timeused2
 
-            logger.info(
+            logs.logger.info(
                 f"Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)"
             )
 
@@ -4115,20 +4106,20 @@ class LDdecode:
                 or (fi["fieldPhaseID"] == prevfi["fieldPhaseID"] + 1)
             )
             if check_phase and not is_phase_sequential:
-                logger.warning(
+                logs.logger.warning(
                     f"At field #{len(self.fieldinfo)}, Field phaseID sequence mismatch "
                     f"({prevfi['fieldPhaseID']}->{fi['fieldPhaseID']}) (player may be paused)"
                 )
                 decodeFaults |= 2
 
             if prevfi["isFirstField"] == fi["isFirstField"]:
-                # logger.info('WARNING!  isFirstField stuck between fields')
+                # logs.logger.info('WARNING!  isFirstField stuck between fields')
                 if inrange(fi["diskLoc"] - prevfi["diskLoc"], 0.95, 1.05):
                     decodeFaults |= 1
                     fi["isFirstField"] = not prevfi["isFirstField"]
                     fi["syncConf"] = 10
                 else:
-                    logger.error("Skipped field")
+                    logs.logger.error("Skipped field")
                     decodeFaults |= 4
                     fi["syncConf"] = 0
                     return fi, True
@@ -4196,7 +4187,7 @@ class LDdecode:
 
                     self.logger.status(outstr)
                 except Exception:
-                    logger.warning("file frame %d : VBI decoding error", rawloc)
+                    logs.logger.warning("file frame %d : VBI decoding error", rawloc)
                     traceback.print_exc()
 
         return fi, False
@@ -4239,11 +4230,11 @@ class LDdecode:
                     fnum = self.decodeFrameNumber(prevfield, curfield)
 
                     if self.earlyCLV:
-                        logger.error("Cannot seek in early CLV disks w/o timecode")
+                        logs.logger.error("Cannot seek in early CLV disks w/o timecode")
                         return None, startfield, None
                     elif fnum is not None:
                         rawloc = np.floor((f.readloc / self.bytes_per_field) / 2)
-                        logger.info("seeking: file loc %d frame # %d", rawloc, fnum)
+                        logs.logger.info("seeking: file loc %d frame # %d", rawloc, fnum)
 
                         return fnum, startfield, f.readloc
 
@@ -4251,7 +4242,7 @@ class LDdecode:
 
     def seek(self, startframe, target):
         """ Attempts to find frame target from file location startframe """
-        logger.info("Beginning seek")
+        logs.logger.info("Beginning seek")
 
         if not sys.warnoptions:
             import warnings
@@ -4267,8 +4258,8 @@ class LDdecode:
 
             cur = int((readloc / self.bytes_per_field))
             if fnr == target:
-                logger.info("Finished seek")
-                logger.info("Finished seeking, starting at frame %d", fnr)
+                logs.logger.info("Finished seek")
+                logs.logger.info("Finished seeking, starting at frame %d", fnr)
                 self.roughseek(cur)
                 return cur
 

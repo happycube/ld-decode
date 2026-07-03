@@ -24,12 +24,7 @@ try:
 except ImportError:
     pass
 
-# If profiling is not enabled, make it a pass-through wrapper
-try:
-    profile
-except NameError:
-    def profile(fn):
-        return fn
+from .profiling import profile
 
 # This runs a cubic scaler on a line.
 # originally from https://www.paulinternet.nl/?page=bicubic
