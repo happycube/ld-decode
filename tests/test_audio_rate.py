@@ -8,7 +8,8 @@ frame), keeping the audio perfectly aligned to the video with no drift.
 
 import numpy as np
 
-from lddecode.core import _downscale_audio_compute_locs_and_swow, SysParams_NTSC
+from lddecode.audio import _downscale_audio_compute_locs_and_swow
+from lddecode.params import SysParams_NTSC
 
 NTSC_LINE_PERIOD = SysParams_NTSC["line_period"]  # microseconds
 NTSC_FRAME_LINES = 525

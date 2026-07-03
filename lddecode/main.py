@@ -5,8 +5,8 @@ import argparse
 import traceback
 import numpy as np
 
-from lddecode.core import *
-from lddecode.utils import *
+from lddecode.decoder import LDdecode
+from lddecode.fileio import ldf_pipe, make_loader, parse_frequency
 from lddecode.utils_logging import init_logging
 
 

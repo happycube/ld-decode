@@ -20,6 +20,7 @@ __all__ = [
     "audio",
     "commpy_filters",
     "core",
+    "decoder",
     "dsp",
     "efm_pll",
     "fdls",

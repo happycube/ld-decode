@@ -18,8 +18,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lddecode.core import RFDecode
-from lddecode.utils import genwave
+from lddecode.rfdecode import RFDecode
+from lddecode.dsp import genwave
 
 
 def make_fake_signal(rf):
@@ -135,7 +135,7 @@ def bench_substeps(rf, signal, n_blocks):
     steps["2_hilbert_ifft"] = np.array(times)
 
     # Step 3: unwrap_hilbert (phase demodulation)
-    from lddecode.utils import unwrap_hilbert
+    from lddecode.filters import unwrap_hilbert
     indata_fft_filt = indata_fft * rf.Filters["RFVideo"]
     hilbert = npfft.ifft(indata_fft_filt)
     times = []

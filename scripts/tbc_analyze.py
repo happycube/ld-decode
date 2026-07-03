@@ -18,7 +18,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from lddecode.metrics import CombNTSC
-from lddecode.utils import rms
+from lddecode.dsp import rms
 
 
 class CaptureParams:
