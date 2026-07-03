@@ -2,7 +2,8 @@
 
 import numpy as np
 
-from .utils import inrange, nb_mean, rms, roundfloat
+from .filters import inrange
+from .dsp import nb_mean, rms, roundfloat
 
 
 class CombNTSC:

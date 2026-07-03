@@ -22,28 +22,36 @@ from scipy import interpolate
 from . import efm_pll
 from . import utils_logging as logs
 from .profiling import profile
-from .utils import (
-    FieldInfo,
-    Pulse,
-    StridedCollector,
-    ac3_pipe,
-    angular_mean_helper,
+import traceback
+
+from .filters import (
     build_hilbert,
     calczc,
-    clb_findbursts,
-    compute_mtf,
-    dsa_rescale_and_clip,
     emphasis_iir,
     fft_determine_slices,
     fft_do_slice,
     filtfft,
-    findpulses,
     gen_bpf_supergauss,
+    inrange,
+    polar2z,
+    sqsum,
+    unwrap_hilbert,
+)
+from .pulses import (
+    Pulse,
+    _dropout_unflag_sync,
+    clb_findbursts,
+    findpulses,
+)
+from .fileio import ac3_pipe, ldf_pipe
+from .dsp import (
+    FieldInfo,
+    StridedCollector,
+    angular_mean_helper,
+    compute_mtf,
+    dsa_rescale_and_clip,
     genwave,
     hz_to_output_array,
-    inrange,
-    ldf_pipe,
-    _dropout_unflag_sync,
     n_orgt,
     n_ornotrange,
     n_ornotrange_scalar,
@@ -56,14 +64,10 @@ from .utils import (
     nb_round,
     nb_std,
     phase_distance,
-    polar2z,
     rms,
     roundfloat,
     scale,
     scale_field,
-    sqsum,
-    traceback,
-    unwrap_hilbert,
 )
 
 try:
