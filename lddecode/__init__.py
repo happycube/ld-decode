@@ -29,6 +29,7 @@ __all__ = [
     "params",
     "profiling",
     "pulses",
+    "rfdecode",
     "utils",
     "utils_logging",
     "utils_plotting",
