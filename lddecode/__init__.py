@@ -23,6 +23,7 @@ __all__ = [
     "dsp",
     "efm_pll",
     "fdls",
+    "field",
     "fft8",
     "fileio",
     "filters",
