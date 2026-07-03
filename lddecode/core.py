@@ -258,6 +258,12 @@ FilterParams_PAL = {
     # video_bpf_order is retained for the shared bandpass path (NTSC) and the
     # --lowband override below; the PAL split path uses the two orders above.
     "video_bpf_order": 2,
+    # Zero-phase RF BPF + MTF: skirt/pole phase asymmetry across the chroma
+    # sidebands demodulates as differential phase (+8..15 deg per 100 IRE
+    # measured on test discs); amplitude-only filtering removes it at no SNR
+    # cost.  NTSC keeps phased filters for now - its burst phase calibration
+    # (fsc_phase_deg) is tuned to the phased chain.
+    "video_rf_zero_phase": True,
     # 5.8 MHz recovers recorded luma detail out to the 5.8 MHz VITS multiburst
     # (IEC 60856); the extra group delay this Butterworth adds is corrected by
     # the all-pass equaliser in build_groupdelay_equalizer().
@@ -652,6 +658,17 @@ class RFDecode:
                 btype="bandpass",
             )
             SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
+
+        if DP.get("video_rf_zero_phase", False):
+            # Discard the RF BPF and MTF phase responses, keeping only their
+            # amplitude.  Butterworth skirt (and MTF pole) phase differs at
+            # the two chroma sideband locations, and that asymmetry moves
+            # with the FM carrier (i.e. with luma), which demodulates as
+            # differential phase.  The MTF correction is an amplitude
+            # compensation by design, and the FFT overlap-save pipeline makes
+            # acausal zero-phase filters free.
+            SF["RFVideo"] = np.abs(SF["RFVideo"])
+            SF["MTF"] = np.abs(SF["MTF"])
 
         # Notch filters for analog audio RF.  DdD captures on NTSC need this.
         if SP["analog_audio"] and self.system == "NTSC":
