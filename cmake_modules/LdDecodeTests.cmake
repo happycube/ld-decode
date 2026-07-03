@@ -44,6 +44,19 @@ set_tests_properties(analyze-ntsc-patterns PROPERTIES
     PASS_REGULAR_EXPRESSION "Line 19 VITS \\(70 IRE bar\\): first fields"
 )
 
+# The NTSC test disc carries broadcast-style NTC-7 VITS: composite on first
+# fields, combination (multiburst + modulated pedestal) on second fields.
+add_test(
+    NAME analyze-ntsc-ntc7
+    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/differential_phase.py
+        ${CMAKE_BINARY_DIR}/testout/ntsc-basic.tbc
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(analyze-ntsc-ntc7 PROPERTIES
+    FIXTURES_REQUIRED ntsc-tbc
+    PASS_REGULAR_EXPRESSION "NTC-7 combination \\(line 20, 6-packet multiburst \\+ modulated pedestal\\): second fields"
+)
+
 add_test(
     NAME analyze-pal-patterns
     COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/differential_phase.py

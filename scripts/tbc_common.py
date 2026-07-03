@@ -304,6 +304,232 @@ def detect_ntsc_white_flag(field):
     return luma is not None and 92 < luma < 108
 
 
+# ---------------------------------------------------------------------------
+# NTC-7 VITS (broadcast-style test lines, e.g. THX-mastered discs)
+#
+# Composite (line 20, one field parity): 100 IRE line bar to ~30 us, 2T sin^2
+# pulse, modulated 12.5T chroma pulse (~37 us), 5-step modulated staircase.
+# Combination (line 20, other parity): short white bar, 6-packet multiburst
+# on a 50 IRE pedestal (0.5/1/2/3/3.58/4.2 MHz, 50 IRE p-p), then a 3-level
+# modulated pedestal (20/40/80 IRE p-p subcarrier on 50 IRE).
+# ---------------------------------------------------------------------------
+
+NTC7_MULTIBURST_FREQS = (0.5, 1.0, 2.0, 3.0, 3.58, 4.2)
+NTC7_PEDESTAL_PP = (20.0, 40.0, 80.0)
+
+
+def line_segment_ire(field, line, start_us, duration_us):
+    """Raw waveform of part of one line, in IRE."""
+    p = field.params
+    ire = field.line_ire(line)
+    s0 = int(start_us * p.sample_rate_mhz)
+    s1 = min(int((start_us + duration_us) * p.sample_rate_mhz), len(ire))
+    return ire[s0:s1]
+
+
+def segment_freq_pp(seg, fs_mhz):
+    """Dominant frequency (MHz) and sine peak-to-peak (IRE) of a segment.
+
+    p-p is estimated as 2*sqrt(2)*rms, which is exact for a sine at any
+    sampling phase (unlike sample min/max, which underestimates near fs/4).
+    """
+    if seg is None or len(seg) < 16:
+        return 0.0, 0.0
+    y = seg - np.mean(seg)
+    pp = float(2.0 * np.sqrt(2.0) * np.std(y))
+    if pp < 2.0:
+        return 0.0, pp
+    spec = np.abs(np.fft.rfft(y * np.hanning(len(y))))
+    k = int(np.argmax(spec[1:])) + 1
+    if 1 <= k < len(spec) - 1:  # quadratic peak interpolation
+        a, b, c = spec[k - 1], spec[k], spec[k + 1]
+        denom = a - 2 * b + c
+        if abs(denom) > 1e-12:
+            k = k + 0.5 * (a - c) / denom
+    return float(k * fs_mhz / len(y)), pp
+
+
+def sine_fit_pp(seg, fs_mhz, freq_mhz):
+    """Peak-to-peak of a sine at freq_mhz, by least squares (DC + sin + cos).
+
+    Exact for a clean sine at any sampling phase and for fractional cycle
+    counts, unlike min/max or rms estimators.
+    """
+    n = np.arange(len(seg))
+    w = 2 * np.pi * freq_mhz / fs_mhz
+    M = np.column_stack([np.ones(len(seg)), np.cos(w * n), np.sin(w * n)])
+    coef, *_ = np.linalg.lstsq(M, seg, rcond=None)
+    return 2.0 * float(np.hypot(coef[1], coef[2]))
+
+
+def measure_ntc7_multiburst(field, line=20, start_us=16.5, end_us=45.0):
+    """Locate multiburst packets on one line.
+
+    Returns [(center_us, freq_mhz, pp_ire)], one entry per packet.  Sliding
+    windows are grouped while the dominant frequency stays put; windows
+    straddling two packets read an intermediate frequency and break the run.
+    Each packet's amplitude comes from a sine fit over the packet extent,
+    with the frequency refined to maximise the fitted amplitude.
+    """
+    fs = field.params.sample_rate_mhz
+    win, step = 2.5, 0.5
+    meas = []
+    t = start_us
+    while t + win <= end_us:
+        f, pp = segment_freq_pp(line_segment_ire(field, line, t, win), fs)
+        meas.append((t + win / 2, f, pp))
+        t += step
+
+    # Same packet while the frequency stays put.  The tolerance needs an
+    # absolute floor: at 0.5 MHz a 2.5 us window holds ~1.25 cycles and the
+    # FFT estimate jitters by ~0.15 MHz window to window.
+    def same_packet(f_prev, f_new):
+        return abs(f_new - f_prev) <= max(0.20, 0.08 * f_prev)
+
+    groups, cur = [], []
+    for m in meas:
+        if m[2] > 12 and m[1] > 0.2:
+            if cur and not same_packet(cur[-1][1], m[1]):
+                groups.append(cur)
+                cur = []
+            cur.append(m)
+        else:
+            if cur:
+                groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+
+    packets = []
+    for grp in groups:
+        if len(grp) < 2:
+            continue
+        # Packets are short (2-8 cycles between pedestal stretches), so most
+        # sliding windows straddle an edge.  Fit a tight window centred on
+        # the max-energy window only, refining the frequency for best fit.
+        # Energy-weighted centroid locates the packet centre more stably
+        # than the single max-energy window.
+        wsum = sum(m[2] for m in grp)
+        center = sum(m[0] * m[2] for m in grp) / wsum
+        f0 = float(np.median([m[1] for m in grp]))
+        # Keep >=1.4 cycles in the fit window, or the frequency search can
+        # drift low and absorb the packet edges into an inflated amplitude.
+        win_fit = 3.0 if f0 < 0.8 else 2.0
+        seg = line_segment_ire(field, line, center - win_fit / 2, win_fit)
+        fmin = max(f0 * 0.8, 1.4 / win_fit)
+        fmax = max(f0 * 1.25, fmin * 1.15)
+        best_f, best_pp = f0, 0.0
+        for f in np.linspace(fmin, fmax, 19):
+            pp = sine_fit_pp(seg, fs, f)
+            if pp > best_pp:
+                best_f, best_pp = f, pp
+        packets.append((center, best_f, best_pp))
+    return packets
+
+
+def measure_ntc7_pedestal(field, line=20, start_us=45.5, end_us=59.5):
+    """Measure the 3-level modulated pedestal (nominal 20/40/80 IRE p-p).
+
+    Returns [(center_us, luma, chroma_pp, phase_deg)] for the three packets
+    (phase is line-start-referenced, comparable to burst_ref on this line),
+    or [] if three increasing levels are not found.
+    """
+    win, step = 1.5, 0.25
+    ts, amps = [], []
+    t = start_us
+    while t + win <= end_us:
+        _, amp, _ = demod_region(field, line, t, win)
+        ts.append(t + win / 2)
+        amps.append(amp if amp is not None else 0.0)
+        t += step
+    if len(ts) < 8:
+        return []
+    ts, amps = np.array(ts), np.array(amps)
+
+    # The two largest upward envelope steps split the region into 3 packets.
+    lag = max(1, int(round(1.0 / step)))
+    jumps = amps[lag:] - amps[:-lag]
+    cuts = []
+    for idx in np.argsort(jumps)[::-1]:
+        tcut = ts[idx] + 0.5
+        if jumps[idx] <= 2.0:
+            break
+        if all(abs(tcut - c) > 2.0 for c in cuts):
+            cuts.append(tcut)
+        if len(cuts) == 2:
+            break
+    if len(cuts) != 2:
+        return []
+
+    out = []
+    bounds = [start_us] + sorted(cuts) + [end_us]
+    for a, b in zip(bounds[:-1], bounds[1:]):
+        if b - a < 1.2:
+            return []
+        mid, span = (a + b) / 2, (b - a) * 0.5
+        luma, amp, phase = demod_region(field, line, mid - span / 2, span)
+        if luma is None:
+            return []
+        out.append((mid, luma, 2 * amp, phase))
+    if not all(out[i + 1][2] > out[i][2] * 1.2 for i in range(2)):
+        return []
+    return out
+
+
+def detect_ntsc_ntc7_composite(field):
+    """NTC-7 composite VITS on line 20 (bar + 12.5T pulse + mod staircase).
+
+    Returns dict or None.  The staircase itself is also reported through
+    detect_ntsc_line20_staircase; this adds the modulated 12.5T check that
+    distinguishes NTC-7 from the plain LD staircase VITS.
+    """
+    bar, bar_chroma, _ = demod_region(field, 20, 16, 12)
+    if bar is None or not (90 < bar < 115) or bar_chroma > CHROMA_ABSENT:
+        return None
+    stair = detect_ntsc_line20_staircase(field)
+    if not stair or not stair["has_chroma"]:
+        return None
+
+    # Modulated 12.5T pulse near 37 us, riding at/near blanking level
+    best = None
+    t = 32.0
+    while t <= 40.0:
+        luma, amp, _ = demod_region(field, 20, t, 2.0)
+        if luma is not None and luma < 70 and (best is None or amp > best[1]):
+            best = (t + 1.0, amp)
+        t += 0.5
+    if best is None or best[1] < 10:
+        return None
+    return {"bar_ire": bar, "pulse_us": best[0], "pulse_pp": 2 * best[1],
+            "staircase": stair}
+
+
+def detect_ntsc_ntc7_combination(field):
+    """NTC-7 combination VITS on line 20 (multiburst + modulated pedestal).
+
+    Returns dict with "packets" (multiburst) and "pedestal" (may be []) or
+    None.
+    """
+    bar, _, _ = demod_region(field, 20, 12.5, 2.5)
+    if bar is None or not (85 < bar < 115):
+        return None
+    # Everything after the short bar rides a ~50 IRE pedestal; this also
+    # rejects the composite signal (100 IRE bar through ~30 us).
+    for t in (20, 26, 32, 41, 50, 56):
+        luma, _, _ = demod_region(field, 20, t, 2.0)
+        if luma is None or not (30 < luma < 70):
+            return None
+
+    packets = measure_ntc7_multiburst(field)
+    if len(packets) < 4:
+        return None
+    freqs = [p[1] for p in packets]
+    if max(freqs) < 3.0 or min(freqs) > 1.2:
+        return None
+    return {"bar_ire": bar, "packets": packets,
+            "pedestal": measure_ntc7_pedestal(field)}
+
+
 def detect_pal_its(field, lines=(17, 18, 19, 20)):
     """PAL CCIR insertion test signal: white bar + 5-step staircase.
 
@@ -385,6 +611,8 @@ def detect_patterns(params, fields, max_fields=8):
       ntsc_line19_vits:  list of field indices
       ntsc_line20_staircase: {field_index: info}
       ntsc_white_flag:   list of field indices
+      ntsc_ntc7_composite:   {field_index: info}
+      ntsc_ntc7_combination: {field_index: info}
       pal_its:           {field_index: info}
       pal_line20_ref:    {field_index: info}
       pal_grey50:        {field_index: info}
@@ -395,6 +623,8 @@ def detect_patterns(params, fields, max_fields=8):
         "ntsc_line19_vits": [],
         "ntsc_line20_staircase": {},
         "ntsc_white_flag": [],
+        "ntsc_ntc7_composite": {},
+        "ntsc_ntc7_combination": {},
         "pal_its": {},
         "pal_line20_ref": {},
         "pal_grey50": {},
@@ -414,6 +644,12 @@ def detect_patterns(params, fields, max_fields=8):
                 det["ntsc_line20_staircase"][i] = l20
             if detect_ntsc_white_flag(f):
                 det["ntsc_white_flag"].append(i)
+            ntc7c = detect_ntsc_ntc7_composite(f)
+            if ntc7c:
+                det["ntsc_ntc7_composite"][i] = ntc7c
+            ntc7m = detect_ntsc_ntc7_combination(f)
+            if ntc7m:
+                det["ntsc_ntc7_combination"][i] = ntc7m
         else:
             its = detect_pal_its(f)
             if its:
@@ -462,6 +698,20 @@ def summarize_patterns(det, fields):
             out.append("Line 20 staircase: not detected")
         out.append(f"White flag (line 11): "
                    f"{parity(det['ntsc_white_flag']) if det['ntsc_white_flag'] else 'not detected'}")
+        out.append(f"NTC-7 composite (line 20): "
+                   f"{parity(det['ntsc_ntc7_composite'].keys()) if det['ntsc_ntc7_composite'] else 'not detected'}")
+        if det["ntsc_ntc7_combination"]:
+            n_pkts = max(len(v["packets"])
+                         for v in det["ntsc_ntc7_combination"].values())
+            has_ped = any(v["pedestal"]
+                          for v in det["ntsc_ntc7_combination"].values())
+            desc = f"{n_pkts}-packet multiburst"
+            if has_ped:
+                desc += " + modulated pedestal"
+            out.append(f"NTC-7 combination (line 20, {desc}): "
+                       f"{parity(det['ntsc_ntc7_combination'].keys())}")
+        else:
+            out.append("NTC-7 combination (line 20): not detected")
     else:
         if det["pal_its"]:
             infos = det["pal_its"]

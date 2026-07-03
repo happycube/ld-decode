@@ -38,6 +38,7 @@ from lddecode.metrics import CombNTSC
 from tbc_common import (
     load_tbc, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
+    NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
 )
 
 
@@ -591,6 +592,106 @@ def ntsc_report(params, fields, det):
         if odd_phases and even_phases:
             print(f"  First fields: mean={np.mean(odd_phases):.2f}, std={np.std(odd_phases):.3f}")
             print(f"  Second fields: mean={np.mean(even_phases):.2f}, std={np.std(even_phases):.3f}")
+    print()
+
+    # -----------------------------------------------------------------------
+    # 10 & 11. NTC-7 combination VITS (multiburst + modulated pedestal)
+    # -----------------------------------------------------------------------
+    ntc7_report(det, fields)
+
+
+def ntc7_report(det, fields):
+    """Sections 10-11: NTC-7 combination measurements (if detected)."""
+    comb = det.get("ntsc_ntc7_combination", {})
+    comb_idx = sorted(comb)
+
+    if not comb_idx:
+        print_skipped(10, "NTC-7 MULTIBURST FREQUENCY RESPONSE",
+                      "NTC-7 combination VITS not detected")
+        print_skipped(11, "NTC-7 MODULATED PEDESTAL",
+                      "NTC-7 combination VITS not detected")
+        return
+
+    print_section(10, "NTC-7 MULTIBURST FREQUENCY RESPONSE\n"
+                      "   (line 20, packets nominally 50 IRE p-p on 50 IRE pedestal)")
+
+    # Pool packets across detected fields, keyed by nearest nominal frequency
+    by_nom = defaultdict(list)
+    for i in comb_idx:
+        for us, freq, pp in comb[i]["packets"]:
+            nom = min(NTC7_MULTIBURST_FREQS, key=lambda n: abs(n - freq))
+            by_nom[nom].append((freq, pp))
+
+    # Median across fields: the first fields of a decode can read low at
+    # high frequencies while MTF calibration is still settling.
+    rows = []
+    for nom in sorted(by_nom):
+        freqs = [x[0] for x in by_nom[nom]]
+        pps = [x[1] for x in by_nom[nom]]
+        rows.append((nom, np.median(freqs), np.median(pps), np.std(pps), len(pps)))
+
+    ref_pp = rows[0][2]
+    print(f"\n{'Nominal MHz':>12}  {'Measured':>9}  {'p-p IRE':>8}  {'std':>6}  "
+          f"{'vs {:.1f} MHz'.format(rows[0][0]):>11}  {'Fields':>6}")
+    print("-" * 62)
+    for nom, fmeas, pp, ppstd, n in rows:
+        db = 20 * np.log10(pp / ref_pp) if ref_pp > 0 else float("nan")
+        print(f"{nom:>12.2f}  {fmeas:>9.2f}  {pp:>8.1f}  {ppstd:>6.2f}  "
+              f"{db:>+10.2f}dB  {n:>6}")
+    missing = [n for n in NTC7_MULTIBURST_FREQS if n not in by_nom]
+    if missing:
+        print(f"  Packets not resolved: {missing}")
+    at_fsc = by_nom.get(3.58)
+    if at_fsc and ref_pp > 0:
+        pp_fsc = np.median([x[1] for x in at_fsc])
+        print(f"\n  Response at fsc (3.58 MHz): {pp_fsc / ref_pp * 100:.1f}% "
+              f"({20 * np.log10(pp_fsc / ref_pp):+.2f} dB) of low-frequency reference")
+    print()
+
+    ped_idx = [i for i in comb_idx if comb[i]["pedestal"]]
+    if not ped_idx:
+        print_skipped(11, "NTC-7 MODULATED PEDESTAL",
+                      "3-level modulated pedestal not resolved")
+        return
+
+    print_section(11, "NTC-7 MODULATED PEDESTAL: CHROMA GAIN LINEARITY AND\n"
+                      "   PHASE vs CHROMA AMPLITUDE (line 20, nominal 20/40/80 IRE p-p)")
+
+    # Per-level stats across fields; phase is measured burst-relative
+    levels = defaultdict(lambda: {"pp": [], "luma": [], "relph": []})
+    for i in ped_idx:
+        f = fields[i]
+        _, burst_ph = burst_ref(f, 20)
+        for k, (us, luma, pp, phase) in enumerate(comb[i]["pedestal"][:3]):
+            levels[k]["pp"].append(pp)
+            levels[k]["luma"].append(luma)
+            if burst_ph is not None:
+                levels[k]["relph"].append(phase_diff(phase, burst_ph))
+
+    print(f"\n{'Nominal p-p':>12}  {'Measured p-p':>12}  {'Gain':>6}  "
+          f"{'Luma IRE':>9}  {'Phase-burst':>11}  {'Fields':>6}")
+    print("-" * 66)
+    gains, relphs = [], []
+    for k in sorted(levels):
+        nom = NTC7_PEDESTAL_PP[k]
+        pp = np.mean(levels[k]["pp"])
+        gain = pp / nom
+        gains.append(gain)
+        relph = np.mean(levels[k]["relph"]) if levels[k]["relph"] else float("nan")
+        relphs.append(relph)
+        print(f"{nom:>12.0f}  {pp:>12.1f}  {gain:>6.3f}  "
+              f"{np.mean(levels[k]['luma']):>9.1f}  {relph:>11.2f}  "
+              f"{len(levels[k]['pp']):>6}")
+
+    if len(gains) == 3 and gains[1] > 0:
+        print(f"\n  Chroma gain nonlinearity (vs 40 IRE packet): "
+              f"20 IRE {100 * (gains[0] / gains[1] - 1):+.1f}%, "
+              f"80 IRE {100 * (gains[2] / gains[1] - 1):+.1f}%")
+    if len(relphs) == 3 and not any(np.isnan(p) for p in relphs):
+        print(f"  Phase vs chroma amplitude (20 -> 80 IRE p-p): "
+              f"{relphs[2] - relphs[0]:+.2f} deg")
+        print(f"  (luma constant at ~50 IRE, so this isolates amplitude-dependent "
+              f"phase from luma DP)")
     print()
 
 
