@@ -16,6 +16,7 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+set_tests_properties(decode-ntsc-basic PROPERTIES FIXTURES_SETUP ntsc-tbc)
 
 # Test that ld-decode can decode PAL files and produce TBC output
 add_test(
@@ -25,6 +26,33 @@ add_test(
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-pal-basic PROPERTIES FIXTURES_SETUP pal-tbc)
+
+# Verify test patterns in the decoded output.  The analyzer detects which
+# patterns are present (line 19 VITS, staircase, colour bars, PAL ITS) and
+# only measures those; the pass regex asserts the patterns this test disc
+# is known to carry were detected and measured.
+add_test(
+    NAME analyze-ntsc-patterns
+    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/differential_phase.py
+        ${CMAKE_BINARY_DIR}/testout/ntsc-basic.tbc
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(analyze-ntsc-patterns PROPERTIES
+    FIXTURES_REQUIRED ntsc-tbc
+    PASS_REGULAR_EXPRESSION "Line 19 VITS \\(70 IRE bar\\): first fields"
+)
+
+add_test(
+    NAME analyze-pal-patterns
+    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/differential_phase.py
+        ${CMAKE_BINARY_DIR}/testout/pal-basic.tbc
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(analyze-pal-patterns PROPERTIES
+    FIXTURES_REQUIRED pal-tbc
+    PASS_REGULAR_EXPRESSION "ITS staircase with chroma"
 )
 
 # Test that ld-cut can extract a segment from NTSC file
