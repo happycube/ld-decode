@@ -8,6 +8,8 @@ import sqlite3
 import sys
 import time
 import traceback
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from textwrap import dedent
 
 import numpy as np
@@ -254,6 +256,22 @@ class LDdecode:
                 nthreads=self.numthreads,
             )
 
+        # The field pipeline: stage 1 (sync/lineloc chain) runs on the
+        # main thread; stage 2 (downscale/metrics/dropouts) fans out per
+        # field; commits happen strictly in chain order.  Depth 1 is
+        # plain serial decode.
+        self._pipeline = deque()
+        self._chain_prev = None
+        self._chain_eof = False
+        self._pipeline_depth = 1
+        self._stage2_pool = None
+        if self.numthreads > 1:
+            self._pipeline_depth = max(2, min(4, self.numthreads))
+            self._stage2_pool = ThreadPoolExecutor(
+                max_workers=min(4, self.numthreads),
+                thread_name_prefix="stage2",
+            )
+
         self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
@@ -277,6 +295,11 @@ class LDdecode:
 
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
+
+        if self._stage2_pool is not None:
+            self._stage2_pool.shutdown(wait=False, cancel_futures=True)
+            self._stage2_pool = None
+        self._pipeline.clear()
 
         if self.block_cache is not None:
             self.block_cache.close()
@@ -912,22 +935,11 @@ class LDdecode:
         return redo
 
     @profile
-    def decode_one(self, start, mtf_level, prevfield=None, initphase=False,
-                   wide=None, trust_window=False):
-        """Decode and measure one field: demod, sync/lineloc processing,
-        video downscale and per-field metrics.
-
-        Reads calibration parameters but never writes decoder state -
-        redo and commit decisions belong to the caller.  Returns
-        (field, offset_to_next, picture, efm, metrics); the last three
-        are None when the field is invalid or at EOF.
-        """
-        f, offset = self.decodefield(start, mtf_level, prevfield, initphase,
-                                     wide=wide, trust_window=trust_window)
-
-        if f is None or not f.valid:
-            return f, offset, None, None, None
-
+    def decode_stage2(self, f):
+        """Per-field work with no chain dependency: video downscale,
+        per-field metrics and dropout detection.  Reads calibration
+        parameters and the field only, so it can run on a worker thread
+        for several fields at once.  Returns (picture, efm, metrics)."""
         picture, _, efm = f.downscale(
             linesout=self.output_lines,
             final=True,
@@ -935,7 +947,10 @@ class LDdecode:
 
         metrics = self.computeMetrics(f, None, verbose=True)
 
-        return f, offset, picture, efm, metrics
+        if self.doDOD:
+            f.precomputed_dropouts = f.dropout_detect()
+
+        return picture, efm, metrics
 
     def calibrate(self, f, metrics, adjusted):
         """Fold one decoded field's measurements into the calibration
@@ -1026,35 +1041,25 @@ class LDdecode:
 
         return f
 
-    @profile
-    def readfield(self, initphase=False):
-        adjusted = False
+    def _advance_chain(self, initphase=False):
+        """Stage 1: decode the next field in file order.
+
+        Advances self.fdoffset / self._chain_prev, handling invalid
+        fields (skip + wide re-acquisition), chain validation and
+        anchored repair.  During warm-up decodes are anchored to the
+        previous field; once warm, each field decodes independently from
+        its own sync structure.  Returns a pipeline entry dict, or None
+        at EOF.
+        """
         repaired = False
-
-        if len(self.fieldstack) >= 4:
-            # Fields no longer hold a reference to their predecessor (they
-            # get a FieldAnchor snapshot instead), so popping is enough.
-            self.fieldstack.pop(-1)
-
-        # Decode-then-process, one field at a time.  self.fdoffset is the
-        # file offset of the field to decode.  During warm-up each decode is
-        # anchored to the previous field; once the calibration loops settle
-        # the field decodes independently from its own sync structure (the
-        # hot path a parallel pipeline fans out), falling back to an
-        # anchored repair decode when the result disagrees with the chain.
-        # On a redo we re-decode the *same* field (fdoffset unchanged) with
-        # the parameters calibrate() just adjusted.
-        prevfield = self.fieldstack[0]
+        prevfield = self._chain_prev
         unanchored = (
             self.pipeline_warm and prevfield is not None and not initphase
         )
 
         while True:
-            if self.second_decode is None and self.fields_written:
-                self.second_decode = time.time()
-
             independent = unanchored and not repaired
-            f, offset, picture, efm, metrics = self.decode_one(
+            f, offset = self.decodefield(
                 self.fdoffset,
                 self.mtf_level,
                 None if independent else prevfield,
@@ -1065,7 +1070,6 @@ class LDdecode:
 
             if f is None:
                 # EOF / failed demod (decodefield returns (None, None))
-                self.fieldstack.insert(0, None)
                 return None
 
             if not f.valid:
@@ -1081,48 +1085,149 @@ class LDdecode:
                 continue
 
             if independent and not self.validate_chain(f, prevfield):
-                # The independent decode disagrees with the committed chain
-                # (parity, confidence, or position) - repair it with the
-                # previous field as anchor.
+                # The independent decode disagrees with the chain (parity,
+                # confidence, or position) - repair it with the previous
+                # field as anchor.
                 repaired = True
                 continue
 
-            redo = self.calibrate(f, metrics, adjusted)
-
-            # Allow one redo only: re-decode this same field with adjusted params.
-            if not adjusted and redo:
-                adjusted = True
-                self._fields_since_redo = 0
-                prevfield = self.fieldstack[0]
-                if self.block_cache is not None:
-                    # Decoder parameters just changed; drop prefetched
-                    # blocks demodulated under the old ones.
-                    self.block_cache.flush()
-                continue
-
-            fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
-            fieldlength /= f.inlinelen
-            if ((f.sync_confidence < 50) and not
-                 inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
-                logs.logger.warning("WARNING: Possible player skip detected - check output")
-
-            self.fieldstack.insert(0, f)
+            entry = {
+                "f": f,
+                "start": self.fdoffset,
+                "offset": offset,
+                "independent": independent,
+                "initphase": initphase,
+            }
+            self._chain_prev = f
             self.fdoffset += offset
+            return entry
 
-            if not adjusted:
-                self._fields_since_redo += 1
+    def _flush_pipeline(self):
+        """Discard all in-flight successors (decoder parameters changed
+        or the chain moved); their stage-2 futures finish in the
+        background and are ignored."""
+        self._pipeline.clear()
+        self._chain_eof = False
+        if self.block_cache is not None:
+            self.block_cache.flush()
 
-            if not self.pipeline_warm:
-                # One-way warm-up gate: all calibration loops settled and a
-                # few fields committed without any redo.
-                self.pipeline_warm = (
-                    self.deemp_calibrated
-                    and self.fields_written >= 2
-                    and self._fields_since_redo >= 5
-                    and (len(self.bw_ratios) >= 10 or self.fields_written >= 60)
+    def _commit_entry(self, entry):
+        """Calibrate one chain entry (with the single-redo rule) and
+        commit it in order."""
+        f = entry["f"]
+        picture, efm, metrics = entry["result"]
+
+        adjusted = False
+        while True:
+            redo = self.calibrate(f, metrics, adjusted)
+            if adjusted or not redo:
+                break
+
+            # Re-decode this same field with the parameters calibrate()
+            # just adjusted; everything decoded ahead of it used the old
+            # ones and is discarded.
+            adjusted = True
+            self._fields_since_redo = 0
+            self._flush_pipeline()
+
+            redo_prev = self.fieldstack[0]
+            f, offset = self.decodefield(
+                entry["start"],
+                self.mtf_level,
+                None if entry["independent"] else redo_prev,
+                entry["initphase"],
+                wide=(redo_prev is None),
+                trust_window=entry["independent"],
+            )
+
+            if f is None or not f.valid:
+                # Pathological: the field no longer decodes under the
+                # adjusted parameters.  Skip it like any bad field and
+                # continue with the next.
+                logs.logger.warning(
+                    "Field could not be re-decoded after parameter "
+                    "adjustment - skipping"
                 )
+                skip = offset if (f is not None and offset) else self.rf.linelen * 200
+                self.fdoffset = entry["start"] + skip
+                self._chain_prev = None
+                return self.readfield(entry["initphase"])
 
-            return self.commit_field(f, picture, efm)
+            entry["f"] = f
+            entry["offset"] = offset
+            self._chain_prev = f
+            self.fdoffset = entry["start"] + offset
+
+            picture, efm, metrics = self.decode_stage2(f)
+            entry["result"] = (picture, efm, metrics)
+
+        fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
+        fieldlength /= f.inlinelen
+        if ((f.sync_confidence < 50) and not
+             inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
+            logs.logger.warning("WARNING: Possible player skip detected - check output")
+
+        if len(self.fieldstack) >= 4:
+            # Fields no longer hold a reference to their predecessor (they
+            # get a FieldAnchor snapshot instead), so popping is enough.
+            self.fieldstack.pop(-1)
+        self.fieldstack.insert(0, f)
+
+        if not adjusted:
+            self._fields_since_redo += 1
+
+        if not self.pipeline_warm:
+            # One-way warm-up gate: all calibration loops settled and a
+            # few fields committed without any redo.
+            self.pipeline_warm = (
+                self.deemp_calibrated
+                and self.fields_written >= 2
+                and self._fields_since_redo >= 5
+                and (len(self.bw_ratios) >= 10 or self.fields_written >= 60)
+            )
+
+        return self.commit_field(f, picture, efm)
+
+    @profile
+    def readfield(self, initphase=False):
+        """Decode and commit the next field.
+
+        Runs a small in-order pipeline: stage 1 (the sync/lineloc chain)
+        advances on this thread, stage 2 (downscale/metrics/dropouts)
+        fans out per field to worker threads, and entries commit
+        strictly in chain order.  With one thread the pipeline depth is
+        1, which is plain serial decode; parallel depth only engages
+        after warm-up.
+        """
+        if self.second_decode is None and self.fields_written:
+            self.second_decode = time.time()
+
+        depth = self._pipeline_depth if self.pipeline_warm else 1
+
+        while not self._chain_eof and len(self._pipeline) < depth:
+            entry = self._advance_chain(initphase)
+            if entry is None:
+                self._chain_eof = True
+                break
+
+            if self._stage2_pool is not None:
+                entry["future"] = self._stage2_pool.submit(
+                    self.decode_stage2, entry["f"]
+                )
+            self._pipeline.append(entry)
+
+        if not self._pipeline:
+            # EOF with nothing left to commit
+            self.fieldstack.insert(0, None)
+            return None
+
+        entry = self._pipeline.popleft()
+        if "future" in entry:
+            entry["result"] = entry["future"].result()
+        else:
+            entry["result"] = self.decode_stage2(entry["f"])
+
+        return self._commit_entry(entry)
 
     def print_stats(self):
         if self.fields_written:
@@ -1232,7 +1337,10 @@ class LDdecode:
         }
 
         if self.doDOD:
-            dropout_lines, dropout_starts, dropout_ends = f.dropout_detect()
+            precomputed = getattr(f, "precomputed_dropouts", None)
+            dropout_lines, dropout_starts, dropout_ends = (
+                precomputed if precomputed is not None else f.dropout_detect()
+            )
             if len(dropout_lines):
                 fi["dropOuts"] = {
                     "fieldLine": dropout_lines,
