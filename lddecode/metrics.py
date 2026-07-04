@@ -3,7 +3,55 @@
 import numpy as np
 
 from .filters import inrange
-from .dsp import nb_mean, rms, roundfloat
+from .dsp import nb_mean, nb_median, rms, roundfloat
+
+
+def detect_levels(rf, field, output_lines):
+    """Sync, 0 IRE and 100 IRE levels of a field, from HSYNC areas and
+    VITS white areas.  A pure per-field measurement (used by the AGC),
+    so it can run wherever the field's data lives."""
+    sync_hzs = []
+    ire0_hzs = []
+    ire100_hzs = []
+
+    for wl in (
+        rf.SysParams['LD_VITS_whitelocs'] + rf.SysParams['LD_VITS_code_slices']
+    ):
+        # Code slice areas have a fourth value for percentile.
+        ls = field.lineslice(*wl[:3])
+        cut = field.data['video']['demod'][ls]
+        freq = np.percentile(cut, 50 if len(wl) == 3 else wl[3])
+        freq_ire = rf.hztoire(freq, spec=True)
+
+        if inrange(freq_ire, 95, 110):
+            ire100_hzs.append(freq)
+
+    for line in range(12, output_lines):
+        lsa = field.lineslice(line, 0.25, 4)
+
+        begin_ire0 = rf.SysParams["colorBurstUS"][1]
+        end_ire0 = rf.SysParams["activeVideoUS"][0]
+        lsb = field.lineslice(line, begin_ire0 + 0.25, end_ire0 - begin_ire0 - 0.5)
+
+        # compute wow adjustment
+        thislinelen = (
+            field.linelocs[line + field.lineoffset]
+            - field.linelocs[line + field.lineoffset - 1]
+        )
+        adj = rf.linelen / thislinelen
+
+        if inrange(adj, 0.98, 1.02):
+            sync_hzs.append(nb_median(field.data["video"]["demod_05"][lsa]) / adj)
+            ire0_hzs.append(nb_median(field.data["video"]["demod_05"][lsb]) / adj)
+
+    # if any of the levels are missing, use the default levels
+    vsync_hz   = rf.iretohz(rf.DecoderParams["vsync_ire"])
+
+    m_synchz   = np.median(sync_hzs)   if len(sync_hzs)   else vsync_hz
+    m_ire0hz   = np.median(ire0_hzs)   if len(ire0_hzs)   else rf.iretohz(0)
+    m_ire100hz = np.median(ire100_hzs) if len(ire100_hzs) else rf.iretohz(100)
+
+    return m_synchz, m_ire0hz, m_ire100hz
 
 
 class CombNTSC:

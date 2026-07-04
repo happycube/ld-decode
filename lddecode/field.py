@@ -126,6 +126,7 @@ class Field:
 
         self.dspicture = None
         self.dsaudio = None
+        self.audio_field_number = None
 
         self.interpolated_pixel_locs = None
         self.wowfactors = None
@@ -1197,13 +1198,29 @@ class Field:
 
         return dsout, self.dsaudio, self.efmout
 
-    def downscale_audio_out(self, audio, lastfieldwritten=None, lineinfo=None):
+    def compute_audio_field_number(self, lastfieldwritten, audio):
+        """The absolute field number the audio clock derives from the
+        last written field's position (None when hsync-locked sampling
+        or no reference applies).  nb_round makes this the field's write
+        index, robust to large position error."""
+        if not lastfieldwritten or audio < 16000:
+            return None
+
+        rf_samples_per_field = self.rf.freq_hz / self.rf.SysParams['FPS'] / 2
+        read_gap = (self.readloc - lastfieldwritten[1]) / rf_samples_per_field
+        return nb_round(lastfieldwritten[0] + read_gap)
+
+    def downscale_audio_out(self, audio, lastfieldwritten=None, lineinfo=None,
+                            field_number=None):
         """Downscale this field's analog audio.
 
         Separate from the video downscale because only the audio needs
         the write-order clock (lastfieldwritten) - the video output is a
         pure function of the decoded field, so the commit stage can run
-        this after the field's write position is finally known.
+        this after the field's write position is finally known.  A
+        caller that already knows the absolute write index (a worker
+        decoding ahead with a predicted one) passes field_number
+        directly; the commit stage verifies the prediction.
         """
         if audio == 0 or not self.rf.decode_analog_audio:
             return None
@@ -1211,14 +1228,14 @@ class Field:
         if lineinfo is None:
             lineinfo = self.linelocs
 
-        if lastfieldwritten and audio >= 16000:
+        if field_number is None:
             # This computes the current field based on checking the raw data location
             # against the last written field's, then computes the location of the
             # last audio sample written, so the A/V sync will remain (hopefully) correct
+            field_number = self.compute_audio_field_number(lastfieldwritten, audio)
 
-            rf_samples_per_field = self.rf.freq_hz / self.rf.SysParams['FPS'] / 2
-            read_gap = (self.readloc - lastfieldwritten[1]) / rf_samples_per_field
-            field_number = nb_round(lastfieldwritten[0] + read_gap)
+        if field_number is not None and audio >= 16000:
+            self.audio_field_number = field_number
 
             linecount = sum(self.rf.SysParams["field_lines"]) * (field_number // 2)
             if not self.isFirstField:
@@ -1254,6 +1271,35 @@ class Field:
         self.audio_next_offset = audio_rv["audio_next_offset"]
 
         return self.dsaudio
+
+    # Attributes dropped by prepare_transport(): the sample buffers and
+    # everything derived from them that commit-side code never reads.
+    TRANSPORT_STRIP = (
+        "data",
+        "rawdata",
+        "rawpulses",
+        "validpulses",
+        "interpolated_pixel_locs",
+        "wowfactors",
+        "rf",
+        "anchor",
+    )
+
+    def prepare_transport(self):
+        """Make a fully processed (and downscaled) field small and
+        picklable for return from a worker process.
+
+        Everything the commit stage reads from the raw data is captured
+        first (the successor's repair anchor), then the sample buffers
+        are dropped.  What survives: dspicture, dsaudio, efmout,
+        linelocs, and scalar decode results.  The receiver must rebind
+        .rf before use.
+        """
+        self.anchor_out = FieldAnchor.from_field(self)
+
+        for attr in self.TRANSPORT_STRIP:
+            if hasattr(self, attr):
+                setattr(self, attr, None)
 
     @profile
     def rf_tbc(self, linelocs=None):

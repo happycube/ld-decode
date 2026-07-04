@@ -22,6 +22,7 @@ from .rfdecode import RFDecode
 from .field import Field, FieldAnchor, FieldNTSC, FieldPAL
 from .fileio import ac3_pipe, ldf_pipe
 from .filters import inrange
+from .metrics import detect_levels
 from .dsp import FieldInfo, StridedCollector, nb_abs, nb_median, roundfloat
 
 
@@ -260,6 +261,21 @@ class LDdecode:
                 nthreads=self.numthreads,
             )
 
+        # Whole-field speculative jobs (each field decoded end-to-end in
+        # a worker process) need only the field's own outputs at commit;
+        # modes that consume a field's raw sample data at write time
+        # (RF-TBC/AC3 and the CVBS writer) fall back to block-level
+        # parallelism.
+        self.use_field_jobs = (
+            self.numthreads > 1
+            and self.process_demod
+            and not self.output_cvbs
+            and not self.do_rftbc
+        )
+        self._job_engine = None
+        self._job_eof = False
+        self._engine_dirty = False
+
         # The field pipeline: stage 1 (sync/lineloc chain) runs on the
         # main thread; stage 2 (downscale/metrics/dropouts) fans out per
         # field; commits happen strictly in chain order.  Depth 1 is
@@ -299,6 +315,10 @@ class LDdecode:
 
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
+
+        if self._job_engine is not None:
+            self._job_engine.stop()
+            self._job_engine = None
 
         if self._stage2_pool is not None:
             self._stage2_pool.shutdown(wait=False, cancel_futures=True)
@@ -588,48 +608,7 @@ class LDdecode:
         # Returns sync level, 0IRE, and 100IRE levels of a field
         # computed from HSYNC areas and VITS
 
-        sync_hzs = []
-        ire0_hzs = []
-        ire100_hzs = []
-
-        for wl in (
-            field.rf.SysParams['LD_VITS_whitelocs'] + field.rf.SysParams['LD_VITS_code_slices']
-        ):
-            # Code slice areas have a fourth value for percentile.
-            ls = field.lineslice(*wl[:3])
-            cut = field.data['video']['demod'][ls]
-            freq = np.percentile(cut, 50 if len(wl) == 3 else wl[3])
-            freq_ire = field.rf.hztoire(freq, spec=True)
-
-            if inrange(freq_ire, 95, 110):
-                ire100_hzs.append(freq)
-
-        for line in range(12, self.output_lines):
-            lsa = field.lineslice(line, 0.25, 4)
-
-            begin_ire0 = field.rf.SysParams["colorBurstUS"][1]
-            end_ire0 = field.rf.SysParams["activeVideoUS"][0]
-            lsb = field.lineslice(line, begin_ire0 + 0.25, end_ire0 - begin_ire0 - 0.5)
-
-            # compute wow adjustment
-            thislinelen = (
-                field.linelocs[line + field.lineoffset]
-                - field.linelocs[line + field.lineoffset - 1]
-            )
-            adj = field.rf.linelen / thislinelen
-
-            if inrange(adj, 0.98, 1.02):
-                sync_hzs.append(nb_median(field.data["video"]["demod_05"][lsa]) / adj)
-                ire0_hzs.append(nb_median(field.data["video"]["demod_05"][lsb]) / adj)
-
-        # if any of the levels are missing, use the default levels
-        vsync_hz   = self.rf.iretohz(self.rf.DecoderParams["vsync_ire"])
-
-        m_synchz   = np.median(sync_hzs)   if len(sync_hzs)   else vsync_hz
-        m_ire0hz   = np.median(ire0_hzs)   if len(ire0_hzs)   else self.rf.iretohz(0)
-        m_ire100hz = np.median(ire100_hzs) if len(ire100_hzs) else self.rf.iretohz(100)
-
-        return m_synchz, m_ire0hz, m_ire100hz
+        return detect_levels(self.rf, field, self.output_lines)
 
     def AC3filter(self, rftbc):
         self.AC3Collector.add(rftbc)
@@ -873,8 +852,13 @@ class LDdecode:
         # Snapshot what the new field may read from its predecessor.  Built
         # here (not when prevfield finished) so anchor values reflect any
         # AGC/deemp parameter changes made in between, as the live-object
-        # reads used to.
-        anchor = FieldAnchor.from_field(prevfield) if prevfield is not None else None
+        # reads used to.  A transported (stripped) predecessor no longer
+        # has its sample data; its worker captured the anchor already.
+        anchor = None
+        if prevfield is not None:
+            anchor = getattr(prevfield, "anchor_out", None)
+            if anchor is None:
+                anchor = FieldAnchor.from_field(prevfield)
 
         f = self.FieldClass(
             self.rf,
@@ -1018,12 +1002,14 @@ class LDdecode:
         if f.line0loc is None:
             return False
 
-        prev_end = prevfield.data["startloc"] + prevfield.linelocs[prevfield.linecount]
-        line0 = f.data["startloc"] + f.line0loc
+        # readloc == data["startloc"] for every decoded field, and both
+        # survive transport from a worker process.
+        prev_end = prevfield.readloc + prevfield.linelocs[prevfield.linecount]
+        line0 = f.readloc + f.line0loc
 
         return abs(line0 - prev_end) <= self.rf.linelen * 2
 
-    def commit_field(self, f, picture, efm):
+    def commit_field(self, f, picture, efm, audio=None, audio_ready=False):
         """Serial commit stage: audio clock, metadata chain checks and
         ordered writeout.  Returns f (a first field may be held back, and
         a filler may substitute the last good pair)."""
@@ -1044,8 +1030,10 @@ class LDdecode:
             )
 
         # The audio clock needs the last *written* field, so this runs at
-        # commit time, not with the video downscale.
-        audio = f.downscale_audio_out(self.analog_audio, self.lastFieldWritten)
+        # commit time, not with the video downscale - unless a field job
+        # already produced it with a verified write index.
+        if not audio_ready:
+            audio = f.downscale_audio_out(self.analog_audio, self.lastFieldWritten)
 
         # XXX: this routine currently performs a needed sanity check
         fi, needFiller = self.buildmetadata(f)
@@ -1134,6 +1122,9 @@ class LDdecode:
         self._chain_eof = False
         if self.block_cache is not None:
             self.block_cache.flush()
+        if self._job_engine is not None:
+            self._job_engine.pause()
+            self._engine_dirty = True
 
     def _commit_entry(self, entry):
         """Calibrate one chain entry (with the single-redo rule) and
@@ -1179,6 +1170,7 @@ class LDdecode:
 
             entry["f"] = f
             entry["offset"] = offset
+            entry.pop("audio", None)  # a redone field recomputes audio
             self._chain_prev = f
             self.fdoffset = entry["start"] + offset
 
@@ -1216,10 +1208,164 @@ class LDdecode:
                 # arrives via a redo, which flushes the cache), so worker
                 # processes can now be built from a snapshot of them.
                 self.block_cache.enable_processes(
-                    self.rf_opts, self.rf.DecoderParams
+                    self.rf_opts,
+                    self.rf.DecoderParams,
+                    field_cfg=(
+                        self._field_worker_cfg() if self.use_field_jobs
+                        else None
+                    ),
                 )
 
-        return self.commit_field(f, picture, efm)
+                if self.use_field_jobs:
+                    from .parallel import FieldJobEngine
+
+                    # inline decodes stay fast through the block cache,
+                    # but its prefetch would duplicate the field jobs
+                    self.block_cache.ahead = 0
+                    self._job_engine = FieldJobEngine(
+                        executor=self.block_cache.process_executor,
+                        read_fn=lambda sample, length: self.freader(
+                            self.infile, sample, length
+                        ),
+                        read_lock=self.block_cache.read_lock,
+                        cfg=self._field_engine_cfg(),
+                        workers=self.numthreads,
+                    )
+                    self._engine_dirty = True
+
+        return self.commit_field(f, picture, efm,
+                                 audio=entry.get("audio"),
+                                 audio_ready="audio" in entry)
+
+    def _field_worker_cfg(self):
+        """What a worker process needs beyond RFDecode to decode a
+        whole field."""
+        return {
+            "readlen": self.readlen,
+            "output_lines": self.output_lines,
+            "wow_level_adjust_smoothing": self.wow_level_adjust_smoothing,
+            "wow_interpolation_method": self.wow_interpolation_method,
+            "doDOD": self.doDOD,
+            "useAGC": self.useAGC,
+            "analog_audio": self.analog_audio,
+        }
+
+    def _field_engine_cfg(self):
+        """What the job dispatcher needs to place windows and predict
+        the audio clock."""
+        sp = self.rf.SysParams
+        return {
+            "blocklen": self.rf.blocklen,
+            "blockcut": self.rf.blockcut,
+            "demod_blocksize": self.demod_blocksize,
+            "readlen": self.readlen,
+            "samples_per_field": self.rf.freq_hz / sp["FPS"] / 2,
+            "analog_audio": self.analog_audio if self.analog_audio else 0,
+            "parity_len": {
+                True: float(self.rf.linelen * sp["field_lines"][0]),
+                False: float(self.rf.linelen * sp["field_lines"][1]),
+            },
+        }
+
+    def _engine_reset(self):
+        """Restart speculation from the current (true) chain state."""
+        prev = self._chain_prev
+        self._job_engine.reset(
+            start=self.fdoffset,
+            next_is_first=(not prev.isFirstField) if prev is not None else True,
+            lastfieldwritten=self.lastFieldWritten,
+            mtf_level=self.mtf_level,
+        )
+        self._engine_dirty = False
+
+    def _accept_job(self, res):
+        """Turn a speculative field result into a commit entry - or None
+        when it must be re-decoded inline.
+
+        The result is bit-identical to an inline decode exactly when its
+        block-quantized demod window matches the one the true chain
+        start produces; on top of that the decode parameters must still
+        be current, the audio-clock prediction must equal truth, and the
+        usual chain validation must pass.
+        """
+        if res.get("error"):
+            logs.logger.warning(
+                "field job failed, decoding inline:\n%s", res["error"]
+            )
+            return None
+
+        if not res.get("valid") or res["mtf_level"] != self.mtf_level:
+            return None
+
+        true_start = self.fdoffset
+        readloc = int(true_start - self.rf.blockcut)
+        if readloc < 0:
+            readloc = 0
+        if readloc // self.blocksize != res["readloc_block"]:
+            return None
+
+        f = res["field"]
+        f.rf = self.rf
+
+        prev = self._chain_prev
+        if prev is None or not self.validate_chain(f, prev):
+            return None
+
+        if self.analog_audio:
+            true_fn = f.compute_audio_field_number(
+                self.lastFieldWritten, self.analog_audio
+            )
+            if true_fn != f.audio_field_number:
+                return None
+
+        # The chain offset is recomputed from the *true* start so
+        # fdoffset advances exactly as an inline decode would.
+        offset = res["nextfieldoffset"] - (readloc - f.readloc)
+
+        entry = {
+            "f": f,
+            "start": true_start,
+            "offset": offset,
+            "independent": True,
+            "initphase": False,
+            "result": (res["picture"], res["efm"], res["metrics"]),
+            "audio": res["audio"],
+        }
+        self._chain_prev = f
+        self.fdoffset += offset
+        return entry
+
+    def _readfield_jobs(self):
+        """readfield via the speculative per-field job engine."""
+        if self._engine_dirty:
+            self._engine_reset()
+
+        res = self._job_engine.next_result()
+
+        if res.get("eof"):
+            # The dispatcher can no longer read a full window ahead;
+            # decode the remaining tail inline.
+            self._job_eof = True
+            self._job_engine.pause()
+            return self.readfield()
+
+        entry = self._accept_job(res)
+
+        if entry is None:
+            # Speculation rejected (window mismatch, stale parameters,
+            # invalid field, or chain validation failure): decode this
+            # field inline from truth, then restart speculation from the
+            # post-commit state.
+            self._job_engine.pause()
+            self._engine_dirty = True
+
+            entry = self._advance_chain()
+            if entry is None:
+                self.fieldstack.insert(0, None)
+                return None
+            entry["result"] = self.decode_stage2(entry["f"])
+
+        return self._commit_entry(entry)
 
     @profile
     def readfield(self, initphase=False):
@@ -1231,9 +1377,18 @@ class LDdecode:
         strictly in chain order.  With one thread the pipeline depth is
         1, which is plain serial decode; parallel depth only engages
         after warm-up.
+
+        Once warm with field jobs enabled, whole fields decode
+        speculatively in worker processes instead (_readfield_jobs);
+        this driver still handles warm-up, the input tail, and any field
+        the speculation gets wrong.
         """
         if self.second_decode is None and self.fields_written:
             self.second_decode = time.time()
+
+        if (self._job_engine is not None and not self._job_eof
+                and not initphase):
+            return self._readfield_jobs()
 
         depth = self._pipeline_depth if self.pipeline_warm else 1
 
