@@ -39,7 +39,7 @@ from tbc_common import (
     load_tbc, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
-    measure_ntc7_transients, weighted_psnr,
+    measure_ntc7_transients, weighted_psnr, chroma_am_pm_noise,
 )
 
 
@@ -609,6 +609,43 @@ def ntsc_report(params, fields, det):
     # 13. Weighted SNR
     # -----------------------------------------------------------------------
     weighted_snr_report(det, fields)
+
+    # -----------------------------------------------------------------------
+    # 14. Chrominance AM/PM noise
+    # -----------------------------------------------------------------------
+    chroma_noise_report(det, fields)
+
+
+def chroma_noise_report(det, fields):
+    """Section 14: chrominance AM/PM noise from the line 19 SC region."""
+    l19 = det.get("ntsc_line19_vits", [])
+    if not l19:
+        print_skipped(14, "CHROMINANCE AM/PM NOISE",
+                      "line 19 modulated region not detected")
+        return
+
+    m = chroma_am_pm_noise([fields[i] for i in l19], 19, 15.0, 18.0)
+    if m is None:
+        print_skipped(14, "CHROMINANCE AM/PM NOISE",
+                      "no usable subcarrier packet on line 19")
+        return
+
+    print_section(14, "CHROMINANCE AM/PM NOISE (line 19 modulated region, "
+                      f"{m['n_fields']} fields)\n"
+                      "   AM S/N = packet p-p vs rms envelope noise; "
+                      "PM = rms phase noise")
+    print(f"\n  Subcarrier packet: {m['sc_pp']:.1f} IRE p-p")
+    print(f"\n{'Demod band':>22}  {'AM S/N':>8}  {'PM noise':>9}  {'PM S/N':>8}")
+    print("-" * 54)
+    for tag, label in (("band", "10-500 kHz (bcast)"), ("wide", "10 kHz-1.3 MHz")):
+        am = m[f"am_snr_{tag}"]
+        pm = m[f"pm_deg_{tag}"]
+        pm_snr = 20 * np.log10(1.0 / np.radians(pm)) if pm > 0 else float("nan")
+        am_s = f"{am:>7.2f}dB" if am is not None else f"{'—':>8}"
+        print(f"{label:>22}  {am_s}  {pm:>8.3f}°  {pm_snr:>7.2f}dB")
+    print("\n  (No CCIR weighting curve exists for chrominance; the 10-500 kHz")
+    print("   demodulated band IS the broadcast 'weighted' convention.)")
+    print()
 
 
 def transient_report(det, fields):

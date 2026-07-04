@@ -639,6 +639,80 @@ def weighted_psnr(fields, line, start_us, duration_us):
             ire_sum / len(fields))
 
 
+def chroma_am_pm_noise(fields, line, start_us, duration_us):
+    """Chrominance AM/PM noise from a flat subcarrier region (VM700-style).
+
+    Demodulates the region at fs/4, rotates by the mean phasor so the real
+    axis is amplitude (AM) and the imaginary axis is phase (PM), and
+    accumulates the two noise spectra across fields.  There is no CCIR
+    weighting curve for chrominance -- broadcast practice band-limits the
+    demodulated noise instead -- so results are reported for both the
+    broadcast band (10-500 kHz) and wideband (10 kHz - 1.3 MHz).
+
+    Returns dict:
+      sc_pp                  subcarrier packet amplitude (IRE p-p)
+      am_snr_band/_wide      packet p-p vs rms envelope noise, dB
+      pm_deg_band/_wide      rms phase noise, degrees
+      n_fields
+    or None.
+    """
+    if not fields:
+        return None
+    p = fields[0].params
+    fs_hz = p.sample_rate_mhz * 1e6
+
+    acc_am, acc_pm, n = None, None, None
+    amp_sum = 0.0
+    for f in fields:
+        seg = line_segment_ire(f, line, start_us, duration_us)
+        if n is None:
+            n = len(seg)
+        if len(seg) != n or n < 128:
+            return None
+        x = np.arange(n)
+        seg = seg - np.polyval(np.polyfit(x, seg, 1), x)  # remove luma tilt
+        c = seg * np.exp(-0.5j * np.pi * (x + int(start_us * p.sample_rate_mhz)))
+        # kill the 2*fsc demod image and out-of-band junk
+        C = np.fft.fft(c)
+        fr = np.fft.fftfreq(n, 1.0 / fs_hz)
+        C[np.abs(fr) > 1.3e6] = 0
+        c = np.fft.ifft(C)
+        m = np.mean(c)
+        if np.abs(m) < 1.0:  # need a real subcarrier packet (>= ~4 IRE p-p)
+            return None
+        d = c * np.conj(m) / np.abs(m)
+        am = np.real(d) - np.abs(m)          # envelope/2 fluctuation, IRE
+        pm = np.imag(d) / np.abs(m)          # radians
+        sa = np.abs(np.fft.rfft(am)) ** 2
+        sp = np.abs(np.fft.rfft(pm)) ** 2
+        acc_am = sa if acc_am is None else acc_am + sa
+        acc_pm = sp if acc_pm is None else acc_pm + sp
+        amp_sum += 4 * np.abs(m)             # packet p-p
+
+    acc_am /= len(fields)
+    acc_pm /= len(fields)
+    sc_pp = amp_sum / len(fields)
+
+    freqs = np.fft.rfftfreq(n, 1.0 / fs_hz)
+    scale = np.full(len(acc_am), 2.0)
+    scale[0] = 1.0
+    if n % 2 == 0:
+        scale[-1] = 1.0
+
+    def band_rms(acc, lo, hi):
+        mask = (freqs >= lo) & (freqs <= hi)
+        return np.sqrt(np.sum(acc * mask * scale) / (n * n))
+
+    out = {"sc_pp": sc_pp, "n_fields": len(fields)}
+    for tag, lo, hi in (("band", 10e3, 500e3), ("wide", 10e3, 1.3e6)):
+        rms_env = 2 * band_rms(acc_am, lo, hi)      # envelope noise, IRE rms
+        rms_pm = band_rms(acc_pm, lo, hi)           # radians rms
+        out[f"am_snr_{tag}"] = (20 * np.log10(sc_pp / rms_env)
+                                if rms_env > 0 else None)
+        out[f"pm_deg_{tag}"] = np.degrees(rms_pm)
+    return out
+
+
 def detect_ntsc_ntc7_composite(field):
     """NTC-7 composite VITS on line 20 (bar + 12.5T pulse + mod staircase).
 
