@@ -185,3 +185,24 @@ findings; environment/deps may limit this to a smoke test.
 
 Order: EFM → dropouts → burst lock → verifier → round-trip.  Regression
 gates unchanged: default path bit-identical, all ctest green.
+
+## v2 results (2026-07-04, commit e3aab6ba + round-trip)
+
+All four deferred items landed:
+- Line convention corrected to what decode-orc's reader expects (ld-decode
+  layout; the SMPTE/EBU digital-line origins in the spec text are
+  informational).  This mattered doubly: decode-orc's CVBS source **only
+  accepts STANDARD_TBC_LOCKED files**, so the burst lock was required, not
+  optional.
+- Burst lock: both CI discs measure LOCKED (NTSC max residual 1.24 deg
+  after folding the 2-frame 180-degree alternation; PAL 0.80 deg mod 90
+  via adjacent-line burst products).  Files start at NTSC colour frame A /
+  PAL sequence frame 1.
+- Extensions: .dropouts.meta (v5) and .efm/.efm.meta (v1) written and
+  validated (bounds, contiguity, exact sizes) by cvbs_verify.
+- **Round-trip through decode-orc (nix-built orc-cli)**: both NTSC and PAL
+  .composite files load cleanly ("6 NTSC frames / 3 PAL frames, encoding
+  CVBS_U16_4FSC, audio yes, EFM yes") and process through burst-level,
+  SNR, and dropout analysis sinks without error.  The installed binary
+  predates the unified `cvbs_source` stage id — use `NTSC_CVBS_Source` /
+  `PAL_CVBS_Source` in project files for that build.
