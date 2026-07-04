@@ -415,8 +415,30 @@ prediction that the thread stage saturates around 3–5×.  The remaining
 serial residue is stage 1 (~50 ms) + commit (~60 ms: sqlite/EFM
 PLL/writes) plus GIL-slowed demod under load.
 
-**Still open (the §6 Stage C path, unchanged in design):** a process
-pool fanning out full per-field jobs — the step-3 independence
-semantics were built exactly so worker processes need only
-(start offset, mtf, params epoch).  EFM lane and commit sharding are
-smaller follow-ups.
+**Stage C (as built):** rather than full per-field worker jobs, the
+block demod moved into worker *processes*: the demod threads become
+feeders (read raw under the lock, wait on a `ProcessPoolExecutor`), and
+each worker rebuilds `RFDecode` from a snapshot of the parent's
+post-warm-up `DecoderParams` — filters are a pure function of those, so
+output stays bit-identical (verified: md5 + all sqlite rows equal to
+serial on both CI discs and he010).  The pool spawns at the warm-up
+transition, when parameters are final.  Main-thread work was further
+cut by precomputing AGC level measurements and per-field VITS metrics
+in stage 2 (`computeMetricsFP` adds only the fp-dependent part at
+commit) and switching the .tbc.db to WAL/synchronous=NORMAL
+(checkpointed back to a plain file at close).
+
+| Config | fields/s (steady state) |
+|---|---|
+| `-t 1` | 2.36 |
+| `-t 8` threads-only | 7.15 |
+| `-t 8` processes | 8.59 |
+| `-t 12` processes | 9.15 |
+| `-t 16` processes | 9.76 (4.1×) |
+
+Remaining ceiling is the main-thread in-order chain: `Field.process`
+(~40 ms) + span assembly/audio_phase2 (~25 ms) + commit (~30 ms).
+Going past ~10 fields/s means moving `Field.process` or the span
+assembly off the main thread — the full per-field-job design of §3,
+with its window-prediction/discard machinery.  EFM lane and commit
+sharding are smaller follow-ups.

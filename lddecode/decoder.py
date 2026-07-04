@@ -246,6 +246,10 @@ class LDdecode:
         # time) runs on a prefetching thread pool once warm; results are
         # bit-identical to the serial path.
         self.numthreads = extra_options.get("threads", 1)
+        # Block demod normally runs in worker *processes* (started at the
+        # warm-up transition, once calibration is final) so its Python
+        # glue stays off the GIL; the thread pool then just feeds them.
+        self.process_demod = extra_options.get("process_demod", True)
         self.block_cache = None
         if self.numthreads > 1:
             from .parallel import DemodBlockCache
@@ -337,6 +341,9 @@ class LDdecode:
             try:
                 self.build_sqlite_metadata()
                 self.dbconn.commit()
+                # Fold the WAL back so the output is a plain .tbc.db file
+                self.dbconn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.dbconn.execute("PRAGMA journal_mode=DELETE")
             except Exception:
                 pass
 
@@ -354,6 +361,13 @@ class LDdecode:
 
     def create_db_schema(self):
         cur = self.dbconn.cursor()
+
+        # WAL with synchronous=NORMAL keeps the per-field commit ordering
+        # (the .tbc.db never trails the video if the decode is killed)
+        # without an fsync per field; close() checkpoints back to a plain
+        # single-file database.
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
 
         cur.executescript(dedent('''\
             PRAGMA user_version = 1;
@@ -905,7 +919,10 @@ class LDdecode:
         if not (self.useAGC and f.isFirstField and f.sync_confidence > 80):
             return redo
 
-        sync_hz, ire0_hz, ire100_hz = self.detectLevels(f)
+        precomputed = getattr(f, "precomputed_levels", None)
+        sync_hz, ire0_hz, ire100_hz = (
+            precomputed if precomputed is not None else self.detectLevels(f)
+        )
 
         actualwhiteIRE = f.rf.hztoire(ire100_hz)
 
@@ -946,9 +963,16 @@ class LDdecode:
         )
 
         metrics = self.computeMetrics(f, None, verbose=True)
+        f.precomputed_metrics = metrics
 
         if self.doDOD:
             f.precomputed_dropouts = f.dropout_detect()
+
+        if self.useAGC and f.isFirstField and f.sync_confidence > 80:
+            # The AGC level measurement is pure per-field work; any
+            # parameter change between here and this field's commit
+            # arrives via a redo, which re-runs stage 2.
+            f.precomputed_levels = self.detectLevels(f)
 
         return picture, efm, metrics
 
@@ -1186,6 +1210,15 @@ class LDdecode:
                 and (len(self.bw_ratios) >= 10 or self.fields_written >= 60)
             )
 
+            if (self.pipeline_warm and self.block_cache is not None
+                    and self.process_demod):
+                # Parameters are final from here on (any later change
+                # arrives via a redo, which flushes the cache), so worker
+                # processes can now be built from a snapshot of them.
+                self.block_cache.enable_processes(
+                    self.rf_opts, self.rf.DecoderParams
+                )
+
         return self.commit_field(f, picture, efm)
 
     @profile
@@ -1382,7 +1415,16 @@ class LDdecode:
 
         fi["decodeFaults"] = decodeFaults
         fp_3d = self.fieldstack[2] if len(self.fieldinfo) >= 3 else None
-        fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], fp_3d)
+        base = getattr(self.fieldstack[0], "precomputed_metrics", None)
+        if base is not None:
+            # Per-field metrics were computed (and rounded) in stage 2;
+            # only the previous-frame-dependent part is added here.
+            from .metrics import computeMetricsFP
+            fi["vitsMetrics"] = computeMetricsFP(
+                self.rf, self.fieldstack[0], fp_3d, base
+            )
+        else:
+            fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], fp_3d)
 
         fi["vbi"] = {"vbiData": [int(lc) for lc in f.linecode if lc is not None]}
 

@@ -220,6 +220,15 @@ def computeMetricsNTSC(metrics, rf, f, fp=None):
     ]
     metrics["greyRFLevel"] = np.std(rawdata)
 
+    _metrics_fp_ntsc(metrics, f, fp)
+
+    return metrics
+
+
+def _metrics_fp_ntsc(metrics, f, fp):
+    """The previous-frame-dependent NTSC metrics (3D comb line-19 SNR
+    and burst levels).  Split out so they can be computed at commit time
+    against a metrics dict that was precomputed per-field."""
     if not f.isFirstField and fp is not None:
         c3d = CombNTSC([fp, f])
 
@@ -298,11 +307,18 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
             metrics["blackLineRFLevel"] / metrics["whiteRFLevel"]
         )
 
-    outputkeys = metrics.keys() if verbose else [
-        "wSNR", "bPSNR", "wSNRw", "bPSNRw",
-        "ntscLine19Burst70IRE", "ntscLine19Color3DRawSNR", "ntscLine19Burst0IRE",
-    ]
+    return _round_metrics(
+        metrics, metrics.keys() if verbose else DEFAULT_OUTPUT_KEYS
+    )
 
+
+DEFAULT_OUTPUT_KEYS = [
+    "wSNR", "bPSNR", "wSNRw", "bPSNRw",
+    "ntscLine19Burst70IRE", "ntscLine19Color3DRawSNR", "ntscLine19Burst0IRE",
+]
+
+
+def _round_metrics(metrics, outputkeys):
     metrics_rounded = {}
 
     for k in outputkeys:
@@ -320,3 +336,19 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
             metrics_rounded[k] = rounded
 
     return metrics_rounded
+
+
+def computeMetricsFP(rf, f, fp, base_metrics):
+    """Combine a per-field metrics dict precomputed with fp=None with the
+    previous-frame-dependent metrics, yielding the same dict that
+    computeMetrics(rf, f, fp) returns.  The base values were already
+    rounded by the same rules, so only the fp-dependent part is computed
+    here."""
+    out = {k: base_metrics[k] for k in DEFAULT_OUTPUT_KEYS if k in base_metrics}
+
+    if f.rf.system == "NTSC":
+        fpm = {}
+        _metrics_fp_ntsc(fpm, f, fp)
+        out.update(_round_metrics(fpm, DEFAULT_OUTPUT_KEYS))
+
+    return out

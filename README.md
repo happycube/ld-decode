@@ -58,22 +58,26 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 
 ## Threaded decoding
 
-`ld-decode -t N ...` decodes with N worker threads (`-t 0` picks a
-sensible count automatically; the default `-t 1` is plain serial
-decode).  RF block demodulation — the bulk of decode time — runs on a
-prefetching thread pool, and each field's downscale/metrics work fans
-out while the sync chain advances up to a few fields ahead; fields are
-committed and written strictly in order.
+`ld-decode -t N ...` decodes with N workers (`-t 0` picks a sensible
+count automatically; the default `-t 1` is plain serial decode).  RF
+block demodulation — the bulk of decode time — runs in prefetching
+worker *processes* (so it stays off the Python GIL entirely), and each
+field's downscale/metrics work fans out to threads while the sync chain
+advances up to a few fields ahead; fields are committed and written
+strictly in order.
 
 Parallel decoding only engages after a short warm-up (the first ~20
 fields decode serially while the MTF/AGC/de-emphasis calibration loops
-settle), and a field decoded under parameters that calibration then
-adjusts is automatically re-decoded, along with anything decoded ahead
-of it.  **Output is bit-identical for any `-t` value** — this is
+settle; the worker processes are then built from the calibrated
+parameters), and a field decoded under parameters that calibration
+later adjusts is automatically re-decoded, along with anything decoded
+ahead of it.  **Output is bit-identical for any `-t` value** — this is
 asserted by the test suite — so there is no quality trade-off, only
-memory (a few hundred MB of demod buffers at `-t 8`).  Typical
-steady-state speedup is ~2.5–3× at `-t 8`; higher thread counts are
-limited by the Python GIL.
+memory (demod buffers plus ~150 MB per worker process).  Typical
+steady-state speedup is ~3.5–4× (`-t 8` through `-t 16`); the remaining
+ceiling is the in-order sync/commit chain on the main thread.
+`--demod-threads-only` keeps demodulation in threads instead of
+processes (slower, but lighter on memory).
 
 ## CVBS output mode
 

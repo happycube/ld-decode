@@ -112,6 +112,13 @@ def main(args=None):
         help="worker threads for block demodulation (0 = auto, 1 = serial)",
     )
     parser.add_argument(
+        "--demod-threads-only",
+        dest="demod_threads_only",
+        action="store_true",
+        default=False,
+        help="with -t: keep block demodulation in threads instead of worker processes",
+    )
+    parser.add_argument(
         "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"
     )
     parser.add_argument(
@@ -381,6 +388,7 @@ def main(args=None):
 
     extra_options = {
         "threads": threads,
+        "process_demod": not args.demod_threads_only,
         "useAGC": not args.noAGC,
         "write_RF_TBC": args.RF_TBC,
         "pipe_RF_TBC": audio_pipe,

@@ -28,8 +28,38 @@ Correctness invariants:
   count.
 """
 
+import copy
+import multiprocessing
 import threading
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
+
+# Worker-process state: one RFDecode per process, built by the pool
+# initializer to reproduce the parent's post-calibration filter state.
+_worker_rf = None
+
+
+def _demod_worker_init(rf_opts, decoder_params):
+    global _worker_rf
+    from .rfdecode import RFDecode
+
+    _worker_rf = RFDecode(**rf_opts)
+    # RFDecode's filters are a pure function of (constructor options,
+    # DecoderParams): adopting the parent's snapshot and recomputing
+    # reproduces its state exactly - including auto-deemp / AGC results
+    # calibrated during warm-up.
+    _worker_rf.DecoderParams = copy.deepcopy(decoder_params)
+    _worker_rf.computefilters()
+
+
+def _demod_worker_block(rawinput, mtf_level):
+    import scipy.fft as npfft
+
+    return _worker_rf.demodblock(
+        data=rawinput,
+        fftdata=npfft.fft(rawinput),
+        mtf_level=mtf_level,
+        cut=True,
+    )
 
 
 class DemodBlockCache:
@@ -40,19 +70,55 @@ class DemodBlockCache:
     Cached values are (raw, demod) tuples; None marks EOF.
     """
 
-    def __init__(self, read_fn, demod_fn, nthreads, ahead=64, keep_behind=8):
+    def __init__(self, read_fn, demod_fn, nthreads, ahead=96, keep_behind=8):
         self.read_fn = read_fn
         self.demod_fn = demod_fn
         self.ahead = ahead
         self.keep_behind = keep_behind
 
+        self._nthreads = nthreads
         self._pool = ThreadPoolExecutor(
             max_workers=nthreads, thread_name_prefix="demod"
         )
+        self._procs = None
         self._lock = threading.Lock()       # protects _cache/_eof_block
         self._read_lock = threading.Lock()  # serializes the raw reader
         self._cache = {}                    # (block, mtf) -> Future
         self._eof_block = None
+
+    def enable_processes(self, rf_opts, decoder_params, nprocs=None):
+        """Move block demodulation into worker processes.
+
+        The demod threads become lightweight feeders: they still read
+        raw blocks under the read lock, but hand the FFT/demod compute
+        to a process pool and sleep on the result - taking the ~75% of
+        decode CPU that block demod represents off the GIL entirely.
+
+        Call once decoder parameters are final (post warm-up): each
+        worker builds its RFDecode from the snapshot taken here.  The
+        per-block computation is unchanged, so output stays
+        bit-identical to threaded and serial decode.
+        """
+        rf_opts = dict(rf_opts)
+        # drop values demod does not need and that may not pickle
+        rf_opts["extra_options"] = {
+            k: v
+            for k, v in rf_opts.get("extra_options", {}).items()
+            if k not in ("pipe_RF_TBC",)
+        }
+
+        self._procs = ProcessPoolExecutor(
+            max_workers=nprocs or self._nthreads,
+            mp_context=multiprocessing.get_context("spawn"),
+            initializer=_demod_worker_init,
+            initargs=(rf_opts, copy.deepcopy(decoder_params)),
+        )
+        procs = self._procs
+
+        def demod_in_process(rawinput, mtf_level):
+            return procs.submit(_demod_worker_block, rawinput, mtf_level).result()
+
+        self.demod_fn = demod_in_process
 
     def get_span(self, brange, mtf_level):
         """Demodulated blocks for brange (list of (raw, demod)), or None
@@ -88,6 +154,9 @@ class DemodBlockCache:
     def close(self):
         self.flush()
         self._pool.shutdown(wait=False, cancel_futures=True)
+        if self._procs is not None:
+            self._procs.shutdown(wait=False, cancel_futures=True)
+            self._procs = None
 
     # internal - callers hold self._lock
 
