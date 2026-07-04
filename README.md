@@ -59,12 +59,15 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 ## Threaded decoding
 
 `ld-decode -t N ...` decodes with N workers (`-t 0` picks a sensible
-count automatically; the default `-t 1` is plain serial decode).  RF
-block demodulation — the bulk of decode time — runs in prefetching
-worker *processes* (so it stays off the Python GIL entirely), and each
-field's downscale/metrics work fans out to threads while the sync chain
-advances up to a few fields ahead; fields are committed and written
-strictly in order.
+count automatically; the default `-t 1` is plain serial decode).  Each
+field is decoded *entirely* in a worker process — demodulation, sync
+location, downscale, metrics — speculatively, at a predicted start
+offset; the main thread validates each result against the true field
+chain and commits/writes strictly in order.  A field's decode depends
+on its start offset only through a block-quantized read window, so a
+speculative result is provably identical to a serial decode whenever
+that window matches — which the committer checks exactly, re-decoding
+inline on the rare miss (~5%).
 
 Parallel decoding only engages after a short warm-up (the first ~20
 fields decode serially while the MTF/AGC/de-emphasis calibration loops
@@ -73,11 +76,12 @@ parameters), and a field decoded under parameters that calibration
 later adjusts is automatically re-decoded, along with anything decoded
 ahead of it.  **Output is bit-identical for any `-t` value** — this is
 asserted by the test suite — so there is no quality trade-off, only
-memory (demod buffers plus ~150 MB per worker process).  Typical
-steady-state speedup is ~3.5–4× (`-t 8` through `-t 16`); the remaining
-ceiling is the in-order sync/commit chain on the main thread.
-`--demod-threads-only` keeps demodulation in threads instead of
-processes (slower, but lighter on memory).
+memory (~150–200 MB per worker process).  Steady-state throughput on a
+36-core machine: ~2.4 fields/s serial → ~13 fields/s at `-t 12`
+(≈5.7×).  Modes that consume raw field data at write time (`--RF-TBC`,
+AC3, `--cvbs`) automatically use block-level parallelism instead
+(~4×); `--demod-threads-only` keeps everything in threads (slower,
+lightest on memory).
 
 ## CVBS output mode
 

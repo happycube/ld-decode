@@ -442,3 +442,27 @@ Going past ~10 fields/s means moving `Field.process` or the span
 assembly off the main thread — the full per-field-job design of §3,
 with its window-prediction/discard machinery.  EFM lane and commit
 sharding are smaller follow-ups.
+
+**Full per-field jobs (0e624503):** the §3 design landed, with a
+cleaner exactness mechanism than the plan's fixed-lag predictions: a
+field's decode depends on its start offset only through the
+block-quantized demod window, so the committer accepts a speculative
+result iff its window block index matches the one the *true* chain
+start produces (plus mtf/params currency, verified audio field number,
+chain validation) — accepted results are bit-identical to inline
+decode by construction, and anything else re-decodes inline from
+truth.  Prediction quality therefore affects only the discard rate
+(~5% on the CI disc), never the output, and no determinism rules are
+needed at all.  Fields return from workers stripped of sample buffers
+(`prepare_transport`); warm-up/tail/repair/redo all reuse the inline
+driver.  RF-TBC/AC3/CVBS modes fall back to block-level parallelism.
+
+| Config | fields/s (steady state) |
+|---|---|
+| `-t 1` | 2.36 |
+| `-t 16` block processes | 9.76 |
+| `-t 12` field jobs | **13.4 (5.7×)** |
+
+New ceiling: the commit path (~20 ms: CombNTSC 3D metrics, EFM PLL,
+buildmetadata, writes) plus worker capacity (~1.1 s of CPU per field /
+worker count) and the ~20-field serial warm-up on short discs.
