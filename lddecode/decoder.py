@@ -232,6 +232,14 @@ class LDdecode:
         self._deemp_burst_samples = []
         self._deemp_burst_offset = None
 
+        # Warm-up: fields decode anchored to their predecessor until the
+        # calibration loops (MTF / AGC / auto-deemp) settle.  Once warm
+        # (one-way), each field decodes independently from its own sync
+        # structure and the commit stage validates it against the chain -
+        # the precondition for decoding several fields at once.
+        self.pipeline_warm = False
+        self._fields_since_redo = 0
+
         self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
@@ -438,18 +446,27 @@ class LDdecode:
             self.fdoffset *= self.bytes_per_field
 
     def checkMTF(self, field, pfield=None):
-        oldmtf = self.mtf_level
-
         if not self.autoMTF:
+            oldmtf = self.mtf_level
             self.mtf_level = max(1 - ((self.frameNumber or 0) / 10000), 0)
-        else:
-            if len(self.bw_ratios) == 0:
-                return True
+            return np.abs(self.mtf_level - oldmtf) < 0.05
 
-            # scale for NTSC - 1.1 to 1.55
-            self.mtf_level = np.clip((np.mean(self.bw_ratios) - 1.08) / 0.38, 0, 1)
+        if len(self.bw_ratios) == 0:
+            return True
 
-        return np.abs(self.mtf_level - oldmtf) < 0.05
+        # scale for NTSC - 1.1 to 1.55
+        estimate = np.clip((np.mean(self.bw_ratios) - 1.08) / 0.38, 0, 1)
+
+        # Dead-band: hold the current level until the estimate drifts by
+        # the redo threshold, then adopt it (and redo the field).  Fields
+        # never see a stale-by-less-than-tolerance value silently change
+        # under them, which makes the decode reproducible regardless of
+        # how far ahead of the commit point it runs.
+        if np.abs(estimate - self.mtf_level) < 0.05:
+            return True
+
+        self.mtf_level = estimate
+        return False
 
     def checkAutoDeemp(self, field):
         """Calibrate inverse-MTF chroma correction from burst amplitude.
@@ -745,17 +762,22 @@ class LDdecode:
         return rv
 
     @profile
-    def decodefield(self, start, mtf_level, prevfield=None, initphase=False):
+    def decodefield(self, start, mtf_level, prevfield=None, initphase=False,
+                    wide=None, trust_window=False):
         """ returns field object if valid, and the offset to the next decode """
 
         readloc = int(start - self.rf.blockcut)
         if readloc < 0:
             readloc = 0
 
-        # With no previous field to anchor on (first field, or re-acquisition
+        # With no idea where the field starts (first field, or re-acquisition
         # after a dropped field) line0 can be far into the buffer, so read more
         # to capture the whole field rather than dropping and re-seeking it.
-        readlen = self.readlen_first if prevfield is None else self.readlen
+        # A trusted window placement (steady-state chain) uses the normal
+        # length even without an anchor.
+        if wide is None:
+            wide = prevfield is None and not trust_window
+        readlen = self.readlen_first if wide else self.readlen
 
         readloc_block = readloc // self.blocksize
         numblocks = (readlen // self.blocksize) + 2
@@ -781,6 +803,7 @@ class LDdecode:
             rawdecode,
             anchor=anchor,
             initphase=initphase,
+            trust_window=trust_window,
             fields_written=self.fields_written,
             readloc=rawdecode["startloc"],
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing,
@@ -848,7 +871,8 @@ class LDdecode:
         return redo
 
     @profile
-    def decode_one(self, start, mtf_level, prevfield=None, initphase=False):
+    def decode_one(self, start, mtf_level, prevfield=None, initphase=False,
+                   wide=None, trust_window=False):
         """Decode and measure one field: demod, sync/lineloc processing,
         video downscale and per-field metrics.
 
@@ -857,7 +881,8 @@ class LDdecode:
         (field, offset_to_next, picture, efm, metrics); the last three
         are None when the field is invalid or at EOF.
         """
-        f, offset = self.decodefield(start, mtf_level, prevfield, initphase)
+        f, offset = self.decodefield(start, mtf_level, prevfield, initphase,
+                                     wide=wide, trust_window=trust_window)
 
         if f is None or not f.valid:
             return f, offset, None, None, None
@@ -898,6 +923,26 @@ class LDdecode:
 
         return redo
 
+    def validate_chain(self, f, prevfield):
+        """Check an independently-decoded field against the committed
+        chain: parity must alternate, confidence must be usable, and its
+        line 0 must sit where the previous field ended.  A False return
+        triggers a repair redo (re-decode anchored to the previous
+        field, restoring the damaged-field robustness of chained decode)."""
+        if f.sync_confidence < 50:
+            return False
+
+        if f.isFirstField == prevfield.isFirstField:
+            return False
+
+        if f.line0loc is None:
+            return False
+
+        prev_end = prevfield.data["startloc"] + prevfield.linelocs[prevfield.linecount]
+        line0 = f.data["startloc"] + f.line0loc
+
+        return abs(line0 - prev_end) <= self.rf.linelen * 2
+
     def commit_field(self, f, picture, efm):
         """Serial commit stage: audio clock, metadata chain checks and
         ordered writeout.  Returns f (a first field may be held back, and
@@ -908,6 +953,15 @@ class LDdecode:
         # Only write a FirstField first
         if len(self.fieldinfo) == 0 and not f.isFirstField:
             return f
+
+        if f.anchor is None and f.phase_id_fallback and len(self.fieldinfo):
+            # The field couldn't measure its colour-sequence position from
+            # its own burst structure; continue the committed sequence
+            # (what the decode-time fallback does when an anchor exists).
+            nphase = self.fieldinfo[-1]["fieldPhaseID"] + 1
+            f.fieldPhaseID = (
+                1 if nphase > self.rf.SysParams["fieldPhases"] else nphase
+            )
 
         # The audio clock needs the last *written* field, so this runs at
         # commit time, not with the video downscale.
@@ -934,24 +988,38 @@ class LDdecode:
     @profile
     def readfield(self, initphase=False):
         adjusted = False
+        repaired = False
 
         if len(self.fieldstack) >= 4:
             # Fields no longer hold a reference to their predecessor (they
             # get a FieldAnchor snapshot instead), so popping is enough.
             self.fieldstack.pop(-1)
 
-        # Decode-then-process, one field at a time.  self.fdoffset is the file
-        # offset of the field to decode; prevfield anchors the next field's sync
-        # search.  On a redo we re-decode the *same* field (fdoffset unchanged)
-        # with the parameters calibrate() just adjusted.
+        # Decode-then-process, one field at a time.  self.fdoffset is the
+        # file offset of the field to decode.  During warm-up each decode is
+        # anchored to the previous field; once the calibration loops settle
+        # the field decodes independently from its own sync structure (the
+        # hot path a parallel pipeline fans out), falling back to an
+        # anchored repair decode when the result disagrees with the chain.
+        # On a redo we re-decode the *same* field (fdoffset unchanged) with
+        # the parameters calibrate() just adjusted.
         prevfield = self.fieldstack[0]
+        unanchored = (
+            self.pipeline_warm and prevfield is not None and not initphase
+        )
 
         while True:
             if self.second_decode is None and self.fields_written:
                 self.second_decode = time.time()
 
+            independent = unanchored and not repaired
             f, offset, picture, efm, metrics = self.decode_one(
-                self.fdoffset, self.mtf_level, prevfield, initphase
+                self.fdoffset,
+                self.mtf_level,
+                None if independent else prevfield,
+                initphase,
+                wide=(prevfield is None),
+                trust_window=independent,
             )
 
             if f is None:
@@ -960,9 +1028,22 @@ class LDdecode:
                 return None
 
             if not f.valid:
+                if independent:
+                    # Give the anchored decode a chance before skipping.
+                    repaired = True
+                    continue
+
                 # Bad field - skip past it and try the next one, unanchored.
                 self.fdoffset += offset
                 prevfield = None
+                unanchored = False
+                continue
+
+            if independent and not self.validate_chain(f, prevfield):
+                # The independent decode disagrees with the committed chain
+                # (parity, confidence, or position) - repair it with the
+                # previous field as anchor.
+                repaired = True
                 continue
 
             redo = self.calibrate(f, metrics, adjusted)
@@ -970,6 +1051,7 @@ class LDdecode:
             # Allow one redo only: re-decode this same field with adjusted params.
             if not adjusted and redo:
                 adjusted = True
+                self._fields_since_redo = 0
                 prevfield = self.fieldstack[0]
                 continue
 
@@ -981,6 +1063,19 @@ class LDdecode:
 
             self.fieldstack.insert(0, f)
             self.fdoffset += offset
+
+            if not adjusted:
+                self._fields_since_redo += 1
+
+            if not self.pipeline_warm:
+                # One-way warm-up gate: all calibration loops settled and a
+                # few fields committed without any redo.
+                self.pipeline_warm = (
+                    self.deemp_calibrated
+                    and self.fields_written >= 2
+                    and self._fields_since_redo >= 5
+                    and (len(self.bw_ratios) >= 10 or self.fields_written >= 60)
+                )
 
             return self.commit_field(f, picture, efm)
 

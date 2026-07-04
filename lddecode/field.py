@@ -88,6 +88,7 @@ class Field:
         decode,
         anchor=None,
         initphase=False,
+        trust_window=False,
         fields_written=0,
         readloc=0,
         wow_level_adjust_smoothing=0,
@@ -99,7 +100,18 @@ class Field:
         self.readloc = readloc
 
         self.anchor = anchor
+        # True when the caller placed the read window so this field's
+        # vblank is near the start (steady-state pipeline): the line-0
+        # search may then be restricted the same way an anchored decode
+        # restricts it, without needing the previous field.
+        self.trust_window = trust_window
         self.fields_written = fields_written
+
+        # Set when fieldPhaseID could not be measured from this field's
+        # own burst structure and a chain-based fallback was used; the
+        # commit stage rewrites it from the committed sequence.
+        self.phase_id_fallback = False
+        self.line0loc = None
 
         self.rf = rf
         self.freq = self.rf.freq
@@ -668,9 +680,14 @@ class Field:
 
         self.sync_confidence = 100
 
-        # If we have a previous field, the first vblank should be close to the beginning,
-        # and we need to reject anything too far in (which could be the *next* vsync)
-        limit = 100 if (self.anchor is not None and self.anchor.skip_score >= 50) else None
+        # If the previous field ended cleanly - or the caller placed the
+        # window so this field starts near the beginning - the first vblank
+        # must be close by, and anything too far in (which could be the
+        # *next* vsync) is rejected.
+        limit = 100 if (
+            (self.anchor is not None and self.anchor.skip_score >= 50)
+            or self.trust_window
+        ) else None
         line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(
             validpulses, 0, limit
         )
@@ -836,6 +853,9 @@ class Field:
         self.validpulses = validpulses = self.refinepulses()
         meanlinelen = self.computeLineLen(validpulses)
         line0loc, lastlineloc, self.isFirstField = self.getLine0(validpulses, meanlinelen)
+        # buffer-relative; commit-time chain validation compares this
+        # against where the previous field ended
+        self.line0loc = line0loc
         self.linecount = self.rf.SysParams["field_lines"][0 if self.isFirstField else 1]
 
         # Number of lines to actually process.  This is set so that the entire following
@@ -1623,6 +1643,7 @@ class FieldPAL(Field):
         return np.array(linelocs)
 
     def get_following_field_number(self):
+        self.phase_id_fallback = True
         if self.anchor is not None:
             newphase = self.anchor.field_phase_id + 1
             return 1 if newphase == 9 else newphase
@@ -1873,7 +1894,10 @@ class FieldNTSC(Field):
             }
             self.fieldPhaseID = map4[(self.isFirstField, field14)]
         else:
+            # No usable burst measurements on any line - the phase could
+            # not be determined from this field itself.
             self.fieldPhaseID = 1
+            self.phase_id_fallback = True
 
         return linelocs_adj
 
