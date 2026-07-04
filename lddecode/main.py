@@ -78,6 +78,14 @@ def main(args=None):
         action="store_true",
         help="source is in NTSC-J (IRE 0 black) format",
     )
+    parser.add_argument(
+        "--cvbs",
+        dest="cvbs",
+        action="store_true",
+        default=False,
+        help="write spec-compliant CVBS output (<out>.composite/.meta and "
+        "spec WAV audio) instead of the .tbc video output",
+    )
     # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
     parser.add_argument(
         "-m",
@@ -390,6 +398,17 @@ def main(args=None):
 
     if args.lowband:
         extra_options["lowband"] = True
+
+    if args.cvbs:
+        if vid_standard == "PAL":
+            print("ERROR: --cvbs PAL output is not implemented yet "
+                  "(PAL 4fsc is not line-locked; see cvbs-output-plan.md)",
+                  file=sys.stderr)
+            sys.exit(1)
+        extra_options["output_cvbs"] = True
+        if args.ntscj:
+            # NTSC-J: no setup pedestal; record the black-level override
+            extra_options["cvbs_black_level"] = 240
 
     try:
         loader = make_loader(filename, args.inputfreq)

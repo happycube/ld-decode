@@ -98,10 +98,37 @@ class LDdecode:
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
 
+        self.output_cvbs = extra_options.get("output_cvbs", False)
+        self.cvbs_writer = None
+
         if fname_out is not None:
-            self.outfile_video = open(fname_out + ".tbc", "wb")
-            if self.analog_audio:
-                self.outfile_audio = open(fname_out + ".pcm", "wb")
+            if self.output_cvbs:
+                from .cvbs import CVBSWriter
+
+                # NTSC line-locked 44100 is rate-locked to video but NOT at
+                # the spec's rational locked rate; only the -N line-locked
+                # mode (2.8 samples/line = 44,100,000/1001 Hz) qualifies.
+                if system == "PAL":
+                    aud_locked, aud_rate = True, 44100
+                else:
+                    aud_locked = analog_audio < 0
+                    aud_rate = 44100000 / 1001 if aud_locked else 44100
+
+                self.cvbs_writer = CVBSWriter(
+                    fname_out, system, logger=_logger, version=self.version,
+                    black_level=extra_options.get("cvbs_black_level"),
+                    write_audio=bool(self.analog_audio),
+                    audio_rate=aud_rate,
+                    audio_locked=aud_locked if self.analog_audio else None,
+                    capture_notes=(
+                        "LaserDisc PAL: pilot burst may be present in blanking"
+                        if system == "PAL" else None),
+                    has_nonstandard_values=True if system == "PAL" else None,
+                )
+            else:
+                self.outfile_video = open(fname_out + ".tbc", "wb")
+                if self.analog_audio:
+                    self.outfile_audio = open(fname_out + ".pcm", "wb")
             if self.digital_audio:
                 # feed EFM stream into ld-ldstoefm
                 self.efm_pll = efm_pll.EFM_PLL()
@@ -116,10 +143,15 @@ class LDdecode:
                 self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
                 self.do_rftbc = True
 
-            if os.path.exists(fname_out + '.tbc.db'):
-                os.unlink(fname_out + '.tbc.db')
-            self.dbconn = sqlite3.connect(fname_out + '.tbc.db')
-            self.create_db_schema()
+            if self.output_cvbs:
+                # CVBS mode replaces the .tbc video output and its sqlite
+                # metadata; the spec .meta file is written by CVBSWriter.
+                self.dbconn = None
+            else:
+                if os.path.exists(fname_out + '.tbc.db'):
+                    os.unlink(fname_out + '.tbc.db')
+                self.dbconn = sqlite3.connect(fname_out + '.tbc.db')
+                self.create_db_schema()
 
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
         if self.pipe_rftbc:
@@ -220,6 +252,13 @@ class LDdecode:
 
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
+
+        if self.cvbs_writer is not None:
+            try:
+                self.cvbs_writer.close()
+            except Exception:
+                pass
+            self.cvbs_writer = None
 
         if self.ffmpeg_rftbc is not None:
             try:
@@ -545,6 +584,10 @@ class LDdecode:
 
         self.fieldinfo.append(fi)
 
+        if self.dbconn is None:
+            self._writeout_data(fi, picture, audio, f)
+            return
+
         if not self.capture_id:
             self.build_sqlite_metadata()
 
@@ -617,7 +660,14 @@ class LDdecode:
         # decode is killed mid-run.
         self.dbconn.commit()
 
-        self.outfile_video.write(picture)
+        self._writeout_data(fi, picture, audio, f)
+
+    def _writeout_data(self, fi, picture, audio, f):
+        """Write the field's sample data (video/rf-tbc/audio outputs)."""
+        if self.cvbs_writer is not None:
+            self.cvbs_writer.push_field(fi, picture, f)
+        else:
+            self.outfile_video.write(picture)
         self.fields_written += 1
 
         if self.do_rftbc:
@@ -632,8 +682,11 @@ class LDdecode:
             if self.pipe_rftbc is not None:
                 self.pipe_rftbc.send(rftbc)
 
-        if audio is not None and self.outfile_audio is not None:
-            self.outfile_audio.write(audio)
+        if audio is not None:
+            if self.cvbs_writer is not None:
+                self.cvbs_writer.push_audio(audio)
+            elif self.outfile_audio is not None:
+                self.outfile_audio.write(audio)
 
     @profile
     def demod_read(self, begin, length, MTF=0):
