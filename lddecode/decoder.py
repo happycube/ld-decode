@@ -325,6 +325,8 @@ class LDdecode:
                 field_id INTEGER NOT NULL,
                 b_psnr REAL,
                 w_snr REAL,
+                b_psnr_weighted REAL,
+                w_snr_weighted REAL,
                 ntsc_line19_burst70_ire REAL,
                 ntsc_line19_color_3d_raw_snr REAL,
                 ntsc_line19_burst0_ire REAL,
@@ -566,6 +568,8 @@ class LDdecode:
         if vitsMetrics := fi.get('vitsMetrics'):
             w_snr  = vitsMetrics.get('wSNR', 0)
             b_psnr = vitsMetrics.get('bPSNR', 0)
+            w_snr_w  = vitsMetrics.get('wSNRw')
+            b_psnr_w = vitsMetrics.get('bPSNRw')
             burst70 = vitsMetrics.get('ntscLine19Burst70IRE')
             snr3d   = vitsMetrics.get('ntscLine19Color3DRawSNR')
             burst0  = vitsMetrics.get('ntscLine19Burst0IRE')
@@ -573,10 +577,12 @@ class LDdecode:
             self.dbconn.execute('''
                 INSERT INTO vits_metrics (
                     capture_id, field_id, w_snr, b_psnr,
+                    w_snr_weighted, b_psnr_weighted,
                     ntsc_line19_burst70_ire, ntsc_line19_color_3d_raw_snr,
                     ntsc_line19_burst0_ire
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (c_id, f_id, w_snr, b_psnr, burst70, snr3d, burst0))
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (c_id, f_id, w_snr, b_psnr, w_snr_w, b_psnr_w,
+                 burst70, snr3d, burst0))
 
         # Insert VBI data if present
         vbi_data = fi.get("vbi", {}).get("vbiData", [])

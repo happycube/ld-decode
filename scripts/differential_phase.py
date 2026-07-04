@@ -39,7 +39,7 @@ from tbc_common import (
     load_tbc, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
-    measure_ntc7_transients,
+    measure_ntc7_transients, weighted_psnr,
 )
 
 
@@ -603,6 +603,16 @@ def ntsc_report(params, fields, det):
     # -----------------------------------------------------------------------
     # 12. NTC-7 composite: transient response / ringing
     # -----------------------------------------------------------------------
+    transient_report(det, fields)
+
+    # -----------------------------------------------------------------------
+    # 13. Weighted SNR
+    # -----------------------------------------------------------------------
+    weighted_snr_report(det, fields)
+
+
+def transient_report(det, fields):
+    """Section 12: NTC-7 2T pulse / bar edge transient response."""
     comp_idx = sorted(det.get("ntsc_ntc7_composite", {}))
     if not comp_idx:
         print_skipped(12, "NTC-7 2T PULSE AND BAR EDGE (transient response)",
@@ -629,6 +639,40 @@ def ntsc_report(params, fields, det):
                else "good (2-4%)" if max(m['pulse_ring_pct'], m['edge_overshoot_pct']) < 4
                else "visible ringing (> 4%)")
     print(f"  Assessment:              {verdict}")
+    print()
+
+
+def weighted_snr_report(det, fields):
+    """Section 13: CCIR-567 weighted SNR from flat VITS regions."""
+    regions = []
+    l19 = det.get("ntsc_line19_vits", [])
+    if l19:
+        regions.append(("line 19 50 IRE grey", [fields[i] for i in l19], 19, 39.0, 7.0))
+        regions.append(("line 19 7.5 IRE black", [fields[i] for i in l19], 19, 51.0, 8.0))
+    comp = sorted(det.get("ntsc_ntc7_composite", {}))
+    if comp:
+        regions.append(("line 20 100 IRE bar", [fields[i] for i in comp], 20, 18.0, 9.0))
+
+    if not regions:
+        print_skipped(13, "WEIGHTED SNR (CCIR 567 unified weighting)",
+                      "no flat VITS regions detected")
+        return
+
+    print_section(13, "WEIGHTED SNR (CCIR 567 unified weighting, tau0 = 245 ns)\n"
+                      "   PSNR = 100 IRE p-p vs RMS noise, band-limited to 4.2 MHz")
+    print(f"\n{'Region':>24}  {'IRE':>6}  {'Fields':>6}  {'Unweighted':>10}  "
+          f"{'Weighted':>9}  {'Advantage':>9}")
+    print("-" * 74)
+    for label, flds, line, start, dur in regions:
+        r = weighted_psnr(flds, line, start, dur)
+        if r is None:
+            print(f"{label:>24}  {'—':>6}")
+            continue
+        w_db, flat_db, ire = r
+        print(f"{label:>24}  {ire:>6.1f}  {len(flds):>6}  {flat_db:>9.2f}dB  "
+              f"{w_db:>8.2f}dB  {w_db - flat_db:>+8.2f}dB")
+    print("\n  (Weighted values are the ones comparable to broadcast SNR grades:")
+    print("   >=60 studio, 54-60 broadcast chain, 46-54 good consumer source.)")
     print()
 
 

@@ -133,6 +133,55 @@ def calcpsnr(f, snrslice):
     return calcsnr(f, snrslice, psnr=True)
 
 
+# CCIR Rec. 567 unified noise weighting network: a single-time-constant
+# low-pass (tau0 = 245 ns, -3 dB ~ 650 kHz) that models the eye's reduced
+# sensitivity to high-frequency noise.  See references/README.md for the
+# sources.  Broadcast-style weighted SNR = 100 IRE p-p vs weighted RMS,
+# band-limited to 4.2 MHz (525-line) / 5.0 MHz (625-line).
+UNIFIED_WEIGHTING_TAU = 245e-9
+
+
+def weighted_noise_rms(noise_ire, fs_hz, lpf_hz):
+    """RMS of a noise vector after unified weighting + band-limiting.
+
+    Applied in the frequency domain: measurement slices are short, so a
+    time-domain IIR's edge transient would span the whole segment.
+    """
+    n = len(noise_ire)
+    freqs = np.fft.rfftfreq(n, 1.0 / fs_hz)
+    spec = np.abs(np.fft.rfft(noise_ire)) ** 2
+    w2 = 1.0 / (1.0 + (2 * np.pi * freqs * UNIFIED_WEIGHTING_TAU) ** 2)
+    w2[(freqs > lpf_hz) | ((freqs < 10e3) & (freqs > 0))] = 0.0
+    # Parseval for rfft: interior bins count twice
+    scale = np.full(len(spec), 2.0)
+    scale[0] = 1.0
+    if n % 2 == 0:
+        scale[-1] = 1.0
+    meansq = np.sum(spec * w2 * scale) / (n * n)
+    return np.sqrt(meansq)
+
+
+def calcpsnr_weighted(f, snrslice):
+    """Weighted PSNR (dB, 100 IRE p-p vs CCIR-567-weighted RMS noise).
+
+    The slice is detrended with a linear fit (the noise meter's tilt-null)
+    before weighting.
+    """
+    data = f.output_to_ire(f.dspicture[snrslice].astype(float))
+    n = len(data)
+    if n < 32:
+        return None
+    x = np.arange(n)
+    noise = data - np.polyval(np.polyfit(x, data, 1), x)
+
+    fs_hz = f.rf.SysParams["outfreq"] * 1e6
+    lpf_hz = 4.2e6 if f.rf.system == "NTSC" else 5.0e6
+    rms_w = weighted_noise_rms(noise, fs_hz, lpf_hz)
+    if rms_w <= 0:
+        return None
+    return 20 * np.log10(100.0 / rms_w)
+
+
 def computeMetricsPAL(metrics, rf, f, fp=None):
     if f.isFirstField:
         wl_slice = f.lineslice_tbc(13, 4.7 + 15.5, 3)
@@ -210,6 +259,9 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
         if inrange(np.mean(f.output_to_ire(f.dspicture[wl_slice])), 90, 110):
             f.whitesnr_slice = wl
             metrics["wSNR"] = calcpsnr(f, wl_slice)
+            wsnr_w = calcpsnr_weighted(f, wl_slice)
+            if wsnr_w is not None:
+                metrics["wSNRw"] = wsnr_w
             metrics["whiteIRE"] = np.mean(f.output_to_ire(f.dspicture[wl_slice]))
 
             rawslice = f.lineslice(*wl)
@@ -237,6 +289,9 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
     )
 
     metrics["bPSNR"] = calcpsnr(f, bl_slicetbc)
+    bpsnr_w = calcpsnr_weighted(f, bl_slicetbc)
+    if bpsnr_w is not None:
+        metrics["bPSNRw"] = bpsnr_w
 
     if "whiteRFLevel" in metrics:
         metrics["blackToWhiteRFRatio"] = (
@@ -244,7 +299,7 @@ def computeMetrics(rf, f, fp=None, verbose=False, verboseVITS=False):
         )
 
     outputkeys = metrics.keys() if verbose else [
-        "wSNR", "bPSNR",
+        "wSNR", "bPSNR", "wSNRw", "bPSNRw",
         "ntscLine19Burst70IRE", "ntscLine19Color3DRawSNR", "ntscLine19Burst0IRE",
     ]
 

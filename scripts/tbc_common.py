@@ -588,6 +588,57 @@ def measure_ntc7_transients(fields, line=20):
     }
 
 
+# CCIR Rec. 567 unified noise weighting (single time constant, 245 ns).
+# See references/README.md in the repo root for sources.
+UNIFIED_WEIGHTING_TAU = 245e-9
+
+
+def weighted_psnr(fields, line, start_us, duration_us):
+    """Broadcast-style weighted PSNR of a flat region (dB vs 100 IRE p-p).
+
+    Each field's segment is detrended with a linear fit (tilt null); the
+    noise power spectra are averaged across fields, then the CCIR-567
+    unified weighting and the system band-limit (4.2 MHz NTSC / 5.0 MHz
+    PAL) are applied in the frequency domain.  Returns
+    (weighted_db, unweighted_db, mean_ire) or None.
+    """
+    if not fields:
+        return None
+    p = fields[0].params
+    fs_hz = p.sample_rate_mhz * 1e6
+    lpf_hz = 4.2e6 if p.system == "NTSC" else 5.0e6
+
+    acc, n, ire_sum = None, None, 0.0
+    for f in fields:
+        seg = line_segment_ire(f, line, start_us, duration_us)
+        if n is None:
+            n = len(seg)
+        if len(seg) != n or n < 64:
+            return None
+        x = np.arange(n)
+        noise = seg - np.polyval(np.polyfit(x, seg, 1), x)
+        spec = np.abs(np.fft.rfft(noise)) ** 2
+        acc = spec if acc is None else acc + spec
+        ire_sum += float(np.mean(seg))
+    acc /= len(fields)
+
+    freqs = np.fft.rfftfreq(n, 1.0 / fs_hz)
+    band = (freqs <= lpf_hz) & ((freqs >= 10e3) | (freqs == 0))
+    w2 = 1.0 / (1.0 + (2 * np.pi * freqs * UNIFIED_WEIGHTING_TAU) ** 2)
+    scale = np.full(len(acc), 2.0)
+    scale[0] = 1.0
+    if n % 2 == 0:
+        scale[-1] = 1.0
+
+    ms_flat = np.sum(acc * band * scale) / (n * n)
+    ms_w = np.sum(acc * band * w2 * scale) / (n * n)
+    if ms_w <= 0 or ms_flat <= 0:
+        return None
+    return (20 * np.log10(100.0 / np.sqrt(ms_w)),
+            20 * np.log10(100.0 / np.sqrt(ms_flat)),
+            ire_sum / len(fields))
+
+
 def detect_ntsc_ntc7_composite(field):
     """NTC-7 composite VITS on line 20 (bar + 12.5T pulse + mod staircase).
 
