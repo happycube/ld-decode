@@ -109,7 +109,6 @@ class Field:
 
         self.lineoffset = 0
 
-        self.needrerun = False
         self.valid = False
         self.sync_confidence = 100
 
@@ -1149,6 +1148,49 @@ class Field:
             # for video always output 263/313 lines
             linesout = self.outlinecount
 
+        if audio != 0 and self.rf.decode_analog_audio:
+            self.downscale_audio_out(audio, lastfieldwritten, lineinfo)
+
+        dsout = np.zeros((linesout * outwidth), dtype=np.float32)
+        interpolated_pixel_locs, wowfactors = self.computewow_scaled()
+        scale_field(
+            self.data["video"][channel].astype(np.float32, copy=False),
+            dsout,
+            interpolated_pixel_locs,
+            wowfactors,
+            self.rf.downscale_sinc_lut,
+            self.lineoffset,
+            outwidth,
+            wow_level_adjust_smoothing=self.wow_level_adjust_smoothing
+        )
+
+        if self.rf.decode_digital_audio:
+            self.efmout = self.data["efm"][
+                int(self.linelocs[1]) : int(self.linelocs[self.linecount + 1])
+            ]
+        else:
+            self.efmout = None
+
+        if final:
+            dsout = self.hz_to_output(dsout)
+            self.dspicture = dsout
+
+        return dsout, self.dsaudio, self.efmout
+
+    def downscale_audio_out(self, audio, lastfieldwritten=None, lineinfo=None):
+        """Downscale this field's analog audio.
+
+        Separate from the video downscale because only the audio needs
+        the write-order clock (lastfieldwritten) - the video output is a
+        pure function of the decoded field, so the commit stage can run
+        this after the field's write position is finally known.
+        """
+        if audio == 0 or not self.rf.decode_analog_audio:
+            return None
+
+        if lineinfo is None:
+            lineinfo = self.linelocs
+
         if lastfieldwritten and audio >= 16000:
             # This computes the current field based on checking the raw data location
             # against the last written field's, then computes the location of the
@@ -1177,47 +1219,21 @@ class Field:
             # Either analog audio is disabled, or we're using hsync-locked sampling
             audio_offset = 0
 
-        if audio != 0 and self.rf.decode_analog_audio:
-            audio_rv = {}
-            downscale_audio(
-                self.data["audio"],
-                lineinfo,
-                self.rf,
-                self.linecount,
-                audio_offset,
-                audio,
-                audio_rv,
-            )
-
-        dsout = np.zeros((linesout * outwidth), dtype=np.float32)
-        interpolated_pixel_locs, wowfactors = self.computewow_scaled()
-        scale_field(
-            self.data["video"][channel].astype(np.float32, copy=False),
-            dsout,
-            interpolated_pixel_locs,
-            wowfactors,
-            self.rf.downscale_sinc_lut,
-            self.lineoffset,
-            outwidth,
-            wow_level_adjust_smoothing=self.wow_level_adjust_smoothing
+        audio_rv = {}
+        downscale_audio(
+            self.data["audio"],
+            lineinfo,
+            self.rf,
+            self.linecount,
+            audio_offset,
+            audio,
+            audio_rv,
         )
 
-        if self.rf.decode_digital_audio:
-            self.efmout = self.data["efm"][
-                int(self.linelocs[1]) : int(self.linelocs[self.linecount + 1])
-            ]
-        else:
-            self.efmout = None
+        self.dsaudio = audio_rv["dsaudio"]
+        self.audio_next_offset = audio_rv["audio_next_offset"]
 
-        if final:
-            dsout = self.hz_to_output(dsout)
-            self.dspicture = dsout
-
-        if audio != 0 and self.rf.decode_analog_audio:
-            self.dsaudio = audio_rv["dsaudio"]
-            self.audio_next_offset = audio_rv["audio_next_offset"]
-
-        return dsout, self.dsaudio, self.efmout
+        return self.dsaudio
 
     @profile
     def rf_tbc(self, linelocs=None):

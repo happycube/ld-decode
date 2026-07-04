@@ -573,16 +573,28 @@ class LDdecode:
 
             blk = self.AC3Collector.get_block()
 
+    def _process_efm(self, efm):
+        """Run one field's EFM slice through the PLL and write it out.
+
+        The PLL is stateful over the concatenated stream, so this must be
+        fed strictly in field write order - it is the one per-field
+        computation that can never fan out, which is why it sits behind a
+        single ordered entry point (a candidate for its own lane once
+        fields decode in parallel)."""
+        if self.outfile_pre_efm is not None:
+            self.outfile_pre_efm.write(efm.tobytes())
+
+        efm_out = self.efm_pll.process(efm)
+        if self.outfile_efm is not None:
+            self.outfile_efm.write(efm_out.tobytes())
+
+        return efm_out
+
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
         efm_out = None
         if self.digital_audio is True:
-            if self.outfile_pre_efm is not None:
-                self.outfile_pre_efm.write(efm.tobytes())
-
-            efm_out = self.efm_pll.process(efm)
-            if self.outfile_efm is not None:
-                self.outfile_efm.write(efm_out.tobytes())
+            efm_out = self._process_efm(efm)
 
         fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
@@ -836,9 +848,92 @@ class LDdecode:
         return redo
 
     @profile
+    def decode_one(self, start, mtf_level, prevfield=None, initphase=False):
+        """Decode and measure one field: demod, sync/lineloc processing,
+        video downscale and per-field metrics.
+
+        Reads calibration parameters but never writes decoder state -
+        redo and commit decisions belong to the caller.  Returns
+        (field, offset_to_next, picture, efm, metrics); the last three
+        are None when the field is invalid or at EOF.
+        """
+        f, offset = self.decodefield(start, mtf_level, prevfield, initphase)
+
+        if f is None or not f.valid:
+            return f, offset, None, None, None
+
+        picture, _, efm = f.downscale(
+            linesout=self.output_lines,
+            final=True,
+        )
+
+        metrics = self.computeMetrics(f, None, verbose=True)
+
+        return f, offset, picture, efm, metrics
+
+    def calibrate(self, f, metrics, adjusted):
+        """Fold one decoded field's measurements into the calibration
+        state (MTF ratio pool, auto-deemp burst pool, AGC levels).
+
+        Returns True when parameters changed enough that the field
+        should be re-decoded; `adjusted` is True when this field already
+        went through one redo (only one is allowed).
+        """
+        if "blackToWhiteRFRatio" in metrics and not adjusted:
+            keep = 900 if self.isCLV else 30
+            self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
+            self.bw_ratios = self.bw_ratios[-keep:]
+
+        redo = not self.checkMTF(f, self.fieldstack[0])
+        redo = redo or not self.checkAutoDeemp(f)
+
+        agc_adjusted = self._adjust_agc(f, False)
+        redo = redo or agc_adjusted
+
+        if redo and not adjusted and agc_adjusted and not self.deemp_calibrated:
+            # The AGC just rewrote ire0/hz_ire, so burst samples
+            # measured under the old levels are not comparable.
+            self._deemp_burst_samples.clear()
+            self._deemp_burst_offset = None
+
+        return redo
+
+    def commit_field(self, f, picture, efm):
+        """Serial commit stage: audio clock, metadata chain checks and
+        ordered writeout.  Returns f (a first field may be held back, and
+        a filler may substitute the last good pair)."""
+        if self.fname_out is None:
+            return f
+
+        # Only write a FirstField first
+        if len(self.fieldinfo) == 0 and not f.isFirstField:
+            return f
+
+        # The audio clock needs the last *written* field, so this runs at
+        # commit time, not with the video downscale.
+        audio = f.downscale_audio_out(self.analog_audio, self.lastFieldWritten)
+
+        # XXX: this routine currently performs a needed sanity check
+        fi, needFiller = self.buildmetadata(f)
+
+        self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
+
+        if needFiller:
+            if self.lastvalidfield[not f.isFirstField] is not None:
+                self.writeout(self.lastvalidfield[not f.isFirstField])
+                self.writeout(self.lastvalidfield[f.isFirstField])
+
+            # If this is the first field to be written, don't write anything
+            return f
+
+        self.lastFieldWritten = (self.fields_written, f.readloc)
+        self.writeout(self.lastvalidfield[f.isFirstField])
+
+        return f
+
+    @profile
     def readfield(self, initphase=False):
         adjusted = False
-        picture = audio = efm = None
 
         if len(self.fieldstack) >= 4:
             # Fields no longer hold a reference to their predecessor (they
@@ -848,16 +943,16 @@ class LDdecode:
         # Decode-then-process, one field at a time.  self.fdoffset is the file
         # offset of the field to decode; prevfield anchors the next field's sync
         # search.  On a redo we re-decode the *same* field (fdoffset unchanged)
-        # with the parameters checkMTF()/AGC just adjusted.  Decoding is now
-        # synchronous, so there is no look-ahead - this also changes which
-        # mtf_level a field sees vs. the old one-field-ahead pipeline.
+        # with the parameters calibrate() just adjusted.
         prevfield = self.fieldstack[0]
 
         while True:
             if self.second_decode is None and self.fields_written:
                 self.second_decode = time.time()
 
-            f, offset = self.decodefield(self.fdoffset, self.mtf_level, prevfield, initphase)
+            f, offset, picture, efm, metrics = self.decode_one(
+                self.fdoffset, self.mtf_level, prevfield, initphase
+            )
 
             if f is None:
                 # EOF / failed demod (decodefield returns (None, None))
@@ -870,33 +965,11 @@ class LDdecode:
                 prevfield = None
                 continue
 
-            picture, audio, efm = f.downscale(
-                linesout=self.output_lines,
-                final=True,
-                audio=self.analog_audio,
-                lastfieldwritten=self.lastFieldWritten,
-            )
-
-            metrics = self.computeMetrics(f, None, verbose=True)
-            if "blackToWhiteRFRatio" in metrics and not adjusted:
-                keep = 900 if self.isCLV else 30
-                self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
-                self.bw_ratios = self.bw_ratios[-keep:]
-
-            redo = f.needrerun or not self.checkMTF(f, self.fieldstack[0])
-            redo = redo or not self.checkAutoDeemp(f)
-
-            agc_adjusted = self._adjust_agc(f, False)
-            redo = redo or agc_adjusted
+            redo = self.calibrate(f, metrics, adjusted)
 
             # Allow one redo only: re-decode this same field with adjusted params.
             if not adjusted and redo:
                 adjusted = True
-                if agc_adjusted and not self.deemp_calibrated:
-                    # The AGC just rewrote ire0/hz_ire, so burst samples
-                    # measured under the old levels are not comparable.
-                    self._deemp_burst_samples.clear()
-                    self._deemp_burst_offset = None
                 prevfield = self.fieldstack[0]
                 continue
 
@@ -908,33 +981,8 @@ class LDdecode:
 
             self.fieldstack.insert(0, f)
             self.fdoffset += offset
-            break
 
-        if f is None or not f.valid:
-            return None
-
-        if self.fname_out is not None:
-            # Only write a FirstField first
-            if len(self.fieldinfo) == 0 and not f.isFirstField:
-                return f
-
-            # XXX: this routine currently performs a needed sanity check
-            fi, needFiller = self.buildmetadata(f)
-
-            self.lastvalidfield[f.isFirstField] = (f, fi, picture, audio, efm)
-
-            if needFiller:
-                if self.lastvalidfield[not f.isFirstField] is not None:
-                    self.writeout(self.lastvalidfield[not f.isFirstField])
-                    self.writeout(self.lastvalidfield[f.isFirstField])
-
-                # If this is the first field to be written, don't write anything
-                return f
-
-            self.lastFieldWritten = (self.fields_written, f.readloc)
-            self.writeout(self.lastvalidfield[f.isFirstField])
-
-        return f
+            return self.commit_field(f, picture, efm)
 
     def print_stats(self):
         if self.fields_written:
