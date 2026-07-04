@@ -91,6 +91,40 @@ set_tests_properties(verify-pal-cvbs PROPERTIES
     PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
 )
 
+# Round-trip through decode-orc's chroma decoder: renders one frame from
+# the CVBS output and one from the TBC output through the same sink and
+# asserts they match (parity-balanced diff, zero shift).  This is the
+# check that catches field-placement geometry errors the analysis-only
+# checks cannot see.  Skips when orc-cli is not installed (ORC_CLI env
+# var or ~/ld-decode/decode-orc/result/bin/orc-cli).
+add_test(
+    NAME roundtrip-ntsc-orc
+    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_orc_roundtrip.py
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
+        ${CMAKE_BINARY_DIR}/testout/ntsc-basic
+        NTSC
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(roundtrip-ntsc-orc PROPERTIES
+    FIXTURES_REQUIRED "ntsc-cvbs;ntsc-tbc"
+    PASS_REGULAR_EXPRESSION "ORC ROUNDTRIP: PASS"
+    SKIP_REGULAR_EXPRESSION "ORC ROUNDTRIP: SKIPPED"
+)
+
+add_test(
+    NAME roundtrip-pal-orc
+    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_orc_roundtrip.py
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs
+        ${CMAKE_BINARY_DIR}/testout/pal-basic
+        PAL
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(roundtrip-pal-orc PROPERTIES
+    FIXTURES_REQUIRED "pal-cvbs;pal-tbc"
+    PASS_REGULAR_EXPRESSION "ORC ROUNDTRIP: PASS"
+    SKIP_REGULAR_EXPRESSION "ORC ROUNDTRIP: SKIPPED"
+)
+
 # The NTSC test disc carries broadcast-style NTC-7 VITS: composite on first
 # fields, combination (multiburst + modulated pedestal) on second fields.
 add_test(
