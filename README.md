@@ -56,6 +56,25 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 >
 > Please see [Decode-Orc](https://github.com/simoninns/decode-orc) for details of how to obtain and install the Decode-Orc tools
 
+## Threaded decoding
+
+`ld-decode -t N ...` decodes with N worker threads (`-t 0` picks a
+sensible count automatically; the default `-t 1` is plain serial
+decode).  RF block demodulation — the bulk of decode time — runs on a
+prefetching thread pool, and each field's downscale/metrics work fans
+out while the sync chain advances up to a few fields ahead; fields are
+committed and written strictly in order.
+
+Parallel decoding only engages after a short warm-up (the first ~20
+fields decode serially while the MTF/AGC/de-emphasis calibration loops
+settle), and a field decoded under parameters that calibration then
+adjusts is automatically re-decoded, along with anything decoded ahead
+of it.  **Output is bit-identical for any `-t` value** — this is
+asserted by the test suite — so there is no quality trade-off, only
+memory (a few hundred MB of demod buffers at `-t 8`).  Typical
+steady-state speedup is ~2.5–3× at `-t 8`; higher thread counts are
+limited by the Python GIL.
+
 ## CVBS output mode
 
 `ld-decode --cvbs ...` writes spec-compliant CVBS output instead of the

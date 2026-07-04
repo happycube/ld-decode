@@ -369,3 +369,54 @@ scheduler swaps, not rewrites.
 Ceiling beyond that: parallelize inside demod (28 independent blocks/field)
 or shard the committer — both compatible with this architecture, both out of
 scope.
+
+---
+
+## 11. Implementation log (as built, 2026-07-04)
+
+Commits 87be437b → baf9a574 on `chad-2026.07.04-prev8-parallel`.
+
+**Steps 1–3 landed as planned:**
+- 87be437b `FieldAnchor` replaces the prevfield object (bit-identical).
+- fbad1d18 readfield decomposed into decode stages + calibrate + commit;
+  audio downscale moved to commit time; EFM PLL behind one ordered entry
+  point (bit-identical).
+- de09b43b independent decode after a one-way warm-up gate, commit-time
+  chain validation + anchored repair, phaseID chain rewrite at commit,
+  MTF dead-band.  Quality tables within noise on both CI discs; `.efm`
+  bit-identical; ~20-field warm-up then 100% independent decodes with
+  zero repairs on the CI discs.
+
+**Steps 4–5 deviated from §3/§6 — a simpler construction won:**
+instead of window *prediction*, exploit the fact that demodulation
+already runs on a block-quantized grid.  `demod_read` consumes
+fixed-position 32k blocks whose demodulation is a pure function of
+(block index, mtf_level) — so a **DemodBlockCache** (eed69760,
+lddecode/parallel.py) demodulates blocks on a thread pool with a
+sequential prefetch (block N+1 always follows block N; no prediction,
+no rebase machinery), and the field-level offset chain stays exact.
+Bit-equality with serial holds **by construction** and is asserted in
+ctest (compare-{ntsc,pal}-parallel-*).  readfield then became a small
+in-order pipeline driver (baf9a574): stage 1 (sync/lineloc chain) on
+the main thread, stage 2 (downscale/metrics/dropouts) fanned out per
+field, commits strictly in order with the single-redo rule flushing
+everything decoded ahead under old parameters.  `-t 1` is the same
+driver at depth 1 — one code path.
+
+**Measured (36-core, NTSC CI disc, steady state post-warm-up):**
+
+| Config | fields/s |
+|---|---|
+| `-t 1` | 2.36 |
+| `-t 8` | 6.39 (2.7×) |
+
+`-t 12` was slightly worse than `-t 8` (GIL contention), matching §6's
+prediction that the thread stage saturates around 3–5×.  The remaining
+serial residue is stage 1 (~50 ms) + commit (~60 ms: sqlite/EFM
+PLL/writes) plus GIL-slowed demod under load.
+
+**Still open (the §6 Stage C path, unchanged in design):** a process
+pool fanning out full per-field jobs — the step-3 independence
+semantics were built exactly so worker processes need only
+(start offset, mtf, params epoch).  EFM lane and commit sharding are
+smaller follow-ups.
