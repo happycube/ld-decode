@@ -56,6 +56,28 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 >
 > Please see [Decode-Orc](https://github.com/simoninns/decode-orc) for details of how to obtain and install the Decode-Orc tools
 
+## CVBS output mode
+
+`ld-decode --cvbs ...` writes spec-compliant CVBS output instead of the
+`.tbc` video output (see `cvbs-file-format-specification/`):
+
+- `<out>.composite` — `CVBS_U16_4FSC` sample data in whole frames
+  (NTSC: 477,750 samples/frame; PAL: 709,379)
+- `<out>.meta` — the spec's SQLite metadata (`STANDARD_TBC_UNLOCKED`)
+- `<out>_audio_00.wav` — spec WAV analog audio with an honest
+  `audio_locked` flag (PAL is frame-locked at 44100 Hz; NTSC is locked
+  only with `--ntsc_audio_rate`, which uses the 44,100,000/1001 Hz rate)
+
+Note that **PAL 4fsc is not line-locked**: a line is 1135.0064 samples
+and the sampling lattice slips 4 samples per frame, so the PAL
+`.composite` is produced by a separate non-orthogonal resampler and its
+timing differs fundamentally from the line-locked `.tbc` raster.
+`scripts/cvbs_verify.py <out>.composite` checks an output file against
+the specification (frame sizing, protected values, the 0H sync lattice
+including the PAL slip, metadata, and audio).  Not yet implemented:
+burst-locked output (`STANDARD_TBC_LOCKED`) and the dropout/EFM
+extension sidecars.
+
 # Want to get involved?
 
 The documentation includes details of the ld-decode community's Discord / IRC Bridge and the now legacy Facebook group.  
