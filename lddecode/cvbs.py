@@ -133,7 +133,10 @@ class CVBSWriter:
         # temporal line so that 0H lands at the preset's digital position
         if system == "NTSC":
             spl = self.params["samples_per_line"]
-            self.stream_skip = int(round(spl - self.params["zero_h_sample"] + 0.5))
+            # +1: the measured 50% crossing of the sinc-shaped sync edge
+            # sits ~0.8 samples past the TBC lineloc; this centres the
+            # stored 0H on the spec's 784.5 position
+            self.stream_skip = int(round(spl - self.params["zero_h_sample"] + 0.5)) + 1
         else:
             # PAL handled by the non-orthogonal assembler (frame origin
             # offset applied in lattice time)

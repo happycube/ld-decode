@@ -44,6 +44,30 @@ set_tests_properties(analyze-ntsc-patterns PROPERTIES
     PASS_REGULAR_EXPRESSION "Line 19 VITS \\(70 IRE bar\\): first fields"
 )
 
+# CVBS output mode: decode to spec-compliant .composite/.meta and verify
+# against cvbs-file-format-specification (exact frame sizing, protected
+# values, sync lattice, metadata, WAV audio).
+add_test(
+    NAME decode-ntsc-cvbs
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --cvbs -l 6
+        ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-ntsc-cvbs PROPERTIES FIXTURES_SETUP ntsc-cvbs)
+
+add_test(
+    NAME verify-ntsc-cvbs
+    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_verify.py
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.composite
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(verify-ntsc-cvbs PROPERTIES
+    FIXTURES_REQUIRED ntsc-cvbs
+    PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
+)
+
 # The NTSC test disc carries broadcast-style NTC-7 VITS: composite on first
 # fields, combination (multiburst + modulated pedestal) on second fields.
 add_test(
