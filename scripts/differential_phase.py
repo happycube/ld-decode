@@ -39,7 +39,8 @@ from tbc_common import (
     load_tbc, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
-    measure_ntc7_transients, weighted_psnr, chroma_am_pm_noise,
+    measure_ntc7_transients, measure_pal_its_transients,
+    weighted_psnr, chroma_am_pm_noise, line_segment_ire,
 )
 
 
@@ -892,6 +893,7 @@ def pal_report(params, fields, det):
                       "no ITS staircase with chroma detected")
         print_skipped(3, "ITS DIFFERENTIAL GAIN",
                       "no ITS staircase with chroma detected")
+        pal_quality_reports(det, fields)
         return
 
     print_section(2, "ITS DIFFERENTIAL PHASE (phase relative to burst, per line)")
@@ -971,6 +973,140 @@ def pal_report(params, fields, det):
             print(f"  Field {f.field_id} line {info['line']}: "
                   f"luma={luma:.1f} IRE, subcarrier amplitude={amp:.2f} IRE")
         print()
+
+    pal_quality_reports(det, fields)
+
+
+def pal_quality_reports(det, fields):
+    """Sections 5-7: weighted SNR, chroma AM/PM noise, ITS transients."""
+    its_all = sorted(det.get("pal_its", {}))
+    its_line = (next(iter(det["pal_its"].values()))["line"]
+                if det.get("pal_its") else 19)
+    its_chroma = sorted(i for i, v in det.get("pal_its", {}).items()
+                        if v["has_chroma"])
+
+    # --- 5. Weighted SNR ---
+    def flat_run(f, line, target_ire, lo_us=12.0, hi_us=58.0):
+        """Longest run where the raw waveform is genuinely flat near target.
+
+        Checks the segment's own std, not just its mean — a mean-and-
+        chroma test is blind to sub-fsc modulation (e.g. multiburst
+        content riding at the target level).
+        """
+        best, cur = None, None
+        for t in np.arange(lo_us, hi_us - 2.0, 0.5):
+            seg = line_segment_ire(f, line, t, 2.0)
+            ok = (len(seg) > 8 and abs(np.mean(seg) - target_ire) < 3.0
+                  and np.std(seg) < 4.0)
+            if ok:
+                cur = (cur[0], t + 2.0) if cur else (t, t + 2.0)
+                if best is None or cur[1] - cur[0] > best[1] - best[0]:
+                    best = cur
+            else:
+                cur = None
+        return best if best and best[1] - best[0] >= 6.0 else None
+
+    regions = []
+    grey = sorted(det.get("pal_grey50", {}))
+    if grey:
+        gline = next(iter(det["pal_grey50"].values()))["line"]
+        # the "grey" line often carries other test content; measure only
+        # its longest verified-flat stretch
+        run = flat_run(fields[grey[0]], gline, 50.0)
+        if run:
+            regions.append((f"line {gline} 50% grey", [fields[i] for i in grey],
+                            gline, run[0] + 0.5, run[1] - run[0] - 1.0))
+    if its_all:
+        regions.append((f"ITS white bar (line {its_line})",
+                        [fields[i] for i in its_all], its_line, 13.0, 6.0))
+
+    if not regions:
+        print_skipped(5, "WEIGHTED SNR (CCIR 567 unified weighting)",
+                      "no flat reference regions detected")
+    else:
+        print_section(5, "WEIGHTED SNR (CCIR 567 unified weighting, tau0 = 245 ns)\n"
+                         "   PSNR = 100 IRE p-p vs RMS noise, band-limited to 5.0 MHz")
+        print(f"\n{'Region':>24}  {'IRE':>6}  {'Fields':>6}  {'Unweighted':>10}  "
+              f"{'Weighted':>9}  {'Advantage':>9}")
+        print("-" * 74)
+        for label, flds, line, start, dur in regions:
+            r = weighted_psnr(flds, line, start, dur)
+            if r is None:
+                print(f"{label:>24}  {'—':>6}")
+                continue
+            w_db, flat_db, ire = r
+            print(f"{label:>24}  {ire:>6.1f}  {len(flds):>6}  {flat_db:>9.2f}dB  "
+                  f"{w_db:>8.2f}dB  {w_db - flat_db:>+8.2f}dB")
+        print("\n  (Weighted values are the ones comparable to broadcast SNR grades:")
+        print("   >=60 studio, 54-60 broadcast chain, 46-54 good consumer source.)")
+        print()
+
+    # --- 6. Chroma AM/PM noise ---
+    # Prefer the full 50% subcarrier reference line; fall back to the ITS
+    # 0-level subcarrier packet (short, so band resolution is coarser).
+    src = None
+    if det.get("pal_line20_ref"):
+        idxs = sorted(det["pal_line20_ref"])
+        rline = next(iter(det["pal_line20_ref"].values()))["line"]
+        src = (f"50% SC reference line {rline}",
+               [fields[i] for i in idxs], rline, 16.0, 40.0)
+    elif its_chroma:
+        # packet spans ~29.5-38.5 us; stay clear of the edges
+        src = (f"ITS 0-level SC packet (line {its_line})",
+               [fields[i] for i in its_chroma], its_line, 30.3, 7.4)
+
+    if src is None:
+        print_skipped(6, "CHROMINANCE AM/PM NOISE",
+                      "no flat subcarrier region detected")
+    else:
+        label, flds, line, start, dur = src
+        m = chroma_am_pm_noise(flds, line, start, dur)
+        if m is None:
+            print_skipped(6, "CHROMINANCE AM/PM NOISE",
+                          f"no usable subcarrier packet ({label})")
+        else:
+            print_section(6, f"CHROMINANCE AM/PM NOISE ({label}, "
+                             f"{m['n_fields']} fields)\n"
+                             "   AM S/N = packet p-p vs rms envelope noise; "
+                             "PM = rms phase noise")
+            print(f"\n  Subcarrier packet: {m['sc_pp']:.1f} IRE p-p")
+            print(f"\n{'Demod band':>22}  {'AM S/N':>8}  {'PM noise':>9}  {'PM S/N':>8}")
+            print("-" * 54)
+            for tag, blabel in (("band", "10-500 kHz (bcast)"),
+                                ("wide", "10 kHz-1.3 MHz")):
+                am = m[f"am_snr_{tag}"]
+                pm = m[f"pm_deg_{tag}"]
+                pm_snr = (20 * np.log10(1.0 / np.radians(pm))
+                          if pm > 0 else float("nan"))
+                am_s = f"{am:>7.2f}dB" if am is not None else f"{'—':>8}"
+                print(f"{blabel:>22}  {am_s}  {pm:>8.3f}°  {pm_snr:>7.2f}dB")
+            print()
+
+    # --- 7. ITS transients ---
+    if not its_all:
+        print_skipped(7, "ITS 2T PULSE AND BAR EDGE (transient response)",
+                      "ITS line not detected")
+        return
+    m = measure_pal_its_transients([fields[i] for i in its_all], its_line)
+    if m is None:
+        print_skipped(7, "ITS 2T PULSE AND BAR EDGE (transient response)",
+                      "could not resolve pulse/bar on the averaged line")
+        return
+    print_section(7, "ITS 2T PULSE AND BAR EDGE: TRANSIENT RESPONSE / RINGING\n"
+                     f"   (line {its_line} averaged over {m['n_fields']} fields)")
+    print(f"\n  Bar level:               {m['bar_ire']:.1f} IRE")
+    print(f"  2T pulse-to-bar ratio:   {m['pulse_ratio']:.3f}  (ideal 1.0)")
+    print(f"  2T half-amp duration:    {m['pulse_had_ns']:.0f} ns  (nominal 200 ns)")
+    print(f"  Pulse ringing:           {m['pulse_ring_pct']:.2f}% of pulse "
+          f"(largest lobe 0.4-1.8 us from peak)")
+    print(f"  Bar edge 10-90% rise:    {m['edge_rise_ns']:.0f} ns   fall: {m['edge_fall_ns']:.0f} ns")
+    print(f"  Edge overshoot:          {m['edge_overshoot_pct']:.2f}% of step")
+    print(f"  Edge ringing:            {m['edge_ring_pct']:.2f}% of step (lobes after first extremum)")
+    verdict = ("excellent (< 2%)" if max(m['pulse_ring_pct'], m['edge_overshoot_pct']) < 2
+               else "good (2-4%)" if max(m['pulse_ring_pct'], m['edge_overshoot_pct']) < 4
+               else "visible ringing (> 4%)")
+    print(f"  Assessment:              {verdict}")
+    print()
 
 
 # ---------------------------------------------------------------------------

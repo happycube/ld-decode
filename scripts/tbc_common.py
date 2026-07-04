@@ -486,23 +486,47 @@ def average_line_ire(fields, line):
 
 
 def measure_ntc7_transients(fields, line=20):
-    """Transient-response metrics from the NTC-7 composite (averaged line).
+    """NTC-7 composite transients (NTSC): bar 12-30 us, 2T ~33.9 us.
 
-    Uses the 100 IRE bar and the 2T sin^2 pulse.  Returns a dict:
+    See measure_transients for the returned metrics.
+    """
+    return measure_transients(
+        fields, line,
+        bar_win=(18.0, 28.0), baseline_win=(31.0, 33.0),
+        pulse_win=(33.0, 35.0), lead_win=(11.0, 13.5), trail_win=(29.0, 31.5),
+    )
+
+
+def measure_pal_its_transients(fields, line=19):
+    """PAL CCIR ITS transients: white bar ~11-21 us, 2T pulse ~25.2 us.
+
+    Both field parities carry the bar and pulse.  See measure_transients.
+    (PAL 2T nominal HAD is 200 ns vs NTSC's 250 ns.)
+    """
+    return measure_transients(
+        fields, line,
+        bar_win=(13.0, 19.0), baseline_win=(22.2, 24.4),
+        pulse_win=(24.4, 26.4), lead_win=(9.8, 12.3), trail_win=(20.2, 22.7),
+    )
+
+
+def measure_transients(fields, line, bar_win, baseline_win, pulse_win,
+                       lead_win, trail_win):
+    """Transient-response metrics from an averaged bar + 2T pulse line.
+
+    Returns a dict:
       bar_ire            bar top level
       pulse_ratio        2T pulse height / bar height (ideal 1.0)
-      pulse_had_ns       pulse half-amplitude duration (2T nominal = 250 ns)
+      pulse_had_ns       pulse half-amplitude duration
       pulse_ring_pct     largest lobe within +/-(0.4..1.8) us of the pulse,
                          as % of pulse height (ringing around the pulse)
       edge_rise_ns       bar leading-edge 10-90% time
       edge_fall_ns       bar trailing-edge 90-10% time
       edge_overshoot_pct max excursion beyond the settled levels within
-                         1.5 us after each edge, as % of the 100 IRE step
+                         1.5 us after each edge, as % of the bar step
                          (worst of leading overshoot / trailing undershoot)
       edge_ring_pct      largest subsequent lobe after the first overshoot
       n_fields           fields averaged
-    Windows assume the NTC-7 layout verified on he010/ve-snw (bar 12-30 us,
-    2T ~33.9 us, 12.5T ~37 us).
     """
     if not fields:
         return None
@@ -511,15 +535,15 @@ def measure_ntc7_transients(fields, line=20):
     idx = lambda us: int(round(us * fs))
     seg = lambda a, b: y[idx(a):idx(b)]
 
-    baseline = float(np.mean(seg(31.0, 33.0)))
-    bar = float(np.mean(seg(18.0, 28.0))) - baseline
+    baseline = float(np.mean(seg(*baseline_win)))
+    bar = float(np.mean(seg(*bar_win))) - baseline
     if bar < 50:
         return None
 
     # --- 2T pulse ---
-    pw = seg(33.0, 35.0)
+    pw = seg(*pulse_win)
     pk = int(np.argmax(pw))
-    pk_us = 33.0 + pk / fs
+    pk_us = pulse_win[0] + pk / fs
     pulse = float(pw[pk]) - baseline
     half = baseline + pulse / 2
     # half-amplitude duration via interpolated crossings around the peak
@@ -570,8 +594,8 @@ def measure_ntc7_transients(fields, line=20):
             ring_pct = float(np.max(np.abs(dev[first_ext + 1:]))) / bar * 100.0
         return rise_ns, overshoot, ring_pct
 
-    lead = edge_metrics(11.0, 13.5, True)
-    trail = edge_metrics(29.0, 31.5, False)
+    lead = edge_metrics(lead_win[0], lead_win[1], True)
+    trail = edge_metrics(trail_win[0], trail_win[1], False)
     if lead is None or trail is None:
         return None
 
@@ -667,7 +691,7 @@ def chroma_am_pm_noise(fields, line, start_us, duration_us):
         seg = line_segment_ire(f, line, start_us, duration_us)
         if n is None:
             n = len(seg)
-        if len(seg) != n or n < 128:
+        if len(seg) != n or n < 96:
             return None
         x = np.arange(n)
         seg = seg - np.polyval(np.polyfit(x, seg, 1), x)  # remove luma tilt
