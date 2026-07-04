@@ -43,7 +43,19 @@ _worker_cfg = None
 
 def _demod_worker_init(rf_opts, decoder_params, field_cfg=None):
     global _worker_rf, _worker_cfg
+    import logging
+
+    from . import utils_logging as logs
     from .rfdecode import RFDecode
+
+    if logs.logger is None:
+        # Field code logs decode conditions (bad windows, dropped
+        # fields).  In a worker those are speculative: the parent
+        # re-decodes inline and logs the authoritative message, so
+        # worker logging stays quiet rather than duplicating it.
+        logger = logging.getLogger("lddecode.fieldworker")
+        logger.addHandler(logging.NullHandler())
+        logs.logger = logger
 
     _worker_rf = RFDecode(**rf_opts)
     # RFDecode's filters are a pure function of (constructor options,
@@ -202,11 +214,18 @@ class FieldJobEngine:
         self.read_fn = read_fn          # (sample, length) -> raw or None
         self.read_lock = read_lock      # shared with the block cache
         self.cfg = cfg
-        self.depth = workers + 4
+        # Twice the worker count: with similar job durations a shallow
+        # window makes all workers start and finish in lockstep, idling
+        # while the dispatcher serially reads the next wave's raw spans
+        # (bursty output, lost throughput).  Enough queued jobs behind
+        # the running ones keeps every finishing worker busy and lets
+        # the read run ahead continuously.
+        self.depth = workers * 2 + 4
 
         self._cond = threading.Condition()
         self._futures = {}              # seq -> Future (current generation)
         self._est_start = {}            # seq -> refined start estimate
+        self._nxt_by_seq = {}           # seq -> (refined next-start, parity)
         self._parity_len = dict(cfg["parity_len"])
         self._active = False
         self._stopped = False
@@ -230,6 +249,7 @@ class FieldJobEngine:
             self._gen += 1
             self._futures.clear()
             self._est_start.clear()
+            self._nxt_by_seq.clear()
             self._next_dispatch = 0
             self._next_take = 0
             self._eof_seq = None
@@ -248,6 +268,7 @@ class FieldJobEngine:
             self._active = False
             self._futures.clear()
             self._est_start.clear()
+            self._nxt_by_seq.clear()
 
     def stop(self):
         with self._cond:
@@ -368,13 +389,27 @@ class FieldJobEngine:
         readloc = int(start - self.cfg["blockcut"])
         if readloc < 0:
             readloc = 0
+        # Anchored to the decoded buffer, so accurate to ~a sample even
+        # when `start` itself was mispredicted.
         nxt = start + res["nextfieldoffset"] - (readloc - f.readloc)
 
         with self._cond:
             if self._gen != gen:
                 return
             self._est_start[seq + 1] = nxt
-            self._parity_len[f.isFirstField] = nxt - start
+
+            # Field-length observations must come from two *refined*
+            # estimates - measuring against the predicted start would
+            # feed each job's prediction error back into parity_len and
+            # let errors compound.  EWMA smooths per-field wow jitter.
+            self._nxt_by_seq[seq] = (nxt, f.isFirstField)
+            prev = self._nxt_by_seq.get(seq - 1)
+            if prev is not None:
+                length = nxt - prev[0]
+                old = self._parity_len[f.isFirstField]
+                self._parity_len[f.isFirstField] = 0.75 * old + 0.25 * length
+            self._nxt_by_seq.pop(seq - 8, None)
+
             self._cond.notify_all()
 
 

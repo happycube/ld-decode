@@ -154,8 +154,12 @@ class LDdecode:
                 # metadata; the spec .meta file is written by CVBSWriter.
                 self.dbconn = None
             else:
-                if os.path.exists(fname_out + '.tbc.db'):
-                    os.unlink(fname_out + '.tbc.db')
+                # Remove any previous database *and* its WAL/shm siblings:
+                # a stale WAL from an interrupted run paired with a fresh
+                # database makes sqlite fail with "disk I/O error".
+                for ext in ('.tbc.db', '.tbc.db-wal', '.tbc.db-shm'):
+                    if os.path.exists(fname_out + ext):
+                        os.unlink(fname_out + ext)
                 self.dbconn = sqlite3.connect(fname_out + '.tbc.db')
                 self.create_db_schema()
 
@@ -275,6 +279,7 @@ class LDdecode:
         self._job_engine = None
         self._job_eof = False
         self._engine_dirty = False
+        self._job_rejects = 0
 
         # The field pipeline: stage 1 (sync/lineloc chain) runs on the
         # main thread; stage 2 (downscale/metrics/dropouts) fans out per
@@ -781,14 +786,27 @@ class LDdecode:
         blocksize = self.demod_blocksize
         brange = range(begin // blocksize, ((begin + length) // blocksize) + 1)
 
-        if self.block_cache is not None and self.pipeline_warm:
+        if (self.block_cache is not None and self.pipeline_warm
+                and self._job_engine is None):
             # Blocks come from the prefetching thread pool; identical values
             # to the inline path (same per-block computation).
             blockdata = self.block_cache.get_span(brange, MTF)
         else:
+            # Inline demod on this thread.  In field-job mode this is the
+            # repair/redo path: going through the process pool would queue
+            # these blocks behind whole-field jobs, so it demodulates
+            # locally - sharing the reader lock with the job dispatcher.
+            lock = (
+                self.block_cache.read_lock
+                if self.block_cache is not None else None
+            )
             blockdata = []
             for b in brange:
-                rawinput = self._read_raw_block(b)
+                if lock is not None:
+                    with lock:
+                        rawinput = self._read_raw_block(b)
+                else:
+                    rawinput = self._read_raw_block(b)
                 if rawinput is None:
                     blockdata = None
                     break
@@ -1277,6 +1295,7 @@ class LDdecode:
             mtf_level=self.mtf_level,
         )
         self._engine_dirty = False
+        self._job_rejects = 0
 
     def _accept_job(self, res):
         """Turn a speculative field result into a commit entry - or None
@@ -1352,18 +1371,25 @@ class LDdecode:
         entry = self._accept_job(res)
 
         if entry is None:
-            # Speculation rejected (window mismatch, stale parameters,
-            # invalid field, or chain validation failure): decode this
-            # field inline from truth, then restart speculation from the
-            # post-commit state.
-            self._job_engine.pause()
-            self._engine_dirty = True
+            # Speculation rejected (window mismatch, invalid field, or
+            # chain validation failure): decode this field inline from
+            # truth.  Later jobs predict absolute positions and
+            # self-validate against the true chain, so an isolated miss
+            # doesn't invalidate them - only a run of misses means the
+            # chain genuinely diverged (skip) and speculation must
+            # restart from the post-commit state.
+            self._job_rejects += 1
+            if self._job_rejects >= 3 and not self._engine_dirty:
+                self._job_engine.pause()
+                self._engine_dirty = True
 
             entry = self._advance_chain()
             if entry is None:
                 self.fieldstack.insert(0, None)
                 return None
             entry["result"] = self.decode_stage2(entry["f"])
+        else:
+            self._job_rejects = 0
 
         return self._commit_entry(entry)
 
