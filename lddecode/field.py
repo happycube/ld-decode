@@ -29,6 +29,7 @@ from .dsp import (
     rms,
     scale,
     scale_field,
+    scale_positions,
 )
 
 
@@ -1677,6 +1678,54 @@ class FieldPAL(Field):
         ]
 
         self.fieldPhaseID = self.determine_field_number()
+
+    def downscale_cvbs(self):
+        """Resample this field onto its portion of the PAL CVBS 4fsc frame
+        lattice (see lddecode/cvbs.py).
+
+        PAL 4fsc is not line-locked: the frame is 709,379 samples on a
+        uniform time step of 625/709379 lines (1135.0064 samples/line,
+        slipping 4 samples per frame).  First fields contribute 354,690
+        samples, second fields 354,689; the second field's lattice phase
+        continues the frame's (its portion starts at frame time 312.5
+        lines), so concatenating the two streams yields the exact
+        non-orthogonal frame sequence.
+        """
+        frame_samples = 709379
+        n_a = (frame_samples + 1) // 2      # 354690
+        step = 625.0 / frame_samples        # lines per lattice sample
+
+        if self.isFirstField:
+            t_lines = np.arange(n_a, dtype=np.float64) * step
+        else:
+            t_lines = (np.arange(frame_samples - n_a, dtype=np.float64)
+                       + n_a) * step - 312.5
+
+        # Same expected-time -> input-position spline computewow_scaled
+        # uses; field display line 0 sits at (lineoffset + 1) lines into
+        # the spline domain.
+        pos = (t_lines + (self.lineoffset + 1)) * self.inlinelen
+
+        actual = np.array(self.linelocs, dtype=np.float64)
+        expected = np.arange(len(actual), dtype=np.float64) * self.inlinelen
+        WOW_METHODS = {"linear": (1, None), "quadratic": (2, None),
+                       "cubic": (3, "natural")}
+        k, bc_type = WOW_METHODS[self.wow_interpolation_method]
+        spl = interpolate.make_interp_spline(
+            expected, actual, k=k, bc_type=bc_type, check_finite=False)
+
+        locs = spl(pos)
+        wow = spl(pos, 1)
+
+        out = np.zeros(len(pos), dtype=np.float32)
+        scale_positions(
+            self.data["video"]["demod"].astype(np.float32, copy=False),
+            out, locs, wow, self.rf.downscale_sinc_lut,
+            frame_samples / 625.0,
+            wow_level_adjust_smoothing=self.wow_level_adjust_smoothing,
+        )
+
+        return self.hz_to_output(out)
 
 
 # CombNTSC and metric functions live in lddecode.metrics

@@ -400,11 +400,6 @@ def main(args=None):
         extra_options["lowband"] = True
 
     if args.cvbs:
-        if vid_standard == "PAL":
-            print("ERROR: --cvbs PAL output is not implemented yet "
-                  "(PAL 4fsc is not line-locked; see cvbs-output-plan.md)",
-                  file=sys.stderr)
-            sys.exit(1)
         extra_options["output_cvbs"] = True
         if args.ntscj:
             # NTSC-J: no setup pedestal; record the black-level override

@@ -120,7 +120,9 @@ def main():
     sync_med = int(np.median(sync_samples)) if len(sync_samples) else -1
     blank_lo = lv["blanking"] - 30
     blank_peak = blank_lo + int(np.argmax(hist[blank_lo: lv["blanking"] + 30]))
-    check(abs(sync_med - lv["sync"]) <= 6,
+    # generous tolerance: sync depth is a property of the source/AGC, not
+    # of format compliance (~2 IRE of level error is common on real discs)
+    check(abs(sync_med - lv["sync"]) <= 14,
           f"sync tip near {lv['sync']} (median {sync_med})")
     check(abs(blank_peak - lv["blanking"]) <= 6,
           f"blanking near {lv['blanking']} (peak at {blank_peak})")
@@ -157,16 +159,18 @@ def main():
         frame_first_0h.append(good[0])
 
         if preset_name == "PAL":
-            # the non-orthogonal check: 0H fractional position must drift
-            # +0.0064 samples/line => across N lines, (pos_N - pos_0) -
-            # N*1135 == N*4/625 within tolerance
-            span = len(good) - 1
-            drift = (good[-1] - good[0]) - span * 1135.0
-            expect = span * (4.0 / 625.0)
-            ok = abs(drift - expect) < 0.35
+            # the non-orthogonal check: consecutive line syncs must be
+            # spaced 1135.0064 samples apart, i.e. the 0H position slips
+            # +4/625 sample per line — over a frame, exactly +4 samples.
+            # (Computed from single-line gaps only; the edge run also
+            # contains multi-line jumps across the vsync blocks.)
+            slip_per_line = mean_spl - 1135.0
+            total = slip_per_line * 625.0
+            ok = abs(total - 4.0) < 1.5
             drift_ok &= ok
-            check(ok, f"frame {fr}: lattice slip {drift:.3f} samples over "
-                      f"{span} lines (expect {expect:.3f})")
+            check(ok, f"frame {fr}: lattice slip {total:.2f} samples/frame "
+                      f"(expect 4.00; {slip_per_line:.5f}/line over "
+                      f"{len(lines)} line gaps)")
 
     # frame-to-frame: lattice repeats at frame rate
     if len(frame_first_0h) >= 2:

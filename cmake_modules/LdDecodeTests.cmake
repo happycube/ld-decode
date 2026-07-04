@@ -68,6 +68,29 @@ set_tests_properties(verify-ntsc-cvbs PROPERTIES
     PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
 )
 
+# PAL CVBS exercises the non-line-locked 4fsc lattice (1135.0064
+# samples/line, 4-sample slip per 709,379-sample frame).
+add_test(
+    NAME decode-pal-cvbs
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --cvbs --PAL -l 6
+        ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-pal-cvbs PROPERTIES FIXTURES_SETUP pal-cvbs)
+
+add_test(
+    NAME verify-pal-cvbs
+    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_verify.py
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs.composite
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(verify-pal-cvbs PROPERTIES
+    FIXTURES_REQUIRED pal-cvbs
+    PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
+)
+
 # The NTSC test disc carries broadcast-style NTC-7 VITS: composite on first
 # fields, combination (multiburst + modulated pedestal) on second fields.
 add_test(

@@ -138,9 +138,11 @@ class CVBSWriter:
             # stored 0H on the spec's 784.5 position
             self.stream_skip = int(round(spl - self.params["zero_h_sample"] + 0.5)) + 1
         else:
-            # PAL handled by the non-orthogonal assembler (frame origin
-            # offset applied in lattice time)
-            self.stream_skip = 0
+            # PAL: the field lattice streams start at line-0 0H; the stored
+            # frame must start so 0H of frame line 1 lands at lattice
+            # position 957.5 (EBU 3280).  Same +1 sinc-edge bias as NTSC.
+            spl = 709379 / 625
+            self.stream_skip = int(round(spl - self.params["zero_h_sample"] + 0.5)) + 1
 
         self._skipped = 0
         self._buf = []          # list of pending u16 arrays (temporal order)
@@ -178,8 +180,13 @@ class CVBSWriter:
         for PAL the caller must pass the non-orthogonal lattice samples
         produced by the CVBS assembler (step 4).
         """
-        pic = np.frombuffer(picture, dtype=np.uint16) if isinstance(
-            picture, (bytes, bytearray)) else picture
+        if self.system == "PAL":
+            # the .tbc raster is line-locked; the CVBS lattice is not —
+            # resample this field onto its portion of the frame lattice
+            pic = field.downscale_cvbs()
+        else:
+            pic = np.frombuffer(picture, dtype=np.uint16) if isinstance(
+                picture, (bytes, bytearray)) else picture
 
         is_first = bool(fi["isFirstField"])
         self._fields_seen += 1
