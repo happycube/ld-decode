@@ -83,6 +83,15 @@ AC3, `--cvbs`) automatically use block-level parallelism instead
 (~4×); `--demod-threads-only` keeps everything in threads (slower,
 lightest on memory).
 
+By default, minor MTF calibration drift is tolerated: fields decoded
+ahead under an MTF level within 0.10 of the current one are kept
+(the visual difference of a dead-band step is fractions of a dB at
+high frequencies).  `--exact-speculation` instead discards everything
+decoded under old parameters, keeping the output bit-exact with `-t 1`
+even across mid-run calibration changes.  Every speculation reject and
+parameter event is recorded with its cause in the `speculation_log`
+table of the `.tbc.db` (and as DEBUG lines in the decode log).
+
 ## CVBS output mode
 
 `ld-decode --cvbs ...` writes spec-compliant CVBS output instead of the
