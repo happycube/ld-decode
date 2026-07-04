@@ -476,6 +476,118 @@ def measure_ntc7_pedestal(field, line=20, start_us=45.5, end_us=59.5):
     return out
 
 
+def average_line_ire(fields, line):
+    """Coherent average of one TBC line across fields (noise drops ~sqrt(N))."""
+    acc = None
+    for f in fields:
+        y = f.line_ire(line)
+        acc = y.astype(np.float64) if acc is None else acc + y
+    return acc / len(fields)
+
+
+def measure_ntc7_transients(fields, line=20):
+    """Transient-response metrics from the NTC-7 composite (averaged line).
+
+    Uses the 100 IRE bar and the 2T sin^2 pulse.  Returns a dict:
+      bar_ire            bar top level
+      pulse_ratio        2T pulse height / bar height (ideal 1.0)
+      pulse_had_ns       pulse half-amplitude duration (2T nominal = 250 ns)
+      pulse_ring_pct     largest lobe within +/-(0.4..1.8) us of the pulse,
+                         as % of pulse height (ringing around the pulse)
+      edge_rise_ns       bar leading-edge 10-90% time
+      edge_fall_ns       bar trailing-edge 90-10% time
+      edge_overshoot_pct max excursion beyond the settled levels within
+                         1.5 us after each edge, as % of the 100 IRE step
+                         (worst of leading overshoot / trailing undershoot)
+      edge_ring_pct      largest subsequent lobe after the first overshoot
+      n_fields           fields averaged
+    Windows assume the NTC-7 layout verified on he010/ve-snw (bar 12-30 us,
+    2T ~33.9 us, 12.5T ~37 us).
+    """
+    if not fields:
+        return None
+    fs = fields[0].params.sample_rate_mhz
+    y = average_line_ire(fields, line)
+    idx = lambda us: int(round(us * fs))
+    seg = lambda a, b: y[idx(a):idx(b)]
+
+    baseline = float(np.mean(seg(31.0, 33.0)))
+    bar = float(np.mean(seg(18.0, 28.0))) - baseline
+    if bar < 50:
+        return None
+
+    # --- 2T pulse ---
+    pw = seg(33.0, 35.0)
+    pk = int(np.argmax(pw))
+    pk_us = 33.0 + pk / fs
+    pulse = float(pw[pk]) - baseline
+    half = baseline + pulse / 2
+    # half-amplitude duration via interpolated crossings around the peak
+    i = pk
+    while i > 0 and pw[i] > half:
+        i -= 1
+    lo = i + (half - pw[i]) / (pw[i + 1] - pw[i]) if pw[i + 1] != pw[i] else i
+    i = pk
+    while i < len(pw) - 1 and pw[i] > half:
+        i += 1
+    hi = i - 1 + (pw[i - 1] - half) / (pw[i - 1] - pw[i]) if pw[i - 1] != pw[i] else i
+    had_ns = (hi - lo) / fs * 1000.0
+
+    ring = np.concatenate([seg(pk_us - 1.8, pk_us - 0.4), seg(pk_us + 0.4, pk_us + 1.8)])
+    pulse_ring = float(np.max(np.abs(ring - baseline))) / pulse * 100.0
+
+    # --- bar edges ---
+    def edge_metrics(a_us, b_us, rising):
+        e = seg(a_us, b_us)
+        lo_l, hi_l = baseline, baseline + bar
+        # 50% crossing
+        thr = baseline + bar / 2
+        xs = np.nonzero((e[:-1] < thr) == rising)[0]
+        xs = [i for i in xs if (e[i + 1] >= thr) == rising]
+        if not xs:
+            return None
+        c = xs[0] if rising else xs[-1]
+        # 10-90% time around the crossing
+        t10, t90 = baseline + 0.1 * bar, baseline + 0.9 * bar
+        i = c
+        while i > 0 and ((e[i] > t10) if rising else (e[i] < t90)):
+            i -= 1
+        j = c
+        while j < len(e) - 1 and ((e[j] < t90) if rising else (e[j] > t10)):
+            j += 1
+        rise_ns = (j - i) / fs * 1000.0
+        # settled side after the transition
+        post = e[j + int(0.25 * fs):j + int(1.75 * fs)]
+        settled = hi_l if rising else lo_l
+        if len(post) < 4:
+            return None
+        dev = (post - settled) * (1 if rising else -1)
+        overshoot = float(np.max(dev)) / bar * 100.0
+        # ringing: largest opposite-going lobe after the first extremum
+        first_ext = int(np.argmax(dev))
+        ring_pct = 0.0
+        if first_ext + 2 < len(dev):
+            ring_pct = float(np.max(np.abs(dev[first_ext + 1:]))) / bar * 100.0
+        return rise_ns, overshoot, ring_pct
+
+    lead = edge_metrics(11.0, 13.5, True)
+    trail = edge_metrics(29.0, 31.5, False)
+    if lead is None or trail is None:
+        return None
+
+    return {
+        "bar_ire": bar,
+        "pulse_ratio": pulse / bar,
+        "pulse_had_ns": had_ns,
+        "pulse_ring_pct": pulse_ring,
+        "edge_rise_ns": lead[0],
+        "edge_fall_ns": trail[0],
+        "edge_overshoot_pct": max(lead[1], trail[1]),
+        "edge_ring_pct": max(lead[2], trail[2]),
+        "n_fields": len(fields),
+    }
+
+
 def detect_ntsc_ntc7_composite(field):
     """NTC-7 composite VITS on line 20 (bar + 12.5T pulse + mod staircase).
 

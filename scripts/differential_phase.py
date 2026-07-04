@@ -39,6 +39,7 @@ from tbc_common import (
     load_tbc, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
+    measure_ntc7_transients,
 )
 
 
@@ -598,6 +599,37 @@ def ntsc_report(params, fields, det):
     # 10 & 11. NTC-7 combination VITS (multiburst + modulated pedestal)
     # -----------------------------------------------------------------------
     ntc7_report(det, fields)
+
+    # -----------------------------------------------------------------------
+    # 12. NTC-7 composite: transient response / ringing
+    # -----------------------------------------------------------------------
+    comp_idx = sorted(det.get("ntsc_ntc7_composite", {}))
+    if not comp_idx:
+        print_skipped(12, "NTC-7 2T PULSE AND BAR EDGE (transient response)",
+                      "NTC-7 composite VITS not detected")
+        return
+
+    m = measure_ntc7_transients([fields[i] for i in comp_idx])
+    if m is None:
+        print_skipped(12, "NTC-7 2T PULSE AND BAR EDGE (transient response)",
+                      "could not resolve pulse/bar on the averaged line")
+        return
+
+    print_section(12, "NTC-7 2T PULSE AND BAR EDGE: TRANSIENT RESPONSE / RINGING\n"
+                      f"   (line 20 averaged over {m['n_fields']} fields)")
+    print(f"\n  Bar level:               {m['bar_ire']:.1f} IRE")
+    print(f"  2T pulse-to-bar ratio:   {m['pulse_ratio']:.3f}  (ideal 1.0)")
+    print(f"  2T half-amp duration:    {m['pulse_had_ns']:.0f} ns  (nominal 250 ns)")
+    print(f"  Pulse ringing:           {m['pulse_ring_pct']:.2f}% of pulse "
+          f"(largest lobe 0.4-1.8 us from peak)")
+    print(f"  Bar edge 10-90% rise:    {m['edge_rise_ns']:.0f} ns   fall: {m['edge_fall_ns']:.0f} ns")
+    print(f"  Edge overshoot:          {m['edge_overshoot_pct']:.2f}% of step")
+    print(f"  Edge ringing:            {m['edge_ring_pct']:.2f}% of step (lobes after first extremum)")
+    verdict = ("excellent (< 2%)" if max(m['pulse_ring_pct'], m['edge_overshoot_pct']) < 2
+               else "good (2-4%)" if max(m['pulse_ring_pct'], m['edge_overshoot_pct']) < 4
+               else "visible ringing (> 4%)")
+    print(f"  Assessment:              {verdict}")
+    print()
 
 
 def ntc7_report(det, fields):
