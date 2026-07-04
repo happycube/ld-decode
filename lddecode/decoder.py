@@ -240,6 +240,20 @@ class LDdecode:
         self.pipeline_warm = False
         self._fields_since_redo = 0
 
+        # With -t/--threads > 1, block demodulation (the bulk of decode
+        # time) runs on a prefetching thread pool once warm; results are
+        # bit-identical to the serial path.
+        self.numthreads = extra_options.get("threads", 1)
+        self.block_cache = None
+        if self.numthreads > 1:
+            from .parallel import DemodBlockCache
+
+            self.block_cache = DemodBlockCache(
+                self._read_raw_block,
+                self._demod_raw_block,
+                nthreads=self.numthreads,
+            )
+
         self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
@@ -263,6 +277,10 @@ class LDdecode:
 
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
+
+        if self.block_cache is not None:
+            self.block_cache.close()
+            self.block_cache = None
 
         if self.cvbs_writer is not None:
             try:
@@ -722,28 +740,51 @@ class LDdecode:
             self.outfile_audio.write(audio)
 
     @profile
+    def _read_raw_block(self, b):
+        """Raw samples for demod block b, or None at EOF."""
+        rawinput = self.freader(
+            self.infile, b * self.demod_blocksize, self.rf.blocklen
+        )
+        if rawinput is None or len(rawinput) < self.rf.blocklen:
+            return None
+        return rawinput
+
+    def _demod_raw_block(self, rawinput, mtf_level):
+        """Demodulate one raw block (pure given filter state)."""
+        return self.rf.demodblock(
+            data=rawinput,
+            fftdata=npfft.fft(rawinput),
+            mtf_level=mtf_level,
+            cut=True,
+        )
+
     def demod_read(self, begin, length, MTF=0):
         """ Read each input block, demodulate it, and concatenate the per-block
             outputs into contiguous arrays for further processing.  Returns None
             at EOF. """
         blocksize = self.demod_blocksize
+        brange = range(begin // blocksize, ((begin + length) // blocksize) + 1)
+
+        if self.block_cache is not None and self.pipeline_warm:
+            # Blocks come from the prefetching thread pool; identical values
+            # to the inline path (same per-block computation).
+            blockdata = self.block_cache.get_span(brange, MTF)
+        else:
+            blockdata = []
+            for b in brange:
+                rawinput = self._read_raw_block(b)
+                if rawinput is None:
+                    blockdata = None
+                    break
+                blockdata.append((rawinput, self._demod_raw_block(rawinput, MTF)))
+
+        if blockdata is None:
+            # EOF
+            return None
+
         t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
-        end = begin + length
-
-        for b in range(begin // blocksize, (end // blocksize) + 1):
-            rawinput = self.freader(self.infile, b * blocksize, self.rf.blocklen)
-            if rawinput is None or len(rawinput) < self.rf.blocklen:
-                # EOF
-                return None
-
-            demod = self.rf.demodblock(
-                data=rawinput,
-                fftdata=npfft.fft(rawinput),
-                mtf_level=MTF,
-                cut=True,
-            )
-
+        for rawinput, demod in blockdata:
             t["input"].append(rawinput[self.rf.blockcut : -self.rf.blockcut_end])
             for k in ("video", "audio", "efm", "rfhpf"):
                 if k in demod:
@@ -1053,6 +1094,10 @@ class LDdecode:
                 adjusted = True
                 self._fields_since_redo = 0
                 prevfield = self.fieldstack[0]
+                if self.block_cache is not None:
+                    # Decoder parameters just changed; drop prefetched
+                    # blocks demodulated under the old ones.
+                    self.block_cache.flush()
                 continue
 
             fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]

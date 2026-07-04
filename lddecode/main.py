@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import signal
 import sys
 import argparse
@@ -101,6 +102,14 @@ def main(args=None):
         type=float,
         default=0,
         help="mtf compensation offset",
+    )
+    parser.add_argument(
+        "-t",
+        "--threads",
+        metavar="threads",
+        type=int,
+        default=1,
+        help="worker threads for block demodulation (0 = auto, 1 = serial)",
     )
     parser.add_argument(
         "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"
@@ -366,7 +375,12 @@ def main(args=None):
 
     audio_pipe = None
 
+    threads = args.threads
+    if threads == 0:
+        threads = min(max((os.cpu_count() or 4) - 4, 1), 12)
+
     extra_options = {
+        "threads": threads,
         "useAGC": not args.noAGC,
         "write_RF_TBC": args.RF_TBC,
         "pipe_RF_TBC": audio_pipe,

@@ -29,6 +29,50 @@ add_test(
 )
 set_tests_properties(decode-pal-basic PROPERTIES FIXTURES_SETUP pal-tbc)
 
+# Threaded decode (-t) runs block demodulation on a prefetching thread
+# pool; the computation is identical per block, so the output must be
+# bit-identical to the serial decode.  Any divergence is a real
+# concurrency bug (stale cache entry, shared-state race).
+add_test(
+    NAME decode-ntsc-parallel
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8
+        ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
+        ${CMAKE_BINARY_DIR}/testout/ntsc-parallel
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-ntsc-parallel PROPERTIES FIXTURES_SETUP ntsc-parallel)
+
+add_test(
+    NAME decode-pal-parallel
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --PAL
+        ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
+        ${CMAKE_BINARY_DIR}/testout/pal-parallel
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-pal-parallel PROPERTIES FIXTURES_SETUP pal-parallel)
+
+foreach(ext tbc pcm efm)
+    add_test(
+        NAME compare-ntsc-parallel-${ext}
+        COMMAND ${CMAKE_COMMAND} -E compare_files
+            ${CMAKE_BINARY_DIR}/testout/ntsc-parallel.${ext}
+            ${CMAKE_BINARY_DIR}/testout/ntsc-basic.${ext}
+    )
+    set_tests_properties(compare-ntsc-parallel-${ext} PROPERTIES
+        FIXTURES_REQUIRED "ntsc-parallel;ntsc-tbc")
+endforeach()
+
+foreach(ext tbc efm)
+    add_test(
+        NAME compare-pal-parallel-${ext}
+        COMMAND ${CMAKE_COMMAND} -E compare_files
+            ${CMAKE_BINARY_DIR}/testout/pal-parallel.${ext}
+            ${CMAKE_BINARY_DIR}/testout/pal-basic.${ext}
+    )
+    set_tests_properties(compare-pal-parallel-${ext} PROPERTIES
+        FIXTURES_REQUIRED "pal-parallel;pal-tbc")
+endforeach()
+
 # Verify test patterns in the decoded output.  The analyzer detects which
 # patterns are present (line 19 VITS, staircase, colour bars, PAL ITS) and
 # only measures those; the pass regex asserts the patterns this test disc
