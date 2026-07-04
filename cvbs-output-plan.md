@@ -122,3 +122,66 @@ Each commit verified: pytest, full ctest (old tests must stay green — default 
 - **Levels**: confirm 0 IRE lands exactly on 240<<6 (NTSC) / 256<<6 (PAL) in the output signal itself; fix the mapping if the `blanking_16b=15091` discrepancy is real signal placement and not just metadata.
 - **PAL pilot burst**: legal amplitude but non-standard content → `has_nonstandard_values=TRUE` + capture_notes, never clipped.
 - **Performance**: PAL does one extra full-rate resample per field; if FPS matters, the standard `dspicture` for metrics can later be computed on demand only for the lines metrics actually read.
+
+---
+
+# v2: deferred items (burst lock, extensions, round-trip)
+
+## 1. EFM extension (`<base>.efm` + `<base>.efm.meta`)
+
+The existing `.efm` stream (EFM PLL t-values, one byte each) IS the extension's
+binary format; what's missing is the per-frame index.  In CVBS mode the writer
+owns the `.efm` file: decoder routes `efm_out` to `CVBSWriter.push_efm()`,
+which buffers per field, pairs with the video frame pairing (t-values of
+dropped fields are discarded so frame_id alignment holds), writes bytes on
+frame emit, and records `(frame_id, t_value_offset, t_value_count)` rows into
+`<base>.efm.meta` (user_version 1) at close.
+
+## 2. Dropout extension (`<base>.dropouts.meta`)
+
+`fi["dropOuts"]` gives per-field (fieldLine, startx, endx) in TBC raster
+coordinates.  Map to CVBS frame-sample space on frame emit:
+- NTSC: `sample = (field_base_lines + line-1)*910 + startx - stream_skip`
+- PAL: through the lattice: `t = (line-1) + startx/1135` lines (+312.5 for
+  second fields) → `sample = round(t*709379/625) - stream_skip`
+Clamp to [0, frame_samples); severity = 100 (ld-decode has no graded
+confidence).  user_version 5 schema.
+
+## 3. Burst-locked output (`STANDARD_TBC_LOCKED`)
+
+Key insight (PAL): the spec lattice samples at 45/135/225/315° to +U — a
+constraint defined only **mod 90°**, and 90° of subcarrier = exactly one
+lattice sample.  So the anchoring correction is a global lattice time shift
+of at most ±0.5 sample per anchor and cannot move 0H off its digital position.
+
+- **PAL**: measure burst-vs-lattice phase on the resampled field-A stream
+  (burst windows at known lattice offsets, ~60 lines).  Fold the V-switch
+  with adjacent-line products: `P = mean(b_k * b_(k+1))` has phase 2θ
+  (the ±135° alternation cancels); θ mod 90° is the lattice phase.
+  Correction Δ = wrap(T − θ, ±45°)/90° lattice samples (T = calibration
+  constant).  First frame: apply Δ and re-resample field A once; subsequent
+  frames: apply as tracking (corrections are drift-sized).  Both fields of a
+  frame get the same shift (subcarrier is frame-coherent).
+  `downscale_cvbs(phase_shift=...)` gains the shift parameter.
+- **NTSC**: no resampling needed — the decoder already rotates each field so
+  burst sits at the fsc_phase_deg target (147.25°) in line-referenced
+  convention; with 910 = 227.5×4 the uniform line-referenced phase IS the
+  standard alternating NTSC progression.  The writer measures per-field burst
+  phase; if std < 3° and |mean − 147.25| < 5° the file is declared LOCKED,
+  else falls back to UNLOCKED (honest).
+- **Sequence origin**: NTSC already starts at fieldPhaseID 1 (frame A);
+  gate PAL start on fieldPhaseID 1 too (PAL sequence frame 1, up to 3 frames
+  discarded, same give-up cap).
+- **Verifier**: when meta claims LOCKED, assert per-frame burst phase
+  stability (NTSC: line-referenced mean per frame within ±3° across frames;
+  PAL: folded 2θ/2 mod 90 within ±3° across frames).
+
+## 4. cvbsdecode round-trip (validation, best effort)
+
+Feed the NTSC and PAL `.composite` to vhs-decode's cvbs-decode as a raw
+CVBS capture at the 4fsc rate (converting u16<<6 to its expected input format
+if needed) and confirm it locks and produces sane TBC output.  Report
+findings; environment/deps may limit this to a smoke test.
+
+Order: EFM → dropouts → burst lock → verifier → round-trip.  Regression
+gates unchanged: default path bit-identical, all ctest green.
