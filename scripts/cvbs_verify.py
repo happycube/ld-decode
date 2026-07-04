@@ -51,19 +51,27 @@ def warn(msg):
 
 
 def find_0h_positions(frame10, preset):
-    """Locate every sync leading (falling) edge midpoint in one frame.
+    """Locate sync leading (falling) edge midpoints in one frame.
 
-    Returns interpolated sample positions of the 50%-crossings of falling
-    edges that stay low for >2 us (line/vsync syncs, not equalizing-only).
+    Returns interpolated sample positions of 50%-crossings of falling
+    edges whose level then DWELLS at sync for ~2.3 us — this rejects
+    picture-content transients (which cross the threshold but do not
+    stay down), keeping line syncs and vsync broad/equalizing pulses.
     """
     lv = preset["levels"]
     thr = (lv["sync"] + lv["blanking"]) / 2.0
-    x = frame10.astype(np.float64)
+    # Low-pass first: LaserDisc PAL carries a ~3.75 MHz pilot burst across
+    # the sync region (declared via has_nonstandard_values); a 5-sample
+    # average removes it while shifting all edges identically.
+    x = np.convolve(frame10.astype(np.float64), np.ones(5) / 5, "same")
     below = x < thr
     edges = np.nonzero(~below[:-1] & below[1:])[0]
+    dwell = 33  # ~2.3 us at 4fsc — shorter than an equalizing pulse
     out = []
     for e in edges:
-        # interpolate the 50% crossing between e and e+1
+        seg = below[e + 2: e + 2 + dwell]
+        if len(seg) < dwell or np.count_nonzero(seg) < dwell * 0.9:
+            continue
         a, b = x[e], x[e + 1]
         frac = (a - thr) / (a - b) if a != b else 0.5
         out.append(e + frac)
@@ -173,6 +181,26 @@ def main():
             check(ok, f"frame {fr}: lattice slip {total:.2f} samples/frame "
                       f"(expect 4.00; {slip_per_line:.5f}/line over "
                       f"{len(lines)} line gaps)")
+
+        # Whole-frame integer line grid: EVERY line sync must sit on the
+        # same integer-line lattice, including across the field seam (line
+        # syncs are 64 us apart throughout a frame; the interlace
+        # half-line lives in vsync, not in 0H spacing).  This catches a
+        # field placed at a half-line offset, which per-field spacing
+        # checks cannot see.
+        t = pos * p["frame_lines"] / p["frame_samples"]  # line-time units
+        # anchor to the dominant grid phase (circular mean), not the first
+        # edge — the frame can open on a vsync half-line pulse
+        grid = np.angle(np.sum(np.exp(2j * np.pi * t))) / (2 * np.pi)
+        frac = np.abs(((t - grid + 0.5) % 1.0) - 0.5)
+        # ignore vsync serration/equalizing edges (half-line offenders in
+        # the real signal): a genuine seam error displaces the MEDIAN
+        n_half = int(np.count_nonzero(frac > 0.35))
+        med_frac = float(np.median(frac))
+        check(med_frac < 0.05 and n_half < len(t) * 0.2,
+              f"frame {fr}: line syncs on one integer-line grid "
+              f"(median frac {med_frac:.3f}, {n_half}/{len(t)} half-line "
+              f"edges incl. vsync)")
 
     # frame-to-frame: lattice repeats at frame rate
     if len(frame_first_0h) >= 2:

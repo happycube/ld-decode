@@ -1686,10 +1686,15 @@ class FieldPAL(Field):
         PAL 4fsc is not line-locked: the frame is 709,379 samples on a
         uniform time step of 625/709379 lines (1135.0064 samples/line,
         slipping 4 samples per frame).  First fields contribute 354,690
-        samples, second fields 354,689; the second field's lattice phase
-        continues the frame's (its portion starts at frame time 312.5
-        lines), so concatenating the two streams yields the exact
-        non-orthogonal frame sequence.
+        samples (frame times [0, 312.5) lines), second fields 354,689
+        (frame times [312.5, 625)); concatenating the two streams yields
+        the exact non-orthogonal frame sequence.
+
+        Line syncs sit on the INTEGER line grid throughout the frame (the
+        interlace half-line lives in the vsync structure, not in the 0H
+        spacing), so the second field's display line 0 maps to frame line
+        313 — its stream portion begins half a line early, inside the
+        decoded vsync margin.
 
         phase_shift moves the whole lattice in time by that many lattice
         samples (90 degrees of subcarrier each) — the burst-lock anchor.
@@ -1702,7 +1707,7 @@ class FieldPAL(Field):
             t_lines = np.arange(n_a, dtype=np.float64) * step
         else:
             t_lines = (np.arange(frame_samples - n_a, dtype=np.float64)
-                       + n_a) * step - 312.5
+                       + n_a) * step - 313.0
         if phase_shift:
             t_lines = t_lines + phase_shift * step
 
