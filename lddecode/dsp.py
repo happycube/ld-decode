@@ -169,6 +169,57 @@ def scale_field(
         dsout[i - dsout_start] = level_adjust * result
 
 
+@njit(nogil=True, fastmath=True)
+def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
+                    samples_per_line, wow_level_adjust_smoothing=0,
+                    level_adjust_threshold=15):
+    """scale_field without the raster assumptions.
+
+    Resamples buf at pixel_locs[i] into dsout[i] (equal-length arrays),
+    applying the same wow level adjustment as scale_field.  Used by the
+    CVBS output lattice, where output sample positions are not organised
+    as fixed-width lines (PAL 4fsc is not line-locked).
+    """
+    median = np.median(wowfactors)
+    mad = np.median(np.abs(wowfactors - median))
+    threshold = level_adjust_threshold * mad if mad > 0 else 0.001
+
+    level_adjusts = np.where(
+        np.abs(wowfactors - median) > threshold,
+        median,
+        wowfactors
+    )
+
+    if wow_level_adjust_smoothing > 0:
+        alpha = 1 / (wow_level_adjust_smoothing * samples_per_line)
+        one_minus_alpha = 1 - alpha
+        for i in range(1, len(level_adjusts)):
+            level_adjusts[i] = alpha * level_adjusts[i] + one_minus_alpha * level_adjusts[i - 1]
+
+    half_taps_m1 = (sinc_tap_count // 2) - 1
+
+    for i in range(len(dsout)):
+        coord = np.float32(pixel_locs[i])
+        coord_int = int(coord)
+        frac = coord - coord_int
+
+        phase_pos = frac * sinc_phase_count
+        phase_start = int(phase_pos)
+        alpha2 = np.float32(phase_pos - phase_start)
+
+        w_start = sinc_lut[phase_start]
+        w_end = sinc_lut[phase_start + 1]
+
+        start = coord_int - half_taps_m1
+
+        result = 0.0
+        for t in range(sinc_tap_count):
+            ws = w_start[t]
+            result += buf[start + t] * (ws + alpha2 * (w_end[t] - ws))
+
+        dsout[i] = level_adjusts[i] * result
+
+
 @njit(cache=True)
 def genwave(rate, freq, initialphase=0):
     """ Generate an FM waveform from target frequency data """

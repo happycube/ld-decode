@@ -7,3 +7,6 @@
 [submodule "ld-decode-tools"]
 	path = ld-decode-tools
 	url = https://github.com/simoninns/ld-decode-tools.git
+[submodule "cvbs-file-format-specification"]
+	path = cvbs-file-format-specification
+	url = https://github.com/simoninns/cvbs-file-format-specification

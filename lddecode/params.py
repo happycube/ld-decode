@@ -224,3 +224,40 @@ FilterParams_PAL_lowband['video_bpf_low']   = 3200000
 FilterParams_PAL_lowband['video_bpf_high']  = 13000000
 FilterParams_PAL_lowband['video_bpf_order'] = 2
 FilterParams_PAL_lowband['video_lpf_freq']  = 4800000
+
+
+# ---------------------------------------------------------------------------
+# CVBS 4fsc output constants (see cvbs-file-format-specification/)
+#
+# NTSC 4fsc sampling is line-locked (orthogonal): exactly 910 samples/line.
+# PAL 4fsc is NOT line-locked: fsc = (1135/4 + 1/625) * fH, so one line is
+# 1135.0064 samples, the lattice slips 4 samples per 625-line frame, and the
+# only normative sample count is the frame total of 709,379 samples.
+# ---------------------------------------------------------------------------
+
+CVBSParams_NTSC = {
+    "fs_hz": 4 * 315e6 / 88,          # 14,318,181.81... Hz
+    "frame_samples": 477750,          # 525 lines x 910 samples (orthogonal)
+    "frame_lines": 525,
+    "samples_per_line": 910,          # exact
+    # SMPTE 244M-2003 digital line structure: the stored line starts at the
+    # digital active line; 0H (sync edge midpoint) falls between samples
+    # 784 and 785.
+    "zero_h_sample": 784.5,
+    # 10-bit sample levels (SMPTE 244M-2003 / SMPTE 170M-2004)
+    "levels": {"sync": 16, "blanking": 240, "black": 282, "white": 800,
+               "peak": 1019},
+}
+
+CVBSParams_PAL = {
+    "fs_hz": 17734475.0,              # exact integer rate
+    "frame_samples": 709379,          # normative at frame level ONLY
+    "frame_lines": 625,
+    "samples_per_line": (709379, 625),  # exact rational: 1135.0064
+    # EBU Tech 3280-E: for frame 1 at 0 deg Sc/H, 0H of frame line 1 falls
+    # midway between samples 957 and 958; it advances 0.0064 samples/line.
+    "zero_h_sample": 957.5,
+    # 10-bit sample levels (EBU Tech 3280-E); PAL has no setup: black=blanking
+    "levels": {"sync": 4, "blanking": 256, "black": 256, "white": 844,
+               "peak": 1019},
+}
