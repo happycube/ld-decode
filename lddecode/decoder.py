@@ -124,15 +124,18 @@ class LDdecode:
                         "LaserDisc PAL: pilot burst may be present in blanking"
                         if system == "PAL" else None),
                     has_nonstandard_values=True if system == "PAL" else None,
+                    write_efm=bool(self.digital_audio),
                 )
             else:
                 self.outfile_video = open(fname_out + ".tbc", "wb")
                 if self.analog_audio:
                     self.outfile_audio = open(fname_out + ".pcm", "wb")
             if self.digital_audio:
-                # feed EFM stream into ld-ldstoefm
+                # feed EFM stream into ld-ldstoefm; in CVBS mode the writer
+                # owns <out>.efm (frame-indexed EFM extension format)
                 self.efm_pll = efm_pll.EFM_PLL()
-                self.outfile_efm = open(fname_out + ".efm", "wb")
+                if not self.output_cvbs:
+                    self.outfile_efm = open(fname_out + ".efm", "wb")
                 if extra_options.get("write_pre_efm", False):
                     self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
@@ -572,12 +575,14 @@ class LDdecode:
 
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
+        efm_out = None
         if self.digital_audio is True:
             if self.outfile_pre_efm is not None:
                 self.outfile_pre_efm.write(efm.tobytes())
 
             efm_out = self.efm_pll.process(efm)
-            self.outfile_efm.write(efm_out.tobytes())
+            if self.outfile_efm is not None:
+                self.outfile_efm.write(efm_out.tobytes())
 
         fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
@@ -585,7 +590,7 @@ class LDdecode:
         self.fieldinfo.append(fi)
 
         if self.dbconn is None:
-            self._writeout_data(fi, picture, audio, f)
+            self._writeout_data(fi, picture, audio, f, efm_out)
             return
 
         if not self.capture_id:
@@ -660,12 +665,13 @@ class LDdecode:
         # decode is killed mid-run.
         self.dbconn.commit()
 
-        self._writeout_data(fi, picture, audio, f)
+        self._writeout_data(fi, picture, audio, f, None)
 
-    def _writeout_data(self, fi, picture, audio, f):
+    def _writeout_data(self, fi, picture, audio, f, efm_out=None):
         """Write the field's sample data (video/rf-tbc/audio outputs)."""
         if self.cvbs_writer is not None:
-            self.cvbs_writer.push_field(fi, picture, f)
+            self.cvbs_writer.push_field(fi, picture, f, efm=efm_out,
+                                        audio=audio)
         else:
             self.outfile_video.write(picture)
         self.fields_written += 1
@@ -682,11 +688,9 @@ class LDdecode:
             if self.pipe_rftbc is not None:
                 self.pipe_rftbc.send(rftbc)
 
-        if audio is not None:
-            if self.cvbs_writer is not None:
-                self.cvbs_writer.push_audio(audio)
-            elif self.outfile_audio is not None:
-                self.outfile_audio.write(audio)
+        if audio is not None and self.cvbs_writer is None \
+                and self.outfile_audio is not None:
+            self.outfile_audio.write(audio)
 
     @profile
     def demod_read(self, begin, length, MTF=0):

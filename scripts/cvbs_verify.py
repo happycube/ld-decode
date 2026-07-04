@@ -18,18 +18,20 @@ import sys
 
 import numpy as np
 
+# zero_h: ld-decode line convention (sample 0 at line start, 0H ~ +0.8) —
+# the layout decode-orc's cvbs_source reader expects.
 PRESETS = {
     "NTSC": {
         "frame_samples": 477750, "frame_lines": 525,
-        "spl": 910.0, "zero_h": 784.5, "drift_per_line": 0.0,
+        "spl": 910.0, "zero_h": 0.8, "drift_per_line": 0.0,
         "levels": {"sync": 16, "blanking": 240, "white": 800},
-        "fsc_per_sample": 0.25,
+        "burst": (74, 110),
     },
     "PAL": {
         "frame_samples": 709379, "frame_lines": 625,
-        "spl": 709379 / 625, "zero_h": 957.5, "drift_per_line": 4 / 625,
+        "spl": 709379 / 625, "zero_h": 0.8, "drift_per_line": 4 / 625,
         "levels": {"sync": 4, "blanking": 256, "white": 844},
-        "fsc_per_sample": 0.25,
+        "burst": (98, 138),
     },
 }
 
@@ -191,21 +193,96 @@ def main():
         mids = pos[1:-1][(np.abs(d[:-1] - p["spl"]) < 3)
                          & (np.abs(d[1:] - p["spl"]) < 3)]
         if len(mids) > 50:
-            phase = float(np.median(mids % p["spl"]))
+            spl = p["spl"]
+            dev = ((mids - p["zero_h"] + spl / 2) % spl) - spl / 2
+            phase = float(np.median(dev)) + p["zero_h"]
             check(abs(phase - p["zero_h"]) < 1.5,
-                  f"0H at digital line position {phase:.2f} "
-                  f"(spec {p['zero_h']})")
+                  f"0H at line position {phase:.2f} "
+                  f"(ld-decode convention {p['zero_h']})")
 
-    # --- burst (informational under UNLOCKED) ---
-    frame = v10[: p["frame_samples"]].astype(np.float64)
-    # sample the burst window ~ 0H+16..34 quarter-cycles after a mid-frame 0H
-    if len(frame_first_0h):
-        h0 = int(round(frame_first_0h[0])) + int(round(p["spl"])) * 40
-        seg = frame[h0 + 20: h0 + 55]
-        n = np.arange(len(seg))
-        c = np.mean((seg - np.mean(seg)) * np.exp(-0.5j * np.pi * (n + h0 + 20)))
-        warn(f"burst on a mid-frame line: amp {2 * np.abs(c):.1f} (10-bit), "
-             f"phase {np.degrees(np.angle(c)) % 360:.1f} deg (informational)")
+    # --- burst phase: assertion when LOCKED, informational otherwise ---
+    b0, b1 = p["burst"]
+    frame_phases = []
+    for fr in range(n_check):
+        frame = v10[fr * p["frame_samples"]:(fr + 1) * p["frame_samples"]]
+        x = frame.astype(np.float64)
+        bursts = []
+        for k in range(40, 200, 2):
+            if preset_name == "NTSC":
+                j0 = k * 910
+            else:
+                j0 = int(np.ceil(k * p["spl"]))
+            seg = x[j0 + b0: j0 + b1]
+            if len(seg) < b1 - b0:
+                continue
+            n = np.arange(j0 + b0, j0 + b1) if preset_name == "PAL" \
+                else np.arange(b0, b1)
+            bursts.append(np.mean((seg - np.mean(seg))
+                                  * np.exp(-0.5j * np.pi * n)))
+        if not bursts:
+            continue
+        bursts = np.array(bursts)
+        if preset_name == "PAL":
+            # fold the V-switch: adjacent products have phase 2*theta;
+            # the lattice constraint is defined mod 90 degrees
+            psum = np.sum(bursts[:-1] * bursts[1:])
+            ph = (np.degrees(np.angle(psum)) / 2.0) % 90.0
+        else:
+            ph = np.degrees(np.angle(np.sum(bursts))) % 360.0
+        frame_phases.append(ph)
+
+    if frame_phases:
+        arr = np.array(frame_phases)
+        # PAL lattice phase is defined mod 90; NTSC folds the 2-frame
+        # colour-sequence alternation out mod 180
+        halfspan = 45.0 if preset_name == "PAL" else 90.0
+        dev = np.abs((arr - arr[0] + halfspan) % (2 * halfspan) - halfspan)
+        msg = (f"burst-vs-lattice phase per frame: "
+               + ", ".join(f"{v:.2f}" for v in arr)
+               + f" deg (max dev {np.max(dev):.2f})")
+        if state == "STANDARD_TBC_LOCKED":
+            check(bool(np.max(dev) <= 3.0), "LOCKED: " + msg)
+        else:
+            warn(msg)
+
+    # --- extension sidecars ---
+    do_meta = base + ".dropouts.meta"
+    if os.path.exists(do_meta):
+        dcon = sqlite3.connect(do_meta)
+        duv = dcon.execute("PRAGMA user_version").fetchone()[0]
+        check(duv == 5, f"dropouts.meta user_version = 5 (got {duv})")
+        bad = dcon.execute(
+            "SELECT COUNT(*) FROM dropout_run WHERE sample_start < 0 OR "
+            "sample_start + sample_count > ? OR frame_id >= ?",
+            (p["frame_samples"], file_frames)).fetchone()[0]
+        total = dcon.execute("SELECT COUNT(*) FROM dropout_run").fetchone()[0]
+        check(bad == 0, f"dropout runs in bounds ({total} rows)")
+        dcon.close()
+    else:
+        warn("no dropout extension sidecar")
+
+    efm_meta = base + ".efm.meta"
+    efm_bin = base + ".efm"
+    if os.path.exists(efm_meta) and os.path.exists(efm_bin):
+        econ = sqlite3.connect(efm_meta)
+        euv = econ.execute("PRAGMA user_version").fetchone()[0]
+        check(euv == 1, f"efm.meta user_version = 1 (got {euv})")
+        rows = econ.execute(
+            "SELECT frame_id, t_value_offset, t_value_count FROM efm_frame "
+            "ORDER BY frame_id").fetchall()
+        ok = bool(rows) and rows[0][1] == 0
+        expect_off = 0
+        for _, off, cnt in rows:
+            ok &= (off == expect_off)
+            expect_off = off + cnt
+        ok &= (expect_off == os.path.getsize(efm_bin))
+        check(ok, f"efm_frame index contiguous and matches .efm size "
+                  f"({len(rows)} frames, {expect_off} t-values)")
+        check(len(rows) == file_frames,
+              f"efm index covers every frame ({len(rows)} vs {file_frames})")
+        econ.close()
+    else:
+        warn("no EFM extension sidecar")
 
     # --- audio ---
     wav = base + "_audio_00.wav"

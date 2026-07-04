@@ -62,21 +62,32 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 `.tbc` video output (see `cvbs-file-format-specification/`):
 
 - `<out>.composite` — `CVBS_U16_4FSC` sample data in whole frames
-  (NTSC: 477,750 samples/frame; PAL: 709,379)
-- `<out>.meta` — the spec's SQLite metadata (`STANDARD_TBC_UNLOCKED`)
-- `<out>_audio_00.wav` — spec WAV analog audio with an honest
-  `audio_locked` flag (PAL is frame-locked at 44100 Hz; NTSC is locked
-  only with `--ntsc_audio_rate`, which uses the 44,100,000/1001 Hz rate)
+  (NTSC: 477,750 samples/frame; PAL: 709,379), ld-decode line convention
+  (the layout decode-orc's `cvbs_source` reader expects)
+- `<out>.meta` — the spec's SQLite metadata; the signal state is measured
+  and declared honestly (`STANDARD_TBC_LOCKED` when the burst-vs-lattice
+  phase is stable within 3°, else `STANDARD_TBC_UNLOCKED`)
+- `<out>_audio_00.wav` — spec WAV analog audio, frame-aligned with the
+  written frames, with an honest `audio_locked` flag (PAL is frame-locked
+  at 44100 Hz; NTSC is locked only with `--ntsc_audio_rate`)
+- `<out>.dropouts.meta` — the dropout extension sidecar (dropout runs in
+  CVBS frame-sample coordinates)
+- `<out>.efm` + `<out>.efm.meta` — the EFM extension (t-values with a
+  per-frame index) when digital audio is decoded
 
 Note that **PAL 4fsc is not line-locked**: a line is 1135.0064 samples
 and the sampling lattice slips 4 samples per frame, so the PAL
 `.composite` is produced by a separate non-orthogonal resampler and its
-timing differs fundamentally from the line-locked `.tbc` raster.
+timing differs fundamentally from the line-locked `.tbc` raster.  PAL
+output is burst-anchored: the lattice constraint (sampling at 45° steps
+to +U) is defined mod 90°, and 90° of subcarrier is exactly one lattice
+sample, so the anchor is a global sub-sample time shift that tracks the
+disc's Sc/H drift.  The file starts on NTSC colour frame A / PAL
+sequence frame 1 (fieldPhaseID 1).
 `scripts/cvbs_verify.py <out>.composite` checks an output file against
 the specification (frame sizing, protected values, the 0H sync lattice
-including the PAL slip, metadata, and audio).  Not yet implemented:
-burst-locked output (`STANDARD_TBC_LOCKED`) and the dropout/EFM
-extension sidecars.
+including the PAL slip, burst lock, extension sidecars, metadata, and
+audio).
 
 # Want to get involved?
 

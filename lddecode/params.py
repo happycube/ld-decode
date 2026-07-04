@@ -240,10 +240,12 @@ CVBSParams_NTSC = {
     "frame_samples": 477750,          # 525 lines x 910 samples (orthogonal)
     "frame_lines": 525,
     "samples_per_line": 910,          # exact
-    # SMPTE 244M-2003 digital line structure: the stored line starts at the
-    # digital active line; 0H (sync edge midpoint) falls between samples
-    # 784 and 785.
-    "zero_h_sample": 784.5,
+    # Stored lines use the ld-decode line convention (sample 0 at the line
+    # start, 0H sync edge ~ +0.8): this is what decode-orc's cvbs_source
+    # reader expects (burst window 72-108, active video at 126).  SMPTE
+    # 244M's digital-line origin (0H between samples 784/785) is
+    # informational background in the spec, not the file layout.
+    "zero_h_sample": 0.8,
     # 10-bit sample levels (SMPTE 244M-2003 / SMPTE 170M-2004)
     "levels": {"sync": 16, "blanking": 240, "black": 282, "white": 800,
                "peak": 1019},
@@ -254,9 +256,10 @@ CVBSParams_PAL = {
     "frame_samples": 709379,          # normative at frame level ONLY
     "frame_lines": 625,
     "samples_per_line": (709379, 625),  # exact rational: 1135.0064
-    # EBU Tech 3280-E: for frame 1 at 0 deg Sc/H, 0H of frame line 1 falls
-    # midway between samples 957 and 958; it advances 0.0064 samples/line.
-    "zero_h_sample": 957.5,
+    # ld-decode line convention (see NTSC note above); EBU 3280's digital
+    # line origin (0H at 957.5 for frame line 1) is informational.  The
+    # lattice 0H drifts +0.0064 samples/line through the frame regardless.
+    "zero_h_sample": 0.8,
     # 10-bit sample levels (EBU Tech 3280-E); PAL has no setup: black=blanking
     "levels": {"sync": 4, "blanking": 256, "black": 256, "white": 844,
                "peak": 1019},

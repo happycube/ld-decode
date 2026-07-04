@@ -1679,7 +1679,7 @@ class FieldPAL(Field):
 
         self.fieldPhaseID = self.determine_field_number()
 
-    def downscale_cvbs(self):
+    def downscale_cvbs(self, phase_shift=0.0):
         """Resample this field onto its portion of the PAL CVBS 4fsc frame
         lattice (see lddecode/cvbs.py).
 
@@ -1690,6 +1690,9 @@ class FieldPAL(Field):
         continues the frame's (its portion starts at frame time 312.5
         lines), so concatenating the two streams yields the exact
         non-orthogonal frame sequence.
+
+        phase_shift moves the whole lattice in time by that many lattice
+        samples (90 degrees of subcarrier each) — the burst-lock anchor.
         """
         frame_samples = 709379
         n_a = (frame_samples + 1) // 2      # 354690
@@ -1700,6 +1703,8 @@ class FieldPAL(Field):
         else:
             t_lines = (np.arange(frame_samples - n_a, dtype=np.float64)
                        + n_a) * step - 312.5
+        if phase_shift:
+            t_lines = t_lines + phase_shift * step
 
         # Same expected-time -> input-position spline computewow_scaled
         # uses; field display line 0 sits at (lineoffset + 1) lines into

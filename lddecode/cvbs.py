@@ -111,17 +111,33 @@ class CVBSWriter:
     """Assembles decoded fields into spec-compliant CVBS output.
 
     Writes <basename>.composite (u16le, CVBS_U16_4FSC), <basename>.meta
-    (SQLite, spec core schema), and optionally <basename>_audio_00.wav.
+    (SQLite, spec core schema), optional <basename>_audio_00.wav, and the
+    dropout / EFM extension sidecars (<basename>.dropouts.meta,
+    <basename>.efm + .efm.meta).
 
-    Fields are paired into frames; only complete frames are written, and
-    the sample stream is globally offset so 0H lands at the preset's
-    digital-line position (SMPTE 244M / EBU 3280 line structure).
+    Frames use the ld-decode line convention (sample 0 at the line start,
+    0H ~ +0.8) — the layout decode-orc's cvbs_source reader expects.  One
+    field pair produces exactly one frame, so extension frame indices align
+    with the video by construction.
+
+    Burst lock: PAL output is anchored to the 4fsc lattice with a global
+    time shift.  The spec lattice samples at 45/135/225/315 degrees to +U,
+    a constraint defined only mod 90 degrees — and 90 degrees of subcarrier
+    is exactly one lattice sample, so the correction is always <= +/-0.5
+    sample and cannot move 0H.  The V-switch folds out of the measurement
+    via adjacent-line burst products (b_k * b_(k+1) has phase 2*theta).
+    NTSC needs no re-anchoring (the decoder already rotates each field to
+    the fsc_phase_deg target); its lock is measured and declared honestly.
     """
+
+    PAL_LOCK_TARGET = 45.0     # folded burst phase target, deg (mod 90)
+    NTSC_LOCK_TARGET = 147.25  # line-referenced burst phase target, deg
+    LOCK_TOL = 3.0             # residual tolerance for claiming LOCKED
 
     def __init__(self, fname_out, system, logger=None, version=None,
                  black_level=None, write_audio=False, audio_rate=44100,
                  audio_locked=None, capture_notes=None,
-                 has_nonstandard_values=None):
+                 has_nonstandard_values=None, write_efm=False):
         self.system = system
         self.params = CVBSParams_PAL if system == "PAL" else CVBSParams_NTSC
         self.fname_out = fname_out
@@ -129,25 +145,7 @@ class CVBSWriter:
 
         self.f_video = open(fname_out + ".composite", "wb")
 
-        # global stream offset: the stored frame begins in the previous
-        # temporal line so that 0H lands at the preset's digital position
-        if system == "NTSC":
-            spl = self.params["samples_per_line"]
-            # +1: the measured 50% crossing of the sinc-shaped sync edge
-            # sits ~0.8 samples past the TBC lineloc; this centres the
-            # stored 0H on the spec's 784.5 position
-            self.stream_skip = int(round(spl - self.params["zero_h_sample"] + 0.5)) + 1
-        else:
-            # PAL: the field lattice streams start at line-0 0H; the stored
-            # frame must start so 0H of frame line 1 lands at lattice
-            # position 957.5 (EBU 3280).  Same +1 sinc-edge bias as NTSC.
-            spl = 709379 / 625
-            self.stream_skip = int(round(spl - self.params["zero_h_sample"] + 0.5)) + 1
-
-        self._skipped = 0
-        self._buf = []          # list of pending u16 arrays (temporal order)
-        self._buflen = 0
-        self._pending_first = None
+        self._pending_first = None   # (field, fi, pic_or_None, efm)
         self._started = False
         self._fields_seen = 0
         self.frames_written = 0
@@ -157,6 +155,18 @@ class CVBSWriter:
         self.clamp_lo = 4 * 64
         self.clamp_hi = 1019 * 64
         self.blank16 = lv["blanking"] * 64
+
+        # burst lock state
+        self._pal_shift = 0.0          # lattice-sample lattice shift
+        self._lock_initialised = False
+        self._lock_residuals = []      # per-frame residual, degrees
+
+        # extension sidecar state
+        self.dropout_rows = []         # (frame_id, sample_start, count, sev)
+        self.write_efm = write_efm
+        self.f_efm = None
+        self._efm_index = []           # (frame_id, offset, count)
+        self._efm_offset = 0
 
         # metadata fields
         self.version = version or ""
@@ -173,31 +183,24 @@ class CVBSWriter:
 
     # -- video ------------------------------------------------------------
 
-    def push_field(self, fi, picture, field=None):
-        """Add one decoded field.  picture is the u16 TBC raster bytes/array.
+    def push_field(self, fi, picture, field=None, efm=None, audio=None):
+        """Add one decoded field (with its dropout, EFM, and audio data).
 
-        For NTSC the raster is the CVBS lattice already (orthogonal 4fsc);
-        for PAL the caller must pass the non-orthogonal lattice samples
-        produced by the CVBS assembler (step 4).
+        Audio rides through the same frame pairing so the WAV contains
+        exactly the audio of the written frames (the spec requires the
+        first audio sample to be synchronous with the first stored frame).
         """
-        if self.system == "PAL":
-            # the .tbc raster is line-locked; the CVBS lattice is not —
-            # resample this field onto its portion of the frame lattice
-            pic = field.downscale_cvbs()
-        else:
-            pic = np.frombuffer(picture, dtype=np.uint16) if isinstance(
-                picture, (bytes, bytearray)) else picture
-
         is_first = bool(fi["isFirstField"])
         self._fields_seen += 1
 
         if not self._started:
-            # start the file at the conventional sequence position:
-            # a first field opening colour frame A (NTSC fieldPhaseID 1).
-            # Give up after 8 fields rather than discard forever.
-            phase_ok = (self.system != "NTSC"
-                        or fi.get("fieldPhaseID") in (1, None)
-                        or self._fields_seen > 8)
+            # start the file at the conventional sequence position: a first
+            # field opening NTSC colour frame A / PAL sequence frame 1
+            # (fieldPhaseID 1).  Give up after 2 sequence lengths rather
+            # than discard forever.
+            cap = 8 if self.system == "NTSC" else 16
+            phase_ok = (fi.get("fieldPhaseID") in (1, None)
+                        or self._fields_seen > cap)
             if not (is_first and phase_ok):
                 return
             self._started = True
@@ -205,7 +208,7 @@ class CVBSWriter:
         if is_first:
             if self._pending_first is not None and self.logger:
                 self.logger.warning("CVBS: dropping unpaired first field")
-            self._pending_first = pic
+            self._pending_first = (field, fi, picture, efm, audio)
             return
 
         if self._pending_first is None:
@@ -213,54 +216,171 @@ class CVBSWriter:
                 self.logger.warning("CVBS: dropping unpaired second field")
             return
 
-        a, b = self._pending_first, pic
+        pending = self._pending_first
         self._pending_first = None
-        self._emit_frame(a, b)
+        self._emit_frame(pending, (field, fi, picture, efm, audio))
 
     def _emit_frame(self, first, second):
-        """Queue the temporal sample stream of one frame and flush."""
+        f_a, fi_a, pic_a, efm_a, aud_a = first
+        f_b, fi_b, pic_b, efm_b, aud_b = second
+
         if self.system == "NTSC":
+            a = self._as_u16(pic_a)
+            b = self._as_u16(pic_b)
             spl = self.params["samples_per_line"]
-            fl = (263, 262)   # SysParams field_lines
-            frame = np.concatenate(
-                [first[: fl[0] * spl], second[: fl[1] * spl]])
+            frame = np.concatenate([a[: 263 * spl], b[: 262 * spl]])
+            self._measure_ntsc_lock(frame)
         else:
-            # PAL: caller supplies exact per-field lattice streams
-            frame = np.concatenate([first, second])
+            # PAL: resample both fields onto the frame lattice with the
+            # current lock shift.  On the first frame, measure and anchor
+            # (one re-resample); afterwards track with small corrections.
+            a = f_a.downscale_cvbs(self._pal_shift)
+            if not self._lock_initialised:
+                delta = self._pal_phase_error(a)
+                if delta is not None:
+                    self._pal_shift += delta / 90.0
+                    a = f_a.downscale_cvbs(self._pal_shift)
+                self._lock_initialised = True
+            b = f_b.downscale_cvbs(self._pal_shift)
+            frame = np.concatenate([a, b])
 
-        self._queue(frame)
+            resid = self._pal_phase_error(a)
+            if resid is not None:
+                self._lock_residuals.append(resid)
+                # tracking: correct slow Sc/H drift, next frame
+                self._pal_shift += np.clip(resid / 90.0, -0.05, 0.05)
 
-    def _queue(self, samples):
-        if self._skipped < self.stream_skip:
-            take = min(self.stream_skip - self._skipped, len(samples))
-            samples = samples[take:]
-            self._skipped += take
-        if len(samples):
-            self._buf.append(samples)
-            self._buflen += len(samples)
-        self._flush()
+        frame_id = self.frames_written
+        self._write_frame(frame)
+        self._collect_dropouts(frame_id, fi_a, fi_b)
+        self._collect_efm(frame_id, efm_a, efm_b)
+        for aud in (aud_a, aud_b):
+            if aud is not None:
+                self.push_audio(aud)
 
-    def _flush(self, pad_final=False):
+    def _as_u16(self, picture):
+        return (np.frombuffer(picture, dtype=np.uint16)
+                if isinstance(picture, (bytes, bytearray)) else picture)
+
+    def _write_frame(self, frame):
         fs = self.params["frame_samples"]
-        if pad_final and 0 < self._buflen < fs:
-            pad = np.full(fs - self._buflen, self.blank16, dtype=np.uint16)
-            self._buf.append(pad)
-            self._buflen = fs
-        while self._buflen >= fs:
-            buf = np.concatenate(self._buf) if len(self._buf) > 1 else self._buf[0]
-            frame, rest = buf[:fs], buf[fs:]
-            self._buf = [rest] if len(rest) else []
-            self._buflen = len(rest)
+        if len(frame) != fs:
+            if self.logger:
+                self.logger.warning(
+                    "CVBS: frame size %d != %d, dropping", len(frame), fs)
+            return
+        n_out = int(np.count_nonzero((frame < self.clamp_lo)
+                                     | (frame > self.clamp_hi)))
+        if n_out:
+            self.clamped_samples += n_out
+            frame = np.clip(frame, self.clamp_lo, self.clamp_hi)
+        # CVBS_U16_4FSC: 10-bit values << 6 — force the 6 LSBs clear
+        frame = (frame & 0xFFC0).astype("<u2")
+        self.f_video.write(frame.tobytes())
+        self.frames_written += 1
 
-            n_low = int(np.count_nonzero(frame < self.clamp_lo))
-            n_high = int(np.count_nonzero(frame > self.clamp_hi))
-            if n_low or n_high:
-                self.clamped_samples += n_low + n_high
-                frame = np.clip(frame, self.clamp_lo, self.clamp_hi)
-            # CVBS_U16_4FSC: 10-bit values << 6 — force the 6 LSBs clear
-            frame = (frame & 0xFFC0).astype("<u2")
-            self.f_video.write(frame.tobytes())
-            self.frames_written += 1
+    # -- burst lock -------------------------------------------------------
+
+    def _pal_phase_error(self, field_a_lattice):
+        """Folded burst-vs-lattice phase error of a field-A stream, degrees.
+
+        Returns wrap(target - measured) in (-45, 45], or None if bursts are
+        too weak.  Adjacent-line burst products cancel the PAL V-switch:
+        b_k * b_(k+1) has phase 2*theta_burst_axis.
+        """
+        x = field_a_lattice.astype(np.float64)
+        spl = 709379.0 / 625.0
+        bursts = []
+        for k in range(30, 120):
+            j0 = int(np.ceil(k * spl))
+            seg = x[j0 + 98: j0 + 138]          # EBU burst window
+            if len(seg) < 40:
+                break
+            n = np.arange(j0 + 98, j0 + 138)
+            b = np.mean((seg - np.mean(seg)) * np.exp(-0.5j * np.pi * n))
+            bursts.append(b)
+        if len(bursts) < 20:
+            return None
+        bursts = np.array(bursts)
+        amp = np.abs(bursts)
+        if np.median(amp) < 40:                 # ~1 IRE in 16-bit units
+            return None
+        prods = bursts[:-1] * bursts[1:]
+        p = np.sum(prods)
+        if np.abs(p) == 0:
+            return None
+        measured = (np.degrees(np.angle(p)) / 2.0) % 90.0
+        delta = (self.PAL_LOCK_TARGET - measured + 45.0) % 90.0 - 45.0
+        return float(delta)
+
+    def _measure_ntsc_lock(self, frame):
+        """Record the frame's line-referenced burst phase residual."""
+        x = frame.astype(np.float64)
+        phasors = []
+        for k in range(40, 200, 2):
+            seg = x[k * 910 + 74: k * 910 + 110]
+            if len(seg) < 36:
+                return
+            n = np.arange(74, 110)
+            b = np.mean((seg - np.mean(seg)) * np.exp(-0.5j * np.pi * n))
+            phasors.append(b)
+        p = np.sum(phasors)
+        if np.abs(p) < 40 * len(phasors) / 4:
+            return
+        measured = np.degrees(np.angle(p)) % 360.0
+        # the NTSC colour sequence alternates 180 degrees per frame (frames
+        # A/B) — fold it out; the lock criterion is phase mod 180
+        resid = (self.NTSC_LOCK_TARGET - measured + 90.0) % 180.0 - 90.0
+        self._lock_residuals.append(float(resid))
+
+    def _lock_state(self):
+        """Decide the signal_state_preset from the measured residuals."""
+        if len(self._lock_residuals) < max(1, self.frames_written // 2):
+            return "STANDARD_TBC_UNLOCKED"
+        r = np.array(self._lock_residuals[1:] or self._lock_residuals)
+        if np.max(np.abs(r)) <= self.LOCK_TOL:
+            return "STANDARD_TBC_LOCKED"
+        return "STANDARD_TBC_UNLOCKED"
+
+    # -- extensions -------------------------------------------------------
+
+    def _collect_dropouts(self, frame_id, fi_a, fi_b):
+        fs = self.params["frame_samples"]
+        for parity, fi in ((0, fi_a), (1, fi_b)):
+            do = fi.get("dropOuts") if fi else None
+            if not do or not do.get("fieldLine"):
+                continue
+            for line, sx, ex in zip(do["fieldLine"], do["startx"],
+                                    do["endx"]):
+                if self.system == "NTSC":
+                    base = 0 if parity == 0 else 263 * 910
+                    start = base + (int(line) - 1) * 910 + int(sx)
+                    count = max(1, int(ex) - int(sx))
+                else:
+                    t = (int(line) - 1) + float(sx) / 1135.0
+                    if parity:
+                        t += 312.5
+                    start = int(round(t * 709379.0 / 625.0))
+                    count = max(1, int(round(float(ex) - float(sx))))
+                if start < 0 or start >= fs:
+                    continue
+                count = min(count, fs - start)
+                self.dropout_rows.append((frame_id, start, count, 100))
+
+    def _collect_efm(self, frame_id, efm_a, efm_b):
+        if not self.write_efm:
+            return
+        if self.f_efm is None:
+            self.f_efm = open(self.fname_out + ".efm", "wb")
+        count = 0
+        for efm in (efm_a, efm_b):
+            if efm is None:
+                continue
+            buf = efm.tobytes() if hasattr(efm, "tobytes") else bytes(efm)
+            self.f_efm.write(buf)
+            count += len(buf)
+        self._efm_index.append((frame_id, self._efm_offset, count))
+        self._efm_offset += count
 
     # -- audio ------------------------------------------------------------
 
@@ -292,7 +412,6 @@ class CVBSWriter:
     def close(self):
         if self.f_video is None:
             return
-        self._flush(pad_final=True)
         self.f_video.close()
         self.f_video = None
 
@@ -302,14 +421,26 @@ class CVBSWriter:
             self.f_wav.close()
             self.f_wav = None
 
-        self._write_meta()
+        if self.f_efm is not None:
+            self.f_efm.close()
+            self.f_efm = None
+            self._write_efm_meta()
+
+        if self.dropout_rows:
+            self._write_dropouts_meta()
+
+        state = self._lock_state()
+        self._write_meta(state)
 
         if self.logger:
+            r = self._lock_residuals
             self.logger.info(
-                "CVBS: wrote %d frames (%d samples clamped to legal range)",
-                self.frames_written, self.clamped_samples)
+                "CVBS: wrote %d frames, %s (%d samples clamped, burst "
+                "residual max %.2f deg over %d frames)",
+                self.frames_written, state, self.clamped_samples,
+                max((abs(v) for v in r), default=float("nan")), len(r))
 
-    def _write_meta(self):
+    def _write_meta(self, signal_state):
         # version strings look like "branch:describe[:dirty]"
         git_branch = git_commit = None
         if self.version:
@@ -330,10 +461,60 @@ class CVBSWriter:
                    number_of_sequential_frames, black_level,
                    has_nonstandard_values, audio_locked, capture_notes
                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (self.system, "CVBS_U16_4FSC", "STANDARD_TBC_UNLOCKED",
+            (self.system, "CVBS_U16_4FSC", signal_state,
              "composite", "ld-decode", git_branch, git_commit,
              self.frames_written if self.frames_written else None,
              self.black_level, self.has_nonstandard_values,
              self.audio_locked, self.capture_notes))
+        con.commit()
+        con.close()
+
+    def _write_dropouts_meta(self):
+        path = self.fname_out + ".dropouts.meta"
+        if os.path.exists(path):
+            os.unlink(path)
+        con = sqlite3.connect(path)
+        con.executescript("""
+            PRAGMA user_version = 5;
+            CREATE TABLE dropout_run (
+                cvbs_file_id    INTEGER NOT NULL,
+                frame_id        INTEGER NOT NULL CHECK (frame_id >= 0),
+                sample_start    INTEGER NOT NULL CHECK (sample_start >= 0),
+                sample_count    INTEGER NOT NULL CHECK (sample_count > 0),
+                severity        INTEGER NOT NULL
+                    CHECK (severity >= 0 AND severity <= 100),
+                PRIMARY KEY (cvbs_file_id, frame_id, sample_start)
+            );
+            CREATE INDEX idx_dropout_run_frame
+                ON dropout_run (cvbs_file_id, frame_id);
+        """)
+        con.executemany(
+            "INSERT OR IGNORE INTO dropout_run (cvbs_file_id, frame_id, "
+            "sample_start, sample_count, severity) VALUES (1, ?, ?, ?, ?)",
+            self.dropout_rows)
+        con.commit()
+        con.close()
+
+    def _write_efm_meta(self):
+        path = self.fname_out + ".efm.meta"
+        if os.path.exists(path):
+            os.unlink(path)
+        con = sqlite3.connect(path)
+        con.executescript("""
+            PRAGMA user_version = 1;
+            CREATE TABLE efm_frame (
+                cvbs_file_id    INTEGER NOT NULL,
+                frame_id        INTEGER NOT NULL CHECK (frame_id >= 0),
+                t_value_offset  INTEGER NOT NULL CHECK (t_value_offset >= 0),
+                t_value_count   INTEGER NOT NULL CHECK (t_value_count >= 0),
+                PRIMARY KEY (cvbs_file_id, frame_id)
+            );
+            CREATE INDEX idx_efm_frame_frame
+                ON efm_frame (cvbs_file_id, frame_id);
+        """)
+        con.executemany(
+            "INSERT INTO efm_frame (cvbs_file_id, frame_id, t_value_offset, "
+            "t_value_count) VALUES (1, ?, ?, ?)",
+            self._efm_index)
         con.commit()
         con.close()
