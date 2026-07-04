@@ -27,6 +27,10 @@ from .dsp import FieldInfo, StridedCollector, nb_abs, nb_median, roundfloat
 
 
 class LDdecode:
+    # Tolerant speculation: accept in-flight fields whose MTF level is
+    # within this of the current one (2x the adoption dead-band; an MTF
+    # step this size changes HF gain by fractions of a dB).
+    MTF_SPECULATION_TOLERANCE = 0.10
     def __init__(
         self,
         fname_in,
@@ -280,6 +284,17 @@ class LDdecode:
         self._job_eof = False
         self._engine_dirty = False
         self._job_rejects = 0
+        self._agc_adjusted_last = False
+
+        # Tolerant parameter mode (default): a speculative field decoded
+        # under an MTF level within MTF_SPECULATION_TOLERANCE of the
+        # current one is accepted rather than discarded - the visual
+        # difference of a dead-band-sized MTF step is negligible, and a
+        # hard flush costs the whole in-flight pipeline.  With
+        # exact_speculation (--exact-speculation) any parameter change
+        # discards everything decoded under the old values, keeping the
+        # output bit-exact with -t 1 across adoptions.
+        self.exact_speculation = extra_options.get("exact_speculation", False)
 
         # The field pipeline: stage 1 (sync/lineloc chain) runs on the
         # main thread; stage 2 (downscale/metrics/dropouts) fans out per
@@ -511,6 +526,20 @@ class LDdecode:
                 FOREIGN KEY (capture_id, field_id)
                     REFERENCES field_record(capture_id, field_id) ON DELETE CASCADE,
                 PRIMARY KEY (capture_id, field_id)
+            );
+
+            -- Speculative-decode diagnostics (-t N field jobs): one row per
+            -- rejected speculation or engine resync, with the cause.
+            -- field_id is the field the decoder was about to commit (the
+            -- rejected field was then re-decoded inline, so its
+            -- field_record row comes from the inline decode).  No FK to
+            -- field_record: the row is written before the field commits.
+            CREATE TABLE speculation_log (
+                capture_id INTEGER NOT NULL,
+                field_id INTEGER NOT NULL,
+                file_loc INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                detail TEXT
             );
         '''))
 
@@ -791,22 +820,31 @@ class LDdecode:
             # Blocks come from the prefetching thread pool; identical values
             # to the inline path (same per-block computation).
             blockdata = self.block_cache.get_span(brange, MTF)
+        elif self.block_cache is not None:
+            # Inline demod on this thread (field-job repair/redo path and
+            # warm-up with -t).  The raw window is read as ONE span under
+            # the shared reader lock: per-block reads would each queue
+            # behind the job dispatcher's large span reads and starve
+            # this thread for seconds.
+            span_begin = brange.start * blocksize
+            span_len = (brange.stop - 1 - brange.start) * blocksize + self.rf.blocklen
+            with self.block_cache.read_lock:
+                span = self.freader(self.infile, span_begin, span_len)
+
+            if span is None or len(span) < span_len:
+                blockdata = None
+            else:
+                blockdata = []
+                for b in brange:
+                    off = (b - brange.start) * blocksize
+                    rawinput = span[off : off + self.rf.blocklen]
+                    blockdata.append(
+                        (rawinput, self._demod_raw_block(rawinput, MTF))
+                    )
         else:
-            # Inline demod on this thread.  In field-job mode this is the
-            # repair/redo path: going through the process pool would queue
-            # these blocks behind whole-field jobs, so it demodulates
-            # locally - sharing the reader lock with the job dispatcher.
-            lock = (
-                self.block_cache.read_lock
-                if self.block_cache is not None else None
-            )
             blockdata = []
             for b in brange:
-                if lock is not None:
-                    with lock:
-                        rawinput = self._read_raw_block(b)
-                else:
-                    rawinput = self._read_raw_block(b)
+                rawinput = self._read_raw_block(b)
                 if rawinput is None:
                     blockdata = None
                     break
@@ -995,6 +1033,9 @@ class LDdecode:
         redo = redo or not self.checkAutoDeemp(f)
 
         agc_adjusted = self._adjust_agc(f, False)
+        # AGC rewrites level parameters that worker processes hold frozen
+        # from their spawn; the redo path uses this to rebuild them.
+        self._agc_adjusted_last = agc_adjusted
         redo = redo or agc_adjusted
 
         if redo and not adjusted and agc_adjusted and not self.deemp_calibrated:
@@ -1140,9 +1181,30 @@ class LDdecode:
         self._chain_eof = False
         if self.block_cache is not None:
             self.block_cache.flush()
+
         if self._job_engine is not None:
-            self._job_engine.pause()
-            self._engine_dirty = True
+            if self.exact_speculation or self._agc_adjusted_last:
+                # Hard toss: everything decoded under the old parameters
+                # is discarded and speculation restarts from truth.
+                self._log_speculation(
+                    "flush",
+                    "decoder parameters changed (mtf now "
+                    f"{self.mtf_level:.4f}) - discarding all in-flight "
+                    "speculation",
+                )
+                self._job_engine.pause()
+                self._engine_dirty = True
+            else:
+                # Tolerant: an MTF step of dead-band size barely changes
+                # the output; keep the in-flight fields (accepted while
+                # within MTF_SPECULATION_TOLERANCE) and give the
+                # dispatcher the new level for future jobs.
+                self._log_speculation(
+                    "params-adopted",
+                    f"mtf now {self.mtf_level:.4f} - keeping in-flight "
+                    "speculation (tolerant mode)",
+                )
+                self._job_engine.set_mtf(self.mtf_level)
 
     def _commit_entry(self, entry):
         """Calibrate one chain entry (with the single-redo rule) and
@@ -1157,11 +1219,15 @@ class LDdecode:
                 break
 
             # Re-decode this same field with the parameters calibrate()
-            # just adjusted; everything decoded ahead of it used the old
-            # ones and is discarded.
+            # just adjusted; what happens to fields decoded ahead of it
+            # under the old ones depends on the parameter (see
+            # _flush_pipeline).
             adjusted = True
             self._fields_since_redo = 0
             self._flush_pipeline()
+
+            if (self._agc_adjusted_last and self._job_engine is not None):
+                self._restart_workers()
 
             redo_prev = self.fieldstack[0]
             f, offset = self.decodefield(
@@ -1235,25 +1301,53 @@ class LDdecode:
                 )
 
                 if self.use_field_jobs:
-                    from .parallel import FieldJobEngine
-
-                    # inline decodes stay fast through the block cache,
-                    # but its prefetch would duplicate the field jobs
-                    self.block_cache.ahead = 0
-                    self._job_engine = FieldJobEngine(
-                        executor=self.block_cache.process_executor,
-                        read_fn=lambda sample, length: self.freader(
-                            self.infile, sample, length
-                        ),
-                        read_lock=self.block_cache.read_lock,
-                        cfg=self._field_engine_cfg(),
-                        workers=self.numthreads,
-                    )
-                    self._engine_dirty = True
+                    self._start_job_engine()
 
         return self.commit_field(f, picture, efm,
                                  audio=entry.get("audio"),
                                  audio_ready="audio" in entry)
+
+    def _start_job_engine(self):
+        from .parallel import FieldJobEngine
+
+        # inline decodes stay fast through the block cache, but its
+        # prefetch would duplicate the field jobs
+        self.block_cache.ahead = 0
+        self._job_engine = FieldJobEngine(
+            executor=self.block_cache.process_executor,
+            read_fn=lambda sample, length: self.freader(
+                self.infile, sample, length
+            ),
+            read_lock=self.block_cache.read_lock,
+            cfg=self._field_engine_cfg(),
+            workers=self.numthreads,
+        )
+        self._engine_dirty = True
+
+    def _restart_workers(self):
+        """Respawn the worker processes with the current parameters.
+
+        Workers hold DecoderParams frozen from their spawn; after a
+        post-warm-up AGC adjustment every field they decode would use
+        stale levels, so the pool (and the job engine pointing at it)
+        is rebuilt from a fresh snapshot."""
+        logs.logger.info(
+            "AGC adjusted decoder levels - restarting worker processes"
+        )
+        if self._job_engine is not None:
+            self._job_engine.stop()
+            self._job_engine = None
+
+        self.block_cache.restart_processes(
+            self.rf_opts,
+            self.rf.DecoderParams,
+            field_cfg=(
+                self._field_worker_cfg() if self.use_field_jobs else None
+            ),
+        )
+
+        if self.use_field_jobs:
+            self._start_job_engine()
 
     def _field_worker_cfg(self):
         """What a worker process needs beyond RFDecode to decode a
@@ -1297,6 +1391,29 @@ class LDdecode:
         self._engine_dirty = False
         self._job_rejects = 0
 
+    def _log_speculation(self, reason, detail=""):
+        """Record a speculation reject (or engine resync) with its cause:
+        a DEBUG line in the decode log and a row in speculation_log in
+        the .tbc.db, keyed to the field about to be committed."""
+        logs.logger.debug(
+            "speculation %s at field %d (loc %d)%s",
+            reason, self.fields_written, int(self.fdoffset),
+            f": {detail}" if detail else "",
+        )
+
+        if self.dbconn is not None:
+            try:
+                self.dbconn.execute(
+                    "INSERT INTO speculation_log "
+                    "(capture_id, field_id, file_loc, reason, detail) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (self.capture_id or 0, self.fields_written,
+                     int(self.fdoffset), reason, detail),
+                )
+            except Exception:
+                # diagnostics must never break the decode
+                pass
+
     def _accept_job(self, res):
         """Turn a speculative field result into a commit entry - or None
         when it must be re-decoded inline.
@@ -1305,22 +1422,44 @@ class LDdecode:
         block-quantized demod window matches the one the true chain
         start produces; on top of that the decode parameters must still
         be current, the audio-clock prediction must equal truth, and the
-        usual chain validation must pass.
+        usual chain validation must pass.  Every rejection is recorded
+        with its cause (_log_speculation).
         """
         if res.get("error"):
             logs.logger.warning(
                 "field job failed, decoding inline:\n%s", res["error"]
             )
+            err = res["error"].strip().splitlines()
+            self._log_speculation("worker-error", err[-1] if err else "")
             return None
 
-        if not res.get("valid") or res["mtf_level"] != self.mtf_level:
+        if not res.get("valid"):
+            self._log_speculation(
+                "invalid-field", "worker could not decode a field here"
+            )
+            return None
+
+        mtf_drift = abs(res["mtf_level"] - self.mtf_level)
+        if mtf_drift > (0 if self.exact_speculation
+                        else self.MTF_SPECULATION_TOLERANCE):
+            self._log_speculation(
+                "stale-mtf",
+                f"job used {res['mtf_level']:.4f}, current {self.mtf_level:.4f}",
+            )
             return None
 
         true_start = self.fdoffset
         readloc = int(true_start - self.rf.blockcut)
         if readloc < 0:
             readloc = 0
-        if readloc // self.blocksize != res["readloc_block"]:
+        true_block = readloc // self.blocksize
+        if true_block != res["readloc_block"]:
+            self._log_speculation(
+                "window-mismatch",
+                f"predicted window block {res['readloc_block']}, "
+                f"true {true_block} "
+                f"(delta {res['readloc_block'] - true_block:+d})",
+            )
             return None
 
         f = res["field"]
@@ -1328,6 +1467,25 @@ class LDdecode:
 
         prev = self._chain_prev
         if prev is None or not self.validate_chain(f, prev):
+            if prev is None:
+                detail = "no previous field"
+            else:
+                problems = []
+                if f.sync_confidence < 50:
+                    problems.append(f"sync_conf {f.sync_confidence}")
+                if f.isFirstField == prev.isFirstField:
+                    problems.append("parity repeat")
+                if f.line0loc is None:
+                    problems.append("no line 0")
+                else:
+                    delta = (
+                        (f.readloc + f.line0loc)
+                        - (prev.readloc + prev.linelocs[prev.linecount])
+                    ) / self.rf.linelen
+                    if abs(delta) > 2:
+                        problems.append(f"line 0 off by {delta:+.1f} lines")
+                detail = ", ".join(problems) or "unknown"
+            self._log_speculation("chain-validation", detail)
             return None
 
         if self.analog_audio:
@@ -1335,6 +1493,11 @@ class LDdecode:
                 self.lastFieldWritten, self.analog_audio
             )
             if true_fn != f.audio_field_number:
+                self._log_speculation(
+                    "audio-clock",
+                    f"predicted field number {f.audio_field_number}, "
+                    f"true {true_fn}",
+                )
                 return None
 
         # The chain offset is recomputed from the *true* start so
@@ -1380,6 +1543,11 @@ class LDdecode:
             # restart from the post-commit state.
             self._job_rejects += 1
             if self._job_rejects >= 3 and not self._engine_dirty:
+                self._log_speculation(
+                    "resync",
+                    f"{self._job_rejects} consecutive rejects - "
+                    "restarting speculation from the committed chain",
+                )
                 self._job_engine.pause()
                 self._engine_dirty = True
 

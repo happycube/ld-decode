@@ -119,6 +119,15 @@ def main(args=None):
         help="with -t: keep block demodulation in threads instead of worker processes",
     )
     parser.add_argument(
+        "--exact-speculation",
+        dest="exact_speculation",
+        action="store_true",
+        default=False,
+        help="with -t: discard fields decoded ahead under old decoder parameters "
+             "on any parameter change (bit-exact with -t 1); by default minor "
+             "MTF drift is tolerated for throughput",
+    )
+    parser.add_argument(
         "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"
     )
     parser.add_argument(
@@ -389,6 +398,7 @@ def main(args=None):
     extra_options = {
         "threads": threads,
         "process_demod": not args.demod_threads_only,
+        "exact_speculation": args.exact_speculation,
         "useAGC": not args.noAGC,
         "write_RF_TBC": args.RF_TBC,
         "pipe_RF_TBC": audio_pipe,

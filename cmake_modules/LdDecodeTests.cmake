@@ -29,13 +29,14 @@ add_test(
 )
 set_tests_properties(decode-pal-basic PROPERTIES FIXTURES_SETUP pal-tbc)
 
-# Threaded decode (-t) runs block demodulation on a prefetching thread
-# pool; the computation is identical per block, so the output must be
-# bit-identical to the serial decode.  Any divergence is a real
-# concurrency bug (stale cache entry, shared-state race).
+# Threaded decode (-t) must be bit-identical to the serial decode; any
+# divergence is a real concurrency bug (stale cache entry, shared-state
+# race, speculation accepted wrongly).  --exact-speculation pins the
+# strict acceptance rules so the comparison holds even across mid-run
+# parameter adoptions.
 add_test(
     NAME decode-ntsc-parallel
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --exact-speculation
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -44,7 +45,7 @@ set_tests_properties(decode-ntsc-parallel PROPERTIES FIXTURES_SETUP ntsc-paralle
 
 add_test(
     NAME decode-pal-parallel
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --PAL
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --PAL --exact-speculation
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

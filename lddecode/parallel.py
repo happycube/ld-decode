@@ -44,9 +44,20 @@ _worker_cfg = None
 def _demod_worker_init(rf_opts, decoder_params, field_cfg=None):
     global _worker_rf, _worker_cfg
     import logging
+    import os
+    import time as _time
 
     from . import utils_logging as logs
     from .rfdecode import RFDecode
+
+    def _exit_with_parent(ppid=os.getppid()):
+        # A SIGKILLed parent can't shut the pool down; without this,
+        # workers outlive it holding ~200 MB each.
+        while os.getppid() == ppid:
+            _time.sleep(5)
+        os._exit(0)
+
+    threading.Thread(target=_exit_with_parent, daemon=True).start()
 
     if logs.logger is None:
         # Field code logs decode conditions (bad windows, dropped
@@ -237,6 +248,7 @@ class FieldJobEngine:
         self._cur_parity = True
         self._lfw = None
         self._mtf = 0.0
+        self._rebase_seq = 0
 
         self._thread = threading.Thread(
             target=self._dispatch_loop, daemon=True, name="fieldjobs"
@@ -257,6 +269,7 @@ class FieldJobEngine:
             self._cur_parity = bool(next_is_first)
             self._lfw = lastfieldwritten
             self._mtf = mtf_level
+            self._rebase_seq = 0
             self._active = True
             self._cond.notify_all()
 
@@ -269,6 +282,13 @@ class FieldJobEngine:
             self._futures.clear()
             self._est_start.clear()
             self._nxt_by_seq.clear()
+
+    def set_mtf(self, mtf_level):
+        """Adopt a new MTF level for future dispatches without touching
+        what is in flight - the decoder tolerates the old level on
+        already-dispatched jobs (tolerant parameter mode)."""
+        with self._cond:
+            self._mtf = mtf_level
 
     def stop(self):
         with self._cond:
@@ -408,7 +428,27 @@ class FieldJobEngine:
                 length = nxt - prev[0]
                 old = self._parity_len[f.isFirstField]
                 self._parity_len[f.isFirstField] = 0.75 * old + 0.25 * length
-            self._nxt_by_seq.pop(seq - 8, None)
+            self._nxt_by_seq.pop(seq - 32, None)
+
+            # Re-anchor the blind chain: at steady flow the dispatcher
+            # runs a full pipeline depth ahead of completions, so
+            # est_start is never available at dispatch time and
+            # _cur_start would otherwise extrapolate from itself
+            # indefinitely, accumulating systematic wow drift until a
+            # window boundary is crossed.  Extrapolating this fresh
+            # estimate out to the dispatch point caps the blind span at
+            # the in-flight depth.
+            if seq >= self._rebase_seq:
+                steps = self._next_dispatch - (seq + 1)
+                if steps >= 0:
+                    base = nxt
+                    parity = not f.isFirstField
+                    pair = self._parity_len[True] + self._parity_len[False]
+                    base += (steps // 2) * pair
+                    if steps % 2:
+                        base += self._parity_len[parity]
+                    self._cur_start = base
+                    self._rebase_seq = seq
 
             self._cond.notify_all()
 
@@ -474,6 +514,17 @@ class DemodBlockCache:
             return procs.submit(_demod_worker_block, rawinput, mtf_level).result()
 
         self.demod_fn = demod_in_process
+
+    def restart_processes(self, rf_opts, decoder_params, nprocs=None,
+                          field_cfg=None):
+        """Tear down and respawn the worker processes with a fresh
+        parameter snapshot (needed after a post-warm-up AGC adjustment:
+        workers hold DecoderParams frozen from their spawn)."""
+        if self._procs is not None:
+            self._procs.shutdown(wait=False, cancel_futures=True)
+            self._procs = None
+        self.enable_processes(rf_opts, decoder_params, nprocs=nprocs,
+                              field_cfg=field_cfg)
 
     @property
     def process_executor(self):
