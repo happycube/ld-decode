@@ -4,6 +4,7 @@ Split verbatim out of core.py.
 """
 
 import itertools
+from dataclasses import dataclass, field as dc_field
 
 import numpy as np
 from scipy import interpolate
@@ -37,6 +38,43 @@ from .dsp import (
 # state order: HSYNC -> EQPUL1 -> VSYNC -> EQPUL2 -> HSYNC
 HSYNC, EQPL1, VSYNC, EQPL2 = range(4)
 
+
+@dataclass
+class FieldAnchor:
+    """Everything a field reads from its predecessor, as plain values.
+
+    A field decodes from its own sync structure; these inputs are votes,
+    fallbacks and search seeds, not requirements.  An anchor built from a
+    real decoded field (from_field) is lossless with respect to the reads
+    the decode performs, so passing an anchor is equivalent to passing the
+    previous field object - without keeping its sample data alive.
+    """
+
+    startloc: float             # prev field's data["startloc"] (file samples)
+    end_lineloc: float          # prev linelocs[linecount], buffer-relative
+    valid: bool
+    sync_confidence: float
+    skip_score: float           # prev skip_check()
+    is_first_field: bool
+    field_phase_id: int
+    phase_adjust: dict = dc_field(default=None)  # PAL burst-phase seeds
+    phase_adjust_median: float = 0.0             # NTSC burst-phase seed
+
+    @classmethod
+    def from_field(cls, f):
+        return cls(
+            startloc=f.data["startloc"],
+            end_lineloc=f.linelocs[f.linecount],
+            valid=f.valid,
+            sync_confidence=f.sync_confidence,
+            skip_score=f.skip_check(),
+            is_first_field=f.isFirstField,
+            field_phase_id=getattr(f, "fieldPhaseID", 1),
+            phase_adjust=getattr(f, "phase_adjust", None),
+            phase_adjust_median=getattr(f, "phase_adjust_median", 0.0),
+        )
+
+
 # The Field class contains common features used by NTSC and PAL
 class Field:
     burst_lines = (11, 264)  # NTSC default
@@ -48,7 +86,7 @@ class Field:
         self,
         rf,
         decode,
-        prevfield=None,
+        anchor=None,
         initphase=False,
         fields_written=0,
         readloc=0,
@@ -60,7 +98,7 @@ class Field:
         self.initphase = initphase  # used for seeking or first field
         self.readloc = readloc
 
-        self.prevfield = prevfield
+        self.anchor = anchor
         self.fields_written = fields_written
 
         self.rf = rf
@@ -633,7 +671,7 @@ class Field:
 
         # If we have a previous field, the first vblank should be close to the beginning,
         # and we need to reject anything too far in (which could be the *next* vsync)
-        limit = 100 if (self.prevfield is not None and self.prevfield.skip_check() >= 50) else None
+        limit = 100 if (self.anchor is not None and self.anchor.skip_score >= 50) else None
         line0loc_local, isFirstField_local, firstblank_local, conf_local = self.processVBlank(
             validpulses, 0, limit
         )
@@ -662,14 +700,12 @@ class Field:
 
         # Use the previous field's end to compute a possible line 0
         line0loc_prev, isFirstField_prev = None, None
-        if self.prevfield is not None and self.prevfield.valid:
-            frameoffset = self.data["startloc"] - self.prevfield.data["startloc"]
+        if self.anchor is not None and self.anchor.valid:
+            frameoffset = self.data["startloc"] - self.anchor.startloc
 
-            line0loc_prev = (
-                self.prevfield.linelocs[self.prevfield.linecount] - frameoffset
-            )
-            isFirstField_prev = not self.prevfield.isFirstField
-            conf_prev = self.prevfield.sync_confidence
+            line0loc_prev = self.anchor.end_lineloc - frameoffset
+            isFirstField_prev = not self.anchor.is_first_field
+            conf_prev = self.anchor.sync_confidence
 
 
 
@@ -1571,8 +1607,8 @@ class FieldPAL(Field):
         return np.array(linelocs)
 
     def get_following_field_number(self):
-        if self.prevfield is not None:
-            newphase = self.prevfield.fieldPhaseID + 1
+        if self.anchor is not None:
+            newphase = self.anchor.field_phase_id + 1
             return 1 if newphase == 9 else newphase
         else:
             # This can be triggered by the first pass at the first field
@@ -1629,13 +1665,12 @@ class FieldPAL(Field):
             # Usually line 7 is used to determine burst phase, but
             # take the best of 5 if it's unstable
             prev_phaseadjust = 0
-            try:
-                # For this first field, this doesn't exist (so use a try/except/pass pattern)
-                # and on a bad disk, this value could be None...
-                if self.prevfield.phase_adjust[line] is not None:
-                    prev_phaseadjust = self.prevfield.phase_adjust[line]
-            except (AttributeError, KeyError):
-                pass
+            # No anchor for the first field, and on a bad disk the stored
+            # seed for this line could be missing or None
+            if self.anchor is not None and self.anchor.phase_adjust is not None:
+                pa = self.anchor.phase_adjust.get(line)
+                if pa is not None:
+                    prev_phaseadjust = pa
 
             rising, self.phase_adjust[line] = self.compute_line_bursts(
                 self.linelocs, line, prev_phaseadjust
@@ -1752,8 +1787,8 @@ class FieldNTSC(Field):
         for line in range(0, 266):
             prev_phaseadjust = self.phase_adjust_median
 
-            if prev_phaseadjust == 0 and self.prevfield:
-                prev_phaseadjust = self.prevfield.phase_adjust_median
+            if prev_phaseadjust == 0 and self.anchor is not None:
+                prev_phaseadjust = self.anchor.phase_adjust_median
 
             rising, phase_adjust = self.compute_line_bursts(linelocs, line, prev_phaseadjust)
             if rising is None:

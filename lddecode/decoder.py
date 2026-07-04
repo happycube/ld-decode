@@ -17,7 +17,7 @@ from . import efm_pll
 from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
-from .field import Field, FieldNTSC, FieldPAL
+from .field import Field, FieldAnchor, FieldNTSC, FieldPAL
 from .fileio import ac3_pipe, ldf_pipe
 from .filters import inrange
 from .dsp import FieldInfo, StridedCollector, nb_abs, nb_median, roundfloat
@@ -758,10 +758,16 @@ class LDdecode:
             # logs.logger.info("Failed to demodulate data")
             return None, None
 
+        # Snapshot what the new field may read from its predecessor.  Built
+        # here (not when prevfield finished) so anchor values reflect any
+        # AGC/deemp parameter changes made in between, as the live-object
+        # reads used to.
+        anchor = FieldAnchor.from_field(prevfield) if prevfield is not None else None
+
         f = self.FieldClass(
             self.rf,
             rawdecode,
-            prevfield=prevfield,
+            anchor=anchor,
             initphase=initphase,
             fields_written=self.fields_written,
             readloc=rawdecode["startloc"],
@@ -835,11 +841,8 @@ class LDdecode:
         picture = audio = efm = None
 
         if len(self.fieldstack) >= 4:
-            # XXX: Need to cut off the previous field here, since otherwise
-            # it'll leak for now.
-            if self.fieldstack[-1]:
-                self.fieldstack[-1].prevfield = None
-
+            # Fields no longer hold a reference to their predecessor (they
+            # get a FieldAnchor snapshot instead), so popping is enough.
             self.fieldstack.pop(-1)
 
         # Decode-then-process, one field at a time.  self.fdoffset is the file

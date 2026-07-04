@@ -22,7 +22,7 @@ from .audio import (  # noqa: F401
     downscale_audio,
 )
 from .field import (  # noqa: F401
-    EQPL1, EQPL2, Field, FieldNTSC, FieldPAL, HSYNC, VSYNC,
+    EQPL1, EQPL2, Field, FieldAnchor, FieldNTSC, FieldPAL, HSYNC, VSYNC,
 )
 from .decoder import LDdecode  # noqa: F401
 
