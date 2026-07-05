@@ -505,7 +505,7 @@ class RFDecode:
         # full strength (1.0) for correct phase; the inverse MTF handles
         # chroma amplitude separately with zero phase contribution.
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
-        SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
+        #SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
 
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
         if imtf_strength > 0:
