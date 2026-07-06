@@ -211,7 +211,7 @@ def _cvbs_extract_field(data, frame_idx, parity, params):
         if s >= len(data):
             break
         out[k * fw: k * fw + (e - s)] = data[s:e]
-    return out
+    return out, np.asarray(starts) - f0
 
 
 def load_cvbs(path, max_fields=None):
@@ -260,11 +260,14 @@ def load_cvbs(path, max_fields=None):
 
     fields = []
     for i in range(n_fields):
-        arr = _cvbs_extract_field(data, i // 2, i % 2, params)
+        arr, row_starts = _cvbs_extract_field(data, i // 2, i % 2, params)
         record = {"field_id": i, "is_first_field": i % 2 == 0,
                   "field_phase_id": i % phase_cycle + 1}
         f = TBCField(arr, 0, params, record)
         f.field_index = i
+        # lattice index of each row's first sample within its frame —
+        # per-row subcarrier grid phase is 90 deg * (start mod 4)
+        f.cvbs_row_starts = row_starts
         fields.append(f)
     return params, fields, data
 

@@ -42,6 +42,7 @@ import os
 import sys
 
 import numpy as np
+import scipy.signal as sps
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
@@ -137,6 +138,90 @@ class FieldView:
     def demod(self, line, start_us, duration_us):
         """(luma_ire, chroma_amp_ire, phase_deg) of a line region."""
         return demod_region(self.field, line, start_us, duration_us)
+
+    def _demod_baseband(self, lpf_mhz):
+        """Complex chroma baseband per pixel (IRE), row-local phase frame."""
+        p = self.params
+        x = self.raw.astype(np.float64)
+        n = np.arange(x.shape[1])
+        z = (x - x.mean(axis=1, keepdims=True)) * np.exp(-0.5j * np.pi * n)
+        b, a = sps.butter(3, lpf_mhz / (p.sample_rate_mhz / 2))
+        return 2 * sps.filtfilt(b, a, z, axis=1) / p.out_scale
+
+    def _pal_plusv(self, bp):
+        """Which rows carry +V, from per-row burst phasors.
+
+        The line-to-line burst phase step is the subcarrier's lattice
+        advance (exactly 270 deg on the line-locked TBC raster; 270.576
+        deg on the CVBS lattice after removing each row's grid phase,
+        90 deg * (row start mod 4)) plus the V-switch flip: +90 deg
+        stepping off a +V line, -90 deg onto one.  Sign convention
+        calibrated against EBU bar hues.
+        """
+        starts = getattr(self.field, "cvbs_row_starts", None)
+        if starts is not None:
+            bp = bp * np.exp(-0.5j * np.pi * (starts[:len(bp)] % 4))
+            base = 90.0 * (709379 / 625 % 4)          # 270.576 deg
+        else:
+            base = 270.0
+        d = np.degrees(np.angle(bp[1:] * np.conj(bp[:-1])))
+        e = (d - base + 180) % 360 - 180
+        ok = (np.abs(bp[1:]) > 5) & (np.abs(bp[:-1]) > 5)
+
+        votes = np.zeros(len(bp))
+        for k in np.nonzero(ok & (np.abs(np.abs(e) - 90) < 45))[0]:
+            votes[k] += np.sign(e[k])                  # e>0: row k is +V
+            votes[k + 1] -= np.sign(e[k])
+        # fold the alternation into one global parity so weak-burst lines
+        # (vsync region etc.) inherit the pattern
+        rows = np.arange(len(bp))
+        even_score = np.sum(votes * np.where(rows % 2 == 0, 1, -1))
+        return (rows % 2 == 0) if even_score >= 0 else (rows % 2 == 1)
+
+    def chroma_uv(self, lpf_mhz=1.3):
+        """Demodulated chroma as complex U + j*V per pixel (IRE).
+
+        Burst-referenced per line (so any container/lattice phase cancels).
+        NTSC: burst sits on -U.  PAL: the V-switch is resolved
+        automatically (see _pal_plusv) and folded out.  Lines without a
+        usable burst return 0.
+        """
+        z = self._demod_baseband(lpf_mhz)
+        p = self.params
+        bp = z[:, p.colour_burst_start:p.colour_burst_end].mean(axis=1)
+        ok = np.abs(bp) > 5
+        bhat = np.where(ok, bp, 1)
+        bhat = bhat / np.abs(bhat)
+        r = z * np.conj(bhat)[:, None]
+        if p.system == "NTSC":
+            uv = r * np.exp(1j * np.pi)
+        else:
+            plusv = self._pal_plusv(bp)
+            uv = np.where(plusv[:, None], r, np.conj(r)) * np.exp(1j * np.radians(135))
+        uv[~ok] = 0
+        return uv
+
+    def rgb(self, lpf_mhz=1.3):
+        """Approximate colour render of the field: (height, width, 3) in 0-1.
+
+        A quick-look decode (fs/4 demod + LPF + burst reference), not a
+        production chroma decoder: no comb, so expect cross-color on fine
+        luma detail — which is exactly what makes it useful for judging
+        comb experiments visually.
+        """
+        p = self.params
+        z = self._demod_baseband(lpf_mhz)
+        uv = self.chroma_uv(lpf_mhz)
+        n = np.arange(z.shape[1])
+        luma = self.ire - np.real(z * np.exp(0.5j * np.pi * n))
+        setup = (p.black_16b_ire - p.blanking_16b_ire) / p.out_scale
+        y = (luma - setup) / (100.0 - setup)
+        r_y = np.imag(uv) / 87.7          # V_ire -> R-Y (0-1 scale)
+        b_y = np.real(uv) / 49.3          # U_ire -> B-Y
+        r = y + r_y
+        b = y + b_y
+        g = (y - 0.299 * r - 0.114 * b) / 0.587
+        return np.clip(np.dstack([r, g, b]), 0, 1)
 
 
 class Frame:
