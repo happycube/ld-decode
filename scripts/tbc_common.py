@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Shared TBC loading, chroma demodulation, and test-pattern detection.
+"""Shared TBC/CVBS loading, chroma demodulation, and test-pattern detection.
 
 Used by the analysis scripts (smpte_analyze.py, differential_phase.py).
-Supports both NTSC and PAL .tbc files (with companion .tbc.db).
+Supports NTSC and PAL .tbc files (with companion .tbc.db) and CVBS
+.composite files (with companion .meta, CVBS_U16_4FSC encoding) — see
+load_video().
 
-Chroma demodulation here is system-independent: both NTSC and PAL TBC
-output is sampled at exactly 4x the colour subcarrier, so the subcarrier
-sits at fs/4 and can be demodulated with a fixed quadrature reference.
-Absolute phase is only meaningful per-line (PAL output subcarrier phase
-rotates line to line), so phase measurements are referenced to the colour
-burst of the same line.
+Chroma demodulation here is system-independent: both NTSC and PAL output
+is sampled at exactly 4x the colour subcarrier, so the subcarrier sits at
+fs/4 and can be demodulated with a fixed quadrature reference.  Absolute
+phase is only meaningful per-line (PAL output subcarrier phase rotates
+line to line), so phase measurements are referenced to the colour burst
+of the same line.
 
 Run directly to report which test patterns are present:
 
     python scripts/tbc_common.py file.tbc
+    python scripts/tbc_common.py file.composite
 """
 
 import mmap
@@ -27,6 +30,25 @@ import numpy as np
 # ---------------------------------------------------------------------------
 # TBC loading
 # ---------------------------------------------------------------------------
+
+# CVBS 4fsc field geometry (see cvbs-file-format-specification/).  Levels
+# are the spec's 10-bit presets; active/burst windows match what ld-decode
+# writes to .tbc.db for the same 4fsc line convention (0H at +0.8).
+CVBS_GEOMETRY = {
+    "NTSC": {
+        "field_width": 910, "field_height": 263,
+        "sample_rate": 4 * 315e6 / 88, "frame_samples": 477750,
+        "active": (134, 894), "burst": (74, 110), "phase_cycle": 4,
+        "levels": {"blanking": 240, "black": 282, "white": 800},
+    },
+    "PAL": {
+        "field_width": 1135, "field_height": 313,
+        "sample_rate": 17734475.0, "frame_samples": 709379,
+        "active": (185, 1107), "burst": (98, 138), "phase_cycle": 8,
+        "levels": {"blanking": 256, "black": 256, "white": 844},
+    },
+}
+
 
 class CaptureParams:
     """System parameters from the capture table of a .tbc.db."""
@@ -55,6 +77,28 @@ class CaptureParams:
         self.out_scale = (self.white_16b_ire - self.blanking_16b_ire) / 100.0
         self.field_samples = self.field_width * self.field_height
         con.close()
+
+    @classmethod
+    def for_cvbs(cls, system, black_level=None):
+        """Build params for a CVBS .composite file from the spec presets."""
+        g = CVBS_GEOMETRY[system]
+        p = cls.__new__(cls)
+        p.system = system
+        p.field_width = g["field_width"]
+        p.field_height = g["field_height"]
+        p.video_sample_rate = g["sample_rate"]
+        p.sample_rate_mhz = p.video_sample_rate / 1e6
+        lv = g["levels"]
+        p.white_16b_ire = lv["white"] * 64
+        p.blanking_16b_ire = lv["blanking"] * 64
+        p.black_16b_ire = (black_level if black_level is not None
+                           else lv["black"]) * 64
+        p.active_video_start, p.active_video_end = g["active"]
+        p.colour_burst_start, p.colour_burst_end = g["burst"]
+        p.capture_id = None
+        p.out_scale = (p.white_16b_ire - p.blanking_16b_ire) / 100.0
+        p.field_samples = p.field_width * p.field_height
+        return p
 
     def __repr__(self):
         return (
@@ -132,6 +176,109 @@ def load_tbc(tbc_path, max_fields=None):
 
     fields = [TBCField(tbc_data, i, params, records[i]) for i in range(len(records))]
     return params, fields, tbc_data
+
+
+def _cvbs_extract_field(data, frame_idx, parity, params):
+    """One field of a CVBS frame as a flat field_width*field_height array.
+
+    NTSC frames are orthogonal (910 samples/line, field A 263 lines then
+    field B 262).  The PAL lattice is not line-locked: a line averages
+    709379/625 = 1135.0064 samples, and line syncs sit on the integer
+    line grid with the second field's line 1 at frame line 313 (see
+    Field.downscale_cvbs), so each field line k (0-based) starts at
+    lattice index ceil((k + parity*313) * 709379/625), computed with
+    exact integer math.  Rows are 1135 samples wide, matching the PAL TBC
+    line convention; the sub-sample start offset (< 1 sample) cancels out
+    of burst-relative phase measurements.
+
+    Reads run past the frame boundary into the next frame where the signal
+    genuinely continues (NTSC field B line 263, PAL field B line 313);
+    only samples past the end of the file are padded with blanking.
+    """
+    fw, fh = params.field_width, params.field_height
+    out = np.full(fh * fw, params.blanking_16b_ire, dtype=np.uint16)
+    f0 = frame_idx * CVBS_GEOMETRY[params.system]["frame_samples"]
+
+    if params.system == "NTSC":
+        starts = [f0 + (parity * 263 + k) * fw for k in range(fh)]
+    else:
+        # ceil((k + 313*parity) * 709379/625), integer-exact
+        starts = [f0 - (-(k + 313 * parity) * 709379 // 625)
+                  for k in range(fh)]
+
+    for k, s in enumerate(starts):
+        e = min(s + fw, len(data))
+        if s >= len(data):
+            break
+        out[k * fw: k * fw + (e - s)] = data[s:e]
+    return out
+
+
+def load_cvbs(path, max_fields=None):
+    """Load a CVBS .composite file (NTSC or PAL, CVBS_U16_4FSC).
+
+    Accepts the .composite path or the basename.  Returns (params, fields,
+    data) with the same interfaces as load_tbc().
+
+    Field phase IDs are reconstructed from position: the spec requires the
+    file to open on a first field starting the colour sequence (NTSC colour
+    frame A / PAL sequence frame 1), so field i has phase ID i % cycle + 1.
+    """
+    base = path[:-len(".composite")] if path.endswith(".composite") else path
+    comp_path, meta_path = base + ".composite", base + ".meta"
+    if not os.path.exists(meta_path):
+        raise FileNotFoundError(f"Metadata not found: {meta_path}")
+    if not os.path.exists(comp_path):
+        raise FileNotFoundError(f"CVBS file not found: {comp_path}")
+
+    con = sqlite3.connect(meta_path)
+    row = con.execute(
+        "SELECT preset, sample_encoding_preset, black_level "
+        "FROM cvbs_file LIMIT 1").fetchone()
+    con.close()
+    if row is None:
+        raise RuntimeError(f"No cvbs_file record in {meta_path}")
+    system, encoding, black_level = row
+    if encoding != "CVBS_U16_4FSC":
+        raise RuntimeError(f"Unsupported CVBS encoding: {encoding}")
+    if system not in CVBS_GEOMETRY:
+        raise RuntimeError(f"Unsupported CVBS preset: {system}")
+
+    params = CaptureParams.for_cvbs(system, black_level)
+    phase_cycle = CVBS_GEOMETRY[system]["phase_cycle"]
+
+    fd = os.open(comp_path, os.O_RDONLY)
+    try:
+        mm = mmap.mmap(fd, os.fstat(fd).st_size, access=mmap.ACCESS_READ)
+        data = np.frombuffer(mm, dtype=np.uint16)
+    finally:
+        os.close(fd)
+
+    n_fields = 2 * (len(data) // CVBS_GEOMETRY[system]["frame_samples"])
+    if max_fields is not None:
+        n_fields = min(n_fields, max_fields)
+
+    fields = []
+    for i in range(n_fields):
+        arr = _cvbs_extract_field(data, i // 2, i % 2, params)
+        record = {"field_id": i, "is_first_field": i % 2 == 0,
+                  "field_phase_id": i % phase_cycle + 1}
+        f = TBCField(arr, 0, params, record)
+        f.field_index = i
+        fields.append(f)
+    return params, fields, data
+
+
+def load_video(path, max_fields=None):
+    """Load a .tbc or CVBS .composite file, dispatching on the extension
+    (or, for a bare basename, on which companion metadata file exists)."""
+    if path.endswith(".composite"):
+        return load_cvbs(path, max_fields)
+    if path.endswith(".tbc"):
+        return load_tbc(path, max_fields)
+    if os.path.exists(path + ".meta"):
+        return load_cvbs(path, max_fields)
+    return load_tbc(path, max_fields)
 
 
 # ---------------------------------------------------------------------------
@@ -1055,9 +1202,12 @@ def pal_fold_uv(line_phasors, expected_hues):
 
 def main():
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} file.tbc", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} file.tbc|file.composite", file=sys.stderr)
         return 2
-    params, fields, _ = load_tbc(sys.argv[1])
+    if sys.argv[1].endswith(".composite"):
+        params, fields, _ = load_cvbs(sys.argv[1])
+    else:
+        params, fields, _ = load_tbc(sys.argv[1])
     print(f"{sys.argv[1]}: {params!r}, {len(fields)} fields")
     det = detect_patterns(params, fields)
     for line in summarize_patterns(det, fields):

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Color bar analyzer for NTSC and PAL TBC files.
+"""Color bar analyzer for NTSC and PAL TBC and CVBS files.
 
-Reads a .tbc file (with companion .tbc.db), detects colour bars, and
-measures luminance, chrominance amplitude, and chrominance phase for each
-bar against the expected values.
+Reads a .tbc file (with companion .tbc.db) or a CVBS .composite file
+(with companion .meta), detects colour bars, and measures luminance,
+chrominance amplitude, and chrominance phase for each bar against the
+expected values.
 
 NTSC: SMPTE bars (75% or 100%), absolute I/Q via the CombNTSC comb filter.
 PAL:  EBU bars (100/0/75/0 or 100/0/100/0), U/V via burst-relative
@@ -15,6 +16,7 @@ which test patterns were detected and exits (use --lines to force).
 Usage:
     python scripts/smpte_analyze.py cbar_he.tbc
     python scripts/smpte_analyze.py pal-kage.tbc
+    python scripts/smpte_analyze.py jasonbars.composite
     python scripts/smpte_analyze.py --decode ../testdata/he010_cbar.lds
 """
 
@@ -32,7 +34,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from lddecode.metrics import CombNTSC
 from tbc_common import (
-    load_tbc, detect_patterns, summarize_patterns, detect_colorbars,
+    load_tbc, load_cvbs, detect_patterns, summarize_patterns, detect_colorbars,
     burst_ref, demod_region, pal_fold_uv, phase_diff,
 )
 
@@ -471,7 +473,8 @@ def main():
     parser.add_argument(
         "tbc_file",
         nargs="?",
-        help="Path to .tbc file (companion .tbc.db must exist)",
+        help="Path to .tbc file (companion .tbc.db must exist) or "
+             "CVBS .composite file (companion .meta must exist)",
     )
     parser.add_argument(
         "--decode",
@@ -525,9 +528,12 @@ def main():
         parser.error("Provide a .tbc file or use --decode with an .lds/.ldf file")
 
     # Load
-    params, fields, tbc_data = load_tbc(tbc_path)
+    if tbc_path.endswith(".composite"):
+        params, fields, tbc_data = load_cvbs(tbc_path)
+    else:
+        params, fields, tbc_data = load_tbc(tbc_path)
     system = params.system
-    print(f"TBC: {tbc_path}", file=sys.stderr)
+    print(f"Input: {tbc_path}", file=sys.stderr)
     print(f"  {system}, {params.field_width}x{params.field_height}, "
           f"{params.video_sample_rate/1e6:.4f} MHz, "
           f"{len(fields)} fields", file=sys.stderr)

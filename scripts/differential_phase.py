@@ -21,7 +21,7 @@ PAL (burst-relative fs/4 quadrature demodulation):
   - 50% luma full-line subcarrier reference (line 331 style) if present
 
 Usage:
-    python scripts/differential_phase.py [file.tbc]
+    python scripts/differential_phase.py [file.tbc | file.composite]
 """
 
 import argparse
@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from lddecode.metrics import CombNTSC
 from tbc_common import (
-    load_tbc, detect_patterns, summarize_patterns,
+    load_tbc, load_cvbs, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
     measure_ntc7_transients, measure_pal_its_transients,
@@ -1121,7 +1121,7 @@ def main():
         "tbc_file",
         nargs="?",
         default=os.path.join(os.path.dirname(__file__), "..", "main.tbc"),
-        help="Path to .tbc file (default: main.tbc in the project root)",
+        help="Path to .tbc or CVBS .composite file (default: main.tbc in the project root)",
     )
     parser.add_argument(
         "-n", "--max-fields",
@@ -1138,7 +1138,10 @@ def main():
     print(f"TBC file: {tbc_path}")
     print("=" * 90)
 
-    params, fields, _ = load_tbc(tbc_path, max_fields=args.max_fields)
+    if tbc_path.endswith(".composite"):
+        params, fields, _ = load_cvbs(tbc_path, max_fields=args.max_fields)
+    else:
+        params, fields, _ = load_tbc(tbc_path, max_fields=args.max_fields)
     print(f"Loaded {len(fields)} fields, system={params.system}")
     print(f"  field_width={params.field_width}, field_height={params.field_height}")
     print(f"  sample_rate={params.sample_rate_mhz:.4f} MHz")

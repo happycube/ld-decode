@@ -357,9 +357,13 @@ class CVBSWriter:
                     start = base + (int(line) - 1) * 910 + int(sx)
                     count = max(1, int(ex) - int(sx))
                 else:
+                    # Field display line 0 maps to frame line 0 (field A)
+                    # or 313 (field B) — see downscale_cvbs; the interlace
+                    # half-line lives in the vsync structure, not in the
+                    # 0H spacing.
                     t = (int(line) - 1) + float(sx) / 1135.0
                     if parity:
-                        t += 312.5
+                        t += 313.0
                     start = int(round(t * 709379.0 / 625.0))
                     count = max(1, int(round(float(ex) - float(sx))))
                 if start < 0 or start >= fs:
