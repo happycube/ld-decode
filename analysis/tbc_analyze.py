@@ -14,7 +14,7 @@ import sys
 
 import numpy as np
 
-# Allow running from the scripts/ directory or project root.
+# Allow running from the analysis/ directory or project root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from lddecode.metrics import CombNTSC

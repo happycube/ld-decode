@@ -15,8 +15,8 @@ of the same line.
 
 Run directly to report which test patterns are present:
 
-    python scripts/tbc_common.py file.tbc
-    python scripts/tbc_common.py file.composite
+    python analysis/tbc_common.py file.tbc
+    python analysis/tbc_common.py file.composite
 """
 
 import mmap

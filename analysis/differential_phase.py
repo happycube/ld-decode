@@ -21,7 +21,7 @@ PAL (burst-relative fs/4 quadrature demodulation):
   - 50% luma full-line subcarrier reference (line 331 style) if present
 
 Usage:
-    python scripts/differential_phase.py [file.tbc | file.composite]
+    python analysis/differential_phase.py [file.tbc | file.composite]
 """
 
 import argparse

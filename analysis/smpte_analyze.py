@@ -14,10 +14,10 @@ The bar region is auto-detected; if no bars are found the script reports
 which test patterns were detected and exits (use --lines to force).
 
 Usage:
-    python scripts/smpte_analyze.py cbar_he.tbc
-    python scripts/smpte_analyze.py pal-kage.tbc
-    python scripts/smpte_analyze.py jasonbars.composite
-    python scripts/smpte_analyze.py --decode ../testdata/he010_cbar.lds
+    python analysis/smpte_analyze.py cbar_he.tbc
+    python analysis/smpte_analyze.py pal-kage.tbc
+    python analysis/smpte_analyze.py jasonbars.composite
+    python analysis/smpte_analyze.py --decode ../testdata/he010_cbar.lds
 """
 
 import argparse
@@ -28,7 +28,7 @@ import tempfile
 
 import numpy as np
 
-# Allow running from the scripts/ directory or project root.
+# Allow running from the analysis/ directory or project root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
