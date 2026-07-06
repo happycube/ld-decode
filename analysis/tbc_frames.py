@@ -46,6 +46,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from tbc_common import (  # noqa: F401  (re-exports for notebook use)
+    CaptureParams, TBCField,
     load_tbc, load_cvbs, load_video,
     detect_patterns, summarize_patterns, detect_colorbars,
     burst_ref, demod_region, line_segment_ire, average_line_ire,
@@ -241,6 +242,22 @@ class FrameSet:
         return average_line_ire(flds, line)
 
 
+def _pair_frames(fields, start_frame=0, n_frames=None):
+    """Pair fields strictly (a first field followed by a second field
+    makes a frame); leading or stray unpaired fields are skipped."""
+    pairs = []
+    i = 0
+    while i < len(fields) - 1:
+        if fields[i].isFirstField and not fields[i + 1].isFirstField:
+            pairs.append((fields[i], fields[i + 1]))
+            i += 2
+        else:
+            i += 1
+    pairs = pairs[start_frame:
+                  None if n_frames is None else start_frame + n_frames]
+    return [Frame(a, b, start_frame + k) for k, (a, b) in enumerate(pairs)]
+
+
 def load_frames(path, n_frames=None, start_frame=0):
     """Load a group of frames from a .tbc or CVBS .composite file.
 
@@ -250,26 +267,67 @@ def load_frames(path, n_frames=None, start_frame=0):
     start_frame: first frame to return, counted in frame pairs from the
                  start of the file.
 
-    Returns a FrameSet.  Fields are paired strictly (a first field
-    followed by a second field makes a frame); leading or stray unpaired
-    fields are skipped.
+    Returns a FrameSet.
     """
     max_fields = None
     if n_frames is not None:
         # +2 spare fields in case the file opens on an unpaired second field
         max_fields = 2 * (start_frame + n_frames) + 2
     params, fields, _ = load_video(path, max_fields=max_fields)
+    return FrameSet(path, params, _pair_frames(fields, start_frame, n_frames))
 
-    pairs = []
-    i = 0
-    while i < len(fields) - 1:
-        if fields[i].isFirstField and not fields[i + 1].isFirstField:
-            pairs.append((fields[i], fields[i + 1]))
-            i += 2
-        else:
-            i += 1
 
-    pairs = pairs[start_frame:
-                  None if n_frames is None else start_frame + n_frames]
-    frames = [Frame(a, b, start_frame + k) for k, (a, b) in enumerate(pairs)]
-    return FrameSet(path, params, frames)
+def frames_from_decoded(decoded_fields, black_ire=None):
+    """Build a FrameSet directly from in-memory decoder Field objects.
+
+    Takes the list that ldd.readfield() / a notebook rundecode() helper
+    returns — no file round-trip, independent of the output mode chosen,
+    since it reads the fields before they are written.  None entries and
+    fields without a picture are skipped.
+
+    Capture parameters are derived exactly as the .tbc.db capture row
+    would be (decoder.build_sqlite_metadata): geometry and measurement
+    windows from SysParams at the 4fsc output rate, levels via
+    hz_to_output.  black_ire sets black_16b_ire only (default 7.5 NTSC,
+    0 PAL).
+
+    Each wrapped field keeps the full decoder Field reachable as
+    .decoded (for linelocs, demod data, draw_field, plotline, ...).
+    """
+    flds = [f for f in decoded_fields
+            if f is not None and getattr(f, "dspicture", None) is not None]
+    if not flds:
+        raise ValueError("no decoded fields with pictures")
+    f0 = flds[0]
+    system = f0.rf.system
+    if black_ire is None:
+        black_ire = 7.5 if system == "NTSC" else 0.0
+
+    spu = f0.rf.SysParams["outfreq"]
+    badj = -1.4  # burst/active window adjustment, as in the .tbc.db writer
+    p = CaptureParams.__new__(CaptureParams)
+    p.system = system
+    p.field_width = f0.rf.SysParams["outlinelen"]
+    p.field_height = min(f.outlinecount for f in flds)
+    p.video_sample_rate = spu * 1e6
+    p.sample_rate_mhz = spu
+    p.white_16b_ire = float(f0.hz_to_output(f0.rf.iretohz(100)))
+    p.black_16b_ire = float(f0.hz_to_output(f0.rf.iretohz(black_ire)))
+    p.blanking_16b_ire = float(f0.hz_to_output(f0.rf.iretohz(0)))
+    p.active_video_start = int(round(f0.rf.SysParams["activeVideoUS"][0] * spu + badj))
+    p.active_video_end = int(round(f0.rf.SysParams["activeVideoUS"][1] * spu + badj))
+    p.colour_burst_start = int(round(f0.rf.SysParams["colorBurstUS"][0] * spu + badj))
+    p.colour_burst_end = int(round(f0.rf.SysParams["colorBurstUS"][1] * spu + badj))
+    p.capture_id = None
+    p.out_scale = (p.white_16b_ire - p.blanking_16b_ire) / 100.0
+    p.field_samples = p.field_width * p.field_height
+
+    fields = []
+    for i, f in enumerate(flds):
+        record = {"field_id": i, "is_first_field": bool(f.isFirstField),
+                  "field_phase_id": getattr(f, "fieldPhaseID", None)}
+        tf = TBCField(np.asarray(f.dspicture), 0, p, record)
+        tf.field_index = i
+        tf.decoded = f
+        fields.append(tf)
+    return FrameSet("<decoded fields>", p, _pair_frames(fields))
