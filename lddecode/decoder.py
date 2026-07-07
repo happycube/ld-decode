@@ -609,6 +609,13 @@ class LDdecode:
         if len(self._deemp_burst_samples) < 3:
             return True
 
+        return not self._deemp_calibrate()
+
+    def _deemp_calibrate(self):
+        """Lock the inverse-MTF strength from the collected burst pool.
+
+        Returns True when the filter parameters changed (callers should
+        re-decode anything produced under the old ones)."""
         expected = self.rf.SysParams["burst_ire"]
         measured = np.median(self._deemp_burst_samples)
         log_base = self.rf.inverse_mtf_log_at_fsc
@@ -616,17 +623,17 @@ class LDdecode:
         self.deemp_calibrated = True
 
         if not np.isfinite(measured) or measured <= 0 or log_base <= 0:
-            return True
+            return False
 
         if measured >= expected:
-            return True
+            return False
 
         strength = float(np.clip(
             np.log(expected / measured) / log_base, 0.0, 2.0
         ))
 
         if strength < 0.02:
-            return True
+            return False
 
         logs.logger.debug(
             f"Auto inverse-MTF chroma: burst {measured:.1f} IRE "
@@ -635,7 +642,7 @@ class LDdecode:
         )
         self.rf.DecoderParams["inverse_mtf_strength"] = strength
         self.rf.recompute_fvideo()
-        return False
+        return True
 
     @profile
     def detectLevels(self, field):
@@ -1016,35 +1023,103 @@ class LDdecode:
 
         return picture, efm, metrics
 
-    def calibrate(self, f, metrics, adjusted):
+    def _calibration_warmup(self, entry):
+        """Settle AGC, MTF and the auto-deemp strength before the first
+        commit by decoding ahead (throwaway fields).
+
+        Without this, the calibration loops only converge as fields
+        commit, so the first written frame carries the uncalibrated
+        parameters (visibly lower burst/chroma than the rest of the
+        decode).  The burst pool restarts whenever MTF or the AGC moves,
+        so the strength is always computed from fields decoded under
+        settled parameters — the same steady state the commit-path
+        calibration reaches a few fields in, only before anything is
+        written.  Demodulated blocks are cached, so the extra cost is
+        the field-level processing of a handful of fields.
+
+        Returns True when any parameter changed (the caller re-decodes
+        the entry under the final parameters).
+        """
+        f = entry["f"]
+        mtf0 = self.mtf_level
+        strength0 = self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
+        agc_moved = False
+        keep = 900 if self.isCLV else 30
+
+        prev, pos = f, entry["start"] + entry["offset"]
+        for _ in range(8):
+            if self.deemp_calibrated:
+                break
+            nf, off = self.decodefield(pos, self.mtf_level, prev,
+                                       entry["initphase"])
+            if nf is None or off is None:
+                break
+            pos += off
+            if not nf.valid:
+                continue
+
+            _, _, m = self.decode_stage2(nf)
+            if m and "blackToWhiteRFRatio" in m:
+                self.bw_ratios.append(m["blackToWhiteRFRatio"])
+                self.bw_ratios = self.bw_ratios[-keep:]
+
+            moved = not self.checkMTF(nf, prev)
+            if self._adjust_agc(nf, False):
+                agc_moved = True
+                moved = True
+            if moved:
+                # this field (and any pool samples) were measured under
+                # parameters that just changed
+                self._deemp_burst_samples.clear()
+            elif np.isfinite(nf.burstmedian) and nf.burstmedian > 5:
+                self._deemp_burst_samples.append(nf.burstmedian)
+
+            if len(self._deemp_burst_samples) >= 3:
+                self._deemp_calibrate()
+            prev = nf
+
+        if agc_moved:
+            # worker processes hold level parameters frozen from their
+            # spawn; the caller's redo path rebuilds them from this flag
+            self._agc_adjusted_last = True
+        return (agc_moved or self.mtf_level != mtf0
+                or self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
+                != strength0)
+
+    def calibrate(self, f, metrics, redos):
         """Fold one decoded field's measurements into the calibration
-        state (MTF ratio pool, auto-deemp burst pool, AGC levels).
+        state (AGC levels, MTF ratio pool, auto-deemp burst pool).
 
         Returns True when parameters changed enough that the field
-        should be re-decoded; `adjusted` is True when this field already
-        went through one redo (only one is allowed).
+        should be re-decoded; `redos` counts how many times this field
+        has already been re-decoded (measurement pools are only fed on
+        the first pass).
         """
-        if "blackToWhiteRFRatio" in metrics and not adjusted:
+        if "blackToWhiteRFRatio" in metrics and redos == 0:
             keep = 900 if self.isCLV else 30
             self.bw_ratios.append(metrics["blackToWhiteRFRatio"])
             self.bw_ratios = self.bw_ratios[-keep:]
 
-        redo = not self.checkMTF(f, self.fieldstack[0])
-        redo = redo or not self.checkAutoDeemp(f)
-
+        # AGC first: it rewrites ire0/hz_ire, which the burst-based deemp
+        # calibration measures against, so deemp only calibrates on a
+        # pass where the AGC is settled.  (AGC also rewrites parameters
+        # that worker processes hold frozen from their spawn; the redo
+        # path uses _agc_adjusted_last to rebuild them.)
         agc_adjusted = self._adjust_agc(f, False)
-        # AGC rewrites level parameters that worker processes hold frozen
-        # from their spawn; the redo path uses this to rebuild them.
         self._agc_adjusted_last = agc_adjusted
-        redo = redo or agc_adjusted
 
-        if redo and not adjusted and agc_adjusted and not self.deemp_calibrated:
-            # The AGC just rewrote ire0/hz_ire, so burst samples
-            # measured under the old levels are not comparable.
+        if agc_adjusted and not self.deemp_calibrated:
+            # Burst samples measured under the old levels are not
+            # comparable.
             self._deemp_burst_samples.clear()
             self._deemp_burst_offset = None
 
-        return redo
+        redo = not self.checkMTF(f, self.fieldstack[0])
+
+        if not agc_adjusted:
+            redo = redo or not self.checkAutoDeemp(f)
+
+        return redo or agc_adjusted
 
     def validate_chain(self, f, prevfield):
         """Check an independently-decoded field against the committed
@@ -1207,22 +1282,33 @@ class LDdecode:
                 self._job_engine.set_mtf(self.mtf_level)
 
     def _commit_entry(self, entry):
-        """Calibrate one chain entry (with the single-redo rule) and
+        """Calibrate one chain entry (with a bounded redo budget) and
         commit it in order."""
         f = entry["f"]
         picture, efm, metrics = entry["result"]
 
-        adjusted = False
+        # Settle all calibration loops before anything is written, so
+        # the first frame carries the same parameters as the rest.
+        force_redo = False
+        if self.fields_written == 0 and not self.deemp_calibrated:
+            force_redo = self._calibration_warmup(entry)
+
+        # Up to two redos: the warmup (or an AGC level adjustment) can
+        # need one, and a calibration that depends on the adjusted
+        # levels one more (each individual loop is dead-banded or
+        # one-shot, so this converges).
+        redos = 0
         while True:
-            redo = self.calibrate(f, metrics, adjusted)
-            if adjusted or not redo:
+            redo = force_redo or self.calibrate(f, metrics, redos)
+            force_redo = False
+            if redos >= 2 or not redo:
                 break
 
             # Re-decode this same field with the parameters calibrate()
             # just adjusted; what happens to fields decoded ahead of it
             # under the old ones depends on the parameter (see
             # _flush_pipeline).
-            adjusted = True
+            redos += 1
             self._fields_since_redo = 0
             self._flush_pipeline()
 
@@ -1273,7 +1359,7 @@ class LDdecode:
             self.fieldstack.pop(-1)
         self.fieldstack.insert(0, f)
 
-        if not adjusted:
+        if redos == 0:
             self._fields_since_redo += 1
 
         if not self.pipeline_warm:

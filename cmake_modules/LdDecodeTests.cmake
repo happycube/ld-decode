@@ -5,7 +5,7 @@
 #
 # Most tests expect the ld-decode-testdata repo within the source directory as "testdata".
 
-set(SCRIPTS_DIR ${CMAKE_SOURCE_DIR}/scripts)
+set(ANALYSIS_DIR ${CMAKE_SOURCE_DIR}/analysis)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
 
 # Test that ld-decode can decode NTSC files and produce TBC output
@@ -80,7 +80,7 @@ endforeach()
 # is known to carry were detected and measured.
 add_test(
     NAME analyze-ntsc-patterns
-    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/differential_phase.py
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/differential_phase.py
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic.tbc
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -104,7 +104,7 @@ set_tests_properties(decode-ntsc-cvbs PROPERTIES FIXTURES_SETUP ntsc-cvbs)
 
 add_test(
     NAME verify-ntsc-cvbs
-    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_verify.py
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_verify.py
         ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.composite
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -127,7 +127,7 @@ set_tests_properties(decode-pal-cvbs PROPERTIES FIXTURES_SETUP pal-cvbs)
 
 add_test(
     NAME verify-pal-cvbs
-    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_verify.py
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_verify.py
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs.composite
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -144,7 +144,7 @@ set_tests_properties(verify-pal-cvbs PROPERTIES
 # var or ~/ld-decode/decode-orc/result/bin/orc-cli).
 add_test(
     NAME roundtrip-ntsc-orc
-    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_orc_roundtrip.py
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_orc_roundtrip.py
         ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic
         NTSC
@@ -158,7 +158,7 @@ set_tests_properties(roundtrip-ntsc-orc PROPERTIES
 
 add_test(
     NAME roundtrip-pal-orc
-    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/cvbs_orc_roundtrip.py
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_orc_roundtrip.py
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
         ${CMAKE_BINARY_DIR}/testout/pal-basic
         PAL
@@ -174,7 +174,7 @@ set_tests_properties(roundtrip-pal-orc PROPERTIES
 # fields, combination (multiburst + modulated pedestal) on second fields.
 add_test(
     NAME analyze-ntsc-ntc7
-    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/differential_phase.py
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/differential_phase.py
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic.tbc
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -185,7 +185,7 @@ set_tests_properties(analyze-ntsc-ntc7 PROPERTIES
 
 add_test(
     NAME analyze-pal-patterns
-    COMMAND ${Python3_EXECUTABLE} ${SCRIPTS_DIR}/differential_phase.py
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/differential_phase.py
         ${CMAKE_BINARY_DIR}/testout/pal-basic.tbc
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

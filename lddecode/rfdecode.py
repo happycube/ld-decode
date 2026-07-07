@@ -565,7 +565,10 @@ class RFDecode:
         DP = self.DecoderParams
 
         SF["FVideo"] = SF["Fvideo_lpf"] * (SF["Fdeemp"] ** DP["video_deemp_strength"])
-        SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
+        # post-equalizer disabled (bd7281e1) — must match computefilters()
+        # exactly, or worker processes (which rebuild via computefilters)
+        # produce different output than the parent after a recompute here
+        #SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
 
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
         if imtf_strength > 0:
