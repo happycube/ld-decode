@@ -1077,9 +1077,14 @@ def detect_patterns(params, fields, max_fields=8):
 
 def summarize_patterns(det, fields):
     """Human-readable summary lines for a detect_patterns() result."""
+    # det is keyed by absolute f.field_index, which is not necessarily the
+    # position of the field in the `fields` list (leading/stray unpaired
+    # fields and start_frame slicing can drop earlier fields).
+    by_index = {f.field_index: f for f in fields}
+
     def parity(idxs):
-        firsts = sorted(i for i in idxs if fields[i].isFirstField)
-        seconds = sorted(i for i in idxs if not fields[i].isFirstField)
+        firsts = sorted(i for i in idxs if by_index[i].isFirstField)
+        seconds = sorted(i for i in idxs if not by_index[i].isFirstField)
         parts = []
         if firsts:
             parts.append(f"first fields {firsts}")
