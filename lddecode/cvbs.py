@@ -504,6 +504,23 @@ class CVBSWriter:
                 self.frames_written, state, self.clamped_samples,
                 max((abs(v) for v in r), default=float("nan")), len(r))
 
+    @staticmethod
+    def _open_db(path):
+        """Open a fresh SQLite sidecar configured for a single bulk write.
+
+        The .meta / .dropouts.meta / .efm.meta databases are written once
+        at close() and never read back during the decode; a killed run
+        regenerates them wholesale, so crash-durability journalling buys
+        nothing.  Turning it off is faster and leaves no -journal/-wal
+        sidecar next to the output.
+        """
+        con = sqlite3.connect(path)
+        con.execute("PRAGMA journal_mode = OFF")   # no rollback journal
+        con.execute("PRAGMA synchronous = OFF")    # no fsync per commit
+        con.execute("PRAGMA locking_mode = EXCLUSIVE")
+        con.execute("PRAGMA temp_store = MEMORY")  # index builds in RAM
+        return con
+
     def _write_meta(self, signal_state):
         # version strings look like "branch:describe[:dirty]"
         git_branch = git_commit = None
@@ -516,7 +533,7 @@ class CVBSWriter:
         meta_path = self.fname_out + ".meta"
         if os.path.exists(meta_path):
             os.unlink(meta_path)
-        con = sqlite3.connect(meta_path)
+        con = self._open_db(meta_path)
         con.executescript(_META_SCHEMA)
         con.execute(
             """INSERT INTO cvbs_file (
@@ -543,7 +560,7 @@ class CVBSWriter:
         path = self.fname_out + ".dropouts.meta"
         if os.path.exists(path):
             os.unlink(path)
-        con = sqlite3.connect(path)
+        con = self._open_db(path)
         con.executescript("""
             PRAGMA user_version = 5;
             CREATE TABLE dropout_run (
@@ -569,7 +586,7 @@ class CVBSWriter:
         path = self.fname_out + ".efm.meta"
         if os.path.exists(path):
             os.unlink(path)
-        con = sqlite3.connect(path)
+        con = self._open_db(path)
         con.executescript("""
             PRAGMA user_version = 1;
             CREATE TABLE efm_frame (
