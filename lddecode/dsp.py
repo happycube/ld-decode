@@ -407,10 +407,15 @@ def lev_to_db(rlev):
 
 
 @njit(cache=True)
-def dsa_rescale_and_clip(infloat):
-    """rescales input value to output levels and clips to fit into signed 16-bit"""
-    value = int(np.round(infloat * 32767.0 / 371081.0))
-    return min(max(value, -32766), 32766)
+def dsa_rescale_and_clip(infloat, fullscale=32767.0):
+    """rescale input to output levels and clip to a signed `fullscale` range.
+
+    fullscale is the positive full-scale code: 32767 for 16-bit, 8388607
+    for genuine 24-bit.  The clip leaves one code of headroom either side
+    (matching the historical +/-32766 16-bit behaviour)."""
+    value = int(np.round(infloat * fullscale / 371081.0))
+    lim = int(fullscale) - 1
+    return min(max(value, -lim), lim)
 
 
 @njit(cache=True)

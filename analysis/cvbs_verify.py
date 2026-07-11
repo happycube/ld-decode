@@ -90,15 +90,15 @@ def main():
     check(os.path.exists(meta), ".meta present")
     con = sqlite3.connect(meta)
     uv = con.execute("PRAGMA user_version").fetchone()[0]
-    check(uv == 8, f"user_version = 8 (got {uv})")
+    check(uv == 10, f"user_version = 10 (got {uv})")
     row = con.execute(
         "SELECT preset, sample_encoding_preset, signal_state_preset, "
-        "signal_type, decoder, number_of_sequential_frames, audio_locked "
+        "signal_type, decoder, number_of_sequential_frames "
         "FROM cvbs_file").fetchone()
     check(row is not None, "cvbs_file row present")
-    preset_name, enc, state, sigtype, decoder, n_frames, audio_locked = row
+    preset_name, enc, state, sigtype, decoder, n_frames = row
     print(f"  preset={preset_name} enc={enc} state={state} type={sigtype} "
-          f"decoder={decoder} frames={n_frames} audio_locked={audio_locked}")
+          f"decoder={decoder} frames={n_frames}")
     check(preset_name in PRESETS, f"known preset {preset_name}")
     p = PRESETS[preset_name]
 
@@ -312,9 +312,14 @@ def main():
     else:
         warn("no EFM extension sidecar")
 
-    # --- audio ---
-    wav = base + "_audio_00.wav"
+    # --- audio (SMPTE 272M: 48 kHz, 24-bit stereo, synchronous) ---
+    pairs = con.execute(
+        "SELECT channel_pair, description FROM audio_channel_pair "
+        "ORDER BY channel_pair").fetchall()
+    wav = base + "_audio_0.wav"
     if os.path.exists(wav):
+        check(any(cp == 0 for cp, _ in pairs),
+              "audio_channel_pair row present for pair 0")
         with open(wav, "rb") as f:
             hdr = f.read(44)
         riff, wave = hdr[0:4], hdr[8:12]
@@ -322,20 +327,23 @@ def main():
         bits = struct.unpack("<H", hdr[34:36])[0]
         data_len = struct.unpack("<I", hdr[40:44])[0]
         check(riff == b"RIFF" and wave == b"WAVE", "WAV RIFF header")
-        check(fmt_tag == 1 and channels == 2 and bits == 16,
-              "WAV stereo s16 PCM")
-        expect_rate = (44056 if (audio_locked and preset_name in
-                                 ("NTSC", "PAL_M")) else 44100)
-        check(rate == expect_rate,
-              f"WAV rate {rate} matches audio_locked={audio_locked}")
+        check(fmt_tag == 1 and channels == 2 and bits == 24,
+              "WAV stereo 24-bit PCM")
+        check(rate == 48000, f"WAV rate 48000 (got {rate})")
         actual = os.path.getsize(wav) - 44
         check(data_len == actual,
               f"WAV data chunk size correct ({data_len} vs {actual})")
-        if audio_locked:
-            per_frame = 1764 if preset_name == "PAL" else 1470
-            check(data_len == file_frames * per_frame * 4,
-                  f"locked audio: {per_frame} samples/frame exactly")
+        # synchronous per-preset total: 1920/frame (PAL) or the 8008-per-
+        # 5-frame 1602/1601 sequence (NTSC/PAL_M)
+        if preset_name == "PAL":
+            target = 1920 * file_frames
+        else:
+            seq = (0, 1602, 3203, 4805, 6406)
+            target = 8008 * (file_frames // 5) + seq[file_frames % 5]
+        check(data_len == target * 6,
+              f"synchronous audio: {target} samples for {file_frames} frames")
     else:
+        check(not pairs, "no audio_channel_pair rows without a WAV file")
         warn("no audio WAV present")
 
     print()

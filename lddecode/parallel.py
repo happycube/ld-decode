@@ -177,7 +177,8 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
             f.precomputed_levels = detect_levels(rf, f, cfg["output_lines"])
 
         audio = f.downscale_audio_out(
-            cfg["analog_audio"], field_number=audio_field_number
+            cfg["analog_audio"], field_number=audio_field_number,
+            audio_bits=cfg.get("audio_bits", 16)
         )
 
         nextfieldoffset = float(f.nextfieldoffset)

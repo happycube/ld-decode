@@ -82,7 +82,8 @@ def _downscale_audio_compute_locs_and_swow(
 
 @njit(cache=True, nogil=True)
 def _downscale_audio_to_output(
-    arange, locs, swow, audio_left, audio_right, audio_lfreq, audio_rfreq
+    arange, locs, swow, audio_left, audio_right, audio_lfreq, audio_rfreq,
+    fullscale
 ):
     """decimate audio to final output samples.
 
@@ -94,11 +95,14 @@ def _downscale_audio_to_output(
         audio_right (np.array(float)): right channel demodulated audio
         audio_lfreq (float): left audio channel frequency
         audio_rfreq (float): right audio channel frequency
+        fullscale (float): positive full-scale code (32767 for 16-bit,
+            8388607 for 24-bit) - sets the output resolution
     Returns: (tuple)
-        output (np.ndarray(int16)): output audio waveform
+        output (np.ndarray(int32)): output audio waveform (24-bit-capable;
+            the caller narrows to int16 when fullscale is 32767)
         failed (bool): whether there were any failed samples that were muted
     """
-    output = np.zeros((2 * (len(arange) - 1)), dtype=np.int16)
+    output = np.zeros((2 * (len(arange) - 1)), dtype=np.int32)
 
     failed = False
 
@@ -114,8 +118,8 @@ def _downscale_audio_to_output(
 
             # Flipping audio here to line up with ralf/he010 digital sample
             # (when comparing, remove the first 265 samples of ralf.pcm as well)
-            output[(i * 2) + 0] = -dsa_rescale_and_clip(output_left)
-            output[(i * 2) + 1] = -dsa_rescale_and_clip(output_right)
+            output[(i * 2) + 0] = -dsa_rescale_and_clip(output_left, fullscale)
+            output[(i * 2) + 1] = -dsa_rescale_and_clip(output_right, fullscale)
         else:
             # TBC failure can cause this (issue #389)
             failed = True
@@ -123,9 +127,11 @@ def _downscale_audio_to_output(
     return output, failed
 
 
-# Downscales to 16bit/44.1khz.  It might be nice when analog audio is better to support 24/96,
-# but if we only support one output type, matching CD audio/digital sound is greatly preferable.
-def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100, rv=None):
+# Downscales to 16- or 24-bit PCM.  16-bit at 44.1 kHz matches CD/digital
+# audio and is the default; 24-bit (bits=24) is used for the CVBS SMPTE 272M
+# audio profile, where the demod's sub-16-bit resolution is actually kept.
+def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100,
+                    rv=None, bits=16):
     """downscale audio for output.
 
     Parameters:
@@ -135,10 +141,13 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100, rv
         linecount (int): # of lines in field
         timeoffset (float): time of first audio sample (ignored w/- frequency)
         freq (int): Output frequency (negative values are multiple of HSYNC frequency)
+        bits (int): Output resolution, 16 (int16) or 24 (int32, 24-bit values)
     Returns: (tuple)
-        output16 (np.array(int)):  Array of 16-bit integers, ready for output
+        output (np.array(int)):  int16 (bits=16) or int32 (bits=24) samples
         next_timeoffset (float): Time to start pulling samples in the next frame (ignore if sync4x)
     """
+
+    fullscale = float((1 << (bits - 1)) - 1)
 
     locs, swow, arange, frametime = _downscale_audio_compute_locs_and_swow(
         lineinfo,
@@ -150,7 +159,7 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100, rv
         rf.Filters["audio_fdiv"],
     )
 
-    output16, failed = _downscale_audio_to_output(
+    output, failed = _downscale_audio_to_output(
         arange,
         locs,
         swow,
@@ -158,13 +167,19 @@ def downscale_audio(audio, lineinfo, rf, linecount, timeoffset=0, freq=44100, rv
         audio["audio_right"],
         rf.SysParams["audio_lfreq"],
         rf.SysParams["audio_rfreq"],
+        fullscale,
     )
+
+    # int16 for the 16-bit path keeps the .pcm output byte-for-byte as before
+    # (values sit within int16 range, so the narrowing is exact)
+    if bits <= 16:
+        output = output.astype(np.int16)
 
     if failed:
         logs.logger.warning("Analog audio processing error, muting samples")
 
     if rv is not None:
-        rv['dsaudio'] = output16
+        rv['dsaudio'] = output
         rv['audio_next_offset'] = arange[-1] - frametime
 
-    return output16, arange[-1] - frametime
+    return output, arange[-1] - frametime

@@ -1211,7 +1211,7 @@ class Field:
         return nb_round(lastfieldwritten[0] + read_gap)
 
     def downscale_audio_out(self, audio, lastfieldwritten=None, lineinfo=None,
-                            field_number=None):
+                            field_number=None, audio_bits=16):
         """Downscale this field's analog audio.
 
         Separate from the video downscale because only the audio needs
@@ -1265,6 +1265,7 @@ class Field:
             audio_offset,
             audio,
             audio_rv,
+            bits=audio_bits,
         )
 
         self.dsaudio = audio_rv["dsaudio"]

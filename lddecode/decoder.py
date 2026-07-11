@@ -108,25 +108,26 @@ class LDdecode:
         self.output_cvbs = extra_options.get("output_cvbs", False)
         self.cvbs_writer = None
 
+        # CVBS output uses the 24-bit SMPTE 272M audio profile; every other
+        # output path stays 16-bit (CD-matched .pcm / .wav).
+        self.audio_output_bits = 24 if self.output_cvbs else 16
+
         if fname_out is not None:
             if self.output_cvbs:
                 from .cvbs import CVBSWriter
 
-                # NTSC line-locked 44100 is rate-locked to video but NOT at
-                # the spec's rational locked rate; only the -N line-locked
-                # mode (2.8 samples/line = 44,100,000/1001 Hz) qualifies.
-                if system == "PAL":
-                    aud_locked, aud_rate = True, 44100
-                else:
-                    aud_locked = analog_audio < 0
-                    aud_rate = 44100000 / 1001 if aud_locked else 44100
+                # The CVBS spec mandates SMPTE 272M audio: 48 kHz, 24-bit,
+                # synchronous to video.  Force the analog audio output rate
+                # to 48 kHz for CVBS regardless of --analog_audio_frequency
+                # / --ntsc_audio_rate; the writer handles the 24-bit
+                # container and the exact per-frame sample counts.
+                if self.analog_audio:
+                    self.analog_audio = CVBSWriter.AUDIO_RATE
 
                 self.cvbs_writer = CVBSWriter(
                     fname_out, system, logger=_logger, version=self.version,
                     black_level=extra_options.get("cvbs_black_level"),
                     write_audio=bool(self.analog_audio),
-                    audio_rate=aud_rate,
-                    audio_locked=aud_locked if self.analog_audio else None,
                     capture_notes=(
                         "LaserDisc PAL: pilot burst may be present in blanking"
                         if system == "PAL" else None),
@@ -1167,7 +1168,9 @@ class LDdecode:
         # commit time, not with the video downscale - unless a field job
         # already produced it with a verified write index.
         if not audio_ready:
-            audio = f.downscale_audio_out(self.analog_audio, self.lastFieldWritten)
+            audio = f.downscale_audio_out(
+                self.analog_audio, self.lastFieldWritten,
+                audio_bits=self.audio_output_bits)
 
         # XXX: this routine currently performs a needed sanity check
         fi, needFiller = self.buildmetadata(f)
@@ -1446,6 +1449,7 @@ class LDdecode:
             "doDOD": self.doDOD,
             "useAGC": self.useAGC,
             "analog_audio": self.analog_audio,
+            "audio_bits": self.audio_output_bits,
         }
 
     def _field_engine_cfg(self):

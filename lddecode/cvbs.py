@@ -75,7 +75,7 @@ import numpy as np
 
 
 _META_SCHEMA = """
-PRAGMA user_version = 8;
+PRAGMA user_version = 10;
 
 CREATE TABLE cvbs_file (
     cvbs_file_id                INTEGER PRIMARY KEY,
@@ -101,8 +101,13 @@ CREATE TABLE cvbs_file (
         CHECK (number_of_sequential_frames IS NULL OR number_of_sequential_frames >= 1),
     black_level                 INTEGER,
     has_nonstandard_values      BOOLEAN,
-    audio_locked                BOOLEAN,
     capture_notes               TEXT
+);
+
+CREATE TABLE audio_channel_pair (
+    channel_pair                INTEGER PRIMARY KEY
+        CHECK (channel_pair BETWEEN 0 AND 7),
+    description                 TEXT
 );
 """
 
@@ -111,9 +116,16 @@ class CVBSWriter:
     """Assembles decoded fields into spec-compliant CVBS output.
 
     Writes <basename>.composite (u16le, CVBS_U16_4FSC), <basename>.meta
-    (SQLite, spec core schema), optional <basename>_audio_00.wav, and the
+    (SQLite, spec core schema), optional <basename>_audio_0.wav, and the
     dropout / EFM extension sidecars (<basename>.dropouts.meta,
     <basename>.efm + .efm.meta).
+
+    Audio follows the SMPTE 272M-1994 profile the spec mandates: one
+    channel pair (stereo) stored as a 48 kHz, 24-bit signed little-endian
+    WAV, synchronous to video.  PAL carries 1920 samples/frame exactly;
+    NTSC/PAL_M carry 8008 samples per 5-frame audio-frame sequence
+    (1602/1601/1602/1601/1602), so the stored stream is trimmed or
+    zero-padded at close to exactly offset(N) samples for N frames.
 
     Frames use the ld-decode line convention (sample 0 at the line start,
     0H ~ +0.8) — the layout decode-orc's cvbs_source reader expects.  One
@@ -134,9 +146,14 @@ class CVBSWriter:
     NTSC_LOCK_TARGET = 147.25  # line-referenced burst phase target, deg
     LOCK_TOL = 3.0             # residual tolerance for claiming LOCKED
 
+    # SMPTE 272M-1994 audio profile (spec's only permitted format)
+    AUDIO_RATE = 48000         # Hz, synchronous to video
+    AUDIO_BITS = 24            # signed little-endian PCM
+    AUDIO_BYTES_PER_SAMPLE = 2 * (AUDIO_BITS // 8)   # stereo frame, bytes
+
     def __init__(self, fname_out, system, logger=None, version=None,
-                 black_level=None, write_audio=False, audio_rate=44100,
-                 audio_locked=None, capture_notes=None,
+                 black_level=None, write_audio=False,
+                 audio_description="Analogue stereo", capture_notes=None,
                  has_nonstandard_values=None, write_efm=False):
         self.system = system
         self.params = CVBSParams_PAL if system == "PAL" else CVBSParams_NTSC
@@ -176,8 +193,7 @@ class CVBSWriter:
 
         # audio
         self.write_audio = write_audio
-        self.audio_rate = audio_rate
-        self.audio_locked = audio_locked
+        self.audio_description = audio_description
         self.f_wav = None
         self._audio_bytes = 0
 
@@ -388,28 +404,71 @@ class CVBSWriter:
 
     # -- audio ------------------------------------------------------------
 
+    def audio_sample_target(self, n_frames):
+        """Normative total stereo-sample count for n_frames of 48 kHz audio.
+
+        PAL: 1920 samples/frame exactly.  NTSC/PAL_M: an 8008-sample,
+        5-frame audio-frame sequence (1602/1601/1602/1601/1602), so
+        offset(n) = 8008*(n // 5) + cumulative offset for (n % 5).
+        """
+        if self.system == "PAL":
+            return 1920 * n_frames
+        seq_offset = (0, 1602, 3203, 4805, 6406)
+        return 8008 * (n_frames // 5) + seq_offset[n_frames % 5]
+
     def push_audio(self, data):
         if not self.write_audio:
             return
         if self.f_wav is None:
-            self.f_wav = open(self.fname_out + "_audio_00.wav", "wb")
+            self.f_wav = open(self.fname_out + "_audio_0.wav", "wb")
             self.f_wav.write(self._wav_header(0))
-        buf = data.tobytes() if hasattr(data, "tobytes") else bytes(data)
+        buf = self._pack_s24(data)
         self.f_wav.write(buf)
         self._audio_bytes += len(buf)
 
+    def _pack_s24(self, data):
+        """Pack interleaved 24-bit stereo samples as 24-bit signed LE PCM.
+
+        The analog audio decode is run at 24-bit for CVBS (bits=24), so it
+        arrives as int32 holding genuine 24-bit values in [-2^23, 2^23).
+        The little-endian int32 low 3 bytes are exactly that value as
+        24-bit two's-complement LE.
+        """
+        if isinstance(data, (bytes, bytearray)):
+            data = np.frombuffer(data, dtype=np.int32)
+        a = np.ascontiguousarray(np.asarray(data, dtype=np.int32))
+        return np.ascontiguousarray(
+            a.view(np.uint8).reshape(-1, 4)[:, :3]).tobytes()
+
     def _wav_header(self, data_len):
-        # spec: stereo s16le PCM; the integer header rate is 44056 for the
-        # NTSC/PAL_M locked rational rate 44,100,000/1001
-        rate = int(round(self.audio_rate))
-        block_align = 4
+        # spec: stereo 24-bit signed LE PCM at 48 kHz (SMPTE 272M profile)
+        rate = self.AUDIO_RATE
+        bits = self.AUDIO_BITS
+        block_align = self.AUDIO_BYTES_PER_SAMPLE
         byte_rate = rate * block_align
         return b"".join([
             b"RIFF", struct.pack("<I", 36 + data_len), b"WAVE",
             b"fmt ", struct.pack("<IHHIIHH", 16, 1, 2, rate, byte_rate,
-                                 block_align, 16),
+                                 block_align, bits),
             b"data", struct.pack("<I", data_len),
         ])
+
+    def _finalise_audio(self):
+        """Trim or zero-pad the WAV to the normative synchronous count.
+
+        The 48 kHz decode is rate-synchronous, so this only ever adjusts a
+        handful of samples of accumulated fractional slack to land on the
+        exact per-preset offset(N) the spec requires.
+        """
+        bps = self.AUDIO_BYTES_PER_SAMPLE
+        target_bytes = self.audio_sample_target(self.frames_written) * bps
+        if self._audio_bytes > target_bytes:
+            self.f_wav.seek(len(self._wav_header(0)) + target_bytes)
+            self.f_wav.truncate()
+            self._audio_bytes = target_bytes
+        elif self._audio_bytes < target_bytes:
+            self.f_wav.write(b"\x00" * (target_bytes - self._audio_bytes))
+            self._audio_bytes = target_bytes
 
     # -- close ------------------------------------------------------------
 
@@ -420,6 +479,7 @@ class CVBSWriter:
         self.f_video = None
 
         if self.f_wav is not None:
+            self._finalise_audio()
             self.f_wav.seek(0)
             self.f_wav.write(self._wav_header(self._audio_bytes))
             self.f_wav.close()
@@ -463,13 +523,19 @@ class CVBSWriter:
                    preset, sample_encoding_preset, signal_state_preset,
                    signal_type, decoder, git_branch, git_commit,
                    number_of_sequential_frames, black_level,
-                   has_nonstandard_values, audio_locked, capture_notes
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   has_nonstandard_values, capture_notes
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (self.system, "CVBS_U16_4FSC", signal_state,
              "composite", "ld-decode", git_branch, git_commit,
              self.frames_written if self.frames_written else None,
              self.black_level, self.has_nonstandard_values,
-             self.audio_locked, self.capture_notes))
+             self.capture_notes))
+        # one channel pair (stereo), SMPTE 272M channels 1 & 2 -> _audio_0.wav
+        # (every row must correspond to an existing channel-pair file)
+        if self._audio_bytes:
+            con.execute(
+                "INSERT INTO audio_channel_pair (channel_pair, description) "
+                "VALUES (0, ?)", (self.audio_description,))
         con.commit()
         con.close()
 
