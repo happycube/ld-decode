@@ -45,6 +45,53 @@ def test_calibration_anchor():
     assert 0.70 * cx.A_40 < cx.V_CR < 0.80 * cx.A_40
 
 
+def test_default_variant_is_cx14():
+    """The default path is CX-14 (IEC 60857): excess comp, nominal theta_ac."""
+    cx = CXExpander(fs=FS)
+    assert cx.variant == "cx14"
+    assert cx.attack_comp == 1  # 'excess'
+    assert np.isclose(cx.theta_ac, 0.52 * cx.V_CR)
+
+
+def test_cx20_variant_uses_gentler_attack_comp():
+    """CX-20 selects the weaker compensator (excess-thresh, raised threshold).
+
+    Only the attack ballistics differ -- the static-curve anchors (V_100,
+    R_knee) are identical to CX-14, and the round-trip stays exactly null."""
+    cx = CXExpander(fs=FS, variant="cx20")
+    assert cx.attack_comp == 2  # 'excess-thresh'
+    assert np.isclose(cx.theta_ac, 0.70 * cx.V_CR)
+    assert np.isclose(cx.V_100, CXExpander(fs=FS).V_100)   # static curve shared
+    assert np.isclose(cx.R_knee, CXExpander(fs=FS).R_knee)
+
+    # explicit attack_comp overrides the variant default
+    assert CXExpander(fs=FS, variant="cx20", attack_comp="off").attack_comp == 0
+
+    # cx20 encoder->decoder still tracks transparently (shared control path)
+    rng = np.random.RandomState(3)
+    n = 6 * FS
+    env = 0.3 + 0.6 * np.abs(np.sin(2 * np.pi * 0.8 * np.arange(n) / FS))
+    sig = rng.randn(n) * env * A100 * 0.3
+    u = np.empty(2 * n, dtype=np.int16)
+    u[0::2] = np.clip(np.round(sig), -32766, 32766)
+    u[1::2] = u[0::2]
+    c = CXCompressor(fs=FS, variant="cx20").process(u)
+    r = CXExpander(fs=FS, variant="cx20", dc_block=False).process(c).astype(np.float64)
+    ref = u.astype(np.float64)
+    sk = FS
+    def env_db(x, hop=int(0.01 * FS), win=int(0.05 * FS)):
+        return np.array([
+            10 * np.log10(np.mean(x[i - win:i + win] ** 2) + 1e-6)
+            for i in range(win, len(x) - win, hop)
+        ])
+    eu = env_db(ref[2 * sk::2])
+    er = env_db(r[2 * sk::2])
+    m = min(len(eu), len(er))
+    err = np.abs(er[:m] - eu[:m])
+    active = eu[:m] > (eu[:m].max() - 40)
+    assert np.mean(err[active]) < 0.5
+
+
 def test_static_curve_above_knee():
     """2:1 expansion (u = 2c) within 0.25 dB away from the soft knee (T1)."""
     for c in (-40, -30, -25, -15, -10, -5, 0):

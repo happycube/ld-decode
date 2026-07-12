@@ -12,6 +12,12 @@ the same compressed signal in both directions, tracking is exact by
 construction once the control path is faithfully reproduced -- so only the
 control path needs to be modelled, and it is modelled once here.
 
+Two CX variants are selectable via ``variant=``: ``cx14`` (default, the IEC
+60857 LaserDisc system, validated against the he010 dual-track disc) and
+``cx20`` (the LP / early-LaserDisc system, whose gentler attack ballistics
+reconstruct the ggv-cx reference disc's level steps flat).  See _VARIANT and
+cx-decoder-plan.md sec. 8c.
+
 See cx-decoder-plan.md for the full derivation, calibration and test plan.  No
 logs/antilogs appear anywhere in the audio path: the VCA is a plain
 multiplier, which yields the spec's 2:1 curve automatically (plan sec. 1.1).
@@ -36,6 +42,29 @@ _COMBINE = {"max": 0, "mean": 1}
 _SLOW = {"offset": 0, "switch": 1}
 _ATTACK = {"off": 0, "excess": 1, "excess-thresh": 2}
 _MODE_PATHS = {"stereo": 1, "bilingual": 2}
+
+# CX variants (CBS shipped two: CX-14 for LaserDisc, CX-20 for LPs / early LDs).
+# The IEC 60857 LaserDisc spec is CX-14 (14 dB NR); its parameters are validated
+# against the he010 dual-track disc (digital EFM twin as ground truth). CX-20
+# uses different decoding time constants. They were calibrated on the ggv-cx
+# reference disc against a *synthetic digital twin*: since that disc is a clean
+# stepped tone, the ideal decode is a flat staircase between the settled levels
+# (config-independent, since the attack compensator is zero at steady state), so
+# the step-reconstruction error can be minimised objectively. That points to a
+# faster slow-attack (~12 ms vs 30 ms) plus a gentler attack compensator; both
+# halve the post-step settling error (0.68 -> 0.31 dB) on both up-steps.
+# Each variant sets attack_comp, its threshold, and the slow-attack time
+# constant; the static curve and the other ballistics are shared.
+# See cx-decoder-plan.md sec 8c.
+#
+# NOTE: only the decoding *ballistics* differ here. CBS also specified a deeper
+# NR / lower knee for CX-20; that static-curve difference is NOT modelled (the
+# ggv-cx twin only constrains ballistics, not absolute levels -- its settled
+# levels come from our shared CX-14 static curve).
+_VARIANT = {
+    "cx14": {"attack_comp": "excess", "theta_ac_ratio": 0.52, "slow_att_ms": 30.0},
+    "cx20": {"attack_comp": "excess-thresh", "theta_ac_ratio": 0.70, "slow_att_ms": 12.0},
+}
 
 # State-array layout (float64, length 16), shared by encoder and decoder.
 #   0,1  HPF x[n-1]          (per channel)
@@ -252,13 +281,20 @@ class _CXBase:
         self,
         fs=44100,
         mode="stereo",
+        variant="cx14",
         stereo_combine="max",
         slow_model="offset",
-        attack_comp="excess",
+        attack_comp=None,
         dc_block=True,
     ):
         self.fs = fs
         self.mode = mode
+        self.variant = variant
+        vprof = _VARIANT[variant]
+        # variant picks the attack-comp defaults; an explicit attack_comp wins.
+        if attack_comp is None:
+            attack_comp = vprof["attack_comp"]
+        self._theta_ac_ratio = vprof["theta_ac_ratio"]
         self.npaths = _MODE_PATHS[mode]
         self.combine = _COMBINE[stereo_combine]
         self.slow_model = _SLOW[slow_model]
@@ -269,7 +305,8 @@ class _CXBase:
         # First-order smoother coefficients alpha(tau) = 1 - exp(-T/tau).
         self.a_fa = 1.0 - np.exp(-T / 1e-3)     # fast attack   1 ms
         self.a_fr = 1.0 - np.exp(-T / 10e-3)    # fast release  10 ms
-        self.a_sa = 1.0 - np.exp(-T / 30e-3)    # slow attack   30 ms
+        # slow attack: 30 ms (CX-14) / 12 ms (CX-20), set by the variant profile
+        self.a_sa = 1.0 - np.exp(-T / (vprof["slow_att_ms"] * 1e-3))
         self.a_sr = 1.0 - np.exp(-T / 200e-3)   # slow release  200 ms
         self.a_i = 1.0 - np.exp(-T / 2.0)       # integrator    2 s
         self.beta_ac = np.exp(-T / 30e-3)       # attack-comp decay 30 ms
@@ -306,7 +343,12 @@ class _CXBase:
         self.V_100 = 2.5 * self.V_CR       # 100 kHz deviation
         self.R_knee = 0.20 * self.V_CR     # 8 kHz clamp floor
         self.theta_slow = 0.26 * self.V_CR
-        self.theta_ac = 0.52 * self.V_CR
+        # Attack-compensator threshold. CX-14 (default) uses the spec-nominal
+        # 0.52*V_CR; CX-20 raises it to 0.70*V_CR to reconstruct that variant's
+        # gentler-attack steps flat (see _VARIANT). Only affects the attack
+        # transient -- zero at steady state, so the static curve (sec. 3.6) and
+        # encoder round-trip are identical for both variants.
+        self.theta_ac = self._theta_ac_ratio * self.V_CR
 
         # Consistency check: an 8 kHz-equivalent tone (clamp off) must also
         # settle to 0.2*V_CR by linearity (plan sec. 3.6).
@@ -397,11 +439,17 @@ def _main(argv=None):
     ap.add_argument("outfile", help="output .pcm (raw int16 LE, interleaved stereo)")
     ap.add_argument("--rate", type=int, default=44100, help="sample rate (Hz)")
     ap.add_argument("--mode", choices=["stereo", "bilingual"], default="stereo")
+    ap.add_argument(
+        "--variant", choices=["cx14", "cx20"], default="cx14",
+        help="CX variant: cx14 = IEC 60857 LaserDisc (default), "
+             "cx20 = LP / early-LD variant (gentler attack ballistics)",
+    )
     ap.add_argument("--stereo-combine", choices=["max", "mean"], default="max")
     ap.add_argument("--slow-model", choices=["offset", "switch"], default="offset")
     ap.add_argument(
         "--attack-comp", choices=["excess", "excess-thresh", "off"],
-        default="excess",
+        default=None,
+        help="override the variant's attack-compensator model",
     )
     ap.add_argument("--no-dc-block", action="store_true",
                     help="disable the 5 Hz main-path DC blocker")
@@ -421,6 +469,7 @@ def _main(argv=None):
     cx = cls(
         fs=args.rate,
         mode=args.mode,
+        variant=args.variant,
         stereo_combine=args.stereo_combine,
         slow_model=args.slow_model,
         attack_comp=args.attack_comp,

@@ -470,8 +470,71 @@ Measured:
 **§5 defaults retained** (stereo-combine `max`, slow-model `offset`,
 attack-comp `excess`): they already give T5 slope 1.01 / mean error 0.95 dB, so
 no transient-model change is warranted. A full option-combo sweep (T5.5) and
-the absolute-anchor / real-encoder curve checks (T4 GGV tones, T6 ggv-cx) remain
-open; they need the large `.ldf` decodes and are out of band for this pass.
+the absolute-anchor check (T4 GGV tones) remain open; they need the large `.ldf`
+decodes and are out of band for this pass. (T6 ggv-cx is covered in §8c.)
+
+## 8c. T6 — ggv-cx reference disc and the CX-14 / CX-20 split (2026-07-12)
+
+Ran the decoder on `ggv-cx.pcm` (a 60 s stepped-level CX test signal). All four
+transitions run cleanly — smooth gain, no glitches, clean steady levels, correct
+~2:1 expansion. But at the **up-steps** the default (`excess`) decoder overshoots
+**+2.87 dB** for ~50 ms, ~2× the input's own overshoot.
+
+Not a decoder bug: our own encoder→decoder round-trip is **bit-exact** on a clean
+step (`V_c` cancels algebraically when both share a control path). The overshoot
+is a **real-encoder mismatch** — ggv-cx's hardware CBS encoder uses gentler
+attack ballistics than our spec model.
+
+This turned out to be a genuine **CX variant** difference (per CBS / IEC 60857
+line 768 our decoder is **CX-14**, the 14 dB LaserDisc system; ggv-cx behaves
+like **CX-20**, the LP / early-LD system, which CBS specified with *different
+decoding time constants* — separate Hitachi chips HA12043/HA12044). The two
+reference discs demand opposite attack comp:
+
+| attack_comp | he010 slope (CX-14 digital truth) | ggv-cx up-step overshoot |
+|---|---:|---:|
+| `excess` (CX-14 default) | **1.02** ✓ | +2.87 dB |
+| `excess-thresh` θ_ac 0.52 | 0.939 | +0.87 dB |
+| `excess-thresh` θ_ac 0.70 (CX-20) | 0.934 | **+0.42 dB** |
+| `off` | 0.933 | +0.21 dB |
+
+A hardware CX decode of the same disc (regular LD player → DVD recorder,
+`vts_01_1.wav`) confirmed the ballistics are the axis in play — and that the real
+player is actually *rougher* than our software: it spikes **+5 dB** at up-steps
+(more than our +2.87) and its gain drifts multiple dB for seconds after each step
+(2 s integrator + analog cap tolerances). So the hardware is not a target to
+match; our CX-14 already decodes ggv-cx more cleanly than the player that shipped
+with it.
+
+**Synthetic digital twin (ggv-cx CX-20 ground truth).** ggv-cx has no EFM twin,
+but it is a *clean stepped tone*, so the ideal decode is a flat staircase
+between the settled levels. Those settled levels are config-independent (the
+attack compensator is 0 at steady state), so the staircase can be built from any
+decode and used as ground truth to minimise step-reconstruction error
+objectively — the CX-20 analogue of he010's EFM twin. Metric: mean |decode −
+twin| over each transition's post-edge settling window (skip the ~15 ms input
+ramp; the twin's instantaneous edge is unphysical). This isolates overshoot +
+settling from the shared 2 s-integrator tail.
+
+Twin calibration showed the dominant CX-20 difference is the **slow-attack time
+constant (~12 ms vs CX-14's 30 ms)** — it halves the post-step error on *both*
+up-steps (0.89/0.66 → 0.27/0.16 dB), so it is a real ballistic difference, not a
+one-step fit. With the faster slow-attack the attack-comp choice barely matters
+(excess-thresh and off both ≈0.31 dB).
+
+**Resolution — variants (`lddecode/cx.py`, `variant=` / `--variant`):**
+- **`cx14` (default)**: unchanged from the pre-ggv path — `attack_comp='excess'`,
+  θ_ac 0.52·V_CR, slow-attack 30 ms. Validated against he010's digital ground
+  truth (slope 1.02); ggv-cx twin settling error 0.98 dB.
+- **`cx20`**: `attack_comp='excess-thresh'` θ_ac 0.70·V_CR, slow-attack **12 ms**
+  (twin-calibrated). ggv-cx twin settling error **0.34 dB** (up-steps 0.2–0.3;
+  the 0.50 dB down-step is the shared 2 s-integrator tail). Only the ballistics
+  differ; the static curve and round-trip exactness are shared with cx14.
+- The twin constrains *ballistics only*, not absolute levels (its settled levels
+  come from our shared CX-14 static curve). CBS also gave CX-20 a deeper NR /
+  lower knee; that static-curve difference is **not** modelled and would need a
+  CX-20 disc with an EFM twin (or an announced absolute-level test) to anchor.
+  Open.
 
 ## 9. Reference constants (44.1 kHz, for quick review)
 
