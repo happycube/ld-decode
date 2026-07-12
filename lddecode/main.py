@@ -519,7 +519,15 @@ def main(args=None):
             f = ldd.readfield()
         except KeyboardInterrupt as kbd:
             print("\nTerminated, exiting", file=sys.stderr)
+            # cleanup() -> ldd.close() finalizes and flushes the .tbc.db;
+            # confirm the interrupted decode's metadata was saved.
             cleanup()
+            if not ldd.output_cvbs and ldd.fields_written:
+                print(
+                    f"{outname}.tbc.db written and flushed to disk "
+                    f"({ldd.fields_written} fields).",
+                    file=sys.stderr,
+                )
             sys.exit(1)
         except Exception as err:
             print(
