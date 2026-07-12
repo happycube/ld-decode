@@ -108,8 +108,9 @@ def main(args=None):
         "--threads",
         metavar="threads",
         type=int,
-        default=1,
-        help="worker threads for block demodulation (0 = auto, 1 = serial)",
+        default=0,
+        help="worker threads for block demodulation "
+             "(0 = auto (default): min(cores - 2, 8); 1 = serial)",
     )
     parser.add_argument(
         "--demod-threads-only",
@@ -380,7 +381,9 @@ def main(args=None):
 
     # Safety check: ensure --write-test-ldf doesn't overwrite the input file
     if args.write_test_ldf is not None:
-        import os.path
+        # os (and os.path) is imported at module scope; a local re-import
+        # here would make `os` function-local and shadow it everywhere else
+        # in main(), including the auto-threads calculation above.
         input_path = os.path.abspath(filename)
         output_path = os.path.abspath(args.write_test_ldf)
         if input_path == output_path:
@@ -393,7 +396,9 @@ def main(args=None):
 
     threads = args.threads
     if threads == 0:
-        threads = min(max((os.cpu_count() or 4) - 4, 1), 12)
+        # auto (the default): leave 2 cores for the OS / main decode loop,
+        # capped at 8 (diminishing returns past that on the shared read path)
+        threads = min(max((os.cpu_count() or 4) - 2, 1), 8)
 
     extra_options = {
         "threads": threads,
