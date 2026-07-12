@@ -31,6 +31,12 @@ class LDdecode:
     # within this of the current one (2x the adoption dead-band; an MTF
     # step this size changes HF gain by fractions of a dB).
     MTF_SPECULATION_TOLERANCE = 0.10
+
+    # The .tbc.db runs with journalling off for speed; a synchronous=FULL
+    # commit is forced to disk every this many fields (~1000 frames) so a
+    # killed decode loses at most that tail rather than the whole database.
+    DB_SYNC_FIELDS = 2000
+
     def __init__(
         self,
         fname_in,
@@ -380,11 +386,14 @@ class LDdecode:
         # (AGC may have adjusted levels after the first field) and commit.
         if hasattr(self, 'dbconn') and self.dbconn is not None:
             try:
-                self.build_sqlite_metadata()
+                # Final durable flush: close any open transaction, then
+                # raise durability to FULL so build_sqlite_metadata's commit
+                # fsyncs the completed database to disk (journalling is off,
+                # so there is no WAL to fold back).  Committing first also
+                # avoids changing the safety level mid-transaction.
                 self.dbconn.commit()
-                # Fold the WAL back so the output is a plain .tbc.db file
-                self.dbconn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                self.dbconn.execute("PRAGMA journal_mode=DELETE")
+                self.dbconn.execute("PRAGMA synchronous=FULL")
+                self.build_sqlite_metadata()
             except Exception:
                 pass
 
@@ -403,12 +412,16 @@ class LDdecode:
     def create_db_schema(self):
         cur = self.dbconn.cursor()
 
-        # WAL with synchronous=NORMAL keeps the per-field commit ordering
-        # (the .tbc.db never trails the video if the decode is killed)
-        # without an fsync per field; close() checkpoints back to a plain
-        # single-file database.
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA synchronous=NORMAL")
+        # Journalling off + synchronous off for the fastest bulk writes.
+        # Durability is coarse-grained instead of per-field: a
+        # synchronous=FULL commit fsyncs the database every DB_SYNC_FIELDS
+        # fields (see writeout_field_to_db) and once more at close().  A
+        # decode killed between syncs loses the tail; with no journal to
+        # roll back, a crash mid-write can corrupt the .tbc.db - it is
+        # rebuilt by re-running the decode.
+        cur.execute("PRAGMA journal_mode=OFF")
+        cur.execute("PRAGMA synchronous=OFF")
+        cur.execute("PRAGMA temp_store=MEMORY")
 
         cur.executescript(dedent('''\
             PRAGMA user_version = 1;
@@ -704,6 +717,15 @@ class LDdecode:
         c_id = self.capture_id
         f_id = self.fields_written
 
+        # On a ~1000-frame boundary, raise durability to FULL *before* this
+        # field's inserts open a transaction: the safety level cannot be
+        # changed mid-transaction, and setting it now makes the field's
+        # commit fsync everything written since the last sync (an fsync
+        # flushes the whole file).  Restored to OFF after that commit.
+        sync_now = (f_id + 1) % self.DB_SYNC_FIELDS == 0
+        if sync_now:
+            self.dbconn.execute("PRAGMA synchronous=FULL")
+
         decodeFaults = None if fi.get('decodeFaults') == 0 else fi.get('decodeFaults')
 
         # Insert parent record into 'field_record'
@@ -766,9 +788,12 @@ class LDdecode:
 
         self.update_sqlite_field_count()
 
-        # Commit per field so the .tbc.db never trails the .tbc video if the
-        # decode is killed mid-run.
+        # Commit per field so the DB stays consistent in the page cache.
+        # With journalling off this reaches disk only on the boundary
+        # commits primed above (synchronous=FULL); restore OFF afterwards.
         self.dbconn.commit()
+        if sync_now:
+            self.dbconn.execute("PRAGMA synchronous=OFF")
 
         self._writeout_data(fi, picture, audio, f, None)
 
