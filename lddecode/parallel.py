@@ -30,6 +30,7 @@ Correctness invariants:
 
 import copy
 import multiprocessing
+import signal
 import threading
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 
@@ -46,6 +47,14 @@ def _demod_worker_init(rf_opts, decoder_params, field_cfg=None):
     import logging
     import os
     import time as _time
+
+    # A terminal Ctrl-C delivers SIGINT to the whole foreground process
+    # group, workers included.  A KeyboardInterrupt raised inside a
+    # worker's compiled demod - or while it holds a multiprocessing queue
+    # lock - wedges the worker (futex_wait) and the parent then hangs
+    # joining it at exit.  Ignore SIGINT here so only the main process
+    # handles the interrupt; it tears the pool down (see DemodBlockCache).
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     from . import utils_logging as logs
     from .rfdecode import RFDecode
@@ -570,6 +579,15 @@ class DemodBlockCache:
         self.flush()
         self._pool.shutdown(wait=False, cancel_futures=True)
         if self._procs is not None:
+            # shutdown(wait=False) leaves the interpreter's atexit handler
+            # to join the workers (wait=True); one still in a long compiled
+            # demod would block that join.  Their results are no longer
+            # needed, so terminate them outright for a prompt exit.
+            for p in list(getattr(self._procs, "_processes", {}).values()):
+                try:
+                    p.terminate()
+                except Exception:
+                    pass
             self._procs.shutdown(wait=False, cancel_futures=True)
             self._procs = None
 
