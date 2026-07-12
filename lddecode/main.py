@@ -110,7 +110,7 @@ def main(args=None):
         type=int,
         default=0,
         help="worker threads for block demodulation "
-             "(0 = auto (default): min(cores - 2, 8); 1 = serial)",
+             "(0 = auto (default): min(cores - 2, 10); 1 = serial)",
     )
     parser.add_argument(
         "--demod-threads-only",
@@ -397,8 +397,8 @@ def main(args=None):
     threads = args.threads
     if threads == 0:
         # auto (the default): leave 2 cores for the OS / main decode loop,
-        # capped at 8 (diminishing returns past that on the shared read path)
-        threads = min(max((os.cpu_count() or 4) - 2, 1), 8)
+        # capped at 10 (diminishing returns past that on the shared read path)
+        threads = min(max((os.cpu_count() or 4) - 2, 1), 10)
 
     extra_options = {
         "threads": threads,
