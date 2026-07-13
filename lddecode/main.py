@@ -426,9 +426,6 @@ def main(args=None):
     if vid_standard == "PAL" and args.V4300D_notch_filter:
         extra_options["PAL_V4300D_NotchFilter"] = True
 
-    if vid_standard == "PAL" and args.V4300D_notch_filter:
-        extra_options["PAL_V4300D_NotchFilter"] = True
-
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")
         sys.exit(1)
