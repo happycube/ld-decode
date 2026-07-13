@@ -455,7 +455,7 @@ class RFDecode:
             SF["RFVideo"] = filtfft(filt_rfvideo, self.blocklen)
 
         # Notch filters for analog audio RF.  DdD captures on NTSC need this.
-        if SP["analog_audio"] and self.system == "NTSC":
+        if SP["analog_audio"]:
             cut_left = sps.butter(
                 DP["audio_notchorder"],
                 self.notchrange(SP["audio_lfreq"], DP['audio_notchwidth'], True),
@@ -470,7 +470,15 @@ class RFDecode:
             )
             SF["Fcutr"] = filtfft(cut_right, self.blocklen)
 
-            SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
+            if self.system == "NTSC":
+                SF["RFVideo"] *= SF["Fcutl"] * SF["Fcutr"]
+            else:
+                # PAL: the carriers sit inside the video FM lower sideband, so
+                # the notch is not folded into RFVideo unconditionally; it is
+                # applied per block in demodblock, only when the carriers are
+                # actually on the disc (pal_audio_carriers_present) - EFM-only
+                # discs keep the full sideband.
+                SF["FcutPAL"] = SF["Fcutl"] * SF["Fcutr"]
 
         if DP.get("video_rf_zero_phase", False):
             # Discard the phase response of the pre-demod RF chain (BPF,
@@ -482,6 +490,13 @@ class RFDecode:
             # overlap-save pipeline makes acausal zero-phase filters free.
             SF["RFVideo"] = np.abs(SF["RFVideo"])
             SF["MTF"] = np.abs(SF["MTF"])
+            if "FcutPAL" in SF:
+                # The per-block audio-carrier notch multiplies into the same
+                # pre-demod chain, so it must be amplitude-only too: its
+                # Butterworth phase alone measures +8/+7 deg of DP on
+                # ggv-mb-1khz (deviation from the dp11 original, which only
+                # ever exercised the notch on EFM discs where it is a no-op).
+                SF["FcutPAL"] = np.abs(SF["FcutPAL"])
 
         SF["hilbert"] = build_hilbert(self.blocklen)
         SF["RFVideo"] *= SF["hilbert"]
@@ -707,6 +722,29 @@ class RFDecode:
         p = self._params(spec)
         return (hz - p["ire0"]) / p["hz_ire"]
 
+    def pal_audio_carriers_present(self, indata_fft, threshold=5.0):
+        """Detect whether the PAL analog audio FM carriers are present in this
+        block, by comparing the mean RF power around each carrier (+-40 kHz,
+        covering their FM deviation) against the spectrum flanking it
+        (+-100..250 kHz).  Discs with analog audio measure >15x on both
+        carriers; discs without (EFM/digital-only) measure ~1x or less, so a
+        threshold of 5 separates them cleanly."""
+        fpb = self.freq_hz / self.blocklen
+
+        def bandpower(f0, width):
+            lo, hi = int((f0 - width) / fpb), int((f0 + width) / fpb) + 1
+            return np.mean(sqsum(indata_fft[lo:hi]) ** 2)
+
+        for fcarrier in (self.SysParams["audio_lfreq"], self.SysParams["audio_rfreq"]):
+            carrier = bandpower(fcarrier, 40e3)
+            flank = (
+                bandpower(fcarrier - 175e3, 75e3) + bandpower(fcarrier + 175e3, 75e3)
+            ) / 2
+            if carrier < threshold * flank:
+                return False
+
+        return True
+
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False,
                    raw_mtf=False):
         # raw_mtf: use mtf_level as-is (delay calibration passes the true
@@ -776,6 +814,11 @@ class RFDecode:
                 indata_fft[self.blocklen - (i + 1 + sl.start)] = 0
 
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
+
+        # PAL: notch the analog audio carriers out of the video path, but only
+        # when they're actually on the disc (see computevideofilters)
+        if "FcutPAL" in self.Filters and self.pal_audio_carriers_present(indata_fft):
+            indata_fft_filt = indata_fft_filt * self.Filters["FcutPAL"]
 
         if mtf_level != 0:
             indata_fft_filt *= self.Filters["MTF"] ** mtf_level
