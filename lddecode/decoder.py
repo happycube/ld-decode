@@ -105,6 +105,7 @@ class LDdecode:
         self.outfile_video = None
         self.outfile_audio = None
         self.outfile_efm = None
+        self.outfile_efmc = None
         self.outfile_pre_efm = None
         self.outfile_ac3 = None
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
@@ -147,8 +148,31 @@ class LDdecode:
                 # feed EFM stream into ld-ldstoefm; in CVBS mode the writer
                 # owns <out>.efm (frame-indexed EFM extension format)
                 self.efm_pll = efm_pll.EFM_PLL()
+                # Gear-shift / fast-reacquire PLL: ON by default.  While the loop
+                # is locked it runs bit-for-bit identical to the original fixed-gain
+                # loop, so clean discs are unchanged; it only speeds pull-in on cold
+                # start, post-dropout re-acquire and marginal-SNR regions (which is
+                # where the original loop drops sectors).
+                # Set LDDECODE_EFM_GEARSHIFT=0 to restore the original loop.
+                if os.environ.get("LDDECODE_EFM_GEARSHIFT", "1") != "0":
+                    self.efm_pll.gearshift = 1
+                # Advanced: override individual acquisition-loop parameters (e.g. for
+                # multi-decode ensembles that lock different marginal frames). Unset
+                # -> the tuned defaults are used.
+                for _ev, _at, _ty in (("LDDECODE_EFM_PHASEGAIN_ACQ", "phaseGainAcq", float),
+                                      ("LDDECODE_EFM_FREQSTEPMUL", "freqStepMul", float),
+                                      ("LDDECODE_EFM_LOCKERRFRAC", "lockErrorFrac", float),
+                                      ("LDDECODE_EFM_LOCKTHRESH", "lockThreshold", int)):
+                    _v = os.environ.get(_ev, "")
+                    if _v:
+                        setattr(self.efm_pll, _at, _ty(float(_v)))
                 if not self.output_cvbs:
                     self.outfile_efm = open(fname_out + ".efm", "wb")
+                    # Soft-decision: emit a per-T-value confidence sidecar (.efmc)
+                    # that ld-process-efm turns into RS erasures.  Opt-in so
+                    # default decodes are unchanged.
+                    if os.environ.get("LDDECODE_EFM_EMITCONF", "") == "1":
+                        self.outfile_efmc = open(fname_out + ".efmc", "wb")
                 if extra_options.get("write_pre_efm", False):
                     self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
@@ -374,6 +398,8 @@ class LDdecode:
             "outfile_video",
             "outfile_audio",
             "outfile_efm",
+            "outfile_efmc",
+            "outfile_pre_efm",
             "outfile_rftbc",
             "outfile_ac3",
         ]:
@@ -692,6 +718,11 @@ class LDdecode:
         efm_out = self.efm_pll.process(efm)
         if self.outfile_efm is not None:
             self.outfile_efm.write(efm_out.tobytes())
+        if self.outfile_efmc is not None:
+            # Per-T-value confidence, aligned 1:1 with the .efm T-values just written
+            self.outfile_efmc.write(
+                self.efm_pll.pllConf[: self.efm_pll.pllResultCount].tobytes()
+            )
 
         return efm_out
 
