@@ -13,7 +13,6 @@ from concurrent.futures import ThreadPoolExecutor
 from textwrap import dedent
 
 import numpy as np
-import scipy.fft as npfft
 
 from . import efm_pll
 from . import utils_logging as logs
@@ -836,7 +835,6 @@ class LDdecode:
         """Demodulate one raw block (pure given filter state)."""
         return self.rf.demodblock(
             data=rawinput,
-            fftdata=npfft.fft(rawinput),
             mtf_level=mtf_level,
             cut=True,
         )

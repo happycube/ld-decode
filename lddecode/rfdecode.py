@@ -687,7 +687,20 @@ class RFDecode:
         if fftdata is not None:
             indata_fft = fftdata
         elif data is not None:
-            indata_fft = npfft.fft(data[: self.blocklen])
+            # The RF input is real, so its DFT is conjugate-symmetric.  Use rfft
+            # (moves ~half the bytes of a full complex fft) and mirror it back to
+            # the full spectrum that demodblock's consumers (hilbert/EFM/audio and
+            # the symmetric V4300D notch below) expect.  Byte-identical to
+            # npfft.fft(real); helps under the memory-bandwidth contention of
+            # parallel decodes.
+            raw = data[: self.blocklen]
+            nfft = raw.shape[0]
+            half = npfft.rfft(raw)
+            nr = half.shape[0]
+            full = np.empty(nfft, dtype=half.dtype)
+            full[:nr] = half
+            full[nr:] = np.conj(half[1:nfft - nr + 1])[::-1]
+            indata_fft = full
         else:
             raise Exception("demodblock called without raw or FFT data")
 

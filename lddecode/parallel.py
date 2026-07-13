@@ -88,11 +88,8 @@ def _demod_worker_init(rf_opts, decoder_params, field_cfg=None):
 
 
 def _demod_worker_block(rawinput, mtf_level):
-    import scipy.fft as npfft
-
     return _worker_rf.demodblock(
         data=rawinput,
-        fftdata=npfft.fft(rawinput),
         mtf_level=mtf_level,
         cut=True,
     )
@@ -112,7 +109,6 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
     sample buffers (prepare_transport) plus the downscaled outputs.
     """
     import numpy as np
-    import scipy.fft as npfft
 
     from .field import FieldNTSC, FieldPAL
     from .metrics import computeMetrics, detect_levels
@@ -141,8 +137,7 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
                 return {"seq": seq, "eof": True}
 
             demod = rf.demodblock(
-                data=rawinput, fftdata=npfft.fft(rawinput),
-                mtf_level=mtf_level, cut=True,
+                data=rawinput, mtf_level=mtf_level, cut=True,
             )
             t["input"].append(rawinput[rf.blockcut : -rf.blockcut_end])
             for k in ("video", "audio", "efm", "rfhpf"):
