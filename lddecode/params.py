@@ -177,8 +177,12 @@ FilterParams_NTSC_lowband['video_bpf_high'] = 12500000
 FilterParams_NTSC_lowband['video_lpf_freq'] = 4200000
 
 FilterParams_PAL = {
-    # The audio notch filters are important with DD v3.0+ boards
-    "audio_notchwidth": 200000,
+    # Half-width of the analog audio carrier notches (see computevideofilters).
+    # +-150 kHz covers the carriers' FM spread (+-100 kHz deviation, +-150 kHz
+    # instantaneous peak per IEC 60856) while minimising the bite the notches
+    # take out of the video FM lower sidebands that share this part of the
+    # spectrum (high-frequency luma at dark levels).
+    "audio_notchwidth": 150000,
     "audio_notchorder": 2,
     "video_deemp": (100e-9, 400e-9),
     # PAL builds its RF video filter as a split high-pass (low edge) + low-pass
