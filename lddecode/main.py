@@ -153,6 +153,15 @@ def main(args=None):
         help="Write filtered but otherwise pre-processed EFM data",
     )
     parser.add_argument(
+        "--tbc_efm",
+        dest="tbc_efm",
+        action="store_true",
+        default=False,
+        help="Time-base-correct the EFM waveform onto the video line time-base "
+        "before the EFM PLL (removes wow/flutter drift; aligns EFM across "
+        "captures of the same disc for pre-PLL stacking)",
+    )
+    parser.add_argument(
         "--disable_analog_audio",
         "--disable_analogue_audio",
         "--daa",
@@ -408,6 +417,7 @@ def main(args=None):
         "write_RF_TBC": args.RF_TBC,
         "pipe_RF_TBC": audio_pipe,
         "write_pre_efm": args.prefm,
+        "tbc_efm": args.tbc_efm,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
         "auto_deemp": args.deemp_strength is None,

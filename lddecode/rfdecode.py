@@ -136,6 +136,14 @@ class RFDecode:
 
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_NotchFilter = extra_options.get("PAL_V4300D_NotchFilter", False)
+        # Time-base-correct the EFM waveform onto the video line time-base before
+        # the PLL: removes wow/flutter drift and - crucially for multi-disc
+        # stacking - aligns the EFM of different captures of the same disc to a
+        # common disc-position time-base so the pre-PLL EFM waveforms can be
+        # averaged.  Experimental / off by default: it does NOT improve
+        # single-capture decode (output is the same sector set), so it is only
+        # useful for aligning captures.  LDDECODE_TBC_EFM=1 or --tbc_efm.
+        self.tbc_efm = extra_options.get("tbc_efm", False) or os.environ.get("LDDECODE_TBC_EFM", "") == "1"
         lowband = extra_options.get("lowband", False)
 
         freq = inputfreq
