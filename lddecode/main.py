@@ -232,6 +232,27 @@ def main(args=None):
     )
 
     parser.add_argument(
+        "--V4300D_coherent_subtract",
+        dest="V4300D_coherent_subtract",
+        action="store_true",
+        default=False,
+        help="Experimental alternative to --V4300D_notch_filter: coherently "
+        "estimate and time-domain subtract the ~8.5mhz LD-V4300D spur (also "
+        "removes its spectral-leakage skirts). PAL only.",
+    )
+
+    parser.add_argument(
+        "--V4300D_no_defer",
+        dest="V4300D_no_defer",
+        action="store_true",
+        default=False,
+        help="With --V4300D_coherent_subtract: apply the spur filter from the "
+        "first block instead of deferring until sync acquisition.  Keeps "
+        "parallel demod (deferring forces serial), but can break cold-start "
+        "sync on captures with a flat lead-in.",
+    )
+
+    parser.add_argument(
         "--deemp_low",
         metavar="deemp_low",
         type=float,
@@ -435,6 +456,16 @@ def main(args=None):
 
     if vid_standard == "PAL" and args.V4300D_notch_filter:
         extra_options["PAL_V4300D_NotchFilter"] = True
+
+    if vid_standard == "PAL" and args.V4300D_coherent_subtract:
+        extra_options["PAL_V4300D_CoherentSubtract"] = True
+        # Defer the spur filter until sync is acquired: the filter breaks
+        # cold-start sync in the flat lead-in on some captures, so decode the
+        # lead-in plain and switch the filter on for the program content.
+        # --V4300D_no_defer opts out (keeps parallel demod; deferring forces
+        # serial because the acquired-event can't cross spawn workers).
+        if not args.V4300D_no_defer:
+            extra_options["V4300_defer"] = True
 
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")

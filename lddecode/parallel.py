@@ -500,11 +500,16 @@ class DemodBlockCache:
         whole-field decode jobs (FieldJobEngine) on the same pool.
         """
         rf_opts = dict(rf_opts)
-        # drop values demod does not need and that may not pickle
+        # Drop values demod does not need and that may not pickle.
+        # _acquired_event is a threading.Event (unpicklable): defer mode
+        # forces serial demod so this path is never taken while deferring,
+        # but if it ever were, a worker must not receive the event - it
+        # would see defer=True with event=None and deterministically keep
+        # the spur filter off.
         rf_opts["extra_options"] = {
             k: v
             for k, v in rf_opts.get("extra_options", {}).items()
-            if k not in ("pipe_RF_TBC",)
+            if k not in ("pipe_RF_TBC", "_acquired_event")
         }
 
         self._procs = ProcessPoolExecutor(
