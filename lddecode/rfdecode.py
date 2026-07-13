@@ -10,6 +10,7 @@ import types
 import numpy as np
 import scipy.fft as npfft
 import scipy.interpolate as spi
+import scipy.ndimage as ndi
 import scipy.signal as sps
 from importlib.resources import files
 
@@ -143,6 +144,21 @@ class RFDecode:
         # from the decode loop; the decoder forces serial demod when this is set.
         self.v4300_defer = extra_options.get("V4300_defer", False)
         self._acquired_event = extra_options.get("_acquired_event", None)
+        # Cancel the capture/player multi-path reflection ("ghost").  Opt-in via
+        # --rf_echo_cancel (auto-detect from the RF cepstrum, re-estimated across
+        # the disc) or --rf_echo (manual taps); applies the correction only when
+        # it measurably reduces the echo - see _echo_update()/_echo_reestimate().
+        # Each worker owns its own RFDecode (hence its own echo state).
+        self.rf_echo_cancel = extra_options.get("rf_echo_cancel", False)
+        self._echo_inv = None
+        self._echo_accum = None      # spur-free RF cepstrum (set at re-estimate)
+        self._echo_magacc = None     # magnitude-spectrum EMA
+        self._echo_n = 0
+        self._echo_manual = bool(
+            isinstance(self.rf_echo_cancel, (list, tuple)) and len(self.rf_echo_cancel)
+        )
+        if self._echo_manual:
+            self._echo_inv = self._build_echo_inverse(self.rf_echo_cancel)
         # Time-base-correct the EFM waveform onto the video line time-base before
         # the PLL: removes wow/flutter drift and - crucially for multi-disc
         # stacking - aligns the EFM of different captures of the same disc to a
@@ -808,6 +824,187 @@ class RFDecode:
 
         return X
 
+    def _build_echo_inverse(self, taps):
+        """Stable exact inverse 1/H of the echo channel h = 1 + sum a_i z^-d_i
+        (taps are small, so |H| stays bounded away from zero)."""
+        h = np.zeros(self.blocklen)
+        h[0] = 1.0
+        for d, a in taps:
+            d = int(round(d))
+            if 0 < d < self.blocklen:
+                h[d] += a
+        return 1.0 / npfft.fft(h)
+
+    # Echo auto-detection tuning (opt-in via --rf_echo_cancel).
+    _ECHO_WARMUP = 30      # blocks observed before the first estimate
+    _ECHO_REEST = 30       # blocks between re-estimates (continuous adaptation)
+    _ECHO_TAU = 30         # magnitude-EMA memory, in blocks
+    _ECHO_QMIN = 10        # min quefrency searched
+    _ECHO_QMAX = 400       # max quefrency searched
+    _ECHO_SPUR_WIN = 129   # bins; wide median window for spur baseline
+    _ECHO_SPUR_K = 5.0     # spur if |mag| > K * wide-median baseline
+    _ECHO_BASE_WIN = 21    # quefrency window for the cepstral envelope baseline
+    _ECHO_PEAK_K = 4.0     # echo peak must exceed K * local cepstral baseline
+    _ECHO_FLOOR_K = 6.0    # ...and K * the deep-quefrency noise floor
+    _ECHO_MIN_AMP = 0.06   # don't correct echoes fainter than this (ambiguous +
+                           # 1/H would boost noise for little visible gain)
+
+    def _echo_despur(self, magacc):
+        """Replace narrow spectral spurs (e.g. the LD-V4300D ~8.5 MHz tone) with
+        the local baseline so they do not contaminate the cepstrum.  A spur is a
+        bin standing far above a *wide* local median (which follows the broad
+        video-FM envelope but not a narrow tone); contiguous spur bins are
+        linearly interpolated across using their clean neighbours.  Operates on
+        the positive half and mirrors, keeping the magnitude even."""
+        m = magacc.copy()
+        half = len(m) // 2
+        pos = m[: half + 1].copy()
+        base = ndi.median_filter(pos, size=self._ECHO_SPUR_WIN, mode="nearest")
+        spur = pos > self._ECHO_SPUR_K * base
+        if spur.any():
+            idx = np.where(spur)[0]
+            # split into contiguous runs and interpolate each across clean edges
+            for run in np.split(idx, np.where(np.diff(idx) > 1)[0] + 1):
+                lo, hi = run[0], run[-1]
+                a = pos[lo - 1] if lo > 0 else pos[hi + 1]
+                b = pos[hi + 1] if hi + 1 <= half else pos[lo - 1]
+                pos[lo : hi + 1] = np.interp(np.arange(lo, hi + 1), [lo - 1, hi + 1], [a, b])
+        m[: half + 1] = pos
+        m[half + 1 :] = pos[1:half][::-1]
+        return m
+
+    def _estimate_echo(self, maxechoes=3):
+        """Detect echo delays in the spur-free RF cepstrum.  A real echo is an
+        *isolated* spike: it must stand above both the deep-quefrency noise floor
+        and a local median baseline (the _ECHO_BASE_WIN envelope tracker), so the
+        smooth de-emphasis/band-pass envelope - which decays gradually and so
+        sits right on its own local baseline - is not picked up as an echo.  The
+        cepstrum value at a peak is a first-order amplitude (refined later)."""
+        cep = self._echo_accum
+        if cep is None:
+            return []
+        qmin, qmax = self._ECHO_QMIN, self._ECHO_QMAX
+        ac = np.abs(cep)
+        floor = np.median(ac[80:qmax])
+        if floor <= 0:
+            return []
+        base = ndi.median_filter(ac[: qmax + 2], size=self._ECHO_BASE_WIN, mode="nearest")
+        peaks = [(k, float(cep[k])) for k in range(qmin, qmax)
+                 if ac[k] > self._ECHO_FLOOR_K * floor
+                 and ac[k] > self._ECHO_PEAK_K * base[k]
+                 and ac[k] >= ac[k - 1] and ac[k] >= ac[k + 1]]
+        peaks.sort(key=lambda t: -abs(t[1]))
+        return peaks[:maxechoes]
+
+    def _refine_taps(self, cep, taps, iters=5):
+        """Refine the raw cepstral tap amplitudes with a few homomorphic Newton
+        steps.  A real echo of amplitude A registers in the real cepstrum as
+        only A/2 at its delay (the cosine of the log-spectrum ripple splits to
+        +/-d), plus O(A^2) harmonic/cross terms from the whole echo set, so a
+        raw cepstral read-out under-corrects ~2x.  Instead we match the *model*
+        cepstrum to the measurement at each tap delay; the Newton step converges
+        geometrically to the true tap amplitudes (a few iterations -> ~1%)."""
+        if not taps:
+            return taps
+        blocklen = self.blocklen
+        refined = [(int(round(d)), float(a)) for d, a in taps
+                   if 0 < int(round(d)) < blocklen]
+        for _ in range(iters):
+            h = np.zeros(blocklen)
+            h[0] = 1.0
+            for d, a in refined:
+                h[d] += a
+            c_model = npfft.ifft(np.log(np.abs(npfft.fft(h)) + 1e-12)).real
+            refined = [(d, a + (cep[d] - c_model[d])) for d, a in refined]
+        return refined
+
+    def _verify_and_build(self, taps, local_margin=0.4, hmin=0.25):
+        """Build the echo inverse only if it is worth applying:
+
+        * the strongest tap must be at least _ECHO_MIN_AMP - fainter "echoes"
+          are ambiguous (indistinguishable from disc/player structure) and 1/H
+          would boost noise for little visible gain, so they are left alone;
+        * 1/H must stay well-conditioned (min|H| >= hmin) so it cannot blow up
+          noise on a spurious detection;
+        * the model must cancel the cepstral energy *at and around the tap
+          delays* (and their 2nd harmonics) by at least `local_margin`.  This is
+          measured locally, not over the whole band, because the smooth
+          de-emphasis/band-pass envelope dominates the low-quefrency band energy
+          and would otherwise swamp a genuine echo's contribution.
+
+        Returns the inverse FFT filter, or None to leave the signal untouched
+        (the auto path then acts as a no-op)."""
+        if not taps:
+            return None
+        if max(abs(a) for _, a in taps) < self._ECHO_MIN_AMP:
+            return None
+        blocklen = self.blocklen
+        cep = self._echo_accum
+        h = np.zeros(blocklen)
+        h[0] = 1.0
+        for d, a in taps:
+            d = int(round(d))
+            if 0 < d < blocklen:
+                h[d] += a
+        Hf = npfft.fft(h)
+        if np.min(np.abs(Hf)) < hmin:
+            return None
+        # cepstrum(1/H) = -cepstrum(H), so the corrected cepstrum is cep - c_model.
+        c_model = npfft.ifft(np.log(np.abs(Hf) + 1e-12)).real
+        idx = set()
+        for d, _ in taps:
+            d = int(round(d))
+            for q in (d, 2 * d):
+                for off in range(-2, 3):
+                    k = q + off
+                    if self._ECHO_QMIN <= k < self._ECHO_QMAX:
+                        idx.add(k)
+        idx = np.fromiter(idx, dtype=int)
+        e_before = float(np.sum(cep[idx] ** 2))
+        e_after = float(np.sum((cep[idx] - c_model[idx]) ** 2))
+        if e_before <= 0 or e_after >= (1.0 - local_margin) * e_before:
+            return None
+        return 1.0 / Hf
+
+    def _echo_reestimate(self):
+        """Despur the magnitude EMA, take its cepstrum, detect + refine echo taps
+        and (re)build the inverse - or clear it to a no-op when nothing clean is
+        found.  Run on the warm-up / re-estimate cadence, not per block."""
+        mag = self._echo_despur(self._echo_magacc)
+        self._echo_accum = npfft.ifft(np.log(mag + 1e-9)).real
+        taps = self._refine_taps(self._echo_accum, self._estimate_echo())
+        was_off = self._echo_inv is None
+        self._echo_inv = self._verify_and_build(taps)
+        if was_off and self._echo_inv is not None:
+            # Auto mode runs serial in the main process, so logging is safe
+            # here (addition over the dp11 original, which corrects silently).
+            from . import utils_logging as logs
+            if logs.logger is not None:
+                logs.logger.info(
+                    "RF echo detected - cancelling taps %s",
+                    ", ".join(f"{d}:{a:.3f}" for d, a in taps),
+                )
+
+    def _echo_update(self, indata_fft):
+        """Observe one block (auto mode), keeping the magnitude spectrum as an
+        exponential moving average (memory _ECHO_TAU blocks) so the estimate
+        tracks slow echo drift across the disc.  Always called on the *raw*
+        spectrum before the inverse is applied, so it never feeds back on
+        itself.  The expensive cepstrum/detection only runs on the re-estimate
+        cadence in _echo_reestimate(), not every block."""
+        m = np.abs(indata_fft)
+        self._echo_n += 1
+        if self._echo_magacc is None:
+            self._echo_magacc = m.astype(np.float64)
+        else:
+            w = 1.0 / min(self._echo_n, self._ECHO_TAU)
+            self._echo_magacc *= (1.0 - w)
+            self._echo_magacc += w * m
+
+        n = self._echo_n
+        if n >= self._ECHO_WARMUP and (n == self._ECHO_WARMUP or (n % self._ECHO_REEST) == 0):
+            self._echo_reestimate()
+
     def pal_audio_carriers_present(self, indata_fft, threshold=5.0):
         """Detect whether the PAL analog audio FM carriers are present in this
         block, by comparing the mean RF power around each carrier (+-40 kHz,
@@ -858,6 +1055,12 @@ class RFDecode:
             indata_fft = full
         else:
             raise Exception("demodblock called without raw or FFT data")
+
+        if self.rf_echo_cancel:
+            if not self._echo_manual:
+                self._echo_update(indata_fft)
+            if self._echo_inv is not None:
+                indata_fft = indata_fft * self._echo_inv
 
         rotdelay = 0
         if getattr(self, "delays", None) is not None and "video_rot" in self.delays:

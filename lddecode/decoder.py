@@ -306,8 +306,18 @@ class LDdecode:
         # commit after it), and spawn workers can never see the event at all.
         # Force fully serial demod when deferring.
         self._v4300_defer = bool(extra_options.get("V4300_defer", False))
+        # Auto RF echo cancellation keeps a per-block magnitude EMA inside
+        # RFDecode, so its demod is stateful (not a pure function of block
+        # index) and is incompatible with the out-of-order block cache and the
+        # worker-process field jobs, both of which assume a pure demod.  Force
+        # serial demod when it is active.  Manual echo taps are a fixed inverse
+        # filter (pure), so they keep full parallelism.
+        self._auto_echo = bool(
+            getattr(self.rf, "rf_echo_cancel", False)
+            and not getattr(self.rf, "_echo_manual", False)
+        )
         self.block_cache = None
-        if self.numthreads > 1 and not self._v4300_defer:
+        if self.numthreads > 1 and not self._v4300_defer and not self._auto_echo:
             from .parallel import DemodBlockCache
 
             self.block_cache = DemodBlockCache(
@@ -327,6 +337,7 @@ class LDdecode:
             and not self.output_cvbs
             and not self.do_rftbc
             and not self._v4300_defer
+            and not self._auto_echo
         )
         self._job_engine = None
         self._job_eof = False
