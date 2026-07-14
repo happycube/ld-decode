@@ -181,10 +181,26 @@ AC3_DPLL_spec = [
 # DPLL counter is c_counter_bits wide; it wraps once per symbol.
 _DPLL_COUNTER_BITS = 10
 _DPLL_ERROR_SUM_BITS = 15
-# Loop filter gains; these yield approximately a natural frequency of
-# 2060 Hz and damping factor 0.72 at the nominal symbol rate.
-_DPLL_G1 = 1 / 16.0
-_DPLL_G2 = 1 / 512.0
+
+# The symbol reclocking loop filter is designed as a second-order loop
+# with natural frequency _DPLL_OMEGA and damping factor _DPLL_ZETA,
+# updated at the symbol rate.
+_DPLL_OMEGA = 2 * np.pi * 1800  # undamped natural frequency [rad/s]
+_DPLL_ZETA = 0.6  # damping factor
+_DPLL_TS = 1.0 / SYMBOL_RATE
+# Combined phase detector and VCO gain; the detector's average gain is
+# well below unity since only cycles with exactly one symbol transition
+# update the loop.
+_DPLL_GPD_GVCO = 0.3
+# Proportional and integral gains
+_DPLL_G1 = (1 - np.exp(-2 * _DPLL_ZETA * _DPLL_OMEGA * _DPLL_TS)) / _DPLL_GPD_GVCO
+_DPLL_G2 = (
+    1
+    + np.exp(-2 * _DPLL_OMEGA * _DPLL_ZETA * _DPLL_TS)
+    - 2
+    * np.exp(-_DPLL_OMEGA * _DPLL_ZETA * _DPLL_TS)
+    * np.cos(_DPLL_OMEGA * _DPLL_TS * np.sqrt(1 - _DPLL_ZETA**2))
+) / _DPLL_GPD_GVCO
 
 
 @jitclass(AC3_DPLL_spec)
