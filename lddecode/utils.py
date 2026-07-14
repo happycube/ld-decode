@@ -290,11 +290,11 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     inbuf = infile.read(readlen * samplelength)
 
     if sampletype == 4:
-        indata = np.fromstring(inbuf, "float32", len(inbuf) // 4) * 32768
+        indata = np.frombuffer(inbuf, "float32", len(inbuf) // 4) * 32768
     elif sampletype == 3:
         indata = np.frombuffer(inbuf, "uint16", len(inbuf) // 2)
     elif sampletype == 2:
-        indata = np.fromstring(inbuf, "int16", len(inbuf) // 2)
+        indata = np.frombuffer(inbuf, "int16", len(inbuf) // 2)
     else:
         # NOTE(oln): Can probably use frombuffer for other variants too but
         # didn't have any samples to test with.
@@ -334,7 +334,7 @@ def load_packed_data_3_32(infile, sample, readlen):
     needed = int(np.ceil(readlen * 3 / 4) * 4) + 4
 
     inbuf = infile.read(needed)
-    indata = np.fromstring(inbuf, "uint32", len(inbuf) // 4)
+    indata = np.frombuffer(inbuf, "uint32", len(inbuf) // 4)
 
     if len(indata) < needed:
         return None
