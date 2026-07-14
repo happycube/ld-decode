@@ -3571,7 +3571,6 @@ class LDdecode:
         self.outfile_ac3sym = None
         self.ac3_demodulator = None
         self.ac3_processed_samples = 0
-        self.ac3_sym_offset = 0
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
 
@@ -3760,7 +3759,7 @@ class LDdecode:
                 ntsc_is_video_id_data_valid INTEGER CHECK (ntsc_is_video_id_data_valid IN (0,1)),
                 ntsc_video_id_data INTEGER,
                 ntsc_white_flag INTEGER CHECK (ntsc_white_flag IN (0,1)),
-                ac3_sym_offset INTEGER,
+                ac3_symbols INTEGER,
                 PRIMARY KEY (capture_id, field_id)
             );
 
@@ -3898,9 +3897,6 @@ class LDdecode:
 
         return m_synchz, m_ire0hz, m_ire100hz
 
-    # Approximate symbol count per NTSC field: 288 kbaud / 59.94 fields/s ≈ 4800.
-    _AC3_SYMBOLS_PER_FIELD = 4800
-
     def AC3demodulate(self, f):
         # f.rawdata covers the file sample range [block_start, block_start
         # + len(raw)); successive fields overlap, so skip what has already
@@ -3910,18 +3906,14 @@ class LDdecode:
         new_start = max(0, self.ac3_processed_samples - block_start)
         self.ac3_processed_samples = block_start + len(raw)
 
-        field_sym_offset = self.ac3_sym_offset
-        self.ac3_sym_offset += self._AC3_SYMBOLS_PER_FIELD
+        if new_start >= len(raw):
+            return 0
 
-        if new_start < len(raw):
-            symbols = self.ac3_demodulator.demodulate_to_symbols(
-                raw[new_start:].astype(np.float32)
-            )
-            self.outfile_ac3sym.write(symbols)
-            # Snap estimate to actual file position to prevent drift
-            self.ac3_sym_offset = self.outfile_ac3sym.tell()
-
-        return field_sym_offset
+        symbols = self.ac3_demodulator.demodulate_to_symbols(
+            raw[new_start:].astype(np.float32)
+        )
+        self.outfile_ac3sym.write(symbols)
+        return len(symbols)
 
     def writeout(self, dataset):
         f, fi, picture, audio, efm = dataset
@@ -3935,10 +3927,11 @@ class LDdecode:
         fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
+        # Per-field symbol count, analogous to efmTValues
         if self.outfile_ac3sym is not None:
-            fi["ac3SymOffset"] = self.AC3demodulate(f)
+            fi["ac3Symbols"] = self.AC3demodulate(f)
         else:
-            fi["ac3SymOffset"] = 0
+            fi["ac3Symbols"] = 0
 
         self.fieldinfo.append(fi)
 
@@ -3956,11 +3949,11 @@ class LDdecode:
             INSERT INTO field_record (
                 capture_id, field_id, is_first_field, sync_conf, disk_loc,
                 file_loc, median_burst_ire, field_phase_id, decode_faults,
-                audio_samples, efm_t_values, ac3_sym_offset, pad
+                audio_samples, efm_t_values, ac3_symbols, pad
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'],
                 fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults,
-                fi['audioSamples'], fi['efmTValues'], fi['ac3SymOffset'], 0))
+                fi['audioSamples'], fi['efmTValues'], fi['ac3Symbols'], 0))
 
         if vitsMetrics := fi.get('vitsMetrics'):
             w_snr  = vitsMetrics.get('wSNR', 0)
