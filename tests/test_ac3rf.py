@@ -8,7 +8,7 @@
 # The end-to-end test additionally synthesizes a complete NTSC LD signal
 # carrying that subcarrier and runs ld-decode --AC3 over it, covering the
 # demodulator's integration into the decoder (per-field demodulation,
-# .ac3sym output and the symbol offsets recorded in the metadata).
+# .ac3sym output and the per-field symbol counts recorded in the metadata).
 
 import json
 import os
