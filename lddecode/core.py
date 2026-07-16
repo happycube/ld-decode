@@ -4030,6 +4030,9 @@ class LDdecode:
 
         rv['field'] = None
         rv['offset'] = None
+        # Always present so readfield() can test it without a .get() dance; see
+        # the handler around lpf_wrapper() below for why it exists.
+        rv['exception'] = None
 
         readloc = int(start - self.rf.blockcut)
         if readloc < 0:
@@ -4080,7 +4083,16 @@ class LDdecode:
         except (KeyboardInterrupt, SystemExit):
             raise
         except Exception as e:
-            raise e
+            # When decodefield() runs on a worker thread (see readfield), raising
+            # only unwinds that thread -- the exception never reaches the main one.
+            # rv is then left holding the field/offset None sentinels set above,
+            # which is exactly what a genuine end-of-input returns (see the
+            # `rawdecode is None` early return), so readfield() cannot tell a dead
+            # worker from EOF and the decode ends early, successfully, with a
+            # truncated .tbc.json. Hand the exception back on rv so readfield() can
+            # re-raise it on the main thread.
+            rv['exception'] = e
+            raise
 
         rv['field'] = f
         rv['offset'] = f.nextfieldoffset - (readloc - rawdecode["startloc"])
@@ -4146,6 +4158,14 @@ class LDdecode:
                 # In non-threaded mode self.threadreturn was filled earlier...
                 # ... but if the first call, this is empty
                 if len(self.threadreturn) > 0:
+                    # A decode thread that died left field/offset as None, which is
+                    # indistinguishable from the EOF sentinel and would be mistaken
+                    # for one below ("if f is None and offset is None"), ending the
+                    # decode early with a zero exit code. Re-raise on the main thread
+                    # instead, where main()'s handler can report it and exit non-zero.
+                    if self.threadreturn['exception'] is not None:
+                        raise self.threadreturn['exception']
+
                     f, offset = self.threadreturn['field'], self.threadreturn['offset']
 
             # Start new thread
