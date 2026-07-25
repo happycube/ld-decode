@@ -82,7 +82,7 @@ CREATE TABLE cvbs_file (
     preset                      TEXT    NOT NULL
         CHECK (preset IN ('NTSC', 'PAL', 'PAL_M')),
     sample_encoding_preset      TEXT    NOT NULL
-        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', 'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC', 'CVBS_S16_FSC')),
+        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', 'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC', 'CVBS_S16_4FSC')),
     signal_state_preset         TEXT    NOT NULL
         CHECK (signal_state_preset IN (
             'STANDARD_TBC_LOCKED',
