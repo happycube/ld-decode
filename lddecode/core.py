@@ -29,7 +29,7 @@ from .decoder import LDdecode  # noqa: F401
 # Historical wildcard surface: core.py used to import these from utils and
 # they leaked through `from lddecode.core import *`.
 from .utils import (  # noqa: F401
-    FieldInfo, Pulse, StridedCollector, _dropout_unflag_sync, ac3_pipe,
+    FieldInfo, Pulse, StridedCollector, _dropout_unflag_sync,
     angular_mean_helper, build_hilbert, calczc, clb_findbursts, compute_mtf,
     dsa_rescale_and_clip, emphasis_iir, fft_determine_slices, fft_do_slice,
     filtfft, findpulses, gen_bpf_supergauss, genwave, hz_to_output_array,

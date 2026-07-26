@@ -10,7 +10,7 @@ import traceback  # noqa: F401  (historically re-exported; core imported it from
 from .profiling import profile  # noqa: F401
 
 from .fileio import (  # noqa: F401
-    LoadFFmpeg, LoadLDF, ac3_pipe, ffmpeg_pipe, ldf_pipe,
+    LoadFFmpeg, LoadLDF, ffmpeg_pipe, ldf_pipe,
     load_packed_data_3_32, load_packed_data_4_40, load_unpacked_data,
     load_unpacked_data_float32, load_unpacked_data_s16, load_unpacked_data_u16,
     load_unpacked_data_u8, make_loader, parse_frequency, unpack_data_4_40,

@@ -15,15 +15,16 @@ from textwrap import dedent
 
 import numpy as np
 
+from . import ac3rf
 from . import efm_pll
 from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
 from .field import Field, FieldAnchor, FieldNTSC, FieldPAL
-from .fileio import ac3_pipe, ldf_pipe
+from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import detect_levels
-from .dsp import FieldInfo, StridedCollector, nb_abs, nb_median, roundfloat
+from .dsp import FieldInfo, nb_abs, nb_median, roundfloat
 
 
 class LDdecode:
@@ -108,7 +109,9 @@ class LDdecode:
         self.outfile_efm = None
         self.outfile_efmc = None
         self.outfile_pre_efm = None
-        self.outfile_ac3 = None
+        self.outfile_ac3sym = None
+        self.ac3_demodulator = None
+        self.ac3_processed_samples = 0
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
 
@@ -179,10 +182,6 @@ class LDdecode:
             if self.write_rf_tbc:
                 self.ffmpeg_rftbc, self.outfile_rftbc = ldf_pipe(fname_out + ".tbc.ldf")
                 self.do_rftbc = True
-            if self.ac3:
-                self.AC3Collector = StridedCollector(cut_begin=1024, cut_end=0)
-                self.ac3_processes, self.outfile_ac3 = ac3_pipe(fname_out + ".ac3")
-                self.do_rftbc = True
 
             if self.output_cvbs:
                 # CVBS mode replaces the .tbc video output and its sqlite
@@ -230,6 +229,12 @@ class LDdecode:
         }
 
         self.rf = RFDecode(**self.rf_opts)
+
+        if fname_out is not None and self.ac3:
+            self.ac3_demodulator = ac3rf.Ac3RfDemodulator(
+                self.rf.freq_hz, logger=_logger
+            )
+            self.outfile_ac3sym = open(fname_out + ".ac3sym", "wb")
 
         # Steady-state reads cover one field plus margin.  Each field is
         # anchored to the previous field's end, so line0 lands only ~20-35 lines
@@ -336,6 +341,7 @@ class LDdecode:
             and self.process_demod
             and not self.output_cvbs
             and not self.do_rftbc
+            and not self.ac3
             and not self._v4300_defer
             and not self._auto_echo
         )
@@ -430,7 +436,7 @@ class LDdecode:
             "outfile_efmc",
             "outfile_pre_efm",
             "outfile_rftbc",
-            "outfile_ac3",
+            "outfile_ac3sym",
         ]:
             setattr(self, outfiles, None)
 
@@ -530,6 +536,7 @@ class LDdecode:
                 ntsc_is_video_id_data_valid INTEGER CHECK (ntsc_is_video_id_data_valid IN (0,1)),
                 ntsc_video_id_data INTEGER,
                 ntsc_white_flag INTEGER CHECK (ntsc_white_flag IN (0,1)),
+                ac3_symbols INTEGER,
                 PRIMARY KEY (capture_id, field_id)
             );
 
@@ -719,19 +726,25 @@ class LDdecode:
 
         return detect_levels(self.rf, field, self.output_lines)
 
-    def AC3filter(self, rftbc):
-        self.AC3Collector.add(rftbc)
+    def AC3demodulate(self, f):
+        # f.rawdata covers the file sample range [block_start, block_start
+        # + len(raw)); successive fields overlap, so skip what has already
+        # been fed to the demodulator.  (rawdata actually starts blockcut
+        # samples past the block-aligned readloc, but that offset is the
+        # same for every field, so it cancels in the overlap arithmetic.)
+        raw = f.rawdata
+        block_start = (f.readloc // self.demod_blocksize) * self.demod_blocksize
+        new_start = max(0, self.ac3_processed_samples - block_start)
+        self.ac3_processed_samples = block_start + len(raw)
 
-        blk = self.AC3Collector.get_block()
-        while blk is not None:
-            fftdata = np.fft.fft(blk)
-            filtdata = np.fft.ifft(fftdata * self.rf.Filters['AC3']).real
-            odata = self.AC3Collector.cut(filtdata)
-            odata = np.clip(odata / 64, -100, 100)
+        if new_start >= len(raw):
+            return 0
 
-            self.outfile_ac3.write(np.int8(odata))
-
-            blk = self.AC3Collector.get_block()
+        symbols = self.ac3_demodulator.demodulate_to_symbols(
+            raw[new_start:].astype(np.float32)
+        )
+        self.outfile_ac3sym.write(symbols)
+        return len(symbols)
 
     def _process_efm(self, efm):
         """Run one field's EFM slice through the PLL and write it out.
@@ -764,6 +777,12 @@ class LDdecode:
         fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
+        # Per-field symbol count, analogous to efmTValues
+        if self.outfile_ac3sym is not None:
+            fi["ac3Symbols"] = self.AC3demodulate(f)
+        else:
+            fi["ac3Symbols"] = 0
+
         self.fieldinfo.append(fi)
 
         if self.dbconn is None:
@@ -793,11 +812,11 @@ class LDdecode:
             INSERT INTO field_record (
                 capture_id, field_id, is_first_field, sync_conf, disk_loc,
                 file_loc, median_burst_ire, field_phase_id, decode_faults,
-                audio_samples, efm_t_values, pad
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                audio_samples, efm_t_values, ac3_symbols, pad
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (c_id, f_id, int(fi['isFirstField']), fi['syncConf'], fi['diskLoc'],
                 fi['fileLoc'], fi['medianBurstIRE'], fi['fieldPhaseID'], decodeFaults,
-                fi['audioSamples'], fi['efmTValues'], 0))
+                fi['audioSamples'], fi['efmTValues'], fi['ac3Symbols'], 0))
 
         if vitsMetrics := fi.get('vitsMetrics'):
             w_snr  = vitsMetrics.get('wSNR', 0)
@@ -870,9 +889,6 @@ class LDdecode:
 
             if self.outfile_rftbc is not None:
                 self.outfile_rftbc.write(rftbc)
-
-            if self.outfile_ac3 is not None:
-                self.AC3filter(rftbc)
 
             if self.pipe_rftbc is not None:
                 self.pipe_rftbc.send(rftbc)

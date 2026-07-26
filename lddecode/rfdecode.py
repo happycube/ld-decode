@@ -253,26 +253,6 @@ class RFDecode:
         if self.decode_digital_audio:
             self.computeefmfilter()
 
-        if self.SysParams['AC3']:
-            ac3_center = self.SysParams['audio_rfreq_AC3']
-            ac3_half_bw = 144000  # 288000 * 0.5
-
-            ac3_range = [(ac3_center - ac3_half_bw) / self.freq_hz_half,
-                         (ac3_center + ac3_half_bw) / self.freq_hz_half]
-
-            # This analog audio bandpass filter is an approximation of
-            # http://sim.okawa-denshi.jp/en/RLCtool.php with resistor 2200ohm,
-            # inductor 180uH, and cap 27pF (taken from Pioneer service manuals)
-            # However, the above didn't work, and we wound up with two IIR filters
-            # self.Filters['AC3_iir'] = sps.butter(5, [1.48/20, 3.45/20], btype='bandpass')
-            self.Filters['AC3_bp1'] = sps.butter(3, [(2.88-.5)/20, (2.88+.5)/20], btype='bandpass')
-            self.Filters['AC3_bp2'] = sps.butter(3, ac3_range, btype='bandpass')
-
-            filt1 = filtfft(self.Filters['AC3_bp1'], self.blocklen)
-            filt2 = filtfft(self.Filters['AC3_bp2'], self.blocklen)
-
-            self.Filters['AC3'] = filt1 * filt2
-
         self.computedelays()
 
 
@@ -1180,7 +1160,8 @@ class RFDecode:
                 efm_out = efm_out[self.blockcut : -self.blockcut_end]
             rv["efm"] = np.int16(np.clip(efm_out.real, -32768, 32767))
 
-        # NOTE: ac3 audio is filtered after RF TBC
+        # NOTE: AC3 RF is demodulated from the raw input samples at write time
+        # (see LDdecode.AC3demodulate), not from the demod outputs here.
         if self.decode_analog_audio:
             stage1_out = []
             for channel in ['left', 'right']:
