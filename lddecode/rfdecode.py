@@ -1357,9 +1357,24 @@ class RFDecode:
         rf.delays["video_white"] = (
             calczc(vdemod, 3000, rf.iretohz(50), count=512) - 3000
         )
-        rf.delays["video_rot"] = int(
-            np.round(calczc(vdemod, 6000, rf.iretohz(-10), count=512) - 6000)
-        )
+        # A rot (the 5 zeroed samples above) demodulates as a phase glitch
+        # whose shape depends chaotically on the exact carrier phases at
+        # the cut - i.e. on the calibrated decode parameters.  It can
+        # swing far below baseline, barely below it, or mostly ABOVE it:
+        # one disc's post-AGC snapshot (hz_ire +1.5%, vsync_ire -37.59)
+        # produced a dip bottoming at 7.99 MHz - above the fixed -10 IRE
+        # threshold this code used to look for, so calczc() found no
+        # crossing and worker spawns crashed - while spiking up to
+        # 10.9 MHz.  Detect the glitch onset against its own amplitude
+        # instead: the first sample deviating from the local baseline by
+        # more than 20% of the peak deviation, in either direction.  (20%
+        # sits early on the glitch's rise: across AGC-range parameter
+        # sweeps the onset stays within a few samples, where a half-peak
+        # threshold latches onto whichever ringing lobe happens to
+        # dominate and jitters by 10+.)
+        rot_base = np.median(vdemod[5900:5990])
+        rot_dev = np.abs(vdemod[6000:6512] - rot_base)
+        rf.delays["video_rot"] = int(np.argmax(rot_dev > 0.2 * rot_dev.max()))
 
         rf.limits = {}
         rf.limits["sync"] = (
