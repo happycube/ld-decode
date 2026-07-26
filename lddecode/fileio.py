@@ -100,7 +100,8 @@ def make_loader(filename, inputfreq=None):
         return load_packed_data_3_32
     elif filename.endswith(".rf"):
         return load_unpacked_data_float32
-    elif filename.endswith(".s16"):
+    elif filename.endswith(".s16") or filename.endswith(".raw"):
+        # .raw is signed 16-bit, same as the resampling path above treats it
         return load_unpacked_data_s16
     elif filename.endswith(".r16") or filename.endswith(".u16"):
         return load_unpacked_data_u16

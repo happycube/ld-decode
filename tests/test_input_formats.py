@@ -95,6 +95,8 @@ def conversions(tmp_path_factory):
         files[ext] = (path, expected)
 
     add("s16", src.astype("<i2").tobytes(), src)
+    # .raw is the same signed 16-bit payload under another extension
+    add("raw", src.astype("<i2").tobytes(), src)
     # DdD-style unsigned 16-bit (offset binary)
     u16 = (src.astype(np.int32) + 32768).astype("<u2")
     add("u16", u16.tobytes(), u16)
@@ -110,7 +112,7 @@ def conversions(tmp_path_factory):
     return files
 
 
-@pytest.mark.parametrize("ext", ["s16", "u16", "u8", "rf", "lds", "r30"])
+@pytest.mark.parametrize("ext", ["s16", "raw", "u16", "u8", "rf", "lds", "r30"])
 def test_loader_roundtrip(conversions, ext):
     path, expected = conversions[ext]
     loader = make_loader(str(path))
