@@ -534,7 +534,109 @@ one-step fit. With the faster slow-attack the attack-comp choice barely matters
   come from our shared CX-14 static curve). CBS also gave CX-20 a deeper NR /
   lower knee; that static-curve difference is **not** modelled and would need a
   CX-20 disc with an EFM twin (or an announced absolute-level test) to anchor.
-  Open.
+  Open. *(Resolved in §8d — the ggv1001 source spec supplied the absolute
+  ground truth.)*
+
+## 8d. ggv1001 source spec → absolute anchor + knee + down-step (2026-07-26)
+
+The ggv-cx test disc's **source specification** (`testdata/cx/ggv1001-cx.png`,
+the CX encoder's *input* signal) turned the reference from a ballistics-only
+constraint (§8c) into an **absolute** one, and exposed a systematic anchor error
+that the §8c ballistic tuning had masked.
+
+**The spec (the digital twin, built from these numbers, not from any decode):**
+1 kHz sine, alternating Level A / Level B, 8 s each, starting at B.
+Level A = 0 dB = 40% modulation; Level B = −20 dB = 4% RMS on the *master*.
+On the compressed disc: **A = ±40%, B = ±12.6%**.  So the ideal decode is a
+clean staircase **A_out = 40% mod (−10.97 dBFS re 100% mod), B_out = 4% mod
+(−30.97 dBFS), 20 dB apart** — an exact digital twin (the on-disc envelope
+supplies only the step *times*).
+
+### The anchor was 8 dB (×2.5) too low
+
+The decoder's main-path gain was `V_c/V_100` (`V_100 = 2.5·V_CR` = 100 kHz).
+That put unity gain at **100% modulation**.  But the CX **rated / unity-gain
+level is the ±40 kHz (40% mod) reference = `V_CR`** (patent Fig 4: the
+expander's 1-to-2 slope pivots on the rated 0 dB level; compressor gain is 1 at
+rated, §col.13).  Measured on ggv-cx the on-disc *input* matched spec exactly
+(A ≈ 2308, B ≈ 740 RMS counts = 40% / 12.6% ✓) but the CX-20 *output* was
+**A = −18.6 / B = −37.9 dBFS** — short of the −11.0 / −31.0 target by exactly
+`V_100/V_CR = 2.5` (7.96 dB).
+
+**Fix:** main-path gain is now `V_c/V_rated` with `V_rated = V_CR` (both encoder
+and decoder, so the round-trip stays null by construction).  Unity gain sits at
+40% mod; 1-to-2 expansion runs below it; **no upper clamp** — above rated the
+compressor genuinely applied 2-to-1 compression (patent col.13: "above 0 db the
+curve continues with a 2-to-1 slope"), so the expander must keep expanding
+there, and the int16 PCM has ~4× headroom over 100% mod (7992 → 32767) to hold
+the up-to-410%-mod result.  (An upper clamp would *under*-expand loud passages
+and was rejected: it drops the he010 slope below 1.0.)  This is a pure constant
+×2.5 on the output, so it shifts the absolute level without touching the
+expansion *slope* — he010 (CX-14) stays at slope ≈ 0.99.
+
+| ggv-cx CX-20 | before | after | target |
+|---|---:|---:|---:|
+| A_out | −18.60 dBFS | **−10.63** | −10.97 |
+| B_out | −37.89 dBFS | **−30.33** | −30.97 |
+| expansion A−B | 19.29 dB | **19.70** | 20.0 (disc-limited ≈19.7) |
+
+(Residual 0.3–0.6 dB is the disc itself: its settled A = 40.8%, B = 13.1%, not
+the nominal 40 / 12.6, capping the achievable expansion at ≈19.7 dB.)
+
+### Variant-specific knee (deeper CX-20 NR)
+
+With the rated anchor at V_CR, the expander **floor gain = knee_ratio** and the
+knee sits `−20·log10(knee_ratio·2.5)`… i.e. the "14"/"20" in the CX names are
+the NR depths.  CBS set the CX-14 compressor threshold at −28 dB re rated and
+CX-20's at −40 dB (Wikipedia); complementary expansion halves those to on-disc
+breaks at −14 dB / −20 dB → knee deviations **8 kHz (0.20·V_CR, floor 0.20,
+14 dB NR) for CX-14** and **4 kHz (0.10·V_CR, floor 0.10, 20 dB NR) for CX-20**.
+`knee_ratio` is now per-variant in `_VARIANT`; CX-14's value is unchanged (its
+old `R_knee = 0.20·V_CR` was already the CX-14 knee — only its *floor gain*
+was mis-scaled by the anchor, 0.08 → correct 0.20).
+
+### The down-step: a 2 s integrator that is too slow for CX-20
+
+The A→B down-step is the user's main complaint.  On disc the compressed signal
+itself dips to ≈4% then **ramps up to 12.6% over ~2 s** (the CBS encoder's own
+gain recovery); a decoder whose control path *matched* that encoder would invert
+it to a flat 4%.  Our CX-20 decode instead **overshot to +2.0 dB and drifted for
+~3 s** — the decoder's gain fell more slowly than the encoder's rose.
+
+A sweep of the down-going ballistics against the twin isolated the cause as the
+**common-capacitor integrator** (patent: "of the order of 2 seconds"), *not* the
+200 ms release path (shortening the release only adds a downward dip).  Dropping
+the integrator to **0.8 s for CX-20** cut the down-step twin error from **0.67 →
+0.12 dB** (peak overshoot +2.0 → +0.8 dB, settled in ~1.4 s vs ~3 s) and *also*
+tightened both up-steps (0.07 → 0.02 dB) and the A−B expansion ratio (→19.70) —
+three independent wins, so it is a real ballistic property of the CX-20 decode
+chip (HA12044), not a one-step fit.  It is shared by encoder and decoder, so the
+round-trip stays null.  **CX-14 keeps the 2 s spec-nominal integrator** (it is
+validated against he010's digital twin, whose slope must not regress, and no
+CX-14 stepped-tone ground truth exists to justify changing it).
+
+### Validation
+
+- **ggv-cx CX-20 twin**: A −10.63 / B −30.33 dBFS (target −10.97 / −30.97);
+  expansion 19.70 dB; down-step mean |err| **0.12 dB**, peak +0.79, up-steps
+  0.02 dB.
+- **he010 CX-14 slope** (analog `he010.pcm` vs digital `he010-digital.wav`,
+  200 Hz–15 kHz short-time RMS regression on active frames): **slope 0.993**
+  (target 1.0 ± 0.05).  Absolute level is *not* gated (unknown analog-capture
+  scale factor; offset −4.3 dB); only the relative slope + round-trip matter on
+  he010.  The anchor fix is a constant scale so the slope is unchanged from the
+  §8b result.
+- **Round-trip null**: CXCompressor→CXExpander on random program, envelope error
+  **0.002 dB (cx14) / 0.0001 dB (cx20)** — control path shared, so exact by
+  construction for both variants.
+- **Static curve (T1)**: re-derived about the 40% anchor — above the knee
+  `u = 2·c + 20log10(2.5)`, below it `u = c + 20log10(knee_ratio)`; matches
+  within 0.25 dB (both variants) away from the spec-literal soft-knee corner.
+- `tests/test_cx.py`: T1/floor tests re-derived for both variants; a new
+  `test_ggv_spec_absolute_levels` runs a synthesized 40% / 4% A-B staircase
+  through the compressor→expander and asserts the spec disc levels (40% / 12.6%)
+  and recovered master levels (40% / 4%) — without depending on `ggv-cx.pcm`.
+  Full suite passes.
 
 ## 9. Reference constants (44.1 kHz, for quick review)
 
@@ -543,8 +645,11 @@ counts/Hz-deviation        = 32767/371081 = 0.0883015     (dsp.py:410)
 |D(1 kHz)| deemp 75µ/5.3µ  = 0.90509                       (rfdecode.py:654; recompute at runtime)
 counts per kHz @1 kHz      = 79.921
 A_100 / A_40 / A_8         = 7992.1 / 3196.8 / 639.4 counts
-knee: output 8 kHz (−21.94 dB), input 0.64 kHz (−43.88 dB); ratio 2:1
-V_100 = 2.5·V_CR;  θ_slow = 0.26·V_CR;  θ_ac = 0.52·V_CR;  gain floor 0.08
-α: fast-att 0.0224215, fast-rel 0.0022650, slow-att 7.5557e−4,
+rated / unity-gain level   = V_rated = V_CR = 40 kHz = 40% mod (expander gain V_c/V_rated)
+V_100 = 2.5·V_CR;  θ_slow = 0.26·V_CR;  θ_ac = 0.52·V_CR (cx14) / 0.70·V_CR (cx20)
+knee (§8d): cx14 8 kHz = 0.20·V_CR, floor gain 0.20 (−14 dB NR)
+            cx20 4 kHz = 0.10·V_CR, floor gain 0.10 (−20 dB NR)
+integrator (§8d): cx14 2 s / cx20 0.8 s;  slow-attack: cx14 30 ms / cx20 12 ms
+α (cx14 @44.1k): fast-att 0.0224215, fast-rel 0.0022650, slow-att 7.5557e−4,
    slow-rel 1.1337e−4, integ 1.1338e−5;  β_ac = 0.9992447;  a_hpf = 0.931239
 ```

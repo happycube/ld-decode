@@ -12,6 +12,10 @@ from lddecode.cx import CXExpander, CXCompressor, counts_per_khz
 
 FS = 44100
 A100 = 100 * counts_per_khz(FS)  # int16 counts at 100% modulation
+A40 = 40 * counts_per_khz(FS)    # int16 counts at the rated 40 kHz / 40% mod
+
+# Variant knee ratios (expander floor = knee_ratio * V_CR); see cx.py _VARIANT.
+_KNEE = {"cx14": 0.20, "cx20": 0.10}
 
 
 def _tone(db, secs, fs=FS):
@@ -26,19 +30,35 @@ def _tone(db, secs, fs=FS):
     return x
 
 
-def _steady_gain_db(db, secs=6.0):
+def _steady_gain_db(db, secs=6.0, variant="cx14"):
     """Expand a held tone; return output level (dB re 100%) over the last second."""
-    y = CXExpander(fs=FS).process(_tone(db, secs)).astype(np.float64)
+    y = CXExpander(fs=FS, variant=variant).process(_tone(db, secs)).astype(np.float64)
     yl = y[0::2]
     peak = np.sqrt(np.mean(yl[-FS:] ** 2)) * np.sqrt(2)
     return 20 * np.log10(peak / A100)
 
 
+def _expect_static_db(db, variant="cx14"):
+    """Expected steady expander output (dB re 100% mod) for a held tone at ``db``.
+
+    Rated unity gain is at 40 kHz / 40% mod (V_CR); gain is V_c/V_CR, linear in
+    level = 2.5*10^(db/20), floored at knee_ratio.  So above the knee the curve
+    is 2:1 (output = 2*db + 20log10(2.5)) and below it is a flat floor
+    (output = db + 20log10(knee_ratio))."""
+    kr = _KNEE[variant]
+    gain = 2.5 * 10 ** (db / 20)
+    if gain < kr:
+        gain = kr
+    return db + 20 * np.log10(gain)
+
+
 def test_calibration_anchor():
-    """V_100/V_CR/R_knee hold the spec ratios (2.5 / 1 / 0.2) off V_CR."""
+    """V_rated/V_100/V_CR/R_knee hold the spec ratios off V_CR (CX-14)."""
     cx = CXExpander(fs=FS)
+    # The rated unity-gain anchor is V_CR (40 kHz / 40% mod), not V_100.
+    assert np.isclose(cx.V_rated, cx.V_CR)
     assert np.isclose(cx.V_100, 2.5 * cx.V_CR)
-    assert np.isclose(cx.R_knee, 0.20 * cx.V_CR)
+    assert np.isclose(cx.R_knee, 0.20 * cx.V_CR)   # CX-14 knee = 8 kHz
     assert np.isclose(cx.theta_slow, 0.26 * cx.V_CR)
     assert np.isclose(cx.theta_ac, 0.52 * cx.V_CR)
     # V_CR is the detector reading of the 40 kHz anchor tone (~0.756 * A_40).
@@ -56,13 +76,17 @@ def test_default_variant_is_cx14():
 def test_cx20_variant_uses_gentler_attack_comp():
     """CX-20 selects the weaker compensator (excess-thresh, raised threshold).
 
-    Only the attack ballistics differ -- the static-curve anchors (V_100,
-    R_knee) are identical to CX-14, and the round-trip stays exactly null."""
+    CX-20 shares the rated unity-gain anchor (V_rated = V_CR) with CX-14 but has
+    a deeper knee (0.10*V_CR = 4 kHz, 20 dB NR vs CX-14's 8 kHz / 14 dB) and a
+    faster integrator; the round-trip still stays exactly null."""
     cx = CXExpander(fs=FS, variant="cx20")
+    cx14 = CXExpander(fs=FS)
     assert cx.attack_comp == 2  # 'excess-thresh'
     assert np.isclose(cx.theta_ac, 0.70 * cx.V_CR)
-    assert np.isclose(cx.V_100, CXExpander(fs=FS).V_100)   # static curve shared
-    assert np.isclose(cx.R_knee, CXExpander(fs=FS).R_knee)
+    assert np.isclose(cx.V_rated, cx14.V_rated)            # rated anchor shared
+    assert np.isclose(cx.R_knee, 0.10 * cx.V_CR)           # deeper CX-20 knee
+    assert not np.isclose(cx.R_knee, cx14.R_knee)          # differs from CX-14
+    assert cx.a_i > cx14.a_i                               # faster integrator
 
     # explicit attack_comp overrides the variant default
     assert CXExpander(fs=FS, variant="cx20", attack_comp="off").attack_comp == 0
@@ -93,22 +117,75 @@ def test_cx20_variant_uses_gentler_attack_comp():
 
 
 def test_static_curve_above_knee():
-    """2:1 expansion (u = 2c) within 0.25 dB away from the soft knee (T1)."""
-    for c in (-40, -30, -25, -15, -10, -5, 0):
-        # Skip the immediate knee neighbourhood (-24..-20), where the spec-
-        # literal per-sample clamp intentionally softens the corner.
-        if -24 < c < -22:
-            continue
-        u = _steady_gain_db(c)
-        expect = 2 * c if c >= -21.94 else c - 21.94
-        assert abs(u - expect) < 0.25, f"c={c}: got {u:.3f}, expect {expect:.3f}"
+    """2:1 expansion about the rated 40% anchor, within 0.25 dB (T1).
+
+    Rated unity gain is at -7.96 dB re 100% mod (40 kHz); the expander gain is
+    V_c/V_CR, so output = 2*db + 20log10(2.5) above the knee (see
+    _expect_static_db).  Verified for both variants (the knee differs)."""
+    for variant, knee_db in (("cx14", -21.94), ("cx20", -27.96)):
+        for c in (-40, -30, -25, -15, -10, -5, 0):
+            # Skip the knee neighbourhood, where the spec-literal per-sample
+            # clamp softens the corner for a few dB above the knee.
+            if knee_db - 2 < c < knee_db + 4:
+                continue
+            u = _steady_gain_db(c, variant=variant)
+            expect = _expect_static_db(c, variant=variant)
+            assert abs(u - expect) < 0.25, \
+                f"{variant} c={c}: got {u:.3f}, expect {expect:.3f}"
 
 
 def test_below_knee_gain_floor():
-    """Below the knee the gain is pinned at 8/100 = 0.08 (-21.94 dB)."""
-    # A -45 dB compressed tone must expand to -45 - 21.94 = -66.94 dB.
-    u = _steady_gain_db(-45)
-    assert abs(u - (-45 - 21.94)) < 0.3
+    """Below the knee the gain is pinned at the variant's noise-reduction floor.
+
+    CX-14 floor = 0.20 (-13.98 dB, 14 dB NR); CX-20 floor = 0.10 (-20 dB NR)."""
+    for variant in ("cx14", "cx20"):
+        floor_db = 20 * np.log10(_KNEE[variant])
+        # A tone well below the knee must expand to db + floor_db.
+        u = _steady_gain_db(-45, variant=variant)
+        assert abs(u - (-45 + floor_db)) < 0.3, \
+            f"{variant}: got {u:.3f}, expect {-45 + floor_db:.3f}"
+
+
+def test_ggv_spec_absolute_levels():
+    """ggv1001 CX-20 source spec as absolute ground truth (plan sec. 8d).
+
+    The spec (testdata/cx/ggv1001-cx.png) states: Level A = 0 dB = 40% mod,
+    Level B = -20 dB = 4% RMS on the *master*; on the compressed disc, A = 40%
+    and B = 12.6%.  So the compressor must map the rated 40%-mod master to 40%
+    on disc (gain 1) and the 4% master to 12.6% on disc (2:1 compression), and
+    the expander must recover 40% / 4%.  This pins the absolute anchor without
+    depending on the (uncommitted) ggv-cx.pcm asset."""
+    def held(mod_pct, secs=8.0):
+        n = int(secs * FS)
+        t = np.arange(n)
+        amp = A100 * mod_pct / 100.0
+        s = np.round(amp * np.sin(2 * np.pi * 1000.0 * t / FS)).astype(np.int16)
+        x = np.empty(2 * n, dtype=np.int16)
+        x[0::2] = s
+        x[1::2] = s
+        return x
+
+    def steady_mod(pcm):
+        yl = pcm[0::2].astype(np.float64)
+        return np.sqrt(np.mean(yl[-2 * FS:] ** 2)) * np.sqrt(2) / A100 * 100.0
+
+    for variant in ("cx14", "cx20"):
+        comp = CXCompressor(fs=FS, variant=variant)
+        # Level A: 40% master -> 40% disc (rated, gain 1).
+        discA = steady_mod(comp.process(held(40.0)))
+        assert abs(discA - 40.0) < 2.0, f"{variant} disc A {discA:.1f}% != 40%"
+        # Level B: 4% master -> 12.6% disc (2:1 about the 40% anchor).
+        comp_b = CXCompressor(fs=FS, variant=variant)
+        discB = steady_mod(comp_b.process(held(4.0)))
+        assert abs(discB - 12.6) < 1.5, f"{variant} disc B {discB:.1f}% != 12.6%"
+
+        # Round-trip recovers the master levels (40% / 4%).
+        exp = CXExpander(fs=FS, variant=variant, dc_block=False)
+        recA = steady_mod(exp.process(comp.process(held(40.0))))
+        exp_b = CXExpander(fs=FS, variant=variant, dc_block=False)
+        recB = steady_mod(exp_b.process(comp_b.process(held(4.0))))
+        assert abs(20 * np.log10(recA / 40.0)) < 0.5, f"{variant} rec A {recA:.2f}%"
+        assert abs(20 * np.log10(recB / 4.0)) < 0.6, f"{variant} rec B {recB:.2f}%"
 
 
 def test_fast_attack_reaches_target_quickly():

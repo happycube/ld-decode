@@ -1,4 +1,8 @@
-"""CX audio expander (and matching compressor) for ld-decode analog audio.
+"""
+(Chad's note:  Yes Claude wrote all of this, but I never did this well with CX.
+Sorry-not-sorry.)
+
+CX audio expander (and matching compressor) for ld-decode analog audio.
 
 Implements the decoder for the IEC 60857-1986 Appendix B "AUDIO COMPRESSION
 SYSTEM" (CBS CX noise reduction) as a standalone post-processor for the analog
@@ -14,9 +18,10 @@ control path needs to be modelled, and it is modelled once here.
 
 Two CX variants are selectable via ``variant=``: ``cx14`` (default, the IEC
 60857 LaserDisc system, validated against the he010 dual-track disc) and
-``cx20`` (the LP / early-LaserDisc system, whose gentler attack ballistics
-reconstruct the ggv-cx reference disc's level steps flat).  See _VARIANT and
-cx-decoder-plan.md sec. 8c.
+``cx20`` (the LP / early-LaserDisc system, with gentler attack ballistics, a
+faster integrator and a deeper 20 dB knee, which reconstruct the ggv-cx
+reference disc's level steps flat and at the spec-correct absolute levels).
+See _VARIANT and cx-decoder-plan.md secs. 8c/8d.
 
 See cx-decoder-plan.md for the full derivation, calibration and test plan.  No
 logs/antilogs appear anywhere in the audio path: the VCA is a plain
@@ -43,7 +48,7 @@ _SLOW = {"offset": 0, "switch": 1}
 _ATTACK = {"off": 0, "excess": 1, "excess-thresh": 2}
 _MODE_PATHS = {"stereo": 1, "bilingual": 2}
 
-# CX variants (CBS shipped two: CX-14 for LaserDisc, CX-20 for LPs / early LDs).
+# CX variants (CBS shipped two: CX-14 for LaserDisc, CX-20 for LPs / early LDs*).
 # The IEC 60857 LaserDisc spec is CX-14 (14 dB NR); its parameters are validated
 # against the he010 dual-track disc (digital EFM twin as ground truth). CX-20
 # uses different decoding time constants. They were calibrated on the ggv-cx
@@ -57,14 +62,43 @@ _MODE_PATHS = {"stereo": 1, "bilingual": 2}
 # constant; the static curve and the other ballistics are shared.
 # See cx-decoder-plan.md sec 8c.
 #
-# NOTE: only the decoding *ballistics* differ here. CBS also specified a deeper
-# NR / lower knee for CX-20; that static-curve difference is NOT modelled (the
-# ggv-cx twin only constrains ballistics, not absolute levels -- its settled
-# levels come from our shared CX-14 static curve).
+# (Chad:  some early LD's including Japanese CX disks, Olivia's "Physical" and 
+#  even *not so early* disks like GGV-1069 use CX-20. *sigh*)
+#
+# NOTE: the variants differ in BOTH the decoding *ballistics* (attack comp,
+# slow-attack time constant) AND the static-curve *knee* (CX-20's deeper 20 dB
+# NR vs CX-14's 14 dB -- see knee_ratio below). The shared anchor is the rated
+# unity-gain level (V_CR = 40 kHz = 40% modulation): the expander gain is
+# V_c / V_CR (unity at rated, 1:2 expansion below, frozen at the knee floor).
+# See cx-decoder-plan.md sec 8d for the ggv1001 spec-twin recalibration.
+#
+# (Chad:  it's not like there are disks with both CX-20 and digital sound.)
+
+# knee_ratio: the expander's lower break point (floor) as a fraction of V_CR
+# (= the rated 40 kHz / 40%-mod level). CBS set CX-14's compressor threshold at
+# -28 dB re rated and CX-20's at -40 dB (Wikipedia); complementary expansion
+# halves those to breaks at -14 dB / -20 dB on disc -> knee deviations of 8 kHz
+# (0.20*V_CR) / 4 kHz (0.10*V_CR). The floor gain equals the knee ratio, so the
+# expander attenuates below-knee noise by -14 dB (CX-14) / -20 dB (CX-20) -- the
+# "14"/"20" in the variant names ARE the noise-reduction depths. The rated
+# unity-gain anchor (V_CR = 40 kHz) is shared; only the knee differs.
+# slow_int_ms: the common-capacitor integrator ("of the order of 2 seconds",
+# patent col.4) that sets the steady-state / slow-recovery response.  CX-14
+# keeps the 2 s spec-nominal value (he010-validated).  CX-20's HA12044 decode
+# chip recovers faster: the ggv-cx twin shows the down-step (A->B) overshoots
+# +1.9 dB and drifts for ~3 s with a 2 s integrator, but settles cleanly in
+# ~1.4 s at ~0.8 s (down-step twin error 0.63 -> 0.12 dB, and it *also* tightens
+# the up-steps and the A-B expansion ratio -- three independent wins, so it is a
+# real ballistic property, not a one-step fit).  Shared enc/dec, so the
+# round-trip stays null.  See cx-decoder-plan.md sec 8d.
 _VARIANT = {
-    "cx14": {"attack_comp": "excess", "theta_ac_ratio": 0.52, "slow_att_ms": 30.0},
-    "cx20": {"attack_comp": "excess-thresh", "theta_ac_ratio": 0.70, "slow_att_ms": 12.0},
+    "cx14": {"attack_comp": "excess", "theta_ac_ratio": 0.52,
+             "slow_att_ms": 30.0, "slow_int_ms": 2000.0, "knee_ratio": 0.20},
+    "cx20": {"attack_comp": "excess-thresh", "theta_ac_ratio": 0.70,
+             "slow_att_ms": 12.0, "slow_int_ms": 800.0, "knee_ratio": 0.10},
 }
+
+# (Chad:  you are not expected to understand this, just enjoy the output.)
 
 # State-array layout (float64, length 16), shared by encoder and decoder.
 #   0,1  HPF x[n-1]          (per channel)
@@ -182,7 +216,7 @@ def _update_path(
 @njit(cache=True, nogil=True)
 def _cx_run(
     x, st, encode, npaths, combine, slow_model, attack_comp, dc_block,
-    V_100, R_knee, theta_slow, theta_ac,
+    V_rated, R_knee, theta_slow, theta_ac,
     a_hpf, a_fa, a_fr, a_sa, a_sr, a_i, beta_ac, a_dc,
 ):
     """Run the CX sidechain + main path over an interleaved-stereo buffer.
@@ -200,9 +234,12 @@ def _cx_run(
 
         if encode:
             # Feedback compressor: gain from V_c reflecting the *previous*
-            # output (one-sample delay breaks the algebraic loop).
-            yl = xl * (V_100 / st[14])
-            yr = xr * (V_100 / st[15])
+            # output (one-sample delay breaks the algebraic loop).  Rated
+            # unity-gain level is V_rated (= V_CR, 40 kHz / 40% mod), so the
+            # compressor gain is V_rated/V_c -- the exact reciprocal of the
+            # expander's V_c/V_rated, keeping the round-trip null.
+            yl = xl * (V_rated / st[14])
+            yr = xr * (V_rated / st[15])
             out[2 * n] = yl
             out[2 * n + 1] = yr
             fL = yl  # sidechain is fed by the output
@@ -262,8 +299,13 @@ def _cx_run(
             else:
                 dl = xl
                 dr = xr
-            out[2 * n] = dl * vcL / V_100
-            out[2 * n + 1] = dr * vcR / V_100
+            # Expander gain V_c/V_rated: unity at the rated 40 kHz level, 1:2
+            # expansion below (V_c linear in level), frozen at R_knee/V_rated
+            # once the level drops under the knee.  No upper clamp -- above
+            # rated the 1:2 expansion continues (the compressor compressed it),
+            # and the int16 has ~4x headroom over 100% modulation (plan sec 8d).
+            out[2 * n] = dl * vcL / V_rated
+            out[2 * n + 1] = dr * vcR / V_rated
 
         vc_log[n] = vcL
 
@@ -295,6 +337,7 @@ class _CXBase:
         if attack_comp is None:
             attack_comp = vprof["attack_comp"]
         self._theta_ac_ratio = vprof["theta_ac_ratio"]
+        self._knee_ratio = vprof["knee_ratio"]
         self.npaths = _MODE_PATHS[mode]
         self.combine = _COMBINE[stereo_combine]
         self.slow_model = _SLOW[slow_model]
@@ -308,7 +351,8 @@ class _CXBase:
         # slow attack: 30 ms (CX-14) / 12 ms (CX-20), set by the variant profile
         self.a_sa = 1.0 - np.exp(-T / (vprof["slow_att_ms"] * 1e-3))
         self.a_sr = 1.0 - np.exp(-T / 200e-3)   # slow release  200 ms
-        self.a_i = 1.0 - np.exp(-T / 2.0)       # integrator    2 s
+        # integrator: 2 s (CX-14) / 0.8 s (CX-20), set by the variant profile
+        self.a_i = 1.0 - np.exp(-T / (vprof["slow_int_ms"] * 1e-3))
         self.beta_ac = np.exp(-T / 30e-3)       # attack-comp decay 30 ms
         self.a_hpf = np.exp(-2 * np.pi * 500.0 / fs)   # sidechain HPF 500 Hz
         self.a_dc = np.exp(-2 * np.pi * 5.0 / fs)      # main DC block 5 Hz
@@ -339,9 +383,13 @@ class _CXBase:
             _detector_mean(tone, self.a_hpf, self.a_fa, self.a_fr, tail)
         )
 
-        # Everything else is a ratio of V_CR (plan sec. 3.6).
-        self.V_100 = 2.5 * self.V_CR       # 100 kHz deviation
-        self.R_knee = 0.20 * self.V_CR     # 8 kHz clamp floor
+        # Everything else is a ratio of V_CR (plan sec. 3.6).  V_CR is the rated
+        # unity-gain level (40 kHz / 40% mod): expander gain = V_c/V_CR.
+        self.V_rated = self.V_CR           # rated / unity-gain anchor
+        self.V_100 = 2.5 * self.V_CR       # 100 kHz deviation (2.5x rated)
+        # Knee (expander floor) is variant-specific: 0.20*V_CR = 8 kHz (CX-14,
+        # 14 dB NR) / 0.10*V_CR = 4 kHz (CX-20, 20 dB NR).  Floor gain = knee.
+        self.R_knee = self._knee_ratio * self.V_CR
         self.theta_slow = 0.26 * self.V_CR
         # Attack-compensator threshold. CX-14 (default) uses the spec-nominal
         # 0.52*V_CR; CX-20 raises it to 0.70*V_CR to reconstruct that variant's
@@ -360,26 +408,27 @@ class _CXBase:
         )
 
     def _check_knee_calibration(self):
-        # An 8 kHz-equivalent tone must settle to 0.2*V_CR by linearity of the
-        # detector -- catches any clamp leak into the calibration path.
+        # A tone at the knee deviation (knee_ratio*40 kHz) must settle to
+        # R_knee = knee_ratio*V_CR by linearity of the detector -- catches any
+        # clamp leak into the calibration path.
         n = int(1.0 * self.fs)
         t = np.arange(n)
-        A_8 = 8.0 * counts_per_khz(self.fs)
-        tone = A_8 * np.sin(2 * np.pi * 1000.0 * t / self.fs)
+        A_knee = self._knee_ratio * 40.0 * counts_per_khz(self.fs)
+        tone = A_knee * np.sin(2 * np.pi * 1000.0 * t / self.fs)
         tail = int(0.5 * self.fs)
-        v8 = float(_detector_mean(tone, self.a_hpf, self.a_fa, self.a_fr, tail))
-        rel = v8 / self.R_knee
+        vk = float(_detector_mean(tone, self.a_hpf, self.a_fa, self.a_fr, tail))
+        rel = vk / self.R_knee
         if abs(rel - 1.0) > 0.01:
             logger.warning(
-                "CX knee calibration off by %.2f%% (8 kHz tone -> %.3f, "
-                "expected R_knee=%.3f)", (rel - 1.0) * 100.0, v8, self.R_knee,
+                "CX knee calibration off by %.2f%% (knee tone -> %.3f, "
+                "expected R_knee=%.3f)", (rel - 1.0) * 100.0, vk, self.R_knee,
             )
 
     def _run(self, x):
         return _cx_run(
             x, self.st, self._encode, self.npaths, self.combine,
             self.slow_model, self.attack_comp, self.dc_block,
-            self.V_100, self.R_knee, self.theta_slow, self.theta_ac,
+            self.V_rated, self.R_knee, self.theta_slow, self.theta_ac,
             self.a_hpf, self.a_fa, self.a_fr, self.a_sa, self.a_sr,
             self.a_i, self.beta_ac, self.a_dc,
         )
@@ -406,7 +455,8 @@ class _CXBase:
             self._warmed = True
 
         out, vc_log = self._run(x)
-        self.last_vc_log = vc_log / self.V_100
+        # last_vc_log is the applied expander gain (V_c / V_rated).
+        self.last_vc_log = vc_log / self.V_rated
 
         rounded = np.round(out)
         self.last_clipped = int(np.count_nonzero(np.abs(rounded) > 32766))
@@ -456,7 +506,7 @@ def _main(argv=None):
     ap.add_argument("--encode", action="store_true",
                     help="run the CX compressor instead of the expander (testing)")
     ap.add_argument("--gain-log", metavar="FILE",
-                    help="dump per-sample V_c/V_100 (float64) for analysis")
+                    help="dump per-sample expander gain V_c/V_rated (float64)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
