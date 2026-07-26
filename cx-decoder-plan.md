@@ -12,6 +12,11 @@ Spec source: `analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laserv
 - Figures: `assets/img-26.jpeg` (compression curve), `img-27/28.jpeg` (stereo
   encoder + control-path detail), `img-29/30.jpeg` (bilingual variant).
 
+CX patent: **US 4,376,916** "Signal Compression and Expansion System"
+(J. B. Glaberson / CBS Inc., filed 1980-05-29, granted 1983-03-15), local copy
+`cxpatent.pdf`. The control-path architecture, time constants, and static
+transfer curve (Fig 4) come from this patent; it is the primary source for §8d.
+
 ---
 
 ## 1. System overview
@@ -556,7 +561,7 @@ supplies only the step *times*).
 
 The decoder's main-path gain was `V_c/V_100` (`V_100 = 2.5·V_CR` = 100 kHz).
 That put unity gain at **100% modulation**.  But the CX **rated / unity-gain
-level is the ±40 kHz (40% mod) reference = `V_CR`** (patent Fig 4: the
+level is the ±40 kHz (40% mod) reference = `V_CR`** (patent US 4,376,916 Fig 4: the
 expander's 1-to-2 slope pivots on the rated 0 dB level; compressor gain is 1 at
 rated, §col.13).  Measured on ggv-cx the on-disc *input* matched spec exactly
 (A ≈ 2308, B ≈ 740 RMS counts = 40% / 12.6% ✓) but the CX-20 *output* was
