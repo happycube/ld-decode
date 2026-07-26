@@ -7,11 +7,16 @@ line-locked rates set with --NTSC_audio_rate etc. are honored.  The .pcm
 stream itself is stereo interleaved L,R (channel count is not recorded
 in the metadata).
 
+CX noise reduction can be expanded on the way through (lddecode.cx, the
+IEC 60857 expander) with --cx.
+
 Usage:
 
     python3 scripts/pcm_to_wav.py he010.pcm            # -> he010.wav
     python3 scripts/pcm_to_wav.py he010.pcm out.wav
     python3 scripts/pcm_to_wav.py --db other.tbc.db he010.pcm
+    python3 scripts/pcm_to_wav.py --cx he010.pcm       # CX-14 expand
+    python3 scripts/pcm_to_wav.py --cx --cx-variant cx20 ggv-cx.pcm
 """
 
 import argparse
@@ -50,7 +55,18 @@ def main():
     ap.add_argument("--db", help="metadata .tbc.db (default: derived from pcm name)")
     ap.add_argument("--channels", type=int, default=2,
                     help="channel count, not recorded in metadata (default 2)")
+    ap.add_argument("--cx", action="store_true",
+                    help="apply CX expansion (lddecode.cx) before writing")
+    ap.add_argument("--cx-variant", choices=["cx14", "cx20"], default="cx14",
+                    help="CX variant: cx14 = IEC 60857 LaserDisc (default), "
+                         "cx20 = LP / early-LD ballistics")
+    ap.add_argument("--cx-mode", choices=["stereo", "bilingual"],
+                    default="stereo",
+                    help="CX sidechain mode (default stereo)")
     args = ap.parse_args()
+
+    if args.cx and args.channels != 2:
+        ap.error("--cx requires stereo input (--channels 2)")
 
     db_path = args.db or find_db(args.pcm)
     if db_path is None:
@@ -83,16 +99,29 @@ def main():
         wout.setnchannels(args.channels)
         wout.setsampwidth(bits // 8)
         wout.setframerate(wav_rate)
-        remaining = n_bytes
-        while remaining:
-            chunk = fin.read(min(remaining, 1 << 20))
-            if not chunk:
-                break
-            wout.writeframes(chunk)
-            remaining -= len(chunk)
+        if args.cx:
+            import numpy as np
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+            from lddecode.cx import CXExpander
+
+            pcm = np.frombuffer(fin.read(n_bytes), dtype="<i2")
+            cx = CXExpander(fs=rate, mode=args.cx_mode, variant=args.cx_variant)
+            wout.writeframes(cx.process(pcm).astype("<i2").tobytes())
+            cx_note = (f", CX {args.cx_variant} expanded "
+                       f"({cx.last_clipped} clipped)")
+        else:
+            remaining = n_bytes
+            while remaining:
+                chunk = fin.read(min(remaining, 1 << 20))
+                if not chunk:
+                    break
+                wout.writeframes(chunk)
+                remaining -= len(chunk)
+            cx_note = ""
 
     print(f"{out_path}: {n_bytes // frame_bytes} frames, "
-          f"{args.channels}ch {bits}-bit @ {wav_rate} Hz (from {db_path})")
+          f"{args.channels}ch {bits}-bit @ {wav_rate} Hz (from {db_path})"
+          f"{cx_note}")
 
 
 if __name__ == "__main__":
