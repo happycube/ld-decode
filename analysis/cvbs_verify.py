@@ -50,27 +50,48 @@ def warn(msg):
     warnings.append(msg)
 
 
-def find_0h_positions(frame10, preset):
+def find_0h_positions(frame10, preset, sync_level=None, blank_level=None):
     """Locate sync leading (falling) edge midpoints in one frame.
 
     Returns interpolated sample positions of 50%-crossings of falling
-    edges whose level then DWELLS at sync for ~2.3 us — this rejects
-    picture-content transients (which cross the threshold but do not
-    stay down), keeping line syncs and vsync broad/equalizing pulses.
+    edges whose level then DWELLS near the sync floor for ~2.3 us — this
+    rejects picture-content transients (which cross the threshold but do
+    not stay down) AND sustained darker-than-black picture content (which
+    can hover near the threshold without ever reaching sync level),
+    keeping line syncs and vsync broad/equalizing pulses.
+
+    The threshold sits halfway between the MEASURED sync and blanking
+    levels when given (blanking is anchored by the spec, but the sync tip
+    lands below it by the source's actual sync depth); the preset's
+    nominal levels are the fallback.
     """
     lv = preset["levels"]
-    thr = (lv["sync"] + lv["blanking"]) / 2.0
+    if sync_level is None:
+        sync_level = lv["sync"]
+    if blank_level is None:
+        blank_level = lv["blanking"]
+    thr = (sync_level + blank_level) / 2.0
     # Low-pass first: LaserDisc PAL carries a ~3.75 MHz pilot burst across
     # the sync region (declared via has_nonstandard_values); a 5-sample
     # average removes it while shifting all edges identically.
-    x = np.convolve(frame10.astype(np.float64), np.ones(5) / 5, "same")
+    raw = frame10.astype(np.float64)
+    x = np.convolve(raw, np.ones(5) / 5, "same")
     below = x < thr
     edges = np.nonzero(~below[:-1] & below[1:])[0]
     dwell = 33  # ~2.3 us at 4fsc — shorter than an equalizing pulse
+    # Every legitimate sync edge - line sync, equalizing, vsync broad -
+    # falls FROM blanking (front porch / serration gap), while spurious
+    # edges from darker-than-black picture content (e.g. a multiburst
+    # packet around a sub-black pedestal, which hovers at the threshold
+    # and satisfies the dwell test) fall from more content.  Require the
+    # ~1.3 us before the edge to sit near blanking.
+    pre_min = blank_level - 0.3 * (blank_level - sync_level)
     out = []
     for e in edges:
         seg = below[e + 2: e + 2 + dwell]
         if len(seg) < dwell or np.count_nonzero(seg) < dwell * 0.9:
+            continue
+        if e < 24 or np.median(x[e - 24: e - 6]) < pre_min:
             continue
         a, b = x[e], x[e + 1]
         frac = (a - thr) / (a - b) if a != b else 0.5
@@ -130,10 +151,17 @@ def main():
     sync_med = int(np.median(sync_samples)) if len(sync_samples) else -1
     blank_lo = lv["blanking"] - 30
     blank_peak = blank_lo + int(np.argmax(hist[blank_lo: lv["blanking"] + 30]))
-    # generous tolerance: sync depth is a property of the source/AGC, not
-    # of format compliance (~2 IRE of level error is common on real discs)
-    check(abs(sync_med - lv["sync"]) <= 14,
-          f"sync tip near {lv['sync']} (median {sync_med})")
+    # Blanking is the anchored level, so it must sit at the spec value.
+    # The sync tip lands below it by the disc's measured sync depth - a
+    # property of the source signal, not of format compliance (nominal is
+    # 42.86 IRE PAL / 40 IRE NTSC, i.e. sync at exactly lv["sync"], but
+    # shallow-sync discs are common) - so require a plausible depth
+    # rather than the nominal code.
+    nominal_depth = lv["blanking"] - lv["sync"]
+    depth = blank_peak - sync_med
+    check(0.70 * nominal_depth <= depth <= 1.15 * nominal_depth,
+          f"sync depth plausible (sync median {sync_med}, "
+          f"depth {depth} vs nominal {nominal_depth})")
     check(abs(blank_peak - lv["blanking"]) <= 6,
           f"blanking near {lv['blanking']} (peak at {blank_peak})")
 
@@ -143,7 +171,8 @@ def main():
     drift_ok = True
     for fr in range(n_check):
         frame = v10[fr * p["frame_samples"]:(fr + 1) * p["frame_samples"]]
-        pos = find_0h_positions(frame, p)
+        pos = find_0h_positions(frame, p, sync_level=sync_med,
+                                blank_level=blank_peak)
         if len(pos) < 100:
             check(False, f"frame {fr}: found only {len(pos)} sync edges")
             continue
@@ -164,9 +193,19 @@ def main():
         mean_spl = float(np.mean(lines))
         check(abs(mean_spl - spl) < 0.02,
               f"frame {fr}: line spacing {mean_spl:.4f} vs {spl:.4f}")
-        # phase of 0H within the sample grid modulo one line
-        ph0 = float(good[0] % 1)
-        frame_first_0h.append(good[0])
+        # Frame anchor: the first edge that starts a clean run of
+        # line-spaced syncs, i.e. the first full line sync after the
+        # opening vsync block.  The raw first detected edge is not a
+        # stable anchor: the frame opens inside vsync, whose half-line
+        # equalizing pulses dwell marginally (~2.35 us vs the 2.3 us
+        # requirement) and are detected or missed per frame.
+        anchor = None
+        for i in range(len(pos) - 15):
+            dd = np.diff(pos[i:i + 16])
+            if np.all(np.abs(dd - spl) < 3):
+                anchor = float(pos[i])
+                break
+        frame_first_0h.append(anchor if anchor is not None else float(good[0]))
 
         if preset_name == "PAL":
             # the non-orthogonal check: consecutive line syncs must be

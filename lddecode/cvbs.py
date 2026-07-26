@@ -172,6 +172,7 @@ class CVBSWriter:
         self.clamp_lo = 4 * 64
         self.clamp_hi = 1019 * 64
         self.blank16 = lv["blanking"] * 64
+        self.white16 = lv["white"] * 64
 
         # burst lock state
         self._pal_shift = 0.0          # lattice-sample lattice shift
@@ -241,8 +242,8 @@ class CVBSWriter:
         f_b, fi_b, pic_b, efm_b, aud_b = second
 
         if self.system == "NTSC":
-            a = self._as_u16(pic_a)
-            b = self._as_u16(pic_b)
+            a = self._to_spec_levels(self._as_u16(pic_a), f_a)
+            b = self._to_spec_levels(self._as_u16(pic_b), f_b)
             spl = self.params["samples_per_line"]
             frame = np.concatenate([a[: 263 * spl], b[: 262 * spl]])
             self._measure_ntsc_lock(frame)
@@ -258,6 +259,8 @@ class CVBSWriter:
                     a = f_a.downscale_cvbs(self._pal_shift)
                 self._lock_initialised = True
             b = f_b.downscale_cvbs(self._pal_shift)
+            a = self._to_spec_levels(a, f_a)
+            b = self._to_spec_levels(b, f_b)
             frame = np.concatenate([a, b])
 
             resid = self._pal_phase_error(a)
@@ -277,6 +280,31 @@ class CVBSWriter:
     def _as_u16(self, picture):
         return (np.frombuffer(picture, dtype=np.uint16)
                 if isinstance(picture, (bytes, bytearray)) else picture)
+
+    def _to_spec_levels(self, x, f):
+        """Remap decoder 16-bit output onto the spec's level anchors.
+
+        The decoder's 16-bit scale pins the SYNC TIP at SysParams
+        outputZero and white at output_white, with the measured (AGC)
+        sync depth in between - so the blanking level lands wherever the
+        disc's actual sync depth puts it.  The CVBS spec instead pins
+        BLANKING (256<<6 PAL / 240<<6 NTSC) and 100 IRE white; sync depth
+        is a property of the source signal, so the sync tip lands below
+        blanking by the measured depth (the spec's nominal sync value
+        corresponds to exactly 42.86 IRE PAL / 40 IRE NTSC).  Anchoring
+        sync instead of blanking put blanking ~2-3 IRE low on
+        shallow-sync discs and clipped half the sync-tip noise into the
+        protected floor on nominal ones.
+
+        Without a field to read the decoder's anchors from, the data is
+        assumed to be at spec levels already."""
+        if f is None:
+            return x
+        blank_dec = float(f.hz_to_output(f.rf.DecoderParams["ire0"]))
+        white_dec = float(f.hz_to_output(f.rf.iretohz(100.0)))
+        gain = (self.white16 - self.blank16) / (white_dec - blank_dec)
+        out = (x.astype(np.float64) - blank_dec) * gain + self.blank16
+        return np.clip(np.round(out), 0, 65535).astype(np.uint16)
 
     def _write_frame(self, frame):
         fs = self.params["frame_samples"]
