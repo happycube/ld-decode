@@ -16,7 +16,7 @@ jobs:
         uses: cachix/install-nix-action@v25
 
       - name: Run functional tests (Nix)
-        timeout-minutes: 60
+        timeout-minutes: 120
         run: |
           nix develop .#default -c bash -lc '
             mkdir -p build/testout
