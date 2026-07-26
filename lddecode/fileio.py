@@ -163,29 +163,32 @@ def load_unpacked_data_float32(infile, sample, readlen):
 
 # This is for the .r30 format I did in ddpack/unpack.c.  Deprecated but I still have samples in it.
 def load_packed_data_3_32(infile, sample, readlen):
+    """Load data from packed .r30 format (3 x 10-bits in each 32-bit LE word).
+
+    Returns the raw 10-bit values (0..1023) as int16, like the cxadc
+    unsigned-raw loaders.  (The original version of this loader computed
+    its byte count with the samples-per-byte ratio inverted and then
+    compared a word count against that byte count, so it returned None
+    for every read - .r30 input had never actually worked.)"""
     start = (sample // 3) * 4
     offset = sample % 3
 
     infile.seek(start)
 
-    # we need another word in case offset != 0
-    needed = int(np.ceil(readlen * 3 / 4) * 4) + 4
+    # 3 samples per 32-bit word; the first `offset` samples of the first
+    # word are before the requested range
+    words = (offset + readlen + 2) // 3
+    inbuf = infile.read(words * 4)
+    indata = np.frombuffer(inbuf, "<u4", len(inbuf) // 4)
 
-    inbuf = infile.read(needed)
-    indata = np.frombuffer(inbuf, "uint32", len(inbuf) // 4)
-
-    if len(indata) < needed:
+    if len(indata) < words:
+        # EOF
         return None
 
     unpacked = np.zeros(len(indata) * 3, dtype=np.int16)
-
-    # By using strides the unpacked data can be loaded with no additional copies
-    np.bitwise_and(indata, 0x3FF, out=unpacked[0::3])
-    # hold the shifted bits in it's own array to avoid an allocation
-    tmp = np.right_shift(indata, 10)
-    np.bitwise_and(tmp, 0x3FF, out=unpacked[1::3])
-    np.right_shift(indata, 20, out=tmp)
-    np.bitwise_and(tmp, 0x3FF, out=unpacked[2::3])
+    unpacked[0::3] = indata & 0x3FF
+    unpacked[1::3] = (indata >> 10) & 0x3FF
+    unpacked[2::3] = (indata >> 20) & 0x3FF
 
     return unpacked[offset : offset + readlen]
 
@@ -236,16 +239,30 @@ def load_packed_data_4_40(infile, sample, readlen):
 
     infile.seek(start)
 
-    # we need another word in case offset != 0
-    needed = int(np.ceil(readlen * 5 // 4)) + 5
+    # Whole 5-byte groups only: unpack_data_4_40's strided views require
+    # len(indata) to be a multiple of 5 (and its output a multiple of 4),
+    # with one slack group so any offset/readlen combination fits.  The
+    # previous byte count (readlen * 5 // 4 + 5) satisfied that only for
+    # the block-multiple readlens the decoder happens to use, and demanded
+    # bytes past EOF even when every requested sample was on disk, so a
+    # read up to the exact end of a .lds file always failed.
+    groups = (offset + readlen + 3) // 4 + 1
+    needed = groups * 5
 
     inbuf = infile.read(needed)
-    indata = np.frombuffer(inbuf, "uint8", len(inbuf))
+    indata = np.frombuffer(inbuf, "uint8", (len(inbuf) // 5) * 5)
+
+    if (len(indata) // 5) * 4 < offset + readlen:
+        return None  # EOF: the requested samples are not all on disk
 
     if len(indata) < needed:
-        return None
+        # Only the slack group ran past EOF; pad it (the pad lands beyond
+        # the requested range).
+        indata = np.concatenate(
+            [indata, np.zeros(needed - len(indata), dtype=np.uint8)]
+        )
 
-    return unpack_data_4_40(indata, readlen, offset)
+    return unpack_data_4_40(indata, groups * 4 - 4, offset)[:readlen]
 
 
 class LoadFFmpeg:

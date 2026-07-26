@@ -194,6 +194,17 @@ set_tests_properties(analyze-pal-patterns PROPERTIES
     PASS_REGULAR_EXPRESSION "ITS staircase with chroma"
 )
 
+# Raw input-format loaders: convert the NTSC CI capture to .s16/.u16/.u8/
+# .rf/.lds/.r30, read each back exactly through make_loader (aligned and
+# unaligned), and decode the .s16/.lds/.r30 conversions end-to-end
+# (bit-identical outputs).
+add_test(
+    NAME input-format-loaders
+    COMMAND ${Python3_EXECUTABLE} -m pytest -q
+        ${CMAKE_SOURCE_DIR}/tests/test_input_formats.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 # Test that ld-cut can extract a segment from NTSC file
 add_test(
     NAME cut-ntsc-segment
