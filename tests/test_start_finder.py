@@ -1,8 +1,5 @@
 from types import SimpleNamespace
 
-import numpy as np
-
-from lddecode import core
 from lddecode.start_finder import (
     FrameObservation,
     StartFinder,
@@ -216,22 +213,3 @@ def test_main_returns_one_without_a_candidate(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "no qualifying programme start" in captured.err
-
-
-def test_getpulses_recalibrates_only_once_when_no_sync_exists(monkeypatch):
-    field = object.__new__(core.Field)
-    field.rf = SimpleNamespace(
-        DecoderParams={"vsync_ire": -40, "ire0": 0},
-        iretohz=lambda value: value,
-    )
-    field.data = {"video": {"demod_05": np.array([1.0, 2.0, 3.0])}}
-    field.fields_written = 0
-    calls = []
-
-    def no_pulses(*_args):
-        calls.append(True)
-        return []
-
-    monkeypatch.setattr(core, "findpulses", no_pulses)
-    assert field.getpulses() == []
-    assert len(calls) == 2

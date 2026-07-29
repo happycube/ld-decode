@@ -7,7 +7,6 @@
 
 set(SCRIPTS_DIR ${CMAKE_SOURCE_DIR}/scripts)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/testout)
 
 # Test that ld-decode can decode NTSC files and produce TBC output
 add_test(
