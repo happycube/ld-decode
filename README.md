@@ -56,6 +56,26 @@ For installation instructions after building, see **[INSTALL.md](INSTALL.md)** w
 >
 > Please see [Decode-Orc](https://github.com/simoninns/decode-orc) for details of how to obtain and install the Decode-Orc tools
 
+## Finding the start of a capture
+
+Use `ld-find-start` when a capture begins while the player is paused or is
+seeking back to the disc start. It scans RF and Philips CAV/CLV codes without
+creating TBC, audio, JSON, or database output. A confirmed result is emitted
+as the capture-relative file-frame argument accepted by `ld-decode --start`:
+
+```sh
+ld-decode input.ldf output $(ld-find-start input.ldf)
+```
+
+The finder requires a sustained, normal-speed CAV or CLV address run, then
+replays the preceding clean field sequence to retain player lead-in/pre-roll
+while excluding the preceding paused or seeking material. It searches five
+minutes by default; use `--max-search 0` to search to EOF. The pre-roll replay
+window defaults to five seconds and can be adjusted with `--pre-roll-search`.
+For a capture with stable video but no usable VBI address, it prints a guarded
+candidate only on stderr and exits with status 2. Inspect that candidate and
+pass its `--start` value explicitly if appropriate.
+
 # Want to get involved?
 
 The documentation includes details of the ld-decode community's Discord / IRC Bridge and the now legacy Facebook group.  
