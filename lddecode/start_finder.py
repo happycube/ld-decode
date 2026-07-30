@@ -300,6 +300,7 @@ class StartFinder:
         first_field = None
         stable_video = _StableVideoTracker()
         last_progress_bucket = -1
+        scanning_preamble = True
 
         try:
             decoder = self.decoder_factory()
@@ -307,6 +308,25 @@ class StartFinder:
                 last_progress_bucket = self._report_progress(
                     position, last_progress_bucket
                 )
+                sync_probe = getattr(decoder, "has_sync", None)
+                if scanning_preamble and callable(sync_probe):
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore", RuntimeWarning)
+                            has_sync = sync_probe(position)
+                    except (KeyboardInterrupt, SystemExit):
+                        raise
+                    except Exception as error:
+                        if self.report is not None:
+                            self.report(
+                                "sync probe failure at sample {0}: {1}; "
+                                "using full decode".format(position, error)
+                            )
+                        has_sync = None
+
+                    if has_sync is False:
+                        position += self.sample_rate
+                        continue
                 try:
                     # Bad tracking windows can make the RF calculations emit NumPy
                     # RuntimeWarnings. They are expected probe failures, not a
@@ -357,6 +377,8 @@ class StartFinder:
                     # probe and is the same recovery interval used for errors.
                     position += self.sample_rate
                     continue
+
+                scanning_preamble = False
 
                 stable_start = stable_video.observe(field, decoder.bytes_per_field)
 

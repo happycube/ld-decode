@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+import numpy as np
+
+from lddecode.core import RFDecode
 from lddecode.start_finder import (
     FrameObservation,
     StartFinder,
@@ -18,6 +21,18 @@ def test_file_frame_conversion_matches_start_seek_units():
     bytes_per_field = 674029
     readloc = (bytes_per_field * 2 * 1234) + bytes_per_field
     assert file_frame_from_readloc(readloc, bytes_per_field) == 1234
+
+
+def test_sync_only_demodulation_matches_the_normal_sync_path():
+    rf = RFDecode(system="NTSC", blocklen=32768)
+    raw = np.random.default_rng(0).integers(
+        -32768, 32767, size=rf.blocklen, dtype=np.int16
+    )
+
+    full = rf.demodblock_cpu(data=raw, cut=True)["video"]["demod_05"]
+    sync = rf.demodblock_sync(data=raw, cut=True)
+
+    np.testing.assert_array_equal(sync, full)
 
 
 def test_vbi_run_requires_contiguous_addresses_of_one_disk_type():
@@ -98,6 +113,17 @@ class FakeDecoder:
         self.closed = True
 
 
+class SyncProbeFakeDecoder(FakeDecoder):
+    def __init__(self, events, sync_results, bytes_per_field=100):
+        super().__init__(events, bytes_per_field)
+        self.sync_results = iter(sync_results)
+        self.sync_positions = []
+
+    def has_sync(self, position):
+        self.sync_positions.append(position)
+        return next(self.sync_results)
+
+
 def five_frames(start_file_frame=7, sample_base=0, disk_type="CAV"):
     fields = []
     for index in range(5):
@@ -131,6 +157,17 @@ def test_start_finder_recreates_decoder_after_decode_failure():
     assert result.file_frame == 9
     assert first.closed
     assert second.closed
+
+
+def test_start_finder_skips_sync_free_preamble_without_full_field_decode():
+    decoder = SyncProbeFakeDecoder(five_frames(), [False, True])
+    result = StartFinder(
+        lambda: decoder, sample_rate=100, required_frames=5, pre_roll_search_seconds=0
+    ).search()
+
+    assert result.confidence == "vbi"
+    assert decoder.sync_positions == [0, 100]
+    assert decoder.closed
 
 
 def test_start_finder_returns_guarded_fallback_for_stable_video_without_vbi():
