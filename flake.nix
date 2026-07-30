@@ -27,6 +27,24 @@
         # dirtyShortRev format is "abc1234-dirty", so replace "-" with "."
         fullVersion = "${version}+git.${builtins.replaceStrings ["-"] ["."] gitCommit}";
         
+        # External tools the installed commands shell out to at runtime.
+        # These are prefixed onto PATH rather than replacing it, so anything
+        # else the user has installed remains reachable.
+        #
+        # ld-compress does everything but the FLAC encoding in process, so flac
+        # is all it needs; ld-decode uses ffmpeg to read the input formats that
+        # PyAV does not cover and to resample with --inputfreq.
+        runtimeDeps = [
+          # ld-compress requires flac 1.5.0 or later for multithreaded encoding
+          pkgs.flac
+          pkgs.ffmpeg
+        ];
+
+        # PATH prefix for the installed commands: this package's own bin
+        # directory (so the commands can find each other) plus the external
+        # tools they shell out to.
+        toolPath = "${builtins.placeholder "out"}/bin:${pkgs.lib.makeBinPath runtimeDeps}";
+
         docsEnv = pkgs.python3.withPackages (ps: with ps; [
           ps.mkdocs
           ps.mkdocs-material
@@ -46,7 +64,7 @@
             wheel
             pkgs.git
           ];
-          
+
           propagatedBuildInputs = with pythonPackages; [
             av
             matplotlib
@@ -59,7 +77,12 @@
           preBuild = ''
             echo "${fullVersion}" > lddecode/version
           '';
-          
+
+          # Applied by wrapPythonPrograms to the Python commands in $out/bin
+          makeWrapperArgs = [
+            "--prefix" "PATH" ":" toolPath
+          ];
+
           # Skip tests for minimal build
           doCheck = false;
           
@@ -67,6 +90,7 @@
             description = "Software defined LaserDisc decoder";
             homepage = "https://github.com/happycube/ld-decode";
             license = licenses.gpl3Plus;
+            mainProgram = "ld-decode";
             maintainers = [ ];
           };
         };
@@ -98,12 +122,25 @@
             type = "app";
             program = "${ld-decode}/bin/ld-ldf-reader-py";
           };
+          ld-cut = {
+            type = "app";
+            program = "${ld-decode}/bin/ld-cut";
+          };
+          ld-compress = {
+            type = "app";
+            program = "${ld-decode}/bin/ld-compress";
+          };
+          ld-lds-converter-py = {
+            type = "app";
+            program = "${ld-decode}/bin/ld-lds-converter-py";
+          };
         };
         
         devShells.default = pkgs.mkShell {
           buildInputs = [
             pkgs.cmake
             pkgs.ffmpeg
+            pkgs.flac
             ld-decode
             python
             pythonPackages.av
