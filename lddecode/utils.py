@@ -124,7 +124,7 @@ sinc_phase_count = 2**16
 #     return table
 
 
-@njit(nogil=True, fastmath=True)
+@njit(nogil=True, cache=True, fastmath=True)
 def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineoffset, outwidth, wow_level_adjust_smoothing = 0, level_adjust_threshold = 15):
     # average out any unusual spikes in wow that happen on a per line basis
     # this indicates an hsync tbc error vs. being normal wow from playback speed variations
@@ -163,22 +163,19 @@ def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineo
         # fractional phase
         frac = coord - coord_int
 
-        phase_pos = frac * sinc_phase_count
-        phase_start = int(phase_pos)
-        phase_end = phase_start + 1
-
-        alpha = np.float32(phase_pos - phase_start)
-
-        w_start = sinc_lut[phase_start]
-        w_end = sinc_lut[phase_end]
+        # sinc_phase_count is 2**16, so the nearest tabulated phase is already
+        # accurate far below float32 precision. Interpolating between two
+        # adjacent phases would double LUT reads and add per-tap math in the
+        # innermost loop of the decoder for no change in output.
+        # If the LUT gets smaller, consider adding linear interpolation.
+        phase = int(frac * sinc_phase_count + np.float32(0.5))
+        w = sinc_lut[phase]
 
         start = coord_int - half_taps_m1
 
         result = 0.0
         for t in range(sinc_tap_count):
-            # do linear interpolation between pre-computed phases
-            ws = w_start[t]
-            result += buf[start + t] * (ws + alpha * (w_end[t] - ws))
+            result += buf[start + t] * w[t]
 
         dsout[i - dsout_start] = level_adjust * result
 
@@ -427,7 +424,7 @@ class LoadFFmpeg:
         # small amounts. The last byte returned by ffmpeg is at the end of
         # this buffer.
         self.rewind_size = 16 * 1024 * 1024
-        self.rewind_buf = b""
+        self.rewind_buf = bytearray()
 
     def _close(self):
         if self.ffmpeg is not None:
@@ -445,7 +442,8 @@ class LoadFFmpeg:
         self.position += len(data)
 
         self.rewind_buf += data
-        self.rewind_buf = self.rewind_buf[-self.rewind_size :]
+        if len(self.rewind_buf) > 2 * self.rewind_size:
+            del self.rewind_buf[: len(self.rewind_buf) - self.rewind_size]
 
         return data
 
@@ -469,7 +467,7 @@ class LoadFFmpeg:
             end = min(start + readlen_bytes, len(self.rewind_buf))
             if start < 0:
                 raise IOError("Seeking too far backwards with ffmpeg")
-            buf_data = self.rewind_buf[start:end]
+            buf_data = bytes(self.rewind_buf[start:end])
             sample_bytes += len(buf_data)
             readlen_bytes -= len(buf_data)
         else:
@@ -517,7 +515,7 @@ class LoadLDF:
 
         self.position = 0
         self.rewind_size = 2 * 1024 * 1024
-        self.rewind_buf = b""
+        self.rewind_buf = bytearray()
 
         # Forward seeks farther than this (in bytes) restart the decoder with a
         # container seek instead of reading and discarding samples one by one.
@@ -575,7 +573,7 @@ class LoadLDF:
         self._stop_event = stop_event
 
         self.position = sample * 2
-        self.rewind_buf = b""
+        self.rewind_buf = bytearray()
 
         self._reader_thread = threading.Thread(
             target=self._reader_loop,
@@ -681,7 +679,8 @@ class LoadLDF:
         self.position += len(data)
 
         self.rewind_buf += data
-        self.rewind_buf = self.rewind_buf[-self.rewind_size:]
+        if len(self.rewind_buf) > 2 * self.rewind_size:
+            del self.rewind_buf[: len(self.rewind_buf) - self.rewind_size]
 
         return data
 
@@ -709,7 +708,7 @@ class LoadLDF:
                 self._start_decoder(sample)
                 buf_data = b""
             else:
-                buf_data = self.rewind_buf[start:end]
+                buf_data = bytes(self.rewind_buf[start:end])
                 sample_bytes += len(buf_data)
                 readlen_bytes -= len(buf_data)
         else:
@@ -1226,6 +1225,18 @@ def LRUupdate(l, k):
         pass
 
     l.insert(0, k)
+
+
+def concatenate_blocks(blocks):
+    """Concatenate demodulator cache blocks, being sensitive to performance"""
+    dtype = blocks[0].dtype
+    if dtype.names is None:
+        return np.concatenate(blocks)
+
+    # np.concatenate does per-field/per-element copy on structured/record dtype.
+    # ~30x slower than simple memcpy. We happen to know the blocks here share
+    # the same dtype, so just copy the bytes.
+    return np.concatenate([b.view(np.uint8) for b in blocks]).view(dtype)
 
 
 # numba jit functions, used to numba-ify parts of more complex functions
