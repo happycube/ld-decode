@@ -20,6 +20,44 @@ jobs:
         with:
           python-version: '3.12'
 
+      # flac is the one external program ld-compress shells out to, and it has
+      # to be 1.5.0 or later for its -j (multithreaded encoding) option.  Built
+      # from source with libFLAC and libogg linked in statically so the only
+      # thing to drop into the app bundle is the one executable - a Homebrew
+      # flac would drag its dylibs along and need its load paths rewritten.
+      - name: Build flac for the app bundle
+        run: |
+          set -euo pipefail
+          FLAC_VERSION=1.5.0
+          OGG_VERSION=1.3.5
+          BUILD_DIR="${GITHUB_WORKSPACE}/flac-build"
+          PREFIX="${BUILD_DIR}/prefix"
+          mkdir -p "${BUILD_DIR}"
+          cd "${BUILD_DIR}"
+
+          curl -fsSLO "https://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.xz"
+          curl -fsSLO "https://downloads.xiph.org/releases/flac/flac-${FLAC_VERSION}.tar.xz"
+          tar xf "libogg-${OGG_VERSION}.tar.xz"
+          tar xf "flac-${FLAC_VERSION}.tar.xz"
+
+          cd "${BUILD_DIR}/libogg-${OGG_VERSION}"
+          ./configure --prefix="${PREFIX}" --disable-shared --enable-static --quiet
+          make -j"$(sysctl -n hw.ncpu)" > /dev/null
+          make install > /dev/null
+
+          cd "${BUILD_DIR}/flac-${FLAC_VERSION}"
+          PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig" ./configure --prefix="${PREFIX}" \
+            --disable-shared --enable-static --disable-cpplibs --disable-examples \
+            --disable-doxygen-docs --with-ogg="${PREFIX}" --quiet
+          make -j"$(sysctl -n hw.ncpu)" > /dev/null
+
+          strip -S -x src/flac/flac
+          mkdir -p "${GITHUB_WORKSPACE}/runtime-tools"
+          install -m755 src/flac/flac "${GITHUB_WORKSPACE}/runtime-tools/flac"
+          "${GITHUB_WORKSPACE}/runtime-tools/flac" --version
+          # Nothing outside the OS should be left to link against at runtime
+          otool -L "${GITHUB_WORKSPACE}/runtime-tools/flac"
+
       - name: Install dependencies and build standalone app
         run: |
           # Install build dependencies
@@ -56,33 +94,65 @@ jobs:
           if __name__ == "__main__":
               sys.exit(main())
           PYEOF
-          
+
+          cat > /tmp/ld-decode-entrypoints/ld-cut-entry.py << 'PYEOF'
+          import sys
+          from lddecode.cut import main
+          if __name__ == "__main__":
+              main(sys.argv[1:])
+          PYEOF
+
+          cat > /tmp/ld-decode-entrypoints/ld-lds-converter-py-entry.py << 'PYEOF'
+          import sys
+          from lddecode.lds import main
+          if __name__ == "__main__":
+              sys.exit(main())
+          PYEOF
+
+          cat > /tmp/ld-decode-entrypoints/ld-compress-entry.py << 'PYEOF'
+          import sys
+          from lddecode.compress import main
+          if __name__ == "__main__":
+              try:
+                  sys.exit(main())
+              except KeyboardInterrupt:
+                  sys.exit(130)
+          PYEOF
+
           # Build standalone executables with PyInstaller (onefile binaries placed directly in Contents/MacOS)
-          pyinstaller --onefile \
-            --windowed \
-            --hidden-import lddecode \
-            --hidden-import sqlite3 \
-            --collect-all lddecode \
-            --collect-all matplotlib \
-            --collect-all numba \
-            --collect-all scipy \
-            --collect-all av \
-            --name ld-decode \
-            --distpath "${APP_DIR}/Contents/MacOS" \
-            /tmp/ld-decode-entrypoints/ld-decode-entry.py
-          
-          pyinstaller --onefile \
-            --windowed \
-            --hidden-import lddecode \
-            --hidden-import sqlite3 \
-            --collect-all lddecode \
-            --collect-all matplotlib \
-            --collect-all numba \
-            --collect-all scipy \
-            --collect-all av \
-            --name ld-ldf-reader-py \
-            --distpath "${APP_DIR}/Contents/MacOS" \
-            /tmp/ld-decode-entrypoints/ld-ldf-reader-py-entry.py
+          # --windowed is only right for the tools that are never used as a
+          # stdio filter; ld-lds-converter-py and ld-compress read and write
+          # pipes, so they are built as ordinary console programs.
+          for tool in ld-decode ld-ldf-reader-py ld-cut ; do
+            pyinstaller --onefile \
+              --windowed \
+              --hidden-import lddecode \
+              --hidden-import sqlite3 \
+              --collect-all lddecode \
+              --collect-all matplotlib \
+              --collect-all numba \
+              --collect-all scipy \
+              --collect-all av \
+              --name "${tool}" \
+              --distpath "${APP_DIR}/Contents/MacOS" \
+              "/tmp/ld-decode-entrypoints/${tool}-entry.py"
+          done
+
+          for tool in ld-lds-converter-py ld-compress ; do
+            pyinstaller --onefile \
+              --hidden-import lddecode \
+              --hidden-import sqlite3 \
+              --collect-all lddecode \
+              --collect-all numpy \
+              --collect-all av \
+              --name "${tool}" \
+              --distpath "${APP_DIR}/Contents/MacOS" \
+              "/tmp/ld-decode-entrypoints/${tool}-entry.py"
+          done
+
+          # ld-compress looks for flac beside itself, so this is all the
+          # wiring the bundled copy needs
+          install -m755 "${GITHUB_WORKSPACE}/runtime-tools/flac" "${APP_DIR}/Contents/MacOS/flac"
 
       - name: Create Info.plist
         run: |
@@ -120,22 +190,49 @@ jobs:
       - name: Code sign app bundle
         run: |
           APP_DIR="build/LD-Decode.app"
-          
+
           # Sign the app bundle with ad-hoc signature
           # This prevents the "damaged" error and allows macOS to show proper security prompt
+          # Nested executables are signed first: on Apple silicon every binary
+          # needs a valid signature of its own before the enclosing bundle is
+          # sealed, and flac was copied in rather than built here.
+          echo "Signing executables..."
+          for binary in "${APP_DIR}/Contents/MacOS"/* ; do
+            codesign -s - --force --timestamp=none "${binary}"
+          done
+
           echo "Signing app bundle..."
           codesign -s - --deep --force "${APP_DIR}"
-          
+
           # Verify signature
           codesign -vv "${APP_DIR}" 2>&1 || true
           echo "✓ App bundle signed successfully"
 
       - name: Test app bundle
         run: |
-          APP_DIR="build/LD-Decode.app"
-          echo "Testing ld-decode..."
-          "${APP_DIR}/Contents/MacOS/ld-decode" --version
-          echo "✓ App bundle is functional"
+          set -euo pipefail
+          APP_DIR="${PWD}/build/LD-Decode.app"
+          export PATH="${APP_DIR}/Contents/MacOS:${PATH}"
+
+          echo "Testing the bundled tools..."
+          ld-decode --version
+          ld-compress --version
+          flac --version
+
+          # A full ld-compress round trip: this is what catches a flac that is
+          # missing, too old, or not relocatable off the build machine.
+          WORK="$(mktemp -d)"
+          mkdir -p "${WORK}/out"
+          cd "${WORK}"
+          head -c 4000000 /dev/urandom > raw.s16
+          ld-lds-converter-py -p -i raw.s16 -o sample.lds
+          ld-compress -n sample.lds
+          (cd out && ld-compress -n -u ../sample.ldf)
+          cmp sample.lds out/sample.lds
+          cd - > /dev/null
+          rm -rf "${WORK}"
+
+          echo "✓ App bundle is functional and the ld-compress round trip is lossless"
 
       - name: Create DMG
         run: |
@@ -171,12 +268,20 @@ jobs:
           3. (Optional) Add to PATH for command-line access:
              echo 'export PATH="/Applications/LD-Decode.app/Contents/MacOS:$PATH"' >> ~/.zshrc
              source ~/.zshrc
-          
+
+          Tools included:
+          - ld-decode
+          - ld-cut
+          - ld-compress
+          - ld-ldf-reader-py
+          - ld-lds-converter-py
+
           Usage:
           - Run from Terminal: ld-decode [arguments]
           - Or: /Applications/LD-Decode.app/Contents/MacOS/ld-decode [arguments]
-          
-          All required dependencies are included in the app bundle.
+
+          All required dependencies are included in the app bundle, including
+          the flac 1.5.0 that ld-compress uses for multithreaded encoding.
           EOF
           
           # Calculate DMG size (app size + 50MB padding)

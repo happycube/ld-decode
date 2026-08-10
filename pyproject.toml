@@ -56,8 +56,11 @@ Repository = "https://github.com/happycube/ld-decode.git"
 Issues = "https://github.com/happycube/ld-decode/issues"
 
 [project.scripts]
+ld-compress = "lddecode.compress:main"
+ld-cut = "lddecode.cut:main"
 ld-decode = "lddecode.main:main"
 ld-ldf-reader-py = "lddecode.ldf_reader:main"
+ld-lds-converter-py = "lddecode.lds:main"
 ld-find-start = "lddecode.start_finder:main"
 
 [tool.setuptools]
