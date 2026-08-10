@@ -751,6 +751,45 @@ class RFDecode:
 
         return self.demodblock_cpu(data, mtf_level, fftdata, cut)
 
+    def demodblock_sync(self, data=None, fftdata=None, cut=False):
+        """Demodulate only the 0.5 MHz path used for vertical-sync detection."""
+
+        if fftdata is not None:
+            indata_fft = fftdata
+        elif data is not None:
+            indata_fft = npfft.fft(data[: self.blocklen])
+        else:
+            raise Exception("demodblock_sync called without raw or FFT data")
+
+        if self.system == "PAL" and self.PAL_V4300D_NotchFilter:
+            indata_fft = indata_fft.copy()
+            sl = slice(
+                int(self.blocklen * (8.42 / self.freq)),
+                int(1 + (self.blocklen * (8.6 / self.freq))),
+            )
+            sq_sl = sqsum(indata_fft[sl])
+            m = np.mean(sq_sl) + (np.std(sq_sl) * 3)
+
+            for i in np.where(sq_sl > m)[0]:
+                indata_fft[(i - 1 + sl.start)] = 0
+                indata_fft[(i + sl.start)] = 0
+                indata_fft[(i + 1 + sl.start)] = 0
+                indata_fft[self.blocklen - (i + sl.start)] = 0
+                indata_fft[self.blocklen - (i - 1 + sl.start)] = 0
+                indata_fft[self.blocklen - (i + 1 + sl.start)] = 0
+
+        indata_fft_filt = indata_fft * self.Filters["RFVideo"]
+
+        hilbert = npfft.ifft(indata_fft_filt)
+        demod = unwrap_hilbert(hilbert, self.freq_hz)
+        demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
+        sync = npfft.ifft(demod_fft * self.Filters["FVideo05"]).real
+        sync = np.roll(sync, -self.Filters["F05_offset"])
+
+        if cut:
+            sync = sync[self.blockcut : -self.blockcut_end]
+        return sync.astype(np.float32)
+
 
     def demodblock_cpu(self, data=None, mtf_level=0, fftdata=None, cut=False):
         rv = {}
@@ -1088,6 +1127,7 @@ class DemodCache:
         self.q_in            = Queue()
         self.q_out           = Queue()
         self.waiting         = set()
+        self.sync_waiting    = set()
         self.q_out_cv        = threading.Condition(self.lock)
 
         self.threadpipes     = []
@@ -1197,6 +1237,20 @@ class DemodCache:
 
                 if output:
                     self.q_out.put((blocknum, output))
+            elif item[0] == "SYNC":
+                blocknum, block = item[1:]
+                output = {}
+                if "fft" not in block:
+                    output["fft"] = npfft.fft(block["rawinput"])
+                    fftdata = output["fft"]
+                else:
+                    fftdata = block["fft"]
+                output["sync"] = rf.demodblock_sync(
+                    data=block["rawinput"],
+                    fftdata=fftdata,
+                    cut=True,
+                )
+                self.q_out.put((blocknum, output))
             elif item[0] == "NEWPARAMS":
                 self.apply_newparams(item[1])
 
@@ -1279,6 +1333,66 @@ class DemodCache:
 
         return None if reached_end else need_blocks
 
+    def _load_raw_block(self, blocknum):
+        """Return a cached raw block without scheduling full demodulation."""
+
+        with self.lock:
+            if blocknum not in self.blocks:
+                LRUupdate(self.lru, blocknum)
+                self.blocks[blocknum] = {"rawinput": None}
+            block = self.blocks[blocknum]
+            if block is None:
+                return None
+            rawdata = block["rawinput"]
+
+        if rawdata is None:
+            with self.loader_lock:
+                rawdata = self.loader(
+                    self.infile, blocknum * self.blocksize, self.rf.blocklen
+                )
+            with self.lock:
+                if rawdata is None or len(rawdata) < self.rf.blocklen:
+                    self.blocks[blocknum] = None
+                    return None
+                self.blocks[blocknum]["rawinput"] = rawdata
+
+        return self.blocks[blocknum]
+
+    def read_sync(self, begin, length):
+        """Return only the demodulated sync path for a contiguous input range."""
+
+        end = begin + length
+        blocknums = list(range(begin // self.blocksize, (end // self.blocksize) + 1))
+
+        for blocknum in blocknums:
+            if self._load_raw_block(blocknum) is None:
+                return None
+
+        with self.lock:
+            for blocknum in blocknums:
+                block = self.blocks[blocknum]
+                if "sync" not in block and blocknum not in self.sync_waiting:
+                    self.sync_waiting.add(blocknum)
+                    self.q_in.put(("SYNC", blocknum, block))
+
+        while True:
+            if self.num_worker_threads == 0:
+                self.worker(return_on_empty=True)
+
+            with self.q_out_cv:
+                if not any(blocknum in self.sync_waiting for blocknum in blocknums):
+                    break
+                self.q_out_cv.wait()
+
+        with self.lock:
+            sync = [self.blocks[blocknum]["sync"] for blocknum in blocknums]
+
+        self.prune_cache()
+        return {
+            "sync": np.concatenate(sync),
+            "startloc": (begin // self.blocksize) * self.blocksize,
+        }
+
     def flush_demod(self):
         """ Flush all demodulation data.  This is called by the field class after calibration (i.e. MTF) is determined to be off """
         blocks_toredo = []
@@ -1312,6 +1426,13 @@ class DemodCache:
                 blocknum, item = rv
 
                 if blocknum not in self.blocks:
+                    continue
+
+                if "sync" in item:
+                    for key, value in item.items():
+                        self.blocks[blocknum][key] = value
+                    self.sync_waiting.discard(blocknum)
+                    self.q_out_cv.notify_all()
                     continue
 
                 if "MTF" not in item or "demod" not in item:
@@ -4013,6 +4134,44 @@ class LDdecode:
 
         if audio is not None and self.outfile_audio is not None:
             self.outfile_audio.write(audio)
+
+    def has_sync(self, start):
+        """Return whether a lightweight probe sees a possible field sync.
+
+        This is a conservative preamble gate.  It does not validate a field or
+        alter the decoder state; callers must still use :meth:`decodefield`
+        before treating a position as video.
+        """
+
+        readloc = max(0, int(start - self.rf.blockcut))
+        readloc_block = readloc // self.blocksize
+        numblocks = (self.readlen // self.blocksize) + 2
+        rawdecode = self.demodcache.read_sync(
+            readloc_block * self.blocksize,
+            numblocks * self.blocksize,
+        )
+        if rawdecode is None:
+            return None
+
+        probe_decode = {
+            "input": np.empty(0, dtype=np.int16),
+            "video": np.rec.array(
+                [rawdecode["sync"]], names=["demod_05"]
+            ),
+        }
+        field = self.FieldClass(
+            self.rf,
+            probe_decode,
+            fields_written=0,
+            readloc=rawdecode["startloc"],
+        )
+        original_ire0 = self.rf.DecoderParams["ire0"]
+        try:
+            pulses = field.getpulses()
+        finally:
+            self.rf.DecoderParams["ire0"] = original_ire0
+
+        return bool(pulses is not None and len(pulses))
 
     @profile
     def decodefield(self, start, mtf_level, prevfield=None, initphase=False, redo=False, rv=None):

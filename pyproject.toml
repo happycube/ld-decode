@@ -61,6 +61,7 @@ ld-cut = "lddecode.cut:main"
 ld-decode = "lddecode.main:main"
 ld-ldf-reader-py = "lddecode.ldf_reader:main"
 ld-lds-converter-py = "lddecode.lds:main"
+ld-find-start = "lddecode.start_finder:main"
 
 [tool.setuptools]
 packages = ["lddecode"]
