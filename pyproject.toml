@@ -58,6 +58,7 @@ Issues = "https://github.com/happycube/ld-decode/issues"
 [project.scripts]
 ld-decode = "lddecode.main:main"
 ld-ldf-reader-py = "lddecode.ldf_reader:main"
+ld-find-start = "lddecode.start_finder:main"
 
 [tool.setuptools]
 packages = ["lddecode"]
