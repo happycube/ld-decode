@@ -553,6 +553,9 @@ class RFDecode:
         # This high pass filter is intended to detect RF dropouts
         Frfhpf = sps.butter(1, 10 / self.freq_half, btype="highpass")
         self.Filters["Frfhpf"] = filtfft(Frfhpf, self.blocklen)
+        self.Filters["Frfhpf_rfft"] = self.Filters["Frfhpf"][
+            : self.blocklen // 2 + 1
+        ]
 
         # First phase FFT filtering
 
@@ -678,6 +681,28 @@ class RFDecode:
                 self.blocklen,
             )
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
+
+        # These filters produce real outputs, so keep their positive-frequency
+        # halves and transform all video products together.
+        rfft_len = self.blocklen // 2 + 1
+        bins = np.arange(rfft_len)
+
+        def shifted_half_spectrum(filt, offset=0):
+            half = filt[:rfft_len]
+            if offset:
+                half = half * np.exp(2j * np.pi * offset * bins / self.blocklen)
+            return half
+
+        video_filters = [
+            shifted_half_spectrum(SF["FVideo"]),
+            shifted_half_spectrum(SF["FVideo05"], SF["F05_offset"]),
+            shifted_half_spectrum(
+                SF["FVideoBurst"], SF["FVideoBurst_offset"]
+            ),
+        ]
+        if self.system == "PAL":
+            video_filters.append(shifted_half_spectrum(SF["FVideoPilot"]))
+        SF["FVideo_rfft"] = np.asarray(video_filters)
 
     def computeaudiofilters(self):
         SP = self.SysParams
@@ -806,7 +831,11 @@ class RFDecode:
         if getattr(self, "delays", None) is not None and "video_rot" in self.delays:
             rotdelay = self.delays["video_rot"]
 
-        rv["rfhpf"] = npfft.ifft(indata_fft * self.Filters["Frfhpf"]).real
+        rv["rfhpf"] = npfft.irfft(
+            indata_fft[: self.blocklen // 2 + 1]
+            * self.Filters["Frfhpf_rfft"],
+            n=self.blocklen,
+        )
         rv["rfhpf"] = rv["rfhpf"][
             self.blockcut - rotdelay : -self.blockcut_end - rotdelay
         ].astype(np.float32)
@@ -846,18 +875,17 @@ class RFDecode:
         demod = unwrap_hilbert(hilbert, self.freq_hz)
 
         # use a clipped demod for video output processing to reduce speckling impact
-        demod_fft = npfft.fft(np.clip(demod, 1500000, self.freq_hz * 0.75))
+        demod_rfft = npfft.rfft(np.clip(demod, 1500000, self.freq_hz * 0.75))
+        video_results = npfft.irfft(
+            demod_rfft * self.Filters["FVideo_rfft"],
+            n=self.blocklen,
+            axis=1,
+        )
 
-        out_video = npfft.ifft(demod_fft * self.Filters["FVideo"]).real
-
-        out_video05 = npfft.ifft(demod_fft * self.Filters["FVideo05"]).real
-        out_video05 = np.roll(out_video05, -self.Filters["F05_offset"])
-
-        out_videoburst = npfft.ifft(demod_fft * self.Filters["FVideoBurst"]).real
-        out_videoburst = np.roll(out_videoburst, -self.Filters["FVideoBurst_offset"])
+        out_video, out_video05, out_videoburst = video_results[:3]
 
         if self.system == "PAL":
-            out_videopilot = npfft.ifft(demod_fft * self.Filters["FVideoPilot"]).real
+            out_videopilot = video_results[3]
             video_out = np.rec.array(
                 [
                     out_video.astype(np.float32),
