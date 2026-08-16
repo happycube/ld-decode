@@ -27,7 +27,8 @@ from .pulses import (  # noqa: F401
 )
 from .dsp import (  # noqa: F401
     FieldInfo, LRUupdate, StridedCollector, angular_mean_helper, compute_mtf,
-    db_to_lev, distance_from_round, dsa_rescale_and_clip, genwave, get_fmax,
+    concatenate_blocks, db_to_lev, distance_from_round, dsa_rescale_and_clip,
+    genwave, get_fmax,
     hz_to_output_array, lev_to_db, n_orgt, n_ornotrange, n_ornotrange_scalar,
     nb_abs, nb_absmax, nb_max, nb_mean, nb_median, nb_min, nb_mul, nb_round,
     nb_std, phase_distance, rms, roundfloat, scale, scale_field,

@@ -607,6 +607,26 @@ class RFDecode:
             )
             SF["FVideoPilot"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fpilot"]
 
+        self.build_video_rfft_stack()
+
+    def build_video_rfft_stack(self):
+        """Stack the video output filters' positive-frequency halves.
+
+        demod and all four video products are real, so the half spectrum is
+        exact (see demodblock).  Keeping them in one contiguous 2-D array lets
+        demodblock do a single batched irfft instead of one call per output.
+        Must be rebuilt by anything that changes one of these filters --
+        recompute_fvideo() does.
+        """
+        SF = self.Filters
+        nr = self.blocklen // 2 + 1
+
+        stack = [SF["FVideo"][:nr], SF["FVideo05"][:nr], SF["FVideoBurst"][:nr]]
+        if self.system == "PAL":
+            stack.append(SF["FVideoPilot"][:nr])
+
+        SF["FVideo_rfft"] = np.asarray(stack)
+
     def recompute_fvideo(self):
         """Rebuild only FVideo after an inverse MTF strength change.
 
@@ -628,6 +648,8 @@ class RFDecode:
             SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
+
+        self.build_video_rfft_stack()
 
     def build_video_eq(self, points):
         """Zero-phase magnitude EQ from (freq_hz, gain_db) anchor points.
@@ -1008,6 +1030,89 @@ class RFDecode:
 
         return True
 
+    def apply_v4300d(self, indata_fft):
+        """PAL LD-V4300D spur removal, if enabled.  Returns the input FFT
+        unchanged (not a copy) when the workaround is off."""
+
+        # In deferred mode the spur filter stays off until sync is acquired
+        # (shared event flips for all pipeline threads); see __init__.
+        v4300_on = (not self.v4300_defer) or (
+            self._acquired_event is not None and self._acquired_event.is_set()
+        )
+
+        if self.system != "PAL" or not v4300_on:
+            return indata_fft
+
+        if self.PAL_V4300D_CoherentSubtract:
+            # Experimental upgrade of the V4300D workaround below: instead of
+            # zeroing FFT bins (which leaves the off-bin spectral-leakage skirts
+            # of the interfering tone behind), estimate the tone(s) coherently
+            # and subtract them in the time domain.  See v4300d_coherent_subtract.
+            return self.v4300d_coherent_subtract(indata_fft)
+
+        if not self.PAL_V4300D_NotchFilter:
+            return indata_fft
+
+        # This routine works around an 'interesting' issue seen with LD-V4300D
+        # players and some PAL digital audio disks, where there is a signal
+        # somewhere between 8.47 and 8.57mhz.
+        #
+        # The idea here is to look for anomalies (3 std deviations) and snip
+        # them out of the FFT.  There may be side effects, however, but
+        # generally minor compared to the 'wibble' itself and only in
+        # certain cases.
+        # Copy before zeroing bins so we don't mutate the caller's FFT array.
+        indata_fft = indata_fft.copy()
+        sl = slice(
+            int(self.blocklen * (8.42 / self.freq)),
+            int(1 + (self.blocklen * (8.6 / self.freq))),
+        )
+        sq_sl = sqsum(indata_fft[sl])
+        m = np.mean(sq_sl) + (np.std(sq_sl) * 3)
+
+        for i in np.where(sq_sl > m)[0]:
+            indata_fft[(i - 1 + sl.start)] = 0
+            indata_fft[(i + sl.start)] = 0
+            indata_fft[(i + 1 + sl.start)] = 0
+            indata_fft[self.blocklen - (i + sl.start)] = 0
+            indata_fft[self.blocklen - (i - 1 + sl.start)] = 0
+            indata_fft[self.blocklen - (i + 1 + sl.start)] = 0
+
+        return indata_fft
+
+    def demodblock_sync(self, data=None, fftdata=None, cut=False):
+        """Demodulate only the 0.5 MHz path used for vertical-sync detection.
+
+        A stripped-down demodblock for cheap "is there video here?" probes
+        (ld-find-start): no audio, EFM, dropout or burst/pilot products, and
+        no MTF.  Not a substitute for a real decode.
+        """
+
+        if fftdata is not None:
+            indata_fft = fftdata
+        elif data is not None:
+            indata_fft = npfft.fft(data[: self.blocklen])
+        else:
+            raise Exception("demodblock_sync called without raw or FFT data")
+
+        indata_fft = self.apply_v4300d(indata_fft)
+
+        hilbert = npfft.ifft(indata_fft * self.Filters["RFVideo"])
+        demod = unwrap_hilbert(hilbert, self.freq_hz)
+
+        # FVideo05 carries its delay compensation as a phase ramp, so no roll
+        # is needed here (see computevideofilters).
+        demod_fft = npfft.rfft(np.clip(demod, 1500000, self.freq_hz * 0.75))
+        sync = npfft.irfft(
+            demod_fft * self.Filters["FVideo05"][: demod_fft.shape[0]],
+            n=self.blocklen,
+        )
+
+        if cut:
+            sync = sync[self.blockcut : -self.blockcut_end]
+
+        return sync.astype(np.float32)
+
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False,
                    raw_mtf=False):
         # raw_mtf: use mtf_level as-is (delay calibration passes the true
@@ -1056,43 +1161,7 @@ class RFDecode:
             self.blockcut - rotdelay : -self.blockcut_end - rotdelay
         ].astype(np.float32)
 
-        # In deferred mode the spur filter stays off until sync is acquired
-        # (shared event flips for all pipeline threads); see __init__.
-        v4300_on = (not self.v4300_defer) or (
-            self._acquired_event is not None and self._acquired_event.is_set()
-        )
-
-        if self.system == "PAL" and self.PAL_V4300D_CoherentSubtract and v4300_on:
-            # Experimental upgrade of the V4300D workaround below: instead of
-            # zeroing FFT bins (which leaves the off-bin spectral-leakage skirts
-            # of the interfering tone behind), estimate the tone(s) coherently
-            # and subtract them in the time domain.  See v4300d_coherent_subtract.
-            indata_fft = self.v4300d_coherent_subtract(indata_fft)
-        elif self.system == "PAL" and self.PAL_V4300D_NotchFilter and v4300_on:
-            # This routine works around an 'interesting' issue seen with LD-V4300D
-            # players and some PAL digital audio disks, where there is a signal
-            # somewhere between 8.47 and 8.57mhz.
-            #
-            # The idea here is to look for anomalies (3 std deviations) and snip
-            # them out of the FFT.  There may be side effects, however, but
-            # generally minor compared to the 'wibble' itself and only in
-            # certain cases.
-            # Copy before zeroing bins so we don't mutate the caller's FFT array.
-            indata_fft = indata_fft.copy()
-            sl = slice(
-                int(self.blocklen * (8.42 / self.freq)),
-                int(1 + (self.blocklen * (8.6 / self.freq))),
-            )
-            sq_sl = sqsum(indata_fft[sl])
-            m = np.mean(sq_sl) + (np.std(sq_sl) * 3)
-
-            for i in np.where(sq_sl > m)[0]:
-                indata_fft[(i - 1 + sl.start)] = 0
-                indata_fft[(i + sl.start)] = 0
-                indata_fft[(i + 1 + sl.start)] = 0
-                indata_fft[self.blocklen - (i + sl.start)] = 0
-                indata_fft[self.blocklen - (i - 1 + sl.start)] = 0
-                indata_fft[self.blocklen - (i + 1 + sl.start)] = 0
+        indata_fft = self.apply_v4300d(indata_fft)
 
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
 
@@ -1111,18 +1180,19 @@ class RFDecode:
         # demod is real and these video outputs are real, so the half-spectrum
         # rfft/irfft pair is mathematically identical to fft/ifft.real (the filters
         # are conjugate-symmetric) at ~2.3x the speed of the full complex transforms.
+        # All four products share demod's transform, so filter and invert them
+        # together in one batched irfft (see build_video_rfft_stack).
         demod_fft = npfft.rfft(np.clip(demod, 1500000, self.freq_hz * 0.75))
-        nr = demod_fft.shape[0]
         bl = self.blocklen
 
-        out_video = npfft.irfft(demod_fft * self.Filters["FVideo"][:nr], n=bl)
+        video_results = npfft.irfft(
+            demod_fft * self.Filters["FVideo_rfft"], n=bl, axis=1
+        )
 
-        out_video05 = npfft.irfft(demod_fft * self.Filters["FVideo05"][:nr], n=bl)
-
-        out_videoburst = npfft.irfft(demod_fft * self.Filters["FVideoBurst"][:nr], n=bl)
+        out_video, out_video05, out_videoburst = video_results[:3]
 
         if self.system == "PAL":
-            out_videopilot = npfft.irfft(demod_fft * self.Filters["FVideoPilot"][:nr], n=bl)
+            out_videopilot = video_results[3]
             video_out = np.rec.array(
                 [
                     out_video.astype(np.float32),

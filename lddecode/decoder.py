@@ -24,7 +24,7 @@ from .field import Field, FieldAnchor, FieldNTSC, FieldPAL
 from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import detect_levels
-from .dsp import FieldInfo, nb_abs, nb_median, roundfloat
+from .dsp import FieldInfo, concatenate_blocks, nb_abs, nb_median, roundfloat
 
 
 class LDdecode:
@@ -971,7 +971,7 @@ class LDdecode:
 
         rv = {}
         for k in t.keys():
-            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
+            rv[k] = concatenate_blocks(t[k]) if len(t[k]) else None
 
         if rv["audio"] is not None:
             rv["audio_phase1"] = rv["audio"]
@@ -980,6 +980,67 @@ class LDdecode:
         rv["startloc"] = (begin // blocksize) * blocksize
 
         return rv
+
+    def read_sync(self, begin, length):
+        """ Return only the demodulated 0.5 MHz sync path for an input range.
+
+            Much cheaper than demod_read (one video product, no audio/EFM/
+            dropout work) and deliberately uncached: the only caller probes
+            widely-spaced positions and never revisits them. """
+        blocksize = self.demod_blocksize
+        brange = range(begin // blocksize, ((begin + length) // blocksize) + 1)
+
+        sync = []
+        for b in brange:
+            rawinput = self._read_raw_block(b)
+            if rawinput is None:
+                return None
+            sync.append(self.rf.demodblock_sync(data=rawinput, cut=True))
+
+        return {
+            "sync": np.concatenate(sync),
+            "startloc": (begin // blocksize) * blocksize,
+        }
+
+    def has_sync(self, start):
+        """Return whether a lightweight probe sees a possible field sync.
+
+        This is a conservative preamble gate.  It does not validate a field or
+        alter the decoder state; callers must still use :meth:`decodefield`
+        before treating a position as video.  Returns None at EOF.
+        """
+
+        readloc = max(0, int(start - self.rf.blockcut))
+        readloc_block = readloc // self.blocksize
+        numblocks = (self.readlen // self.blocksize) + 2
+
+        rawdecode = self.read_sync(
+            readloc_block * self.blocksize,
+            numblocks * self.blocksize,
+        )
+        if rawdecode is None:
+            return None
+
+        probe_decode = {
+            "input": np.empty(0, dtype=np.int16),
+            "video": np.rec.array([rawdecode["sync"]], names=["demod_05"]),
+        }
+        field = self.FieldClass(
+            self.rf,
+            probe_decode,
+            fields_written=0,
+            readloc=rawdecode["startloc"],
+        )
+
+        # getpulses() recalibrates ire0 in place when it finds nothing; this is
+        # only a probe, so don't let it move the real decoder's levels.
+        original_ire0 = self.rf.DecoderParams["ire0"]
+        try:
+            pulses = field.getpulses()
+        finally:
+            self.rf.DecoderParams["ire0"] = original_ire0
+
+        return bool(pulses is not None and len(pulses))
 
     @profile
     def decodefield(self, start, mtf_level, prevfield=None, initphase=False,

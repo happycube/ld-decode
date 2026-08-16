@@ -102,7 +102,7 @@ sinc_phase_count = 2**16
 #     return table
 
 
-@njit(nogil=True, fastmath=True)
+@njit(nogil=True, cache=True, fastmath=True)
 def scale_field(
     buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineoffset, outwidth,
     wow_level_adjust_smoothing = 0, level_adjust_threshold = 15,
@@ -149,22 +149,19 @@ def scale_field(
         # fractional phase
         frac = coord - coord_int
 
-        phase_pos = frac * sinc_phase_count
-        phase_start = int(phase_pos)
-        phase_end = phase_start + 1
-
-        alpha = np.float32(phase_pos - phase_start)
-
-        w_start = sinc_lut[phase_start]
-        w_end = sinc_lut[phase_end]
+        # sinc_phase_count is 2**16, so the nearest tabulated phase is already
+        # accurate far below float32 precision. Interpolating between two
+        # adjacent phases would double LUT reads and add per-tap math in the
+        # innermost loop of the decoder for no change in output.
+        # If the LUT gets smaller, consider adding linear interpolation.
+        phase = int(frac * sinc_phase_count + np.float32(0.5))
+        w = sinc_lut[phase]
 
         start = coord_int - half_taps_m1
 
         result = 0.0
         for t in range(sinc_tap_count):
-            # do linear interpolation between pre-computed phases
-            ws = w_start[t]
-            result += buf[start + t] * (ws + alpha * (w_end[t] - ws))
+            result += buf[start + t] * w[t]
 
         dsout[i - dsout_start] = level_adjust * result
 
@@ -300,6 +297,18 @@ def LRUupdate(lst, k):
         pass
 
     lst.insert(0, k)
+
+
+def concatenate_blocks(blocks):
+    """Concatenate demodulator cache blocks, being sensitive to performance"""
+    dtype = blocks[0].dtype
+    if dtype.names is None:
+        return np.concatenate(blocks)
+
+    # np.concatenate does per-field/per-element copy on structured/record dtype.
+    # ~30x slower than simple memcpy. We happen to know the blocks here share
+    # the same dtype, so just copy the bytes.
+    return np.concatenate([b.view(np.uint8) for b in blocks]).view(dtype)
 
 
 # numba jit functions, used to numba-ify parts of more complex functions

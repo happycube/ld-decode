@@ -37,6 +37,8 @@ from concurrent.futures import wait as futures_wait
 
 import numpy as np
 
+from .dsp import concatenate_blocks
+
 # Worker-process state: one RFDecode per process, built by the pool
 # initializer to reproduce the parent's post-calibration filter state.
 _worker_rf = None
@@ -147,7 +149,7 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
 
         rv = {}
         for k in t.keys():
-            rv[k] = np.concatenate(t[k]) if len(t[k]) else None
+            rv[k] = concatenate_blocks(t[k]) if len(t[k]) else None
         if rv["audio"] is not None:
             rv["audio_phase1"] = rv["audio"]
             rv["audio"] = rf.audio_phase2(rv["audio"])
