@@ -95,7 +95,10 @@ class FakeDecoder:
         self.bytes_per_field = bytes_per_field
         self.isCLV = False
         self.closed = False
-        self.rf = SimpleNamespace(SysParams={"fieldPhases": 4})
+        self.rf = SimpleNamespace(
+            SysParams={"fieldPhases": 4, "FPS": 30},
+            DecoderParams={"ire0": 0},
+        )
 
     def decodefield(self, _position, _mtf, _previous):
         event = self.events.pop(0)
@@ -124,6 +127,85 @@ class SyncProbeFakeDecoder(FakeDecoder):
         return next(self.sync_results)
 
 
+class SyncRecoveryFakeDecoder(FakeDecoder):
+    """Return fields only at the positions reached by normal field stepping."""
+
+    def __init__(self, events, bytes_per_field=100):
+        super().__init__([], bytes_per_field)
+        self.events_by_position = dict(events)
+        self.sync_positions = []
+
+    def has_sync(self, position):
+        self.sync_positions.append(position)
+        return True
+
+    def decodefield(self, position, _mtf, _previous):
+        return self.events_by_position.get(position, (None, None))
+
+
+class StartValidationFakeDecoder(FakeDecoder):
+    """Emit a phase sequence keyed by the requested nominal sample position."""
+
+    def __init__(self, phases, start_position=1000, bytes_per_field=100):
+        super().__init__([], bytes_per_field)
+        self.phases = list(phases)
+        self.start_position = start_position
+        self.calls = []
+
+    def decodefield(self, position, _mtf, previous):
+        self.calls.append((position, previous))
+        index = (position - self.start_position) // self.bytes_per_field
+        if index < 0 or index >= len(self.phases):
+            return None, None
+        phase = self.phases[index]
+        return (
+            FakeField(
+                position,
+                bool(index % 2),
+                field_phase_id=phase,
+            ),
+            self.bytes_per_field,
+        )
+
+
+class ParameterResetValidationDecoder(FakeDecoder):
+    """Require RF parameters to be reset before the second candidate."""
+
+    def __init__(self):
+        super().__init__([])
+        self.calls = []
+
+    def decodefield(self, position, _mtf, previous):
+        self.calls.append((position, self.rf.DecoderParams["ire0"], previous))
+        if 1000 <= position < 1200:
+            self.rf.DecoderParams["ire0"] = 99
+            phase = 4 if position == 1000 else 3
+        elif 1200 <= position < 2000:
+            if self.rf.DecoderParams["ire0"] != 0:
+                return None, None
+            phase = ((position - 1200) // self.bytes_per_field) % 4 + 1
+        else:
+            return None, None
+        return (
+            FakeField(
+                position,
+                bool((position // self.bytes_per_field) % 2),
+                field_phase_id=phase,
+            ),
+            self.bytes_per_field,
+        )
+
+
+def validation_decoder(start_file_frame, phases=None, bytes_per_field=100):
+    if phases is None:
+        phases = [1, 2, 3, 4, 1, 2, 3, 4]
+    return StartValidationFakeDecoder(
+        phases,
+        start_position=start_file_frame * bytes_per_field * 2,
+        bytes_per_field=bytes_per_field,
+    )
+
+
 def five_frames(start_file_frame=7, sample_base=0, disk_type="CAV"):
     fields = []
     for index in range(5):
@@ -135,8 +217,13 @@ def five_frames(start_file_frame=7, sample_base=0, disk_type="CAV"):
 
 def test_start_finder_returns_first_cav_frame_of_vbi_run():
     decoder = FakeDecoder(five_frames())
+    validation = validation_decoder(7)
+    decoders = iter([decoder, validation])
     result = StartFinder(
-        lambda: decoder, sample_rate=100, required_frames=5, pre_roll_search_seconds=0
+        lambda: next(decoders),
+        sample_rate=100,
+        required_frames=5,
+        pre_roll_search_seconds=0,
     ).search()
     assert result.confidence == "vbi"
     assert result.file_frame == 7
@@ -144,12 +231,14 @@ def test_start_finder_returns_first_cav_frame_of_vbi_run():
     assert result.disk_type == "CAV"
     assert result.addresses == (100, 101, 102, 103, 104)
     assert decoder.closed
+    assert validation.closed
 
 
 def test_start_finder_recreates_decoder_after_decode_failure():
     first = FakeDecoder([RuntimeError("bad RF")])
     second = FakeDecoder(five_frames(start_file_frame=9))
-    decoders = iter([first, second])
+    validation = validation_decoder(9)
+    decoders = iter([first, second, validation])
     result = StartFinder(
         lambda: next(decoders), sample_rate=100, required_frames=5, pre_roll_search_seconds=0
     ).search()
@@ -157,17 +246,162 @@ def test_start_finder_recreates_decoder_after_decode_failure():
     assert result.file_frame == 9
     assert first.closed
     assert second.closed
+    assert validation.closed
 
 
 def test_start_finder_skips_sync_free_preamble_without_full_field_decode():
     decoder = SyncProbeFakeDecoder(five_frames(), [False, True])
+    validation = validation_decoder(7)
+    decoders = iter([decoder, validation])
     result = StartFinder(
-        lambda: decoder, sample_rate=100, required_frames=5, pre_roll_search_seconds=0
+        lambda: next(decoders),
+        sample_rate=100,
+        required_frames=5,
+        pre_roll_search_seconds=0,
     ).search()
 
     assert result.confidence == "vbi"
     assert decoder.sync_positions == [0, 100]
     assert decoder.closed
+    assert validation.closed
+
+
+def test_start_finder_recovers_from_an_invalid_field_after_sync_detection():
+    # A one-second sync probe can identify video but land in a malformed field.
+    # Follow its field offset to the next clean field; jumping a full second
+    # would miss this VBI run entirely.
+    decoder = SyncRecoveryFakeDecoder(
+        [
+            (0, (FakeField(0, True, valid=False), 10)),
+            (10, (FakeField(1000, True), 100)),
+            (110, (FakeField(1100, False, 0), 100)),
+            (210, (FakeField(1200, True), 100)),
+            (310, (FakeField(1300, False, 1), 100)),
+            (410, (FakeField(1400, True), 100)),
+            (510, (FakeField(1500, False, 2), 100)),
+        ]
+    )
+    validation = validation_decoder(5)
+    decoders = iter([decoder, validation])
+
+    result = StartFinder(
+        lambda: next(decoders),
+        sample_rate=100,
+        required_frames=3,
+        pre_roll_search_seconds=0,
+    ).search()
+
+    assert result.confidence == "vbi"
+    assert result.file_frame == 5
+    assert decoder.sync_positions == [0]
+    assert decoder.closed
+    assert validation.closed
+
+
+def test_start_validation_skips_nominal_frames_with_phase_mismatches():
+    # Frame 5 is the decoded-field pre-roll boundary, but the normal decoder
+    # starts before it and sees unstable phases until nominal frame 8.
+    phases = [4, 3, 2, 3, 4, 3, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3]
+    decoder = StartValidationFakeDecoder(phases)
+    finder = StartFinder(lambda: decoder, sample_rate=100)
+
+    result = finder._validate_start_frame(5, 8, 100)
+    assert result.file_frame == 8
+    assert result.readloc == 1600
+    assert result.reason is None
+    success_start = decoder.calls.index((1600, None))
+    assert decoder.calls[success_start + 1][1].readloc == 1600
+    assert decoder.closed
+
+
+def test_start_validation_reuses_one_decoder_with_reset_rf_parameters():
+    decoder = ParameterResetValidationDecoder()
+    factory_calls = []
+
+    def decoder_factory():
+        factory_calls.append(None)
+        return decoder
+
+    result = StartFinder(decoder_factory, sample_rate=100)._validate_start_frame(
+        5, 6, 100
+    )
+
+    assert result.file_frame == 6
+    assert factory_calls == [None]
+    candidate_six_start = next(
+        call for call in decoder.calls if call[0] == 1200 and call[2] is None
+    )
+    assert candidate_six_start[1] == 0
+    assert decoder.closed
+
+
+def test_start_finder_caps_nominal_validation_at_one_second():
+    forward = FakeDecoder(five_frames(start_file_frame=40))
+    replay = FakeDecoder(
+        [
+            FakeField(
+                index * 100,
+                index % 2 == 0,
+                field_phase_id=(index % 4) + 1,
+            )
+            for index in range(81)
+        ]
+    )
+    validation = validation_decoder(0, [4, 3] * 60)
+    decoders = iter([forward, replay, validation])
+
+    result = StartFinder(
+        lambda: next(decoders),
+        sample_rate=10000,
+        required_frames=5,
+        pre_roll_search_seconds=5,
+    ).search()
+
+    assert result.confidence == "unvalidated"
+    starts = [position for position, previous in validation.calls if previous is None]
+    assert starts == [frame * 200 for frame in range(30)]
+    assert validation.closed
+
+
+def test_start_finder_returns_unvalidated_result_when_no_nominal_start_is_safe():
+    forward = FakeDecoder(five_frames())
+    validation = validation_decoder(7, [4, 3, 4, 3, 4, 3, 4, 3])
+    decoders = iter([forward, validation])
+    reports = []
+
+    result = StartFinder(
+        lambda: next(decoders),
+        sample_rate=100,
+        required_frames=5,
+        pre_roll_search_seconds=0,
+        report=reports.append,
+    ).search()
+
+    assert result.confidence == "unvalidated"
+    assert result.file_frame == 7
+    assert "no phase-stable nominal --start" in reports[-1]
+    assert forward.closed
+    assert validation.closed
+
+
+def test_start_finder_reports_validation_decoder_failure_as_unvalidated():
+    forward = FakeDecoder(five_frames())
+    validation = FakeDecoder([RuntimeError("validation RF")])
+    decoders = iter([forward, validation])
+    reports = []
+
+    result = StartFinder(
+        lambda: next(decoders),
+        sample_rate=100,
+        required_frames=5,
+        pre_roll_search_seconds=0,
+        report=reports.append,
+    ).search()
+
+    assert result.confidence == "unvalidated"
+    assert "decoder failure while validating" in reports[-1]
+    assert forward.closed
+    assert validation.closed
 
 
 def test_start_finder_returns_guarded_fallback_for_stable_video_without_vbi():
@@ -186,13 +420,19 @@ def test_start_finder_returns_guarded_fallback_for_stable_video_without_vbi():
 
 def test_start_finder_returns_first_clv_frame_of_the_stable_run():
     decoder = FakeDecoder(five_frames(start_file_frame=30, disk_type="CLV"))
+    validation = validation_decoder(30)
+    decoders = iter([decoder, validation])
     result = StartFinder(
-        lambda: decoder, sample_rate=100, required_frames=5, pre_roll_search_seconds=0
+        lambda: next(decoders),
+        sample_rate=100,
+        required_frames=5,
+        pre_roll_search_seconds=0,
     ).search()
     assert result.confidence == "vbi"
     assert result.disk_type == "CLV"
     assert result.file_frame == 30
     assert result.readloc == 6000
+    assert validation.closed
 
 
 def test_start_finder_keeps_clean_pre_roll_after_last_phase_break():
@@ -210,7 +450,10 @@ def test_start_finder_keeps_clean_pre_roll_after_last_phase_break():
             FakeField(4000, False, field_phase_id=4),
         ]
     )
-    decoders = iter([forward, replay])
+    validation = validation_decoder(
+        18, [4, 3, 2, 3, 4, 1, 2, 3, 4, 1]
+    )
+    decoders = iter([forward, replay, validation])
 
     result = StartFinder(
         lambda: next(decoders),
@@ -220,10 +463,11 @@ def test_start_finder_keeps_clean_pre_roll_after_last_phase_break():
     ).search()
 
     assert result.confidence == "vbi"
-    assert result.file_frame == 18
-    assert result.readloc == 3700
+    assert result.file_frame == 19
+    assert result.readloc == 3800
     assert forward.closed
     assert replay.closed
+    assert validation.closed
 
 
 def test_main_writes_only_confirmed_start_argument_to_stdout(monkeypatch, capsys):
@@ -233,6 +477,7 @@ def test_main_writes_only_confirmed_start_argument_to_stdout(monkeypatch, capsys
     captured = capsys.readouterr()
     assert captured.out == "--start 42\n"
     assert "found CAV run" in captured.err
+    assert "first decoded field sample 8400" in captured.err
 
 
 def test_main_keeps_guarded_fallback_off_stdout(monkeypatch, capsys):
@@ -241,6 +486,17 @@ def test_main_keeps_guarded_fallback_off_stdout(monkeypatch, capsys):
     assert main(["capture.ldf"]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
+    assert "--start 42" in captured.err
+
+
+def test_main_keeps_unvalidated_vbi_candidate_off_stdout(monkeypatch, capsys):
+    result = StartResult(42, 8400, "unvalidated", "CAV", (1, 2, 3, 4, 5), 3.0)
+    monkeypatch.setattr("lddecode.start_finder.find_start", lambda *_args, **_kwargs: result)
+    assert main(["capture.ldf"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "confirmed CAV VBI run" in captured.err
+    assert "first decoded field sample 8400" in captured.err
     assert "--start 42" in captured.err
 
 

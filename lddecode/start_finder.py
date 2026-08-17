@@ -9,9 +9,11 @@ trying to infer programme material from RF amplitude alone.
 from __future__ import print_function
 
 import argparse
+import math
 import sys
 import warnings
 from collections import namedtuple
+from copy import deepcopy
 
 from lddecode.core import LDdecode
 from lddecode.utils import make_loader, parse_frequency
@@ -23,6 +25,11 @@ DEFAULT_PRE_ROLL_SEARCH_SECONDS = 5.0
 # A five-frame run can occur while a player is still settling or seeking. One
 # second of clean, normal-speed addresses is long enough to reject that case.
 REQUIRED_VBI_FRAMES = 30
+# ``--start`` is a coarse, nominal frame location.  Verify a short phase run
+# from that exact position before returning it, so it does not begin inside the
+# last few unstable fields preceding the clean pre-roll.
+REQUIRED_START_STABLE_FIELDS = 8
+MAX_START_VALIDATION_SECONDS = 1.0
 
 FrameObservation = namedtuple(
     "FrameObservation", "file_frame readloc address disk_type"
@@ -34,7 +41,19 @@ StartResult = namedtuple(
     "StartResult",
     "file_frame readloc confidence disk_type addresses searched_seconds",
 )
-"""Result from :func:`find_start`; confidence is ``vbi`` or ``fallback``."""
+"""Result from :func:`find_start`; confidence is ``vbi``, ``fallback``, or
+``unvalidated``.  For VBI and unvalidated results, ``readloc`` is the first
+decoded field sample and can precede the nominal ``file_frame`` start
+location."""
+
+
+StartValidationResult = namedtuple(
+    "StartValidationResult", "file_frame readloc reason"
+)
+"""Internal nominal-``--start`` validation result.
+
+``readloc`` is the first decoded field sample; ``reason`` is set on failure.
+"""
 
 
 def file_frame_from_readloc(readloc, bytes_per_field):
@@ -286,6 +305,99 @@ class StartFinder:
             stable_observation.disk_type,
         )
 
+    def _validate_start_frame(self, first_frame, last_frame, bytes_per_field):
+        """Validate the earliest nominal ``--start`` within a clean pre-roll.
+
+        The pre-roll replay begins at a decoded field boundary, whereas
+        ``ld-decode --start`` begins at a nominal sample position.  The latter
+        can still select a preceding unstable field.  Decode each candidate as
+        the normal read path does and retain the first one with a stable phase
+        run.
+        """
+
+        decoder = None
+        try:
+            decoder = self.decoder_factory()
+            field_phases = int(decoder.rf.SysParams["fieldPhases"])
+            initial_decoder_params = deepcopy(decoder.rf.DecoderParams)
+            for candidate in range(int(first_frame), int(last_frame) + 1):
+                # ``decodefield`` can recalibrate RF levels while locking.
+                # Restore the factory state so every nominal start is an
+                # independent probe without constructing another decoder.
+                decoder.rf.DecoderParams.clear()
+                decoder.rf.DecoderParams.update(deepcopy(initial_decoder_params))
+                validation = self._validate_start_frame_candidate(
+                    decoder, candidate, bytes_per_field, field_phases
+                )
+                if validation is not None:
+                    return validation
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as error:
+            return StartValidationResult(
+                None,
+                None,
+                "decoder failure while validating nominal --start: {0}".format(
+                    error
+                ),
+            )
+        finally:
+            if decoder is not None:
+                decoder.close()
+
+        return StartValidationResult(
+            None,
+            None,
+            "no phase-stable nominal --start from file frame {0} through {1}".format(
+                first_frame, last_frame
+            ),
+        )
+
+    def _validate_start_frame_candidate(
+        self, decoder, candidate, bytes_per_field, field_phases
+    ):
+        """Return a validation result for one fresh nominal ``--start`` probe."""
+
+        position = candidate * int(bytes_per_field) * 2
+        previous_field = None
+        first_readloc = None
+        previous_phase = None
+        stable_fields = 0
+        for _ in range(REQUIRED_START_STABLE_FIELDS):
+            field, offset = decoder.decodefield(position, 0, previous_field)
+            if field is None or offset is None or not field.valid:
+                return None
+
+            if first_readloc is None:
+                first_readloc = int(field.readloc)
+            phase = getattr(field, "fieldPhaseID", None)
+            if phase is None:
+                return None
+            phase = int(phase)
+            if previous_phase is not None:
+                expected_phase = (
+                    1 if previous_phase == field_phases else previous_phase + 1
+                )
+                if phase != expected_phase:
+                    return None
+
+            try:
+                offset = int(offset)
+            except (TypeError, ValueError):
+                return None
+            if offset <= 0:
+                return None
+
+            previous_phase = phase
+            previous_field = field
+            stable_fields += 1
+            position += offset
+
+        if stable_fields == REQUIRED_START_STABLE_FIELDS:
+            return StartValidationResult(candidate, first_readloc, None)
+
+        return None
+
     def search(self):
         """Return a :class:`StartResult`, or ``None`` when no start is found."""
 
@@ -301,6 +413,8 @@ class StartFinder:
         stable_video = _StableVideoTracker()
         last_progress_bucket = -1
         scanning_preamble = True
+        acquiring_sync = False
+        sync_acquire_end = None
 
         try:
             decoder = self.decoder_factory()
@@ -309,7 +423,7 @@ class StartFinder:
                     position, last_progress_bucket
                 )
                 sync_probe = getattr(decoder, "has_sync", None)
-                if scanning_preamble and callable(sync_probe):
+                if scanning_preamble and not acquiring_sync and callable(sync_probe):
                     try:
                         with warnings.catch_warnings():
                             warnings.simplefilter("ignore", RuntimeWarning)
@@ -327,6 +441,14 @@ class StartFinder:
                     if has_sync is False:
                         position += self.sample_rate
                         continue
+                    if has_sync is True:
+                        # A coarse, one-second probe can land within a damaged
+                        # field even when sync is present.  Once sync is seen,
+                        # follow normal field offsets briefly so that the
+                        # decoder can lock onto the next clean field instead
+                        # of repeatedly skipping over the programme start.
+                        acquiring_sync = True
+                        sync_acquire_end = position + self.sample_rate
                 try:
                     # Bad tracking windows can make the RF calculations emit NumPy
                     # RuntimeWarnings. They are expected probe failures, not a
@@ -353,6 +475,8 @@ class StartFinder:
                     first_field = None
                     stable_video.reset()
                     self.detector.reset()
+                    acquiring_sync = False
+                    sync_acquire_end = None
                     continue
 
                 if field is None or offset is None:
@@ -371,6 +495,15 @@ class StartFinder:
                     first_field = None
                     stable_video.reset()
                     self.detector.reset()
+                    if (
+                        acquiring_sync
+                        and sync_acquire_end is not None
+                        and next_position < sync_acquire_end
+                    ):
+                        position = next_position
+                        continue
+                    acquiring_sync = False
+                    sync_acquire_end = None
                     # Before content locks, testing every nominal field makes a
                     # tracking-back capture unnecessarily slow. A one-second
                     # stride still exercises a different field phase on each
@@ -379,6 +512,8 @@ class StartFinder:
                     continue
 
                 scanning_preamble = False
+                acquiring_sync = False
+                sync_acquire_end = None
 
                 stable_start = stable_video.observe(field, decoder.bytes_per_field)
 
@@ -407,9 +542,44 @@ class StartFinder:
                             decoder.bytes_per_field,
                             decoder.rf.SysParams["fieldPhases"],
                         )
-                        return StartResult(
+                        last_validation_frame = qualified.file_frame
+                        if pre_roll.file_frame < qualified.file_frame:
+                            validation_frames = max(
+                                1,
+                                int(
+                                    math.ceil(
+                                        float(decoder.rf.SysParams["FPS"])
+                                        * MAX_START_VALIDATION_SECONDS
+                                    )
+                                ),
+                            )
+                            last_validation_frame = min(
+                                qualified.file_frame - 1,
+                                pre_roll.file_frame + validation_frames - 1,
+                            )
+                        validation = self._validate_start_frame(
                             pre_roll.file_frame,
-                            pre_roll.readloc,
+                            last_validation_frame,
+                            decoder.bytes_per_field,
+                        )
+                        if validation.file_frame is None:
+                            if self.report is not None:
+                                self.report(
+                                    "confirmed {0} VBI run, but {1}".format(
+                                        qualified.disk_type, validation.reason
+                                    )
+                                )
+                            return StartResult(
+                                pre_roll.file_frame,
+                                pre_roll.readloc,
+                                "unvalidated",
+                                qualified.disk_type,
+                                tuple(item.address for item in self.detector.run),
+                                float(position) / self.sample_rate,
+                            )
+                        return StartResult(
+                            validation.file_frame,
+                            validation.readloc,
                             "vbi",
                             qualified.disk_type,
                             tuple(item.address for item in self.detector.run),
@@ -566,7 +736,7 @@ def main(args=None):
         print(argument)
         print(
             "ld-find-start: found {0} run at file frame {1} "
-            "(sample {2}, searched {3:.2f}s)".format(
+            "(first decoded field sample {2}, searched {3:.2f}s)".format(
                 result.disk_type,
                 result.file_frame,
                 result.readloc,
@@ -576,13 +746,31 @@ def main(args=None):
         )
         return 0
 
-    print(
-        "ld-find-start: WARNING: no advancing CAV/CLV VBI run; "
-        "guarded stable-video candidate is {0} (sample {1})".format(
-            argument, result.readloc
-        ),
-        file=sys.stderr,
-    )
+    if result.confidence == "fallback":
+        print(
+            "ld-find-start: WARNING: no advancing CAV/CLV VBI run; "
+            "guarded stable-video candidate is {0} (sample {1})".format(
+                argument, result.readloc
+            ),
+            file=sys.stderr,
+        )
+    elif result.confidence == "unvalidated":
+        print(
+            "ld-find-start: WARNING: confirmed {0} VBI run, but no "
+            "phase-stable nominal --start was verified; guarded candidate is "
+            "{1} (first decoded field sample {2})".format(
+                result.disk_type, argument, result.readloc
+            ),
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "ld-find-start: ERROR: unknown start confidence {0}".format(
+                result.confidence
+            ),
+            file=sys.stderr,
+        )
+        return 1
     return 2
 
 
