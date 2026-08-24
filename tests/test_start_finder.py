@@ -162,10 +162,24 @@ class StartValidationFakeDecoder(FakeDecoder):
             FakeField(
                 position,
                 bool(index % 2),
+                valid=phase is not None,
                 field_phase_id=phase,
             ),
             self.bytes_per_field,
         )
+
+
+class OffsetValidationFakeDecoder(FakeDecoder):
+    """Emit validation fields and offsets keyed by the requested position."""
+
+    def __init__(self, events, bytes_per_field=100):
+        super().__init__([], bytes_per_field)
+        self.events = dict(events)
+        self.calls = []
+
+    def decodefield(self, position, _mtf, previous):
+        self.calls.append((position, previous))
+        return self.events.get(position, (None, None))
 
 
 class ParameterResetValidationDecoder(FakeDecoder):
@@ -314,6 +328,90 @@ def test_start_validation_skips_nominal_frames_with_phase_mismatches():
     assert decoder.closed
 
 
+def test_start_validation_recovers_leading_invalid_field_within_nominal_frame():
+    decoder = StartValidationFakeDecoder(
+        [None, 1, 2, 3, 4, 1, 2, 3, 4], start_position=1000
+    )
+    result = StartFinder(lambda: decoder, sample_rate=100)._validate_start_frame(
+        5, 5, 100
+    )
+
+    assert result.file_frame == 5
+    assert result.readloc == 1100
+    assert decoder.calls[0] == (1000, None)
+    assert decoder.calls[1] == (1100, None)
+    assert decoder.calls[2][1].readloc == 1100
+    assert decoder.closed
+
+
+def test_start_validation_rejects_leading_recovery_into_next_nominal_frame():
+    events = {
+        1000: (FakeField(1000, True, valid=False), 200),
+    }
+    for index, phase in enumerate((1, 2, 3, 4, 1, 2, 3, 4)):
+        position = 1200 + (index * 100)
+        events[position] = (FakeField(position, bool(index % 2), field_phase_id=phase), 100)
+    decoder = OffsetValidationFakeDecoder(events)
+
+    result = StartFinder(lambda: decoder, sample_rate=100)._validate_start_frame(
+        5, 6, 100
+    )
+
+    assert result.file_frame == 6
+    assert [call[0] for call in decoder.calls] == [1000] + list(
+        range(1200, 2000, 100)
+    )
+    assert decoder.closed
+
+
+def test_start_validation_rejects_invalid_field_after_stable_run_begins():
+    decoder = StartValidationFakeDecoder(
+        [1, None, 2, 3, 4, 1, 2, 3, 4], start_position=1000
+    )
+
+    result = StartFinder(lambda: decoder, sample_rate=100)._validate_start_frame(
+        5, 5, 100
+    )
+
+    assert result.file_frame is None
+    assert [call[0] for call in decoder.calls] == [1000, 1100]
+    assert decoder.closed
+
+
+def test_start_validation_rejects_fields_that_would_warn_of_player_skip():
+    warning_field = FakeField(1100, False, field_phase_id=2)
+    warning_field.sync_confidence = 10
+    warning_field.linelocs = [0] * 11
+    warning_field.inlinelen = 1
+    decoder = OffsetValidationFakeDecoder(
+        {
+            1000: (FakeField(1000, True, field_phase_id=1), 100),
+            1100: (warning_field, 100),
+        }
+    )
+    decoder.output_lines = 10
+
+    result = StartFinder(lambda: decoder, sample_rate=100)._validate_start_frame(
+        5, 5, 100
+    )
+
+    assert result.file_frame is None
+    assert [call[0] for call in decoder.calls] == [1000, 1100]
+    assert decoder.closed
+
+
+def test_start_validation_does_not_probe_into_confirmed_vbi_frame():
+    decoder = validation_decoder(5)
+
+    result = StartFinder(lambda: decoder, sample_rate=100)._validate_start_frame(
+        5, 5, 100, vbi_start_readloc=1500
+    )
+
+    assert result.file_frame is None
+    assert [call[0] for call in decoder.calls] == list(range(1000, 1500, 100))
+    assert decoder.closed
+
+
 def test_start_validation_reuses_one_decoder_with_reset_rf_parameters():
     decoder = ParameterResetValidationDecoder()
     factory_calls = []
@@ -436,7 +534,7 @@ def test_start_finder_returns_first_clv_frame_of_the_stable_run():
 
 
 def test_start_finder_keeps_clean_pre_roll_after_last_phase_break():
-    forward = FakeDecoder(five_frames(start_file_frame=20))
+    forward = FakeDecoder(five_frames(start_file_frame=25))
     replay = FakeDecoder(
         [
             FakeField(3500, True, field_phase_id=1),

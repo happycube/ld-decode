@@ -16,7 +16,7 @@ from collections import namedtuple
 from copy import deepcopy
 
 from lddecode.core import LDdecode
-from lddecode.utils import make_loader, parse_frequency
+from lddecode.utils import inrange, make_loader, parse_frequency
 
 RF_SAMPLE_RATE = 40000000
 DEFAULT_MAX_SEARCH_SECONDS = 300.0
@@ -43,8 +43,8 @@ StartResult = namedtuple(
 )
 """Result from :func:`find_start`; confidence is ``vbi``, ``fallback``, or
 ``unvalidated``.  For VBI and unvalidated results, ``readloc`` is the first
-decoded field sample and can precede the nominal ``file_frame`` start
-location."""
+decoded field sample (after any leading invalid-field recovery) and can
+precede the nominal ``file_frame`` start location."""
 
 
 StartValidationResult = namedtuple(
@@ -52,7 +52,8 @@ StartValidationResult = namedtuple(
 )
 """Internal nominal-``--start`` validation result.
 
-``readloc`` is the first decoded field sample; ``reason`` is set on failure.
+``readloc`` is the first valid decoded field sample after any leading
+invalid-field recovery; ``reason`` is set on failure.
 """
 
 
@@ -305,14 +306,22 @@ class StartFinder:
             stable_observation.disk_type,
         )
 
-    def _validate_start_frame(self, first_frame, last_frame, bytes_per_field):
+    def _validate_start_frame(
+        self,
+        first_frame,
+        last_frame,
+        bytes_per_field,
+        vbi_start_readloc=None,
+    ):
         """Validate the earliest nominal ``--start`` within a clean pre-roll.
 
         The pre-roll replay begins at a decoded field boundary, whereas
         ``ld-decode --start`` begins at a nominal sample position.  The latter
         can still select a preceding unstable field.  Decode each candidate as
-        the normal read path does and retain the first one with a stable phase
-        run.
+        the normal read path does, including recovery from leading invalid
+        fields, and retain the first one with a stable phase run.  When a
+        replayed pre-roll exists, do not let that recovery reach the confirmed
+        VBI frame.
         """
 
         decoder = None
@@ -327,7 +336,11 @@ class StartFinder:
                 decoder.rf.DecoderParams.clear()
                 decoder.rf.DecoderParams.update(deepcopy(initial_decoder_params))
                 validation = self._validate_start_frame_candidate(
-                    decoder, candidate, bytes_per_field, field_phases
+                    decoder,
+                    candidate,
+                    bytes_per_field,
+                    field_phases,
+                    vbi_start_readloc,
                 )
                 if validation is not None:
                     return validation
@@ -354,18 +367,63 @@ class StartFinder:
         )
 
     def _validate_start_frame_candidate(
-        self, decoder, candidate, bytes_per_field, field_phases
+        self,
+        decoder,
+        candidate,
+        bytes_per_field,
+        field_phases,
+        vbi_start_readloc,
     ):
-        """Return a validation result for one fresh nominal ``--start`` probe."""
+        """Return a validation result for one fresh nominal ``--start`` probe.
 
-        position = candidate * int(bytes_per_field) * 2
+        ``LDdecode.readfield`` follows a positive offset after an invalid
+        leading field and restarts its phase relationship.  Do the same, but
+        only within this nominal frame so an earlier candidate cannot borrow a
+        later frame's clean run.
+        """
+
+        nominal_position = candidate * int(bytes_per_field) * 2
+        nominal_end = nominal_position + (int(bytes_per_field) * 2)
+        position = nominal_position
         previous_field = None
         first_readloc = None
         previous_phase = None
         stable_fields = 0
-        for _ in range(REQUIRED_START_STABLE_FIELDS):
+        while stable_fields < REQUIRED_START_STABLE_FIELDS:
+            if vbi_start_readloc is not None and position >= vbi_start_readloc:
+                return None
+
             field, offset = decoder.decodefield(position, 0, previous_field)
-            if field is None or offset is None or not field.valid:
+            if field is None or offset is None:
+                return None
+
+            try:
+                offset = int(offset)
+            except (TypeError, ValueError):
+                return None
+            if offset <= 0:
+                return None
+            next_position = position + offset
+
+            if vbi_start_readloc is not None:
+                try:
+                    field_readloc = int(field.readloc)
+                except (AttributeError, TypeError, ValueError):
+                    return None
+                if field_readloc >= vbi_start_readloc:
+                    return None
+
+            if not field.valid:
+                # Recovery is permitted only before the stable run begins and
+                # only while it remains in the candidate's nominal frame.
+                if stable_fields or next_position >= nominal_end:
+                    return None
+                previous_field = None
+                previous_phase = None
+                position = next_position
+                continue
+
+            if self._would_report_player_skip(decoder, field):
                 return None
 
             if first_readloc is None:
@@ -381,22 +439,34 @@ class StartFinder:
                 if phase != expected_phase:
                     return None
 
-            try:
-                offset = int(offset)
-            except (TypeError, ValueError):
-                return None
-            if offset <= 0:
-                return None
-
             previous_phase = phase
             previous_field = field
             stable_fields += 1
-            position += offset
+            position = next_position
 
-        if stable_fields == REQUIRED_START_STABLE_FIELDS:
-            return StartValidationResult(candidate, first_readloc, None)
+        return StartValidationResult(candidate, first_readloc, None)
 
-        return None
+    @staticmethod
+    def _would_report_player_skip(decoder, field):
+        """Return whether ``LDdecode.readfield`` would warn about this field.
+
+        The lightweight fake fields used by start-finder tests do not carry
+        picture geometry. Real decoder fields do, and must meet the same
+        minimum quality rule as a normal decode before they can make a nominal
+        start safe.
+        """
+
+        try:
+            fieldlength = (
+                field.linelocs[decoder.output_lines] - field.linelocs[0]
+            ) / field.inlinelen
+            return field.sync_confidence < 50 and not inrange(
+                fieldlength,
+                decoder.output_lines - 2,
+                decoder.output_lines + 2,
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ZeroDivisionError):
+            return False
 
     def search(self):
         """Return a :class:`StartResult`, or ``None`` when no start is found."""
@@ -557,10 +627,14 @@ class StartFinder:
                                 qualified.file_frame - 1,
                                 pre_roll.file_frame + validation_frames - 1,
                             )
+                        vbi_start_readloc = (
+                            qualified.readloc if self.pre_roll_search_seconds else None
+                        )
                         validation = self._validate_start_frame(
                             pre_roll.file_frame,
                             last_validation_frame,
                             decoder.bytes_per_field,
+                            vbi_start_readloc,
                         )
                         if validation.file_frame is None:
                             if self.report is not None:
