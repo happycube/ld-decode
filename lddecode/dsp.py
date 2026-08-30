@@ -492,5 +492,214 @@ class StridedCollector:
         return None
 
 
+@njit(cache=True, nogil=True)
+def _calczc_findfirst(data, target, rising):
+    if rising:
+        for i in range(1, len(data)):
+            if data[i - 1] < target and data[i] >= target:
+                return i
+    else:
+        for i in range(1, len(data)):
+            if data[i - 1] > target and data[i] <= target:
+                return i
+    return None
+
+
+@njit(cache=True, nogil=True)
+def _calczc_do(data, _start_offset, target, edge=0, count=16):
+    start_offset = int(_start_offset)
+    icount = int(count + 1)
+    if edge == 0:
+        if data[start_offset] < target:
+            edge = 1
+        else:
+            edge = -1
+    loc = _calczc_findfirst(
+        data[start_offset : start_offset + icount], target, edge == 1
+    )
+    if loc is None:
+        return None
+    x = start_offset + loc
+    a = data[x - 1] - target
+    b = data[x] - target
+    if b - a != 0:
+        y = -a / (-a + b)
+    else:
+        y = 0
+    return x - 1 + y
+
+
+@njit(cache=True, nogil=True)
+def compute_linelocs_kernel(
+    p_start, p_type, p_valid, line0loc, lastlineloc, meanlinelen,
+    linecount, proclines, skipdetected, hsync_tolerance, outlinecount, inlinelen,
+):
+    filled = np.full(proclines, -1.0)
+    has = np.zeros(proclines, dtype=np.bool_)
+    dist = np.zeros(proclines)
+
+    n = p_start.shape[0]
+    for k in range(n):
+        ps = p_start[k]
+        lineloc = (ps - line0loc) / meanlinelen
+        rlineloc = nb_round(lineloc)
+        lineloc_distance = abs(lineloc - rlineloc)
+
+        if skipdetected:
+            lineloc_end = linecount - ((lastlineloc - ps) / meanlinelen)
+            rlineloc_end = nb_round(lineloc_end)
+            lineloc_end_distance = abs(lineloc_end - rlineloc_end)
+
+            if p_type[k] == 0 and rlineloc > 23 and lineloc_end_distance < lineloc_distance:
+                lineloc = lineloc_end
+                rlineloc = rlineloc_end
+                lineloc_distance = lineloc_end_distance
+
+        if rlineloc < 0 or rlineloc >= proclines:
+            continue
+
+        if lineloc_distance > hsync_tolerance or (
+            has[rlineloc] and lineloc_distance > dist[rlineloc]
+        ):
+            continue
+
+        if rlineloc > 0 and not p_valid[k]:
+            if p_type[k] > 0 or (p_type[k] == 0 and rlineloc < 10):
+                continue
+
+        filled[rlineloc] = ps
+        has[rlineloc] = True
+        dist[rlineloc] = lineloc_distance
+
+    linelocs0 = filled.copy()
+    linelocs_filled = filled.copy()
+    rv_err = np.zeros(proclines, dtype=np.bool_)
+
+    if linelocs_filled[0] < 0:
+        next_valid = -1
+        for i in range(0, outlinecount + 1):
+            if filled[i] > 0:
+                next_valid = i
+                break
+
+        if next_valid == -1:
+            return 1, linelocs0, linelocs_filled, rv_err
+
+        linelocs_filled[0] = filled[next_valid] - (next_valid * meanlinelen)
+
+        if linelocs_filled[0] < inlinelen:
+            return 1, linelocs0, linelocs_filled, rv_err
+
+    for l in range(1, proclines):
+        if linelocs_filled[l] < 0:
+            rv_err[l] = True
+
+            prev_valid = -1
+            next_valid = -1
+            for i in range(l, -1, -1):
+                if filled[i] > 0:
+                    prev_valid = i
+                    break
+            for i in range(l, outlinecount + 1):
+                if filled[i] > 0:
+                    next_valid = i
+                    break
+
+            if prev_valid == -1:
+                avglen = inlinelen
+                linelocs_filled[l] = filled[next_valid] - (avglen * (next_valid - l))
+            elif next_valid != -1:
+                avglen = (filled[next_valid] - filled[prev_valid]) / (next_valid - prev_valid)
+                linelocs_filled[l] = filled[prev_valid] + (avglen * (l - prev_valid))
+            else:
+                avglen = inlinelen
+                linelocs_filled[l] = filled[prev_valid] + (avglen * (l - prev_valid))
+
+    return 0, linelocs0, linelocs_filled, rv_err
+
+
+@njit(cache=True, nogil=True)
+def refine_hsync_zcs(
+    demod_05, linelocs1, linebad, n, is_pal, freq,
+    vsync_target, neg55, pos30,
+):
+    linelocs2 = linelocs1.copy()
+    for i in range(n):
+        if (3 <= i <= 6) or (is_pal and (1 <= i <= 2)):
+            linebad[i] = True
+            continue
+
+        ll1 = linelocs1[i] - freq
+        zc = _calczc_do(demod_05, ll1, vsync_target, 0, freq * 2)
+
+        if zc is not None and not linebad[i]:
+            linelocs2[i] = zc
+
+            hsync_area = demod_05[int(zc - (freq * 0.75)) : int(zc + (freq * 8))]
+            if np.min(hsync_area) < neg55 or np.max(hsync_area) > pos30:
+                linebad[i] = True
+                linelocs2[i] = linelocs1[i]
+            else:
+                porch_level = np.median(
+                    demod_05[int(zc + (freq * 8)) : int(zc + (freq * 9))]
+                )
+                sync_level = np.median(
+                    demod_05[int(zc + (freq * 1)) : int(zc + (freq * 2.5))]
+                )
+
+                zc2 = _calczc_do(demod_05, ll1, (porch_level + sync_level) / 2, 0, 400)
+
+                if zc2 is not None and abs(zc2 - zc) < (freq / 2):
+                    linelocs2[i] = zc2
+                else:
+                    linebad[i] = True
+        else:
+            linebad[i] = True
+
+        if linebad[i]:
+            linelocs2[i] = linelocs1[i]
+
+    return linelocs2
+
+
+@njit(cache=True, nogil=True)
+def refine_pilot_zcs(demod_pilot, linelocs, n, length_px, freq, linelen, pilot_mhz):
+    zcs = np.empty(n, dtype=np.float64)
+    plen = np.empty(n, dtype=np.float64)
+    prev = 0.0
+    for l in range(n):
+        adjfreq = freq
+        if l > 1:
+            adjfreq = freq / ((linelocs[l] - linelocs[l - 1]) / linelen)
+        pl = (adjfreq / pilot_mhz) / 2
+        plen[l] = pl
+
+        begin = linelocs[l]
+        start = int(begin)
+        stop = int(begin + length_px + 1)
+        lsoffset = begin - start
+
+        pilots = demod_pilot[start:stop]
+
+        peakloc = 0
+        mx = -1.0
+        for i in range(pilots.shape[0]):
+            v = pilots[i]
+            if v < 0:
+                v = -v
+            if v > mx:
+                mx = v
+                peakloc = i
+
+        zc_base = _calczc_do(pilots, peakloc, 0.0, 0, 16)
+        if zc_base is not None:
+            zcs[l] = (zc_base - lsoffset) / pl
+        else:
+            zcs[l] = prev
+        prev = zcs[l]
+
+    return zcs, plen
+
+
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
