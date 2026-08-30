@@ -143,6 +143,7 @@ class LDdecode:
                         if system == "PAL" else None),
                     has_nonstandard_values=True if system == "PAL" else None,
                     write_efm=bool(self.digital_audio),
+                    sample_encoding=extra_options.get("cvbs_encoding"),
                 )
             else:
                 self.outfile_video = open(fname_out + ".tbc", "wb")

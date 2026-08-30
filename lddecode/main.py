@@ -84,8 +84,16 @@ def main(args=None):
         dest="cvbs",
         action="store_true",
         default=False,
-        help="write spec-compliant CVBS output (<out>.composite/.meta and "
+        help="write spec-compliant CVBS output (<out>.cvbs/.meta and "
         "spec WAV audio) instead of the .tbc video output",
+    )
+    parser.add_argument(
+        "--cvbs-encoding",
+        dest="cvbs_encoding",
+        choices=["CVBS_U10_4FSC", "CVBS_U16_4FSC"],
+        default=None,
+        help="sample encoding preset for CVBS output "
+        "(default: CVBS_U10_4FSC for PAL, CVBS_U16_4FSC for NTSC)",
     )
     # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
     parser.add_argument(
@@ -506,8 +514,9 @@ def main(args=None):
     if args.cvbs:
         extra_options["output_cvbs"] = True
         if args.ntscj:
-            # NTSC-J: no setup pedestal; record the black-level override
             extra_options["cvbs_black_level"] = 240
+        if args.cvbs_encoding:
+            extra_options["cvbs_encoding"] = args.cvbs_encoding
 
     try:
         loader = make_loader(filename, args.inputfreq)

@@ -135,11 +135,18 @@ class _PreRollTracker:
         expected_phase = 1 if previous_phase == self.field_phases else previous_phase + 1
         return current_phase == expected_phase
 
+    def _is_phase1(self, field):
+        phase = getattr(field, "fieldPhaseID", None)
+        return phase in (1, None)
+
     def observe(self, field):
         if not self._is_continuous(field):
-            self.start_field = field if field.isFirstField else None
-        elif self.start_field is None and field.isFirstField:
-            self.start_field = field
+            self.start_field = (
+                field if field.isFirstField and self._is_phase1(field) else None
+            )
+        elif self.start_field is None:
+            if field.isFirstField and self._is_phase1(field):
+                self.start_field = field
         self.previous_field = field
 
 
