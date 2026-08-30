@@ -289,6 +289,10 @@ class LDdecode:
         self.deemp_calibrated = not self.auto_deemp
         self._deemp_burst_samples = []
         self._deemp_burst_offset = None
+        # Like _agc_adjusted_last: inverse_mtf_strength is baked into the
+        # workers' FVideo filter at spawn, so an adoption must respawn
+        # them (recompute_fvideo only fixes the parent's filters).
+        self._deemp_adjusted_last = False
 
         # Warm-up: fields decode anchored to their predecessor until the
         # calibration loops (MTF / AGC / auto-deemp) settle.  Once warm
@@ -650,6 +654,11 @@ class LDdecode:
         if np.abs(estimate - self.mtf_level) < 0.05:
             return True
 
+        logs.logger.debug(
+            f"MTF level {self.mtf_level:.3f} → {estimate:.3f} "
+            f"(mean b/w RF ratio {np.mean(self.bw_ratios):.3f}, "
+            f"n={len(self.bw_ratios)})"
+        )
         self.mtf_level = estimate
         return False
 
@@ -657,16 +666,19 @@ class LDdecode:
         """Calibrate inverse-MTF chroma correction from burst amplitude.
 
         Returns True if no adjustment was needed, False if filters were
-        recomputed (caller should redo the field).  Collects burst
-        measurements over the first few fields (so MTF has time to settle),
-        then calibrates once and stays locked.
+        recomputed (caller should redo the field).  The first calibration
+        locks quickly (3 fields, so the first written frame is correct);
+        after that the strength keeps tracking the burst with a dead-band,
+        because the required correction drifts with radius on CAV discs
+        and moves whenever the RF MTF level adapts (measured drift on the
+        Louvre PAL disc: 0.39 at frame 2000 to 0.65 at frame 40000).
 
         De-emphasis stays at full strength (1.0) for correct phase response.
         The inverse MTF filter is a zero-phase (real-valued) correction
         whose shape follows the disc's optical MTF; its strength is set so
         burst amplitude matches the spec value.
         """
-        if self.deemp_calibrated:
+        if not self.auto_deemp:
             return True
 
         # NaN must not enter the sample pool: every comparison below fails
@@ -681,6 +693,8 @@ class LDdecode:
         else:
             self._deemp_burst_samples.append(field.burstmedian)
             self._deemp_burst_offset = self.fdoffset
+        # Rolling window so old-radius samples age out of the estimate.
+        self._deemp_burst_samples = self._deemp_burst_samples[-30:]
 
         if len(self._deemp_burst_samples) < 3:
             return True
@@ -688,36 +702,54 @@ class LDdecode:
         return not self._deemp_calibrate()
 
     def _deemp_calibrate(self):
-        """Lock the inverse-MTF strength from the collected burst pool.
+        """Set the inverse-MTF strength from the collected burst pool.
+
+        burstmedian is measured on the corrected video output (the FVideo
+        path includes the inverse-MTF filter), so the estimate is relative
+        to the currently applied strength.  Pool samples are only
+        comparable when decoded under the current parameters: the pool is
+        cleared here on adoption and by the callers on MTF/AGC moves, and
+        adoptions respawn the worker processes (_deemp_adjusted_last) so
+        later measurements actually reflect the new strength — without
+        that the loop integrates against stale measurements and runs
+        away.  The first calibration adopts any non-trivial strength;
+        afterwards a dead-band holds the current value until the estimate
+        drifts, mirroring checkMTF so the decode stays reproducible.
 
         Returns True when the filter parameters changed (callers should
         re-decode anything produced under the old ones)."""
         expected = self.rf.SysParams["burst_ire"]
         measured = np.median(self._deemp_burst_samples)
         log_base = self.rf.inverse_mtf_log_at_fsc
+        current = self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
 
+        first = not self.deemp_calibrated
         self.deemp_calibrated = True
 
         if not np.isfinite(measured) or measured <= 0 or log_base <= 0:
             return False
 
-        if measured >= expected:
-            return False
-
-        strength = float(np.clip(
-            np.log(expected / measured) / log_base, 0.0, 2.0
+        estimate = float(np.clip(
+            current + np.log(expected / measured) / log_base, 0.0, 2.0
         ))
 
-        if strength < 0.02:
+        if first:
+            if estimate < 0.02:
+                return False
+        elif (len(self._deemp_burst_samples) < 6
+                or np.abs(estimate - current) < 0.05):
             return False
 
         logs.logger.debug(
             f"Auto inverse-MTF chroma: burst {measured:.1f} IRE "
             f"(expected {expected:.1f}), "
-            f"inverse_mtf_strength 0.000 → {strength:.3f}"
+            f"inverse_mtf_strength {current:.3f} → {estimate:.3f}"
         )
-        self.rf.DecoderParams["inverse_mtf_strength"] = strength
+        self.rf.DecoderParams["inverse_mtf_strength"] = estimate
         self.rf.recompute_fvideo()
+        # Pool samples were measured under the old strength.
+        self._deemp_burst_samples.clear()
+        self._deemp_burst_offset = None
         return True
 
     @profile
@@ -1244,9 +1276,14 @@ class LDdecode:
             # worker processes hold level parameters frozen from their
             # spawn; the caller's redo path rebuilds them from this flag
             self._agc_adjusted_last = True
-        return (agc_moved or self.mtf_level != mtf0
-                or self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
-                != strength0)
+        deemp_moved = (
+            self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
+            != strength0)
+        if deemp_moved:
+            # inverse_mtf_strength is likewise frozen into the workers'
+            # FVideo filter at spawn
+            self._deemp_adjusted_last = True
+        return agc_moved or deemp_moved or self.mtf_level != mtf0
 
     def calibrate(self, f, metrics, redos):
         """Fold one decoded field's measurements into the calibration
@@ -1270,18 +1307,25 @@ class LDdecode:
         agc_adjusted = self._adjust_agc(f, False)
         self._agc_adjusted_last = agc_adjusted
 
-        if agc_adjusted and not self.deemp_calibrated:
+        if agc_adjusted:
             # Burst samples measured under the old levels are not
             # comparable.
             self._deemp_burst_samples.clear()
             self._deemp_burst_offset = None
 
         redo = not self.checkMTF(f, self.fieldstack[0])
+        if redo:
+            # MTF moved: burst samples measured under the old RF filter
+            # are not comparable either.
+            self._deemp_burst_samples.clear()
+            self._deemp_burst_offset = None
 
-        if not agc_adjusted:
-            redo = redo or not self.checkAutoDeemp(f)
+        deemp_adjusted = False
+        if not agc_adjusted and not redo:
+            deemp_adjusted = not self.checkAutoDeemp(f)
+        self._deemp_adjusted_last = deemp_adjusted
 
-        return redo or agc_adjusted
+        return redo or agc_adjusted or deemp_adjusted
 
     def validate_chain(self, f, prevfield):
         """Check an independently-decoded field against the committed
@@ -1422,7 +1466,8 @@ class LDdecode:
             self.block_cache.flush()
 
         if self._job_engine is not None:
-            if self.exact_speculation or self._agc_adjusted_last:
+            if (self.exact_speculation or self._agc_adjusted_last
+                    or self._deemp_adjusted_last):
                 # Hard toss: everything decoded under the old parameters
                 # is discarded and speculation restarts from truth.
                 self._log_speculation(
@@ -1476,7 +1521,8 @@ class LDdecode:
             self._fields_since_redo = 0
             self._flush_pipeline()
 
-            if (self._agc_adjusted_last and self._job_engine is not None):
+            if ((self._agc_adjusted_last or self._deemp_adjusted_last)
+                    and self._job_engine is not None):
                 self._restart_workers()
 
             redo_prev = self.fieldstack[0]
@@ -1590,7 +1636,7 @@ class LDdecode:
         stale levels, so the pool (and the job engine pointing at it)
         is rebuilt from a fresh snapshot."""
         logs.logger.info(
-            "AGC adjusted decoder levels - restarting worker processes"
+            "decoder parameters adjusted - restarting worker processes"
         )
         if self._job_engine is not None:
             self._job_engine.stop()
