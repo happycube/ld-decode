@@ -1573,7 +1573,9 @@ class FieldPAL(Field):
             for l in range(0, n):
                 adjfreq = self.rf.freq
                 if l > 1:
-                    adjfreq /= (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
+                    spacing = (linelocs[l] - linelocs[l - 1]) / self.rf.linelen
+                    if spacing > 0.1:
+                        adjfreq /= spacing
 
                 plen[l] = (adjfreq / self.rf.SysParams["pilot_mhz"]) / 2
 

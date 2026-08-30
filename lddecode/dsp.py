@@ -670,7 +670,9 @@ def refine_pilot_zcs(demod_pilot, linelocs, n, length_px, freq, linelen, pilot_m
     for l in range(n):
         adjfreq = freq
         if l > 1:
-            adjfreq = freq / ((linelocs[l] - linelocs[l - 1]) / linelen)
+            spacing = (linelocs[l] - linelocs[l - 1]) / linelen
+            if spacing > 0.1:
+                adjfreq = freq / spacing
         pl = (adjfreq / pilot_mhz) / 2
         plen[l] = pl
 
