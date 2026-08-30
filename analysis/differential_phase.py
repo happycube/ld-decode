@@ -41,6 +41,7 @@ from tbc_common import (
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
     measure_ntc7_transients, measure_pal_its_transients,
     weighted_psnr, chroma_am_pm_noise, line_segment_ire,
+    find_flat_sc_window,
 )
 
 
@@ -1048,9 +1049,15 @@ def pal_quality_reports(det, fields):
     if det.get("pal_line20_ref"):
         idxs = sorted(det["pal_line20_ref"])
         rline = next(iter(det["pal_line20_ref"].values()))["line"]
-        src = (f"50% SC reference line {rline}",
-               [fields[i] for i in idxs], rline, 16.0, 40.0)
-    elif its_chroma:
+        # The reference line may be the extended-ITS variant (chroma
+        # amplitude staircase before the flat 50% packet), so locate the
+        # flat envelope region instead of assuming the whole line is flat.
+        win = find_flat_sc_window(fields[idxs[0]], rline)
+        if win is not None:
+            src = (f"50% SC reference line {rline} "
+                   f"({win[0]:.0f}-{win[0] + win[1]:.0f} us)",
+                   [fields[i] for i in idxs], rline, win[0], win[1])
+    if src is None and its_chroma:
         # packet spans ~29.5-38.5 us; stay clear of the edges
         src = (f"ITS 0-level SC packet (line {its_line})",
                [fields[i] for i in its_chroma], its_line, 30.3, 7.4)

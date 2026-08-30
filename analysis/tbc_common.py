@@ -986,6 +986,47 @@ def detect_pal_its(field, lines=(17, 18, 19, 20)):
     return None
 
 
+def find_flat_sc_window(field, line, min_amp=8.0, span=(12.0, 62.0),
+                        step_us=1.0, win_us=2.0, tol=0.12):
+    """Longest flat-envelope subcarrier region of one line, as (start_us,
+    duration_us), or None.
+
+    Some discs carry the extended ITS on the reference line - a chroma
+    amplitude staircase ahead of the flat 50% packet - so a fixed window
+    can straddle deliberate envelope steps and read them as AM noise.
+    Scan the chroma amplitude profile and keep the longest run whose
+    envelope stays within +/-tol of the run's median.
+    """
+    starts = np.arange(span[0], span[1] - win_us, step_us)
+    amps = []
+    for s in starts:
+        _, amp, _ = demod_region(field, line, s, win_us)
+        amps.append(amp if amp is not None else 0.0)
+    amps = np.asarray(amps)
+
+    best = None  # (n_steps, start_index)
+    for i in range(len(amps)):
+        if amps[i] < min_amp:
+            continue
+        j = i
+        while j + 1 < len(amps) and amps[j + 1] >= min_amp:
+            run = amps[i:j + 2]
+            med = np.median(run)
+            if np.max(np.abs(run - med)) > tol * med:
+                break
+            j += 1
+        if best is None or j - i > best[0]:
+            best = (j - i, i)
+
+    if best is None or best[0] < 6:  # need >= ~8 us of flat packet
+        return None
+    n, i = best
+    # trim one step each side to stay clear of the transitions
+    start = float(starts[i] + step_us)
+    duration = float((n - 1) * step_us + win_us - step_us)
+    return start, duration
+
+
 def detect_pal_line20_ref(field, lines=(20,)):
     """PAL line 331-style reference: ~50% luma with full-line subcarrier."""
     for line in lines:
