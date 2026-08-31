@@ -26,7 +26,7 @@ def make_fns(read_log=None):
             return None
         return np.arange(b * 100, b * 100 + 10, dtype=np.float64)
 
-    def demod_fn(raw, mtf):
+    def demod_fn(raw, mtf, imtf_strength=None):
         return raw * (1.0 + mtf)
 
     return read_fn, demod_fn

@@ -27,6 +27,75 @@ from .metrics import detect_levels
 from .dsp import FieldInfo, concatenate_blocks, nb_abs, nb_median, roundfloat
 
 
+def measure_its_2t_ratio(field, lines=(19, 18, 20)):
+    """2T pulse-to-bar ratio from the CCIR ITS on a VITS line, or None.
+
+    Cheap single-field version of the analysis-side transient measurement
+    (white bar 13-19 us, blanking baseline 22.2-24.4 us, 2T pulse at
+    ~25.2 us; both PAL field parities carry it).  The line number is
+    searched over `lines` because ITS placement can vary by one line
+    between discs.  Validity checks reject anything that is not a clean
+    bar + 2T pulse, so content lines and discs without an ITS yield
+    None and the MTF servo falls back to the b/w RF ratio mapping.
+
+    Returns (ratio, line) on success, else None.
+    """
+    for line in lines:
+        try:
+            def seg(a, b):
+                sl = field.lineslice_tbc(line, a, b - a)
+                return field.output_to_ire(
+                    field.dspicture[sl].astype(np.float64))
+            baseline_seg = seg(22.2, 24.4)
+            bar_seg = seg(13.0, 19.0)
+            pulse_seg = seg(24.4, 26.4)
+        except Exception:
+            continue
+        if len(pulse_seg) < 8 or len(bar_seg) < 8 or len(baseline_seg) < 8:
+            continue
+
+        baseline = float(np.median(baseline_seg))
+        bar = float(np.median(bar_seg)) - baseline
+        # must look like the ITS white bar over a blanking-level baseline
+        if not (80.0 <= bar <= 125.0) or abs(baseline) > 6.0:
+            continue
+        if np.std(bar_seg) > 4.0 or np.std(baseline_seg) > 4.0:
+            continue
+
+        # Locate the peak on a 3-tap-smoothed copy (argmax over the raw
+        # window rides positive noise excursions, biasing the ratio high
+        # and shifting the servo equilibrium), then interpolate the
+        # height from the raw samples at that index.
+        sm = np.convolve(pulse_seg, [0.25, 0.5, 0.25], mode="same")
+        pk = int(np.argmax(sm[1:-1])) + 1
+        if pk == 0 or pk == len(pulse_seg) - 1:
+            continue
+        # parabolic sub-sample peak: the 2T pulse top spans few samples
+        a, b, c = pulse_seg[pk - 1], pulse_seg[pk], pulse_seg[pk + 1]
+        denom = a - 2 * b + c
+        peak = float(b) if denom >= 0 else float(b - 0.125 * (a - c) ** 2 / denom)
+        pulse = peak - baseline
+        ratio = pulse / bar
+        if not (0.5 <= ratio <= 1.6):
+            continue
+
+        # half-amplitude width sanity: rejects blobs that are not a 2T pulse
+        half = baseline + pulse / 2.0
+        width = int(np.count_nonzero(pulse_seg > half))
+        had_ns = width / field.rf.SysParams["outfreq"] * 1000.0
+        if not (80.0 <= had_ns <= 400.0):
+            continue
+
+        # the pulse must be isolated: away from the peak the window
+        # returns to baseline (rejects content/noise in the window)
+        tails = np.concatenate([pulse_seg[:max(pk - 6, 0)],
+                                pulse_seg[pk + 7:]])
+        if len(tails) < 8 or np.median(np.abs(tails - baseline)) > 0.15 * pulse:
+            continue
+        return ratio, line
+    return None
+
+
 class LDdecode:
     # Tolerant speculation: accept in-flight fields whose MTF level is
     # within this of the current one (2x the adoption dead-band; an MTF
@@ -281,6 +350,19 @@ class LDdecode:
         self.frameNumber = None
 
         self.autoMTF = True
+        # Closed-loop mtf_level servo from the ITS 2T pulse (PAL: the b/w
+        # RF ratio mapping cannot predict the needed level across discs,
+        # and the outer-radius droop needs negative levels it can't
+        # reach).  Disabled when the user overrides the MTF scaling,
+        # since the servo would just compensate the override away; when
+        # no valid 2T pulse is available the b/w mapping is the fallback.
+        self.mtf_2t_servo = (
+            system == "PAL"
+            and extra_options.get("MTF_level", 1.0) == 1.0
+            and extra_options.get("MTF_offset", 0) == 0
+        )
+        self._servo_samples = []   # (field readloc, level_used, pulse/bar)
+        self._servo_last_adopt = None   # fdoffset of last servo adoption
         self.useAGC = extra_options.get("useAGC", True)
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
@@ -634,32 +716,153 @@ class LDdecode:
         if isField:
             self.fdoffset *= self.bytes_per_field
 
+    # 2T servo tuning (calibrated on Louvre PAL radius sweeps, jason as
+    # flat control).  GAIN converts pulse/bar error into level units:
+    # measured d(pulse/bar)/d(level) is -0.11..-0.17, so 6.0 is a
+    # near-Newton step (1/0.15) that converges in a few adoptions
+    # without ringing across that slope range.
+    # CLIP covers the validated range (+0.55 inner .. -0.65 outer) with
+    # margin; MAX_AGE ages samples out so a disc whose ITS stops falls
+    # back to the b/w mapping instead of holding a stale radius estimate.
+    MTF_SERVO_GAIN = 6.0
+    MTF_SERVO_CLIP = 1.0
+    MTF_SERVO_MIN_SAMPLES = 8
+    MTF_SERVO_KEEP = 60
+    MTF_SERVO_MAX_AGE_FIELDS = 240
+    # Committed-decode adoption rate limit: radius drift is glacial, so
+    # after the warmup has converged there is no reason to adopt more
+    # often than this - it caps the flush/re-cal churn measurement noise
+    # could otherwise cause.  (Warmup is exempt: it needs several rapid
+    # steps to converge before the first frame is written.)
+    MTF_SERVO_MIN_ADOPT_FIELDS = 100
+    # chroma cost of an MTF level change, in inverse-MTF strength units
+    # per level unit (~1.7 on Louvre, less on other discs; kept low
+    # so the burst tracking trims the rest)
+    MTF_DEEMP_FEEDFORWARD = 1.2
+
+    def _mtf_servo_estimate(self, field):
+        """mtf_level estimate from the ITS 2T pulse servo, or None.
+
+        Each sample pairs the measured pulse-to-bar ratio with the
+        mtf_level the field was decoded under, giving an absolute
+        per-field estimate (raising mtf_level lowers demodulated HF, so
+        estimate = level_used + (ratio - 1) * gain).  Pooling absolute
+        estimates keeps the loop stable even when in-flight fields were
+        decoded under a stale level (tolerant speculation).  Returns
+        None (caller falls back) until enough recent valid samples
+        exist.
+        """
+        if not self.mtf_2t_servo:
+            return None
+
+        level_used = getattr(field, "decoded_mtf_level", None)
+        if level_used is not None and field.dspicture is not None:
+            m = measure_its_2t_ratio(field)
+            if m is not None:
+                ratio, _ = m
+                # divide out the inverse-MTF chroma filter's lift of the
+                # pulse so the two control loops stay decoupled
+                ratio /= self.rf.inverse_mtf_2t_peak_gain(
+                    getattr(field, "decoded_imtf_strength", 0.0))
+                key = field.readloc
+                parity = bool(field.isFirstField)
+                # On a redo the same field comes through again; replace
+                # its sample rather than double-counting it.
+                if self._servo_samples and self._servo_samples[-1][0] == key:
+                    self._servo_samples[-1] = (key, level_used, ratio, parity)
+                else:
+                    self._servo_samples.append(
+                        (key, level_used, ratio, parity))
+                    self._servo_samples = \
+                        self._servo_samples[-self.MTF_SERVO_KEEP:]
+
+        horizon = (self.fdoffset
+                   - self.MTF_SERVO_MAX_AGE_FIELDS * self.bytes_per_field)
+        self._servo_samples = [s for s in self._servo_samples
+                               if s[0] >= horizon]
+
+        if len(self._servo_samples) < self.MTF_SERVO_MIN_SAMPLES:
+            return None
+        # The two PAL field parities carry different ITS variants whose
+        # 2T amplitudes can differ by a few percent (Louvre: 1.039 vs
+        # 0.996), so a plain median drifts with the pool's parity mix
+        # and hunts.  Estimate each parity separately and average.
+        by_parity = {True: [], False: []}
+        for _, lv, r, parity in self._servo_samples:
+            by_parity[parity].append(lv + (r - 1.0) * self.MTF_SERVO_GAIN)
+        meds = [np.median(v) for v in by_parity.values() if len(v) >= 3]
+        if not meds:
+            meds = [np.median([lv + (r - 1.0) * self.MTF_SERVO_GAIN
+                               for _, lv, r, _ in self._servo_samples])]
+        ests = [e for v in by_parity.values() for e in v]
+        # Consistency gate: a real ITS gives tight estimates (ratio
+        # sigma ~0.01-0.02/field); noisy or misdetected content scatters
+        # them.  Distrust a scattered pool and fall back.
+        if np.std(ests) > 0.35:
+            return None
+        return float(np.clip(np.mean(meds),
+                             -self.MTF_SERVO_CLIP, self.MTF_SERVO_CLIP))
+
     def checkMTF(self, field, pfield=None):
         if not self.autoMTF:
             oldmtf = self.mtf_level
             self.mtf_level = max(1 - ((self.frameNumber or 0) / 10000), 0)
             return np.abs(self.mtf_level - oldmtf) < 0.05
 
-        if len(self.bw_ratios) == 0:
-            return True
-
-        # scale for NTSC - 1.1 to 1.55
-        estimate = np.clip((np.mean(self.bw_ratios) - 1.08) / 0.38, 0, 1)
+        estimate = self._mtf_servo_estimate(field)
+        source = "2T servo"
+        # The servo's closed-loop estimate carries more measurement
+        # noise than the open-loop ratio mapping; the wider dead-band
+        # also damps limit cycles (clip-bound hunting on ggv-mb, and a
+        # +/-0.04 parity-residual cycle on Louvre that a 0.075 band let
+        # through).  0.1 level is ~1.3% HF - fine granularity for a
+        # +/-20% radius drift.
+        deadband = 0.10
+        if estimate is None:
+            # Fallback: open-loop mapping from the black/white carrier
+            # ratio (scale for NTSC - 1.1 to 1.55).
+            if len(self.bw_ratios) == 0:
+                return True
+            estimate = np.clip((np.mean(self.bw_ratios) - 1.08) / 0.38, 0, 1)
+            source = f"b/w RF ratio {np.mean(self.bw_ratios):.3f}"
+            deadband = 0.05
 
         # Dead-band: hold the current level until the estimate drifts by
         # the redo threshold, then adopt it (and redo the field).  Fields
         # never see a stale-by-less-than-tolerance value silently change
         # under them, which makes the decode reproducible regardless of
         # how far ahead of the commit point it runs.
-        if np.abs(estimate - self.mtf_level) < 0.05:
+        if np.abs(estimate - self.mtf_level) < deadband:
             return True
 
+        if source == "2T servo" and self.fields_written > 0:
+            if (self._servo_last_adopt is not None
+                    and (self.fdoffset - self._servo_last_adopt)
+                    < self.MTF_SERVO_MIN_ADOPT_FIELDS * self.bytes_per_field):
+                return True
+            self._servo_last_adopt = self.fdoffset
+
         logs.logger.debug(
-            f"MTF level {self.mtf_level:.3f} → {estimate:.3f} "
-            f"(mean b/w RF ratio {np.mean(self.bw_ratios):.3f}, "
-            f"n={len(self.bw_ratios)})"
+            f"MTF level {self.mtf_level:.3f} → {estimate:.3f} ({source})"
         )
+        delta = estimate - self.mtf_level
         self.mtf_level = estimate
+
+        # Feed-forward: an MTF level change moves chroma by a known
+        # amount (~1.7 strength-equivalents per level unit on Louvre),
+        # so bump the inverse-MTF strength in the same adoption instead
+        # of letting burst sag for the fields the tracking loop needs to
+        # notice.  The burst tracking then only trims the residual.
+        if self.auto_deemp and self.deemp_calibrated:
+            s = np.clip(
+                self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
+                + self.MTF_DEEMP_FEEDFORWARD * delta, 0.0, 2.0)
+            self.rf.DecoderParams["inverse_mtf_strength"] = float(s)
+            self.rf.recompute_fvideo()
+            if self._job_engine is not None:
+                self._job_engine.set_imtf(float(s))
+            self._deemp_burst_samples.clear()
+            self._deemp_burst_offset = None
         return False
 
     def checkAutoDeemp(self, field):
@@ -684,6 +887,14 @@ class LDdecode:
         # NaN must not enter the sample pool: every comparison below fails
         # open for NaN and would lock in a NaN strength.
         if not np.isfinite(field.burstmedian) or field.burstmedian <= 5:
+            return True
+
+        # A field decoded under a stale strength (tolerated in-flight
+        # speculation) measures the old correction; pooling it would
+        # re-integrate an adoption that already happened.
+        stale = getattr(field, "decoded_imtf_strength", None)
+        if (stale is not None and stale
+                != self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)):
             return True
 
         # On a redo the same field comes through again (fdoffset unchanged);
@@ -716,8 +927,9 @@ class LDdecode:
         afterwards a dead-band holds the current value until the estimate
         drifts, mirroring checkMTF so the decode stays reproducible.
 
-        Returns True when the filter parameters changed (callers should
-        re-decode anything produced under the old ones)."""
+        Returns True when the filter parameters changed in a way the
+        caller must re-decode for (initial calibration / exact mode);
+        dead-band tracking trims adopt tolerantly and return False."""
         expected = self.rf.SysParams["burst_ire"]
         measured = np.median(self._deemp_burst_samples)
         log_base = self.rf.inverse_mtf_log_at_fsc
@@ -736,7 +948,7 @@ class LDdecode:
         if first:
             if estimate < 0.02:
                 return False
-        elif (len(self._deemp_burst_samples) < 6
+        elif (len(self._deemp_burst_samples) < 3
                 or np.abs(estimate - current) < 0.05):
             return False
 
@@ -750,6 +962,18 @@ class LDdecode:
         # Pool samples were measured under the old strength.
         self._deemp_burst_samples.clear()
         self._deemp_burst_offset = None
+
+        if not first and not self.exact_speculation:
+            # Tracking trims are dead-band-sized (<= ~2% chroma), so
+            # adopt tolerantly: no redo/flush - hand the new strength to
+            # future jobs and let in-flight fields commit under the old
+            # one (the burst pool's stale-strength guard keeps them out
+            # of the estimate).  A hard flush here pauses and reseeks
+            # the engine, which a pipe-backed reader cannot always
+            # rewind for.
+            if self._job_engine is not None:
+                self._job_engine.set_imtf(estimate)
+            return False
         return True
 
     @profile
@@ -940,8 +1164,10 @@ class LDdecode:
             return None
         return rawinput
 
-    def _demod_raw_block(self, rawinput, mtf_level):
-        """Demodulate one raw block (pure given filter state)."""
+    def _demod_raw_block(self, rawinput, mtf_level, imtf_strength=None):
+        """Demodulate one raw block (pure given filter state).  The
+        imtf_strength key is only meaningful for process-pool workers;
+        this main-process rf always has the current filters."""
         return self.rf.demodblock(
             data=rawinput,
             mtf_level=mtf_level,
@@ -959,7 +1185,9 @@ class LDdecode:
                 and self._job_engine is None):
             # Blocks come from the prefetching thread pool; identical values
             # to the inline path (same per-block computation).
-            blockdata = self.block_cache.get_span(brange, MTF)
+            blockdata = self.block_cache.get_span(
+                brange, MTF,
+                self.rf.DecoderParams.get("inverse_mtf_strength", 0.0))
         elif self.block_cache is not None:
             # Inline demod on this thread (field-job repair/redo path and
             # warm-up with -t).  The raw window is read as ONE span under
@@ -1129,6 +1357,12 @@ class LDdecode:
             wow_interpolation_method=self.wow_interpolation_method
         )
 
+        # the 2T MTF servo needs to know what parameters each field was
+        # demodulated under (measurements are closed-loop)
+        f.decoded_mtf_level = mtf_level
+        f.decoded_imtf_strength = getattr(
+            self.rf, "DecoderParams", {}).get("inverse_mtf_strength", 0.0)
+
         # set an object-level variable to make notebook debugging easier
         self.curfield = f
 
@@ -1241,8 +1475,15 @@ class LDdecode:
         keep = 900 if self.isCLV else 30
 
         prev, pos = f, entry["start"] + entry["offset"]
-        for _ in range(8):
-            if self.deemp_calibrated:
+        # Run until the calibration loops are actually stable (two
+        # consecutive fields with no parameter movement after the deemp
+        # calibration has locked), not merely until the first deemp
+        # lock: the 2T MTF servo converges over several adoptions, and
+        # exiting mid-convergence writes the first frame under still-
+        # moving parameters.  The budget bounds pathological cases.
+        stable = 0
+        for _ in range(40):
+            if self.deemp_calibrated and stable >= 2:
                 break
             nf, off = self.decodefield(pos, self.mtf_level, prev,
                                        entry["initphase"])
@@ -1269,8 +1510,17 @@ class LDdecode:
                 self._deemp_burst_samples.append(nf.burstmedian)
 
             if len(self._deemp_burst_samples) >= 3:
-                self._deemp_calibrate()
+                if self._deemp_calibrate():
+                    moved = True
+            stable = 0 if moved else stable + 1
             prev = nf
+
+        if not self.deemp_calibrated and self._deemp_burst_samples:
+            # Ran out of lookahead (short capture) before collecting the
+            # full sample pool; a single field's burstmedian is already a
+            # median over hundreds of lines, so calibrate from what we
+            # have rather than writing the first frame uncorrected.
+            self._deemp_calibrate()
 
         if agc_moved:
             # worker processes hold level parameters frozen from their
@@ -1489,6 +1739,8 @@ class LDdecode:
                     "speculation (tolerant mode)",
                 )
                 self._job_engine.set_mtf(self.mtf_level)
+                self._job_engine.set_imtf(self.rf.DecoderParams.get(
+                    "inverse_mtf_strength", 0.0))
 
     def _commit_entry(self, entry):
         """Calibrate one chain entry (with a bounded redo budget) and
@@ -1521,8 +1773,9 @@ class LDdecode:
             self._fields_since_redo = 0
             self._flush_pipeline()
 
-            if ((self._agc_adjusted_last or self._deemp_adjusted_last)
-                    and self._job_engine is not None):
+            # Only AGC changes need a worker respawn now: mtf_level and
+            # inverse_mtf_strength both travel per job.
+            if (self._agc_adjusted_last and self._job_engine is not None):
                 self._restart_workers()
 
             redo_prev = self.fieldstack[0]
@@ -1692,6 +1945,8 @@ class LDdecode:
             next_is_first=(not prev.isFirstField) if prev is not None else True,
             lastfieldwritten=self.lastFieldWritten,
             mtf_level=self.mtf_level,
+            imtf_strength=self.rf.DecoderParams.get(
+                "inverse_mtf_strength", 0.0),
         )
         self._engine_dirty = False
         self._job_rejects = 0

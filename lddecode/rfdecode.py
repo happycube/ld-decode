@@ -546,6 +546,7 @@ class RFDecode:
 
         fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
         self.inverse_mtf_log_at_fsc = np.log(SF["Finverse_mtf_base"][fsc_bin])
+        self._imtf_2t_gain_cache = {}
 
         # Zero-phase magnitude EQ from (freq_hz, dB) anchor points.  Real
         # valued, so it cannot move phase; applied to both the output and
@@ -626,6 +627,38 @@ class RFDecode:
             stack.append(SF["FVideoPilot"][:nr])
 
         SF["FVideo_rfft"] = np.asarray(stack)
+
+    def inverse_mtf_2t_peak_gain(self, strength):
+        """Peak gain of the inverse-MTF chroma filter on an ideal 2T pulse.
+
+        The correction filter shapes the whole upper video band, so it
+        also lifts the ITS 2T pulse the MTF servo measures; dividing the
+        measured pulse-to-bar ratio by this factor decouples the two
+        control loops (otherwise: servo raises mtf_level -> burst drops
+        -> chroma strength rises -> 2T rises -> servo raises further).
+        Computed by passing a sine-squared pulse (HAD = 2 video periods)
+        through Finverse_mtf_base ** strength; cached per strength.
+        """
+        key = round(float(strength), 6)
+        g = self._imtf_2t_gain_cache.get(key)
+        if g is not None:
+            return g
+        if key <= 0:
+            g = 1.0
+        else:
+            # 2T sine-squared pulse: full width twice the half-amplitude
+            # duration (nominal HAD 200 ns PAL, 250 ns NTSC)
+            had_s = 200e-9 if self.system == "PAL" else 250e-9
+            n = max(int(round(2 * had_s * self.freq_hz)), 4)
+            t = np.arange(n)
+            pulse = np.zeros(self.blocklen)
+            pulse[:n] = 0.5 * (1 - np.cos(2 * np.pi * t / n))
+            out = np.real(np.fft.ifft(
+                np.fft.fft(pulse)
+                * (self.Filters["Finverse_mtf_base"] ** key)))
+            g = float(np.max(out) / np.max(pulse))
+        self._imtf_2t_gain_cache[key] = g
+        return g
 
     def recompute_fvideo(self):
         """Rebuild only FVideo after an inverse MTF strength change.
