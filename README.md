@@ -94,15 +94,19 @@ table of the `.tbc.db` (and as DEBUG lines in the decode log).
 
 ## CVBS output mode
 
-`ld-decode --cvbs ...` writes spec-compliant CVBS output instead of the
-`.tbc` video output (see `cvbs-file-format-specification/`):
+ld-decode writes spec-compliant CVBS output by default (see
+`cvbs-file-format-specification/`); `--tbc` selects the legacy
+`.tbc`/`.tbc.db` video output instead:
 
-- `<out>.composite` — `CVBS_U16_4FSC` sample data in whole frames
-  (NTSC: 477,750 samples/frame; PAL: 709,379), ld-decode line convention
+- `<out>.cvbs` — sample data in whole frames (NTSC: 477,750
+  samples/frame; PAL: 709,379), ld-decode line convention
   (the layout decode-orc's `cvbs_source` reader expects)
 - `<out>.meta` — the spec's SQLite metadata; the signal state is measured
-  and declared honestly (`STANDARD_TBC_LOCKED` when the burst-vs-lattice
-  phase is stable within 3°, else `STANDARD_TBC_UNLOCKED`)
+  and declared honestly (`STANDARD_STABLE_LOCKED` when the
+  burst-vs-lattice phase is stable within 3°, else
+  `STANDARD_STABLE_UNLOCKED`), and `sequence_continuous` is declared from
+  the decode (TRUE only when no field was dropped and the fieldPhaseID
+  progression never broke)
 - `<out>_audio_00.wav` — spec WAV analog audio, frame-aligned with the
   written frames, with an honest `audio_locked` flag (PAL is frame-locked
   at 44100 Hz; NTSC is locked only with `--ntsc_audio_rate`)
@@ -113,14 +117,14 @@ table of the `.tbc.db` (and as DEBUG lines in the decode log).
 
 Note that **PAL 4fsc is not line-locked**: a line is 1135.0064 samples
 and the sampling lattice slips 4 samples per frame, so the PAL
-`.composite` is produced by a separate non-orthogonal resampler and its
+`.cvbs` is produced by a separate non-orthogonal resampler and its
 timing differs fundamentally from the line-locked `.tbc` raster.  PAL
 output is burst-anchored: the lattice constraint (sampling at 45° steps
 to +U) is defined mod 90°, and 90° of subcarrier is exactly one lattice
 sample, so the anchor is a global sub-sample time shift that tracks the
 disc's Sc/H drift.  The file starts on NTSC colour frame A / PAL
 sequence frame 1 (fieldPhaseID 1).
-`scripts/cvbs_verify.py <out>.composite` checks an output file against
+`analysis/cvbs_verify.py <out>.cvbs` checks an output file against
 the specification (frame sizing, protected values, the 0H sync lattice
 including the PAL slip, burst lock, extension sidecars, metadata, and
 audio).

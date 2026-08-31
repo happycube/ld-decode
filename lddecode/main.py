@@ -83,9 +83,15 @@ def main(args=None):
         "--cvbs",
         dest="cvbs",
         action="store_true",
-        default=False,
+        default=True,
         help="write spec-compliant CVBS output (<out>.cvbs/.meta and "
-        "spec WAV audio) instead of the .tbc video output",
+        "spec WAV audio; this is the default)",
+    )
+    parser.add_argument(
+        "--tbc",
+        dest="cvbs",
+        action="store_false",
+        help="write the legacy .tbc/.tbc.db video output instead of CVBS",
     )
     parser.add_argument(
         "--cvbs-encoding",

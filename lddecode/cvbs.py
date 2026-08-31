@@ -75,7 +75,7 @@ import numpy as np
 
 
 _META_SCHEMA = """
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;
 
 CREATE TABLE cvbs_file (
     cvbs_file_id                INTEGER PRIMARY KEY,
@@ -85,13 +85,14 @@ CREATE TABLE cvbs_file (
         CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', 'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC', 'CVBS_S16_4FSC')),
     signal_state_preset         TEXT    NOT NULL
         CHECK (signal_state_preset IN (
-            'STANDARD_TBC_LOCKED',
-            'STANDARD_TBC_UNLOCKED',
+            'STANDARD_STABLE_LOCKED',
+            'STANDARD_STABLE_UNLOCKED',
             'STANDARD_RAW',
-            'NONSTANDARD_TBC_LOCKED',
-            'NONSTANDARD_TBC_UNLOCKED',
+            'NONSTANDARD_STABLE_LOCKED',
+            'NONSTANDARD_STABLE_UNLOCKED',
             'NONSTANDARD_RAW'
         )),
+    sequence_continuous         BOOLEAN,
     signal_type                 TEXT    NOT NULL
         CHECK (signal_type IN ('composite', 'yc')),
     decoder                     TEXT    NOT NULL,
@@ -193,6 +194,14 @@ class CVBSWriter:
         self._lock_initialised = False
         self._lock_residuals = []      # per-frame residual, degrees
 
+        # sequence continuity (spec sequence_continuous): the file is one
+        # unbroken sequence unless the writer drops a field mid-file or the
+        # decoder's fieldPhaseID progression breaks; without phase IDs to
+        # check against, continuity is unknown (NULL), not asserted.
+        self._seq_broken = False
+        self._phase_seen = False
+        self._last_phase = None
+
         # extension sidecar state
         self.dropout_rows = []         # (frame_id, sample_start, count, sev)
         self.write_efm = write_efm
@@ -235,13 +244,32 @@ class CVBSWriter:
                 return
             self._started = True
 
+        # Source-side continuity: consecutive fields must advance the colour
+        # sequence by exactly one position.  Breaks only matter once content
+        # is (or may end up) in the file; earlier ones just move the start.
+        phase = fi.get("fieldPhaseID")
+        if phase is not None:
+            cycle = 4 if self.system == "NTSC" else 8
+            if (self._last_phase is not None
+                    and phase != self._last_phase % cycle + 1
+                    and (self.frames_written > 0
+                         or self._pending_first is not None)):
+                self._seq_broken = True
+            self._last_phase = phase
+            self._phase_seen = True
+
         if is_first:
-            if self._pending_first is not None and self.logger:
-                self.logger.warning("CVBS: dropping unpaired first field")
+            if self._pending_first is not None:
+                if self.frames_written > 0:
+                    self._seq_broken = True
+                if self.logger:
+                    self.logger.warning("CVBS: dropping unpaired first field")
             self._pending_first = (field, fi, picture, efm, audio)
             return
 
         if self._pending_first is None:
+            if self.frames_written > 0:
+                self._seq_broken = True
             if self.logger:
                 self.logger.warning("CVBS: dropping unpaired second field")
             return
@@ -326,6 +354,8 @@ class CVBSWriter:
     def _write_frame(self, frame):
         fs = self.params["frame_samples"]
         if len(frame) != fs:
+            if self.frames_written > 0:
+                self._seq_broken = True
             if self.logger:
                 self.logger.warning(
                     "CVBS: frame size %d != %d, dropping", len(frame), fs)
@@ -415,11 +445,11 @@ class CVBSWriter:
     def _lock_state(self):
         """Decide the signal_state_preset from the measured residuals."""
         if len(self._lock_residuals) < max(1, self.frames_written // 2):
-            return "STANDARD_TBC_UNLOCKED"
+            return "STANDARD_STABLE_UNLOCKED"
         r = np.array(self._lock_residuals[1:] or self._lock_residuals)
         if np.max(np.abs(r)) <= self.LOCK_TOL:
-            return "STANDARD_TBC_LOCKED"
-        return "STANDARD_TBC_UNLOCKED"
+            return "STANDARD_STABLE_LOCKED"
+        return "STANDARD_STABLE_UNLOCKED"
 
     # -- extensions -------------------------------------------------------
 
@@ -557,16 +587,26 @@ class CVBSWriter:
             self._write_dropouts_meta()
 
         state = self._lock_state()
-        self._write_meta(state)
+        self._write_meta(state, self._sequence_continuous())
 
         if self.logger:
             r = self._lock_residuals
+            seq = self._sequence_continuous()
             self.logger.info(
-                "CVBS: wrote %d frames %s, %s (%d samples clamped, burst "
-                "residual max %.2f deg over %d frames)",
+                "CVBS: wrote %d frames %s, %s, sequence %s (%d samples "
+                "clamped, burst residual max %.2f deg over %d frames)",
                 self.frames_written, self.sample_encoding, state,
+                {1: "continuous", 0: "BROKEN"}.get(seq, "unknown"),
                 self.clamped_samples,
                 max((abs(v) for v in r), default=float("nan")), len(r))
+
+    def _sequence_continuous(self):
+        """Spec sequence_continuous value: 1 unbroken, 0 broken, None unknown."""
+        if self.frames_written == 0:
+            return None
+        if self._seq_broken:
+            return 0
+        return 1 if self._phase_seen else None
 
     @staticmethod
     def _open_db(path):
@@ -585,7 +625,7 @@ class CVBSWriter:
         con.execute("PRAGMA temp_store = MEMORY")  # index builds in RAM
         return con
 
-    def _write_meta(self, signal_state):
+    def _write_meta(self, signal_state, sequence_continuous):
         # version strings look like "branch:describe[:dirty]"
         git_branch = git_commit = None
         if self.version:
@@ -602,11 +642,12 @@ class CVBSWriter:
         con.execute(
             """INSERT INTO cvbs_file (
                    preset, sample_encoding_preset, signal_state_preset,
-                   signal_type, decoder, git_branch, git_commit,
-                   number_of_sequential_frames, black_level,
+                   sequence_continuous, signal_type, decoder, git_branch,
+                   git_commit, number_of_sequential_frames, black_level,
                    has_nonstandard_values, capture_notes
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (self.system, self.sample_encoding, signal_state,
+             sequence_continuous,
              "composite", "ld-decode", git_branch, git_commit,
              self.frames_written if self.frames_written else None,
              self.black_level, self.has_nonstandard_values,

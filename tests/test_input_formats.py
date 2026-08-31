@@ -138,7 +138,7 @@ def _run_ld_decode(rf_path, out_base):
         [str(REPO_ROOT), env.get("PYTHONPATH", "")]
     ).rstrip(os.pathsep)
     result = subprocess.run(
-        [sys.executable, str(REPO_ROOT / "ld-decode"), str(rf_path), str(out_base)],
+        [sys.executable, str(REPO_ROOT / "ld-decode"), "--tbc", str(rf_path), str(out_base)],
         env=env,
         capture_output=True,
         text=True,

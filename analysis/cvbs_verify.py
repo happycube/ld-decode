@@ -5,7 +5,7 @@ Checks: exact frame sizing, protected-value exclusion, encoding LSBs,
 level sanity, the 0H sync lattice (orthogonal for NTSC; the PAL check
 asserts the non-line-locked +0.0064 samples/line drift accumulating to
 exactly +4 per frame), burst behaviour (informational under
-STANDARD_TBC_UNLOCKED), metadata schema, and WAV audio consistency.
+STANDARD_STABLE_UNLOCKED), metadata schema, and WAV audio consistency.
 
 Usage: cvbs_verify.py <basename or file.composite>
 Exits 0 and prints "CVBS VERIFY: PASS" when all checks pass.
@@ -118,15 +118,20 @@ def main():
     check(os.path.exists(meta), ".meta present")
     con = sqlite3.connect(meta)
     uv = con.execute("PRAGMA user_version").fetchone()[0]
-    check(uv == 10, f"user_version = 10 (got {uv})")
+    check(uv == 11, f"user_version = 11 (got {uv})")
     row = con.execute(
         "SELECT preset, sample_encoding_preset, signal_state_preset, "
-        "signal_type, decoder, number_of_sequential_frames "
-        "FROM cvbs_file").fetchone()
+        "sequence_continuous, signal_type, decoder, "
+        "number_of_sequential_frames FROM cvbs_file").fetchone()
     check(row is not None, "cvbs_file row present")
-    preset_name, enc, state, sigtype, decoder, n_frames = row
-    print(f"  preset={preset_name} enc={enc} state={state} type={sigtype} "
+    preset_name, enc, state, seq_cont, sigtype, decoder, n_frames = row
+    print(f"  preset={preset_name} enc={enc} state={state} "
+          f"seq_continuous={seq_cont} type={sigtype} "
           f"decoder={decoder} frames={n_frames}")
+    check(seq_cont in (None, 0, 1),
+          f"sequence_continuous is boolean or NULL (got {seq_cont!r})")
+    if seq_cont == 0:
+        warn("producer declares a sequence discontinuity")
     check(preset_name in PRESETS, f"known preset {preset_name}")
     p = PRESETS[preset_name]
 
@@ -326,7 +331,7 @@ def main():
         msg = (f"burst-vs-lattice phase per frame: "
                + ", ".join(f"{v:.2f}" for v in arr)
                + f" deg (max dev {np.max(dev):.2f})")
-        if state == "STANDARD_TBC_LOCKED":
+        if state == "STANDARD_STABLE_LOCKED":
             check(bool(np.max(dev) <= 3.0), "LOCKED: " + msg)
         else:
             warn(msg)

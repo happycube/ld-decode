@@ -18,9 +18,12 @@ add_test(
 )
 
 # Test that ld-decode can decode NTSC files and produce TBC output
+# (CVBS is the default output; --tbc selects the legacy path these
+# comparison and analysis fixtures are built on)
 add_test(
     NAME decode-ntsc-basic
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --tbc
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -31,7 +34,7 @@ set_tests_properties(decode-ntsc-basic PROPERTIES FIXTURES_SETUP ntsc-tbc)
 add_test(
     NAME decode-pal-basic
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --PAL
+        --tbc --PAL
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -45,7 +48,7 @@ set_tests_properties(decode-pal-basic PROPERTIES FIXTURES_SETUP pal-tbc)
 # parameter adoptions.
 add_test(
     NAME decode-ntsc-parallel
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --exact-speculation
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --tbc -t 8 --exact-speculation
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -54,7 +57,7 @@ set_tests_properties(decode-ntsc-parallel PROPERTIES FIXTURES_SETUP ntsc-paralle
 
 add_test(
     NAME decode-pal-parallel
-    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode -t 8 --PAL --exact-speculation
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode --tbc -t 8 --PAL --exact-speculation
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
