@@ -1448,16 +1448,32 @@ class JSONDumper:
 
     def write(self):
         if not self._writing.is_set():
-            json_data = self._build_json()
-            field_info = self._get_field_info()
-            self._queue.put((json_data, field_info))
+            self._enqueue()
 
     def close(self):
-        json_data = self._build_json()
-        field_info = self._get_field_info()
-        self._queue.put((json_data, field_info))
+        self._enqueue()
         self._queue.put(None)  # sentinel to stop the consumer
         self._dumper.join()
+
+    def _enqueue(self):
+        """Queue a snapshot for the writer thread, if there is one to take.
+
+        build_json() returns None until a valid field has been decoded, so a
+        decode that ends without ever getting one -- the source frequency not
+        matching the file, say -- has no metadata to write. Passing that None
+        on would kill the writer thread with an AttributeError and leave a
+        truncated .tbc.json.tmp behind, burying the "Completed without
+        handling any frames" message the main thread prints just before this.
+
+        Nothing is dropped by returning early: field info is only drained once
+        there is a JSON body to attach it to, and with no valid field there is
+        no field info to drain.
+        """
+        json_data = self._build_json()
+        if json_data is None:
+            return
+
+        self._queue.put((json_data, self._get_field_info()))
 
     @staticmethod
     def _consume(queue, ready, outname, verboseVITS):
