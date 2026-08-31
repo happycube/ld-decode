@@ -91,6 +91,15 @@ def _demod_worker_init(rf_opts, decoder_params, field_cfg=None):
     _worker_cfg = field_cfg
 
 
+def _sync_worker_veq(veq):
+    """Adopt a per-job dynamic video EQ in this worker (see
+    _sync_worker_imtf)."""
+    veq = tuple(veq) if veq else None
+    if _worker_rf.DecoderParams.get("video_eq_auto") != veq:
+        _worker_rf.DecoderParams["video_eq_auto"] = veq
+        _worker_rf.recompute_fvideo()
+
+
 def _sync_worker_imtf(imtf_strength):
     """Adopt a per-job inverse-MTF strength in this worker.
 
@@ -103,9 +112,10 @@ def _sync_worker_imtf(imtf_strength):
         _worker_rf.recompute_fvideo()
 
 
-def _demod_worker_block(rawinput, mtf_level, imtf_strength=None):
+def _demod_worker_block(rawinput, mtf_level, imtf_strength=None, veq=None):
     if imtf_strength is not None:
         _sync_worker_imtf(imtf_strength)
+        _sync_worker_veq(veq)
     return _worker_rf.demodblock(
         data=rawinput,
         mtf_level=mtf_level,
@@ -114,7 +124,7 @@ def _demod_worker_block(rawinput, mtf_level, imtf_strength=None):
 
 
 def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
-                         imtf_strength, audio_field_number):
+                         imtf_strength, veq, audio_field_number):
     """Decode one complete field in this worker process.
 
     Replicates decodefield()'s window math and demod_read()'s per-block
@@ -133,6 +143,7 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
 
     try:
         _sync_worker_imtf(imtf_strength)
+        _sync_worker_veq(veq)
         rf = _worker_rf
         cfg = _worker_cfg
 
@@ -187,6 +198,7 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
         # demodulated under (measurements are closed-loop)
         f.decoded_mtf_level = mtf_level
         f.decoded_imtf_strength = imtf_strength
+        f.decoded_video_eq = tuple(veq) if veq else None
         f.process()
 
         if not f.valid:
@@ -278,6 +290,7 @@ class FieldJobEngine:
         self._lfw = None
         self._mtf = 0.0
         self._imtf = 0.0
+        self._veq = None
         self._rebase_seq = 0
 
         self._thread = threading.Thread(
@@ -286,7 +299,7 @@ class FieldJobEngine:
         self._thread.start()
 
     def reset(self, start, next_is_first, lastfieldwritten, mtf_level,
-              imtf_strength=0.0):
+              imtf_strength=0.0, veq=None):
         """(Re)start speculation from known chain state."""
         with self._cond:
             self._gen += 1
@@ -301,6 +314,7 @@ class FieldJobEngine:
             self._lfw = lastfieldwritten
             self._mtf = mtf_level
             self._imtf = imtf_strength
+            self._veq = tuple(veq) if veq else None
             self._rebase_seq = 0
             self._active = True
             self._cond.notify_all()
@@ -327,6 +341,11 @@ class FieldJobEngine:
         workers rebuild FVideo per job; see _sync_worker_imtf)."""
         with self._cond:
             self._imtf = imtf_strength
+
+    def set_veq(self, veq):
+        """Adopt a new dynamic video EQ for future dispatches."""
+        with self._cond:
+            self._veq = tuple(veq) if veq else None
 
     def stop(self):
         with self._cond:
@@ -406,6 +425,7 @@ class FieldJobEngine:
                     start = self._cur_start
                 mtf = self._mtf
                 imtf = self._imtf
+                veq = self._veq
                 parity = self._cur_parity
                 fn = self._predict_field_number(start)
 
@@ -423,7 +443,7 @@ class FieldJobEngine:
 
                 fut = self.executor.submit(
                     _decode_field_worker, seq, start, raw, span_begin, mtf,
-                    imtf, fn
+                    imtf, veq, fn
                 )
                 self._futures[seq] = fut
                 self._next_dispatch = seq + 1
@@ -557,11 +577,12 @@ class DemodBlockCache:
         procs = self._procs
         inflight = self._proc_inflight
 
-        def demod_in_process(rawinput, mtf_level, imtf_strength=None):
+        def demod_in_process(rawinput, mtf_level, imtf_strength=None,
+                             veq=None):
             # Track the in-flight future so close() can drain the pool
             # before touching the worker processes (see close()).
             fut = procs.submit(_demod_worker_block, rawinput, mtf_level,
-                               imtf_strength)
+                               imtf_strength, veq)
             inflight.add(fut)
             fut.add_done_callback(inflight.discard)
             return fut.result()
@@ -587,20 +608,21 @@ class DemodBlockCache:
     def read_lock(self):
         return self._read_lock
 
-    def get_span(self, brange, mtf_level, imtf_strength=None):
+    def get_span(self, brange, mtf_level, imtf_strength=None, veq=None):
         """Demodulated blocks for brange (list of (raw, demod)), or None
         if EOF falls inside the span.  Schedules a sequential prefetch
         beyond the span at the same parameters."""
         with self._lock:
-            futures = [self._ensure(b, mtf_level, imtf_strength)
+            veq = tuple(veq) if veq else None
+            futures = [self._ensure(b, mtf_level, imtf_strength, veq)
                        for b in brange]
 
             for b in range(brange.stop, brange.stop + self.ahead):
                 if self._eof_block is not None and b >= self._eof_block:
                     break
-                self._ensure(b, mtf_level, imtf_strength)
+                self._ensure(b, mtf_level, imtf_strength, veq)
 
-            self._evict(brange.start, mtf_level, imtf_strength)
+            self._evict(brange.start, mtf_level, imtf_strength, veq)
 
         out = []
         for fut in futures:
@@ -655,8 +677,8 @@ class DemodBlockCache:
 
     # internal - callers hold self._lock
 
-    def _ensure(self, b, mtf_level, imtf_strength=None):
-        key = (b, mtf_level, imtf_strength)
+    def _ensure(self, b, mtf_level, imtf_strength=None, veq=None):
+        key = (b, mtf_level, imtf_strength, veq)
         fut = self._cache.get(key)
 
         if fut is None:
@@ -665,22 +687,22 @@ class DemodBlockCache:
                 fut.set_result(None)
             else:
                 fut = self._pool.submit(self._compute, b, mtf_level,
-                                        imtf_strength)
+                                        imtf_strength, veq)
             self._cache[key] = fut
 
         return fut
 
-    def _evict(self, current_start, mtf_level, imtf_strength=None):
+    def _evict(self, current_start, mtf_level, imtf_strength=None, veq=None):
         cutoff = current_start - self.keep_behind
         stale = [
             key for key in self._cache
             if (key[0] < cutoff or key[1] != mtf_level
-                or key[2] != imtf_strength)
+                or key[2] != imtf_strength or key[3] != veq)
         ]
         for key in stale:
             self._cache.pop(key).cancel()
 
-    def _compute(self, b, mtf_level, imtf_strength=None):
+    def _compute(self, b, mtf_level, imtf_strength=None, veq=None):
         with self._read_lock:
             raw = self.read_fn(b)
 
@@ -690,4 +712,4 @@ class DemodBlockCache:
                     self._eof_block = b
             return None
 
-        return raw, self.demod_fn(raw, mtf_level, imtf_strength)
+        return raw, self.demod_fn(raw, mtf_level, imtf_strength, veq)

@@ -547,12 +547,20 @@ class RFDecode:
         fsc_bin = int(round(fsc_hz * self.blocklen / self.freq_hz))
         self.inverse_mtf_log_at_fsc = np.log(SF["Finverse_mtf_base"][fsc_bin])
         self._imtf_2t_gain_cache = {}
+        self._veq_2t_gain_cache = {}
 
         # Zero-phase magnitude EQ from (freq_hz, dB) anchor points.  Real
         # valued, so it cannot move phase; applied to both the output and
         # burst reference paths so burst-based auto-calibration measures the
         # corrected signal.
         SF["Fvideo_eq"] = self.build_video_eq(DP.get("video_eq"))
+        # Dynamic per-disc EQ measured from VITS multiburst lines by the
+        # decoder's servo (decoder._veq_estimate).  Zero-phase, pinned to
+        # 0 dB from DC and beyond its last anchor + 0.5 MHz, so with
+        # anchors capped below ~3.6 MHz the chroma band stays owned by
+        # the burst-based inverse-MTF calibration.
+        SF["Fvideo_eq_auto"] = self.build_video_eq(
+            DP.get("video_eq_auto"))
 
         # Post processing: lowpass filter + full de-emphasis + inverse MTF
         # chroma correction + group-delay equaliser.  De-emphasis stays at
@@ -564,6 +572,9 @@ class RFDecode:
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
         if imtf_strength > 0:
             SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
+
+        if DP.get("video_eq_auto"):
+            SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq_auto"]
 
         # Correct the post-demod video group delay to the IEC spec curve the
         # disc was pre-distorted against (PAL: IEC 60856 9.1.6, NTSC: IEC 60857
@@ -660,6 +671,30 @@ class RFDecode:
         self._imtf_2t_gain_cache[key] = g
         return g
 
+    def video_eq_2t_peak_gain(self, points):
+        """Peak gain of the dynamic video EQ on an ideal 2T pulse.
+
+        Divided out of the MTF servo's pulse-to-bar measurement so the
+        EQ and mtf_level loops stay decoupled (the servo then sees the
+        pre-EQ response); analogous to inverse_mtf_2t_peak_gain.
+        """
+        if not points:
+            return 1.0
+        key = tuple(points)
+        g = self._veq_2t_gain_cache.get(key)
+        if g is not None:
+            return g
+        had_s = 200e-9 if self.system == "PAL" else 250e-9
+        n = max(int(round(2 * had_s * self.freq_hz)), 4)
+        t = np.arange(n)
+        pulse = np.zeros(self.blocklen)
+        pulse[:n] = 0.5 * (1 - np.cos(2 * np.pi * t / n))
+        out = np.real(np.fft.ifft(
+            np.fft.fft(pulse) * self.build_video_eq(list(points))))
+        g = float(np.max(out) / np.max(pulse))
+        self._veq_2t_gain_cache[key] = g
+        return g
+
     def recompute_fvideo(self):
         """Rebuild only FVideo after an inverse MTF strength change.
 
@@ -679,6 +714,11 @@ class RFDecode:
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
         if imtf_strength > 0:
             SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
+
+        SF["Fvideo_eq_auto"] = self.build_video_eq(
+            DP.get("video_eq_auto"))
+        if DP.get("video_eq_auto"):
+            SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq_auto"]
 
         SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 

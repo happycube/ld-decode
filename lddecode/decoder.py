@@ -96,6 +96,101 @@ def measure_its_2t_ratio(field, lines=(19, 18, 20)):
     return None
 
 
+def measure_vits_multiburst(field, lines=(13, 20)):
+    """One-line VITS multiburst from a first-field VBI line, or None.
+
+    GGV PAL carries one on line 13 (0.5-5.8 MHz packets), the Louvre
+    disc on line 20 (0.6-5.9 MHz); both on first fields.  Returns
+    (packets, line) where packets is a list of (freq_hz, amp_ire_pp)
+    for at least 4 packets at monotonically increasing frequencies
+    including a reference packet near 1 MHz.  Validity checks reject
+    picture content and plain reference lines, so discs without a
+    multiburst line yield None and the EQ servo stays inactive.
+    """
+    if not field.isFirstField or field.dspicture is None:
+        return None
+    fs_mhz = field.rf.SysParams["outfreq"]
+    for line in lines:
+        try:
+            sl = field.lineslice_tbc(line, 16.0, 46.0)
+            y = field.output_to_ire(field.dspicture[sl].astype(np.float64))
+        except Exception:
+            continue
+        if len(y) < 400:
+            continue
+
+        W, step = 44, 6
+        win = np.hanning(W)
+        cands = []
+        for i in range((len(y) - W) // step):
+            w = y[i * step:i * step + W]
+            wd = w - w.mean()
+            # p-p from rms: exact for a sine at any sampling phase
+            pp = float(2.0 * np.sqrt(2.0) * np.std(wd))
+            if pp < 12.0:
+                continue
+            spec = np.abs(np.fft.rfft(wd * win))
+            k = int(np.argmax(spec[1:])) + 1
+            if k >= len(spec) - 1:
+                continue
+            # tone purity: reject windows that are not a single packet
+            e_pk = spec[k - 1] ** 2 + spec[k] ** 2 + spec[k + 1] ** 2
+            if e_pk < 0.8 * float(np.sum(spec ** 2)):
+                continue
+            a, b, c = spec[k - 1], spec[k], spec[k + 1]
+            denom = a - 2 * b + c
+            if abs(denom) > 1e-12:
+                k = k + 0.5 * (a - c) / denom
+            cands.append((k * fs_mhz / W * 1e6, pp, i * step))
+
+        if len(cands) < 8:
+            continue
+        cands.sort()
+        groups = []
+        for f, a, i0 in cands:
+            if groups and f - groups[-1][0][-1] < 0.3e6:
+                groups[-1][0].append(f)
+                groups[-1][2].append(i0)
+            else:
+                groups.append(([f], a, [i0]))
+        packets = []
+        for fl, _, il in groups:
+            if len(fl) < 2:
+                continue
+            fmed = float(np.median(fl))
+            # amplitude from a least-squares sine fit over the packet's
+            # central span: unbiased for any (non-integer) cycle count,
+            # unlike the per-window rms the scan uses
+            lo, hi = min(il), max(il) + W
+            span = hi - lo
+            lo += span // 5
+            hi -= span // 5
+            seg = y[lo:hi]
+            if len(seg) < 24:
+                continue
+            t = 2 * np.pi * fmed / (fs_mhz * 1e6) * np.arange(len(seg))
+            A = np.column_stack([np.sin(t), np.cos(t), np.ones(len(seg))])
+            coef, *_ = np.linalg.lstsq(A, seg, rcond=None)
+            amp = 2.0 * float(np.hypot(coef[0], coef[1]))
+            # the fit must explain the segment (rejects noise "packets")
+            resid = seg - A @ coef
+            if np.var(resid) > 0.35 * np.var(seg - seg.mean()):
+                continue
+            packets.append((fmed, amp))
+        if len(packets) < 4:
+            continue
+        freqs = [p[0] for p in packets]
+        if any(b <= a for a, b in zip(freqs, freqs[1:])):
+            continue
+        if freqs[-1] - freqs[0] < 2.5e6:
+            continue
+        ref = [p for p in packets if 0.75e6 <= p[0] <= 1.45e6]
+        if not ref or not (25.0 <= ref[0][1] <= 90.0):
+            continue
+        return packets, line
+    return None
+
+
 class LDdecode:
     # Tolerant speculation: accept in-flight fields whose MTF level is
     # within this of the current one (2x the adoption dead-band; an MTF
@@ -365,6 +460,13 @@ class LDdecode:
         )
         self._servo_samples = []   # (field readloc, level_used, pulse/bar)
         self._servo_last_adopt = None   # fdoffset of last servo adoption
+        # Multiburst-driven video EQ servo (PAL; primary response
+        # reference when a VITS multiburst line exists, with the 2T
+        # servo keeping mtf_level as the fallback/second reference).
+        self.veq_servo = system == "PAL"
+        self._veq_samples = []    # (readloc, applied eq tuple, {fkey: dev_db})
+        self._veq_last_adopt = None
+        self.veq_calibrated = False
         self.useAGC = extra_options.get("useAGC", True)
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
@@ -742,6 +844,120 @@ class LDdecode:
     # so the burst tracking trims the rest)
     MTF_DEEMP_FEEDFORWARD = 1.2
 
+    # Multiburst EQ servo: anchors only below VEQ_MAX_FREQ so the EQ
+    # (pinned to 0 dB beyond its last anchor + 0.5 MHz) never touches
+    # the chroma band - GGV records luma HOT but chroma LOW around fsc,
+    # and a composite filter cannot serve both, so >3.6 MHz stays owned
+    # by the burst-based inverse-MTF calibration.
+    VEQ_MAX_FREQ = 3.6e6
+    VEQ_CLAMP_DB = 2.5
+    VEQ_DEADBAND_DB = 0.3
+    VEQ_MIN_SAMPLES = 6
+    VEQ_KEEP = 24
+    VEQ_MAX_AGE_FIELDS = 240
+    VEQ_MIN_ADOPT_FIELDS = 100
+
+    def _veq_estimate(self, field):
+        """Absolute video-EQ anchor estimate from pooled multiburst
+        measurements, or None.
+
+        Each sample stores per-packet deviations (dB, relative to the
+        ~1 MHz reference packet) together with the EQ that was applied
+        when the field was decoded, so the disc's response - and hence
+        the correction - is recovered absolutely regardless of what EQ
+        each pooled field carried (same closed-loop bookkeeping as the
+        2T servo).
+        """
+        if not self.veq_servo:
+            return None
+
+        applied = getattr(field, "decoded_video_eq", None)
+        m = measure_vits_multiburst(field)
+        if m is not None:
+            packets, _ = m
+            ref = [p for p in packets if 0.75e6 <= p[0] <= 1.45e6][0]
+            devs = {}
+            for f, a in packets:
+                if f > self.VEQ_MAX_FREQ or f < 0.7e6:
+                    continue
+                fkey = round(f / 2.5e5) * 2.5e5
+                devs[fkey] = 20.0 * np.log10(a / ref[1])
+            if devs:
+                key = field.readloc
+                entry = (key, tuple(applied) if applied else (), devs)
+                if self._veq_samples and self._veq_samples[-1][0] == key:
+                    self._veq_samples[-1] = entry
+                else:
+                    self._veq_samples.append(entry)
+                    self._veq_samples = self._veq_samples[-self.VEQ_KEEP:]
+
+        horizon = (self.fdoffset
+                   - self.VEQ_MAX_AGE_FIELDS * self.bytes_per_field)
+        self._veq_samples = [s for s in self._veq_samples
+                             if s[0] >= horizon]
+        need = 3 if not self.veq_calibrated else self.VEQ_MIN_SAMPLES
+        if len(self._veq_samples) < need:
+            return None
+
+        by_key = {}
+        for _, applied_eq, devs in self._veq_samples:
+            adb = dict(applied_eq)
+            for fkey, dev in devs.items():
+                # correction that would zero this deviation
+                by_key.setdefault(fkey, []).append(
+                    adb.get(fkey, 0.0) - dev)
+        half = len(self._veq_samples) // 2
+        anchors = []
+        for fkey in sorted(by_key):
+            ests = by_key[fkey]
+            if len(ests) <= half:
+                continue
+            if np.std(ests) > 0.8:
+                return None    # scattered: distrust the whole line
+            db = float(np.clip(np.median(ests),
+                               -self.VEQ_CLAMP_DB, self.VEQ_CLAMP_DB))
+            anchors.append((float(fkey), round(db, 2)))
+        return tuple(anchors) if anchors else None
+
+    def checkVideoEQ(self, field):
+        """Adopt the multiburst-derived video EQ when it drifts past
+        the dead-band.  Returns True if no redo is needed (tolerant
+        trims and holds), False to redo (first application, or exact
+        mode)."""
+        anchors = self._veq_estimate(field)
+        if anchors is None:
+            return True
+        current = self.rf.DecoderParams.get("video_eq_auto") or ()
+        cur = dict(current)
+        new = dict(anchors)
+        delta = max(abs(new.get(k, 0.0) - cur.get(k, 0.0))
+                    for k in set(cur) | set(new))
+        if delta < self.VEQ_DEADBAND_DB:
+            return True
+
+        first = not self.veq_calibrated
+        if not first and self.fields_written > 0:
+            if (self._veq_last_adopt is not None
+                    and (self.fdoffset - self._veq_last_adopt)
+                    < self.VEQ_MIN_ADOPT_FIELDS * self.bytes_per_field):
+                return True
+            self._veq_last_adopt = self.fdoffset
+
+        logs.logger.debug(
+            "Video EQ (VITS multiburst): "
+            + "  ".join(f"{f/1e6:.2f}MHz:{db:+.2f}dB" for f, db in anchors)
+        )
+        self.veq_calibrated = True
+        self.rf.DecoderParams["video_eq_auto"] = anchors
+        self.rf.recompute_fvideo()
+
+        if not first and not self.exact_speculation:
+            # dead-band-sized trim: hand to future jobs, keep in-flight
+            if self._job_engine is not None:
+                self._job_engine.set_veq(anchors)
+            return True
+        return False
+
     def _mtf_servo_estimate(self, field):
         """mtf_level estimate from the ITS 2T pulse servo, or None.
 
@@ -762,10 +978,14 @@ class LDdecode:
             m = measure_its_2t_ratio(field)
             if m is not None:
                 ratio, _ = m
-                # divide out the inverse-MTF chroma filter's lift of the
-                # pulse so the two control loops stay decoupled
+                # divide out the inverse-MTF chroma filter's and the
+                # dynamic EQ's lift of the pulse so the control loops
+                # stay decoupled (the level servo sees the pre-EQ
+                # response)
                 ratio /= self.rf.inverse_mtf_2t_peak_gain(
                     getattr(field, "decoded_imtf_strength", 0.0))
+                ratio /= self.rf.video_eq_2t_peak_gain(
+                    getattr(field, "decoded_video_eq", None))
                 key = field.readloc
                 parity = bool(field.isFirstField)
                 # On a redo the same field comes through again; replace
@@ -1173,7 +1393,8 @@ class LDdecode:
             return None
         return rawinput
 
-    def _demod_raw_block(self, rawinput, mtf_level, imtf_strength=None):
+    def _demod_raw_block(self, rawinput, mtf_level, imtf_strength=None,
+                         veq=None):
         """Demodulate one raw block (pure given filter state).  The
         imtf_strength key is only meaningful for process-pool workers;
         this main-process rf always has the current filters."""
@@ -1196,7 +1417,8 @@ class LDdecode:
             # to the inline path (same per-block computation).
             blockdata = self.block_cache.get_span(
                 brange, MTF,
-                self.rf.DecoderParams.get("inverse_mtf_strength", 0.0))
+                self.rf.DecoderParams.get("inverse_mtf_strength", 0.0),
+                self.rf.DecoderParams.get("video_eq_auto"))
         elif self.block_cache is not None:
             # Inline demod on this thread (field-job repair/redo path and
             # warm-up with -t).  The raw window is read as ONE span under
@@ -1371,6 +1593,8 @@ class LDdecode:
         f.decoded_mtf_level = mtf_level
         f.decoded_imtf_strength = getattr(
             self.rf, "DecoderParams", {}).get("inverse_mtf_strength", 0.0)
+        f.decoded_video_eq = getattr(
+            self.rf, "DecoderParams", {}).get("video_eq_auto")
 
         # set an object-level variable to make notebook debugging easier
         self.curfield = f
@@ -1480,6 +1704,7 @@ class LDdecode:
         f = entry["f"]
         mtf0 = self.mtf_level
         strength0 = self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
+        veq0 = self.rf.DecoderParams.get("video_eq_auto")
         agc_moved = False
         keep = 900 if self.isCLV else 30
 
@@ -1492,7 +1717,11 @@ class LDdecode:
         # moving parameters.  The budget bounds pathological cases.
         stable = 0
         for _ in range(40):
-            if self.deemp_calibrated and stable >= 2:
+            if (self.deemp_calibrated and stable >= 2
+                    and (not self.veq_servo or self.veq_calibrated
+                         or not self._veq_samples)):
+                # (a multiburst line has been seen but its EQ not yet
+                # locked: keep warming up so the first frame gets it)
                 break
             nf, off = self.decodefield(pos, self.mtf_level, prev,
                                        entry["initphase"])
@@ -1511,10 +1740,13 @@ class LDdecode:
             if self._adjust_agc(nf, False):
                 agc_moved = True
                 moved = True
+            if not moved:
+                moved = not self.checkVideoEQ(nf)
             if moved:
                 # this field (and any pool samples) were measured under
                 # parameters that just changed
                 self._deemp_burst_samples.clear()
+                self._veq_samples.clear()
             elif np.isfinite(nf.burstmedian) and nf.burstmedian > 5:
                 self._deemp_burst_samples.append(nf.burstmedian)
 
@@ -1542,7 +1774,8 @@ class LDdecode:
             # inverse_mtf_strength is likewise frozen into the workers'
             # FVideo filter at spawn
             self._deemp_adjusted_last = True
-        return agc_moved or deemp_moved or self.mtf_level != mtf0
+        return (agc_moved or deemp_moved or self.mtf_level != mtf0
+                or self.rf.DecoderParams.get("video_eq_auto") != veq0)
 
     def calibrate(self, f, metrics, redos):
         """Fold one decoded field's measurements into the calibration
@@ -1567,24 +1800,30 @@ class LDdecode:
         self._agc_adjusted_last = agc_adjusted
 
         if agc_adjusted:
-            # Burst samples measured under the old levels are not
-            # comparable.
+            # Burst and multiburst samples measured under the old levels
+            # are not comparable.
             self._deemp_burst_samples.clear()
             self._deemp_burst_offset = None
+            self._veq_samples.clear()
 
         redo = not self.checkMTF(f, self.fieldstack[0])
         if redo:
-            # MTF moved: burst samples measured under the old RF filter
-            # are not comparable either.
+            # MTF moved: burst/multiburst samples measured under the old
+            # RF filter are not comparable either.
             self._deemp_burst_samples.clear()
             self._deemp_burst_offset = None
+            self._veq_samples.clear()
+
+        veq_redo = False
+        if not agc_adjusted and not redo:
+            veq_redo = not self.checkVideoEQ(f)
 
         deemp_adjusted = False
-        if not agc_adjusted and not redo:
+        if not agc_adjusted and not redo and not veq_redo:
             deemp_adjusted = not self.checkAutoDeemp(f)
         self._deemp_adjusted_last = deemp_adjusted
 
-        return redo or agc_adjusted or deemp_adjusted
+        return redo or veq_redo or agc_adjusted or deemp_adjusted
 
     def validate_chain(self, f, prevfield):
         """Check an independently-decoded field against the committed
@@ -1750,6 +1989,8 @@ class LDdecode:
                 self._job_engine.set_mtf(self.mtf_level)
                 self._job_engine.set_imtf(self.rf.DecoderParams.get(
                     "inverse_mtf_strength", 0.0))
+                self._job_engine.set_veq(self.rf.DecoderParams.get(
+                    "video_eq_auto"))
 
     def _commit_entry(self, entry):
         """Calibrate one chain entry (with a bounded redo budget) and
@@ -1956,6 +2197,7 @@ class LDdecode:
             mtf_level=self.mtf_level,
             imtf_strength=self.rf.DecoderParams.get(
                 "inverse_mtf_strength", 0.0),
+            veq=self.rf.DecoderParams.get("video_eq_auto"),
         )
         self._engine_dirty = False
         self._job_rejects = 0
