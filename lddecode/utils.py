@@ -262,6 +262,8 @@ def make_loader(filename, inputfreq=None):
         return load_unpacked_data_s16
     elif filename.endswith(".r16") or filename.endswith(".u16"):
         return load_unpacked_data_u16
+    elif filename.endswith(".s8"):
+        return load_unpacked_data_s8
     elif filename.endswith(".r8") or filename.endswith(".u8"):
         return load_unpacked_data_u8
     elif (
@@ -279,9 +281,11 @@ def make_loader(filename, inputfreq=None):
 
 def load_unpacked_data(infile, sample, readlen, sampletype):
     # this is run for unpacked data:
-    # 1 is for 8-bit cxadc data, 2 for 16bit DD, 3 for 16bit cxadc
-
-    samplelength = 2 if sampletype == 3 else sampletype
+    # 1 is for 8-bit cxadc data, 2 for 16bit DD, 3 for 16bit cxadc,
+    # 4 for 32-bit float, 5 for signed 8-bit
+    #
+    # sampletype is not the sample width, so the two are mapped explicitly.
+    samplelength = {1: 1, 2: 2, 3: 2, 4: 4, 5: 1}[sampletype]
 
     infile.seek(sample * samplelength, 0)
     inbuf = infile.read(readlen * samplelength)
@@ -292,6 +296,11 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
         indata = np.frombuffer(inbuf, "uint16", len(inbuf) // 2)
     elif sampletype == 2:
         indata = np.frombuffer(inbuf, "int16", len(inbuf) // 2)
+    elif sampletype == 5:
+        # Scale up to the 16-bit range, so that a given .s8 file decodes
+        # identically whether it reaches us through this loader or through
+        # the ffmpeg path (which converts s8 to pcm_s16le the same way).
+        indata = np.frombuffer(inbuf, "int8", len(inbuf)).astype(np.int16) * 256
     else:
         # NOTE(oln): Can probably use frombuffer for other variants too but
         # didn't have any samples to test with.
@@ -305,6 +314,10 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
 
 def load_unpacked_data_u8(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 1)
+
+
+def load_unpacked_data_s8(infile, sample, readlen):
+    return load_unpacked_data(infile, sample, readlen, 5)
 
 
 def load_unpacked_data_s16(infile, sample, readlen):
