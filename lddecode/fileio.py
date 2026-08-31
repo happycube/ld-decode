@@ -388,9 +388,6 @@ class LoadLDF:
         self._max_buffer = 64 * 1024 * 1024
 
         self._container = None
-        self._stream = None
-        self._resampler = None
-        self._decode_iter = None
         self._buffer = bytearray()
         self._want = 0
         self._cv = threading.Condition()
@@ -404,21 +401,30 @@ class LoadLDF:
 
         self._stop_decoder()
 
-        self._container = av.open(self.filename)
-        self._stream = self._container.streams.audio[0]
-        self._resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono")
+        container = av.open(self.filename)
+        try:
+            stream = container.streams.audio[0]
+            resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono")
 
-        if sample > 0:
-            # The FLAC stores RF samples 1:1 (labeled 40kHz, actually 40MHz).
-            # frame.pts and seek offsets are in stream time_base (1/40000)
-            # units, which equal the FLAC sample index = RF sample index.
-            seek_sample = max(0, sample - self._stream.sample_rate)
-            self._container.seek(seek_sample, stream=self._stream, any_frame=True)
+            if sample > 0:
+                # The FLAC stores RF samples 1:1 (labeled 40kHz, actually 40MHz).
+                # frame.pts and seek offsets are in stream time_base (1/40000)
+                # units, which equal the FLAC sample index = RF sample index.
+                seek_sample = max(0, sample - stream.sample_rate)
+                container.seek(seek_sample, stream=stream, any_frame=True)
 
-        self._decode_iter = self._container.decode(audio=0)
+            decode_iter = container.decode(audio=0)
+        except Exception:
+            container.close()
+            raise
 
-        # Capture the buffer and stop flag per run so a reader thread left over
-        # from a previous decoder can never touch the current buffer.
+        # All per-run state (buffer, stop flag, container, decode iterator,
+        # resampler) is captured here and passed to the reader thread, so a
+        # reader left over from a previous decoder can never touch the current
+        # run's state.  Once started, the reader thread OWNS the container and
+        # is the only thing that closes it: closing it from another thread
+        # while the reader is inside a libav demux call frees the AVIOContext
+        # under it and segfaults (NULL URLContext in ffurl_seek2).
         buf = bytearray()
         stop_event = threading.Event()
         with self._cv:
@@ -426,25 +432,30 @@ class LoadLDF:
             self._want = 0
             self._eof = False
         self._stop_event = stop_event
+        self._container = container
 
         self.position = sample * 2
         self.rewind_buf = bytearray()
 
         self._reader_thread = threading.Thread(
             target=self._reader_loop,
-            args=(stop_event, buf, sample),
+            args=(stop_event, buf, sample, container, decode_iter, resampler),
             daemon=True,
         )
         self._reader_thread.start()
 
-    def _reader_loop(self, stop_event, buf, target_sample):
+    def _reader_loop(self, stop_event, buf, target_sample, container,
+                     decode_iter, resampler):
         """Background thread: decode FLAC frames into `buf`.
 
         Discards any samples decoded before `target_sample` (the lead-in that
-        results from seeking to a frame before the requested position)."""
+        results from seeking to a frame before the requested position).
+
+        This thread owns `container` and closes it on the way out -- whether
+        it stops on request, hits EOF, or errors."""
         try:
             skip_samples = None
-            for frame in self._decode_iter:
+            for frame in decode_iter:
                 if stop_event.is_set():
                     return
                 if frame is None:
@@ -459,7 +470,7 @@ class LoadLDF:
                         base_sample = target_sample
                     skip_samples = max(0, target_sample - base_sample)
 
-                for rf in self._resampler.resample(frame):
+                for rf in resampler.resample(frame):
                     if stop_event.is_set():
                         return
                     data = bytes(rf.planes[0])
@@ -487,30 +498,34 @@ class LoadLDF:
         except Exception:
             traceback.print_exc()
         finally:
+            try:
+                container.close()
+            except Exception:
+                pass
             with self._cv:
-                self._eof = True
+                if self._buffer is buf:
+                    # Still the current run; a stale thread from a superseded
+                    # run must not inject EOF into its successor's state.
+                    self._eof = True
                 self._cv.notify_all()
 
     def _stop_decoder(self):
         if self._stop_event is not None:
             self._stop_event.set()
 
-        if self._reader_thread is not None and self._reader_thread.is_alive():
+        thread = self._reader_thread
+        if thread is not None and thread.is_alive():
             with self._cv:
                 # Wake the reader if it is parked on backpressure.
                 self._cv.notify_all()
-            self._reader_thread.join(timeout=2)
-
-        if self._container is not None:
-            try:
-                self._container.close()
-            except Exception:
-                pass
-            self._container = None
+            thread.join(timeout=2)
+            # If the join timed out the reader is still inside a decode call;
+            # it will close the container itself when that call returns.  Do
+            # NOT close it here -- that is a use-after-close for the reader.
 
         self._reader_thread = None
         self._stop_event = None
-        self._decode_iter = None
+        self._container = None
 
     def _read_data(self, count):
         """Read up to `count` bytes from the decoded buffer, blocking until they
