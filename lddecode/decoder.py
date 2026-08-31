@@ -346,6 +346,8 @@ class LDdecode:
 
         self.leadIn = False
         self.leadOut = False
+        self._leadout_run = 0
+        self._leadout_hit = False
         self.isCLV = False
         self.frameNumber = None
 
@@ -2212,6 +2214,11 @@ class LDdecode:
                 return (10 * decodeBCD(bcd >> 4)) + digit
 
         leadoutCount = 0
+        # consecutive-frame lead-out confirmation: reset the run when
+        # the previous frame produced no lead-out codes
+        if not self._leadout_hit:
+            self._leadout_run = 0
+        self._leadout_hit = False
 
         for linecode in f1.linecode + f2.linecode:
             if linecode is None:
@@ -2219,9 +2226,18 @@ class LDdecode:
 
             if linecode == 0x80EEEE:  # lead-out reached
                 leadoutCount += 1
-                # Require two leadouts, since there may only be one field in the raw data w/it
-                if leadoutCount == 2:
-                    self.leadOut = True
+                # Require two codes in the frame (there may only be one
+                # field in the raw data with it), on two consecutive
+                # frames: a real lead-out spans hundreds of frames,
+                # while an isolated frame's worth of 0x80EEEE can be a
+                # mid-programme picture-VBI misread (seen on the Louvre
+                # CAV disc, where it silently truncated the decode).
+                if leadoutCount == 2 and not self._leadout_hit:
+                    self._leadout_hit = True
+                    self._leadout_run += 1
+                    if self._leadout_run >= 2:
+                        logs.logger.debug("VBI: lead-out confirmed")
+                        self.leadOut = True
             elif linecode == 0x88FFFF:  # lead-in
                 self.leadIn = True
             elif (linecode & 0xF0DD00) == 0xF0DD00:  # CLV minutes/hours
