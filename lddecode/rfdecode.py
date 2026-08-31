@@ -492,6 +492,14 @@ class RFDecode:
             # is an amplitude compensation by design, and the FFT
             # overlap-save pipeline makes acausal zero-phase filters free.
             SF["RFVideo"] = np.abs(SF["RFVideo"])
+            # Amplitude-only MTF was also tried for NTSC alone
+            # (2026-08-31): it removes the DP the MTF poles' phase adds
+            # per mtf_level (+1.7 deg at level 1.5 on he010), but the
+            # phased response turns out to be load-bearing for FM
+            # demodulation there — |MTF|**level loses sync lock
+            # entirely at effective exponent ~0.4 at inner radius,
+            # where the phased filter is still healthy at 0.6.  Do not
+            # re-split this without re-running the he010 offset sweeps.
             SF["MTF"] = np.abs(SF["MTF"])
             if "FcutPAL" in SF:
                 # The per-block audio-carrier notch multiplies into the same

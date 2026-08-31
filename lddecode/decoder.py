@@ -27,12 +27,21 @@ from .metrics import detect_levels
 from .dsp import FieldInfo, concatenate_blocks, nb_abs, nb_median, roundfloat
 
 
-def measure_its_2t_ratio(field, lines=(19, 18, 20)):
-    """2T pulse-to-bar ratio from the CCIR ITS on a VITS line, or None.
+# 2T reference layouts: (bar, baseline, pulse) windows in us and the VITS
+# lines to search.  PAL: CCIR ITS (line 19, both parities).  NTSC: NTC-7
+# composite (line 20, first fields; the second-field combination signal at
+# the same line has no full bar and is rejected by the validity checks).
+_VITS_2T_LAYOUT = {
+    "PAL": ((13.0, 19.0), (22.2, 24.4), (24.4, 26.4), (19, 18, 20)),
+    "NTSC": ((18.0, 28.0), (31.0, 33.0), (33.0, 35.0), (20, 19)),
+}
+
+
+def measure_its_2t_ratio(field, lines=None):
+    """2T pulse-to-bar ratio from the insertion test signal, or None.
 
     Cheap single-field version of the analysis-side transient measurement
-    (white bar 13-19 us, blanking baseline 22.2-24.4 us, 2T pulse at
-    ~25.2 us; both PAL field parities carry it).  The line number is
+    (see _VITS_2T_LAYOUT for the per-system windows).  The line number is
     searched over `lines` because ITS placement can vary by one line
     between discs.  Validity checks reject anything that is not a clean
     bar + 2T pulse, so content lines and discs without an ITS yield
@@ -40,15 +49,19 @@ def measure_its_2t_ratio(field, lines=(19, 18, 20)):
 
     Returns (ratio, line) on success, else None.
     """
+    bar_win, base_win, pulse_win, def_lines = \
+        _VITS_2T_LAYOUT[field.rf.system]
+    if lines is None:
+        lines = def_lines
     for line in lines:
         try:
             def seg(a, b):
                 sl = field.lineslice_tbc(line, a, b - a)
                 return field.output_to_ire(
                     field.dspicture[sl].astype(np.float64))
-            baseline_seg = seg(22.2, 24.4)
-            bar_seg = seg(13.0, 19.0)
-            pulse_seg = seg(24.4, 26.4)
+            baseline_seg = seg(*base_win)
+            bar_seg = seg(*bar_win)
+            pulse_seg = seg(*pulse_win)
         except Exception:
             continue
         if len(pulse_seg) < 8 or len(bar_seg) < 8 or len(baseline_seg) < 8:
@@ -96,19 +109,34 @@ def measure_its_2t_ratio(field, lines=(19, 18, 20)):
     return None
 
 
-def measure_vits_multiburst(field, lines=(13, 20)):
-    """One-line VITS multiburst from a first-field VBI line, or None.
+def measure_vits_multiburst(field, lines=None):
+    """One-line VITS multiburst from a VBI line, or None.
 
-    GGV PAL carries one on line 13 (0.5-5.8 MHz packets), the Louvre
-    disc on line 20 (0.6-5.9 MHz); both on first fields.  Returns
-    (packets, line) where packets is a list of (freq_hz, amp_ire_pp)
-    for at least 4 packets at monotonically increasing frequencies
-    including a reference packet near 1 MHz.  Validity checks reject
-    picture content and plain reference lines, so discs without a
-    multiburst line yield None and the EQ servo stays inactive.
+    PAL (first fields): GGV carries one on line 13 (0.5-5.8 MHz
+    packets), the Louvre disc on line 20 (0.6-5.9 MHz).  NTSC (both
+    parities): the FCC multiburst some discs carry on line 22
+    (1.25-4.1 MHz).  The NTC-7 combination multiburst (line 20 second
+    fields) is deliberately NOT used: its packets are only ~3 us — as
+    short as the scan window at NTSC 4fsc — so nearly every window
+    straddles a packet edge and the amplitude fit under-reads by up to
+    2.5 dB (measured on he010/issue176), with the wrong sign vs the
+    averaged-field analysis measurement.  Returns (packets, line)
+    where packets is a list of
+    (freq_hz, amp_ire_pp) for at least 4 packets at monotonically
+    increasing frequencies including a reference packet near 1 MHz.
+    Validity checks reject picture content and plain reference lines,
+    so discs without a multiburst line yield None and the EQ servo
+    stays inactive.
     """
-    if not field.isFirstField or field.dspicture is None:
+    if field.dspicture is None:
         return None
+    if field.rf.system == "PAL":
+        if not field.isFirstField:
+            return None
+        if lines is None:
+            lines = (13, 20)
+    elif lines is None:
+        lines = (22,)
     fs_mhz = field.rf.SysParams["outfreq"]
     for line in lines:
         try:
@@ -194,7 +222,9 @@ def measure_vits_multiburst(field, lines=(13, 20)):
 class LDdecode:
     # Tolerant speculation: accept in-flight fields whose MTF level is
     # within this of the current one (2x the adoption dead-band; an MTF
-    # step this size changes HF gain by fractions of a dB).
+    # step this size changes HF gain by fractions of a dB).  Scaled by
+    # the per-system servo gain (mtf_speculation_tolerance) so it stays
+    # the same size in pulse/bar ratio terms.
     MTF_SPECULATION_TOLERANCE = 0.10
 
     # The .tbc.db runs with journalling off for speed; a synchronous=FULL
@@ -447,23 +477,60 @@ class LDdecode:
         self.frameNumber = None
 
         self.autoMTF = True
-        # Closed-loop mtf_level servo from the ITS 2T pulse (PAL: the b/w
-        # RF ratio mapping cannot predict the needed level across discs,
-        # and the outer-radius droop needs negative levels it can't
-        # reach).  Disabled when the user overrides the MTF scaling,
-        # since the servo would just compensate the override away; when
-        # no valid 2T pulse is available the b/w mapping is the fallback.
+        # Closed-loop mtf_level servo from the ITS/NTC-7 2T pulse (the
+        # b/w RF ratio mapping cannot predict the needed level across
+        # discs, and the outer-radius droop needs negative levels it
+        # can't reach).  Disabled when the user overrides the MTF
+        # scaling, since the servo would just compensate the override
+        # away; when no valid 2T pulse is available the b/w mapping is
+        # the fallback.
         self.mtf_2t_servo = (
-            system == "PAL"
-            and extra_options.get("MTF_level", 1.0) == 1.0
+            extra_options.get("MTF_level", 1.0) == 1.0
             and extra_options.get("MTF_offset", 0) == 0
         )
         self._servo_samples = []   # (field readloc, level_used, pulse/bar)
         self._servo_last_adopt = None   # fdoffset of last servo adoption
-        # Multiburst-driven video EQ servo (PAL; primary response
-        # reference when a VITS multiburst line exists, with the 2T
-        # servo keeping mtf_level as the fallback/second reference).
-        self.veq_servo = system == "PAL"
+        # Loop gain is 1/|d(pulse/bar)/d(level)| — a near-Newton step.
+        # Measured slope: -0.11..-0.17 on PAL (Louvre/jason sweeps);
+        # -0.05 on NTSC over the servo's operating range of 0..+1.5
+        # (he010 radius sweeps — MTF_basemult 0.4 plus a flattening
+        # response make the NTSC exponent much weaker per level unit).
+        # The dead-band, estimate-scatter gate, and speculation
+        # tolerance are level-unit quantities, so they scale with the
+        # gain to stay the same size in ratio units.
+        self.mtf_servo_gain = 6.0 if system == "PAL" else 20.0
+        self.mtf_servo_deadband = 0.10 * self.mtf_servo_gain / 6.0
+        self.mtf_servo_scatter = 0.35 * self.mtf_servo_gain / 6.0
+        self.mtf_speculation_tolerance = (
+            self.MTF_SPECULATION_TOLERANCE * self.mtf_servo_gain / 6.0)
+        # PAL clip covers the validated +0.55..-0.65 with margin (and
+        # ggv-mb rides it, so it must not move).  NTSC needs +1.0 at
+        # he010's inner radius and must stay far below level ~2, where
+        # FM demodulation breaks down at inner radius.  The NTSC floor
+        # is 0, not negative: he010 radius sweeps show the mid/outer 2T
+        # deficit (ratio ~0.95) is NOT level-correctable there —
+        # d(ratio)/d(level) collapses to ~0 and goes non-monotonic — so
+        # chasing it would integrate to a spurious HF boost.  Clamping
+        # at 0 pins the servo exactly where the b/w mapping lands at
+        # those radii, and the correctable regime (ratio > 1, inner
+        # radius, real slope) still converges normally.
+        if system == "PAL":
+            self.mtf_servo_clip = (-1.0, 1.0)
+        else:
+            self.mtf_servo_clip = (0.0, 1.5)
+        # Chroma cost of an MTF level change, in inverse-MTF strength
+        # units per level unit; deliberately below the measured slope
+        # (~1.7 Louvre PAL, ~0.85 he010 NTSC) so the burst tracking
+        # trims the rest instead of overshooting.
+        self.mtf_deemp_feedforward = 1.2 if system == "PAL" else 0.6
+        # Multiburst-driven video EQ servo (primary response reference
+        # when a VITS multiburst line exists, with the 2T servo keeping
+        # mtf_level as the fallback/second reference).
+        self.veq_servo = True
+        # Anchor cap: the EQ never touches the chroma band (see the
+        # multiburst EQ servo comment by the VEQ_ constants); fsc
+        # differs by system.
+        self.veq_max_freq = 3.6e6 if system == "PAL" else 2.8e6
         self._veq_samples = []    # (readloc, applied eq tuple, {fkey: dev_db})
         self._veq_last_adopt = None
         self.veq_calibrated = False
@@ -820,16 +887,12 @@ class LDdecode:
         if isField:
             self.fdoffset *= self.bytes_per_field
 
-    # 2T servo tuning (calibrated on Louvre PAL radius sweeps, jason as
-    # flat control).  GAIN converts pulse/bar error into level units:
-    # measured d(pulse/bar)/d(level) is -0.11..-0.17, so 6.0 is a
-    # near-Newton step (1/0.15) that converges in a few adoptions
-    # without ringing across that slope range.
-    # CLIP covers the validated range (+0.55 inner .. -0.65 outer) with
-    # margin; MAX_AGE ages samples out so a disc whose ITS stops falls
-    # back to the b/w mapping instead of holding a stale radius estimate.
-    MTF_SERVO_GAIN = 6.0
-    MTF_SERVO_CLIP = 1.0
+    # 2T servo tuning (calibrated on Louvre PAL and he010 NTSC radius
+    # sweeps, jason as flat control).  The loop gain, dead-band,
+    # scatter gate, and clip range are per-system — see mtf_servo_gain
+    # / mtf_servo_clip in __init__.  MAX_AGE ages samples out so a disc
+    # whose ITS stops falls back to the b/w mapping instead of holding
+    # a stale radius estimate.
     MTF_SERVO_MIN_SAMPLES = 8
     MTF_SERVO_KEEP = 60
     MTF_SERVO_MAX_AGE_FIELDS = 240
@@ -839,17 +902,13 @@ class LDdecode:
     # could otherwise cause.  (Warmup is exempt: it needs several rapid
     # steps to converge before the first frame is written.)
     MTF_SERVO_MIN_ADOPT_FIELDS = 100
-    # chroma cost of an MTF level change, in inverse-MTF strength units
-    # per level unit (~1.7 on Louvre, less on other discs; kept low
-    # so the burst tracking trims the rest)
-    MTF_DEEMP_FEEDFORWARD = 1.2
 
-    # Multiburst EQ servo: anchors only below VEQ_MAX_FREQ so the EQ
-    # (pinned to 0 dB beyond its last anchor + 0.5 MHz) never touches
-    # the chroma band - GGV records luma HOT but chroma LOW around fsc,
-    # and a composite filter cannot serve both, so >3.6 MHz stays owned
-    # by the burst-based inverse-MTF calibration.
-    VEQ_MAX_FREQ = 3.6e6
+    # Multiburst EQ servo: anchors only below self.veq_max_freq so the
+    # EQ (pinned to 0 dB beyond its last anchor + 0.5 MHz) never touches
+    # the chroma band - GGV PAL records luma HOT but chroma LOW around
+    # fsc, and a composite filter cannot serve both, so the subcarrier
+    # region stays owned by the burst-based inverse-MTF calibration
+    # (cap 3.6 MHz for PAL fsc 4.43, 2.8 MHz for NTSC fsc 3.58).
     VEQ_CLAMP_DB = 2.5
     VEQ_DEADBAND_DB = 0.3
     VEQ_MIN_SAMPLES = 6
@@ -878,7 +937,7 @@ class LDdecode:
             ref = [p for p in packets if 0.75e6 <= p[0] <= 1.45e6][0]
             devs = {}
             for f, a in packets:
-                if f > self.VEQ_MAX_FREQ or f < 0.7e6:
+                if f > self.veq_max_freq or f < 0.7e6:
                     continue
                 fkey = round(f / 2.5e5) * 2.5e5
                 devs[fkey] = 20.0 * np.log10(a / ref[1])
@@ -1009,21 +1068,22 @@ class LDdecode:
         # 2T amplitudes can differ by a few percent (Louvre: 1.039 vs
         # 0.996), so a plain median drifts with the pool's parity mix
         # and hunts.  Estimate each parity separately and average.
+        # (NTSC only ever pools first fields — the NTC-7 composite —
+        # so one parity list is simply empty there.)
         by_parity = {True: [], False: []}
         for _, lv, r, parity in self._servo_samples:
-            by_parity[parity].append(lv + (r - 1.0) * self.MTF_SERVO_GAIN)
+            by_parity[parity].append(lv + (r - 1.0) * self.mtf_servo_gain)
         meds = [np.median(v) for v in by_parity.values() if len(v) >= 3]
         if not meds:
-            meds = [np.median([lv + (r - 1.0) * self.MTF_SERVO_GAIN
+            meds = [np.median([lv + (r - 1.0) * self.mtf_servo_gain
                                for _, lv, r, _ in self._servo_samples])]
         ests = [e for v in by_parity.values() for e in v]
         # Consistency gate: a real ITS gives tight estimates (ratio
         # sigma ~0.01-0.02/field); noisy or misdetected content scatters
         # them.  Distrust a scattered pool and fall back.
-        if np.std(ests) > 0.35:
+        if np.std(ests) > self.mtf_servo_scatter:
             return None
-        return float(np.clip(np.mean(meds),
-                             -self.MTF_SERVO_CLIP, self.MTF_SERVO_CLIP))
+        return float(np.clip(np.mean(meds), *self.mtf_servo_clip))
 
     def checkMTF(self, field, pfield=None):
         if not self.autoMTF:
@@ -1037,9 +1097,10 @@ class LDdecode:
         # noise than the open-loop ratio mapping; the wider dead-band
         # also damps limit cycles (clip-bound hunting on ggv-mb, and a
         # +/-0.04 parity-residual cycle on Louvre that a 0.075 band let
-        # through).  0.1 level is ~1.3% HF - fine granularity for a
-        # +/-20% radius drift.
-        deadband = 0.10
+        # through).  0.1 PAL level is ~1.3% HF - fine granularity for a
+        # +/-20% radius drift; the NTSC band scales with the loop gain
+        # so it is the same size in pulse/bar ratio terms.
+        deadband = self.mtf_servo_deadband
         if estimate is None:
             # Fallback: open-loop mapping from the black/white carrier
             # ratio (scale for NTSC - 1.1 to 1.55).
@@ -1078,7 +1139,7 @@ class LDdecode:
         if self.auto_deemp and self.deemp_calibrated:
             s = np.clip(
                 self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
-                + self.MTF_DEEMP_FEEDFORWARD * delta, 0.0, 2.0)
+                + self.mtf_deemp_feedforward * delta, 0.0, 2.0)
             self.rf.DecoderParams["inverse_mtf_strength"] = float(s)
             self.rf.recompute_fvideo()
             if self._job_engine is not None:
@@ -1719,9 +1780,15 @@ class LDdecode:
         for _ in range(40):
             if (self.deemp_calibrated and stable >= 2
                     and (not self.veq_servo or self.veq_calibrated
-                         or not self._veq_samples)):
-                # (a multiburst line has been seen but its EQ not yet
-                # locked: keep warming up so the first frame gets it)
+                         or not self._veq_samples)
+                    and (not self.mtf_2t_servo or not self._servo_samples
+                         or len(self._servo_samples)
+                         >= self.MTF_SERVO_MIN_SAMPLES)):
+                # (a multiburst or 2T line has been seen but its servo
+                # not yet locked: keep warming up so the first frame
+                # gets it.  The 2T pool matters on NTSC, where only
+                # first fields carry the pulse, so it fills at half the
+                # rate the deemp/EQ locks need.)
                 break
             nf, off = self.decodefield(pos, self.mtf_level, prev,
                                        entry["initphase"])
@@ -1737,6 +1804,14 @@ class LDdecode:
                 self.bw_ratios = self.bw_ratios[-keep:]
 
             moved = not self.checkMTF(nf, prev)
+            if moved and self.veq_calibrated:
+                # The EQ locked against an MTF level that just changed;
+                # drop the lock so the exit condition below holds the
+                # warmup until the EQ has re-converged under the final
+                # level (post-warmup adoptions handle this by tracking,
+                # but the first written frame should carry a consistent
+                # set).
+                self.veq_calibrated = False
             if self._adjust_agc(nf, False):
                 agc_moved = True
                 moved = True
@@ -2252,7 +2327,7 @@ class LDdecode:
 
         mtf_drift = abs(res["mtf_level"] - self.mtf_level)
         if mtf_drift > (0 if self.exact_speculation
-                        else self.MTF_SPECULATION_TOLERANCE):
+                        else self.mtf_speculation_tolerance):
             self._log_speculation(
                 "stale-mtf",
                 f"job used {res['mtf_level']:.4f}, current {self.mtf_level:.4f}",
