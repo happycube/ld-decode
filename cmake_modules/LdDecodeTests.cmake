@@ -98,7 +98,7 @@ set_tests_properties(analyze-ntsc-patterns PROPERTIES
     PASS_REGULAR_EXPRESSION "Line 19 VITS \\(70 IRE bar\\): first fields"
 )
 
-# CVBS output mode: decode to spec-compliant .composite/.meta and verify
+# CVBS output mode: decode to spec-compliant .cvbs/.meta and verify
 # against cvbs-file-format-specification (exact frame sizing, protected
 # values, sync lattice, metadata, WAV audio).
 add_test(
@@ -114,7 +114,7 @@ set_tests_properties(decode-ntsc-cvbs PROPERTIES FIXTURES_SETUP ntsc-cvbs)
 add_test(
     NAME verify-ntsc-cvbs
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_verify.py
-        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.composite
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.cvbs
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(verify-ntsc-cvbs PROPERTIES
@@ -137,7 +137,7 @@ set_tests_properties(decode-pal-cvbs PROPERTIES FIXTURES_SETUP pal-cvbs)
 add_test(
     NAME verify-pal-cvbs
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/cvbs_verify.py
-        ${CMAKE_BINARY_DIR}/testout/pal-cvbs.composite
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs.cvbs
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(verify-pal-cvbs PROPERTIES

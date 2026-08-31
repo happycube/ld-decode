@@ -139,8 +139,11 @@ def main():
         y_cvbs = os.path.join(td, "cvbs.yuv")
         y_tbc = os.path.join(td, "tbc.yuv")
 
+        cvbs_path = cvbs_base + ".cvbs"
+        if not os.path.exists(cvbs_path):
+            cvbs_path = cvbs_base + ".composite"
         render(orc, td, system, src_stage,
-               os.path.abspath(cvbs_base + ".composite"), "", decoder, y_cvbs)
+               os.path.abspath(cvbs_path), "", decoder, y_cvbs)
 
         extra = ("        db_path:\n"
                  "          type: string\n"

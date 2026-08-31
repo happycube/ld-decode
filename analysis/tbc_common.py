@@ -224,12 +224,20 @@ def load_cvbs(path, max_fields=None):
     file to open on a first field starting the colour sequence (NTSC colour
     frame A / PAL sequence frame 1), so field i has phase ID i % cycle + 1.
     """
-    base = path[:-len(".composite")] if path.endswith(".composite") else path
-    comp_path, meta_path = base + ".composite", base + ".meta"
+    base = path
+    for ext in (".cvbs", ".composite"):
+        if path.endswith(ext):
+            base = path[:-len(ext)]
+            break
+    meta_path = base + ".meta"
     if not os.path.exists(meta_path):
         raise FileNotFoundError(f"Metadata not found: {meta_path}")
+    # .cvbs is the spec extension; .composite is the pre-spec name.
+    comp_path = base + ".cvbs"
     if not os.path.exists(comp_path):
-        raise FileNotFoundError(f"CVBS file not found: {comp_path}")
+        comp_path = base + ".composite"
+    if not os.path.exists(comp_path):
+        raise FileNotFoundError(f"CVBS file not found: {base}.cvbs")
 
     con = sqlite3.connect(meta_path)
     row = con.execute(
@@ -273,9 +281,10 @@ def load_cvbs(path, max_fields=None):
 
 
 def load_video(path, max_fields=None):
-    """Load a .tbc or CVBS .composite file, dispatching on the extension
-    (or, for a bare basename, on which companion metadata file exists)."""
-    if path.endswith(".composite"):
+    """Load a .tbc or CVBS .cvbs/.composite file, dispatching on the
+    extension (or, for a bare basename, on which companion metadata file
+    exists)."""
+    if path.endswith((".cvbs", ".composite")):
         return load_cvbs(path, max_fields)
     if path.endswith(".tbc"):
         return load_tbc(path, max_fields)
@@ -1251,9 +1260,9 @@ def pal_fold_uv(line_phasors, expected_hues):
 
 def main():
     if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} file.tbc|file.composite", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} file.tbc|file.cvbs", file=sys.stderr)
         return 2
-    if sys.argv[1].endswith(".composite"):
+    if sys.argv[1].endswith((".cvbs", ".composite")):
         params, fields, _ = load_cvbs(sys.argv[1])
     else:
         params, fields, _ = load_tbc(sys.argv[1])

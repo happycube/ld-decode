@@ -101,8 +101,15 @@ def find_0h_positions(frame10, preset, sync_level=None, blank_level=None):
 
 def main():
     path = sys.argv[1]
-    base = path[: -len(".composite")] if path.endswith(".composite") else path
-    comp = base + ".composite"
+    base = path
+    for ext in (".cvbs", ".composite"):
+        if path.endswith(ext):
+            base = path[: -len(ext)]
+            break
+    # .cvbs is the spec extension; .composite is the pre-spec name.
+    comp = base + ".cvbs"
+    if not os.path.exists(comp):
+        comp = base + ".composite"
     meta = base + ".meta"
 
     print(f"CVBS verify: {comp}")
@@ -133,17 +140,29 @@ def main():
         check(file_frames == n_frames,
               f"frame count matches metadata ({file_frames} vs {n_frames})")
 
-    data = np.fromfile(comp, dtype="<u2")
-
     # --- encoding / protected values ---
-    if enc == "CVBS_U16_4FSC":
-        check(bool(np.all((data & 0x3F) == 0)), "U16 LSBs all zero")
-    v10 = (data >> 6).astype(np.int32)
-    check(int(v10.min()) >= 4 and int(v10.max()) <= 1019,
-          f"no protected values (range {v10.min()}..{v10.max()})")
+    if enc == "CVBS_U10_4FSC":
+        # s16le, 10-bit domain with signed headroom: excursions below 0
+        # and above 1023 are legal; only the protected codes 0-3 and
+        # 1020-1023 are reserved (sample-encoding-presets.md).
+        data = np.fromfile(comp, dtype="<i2")
+        v10 = data.astype(np.int32)
+        n_prot = int(np.count_nonzero(
+            ((v10 >= 0) & (v10 <= 3)) | ((v10 >= 1020) & (v10 <= 1023))))
+        check(n_prot == 0,
+              f"no protected values (range {v10.min()}..{v10.max()}, "
+              f"{n_prot} samples in reserved codes)")
+    else:
+        data = np.fromfile(comp, dtype="<u2")
+        if enc == "CVBS_U16_4FSC":
+            check(bool(np.all((data & 0x3F) == 0)), "U16 LSBs all zero")
+        v10 = (data >> 6).astype(np.int32)
+        check(int(v10.min()) >= 4 and int(v10.max()) <= 1019,
+              f"no protected values (range {v10.min()}..{v10.max()})")
 
     # --- level sanity: histogram peaks near sync and blanking ---
-    hist = np.bincount(v10, minlength=1024)
+    # (clip for the histogram only: U10 headroom excursions may be negative)
+    hist = np.bincount(np.clip(v10, 0, 1023), minlength=1024)
     lv = p["levels"]
     # median of sync-level samples (argmax would find the clamp pile at 4,
     # where the sync noise tail below the protected floor accumulates)

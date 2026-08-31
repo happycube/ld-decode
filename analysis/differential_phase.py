@@ -1145,7 +1145,7 @@ def main():
     print(f"TBC file: {tbc_path}")
     print("=" * 90)
 
-    if tbc_path.endswith(".composite"):
+    if tbc_path.endswith((".cvbs", ".composite")):
         params, fields, _ = load_cvbs(tbc_path, max_fields=args.max_fields)
     else:
         params, fields, _ = load_tbc(tbc_path, max_fields=args.max_fields)
