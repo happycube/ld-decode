@@ -12,6 +12,14 @@ on:
   release:
     types: [created, published]
 
+# End to end this workflow is a two-hour unit + functional + packaging run, so
+# a superseded one is two hours of runner time spent on a commit nobody is
+# waiting for any more.  Cancel those - but never on the default branch or on a
+# tag, where the run is what produces the release artefacts and must finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
   # The fast gate.  Everything below waits on it, so a broken unit lane fails
   # in a couple of minutes rather than after a two-hour decode run.

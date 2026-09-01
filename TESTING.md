@@ -267,6 +267,11 @@ Every test carries exactly one of `unit` or `functional`, plus an optional famil
 | `parallel` | Threading, block-cache and speculation |
 | `slow` | Functional tests exceeding roughly 60 s |
 
+`tests/conftest.py` enforces the lane markers at collection time, for both lanes: a test under
+`tests/unit/` without `unit`, or under `tests/functional/` without `functional`, fails the whole
+run, as does one carrying both. An unmarked test still *executes*, so without this it would simply
+drop out of `-m unit` or `-m functional` and the lane would rot unnoticed.
+
 Markers must be registered in `pyproject.toml` under `[tool.pytest.ini_options] markers` so an
 unregistered marker is an error rather than a silent no-op. Apply them per module where a whole file
 shares a marker:
@@ -310,6 +315,13 @@ Label assignment rules:
 - Every functional test sets an explicit `TIMEOUT`.
 
 ### Unit/functional boundary guard
+
+Two checks enforce the split, and neither is left to review:
+
+- `tests/conftest.py` rejects a test that is missing its lane's marker, or that claims both lanes.
+- `tests/unit/test_suite_hygiene.py` scans the unit lane's executable code for the tokens below.
+
+Rules:
 
 - A file under `tests/unit/` must not contain `open(`, `subprocess`, `tmp_path`, `requests`, or a
   reference to `testdata`. Treat any occurrence as a review failure.

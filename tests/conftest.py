@@ -30,6 +30,13 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 TESTDATA = REPO_ROOT / "testdata"
 
 UNIT_DIR = pathlib.Path(__file__).resolve().parent / "unit"
+FUNCTIONAL_DIR = pathlib.Path(__file__).resolve().parent / "functional"
+
+#: Which marker a test collected from each lane must carry.  TESTING.md states
+#: the rule for both lanes, so it is enforced for both: an unmarked functional
+#: suite would drop out of "-m functional" exactly as quietly as an unmarked
+#: unit one drops out of "-m unit".
+LANE_MARKER = {UNIT_DIR: "unit", FUNCTIONAL_DIR: "functional"}
 
 #: The seed used by every unit test that needs pseudo-random input.  A single
 #: shared value keeps failures reproducible across suites and makes it obvious
@@ -38,27 +45,47 @@ DEFAULT_SEED = 12345
 
 
 def pytest_collection_modifyitems(config, items):
-    """Fail the run if anything under tests/unit/ is missing the unit marker.
+    """Fail the run if a test carries the wrong lane marker, or none.
 
-    An unmarked test still executes, so without this check ``-m unit`` would
-    quietly skip it and the fast lane would rot.  Raising at collection time
-    reports every offender at once rather than one per run.
+    An unmarked test still executes, so without this check ``-m unit`` or
+    ``-m functional`` would quietly skip it and that lane would rot.  Raising
+    at collection time reports every offender at once rather than one per run.
 
-    The marker is looked up with iter_markers rather than ``item.keywords``:
-    keywords also carries the names of the parent collectors, and the parent
-    directory here is itself called "unit", so every test would look marked.
+    The markers are looked up with iter_markers rather than ``item.keywords``:
+    keywords also carries the names of the parent collectors, and the lane
+    directories are themselves called "unit" and "functional", so every test
+    would look marked.
     """
-    offenders = [
-        item.nodeid
-        for item in items
-        if UNIT_DIR in item.path.parents and not any(item.iter_markers(name="unit"))
-    ]
-    if offenders:
-        raise pytest.UsageError(
-            "tests under tests/unit/ must be marked with pytest.mark.unit; "
-            "add `pytestmark = [pytest.mark.unit, pytest.mark.<family>]` to:\n  "
-            + "\n  ".join(offenders)
+    missing = []
+    crossed = []
+
+    for item in items:
+        markers = {marker.name for marker in item.iter_markers()}
+        for directory, lane in LANE_MARKER.items():
+            if directory not in item.path.parents:
+                continue
+            if lane not in markers:
+                missing.append(f"{item.nodeid}  (needs {lane})")
+            # A test claiming both lanes satisfies either filter, so it would
+            # run in the fast lane while declaring that it needs real data.
+            if markers & ({"unit", "functional"} - {lane}):
+                crossed.append(item.nodeid)
+
+    problems = []
+    if missing:
+        problems.append(
+            "these tests are missing their lane marker; add "
+            "`pytestmark = [pytest.mark.<lane>, pytest.mark.<family>]` to:\n  "
+            + "\n  ".join(missing)
         )
+    if crossed:
+        problems.append(
+            "these tests carry both lane markers, which puts them in both "
+            "lanes at once; a test belongs to exactly one:\n  "
+            + "\n  ".join(crossed)
+        )
+    if problems:
+        raise pytest.UsageError("\n".join(problems))
 
 
 @pytest.fixture
