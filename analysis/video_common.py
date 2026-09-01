@@ -26,6 +26,10 @@ import sys
 
 import numpy as np
 
+# Local: analysis/ is a directory of scripts rather than a package, and every
+# entry point puts it on sys.path before importing this module.
+from vits_reference import NTSC_MULTIBURST_NTC7
+
 
 # ---------------------------------------------------------------------------
 # TBC loading
@@ -585,7 +589,10 @@ def detect_ntsc_white_flag(field):
 # modulated pedestal (20/40/80 IRE p-p subcarrier on 50 IRE).
 # ---------------------------------------------------------------------------
 
-NTC7_MULTIBURST_FREQS = (0.5, 1.0, 2.0, 3.0, 3.58, 4.2)
+# The nominal packet frequencies live in vits_reference with the note on why
+# this set must not be used for amplitude conformance; re-exported here so the
+# existing consumers keep one import.
+NTC7_MULTIBURST_FREQS = NTSC_MULTIBURST_NTC7
 NTC7_PEDESTAL_PP = (20.0, 40.0, 80.0)
 
 
