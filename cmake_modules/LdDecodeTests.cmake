@@ -30,10 +30,12 @@
 #                                                    analyze-ntsc-patterns,
 #                                                    analyze-ntsc-ntc7,
 #                                                    identify-ntsc-vits,
+#                                                    conformance-ntsc-vits,
 #                                                    roundtrip-ntsc-orc
 #   pal-cvbs            decode-pal-cvbs           -> verify-pal-cvbs,
 #                                                    analyze-pal-patterns,
 #                                                    identify-pal-vits,
+#                                                    conformance-pal-vits,
 #                                                    compare-pal-cvbs-parallel-*,
 #                                                    roundtrip-pal-orc
 #   pal-cvbs-parallel   decode-pal-cvbs-parallel  -> compare-pal-cvbs-parallel-*
@@ -453,6 +455,51 @@ set_tests_properties(identify-pal-vits PROPERTIES
     LABELS "functional"
     FIXTURES_REQUIRED pal-cvbs
     PASS_REGULAR_EXPRESSION "line +13 +pal-multiburst-field1"
+    TIMEOUT 300
+)
+
+# VITS level and differential-level conformance.  Each check is judged
+# against the specification's own tolerance plus the decoder allowance in
+# analysis/vits_reference.py, and names the clause it enforces.  A JSON
+# sidecar is written beside the capture for CI artefact upload.
+#
+# NTSC passes today.  PAL does not: its chrominance runs about 25% hot,
+# which fails the chrominance levels, the saturation ceiling, the
+# chrominance/luminance gain ratio and differential gain, and its multiburst
+# loses the top of the band.  Those are real decoder faults, recorded in
+# docs-planning/vits-conformance-testing-plan.md and scheduled for Phase 8.
+#
+# Rather than mark it WILL_FAIL, which would swallow a new PAL regression
+# alongside the known ones, the PAL entry pins the exact failure count.
+# CTest's PASS_REGULAR_EXPRESSION takes precedence over the exit status, so
+# this passes on today's known-bad state and goes red both if PAL improves
+# (update the count, or drop the pin once it reaches zero) and if it
+# regresses.  Either way the change gets looked at.
+add_test(
+    NAME conformance-ntsc-vits
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.cvbs
+        --json ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.conformance.json
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(conformance-ntsc-vits PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED ntsc-cvbs
+    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: PASS"
+    TIMEOUT 300
+)
+
+add_test(
+    NAME conformance-pal-vits
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs.cvbs
+        --json ${CMAKE_BINARY_DIR}/testout/pal-cvbs.conformance.json
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(conformance-pal-vits PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED pal-cvbs
+    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(13 of 37 checks failed"
     TIMEOUT 300
 )
 

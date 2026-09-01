@@ -42,6 +42,7 @@ from video_common import (
     measure_ntc7_transients, measure_pal_its_transients,
     weighted_psnr, chroma_am_pm_noise, line_segment_ire,
     find_flat_sc_window,
+    differential_gain, unwrap_about,
 )
 
 
@@ -926,9 +927,9 @@ def pal_report(params, fields, det):
 
         # Unwrap relative phases around the first point to keep the fit sane
         ref = points[0][2]
+        unwrapped = unwrap_about([p[2] for p in points], ref)
         ires, phases, amps = [], [], []
-        for label, ire, relph, amp in points:
-            ph = ref + phase_diff(relph, ref)
+        for (label, ire, _, amp), ph in zip(points, unwrapped):
             print(f"  {label:>22}  {ire:>7.1f}  {ph:>9.2f}  {amp:>10.2f}")
             ires.append(ire)
             phases.append(ph)
@@ -946,11 +947,11 @@ def pal_report(params, fields, det):
         print(f"  DP over {ires.min():.0f}-{ires.max():.0f} IRE: "
               f"{slope * (ires.max() - ires.min()):+.2f} deg")
 
-        # Differential gain: amplitude change relative to the 0-level packet
+        # Differential gain against the 0-level packet, ITU-R BT.1439-1
+        # section 3.3.1.3 (see video_common.differential_gain).
         if points[0][0].startswith("SC packet"):
-            ref_amp = points[0][3]
-            dg = (np.max(amps[1:]) - ref_amp) / ref_amp * 100
-            dgs.append(dg)
+            _, positive, _ = differential_gain(amps)
+            dgs.append(positive * 100)
 
     if slopes:
         arr = np.array(slopes)
@@ -967,7 +968,7 @@ def pal_report(params, fields, det):
     if dgs:
         arr = np.array(dgs)
         print(f"  Peak amplitude deviation from 0-level packet: "
-              f"mean={np.mean(arr):+.2f}%, std={np.std(arr):.2f} "
+              f"mean={np.mean(arr):.2f}%, std={np.std(arr):.2f} "
               f"({len(arr)} field(s))")
         print(f"  (Broadcast target is within +/-10%)")
     else:

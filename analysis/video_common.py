@@ -890,6 +890,138 @@ def measure_transients(fields, line, bar_win, baseline_win, pulse_win,
     }
 
 
+# ---------------------------------------------------------------------------
+# Insertion-test-signal distortion measures
+#
+# The definitions are ITU-R BT.1439-1 section 3.3, which every insertion test
+# signal in this tree is measured against.  They are pure functions of the
+# numbers a measurement produced, so they live here rather than in either of
+# the two callers (analysis/differential_phase.py and the VITS conformance
+# checks) and cannot drift apart between them.
+# ---------------------------------------------------------------------------
+
+def unwrap_about(phases_deg, reference_deg):
+    """Phases rewritten as reference + the wrapped difference from it.
+
+    A sequence of phases read modulo 360 can straddle the wrap point, which
+    turns a two-degree spread into a 358-degree one and ruins any fit or
+    peak-to-peak taken over it.  Returns a list of floats.
+    """
+    return [reference_deg + phase_diff(phase, reference_deg)
+            for phase in phases_deg]
+
+
+def differential_gain(amplitudes, reference_index=0):
+    """Differential gain of a modulated staircase, as fractions.
+
+    ITU-R BT.1439-1 section 3.3.1.3: the peak differences in subcarrier
+    amplitude between the treads and the subcarrier at blanking level, as a
+    proportion of the latter -
+
+        x = |A_max / A_0 - 1|,  y = |A_min / A_0 - 1|,
+        peak-to-peak = |A_max - A_min| / A_0
+
+    Returns (peak_to_peak, positive, negative).  reference_index selects the
+    blanking-level tread, which is the first zone of every modulated
+    staircase in this tree.  Raises ValueError if that amplitude is zero,
+    because the measure is undefined without it.
+    """
+    values = np.asarray(amplitudes, dtype=np.float64)
+    if len(values) < 2:
+        raise ValueError("differential gain needs at least two treads")
+    reference = float(values[reference_index])
+    if reference == 0.0:
+        raise ValueError("subcarrier amplitude at blanking level is zero")
+    positive = abs(float(np.max(values)) / reference - 1.0)
+    negative = abs(float(np.min(values)) / reference - 1.0)
+    peak_to_peak = abs(float(np.max(values) - np.min(values))) / abs(reference)
+    return peak_to_peak, positive, negative
+
+
+def differential_phase(phases_deg, reference_index=0):
+    """Differential phase of a modulated staircase, in degrees.
+
+    ITU-R BT.1439-1 section 3.3.1.3: the peak differences in subcarrier
+    phase between the treads and the subcarrier at blanking level.  The
+    phases are unwrapped about the reference first, so a sequence that
+    straddles 0/360 measures its true spread.
+
+    Returns (peak_to_peak, positive, negative).
+    """
+    values = list(phases_deg)
+    if len(values) < 2:
+        raise ValueError("differential phase needs at least two treads")
+    reference = float(values[reference_index])
+    unwrapped = np.asarray(unwrap_about(values, reference), dtype=np.float64)
+    deviations = unwrapped - reference
+    positive = abs(float(np.max(deviations)))
+    negative = abs(float(np.min(deviations)))
+    return float(np.ptp(unwrapped)), positive, negative
+
+
+def luminance_nonlinearity(risers):
+    """Luminance non-linearity of a staircase, as a fraction.
+
+    ITU-R BT.1439-1 section 3.3.1.1: "the difference between the largest and
+    the smallest amplitude as a percentage of the largest", the amplitudes
+    being those of the staircase's risers.  Returned as a fraction so it can
+    be compared with the limit EBU Tech. 3209 section 7.2.2 d) states the
+    same way (< 0.5% of the largest riser).
+
+    Raises ValueError if the largest riser is not positive, which means the
+    staircase did not rise and there is nothing to characterise.
+    """
+    values = np.asarray(risers, dtype=np.float64)
+    if len(values) < 2:
+        raise ValueError("luminance non-linearity needs at least two risers")
+    largest = float(np.max(values))
+    if largest <= 0.0:
+        raise ValueError("staircase has no positive riser")
+    return float(np.max(values) - np.min(values)) / largest
+
+
+#: Nominal amplitude ratios of the three-level chrominance bar's steps to its
+#: middle step.  ITU-R BT.1439-1 section 3.3.1.2: k_i = (2i - 1)/3 for the
+#: 625-line signal G2 and k_i = 2^(i-2) for the 525-line signal G, i counted
+#: from 1 for the smallest step.  Both reproduce the nominals this tree
+#: stores: PAL 20/60/100 % gives 1/3 and 5/3, NTSC 10/20/40 IRE gives 1/2
+#: and 2.
+CHROMA_BAR_STEP_RATIOS = {
+    "PAL": (1.0 / 3.0, 1.0, 5.0 / 3.0),
+    "NTSC": (0.5, 1.0, 2.0),
+}
+
+
+def chrominance_gain_nonlinearity(amplitudes, system):
+    """Chrominance gain non-linearity of a three-level chrominance bar.
+
+    ITU-R BT.1439-1 section 3.3.1.2: the larger of
+
+        100 * |A_i - k_i A_2| / (k_i A_2)   for i = 1 and i = 3
+
+    returned here as a fraction rather than a percentage.  A gain error that
+    scales all three steps equally cancels out of this measure, which is
+    what makes it the chrominance counterpart of luminance_nonlinearity:
+    it sees curvature, not gain.
+
+    amplitudes are the three steps in increasing nominal order.
+    """
+    values = np.asarray(amplitudes, dtype=np.float64)
+    if len(values) != 3:
+        raise ValueError(
+            f"a three-level chrominance bar has three steps, got {len(values)}"
+        )
+    ratios = CHROMA_BAR_STEP_RATIOS[system]
+    middle = float(values[1])
+    if middle == 0.0:
+        raise ValueError("middle chrominance step has zero amplitude")
+    worst = 0.0
+    for index in (0, 2):
+        expected = ratios[index] * middle
+        worst = max(worst, abs(float(values[index]) - expected) / abs(expected))
+    return worst
+
+
 # CCIR Rec. 567 unified noise weighting (single time constant, 245 ns).
 # See references/README.md in the repo root for sources.
 UNIFIED_WEIGHTING_TAU = 245e-9

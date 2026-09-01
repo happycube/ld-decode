@@ -244,6 +244,12 @@ class Element:
     step_windows_us gives a staircase's treads their own windows when the
     definition does not space them evenly; left empty the treads divide
     window_us equally, which is the model the NTSC definitions use.
+
+    amplitude_measurable is cleared on an element whose amplitude cannot be
+    read from a decoded 4fsc capture at all, so a conformance check declines
+    to judge it rather than reporting a fault that is really a limit of the
+    sampling.  The only such elements are the NTC-7 combination multiburst
+    packets; see NTSC_MULTIBURST_NTC7.
     """
 
     id: str
@@ -258,6 +264,7 @@ class Element:
     step_windows_us: tuple = ()
     freq_mhz: Optional[float] = None
     freq_tolerance_mhz: Optional[float] = None
+    amplitude_measurable: bool = True
     source: str = ""
 
     @property
@@ -271,6 +278,36 @@ class Element:
     @property
     def duration_us(self):
         return self.window_us[1] - self.window_us[0]
+
+
+@dataclass(frozen=True)
+class Allowance:
+    """How far a decode may sit outside a specification tolerance.
+
+    The tolerances in the definitions above are *mastering* tolerances: EBU
+    Tech. 3209 section 7.2.2 calls its differential gain and phase limits
+    "inherent", meaning properties of the signal generator that cut the
+    disc.  A decode adds FM demodulation noise, optical MTF loss that varies
+    with disc radius, and filter ripple, none of which the disc standard
+    speaks to.  A conformance check therefore passes when
+
+        |measured - nominal| <= spec_tolerance + allowance.band(nominal)
+
+    absolute is in `unit`; relative is a fraction of the nominal, and is how
+    a gain error is expressed.  rationale says what the number is made of
+    and source says where each term was measured, because AGENTS.md section
+    15 requires the same justification again before any of these is widened.
+    """
+
+    absolute: float
+    relative: float = 0.0
+    unit: str = "IRE"
+    rationale: str = ""
+    source: str = ""
+
+    def band(self, nominal=0.0):
+        """The allowance for a given nominal, in `unit`."""
+        return self.absolute + self.relative * abs(nominal)
 
 
 @dataclass(frozen=True)
@@ -920,6 +957,10 @@ VITS_NTSC_NTC7_COMBINATION = VitsDefinition(
             channel="chroma",
             superimposed=True,
             freq_mhz=freq_mhz,
+            # Its ~3 us packets are as short as the scan window at NTSC
+            # 4fsc, so a single-line amplitude fit under-reads by up to
+            # 2.5 dB with the wrong sign; see NTSC_MULTIBURST_NTC7.
+            amplitude_measurable=False,
             source=_NTC7_COMBINATION_YAML,
         )
         for index, (freq_mhz, window) in enumerate(
@@ -1026,6 +1067,188 @@ VITS_NTSC_FCC_MULTIBURST = VitsDefinition(
         "amplitude from a single line at 4fsc."
     ),
 )
+
+
+# ---------------------------------------------------------------------------
+# Decoder tolerance budget
+#
+# Two terms recur, so they are named once here.
+#
+# MEASUREMENT_FLOOR_IRE is what the measurement chain itself contributes.
+# analysis/vits_measure.py recovers every element of every definition from a
+# conformant synthesised field to better than 1 IRE, and
+# tests/unit/test_vits_measure.py holds it to that, so no level allowance can
+# be smaller without failing a perfect decode.
+#
+# SERVO_RESIDUAL is the response error ld-decode leaves after its VITS-driven
+# calibration loops have settled.  docs/technical/vits-servos.md records the
+# 2T pulse-to-bar ratio held at 0.99 to 1.00 where it ran 0.933 to 1.040
+# uncalibrated, and the colour burst held at 21.3 to 21.5 IRE where it
+# drifted 20.9 to 21.8 across a disc radius.  The looser of the two, 1%, is
+# used for both bands.
+#
+# The three distortion measures below share a 10% / 5 degree end-to-end
+# figure rather than a mastering one.  docs/technical/vits-servos.md measures
+# ld-decode's differential phase against the "<= 5 degree broadcast-chain
+# band" and records +2.2 degrees at inner radius as its worst case;
+# analysis/differential_phase.py already reports differential gain against
+# +/-10%.  Luminance and chrominance non-linearity get the same 10% because
+# ITU-R BT.1439-1 defines all three the same way - a peak difference divided
+# by the largest term - over the luminance and chrominance bands of the same
+# signal, so a different figure for each would be arbitrary rather than
+# principled.
+#
+# Measured on this build for comparison, so the headroom is visible (both CI
+# captures, 2026-09-01, recorded in docs-planning/):
+#
+#   luminance non-linearity   PAL 1.9%    NTSC 2.9%
+#   chrominance non-linearity PAL 6.0%    NTSC 1.7%
+#   differential gain         PAL 13.2%   NTSC 3.4%
+#   differential phase        PAL 2.3 deg NTSC 3.1 deg
+#   luma/chroma gain ratio    PAL +31%    NTSC +2.9%
+#
+# PAL fails differential gain and the gain ratio at these allowances, which
+# is the known-bad case this plan exists to expose; nothing here was chosen
+# to make the current build pass.
+#
+# Two entries changed after their first run against real captures.  The
+# chrominance level band started at the luminance band's servo residual and
+# was moved to the chain figure; the reason is structural and is written out
+# under "chroma_level" below, not the failures it cleared - it leaves every
+# PAL chrominance failure standing.  The gain-ratio band started at the
+# chain figure and was halved, because at the chain figure it could not
+# catch a decode whose chrominance band alone was 10% out, which is the one
+# fault this layer exists for; see CHAIN_GAIN_RATIO.
+#
+# Both are set from one NTSC capture's worth of evidence.  If the radius
+# sweeps of Phase 6 show a conformant decode moving further than these, they
+# must be revisited with the same justification again (AGENTS.md 15) rather
+# than widened at the first red build.
+# ---------------------------------------------------------------------------
+
+#: Worst error the measurement chain itself contributes to a level, in IRE.
+MEASUREMENT_FLOOR_IRE = 1.0
+
+#: Response error left after ld-decode's calibration loops settle, as a
+#: fraction of the level being measured.
+SERVO_RESIDUAL = 0.01
+
+#: End-to-end distortion figures, as a fraction and in degrees.
+CHAIN_NONLINEARITY = 0.10
+CHAIN_DIFFERENTIAL_PHASE_DEG = 5.0
+
+#: Chrominance/luminance gain inequality allowed of a decode.  Half the
+#: end-to-end figure, because the ratio is a differential measure: both
+#: levels are read from the same field through the same chain, so the
+#: measurement floor and the disc's own level mastering are common mode and
+#: cancel, leaving the decoder's chrominance gain accuracy - +2.9% on the
+#: NTSC CI capture.  It is also the band that catches a decode whose
+#: chrominance band alone is 10% out, which is what this layer exists for.
+CHAIN_GAIN_RATIO = 0.05
+
+_LEVEL_SOURCE = (
+    "tests/unit/test_vits_measure.py; docs/technical/vits-servos.md"
+)
+_CHAIN_SOURCE = (
+    "docs/technical/vits-servos.md; analysis/differential_phase.py"
+)
+
+#: Decoder allowance per kind of check.  See Allowance.
+DECODER_ALLOWANCES = {
+    "luma_level": Allowance(
+        absolute=MEASUREMENT_FLOOR_IRE,
+        relative=SERVO_RESIDUAL,
+        unit="IRE",
+        rationale=(
+            "measurement floor plus the response error the 2T servo leaves"
+        ),
+        source=_LEVEL_SOURCE,
+    ),
+    "chroma_level": Allowance(
+        absolute=MEASUREMENT_FLOOR_IRE,
+        relative=CHAIN_NONLINEARITY,
+        unit="IRE",
+        rationale=(
+            "measurement floor plus the end-to-end chrominance/luminance "
+            "gain figure, not the servo residual the luminance band uses. "
+            "Luminance is measured against blanking and white, which the "
+            "decoder derives from the same line's own sync - the "
+            "measurement scale is the reference, so only the servo residual "
+            "sits between them. A chrominance amplitude on that same scale "
+            "additionally carries the disc's own chrominance-to-luminance "
+            "mastering and the decoder's burst-driven chrominance gain, "
+            "which is exactly the quantity CHAIN_NONLINEARITY bounds"
+        ),
+        source=_CHAIN_SOURCE,
+    ),
+    "blanking_level": Allowance(
+        absolute=MEASUREMENT_FLOOR_IRE,
+        unit="IRE",
+        rationale=(
+            "measurement floor only: blanking is the measurement scale's own "
+            "zero, so no gain error acts on it"
+        ),
+        source=_LEVEL_SOURCE,
+    ),
+    "level_ceiling": Allowance(
+        absolute=MEASUREMENT_FLOOR_IRE,
+        unit="IRE",
+        rationale=(
+            "measurement floor only: a ceiling is one sided, and an excursion "
+            "past it by more than the floor is real"
+        ),
+        source=_LEVEL_SOURCE,
+    ),
+    "step_inequality": Allowance(
+        absolute=CHAIN_NONLINEARITY,
+        unit="fraction",
+        rationale="end-to-end luminance non-linearity figure",
+        source=_CHAIN_SOURCE,
+    ),
+    "differential_gain": Allowance(
+        absolute=CHAIN_NONLINEARITY,
+        unit="fraction",
+        rationale="end-to-end differential gain figure",
+        source=_CHAIN_SOURCE,
+    ),
+    "differential_phase": Allowance(
+        absolute=CHAIN_DIFFERENTIAL_PHASE_DEG,
+        unit="degrees",
+        rationale=(
+            "end-to-end differential phase band; ld-decode's own worst "
+            "measured value is +2.2 degrees at inner radius"
+        ),
+        source=_CHAIN_SOURCE,
+    ),
+    "chroma_nonlinearity": Allowance(
+        absolute=CHAIN_NONLINEARITY,
+        unit="fraction",
+        rationale="end-to-end chrominance non-linearity figure",
+        source=_CHAIN_SOURCE,
+    ),
+    "luma_chroma_ratio": Allowance(
+        absolute=CHAIN_GAIN_RATIO,
+        unit="fraction",
+        rationale=(
+            "half the end-to-end figure, because a ratio taken from one "
+            "field cancels the common-mode terms an absolute level carries; "
+            "see CHAIN_GAIN_RATIO"
+        ),
+        source=_CHAIN_SOURCE,
+    ),
+}
+
+
+def allowance(kind):
+    """The decoder allowance for a kind of check.
+
+    Raises KeyError naming the kind if there is no allowance for it, so a
+    check cannot silently run with a zero band.
+    """
+    if kind not in DECODER_ALLOWANCES:
+        known = ", ".join(sorted(DECODER_ALLOWANCES))
+        raise KeyError(f"No decoder allowance for {kind!r} (have: {known})")
+    return DECODER_ALLOWANCES[kind]
 
 
 # ---------------------------------------------------------------------------

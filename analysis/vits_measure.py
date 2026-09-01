@@ -50,6 +50,7 @@ from vits_geometry import FieldGeometry, measure_sync_origin, row_lattice_offset
 from video_common import (
     burst_ref,
     load_cvbs,
+    luminance_nonlinearity,
     phase_diff,
     segment_freq_pp,
     sine_fit_pp,
@@ -66,6 +67,7 @@ __all__ = [
     "luma_template",
     "measure_burst_packet",
     "measure_chroma",
+    "pulse_under",
     "measure_definition",
     "measure_element",
     "measure_level",
@@ -92,8 +94,9 @@ LEVEL_GUARD_US = 0.5
 
 #: A guard never eats more than this fraction of a window from each end, so
 #: the short packets of the NTC-7 combination multiburst still yield a
-#: segment rather than an empty slice.
-LEVEL_GUARD_MAX_FRACTION = 0.25
+#: segment rather than an empty slice.  It is also the largest guard a
+#: staircase tread can ask for; see STAIRCASE_TREAD_GUARD_FRACTION.
+LEVEL_GUARD_MAX_FRACTION = 0.30
 
 #: Ripple, in IRE, at which a flat-level measurement is reported at quality
 #: 0; a perfectly flat window reports 1.  A confidence indicator for the
@@ -126,6 +129,15 @@ PACKET_MIN_CYCLES = 1.2
 
 #: Sub-windows a chroma envelope is split into to judge how flat it is.
 CHROMA_ENVELOPE_SEGMENTS = 4
+
+#: A staircase tread, and any window cut at a tread boundary, is guarded by
+#: this fraction of its own width rather than by LEVEL_GUARD_US.  A
+#: definition that states only how many treads a staircase has (the NTSC
+#: "steps: 5") places its risers by even division, and a real signal's
+#: risers sit a few tenths of a microsecond off that - measured at +0.4 us
+#: on the NTC-7 composite, against a 0.25 us rise time - so the margin has
+#: to scale with the tread rather than being a fixed microsecond count.
+STAIRCASE_TREAD_GUARD_FRACTION = 0.30
 
 #: Shortest piece a chrominance window is split into at a luminance
 #: boundary.  Below roughly a microsecond the guard bands leave too few
@@ -201,8 +213,9 @@ class Measurement:
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-def guarded_window(start_us: float, end_us: float,
-             guard_us: float = LEVEL_GUARD_US) -> Tuple[float, float]:
+def guarded_window(
+    start_us: float, end_us: float, guard_us: float = LEVEL_GUARD_US
+) -> Tuple[float, float]:
     """A window with its transitions trimmed off both ends."""
     span = end_us - start_us
     guard = min(guard_us, LEVEL_GUARD_MAX_FRACTION * span)
@@ -458,8 +471,11 @@ def measure_staircase(geom: FieldGeometry, line: int, element,
                         does not masquerade as a step error
       blanking_ire      that blanking reference
       amplitude_ire     top tread minus blanking
-      step_inequality   the largest departure of a riser from the mean
-                        riser, as a fraction of amplitude_ire
+      step_inequality   luminance non-linearity: the difference between
+                        the largest and smallest riser as a fraction of the
+                        largest, which is how ITU-R BT.1439-1 section
+                        3.3.1.1 defines it and how EBU Tech. 3209 section
+                        7.2.2 d) states its limit
 
     IEC 60856-1986 9.1.3 Figure 7 d) states six levels including black and
     white, so a five-tread definition has five risers: blanking into tread
@@ -475,6 +491,7 @@ def measure_staircase(geom: FieldGeometry, line: int, element,
             geom, line, window[0], window[1],
             element_id=element.id,
             suppress_subcarrier=suppress_subcarrier,
+            guard_us=STAIRCASE_TREAD_GUARD_FRACTION * (window[1] - window[0]),
         )
         treads.append(tread.value)
         qualities.append(tread.quality)
@@ -482,15 +499,11 @@ def measure_staircase(geom: FieldGeometry, line: int, element,
     risers = [treads[0] - blanking]
     risers.extend(treads[i + 1] - treads[i] for i in range(len(treads) - 1))
     amplitude = treads[-1] - blanking
-    mean_riser = float(np.mean(risers))
-    if abs(amplitude) < 1e-9:
-        inequality = float("inf")
-    else:
-        inequality = float(
-            max(abs(riser - mean_riser) for riser in risers) / abs(amplitude)
-        )
-
     monotonic = all(riser > 0 for riser in risers)
+    try:
+        inequality = luminance_nonlinearity(risers)
+    except ValueError:
+        inequality = float("inf")
     quality = float(min(qualities)) if monotonic else 0.0
     return Measurement(
         element_id=element.id,
@@ -599,6 +612,20 @@ def measure_burst_packet(geom: FieldGeometry, line: int, element,
     )
 
 
+def pulse_under(entry, element):
+    """The luminance pulse a chrominance element rides on, or None."""
+    if entry is None:
+        return None
+    for other in entry.elements:
+        if other is element:
+            continue
+        if other.channel != "luma" or other.kind != "pulse":
+            continue
+        if other.end_us > element.start_us and other.start_us < element.end_us:
+            return other
+    return None
+
+
 def measure_chroma(geom: FieldGeometry, line: int, element,
                    system: Optional[str] = None, windows=None) -> Measurement:
     """A chrominance element's carrier peak and burst-relative phase.
@@ -607,6 +634,14 @@ def measure_chroma(geom: FieldGeometry, line: int, element,
     window measured - its luminance pedestal, chrominance amplitude, phase
     and phase against the line's own colour burst - which is exactly the
     table a differential gain and differential phase check reads.
+
+    A chrominance component riding on a sine-squared pulse is a special
+    case this does not attempt: it carries the pulse's own envelope, so the
+    mean of its window is not its amplitude, and the quantity the standards
+    take from a composite pulse is the perturbation of the pulse's baseline
+    rather than the chrominance amplitude (ITU-R BT.1439-1 section 3.3.2,
+    EBU Tech. 3209 section 7.2.4 c).  pulse_under() identifies those
+    elements so the conformance layer can decline to judge them.
 
     windows defaults to the element's own, but a chrominance element that
     spans a changing luminance has to be measured in pieces: the quadrature
@@ -629,7 +664,15 @@ def measure_chroma(geom: FieldGeometry, line: int, element,
         envelope_windows = [(edges[i], edges[i + 1])
                             for i in range(CHROMA_ENVELOPE_SEGMENTS)]
     else:
-        zone_windows = [guarded_window(*window) for window in windows]
+        # Guarded like a staircase tread, for the same reason: these pieces
+        # are cut at the definition's own riser positions, and a real
+        # signal's risers sit a few tenths of a microsecond off them.
+        zone_windows = [
+            guarded_window(window[0], window[1],
+                           STAIRCASE_TREAD_GUARD_FRACTION
+                           * (window[1] - window[0]))
+            for window in windows
+        ]
         envelope_windows = zone_windows
 
     zones = []
@@ -1003,9 +1046,14 @@ def measure_element(geom: FieldGeometry, line: int, element, entry=None,
     chrominance that has to be filtered out before the level is read.
     """
     system = geom.params.system
-    chroma_here = (entry is not None
-                   and element.channel == "luma"
-                   and chroma_expected(entry, element.start_us, element.end_us))
+    # Every luminance level is read through the four-tap subcarrier null,
+    # not only where the definition says chrominance overlaps.  The null is
+    # exact at 4fsc and leaves a flat level untouched, so it costs nothing
+    # where there is none - and real discs carry chrominance past the window
+    # the definition gives it, which otherwise wrecks the luminance reading
+    # next to it: 25.7 IRE of ripple on the NTC-7 composite's flat 91 IRE
+    # staircase terminus, whose stated window begins where the chrominance
+    # reference's stated window ends.
 
     if element.kind in ("bar", "blanked"):
         windows = ([(element.start_us, element.end_us)] if entry is None
@@ -1013,7 +1061,7 @@ def measure_element(geom: FieldGeometry, line: int, element, entry=None,
         measurement = measure_level_over(
             geom, line, windows,
             element_id=element.id, channel=element.channel,
-            suppress_subcarrier=chroma_here,
+            suppress_subcarrier=element.channel == "luma",
         )
         measurement.kind = element.kind
         measurement.nominal = _nominal_ire(element, system)
@@ -1021,16 +1069,25 @@ def measure_element(geom: FieldGeometry, line: int, element, entry=None,
         return measurement
     if element.kind == "staircase":
         return measure_staircase(
-            geom, line, element, system, suppress_subcarrier=chroma_here)
+            geom, line, element, system,
+            suppress_subcarrier=element.channel == "luma")
     if element.kind == "burst_packet":
         return measure_burst_packet(geom, line, element, system)
     if element.kind == "chroma_bar":
         windows = None if entry is None else _chroma_subwindows(entry, element)
         return measure_chroma(geom, line, element, system, windows)
     if element.kind == "pulse":
+        # A pulse is the one luminance element the subcarrier null is not
+        # applied to by default: the PAL 2T is 3.5 samples wide at half
+        # amplitude, so a four-tap boxcar would flatten the very crest being
+        # measured.  It is applied only to a composite pulse, whose own
+        # chrominance component would otherwise be read as luminance.
+        composite = (entry is not None
+                     and chroma_expected(entry, element.start_us,
+                                         element.end_us))
         return measure_pulse(
             geom, line, element, system, bar_ire=bar_ire,
-            suppress_subcarrier=chroma_here)
+            suppress_subcarrier=composite)
     raise ValueError(f"{element.id}: unknown element kind {element.kind!r}")
 
 
@@ -1059,9 +1116,13 @@ def measure_definition(field, entry, line: Optional[int] = None,
     if line is None:
         line = entry.field_line
 
-    offset_us, correlation = 0.0, 0.0
     if align:
         geom, offset_us, correlation = align_geometry(geom, line, entry)
+    else:
+        # Already aligned by the caller, or deliberately not aligned; either
+        # way report the offset the geometry actually carries rather than
+        # claiming zero.
+        offset_us, correlation = geom.alignment_us, float("nan")
 
     measurements: Dict[str, Measurement] = {}
     ordered = ([element for element in entry.elements

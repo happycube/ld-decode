@@ -382,6 +382,9 @@ ld-decode/
 │   ├── burst_metrics.py           # Per-field colour burst metrics (NTSC comb)
 │   ├── vits_reference.py          # Normative VITS definitions (IEC 60856/60857)
 │   ├── vits_measure.py            # VITS location and measurement, CVBS only
+│   ├── vits_geometry.py           # us <-> sample mapping inside a CVBS field
+│   ├── vits_identify.py           # Which VITS a field carries, by content
+│   ├── vits_conformance.py        # Level and differential-level verdicts
 │   └── video_common.py, video_frames.py
 ├── scripts/                       # Developer utilities (benchmarks, filter design, version gen)
 ├── cmake_modules/                 # CTest definitions
