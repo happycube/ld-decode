@@ -42,12 +42,21 @@ List the key changes made in this pull request.
 ### Testing
 
 <!--
-Describe how you have tested your changes. Include details of any manual testing performed.
+This is the checklist from TESTING.md, which explains what each line is for.
+Tick what applies; the "For ..." lines only bite for the kind of change they name.
 -->
 
-- [ ] All existing tests pass (`pytest --output-on-failure`)
-- [ ] Tested manually with: <!-- describe your test case -->
-- [ ] New tests added for: <!-- describe what was tested, or N/A -->
+- [ ] The unit lane passes: `python -m pytest -q tests/unit`
+- [ ] The functional lane passes, or is untouched: `ctest --test-dir build --output-on-failure`
+- [ ] Unit tests added or updated in the same PR as the behaviour change.
+- [ ] Every new test is marked `unit` or `functional`, and labelled to match in CMake where registered.
+- [ ] Unit tests touch no filesystem, network, subprocess or clock.
+- [ ] Every generator is seeded; every float assertion carries a stated tolerance.
+- [ ] The layer boundaries in [AGENTS.md](AGENTS.md) §2 still hold.
+- [ ] For decode changes: the serial/threaded comparisons and the CVBS verifier still pass.
+- [ ] For format changes: the relevant page under `docs/technical/` is updated.
+- [ ] Any intentional skip is documented in the test body with a reason.
+- [ ] Tested manually with: <!-- describe your test case, or N/A -->
 
 ### Screenshots (if applicable)
 

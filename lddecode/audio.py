@@ -3,7 +3,6 @@
 Split verbatim out of core.py.
 """
 
-import numba
 import numpy as np
 from numba import njit
 
@@ -46,8 +45,12 @@ def _downscale_audio_compute_locs_and_swow(
         timeoffset, frametime + (soundgap / 2), soundgap, dtype=np.double
     )
 
-    locs = np.zeros(len(arange), dtype=numba.float64)
-    swow = np.zeros(len(arange), dtype=numba.float64)
+    # np.double rather than numba.float64: the Numba type is only a valid
+    # dtype once this function is compiled, so the interpreted path (used when
+    # NUMBA_DISABLE_JIT is set, i.e. whenever this is being debugged or
+    # measured for coverage) raised TypeError here.
+    locs = np.zeros(len(arange), dtype=np.double)
+    swow = np.zeros(len(arange), dtype=np.double)
 
     for i, t in enumerate(arange):
         linenum = ((t * 1000000) / line_period) + 1

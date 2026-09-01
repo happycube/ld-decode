@@ -471,25 +471,67 @@ Signal-processing code has its own failure modes. These conventions keep the tes
   floats in the test's own arithmetic.
 - **Numba:** `@njit` functions are testable like any other. Set `NUMBA_DISABLE_JIT=1` when you need a
   readable traceback or accurate coverage, but let at least one test run compiled so a Numba-typing
-  regression is caught.
+  regression is caught. The two runs catch different faults in both directions: a construct that is
+  valid only once compiled — `np.zeros(n, dtype=numba.float64)`, say — passes the compiled run and
+  raises interpreted.
 - **Don't test the library.** SciPy's `filtfilt` works; test the filter *you* designed and how you
   applied it.
 
 ## CI gate slices
 
-The CI pipeline runs the whole CTest suite as the required gate for every push and pull request.
+The gate for every push and pull request is
+[.github/workflows/build-and-test.yml](.github/workflows/build-and-test.yml), which runs in two
+stages. Nothing downstream starts until the stage above it is green.
 
-- Primary gate workflow: [.github/workflows/build-and-test.yml](.github/workflows/build-and-test.yml)
-  - Checks out submodules recursively (so `testdata/` is present).
-  - Enters the Nix dev shell, configures CMake in `build/`, and runs `ctest --output-on-failure -V`.
-  - Packaging workflows (AppImage, macOS DMG, Windows ZIP) run only after it passes.
-- Manual functional lane: [.github/workflows/functional-tests.yml](.github/workflows/functional-tests.yml)
-  - The same run, on `workflow_dispatch`, for re-checking without a push.
+1. **Unit Tests** — the hermetic lane, in the Nix dev shell.
+   - Checks out **without** submodules. That is deliberate: the lane is hermetic by contract, and a
+     tree with no `testdata/` is what keeps that honest. A suite that started reading a capture
+     fails here rather than passing quietly on a populated developer checkout.
+   - Runs `python -m pytest -q tests/unit --strict-markers --cov=lddecode --cov-report=term-missing`.
+2. **Functional Tests** — `needs: unit-tests`.
+   - Checks out submodules recursively (so `testdata/` is present).
+   - Enters the Nix dev shell, configures CMake in `build/`, and runs `ctest --output-on-failure -V`.
+   - Packaging workflows (AppImage, macOS DMG, Windows ZIP) run only after it passes.
+
+[.github/workflows/functional-tests.yml](.github/workflows/functional-tests.yml) is the same
+functional run on `workflow_dispatch`, for re-checking without a push.
+
+### Coverage
+
+Coverage is **reported, not enforced**: there is no `--cov-fail-under`, and the number is a trend
+line rather than a target. A gate will only be worth adding once the figure has held steady across
+a few merges, and it should never be lowered to get a run green.
+
+The figure understates the code it should flatter most. Layer 0 — `dsp.py`, `efm_pll.py`,
+`pulses.py`, `filters.py` — runs as compiled Numba code, which `coverage.py` cannot see into, so
+the best-tested modules in the tree report as barely covered. Re-running with the JIT off shows
+what is actually exercised:
+
+| | Whole tree | `dsp.py` | `efm_pll.py` | `pulses.py` | `filters.py` |
+|---|---|---|---|---|---|
+| As CI measures it (compiled) | 30% | 30% | 24% | 40% | 69% |
+| `NUMBA_DISABLE_JIT=1` | 37% | 83% | 89% | 96% | 96% |
+
+Both figures are for the same 765 tests. CI measures the compiled run, because that is the one
+whose *correctness* matters — see the Numba note under **Testing DSP code** above. Use the second
+row locally when you want to know what a suite actually reaches:
+
+```bash
+NUMBA_DISABLE_JIT=1 python -m pytest -q tests/unit --cov=lddecode --cov-report=term-missing
+```
+
+It takes about four times as long, and it is not a substitute for the compiled run: a Numba typing
+error only shows up when the code is compiled.
 
 Reference invocations (local equivalent):
 
 ```bash
-# Primary gate equivalent
+# Fast gate equivalent
+nix develop .#default -c bash -lc '
+  python -m pytest -q tests/unit --strict-markers --cov=lddecode --cov-report=term-missing
+'
+
+# Functional gate equivalent
 nix develop .#default -c bash -lc '
   mkdir -p build/testout
   cd build

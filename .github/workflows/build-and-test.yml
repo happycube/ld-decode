@@ -13,8 +13,39 @@ on:
     types: [created, published]
 
 jobs:
+  # The fast gate.  Everything below waits on it, so a broken unit lane fails
+  # in a couple of minutes rather than after a two-hour decode run.
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      # Deliberately without submodules.  The unit lane is hermetic by
+      # contract, and checking out a tree with no testdata/ is what keeps that
+      # honest: a suite that started reading a capture would fail here rather
+      # than pass quietly on a developer's populated checkout.
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v25
+
+      # --strict-markers is also in pyproject.toml; repeated here so the gate
+      # does not silently weaken if that setting is ever edited.
+      #
+      # Coverage is reported, not enforced.  The number understates the
+      # layer-0 modules badly - dsp.py, efm_pll.py, pulses.py and filters.py
+      # run as compiled Numba code, which coverage.py cannot see into - so it
+      # is a trend line to watch, not a target to chase.  See TESTING.md.
+      - name: Run the hermetic unit lane (Nix)
+        timeout-minutes: 20
+        run: |
+          nix develop .#default -c bash -lc '
+            python -m pytest -q tests/unit --strict-markers \
+              --cov=lddecode --cov-report=term-missing
+          '
+
   functional-tests:
     name: Functional Tests
+    needs: unit-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
