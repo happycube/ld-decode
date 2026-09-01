@@ -383,12 +383,14 @@ Decode outputs land in `build/testout/`; inspect them there when a comparison fa
 | Test group | What it establishes |
 |------------|---------------------|
 | `decode-ntsc-basic`, `decode-pal-basic` | A real capture decodes to `.tbc` without error |
-| `decode-*-parallel` + `compare-*-parallel-*` | Threaded decode is **byte-identical** to serial |
+| `decode-*-parallel` + `compare-*-parallel-*` | Threaded `.tbc` decode is **byte-identical** to serial, across video, analogue audio and EFM |
+| `decode-pal-cvbs-parallel` + `compare-pal-cvbs-parallel-*` | The same for the CVBS writer, over the harder non-line-locked PAL lattice: samples, metadata sidecar, EFM and WAV audio |
 | `decode-*-cvbs` + `verify-*-cvbs` | `.cvbs` output conforms to the format specification |
 | `roundtrip-*-orc` | Rendering CVBS and TBC through the same chroma decoder agrees (skips without `orc-cli`) |
 | `analyze-*-patterns`, `analyze-ntsc-ntc7` | Expected VITS/test patterns are present and measurable |
-| `input-format-loaders` | Every raw input format reads back exactly, aligned and unaligned |
+| `python-functional-tests` | The pytest suites needing real captures, including every raw input format reading back exactly, aligned and unaligned |
 | `cut-*`, `decode-*-cut`, `decode-ntsc-lds` | `ld-cut` output is well-formed and decodable |
+| `roundtrip-lds-bytes` | The bare `.lds` converter unpacks and repacks real capture data without changing a byte |
 | `compress-lds-round-trip` | `ld-compress` changes no bytes (skips without `flac`) |
 
 These are contracts. If a change makes one fail, the change is wrong until proven otherwise — do not
@@ -446,7 +448,7 @@ add_test(
 set_tests_properties(decode-pal-cvbs PROPERTIES
     LABELS "functional;slow"
     FIXTURES_SETUP pal-cvbs
-    TIMEOUT 600
+    TIMEOUT 1800
 )
 ```
 

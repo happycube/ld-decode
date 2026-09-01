@@ -19,22 +19,41 @@
 # declare FIXTURES_REQUIRED.  That is what makes a filtered run (ctest -R)
 # build what it needs instead of reading a stale or missing artefact.
 #
-# Fixtures defined here:
-#   ntsc-tbc       decode-ntsc-basic     -> comparisons, analysis, orc round trip
-#   pal-tbc        decode-pal-basic      -> comparisons, analysis, orc round trip
-#   ntsc-parallel  decode-ntsc-parallel  -> serial/threaded byte comparisons
-#   pal-parallel   decode-pal-parallel   -> serial/threaded byte comparisons
-#   ntsc-cvbs      decode-ntsc-cvbs      -> spec verification, orc round trip
-#   pal-cvbs       decode-pal-cvbs       -> spec verification, orc round trip
-#   ntsc-cut-ldf   cut-ntsc-segment      -> decode-ntsc-cut
-#   pal-cut-ldf    cut-pal-segment       -> decode-pal-cut
-#   ntsc-cut-lds   cut-ntsc-lds          -> decode-ntsc-lds, compress round trip
+# Fixtures defined here, as "name  producer -> consumers":
+#   ntsc-tbc            decode-ntsc-basic         -> compare-ntsc-parallel-*,
+#                                                    analyze-ntsc-patterns,
+#                                                    analyze-ntsc-ntc7,
+#                                                    roundtrip-ntsc-orc
+#   pal-tbc             decode-pal-basic          -> compare-pal-parallel-*,
+#                                                    analyze-pal-patterns,
+#                                                    roundtrip-pal-orc
+#   ntsc-parallel       decode-ntsc-parallel      -> compare-ntsc-parallel-*
+#   pal-parallel        decode-pal-parallel       -> compare-pal-parallel-*
+#   ntsc-cvbs           decode-ntsc-cvbs          -> verify-ntsc-cvbs,
+#                                                    roundtrip-ntsc-orc
+#   pal-cvbs            decode-pal-cvbs           -> verify-pal-cvbs,
+#                                                    compare-pal-cvbs-parallel-*,
+#                                                    roundtrip-pal-orc
+#   pal-cvbs-parallel   decode-pal-cvbs-parallel  -> compare-pal-cvbs-parallel-*
+#   ntsc-cut-ldf        cut-ntsc-segment          -> decode-ntsc-cut
+#   pal-cut-ldf         cut-pal-segment           -> decode-pal-cut
+#   ntsc-cut-lds        cut-ntsc-lds              -> decode-ntsc-lds,
+#                                                    roundtrip-lds-bytes,
+#                                                    compress-lds-round-trip
+#
+# No test both sets up and requires a fixture, so "ctest -R <name>" pulls in
+# exactly the producers listed above and nothing else.
 #
 # Most tests expect the ld-decode-testdata repo within the source directory as
 # "testdata".
 
 set(ANALYSIS_DIR ${CMAKE_SOURCE_DIR}/analysis)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
+
+# Every decode below writes here.  Created at configure time so that "ctest"
+# in a fresh build directory works on its own; the CI workflows' "mkdir -p
+# build/testout" predates this and is now redundant rather than required.
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/testout)
 
 # ---------------------------------------------------------------------------
 # pytest lanes
@@ -173,7 +192,10 @@ foreach(ext tbc pcm efm)
     )
 endforeach()
 
-foreach(ext tbc efm)
+# The same three outputs as NTSC above.  Video, analogue audio and EFM each
+# come off a separate path through the threaded decode, so a race in one
+# would not show up in the others.
+foreach(ext tbc pcm efm)
     add_test(
         NAME compare-pal-parallel-${ext}
         COMMAND ${CMAKE_COMMAND} -E compare_files
@@ -269,6 +291,55 @@ set_tests_properties(verify-pal-cvbs PROPERTIES
     FIXTURES_REQUIRED pal-cvbs
     PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
     TIMEOUT 300
+)
+
+# The CVBS writer sits on the output path, so a threaded decode has to
+# produce the same file as a serial one.  PAL is the case worth spending a
+# decode on: its 4fsc lattice is not line-locked (1135.0064 samples/line), so
+# the writer carries a running sample slip that a threaded run could
+# resynchronise differently.  The metadata sidecar is compared too - it
+# records the per-frame lock state and sequence, which the threaded path
+# could get wrong while the samples stayed right.
+add_test(
+    NAME decode-pal-cvbs-parallel
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --cvbs --PAL -l 6 -t 8 --exact-speculation
+        ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-pal-cvbs-parallel PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP pal-cvbs-parallel
+    TIMEOUT 1800
+)
+
+foreach(ext cvbs meta efm)
+    add_test(
+        NAME compare-pal-cvbs-parallel-${ext}
+        COMMAND ${CMAKE_COMMAND} -E compare_files
+            ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel.${ext}
+            ${CMAKE_BINARY_DIR}/testout/pal-cvbs.${ext}
+    )
+    set_tests_properties(compare-pal-cvbs-parallel-${ext} PROPERTIES
+        LABELS "functional"
+        FIXTURES_REQUIRED "pal-cvbs-parallel;pal-cvbs"
+        TIMEOUT 120
+    )
+endforeach()
+
+# In CVBS mode the analogue audio goes to a WAV sidecar rather than to .pcm,
+# so it needs its own comparison rather than another pass of the loop above.
+add_test(
+    NAME compare-pal-cvbs-parallel-audio
+    COMMAND ${CMAKE_COMMAND} -E compare_files
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel_audio_0.wav
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs_audio_0.wav
+)
+set_tests_properties(compare-pal-cvbs-parallel-audio PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED "pal-cvbs-parallel;pal-cvbs"
+    TIMEOUT 120
 )
 
 # Round-trip through decode-orc's chroma decoder: renders one frame from
@@ -433,6 +504,26 @@ set_tests_properties(decode-ntsc-lds PROPERTIES
     LABELS "functional"
     FIXTURES_REQUIRED ntsc-cut-lds
     TIMEOUT 600
+)
+
+# The bare .lds converter must be lossless over real capture data: unpack to
+# 16-bit, repack, and not a byte may change.  compress-lds-round-trip below
+# drives the same packing through ld-compress, with flac and PyAV in between;
+# this isolates the converter, so a failure names which of the two is at
+# fault.
+add_test(
+    NAME roundtrip-lds-bytes
+    COMMAND ${CMAKE_COMMAND}
+        -DPYTHON=${Python3_EXECUTABLE}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DSOURCE_LDS=${CMAKE_BINARY_DIR}/testout/ntsc-cut.lds
+        -DWORK_DIR=${CMAKE_BINARY_DIR}/testout/lds-bytes-round-trip
+        -P ${CMAKE_SOURCE_DIR}/cmake_modules/LdsBytesRoundTrip.cmake
+)
+set_tests_properties(roundtrip-lds-bytes PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED ntsc-cut-lds
+    TIMEOUT 300
 )
 
 # Test that ld-compress can compress and uncompress a .lds file without
