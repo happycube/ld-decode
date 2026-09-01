@@ -19,11 +19,21 @@ be left to review alone: a test collected from ``tests/unit/`` must carry the
 
 import copy
 import pathlib
+import sys
 
 import numpy as np
 import pytest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+#: analysis/ holds the measurement oracles.  It is a directory of scripts
+#: rather than an installed package, and they import each other by bare module
+#: name, so it has to be on sys.path for a test to reach the measurement maths
+#: AGENTS.md 4.5 asks to be covered there.  This is an import path only: it
+#: opens no file, so a unit suite importing from it stays hermetic.
+ANALYSIS_DIR = REPO_ROOT / "analysis"
+if str(ANALYSIS_DIR) not in sys.path:
+    sys.path.insert(0, str(ANALYSIS_DIR))
 
 #: The ld-decode-testdata submodule.  Functional suites that read real captures
 #: locate them from here; nothing under tests/unit/ may refer to it.

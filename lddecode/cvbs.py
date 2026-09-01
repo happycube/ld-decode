@@ -112,6 +112,70 @@ CREATE TABLE audio_channel_pair (
 );
 """
 
+# Lowest and highest 10-bit sample value a conformant file may contain.  Both
+# sample encodings share the normative 10-bit domain and its reserved codes,
+# so the clamp is expressed there once and applied on either output path.
+# CVBS file format specification - sample-encoding-presets: protected values
+# 0-3 and 1020-1023.
+CVBS_CLAMP_LO10 = 4
+CVBS_CLAMP_HI10 = 1019
+
+# Range representable by the s16le container CVBS_U10_4FSC stores samples in.
+# Its signed headroom is what lets a decode keep excursions outside the 10-bit
+# range instead of clipping them away.
+CVBS_U10_CONTAINER_MIN = -32768
+CVBS_U10_CONTAINER_MAX = 32767
+
+
+def encode_cvbs_frame(frame, sample_encoding, has_nonstandard_values=False):
+    """Quantise one frame from the writer's working domain to file bytes.
+
+    Parameters
+    ----------
+    frame : numpy.ndarray
+        One frame in the internal working domain, which is the 10-bit sample
+        value scaled by 64 (see CVBSWriter._to_spec_levels).
+    sample_encoding : str
+        "CVBS_U10_4FSC" (s16le, the 10-bit value with signed headroom) or
+        "CVBS_U16_4FSC" (u16le, the 10-bit value shifted left 6).
+    has_nonstandard_values : bool
+        CVBS_U10_4FSC only: keep excursions outside the 10-bit range rather
+        than clamping them to the reserved-code bounds.  A u16 container
+        cannot represent them, which is why this option belongs to that
+        encoding alone.
+
+    Returns (payload_bytes, clamped_sample_count).
+
+    Both encodings quantise to the *nearest* 10-bit code, so a decode written
+    either way holds the same sample values.  Pure: no file access and no
+    writer state, so the quantisation is unit-testable on its own.
+    """
+    # The working domain is 10-bit * 64, so this is the sample value itself.
+    frame_10 = frame / 64.0
+
+    if sample_encoding == "CVBS_U10_4FSC":
+        if has_nonstandard_values:
+            lo, hi = CVBS_U10_CONTAINER_MIN, CVBS_U10_CONTAINER_MAX
+        else:
+            lo, hi = CVBS_CLAMP_LO10, CVBS_CLAMP_HI10
+    else:
+        lo, hi = CVBS_CLAMP_LO10, CVBS_CLAMP_HI10
+
+    n_clamped = int(np.count_nonzero((frame_10 < lo) | (frame_10 > hi)))
+    if n_clamped:
+        frame_10 = np.clip(frame_10, lo, hi)
+    frame_10 = np.round(frame_10)
+
+    if sample_encoding == "CVBS_U10_4FSC":
+        return frame_10.astype("<i2").tobytes(), n_clamped
+    # Scale the quantised code into the container.  Rounding to 16 bits and
+    # masking the low six bits off would floor rather than round, biasing
+    # every sample down by up to one code (about 0.17 IRE) against the
+    # CVBS_U10_4FSC path for the same decode.
+    # CVBS file format specification - sample-encoding-presets:
+    # u16 = value_10bit * 64.
+    return (frame_10.astype(np.int32) << 6).astype("<u2").tobytes(), n_clamped
+
 
 class CVBSWriter:
     """Assembles decoded fields into spec-compliant CVBS output.
@@ -184,8 +248,6 @@ class CVBSWriter:
         self.clamped_samples = 0
 
         lv = self.params["levels"]
-        self.clamp_lo = 4 * 64
-        self.clamp_hi = 1019 * 64
         self.blank16 = lv["blanking"] * 64
         self.white16 = lv["white"] * 64
 
@@ -361,30 +423,10 @@ class CVBSWriter:
                     "CVBS: frame size %d != %d, dropping", len(frame), fs)
             return
 
-        if self.sample_encoding == "CVBS_U10_4FSC":
-            frame_10 = frame / 64.0
-            if self.has_nonstandard_values:
-                n_out = int(np.count_nonzero(
-                    (frame_10 < -32768) | (frame_10 > 32767)))
-                if n_out:
-                    self.clamped_samples += n_out
-                    frame_10 = np.clip(frame_10, -32768, 32767)
-            else:
-                n_out = int(np.count_nonzero(
-                    (frame_10 < 4) | (frame_10 > 1019)))
-                if n_out:
-                    self.clamped_samples += n_out
-                    frame_10 = np.clip(frame_10, 4, 1019)
-            self.f_video.write(np.round(frame_10).astype("<i2").tobytes())
-        else:
-            rounded = np.round(frame)
-            n_out = int(np.count_nonzero(
-                (rounded < self.clamp_lo) | (rounded > self.clamp_hi)))
-            if n_out:
-                self.clamped_samples += n_out
-                rounded = np.clip(rounded, self.clamp_lo, self.clamp_hi)
-            self.f_video.write(
-                (rounded.astype(np.uint16) & 0xFFC0).astype("<u2").tobytes())
+        payload, n_clamped = encode_cvbs_frame(
+            frame, self.sample_encoding, self.has_nonstandard_values)
+        self.clamped_samples += n_clamped
+        self.f_video.write(payload)
 
         self.frames_written += 1
 

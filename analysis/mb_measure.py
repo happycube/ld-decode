@@ -12,8 +12,9 @@ import sys
 import copy
 import numpy as np
 sys.path.insert(0, "analysis")
-from tbc_common import (load_video, measure_ntc7_multiburst,
-                        detect_patterns, summarize_patterns)
+from video_common import (
+    load_video, measure_ntc7_multiburst, detect_patterns, summarize_patterns,
+)
 
 NOM = [0.5, 1.0, 2.0, 3.0, 3.58, 4.2]
 

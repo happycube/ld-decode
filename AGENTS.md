@@ -172,7 +172,7 @@ For new decode behaviour and changes to existing decode behaviour:
 - Keep its `PASS`/`FAIL` output line stable — CTest matches it with `PASS_REGULAR_EXPRESSION`.
 - Keep the skip path intact for optional external tools (e.g. `ORC ROUNDTRIP: SKIPPED` when
   `orc-cli` is absent); never make a previously optional dependency mandatory.
-- Put reusable measurement maths in `analysis/tbc_common.py` (or `lddecode/metrics.py` when the
+- Put reusable measurement maths in `analysis/video_common.py` (or `lddecode/metrics.py` when the
   decoder needs it too) and unit test it there.
 
 ### 4.6 Validation Gates
@@ -379,7 +379,8 @@ ld-decode/
 │   ├── cvbs_verify.py             # .cvbs conformance against the format specification
 │   ├── cvbs_orc_roundtrip.py      # Round-trip against decode-orc's chroma decoder (optional)
 │   ├── differential_phase.py      # VITS / test-pattern measurement
-│   └── tbc_common.py, tbc_frames.py
+│   ├── burst_metrics.py           # Per-field colour burst metrics (NTSC comb)
+│   └── video_common.py, video_frames.py
 ├── scripts/                       # Developer utilities (benchmarks, filter design, version gen)
 ├── cmake_modules/                 # CTest definitions
 │   ├── LdDecodeTests.cmake        # Functional test registrations

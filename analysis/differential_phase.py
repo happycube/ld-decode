@@ -35,7 +35,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from lddecode.metrics import CombNTSC
-from tbc_common import (
+from video_common import (
     load_tbc, load_cvbs, detect_patterns, summarize_patterns,
     burst_ref, demod_region, phase_diff,
     NTC7_MULTIBURST_FREQS, NTC7_PEDESTAL_PP,
@@ -48,6 +48,17 @@ from tbc_common import (
 # ---------------------------------------------------------------------------
 # NTSC phase measurement helpers (CombNTSC-based)
 # ---------------------------------------------------------------------------
+
+# Chroma amplitude below which a line is treated as carrying no measurable
+# subcarrier.  Expressed in IRE and scaled by the capture's out_scale at the
+# point of use, because the amplitudes this is compared against are in raw
+# sample units, whose scale differs per source: a .tbc is 16-bit (out_scale
+# around 360-390) while a .cvbs is in the normative 10-bit domain (out_scale
+# 5.6-5.9).  A fixed raw threshold silently rejected every line of a .cvbs.
+# 1.35 IRE reproduces the previous raw threshold of 500 on both .tbc systems
+# (1.39 IRE NTSC, 1.29 IRE PAL) and is far below a nominal 20 IRE burst.
+CHROMA_AMP_FLOOR_IRE = 1.35
+
 
 def measure_phase_at_position(comb, line, start_us, duration_us, params):
     """Demodulate chroma at a specific position and return (phase_deg, amplitude, luma_ire).
@@ -80,7 +91,7 @@ def measure_phase_at_position(comb, line, start_us, duration_us, params):
     luma_sl = f.lineslice_tbc(line, start_us, duration_us)
     luma_ire = np.mean(f.output_to_ire(f.dspicture[luma_sl]))
 
-    if amp < 500:  # threshold for meaningful chroma
+    if amp < CHROMA_AMP_FLOOR_IRE * params.out_scale:
         return None, amp, luma_ire
 
     phase = np.arctan2(mean_i, mean_q) * 180 / np.pi
@@ -1152,7 +1163,13 @@ def main():
     print(f"Loaded {len(fields)} fields, system={params.system}")
     print(f"  field_width={params.field_width}, field_height={params.field_height}")
     print(f"  sample_rate={params.sample_rate_mhz:.4f} MHz")
-    print(f"  blanking_16b={params.blanking_16b_ire}, white_16b={params.white_16b_ire}")
+    # Sample domain differs by source: 16-bit for .tbc, the normative
+    # 10-bit domain for .cvbs (see video_common.decode_cvbs_samples).
+    domain = "10-bit" if params.sample_encoding else "16-bit"
+    print(f"  blanking={params.blanking_16b_ire}, white={params.white_16b_ire} "
+          f"({domain} samples"
+          + (f", {params.sample_encoding}" if params.sample_encoding else "")
+          + ")")
     print(f"  out_scale={params.out_scale:.2f}")
 
     # Detect which test patterns are present, and only verify those.

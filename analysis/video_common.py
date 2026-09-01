@@ -3,8 +3,8 @@
 
 Used by the analysis scripts (smpte_analyze.py, differential_phase.py).
 Supports NTSC and PAL .tbc files (with companion .tbc.db) and CVBS
-.composite files (with companion .meta, CVBS_U16_4FSC encoding) — see
-load_video().
+.cvbs/.composite files (with companion .meta) in either of the 4fsc
+sample encodings, CVBS_U10_4FSC and CVBS_U16_4FSC — see load_video().
 
 Chroma demodulation here is system-independent: both NTSC and PAL output
 is sampled at exactly 4x the colour subcarrier, so the subcarrier sits at
@@ -15,8 +15,8 @@ of the same line.
 
 Run directly to report which test patterns are present:
 
-    python analysis/tbc_common.py file.tbc
-    python analysis/tbc_common.py file.composite
+    python analysis/video_common.py file.tbc
+    python analysis/video_common.py file.composite
 """
 
 import mmap
@@ -49,6 +49,88 @@ CVBS_GEOMETRY = {
     },
 }
 
+# CVBS sample encoding presets.  Both carry the same normative 10-bit
+# sample domain and differ only in the container it is stored in, so
+# decoding to that domain makes the two interchangeable for measurement.
+#
+#   CVBS_U10_4FSC  s16le holding the 10-bit value itself, with signed
+#                  headroom: excursions below 0 and above 1023 are legal
+#                  and carry real signal (PAL pilot-burst residue, chroma
+#                  overshoot).  ld-decode's default for PAL, and the
+#                  specification's normative production output.
+#   CVBS_U16_4FSC  u16le holding the 10-bit value shifted left 6
+#                  (value * 64), so its low six bits are always zero.
+#                  ld-decode's default for NTSC.
+#
+# The raw-capture presets (RAW_S16_*) are unscaled ADC output, not a 4fsc
+# lattice, and are deliberately absent: they cannot be measured against
+# the video standard level tables.
+#
+# CVBS file format specification - sample-encoding-presets: word formats
+# and amplitude mapping.
+CVBS_SAMPLE_ENCODINGS = {
+    "CVBS_U10_4FSC": {"dtype": "<i2", "shift": 0},
+    "CVBS_U16_4FSC": {"dtype": "<u2", "shift": 6},
+}
+
+# 10-bit codes reserved by the specification in both encodings.
+# CVBS file format specification - sample-encoding-presets: protected values.
+CVBS_PROTECTED_10BIT = ((0, 3), (1020, 1023))
+
+
+def cvbs_container_dtype(encoding):
+    """NumPy dtype of the on-disk container word for a CVBS sample encoding.
+
+    Raises ValueError naming the encoding if it is not one this module can
+    measure.
+    """
+    spec = CVBS_SAMPLE_ENCODINGS.get(encoding)
+    if spec is None:
+        known = ", ".join(sorted(CVBS_SAMPLE_ENCODINGS))
+        raise ValueError(
+            f"Unsupported CVBS sample encoding: {encoding} (supported: {known})"
+        )
+    return np.dtype(spec["dtype"])
+
+
+def decode_cvbs_samples(raw, encoding):
+    """CVBS samples in the normative 10-bit domain, as signed int32.
+
+    Parameters
+    ----------
+    raw : bytes-like or numpy.ndarray
+        Whole container words, either as a buffer or as an array already
+        viewed at the encoding's container dtype.
+    encoding : str
+        A key of CVBS_SAMPLE_ENCODINGS.
+
+    Returns a new int32 array (never a view of the input).  The sign is
+    preserved, so CVBS_U10_4FSC headroom excursions below 0 and above 1023
+    survive the conversion instead of wrapping, which is what an unsigned
+    container would do to them.
+
+    Pure: touches no file and no global state, so the sample decoding can
+    be unit tested without a fixture on disk.
+    """
+    dt = cvbs_container_dtype(encoding)
+    if isinstance(raw, np.ndarray):
+        if raw.dtype != dt:
+            raise ValueError(
+                f"{encoding} samples must be {dt}, got {raw.dtype}"
+            )
+        data = raw
+    else:
+        data = np.frombuffer(raw, dtype=dt)
+
+    out = data.astype(np.int32)
+    shift = CVBS_SAMPLE_ENCODINGS[encoding]["shift"]
+    if shift:
+        # Values are non-negative in the unsigned container, so the shift
+        # is exact: the specification requires the discarded low bits to
+        # be zero.
+        out >>= shift
+    return out
+
 
 class CaptureParams:
     """System parameters from the capture table of a .tbc.db."""
@@ -73,14 +155,28 @@ class CaptureParams:
         self.colour_burst_start = row["colour_burst_start"]
         self.colour_burst_end = row["colour_burst_end"]
         self.capture_id = row["capture_id"]
+        # .tbc samples are 16-bit and carry no CVBS sample encoding preset.
+        self.sample_encoding = None
 
         self.out_scale = (self.white_16b_ire - self.blanking_16b_ire) / 100.0
         self.field_samples = self.field_width * self.field_height
         con.close()
 
     @classmethod
-    def for_cvbs(cls, system, black_level=None):
-        """Build params for a CVBS .composite file from the spec presets."""
+    def for_cvbs(cls, system, black_level=None, sample_encoding="CVBS_U10_4FSC"):
+        """Build params for a CVBS file from the spec presets.
+
+        The white/black/blanking levels are the specification's normative
+        10-bit values, which is the domain decode_cvbs_samples() returns
+        for either sample encoding.  They keep the *_16b_ire names of the
+        .tbc.db capture schema this class also serves, but for CVBS they
+        are 10-bit: output_to_ire() is a ratio of a sample against those
+        levels, so the domain cancels and a U10 and a U16 file of the same
+        decode measure the same IRE.
+
+        black_level, when given, comes from the .meta cvbs_file record and
+        is already a 10-bit value.
+        """
         g = CVBS_GEOMETRY[system]
         p = cls.__new__(cls)
         p.system = system
@@ -89,13 +185,14 @@ class CaptureParams:
         p.video_sample_rate = g["sample_rate"]
         p.sample_rate_mhz = p.video_sample_rate / 1e6
         lv = g["levels"]
-        p.white_16b_ire = lv["white"] * 64
-        p.blanking_16b_ire = lv["blanking"] * 64
+        p.white_16b_ire = lv["white"]
+        p.blanking_16b_ire = lv["blanking"]
         p.black_16b_ire = (black_level if black_level is not None
-                           else lv["black"]) * 64
+                           else lv["black"])
         p.active_video_start, p.active_video_end = g["active"]
         p.colour_burst_start, p.colour_burst_end = g["burst"]
         p.capture_id = None
+        p.sample_encoding = sample_encoding
         p.out_scale = (p.white_16b_ire - p.blanking_16b_ire) / 100.0
         p.field_samples = p.field_width * p.field_height
         return p
@@ -108,7 +205,7 @@ class CaptureParams:
         )
 
 
-class TBCField:
+class VideoField:
     """Lightweight field object, compatible with lddecode.metrics.CombNTSC.
 
     Provides: dspicture, fieldPhaseID, isFirstField, out_scale,
@@ -174,7 +271,7 @@ def load_tbc(tbc_path, max_fields=None):
     if max_fields is not None:
         records = records[:max_fields]
 
-    fields = [TBCField(tbc_data, i, params, records[i]) for i in range(len(records))]
+    fields = [VideoField(tbc_data, i, params, records[i]) for i in range(len(records))]
     return params, fields, tbc_data
 
 
@@ -194,9 +291,13 @@ def _cvbs_extract_field(data, frame_idx, parity, params):
     Reads run past the frame boundary into the next frame where the signal
     genuinely continues (NTSC field B line 263, PAL field B line 313);
     only samples past the end of the file are padded with blanking.
+
+    `data` holds the file's container words; rows are converted to the
+    normative 10-bit domain on the way out, so the returned field is int32
+    and keeps the signed headroom CVBS_U10_4FSC can carry.
     """
     fw, fh = params.field_width, params.field_height
-    out = np.full(fh * fw, params.blanking_16b_ire, dtype=np.uint16)
+    out = np.full(fh * fw, params.blanking_16b_ire, dtype=np.int32)
     f0 = frame_idx * CVBS_GEOMETRY[params.system]["frame_samples"]
 
     if params.system == "NTSC":
@@ -210,15 +311,24 @@ def _cvbs_extract_field(data, frame_idx, parity, params):
         e = min(s + fw, len(data))
         if s >= len(data):
             break
-        out[k * fw: k * fw + (e - s)] = data[s:e]
+        out[k * fw: k * fw + (e - s)] = decode_cvbs_samples(
+            data[s:e], params.sample_encoding)
     return out, np.asarray(starts) - f0
 
 
 def load_cvbs(path, max_fields=None):
-    """Load a CVBS .composite file (NTSC or PAL, CVBS_U16_4FSC).
+    """Load a CVBS .cvbs/.composite file (NTSC or PAL).
 
-    Accepts the .composite path or the basename.  Returns (params, fields,
-    data) with the same interfaces as load_tbc().
+    Either 4fsc sample encoding is accepted, CVBS_U10_4FSC (ld-decode's
+    default for PAL) or CVBS_U16_4FSC (its default for NTSC); the field
+    data handed to callers is in the normative 10-bit domain either way,
+    so the two are interchangeable for measurement.
+
+    Accepts the .cvbs/.composite path or the basename.  Returns (params,
+    fields, data) with the same interfaces as load_tbc().  Note that
+    `data` is the memory-mapped file in its *container* dtype, which is
+    what params.sample_encoding names; pass it through
+    decode_cvbs_samples() to read sample values from it directly.
 
     Field phase IDs are reconstructed from position: the spec requires the
     file to open on a first field starting the colour sequence (NTSC colour
@@ -247,18 +357,20 @@ def load_cvbs(path, max_fields=None):
     if row is None:
         raise RuntimeError(f"No cvbs_file record in {meta_path}")
     system, encoding, black_level = row
-    if encoding != "CVBS_U16_4FSC":
-        raise RuntimeError(f"Unsupported CVBS encoding: {encoding}")
+    # Raises ValueError naming the encoding if it is not a 4fsc CVBS one.
+    container = cvbs_container_dtype(encoding)
     if system not in CVBS_GEOMETRY:
         raise RuntimeError(f"Unsupported CVBS preset: {system}")
 
-    params = CaptureParams.for_cvbs(system, black_level)
+    params = CaptureParams.for_cvbs(system, black_level, encoding)
     phase_cycle = CVBS_GEOMETRY[system]["phase_cycle"]
 
     fd = os.open(comp_path, os.O_RDONLY)
     try:
         mm = mmap.mmap(fd, os.fstat(fd).st_size, access=mmap.ACCESS_READ)
-        data = np.frombuffer(mm, dtype=np.uint16)
+        # Left in the container dtype so the mapping stays lazy; each
+        # field is converted to the 10-bit domain as it is extracted.
+        data = np.frombuffer(mm, dtype=container)
     finally:
         os.close(fd)
 
@@ -271,7 +383,7 @@ def load_cvbs(path, max_fields=None):
         arr, row_starts = _cvbs_extract_field(data, i // 2, i % 2, params)
         record = {"field_id": i, "is_first_field": i % 2 == 0,
                   "field_phase_id": i % phase_cycle + 1}
-        f = TBCField(arr, 0, params, record)
+        f = VideoField(arr, 0, params, record)
         f.field_index = i
         # lattice index of each row's first sample within its frame —
         # per-row subcarrier grid phase is 90 deg * (start mod 4)

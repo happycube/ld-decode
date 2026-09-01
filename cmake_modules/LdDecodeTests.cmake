@@ -21,17 +21,17 @@
 #
 # Fixtures defined here, as "name  producer -> consumers":
 #   ntsc-tbc            decode-ntsc-basic         -> compare-ntsc-parallel-*,
-#                                                    analyze-ntsc-patterns,
-#                                                    analyze-ntsc-ntc7,
 #                                                    roundtrip-ntsc-orc
 #   pal-tbc             decode-pal-basic          -> compare-pal-parallel-*,
-#                                                    analyze-pal-patterns,
 #                                                    roundtrip-pal-orc
 #   ntsc-parallel       decode-ntsc-parallel      -> compare-ntsc-parallel-*
 #   pal-parallel        decode-pal-parallel       -> compare-pal-parallel-*
 #   ntsc-cvbs           decode-ntsc-cvbs          -> verify-ntsc-cvbs,
+#                                                    analyze-ntsc-patterns,
+#                                                    analyze-ntsc-ntc7,
 #                                                    roundtrip-ntsc-orc
 #   pal-cvbs            decode-pal-cvbs           -> verify-pal-cvbs,
+#                                                    analyze-pal-patterns,
 #                                                    compare-pal-cvbs-parallel-*,
 #                                                    roundtrip-pal-orc
 #   pal-cvbs-parallel   decode-pal-cvbs-parallel  -> compare-pal-cvbs-parallel-*
@@ -217,15 +217,21 @@ endforeach()
 # patterns are present (line 19 VITS, staircase, colour bars, PAL ITS) and
 # only measures those; the pass regex asserts the patterns this test disc
 # is known to carry were detected and measured.
+#
+# These run on the .cvbs output, not the .tbc: .cvbs is the format the
+# measurement work is standardising on, and it is the only way CI exercises
+# CVBS_U10_4FSC, the sample encoding ld-decode writes by default for PAL.
+# Neither decode passes --cvbs-encoding, so each system is analysed in the
+# encoding its users actually get.
 add_test(
     NAME analyze-ntsc-patterns
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/differential_phase.py
-        ${CMAKE_BINARY_DIR}/testout/ntsc-basic.tbc
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.cvbs
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(analyze-ntsc-patterns PROPERTIES
     LABELS "functional"
-    FIXTURES_REQUIRED ntsc-tbc
+    FIXTURES_REQUIRED ntsc-cvbs
     PASS_REGULAR_EXPRESSION "Line 19 VITS \\(70 IRE bar\\): first fields"
     TIMEOUT 300
 )
@@ -385,12 +391,12 @@ set_tests_properties(roundtrip-pal-orc PROPERTIES
 add_test(
     NAME analyze-ntsc-ntc7
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/differential_phase.py
-        ${CMAKE_BINARY_DIR}/testout/ntsc-basic.tbc
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.cvbs
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(analyze-ntsc-ntc7 PROPERTIES
     LABELS "functional"
-    FIXTURES_REQUIRED ntsc-tbc
+    FIXTURES_REQUIRED ntsc-cvbs
     PASS_REGULAR_EXPRESSION "NTC-7 combination \\(line 20, 6-packet multiburst \\+ modulated pedestal\\): second fields"
     TIMEOUT 300
 )
@@ -398,12 +404,12 @@ set_tests_properties(analyze-ntsc-ntc7 PROPERTIES
 add_test(
     NAME analyze-pal-patterns
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/differential_phase.py
-        ${CMAKE_BINARY_DIR}/testout/pal-basic.tbc
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs.cvbs
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(analyze-pal-patterns PROPERTIES
     LABELS "functional"
-    FIXTURES_REQUIRED pal-tbc
+    FIXTURES_REQUIRED pal-cvbs
     PASS_REGULAR_EXPRESSION "ITS staircase with chroma"
     TIMEOUT 300
 )

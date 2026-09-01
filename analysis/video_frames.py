@@ -1,16 +1,16 @@
 """Notebook-friendly frame access for .tbc and CVBS .composite files.
 
-Built on tbc_common's parsers (load_tbc / load_cvbs): loads a group of
+Built on video_common's parsers (load_tbc / load_cvbs): loads a group of
 frames from either container, NTSC or PAL, and presents them as numpy
 arrays with the subcarrier/burst bookkeeping needed for comb filter
 experiments.  All test-pattern detection and VITS measurement helpers
-from tbc_common are re-exported so one import serves a whole notebook.
+from video_common are re-exported so one import serves a whole notebook.
 
 Usage from a notebook:
 
     import sys
     sys.path.insert(0, "/home/cpage/ld-decode/chad-cutdown/analysis")
-    from tbc_frames import load_frames
+    from video_frames import load_frames
 
     frames = load_frames("cbar_he.tbc", n_frames=4)      # or .composite
     fr = frames[0]
@@ -27,7 +27,7 @@ Usage from a notebook:
 Subcarrier geometry (both containers, both systems, 4x fsc sampling):
 
 - The subcarrier sits at exactly fs/4, so exp(-0.5j*pi*n) demodulates it
-  (demod_region / burst_ref in tbc_common use this convention).
+  (demod_region / burst_ref in video_common use this convention).
 - Absolute phase is only meaningful within one line.  Reference
   measurements to the same line's colour burst (burst_phasors).
 - Stored-line-to-stored-line subcarrier phase within a field: NTSC
@@ -46,8 +46,8 @@ import scipy.signal as sps
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from tbc_common import (  # noqa: F401  (re-exports for notebook use)
-    CaptureParams, TBCField,
+from video_common import (  # noqa: F401  (re-exports for notebook use)
+    CaptureParams, VideoField,
     load_tbc, load_cvbs, load_video,
     detect_patterns, summarize_patterns, detect_colorbars,
     burst_ref, demod_region, line_segment_ire, average_line_ire,
@@ -62,10 +62,10 @@ from tbc_common import (  # noqa: F401  (re-exports for notebook use)
 class FieldView:
     """One field as 2D arrays plus chroma bookkeeping.
 
-    Wraps a tbc_common field object and delegates everything it does not
+    Wraps a video_common field object and delegates everything it does not
     define (line_ire, lineslice_tbc, output_to_ire, dspicture,
     fieldPhaseID, ...), so a FieldView can be passed directly to the
-    tbc_common measurement functions and to lddecode.metrics.CombNTSC.
+    video_common measurement functions and to lddecode.metrics.CombNTSC.
     """
 
     def __init__(self, field):
@@ -411,7 +411,7 @@ def frames_from_decoded(decoded_fields, black_ire=None):
     for i, f in enumerate(flds):
         record = {"field_id": i, "is_first_field": bool(f.isFirstField),
                   "field_phase_id": getattr(f, "fieldPhaseID", None)}
-        tf = TBCField(np.asarray(f.dspicture), 0, p, record)
+        tf = VideoField(np.asarray(f.dspicture), 0, p, record)
         tf.field_index = i
         tf.decoded = f
         fields.append(tf)

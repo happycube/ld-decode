@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
 from lddecode.metrics import CombNTSC
-from tbc_common import (
+from video_common import (
     load_tbc, load_cvbs, detect_patterns, summarize_patterns, detect_colorbars,
     burst_ref, demod_region, pal_fold_uv, phase_diff,
 )
