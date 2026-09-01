@@ -23,7 +23,7 @@ composite video (`.cvbs`/`.meta`), analogue audio (`.pcm`), digital audio (`.efm
   repository state unless the user explicitly requests it.
 - Read-only commands (`git status`, `git log`, `git diff`, `git show`) are permitted.
 - **Never** run `git submodule update`, `git submodule deinit`, or anything that rewrites the
-  submodule checkouts (`testdata/`, `analogue-video-specifications/`, `ld-decode-tools/`,
+  submodule checkouts (`testdata/`, `analogue-video-specifications/`,
   `cvbs-file-format-specification/`) unless explicitly asked.
 
 ### 1.3 Naming
@@ -323,7 +323,6 @@ skipping the gate silently.
 **Submodules:**
 - `testdata/` — CI capture data; required by the functional lane.
 - `analogue-video-specifications/`, `cvbs-file-format-specification/` — normative references (§10.1).
-- `ld-decode-tools/` — the C++ tools ld-decode's output feeds into.
 - Clone with `git clone --recurse-submodules`; never rewrite a submodule checkout unprompted (§1.2).
 
 **Non-Nix workflow:**
@@ -388,7 +387,6 @@ ld-decode/
 ├── testdata/                      # Submodule: CI capture data (PAL + NTSC)
 ├── analogue-video-specifications/ # Submodule: normative PAL/NTSC/SMPTE reference
 ├── cvbs-file-format-specification/# Submodule: normative .cvbs format reference
-├── ld-decode-tools/               # Submodule: downstream C++ tool-chain
 ├── docs/                          # MkDocs user and technical documentation
 ├── plans/                         # Phased implementation plans (§14)
 ├── notebooks/                     # Exploratory Jupyter notebooks (not part of the build)
@@ -435,8 +433,8 @@ ld-decode/
 ld-decode's outputs are consumed by other tools; their formats are contracts, not implementation
 details.
 
-- `.tbc` + `.tbc.json` — time-base-corrected video and its metadata, consumed by `ld-decode-tools`
-  and decode-orc.
+- `.tbc` + `.tbc.json` — time-base-corrected video and its metadata, consumed by the legacy
+  ld-decode-tools chain and decode-orc.
 - `.cvbs` + `.meta` — composite video, normatively defined by `cvbs-file-format-specification/`.
 - `.pcm`, `.efm`, `.ac3` — analogue audio, EFM, and AC-3 RF side outputs.
 
