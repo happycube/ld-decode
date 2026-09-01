@@ -29,9 +29,11 @@
 #   ntsc-cvbs           decode-ntsc-cvbs          -> verify-ntsc-cvbs,
 #                                                    analyze-ntsc-patterns,
 #                                                    analyze-ntsc-ntc7,
+#                                                    identify-ntsc-vits,
 #                                                    roundtrip-ntsc-orc
 #   pal-cvbs            decode-pal-cvbs           -> verify-pal-cvbs,
 #                                                    analyze-pal-patterns,
+#                                                    identify-pal-vits,
 #                                                    compare-pal-cvbs-parallel-*,
 #                                                    roundtrip-pal-orc
 #   pal-cvbs-parallel   decode-pal-cvbs-parallel  -> compare-pal-cvbs-parallel-*
@@ -411,6 +413,46 @@ set_tests_properties(analyze-pal-patterns PROPERTIES
     LABELS "functional"
     FIXTURES_REQUIRED pal-cvbs
     PASS_REGULAR_EXPRESSION "ITS staircase with chroma"
+    TIMEOUT 300
+)
+
+# VITS conformance: locate the test signals each disc carries and measure
+# every element of them against analysis/vits_reference.py.  The identifier
+# scores measured content, never the line number, so these also assert that
+# a disc which moved its signal is still found where it actually is.
+#
+# The regexes pin the one claim per system that matters most; the rest of
+# the behaviour is covered hermetically by tests/unit/test_vits_measure.py.
+#
+# IEC 60857-1986 9.1.3 makes the VIRS on lines 19 and 282 the only VITS any
+# LaserDisc standard mandates, so that is what the NTSC disc is held to.
+add_test(
+    NAME identify-ntsc-vits
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_identify.py
+        ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs.cvbs
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(identify-ntsc-vits PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED ntsc-cvbs
+    PASS_REGULAR_EXPRESSION "line +19 +ntsc-virs-field1"
+    TIMEOUT 300
+)
+
+# The PAL disc (GGV) carries its multiburst on frame line 13, the
+# alternative IEC 60856-1986 9.1.3 Amendment 2 permits, and carries the ITU
+# frequency set rather than the IEC one.  Matching it on line 13 is only
+# possible by content, which is what this asserts.
+add_test(
+    NAME identify-pal-vits
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_identify.py
+        ${CMAKE_BINARY_DIR}/testout/pal-cvbs.cvbs
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(identify-pal-vits PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED pal-cvbs
+    PASS_REGULAR_EXPRESSION "line +13 +pal-multiburst-field1"
     TIMEOUT 300
 )
 

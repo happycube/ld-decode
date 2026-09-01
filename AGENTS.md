@@ -380,6 +380,8 @@ ld-decode/
 │   ├── cvbs_orc_roundtrip.py      # Round-trip against decode-orc's chroma decoder (optional)
 │   ├── differential_phase.py      # VITS / test-pattern measurement
 │   ├── burst_metrics.py           # Per-field colour burst metrics (NTSC comb)
+│   ├── vits_reference.py          # Normative VITS definitions (IEC 60856/60857)
+│   ├── vits_measure.py            # VITS location and measurement, CVBS only
 │   └── video_common.py, video_frames.py
 ├── scripts/                       # Developer utilities (benchmarks, filter design, version gen)
 ├── cmake_modules/                 # CTest definitions

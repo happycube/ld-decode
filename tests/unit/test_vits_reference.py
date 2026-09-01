@@ -162,7 +162,7 @@ def test_blanking_is_zero_on_the_measurement_scale():
     [
         ("PAL", 0.80, 80.0),    # IEC 60856 Figure 8 a) white reference bar
         ("PAL", 0.20, 20.0),    # IEC 60856 Figure 8 b) black reference bar
-        ("PAL", 0.60, 60.0),    # IEC 60856 Figure 10 b) chrominance reference
+        ("PAL", 0.60, 60.0),    # IEC 60856 Figure 7 d) staircase third tread
         ("NTSC", 68.0, 68.0),   # VIRS first zone
         ("NTSC", 46.0, 46.0),   # VIRS second zone
     ],
@@ -450,13 +450,34 @@ def test_pal_multiburst_amplitude_matches_the_iec_envelope_figure():
 
 
 def test_virs_burst_excursion_matches_the_documented_range():
-    # NTSC-VITS.md: the burst rides on the 68 IRE bar at +/-22 IRE, so the
-    # composite spans 46 to 90 IRE.
+    # SMPTE RP 168: the burst rides on the 70 IRE zone at +/-20 IRE (40 IRE
+    # p-p), so the composite spans 50 to 90 IRE.  The submodule's virs.yaml
+    # states the same signal against reference black rather than blanking;
+    # see the divergence recorded above _VIRS_ELEMENTS.
     entry = vr.definition("ntsc-virs-field1")
     bar = vr.to_ire(entry.element("first_zone_bar").nominal, "NTSC")
     peak = vr.to_ire(entry.element("chroma_reference").nominal, "NTSC")
-    assert bar - peak == pytest.approx(46.0, abs=1e-9)
+    assert bar - peak == pytest.approx(50.0, abs=1e-9)
     assert bar + peak == pytest.approx(90.0, abs=1e-9)
+
+
+def test_virs_levels_are_the_yaml_levels_referred_to_blanking():
+    # Each canonical level is the YAML's own figure converted off the 7.5
+    # IRE setup pedestal, which is what makes this a unit correction rather
+    # than a different signal.
+    entry = vr.definition("ntsc-virs-field1")
+    setup = vr.NTSC_SETUP_IRE
+    for element_id, yaml_ire in (
+        ("first_zone_bar", 68.0),
+        ("second_zone_bar", 46.0),
+        ("black_reference", 0.0),
+    ):
+        converted = yaml_ire * (100.0 - setup) / 100.0 + setup
+        assert entry.element(element_id).nominal == pytest.approx(
+            converted, abs=0.5), element_id
+    # An amplitude carries no pedestal, so it scales without the offset.
+    assert entry.element("chroma_reference").nominal == pytest.approx(
+        22.0 * (100.0 - setup) / 100.0, abs=0.5)
 
 
 def test_ntc7_combination_chroma_zones_match_the_documented_ranges():

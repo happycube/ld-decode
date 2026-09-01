@@ -240,6 +240,10 @@ class Element:
     window_us is (start, end) from the leading edge of horizontal sync.
     superimposed marks an element that rides on another in the same window
     rather than replacing it, which is what makes overlapping windows legal.
+
+    step_windows_us gives a staircase's treads their own windows when the
+    definition does not space them evenly; left empty the treads divide
+    window_us equally, which is the model the NTSC definitions use.
     """
 
     id: str
@@ -251,6 +255,7 @@ class Element:
     channel: str = "luma"
     superimposed: bool = False
     steps: tuple = ()
+    step_windows_us: tuple = ()
     freq_mhz: Optional[float] = None
     freq_tolerance_mhz: Optional[float] = None
     source: str = ""
@@ -313,6 +318,16 @@ _PAL_BAR_TOLERANCE = 0.005          # +/-0.5% of 0.70 V p-p
 _PAL_ELEMENT_TOLERANCE = 0.010      # +/-1% of B2
 
 _PAL_STAIRCASE_TREADS = (0.20, 0.40, 0.60, 0.80, 1.00)
+
+# ITU-T J.63 Annex I sections 2 and 4: the treads are not evenly spaced - the
+# last runs to the end of the active line, 6 us against the other four's 4 us.
+_PAL_STAIRCASE_TREAD_WINDOWS = (
+    (40.0, 44.0),
+    (44.0, 48.0),
+    (48.0, 52.0),
+    (52.0, 56.0),
+    (56.0, 62.0),
+)
 
 # IEC 60856-1986-9.1.3 Figure 7 d): "Number of levels = 6 (black and white
 # incl.)" - blanking plus the five treads above.
@@ -386,6 +401,7 @@ _PAL_STAIRCASE = Element(
     nominal=1.00,
     tolerance=_PAL_ELEMENT_TOLERANCE,
     steps=_PAL_STAIRCASE_TREADS,
+    step_windows_us=_PAL_STAIRCASE_TREAD_WINDOWS,
     source="IEC 60856-1986 9.1.3 Figure 7 d)",
 )
 
@@ -557,14 +573,19 @@ VITS_PAL_MULTIBURST_FIELD2 = VitsDefinition(
             source="IEC 60856-1986 9.1.3 Figure 10 a)",
         ),
         # IEC 60856-1986-9.1.3 Figure 10 a): three level chrominance bar G1
-        # at 20%, 60% and 100% of 0.70 V p-p, within +/-1% of B2.
+        # at 20%, 60% and 100% of 0.70 V p-p, within +/-1% of B2.  As with
+        # the multiburst above, the figure quotes the envelope, so the
+        # carrier peak stored here is half of it and the +/-1%-of-B2 band
+        # halves with it.  ITU-T J.63 Annex I section 5 states the same
+        # three steps directly as carrier amplitudes of 70, 210 and 350 mV,
+        # which is exactly 0.10, 0.30 and 0.50 of the 700 mV reference.
         Element(
             id="chroma_bar_20",
             label="Three level chrominance bar G1, 20% step",
             kind="chroma_bar",
             window_us=(14.0, 18.0),
-            nominal=0.20,
-            tolerance=_PAL_ELEMENT_TOLERANCE,
+            nominal=0.10,
+            tolerance=_PAL_ELEMENT_TOLERANCE / 2.0,
             channel="chroma",
             superimposed=True,
             freq_mhz=4.43361875,
@@ -575,8 +596,8 @@ VITS_PAL_MULTIBURST_FIELD2 = VitsDefinition(
             label="Three level chrominance bar G1, 60% step",
             kind="chroma_bar",
             window_us=(18.0, 22.0),
-            nominal=0.60,
-            tolerance=_PAL_ELEMENT_TOLERANCE,
+            nominal=0.30,
+            tolerance=_PAL_ELEMENT_TOLERANCE / 2.0,
             channel="chroma",
             superimposed=True,
             freq_mhz=4.43361875,
@@ -587,8 +608,8 @@ VITS_PAL_MULTIBURST_FIELD2 = VitsDefinition(
             label="Three level chrominance bar G1, 100% step",
             kind="chroma_bar",
             window_us=(22.0, 28.0),
-            nominal=1.00,
-            tolerance=_PAL_ELEMENT_TOLERANCE,
+            nominal=0.50,
+            tolerance=_PAL_ELEMENT_TOLERANCE / 2.0,
             channel="chroma",
             superimposed=True,
             freq_mhz=4.43361875,
@@ -599,12 +620,12 @@ VITS_PAL_MULTIBURST_FIELD2 = VitsDefinition(
             label="Chrominance reference E",
             kind="chroma_bar",
             # ITU-T J.63 Annex I section 5: sustained over the line's latter
-            # portion.
+            # portion, at a carrier amplitude of 210 mV.
             window_us=(34.0, 60.0),
             # IEC 60856-1986-9.1.3 Figure 10 b): 60% of 0.70 V p-p, within
-            # +/-1% of B2.
-            nominal=0.60,
-            tolerance=_PAL_ELEMENT_TOLERANCE,
+            # +/-1% of B2 - the envelope again, so half of it here.
+            nominal=0.30,
+            tolerance=_PAL_ELEMENT_TOLERANCE / 2.0,
             channel="chroma",
             superimposed=True,
             freq_mhz=4.43361875,
@@ -678,44 +699,69 @@ _FCC_MULTIBURST_YAML = (
     "analogue-video-specifications resources/definitions/vits/ntsc/fcc-multiburst.yaml"
 )
 
-# SMPTE RP 168 / EIA RS-498 via virs.yaml.
+# SMPTE 170M-2004 Section 8.1: 525-line reference black sits 7.5 IRE above
+# blanking.  The measurement scale here is blanking-referenced, so a level
+# quoted against reference black converts as level * (100 - 7.5)/100 + 7.5.
+NTSC_SETUP_IRE = 7.5
+
+# SMPTE RP 168 / EIA RS-498.
+#
+# These are the canonical VIRS levels and zone boundaries, NOT the ones in
+# virs.yaml, which is the only place the submodule and this module disagree.
+# The YAML (and NTSC-VITS.md with it) states 68/46/0 IRE over 9.15, 35.50,
+# 48.70 and 62.00 us, with a 22 IRE carrier peak.  Those are the canonical
+# figures expressed against reference black instead of blanking: apply
+# NTSC_SETUP_IRE and 68 -> 70.4, 46 -> 50.05, 0 -> 7.5 and 22 -> 20.35.
+#
+# Measured on testdata/ntsc/ve-snw-cut.ldf decoded to CVBS, field line 19 of
+# both parities: zones of 70.7, 50.4 and 7.35 IRE with a 20.4 IRE carrier
+# peak, running 11.5 to 35.4, 35.4 to 47.7 and 47.7 to 60.0 us.  That agrees
+# with the canonical values on all four levels and all four boundaries, and
+# with the YAML on none of the levels; the 7.35 IRE black reference settles
+# it, since no gain error can put a 0 IRE element there.  The same decode
+# reads its NTC-7 white bar at 101.11 and its NTC-7 pedestal at 50.54, so
+# the decode's own scale is not in question.
 _VIRS_ELEMENTS = (
     Element(
         id="first_zone_bar",
-        label="68 IRE reference bar",
+        label="70 IRE chrominance reference zone",
         kind="bar",
-        window_us=(9.15, 35.50),
-        nominal=68.0,
-        source=_VIRS_YAML,
+        window_us=(12.00, 36.00),
+        nominal=70.0,
+        source="SMPTE RP 168",
     ),
     Element(
         id="chroma_reference",
-        label="Chrominance reference burst, centred on the 68 IRE bar",
+        label="Chrominance reference burst, centred on the 70 IRE bar",
         kind="chroma_bar",
-        window_us=(10.10, 34.50),
-        # Carrier peak 22 IRE, so the composite spans 46 to 90 IRE.
-        nominal=22.0,
+        # The burst's flat portion, inset within the zone; measured on
+        # ve-snw-cut as 13.0 to 34.5 us.
+        window_us=(13.00, 34.50),
+        # Carrier peak 20 IRE, i.e. 40 IRE p-p, so the composite spans 50 to
+        # 90 IRE.
+        nominal=20.0,
         channel="chroma",
         superimposed=True,
         # SMPTE 170M-2004 Section 8: colour subcarrier 3.579545 MHz.
         freq_mhz=3.579545,
-        source=_VIRS_YAML,
+        source="SMPTE RP 168",
     ),
     Element(
         id="second_zone_bar",
-        label="46 IRE reference bar",
+        label="50 IRE luminance reference zone",
         kind="bar",
-        window_us=(35.50, 48.70),
-        nominal=46.0,
-        source=_VIRS_YAML,
+        window_us=(36.00, 48.00),
+        nominal=50.0,
+        source="SMPTE RP 168",
     ),
     Element(
-        id="post_virs_blanking",
-        label="Post-VIRS blanking level",
+        id="black_reference",
+        label="Reference black zone",
         kind="bar",
-        window_us=(48.70, 62.00),
-        nominal=0.0,
-        source=_VIRS_YAML,
+        window_us=(48.00, 60.00),
+        # Reference black, not blanking: NTSC_SETUP_IRE above it.
+        nominal=NTSC_SETUP_IRE,
+        source="SMPTE RP 168",
     ),
 )
 
