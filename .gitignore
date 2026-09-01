@@ -118,3 +118,6 @@ squashfs-root/
 # Nix build files
 result/
 result
+
+# Local documentation planning notes
+docs-planning/

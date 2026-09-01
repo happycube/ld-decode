@@ -1,0 +1,87 @@
+# Build output directories
+build/
+build-*/
+dist/
+python-build/
+
+# Nix build outputs
+result
+result-*
+.direnv/
+
+# Generated documentation
+site/
+docs/html/
+
+# CTest temporary artefacts
+Testing/
+testout/
+
+# Python bytecode and packaging metadata
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Compiled object and library files
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+*.exe
+
+# Large binary / media files (RF captures and decoder outputs)
+*.tbc
+*.lds
+*.ldf
+*.cvbs
+*.efm
+*.pcm
+*.ac3
+*.raw
+*.s16
+*.u16
+*.u8
+*.r30
+
+# Large sample data
+testdata/
+
+# Reference PDFs (binary)
+references/*.pdf
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Generated version file
+lddecode/version
+
+# Profiling results
+Benchfile*
+perf.data*
+
+# Packaging artifacts
+AppDir/
+*.AppImage
+squashfs-root/
+*.dmg
+*.msi
+dmg_staging/
+
+# IDE directories
+.vscode/
+.idea/
+.theia/
+.vs/
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
