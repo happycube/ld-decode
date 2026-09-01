@@ -69,6 +69,22 @@ packages = ["lddecode"]
 [tool.setuptools.package-data]
 lddecode = ["py.typed", "version", "sinc_lut.npz"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# --strict-markers turns a typo'd or unregistered marker into an error rather
+# than a silent no-op, which would otherwise leave the test out of every
+# filtered run without saying so.
+addopts = "--strict-markers"
+markers = [
+    "unit: fast and hermetic; no filesystem, network, subprocess or clock",
+    "functional: needs real capture data, a subprocess, or a full decode run",
+    "dsp: filter, demodulation and signal-maths tests",
+    "format: file-format tests (.lds, .ldf, .cvbs, .tbc, metadata)",
+    "decode: field/frame assembly, sync and TBC logic",
+    "parallel: threading, block-cache and speculation",
+    "slow: functional tests exceeding roughly 60 s",
+]
+
 [tool.black]
 line-length = 100
 target-version = ["py36"]

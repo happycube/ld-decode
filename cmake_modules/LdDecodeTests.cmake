@@ -1,21 +1,100 @@
-# Functional tests for ld-decode Python tools
+# Test registration for ld-decode.
 #
-# These tests verify that ld-decode can correctly ingest PAL and NTSC files,
-# producing expected output (TBC, metadata, audio, etc.)
+# CTest is the outer driver.  Its labels mirror the pytest markers so the same
+# slice can be requested from either side (see TESTING.md):
 #
-# Most tests expect the ld-decode-testdata repo within the source directory as "testdata".
+#   unit        The hermetic pytest lane (tests/unit/).  No capture data, no
+#               external tools, no subprocesses.  Runs in seconds.
+#   functional  Decode, comparison, analysis, cut and compress tests over
+#               testdata/, plus the pytest suites that need real data.
+#   slow        Functional tests exceeding roughly 60 s.
+#
+#   ctest -L unit --output-on-failure          # while iterating
+#   ctest -L functional --output-on-failure    # the contracts
+#
+# Every test below carries exactly one of "unit" or "functional" and an
+# explicit TIMEOUT, so a hang fails the run rather than stalling it.
+#
+# Tests that produce inputs for other tests declare FIXTURES_SETUP; consumers
+# declare FIXTURES_REQUIRED.  That is what makes a filtered run (ctest -R)
+# build what it needs instead of reading a stale or missing artefact.
+#
+# Fixtures defined here:
+#   ntsc-tbc       decode-ntsc-basic     -> comparisons, analysis, orc round trip
+#   pal-tbc        decode-pal-basic      -> comparisons, analysis, orc round trip
+#   ntsc-parallel  decode-ntsc-parallel  -> serial/threaded byte comparisons
+#   pal-parallel   decode-pal-parallel   -> serial/threaded byte comparisons
+#   ntsc-cvbs      decode-ntsc-cvbs      -> spec verification, orc round trip
+#   pal-cvbs       decode-pal-cvbs       -> spec verification, orc round trip
+#   ntsc-cut-ldf   cut-ntsc-segment      -> decode-ntsc-cut
+#   pal-cut-ldf    cut-pal-segment       -> decode-pal-cut
+#   ntsc-cut-lds   cut-ntsc-lds          -> decode-ntsc-lds, compress round trip
+#
+# Most tests expect the ld-decode-testdata repo within the source directory as
+# "testdata".
 
 set(ANALYSIS_DIR ${CMAKE_SOURCE_DIR}/analysis)
 set(TESTDATA_DIR ${CMAKE_SOURCE_DIR}/testdata)
 
-# Python unit tests, including the .lds converter's bit-exactness tests against
-# the C++ ld-lds-converter it replaces.  Invoked as "python -m pytest" so the
-# working tree is used rather than any installed copy of lddecode.
+# ---------------------------------------------------------------------------
+# pytest lanes
+# ---------------------------------------------------------------------------
+
+# The fast lane.  Invoked as "python -m pytest" so the working tree is used
+# rather than any installed copy of lddecode.  It runs tests/unit/ only, which
+# is what keeps it hermetic: it must pass with the testdata submodule absent
+# and no external tools installed.
 add_test(
     NAME python-unit-tests
-    COMMAND ${Python3_EXECUTABLE} -m pytest -q ${CMAKE_SOURCE_DIR}/tests
+    COMMAND ${Python3_EXECUTABLE} -m pytest -q ${CMAKE_SOURCE_DIR}/tests/unit
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+set_tests_properties(python-unit-tests PROPERTIES
+    LABELS "unit"
+    TIMEOUT 300
+)
+
+# The pytest suites that need real capture data or an external tool.  Guarded
+# on the directory being populated so configuring against a tree where the
+# lane is still empty does not register a test that collects nothing.
+file(GLOB PYTEST_FUNCTIONAL_SUITES CONFIGURE_DEPENDS
+    ${CMAKE_SOURCE_DIR}/tests/functional/test_*.py)
+
+if(PYTEST_FUNCTIONAL_SUITES)
+    add_test(
+        NAME python-functional-tests
+        COMMAND ${Python3_EXECUTABLE} -m pytest -q ${CMAKE_SOURCE_DIR}/tests/functional
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(python-functional-tests PROPERTIES
+        LABELS "functional;slow"
+        TIMEOUT 1800
+    )
+endif()
+
+# Suites still sitting directly in tests/, not yet sorted into a lane.  They
+# are run as "functional" because the set includes suites that shell out and
+# suites that read testdata/, and running them all in the fast lane is exactly
+# what the split above exists to stop.  This entry disappears on its own once
+# tests/ holds no test_*.py of its own.
+file(GLOB PYTEST_UNSORTED_SUITES CONFIGURE_DEPENDS
+    ${CMAKE_SOURCE_DIR}/tests/test_*.py)
+
+if(PYTEST_UNSORTED_SUITES)
+    add_test(
+        NAME python-unsorted-tests
+        COMMAND ${Python3_EXECUTABLE} -m pytest -q ${PYTEST_UNSORTED_SUITES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(python-unsorted-tests PROPERTIES
+        LABELS "functional;slow"
+        TIMEOUT 1800
+    )
+endif()
+
+# ---------------------------------------------------------------------------
+# Decode contracts
+# ---------------------------------------------------------------------------
 
 # Test that ld-decode can decode NTSC files and produce TBC output
 # (CVBS is the default output; --tbc selects the legacy path these
@@ -28,7 +107,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-ntsc-basic PROPERTIES FIXTURES_SETUP ntsc-tbc)
+set_tests_properties(decode-ntsc-basic PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP ntsc-tbc
+    TIMEOUT 1800
+)
 
 # Test that ld-decode can decode PAL files and produce TBC output
 add_test(
@@ -39,7 +122,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/pal-basic
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-pal-basic PROPERTIES FIXTURES_SETUP pal-tbc)
+set_tests_properties(decode-pal-basic PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP pal-tbc
+    TIMEOUT 1800
+)
 
 # Threaded decode (-t) must be bit-identical to the serial decode; any
 # divergence is a real concurrency bug (stale cache entry, shared-state
@@ -53,7 +140,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-ntsc-parallel PROPERTIES FIXTURES_SETUP ntsc-parallel)
+set_tests_properties(decode-ntsc-parallel PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP ntsc-parallel
+    TIMEOUT 1800
+)
 
 add_test(
     NAME decode-pal-parallel
@@ -62,7 +153,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/pal-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-pal-parallel PROPERTIES FIXTURES_SETUP pal-parallel)
+set_tests_properties(decode-pal-parallel PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP pal-parallel
+    TIMEOUT 1800
+)
 
 foreach(ext tbc pcm efm)
     add_test(
@@ -72,7 +167,10 @@ foreach(ext tbc pcm efm)
             ${CMAKE_BINARY_DIR}/testout/ntsc-basic.${ext}
     )
     set_tests_properties(compare-ntsc-parallel-${ext} PROPERTIES
-        FIXTURES_REQUIRED "ntsc-parallel;ntsc-tbc")
+        LABELS "functional"
+        FIXTURES_REQUIRED "ntsc-parallel;ntsc-tbc"
+        TIMEOUT 120
+    )
 endforeach()
 
 foreach(ext tbc efm)
@@ -83,8 +181,15 @@ foreach(ext tbc efm)
             ${CMAKE_BINARY_DIR}/testout/pal-basic.${ext}
     )
     set_tests_properties(compare-pal-parallel-${ext} PROPERTIES
-        FIXTURES_REQUIRED "pal-parallel;pal-tbc")
+        LABELS "functional"
+        FIXTURES_REQUIRED "pal-parallel;pal-tbc"
+        TIMEOUT 120
+    )
 endforeach()
+
+# ---------------------------------------------------------------------------
+# Signal-quality analysis
+# ---------------------------------------------------------------------------
 
 # Verify test patterns in the decoded output.  The analyzer detects which
 # patterns are present (line 19 VITS, staircase, colour bars, PAL ITS) and
@@ -97,9 +202,15 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(analyze-ntsc-patterns PROPERTIES
+    LABELS "functional"
     FIXTURES_REQUIRED ntsc-tbc
     PASS_REGULAR_EXPRESSION "Line 19 VITS \\(70 IRE bar\\): first fields"
+    TIMEOUT 300
 )
+
+# ---------------------------------------------------------------------------
+# CVBS format conformance
+# ---------------------------------------------------------------------------
 
 # CVBS output mode: decode to spec-compliant .cvbs/.meta and verify
 # against cvbs-file-format-specification (exact frame sizing, protected
@@ -112,7 +223,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-ntsc-cvbs PROPERTIES FIXTURES_SETUP ntsc-cvbs)
+set_tests_properties(decode-ntsc-cvbs PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP ntsc-cvbs
+    TIMEOUT 1800
+)
 
 add_test(
     NAME verify-ntsc-cvbs
@@ -121,8 +236,10 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(verify-ntsc-cvbs PROPERTIES
+    LABELS "functional"
     FIXTURES_REQUIRED ntsc-cvbs
     PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
+    TIMEOUT 300
 )
 
 # PAL CVBS exercises the non-line-locked 4fsc lattice (1135.0064
@@ -135,7 +252,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-pal-cvbs PROPERTIES FIXTURES_SETUP pal-cvbs)
+set_tests_properties(decode-pal-cvbs PROPERTIES
+    LABELS "functional;slow"
+    FIXTURES_SETUP pal-cvbs
+    TIMEOUT 1800
+)
 
 add_test(
     NAME verify-pal-cvbs
@@ -144,8 +265,10 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(verify-pal-cvbs PROPERTIES
+    LABELS "functional"
     FIXTURES_REQUIRED pal-cvbs
     PASS_REGULAR_EXPRESSION "CVBS VERIFY: PASS"
+    TIMEOUT 300
 )
 
 # Round-trip through decode-orc's chroma decoder: renders one frame from
@@ -163,9 +286,11 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(roundtrip-ntsc-orc PROPERTIES
+    LABELS "functional"
     FIXTURES_REQUIRED "ntsc-cvbs;ntsc-tbc"
     PASS_REGULAR_EXPRESSION "ORC ROUNDTRIP: PASS"
     SKIP_REGULAR_EXPRESSION "ORC ROUNDTRIP: SKIPPED"
+    TIMEOUT 600
 )
 
 add_test(
@@ -177,9 +302,11 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(roundtrip-pal-orc PROPERTIES
+    LABELS "functional"
     FIXTURES_REQUIRED "pal-cvbs;pal-tbc"
     PASS_REGULAR_EXPRESSION "ORC ROUNDTRIP: PASS"
     SKIP_REGULAR_EXPRESSION "ORC ROUNDTRIP: SKIPPED"
+    TIMEOUT 600
 )
 
 # The NTSC test disc carries broadcast-style NTC-7 VITS: composite on first
@@ -191,8 +318,10 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(analyze-ntsc-ntc7 PROPERTIES
+    LABELS "functional"
     FIXTURES_REQUIRED ntsc-tbc
     PASS_REGULAR_EXPRESSION "NTC-7 combination \\(line 20, 6-packet multiburst \\+ modulated pedestal\\): second fields"
+    TIMEOUT 300
 )
 
 add_test(
@@ -202,20 +331,38 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 set_tests_properties(analyze-pal-patterns PROPERTIES
+    LABELS "functional"
     FIXTURES_REQUIRED pal-tbc
     PASS_REGULAR_EXPRESSION "ITS staircase with chroma"
+    TIMEOUT 300
 )
+
+# ---------------------------------------------------------------------------
+# Input formats
+# ---------------------------------------------------------------------------
 
 # Raw input-format loaders: convert the NTSC CI capture to .s16/.u16/.u8/
 # .rf/.lds/.r30, read each back exactly through make_loader (aligned and
 # unaligned), and decode the .s16/.lds/.r30 conversions end-to-end
 # (bit-identical outputs).
+#
+# Registered by path because the suite still sits directly in tests/; it moves
+# under tests/functional/ (and so into python-functional-tests) when it is
+# next touched.
 add_test(
     NAME input-format-loaders
     COMMAND ${Python3_EXECUTABLE} -m pytest -q
         ${CMAKE_SOURCE_DIR}/tests/test_input_formats.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+set_tests_properties(input-format-loaders PROPERTIES
+    LABELS "functional;slow"
+    TIMEOUT 1800
+)
+
+# ---------------------------------------------------------------------------
+# ld-cut and ld-compress
+# ---------------------------------------------------------------------------
 
 # Test that ld-cut can extract a segment from NTSC file
 add_test(
@@ -226,7 +373,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-cut.ldf
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(cut-ntsc-segment PROPERTIES TIMEOUT 120)
+set_tests_properties(cut-ntsc-segment PROPERTIES
+    LABELS "functional"
+    FIXTURES_SETUP ntsc-cut-ldf
+    TIMEOUT 120
+)
 
 # Test that ld-cut can extract a segment from PAL file
 add_test(
@@ -237,7 +388,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/pal-cut.ldf
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(cut-pal-segment PROPERTIES TIMEOUT 120)
+set_tests_properties(cut-pal-segment PROPERTIES
+    LABELS "functional"
+    FIXTURES_SETUP pal-cut-ldf
+    TIMEOUT 120
+)
 
 # Test decode of NTSC cut segment
 add_test(
@@ -247,7 +402,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-cut-decoded
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-ntsc-cut PROPERTIES DEPENDS cut-ntsc-segment)
+set_tests_properties(decode-ntsc-cut PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED ntsc-cut-ldf
+    TIMEOUT 600
+)
 
 # Test decode of PAL cut segment
 add_test(
@@ -258,7 +417,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/pal-cut-decoded
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-pal-cut PROPERTIES DEPENDS cut-pal-segment)
+set_tests_properties(decode-pal-cut PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED pal-cut-ldf
+    TIMEOUT 600
+)
 
 # Test that ld-cut can write packed .lds output
 add_test(
@@ -269,7 +432,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-cut.lds
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(cut-ntsc-lds PROPERTIES TIMEOUT 120)
+set_tests_properties(cut-ntsc-lds PROPERTIES
+    LABELS "functional"
+    FIXTURES_SETUP ntsc-cut-lds
+    TIMEOUT 120
+)
 
 # Test that the .lds ld-cut produced is actually decodable
 add_test(
@@ -279,7 +446,11 @@ add_test(
         ${CMAKE_BINARY_DIR}/testout/ntsc-lds-decoded
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 )
-set_tests_properties(decode-ntsc-lds PROPERTIES DEPENDS cut-ntsc-lds)
+set_tests_properties(decode-ntsc-lds PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED ntsc-cut-lds
+    TIMEOUT 600
+)
 
 # Test that ld-compress can compress and uncompress a .lds file without
 # changing a single byte.  flac is the one external program ld-compress still
@@ -297,7 +468,8 @@ if(FLAC_EXECUTABLE)
             -P ${CMAKE_SOURCE_DIR}/cmake_modules/LdsRoundTrip.cmake
     )
     set_tests_properties(compress-lds-round-trip PROPERTIES
-        DEPENDS cut-ntsc-lds
+        LABELS "functional"
+        FIXTURES_REQUIRED ntsc-cut-lds
         TIMEOUT 300
     )
 else()
