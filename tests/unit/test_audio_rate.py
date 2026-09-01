@@ -11,6 +11,10 @@ import numpy as np
 from lddecode.audio import _downscale_audio_compute_locs_and_swow
 from lddecode.params import SysParams_NTSC
 
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.decode]
+
 NTSC_LINE_PERIOD = SysParams_NTSC["line_period"]  # microseconds
 NTSC_FRAME_LINES = 525
 

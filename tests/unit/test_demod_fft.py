@@ -4,6 +4,10 @@ import scipy.fft as npfft
 from lddecode.core import RFDecode
 from lddecode.utils import unwrap_hilbert
 
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+
 
 def _legacy_outputs(rf, signal):
     indata_fft = npfft.fft(signal)

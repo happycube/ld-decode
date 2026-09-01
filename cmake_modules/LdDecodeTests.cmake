@@ -337,28 +337,11 @@ set_tests_properties(analyze-pal-patterns PROPERTIES
     TIMEOUT 300
 )
 
-# ---------------------------------------------------------------------------
-# Input formats
-# ---------------------------------------------------------------------------
-
-# Raw input-format loaders: convert the NTSC CI capture to .s16/.u16/.u8/
-# .rf/.lds/.r30, read each back exactly through make_loader (aligned and
-# unaligned), and decode the .s16/.lds/.r30 conversions end-to-end
-# (bit-identical outputs).
-#
-# Registered by path because the suite still sits directly in tests/; it moves
-# under tests/functional/ (and so into python-functional-tests) when it is
-# next touched.
-add_test(
-    NAME input-format-loaders
-    COMMAND ${Python3_EXECUTABLE} -m pytest -q
-        ${CMAKE_SOURCE_DIR}/tests/test_input_formats.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-set_tests_properties(input-format-loaders PROPERTIES
-    LABELS "functional;slow"
-    TIMEOUT 1800
-)
+# Raw input-format coverage - converting the NTSC CI capture to .s16/.u16/
+# .u8/.rf/.lds/.r30, reading each back exactly through make_loader, and
+# decoding the packed conversions end-to-end - now runs as part of
+# python-functional-tests above (tests/functional/test_input_formats.py).
+# It needs no CTest entry of its own.
 
 # ---------------------------------------------------------------------------
 # ld-cut and ld-compress

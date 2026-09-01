@@ -11,6 +11,8 @@ import pytest
 
 from lddecode.parallel import DemodBlockCache
 
+pytestmark = [pytest.mark.unit, pytest.mark.parallel]
+
 
 EOF_AT = 40
 

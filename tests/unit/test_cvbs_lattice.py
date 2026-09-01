@@ -10,6 +10,8 @@ from lddecode.cvbs import (
     pal_line_lattice, pal_lattice_positions,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.format]
+
 
 def test_pal_frame_sample_count_exact():
     lat = pal_line_lattice()

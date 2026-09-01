@@ -30,6 +30,8 @@ import pytest
 
 from lddecode.core import LDdecode
 
+pytestmark = [pytest.mark.unit, pytest.mark.decode]
+
 
 class _DecodeBoom(Exception):
     """An arbitrary decode-time failure.

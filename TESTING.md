@@ -198,7 +198,7 @@ Python gives you three tools; prefer them in this order:
 1. **A hand-written fake closure** — best for anything array-shaped. A `read_fn` that returns
    `np.arange(...)` for block *b* is clearer and faster than any framework, and the test can assert
    on a log of the calls it received. See the `make_fns` helper in
-   `tests/test_parallel_blockcache.py`.
+   `tests/unit/test_parallel_blockcache.py`.
 2. **`unittest.mock.Mock` / `MagicMock`** — best when you want to assert on *how* a collaborator was
    called (`assert_called_once_with`, `call_args_list`).
 3. **`monkeypatch`** (pytest fixture) — last resort, for replacing a module-level name that is not
@@ -227,10 +227,10 @@ Sometimes mocking a class is unavoidable; when you do, say why in the test.
 
 ##### Examples of unit tests
 
-- `tests/test_cvbs_lattice.py` — integer-exact lattice arithmetic, no I/O
-- `tests/test_parallel_blockcache.py` — scheduling, caching, EOF, keying and eviction driven by
+- `tests/unit/test_cvbs_lattice.py` — integer-exact lattice arithmetic, no I/O
+- `tests/unit/test_parallel_blockcache.py` — scheduling, caching, EOF, keying and eviction driven by
   synthetic read/demod closures
-- `tests/test_cx.py`, `tests/test_demod_fft.py` — filter and transform maths on synthesised signals
+- `tests/unit/test_cx.py`, `tests/unit/test_demod_fft.py` — filter and transform maths on synthesised signals
 
 ## Test layout and labels
 
@@ -239,14 +239,19 @@ Sometimes mocking a class is unavoidable; when you do, say why in the test.
 ```
 tests/
 ├── conftest.py          # Shared fixtures; the unit/functional marker split
+├── <name>_vectors.py    # Test data shared by both lanes (not collected)
 ├── unit/                # Hermetic pytest suites — no I/O, no data, no subprocesses
 └── functional/          # Suites that need real capture data or external tools
 ```
 
-> **Current state.** The suites listed above still sit directly in `tests/`, and most of them are
-> already hermetic unit tests. New tests go into `tests/unit/` or `tests/functional/`; existing ones
-> move as they are touched. `tests/test_input_formats.py` and the subprocess-using parts of
-> `tests/test_lds.py` and `tests/test_compress.py` belong in `tests/functional/`.
+A module in `tests/` whose name does not start with `test_` is not collected, and both lanes can
+import it by name. That is where signal generators and sample vectors used from either side of the
+boundary live — `lds_vectors.py`, `ac3_signals.py` — so that a suite split across the two lanes
+still drives the code under test with one definition of its input rather than two that can drift.
+
+`tests/unit/test_suite_hygiene.py` asserts the boundary: it scans the unit lane's executable code
+(comments and docstrings excluded, since a prose citation is not a dependency) for the tokens listed
+under **Unit/functional boundary guard** below.
 
 ### pytest markers
 

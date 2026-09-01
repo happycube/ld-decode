@@ -3,6 +3,10 @@ from importlib import resources
 
 import lddecode
 
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 def test_version_matches_file():
     """Test that version file exists and matches __version__ (if present)."""

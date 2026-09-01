@@ -12,6 +12,10 @@ from lddecode.start_finder import (
     main,
 )
 
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.decode]
+
 
 def observation(address, file_frame=0, readloc=0, disk_type="CAV"):
     return FrameObservation(file_frame, readloc, address, disk_type)

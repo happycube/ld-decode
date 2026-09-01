@@ -16,6 +16,8 @@ import pytest
 
 from lddecode import compress, lds
 
+pytestmark = [pytest.mark.functional, pytest.mark.format, pytest.mark.slow]
+
 
 def _have_usable_flac():
     path = shutil.which("flac")

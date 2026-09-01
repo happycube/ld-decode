@@ -29,7 +29,8 @@ import pytest
 
 from lddecode.fileio import make_loader
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+# tests/functional/<this file> -> the repo root is two levels up.
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE_LDF = REPO_ROOT / "testdata" / "ntsc" / "ve-snw-cut.ldf"
 
 # 4 M samples at 40 MSPS = 0.1 s of RF (~6 NTSC fields): enough for
@@ -43,9 +44,14 @@ N_SAMPLES = 3_999_996
 UNALIGNED_START = 1_000_003
 UNALIGNED_LEN = 65_537
 
-pytestmark = pytest.mark.skipif(
-    not SOURCE_LDF.exists(), reason="testdata submodule not checked out"
-)
+pytestmark = [
+    pytest.mark.functional,
+    pytest.mark.format,
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        not SOURCE_LDF.exists(), reason="testdata submodule not checked out"
+    ),
+]
 
 
 def pack_lds(u10):

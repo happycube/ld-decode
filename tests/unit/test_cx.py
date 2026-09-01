@@ -10,6 +10,10 @@ import numpy as np
 
 from lddecode.cx import CXExpander, CXCompressor, counts_per_khz
 
+import pytest
+
+pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+
 FS = 44100
 A100 = 100 * counts_per_khz(FS)  # int16 counts at 100% modulation
 A40 = 40 * counts_per_khz(FS)    # int16 counts at the rated 40 kHz / 40% mod
