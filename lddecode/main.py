@@ -11,13 +11,13 @@ from lddecode.fileio import ldf_pipe, make_loader, parse_frequency
 from lddecode.utils_logging import init_logging
 
 
-def main(args=None):
-    # Handle --version early before argparse requires positional arguments
-    check_args = args if args is not None else sys.argv[1:]
-    if "--version" in check_args or "-v" in check_args:
-        from lddecode import __version__
-        print(__version__)
-        sys.exit(0)
+def build_parser():
+    """The ld-decode command line, as an argparse parser.
+
+    Separate from main() so the flag definitions can be exercised without
+    starting a decode; build_options() maps what it returns onto the
+    decoder's option dictionaries.
+    """
     options_epilog = """FREQ can be a bare number in MHz, or a number with one of the case-insensitive suffixes Hz, kHz, MHz, GHz, fSC (meaning NTSC) or fSCPAL."""
     parser = argparse.ArgumentParser(
         description="Extracts audio and video from raw RF laserdisc captures",
@@ -416,12 +416,16 @@ def main(args=None):
         help="Write the input portion being decoded to a .ldf file for bug reporting",
     )
 
-    args = parser.parse_args(args)
-    # print(args)
-    filename = args.infile
-    outname = args.outfile
-    firstframe = args.start
-    req_frames = args.length
+    return parser
+
+
+def build_options(args):
+    """Map parsed arguments onto the decoder's option dictionaries.
+
+    Pure apart from the fatal exits on contradictory flags: everything
+    here is decided by the command line alone, before any file is opened,
+    so the mapping can be checked without running a decode.
+    """
     vid_standard = "PAL" if args.pal else "NTSC"
 
     if args.pal and (args.ntsc or args.ntscj):
@@ -444,21 +448,6 @@ def main(args=None):
                 file=sys.stderr,
             )
 
-    # Safety check: ensure --write-test-ldf doesn't overwrite the input file
-    if args.write_test_ldf is not None:
-        # os (and os.path) is imported at module scope; a local re-import
-        # here would make `os` function-local and shadow it everywhere else
-        # in main(), including the auto-threads calculation above.
-        input_path = os.path.abspath(filename)
-        output_path = os.path.abspath(args.write_test_ldf)
-        if input_path == output_path:
-            print("ERROR: --write-test-ldf output file cannot be the same as input file", file=sys.stderr)
-            print(f"Input:  {filename}", file=sys.stderr)
-            print(f"Output: {args.write_test_ldf}", file=sys.stderr)
-            sys.exit(1)
-
-    audio_pipe = None
-
     threads = args.threads
     if threads == 0:
         # auto (the default): leave 2 cores for the OS / main decode loop,
@@ -471,7 +460,7 @@ def main(args=None):
         "exact_speculation": args.exact_speculation,
         "useAGC": not args.noAGC,
         "write_RF_TBC": args.RF_TBC,
-        "pipe_RF_TBC": audio_pipe,
+        "pipe_RF_TBC": None,
         "write_pre_efm": args.prefm,
         "tbc_efm": args.tbc_efm,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
@@ -524,6 +513,62 @@ def main(args=None):
         if args.cvbs_encoding:
             extra_options["cvbs_encoding"] = args.cvbs_encoding
 
+    DecoderParamsOverride = {}
+    if args.vbpf_low is not None:
+        DecoderParamsOverride["video_bpf_low"] = args.vbpf_low * 1000000
+
+    if args.vbpf_high is not None:
+        DecoderParamsOverride["video_bpf_high"] = args.vbpf_high * 1000000
+
+    if args.vlpf is not None:
+        DecoderParamsOverride["video_lpf_freq"] = args.vlpf * 1000000
+
+    if args.vlpf_order >= 1:
+        DecoderParamsOverride["video_lpf_order"] = args.vlpf_order
+
+    return {
+        "system": vid_standard,
+        "analog_audio_freq": analog_audio_freq,
+        "extra_options": extra_options,
+        "decoder_params_override": DecoderParamsOverride,
+    }
+
+
+def main(args=None):
+    # Handle --version early before argparse requires positional arguments
+    check_args = args if args is not None else sys.argv[1:]
+    if "--version" in check_args or "-v" in check_args:
+        from lddecode import __version__
+        print(__version__)
+        sys.exit(0)
+    parser = build_parser()
+    args = parser.parse_args(args)
+    # print(args)
+    filename = args.infile
+    outname = args.outfile
+    firstframe = args.start
+    req_frames = args.length
+    options = build_options(args)
+    vid_standard = options["system"]
+    analog_audio_freq = options["analog_audio_freq"]
+    extra_options = options["extra_options"]
+    DecoderParamsOverride = options["decoder_params_override"]
+
+    # Safety check: ensure --write-test-ldf doesn't overwrite the input file
+    if args.write_test_ldf is not None:
+        # os (and os.path) is imported at module scope; a local re-import
+        # here would make `os` function-local and shadow it everywhere else
+        # in main().
+        input_path = os.path.abspath(filename)
+        output_path = os.path.abspath(args.write_test_ldf)
+        if input_path == output_path:
+            print("ERROR: --write-test-ldf output file cannot be the same as input file", file=sys.stderr)
+            print(f"Input:  {filename}", file=sys.stderr)
+            print(f"Output: {args.write_test_ldf}", file=sys.stderr)
+            sys.exit(1)
+
+    audio_pipe = None
+
     try:
         loader = make_loader(filename, args.inputfreq)
     except ValueError as e:
@@ -538,19 +583,6 @@ def main(args=None):
 
     from lddecode import __version__
     logger.debug("ld-decode version " + __version__)
-
-    DecoderParamsOverride = {}
-    if args.vbpf_low is not None:
-        DecoderParamsOverride["video_bpf_low"] = args.vbpf_low * 1000000
-
-    if args.vbpf_high is not None:
-        DecoderParamsOverride["video_bpf_high"] = args.vbpf_high * 1000000
-
-    if args.vlpf is not None:
-        DecoderParamsOverride["video_lpf_freq"] = args.vlpf * 1000000
-
-    if args.vlpf_order >= 1:
-        DecoderParamsOverride["video_lpf_order"] = args.vlpf_order
 
     ldd = LDdecode(
         filename,

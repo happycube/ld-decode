@@ -161,7 +161,17 @@ class Field:
 
         self.valid     = True
 
-        self.out_scale = np.double(self.output_white - self.output_black) / (
+        self.out_scale = self.compute_out_scale()
+
+    def compute_out_scale(self):
+        """Output code values per IRE.
+
+        output_black/output_white are the codes for vsync_ire and 100 IRE
+        (not for black), so the span they cover is 100 - vsync_ire IREs.
+        Computed at process() time rather than in __init__ because the AGC
+        rewrites DecoderParams["vsync_ire"] between fields.
+        """
+        return np.double(self.output_white - self.output_black) / (
             100 - self.rf.DecoderParams["vsync_ire"]
         )
 

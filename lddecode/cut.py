@@ -14,19 +14,12 @@ from lddecode.utils import *
 from lddecode.utils_logging import *
 
 
-def main(args=None):
-    # Handle --version early before argparse requires positional arguments
-    check_args = args if args is not None else sys.argv[1:]
-    if "--version" in check_args or "-v" in check_args:
-        from lddecode import __version__
-        print(__version__)
-        sys.exit(0)
+def build_parser():
+    """The ld-cut command line, as an argparse parser.
 
-    # Enable IO debug logging automatically in CI to help diagnose hangs when
-    # ffmpeg fallback is used instead of ld-ldf-reader.
-    if os.getenv("GITHUB_ACTIONS") and not os.getenv("LDDECODE_DEBUG_IO"):
-        os.environ["LDDECODE_DEBUG_IO"] = "1"
-
+    Separate from main() so the flag definitions can be exercised without
+    opening a capture.
+    """
     parser = argparse.ArgumentParser(
         description="Extract a sample area from raw RF laserdisc captures.  (Similar to ld-decode, except it outputs samples)"
     )
@@ -91,13 +84,44 @@ def main(args=None):
         help="custom ffmpeg format options"
     )
 
+    return parser
+
+
+def resolve_output(outname):
+    """Destination name and writer choice for an -o/outfile value.
+
+    "-" means stdout, and the writer is picked from the last three
+    characters of the name: .lds packs in-process, .ldf pipes through
+    ld-compress, anything else is written as raw 16-bit samples.  Note
+    that redirecting to stdout therefore always produces raw samples.
+    """
+    if outname == '-':
+        outname = "/dev/stdout"
+
+    makelds = True if outname[-3:] == "lds" else False
+    makeldf = True if outname[-3:] == "ldf" else False
+
+    return outname, makelds, makeldf
+
+
+def main(args=None):
+    # Handle --version early before argparse requires positional arguments
+    check_args = args if args is not None else sys.argv[1:]
+    if "--version" in check_args or "-v" in check_args:
+        from lddecode import __version__
+        print(__version__)
+        sys.exit(0)
+
+    # Enable IO debug logging automatically in CI to help diagnose hangs when
+    # ffmpeg fallback is used instead of ld-ldf-reader.
+    if os.getenv("GITHUB_ACTIONS") and not os.getenv("LDDECODE_DEBUG_IO"):
+        os.environ["LDDECODE_DEBUG_IO"] = "1"
+
+    parser = build_parser()
     args = parser.parse_args(args)
 
     filename = args.infile
-    outname = args.outfile
-
-    if outname == '-':
-        outname = "/dev/stdout"
+    outname, makelds, makeldf = resolve_output(args.outfile)
 
     if args.pal and args.ntsc:
         print("ERROR: Can only be PAL or NTSC")
@@ -108,9 +132,6 @@ def main(args=None):
     except ValueError as e:
         print(e)
         sys.exit(1)
-
-    makelds = True if outname[-3:] == "lds" else False
-    makeldf = True if outname[-3:] == "ldf" else False
 
     system = "PAL" if args.pal else "NTSC"
 
