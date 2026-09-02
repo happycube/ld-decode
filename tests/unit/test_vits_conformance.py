@@ -75,7 +75,8 @@ def test_every_allowance_states_where_its_number_came_from():
         assert entry.source, kind
         assert entry.absolute >= 0.0, kind
         assert entry.relative >= 0.0, kind
-        assert entry.unit in ("IRE", "fraction", "degrees", "ratio"), kind
+        assert entry.unit in ("IRE", "fraction", "degrees", "ratio", "dB"), (
+            kind)
 
 
 def test_an_allowance_grows_with_the_level_it_judges():

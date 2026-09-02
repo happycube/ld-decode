@@ -223,13 +223,21 @@ def draw_colour_burst(field, line, peak_ire=None, phase_deg=0.0):
 # ---------------------------------------------------------------------------
 
 def render_definition(field, entry, line=None, luma_gain=1.0, chroma_gain=1.0,
-                      level_offset_ire=0.0):
+                      level_offset_ire=0.0, packet_gain=None,
+                      packet_freq_scale=1.0):
     """Draw every element of a definition at its nominal onto one line.
 
     ``luma_gain``, ``chroma_gain`` and ``level_offset_ire`` inject the fault
     modes the conformance checks exist to catch: a flat gain error, a gain
     error confined to one band (the differential-level fault), and a
     pedestal shift.  All default to a conformant rendering.
+
+    ``packet_gain`` and ``packet_freq_scale`` do the same for a multiburst.
+    ``packet_gain`` is called with a packet's nominal frequency in MHz and
+    returns a multiplier, which is how a response tilt is drawn; the scale
+    stretches every packet's frequency, which is how a time-base error is.
+    They apply to burst_packet elements only, so the colour burst and any
+    chrominance bar on the same line stay where they were.
 
     Elements are drawn in definition order, so a pedestal laid down first
     carries whatever rides on it.  Luminance bars replace the level in their
@@ -263,10 +271,15 @@ def render_definition(field, entry, line=None, luma_gain=1.0, chroma_gain=1.0,
             continue
 
         if element.channel == "chroma":
+            freq_mhz = element.freq_mhz or field.params.sample_rate_mhz / 4.0
+            gain = chroma_gain
+            if element.kind == "burst_packet":
+                freq_mhz *= packet_freq_scale
+                if packet_gain is not None:
+                    gain *= packet_gain(element.freq_mhz)
             draw_burst(
                 field, line, element.start_us, element.end_us,
-                scale(element.nominal) * chroma_gain,
-                element.freq_mhz or field.params.sample_rate_mhz / 4.0,
+                scale(element.nominal) * gain, freq_mhz,
             )
         elif element.kind == "staircase":
             windows = (element.step_windows_us

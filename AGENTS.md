@@ -385,6 +385,7 @@ ld-decode/
 │   ├── vits_geometry.py           # us <-> sample mapping inside a CVBS field
 │   ├── vits_identify.py           # Which VITS a field carries, by content
 │   ├── vits_conformance.py        # Level and differential-level verdicts
+│   ├── vits_multiburst.py         # Multiburst frequency-response verdicts
 │   └── video_common.py, video_frames.py
 ├── scripts/                       # Developer utilities (benchmarks, filter design, version gen)
 ├── cmake_modules/                 # CTest definitions

@@ -223,6 +223,13 @@ MULTIBURST_SETS = {
     "NTSC": {"FCC": NTSC_MULTIBURST_FCC, "NTC7": NTSC_MULTIBURST_NTC7},
 }
 
+#: Frequency tolerance the standard states, as a fraction of the nominal.
+#: IEC 60856-1986 9.1.3 Figure 8 c) states +/-2% for PAL; no NTSC source this
+#: project holds states one at all, so an NTSC frequency is judged against
+#: the estimator's own resolution alone (MULTIBURST_FREQ_ALLOWANCE_CYCLES),
+#: which is the same treatment NTSC levels get for the same reason.
+MULTIBURST_FREQ_TOLERANCE = {"PAL": 0.02, "NTSC": 0.0}
+
 
 # ---------------------------------------------------------------------------
 # Reference data model
@@ -503,7 +510,7 @@ VITS_PAL_LINE332 = VitsDefinition(
 )
 
 # IEC 60856-1986-9.1.3 Figure 8 (Amendment 2): frequencies +/-2%.
-_PAL_MULTIBURST_FREQ_TOLERANCE = 0.02
+_PAL_MULTIBURST_FREQ_TOLERANCE = MULTIBURST_FREQ_TOLERANCE["PAL"]
 
 # IEC 60856-1986-9.1.3 Figure 8 c): burst amplitude 60% of 0.70 V p-p +/-1%.
 # The figure quotes the envelope, which is the carrier peak-to-peak, so the
@@ -1146,8 +1153,44 @@ CHAIN_DIFFERENTIAL_PHASE_DEG = 5.0
 #: chrominance band alone is 10% out, which is what this layer exists for.
 CHAIN_GAIN_RATIO = 0.05
 
+#: Flatness the multiburst EQ servo is expected to hold, in dB about the
+#: reference packet, inside the band it anchors.  It is the servo's own
+#: dead-band (VEQ_DEADBAND_DB, 0.3 dB in lddecode/decoder.py) plus the
+#: largest residual docs/technical/vits-servos.md records it leaving after
+#: correction: +0.19 dB on GGV PAL's 2 MHz dip and +0.4 dB on he010's inner
+#: 3.5-4 MHz peak.  The uncorrected figures in the same table are -0.96 dB
+#: (GGV PAL) and -1.0 dB (GGV NTSC), so a band set this way cannot be met by
+#: a decode that simply never engages the servo.
+SERVO_FLATNESS_DB = 0.75
+
+#: Frequency error the packet estimator itself contributes, in cycles over
+#: the window it measured; divide by the window's duration in microseconds
+#: for a band in MHz.  It is expressed this way rather than as an Allowance
+#: because it scales with the window and not with the frequency: a packet is
+#: located to a fraction of its own FFT bin, and the bin is 1/T wide.
+#
+#: The figures come from synthesised packets whose drawn extent was
+#: mismatched against the stated window by up to 25%, which is the mismatch
+#: real definitions show (the GGV PAL packets fill 0.83 of the windows
+#: ITU-T J.63 Annex I section 3 states).  Worst error against cycles held:
+#
+#:     cycles    1.5     2      3      4      6      8     12
+#:     error    0.135  0.114  0.110  0.082  0.051  0.066  0.025
+#
+#: which as a fraction of the frequency itself - error/cycles, the form the
+#: +/-2% specification tolerance is in - is 3.7% at three cycles, 2.1% at
+#: four and 0.85% at six.  A window holding fewer than
+#: MULTIBURST_FREQ_MIN_CYCLES cycles therefore cannot resolve the tolerance
+#: it would be judged against, and is reported rather than judged; the
+#: allowance is the worst error at or above that, rounded up.
+MULTIBURST_FREQ_ALLOWANCE_CYCLES = 0.10
+MULTIBURST_FREQ_MIN_CYCLES = 6.0
+
 _LEVEL_SOURCE = (
     "tests/unit/test_vits_measure.py; docs/technical/vits-servos.md"
+)
+_SERVO_SOURCE = (
+    "docs/technical/vits-servos.md; lddecode/decoder.py VEQ_DEADBAND_DB"
 )
 _CHAIN_SOURCE = (
     "docs/technical/vits-servos.md; analysis/differential_phase.py"
@@ -1235,6 +1278,15 @@ DECODER_ALLOWANCES = {
             "see CHAIN_GAIN_RATIO"
         ),
         source=_CHAIN_SOURCE,
+    ),
+    "multiburst_flatness": Allowance(
+        absolute=SERVO_FLATNESS_DB,
+        unit="dB",
+        rationale=(
+            "the video EQ servo's own dead-band plus the largest residual "
+            "it is recorded leaving; see SERVO_FLATNESS_DB"
+        ),
+        source=_SERVO_SOURCE,
     ),
 }
 

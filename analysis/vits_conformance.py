@@ -11,7 +11,7 @@ Every verdict names the clause it enforces and shows the band it was judged
 against, split into the specification's own tolerance and the decoder
 allowance from analysis/vits_reference.py.
 
-Two families of check:
+Three families of check:
 
 *   **Absolute levels.**  Every element of every identified signal, plus the
     IEC 60856-1986 9.1.5 / IEC 60857-1986 9.1.6 ceilings and the PAL
@@ -22,6 +22,10 @@ Two families of check:
     chrominance non-linearity, and the luminance/chrominance gain ratio.  A
     decode that scales luminance correctly and chrominance incorrectly
     passes every absolute luminance check and fails these.
+*   **Multiburst frequency response**, in analysis/vits_multiburst.py: each
+    packet's measured centre frequency against the published set the line
+    actually carries, and its amplitude in dB about the reference packet
+    across the band a decode claims to hold flat.
 
 The final line is exactly one of
 
@@ -41,7 +45,7 @@ import json
 import sys
 from dataclasses import asdict, dataclass
 from dataclasses import field as dataclass_field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -63,6 +67,14 @@ from vits_measure import (
     measure_definition,
     pulse_under,
 )
+from vits_multiburst import (
+    amplitude_admissible,
+    flatness_judgement,
+    frequency_band_mhz,
+    frequency_clause,
+    frequency_judgement,
+    multiburst_response,
+)
 
 __all__ = [
     "Check",
@@ -72,6 +84,7 @@ __all__ = [
     "check_differential",
     "check_levels",
     "check_luma_chroma_ratio",
+    "check_multiburst",
     "check_staircases",
     "json_payload",
     "run_conformance",
@@ -172,13 +185,19 @@ def _level_kind(element):
     return "luma_level"
 
 
-def check_levels(entry, measurements, line, parity) -> List[Check]:
+def check_levels(entry, measurements, line, parity,
+                 fields_averaged=1) -> List[Check]:
     """Absolute level of every element of one identified signal.
 
     Element tolerances are the specification's own; the decoder allowance
     comes from vits_reference.DECODER_ALLOWANCES.  NTSC elements carry no
     specification tolerance (no standard states a mastering tolerance for
     them), so their band is the allowance alone.
+
+    fields_averaged decides whether a signal whose amplitude the reference
+    data marks as unreadable from one line may be judged at all; the rule
+    is vits_multiburst.amplitude_admissible, shared with the flatness
+    checks so a signal cannot be refused by one and judged by the other.
     """
     checks = []
     for element in entry.elements:
@@ -208,10 +227,10 @@ def check_levels(entry, measurements, line, parity) -> List[Check]:
         band = spec + allowed
 
         reason = ""
-        if not element.amplitude_measurable:
+        admissible, refusal = amplitude_admissible(entry, fields_averaged)
+        if not element.amplitude_measurable and not admissible:
             verdict = "SKIP"
-            reason = ("amplitude is not measurable from a decoded 4fsc "
-                      "capture; see vits_reference")
+            reason = refusal
         elif (element.channel == "chroma"
                 and pulse_under(entry, element) is not None):
             # A chrominance component riding on a sine-squared pulse carries
@@ -641,6 +660,89 @@ def check_luma_chroma_ratio(bundle, parity, system) -> List[Check]:
 
 
 # ---------------------------------------------------------------------------
+# Multiburst frequency response
+# ---------------------------------------------------------------------------
+
+def check_multiburst(entry, measurements, line, parity,
+                     fields_averaged=1) -> Tuple[List[Check], dict]:
+    """Frequency and flatness of one multiburst line.
+
+    Returns (checks, response), with response the per-packet table the
+    report and the JSON sidecar carry whether or not a packet was judged: a
+    frequency that could not be judged is still worth reading.
+
+    The two checks are deliberately separate.  A packet may fail
+    .../frequency while passing .../response, which says the disc or the
+    time base is wrong rather than the equaliser, and the reverse says the
+    equaliser is wrong rather than the time base.
+    """
+    system = entry.system
+    set_name, set_score, rows = multiburst_response(entry, measurements,
+                                                    system)
+    if not rows:
+        return [], {}
+
+    reference = next((row for row in rows if row.is_reference), None)
+    checks = []
+    for row in rows:
+        judge, reason = frequency_judgement(row)
+        spec, allowed = frequency_band_mhz(row, system)
+        band = spec + allowed
+        error = row.freq_error_mhz
+        checks.append(Check(
+            id=f"{entry.id}/{row.element_id}/frequency",
+            label=f"{row.element_id} centre frequency",
+            verdict=("SKIP" if not judge else _verdict(error, band)),
+            measured=row.freq_mhz,
+            unit="MHz",
+            clause=frequency_clause(row, set_name, system),
+            nominal=row.nominal_freq_mhz,
+            spec_tolerance=spec,
+            allowance=allowed,
+            band=band,
+            field_line=line,
+            parity=parity,
+            reason=reason,
+            detail={"set": set_name, "set_score": set_score,
+                    "cycles": row.cycles},
+        ))
+
+    allowed_db = vr.allowance("multiburst_flatness").band()
+    for row in rows:
+        judge, reason = flatness_judgement(entry, row, reference,
+                                           fields_averaged, system)
+        checks.append(Check(
+            id=f"{entry.id}/{row.element_id}/response",
+            label=f"{row.element_id} amplitude about the reference packet",
+            verdict=("SKIP" if not judge
+                     else _verdict(row.relative_db, allowed_db)),
+            measured=row.relative_db,
+            unit="dB",
+            clause="docs/technical/vits-servos.md, frequency-resolved video EQ",
+            nominal=0.0,
+            spec_tolerance=0.0,
+            allowance=allowed_db,
+            band=allowed_db,
+            field_line=line,
+            parity=parity,
+            reason=reason,
+            detail={"freq_mhz": row.freq_mhz,
+                    "amplitude_ire": row.amplitude_ire,
+                    "duty": row.duty},
+        ))
+
+    response = {
+        "vits_id": entry.id,
+        "field_line": line,
+        "set": set_name,
+        "set_score": set_score,
+        "reference": None if reference is None else reference.element_id,
+        "packets": [asdict(row) for row in rows],
+    }
+    return checks, response
+
+
+# ---------------------------------------------------------------------------
 # Driving the checks
 # ---------------------------------------------------------------------------
 
@@ -673,6 +775,7 @@ def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS):
         identifications = identify_vits(probe, geom=geom)
         bundle: Dict[str, Dict[str, object]] = {}
         found = []
+        responses = []
         for line, identification in sorted(identifications.items()):
             entry = vr.definition(identification.vits_id)
             aligned, offset_us, _ = align_geometry(geom, line, entry)
@@ -684,13 +787,18 @@ def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS):
                           "alignment_us": offset_us,
                           "on_expected_line": identification.on_expected_line})
 
-            checks += check_levels(entry, measurements, line, parity)
+            checks += check_levels(entry, measurements, line, parity, used)
             checks += check_ceilings(entry, measurements, line, parity)
             checks += check_saturation(entry, measurements, line, parity)
             checks += check_staircases(entry, measurements, line, parity)
             checks += check_differential(entry, measurements, line, parity)
             checks += check_chroma_nonlinearity(entry, measurements, line,
                                                 parity)
+            packet_checks, response = check_multiburst(
+                entry, measurements, line, parity, used)
+            checks += packet_checks
+            if response:
+                responses.append(response)
 
         checks += check_luma_chroma_ratio(bundle, parity, params.system)
         checks += check_blanked_lines(geom, parity)
@@ -702,6 +810,7 @@ def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS):
             "picture_peak_ire": robust_peak,
             "picture_max_ire": absolute_peak,
             "identified": found,
+            "multiburst": responses,
         })
     return checks, context
 
@@ -757,6 +866,23 @@ def report(checks, context, stream=None) -> int:
                   f"score {found['score']:4.2f}  "
                   f"timing {found['alignment_us']:+.2f} us{moved}",
                   file=stream)
+        for response in parity.get("multiburst", ()):
+            print(f"    {response['vits_id']} line "
+                  f"{response['field_line']}: {response['set']} set "
+                  f"(match {response['set_score']:.2f}), reference packet "
+                  f"{response['reference']}", file=stream)
+            for row in response["packets"]:
+                nominal = row["nominal_freq_mhz"]
+                against = ("" if nominal is None
+                           else f" ({nominal:5.2f} nominal)")
+                relative = ("      " if not np.isfinite(row["relative_db"])
+                            else f"{row['relative_db']:+6.2f}")
+                print(f"      {row['element_id']:<9s} "
+                      f"{row['freq_mhz']:5.3f} MHz{against}  "
+                      f"{row['amplitude_ire']:6.2f} IRE  "
+                      f"{relative} dB  "
+                      f"{row['cycles']:5.2f} cycles  "
+                      f"occupancy {row['duty']:.2f}", file=stream)
     print(file=stream)
 
     for check in checks:

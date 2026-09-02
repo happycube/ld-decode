@@ -458,10 +458,11 @@ set_tests_properties(identify-pal-vits PROPERTIES
     TIMEOUT 300
 )
 
-# VITS level and differential-level conformance.  Each check is judged
-# against the specification's own tolerance plus the decoder allowance in
-# analysis/vits_reference.py, and names the clause it enforces.  A JSON
-# sidecar is written beside the capture for CI artefact upload.
+# VITS level, differential-level and multiburst frequency-response
+# conformance.  Each check is judged against the specification's own
+# tolerance plus the decoder allowance in analysis/vits_reference.py, and
+# names the clause it enforces.  A JSON sidecar is written beside the
+# capture for CI artefact upload.
 #
 # NTSC passes today.  PAL does not: its chrominance runs about 25% hot,
 # which fails the chrominance levels, the saturation ceiling, the
@@ -499,7 +500,7 @@ add_test(
 set_tests_properties(conformance-pal-vits PROPERTIES
     LABELS "functional"
     FIXTURES_REQUIRED pal-cvbs
-    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(13 of 37 checks failed"
+    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(12 of 42 checks failed"
     TIMEOUT 300
 )
 

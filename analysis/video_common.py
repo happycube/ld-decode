@@ -627,17 +627,51 @@ def segment_freq_pp(seg, fs_mhz):
     return float(k * fs_mhz / len(y)), pp
 
 
-def sine_fit_pp(seg, fs_mhz, freq_mhz):
-    """Peak-to-peak of a sine at freq_mhz, by least squares (DC + sin + cos).
+def sine_fit(seg, fs_mhz, freq_mhz):
+    """Least-squares sine fit: (peak_to_peak, phase_deg, occupancy).
 
-    Exact for a clean sine at any sampling phase and for fractional cycle
-    counts, unlike min/max or rms estimators.
+    The model is DC + sin + cos at freq_mhz, which is exact for a clean
+    sine at any sampling phase and for fractional cycle counts, unlike
+    min/max or rms estimators.  phase_deg is measured from the start of
+    the segment, positive for a cosine that peaks later.
+
+    occupancy says how much of the segment the tone actually fills.  For a
+    segment A*g(t)*cos(2*pi*f*t + phi) with an amplitude envelope g in
+    0..1, the fit returns A*mean(g) rather than A, so a window wider than
+    the tone it holds under-reads in proportion.  Writing the residual as
+    r = A*(g - mean(g))*cos, mean(r^2)/mean(x^2) is var(g)/mean(g^2), so
+
+        occupancy = 1 - mean(r^2)/mean(x^2) = mean(g)^2 / mean(g^2)
+
+    and the amplitude of the tone where it is present is peak_to_peak
+    divided by it.  Taking it from the residual rather than from the
+    fitted amplitude and the total power separately makes the estimate
+    exact for a fractional number of cycles as well: the cycle-count
+    wobble is common to both means and cancels.  A gate that fills the
+    window gives 1; noise and any second tone in the window lower it, so
+    it is only worth dividing by while it stays close to 1.
     """
     n = np.arange(len(seg))
     w = 2 * np.pi * freq_mhz / fs_mhz
     M = np.column_stack([np.ones(len(seg)), np.cos(w * n), np.sin(w * n)])
     coef, *_ = np.linalg.lstsq(M, seg, rcond=None)
-    return 2.0 * float(np.hypot(coef[1], coef[2]))
+    peak_to_peak = 2.0 * float(np.hypot(coef[1], coef[2]))
+    phase_deg = float(np.degrees(np.arctan2(-coef[2], coef[1])))
+
+    signal_power = float(np.mean((seg - np.mean(seg)) ** 2))
+    if signal_power <= 0.0:
+        return peak_to_peak, phase_deg, 0.0
+    residual_power = float(np.mean((seg - M @ coef) ** 2))
+    occupancy = 1.0 - residual_power / signal_power
+    return peak_to_peak, phase_deg, float(np.clip(occupancy, 0.0, 1.0))
+
+
+def sine_fit_pp(seg, fs_mhz, freq_mhz):
+    """Peak-to-peak of a sine at freq_mhz, by least squares.
+
+    The amplitude alone; see sine_fit for the phase and the occupancy.
+    """
+    return sine_fit(seg, fs_mhz, freq_mhz)[0]
 
 
 def measure_ntc7_multiburst(field, line=20, start_us=16.5, end_us=45.0):

@@ -53,6 +53,7 @@ from video_common import (
     luminance_nonlinearity,
     phase_diff,
     segment_freq_pp,
+    sine_fit,
     sine_fit_pp,
 )
 
@@ -120,6 +121,26 @@ PULSE_BASELINE_EXCLUSION = 1.25
 #: a packet only a cycle or two long cannot be located better than that.
 PACKET_FREQ_SEARCH_SPAN = 0.08
 PACKET_FREQ_SEARCH_POINTS = 33
+
+#: Least occupancy of its window a packet may show before its amplitude is
+#: left as fitted rather than divided by it (see video_common.sine_fit).
+#: Half a window is where the correction reaches 6 dB, and where a shortfall
+#: stops being safely attributable to the packet being short: noise and any
+#: second tone in the window lower the occupancy in exactly the same way, so
+#: below this the division would amplify whatever else the window holds.
+PACKET_MIN_DUTY = 0.5
+
+#: Cycles a window must hold before the occupancy correction is applied at
+#: all.  The frequency refinement below picks the frequency that maximises
+#: the fitted amplitude, and over a window holding only a cycle or two that
+#: maximum is biased upwards - a synthesised packet filling its window whole
+#: reads 0.9% high at 1.5 cycles - which leaves a residual and so reports an
+#: occupancy of about 0.99 where the true figure is 1.  Correcting there
+#: would double a bias that is already the dominant error; measured on
+#: synthesised packets the spurious shortfall is 1.3% at 2 cycles, 0.35% at
+#: 4 and nil by 5, so above three cycles the correction is worth more than
+#: it costs and below it the amplitude is left as fitted.
+PACKET_DUTY_MIN_CYCLES = 3.0
 
 #: Cycles a fit window must hold before its frequency is believed.  Below
 #: about one cycle a least-squares sine latches onto the segment's own tilt
@@ -591,6 +612,24 @@ def measure_burst_packet(geom: FieldGeometry, line: int, element,
                 pp = float(sine_fit_pp(segment, geom.fs_mhz, freq))
 
     coherence = float(min(1.0, pp / rms_pp)) if rms_pp > 0 else 0.0
+
+    # A packet shorter than the window it is defined in under-reads in
+    # proportion to how much of that window it fills: the fit returns the
+    # amplitude averaged over the window, not the amplitude of the tone.
+    # video_common.sine_fit measures that occupancy from its own residual,
+    # and dividing by it recovers the amplitude of the tone where it is
+    # present, which is what every nominal in vits_reference states.
+    # Measured 2026-09-01 on testdata/pal/ggv-mb-1khz.ldf, the ITU packets
+    # fill about 0.86 of the windows ITU-T J.63 Annex I section 3 states -
+    # a 1.3 dB under-read - and it is the same effect that
+    # docs/technical/vits-servos.md records for the NTC-7 combination as
+    # "up to 2.5 dB with the wrong sign".
+    cycles = freq * len(segment) / geom.fs_mhz
+    _, _, duty = sine_fit(segment, geom.fs_mhz, freq)
+    fitted_pp = pp
+    if cycles >= PACKET_DUTY_MIN_CYCLES and duty >= PACKET_MIN_DUTY:
+        pp = fitted_pp / duty
+
     nominal_freq = element.freq_mhz
     return Measurement(
         element_id=element.id,
@@ -606,6 +645,9 @@ def measure_burst_packet(geom: FieldGeometry, line: int, element,
             "freq_error_mhz": (None if nominal_freq is None
                                else freq - nominal_freq),
             "pp_ire": pp,
+            "fitted_pp_ire": fitted_pp,
+            "duty": duty,
+            "cycles": cycles,
             "coherence": coherence,
             "samples": int(len(segment)),
         },
