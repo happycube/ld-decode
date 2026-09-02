@@ -1111,18 +1111,6 @@ reason = "The 2T pulse and the luminance references it is judged against. Worst 
 
 [[deviation]]
 capture = "industrial-lv-side1-inner"
-check = "pal-its-field2/staircase_subcarrier/differential_gain"
-field_line = 19
-parity = "second"
-measured = 0.194
-unit = "fraction"
-band_used = 1.84
-ceiling = 2.03
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
-
-[[deviation]]
-capture = "industrial-lv-side1-inner"
 check = "pal-its-field2/staircase_subcarrier/differential_phase"
 field_line = 19
 parity = "second"

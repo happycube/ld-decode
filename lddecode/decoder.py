@@ -20,7 +20,8 @@ from . import efm_pll
 from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
-from .field import Field, FieldAnchor, FieldNTSC, FieldPAL
+from .field import (CHROMA_DG_ANCHOR_IRE, Field, FieldAnchor, FieldNTSC,
+                    FieldPAL)
 from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import detect_levels
@@ -126,6 +127,94 @@ def measure_its_2t_ratio(field, lines=None):
                 > ITS_FLATNESS_FRACTION * pulse):
             continue
         return ratio, line
+    return None
+
+
+#: Zone windows, in us from 0H, of the PAL insertion test signal's
+#: modulated staircase (IEC 60856-1986 9.1.3 Figure 9; tread timing per
+#: ITU-T J.63 Annex I sections 2 and 4): the blanking-level stretch of
+#: the superimposed subcarrier, then the five treads at 20..100 IRE,
+#: each guarded 0.7 us clear of its risers so no window straddles a
+#: luminance edge.
+#: The last tread's luminance runs to 62 us but its superimposed
+#: subcarrier stops at 60 (ITU-T J.63 Annex I section 4, window 30-60):
+#: a window past 60 dilutes that tread's amplitude with the tone-free
+#: tail and biases the whole fitted slope low.
+_VITS_DG_ZONES_PAL = ((31.0, 39.0), (40.7, 43.3), (44.7, 47.3),
+                      (48.7, 51.3), (52.7, 55.3), (56.7, 59.3))
+
+
+def measure_vits_dg_staircase(field, lines=None):
+    """Chroma gain slope against luminance from the ITS staircase, or None.
+
+    Reads the modulated staircase the PAL insertion test signal carries
+    on second fields (usually line 19; searched over neighbours like the
+    2T layout, because ITS placement varies by a line between discs).
+    Each zone yields the luminance it sits at and the subcarrier
+    amplitude riding on it, by the same fs/4 quadrature the analysis
+    tree uses; a straight-line fit of amplitude against luminance then
+    gives the fractional gain change per IRE - the quantity
+    field.apply_chroma_dg_correction nulls.
+
+    Validity checks reject anything that is not a modulated staircase:
+    the luma-only staircase first fields carry, content lines, and discs
+    with no ITS at all yield None and the correction stays off.
+
+    Returns (slope_per_ire, line) on success.
+    """
+    if field.rf.system != "PAL" or field.isFirstField:
+        return None
+    if field.dspicture is None:
+        return None
+    if lines is None:
+        lines = (19, 18, 20)
+    for line in lines:
+        lumas, amps = [], []
+        for start, end in _VITS_DG_ZONES_PAL:
+            try:
+                sl = field.lineslice_tbc(line, start, end - start,
+                                         keepphase=True)
+                zone = field.output_to_ire(
+                    field.dspicture[sl].astype(np.float64))
+            except Exception:
+                break
+            # Whole subcarrier cycles (4 samples at 4fsc), so the
+            # luminance term and the quadrature image cancel exactly and
+            # a pure carrier reads its own amplitude.
+            usable = (len(zone) // 4) * 4
+            if usable < 16:
+                break
+            zone = zone[:usable]
+            luma = float(np.mean(zone))
+            phasor = np.mean((zone - luma)
+                             * np.exp(-0.5j * np.pi * np.arange(usable)))
+            lumas.append(luma)
+            amps.append(float(2.0 * np.abs(phasor)))
+        if len(lumas) != len(_VITS_DG_ZONES_PAL):
+            continue
+
+        # Must look like the composite staircase: subcarrier over
+        # blanking, then five clean risers to white.
+        if abs(lumas[0]) > 8.0:
+            continue
+        treads = lumas[1:]
+        if any(b - a < 8.0 for a, b in zip(treads, treads[1:])):
+            continue
+        if not 85.0 <= treads[-1] <= 115.0:
+            continue
+        # The nominal superimposed subcarrier is a 20 IRE carrier peak;
+        # a luma-only staircase reads noise here and is rejected, as is
+        # anything so hot it cannot be the ITS.
+        if min(amps) < 8.0 or max(amps) > 45.0:
+            continue
+
+        slope, intercept = np.polyfit(lumas, amps, 1)
+        if intercept <= 5.0:
+            continue
+        per_ire = float(slope / intercept)
+        if abs(per_ire) > 0.01:
+            continue
+        return per_ire, line
     return None
 
 
@@ -566,6 +655,12 @@ class LDdecode:
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
         self.wow_interpolation_method = extra_options.get("wow_interpolation_method", "linear")
 
+        # Chroma differential-gain servo state (checkChromaDG).
+        self.chroma_dg_servo = extra_options.get("chroma_dg", True)
+        self._dg_samples = []      # (field readloc, slope per IRE)
+        self._dg_last_adopt = None
+        self.dg_calibrated = False
+
         self.auto_deemp = extra_options.get("auto_deemp", True)
         self.deemp_calibrated = not self.auto_deemp
         self._deemp_burst_samples = []
@@ -963,6 +1058,44 @@ class LDdecode:
     # warmup is past.
     IMTF_CEILING_DEADBAND = 0.05
 
+    # Chroma differential-gain servo: pools per-field slope readings from
+    # measure_vits_dg_staircase and holds DecoderParams["chroma_dg_slope"],
+    # which field.downscale_cvbs nulls at CVBS write time.  The correction
+    # never touches decoding - every other servo measures the uncorrected
+    # signal - so an adoption never asks for a redo and nothing about it
+    # travels to worker processes.
+    #: Pool size and age horizon, matching the multiburst EQ pool.
+    DG_KEEP = 24
+    DG_MAX_AGE_FIELDS = 240
+    #: Samples before an adoption: 3 for the first (so a short decode is
+    #: still corrected), the full pool after.
+    DG_MIN_SAMPLES = 6
+    #: Dead-band, in gain-per-IRE units.  0.0004/IRE is ~4% of chroma
+    #: gain across the full luma range - about the pooled measurement's
+    #: own scatter over a handful of fields.
+    DG_SLOPE_DEADBAND = 0.0004
+    #: Hard bounds.  The worst measured capture (BBC Domesday DD86-DS2
+    #: NationalA inner radius) needs +0.0038; the largest negative slope
+    #: measured anywhere is -0.0003 (GGV1011).  The negative bound is
+    #: deliberately tighter because the correction's gain grows as
+    #: 1/(1 + 100*slope) at peak white: -0.004 already means boosting
+    #: bright-area chroma by a third, and beyond it the formula runs away.
+    DG_SLOPE_CLAMP_NEG = -0.004
+    DG_SLOPE_CLAMP_POS = 0.008
+    #: Committed-decode adoption rate limit, as the other servos'.
+    DG_MIN_ADOPT_FIELDS = 100
+    #: Engagement threshold.  A slope of 0.00105/IRE is the conformance
+    #: limit itself (0.105 peak-to-peak over the 100 IRE staircase), and
+    #: below about that size the pooled estimator cannot be trusted with
+    #: the sign, let alone the magnitude: GGV1011's colour-bar capture
+    #: measures -0.0010 in-decoder against a -0.0003 ground truth, and
+    #: its side-1 inner cut +0.0004 against +0.0011.  Correcting inside
+    #: the spec band on numbers that rough is as likely to put
+    #: differential gain in as take it out - the bar capture went 0.033
+    #: to 0.085 that way - so below this the servo holds zero and a
+    #: conforming disc is left exactly alone.
+    DG_SLOPE_ENGAGE = 0.0015
+
     #: How far the inverse-MTF strength may be wound, in either
     #: direction.  Positive strengths give back what the disc's response
     #: took away; negative ones take back what the chain added, and the
@@ -1163,6 +1296,64 @@ class LDdecode:
         if flat is None:
             return None
         return float(max(-self.IMTF_STRENGTH_LIMIT, flat))
+
+    def checkChromaDG(self, field):
+        """Track chroma differential gain from the ITS modulated staircase.
+
+        Pools per-field slope estimates and adopts the pooled median into
+        DecoderParams["chroma_dg_slope"], which downscale_cvbs nulls at
+        CVBS write time.  Nothing about decoding depends on it - the
+        servos all measure upstream of the correction - so adopting never
+        invalidates a field, and there is nothing to hand to workers;
+        serial and threaded decodes pool the same committed fields at the
+        same points and so adopt identically.
+
+        Discs with no modulated staircase never feed the pool and the
+        slope stays 0.0: a capture with no measured differential gain
+        gets no correction, by construction.
+        """
+        if not self.chroma_dg_servo:
+            return
+        measured = measure_vits_dg_staircase(field)
+        if measured is not None:
+            entry = (field.readloc, measured[0])
+            if self._dg_samples and self._dg_samples[-1][0] == entry[0]:
+                self._dg_samples[-1] = entry
+            else:
+                self._dg_samples.append(entry)
+                self._dg_samples = self._dg_samples[-self.DG_KEEP:]
+        horizon = (self.fdoffset
+                   - self.DG_MAX_AGE_FIELDS * self.bytes_per_field)
+        self._dg_samples = [x for x in self._dg_samples if x[0] >= horizon]
+        need = 3 if not self.dg_calibrated else self.DG_MIN_SAMPLES
+        if len(self._dg_samples) < need:
+            return
+
+        estimate = float(np.clip(
+            np.median([slope for _, slope in self._dg_samples]),
+            self.DG_SLOPE_CLAMP_NEG, self.DG_SLOPE_CLAMP_POS))
+        if abs(estimate) < self.DG_SLOPE_ENGAGE:
+            estimate = 0.0
+        current = float(
+            self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
+        if abs(estimate - current) < self.DG_SLOPE_DEADBAND:
+            self.dg_calibrated = True
+            return
+        if self.dg_calibrated and self.fields_written > 0:
+            if (self._dg_last_adopt is not None
+                    and (self.fdoffset - self._dg_last_adopt)
+                    < self.DG_MIN_ADOPT_FIELDS * self.bytes_per_field):
+                return
+            self._dg_last_adopt = self.fdoffset
+
+        gain_100 = ((1.0 + estimate * CHROMA_DG_ANCHOR_IRE)
+                    / (1.0 + estimate * 100.0))
+        logs.logger.debug(
+            f"Chroma DG servo: slope {current:+.5f} \u2192 {estimate:+.5f}"
+            f" per IRE (chroma at 100 IRE scaled by {gain_100:.3f})"
+        )
+        self.dg_calibrated = True
+        self.rf.DecoderParams["chroma_dg_slope"] = estimate
 
     def checkVideoEQ(self, field):
         """Adopt the multiburst-derived video EQ when it drifts past
@@ -2211,6 +2402,7 @@ class LDdecode:
                 # parameters that just changed
                 self._deemp_burst_samples.clear()
                 self._veq_samples.clear()
+                self._dg_samples.clear()
             elif np.isfinite(nf.burstmedian) and nf.burstmedian > 5:
                 self._deemp_burst_samples.append(nf.burstmedian)
 
@@ -2269,6 +2461,7 @@ class LDdecode:
             self._deemp_burst_samples.clear()
             self._deemp_burst_offset = None
             self._veq_samples.clear()
+            self._dg_samples.clear()
 
         redo = not self.checkMTF(f, self.fieldstack[0])
         if redo:
@@ -2277,6 +2470,7 @@ class LDdecode:
             self._deemp_burst_samples.clear()
             self._deemp_burst_offset = None
             self._veq_samples.clear()
+            self._dg_samples.clear()
 
         veq_redo = False
         if not agc_adjusted and not redo:
@@ -2287,7 +2481,15 @@ class LDdecode:
             deemp_adjusted = not self.checkAutoDeemp(f)
         self._deemp_adjusted_last = deemp_adjusted
 
-        return redo or veq_redo or agc_adjusted or deemp_adjusted
+        changed = redo or veq_redo or agc_adjusted or deemp_adjusted
+        if changed:
+            # The staircase was measured under parameters that just
+            # moved; slope samples pooled across the change would mix
+            # two different channels.
+            self._dg_samples.clear()
+        else:
+            self.checkChromaDG(f)
+        return changed
 
     def validate_chain(self, f, prevfield):
         """Check an independently-decoded field against the committed

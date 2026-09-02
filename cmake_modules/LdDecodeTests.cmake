@@ -522,7 +522,13 @@ add_test(
 set_tests_properties(conformance-pal-vits PROPERTIES
     LABELS "functional"
     FIXTURES_REQUIRED pal-cvbs
-    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(6 of 46 checks failed"
+    # 6 -> 5 with the two-sided inverse-MTF chroma bound: pulse_2t on the
+    # second-field ITS came back inside its band.  The capture is six
+    # frames, fewer than any servo needs to settle, so what remains is
+    # packet_6 (twice), the two blanked-line checks, and single-field
+    # differential gain (0.152 measured, noise-inflated - the pooled
+    # figure on this capture is under the band).
+    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(5 of 46 checks failed"
     TIMEOUT 300
 )
 

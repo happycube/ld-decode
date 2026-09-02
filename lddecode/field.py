@@ -79,6 +79,89 @@ class FieldAnchor:
 
 
 # The Field class contains common features used by NTSC and PAL
+#: Luminance level, in IRE, at which the chroma differential-gain
+#: correction leaves gain untouched.  The multiburst-driven servos
+#: calibrate the chroma band on signals riding the 50 IRE grey pedestal
+#: (the multiburst line's own pedestal, and the chroma bars beside it),
+#: so that is the level whose chroma gain is already right; the
+#: correction equalises every other luminance level to it.  Anchoring at
+#: blanking instead was measured to pull the mid-luminance chroma bars
+#: 15% low on BBC Domesday DD86-DS2 - correct differential gain, wrong
+#: absolute gain.
+CHROMA_DG_ANCHOR_IRE = 50.0
+
+#: Zero-phase window pairs for the correction, cached per (length, fs):
+#: a bandpass around the colour subcarrier and the low-pass that reads
+#: the luminance the chroma is riding on.
+_chroma_dg_windows = {}
+
+
+def _chroma_dg_window(length, fs_mhz):
+    key = (length, round(fs_mhz, 6))
+    got = _chroma_dg_windows.get(key)
+    if got is not None:
+        return got
+    freqs = np.fft.rfftfreq(length, 1.0 / fs_mhz)
+    fsc = fs_mhz / 4.0
+
+    def raised(low, high, transition):
+        w = np.zeros(len(freqs))
+        w[(freqs >= low) & (freqs <= high)] = 1.0
+        for edge, sign in ((low, -1.0), (high, 1.0)):
+            t = (freqs - edge) * sign
+            sel = (t > 0) & (t < transition)
+            w[sel] = 0.5 * (1.0 + np.cos(np.pi * t[sel] / transition))
+        return w
+
+    got = (raised(fsc - 1.1, fsc + 1.1, 0.3), raised(-1.0, 1.0, 0.4))
+    _chroma_dg_windows[key] = got
+    return got
+
+
+def apply_chroma_dg_correction(hz_samples, rf, slope):
+    """Equalise chroma gain across luminance on a 4fsc composite stream.
+
+    The FM channel scales recovered chrominance by the luminance it rides
+    on - differential gain - because the carrier's sidebands sweep the RF
+    filter chain's tilts as luminance moves the carrier, one-sidedly
+    inward of mid-radius where the disc's own optical MTF has taken the
+    upper sideband.  The luminance staircase stays linear while it
+    happens (the distortion lives only where the sidebands sit far from
+    the carrier), so no memoryless transfer curve can undo it; what can
+    is the classic corrector topology this implements:
+
+        out = composite + (G(luma) - 1) * chroma
+        G(L) = (1 + slope * ANCHOR) / (1 + slope * max(L, 0))
+
+    `slope` is the measured fractional chroma-gain change per IRE of
+    luminance (decoder.measure_vits_dg_staircase), and the correction is
+    exact for the linear gain-vs-luminance the staircase measures.  The
+    subcarrier bandpass and the luminance low-pass are zero-phase, G is
+    real, and G(blanking-and-below) is a constant, so luminance levels,
+    sync, and differential phase are untouched; burst gains the same
+    factor as all other blanking-level chrominance, which is what zero
+    differential gain means.
+
+    Applied at CVBS write time only (downscale_cvbs): every servo
+    measures the uncorrected signal, so none of them closes a loop
+    through this.
+
+    hz_samples is the demodulated stream in Hz on the 4fsc lattice;
+    returns the corrected stream, same dtype domain (float).
+    """
+    dp = rf.DecoderParams
+    ire0, hz_ire = dp["ire0"], dp["hz_ire"]
+    ire = (np.asarray(hz_samples, dtype=np.float64) - ire0) / hz_ire
+    bandpass, lowpass = _chroma_dg_window(len(ire), rf.SysParams["outfreq"])
+    spectrum = np.fft.rfft(ire)
+    chroma = np.fft.irfft(spectrum * bandpass, len(ire))
+    luma = np.fft.irfft(spectrum * lowpass, len(ire))
+    gain = ((1.0 + slope * CHROMA_DG_ANCHOR_IRE)
+            / (1.0 + slope * np.clip(luma, 0.0, None)))
+    ire += (gain - 1.0) * chroma
+    return (ire * hz_ire + ire0).astype(np.float32)
+
+
 class Field:
     burst_lines = (11, 264)  # NTSC default
     burst_max_ire = None  # PAL overrides to 30
@@ -1773,6 +1856,10 @@ class FieldPAL(Field):
             frame_samples / 625.0,
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing,
         )
+
+        slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
+        if slope != 0.0:
+            out = apply_chroma_dg_correction(out, self.rf, slope)
 
         return self.hz_to_output(out)
 

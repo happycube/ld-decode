@@ -1,6 +1,6 @@
 # VITS-driven auto-calibration servos
 
-The decoder continuously calibrates three filter parameters from the
+The decoder continuously calibrates its filter parameters from the
 test signals many discs carry in the vertical blanking interval,
 replacing fixed calibrations that could not follow a CAV disc's response
 drift with radius. All three run automatically, are dead-banded and rate
@@ -116,6 +116,78 @@ On Domesday middle the servo drives `mtf_level` from 0.000 to −0.744, which
 is the direction that *raises* demodulated HF, so the loop is asking for the
 correction rather than withholding it; see
 [`vits-radius-baseline.md`](vits-radius-baseline.md).
+
+### 4. Chroma differential gain (ITS modulated-staircase servo)
+
+The FM channel scales recovered chrominance by the luminance it rides
+on. Luminance moves the carrier across its deviation range (PAL 6.757
+to 7.900 MHz), carrying the subcarrier's sidebands across the RF filter
+chain's tilts — and inward of about mid-radius the disc's own optical
+MTF has taken the upper sideband entirely (0.08 falling to 0.04 of
+unity across 11.5–12.3 MHz), so chrominance is recovered from the lower
+sideband alone and nothing cancels the tilt it sweeps. The luminance
+staircase stays linear while this happens (its own sidebands sit close
+to the carrier, where every chain is locally flat), which is what makes
+it *differential* gain: measured on BBC Domesday DD86-DS2 at inner
+radius, 35 % of chroma gain across the luma range against a staircase
+nonlinearity of 3–8 %.
+
+That shape rules out two whole classes of fix, both tried and measured:
+
+- A pre-demod filter reshape cannot remove it without moving the
+  baseband response — the same RF frequencies serve "chroma at another
+  luminance" and "another baseband frequency at this luminance" — and
+  flattening the swept bands regressed 16 conformance lanes
+  (`pulse_2t`, `packet_6`, `gain_ratio`, NTSC differential gain).
+- A memoryless transfer curve would bend luminance by exactly what it
+  straightens in chroma.
+
+What is consistent with every constraint is the classic corrector
+topology, applied to the composite output:
+
+    out = composite + (G(luma) − 1) · chroma
+    G(L) = (1 + slope·50) / (1 + slope·max(L, 0))
+
+`measure_vits_dg_staircase()` reads the ITS modulated staircase (PAL
+second fields, line 19±1; six zones from the blanking-level subcarrier
+stretch to the 100 IRE tread, each guarded clear of the risers and of
+the subcarrier's own end at 60 µs) and fits chroma amplitude against
+luminance; the fitted fractional slope per IRE is pooled and adopted by
+`checkChromaDG()` under the usual dead-band and rate limit into
+`DecoderParams["chroma_dg_slope"]`, and `downscale_cvbs()` nulls it at
+CVBS write time. Measured on DD86-DS2 CommunityNorth frames 3000–3100:
+pooled differential gain 0.366 → 0.031, chroma flat 17.9–18.4 IRE
+across the staircase, luminance levels unchanged.
+
+Three properties carry the design:
+
+- **The correction never touches decoding.** Every other servo measures
+  upstream of it (`dspicture`, input-rate demod), so no loop closes
+  through the correction, an adoption never redoes a field, and nothing
+  travels to worker processes — serial and threaded decodes adopt
+  identically because both pool the same committed fields at the same
+  points.
+- **G is anchored at the 50 IRE grey pedestal**, the level the
+  multiburst-driven chroma calibration measures at, so the levels those
+  servos set stay set; blanking-level chrominance — burst included —
+  gains the same factor as all other chroma, which is what zero
+  differential gain means. Anchoring at blanking instead measured the
+  mid-luminance chroma bars 15 % low.
+- **A conforming capture gets no correction, by construction**: a disc
+  without the modulated staircase never feeds the pool, and a pooled
+  slope inside the spec band (|slope| < 0.0015/IRE; the 0.105
+  conformance limit itself is ~0.00105 over the 100 IRE staircase) is
+  held at zero, because at that size the estimator cannot be trusted
+  with the sign — GGV1011's bar capture measures −0.0010 against a
+  −0.0003 ground truth, and engaging there put differential gain *in*
+  (0.033 → 0.085). The clamp is asymmetric (−0.004 to +0.008 per IRE)
+  because the peak-white gain grows as 1/(1 + 100·slope) on the
+  negative side.
+
+Differential *phase* (the same staircase's tread-to-tread phase swing,
+9–28° on Domesday against a 5.2° band) is not corrected by this: G is
+real. The topology extends to a complex G driven by the measured
+per-tread phases, which is the planned follow-on.
 
 ## When the multiburst ceiling reaches the burst servo
 

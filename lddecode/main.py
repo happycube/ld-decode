@@ -229,6 +229,16 @@ def build_parser():
     )
 
     parser.add_argument(
+        "--no_chroma_dg",
+        dest="chroma_dg",
+        action="store_false",
+        default=True,
+        help="Disable the chroma differential-gain servo (measured from "
+             "the VITS modulated staircase, corrected at CVBS write time; "
+             "PAL only)",
+    )
+
+    parser.add_argument(
         "--NTSC_color_notch_filter",
         "-N",
         dest="NTSC_color_notch_filter",
@@ -466,6 +476,7 @@ def build_options(args):
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
         "auto_deemp": args.deemp_strength is None,
+        "chroma_dg": args.chroma_dg,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
         "audio_filterwidth": args.audio_filterwidth,
