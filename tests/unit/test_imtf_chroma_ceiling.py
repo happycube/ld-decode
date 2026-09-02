@@ -42,8 +42,10 @@ def stub(samples, system="PAL", min_samples=6):
         _veq_samples=samples,
         VEQ_MIN_SAMPLES=min_samples,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
+        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
         rf=types.SimpleNamespace(
             system=system,
+            SysParams={"fsc_mhz": 4.43361875 if system == "PAL" else 3.579545},
             inverse_mtf_log_db=lambda freq_hz: DB_PER_STRENGTH),
     )
     it._imtf_strength_for_flat_band = (
@@ -161,10 +163,43 @@ def test_a_disc_without_a_multiburst_is_left_to_the_burst_servo():
     assert LDdecode._imtf_ceiling(stub([]), current=1.2) is None
 
 
-def test_the_cap_never_goes_negative():
+def test_a_band_hot_at_zero_strength_is_cut_below_zero():
+    """The fault this bound exists to reach at the negative end.
+
+    A chroma band that reads hot with nothing applied cannot be brought
+    back by the burst servo declining to boost: zero is already what it
+    is doing.  Measured on BBC Domesday DD86-DS2 inner, +3.6 dB at
+    4.0 MHz and +4.0 at 4.8, which left chrominance 45 percent hot.
+    """
+    ceiling = LDdecode._imtf_ceiling(
+        stub(samples({4.0e6: 3.6, 4.75e6: 4.0})), current=0.0)
+    assert ceiling < 0.0
+    # Read at fsc between the two packets, not averaged across them.
+    at_fsc = 3.6 + (4.43361875 - 4.0) / (4.75 - 4.0) * (4.0 - 3.6)
+    assert ceiling == pytest.approx(-at_fsc / DB_PER_STRENGTH)
+
+
+def test_the_band_is_read_at_the_subcarrier_not_averaged_across_it():
+    """The packets disagree, and only one frequency is being corrected.
+
+    The inverse-MTF curve rises more steeply across the probe band than
+    the error does, so the packet below fsc asks for a deeper correction
+    than the one above it. Averaging the two strengths lands between two
+    answers neither of which is about fsc; on DD86-DS2 inner that
+    overshoot put chrominance cold.
+    """
+    hot_below = LDdecode._imtf_strength_for_flat_band(
+        stub(samples({4.0e6: 6.0, 4.75e6: 2.0})))
+    mean_of_packets = -(6.0 + 2.0) / 2 / DB_PER_STRENGTH
+    at_fsc = 6.0 + (4.43361875 - 4.0) / (4.75 - 4.0) * (2.0 - 6.0)
+    assert hot_below == pytest.approx(-at_fsc / DB_PER_STRENGTH)
+    assert hot_below != pytest.approx(mean_of_packets)
+
+
+def test_the_cut_is_bounded_at_the_strength_limit():
     ceiling = LDdecode._imtf_ceiling(
         stub(samples({4.0e6: 40.0, 4.75e6: 40.0})), current=0.3)
-    assert ceiling == 0.0
+    assert ceiling == -LDdecode.IMTF_STRENGTH_LIMIT
 
 
 def test_a_wind_up_the_size_aiv_discs_provoke_is_pulled_back():
@@ -178,7 +213,9 @@ def test_a_wind_up_the_size_aiv_discs_provoke_is_pulled_back():
         stub(samples({4.0e6: 2.5, 4.75e6: 2.5}, strength=1.245)),
         current=1.245)
     assert ceiling < 1.245
-    assert ceiling >= 0.0
+    # The band is hot by almost exactly what the applied strength put
+    # there, so the verdict is "apply nothing", not "cut".
+    assert ceiling == pytest.approx(0.0, abs=0.05)
 
 
 # ---------------------------------------------------------------------------
@@ -199,12 +236,14 @@ def eq_stub(samples_, strength, flat_band=None, job_engine=None):
         _veq_samples=samples_,
         VEQ_MIN_SAMPLES=6,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
+        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
         _imtf_flat_band=flat_band,
         _deemp_burst_samples=[1.0, 2.0],
         _deemp_burst_offset=7,
         _job_engine=job_engine,
         rf=types.SimpleNamespace(
             system="PAL",
+            SysParams={"fsc_mhz": 4.43361875},
             DecoderParams={"inverse_mtf_strength": strength},
             inverse_mtf_log_db=lambda freq_hz: DB_PER_STRENGTH),
     )
@@ -300,6 +339,7 @@ def adopt_stub(samples_, strength, flat_band=None, calibrated=False,
         VEQ_MIN_ADOPT_FIELDS=LDdecode.VEQ_MIN_ADOPT_FIELDS,
         IMTF_CEILING_DEADBAND=LDdecode.IMTF_CEILING_DEADBAND,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
+        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
         _imtf_flat_band=flat_band,
         _imtf_flat_band_last_publish=last_publish,
         _deemp_burst_samples=[],
@@ -313,6 +353,7 @@ def adopt_stub(samples_, strength, flat_band=None, calibrated=False,
         exact_speculation=False,
         rf=types.SimpleNamespace(
             system="PAL",
+            SysParams={"fsc_mhz": 4.43361875},
             DecoderParams=params,
             recompute_fvideo=lambda: None,
             inverse_mtf_log_db=lambda freq_hz: DB_PER_STRENGTH),
@@ -442,3 +483,104 @@ def test_the_first_publication_does_not_wait_for_the_rate_limit():
                     calibrated=True, fields_written=0, last_publish=0)
     LDdecode.checkVideoEQ(it, field=None)
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
+
+
+# ---------------------------------------------------------------------------
+# The negative half of the range, and who is allowed to spend it
+# ---------------------------------------------------------------------------
+
+def test_a_negative_ceiling_carries_the_strength_below_zero():
+    """The measured case at BBC Domesday DD86-DS2 inner radius.
+
+    The 2T servo has driven mtf_level negative, the chroma band reads
+    about +3.8 dB hot with no correction applied, and nothing the burst
+    servo can do reaches it: zero is already where it sits.
+    """
+    it = eq_stub([], strength=0.0, flat_band=-1.4)
+    assert LDdecode._apply_imtf_ceiling(it) is True
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(-1.4)
+
+
+def deemp_stub(burst_ire, strength, flat_band=None, calibrated=True):
+    """Enough of an LDdecode for _deemp_calibrate()."""
+    it = types.SimpleNamespace(
+        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
+        _deemp_burst_samples=[burst_ire] * 4,
+        _deemp_burst_offset=7,
+        _imtf_flat_band=flat_band,
+        _job_engine=None,
+        deemp_calibrated=calibrated,
+        exact_speculation=False,
+        rf=types.SimpleNamespace(
+            SysParams={"burst_ire": 21.4},
+            # 20*log10(e**0.31) ~ 2.7 dB at fsc per strength unit
+            inverse_mtf_log_at_fsc=0.31,
+            DecoderParams={"inverse_mtf_strength": strength},
+            recompute_fvideo=lambda: None),
+    )
+    it._imtf_ceiling = lambda current: LDdecode._imtf_ceiling(it, current)
+    return it
+
+
+def test_the_burst_servo_alone_never_cuts():
+    """A burst read hot is as likely to be the level the disc recorded.
+
+    With no multiburst verdict the servo may decline to boost and no
+    more, whatever the burst reads - the same reason the ceiling exists
+    in the other direction.
+    """
+    it = deemp_stub(burst_ire=40.0, strength=0.0, flat_band=None)
+    LDdecode._deemp_calibrate(it)
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.0)
+
+
+def test_a_multiburst_verdict_lets_the_same_servo_cut():
+    it = deemp_stub(burst_ire=14.6, strength=0.0, flat_band=-1.4)
+    LDdecode._deemp_calibrate(it)
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(-1.4)
+
+
+def test_a_first_calibration_adopts_a_cut():
+    """The `first` gate adopted any non-trivial strength upwards only.
+
+    A disc whose very first verdict is a cut would otherwise decline it
+    and never look again until the burst drifted.
+    """
+    it = deemp_stub(burst_ire=14.6, strength=0.0, flat_band=-1.4,
+                    calibrated=False)
+    assert LDdecode._deemp_calibrate(it) is True
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(-1.4)
+
+
+def feedforward_stub(strength, delta):
+    """The inverse-MTF half of checkMTF()'s adoption, in isolation."""
+    it = types.SimpleNamespace(
+        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
+        mtf_deemp_feedforward=1.2,
+        _deemp_burst_samples=[1.0],
+        _deemp_burst_offset=7,
+        _job_engine=None,
+        rf=types.SimpleNamespace(
+            DecoderParams={"inverse_mtf_strength": strength},
+            recompute_fvideo=lambda: None),
+    )
+    current = it.rf.DecoderParams["inverse_mtf_strength"]
+    it.rf.DecoderParams["inverse_mtf_strength"] = float(np.clip(
+        current + it.mtf_deemp_feedforward * delta,
+        min(0.0, current), it.IMTF_STRENGTH_LIMIT))
+    return it.rf.DecoderParams["inverse_mtf_strength"]
+
+
+def test_the_feed_forward_does_not_open_a_cut_of_its_own():
+    """It predicts, it does not measure: only the multiburst may cut."""
+    assert feedforward_stub(strength=0.0, delta=-1.0) == pytest.approx(0.0)
+
+
+def test_the_feed_forward_does_not_close_a_cut_the_multiburst_asked_for():
+    """A plain 0.0 floor walked a standing cut back up on the next
+    MTF adoption, undoing the verdict a field at a time."""
+    assert feedforward_stub(strength=-1.4, delta=-0.5) == pytest.approx(-1.4)
+
+
+def test_the_feed_forward_still_winds_up_from_a_cut():
+    assert feedforward_stub(strength=-1.4, delta=0.5) == pytest.approx(-0.8)

@@ -545,6 +545,10 @@ class RFDecode:
         # there is no boost; auto-calibration sets the strength from burst
         # amplitude measurements so that chroma recovers to spec level with
         # zero differential-phase cost (unlike de-emphasis adjustment).
+        # Negative strengths run the same curve the other way, cutting a
+        # chroma band the VITS multiburst measures hot; the burst servo
+        # may not ask for that, only the multiburst may (decoder's
+        # _imtf_ceiling).
         freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
         crossover = 2.0e6
         mtf_at_crossover = compute_mtf(crossover, cavframe=0)
@@ -578,7 +582,7 @@ class RFDecode:
         #SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
 
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
-        if imtf_strength > 0:
+        if imtf_strength != 0:
             SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         if DP.get("video_eq_auto"):
@@ -651,18 +655,22 @@ class RFDecode:
         """Peak gain of the inverse-MTF chroma filter on an ideal 2T pulse.
 
         The correction filter shapes the whole upper video band, so it
-        also lifts the ITS 2T pulse the MTF servo measures; dividing the
+        also moves the ITS 2T pulse the MTF servo measures; dividing the
         measured pulse-to-bar ratio by this factor decouples the two
         control loops (otherwise: servo raises mtf_level -> burst drops
         -> chroma strength rises -> 2T rises -> servo raises further).
         Computed by passing a sine-squared pulse (HAD = 2 video periods)
         through Finverse_mtf_base ** strength; cached per strength.
+
+        A negative strength lowers the pulse rather than lifting it, and
+        is divided out the same way: the loop it would otherwise close is
+        the same one running backwards.
         """
         key = round(float(strength), 6)
         g = self._imtf_2t_gain_cache.get(key)
         if g is not None:
             return g
-        if key <= 0:
+        if key == 0:
             g = 1.0
         else:
             # 2T sine-squared pulse: full width twice the half-amplitude
@@ -736,7 +744,7 @@ class RFDecode:
         #SF["FVideo"] = SF["FVideo"] * SF["Fvideo_eq"]
 
         imtf_strength = DP.get("inverse_mtf_strength", 0.0)
-        if imtf_strength > 0:
+        if imtf_strength != 0:
             SF["FVideo"] = SF["FVideo"] * (SF["Finverse_mtf_base"] ** imtf_strength)
 
         SF["Fvideo_eq_auto"] = self.build_video_eq(

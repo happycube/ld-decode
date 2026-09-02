@@ -935,12 +935,15 @@ class LDdecode:
     # EQ (pinned to 0 dB beyond its last anchor + 0.5 MHz) never touches
     # the chroma band - GGV PAL records luma HOT but chroma LOW around
     # fsc, and a composite filter cannot serve both, so the subcarrier
-    # region stays owned by the burst-based inverse-MTF calibration
-    # (cap 3.6 MHz for PAL fsc 4.43, 2.8 MHz for NTSC fsc 3.58).
+    # region stays owned by the inverse-MTF calibration
+    # (cap 3.6 MHz for PAL fsc 4.43, 2.8 MHz for NTSC fsc 3.58).  The
+    # multiburst still rules that band, but through the strength the
+    # inverse MTF is held to rather than through an anchor of its own:
+    # see _imtf_ceiling, which bounds it in both directions.
     #: Band, per system, whose multiburst packets straddle the colour
     #: subcarrier and so measure what the chroma band is doing (PAL fsc
     #: 4.43 MHz, packets at 4.0/4.8; NTSC fsc 3.58 MHz, packets at
-    #: 3.0/3.58/4.1).  Read by _chroma_band_excess_db().
+    #: 3.0/3.58/4.1).  Read by _imtf_strength_for_flat_band().
     CHROMA_BAND_PROBE_HZ = {"PAL": (3.75e6, 5.25e6),
                             "NTSC": (2.9e6, 4.3e6)}
     VEQ_CLAMP_DB = 2.5
@@ -959,6 +962,16 @@ class LDdecode:
     # where the pooled figure settles inside 0.008 of itself once the
     # warmup is past.
     IMTF_CEILING_DEADBAND = 0.05
+
+    #: How far the inverse-MTF strength may be wound, in either
+    #: direction.  Positive strengths give back what the disc's response
+    #: took away; negative ones take back what the chain added, and the
+    #: multiburst is what authorises them (see _imtf_ceiling).  The
+    #: measured need on the worst capture in hand - BBC Domesday DD86-DS2
+    #: at inner radius, whose chroma band reads +3.6 dB at 4.0 MHz and
+    #: +4.0 dB at 4.8 - is about -1.5, so this leaves headroom without
+    #: letting a mismeasured field wind the band away.
+    IMTF_STRENGTH_LIMIT = 2.0
 
     def _veq_estimate(self, field):
         """Absolute video-EQ anchor estimate from pooled multiburst
@@ -983,7 +996,7 @@ class LDdecode:
             # Every packet above the reference is kept, not only the ones
             # the EQ may anchor.  The packets that straddle the subcarrier
             # are the only direct measurement of what the chroma band is
-            # actually doing, and _chroma_band_excess_db() needs them to
+            # actually doing, and _imtf_strength_for_flat_band() needs them to
             # keep the burst servo honest; anchors are still built from
             # the sub-veq_max_freq subset below, so the EQ's ownership of
             # the band is unchanged.
@@ -1069,21 +1082,39 @@ class LDdecode:
         and every one of them carries the packets.
         """
         low, high = self.CHROMA_BAND_PROBE_HZ[self.rf.system]
+        fsc = self.rf.SysParams["fsc_mhz"] * 1e6
+        fsc_per_unit = self.rf.inverse_mtf_log_db(fsc)
+        if fsc_per_unit <= 0.0:
+            return None
         pooled = []
         for _, applied_eq, devs, strength in self._veq_samples:
             applied_db = dict(applied_eq)
-            wanted = []
+            # Each packet's reading taken back to what it would have been
+            # with no video EQ and no inverse MTF applied.
+            bare = []
             for fkey, dev in devs.items():
                 if not low <= fkey <= high:
                     continue
-                per_unit = self.rf.inverse_mtf_log_db(fkey)
-                bare = dev - applied_db.get(fkey, 0.0) - strength * per_unit
-                if per_unit <= 0.0:
-                    continue
-                # strength that would bring this packet back to flat
-                wanted.append(-bare / per_unit)
-            if wanted:
-                pooled.append(float(np.mean(wanted)))
+                bare.append((float(fkey),
+                             dev - applied_db.get(fkey, 0.0)
+                             - strength * self.rf.inverse_mtf_log_db(fkey)))
+            if not bare:
+                continue
+            # The quantity being corrected is the gain at the subcarrier,
+            # so read the band's response there rather than averaging the
+            # strength each packet would want on its own.  Those are not
+            # the same number: the inverse-MTF curve rises more steeply
+            # across the band than the error does, so the packet below
+            # fsc asks for a deeper correction than the one above it, and
+            # a flat mean lands between two answers neither of which is
+            # about fsc.  On BBC Domesday DD86-DS2 inner the two ask for
+            # -1.66 and -1.27, and the mean overshoots into chrominance
+            # reading cold.  np.interp holds the end value where fsc
+            # falls outside the packets actually seen.
+            bare.sort()
+            at_fsc = float(np.interp(fsc, [f for f, _ in bare],
+                                     [b for _, b in bare]))
+            pooled.append(-at_fsc / fsc_per_unit)
         if len(pooled) < (3 if first else self.VEQ_MIN_SAMPLES):
             return None
         return float(np.median(pooled))
@@ -1105,15 +1136,33 @@ class LDdecode:
         channel there is within about a dB of flat, and the multiburst is
         the instrument that measures the thing this filter changes.
 
-        The bound is one-sided in effect: a channel the multiburst finds
-        genuinely low yields a flat-band strength above what the burst
-        asks for, so nothing is taken away.  None where no multiburst has
-        been seen.
+        A channel the multiburst finds genuinely low yields a flat-band
+        strength above what the burst asks for, so nothing is taken away.
+        None where no multiburst has been seen.
+
+        The bound reaches below zero, because a chroma band can be hot
+        for reasons the burst servo cannot undo by declining to boost.
+        The 2T servo drives mtf_level negative at inner radius - a
+        pre-demod HF boost - and mtf_deemp_feedforward exists to buy that
+        back here; on BBC Domesday DD86-DS2 inner it asks for about -1.3
+        strength units and the multiburst independently measures -1.5.
+        Floored at zero, neither could act: the burst servo bottomed out,
+        the EQ is barred from the band by veq_max_freq, and the decode
+        kept about +3 dB at fsc - chrominance 27 to 45 percent hot on
+        every VITS chrominance level, the saturation ceiling and the gain
+        ratio, worsening monotonically inwards.
+
+        Only the multiburst may spend the negative half.  The burst servo
+        clips its own estimate at zero (_deemp_calibrate) and the
+        feed-forward clips at zero too, so a cut is never applied on a
+        disc whose chroma band nothing has measured - burst amplitude is
+        a mastering choice as much as a channel gain in that direction as
+        well as this one.
         """
         flat = self._imtf_flat_band
         if flat is None:
             return None
-        return float(max(0.0, flat))
+        return float(max(-self.IMTF_STRENGTH_LIMIT, flat))
 
     def checkVideoEQ(self, field):
         """Adopt the multiburst-derived video EQ when it drifts past
@@ -1451,9 +1500,15 @@ class LDdecode:
         # of letting burst sag for the fields the tracking loop needs to
         # notice.  The burst tracking then only trims the residual.
         if self.auto_deemp and self.deemp_calibrated:
-            s = np.clip(
-                self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
-                + self.mtf_deemp_feedforward * delta, 0.0, 2.0)
+            current = self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
+            # Floored like the burst estimate, at zero or at a standing
+            # cut, whichever is lower.  The feed-forward predicts, it
+            # does not measure: it may not open a cut of its own, and it
+            # may not close one the multiburst asked for either - a
+            # plain 0.0 floor would walk a negative strength back up to
+            # zero on the next MTF adoption and undo the verdict.
+            s = np.clip(current + self.mtf_deemp_feedforward * delta,
+                        min(0.0, current), self.IMTF_STRENGTH_LIMIT)
             self.rf.DecoderParams["inverse_mtf_strength"] = float(s)
             self.rf.recompute_fvideo()
             if self._job_engine is not None:
@@ -1538,19 +1593,30 @@ class LDdecode:
         if not np.isfinite(measured) or measured <= 0 or log_base <= 0:
             return False
 
+        # Floored at zero: burst amplitude on its own may boost a channel
+        # it reads as lossy, never cut one it reads as hot, because a
+        # burst read hot is as likely to be the level the disc recorded.
+        # The cut is the multiburst's to authorise, through the ceiling
+        # below.
         estimate = float(np.clip(
-            current + np.log(expected / measured) / log_base, 0.0, 2.0
+            current + np.log(expected / measured) / log_base,
+            0.0, self.IMTF_STRENGTH_LIMIT
         ))
 
         # Burst amplitude cannot tell a channel that lost the subcarrier
         # from a disc that recorded it low; the multiburst can, so where
-        # one is being measured it caps how far this may wind.
+        # one is being measured it caps how far this may wind - and,
+        # where it finds the band hot, carries the strength below the
+        # floor the burst estimate was clipped at.
         ceiling = self._imtf_ceiling(current)
         if ceiling is not None and estimate > ceiling:
             estimate = ceiling
 
         if first:
-            if estimate < 0.02:
+            # A first calibration adopts any non-trivial strength, in
+            # either direction: a multiburst ceiling can make that first
+            # verdict a cut.
+            if abs(estimate) < 0.02:
                 return False
         elif (len(self._deemp_burst_samples) < 3
                 or np.abs(estimate - current) < 0.05):
