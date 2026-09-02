@@ -1195,8 +1195,8 @@ SERVO_FLATNESS_DB = 0.75
 #: only estimate of it this project holds is the agreement between unrelated
 #: pressings: where two discs cut on different equipment show the same
 #: deviation at the same frequency and radius, the deviation is the
-#: decoder's, not the medium's.  The allowance is therefore what the medium
-#: does *differ* by, plus what the measurement itself cannot resolve:
+#: decoder's, not the medium's.  The figure was set as what the medium does
+#: *differ* by, plus what the measurement itself cannot resolve:
 #
 #:     within-capture repeatability          0.293 dB
 #:     pressing-to-pressing at one radius     0.85  dB
@@ -1204,14 +1204,35 @@ SERVO_FLATNESS_DB = 0.75
 #:                                            1.14  dB, rounded up
 #
 #: The first is the widest spread the same packet shows across the probes
-#: and both parities of a single capture (GGV1069 inner, 4.1 MHz).  The
-#: second is the widest gap between the two PAL pressings at the same
-#: radius band and the same published nominal - 0.85 dB at 4.0 MHz inner,
-#: against 0.20 at 0.5 MHz and 0.78 at 4.8 MHz.  The 5.8 MHz packet is
-#: excluded from that term because the two discs carry different top
-#: nominals (5.8 IEC against 5.9), consistently 0.1 MHz apart at all three
-#: radii, and the response is steep enough there that the gap would be
-#: measuring the frequency difference rather than the pressings.
+#: and both parities of a single capture (GGV1069 inner, 4.1 MHz), and it
+#: re-measures unchanged on the current decoder and sample set - same
+#: packet, same capture, 0.293 dB.
+#
+#: **The second no longer re-measures, and the figure is held rather than
+#: re-derived.**  It was the widest gap between the two PAL pressings at the
+#: same radius band and the same published nominal, 0.85 dB at 4.0 MHz.  On
+#: the current sample set that gap is 3.71 dB at 4.0 MHz inner and 3.59 dB
+#: at 4.8 MHz: the inverse-MTF ceiling fix removed GGV1011's share of the
+#: 4-4.8 MHz peak and left the Domesday one standing, so the two pressings
+#: that used to agree there now disagree by more than the allowance itself.
+#
+#: Re-deriving from that would raise the allowance to about 4 dB and forgive
+#: exactly the readings it exists to catch, which AGENTS.md section 15
+#: forbids.  Deriving instead from the frequencies where the two still agree
+#: - 0.52 dB at 0.5 MHz, the only other out-of-band packet PAL carries -
+#: would give about 0.85 dB, but a 0.5 MHz packet says nothing about the
+#: medium's spread at 4.8 MHz, where it is certainly larger.  1.25 dB lies
+#: between the two readings and is the figure the earlier, less corrected
+#: decoder supported, so it stands unchanged and the excess is carried as a
+#: fault to explain.  Two pressings cannot settle it: with one peaking and
+#: one flat there is no way to tell which is which, and a third unrelated
+#: PAL pressing is what the derivation now needs.
+#
+#: The 5.8 MHz packet is excluded from the pressing term because the two
+#: discs carry different top nominals (5.8 IEC against 5.9), consistently
+#: 0.1 MHz apart at all three radii, and the response is steep enough there
+#: that the gap would be measuring the frequency difference rather than the
+#: pressings.
 #
 #: Deliberately not derived from the spread across *radii*: the optical MTF
 #: loss that varies with radius is what lddecode/rfdecode.py's inverse-MTF

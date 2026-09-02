@@ -99,10 +99,23 @@ read from the adopted `DecoderParams` and never from a live sample pool, so
 the sequence of setpoints is the same whether fields arrive serially or from
 the job engine.
 
-Measured over the twelve radius cuts, against the differential comparison
-IEC 60856-1986 Figure 7 states (see below): the PAL 2T pulse goes from 5 of
-12 checks inside their band to 8 of 12 — three moving to PASS, none the
-other way.
+Measured over the twelve radius cuts as they then stood, against the
+differential comparison IEC 60856-1986 Figure 7 states (see below): the PAL
+2T pulse went from 5 of 12 checks inside their band to 8 of 12 — three
+moving to PASS, none the other way. An A/B needs both arms measured the same
+way and the old setpoint no longer exists, so that pairing is left as it was
+taken (DD86-DS1, one field per parity).
+
+On the sample set as it stands now the pulse passes 5 of 12: 5 of 6 on
+GGV1011, 0 of 6 on Domesday DD86-DS2. That drop is the pressing and not the
+decoder. Measured the same way throughout — this tree, the gated default —
+GGV1011 passes 5 of 6 and DD86-DS1 passes 3 of 6, so the sample set as it
+was reads 8 of 12 and the sample set as it is reads 5.
+
+On Domesday middle the servo drives `mtf_level` from 0.000 to −0.744, which
+is the direction that *raises* demodulated HF, so the loop is asking for the
+correction rather than withholding it; see
+[`vits-radius-baseline.md`](vits-radius-baseline.md).
 
 ## When the multiburst ceiling reaches the burst servo
 
@@ -123,6 +136,12 @@ no further burst adoption ever happens — leaving chrominance about 20 % hot.
 EQ adoption, which the dead-band and rate limit have already made
 reproducible. It only ever lowers.
 
+That measurement was taken on a disc the test data no longer carries. The
+mechanism is visible on the sample that replaced it: on DD86-DS2 outer the
+strength reaches 0.936 on burst alone and the ceiling takes it to 0.633 at
+the video EQ adoption, and on DD86-DS2 middle it does so twice, 1.207 to
+0.716 and later 0.348 to 0.000.
+
 **Its evidence threshold did not match the pool's.** `_veq_estimate()`
 adopts a *first* video EQ on 3 samples and every later one on
 `VEQ_MIN_SAMPLES`; the flat-band measurement demanded `VEQ_MIN_SAMPLES`
@@ -133,9 +152,18 @@ one moment for one decision, is not a second opinion; both now take the same
 number. A later adoption whose pool has thinned also no longer erases a
 verdict an earlier one reached.
 
-Measured over the twelve radius cuts, this and the setpoint change together
-move **25 checks from FAIL to PASS and none the other way**, and take the
-PAL CI capture from 16 of 46 failing to 5 of 46.
+Measured over the twelve radius cuts as they then stood, this and the
+setpoint change together moved **25 checks from FAIL to PASS and none the
+other way**, and took the PAL CI capture from 16 of 46 failing to 5 of 46,
+where it remains.
+
+One consequence only became visible once the video low-pass was also fixed:
+the inverse-MTF running unbounded was most of the +1.4 to +2.9 dB peak the
+radius baseline recorded at 4–4.8 MHz on *both* PAL pressings. With the
+ceiling in place GGV1011 reads −0.24 to +1.47 dB across that band and only
+Domesday still peaks. The peak was therefore not one shared disc-side
+residual, and the reasoning that read it as one is set out in
+[`vits-radius-baseline.md`](vits-radius-baseline.md).
 
 ## The 2T pulse is judged against its own bar
 
@@ -195,11 +223,12 @@ group delay the all-pass then has to undo, and the impulse response holding
 99.9 % of the equaliser's energy shrinks from 241 samples to 33. Passband
 ripple below 4 MHz stays at 0.000 dB.
 
-Measured over the six PAL radius cuts the top packet recovers **1.07 to
-2.70 dB**, and the blanked-line RMS moves 1.24 → 1.24, 1.37 → 1.41 and
-1.56 → 1.66 IRE on GGV1011.
+Measured over the six PAL radius cuts as they then stood the top packet
+recovered **1.07 to 2.70 dB**, and the blanked-line RMS moved 1.24 → 1.24,
+1.37 → 1.41 and 1.56 → 1.66 IRE on GGV1011.
 
-**It does not close the gap.** The top packet still reads −3.4 to −8.4 dB.
+**It does not close the gap.** On the current sample set the top packet
+reads −3.4 to −8.3 dB and fails all six PAL cuts.
 What remains is the channel's, and the decoder has no reference that could
 correct it: the inverse-MTF is the only broadband lift available, its
 strength is set by burst amplitude and bounded by the chroma band, and both
@@ -211,10 +240,15 @@ conformance check rather than pass it.
 (`mtf_servo_scatter`, 0.35 level units) is measured on a pool whose noise
 depends on the passband. On BBC Domesday DD86-DS1 middle that scatter sat at
 0.35–0.41 — right on the threshold — and the wider passband takes it to
-0.42–0.50, so the servo now declines the pool on every field and `mtf_level`
-stays at its open-loop value. The gate is behaving correctly; the pool really
-is noisier. The consequence is that a static filter choice decides whether a
-servo engages, on a disc noisy enough to sit on the boundary.
+0.42–0.50, so the servo declines the pool on every field there and
+`mtf_level` stays at its open-loop value. The gate is behaving correctly;
+the pool really is noisier. The consequence is that a static filter choice
+decides whether a servo engages, on a disc noisy enough to sit on the
+boundary.
+
+It is disc-specific, not a property of the passband alone: on DD86-DS2
+middle, the pressing that replaced DS1 in the test data, the same pool
+passes the gate and the servo adopts.
 
 ## Measured results (2026-08-31)
 
@@ -228,20 +262,30 @@ servo engages, on a disc noisy enough to sit on the boundary.
 | he010 inner multiburst | +1.2 dB peak at 3.5–4 MHz | flat within +0.4 dB |
 | GGV NTSC 2 MHz dip | −1.0 dB | corrected +1.02 dB via FCC line 22 |
 
-Known residual: a +1.0–3.6 dB peak at 4–4.8 MHz on PAL, and a loss of
-5.6–9.3 dB at the top multiburst packet (5.8/5.9 MHz). Both were
-previously attributed to GGV's own recording and left uncorrected on
-the grounds that they lie inside the chroma sidebands. That
-attribution does not survive the radius baseline: BBC Domesday
-DD86-DS1, an unrelated pressing cut on different equipment, shows the
-same peak within 0.85 dB and the same top-end loss at all three radii.
-A residual two unrelated pressings share is the decoder's, not one
-disc's mastering, so it is now judged — see
-`vits_reference.OUT_OF_BAND_RESPONSE_DB`, which sets a limit from what
-the two pressings genuinely *disagree* by rather than from what they
-share. Six of the twelve radius cuts fail it at 4.0 MHz and all six
-PAL cuts fail it at the top packet; NTSC is clean out of band
-(worst +0.90 dB).
+Known residual, restated after the inverse-MTF ceiling and video
+low-pass fixes:
+
+**The 4–4.8 MHz peak was mostly the decoder's, and most of it is gone.**
+It was originally attributed to GGV's own recording and left
+uncorrected on the grounds that it lies inside the chroma sidebands.
+The radius baseline refuted that by finding the same peak on BBC
+Domesday DD86-DS1, an unrelated pressing cut on different equipment,
+and it is now judged — see `vits_reference.OUT_OF_BAND_RESPONSE_DB`,
+which sets a limit from what two pressings genuinely *disagree* by
+rather than from what they share. With the inverse-MTF ceiling
+reaching the burst servo the shared component goes: GGV1011 now reads
+−0.24 to +1.47 dB across 4.0 and 4.8 MHz, and the two rows fail 2 of 6
+cuts each instead of 6 of 6 and 5 of 6. Three of the four remaining
+failures are Domesday; the fourth is GGV1011 at 4.8 MHz outer,
++1.47 dB against 1.25. What is left does not track radius and differs
+by up to 3.5 dB between two pressings of the same title.
+
+**The top packet is not.** All six PAL cuts still fail at 5.8/5.9 MHz,
+reading −3.4 to −8.3 dB, and no servo the decoder has can reach it —
+see "The video low-pass and the top of the multiburst" above.
+
+NTSC is clean out of band at every packet (worst +0.90 dB), on the one
+cut whose multiburst amplitudes are admissible at this field count.
 
 ## NTSC specifics (measured on he010 radius sweeps, 2026-08-31)
 
