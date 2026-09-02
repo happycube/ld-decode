@@ -595,6 +595,12 @@ def detect_ntsc_white_flag(field):
 NTC7_MULTIBURST_FREQS = NTSC_MULTIBURST_NTC7
 NTC7_PEDESTAL_PP = (20.0, 40.0, 80.0)
 
+#: Widest a measured packet may sit from a nominal and still be taken as that
+#: packet.  Wider than half the closest spacing in either NTSC set (0.58 MHz,
+#: 3.0 to 3.58), so the tolerance alone cannot keep two nominals from claiming
+#: one packet - the ordering constraints in match_multiburst_packets() do that.
+MULTIBURST_MATCH_TOLERANCE_MHZ = 0.4
+
 
 def line_segment_ire(field, line, start_us, duration_us):
     """Raw waveform of part of one line, in IRE."""
@@ -737,6 +743,85 @@ def measure_ntc7_multiburst(field, line=20, start_us=16.5, end_us=45.0):
                 best_f, best_pp = f, pp
         packets.append((center, best_f, best_pp))
     return packets
+
+
+def match_multiburst_packets(packets, nominals,
+                             tolerance_mhz=MULTIBURST_MATCH_TOLERANCE_MHZ):
+    """The packets of a measured train that are a real multiburst.
+
+    A sliding-window packet finder reports every stretch of the line that
+    holds a sustained oscillation, and on a real disc that is more than the
+    multiburst: the bar-to-pedestal step at the head of the NTC-7
+    combination reads as a ~0.5 MHz half cycle, and the tail of the last
+    packet reads as a low-amplitude fragment.  Left alone this makes the
+    packet count wander with radius - National Gallery of Art reports 6, 7
+    and 8 on one side - and a bare "exactly six" test does not help, because
+    a field where two packets merge also yields six, at the wrong
+    frequencies.
+
+    Returns the sub-train that matches `nominals` one for one, in the same
+    order, or [] when no such sub-train exists.  The match minimises total
+    frequency error over all admissible assignments, so where two candidates
+    could serve one nominal the closer one wins rather than the first one.
+    Where they read the same frequency to the estimator's resolution nothing
+    can tell them apart, and the earlier one is taken; the two differ by
+    0.2 IRE where that was seen (one NGA field in 24, both reading the
+    0.467 MHz floor of the frequency search).
+
+    Both orderings are required, not just the frequency one: a multiburst
+    climbs in frequency *and* runs left to right, and it is the pair that
+    rejects a merged read.  A field whose 3.0 and 3.58 MHz packets fuse into
+    one at 3.77 MHz leaves a nominal unfilled and is refused outright, which
+    is the honest answer - the multiburst was not read, so there is nothing
+    to report.
+
+    `packets` is [(center_us, freq_mhz, pp_ire)] as measure_ntc7_multiburst
+    returns it, ordered by centre; the result is a subsequence of it.
+    """
+    n, k = len(packets), len(nominals)
+    if k == 0 or n < k:
+        return []
+
+    # cost[j][i]: least total frequency error assigning nominals[:j+1] with
+    # nominals[j] taken by packets[i]; -1 in back[j][i] marks the head.
+    infinite = float("inf")
+    cost = [[infinite] * n for _ in range(k)]
+    back = [[-1] * n for _ in range(k)]
+
+    for j in range(k):
+        for i in range(n):
+            error = abs(packets[i][1] - nominals[j])
+            if error > tolerance_mhz:
+                continue
+            if j == 0:
+                cost[j][i] = error
+                continue
+            best_prev = -1
+            for prev in range(i):
+                if cost[j - 1][prev] == infinite:
+                    continue
+                if packets[i][1] <= packets[prev][1]:
+                    continue
+                if best_prev < 0 or cost[j - 1][prev] < cost[j - 1][best_prev]:
+                    best_prev = prev
+            if best_prev >= 0:
+                cost[j][i] = cost[j - 1][best_prev] + error
+                back[j][i] = best_prev
+
+    last = -1
+    for i in range(n):
+        if cost[k - 1][i] == infinite:
+            continue
+        if last < 0 or cost[k - 1][i] < cost[k - 1][last]:
+            last = i
+    if last < 0:
+        return []
+
+    chosen = []
+    for j in range(k - 1, -1, -1):
+        chosen.append(packets[last])
+        last = back[j][last]
+    return list(reversed(chosen))
 
 
 def measure_ntc7_pedestal(field, line=20, start_us=45.5, end_us=59.5):
@@ -1212,8 +1297,10 @@ def detect_ntsc_ntc7_composite(field):
 def detect_ntsc_ntc7_combination(field):
     """NTC-7 combination VITS on line 20 (multiburst + modulated pedestal).
 
-    Returns dict with "packets" (multiburst) and "pedestal" (may be []) or
-    None.
+    Returns dict with "packets" - the six multiburst packets, gated against
+    the nominal set by match_multiburst_packets() so the count does not
+    wander with the peaks the line's own edges throw - and "pedestal" (may
+    be []), or None when either half is not there.
     """
     bar, _, _ = demod_region(field, 20, 12.5, 2.5)
     if bar is None or not (85 < bar < 115):
@@ -1225,11 +1312,9 @@ def detect_ntsc_ntc7_combination(field):
         if luma is None or not (30 < luma < 70):
             return None
 
-    packets = measure_ntc7_multiburst(field)
-    if len(packets) < 4:
-        return None
-    freqs = [p[1] for p in packets]
-    if max(freqs) < 3.0 or min(freqs) > 1.2:
+    packets = match_multiburst_packets(measure_ntc7_multiburst(field),
+                                       NTC7_MULTIBURST_FREQS)
+    if not packets:
         return None
     return {"bar_ire": bar, "packets": packets,
             "pedestal": measure_ntc7_pedestal(field)}

@@ -1196,6 +1196,15 @@ _CHAIN_SOURCE = (
     "docs/technical/vits-servos.md; analysis/differential_phase.py"
 )
 
+#: Every allowance names this as well, because a number derived from one
+#: capture is a number derived from one radius, and the MTF of a LaserDisc
+#: changes across a side.  The baseline holds one row per allowance per
+#: system giving the worst deviation it had to hold at inner, middle and
+#: outer radius over four discs.  Where an allowance is exceeded there, the
+#: row says so and names the fault; it is never a reason to widen the
+#: allowance (AGENTS.md section 15).
+_BASELINE_SOURCE = "docs/technical/vits-radius-baseline.md"
+
 #: Decoder allowance per kind of check.  See Allowance.
 DECODER_ALLOWANCES = {
     "luma_level": Allowance(
@@ -1205,7 +1214,7 @@ DECODER_ALLOWANCES = {
         rationale=(
             "measurement floor plus the response error the 2T servo leaves"
         ),
-        source=_LEVEL_SOURCE,
+        source=_LEVEL_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "chroma_level": Allowance(
         absolute=MEASUREMENT_FLOOR_IRE,
@@ -1222,7 +1231,7 @@ DECODER_ALLOWANCES = {
             "mastering and the decoder's burst-driven chrominance gain, "
             "which is exactly the quantity CHAIN_NONLINEARITY bounds"
         ),
-        source=_CHAIN_SOURCE,
+        source=_CHAIN_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "blanking_level": Allowance(
         absolute=MEASUREMENT_FLOOR_IRE,
@@ -1231,7 +1240,7 @@ DECODER_ALLOWANCES = {
             "measurement floor only: blanking is the measurement scale's own "
             "zero, so no gain error acts on it"
         ),
-        source=_LEVEL_SOURCE,
+        source=_LEVEL_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "level_ceiling": Allowance(
         absolute=MEASUREMENT_FLOOR_IRE,
@@ -1240,19 +1249,19 @@ DECODER_ALLOWANCES = {
             "measurement floor only: a ceiling is one sided, and an excursion "
             "past it by more than the floor is real"
         ),
-        source=_LEVEL_SOURCE,
+        source=_LEVEL_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "step_inequality": Allowance(
         absolute=CHAIN_NONLINEARITY,
         unit="fraction",
         rationale="end-to-end luminance non-linearity figure",
-        source=_CHAIN_SOURCE,
+        source=_CHAIN_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "differential_gain": Allowance(
         absolute=CHAIN_NONLINEARITY,
         unit="fraction",
         rationale="end-to-end differential gain figure",
-        source=_CHAIN_SOURCE,
+        source=_CHAIN_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "differential_phase": Allowance(
         absolute=CHAIN_DIFFERENTIAL_PHASE_DEG,
@@ -1261,13 +1270,13 @@ DECODER_ALLOWANCES = {
             "end-to-end differential phase band; ld-decode's own worst "
             "measured value is +2.2 degrees at inner radius"
         ),
-        source=_CHAIN_SOURCE,
+        source=_CHAIN_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "chroma_nonlinearity": Allowance(
         absolute=CHAIN_NONLINEARITY,
         unit="fraction",
         rationale="end-to-end chrominance non-linearity figure",
-        source=_CHAIN_SOURCE,
+        source=_CHAIN_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "luma_chroma_ratio": Allowance(
         absolute=CHAIN_GAIN_RATIO,
@@ -1277,7 +1286,7 @@ DECODER_ALLOWANCES = {
             "field cancels the common-mode terms an absolute level carries; "
             "see CHAIN_GAIN_RATIO"
         ),
-        source=_CHAIN_SOURCE,
+        source=_CHAIN_SOURCE + "; " + _BASELINE_SOURCE,
     ),
     "multiburst_flatness": Allowance(
         absolute=SERVO_FLATNESS_DB,
@@ -1286,7 +1295,7 @@ DECODER_ALLOWANCES = {
             "the video EQ servo's own dead-band plus the largest residual "
             "it is recorded leaving; see SERVO_FLATNESS_DB"
         ),
-        source=_SERVO_SOURCE,
+        source=_SERVO_SOURCE + "; " + _BASELINE_SOURCE,
     ),
 }
 

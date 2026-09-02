@@ -386,6 +386,8 @@ ld-decode/
 │   ├── vits_identify.py           # Which VITS a field carries, by content
 │   ├── vits_conformance.py        # Level and differential-level verdicts
 │   ├── vits_multiburst.py         # Multiburst frequency-response verdicts
+│   ├── vits_inventory.py          # What VITS a capture carries, at each radius
+│   ├── vits_manifest.py           # The surveyed VITS of the testdata captures
 │   └── video_common.py, video_frames.py
 ├── scripts/                       # Developer utilities (benchmarks, filter design, version gen)
 ├── cmake_modules/                 # CTest definitions
@@ -464,6 +466,7 @@ Rules:
 | `.tbc.json` metadata field added, removed, or repurposed | `docs/technical/metadata-format.md` |
 | Filter or servo tuning parameter added or changed | `docs/technical/filter-tuning-parameters.md` |
 | VITS-driven servo behaviour changed | `docs/technical/vits-servos.md` |
+| Conformance allowance added or changed | `docs/technical/vits-radius-baseline.md` |
 | Helper script added or behaviour changed | `docs/user-guide/scripts.md` |
 | Build, install, or dependency change | `BUILD.md` / `INSTALL.md` |
 

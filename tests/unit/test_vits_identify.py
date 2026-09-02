@@ -157,3 +157,65 @@ def test_a_level_fault_does_not_hide_the_signal():
     vs.render_definition(field, entry, luma_gain=0.80)
     found = vi.identify_vits(field, lines=[19])
     assert found[19].vits_id == entry.id
+
+
+# ---------------------------------------------------------------------------
+# A definition whose shape is not there
+# ---------------------------------------------------------------------------
+
+def test_a_line_with_plausible_levels_but_the_wrong_shape_is_not_a_match():
+    """Levels alone are not identification; the shape has to be there.
+
+    Coherently averaging four fields of moving picture gives a line that is
+    flat-ish, carries chrominance everywhere, and averages to a plausible
+    level - which matched the PAL chrominance reference at score 1.0 on a
+    picture line of a real capture, with an alignment correlation of 0.46
+    against 0.98 for the real one on the same field.  Every other feature is
+    deliberately loose against levels so a faulty decode is still
+    identified; that looseness is paid for by requiring the definition's own
+    structure to be locatable.
+
+    The stand-in here is a line split into two levels either side of the
+    nominal: its mean is the pedestal the definition states, so the levels
+    feature could not reject it, and its shape is not a pedestal at all.
+    """
+    entry = vr.definition("pal-multiburst-field2")
+    line = entry.field_line
+    pedestal = vr.to_ire(50.0, "PAL")
+
+    field = vs.make_field(entry.system, is_first_field=False)
+    vs.draw_colour_burst(field, line)
+    vs.draw_bar(field, line, 12.0, 37.0, vr.to_ire(70.0, "PAL"))
+    vs.draw_bar(field, line, 37.0, 62.0, vr.to_ire(30.0, "PAL"))
+    vs.draw_burst(field, line, 12.0, 62.0, 7.0,
+                  field.params.sample_rate_mhz / 4.0)
+    geom = vg.FieldGeometry(field, origin_samples=0.0)
+
+    # The levels feature would have let this through: the line's mean sits
+    # on the nominal the definition states.
+    mean_ire = float(np.mean(geom.segment(line, 12.0, 62.0))) / \
+        field.params.out_scale
+    assert abs(mean_ire - pedestal / field.params.out_scale) < \
+        vi.IDENTIFY_LEVEL_TOLERANCE_IRE
+
+    score, features = vi.score_definition(geom, line, entry)
+    assert features["alignment_correlation"] < vi.TIME_ALIGN_MIN_CORRELATION
+    assert score == 0.0
+    assert features["reason"] == "definition's shape not found on this line"
+    assert line not in vi.identify_vits(field, geom=geom)
+
+
+def test_the_shape_gate_is_the_threshold_that_already_gates_the_offset():
+    # Not a new number: below this correlation vits_measure already refuses
+    # to believe the offset it found, so the definition was never located.
+    from vits_measure import TIME_ALIGN_MIN_CORRELATION
+    assert vi.TIME_ALIGN_MIN_CORRELATION is TIME_ALIGN_MIN_CORRELATION
+
+
+@pytest.mark.parametrize("entry", MEASURABLE, ids=MEASURABLE_IDS)
+def test_a_conformant_rendering_is_located_well_clear_of_the_shape_gate(entry):
+    # Real captures correlate 0.77 to 1.00 where the signal is really there;
+    # the ghost that prompted the gate reads 0.46.
+    _, geom = rendered(entry)
+    _, features = vi.score_definition(geom, entry.field_line, entry)
+    assert features["alignment_correlation"] > 0.75

@@ -60,6 +60,11 @@ from video_common import (
 )
 from vits_geometry import FieldGeometry
 from vits_identify import identify_vits
+from vits_manifest import (
+    load_manifest,
+    manifest_entry,
+    presence_verdicts,
+)
 from vits_measure import (
     align_geometry,
     average_fields,
@@ -79,6 +84,7 @@ from vits_multiburst import (
 __all__ = [
     "Check",
     "check_blanked_lines",
+    "check_carried",
     "check_ceilings",
     "check_chroma_nonlinearity",
     "check_differential",
@@ -139,6 +145,13 @@ class Check:
     measured, nominal, spec_tolerance and allowance are all in `unit`.  band
     is spec_tolerance + allowance and is the figure the deviation is judged
     against; a check with no nominal (a ceiling) carries limit instead.
+
+    allowance_kind names the budget the allowance came from - a key of
+    vits_reference.DECODER_ALLOWANCES, or "multiburst_frequency" for the
+    one allowance derived per packet from MULTIBURST_FREQ_ALLOWANCE_CYCLES
+    rather than looked up.  It is what lets a survey across captures group a
+    run's checks by the budget they were judged against without parsing
+    their identifiers, which is how the radius baseline is built.
     """
 
     id: str
@@ -148,6 +161,7 @@ class Check:
     unit: str
     clause: str
     nominal: Optional[float] = None
+    allowance_kind: Optional[str] = None
     limit: Optional[float] = None
     spec_tolerance: Optional[float] = None
     allowance: Optional[float] = None
@@ -259,6 +273,7 @@ def check_levels(entry, measurements, line, parity,
             nominal=nominal,
             spec_tolerance=spec,
             allowance=allowed,
+            allowance_kind=kind,
             band=band,
             field_line=line,
             parity=parity,
@@ -329,6 +344,7 @@ def check_ceilings(entry, measurements, line, parity) -> List[Check]:
         clause=clause,
         limit=limit,
         allowance=allowed,
+        allowance_kind="level_ceiling",
         field_line=line,
         parity=parity,
         detail={"element": source},
@@ -358,6 +374,7 @@ def check_saturation(entry, measurements, line, parity) -> List[Check]:
         clause=clause,
         limit=limit,
         allowance=allowed,
+        allowance_kind="level_ceiling",
         field_line=line,
         parity=parity,
     )]
@@ -407,11 +424,47 @@ def check_blanked_lines(geom, parity) -> List[Check]:
             clause=entry.source,
             limit=allowed,
             allowance=allowed,
+            allowance_kind="blanking_level",
             field_line=entry.field_line,
             parity=parity,
             detail={"mean_ire": float(np.mean(level)),
                     "noise_rms_ire": float(np.sqrt(np.mean(level ** 2))),
                     "absolute_max_ire": float(np.max(np.abs(level)))},
+        ))
+    return checks
+
+
+def check_carried(system, entry, found_ids, parity) -> List[Check]:
+    """Whether every VITS the manifest records was found in this decode.
+
+    Without this a capture that carries nothing prints PASS, because a check
+    that is never attempted leaves no trace in the summary line.  The
+    manifest turns "no NTC-7 checks were made" into "skipped: capture
+    carries no ntsc-ntc7-combination", which is a statement a reader can act
+    on.  See vits_manifest.presence_verdicts for the three cases.
+
+    Only the definitions belonging to `parity` are judged.  The other
+    parity's signals are not on this field to be found, and asking after
+    them here would fail every one of them in turn.
+    """
+    field = 1 if parity == "first" else 2
+    definitions = [definition for definition in vr.definitions_for(system)
+                   if definition.field == field]
+    checks = []
+    for vits_id, verdict, reason in presence_verdicts(
+            definitions, entry, found_ids):
+        definition = vr.definition(vits_id)
+        checks.append(Check(
+            id=f"{vits_id}/carried",
+            label=f"{vits_id} present as surveyed",
+            verdict=verdict,
+            measured=float("nan"),
+            unit="",
+            clause=definition.source,
+            field_line=definition.field_line,
+            parity=parity,
+            reason=reason or "",
+            detail={"manifest": entry.get("label") or entry.get("capture")},
         ))
     return checks
 
@@ -453,6 +506,7 @@ def check_staircases(entry, measurements, line, parity) -> List[Check]:
             limit=limit,
             spec_tolerance=spec,
             allowance=allowed,
+            allowance_kind="step_inequality",
             field_line=line,
             parity=parity,
             reason=reason,
@@ -516,6 +570,7 @@ def check_differential(entry, measurements, line, parity) -> List[Check]:
                 limit=spec + allowed,
                 spec_tolerance=spec,
                 allowance=allowed,
+                allowance_kind="differential_gain",
                 field_line=line,
                 parity=parity,
                 detail=dict(table, positive=dg_plus, negative=dg_minus),
@@ -536,6 +591,7 @@ def check_differential(entry, measurements, line, parity) -> List[Check]:
             limit=spec + allowed,
             spec_tolerance=spec,
             allowance=allowed,
+            allowance_kind="differential_phase",
             field_line=line,
             parity=parity,
             detail=dict(table, positive=dp_plus, negative=dp_minus),
@@ -585,6 +641,7 @@ def check_chroma_nonlinearity(entry, measurements, line, parity) -> List[Check]:
         limit=allowed,
         spec_tolerance=0.0,
         allowance=allowed,
+        allowance_kind="chroma_nonlinearity",
         field_line=line,
         parity=parity,
         detail={"amplitudes_ire": amplitudes,
@@ -652,6 +709,7 @@ def check_luma_chroma_ratio(bundle, parity, system) -> List[Check]:
         nominal=nominal,
         spec_tolerance=spec * nominal,
         allowance=allowed * nominal,
+        allowance_kind="luma_chroma_ratio",
         band=band,
         parity=parity,
         detail={"luma_ire": luma.value, "chroma_ire": chroma.value,
@@ -699,6 +757,7 @@ def check_multiburst(entry, measurements, line, parity,
             nominal=row.nominal_freq_mhz,
             spec_tolerance=spec,
             allowance=allowed,
+            allowance_kind="multiburst_frequency",
             band=band,
             field_line=line,
             parity=parity,
@@ -722,6 +781,7 @@ def check_multiburst(entry, measurements, line, parity,
             nominal=0.0,
             spec_tolerance=0.0,
             allowance=allowed_db,
+            allowance_kind="multiburst_flatness",
             band=allowed_db,
             field_line=line,
             parity=parity,
@@ -746,17 +806,24 @@ def check_multiburst(entry, measurements, line, parity,
 # Driving the checks
 # ---------------------------------------------------------------------------
 
-def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS):
+def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS,
+                    manifest_record=None):
     """Every check for a capture.  Returns (checks, context).
 
     context records what the run actually had to work with - how many fields
     were averaged per parity, which signals were identified and where - so a
     PASS on a capture carrying nothing is not mistaken for a clean bill.
+
+    manifest_record, when given, is the capture's entry from
+    testdata/vits-manifest.json; it adds a carried check per definition so
+    the VITS this capture does not hold are named as skipped rather than
+    passing over in silence.  See vits_manifest.
     """
     params, fields, _ = load(path, max_fields)
     checks: List[Check] = []
     context = {"path": path, "system": params.system,
-               "fields": len(fields), "parities": []}
+               "fields": len(fields), "parities": [],
+               "manifest": (manifest_record or {}).get("label")}
     if not fields:
         return checks, context
 
@@ -802,6 +869,9 @@ def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS):
 
         checks += check_luma_chroma_ratio(bundle, parity, params.system)
         checks += check_blanked_lines(geom, parity)
+        if manifest_record is not None:
+            checks += check_carried(params.system, manifest_record,
+                                    {f["vits_id"] for f in found}, parity)
         robust_peak, absolute_peak = picture_peak_ire(geom)
         context["parities"].append({
             "parity": parity, "fields_averaged": used,
@@ -824,7 +894,9 @@ def _format_check(check: Check) -> str:
               "SKIP": "  [skip] "}[check.verdict]
     where = "" if check.field_line is None else f" line {check.field_line}"
     head = f"{marker}{check.id}{where}: "
-    if check.verdict == "SKIP" and not np.isfinite(check.measured):
+    if not np.isfinite(check.measured):
+        # A check with no number to print - it was declined, or it is a
+        # presence check, whose whole answer is its reason.
         return head + (check.reason or "not measurable")
 
     body = f"{check.measured:.3f} {check.unit}"
@@ -940,9 +1012,29 @@ def main(argv=None) -> int:
                               f"{DEFAULT_AVERAGE_FIELDS})"))
     parser.add_argument("--json", dest="json_path", default=None,
                         help="write the checks to this file as JSON")
+    parser.add_argument("--manifest", default=None,
+                        help=("a vits-manifest.json describing the captures; "
+                              "with it, the VITS this capture does not carry "
+                              "are reported as skipped by name"))
+    parser.add_argument("--capture", default=None,
+                        help=("name of the source capture in the manifest "
+                              "(default: the name of the file being judged)"))
     args = parser.parse_args(argv)
 
-    checks, context = run_conformance(args.path, args.max_fields, args.average)
+    record = None
+    if args.manifest:
+        capture = args.capture or args.path
+        record = manifest_entry(load_manifest(args.manifest), capture)
+        if record is None:
+            # An unsurveyed capture and a survey that has gone stale look the
+            # same from here, and neither may be judged as if it were known.
+            print(f"VITS CONFORMANCE: ERROR ({capture} has no entry in "
+                  f"{args.manifest}; survey it with vits_inventory.py)",
+                  file=sys.stderr)
+            return 2
+
+    checks, context = run_conformance(args.path, args.max_fields, args.average,
+                                      manifest_record=record)
     status = report(checks, context)
     if args.json_path:
         write_json(args.json_path, checks, context)

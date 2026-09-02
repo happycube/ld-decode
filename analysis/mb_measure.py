@@ -13,10 +13,11 @@ import copy
 import numpy as np
 sys.path.insert(0, "analysis")
 from video_common import (
-    load_video, measure_ntc7_multiburst, detect_patterns, summarize_patterns,
+    NTC7_MULTIBURST_FREQS, load_video, match_multiburst_packets,
+    measure_ntc7_multiburst, detect_patterns, summarize_patterns,
 )
 
-NOM = [0.5, 1.0, 2.0, 3.0, 3.58, 4.2]
+NOM = list(NTC7_MULTIBURST_FREQS)
 
 
 def main():
@@ -25,22 +26,16 @@ def main():
     params, fields, _ = load_video(path)
     scan = min(len(fields), 2 * max_frames + 20)
 
-    # A real combination multiburst has six packets whose measured
-    # frequencies climb monotonically and sit near the nominal set; content
-    # or noise can spuriously yield six "packets" at scrambled frequencies
-    # (seen on the Phil Collins CLV disc), so gate on frequency plausibility.
-    def is_valid(pk):
-        if len(pk) != 6:
-            return False
-        freqs = [p[1] for p in pk]
-        if any(b <= a for a, b in zip(freqs, freqs[1:])):
-            return False
-        return all(abs(f - nom) < 0.4 for f, nom in zip(freqs, NOM))
+    # A real combination multiburst matches the nominal set one packet for
+    # one, climbing in both frequency and time; content or noise can
+    # spuriously yield six "packets" at scrambled frequencies (seen on the
+    # Phil Collins CLV disc), so gate on that match rather than on a count.
+    # match_multiburst_packets() is the same gate detect_patterns() applies.
 
     # group valid multiburst fields by parity; coherent averaging needs one
     groups = {True: [], False: []}
     for f in fields[:scan]:
-        if is_valid(measure_ntc7_multiburst(f)):
+        if match_multiburst_packets(measure_ntc7_multiburst(f), NOM):
             groups[f.isFirstField].append(f)
 
     grp = max(groups.values(), key=len)[:10]
@@ -54,7 +49,7 @@ def main():
     mean_pic = np.mean([f.dspicture.astype(np.float64) for f in grp], axis=0)
     af = copy.copy(grp[0])
     af.dspicture = mean_pic
-    pk = measure_ntc7_multiburst(af)
+    pk = match_multiburst_packets(measure_ntc7_multiburst(af), NOM)
     ref = pk[0][2]
 
     print(f"{path}: {len(grp)} fields "

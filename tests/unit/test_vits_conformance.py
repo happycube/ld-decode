@@ -77,6 +77,10 @@ def test_every_allowance_states_where_its_number_came_from():
         assert entry.relative >= 0.0, kind
         assert entry.unit in ("IRE", "fraction", "degrees", "ratio", "dB"), (
             kind)
+        # Phase 6 task 6: a number derived from one capture is a number
+        # derived from one radius, so every allowance also names the
+        # baseline that says what it had to hold across a whole side.
+        assert vr._BASELINE_SOURCE in entry.source, kind
 
 
 def test_an_allowance_grows_with_the_level_it_judges():
@@ -546,3 +550,23 @@ def test_the_json_sidecar_round_trips():
     for record in payload["checks"]:
         assert record["clause"]
         assert record["verdict"] in ("PASS", "FAIL", "SKIP")
+
+
+@pytest.mark.parametrize("vits_id", MEASURABLE_IDS)
+def test_every_check_that_carries_an_allowance_names_the_budget_it_came_from(
+        vits_id):
+    """A number with no name cannot be traced back to what justified it.
+
+    The radius baseline groups a run's checks by their budget to show what
+    each allowance is actually holding, so a check that carries an allowance
+    without naming its kind would drop out of that survey unnoticed.
+    """
+    known = set(vr.DECODER_ALLOWANCES) | {"multiburst_frequency"}
+    entry = vr.definition(vits_id)
+    checks, measurements = judged(entry)
+    line = entry.field_line
+    checks += vc.check_multiburst(entry, measurements, line, "first")[0]
+    carrying = [check for check in checks if check.allowance is not None]
+    assert carrying, vits_id
+    for check in carrying:
+        assert check.allowance_kind in known, (vits_id, check.id)

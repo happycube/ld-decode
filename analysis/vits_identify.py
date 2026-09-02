@@ -34,6 +34,7 @@ import vits_reference as vr
 from vits_geometry import FieldGeometry
 from vits_measure import (
     Measurement,
+    TIME_ALIGN_MIN_CORRELATION,
     align_geometry,
     average_fields,
     chroma_expected,
@@ -150,6 +151,18 @@ def score_definition(geom: FieldGeometry, line: int, entry):
     Each of these must also clear IDENTIFY_FEATURE_FLOOR on its own; the
     mean alone lets two soft features outvote the discriminating one.
 
+    A line whose waveform the definition could not be located on at all -
+    an alignment correlation below vits_measure.TIME_ALIGN_MIN_CORRELATION,
+    which is already the threshold below which the measured offset is not
+    believed - scores 0 whatever its levels read.  The features above are
+    all deliberately loose against levels, so that a decode with a real
+    fault is still identified; that looseness has to be paid for by
+    requiring the shape.  Four coherently averaged fields of moving picture
+    average to something flat and low, which reads as a plausible set of
+    levels and matched the PAL chrominance reference on a picture line at
+    score 1.0 with a correlation of 0.46, against 0.98 for the real one on
+    the same field.
+
     Returns (score, features).  Definitions whose only elements are blanked
     score None: a blank line has no content to match, so it can only be
     recognised by the line number the standard names, and that check belongs
@@ -160,12 +173,16 @@ def score_definition(geom: FieldGeometry, line: int, entry):
         return None, {"reason": "blanked line has no content to match"}
 
     geom, offset_us, correlation = align_geometry(geom, line, entry)
-    measurements = measure_definition(geom.field, entry, line, geom, align=False)
-    if not measurements:
-        return 0.0, {"reason": "nothing measurable on the line"}
-
     features = {"alignment_us": offset_us,
                 "alignment_correlation": correlation}
+    if correlation < TIME_ALIGN_MIN_CORRELATION:
+        features["reason"] = "definition's shape not found on this line"
+        return 0.0, features
+
+    measurements = measure_definition(geom.field, entry, line, geom, align=False)
+    if not measurements:
+        features["reason"] = "nothing measurable on the line"
+        return 0.0, features
 
     levels = []
     for element in entry.elements:
