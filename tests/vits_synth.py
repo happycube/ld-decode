@@ -224,13 +224,19 @@ def draw_colour_burst(field, line, peak_ire=None, phase_deg=0.0):
 
 def render_definition(field, entry, line=None, luma_gain=1.0, chroma_gain=1.0,
                       level_offset_ire=0.0, packet_gain=None,
-                      packet_freq_scale=1.0):
+                      packet_freq_scale=1.0, chroma_phase_deg=0.0):
     """Draw every element of a definition at its nominal onto one line.
 
     ``luma_gain``, ``chroma_gain`` and ``level_offset_ire`` inject the fault
     modes the conformance checks exist to catch: a flat gain error, a gain
     error confined to one band (the differential-level fault), and a
     pedestal shift.  All default to a conformant rendering.
+
+    ``chroma_phase_deg`` turns every chrominance element on the line without
+    moving the colour burst, which is the fault a disc shows when its
+    recorded subcarrier is slightly off its own burst: successive fields
+    read the same amplitude at a walking phase, and averaging them cancels
+    the chrominance the burst says is there.
 
     ``packet_gain`` and ``packet_freq_scale`` do the same for a multiburst.
     ``packet_gain`` is called with a packet's nominal frequency in MHz and
@@ -280,6 +286,7 @@ def render_definition(field, entry, line=None, luma_gain=1.0, chroma_gain=1.0,
             draw_burst(
                 field, line, element.start_us, element.end_us,
                 scale(element.nominal) * gain, freq_mhz,
+                phase_deg=chroma_phase_deg,
             )
         elif element.kind == "staircase":
             windows = (element.step_windows_us

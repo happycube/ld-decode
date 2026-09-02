@@ -41,23 +41,6 @@ around" below. Checks are grouped by the `allowance_kind` each one carries, so a
 | `dolby-surround-side1-middle` | NTSC | middle (50 %) | 23959–23978 | 20.9 MB | 38 (19 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
 | `dolby-surround-side1-outer` | NTSC | outer (95 %) | 45114–45133 | 23.2 MB | 40 (20 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
 
-## The samples
-
-| Sample | System | Radius | Source file frames | Size | Decoded fields | VITS |
-|---|---|---|---|---|---|---|
-| `ggv1011-side1-inner` | PAL | inner (5 %) | 1429–1458 | 30.3 MB | 60 (30 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `ggv1011-side1-middle` | PAL | middle (50 %) | 12236–12265 | 32.3 MB | 54 (27 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `ggv1011-side1-outer` | PAL | outer (95 %) | 23042–23071 | 33.1 MB | 58 (29 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `domesday-ds1-community-north-inner` | PAL | inner (5 %) | 3045–3074 | 25.7 MB | 58 (29 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `domesday-ds1-community-north-middle` | PAL | middle (50 %) | 27351–27380 | 36.2 MB | 46 (23 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `domesday-ds1-community-north-outer` | PAL | outer (95 %) | 51657–51686 | 38.3 MB | 60 (30 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `ggv1069-side1-inner` | NTSC | inner (5 %) | 1545–1564 | 17.5 MB | 38 (19 per parity) | fcc-multiburst, ntc7-combination, ntc7-composite, virs1, virs2 |
-| `ggv1069-side1-middle` | NTSC | middle (50 %) | 12888–12907 | 17.8 MB | 40 (20 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
-| `ggv1069-side1-outer` | NTSC | outer (95 %) | 24231–24250 | 18.9 MB | 38 (19 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
-| `dolby-surround-side1-inner` | NTSC | inner (5 %) | 2804–2823 | 16.4 MB | 40 (20 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
-| `dolby-surround-side1-middle` | NTSC | middle (50 %) | 23959–23978 | 20.9 MB | 38 (19 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
-| `dolby-surround-side1-outer` | NTSC | outer (95 %) | 45114–45133 | 23.2 MB | 40 (20 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
-
 ## What each allowance had to hold
 
 One row per allowance per system, giving the worst any check judged against it read at each radius,
@@ -150,26 +133,59 @@ Phase 5 records.
 ## The averaging defect this baseline had to work around
 
 **These figures are taken from one field per parity, not the conformance runner's default four,
-because coherent averaging cancels PAL chrominance.** On the Domesday middle cut, four second
-fields sharing one `fieldPhaseID` each read the chrominance reference at 9.4–10.9 / 30.7–33.2 /
-50.0–53.8 IRE; their average reads 2.7 / 7.8 / 12.9 IRE, a factor of four down. The same run on
-NTSC is unaffected — GGV1069's chroma zones read 11.2 / 21.9 / 45.3 IRE from one field and
-10.5 / 21.5 / 44.0 IRE from four, which is the noise reduction the averaging is for.
+because on one of these discs coherent averaging cancelled chrominance.** On the Domesday middle
+cut, four second fields sharing one `fieldPhaseID` each read the chrominance reference at
+9.4–10.9 / 30.7–33.2 / 50.0–53.8 IRE; their average read 2.7 / 7.8 / 12.9 IRE, a factor of four
+down.
 
-`vits_measure.average_fields` groups by `fieldPhaseID` precisely to avoid this, and on NTSC that
-works. On PAL it does not, and the reason is not one a different grouping can fix. Measuring the
-subcarrier phase against the field's own sample lattice, in the same fields:
+It is **not** a PAL-wide fault, and the first statement of it in this document said it was. Measured
+across all twelve cuts, the chrominance an average keeps of what its members carried is:
 
-| Field | `fieldPhaseID` | Phase at 6.8 µs (burst) | Phase at 24 µs (chroma bar) |
-|---|---|---|---|
-| 1 | 2 | +1.09° | +129.6° |
-| 9 | 2 | +1.96° | +267.8° |
-| 17 | 2 | +0.05° | +28.7° |
+| Cut | First parity | Second parity |
+|---|---|---|
+| `ggv1011-side1` (PAL), all three radii | no chrominance on the VBI | 0.999–1.000 |
+| `domesday-ds1-community-north` (PAL), all three radii | no chrominance on the VBI | **0.258–0.346** |
+| `ggv1069-side1` (NTSC), all three radii | 1.000 | 1.000 |
+| `dolby-surround-side1` (NTSC), all three radii | 1.000 | 0.999–1.000 |
 
-The burst agrees to a degree; the bar 18 µs later does not, and the disagreement is different at
-the two offsets. The fields differ in subcarrier *frequency* across the line, not merely in phase,
-so no per-field grouping or rotation can align them — sample-wise averaging of PAL chrominance
-across fields is not a thing that can be made to work as it stands.
+One disc, one parity. The cause is not the grouping and not the sample lattice. Following one
+element down a line, each field's chrominance phase is *constant* — the same at 20, 40 and 50 µs
+into the line — so the fields do not differ in subcarrier frequency across a line. They differ from
+each other by a fixed rotation per field:
+
+| Disc, second parity | Chrominance phase advance per frame | Closes on the 8-field sequence? |
+|---|---|---|
+| `ggv1011-side1` | 270.0° (σ 2.2°) | yes, exactly |
+| `domesday-ds1-community-north` | 146° (σ 8–11°) | no |
+
+270° per frame is four frames to the turn, which is the 8-field PAL sequence exactly, and grouping
+by `fieldPhaseID` collects those fields correctly. Domesday's 146° closes on nothing: it is a
+subcarrier offset of about 10 Hz between the recorded chrominance and the burst it is measured
+against, so its second-parity fields walk steadily through phase no matter how they are grouped.
+The colour burst does not show it — burst phase agrees to a degree within every group on both
+discs — so the burst cannot be used to detect it either.
+
+A `fieldPhaseID` states a position in the analogue colour sequence. That is a weaker claim than a
+shared subcarrier phase, and on a disc like this one the two come apart.
+
+**Fixed.** `vits_measure.average_fields()` now measures what an average kept of its members'
+chrominance, over the VBI lines that may carry a VITS, and abandons the group for a single field
+when the figure falls below `MIN_AVERAGE_COHERENCE` (0.85, set from the point at which cancellation
+alone spends the whole of the tightest chrominance allowance). The threshold has wide clearance:
+nothing measured on these twelve cuts lies between 0.35 and 0.999. A refusal is printed and carried
+in the JSON context rather than showing only as a smaller field count. Only the three Domesday
+second-parity cuts refuse; the other twenty-one parities keep their four-field average, and the
+chrominance they report is the single-field reading to within the noise the averaging removes.
+
+The search for whichever *subset* of a group does agree was deliberately not implemented: choosing
+fields by the amplitude they report is selecting the answer, not measuring it.
+
+The table above was measured before the gate existed and is left as it stands, because it is the
+conservative reading: re-measuring all twelve cuts at the gated default moves eleven of the
+twenty-one allowance rows and every one of them by less than the noise the averaging removes — the
+largest movements are `chroma_level` PAL 5.48× to 4.20×, `luma_level` NTSC 4.81× to 4.18× and
+`multiburst_flatness` PAL 0.63× to 0.18×, all downwards. No allowance crosses 1.00 in either
+direction, so no finding in this document depends on which of the two the numbers came from.
 
 Why this was never seen: the PAL CI capture decodes to six fields, and grouping those by
 `fieldPhaseID` leaves one field per group, so every PAL number this project has published was
@@ -178,13 +194,13 @@ averaging path has had anything to average.
 
 Phase 5's NTC-7 restriction — amplitude conformance only against a combination coherently averaged
 over at least ten same-parity fields — is unaffected, because it is NTSC only and NTSC averaging is
-verified working above.
+verified working above. Note that on a capture where the gate does refuse, that restriction will
+now correctly decline to judge those amplitudes rather than judging a cancelled average.
 
 ## What this baseline sends to Phase 8
 
 | Allowance | System | Worst | Where | Reading |
 |---|---|---|---|---|
-| — | PAL | 4× under-read | Any chrominance measured through `average_fields` | The averaging defect above; the runner's default `--average 4` reports PAL chrominance wrongly on any capture with enough fields to group |
 | `luma_level` | PAL, NTSC | 6.19×, 4.81× | `pulse_2t`, worsening outwards | High-frequency luminance above the EQ's anchor band |
 | `luma_chroma_ratio` | NTSC, PAL | 2.09×, 5.91× | Every radius of every disc | Fails on NTSC too, which Phase 4 did not see |
 | `chroma_level` | PAL | 5.48× | 5.8 MHz multiburst packet | The band-edge roll-off Phase 5 records |

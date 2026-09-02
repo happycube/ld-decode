@@ -575,6 +575,180 @@ def test_averaging_refuses_a_parity_that_is_not_there():
         vm.average_fields([field], 4, parity=False)
 
 
+
+# ---------------------------------------------------------------------------
+# Coherent averaging: verifying the lock rather than assuming it
+# ---------------------------------------------------------------------------
+
+#: The per-frame chrominance phase advance measured on BBC Domesday DD86-DS1
+#: second-parity fields; see vits_measure.MIN_AVERAGE_COHERENCE.  Every field
+#: of a walking group shares a fieldPhaseID, which is exactly the case the
+#: gate exists to catch.
+DOMESDAY_WALK_DEG = 146.0
+
+
+def walking_chroma_fields(entry, count, phase_step_deg, rng=None,
+                          sigma_ire=0.0):
+    """`count` renderings whose chrominance turns by phase_step_deg a field.
+
+    The colour burst stays where it was drawn, so these fields agree on
+    their burst and disagree on the chrominance measured against it, and
+    they all carry one field_phase_id so that grouping cannot separate them.
+    """
+    fields = []
+    for index in range(count):
+        field = vs.make_field(
+            entry.system, is_first_field=(entry.field == 1), field_phase_id=1)
+        vs.render_definition(field, entry,
+                             chroma_phase_deg=index * phase_step_deg)
+        if rng is not None and sigma_ire:
+            vs.add_noise(field, rng, sigma_ire)
+        field.field_index = index
+        fields.append(field)
+    return fields
+
+
+def test_an_average_that_cancels_chrominance_is_refused():
+    """The Domesday fault: one phase id, four different subcarrier phases."""
+    entry = vr.definition("pal-multiburst-field2")
+    fields = walking_chroma_fields(entry, 4, DOMESDAY_WALK_DEG)
+
+    averaged, used = vm.average_fields(fields, 4, phase_locked=True)
+
+    assert used == 1
+    assert averaged.chroma_coherence < vm.MIN_AVERAGE_COHERENCE
+    assert "do not share a subcarrier phase" in averaged.averaging_refused
+    # Falling back leaves something that may still be measured for chroma.
+    assert averaged.phase_locked is True
+
+
+def test_an_average_that_keeps_its_chrominance_is_used():
+    entry = vr.definition("pal-multiburst-field2")
+    fields = walking_chroma_fields(entry, 4, 0.0)
+
+    averaged, used = vm.average_fields(fields, 4, phase_locked=True)
+
+    assert used == 4
+    assert averaged.averaging_refused == ""
+    assert averaged.chroma_coherence > 0.99
+
+
+def test_the_refusal_keeps_the_chrominance_reading_true():
+    """What the gate is for: the refused average would have read low."""
+    entry = vr.definition("pal-multiburst-field2")
+    element = entry.element("chroma_bar_100")
+    nominal = vr.to_ire(element.nominal, "PAL")
+    fields = walking_chroma_fields(entry, 4, DOMESDAY_WALK_DEG)
+
+    gated, _ = vm.average_fields(fields, 4, phase_locked=True)
+    kept = vm.measure_chroma(
+        vg.FieldGeometry(gated, origin_samples=0.0),
+        entry.field_line, element, "PAL").value
+
+    ungated = vm._mean_field(fields)
+    cancelled = vm.measure_chroma(
+        vg.FieldGeometry(ungated, origin_samples=0.0),
+        entry.field_line, element, "PAL").value
+
+    assert kept == pytest.approx(nominal, abs=2.0)
+    assert cancelled < 0.5 * nominal
+
+
+def test_two_fields_in_antiphase_cancel_completely():
+    entry = vr.definition("pal-multiburst-field2")
+    fields = walking_chroma_fields(entry, 2, 180.0)
+    coherence = vm.chroma_coherence(vm._mean_field(fields), fields)
+    assert coherence == pytest.approx(0.0, abs=0.05)
+
+
+def test_coherence_is_undefined_where_no_line_carries_chrominance():
+    """An average with no chrominance to cancel cannot have cancelled any."""
+    entry = vr.definition("pal-blanked-field1")
+    fields = [vs.make_field("PAL", is_first_field=True, field_phase_id=1)
+              for _ in range(4)]
+    for field in fields:
+        vs.render_definition(field, entry)
+
+    averaged, used = vm.average_fields(fields, 4, phase_locked=True)
+
+    assert vm.chroma_coherence(averaged, fields) is None
+    assert used == 4
+    assert averaged.averaging_refused == ""
+
+
+def test_parity_only_averaging_is_not_gated():
+    """phase_locked=False already says chrominance is not being read."""
+    entry = vr.definition("pal-multiburst-field2")
+    fields = walking_chroma_fields(entry, 4, DOMESDAY_WALK_DEG)
+
+    averaged, used = vm.average_fields(fields, 4, phase_locked=False)
+
+    assert used == 4
+    assert averaged.averaging_refused == ""
+    assert averaged.phase_locked is False
+
+
+def test_a_moving_picture_is_not_read_as_a_phase_fault(seeded_rng):
+    """Coherence is judged on the VBI, which does not move."""
+    entry = vr.definition("pal-multiburst-field2")
+    fields = walking_chroma_fields(entry, 4, 0.0)
+    params = fields[0].params
+    first_active = max(vg.VITS_CANDIDATE_LINES["PAL"]) + 1
+    for field in fields:
+        for line in range(first_active, params.field_height + 1):
+            vs.draw_burst(field, line, 20.0, 50.0, 40.0,
+                          params.sample_rate_mhz / 4.0,
+                          phase_deg=seeded_rng.uniform(0.0, 360.0))
+
+    averaged, used = vm.average_fields(fields, 4, phase_locked=True)
+
+    assert used == 4
+    assert averaged.averaging_refused == ""
+
+
+def test_the_threshold_trips_before_a_chrominance_allowance_is_spent():
+    """The constant's stated derivation, against the reference it cites."""
+    entry = vr.definition("pal-multiburst-field2")
+    element = entry.element("chroma_bar_100")
+    nominal = vr.to_ire(element.nominal, "PAL")
+    band = vr.allowance("chroma_level").band(nominal)
+    # A loss of amplitude this large moves the reading by its whole band.
+    assert vm.MIN_AVERAGE_COHERENCE < 1.0 - band / nominal
+
+
+def test_a_four_field_pal_average_reads_the_amplitude_one_field_reads(
+        seeded_rng):
+    """Phase 8 task 4's acceptance: averaging must not cost amplitude.
+
+    A group that does share a subcarrier phase has to come through the
+    averaging with its chrominance intact, or the gate above would be
+    hiding a fault rather than catching one.
+    """
+    entry = vr.definition("pal-multiburst-field2")
+    element = entry.element("chroma_bar_100")
+    fields = walking_chroma_fields(entry, 4, 0.0, rng=seeded_rng,
+                                   sigma_ire=2.0)
+
+    single = vm.measure_chroma(
+        vg.FieldGeometry(fields[0], origin_samples=0.0),
+        entry.field_line, element, "PAL").value
+
+    averaged, used = vm.average_fields(fields, 4, phase_locked=True)
+    assert used == 4
+    four = vm.measure_chroma(
+        vg.FieldGeometry(averaged, origin_samples=0.0),
+        entry.field_line, element, "PAL").value
+
+    assert four == pytest.approx(single, abs=1.0)
+
+
+def test_a_refusal_is_reported_and_not_merely_a_smaller_count():
+    entry = vr.definition("pal-multiburst-field2")
+    fields = walking_chroma_fields(entry, 4, DOMESDAY_WALK_DEG)
+    averaged, _ = vm.average_fields(fields, 4, phase_locked=True)
+    assert str(vm.MIN_AVERAGE_COHERENCE) in averaged.averaging_refused
+    assert "4 fields" in averaged.averaging_refused
+
 # ---------------------------------------------------------------------------
 # Result plumbing
 # ---------------------------------------------------------------------------

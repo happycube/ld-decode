@@ -875,6 +875,8 @@ def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS,
         robust_peak, absolute_peak = picture_peak_ire(geom)
         context["parities"].append({
             "parity": parity, "fields_averaged": used,
+            "chroma_coherence": getattr(probe, "chroma_coherence", None),
+            "averaging_refused": getattr(probe, "averaging_refused", ""),
             "origin_samples": geom.origin_samples,
             "origin_measured": geom.origin_measured,
             "picture_peak_ire": robust_peak,
@@ -932,6 +934,8 @@ def report(checks, context, stream=None) -> int:
               f"active picture peaks at {parity['picture_peak_ire']:.1f} IRE "
               f"(max {parity['picture_max_ire']:.1f}, not judged)",
               file=stream)
+        if parity.get("averaging_refused"):
+            print(f"    note: {parity['averaging_refused']}", file=stream)
         for found in parity["identified"]:
             moved = "" if found["on_expected_line"] else "  [moved]"
             print(f"    line {found['line']:3d}  {found['vits_id']:<24s} "

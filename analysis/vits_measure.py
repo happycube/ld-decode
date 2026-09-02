@@ -46,9 +46,16 @@ import numpy as np
 # Local: analysis/ is a directory of scripts rather than a package, and every
 # entry point puts it on sys.path before importing this module.
 import vits_reference as vr
-from vits_geometry import FieldGeometry, measure_sync_origin, row_lattice_offset
+from vits_geometry import (
+    FieldGeometry,
+    VITS_CANDIDATE_LINES,
+    measure_sync_origin,
+    row_lattice_offset,
+)
 from video_common import (
+    CHROMA_PRESENT,
     burst_ref,
+    demod_region,
     load_cvbs,
     luminance_nonlinearity,
     phase_diff,
@@ -62,6 +69,7 @@ __all__ = [
     "Measurement",
     "align_geometry",
     "average_fields",
+    "chroma_coherence",
     "chroma_expected",
     "guarded_window",
     "load",
@@ -175,6 +183,42 @@ CHROMA_ZONE_MIN_US = 1.5
 #: 0.4 us wide, so an unaligned window measures its skirt.
 TIME_ALIGN_SEARCH_US = 2.0
 TIME_ALIGN_MIN_CORRELATION = 0.5
+
+#: Fraction of its members' chrominance amplitude a coherent average must
+#: keep before the average is used in place of a single field.
+#:
+#: Averaging fields that do not share a subcarrier phase cancels chrominance
+#: instead of denoising it, and the cancellation is invisible in the result:
+#: the average is a clean waveform reading a chrominance amplitude that is
+#: simply too small.  Sharing a fieldPhaseID does not guarantee a shared
+#: phase - it states a position in the analogue colour sequence, and a disc
+#: whose recorded subcarrier is slightly off its own burst walks through
+#: phase regardless of it.  BBC Domesday DD86-DS1 does exactly that on its
+#: second-parity fields, advancing about 146 degrees per frame (roughly a
+#: 10 Hz offset) where Pioneer GGV1011 sits on an exact 270 degrees, so the
+#: lock has to be measured rather than assumed.
+#:
+#: The threshold is set by what a cancellation would do to a reading rather
+#: than by how far from 1.0 noise reaches.  The tightest chrominance
+#: allowance in vits_reference is the PAL 100% chrominance bar, +-6.5 IRE on
+#: a 50 IRE nominal, so a 13% loss of amplitude spends the whole of it;
+#: 0.85 trips before that.  Measured over the twelve radius cuts of
+#: docs/technical/vits-radius-baseline.md the separation is wide - every
+#: coherent average reads 0.999 to 1.000 and every cancelled one 0.26 to
+#: 0.35 - so nothing sits near the threshold either way.
+MIN_AVERAGE_COHERENCE = 0.85
+
+#: Window inside the active line, in (start_us, duration_us), over which
+#: that fraction is measured.  It starts after the colour burst and the
+#: back porch on both systems and ends before the front porch of the
+#: shorter NTSC line.
+AVERAGE_COHERENCE_WINDOW_US = (12.0, 44.0)
+
+#: Chrominance amplitude, in IRE, a line must carry before it is allowed to
+#: speak for the coherence of an average.  Below this the ratio is noise
+#: over noise; video_common.CHROMA_PRESENT is the same threshold the pattern
+#: detectors use to call a line chromatic.
+AVERAGE_COHERENCE_FLOOR_IRE = CHROMA_PRESENT
 
 # ---------------------------------------------------------------------------
 # Loading
@@ -1218,10 +1262,23 @@ def average_fields(fields, count: int = 10, phase_locked: bool = True,
     parity, when given, restricts the group to first (True) or second
     (False) fields.
 
+    A phase_locked=True group is verified rather than trusted.  A shared
+    fieldPhaseID states a position in the analogue colour sequence, which is
+    not the same claim as a shared subcarrier phase, and where the two come
+    apart the average cancels chrominance silently - see
+    MIN_AVERAGE_COHERENCE.  When the average fails to keep its members'
+    chrominance the group is abandoned and a single field is returned
+    instead, which is unbiased and trivially phase locked.  The alternative,
+    searching for whichever subset does agree, would be selecting fields by
+    the amplitude they report, and that is not a measurement.
+
     Returns (averaged_field, n_used).  The result is a shallow copy of the
     first field of the group carrying a float64 dspicture, so it keeps that
     field's params and cvbs_row_starts, and gains n_averaged and
-    phase_locked attributes that the chroma primitives read.
+    phase_locked attributes that the chroma primitives read, plus
+    chroma_coherence (the measured fraction, or None where no line carried
+    enough chrominance to say) and averaging_refused (why a group was
+    abandoned, or "").
     """
     if count < 1:
         raise ValueError(f"count must be at least 1, got {count}")
@@ -1236,9 +1293,75 @@ def average_fields(fields, count: int = 10, phase_locked: bool = True,
         groups.setdefault(key, []).append(item)
     group = max(groups.values(), key=len)[:count]
 
+    averaged = _mean_field(group)
+    coherence = None
+    refused = ""
+    if phase_locked and len(group) > 1:
+        coherence = chroma_coherence(averaged, group)
+        if coherence is not None and coherence < MIN_AVERAGE_COHERENCE:
+            refused = (
+                f"averaging {len(group)} fields sharing a subcarrier "
+                f"sequence position kept only {coherence:.2f} of their "
+                f"chrominance, below {MIN_AVERAGE_COHERENCE:.2f}; they do "
+                f"not share a subcarrier phase, so one field was measured "
+                f"instead")
+            group = group[:1]
+            averaged = _mean_field(group)
+
+    averaged.n_averaged = len(group)
+    averaged.phase_locked = bool(phase_locked) or len(group) == 1
+    averaged.chroma_coherence = coherence
+    averaged.averaging_refused = refused
+    return averaged, len(group)
+
+
+def _mean_field(group):
+    """A shallow copy of group[0] whose dspicture is the group's mean."""
     averaged = copy.copy(group[0])
     averaged.dspicture = np.mean(
         [item.dspicture.astype(np.float64) for item in group], axis=0)
-    averaged.n_averaged = len(group)
-    averaged.phase_locked = bool(phase_locked) or len(group) == 1
-    return averaged, len(group)
+    return averaged
+
+
+def chroma_coherence(averaged, group,
+                     window_us=AVERAGE_COHERENCE_WINDOW_US,
+                     floor_ire=AVERAGE_COHERENCE_FLOOR_IRE):
+    """How much of its members' chrominance an average kept, or None.
+
+    The ratio of the chrominance amplitude read from `averaged` to the mean
+    of the amplitudes read from each field of `group`, pooled over the VBI
+    lines that may carry a VITS.  Fields that share a subcarrier phase add,
+    giving 1; fields spread over the phase circle cancel towards 1/sqrt(n).
+
+    Only the VBI is looked at.  Active picture chrominance changes between
+    fields for the honest reason that the picture moves, and a moving
+    picture must not be read as a phase fault.
+
+    None where no line carried at least floor_ire of chrominance in any
+    field, which says the question does not arise: an average that has no
+    chrominance to cancel cannot cancel any.
+    """
+    lines = VITS_CANDIDATE_LINES.get(getattr(averaged.params, "system", None))
+    if not lines:
+        return None
+    start_us, duration_us = window_us
+    kept = pooled = 0.0
+    for line in lines:
+        members = []
+        for item in group:
+            _, amplitude, _ = demod_region(item, line, start_us, duration_us)
+            if amplitude is not None:
+                members.append(amplitude)
+        if not members:
+            continue
+        carried = float(np.mean(members))
+        if carried < floor_ire:
+            continue
+        _, amplitude, _ = demod_region(averaged, line, start_us, duration_us)
+        if amplitude is None:
+            continue
+        kept += amplitude
+        pooled += carried
+    if pooled <= 0.0:
+        return None
+    return kept / pooled

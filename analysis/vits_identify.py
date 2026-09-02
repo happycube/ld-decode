@@ -31,7 +31,7 @@ import numpy as np
 # Local: analysis/ is a directory of scripts rather than a package, and every
 # entry point puts it on sys.path before importing this module.
 import vits_reference as vr
-from vits_geometry import FieldGeometry
+from vits_geometry import FieldGeometry, VITS_CANDIDATE_LINES
 from vits_measure import (
     Measurement,
     TIME_ALIGN_MIN_CORRELATION,
@@ -77,16 +77,6 @@ IDENTIFY_FEATURE_FLOOR = 0.50
 #: is evidence for the developer, not part of the verdict.
 SCORED_FEATURES = ("levels", "chroma_present", "chroma_absent",
                    "frequency", "monotonic")
-
-#: Field lines that may carry a VITS.  Vertical sync and the equalising
-#: pulses end before these and the first active picture line follows them.
-#: PAL reaches further up because IEC 60856-1986 9.1.3 Amendment 2 permits
-#: the multiburst on frame line 13.
-VITS_CANDIDATE_LINES = {
-    "NTSC": tuple(range(10, 25)),
-    "PAL": tuple(range(6, 24)),
-}
-
 
 @dataclass
 class Identification:

@@ -69,6 +69,20 @@ SYNC_PROBE_FIRST_LINE = 40
 SYNC_PROBE_LINE_STEP = 4
 SYNC_ORIGIN_MAX_SCATTER_SAMPLES = 1.0
 
+#: Field lines that may carry a VITS.  Vertical sync and the equalising
+#: pulses end before these and the first active picture line follows them.
+#: PAL reaches further up because IEC 60856-1986 9.1.3 Amendment 2 permits
+#: the multiburst on frame line 13.
+#:
+#: Defined here rather than beside the identifier that scans them because
+#: vits_measure needs the same lines to check that a coherent average kept
+#: the chrominance its members carried, and importing the identifier there
+#: would close a cycle.
+VITS_CANDIDATE_LINES = {
+    "NTSC": tuple(range(10, 25)),
+    "PAL": tuple(range(6, 24)),
+}
+
 
 def row_lattice_offset(field, line: int) -> float:
     """How far a row's first stored sample sits past the true start of its
