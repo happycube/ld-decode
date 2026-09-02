@@ -50,8 +50,10 @@
 #                                                    roundtrip-lds-bytes,
 #                                                    compress-lds-round-trip
 #   <cut>-cvbs          decode-<cut>-cvbs         -> conformance-<cut>-vits
-#                                                    one pair per radius cut;
-#                                                    see the sweep below
+#                                                    one pair per radius cut,
+#                                                    and one per whole capture
+#                                                    the conformance lane
+#                                                    judges; see the sweep below
 #
 # No test both sets up and requires a fixture, so "ctest -R <name>" pulls in
 # exactly the producers listed above and nothing else.
@@ -531,12 +533,20 @@ set_tests_properties(conformance-pal-vits PROPERTIES
 # The modulation transfer function of a LaserDisc changes with radius, so a
 # decoder can pass every conformance check at one radius and fail at another,
 # and a suite that only ever sees one radius cannot tell a correct decoder
-# from a decoder tuned to one part of one disc.  testdata/radius/ holds twelve
-# cuts - four discs at 5 %, 50 % and 95 % of their recorded band - plus
-# domesday-ds1-community-north-outer, kept as a regression sample because its
-# multiburst finds the chroma band already flat and so declines the video EQ
-# servo's adoption, which is the path that once let the burst servo wind
+# from a decoder tuned to one part of one disc.  testdata/radius/ holds
+# eighteen cuts - six discs at 5 %, 50 % and 95 % of their recorded band -
+# plus domesday-ds1-community-north-outer, kept as a regression sample because
+# its multiburst finds the chroma band already flat and so declines the video
+# EQ servo's adoption, which is the path that once let the burst servo wind
 # unbounded.  See docs/technical/vits-radius-baseline.md.
+#
+# The sixth disc and the second GGV1069 capture are there so that no gate
+# rests on one disc image.  ggv1069-side1-ldv4300d-* is the same pressing as
+# ggv1069-side1-* read on a different player years apart, which is the only
+# way to separate a fault of the decoder from a fault of one capture;
+# industrial-lv-side1-* is a non-Domesday PAL pressing, and the first in
+# testdata/ carrying the PAL_MULTIBURST_IEC frequency set that
+# analysis/vits_reference.py says real discs may use.
 #
 # Each cut is judged against testdata/vits-manifest.json, the surveyed record
 # of what the disc carries, so a capture is only ever asked for the checks it
@@ -549,6 +559,20 @@ set_tests_properties(conformance-pal-vits PROPERTIES
 # The decodes take the default CVBS encoding (CVBS_U10_4FSC) rather than
 # forcing CVBS_U16_4FSC, so the encoding users actually get is the encoding
 # under test.
+#
+# They do force --exact-speculation, which is not the default, because
+# without it the decode is not reproducible between machines.  The thread
+# count defaults to min(max(cpu_count - 2, 1), 10) - 10 on a 16-core
+# developer machine, 2 on a 4-core CI runner - and the speculation
+# acceptance path makes the CVBS bytes depend on it.  The first CI run of
+# this sweep failed on exactly that: two known deviations on
+# domesday-ds2-community-north-middle were recorded at 10 threads (1.389 and
+# 1.267 dB) and CI read them at 2 (1.543 and 1.482 dB), over their ceilings.
+# With the flag, -t 2 and -t 10 produce byte-identical output, and the
+# reading matches the loose 2-thread one to 0.001 dB - so this pins which
+# decode is measured rather than moving the measurement to a different
+# regime.  A gate that answers differently per core count cannot gate.
+# analysis/vits_known_deviations.toml is recorded from these decodes.
 #
 # Both halves carry the "vits" label, so "ctest -L vits" is the whole sweep
 # and "ctest -LE vits" is everything else - which is how the CI workflow runs
@@ -563,7 +587,7 @@ function(add_vits_radius_cut label system)
     add_test(
         NAME decode-${label}-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag}
+            --cvbs ${system_flag} --exact-speculation
             ${TESTDATA_DIR}/radius/${label}.ldf
             ${CMAKE_BINARY_DIR}/testout/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -603,12 +627,18 @@ set(VITS_RADIUS_PAL_CUTS
     domesday-ds2-community-north-middle
     domesday-ds2-community-north-outer
     domesday-ds1-community-north-outer
+    industrial-lv-side1-inner
+    industrial-lv-side1-middle
+    industrial-lv-side1-outer
 )
 
 set(VITS_RADIUS_NTSC_CUTS
     ggv1069-side1-inner
     ggv1069-side1-middle
     ggv1069-side1-outer
+    ggv1069-side1-ldv4300d-inner
+    ggv1069-side1-ldv4300d-middle
+    ggv1069-side1-ldv4300d-outer
     dolby-surround-side1-inner
     dolby-surround-side1-middle
     dolby-surround-side1-outer
@@ -621,6 +651,67 @@ endforeach()
 foreach(cut IN LISTS VITS_RADIUS_NTSC_CUTS)
     add_vits_radius_cut(${cut} NTSC)
 endforeach()
+
+# ---------------------------------------------------------------------------
+# VITS conformance on whole captures
+# ---------------------------------------------------------------------------
+
+# The radius cuts above are the only captures the conformance runner sees, so
+# a signal only one of them carries puts a whole family of checks behind a
+# single disc image.  The FCC multiburst was in that position: of everything
+# in testdata/ only the GGV NTSC pressings carry it, and only at the inner
+# radius, so multiburst_flatness and multiburst_out_of_band_response on NTSC
+# were each measured on one cut and said nothing about anything else.
+#
+# These two whole captures were already in testdata/ntsc/ with no conformance
+# test reading them.  Judging them costs no new capture data and gives the
+# NTSC gates a second and third image: ggv-ntsc-mb-v2800 is a third FCC
+# multiburst reading, and ve-monitor decodes to 178 fields - more than four
+# times any radius cut - which is the only capture here long enough to show
+# what the servos settle to rather than what they reach inside 20 frames.
+#
+# They are cuts of a disc rather than of a radius, so they carry "functional"
+# and "vits" but say nothing about radius; the sweep above remains the thing
+# that speaks to that.
+function(add_vits_capture_conformance label system capture)
+    set(system_flag "")
+    if(system STREQUAL "PAL")
+        set(system_flag "--PAL")
+    endif()
+
+    add_test(
+        NAME decode-${label}-cvbs
+        COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+            --cvbs ${system_flag} --exact-speculation
+            ${TESTDATA_DIR}/${capture}
+            ${CMAKE_BINARY_DIR}/testout/${label}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(decode-${label}-cvbs PROPERTIES
+        LABELS "functional;slow;vits"
+        FIXTURES_SETUP ${label}-cvbs
+        TIMEOUT 1800
+    )
+
+    add_test(
+        NAME conformance-${label}-vits
+        COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
+            ${CMAKE_BINARY_DIR}/testout/${label}.cvbs
+            --manifest ${TESTDATA_DIR}/vits-manifest.json
+            --known-deviations ${ANALYSIS_DIR}/vits_known_deviations.toml
+            --json ${CMAKE_BINARY_DIR}/testout/${label}.conformance.json
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(conformance-${label}-vits PROPERTIES
+        LABELS "functional;vits"
+        FIXTURES_REQUIRED ${label}-cvbs
+        PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: (PASS|SKIPPED)"
+        TIMEOUT 600
+    )
+endfunction()
+
+add_vits_capture_conformance(ggv-ntsc-mb-v2800 NTSC ntsc/ggv-ntsc-mb-v2800.ldf)
+add_vits_capture_conformance(ve-monitor NTSC ntsc/ve-monitor.ldf)
 
 # Raw input-format coverage - converting the NTSC CI capture to .s16/.u16/
 # .u8/.rf/.lds/.r30, reading each back exactly through make_loader, and

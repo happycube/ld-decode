@@ -65,7 +65,7 @@ came from. They are derived, not chosen: a measurement floor, a servo's
 dead-band plus the residual it is recorded leaving, or an end-to-end figure two
 unrelated pressings disagree by. [`vits-servos.md`](vits-servos.md) documents
 the servos, and [`vits-radius-baseline.md`](vits-radius-baseline.md) records
-what each allowance actually had to hold across four discs and three radii.
+what each allowance actually had to hold across six discs and three radii.
 
 **An allowance is never widened to make a check pass.** A failing check is a
 fault to diagnose or a deviation to record; see AGENTS.md §15.
@@ -120,15 +120,35 @@ The list is the **only** mechanism for carrying a known fault. Widening an
 allowance would hide it everywhere; marking a test `WILL_FAIL` would swallow
 the next regression alongside the known ones.
 
+Entries are recorded from a decode forced to `--exact-speculation`, and the
+sweep decodes with that flag for the same reason. Without it the CVBS output
+depends on the thread count — which defaults to `min(max(cpu_count - 2, 1), 10)`
+and so differs between a developer machine and a CI runner — and a `ceiling`
+recorded on one machine is then not a statement about the decoder. Re-record
+with the flag, never from a default decode.
+
 ## The radius sweep
 
 The modulation transfer function of a LaserDisc changes with radius, so a
 decoder can pass every check at one radius and fail at another. `testdata/radius/`
-holds twelve cuts — four discs at 5 %, 50 % and 95 % of their recorded band —
+holds eighteen cuts — six discs at 5 %, 50 % and 95 % of their recorded band —
 plus `domesday-ds1-community-north-outer`, kept as a regression sample for one
 behaviour no other cut has: its multiburst finds the chroma band already flat,
 so the video EQ servo declines inside its dead-band and never adopts, which is
 the path that once let the burst servo wind unbounded.
+
+Two of the six discs are there so that no gate rests on a single disc image.
+`ggv1069-side1-ldv4300d-*` is the same pressing as `ggv1069-side1-*` read on a
+different player six years later, which is the only way here to tell a fault of
+the decoder from a fault of one capture; `industrial-lv-side1-*` is a
+non-Domesday PAL pressing, so a fault of the Domesday mastering and a fault of
+the decoder no longer read the same. Two whole captures already in
+`testdata/ntsc/` — `ggv-ntsc-mb-v2800` and `ve-monitor` — are judged by the same
+lane for the same reason, at no cost in capture data. The FCC multiburst was the
+signal that made this necessary: it reached CI on one cut, so
+`multiburst_flatness` and `multiburst_out_of_band_response` on NTSC were each
+one measurement. See [`vits-radius-baseline.md`](vits-radius-baseline.md),
+"What the baseline says", for what the second image changed.
 
 Each cut is decoded to CVBS and judged, as one CTest pair per cut, under the
 `vits` label:

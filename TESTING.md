@@ -408,7 +408,7 @@ Decode outputs land in `build/testout/`; inspect them there when a comparison fa
 | `roundtrip-*-orc` | Rendering CVBS and TBC through the same chroma decoder agrees (skips without `orc-cli`) |
 | `analyze-*-patterns`, `analyze-ntsc-ntc7` | Expected VITS/test patterns are present and measurable |
 | `identify-*-vits`, `conformance-*-vits` | The VITS a disc carries are found where it carries them, and every element measures within its specification tolerance plus the decoder allowance |
-| `decode-<cut>-cvbs` + `conformance-<cut>-vits` (label `vits`) | The same, across four discs at three radii each, so a decoder tuned to one part of one disc cannot pass. See [docs/technical/vits-conformance.md](docs/technical/vits-conformance.md) |
+| `decode-<cut>-cvbs` + `conformance-<cut>-vits` (label `vits`) | The same, across six discs at three radii each plus two whole captures, so a decoder tuned to one part of one disc cannot pass and no gate rests on a single disc image. See [docs/technical/vits-conformance.md](docs/technical/vits-conformance.md) |
 | `python-functional-tests` | The pytest suites needing real captures, including every raw input format reading back exactly, aligned and unaligned |
 | `cut-*`, `decode-*-cut`, `decode-ntsc-lds` | `ld-cut` output is well-formed and decodable |
 | `roundtrip-lds-bytes` | The bare `.lds` converter unpacks and repacks real capture data without changing a byte |
