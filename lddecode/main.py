@@ -187,6 +187,16 @@ def build_parser():
         "run-length PLL",
     )
     parser.add_argument(
+        "--efm_eq_taps",
+        dest="efm_eq_taps",
+        type=int,
+        default=0,
+        help="Experimental: tap count for the timing demodulator's "
+        "decision-directed adaptive equaliser (0 = off, the default; odd "
+        "3..15 enables it).  Measured neutral-to-harmful on the validation "
+        "captures - see docs/technical/efm-decoding.md before using",
+    )
+    parser.add_argument(
         "--disable_analog_audio",
         "--disable_analogue_audio",
         "--daa",
@@ -485,6 +495,7 @@ def build_options(args):
         "write_pre_efm": args.prefm,
         "tbc_efm": args.tbc_efm,
         "efm_demod": args.efm_demod,
+        "efm_eq_taps": args.efm_eq_taps,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
         "auto_deemp": args.deemp_strength is None,

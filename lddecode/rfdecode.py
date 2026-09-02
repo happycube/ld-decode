@@ -266,6 +266,14 @@ class RFDecode:
         This improved EFM filter was devised by Adam Sampson (@atsampson)
         """
 
+        # Sweep hook: LDDECODE_EFM_FRONTEND=hardware substitutes the
+        # hardware-derived front end (player RF EQ + elliptic LPF) for the
+        # anchor-table equaliser below.  For filter comparison experiments
+        # only; see docs/technical/efm-decoding.md.
+        if os.environ.get("LDDECODE_EFM_FRONTEND", "") == "hardware":
+            self.Filters["Fefm"] = self._efm_hardware_frontend()
+            return
+
         # Frequency bands
         freqs = np.linspace(0.0e6, 1.9e6, num=11)
         freq_per_bin = self.freq_hz / self.blocklen
@@ -321,6 +329,53 @@ class RFDecode:
         _sghigh = float(os.environ.get("LDDECODE_EFM_SGHIGH", _sghigh_default))
         _sglow = float(os.environ.get("LDDECODE_EFM_SGLOW", "20000"))   # low band edge (bandwidth)
         self.Filters["Fefm"] *= gen_bpf_supergauss(_sglow, _sghigh, _sgorder, 20000000, 32768)
+
+    def _efm_hardware_frontend(self):
+        """Hardware-derived EFM front end as frequency-domain coefficients.
+
+        The alternative evaluated in the front-end comparison (see
+        docs/technical/efm-decoding.md): a LaserDisc player's input
+        equalisation instead of the empirically tuned anchor table.
+
+        - "RF EQ": the biquad museld derived by bilinear transform from the
+          RF equaliser in the Sony HIL-C1 service-manual schematic.  The
+          sample-rate-parameterised coefficient formulas are taken from
+          museld (https://github.com/staffanu/museld,
+          player/src/efm/EfmDemodulator.cpp, GPLv3 - licence-compatible).
+        - Elliptic low-pass: ellip(4, 3 dB, 40 dB, 1.7 MHz), the
+          anti-noise cutoff museld pairs it with.
+
+        Returns complex coefficients over the positive-frequency bins of
+        the demod block (same one-sided convention as the anchor-table
+        filter), peak-magnitude-matched to it so int16 levels compare.
+        """
+        fs = float(self.freq_hz)
+        d = 136762495344372.0 * fs**2 + 1.03400100063e21 * fs + 1.11017205e27
+        b_eq = np.array([
+            (39176791720000.0 * fs**2 + 1.0256763e21 * fs + 1.705e26) / d,
+            (3.41e26 - 78353583440000.0 * fs**2) / d,
+            (39176791720000.0 * fs**2 - 1.0256763e21 * fs + 1.705e26) / d,
+        ])
+        a_eq = np.array([
+            1.0,
+            (2.2203441e27 - 273524990688744.0 * fs**2) / d,
+            (136762495344372.0 * fs**2 - 1.03400100063e21 * fs + 1.11017205e27) / d,
+        ])
+        b_lpf, a_lpf = sps.ellip(4, 3, 40, 1.7e6, fs=fs)
+
+        # Evaluate the cascade on the block's positive-frequency bins.
+        nonzero_bins = self.blocklen // 2
+        bin_freqs = np.arange(nonzero_bins) * (fs / self.blocklen)
+        _, h_eq = sps.freqz(b_eq, a_eq, worN=bin_freqs, fs=fs)
+        _, h_lpf = sps.freqz(b_lpf, a_lpf, worN=bin_freqs, fs=fs)
+        response = h_eq * h_lpf
+        response[0] = 0.0  # no DC (the anchor filter zeroes it too)
+
+        coeffs = np.zeros(self.blocklen, dtype=complex)
+        # Match the anchor-table filter's peak gain (1.03 * 8) so the
+        # int16 EFM output uses the same headroom either way.
+        coeffs[:nonzero_bins] = response * (8.24 / np.abs(response).max())
+        return coeffs
 
     # Lambda-scale functions used to simplify following filter builders
 

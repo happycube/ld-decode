@@ -216,6 +216,76 @@ def score_t_values(t_values):
     )
 
 
+@dataclass(frozen=True)
+class SymbolSeparation:
+    """Waveform-domain symbol separation (front-end filter quality).
+
+    ``n_intervals`` zero-crossing intervals were measured; ``bit_period``
+    is the refined channel-bit period estimate in samples; ``rms_bits`` is
+    the RMS distance of each interval from the nearest legal T3-T11 grid
+    point, in channel-bit units (0 = every run lands exactly on the grid);
+    ``worst_bits`` is the largest single distance.
+    """
+
+    n_intervals: int
+    bit_period: float
+    rms_bits: float
+    worst_bits: float
+
+
+# EFM channel bit rate (IEC 60908 Clause 15: 4.3218 Mbit/s).
+EFM_BIT_RATE_HZ = 4321800.0
+
+
+def symbol_separation(waveform, sample_rate_hz, bit_rate_hz=EFM_BIT_RATE_HZ):
+    """Score a filtered EFM waveform by its zero-crossing separations.
+
+    The idea (after museld's ``eval_efm_fir_filter.m``): a good front-end
+    filter puts every zero-crossing interval of the EFM waveform on the
+    legal T3-T11 grid of channel-bit multiples, so the RMS distance of the
+    intervals from that grid measures the ISI and group-delay error the
+    filter leaves behind - without running a demodulator at all.
+
+    ``waveform`` is a 1-D real array (e.g. the int16 ``.prefm`` samples);
+    intervals are measured between linearly interpolated zero crossings.
+    The nominal bit period ``sample_rate_hz / bit_rate_hz`` is refined
+    once from the data (total samples over total assigned channel bits),
+    so a capture-level speed offset does not masquerade as separation
+    error.  Returns a :class:`SymbolSeparation`; fewer than two crossings
+    scores as zero intervals with NaN statistics.  The input is not
+    modified.
+    """
+    x = np.asarray(waveform, dtype=np.float64)
+    if x.size < 2:
+        return SymbolSeparation(0, float("nan"), float("nan"), float("nan"))
+    signs = x >= 0.0
+    idx = np.flatnonzero(signs[1:] != signs[:-1])
+    if idx.size < 2:
+        return SymbolSeparation(0, float("nan"), float("nan"), float("nan"))
+    # Sub-sample crossing positions by linear interpolation.
+    frac = x[idx] / (x[idx] - x[idx + 1])
+    crossings = idx + frac
+    intervals = np.diff(crossings)
+
+    def grid_fit(period):
+        t_est = intervals / period
+        nearest = np.clip(np.round(t_est), T_MIN, T_MAX)
+        return t_est, nearest
+
+    period = float(sample_rate_hz) / float(bit_rate_hz)
+    _, nearest = grid_fit(period)
+    # Refine the period so a disc-speed offset is not counted as error.
+    period = float(intervals.sum() / nearest.sum())
+    t_est, nearest = grid_fit(period)
+    residual = t_est - nearest
+    return SymbolSeparation(
+        n_intervals=int(intervals.size),
+        bit_period=period,
+        rms_bits=float(np.sqrt(np.mean(residual**2))),
+        worst_bits=float(np.abs(residual).max()),
+    )
+
+
 def summarise_confidence(confidence, low_threshold=128):
     """Summarise a per-T-value confidence stream (``.efmc`` payload).
 

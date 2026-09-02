@@ -272,6 +272,9 @@ add_test(
 )
 set_tests_properties(decode-ntsc-cvbs PROPERTIES
     LABELS "functional;slow"
+    # Opt in to the .efmc confidence companion so verify-ntsc-cvbs
+    # exercises the EFM extension format's 1:1 sidecar contract.
+    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
     FIXTURES_SETUP ntsc-cvbs
     TIMEOUT 1800
 )

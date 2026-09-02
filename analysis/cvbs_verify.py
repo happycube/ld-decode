@@ -22,14 +22,20 @@ import numpy as np
 # the layout decode-orc's cvbs_source reader expects.
 PRESETS = {
     "NTSC": {
-        "frame_samples": 477750, "frame_lines": 525,
-        "spl": 910.0, "zero_h": 0.8, "drift_per_line": 0.0,
+        "frame_samples": 477750,
+        "frame_lines": 525,
+        "spl": 910.0,
+        "zero_h": 0.8,
+        "drift_per_line": 0.0,
         "levels": {"sync": 16, "blanking": 240, "white": 800},
         "burst": (74, 110),
     },
     "PAL": {
-        "frame_samples": 709379, "frame_lines": 625,
-        "spl": 709379 / 625, "zero_h": 0.8, "drift_per_line": 4 / 625,
+        "frame_samples": 709379,
+        "frame_lines": 625,
+        "spl": 709379 / 625,
+        "zero_h": 0.8,
+        "drift_per_line": 4 / 625,
         "levels": {"sync": 4, "blanking": 256, "white": 844},
         "burst": (98, 138),
     },
@@ -88,10 +94,10 @@ def find_0h_positions(frame10, preset, sync_level=None, blank_level=None):
     pre_min = blank_level - 0.3 * (blank_level - sync_level)
     out = []
     for e in edges:
-        seg = below[e + 2: e + 2 + dwell]
+        seg = below[e + 2 : e + 2 + dwell]
         if len(seg) < dwell or np.count_nonzero(seg) < dwell * 0.9:
             continue
-        if e < 24 or np.median(x[e - 24: e - 6]) < pre_min:
+        if e < 24 or np.median(x[e - 24 : e - 6]) < pre_min:
             continue
         a, b = x[e], x[e + 1]
         frac = (a - thr) / (a - b) if a != b else 0.5
@@ -122,14 +128,16 @@ def main():
     row = con.execute(
         "SELECT preset, sample_encoding_preset, signal_state_preset, "
         "sequence_continuous, signal_type, decoder, "
-        "number_of_sequential_frames FROM cvbs_file").fetchone()
+        "number_of_sequential_frames FROM cvbs_file"
+    ).fetchone()
     check(row is not None, "cvbs_file row present")
     preset_name, enc, state, seq_cont, sigtype, decoder, n_frames = row
-    print(f"  preset={preset_name} enc={enc} state={state} "
-          f"seq_continuous={seq_cont} type={sigtype} "
-          f"decoder={decoder} frames={n_frames}")
-    check(seq_cont in (None, 0, 1),
-          f"sequence_continuous is boolean or NULL (got {seq_cont!r})")
+    print(
+        f"  preset={preset_name} enc={enc} state={state} "
+        f"seq_continuous={seq_cont} type={sigtype} "
+        f"decoder={decoder} frames={n_frames}"
+    )
+    check(seq_cont in (None, 0, 1), f"sequence_continuous is boolean or NULL (got {seq_cont!r})")
     if seq_cont == 0:
         warn("producer declares a sequence discontinuity")
     check(preset_name in PRESETS, f"known preset {preset_name}")
@@ -138,12 +146,14 @@ def main():
     # --- file sizing ---
     fsize = os.path.getsize(comp)
     frame_bytes = p["frame_samples"] * 2
-    check(fsize % frame_bytes == 0,
-          f"file size is a whole number of frames ({fsize} / {frame_bytes})")
+    check(
+        fsize % frame_bytes == 0, f"file size is a whole number of frames ({fsize} / {frame_bytes})"
+    )
     file_frames = fsize // frame_bytes
     if n_frames is not None:
-        check(file_frames == n_frames,
-              f"frame count matches metadata ({file_frames} vs {n_frames})")
+        check(
+            file_frames == n_frames, f"frame count matches metadata ({file_frames} vs {n_frames})"
+        )
 
     # --- encoding / protected values ---
     if enc == "CVBS_U10_4FSC":
@@ -152,18 +162,21 @@ def main():
         # 1020-1023 are reserved (sample-encoding-presets.md).
         data = np.fromfile(comp, dtype="<i2")
         v10 = data.astype(np.int32)
-        n_prot = int(np.count_nonzero(
-            ((v10 >= 0) & (v10 <= 3)) | ((v10 >= 1020) & (v10 <= 1023))))
-        check(n_prot == 0,
-              f"no protected values (range {v10.min()}..{v10.max()}, "
-              f"{n_prot} samples in reserved codes)")
+        n_prot = int(np.count_nonzero(((v10 >= 0) & (v10 <= 3)) | ((v10 >= 1020) & (v10 <= 1023))))
+        check(
+            n_prot == 0,
+            f"no protected values (range {v10.min()}..{v10.max()}, "
+            f"{n_prot} samples in reserved codes)",
+        )
     else:
         data = np.fromfile(comp, dtype="<u2")
         if enc == "CVBS_U16_4FSC":
             check(bool(np.all((data & 0x3F) == 0)), "U16 LSBs all zero")
         v10 = (data >> 6).astype(np.int32)
-        check(int(v10.min()) >= 4 and int(v10.max()) <= 1019,
-              f"no protected values (range {v10.min()}..{v10.max()})")
+        check(
+            int(v10.min()) >= 4 and int(v10.max()) <= 1019,
+            f"no protected values (range {v10.min()}..{v10.max()})",
+        )
 
     # --- level sanity: histogram peaks near sync and blanking ---
     # (clip for the histogram only: U10 headroom excursions may be negative)
@@ -174,7 +187,7 @@ def main():
     sync_samples = v10[v10 < lv["blanking"] - 60]
     sync_med = int(np.median(sync_samples)) if len(sync_samples) else -1
     blank_lo = lv["blanking"] - 30
-    blank_peak = blank_lo + int(np.argmax(hist[blank_lo: lv["blanking"] + 30]))
+    blank_peak = blank_lo + int(np.argmax(hist[blank_lo : lv["blanking"] + 30]))
     # Blanking is the anchored level, so it must sit at the spec value.
     # The sync tip lands below it by the disc's measured sync depth - a
     # property of the source signal, not of format compliance (nominal is
@@ -183,20 +196,23 @@ def main():
     # rather than the nominal code.
     nominal_depth = lv["blanking"] - lv["sync"]
     depth = blank_peak - sync_med
-    check(0.70 * nominal_depth <= depth <= 1.15 * nominal_depth,
-          f"sync depth plausible (sync median {sync_med}, "
-          f"depth {depth} vs nominal {nominal_depth})")
-    check(abs(blank_peak - lv["blanking"]) <= 6,
-          f"blanking near {lv['blanking']} (peak at {blank_peak})")
+    check(
+        0.70 * nominal_depth <= depth <= 1.15 * nominal_depth,
+        f"sync depth plausible (sync median {sync_med}, "
+        f"depth {depth} vs nominal {nominal_depth})",
+    )
+    check(
+        abs(blank_peak - lv["blanking"]) <= 6,
+        f"blanking near {lv['blanking']} (peak at {blank_peak})",
+    )
 
     # --- 0H lattice ---
     n_check = min(file_frames, 4)
     frame_first_0h = []
     drift_ok = True
     for fr in range(n_check):
-        frame = v10[fr * p["frame_samples"]:(fr + 1) * p["frame_samples"]]
-        pos = find_0h_positions(frame, p, sync_level=sync_med,
-                                blank_level=blank_peak)
+        frame = v10[fr * p["frame_samples"] : (fr + 1) * p["frame_samples"]]
+        pos = find_0h_positions(frame, p, sync_level=sync_med, blank_level=blank_peak)
         if len(pos) < 100:
             check(False, f"frame {fr}: found only {len(pos)} sync edges")
             continue
@@ -215,8 +231,7 @@ def main():
         d = np.diff(good)
         lines = d[np.abs(d - spl) < 3]
         mean_spl = float(np.mean(lines))
-        check(abs(mean_spl - spl) < 0.02,
-              f"frame {fr}: line spacing {mean_spl:.4f} vs {spl:.4f}")
+        check(abs(mean_spl - spl) < 0.02, f"frame {fr}: line spacing {mean_spl:.4f} vs {spl:.4f}")
         # Frame anchor: the first edge that starts a clean run of
         # line-spaced syncs, i.e. the first full line sync after the
         # opening vsync block.  The raw first detected edge is not a
@@ -225,7 +240,7 @@ def main():
         # requirement) and are detected or missed per frame.
         anchor = None
         for i in range(len(pos) - 15):
-            dd = np.diff(pos[i:i + 16])
+            dd = np.diff(pos[i : i + 16])
             if np.all(np.abs(dd - spl) < 3):
                 anchor = float(pos[i])
                 break
@@ -241,9 +256,12 @@ def main():
             total = slip_per_line * 625.0
             ok = abs(total - 4.0) < 1.5
             drift_ok &= ok
-            check(ok, f"frame {fr}: lattice slip {total:.2f} samples/frame "
-                      f"(expect 4.00; {slip_per_line:.5f}/line over "
-                      f"{len(lines)} line gaps)")
+            check(
+                ok,
+                f"frame {fr}: lattice slip {total:.2f} samples/frame "
+                f"(expect 4.00; {slip_per_line:.5f}/line over "
+                f"{len(lines)} line gaps)",
+            )
 
         # Whole-frame integer line grid: EVERY line sync must sit on the
         # same integer-line lattice, including across the field seam (line
@@ -260,18 +278,18 @@ def main():
         # the real signal): a genuine seam error displaces the MEDIAN
         n_half = int(np.count_nonzero(frac > 0.35))
         med_frac = float(np.median(frac))
-        check(med_frac < 0.05 and n_half < len(t) * 0.2,
-              f"frame {fr}: line syncs on one integer-line grid "
-              f"(median frac {med_frac:.3f}, {n_half}/{len(t)} half-line "
-              f"edges incl. vsync)")
+        check(
+            med_frac < 0.05 and n_half < len(t) * 0.2,
+            f"frame {fr}: line syncs on one integer-line grid "
+            f"(median frac {med_frac:.3f}, {n_half}/{len(t)} half-line "
+            f"edges incl. vsync)",
+        )
 
     # frame-to-frame: lattice repeats at frame rate
     if len(frame_first_0h) >= 2:
         # first 0H should land at the same in-frame position every frame
-        pos_dev = np.max(np.abs(np.array(frame_first_0h)
-                                - frame_first_0h[0]))
-        check(pos_dev < 1.0,
-              f"first 0H position stable across frames (max dev {pos_dev:.3f})")
+        pos_dev = np.max(np.abs(np.array(frame_first_0h) - frame_first_0h[0]))
+        check(pos_dev < 1.0, f"first 0H position stable across frames (max dev {pos_dev:.3f})")
 
     if preset_name == "NTSC" and len(frame_first_0h):
         # orthogonal lattice: the regular line syncs must sit at the spec's
@@ -281,21 +299,21 @@ def main():
         pos = find_0h_positions(frame, p)
         # regular full-line syncs: spacing ~910 both sides
         d = np.diff(pos)
-        mids = pos[1:-1][(np.abs(d[:-1] - p["spl"]) < 3)
-                         & (np.abs(d[1:] - p["spl"]) < 3)]
+        mids = pos[1:-1][(np.abs(d[:-1] - p["spl"]) < 3) & (np.abs(d[1:] - p["spl"]) < 3)]
         if len(mids) > 50:
             spl = p["spl"]
             dev = ((mids - p["zero_h"] + spl / 2) % spl) - spl / 2
             phase = float(np.median(dev)) + p["zero_h"]
-            check(abs(phase - p["zero_h"]) < 1.5,
-                  f"0H at line position {phase:.2f} "
-                  f"(ld-decode convention {p['zero_h']})")
+            check(
+                abs(phase - p["zero_h"]) < 1.5,
+                f"0H at line position {phase:.2f} " f"(ld-decode convention {p['zero_h']})",
+            )
 
     # --- burst phase: assertion when LOCKED, informational otherwise ---
     b0, b1 = p["burst"]
     frame_phases = []
     for fr in range(n_check):
-        frame = v10[fr * p["frame_samples"]:(fr + 1) * p["frame_samples"]]
+        frame = v10[fr * p["frame_samples"] : (fr + 1) * p["frame_samples"]]
         x = frame.astype(np.float64)
         bursts = []
         for k in range(40, 200, 2):
@@ -303,13 +321,11 @@ def main():
                 j0 = k * 910
             else:
                 j0 = int(np.ceil(k * p["spl"]))
-            seg = x[j0 + b0: j0 + b1]
+            seg = x[j0 + b0 : j0 + b1]
             if len(seg) < b1 - b0:
                 continue
-            n = np.arange(j0 + b0, j0 + b1) if preset_name == "PAL" \
-                else np.arange(b0, b1)
-            bursts.append(np.mean((seg - np.mean(seg))
-                                  * np.exp(-0.5j * np.pi * n)))
+            n = np.arange(j0 + b0, j0 + b1) if preset_name == "PAL" else np.arange(b0, b1)
+            bursts.append(np.mean((seg - np.mean(seg)) * np.exp(-0.5j * np.pi * n)))
         if not bursts:
             continue
         bursts = np.array(bursts)
@@ -328,9 +344,11 @@ def main():
         # colour-sequence alternation out mod 180
         halfspan = 45.0 if preset_name == "PAL" else 90.0
         dev = np.abs((arr - arr[0] + halfspan) % (2 * halfspan) - halfspan)
-        msg = (f"burst-vs-lattice phase per frame: "
-               + ", ".join(f"{v:.2f}" for v in arr)
-               + f" deg (max dev {np.max(dev):.2f})")
+        msg = (
+            f"burst-vs-lattice phase per frame: "
+            + ", ".join(f"{v:.2f}" for v in arr)
+            + f" deg (max dev {np.max(dev):.2f})"
+        )
         if state == "STANDARD_STABLE_LOCKED":
             check(bool(np.max(dev) <= 3.0), "LOCKED: " + msg)
         else:
@@ -345,7 +363,8 @@ def main():
         bad = dcon.execute(
             "SELECT COUNT(*) FROM dropout_run WHERE sample_start < 0 OR "
             "sample_start + sample_count > ? OR frame_id >= ?",
-            (p["frame_samples"], file_frames)).fetchone()[0]
+            (p["frame_samples"], file_frames),
+        ).fetchone()[0]
         total = dcon.execute("SELECT COUNT(*) FROM dropout_run").fetchone()[0]
         check(bad == 0, f"dropout runs in bounds ({total} rows)")
         dcon.close()
@@ -359,30 +378,44 @@ def main():
         euv = econ.execute("PRAGMA user_version").fetchone()[0]
         check(euv == 1, f"efm.meta user_version = 1 (got {euv})")
         rows = econ.execute(
-            "SELECT frame_id, t_value_offset, t_value_count FROM efm_frame "
-            "ORDER BY frame_id").fetchall()
+            "SELECT frame_id, t_value_offset, t_value_count FROM efm_frame " "ORDER BY frame_id"
+        ).fetchall()
         ok = bool(rows) and rows[0][1] == 0
         expect_off = 0
         for _, off, cnt in rows:
-            ok &= (off == expect_off)
+            ok &= off == expect_off
             expect_off = off + cnt
-        ok &= (expect_off == os.path.getsize(efm_bin))
-        check(ok, f"efm_frame index contiguous and matches .efm size "
-                  f"({len(rows)} frames, {expect_off} t-values)")
-        check(len(rows) == file_frames,
-              f"efm index covers every frame ({len(rows)} vs {file_frames})")
+        ok &= expect_off == os.path.getsize(efm_bin)
+        check(
+            ok,
+            f"efm_frame index contiguous and matches .efm size "
+            f"({len(rows)} frames, {expect_off} t-values)",
+        )
+        check(
+            len(rows) == file_frames, f"efm index covers every frame ({len(rows)} vs {file_frames})"
+        )
         econ.close()
+
+        # Optional confidence companion: the spec requires .efmc to be
+        # byte-for-byte parallel to .efm (indexed by the same efm_frame
+        # rows), so its only conformance property is exact size equality.
+        efm_conf = base + ".efmc"
+        if os.path.exists(efm_conf):
+            check(
+                os.path.getsize(efm_conf) == os.path.getsize(efm_bin),
+                f".efmc is 1:1 with .efm "
+                f"({os.path.getsize(efm_conf)} vs {os.path.getsize(efm_bin)} bytes)",
+            )
     else:
         warn("no EFM extension sidecar")
 
     # --- audio (SMPTE 272M: 48 kHz, 24-bit stereo, synchronous) ---
     pairs = con.execute(
-        "SELECT channel_pair, description FROM audio_channel_pair "
-        "ORDER BY channel_pair").fetchall()
+        "SELECT channel_pair, description FROM audio_channel_pair " "ORDER BY channel_pair"
+    ).fetchall()
     wav = base + "_audio_0.wav"
     if os.path.exists(wav):
-        check(any(cp == 0 for cp, _ in pairs),
-              "audio_channel_pair row present for pair 0")
+        check(any(cp == 0 for cp, _ in pairs), "audio_channel_pair row present for pair 0")
         with open(wav, "rb") as f:
             hdr = f.read(44)
         riff, wave = hdr[0:4], hdr[8:12]
@@ -390,12 +423,10 @@ def main():
         bits = struct.unpack("<H", hdr[34:36])[0]
         data_len = struct.unpack("<I", hdr[40:44])[0]
         check(riff == b"RIFF" and wave == b"WAVE", "WAV RIFF header")
-        check(fmt_tag == 1 and channels == 2 and bits == 24,
-              "WAV stereo 24-bit PCM")
+        check(fmt_tag == 1 and channels == 2 and bits == 24, "WAV stereo 24-bit PCM")
         check(rate == 48000, f"WAV rate 48000 (got {rate})")
         actual = os.path.getsize(wav) - 44
-        check(data_len == actual,
-              f"WAV data chunk size correct ({data_len} vs {actual})")
+        check(data_len == actual, f"WAV data chunk size correct ({data_len} vs {actual})")
         # synchronous per-preset total: 1920/frame (PAL) or the 8008-per-
         # 5-frame 1602/1601 sequence (NTSC/PAL_M)
         if preset_name == "PAL":
@@ -403,8 +434,9 @@ def main():
         else:
             seq = (0, 1602, 3203, 4805, 6406)
             target = 8008 * (file_frames // 5) + seq[file_frames % 5]
-        check(data_len == target * 6,
-              f"synchronous audio: {target} samples for {file_frames} frames")
+        check(
+            data_len == target * 6, f"synchronous audio: {target} samples for {file_frames} frames"
+        )
     else:
         check(not pairs, "no audio_channel_pair rows without a WAV file")
         warn("no audio WAV present")

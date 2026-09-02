@@ -490,3 +490,78 @@ def test_input_is_not_mutated(clean_signal):
     copy = clean_signal.copy()
     demod(clean_signal)
     assert np.array_equal(clean_signal, copy)
+
+
+# --- Task 3.1: sign-sign LMS adaptive equaliser -----------------------------
+
+
+def test_equaliser_is_off_by_default_and_bypassed(clean_signal):
+    default_t, default_conf = demod(clean_signal)
+    explicit_t, explicit_conf = demod(clean_signal, eq_taps=0)
+
+    # eq_taps=0 is the default and takes the identical code path: the
+    # symbol chain is untouched, keeping the no-equaliser configuration
+    # bit-identical to the pre-equaliser demodulator.
+    assert np.array_equal(default_t, explicit_t)
+    assert np.array_equal(default_conf, explicit_conf)
+
+
+@pytest.mark.parametrize("taps", [2, 4, 17, -3])
+def test_equaliser_rejects_illegal_tap_counts(taps):
+    with pytest.raises(ValueError):
+        EFMTimingDemod(FS, eq_taps=taps)
+
+
+def test_equaliser_converges_on_symbol_spaced_isi():
+    # Channel model: x[k] = s[k] + 0.4*s[k-1] over antipodal symbols
+    # (one-symbol post-cursor ISI), seeded noise at 26 dB SNR.  This is the
+    # setting where decision-directed sign-sign LMS provably applies, so
+    # here the machinery must actually converge: the slicer error shrinks
+    # and the first tap moves negative to cancel the post-cursor.
+    rng = np.random.default_rng(12345)
+    symbols = np.where(rng.random(60000) < 0.5, 1.0, -1.0)
+    received = symbols.copy()
+    received[1:] += 0.4 * symbols[:-1]
+    received += rng.normal(0, 0.05, len(received))
+
+    core = EFMTimingDemod(FS, eq_taps=3, eq_mu=1e-4).core
+    err_first = 0.0
+    err_last = 0.0
+    n_first = 3000  # covers the adaptation ramp (mu * n ~ the 0.4 cursor)
+    n_last = 10000
+    for k, x in enumerate(received):
+        z = core._equalise(x)
+        e = abs(z - (1.0 if z >= 0 else -1.0))
+        if k < n_first:
+            err_first += e
+        elif k >= len(received) - n_last:
+            err_last += e
+
+    assert err_last / n_last < 0.7 * (err_first / n_first)
+    assert core.eq_w[0] < -0.25  # post-cursor canceller, ideal -0.4
+    assert core.eq_w[1] == pytest.approx(1.0, abs=0.25)  # main tap holds
+
+
+def test_equaliser_taps_stay_inside_their_bound():
+    rng = np.random.default_rng(54321)
+    core = EFMTimingDemod(FS, eq_taps=5, eq_mu=1e-2, eq_bound=0.3).core
+
+    # An aggressive step on pure noise is the worst case for tap walk;
+    # the per-tap bound around the centre-spike initialisation is what
+    # guarantees a noisy stretch can never leave the filter unrecoverable.
+    for x in rng.normal(0, 1.0, 20000):
+        core._equalise(x)
+
+    init = np.zeros(5)
+    init[2] = 1.0
+    assert np.all(np.abs(np.asarray(core.eq_w) - init) <= 0.3 + 1e-12)
+
+
+def test_equaliser_enabled_still_frames_a_clean_capture(clean_signal):
+    t_values, _ = demod(clean_signal, eq_taps=3)
+
+    # With the equaliser adapting on a clean signal the stream must stay
+    # perfectly framed once converged (the equaliser is default-off because
+    # it buys nothing, not because it is unsafe on clean material).
+    score = score_t_values(t_values[len(t_values) // 2 :])
+    assert score.frame_588_fraction == 1.0

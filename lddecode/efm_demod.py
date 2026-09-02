@@ -306,6 +306,13 @@ _timing_core_spec = [
     ("out_t", numba.int8[:]),
     ("out_conf", numba.uint8[:]),
     ("out_n", numba.int64),
+    ("eq_n", numba.int64),
+    ("eq_w", numba.float64[:]),
+    ("eq_init", numba.float64[:]),
+    ("eq_buf", numba.float64[:]),
+    ("eq_mu", numba.float64),
+    ("eq_leak", numba.float64),
+    ("eq_bound", numba.float64),
 ]
 
 
@@ -332,6 +339,10 @@ class _TimingCore:
         lock_threshold,
         unlock_threshold,
         sync_window,
+        eq_taps,
+        eq_mu,
+        eq_leak,
+        eq_bound,
     ):
         self.step_nominal = step_nominal
         self.kp = kp
@@ -391,6 +402,22 @@ class _TimingCore:
         self.out_conf = np.empty(1 << 16, np.uint8)
         self.out_n = 0
 
+        # Decision-directed sign-sign LMS equaliser at symbol rate
+        # (eq_taps == 0 bypasses it entirely; the symbol path is then
+        # untouched).  Centre-tap-initialised; leakage pulls the taps back
+        # toward that identity and a hard per-tap bound keeps a noisy
+        # stretch from walking them anywhere unrecoverable.
+        self.eq_n = eq_taps
+        self.eq_w = np.zeros(max(eq_taps, 1), np.float64)
+        self.eq_init = np.zeros(max(eq_taps, 1), np.float64)
+        if eq_taps > 0:
+            self.eq_w[eq_taps // 2] = 1.0
+            self.eq_init[eq_taps // 2] = 1.0
+        self.eq_buf = np.zeros(max(eq_taps, 1), np.float64)
+        self.eq_mu = eq_mu
+        self.eq_leak = eq_leak
+        self.eq_bound = eq_bound
+
     def begin(self):
         """Start a new output segment (the previous segment's view dies)."""
         self.out_n = 0
@@ -424,8 +451,43 @@ class _TimingCore:
                 c2 = self.p0 - 2.5 * self.p1 + 2.0 * self.p2 - 0.5 * self.p3
                 c3 = 0.5 * (self.p3 - self.p0) + 1.5 * (self.p1 - self.p2)
                 y = ((c3 * f + c2) * f + c1) * f + self.p1
+                if self.eq_n > 0:
+                    y = self._equalise(y)
                 self._symbol(y)
                 self.mu += self.step_nominal * (1.0 + self.ctl)
+
+    def _equalise(self, y):
+        """Sign-sign LMS FIR over the per-bit soft samples (symbol rate).
+
+        Output is centred on the middle tap, so the symbol chain runs
+        eq_taps//2 symbols behind the resampler - transparent to framing,
+        which is all relative.  The decision-directed error is taken
+        against the AGC's unit target; sign-sign updates move each tap a
+        fixed eq_mu per symbol, leakage decays the taps toward the
+        centre-spike identity, and each tap is hard-bounded around its
+        initial value.
+        """
+        n = self.eq_n
+        for j in range(n - 1):
+            self.eq_buf[j] = self.eq_buf[j + 1]
+        self.eq_buf[n - 1] = y
+        acc = 0.0
+        for j in range(n):
+            acc += self.eq_w[j] * self.eq_buf[j]
+        err = acc - (1.0 if acc >= 0.0 else -1.0)
+        step = self.eq_mu if err > 0.0 else -self.eq_mu
+        for j in range(n):
+            w = self.eq_w[j]
+            w -= step if self.eq_buf[j] >= 0.0 else -step
+            w += self.eq_leak * (self.eq_init[j] - w)
+            low = self.eq_init[j] - self.eq_bound
+            high = self.eq_init[j] + self.eq_bound
+            if w < low:
+                w = low
+            elif w > high:
+                w = high
+            self.eq_w[j] = w
+        return acc
 
     def _symbol(self, y):
         """One channel-bit soft sample: TED, loop update, bit and framing."""
@@ -707,7 +769,13 @@ class EFMTimingDemod:
         sync_window_bits=2,
         conf_scale=0.5,
         conf_lowcap=64,
+        eq_taps=0,
+        eq_mu=1e-4,
+        eq_leak=1e-5,
+        eq_bound=0.5,
     ):
+        if eq_taps != 0 and (eq_taps % 2 != 1 or not 3 <= eq_taps <= 15):
+            raise ValueError("eq_taps must be 0 (off) or an odd count in 3..15")
         self.sample_rate_hz = float(sample_rate_hz)
         self.bit_rate_hz = float(bit_rate_hz)
         self.decimator = StreamingDecimator(sample_rate_hz)
@@ -726,6 +794,10 @@ class EFMTimingDemod:
             lock_frames,
             lock_frames,
             sync_window_bits,
+            eq_taps,
+            eq_mu,
+            eq_leak,
+            eq_bound,
         )
 
     def process(self, input_buffer):

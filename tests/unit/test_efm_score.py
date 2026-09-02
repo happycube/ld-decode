@@ -21,6 +21,7 @@ from lddecode.efm_score import (
     frame_length_error_counts,
     score_t_values,
     summarise_confidence,
+    symbol_separation,
     sync_pair_positions,
 )
 
@@ -308,3 +309,85 @@ def test_confidence_summary_of_empty_stream():
     assert summary.n_values == 0
     assert summary.mean == 0.0
     assert summary.fraction_low == 0.0
+
+
+# --- symbol_separation ------------------------------------------------------
+
+
+def nrzi_waveform(tvals, period, amplitude=10000.0, jitter=None, rng=None):
+    """NRZI waveform whose crossings sit at cumsum(tvals) * period samples.
+
+    Linear two-sample ramps through each crossing, so the interpolated
+    crossing positions recover the construction exactly; ``jitter`` (in
+    samples, per crossing) displaces them.
+    """
+    times = np.cumsum(np.asarray(tvals, dtype=np.float64)) * period
+    if jitter is not None:
+        times = times + rng.normal(0.0, jitter, times.size)
+    length = int(times[-1]) + 2
+    out = np.empty(length)
+    polarity = 1.0
+    prev = 0.0
+    for cross in times:
+        lo, hi = int(np.ceil(prev)), int(np.ceil(cross))
+        n = np.arange(lo, min(hi, length))
+        ramp = np.minimum(np.minimum(n - prev, cross - n), 1.0)
+        out[n] = polarity * amplitude * np.clip(ramp, -1.0, 1.0)
+        polarity, prev = -polarity, cross
+    out[int(np.ceil(prev)) :] = polarity * amplitude
+    return out
+
+
+def test_symbol_separation_of_an_on_grid_waveform_is_zero():
+    rng = np.random.default_rng(12345)
+    tvals = rng.integers(3, 12, 3000)
+
+    sep = symbol_separation(nrzi_waveform(tvals, period=9.2554), 40e6)
+
+    # Crossings on the exact grid: interpolation error only (the ramps are
+    # linear through zero, so recovered positions are float-exact).
+    assert sep.n_intervals == tvals.size - 1
+    assert sep.rms_bits < 1e-3
+    assert sep.bit_period == pytest.approx(9.2554, rel=1e-4)
+
+
+def test_symbol_separation_grows_with_crossing_jitter():
+    rng = np.random.default_rng(12345)
+    tvals = rng.integers(3, 12, 3000)
+    period = 40e6 / 4321800.0
+
+    small = symbol_separation(
+        nrzi_waveform(tvals, period, jitter=0.5, rng=np.random.default_rng(1)), 40e6
+    )
+    large = symbol_separation(
+        nrzi_waveform(tvals, period, jitter=2.0, rng=np.random.default_rng(1)), 40e6
+    )
+
+    # Jitter sigma in bit units is sigma/period; sqrt(2) for a difference
+    # of two jittered crossings.  The metric must track it and order the
+    # two waveforms correctly -- this ordering is the whole use case
+    # (ranking front-end filters).
+    assert small.rms_bits == pytest.approx(0.5 / period * np.sqrt(2), rel=0.15)
+    assert large.rms_bits > 2.5 * small.rms_bits
+
+
+def test_symbol_separation_ignores_a_disc_speed_offset():
+    rng = np.random.default_rng(12345)
+    tvals = rng.integers(3, 12, 3000)
+
+    on_speed = symbol_separation(nrzi_waveform(tvals, period=9.2554), 40e6)
+    fast = symbol_separation(nrzi_waveform(tvals, period=9.2554 * 0.98), 40e6)
+
+    # A 2% speed offset moves every interval off the nominal grid by up to
+    # 0.22 bits, which would swamp the ISI signal the metric exists to
+    # see; the refined period estimate must absorb it.
+    assert fast.rms_bits < 1e-3
+    assert fast.bit_period == pytest.approx(9.2554 * 0.98, rel=1e-4)
+    assert abs(fast.rms_bits - on_speed.rms_bits) < 1e-3
+
+
+def test_symbol_separation_of_a_dead_waveform():
+    sep = symbol_separation(np.zeros(1000), 40e6)
+
+    assert sep.n_intervals == 0
+    assert np.isnan(sep.rms_bits)

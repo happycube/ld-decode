@@ -182,7 +182,8 @@ class CVBSWriter:
 
     Writes <basename>.cvbs, <basename>.meta (SQLite, spec core schema),
     optional <basename>_audio_0.wav, and the dropout / EFM extension
-    sidecars (<basename>.dropouts.meta, <basename>.efm + .efm.meta).
+    sidecars (<basename>.dropouts.meta, <basename>.efm + .efm.meta, plus
+    the optional <basename>.efmc confidence companion).
 
     The sample encoding preset governs the binary format of the .cvbs
     file.  CVBS_U10_4FSC (s16le, 10-bit domain with signed headroom)
@@ -225,7 +226,7 @@ class CVBSWriter:
                  black_level=None, write_audio=False,
                  audio_description="Analogue stereo", capture_notes=None,
                  has_nonstandard_values=None, write_efm=False,
-                 sample_encoding=None):
+                 write_efm_conf=False, sample_encoding=None):
         self.system = system
         self.params = CVBSParams_PAL if system == "PAL" else CVBSParams_NTSC
         self.fname_out = fname_out
@@ -241,7 +242,7 @@ class CVBSWriter:
 
         self.f_video = open(fname_out + ".cvbs", "wb")
 
-        self._pending_first = None   # (field, fi, pic_or_None, efm)
+        self._pending_first = None   # (field, fi, pic_or_None, efm, audio, efm_conf)
         self._started = False
         self._fields_seen = 0
         self.frames_written = 0
@@ -270,6 +271,11 @@ class CVBSWriter:
         self.f_efm = None
         self._efm_index = []           # (frame_id, offset, count)
         self._efm_offset = 0
+        # Optional confidence companion (<basename>.efmc): one uint8 per
+        # t-value, byte-for-byte parallel to .efm and indexed by the same
+        # efm_frame rows (see the EFM extension format specification).
+        self.write_efm_conf = write_efm and write_efm_conf
+        self.f_efmc = None
 
         # metadata fields
         self.version = version or ""
@@ -284,7 +290,8 @@ class CVBSWriter:
 
     # -- video ------------------------------------------------------------
 
-    def push_field(self, fi, picture, field=None, efm=None, audio=None):
+    def push_field(self, fi, picture, field=None, efm=None, audio=None,
+                   efm_conf=None):
         """Add one decoded field (with its dropout, EFM, and audio data).
 
         Audio rides through the same frame pairing so the WAV contains
@@ -326,7 +333,7 @@ class CVBSWriter:
                     self._seq_broken = True
                 if self.logger:
                     self.logger.warning("CVBS: dropping unpaired first field")
-            self._pending_first = (field, fi, picture, efm, audio)
+            self._pending_first = (field, fi, picture, efm, audio, efm_conf)
             return
 
         if self._pending_first is None:
@@ -338,11 +345,11 @@ class CVBSWriter:
 
         pending = self._pending_first
         self._pending_first = None
-        self._emit_frame(pending, (field, fi, picture, efm, audio))
+        self._emit_frame(pending, (field, fi, picture, efm, audio, efm_conf))
 
     def _emit_frame(self, first, second):
-        f_a, fi_a, pic_a, efm_a, aud_a = first
-        f_b, fi_b, pic_b, efm_b, aud_b = second
+        f_a, fi_a, pic_a, efm_a, aud_a, conf_a = first
+        f_b, fi_b, pic_b, efm_b, aud_b, conf_b = second
 
         if self.system == "NTSC":
             a = self._to_spec_levels(self._as_u16(pic_a), f_a)
@@ -377,7 +384,7 @@ class CVBSWriter:
         frame_id = self.frames_written
         self._write_frame(frame)
         self._collect_dropouts(frame_id, fi_a, fi_b)
-        self._collect_efm(frame_id, efm_a, efm_b)
+        self._collect_efm(frame_id, efm_a, efm_b, conf_a, conf_b)
         for aud in (aud_a, aud_b):
             if aud is not None:
                 self.push_audio(aud)
@@ -522,18 +529,31 @@ class CVBSWriter:
                 count = min(count, fs - start)
                 self.dropout_rows.append((frame_id, start, count, 100))
 
-    def _collect_efm(self, frame_id, efm_a, efm_b):
+    def _collect_efm(self, frame_id, efm_a, efm_b, conf_a=None, conf_b=None):
         if not self.write_efm:
             return
         if self.f_efm is None:
             self.f_efm = open(self.fname_out + ".efm", "wb")
+            if self.write_efm_conf:
+                self.f_efmc = open(self.fname_out + ".efmc", "wb")
         count = 0
-        for efm in (efm_a, efm_b):
+        for efm, conf in ((efm_a, conf_a), (efm_b, conf_b)):
             if efm is None:
                 continue
             buf = efm.tobytes() if hasattr(efm, "tobytes") else bytes(efm)
             self.f_efm.write(buf)
             count += len(buf)
+            if self.f_efmc is not None:
+                # The spec requires .efmc byte-for-byte parallel to .efm;
+                # a producer that cannot supply confidence for a t-value
+                # must not emit the sidecar at all, so this is enforced.
+                cbuf = (conf.tobytes() if hasattr(conf, "tobytes")
+                        else bytes(conf)) if conf is not None else b""
+                if len(cbuf) != len(buf):
+                    raise ValueError(
+                        ".efmc must be 1:1 with .efm (%d confidence bytes "
+                        "for %d t-values)" % (len(cbuf), len(buf)))
+                self.f_efmc.write(cbuf)
         self._efm_index.append((frame_id, self._efm_offset, count))
         self._efm_offset += count
 
@@ -624,6 +644,9 @@ class CVBSWriter:
             self.f_efm.close()
             self.f_efm = None
             self._write_efm_meta()
+        if self.f_efmc is not None:
+            self.f_efmc.close()
+            self.f_efmc = None
 
         if self.dropout_rows:
             self._write_dropouts_meta()

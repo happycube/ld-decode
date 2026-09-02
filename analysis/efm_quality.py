@@ -46,6 +46,7 @@ from lddecode.efm_score import (  # noqa: E402
     frame_length_error_counts,
     score_t_values,
     summarise_confidence,
+    symbol_separation,
 )
 
 # Frame-length errors are reported individually up to this magnitude in
@@ -62,6 +63,23 @@ def load_t_values(path):
 def load_confidence(path):
     """Read a .efmc file as uint8 confidence values (returns a fresh array)."""
     return np.fromfile(path, dtype=np.uint8)
+
+
+def summarise_separation(prefm_path, sample_rate_hz):
+    """Waveform-domain symbol separation of a .prefm file, as report rows.
+
+    Informational (no threshold): the RMS distance of the filtered EFM
+    waveform's zero-crossing intervals from the legal T3-T11 grid, the
+    front-end filter comparison metric (museld's eval_efm_fir_filter idea).
+    """
+    waveform = np.fromfile(prefm_path, dtype=np.int16)
+    sep = symbol_separation(waveform, sample_rate_hz)
+    return {
+        "separation_intervals": sep.n_intervals,
+        "separation_bit_period": round(sep.bit_period, 4),
+        "separation_rms_bits": round(sep.rms_bits, 6),
+        "separation_worst_bits": round(sep.worst_bits, 4),
+    }
 
 
 def summarise(score, confidence_summary=None):
@@ -141,6 +159,18 @@ def main(argv=None):
         help="fail if the stream carries fewer T-values than this "
         "(catches a truncated or missing EFM decode)",
     )
+    parser.add_argument(
+        "--prefm",
+        help="path to a .prefm file (int16 filtered EFM waveform): adds the "
+        "waveform-domain symbol-separation metric to the summary "
+        "(informational, no threshold)",
+    )
+    parser.add_argument(
+        "--sample-rate",
+        type=float,
+        default=40e6,
+        help="sample rate of the .prefm waveform in Hz (default 40e6)",
+    )
     parser.add_argument("--json", help="write the summary to this path as JSON")
     args = parser.parse_args(argv)
 
@@ -163,6 +193,8 @@ def main(argv=None):
             return 1
 
     report = summarise(score, confidence_summary)
+    if args.prefm:
+        report.update(summarise_separation(args.prefm, args.sample_rate))
     width = max(len(k) for k in report)
     for key, value in report.items():
         print(f"  {key:<{width}}  {value}")

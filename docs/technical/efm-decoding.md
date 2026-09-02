@@ -34,7 +34,7 @@ marginal disc.
 | File | Contents |
 |------|----------|
 | `.efm` | One signed byte per T-value (values 3–11), in disc order. Written in both TBC and CVBS output modes; in CVBS mode a `.efm.meta` SQLite sidecar additionally indexes the stream by frame (see the CVBS EFM extension format). |
-| `.efmc` | Optional confidence sidecar, one unsigned byte per T-value, byte-for-byte parallel to `.efm` (see below). TBC output mode only; opt-in via `LDDECODE_EFM_EMITCONF=1`. |
+| `.efmc` | Optional confidence sidecar, one unsigned byte per T-value, byte-for-byte parallel to `.efm` (see below). Written in both output modes; opt-in via `LDDECODE_EFM_EMITCONF=1`. In CVBS mode it is indexed by the same `efm_frame` rows as `.efm` and specified by the CVBS EFM extension format. |
 | `.prefm` | The filtered EFM waveform before the PLL (int16 samples), written with `--preEFM`; for debugging and cross-capture waveform research. |
 
 ## Defaults (no flags needed)
@@ -86,6 +86,7 @@ experiments; leave unset for normal decodes):
 | `LDDECODE_EFM_SGORDER` | `60` | Super-gaussian band-pass roll-off order (60 ≈ brick-wall; lower = gentler, less ringing) |
 | `LDDECODE_EFM_SGHIGH` | PAL `1750000`, NTSC `1600000` | Band-pass upper edge in Hz (the PAL 1.75 MHz edge is the IEC 60856 value) |
 | `LDDECODE_EFM_SGLOW` | `20000` | Band-pass lower edge in Hz |
+| `LDDECODE_EFM_FRONTEND` | unset | `hardware` substitutes the player-derived RF EQ + elliptic LPF front end (comparison experiments; see the front-end comparison section) |
 
 **Ensemble tip:** different settings lock *different* marginal frames. Decoding
 a hard disc several times with varied settings and merging the resulting
@@ -142,15 +143,43 @@ Loop constants are exposed for sweeps (leave unset for the tuned defaults):
 | `LDDECODE_EFM_TIMING_ZETA` | `0.6` | Loop damping factor |
 | `LDDECODE_EFM_TIMING_TED` | `0.5` | Assumed timing-error-detector gain (calibrates the loop bandwidth) |
 | `LDDECODE_EFM_TIMING_ACQBOOST` | `6` | Loop-bandwidth boost while acquiring |
+| `LDDECODE_EFM_TIMING_EQTAPS` | `0` | Adaptive-equaliser tap count (same as `--efm_eq_taps`) |
+
+### Adaptive equaliser (`--efm_eq_taps`, experimental, off by default)
+
+The timing demodulator carries an optional decision-directed sign-sign LMS
+FIR at symbol rate (centre-tap-initialised, taps leakage-bounded around the
+identity, odd tap counts 3–15). It is **off by default** because measurement
+says it does not help this pipeline:
+
+- The demodulator's per-bit sign decisions plus the sync flywheel are
+  already immune to static linear distortion — synthetic band-limiting down
+  to 0.9 MHz and single-bit echoes up to 0.95× amplitude leave
+  `frame_588_fraction` at 1.0 with no equaliser at all.
+- The remaining failures are noise-dominated, and there the ±1
+  slicer-target adaptation is neutral at best and harmful when active
+  (ve-snw-cut 0.998171 → 0.989979 with 3 taps; dolby-surround inner
+  0.999602 → 0.998010).
+
+The machinery itself is correct — on a true antipodal symbol stream with
+symbol-spaced ISI it converges to the channel inverse (unit-tested) — the
+EFM soft-sample stream is simply not that signal. The flag remains for
+experimentation on badly distorted discs; check the oracle's scores before
+trusting its output.
 
 ## The `.efmc` confidence sidecar
 
-With `LDDECODE_EFM_EMITCONF=1` (TBC output mode), ld-decode writes
-`<out>.efmc`: one uint8 per T-value, exactly parallel to `<out>.efm`. The
-value is the demodulator's soft decision for that run. 255 means full trust;
-values approaching 0 mean the run is a likely Reed-Solomon erasure candidate
-for the downstream decoder. It is opt-in so default decodes are byte-for-byte
+With `LDDECODE_EFM_EMITCONF=1`, ld-decode writes `<out>.efmc`: one uint8
+per T-value, exactly parallel to `<out>.efm`. The value is the
+demodulator's soft decision for that run. 255 means full trust; values
+approaching 0 mean the run is a likely Reed-Solomon erasure candidate for
+the downstream decoder. It is opt-in so default decodes are byte-for-byte
 unchanged.
+
+In CVBS output mode the sidecar is part of the CVBS EFM extension format
+(the same `efm_frame` index rows address both files) and
+`analysis/cvbs_verify.py` checks its 1:1 size contract; in TBC mode it is
+the same flat stream without an index.
 
 - With the **PLL**, confidence measures how close the run's closing edge
   fell to the loop's predicted clock grid (near half a bit period off → 0).
@@ -302,6 +331,36 @@ capture and beats the museld figures below on every capture measured there
 (dolby inner 0.999602 vs museld 0.998397; domesday inner 0.999654 vs
 0.995224; ve-snw-cut 0.998171 vs 0.997807) — which is why it became the
 default. `--efm_demod pll` reproduces the previous output byte for byte.
+
+### Front-end filter comparison (defaults unchanged)
+
+Two front ends were compared on the validation captures, decoding with the
+timing demodulator and judging with both the frame oracle and the
+**symbol-separation metric** (`lddecode.efm_score.symbol_separation`, after
+museld's `eval_efm_fir_filter.m`): the RMS distance of the filtered
+waveform's zero-crossing intervals from the legal T3–T11 grid, in
+channel-bit units, measured on the `.prefm` output
+(`analysis/efm_quality.py --prefm`). Lower is better; the metric needs no
+demodulator, so it ranks filters directly.
+
+- **anchor** — the shipped 11-anchor equaliser + super-gaussian band-pass
+  (PAL curve tuned 2026, NTSC legacy curve).
+- **hardware** — a player-derived alternative
+  (`LDDECODE_EFM_FRONTEND=hardware`): the Sony HIL-C1 service-manual
+  "RF EQ" biquad (bilinear coefficients via museld) cascaded with an
+  elliptic `ellip(4, 3 dB, 40 dB, 1.7 MHz)` low-pass.
+
+| Capture | System | anchor f588 / sep_rms | hardware f588 / sep_rms |
+|---------|--------|----------------------:|------------------------:|
+| jason-testpattern | PAL | 1.000000 / 0.125 | 1.000000 / 0.177 |
+| ve-snw-cut | NTSC | 0.998171 / 0.142 | 0.997747 / 0.182 |
+| dolby-surround-side1-inner | NTSC | 0.999602 / 0.127 | 0.998207 / 0.190 |
+| domesday-ds2-community-north-inner | PAL | 0.999654 / 0.174 | 0.991763 / 0.212 |
+
+The shipped anchor equaliser wins on every capture on both measures (and
+the two measures rank the front ends identically, which is the
+cross-validation of the metric), so the defaults are unchanged. The
+`LDDECODE_EFM_FRONTEND=hardware` hook remains for experiments.
 
 ### museld comparison
 

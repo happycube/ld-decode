@@ -463,6 +463,11 @@ class LDdecode:
                         if system == "PAL" else None),
                     has_nonstandard_values=True if system == "PAL" else None,
                     write_efm=bool(self.digital_audio),
+                    # Optional .efmc confidence companion (same opt-in as
+                    # the TBC-mode sidecar; see the EFM extension format)
+                    write_efm_conf=(
+                        os.environ.get("LDDECODE_EFM_EMITCONF", "") == "1"
+                    ),
                     sample_encoding=extra_options.get("cvbs_encoding"),
                 )
             else:
@@ -478,12 +483,16 @@ class LDdecode:
                     # Loop constants are env-tunable for sweeps; --efm_demod
                     # pll selects the previous run-length PLL.
                     from . import efm_demod
+                    _eq_taps = int(os.environ.get(
+                        "LDDECODE_EFM_TIMING_EQTAPS",
+                        str(extra_options.get("efm_eq_taps", 0))))
                     self.efm_pll = efm_demod.EFMTimingDemod(
                         inputfreq * 1e6,
                         fn_hz=float(os.environ.get("LDDECODE_EFM_TIMING_FN", "1200")),
                         zeta=float(os.environ.get("LDDECODE_EFM_TIMING_ZETA", "0.6")),
                         ted_gain=float(os.environ.get("LDDECODE_EFM_TIMING_TED", "0.5")),
                         acq_boost=float(os.environ.get("LDDECODE_EFM_TIMING_ACQBOOST", "6")),
+                        eq_taps=_eq_taps,
                     )
                 else:
                     self.efm_pll = efm_pll.EFM_PLL()
@@ -2112,8 +2121,13 @@ class LDdecode:
     def _writeout_data(self, fi, picture, audio, f, efm_out=None):
         """Write the field's sample data (video/rf-tbc/audio outputs)."""
         if self.cvbs_writer is not None:
+            efm_conf = None
+            if efm_out is not None and self.cvbs_writer.write_efm_conf:
+                # 1:1 with efm_out - both are views over the demodulator's
+                # buffers for the field just processed.
+                efm_conf = self.efm_pll.conf_view()
             self.cvbs_writer.push_field(fi, picture, f, efm=efm_out,
-                                        audio=audio)
+                                        audio=audio, efm_conf=efm_conf)
         else:
             # The differential gain/phase correction the CVBS path gets
             # inside downscale_cvbs, applied to the TBC output at the

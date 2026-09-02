@@ -16,6 +16,29 @@ The frequency values for .tbc to analogue CVBS playback via DAC are the followin
 - PAL - 17727262 Hz
 - NTSC - 14318181 Hz
 
+## EFM output sidecars
+
+When digital audio is enabled (the default), the decoder writes the EFM
+stream alongside the video output:
+
+- `.efm` — one signed byte per recovered T-value (values 3–11), in disc
+  order. In CVBS output mode a `.efm.meta` SQLite sidecar indexes the
+  stream per frame, as defined by the
+  [EFM extension format](https://github.com/simoninns/cvbs-file-format-specification/blob/main/docs/extensions/efm-extension-format.md)
+  of the CVBS file format specification.
+- `.efmc` — optional confidence companion (opt-in via
+  `LDDECODE_EFM_EMITCONF=1`, both output modes): one unsigned byte per
+  T-value, byte-for-byte parallel to `.efm`, 255 = full trust and values
+  approaching 0 marking Reed-Solomon erasure candidates. Indexed by the
+  same `efm_frame` rows in CVBS mode; specified in the same extension
+  document.
+- `.prefm` — the filtered EFM waveform before demodulation (int16 at the
+  capture sample rate), written with `--preEFM` for debugging and filter
+  research.
+
+See [EFM decoding](efm-decoding.md) for the demodulators that produce
+these streams and the quality oracle that scores them.
+
 ## Example file sizes
 
 The following file sizes show the typical disc usage consumed by an end-to-end capture and decode of a LaserDisc.
