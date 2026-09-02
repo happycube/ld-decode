@@ -233,9 +233,9 @@ def build_parser():
         dest="chroma_dg",
         action="store_false",
         default=True,
-        help="Disable the chroma differential-gain servo (measured from "
-             "the VITS modulated staircase, corrected at CVBS write time; "
-             "PAL only)",
+        help="Disable the chroma differential gain/phase servo (measured "
+             "from the VITS modulated staircase, corrected on the TBC and "
+             "CVBS outputs at write time; PAL only)",
     )
 
     parser.add_argument(

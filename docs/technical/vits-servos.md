@@ -117,10 +117,10 @@ is the direction that *raises* demodulated HF, so the loop is asking for the
 correction rather than withholding it; see
 [`vits-radius-baseline.md`](vits-radius-baseline.md).
 
-### 4. Chroma differential gain (ITS modulated-staircase servo)
+### 4. Chroma differential gain and phase (ITS modulated-staircase servo)
 
-The FM channel scales recovered chrominance by the luminance it rides
-on. Luminance moves the carrier across its deviation range (PAL 6.757
+The FM channel scales — and rotates — recovered chrominance by the
+luminance it rides on. Luminance moves the carrier across its deviation range (PAL 6.757
 to 7.900 MHz), carrying the subcarrier's sidebands across the RF filter
 chain's tilts — and inward of about mid-radius the disc's own optical
 MTF has taken the upper sideband entirely (0.08 falling to 0.04 of
@@ -143,19 +143,29 @@ That shape rules out two whole classes of fix, both tried and measured:
   straightens in chroma.
 
 What is consistent with every constraint is the classic corrector
-topology, applied to the composite output:
+topology, applied to the composite output with a complex gain — its
+magnitude corrects differential gain, its argument differential phase:
 
-    out = composite + (G(luma) − 1) · chroma
+    out = composite + Re[(G(luma) − 1) · chroma_analytic]
     G(L) = (1 + slope·50) / (1 + slope·max(L, 0))
+           · exp(−j·radians(phase)·max(L, 0))
 
 `measure_vits_dg_staircase()` reads the ITS modulated staircase (PAL
 second fields, line 19±1; six zones from the blanking-level subcarrier
 stretch to the 100 IRE tread, each guarded clear of the risers and of
-the subcarrier's own end at 60 µs) and fits chroma amplitude against
-luminance; the fitted fractional slope per IRE is pooled and adopted by
+the subcarrier's own end at 60 µs) and fits chroma amplitude and
+quadrature phase against luminance (the zones share one line's
+4-sample subcarrier lattice, so their phases compare directly, each
+referred to the blanking-level zone); the fitted fractional gain slope
+per IRE and phase slope in degrees per IRE are pooled and adopted by
 `checkChromaDG()` under the usual dead-band and rate limit into
-`DecoderParams["chroma_dg_slope"]`, and `downscale_cvbs()` nulls it at
-CVBS write time. Measured on DD86-DS2 CommunityNorth frames 3000–3100:
+`DecoderParams["chroma_dg_slope"]` and `["chroma_dg_phase"]`, and the
+write-time corrector nulls both on both outputs — `downscale_cvbs()`
+for the CVBS path, `apply_chroma_dg_correction_output()` in the
+parent's `_writeout_data()` for the TBC path (the TBC picture is
+downscaled on worker threads before the estimate exists, so the
+correction is applied to a write-time copy and `dspicture` keeps the
+raw decode). Measured on DD86-DS2 CommunityNorth frames 3000–3100:
 pooled differential gain 0.366 → 0.031, chroma flat 17.9–18.4 IRE
 across the staircase, luminance levels unchanged.
 
@@ -167,12 +177,19 @@ Three properties carry the design:
   travels to worker processes — serial and threaded decodes adopt
   identically because both pool the same committed fields at the same
   points.
-- **G is anchored at the 50 IRE grey pedestal**, the level the
-  multiburst-driven chroma calibration measures at, so the levels those
-  servos set stay set; blanking-level chrominance — burst included —
-  gains the same factor as all other chroma, which is what zero
-  differential gain means. Anchoring at blanking instead measured the
-  mid-luminance chroma bars 15 % low.
+- **G's magnitude is anchored at the 50 IRE grey pedestal**, the level
+  the multiburst-driven chroma calibration measures at, so the levels
+  those servos set stay set; blanking-level chrominance — burst
+  included — gains the same factor as all other chroma, which is what
+  zero differential gain means. Anchoring at blanking instead measured
+  the mid-luminance chroma bars 15 % low. **G's argument is anchored at
+  blanking**: burst sits at blanking level, hue is decoded relative to
+  burst, so the reference must never rotate — every other level's
+  chroma is rotated back to the burst's phase, which is what zero
+  differential phase means. (For the magnitude the anchor choice
+  cancels out of the chroma-to-burst ratio a decoder normalises by;
+  for the argument it does not, so only the blanking anchor is
+  correct.)
 - **A conforming capture gets no correction, by construction**: a disc
   without the modulated staircase never feeds the pool, and a pooled
   slope inside the spec band (|slope| < 0.0015/IRE; the 0.105
@@ -182,12 +199,28 @@ Three properties carry the design:
   −0.0003 ground truth, and engaging there put differential gain *in*
   (0.033 → 0.085). The clamp is asymmetric (−0.004 to +0.008 per IRE)
   because the peak-white gain grows as 1/(1 + 100·slope) on the
-  negative side.
+  negative side. The phase servo holds the same line at
+  |phase| < 0.035°/IRE, and takes that decision only from a pool of at
+  least 16 per-field readings: a single field's phase fit scatters by
+  0.014–0.06°/IRE — a 3-sample first-adoption median once carried
+  GGV1011 (whose pooled median is 0.021–0.025, a true 1.8° rise well
+  inside the 5.2° limit) over the line — and rotations that small are
+  invisible. An engaged correction releases only below 0.02°/IRE, so a
+  capture sitting right at the engage threshold corrects or does not
+  but never alternates.
 
-Differential *phase* (the same staircase's tread-to-tread phase swing,
-9–28° on Domesday against a 5.2° band) is not corrected by this: G is
-real. The topology extends to a complex G driven by the measured
-per-tread phases, which is the planned follow-on.
+On differential phase, the loudest number turned out to be the
+instrument. Both differential figures are max-spread statistics, so
+per-field noise only ever inflates them: the per-field spread read
+12–18° on Domesday, but per-field zone readings referred to their own
+blanking-level zone pool across fields without any subcarrier
+coherence, and the pooled truth is a monotonic 3.6–4.5° rise (GGV1011:
+1.8°) with ~0.4° standard error. The conformance checker now pools the
+staircase zone table the same way (`_pooled_differential_zones` in
+`analysis/vits_conformance.py`, up to 48 fields per parity), so the
+lanes judge the disc rather than the reading; the servo's linear phase
+correction then takes the one capture genuinely past the 5.2° limit
+(DD86-DS2 NationalA, +0.058°/IRE ≈ 5–6°) back inside it.
 
 ## When the multiburst ceiling reaches the burst servo
 

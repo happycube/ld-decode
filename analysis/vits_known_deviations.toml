@@ -26,7 +26,11 @@
 # list says fails and that now passes fails the build.
 #
 # Every entry here was measured at the gated default (four fields coherently
-# averaged per parity), from a decode forced to --exact-speculation.  That
+# averaged per parity; differential gain and phase instead pool per-field
+# zone readings across up to 48 fields per parity, see
+# _pooled_differential_zones in vits_conformance.py - the differential
+# figures are max-spread statistics, and per-field noise only ever inflates
+# them), from a decode forced to --exact-speculation.  That
 # flag is what makes the figures mean anything on a machine other than the one
 # that recorded them: without it the CVBS bytes depend on the thread count,
 # which defaults to min(max(cpu_count - 2, 1), 10) and so differs between a
@@ -36,7 +40,7 @@
 # journey; see cmake_modules/LdDecodeTests.cmake.
 
 
-# dolby-surround-side1-inner (NTSC): 4 of its checks fail.
+# dolby-surround-side1-inner (NTSC): 2 of its checks fail.
 
 [[deviation]]
 capture = "dolby-surround-side1-inner"
@@ -50,29 +54,7 @@ ceiling = 2.01
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-[[deviation]]
-capture = "dolby-surround-side1-inner"
-check = "ntsc-ntc7-composite/chroma_reference/differential_gain"
-field_line = 20
-parity = "first"
-measured = 0.108
-unit = "fraction"
-band_used = 1.08
-ceiling = 1.19
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
 
-[[deviation]]
-capture = "dolby-surround-side1-inner"
-check = "ntsc-ntc7-composite/chroma_reference/differential_phase"
-field_line = 20
-parity = "first"
-measured = 5.143
-unit = "degrees"
-band_used = 1.03
-ceiling = 1.13
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance phase varies with the luminance it rides on, measured on the modulated staircase."
 
 [[deviation]]
 capture = "dolby-surround-side1-inner"
@@ -86,7 +68,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# dolby-surround-side1-middle (NTSC): 3 of its checks fail.
+# dolby-surround-side1-middle (NTSC): 2 of its checks fail.
 
 [[deviation]]
 capture = "dolby-surround-side1-middle"
@@ -111,19 +93,6 @@ band_used = 1.24
 ceiling = 1.36
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
-
-[[deviation]]
-capture = "dolby-surround-side1-middle"
-check = "ntsc-ntc7-composite/chroma_reference/differential_gain"
-field_line = 20
-parity = "first"
-measured = 0.106
-unit = "fraction"
-band_used = 1.06
-ceiling = 1.17
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
-
 
 # dolby-surround-side1-outer (NTSC): 1 of its checks fail.
 
@@ -190,17 +159,7 @@ ceiling = 2.24
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-[[deviation]]
-capture = "domesday-ds1-community-north-outer"
-check = "pal-its-field2/staircase_subcarrier/differential_phase"
-field_line = 19
-parity = "second"
-measured = 6.681
-unit = "degrees"
-band_used = 1.28
-ceiling = 1.41
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance phase varies with the luminance it rides on, measured on the modulated staircase."
+
 
 [[deviation]]
 capture = "domesday-ds1-community-north-outer"
@@ -214,7 +173,19 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# domesday-ds2-community-north-inner (PAL): 6 of its checks fail.
+[[deviation]]
+capture = "domesday-ds1-community-north-outer"
+check = "pal-its-field2/staircase_subcarrier/differential_gain"
+field_line = 19
+parity = "second"
+measured = 0.110
+unit = "fraction"
+band_used = 1.05
+ceiling = 1.16
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
+reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase.  A knife-edge disc fault the pooled measurement resolved out of the noise (the four-field probe read it either side of the limit): the equivalent gain slope, ~0.0011/IRE, sits below the DG servo's 0.0015/IRE trust threshold, so the corrector rightly leaves it alone.  DD86-DS1 is the badly degraded pressing of the set."
+
+# domesday-ds2-community-north-inner (PAL): 4 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
@@ -252,29 +223,7 @@ ceiling = 2.91
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\"."
 
-[[deviation]]
-capture = "domesday-ds2-community-north-inner"
-check = "pal-its-field2/staircase_subcarrier/differential_gain"
-field_line = 19
-parity = "second"
-measured = 0.339
-unit = "fraction"
-band_used = 3.22
-ceiling = 3.55
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
 
-[[deviation]]
-capture = "domesday-ds2-community-north-inner"
-check = "pal-its-field2/staircase_subcarrier/differential_phase"
-field_line = 19
-parity = "second"
-measured = 5.428
-unit = "degrees"
-band_used = 1.04
-ceiling = 1.15
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance phase varies with the luminance it rides on, measured on the modulated staircase."
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
@@ -290,7 +239,7 @@ reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour 
 
 
 
-# domesday-ds2-community-north-middle (PAL): 9 of its checks fail.
+# domesday-ds2-community-north-middle (PAL): 8 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-middle"
@@ -364,17 +313,7 @@ ceiling = 2.17
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-[[deviation]]
-capture = "domesday-ds2-community-north-middle"
-check = "pal-its-field2/staircase_subcarrier/differential_gain"
-field_line = 19
-parity = "second"
-measured = 0.165
-unit = "fraction"
-band_used = 1.57
-ceiling = 1.73
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
+
 
 [[deviation]]
 capture = "domesday-ds2-community-north-middle"
@@ -400,7 +339,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# domesday-ds2-community-north-outer (PAL): 9 of its checks fail.
+# domesday-ds2-community-north-outer (PAL): 7 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-outer"
@@ -462,29 +401,7 @@ ceiling = 4.90
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-[[deviation]]
-capture = "domesday-ds2-community-north-outer"
-check = "pal-its-field2/staircase_subcarrier/differential_gain"
-field_line = 19
-parity = "second"
-measured = 0.151
-unit = "fraction"
-band_used = 1.44
-ceiling = 1.58
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
 
-[[deviation]]
-capture = "domesday-ds2-community-north-outer"
-check = "pal-its-field2/staircase_subcarrier/differential_phase"
-field_line = 19
-parity = "second"
-measured = 11.050
-unit = "degrees"
-band_used = 2.13
-ceiling = 2.34
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance phase varies with the luminance it rides on, measured on the modulated staircase."
 
 [[deviation]]
 capture = "domesday-ds2-community-north-outer"
@@ -711,7 +628,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
 reason = "Content is left on lines IEC 60856-1986 9.1.3 requires blanked, around 1.1 IRE of it."
 
 
-# ggv1069-side1-inner (NTSC): 8 of its checks fail.
+# ggv1069-side1-inner (NTSC): 7 of its checks fail.
 
 [[deviation]]
 capture = "ggv1069-side1-inner"
@@ -725,17 +642,7 @@ ceiling = 3.02
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-[[deviation]]
-capture = "ggv1069-side1-inner"
-check = "ntsc-ntc7-composite/chroma_reference/differential_phase"
-field_line = 13
-parity = "first"
-measured = 6.044
-unit = "degrees"
-band_used = 1.21
-ceiling = 1.33
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance phase varies with the luminance it rides on, measured on the modulated staircase."
+
 
 [[deviation]]
 capture = "ggv1069-side1-inner"
@@ -1047,7 +954,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# industrial-lv-side1-inner (PAL): 7 of its checks fail.
+# industrial-lv-side1-inner (PAL): 5 of its checks fail.
 
 [[deviation]]
 capture = "industrial-lv-side1-inner"
@@ -1109,20 +1016,7 @@ ceiling = 1.52
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-[[deviation]]
-capture = "industrial-lv-side1-inner"
-check = "pal-its-field2/staircase_subcarrier/differential_phase"
-field_line = 19
-parity = "second"
-measured = 5.354
-unit = "degrees"
-band_used = 1.03
-ceiling = 1.13
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance phase varies with the luminance it rides on, measured on the modulated staircase."
-
-
-# industrial-lv-side1-middle (PAL): 4 of its checks fail.
+# industrial-lv-side1-middle (PAL): 3 of its checks fail.
 
 [[deviation]]
 capture = "industrial-lv-side1-middle"
@@ -1159,19 +1053,6 @@ band_used = 6.87
 ceiling = 7.56
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\"."
-
-[[deviation]]
-capture = "industrial-lv-side1-middle"
-check = "pal-its-field2/staircase_subcarrier/differential_gain"
-field_line = 19
-parity = "second"
-measured = 0.120
-unit = "fraction"
-band_used = 1.14
-ceiling = 1.26
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
-reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase."
-
 
 # industrial-lv-side1-outer (PAL): 4 of its checks fail.
 

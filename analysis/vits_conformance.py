@@ -52,7 +52,7 @@ CVBS only; see analysis/vits_measure.py for why.
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from dataclasses import field as dataclass_field
 from typing import Dict, List, Optional, Tuple
 
@@ -143,6 +143,22 @@ CEILING_PERCENTILE = 99.99
 #: flat pedestal has nothing to measure against; a five-riser staircase
 #: spans about 90 IRE, so this separates the two cleanly.
 DIFFERENTIAL_MIN_LUMA_SPAN_IRE = 40.0
+
+#: Field counts for the pooled differential gain/phase measurement.
+#: Differential gain and phase are max-spread statistics across the
+#: staircase's zones, so any per-field noise inflates them - never
+#: deflates - and the coherent 4-field average still carries several
+#: degrees of phase noise per zone on a noisy capture (measured std
+#: 3-4 degrees per single field on BBC Domesday DD86-DS2 against 1.6 on
+#: GGV1011).  Unlike the coherent waveform average, a zone's amplitude
+#: and its phase relative to the blanking-level zone need no shared
+#: subcarrier phase between fields, so they pool across every field of
+#: the parity and the error falls as 1/sqrt(n) without any coherence
+#: requirement.  The cap bounds the lane's runtime; the floor keeps a
+#: capture too short to pool on the single-probe path rather than on a
+#: worse-than-probe pool.
+POOLED_DIFFERENTIAL_MIN_FIELDS = 8
+POOLED_DIFFERENTIAL_MAX_FIELDS = 48
 
 #: Chrominance saturation, in per cent, is the carrier peak-to-peak level as
 #: a proportion of the blanking-to-white reference: the 100% step of the PAL
@@ -572,7 +588,60 @@ def check_staircases(entry, measurements, line, parity) -> List[Check]:
     return checks
 
 
-def check_differential(entry, measurements, line, parity) -> List[Check]:
+def _pooled_differential_zones(fields, entry, element, line):
+    """The element's zone table pooled across fields, or None.
+
+    Each field is measured alone (geometry, alignment against the full
+    definition, then just this element), and the per-field zone readings
+    pool: amplitudes and luminances by mean, phases as unit vectors
+    after referring each field's zones to its own blanking-level zone -
+    the reference ITU-R BT.1439-1 3.3.1.3 names, and the step that lets
+    fields with unrelated absolute subcarrier phase pool at all.
+    """
+    # The chroma element's zones are laid out from the staircase it
+    # rides, so the staircase elements must survive the reduction.
+    reduced = replace(entry, elements=tuple(
+        e for e in entry.elements
+        if e.kind == "staircase" or e.id == element.id))
+    amp_rows, rel_rows, luma_rows = [], [], []
+    count = None
+    for probe in fields[:POOLED_DIFFERENTIAL_MAX_FIELDS]:
+        try:
+            geom = FieldGeometry(probe)
+            aligned, _, _ = align_geometry(geom, line, entry)
+            measured = measure_definition(probe, reduced, line, aligned,
+                                          align=False)
+        except Exception:
+            continue
+        measurement = measured.get(element.id)
+        if measurement is None:
+            continue
+        zones = measurement.detail.get("zones", [])
+        if len(zones) < 3 or any(zone["burst_relative_phase_deg"] is None
+                                 for zone in zones):
+            continue
+        if count is None:
+            count = len(zones)
+        if len(zones) != count:
+            continue
+        amp_rows.append([zone["amp_ire"] for zone in zones])
+        luma_rows.append([zone["luma_ire"] for zone in zones])
+        phases = np.array([zone["burst_relative_phase_deg"]
+                           for zone in zones])
+        rel_rows.append((phases - phases[0] + 180.0) % 360.0 - 180.0)
+    if len(amp_rows) < POOLED_DIFFERENTIAL_MIN_FIELDS:
+        return None
+    relative = np.deg2rad(np.array(rel_rows))
+    phases = np.rad2deg(np.angle(np.mean(np.exp(1j * relative), axis=0)))
+    phases[0] = 0.0
+    return {"lumas_ire": [float(x) for x in np.mean(luma_rows, axis=0)],
+            "amplitudes_ire": [float(x) for x in np.mean(amp_rows, axis=0)],
+            "phases_deg": [float(x) for x in phases],
+            "fields_pooled": len(amp_rows)}
+
+
+def check_differential(entry, measurements, line, parity,
+                       fields=None) -> List[Check]:
     """Differential gain and differential phase of a modulated staircase.
 
     ITU-R BT.1439-1 section 3.3.1.3 refers both to the subcarrier at
@@ -581,6 +650,13 @@ def check_differential(entry, measurements, line, parity) -> List[Check]:
     the "inherent" ones EBU Tech. 3209 section 7.2.2 g) and h) place on the
     generator, and IEC 60856-1986 9.1.3 Figure 9 repeats for a LaserDisc
     master.
+
+    Both are max-spread statistics, so per-field noise only ever inflates
+    them; given the parity's fields the zone table is pooled across them
+    (_pooled_differential_zones) and the checks judge the pooled figures,
+    which measure the disc rather than the reading.  The probe's own
+    zones qualify the element and are the fallback when the capture is
+    too short to pool.
     """
     checks = []
     for element in entry.elements:
@@ -596,10 +672,17 @@ def check_differential(entry, measurements, line, parity) -> List[Check]:
         if any(zone["burst_relative_phase_deg"] is None for zone in zones):
             continue
 
-        amplitudes = [zone["amp_ire"] for zone in zones]
-        phases = [zone["burst_relative_phase_deg"] for zone in zones]
-        table = {"lumas_ire": lumas, "amplitudes_ire": amplitudes,
-                 "phases_deg": phases}
+        pooled = (None if fields is None else
+                  _pooled_differential_zones(fields, entry, element, line))
+        if pooled is not None:
+            amplitudes = pooled["amplitudes_ire"]
+            phases = pooled["phases_deg"]
+            table = dict(pooled)
+        else:
+            amplitudes = [zone["amp_ire"] for zone in zones]
+            phases = [zone["burst_relative_phase_deg"] for zone in zones]
+            table = {"lumas_ire": lumas, "amplitudes_ire": amplitudes,
+                     "phases_deg": phases}
 
         try:
             dg_pp, dg_plus, dg_minus = differential_gain(amplitudes)
@@ -919,7 +1002,8 @@ def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS,
             checks += check_ceilings(entry, measurements, line, parity)
             checks += check_saturation(entry, measurements, line, parity)
             checks += check_staircases(entry, measurements, line, parity)
-            checks += check_differential(entry, measurements, line, parity)
+            checks += check_differential(entry, measurements, line, parity,
+                                         parity_fields)
             checks += check_chroma_nonlinearity(entry, measurements, line,
                                                 parity)
             packet_checks, response = check_multiburst(

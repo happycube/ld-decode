@@ -4,11 +4,13 @@ Unit tests for the chroma differential-gain servo and correction.
 SPDX-License-Identifier: GPL-3.0-or-later
 SPDX-FileCopyrightText: 2026 ld-decode contributors
 
-The FM channel scales recovered chrominance by the luminance it rides on
-(differential gain) while leaving the luminance staircase itself linear,
-so the correction is a luma-controlled chroma gain applied to the
-composite output: measured from the ITS modulated staircase, nulled at
-CVBS write time, anchored at the 50 IRE calibration pedestal.  These
+The FM channel scales and rotates recovered chrominance by the luminance
+it rides on (differential gain and differential phase) while leaving the
+luminance staircase itself linear, so the correction is a luma-controlled
+complex chroma gain applied to the composite outputs: measured from the
+ITS modulated staircase, nulled at write time on both the TBC and CVBS
+paths, gain anchored at the 50 IRE calibration pedestal and phase at
+blanking (the burst's level, so the hue reference never rotates).  These
 tests cover the correction's arithmetic, the staircase measurement, and
 the servo that connects them.
 """
@@ -21,7 +23,8 @@ import pytest
 
 from lddecode import utils_logging as logs
 from lddecode.decoder import LDdecode, measure_vits_dg_staircase
-from lddecode.field import CHROMA_DG_ANCHOR_IRE, apply_chroma_dg_correction
+from lddecode.field import (CHROMA_DG_ANCHOR_IRE, apply_chroma_dg_correction,
+                            apply_chroma_dg_correction_output)
 
 pytestmark = [pytest.mark.unit]
 
@@ -53,13 +56,15 @@ def rf_stub():
     )
 
 
-def composite_hz(levels_ire, zone_len, chroma_peak_of):
+def composite_hz(levels_ire, zone_len, chroma_peak_of,
+                 chroma_phase_of=lambda level: 0.0):
     """A synthetic 4fsc composite: pedestals with subcarrier riding them."""
     parts = []
     offset = 0
     for level in levels_ire:
         n = np.arange(offset, offset + zone_len)
-        tone = chroma_peak_of(level) * np.cos(0.5 * np.pi * n + 0.3)
+        tone = chroma_peak_of(level) * np.cos(
+            0.5 * np.pi * n + 0.3 + chroma_phase_of(level))
         parts.append(level + tone)
         offset += zone_len
     ire = np.concatenate(parts)
@@ -76,6 +81,18 @@ def zone_amp(hz, index, zone_len):
     n = np.arange(lo, hi)
     return 2.0 * abs(np.mean((seg - np.mean(seg))
                              * np.exp(-0.5j * np.pi * n)))
+
+
+def zone_phase(hz, index, zone_len):
+    """Quadrature phase of one zone in degrees, on the shared lattice."""
+    ire = (np.asarray(hz, dtype=np.float64) - IRE0) / HZ_IRE
+    lo = index * zone_len + 24
+    hi = (index + 1) * zone_len - 24
+    hi = lo + ((hi - lo) // 4) * 4
+    seg = ire[lo:hi]
+    n = np.arange(lo, hi)
+    return np.angle(np.mean((seg - np.mean(seg))
+                            * np.exp(-0.5j * np.pi * n)), deg=True)
 
 
 def zone_luma(hz, index, zone_len):
@@ -147,7 +164,8 @@ def test_a_negative_slope_corrects_the_other_way():
 
 #: Field-line waveform builder mirroring the ITS layout the measurement
 #: reads (blanking-level subcarrier from 30 us, treads from 40 us).
-def its_line_ire(chroma_peak_of, tread_levels=(20, 40, 60, 80, 100)):
+def its_line_ire(chroma_peak_of, tread_levels=(20, 40, 60, 80, 100),
+                 chroma_phase_of=lambda level: 0.0):
     fs = OUTFREQ
     y = np.zeros(LINELEN)
     edges_us = [(30.0, 40.0, 0.0)]
@@ -157,7 +175,8 @@ def its_line_ire(chroma_peak_of, tread_levels=(20, 40, 60, 80, 100)):
             (a, b, l) for a, b, l in zip(starts, ends, tread_levels)]:
         a, b = int(s_us * fs), int(e_us * fs)
         n = np.arange(a, b)
-        y[a:b] = lvl + chroma_peak_of(lvl) * np.cos(0.5 * np.pi * n + 1.1)
+        y[a:b] = lvl + chroma_peak_of(lvl) * np.cos(
+            0.5 * np.pi * n + 1.1 + chroma_phase_of(lvl))
     return y
 
 
@@ -189,14 +208,15 @@ def test_the_domesday_slope_is_recovered():
     f = field_stub(its_line_ire(lambda l: 18.0 * (1 + DOMESDAY_SLOPE * l)))
     measured = measure_vits_dg_staircase(f)
     assert measured is not None
-    slope, line = measured
+    slope, phase, line = measured
     assert line == 19
     assert slope == pytest.approx(DOMESDAY_SLOPE, rel=0.10)
+    assert abs(phase) < 0.005
 
 
 def test_a_flat_staircase_reads_no_slope():
     f = field_stub(its_line_ire(lambda l: 18.0))
-    slope, _ = measure_vits_dg_staircase(f)
+    slope, _, _ = measure_vits_dg_staircase(f)
     assert abs(slope) < 3e-4
 
 
@@ -228,10 +248,13 @@ def test_a_disc_with_no_dspicture_yields_nothing():
 # ---------------------------------------------------------------------------
 
 def servo_stub(slopes, calibrated=False, current=0.0, enabled=True,
-               fields_written=0):
+               fields_written=0, phases=None, current_phase=0.0):
+    if phases is None:
+        phases = [0.0] * len(slopes)
     it = types.SimpleNamespace(
         chroma_dg_servo=enabled,
-        _dg_samples=[(index, s) for index, s in enumerate(slopes)],
+        _dg_samples=[(index, s, ph)
+                     for index, (s, ph) in enumerate(zip(slopes, phases))],
         _dg_last_adopt=None,
         dg_calibrated=calibrated,
         fdoffset=len(slopes),
@@ -245,8 +268,14 @@ def servo_stub(slopes, calibrated=False, current=0.0, enabled=True,
         DG_SLOPE_CLAMP_POS=LDdecode.DG_SLOPE_CLAMP_POS,
         DG_MIN_ADOPT_FIELDS=LDdecode.DG_MIN_ADOPT_FIELDS,
         DG_SLOPE_ENGAGE=LDdecode.DG_SLOPE_ENGAGE,
+        DG_PHASE_DEADBAND=LDdecode.DG_PHASE_DEADBAND,
+        DG_PHASE_CLAMP=LDdecode.DG_PHASE_CLAMP,
+        DG_PHASE_ENGAGE=LDdecode.DG_PHASE_ENGAGE,
+        DG_PHASE_MIN_SAMPLES=LDdecode.DG_PHASE_MIN_SAMPLES,
+        DG_PHASE_RELEASE=LDdecode.DG_PHASE_RELEASE,
         rf=types.SimpleNamespace(
-            DecoderParams={"chroma_dg_slope": current}),
+            DecoderParams={"chroma_dg_slope": current,
+                           "chroma_dg_phase": current_phase}),
     )
     return it
 
@@ -257,6 +286,10 @@ def run(it, field=None):
 
 def slope_of(it):
     return it.rf.DecoderParams["chroma_dg_slope"]
+
+
+def phase_of(it):
+    return it.rf.DecoderParams["chroma_dg_phase"]
 
 
 @pytest.fixture(autouse=True)
@@ -340,3 +373,235 @@ def test_a_clean_disc_never_calibrates():
     run(it)
     assert slope_of(it) == 0.0
     assert not it.dg_calibrated
+
+# ---------------------------------------------------------------------------
+# Differential phase
+# ---------------------------------------------------------------------------
+
+#: The worst measured phase tilt (BBC Domesday DD86-DS2 NationalA reads
+#: +0.058 deg/IRE - a true differential phase of 5-6 degrees).
+DOMESDAY_PHASE = 0.058
+
+
+def test_a_phase_tilted_staircase_is_flattened():
+    hz = composite_hz(LEVELS, ZONE, lambda l: 20.0,
+                      lambda l: np.deg2rad(DOMESDAY_PHASE * l))
+    out = apply_chroma_dg_correction(hz, rf_stub(), 0.0, DOMESDAY_PHASE)
+    reference = zone_phase(out, 0, ZONE)
+    for i in range(1, len(LEVELS)):
+        assert zone_phase(out, i, ZONE) == pytest.approx(reference, abs=0.4)
+
+
+def test_phase_correction_never_rotates_blanking_level_chroma():
+    """Burst sits at blanking, and the hue reference must not move."""
+    hz = composite_hz((0.0,), ZONE * 4, lambda l: 20.0)
+    out = apply_chroma_dg_correction(hz, rf_stub(), 0.0, DOMESDAY_PHASE)
+    assert zone_phase(out, 0, ZONE * 4) == pytest.approx(
+        zone_phase(hz, 0, ZONE * 4), abs=0.05)
+
+
+def test_phase_correction_preserves_amplitude_and_luma():
+    hz = composite_hz(LEVELS, ZONE, lambda l: 20.0,
+                      lambda l: np.deg2rad(DOMESDAY_PHASE * l))
+    out = apply_chroma_dg_correction(hz, rf_stub(), 0.0, DOMESDAY_PHASE)
+    for i, level in enumerate(LEVELS):
+        assert zone_amp(out, i, ZONE) == pytest.approx(20.0, rel=0.02)
+        assert zone_luma(out, i, ZONE) == pytest.approx(level, abs=0.05)
+
+
+def test_gain_and_phase_correct_together():
+    hz = composite_hz(LEVELS, ZONE,
+                      lambda l: 20.0 * (1 + DOMESDAY_SLOPE * l),
+                      lambda l: np.deg2rad(DOMESDAY_PHASE * l))
+    out = apply_chroma_dg_correction(hz, rf_stub(), DOMESDAY_SLOPE,
+                                     DOMESDAY_PHASE)
+    want = 20.0 * (1 + DOMESDAY_SLOPE * CHROMA_DG_ANCHOR_IRE)
+    reference = zone_phase(out, 0, ZONE)
+    for i in range(len(LEVELS)):
+        assert zone_amp(out, i, ZONE) == pytest.approx(want, rel=0.02)
+        assert zone_phase(out, i, ZONE) == pytest.approx(reference, abs=0.4)
+
+
+def test_a_zero_phase_keeps_the_pure_gain_path_exact():
+    """phase=0 must reproduce the gain-only corrector bit for bit: the
+    engaged-gain, no-phase case is the one already-verified decodes
+    exercise."""
+    hz = composite_hz(LEVELS, ZONE,
+                      lambda l: 20.0 * (1 + DOMESDAY_SLOPE * l))
+    gain_only = apply_chroma_dg_correction(hz, rf_stub(), DOMESDAY_SLOPE)
+    with_phase_arg = apply_chroma_dg_correction(hz, rf_stub(),
+                                                DOMESDAY_SLOPE, 0.0)
+    assert np.array_equal(gain_only, with_phase_arg)
+
+
+def test_the_measured_phase_correction_closes_the_loop():
+    """Measure a tilted staircase with the servo's instrument, correct
+    with the measured figure, re-measure: the tilt must be gone.  This
+    pins the sign convention between measurement and corrector."""
+    line = its_line_ire(lambda l: 18.0,
+                        chroma_phase_of=lambda l: np.deg2rad(
+                            DOMESDAY_PHASE * l))
+    f = field_stub(line)
+    _, phase, _ = measure_vits_dg_staircase(f)
+    assert phase == pytest.approx(DOMESDAY_PHASE, rel=0.10)
+
+    hz = f.dspicture * HZ_IRE + IRE0
+    corrected = (apply_chroma_dg_correction(hz, rf_stub(), 0.0, phase)
+                 .astype(np.float64) - IRE0) / HZ_IRE
+    f2 = field_stub(corrected[LINELEN * 18:LINELEN * 19])
+    _, residual, _ = measure_vits_dg_staircase(f2)
+    assert abs(residual) < 0.1 * DOMESDAY_PHASE
+
+
+def test_a_wild_phase_tilt_is_rejected_by_the_measurement():
+    line = its_line_ire(lambda l: 18.0,
+                        chroma_phase_of=lambda l: np.deg2rad(0.8 * l))
+    assert measure_vits_dg_staircase(field_stub(line)) is None
+
+
+# ---------------------------------------------------------------------------
+# The TBC write-time path
+# ---------------------------------------------------------------------------
+
+OUTPUT_ZERO = 1024
+OUT_SCALE = 350.0
+VSYNC_IRE = -40.0
+
+
+def output_field_stub(ire_samples):
+    picture = np.clip((ire_samples - VSYNC_IRE) * OUT_SCALE
+                      + OUTPUT_ZERO + 0.5, 0, 65535).astype(np.uint16)
+    field = types.SimpleNamespace(
+        out_scale=OUT_SCALE,
+        rf=types.SimpleNamespace(
+            SysParams={"outfreq": OUTFREQ, "outputZero": OUTPUT_ZERO},
+            DecoderParams={"vsync_ire": VSYNC_IRE}),
+    )
+    field.output_to_ire = (
+        lambda x: (x - OUTPUT_ZERO) / OUT_SCALE + VSYNC_IRE)
+    return picture, field
+
+
+def test_the_output_unit_wrapper_matches_the_hz_corrector():
+    hz = composite_hz(LEVELS, ZONE,
+                      lambda l: 20.0 * (1 + DOMESDAY_SLOPE * l),
+                      lambda l: np.deg2rad(DOMESDAY_PHASE * l))
+    ire = (hz - IRE0) / HZ_IRE
+    picture, field = output_field_stub(ire)
+    out = apply_chroma_dg_correction_output(picture, field,
+                                            DOMESDAY_SLOPE, DOMESDAY_PHASE)
+    assert out.dtype == np.uint16
+    back = field.output_to_ire(out.astype(np.float64))
+    hz_back = back * HZ_IRE + IRE0
+    want = 20.0 * (1 + DOMESDAY_SLOPE * CHROMA_DG_ANCHOR_IRE)
+    reference = zone_phase(hz_back, 0, ZONE)
+    for i, level in enumerate(LEVELS):
+        assert zone_amp(hz_back, i, ZONE) == pytest.approx(want, rel=0.02)
+        assert zone_phase(hz_back, i, ZONE) == pytest.approx(reference,
+                                                            abs=0.5)
+        assert zone_luma(hz_back, i, ZONE) == pytest.approx(level, abs=0.1)
+
+
+def test_the_output_unit_wrapper_accepts_bytes():
+    ire = (composite_hz(LEVELS, ZONE, lambda l: 20.0) - IRE0) / HZ_IRE
+    picture, field = output_field_stub(ire)
+    from_bytes = apply_chroma_dg_correction_output(
+        picture.tobytes(), field, DOMESDAY_SLOPE)
+    from_array = apply_chroma_dg_correction_output(
+        picture, field, DOMESDAY_SLOPE)
+    assert np.array_equal(from_bytes, from_array)
+
+
+# ---------------------------------------------------------------------------
+# The phase servo
+# ---------------------------------------------------------------------------
+
+FULL = LDdecode.DG_PHASE_MIN_SAMPLES
+
+
+def test_the_phase_engage_threshold_holds_conforming_captures_at_zero():
+    """GGV1011 pools 0.021-0.025 deg/IRE - a true 1.8 degree rise, well
+    inside the 5.2 degree conformance limit - and must stay untouched."""
+    it = servo_stub([0.0034] * FULL,
+                    phases=([0.021, 0.025, 0.023] * FULL)[:FULL])
+    run(it)
+    assert phase_of(it) == 0.0
+
+
+def test_a_domesday_phase_tilt_is_adopted():
+    it = servo_stub([0.0034] * FULL,
+                    phases=([0.058, 0.055, 0.061] * FULL)[:FULL])
+    run(it)
+    assert phase_of(it) == pytest.approx(0.058)
+
+
+def test_the_phase_is_clamped():
+    it = servo_stub([0.0034] * FULL, phases=[0.4] * FULL)
+    run(it)
+    assert phase_of(it) == pytest.approx(LDdecode.DG_PHASE_CLAMP)
+
+
+def test_an_engaged_phase_that_falls_back_inside_releases_to_zero():
+    it = servo_stub([0.0034] * FULL, calibrated=True, current=0.0034,
+                    phases=[0.01] * FULL, current_phase=0.05)
+    run(it)
+    assert phase_of(it) == 0.0
+
+
+def test_a_phase_switching_on_is_not_held_by_the_rate_limit():
+    """The pool reaches its depth whenever it does - often just after a
+    gain trim on a busy decode - and the engage is a one-time event, so
+    it goes out immediately rather than waiting out the trim holdoff."""
+    it = servo_stub([0.0034] * FULL, calibrated=True, current=0.0034,
+                    phases=[0.058] * FULL, fields_written=5)
+    it._dg_last_adopt = it.fdoffset - 1
+    run(it)
+    assert phase_of(it) == pytest.approx(0.058)
+
+
+def test_a_phase_trim_is_still_rate_limited():
+    it = servo_stub([0.0034] * FULL, calibrated=True, current=0.0034,
+                    phases=[0.058] * FULL, current_phase=0.045,
+                    fields_written=5)
+    it._dg_last_adopt = it.fdoffset - 1
+    run(it)
+    assert phase_of(it) == pytest.approx(0.045)
+
+
+def test_the_hysteresis_band_neither_engages_nor_releases():
+    """A capture whose tilt sits between the release and engage
+    thresholds keeps whatever state it is in - no flapping."""
+    it = servo_stub([0.0034] * FULL, phases=[0.028] * FULL)
+    run(it)
+    assert phase_of(it) == 0.0
+
+    it = servo_stub([0.0034] * FULL, calibrated=True, current=0.0034,
+                    phases=[0.028] * FULL, current_phase=0.043)
+    run(it)
+    assert phase_of(it) == pytest.approx(0.028)
+
+
+def test_a_phase_change_alone_still_adopts():
+    """The gain can be settled while the phase drifts past its dead-band;
+    the adoption must not be gated on the gain moving too."""
+    it = servo_stub([0.0034] * FULL, calibrated=True, current=0.0034,
+                    phases=[0.058] * FULL, current_phase=0.0)
+    run(it)
+    assert slope_of(it) == pytest.approx(0.0034)
+    assert phase_of(it) == pytest.approx(0.058)
+
+
+def test_a_part_filled_pool_never_takes_the_phase_decision():
+    """A 3-sample phase median put GGV1011 over the engage line; until
+    the pool fills, the phase holds - a first gain adoption goes out
+    alone, and an engaged phase survives a pool shrunk by aging."""
+    it = servo_stub([0.0034] * 3, phases=[0.058] * 3)
+    run(it)
+    assert slope_of(it) == pytest.approx(0.0034)
+    assert phase_of(it) == 0.0
+
+    it = servo_stub([0.0034] * 8, calibrated=True, current=0.0034,
+                    phases=[0.01] * 8, current_phase=0.05)
+    it.DG_PHASE_MIN_SAMPLES = 24
+    run(it)
+    assert phase_of(it) == 0.05

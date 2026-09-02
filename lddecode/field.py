@@ -118,31 +118,69 @@ def _chroma_dg_window(length, fs_mhz):
     return got
 
 
-def apply_chroma_dg_correction(hz_samples, rf, slope):
-    """Equalise chroma gain across luminance on a 4fsc composite stream.
+def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase):
+    """Core of the differential gain/phase corrector, in IRE.
 
-    The FM channel scales recovered chrominance by the luminance it rides
-    on - differential gain - because the carrier's sidebands sweep the RF
-    filter chain's tilts as luminance moves the carrier, one-sidedly
-    inward of mid-radius where the disc's own optical MTF has taken the
-    upper sideband.  The luminance staircase stays linear while it
-    happens (the distortion lives only where the sidebands sit far from
-    the carrier), so no memoryless transfer curve can undo it; what can
-    is the classic corrector topology this implements:
+    out = composite + Re[(G(luma) - 1) * chroma_analytic]
+    G(L) = (1 + slope * ANCHOR) / (1 + slope * max(L, 0))
+           * exp(-1j * radians(phase) * max(L, 0))
 
-        out = composite + (G(luma) - 1) * chroma
-        G(L) = (1 + slope * ANCHOR) / (1 + slope * max(L, 0))
+    With phase == 0 the gain is real and the cheaper real-band path is
+    taken, reproducing the pure differential gain corrector exactly.
+    The phase term rotates chrominance by -phase*luma degrees, anchored
+    at blanking: burst sits at blanking level, so it is never rotated
+    and stays the hue reference every downstream chroma decoder locks
+    to; equalising every level's phase to the burst's is what zero
+    differential phase means.
+    """
+    bandpass, lowpass = _chroma_dg_window(len(ire), fs_mhz)
+    spectrum = np.fft.rfft(ire)
+    luma = np.fft.irfft(spectrum * lowpass, len(ire))
+    level = np.clip(luma, 0.0, None)
+    gain = ((1.0 + slope * CHROMA_DG_ANCHOR_IRE)
+            / (1.0 + slope * level))
+    if phase == 0.0:
+        chroma = np.fft.irfft(spectrum * bandpass, len(ire))
+        return ire + (gain - 1.0) * chroma
+
+    # The rotation needs the chroma band's analytic signal: positive
+    # frequencies only, doubled (DC and Nyquist stay, though the
+    # bandpass has removed both anyway).
+    n = len(ire)
+    half = spectrum * bandpass
+    full = np.zeros(n, dtype=np.complex128)
+    full[: len(half)] = half
+    full[1 : (n + 1) // 2] *= 2.0
+    chroma_analytic = np.fft.ifft(full)
+    g = gain * np.exp(-1j * np.deg2rad(phase) * level)
+    return ire + np.real((g - 1.0) * chroma_analytic)
+
+
+def apply_chroma_dg_correction(hz_samples, rf, slope, phase=0.0):
+    """Equalise chroma gain and phase across luminance on a 4fsc stream.
+
+    The FM channel scales and rotates recovered chrominance by the
+    luminance it rides on - differential gain and differential phase -
+    because the carrier's sidebands sweep the RF filter chain's tilts as
+    luminance moves the carrier, one-sidedly inward of mid-radius where
+    the disc's own optical MTF has taken the upper sideband.  The
+    luminance staircase stays linear while it happens (the distortion
+    lives only where the sidebands sit far from the carrier), so no
+    memoryless transfer curve can undo it; what can is the classic
+    corrector topology _correct_chroma_vs_luma implements.
 
     `slope` is the measured fractional chroma-gain change per IRE of
-    luminance (decoder.measure_vits_dg_staircase), and the correction is
-    exact for the linear gain-vs-luminance the staircase measures.  The
-    subcarrier bandpass and the luminance low-pass are zero-phase, G is
-    real, and G(blanking-and-below) is a constant, so luminance levels,
-    sync, and differential phase are untouched; burst gains the same
-    factor as all other blanking-level chrominance, which is what zero
-    differential gain means.
+    luminance and `phase` the measured chroma rotation in degrees per
+    IRE (both from decoder.measure_vits_dg_staircase); the correction is
+    exact for the linear dependence the staircase measures.  The
+    subcarrier bandpass and the luminance low-pass are zero-phase and
+    G(blanking-and-below) is a constant, so luminance levels and sync
+    are untouched; burst gains the same factor as all other
+    blanking-level chrominance and is never rotated, which is what zero
+    differential gain and phase mean.
 
-    Applied at CVBS write time only (downscale_cvbs): every servo
+    Applied at write time only (downscale_cvbs for the CVBS output,
+    apply_chroma_dg_correction_output for the TBC output): every servo
     measures the uncorrected signal, so none of them closes a loop
     through this.
 
@@ -152,14 +190,28 @@ def apply_chroma_dg_correction(hz_samples, rf, slope):
     dp = rf.DecoderParams
     ire0, hz_ire = dp["ire0"], dp["hz_ire"]
     ire = (np.asarray(hz_samples, dtype=np.float64) - ire0) / hz_ire
-    bandpass, lowpass = _chroma_dg_window(len(ire), rf.SysParams["outfreq"])
-    spectrum = np.fft.rfft(ire)
-    chroma = np.fft.irfft(spectrum * bandpass, len(ire))
-    luma = np.fft.irfft(spectrum * lowpass, len(ire))
-    gain = ((1.0 + slope * CHROMA_DG_ANCHOR_IRE)
-            / (1.0 + slope * np.clip(luma, 0.0, None)))
-    ire += (gain - 1.0) * chroma
+    ire = _correct_chroma_vs_luma(ire, rf.SysParams["outfreq"], slope, phase)
     return (ire * hz_ire + ire0).astype(np.float32)
+
+
+def apply_chroma_dg_correction_output(picture, field, slope, phase=0.0):
+    """The same correction on output-unit (uint16 TBC) samples.
+
+    The TBC picture is downscaled on worker threads before the servo's
+    estimate for the field is even pooled, so the correction cannot live
+    in downscale(); it is applied here, by the parent at write time, to
+    a copy - field.dspicture stays uncorrected and every servo keeps
+    measuring the raw decode.
+    """
+    samples = np.asarray(picture)
+    if samples.dtype != np.uint16:
+        samples = np.frombuffer(samples, dtype=np.uint16)
+    ire = field.output_to_ire(samples.astype(np.float64))
+    ire = _correct_chroma_vs_luma(
+        ire, field.rf.SysParams["outfreq"], slope, phase)
+    out = ((ire - field.rf.DecoderParams["vsync_ire"]) * field.out_scale
+           + field.rf.SysParams["outputZero"] + 0.5)
+    return np.clip(out, 0, 65535).astype(np.uint16)
 
 
 class Field:
@@ -1858,8 +1910,9 @@ class FieldPAL(Field):
         )
 
         slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
-        if slope != 0.0:
-            out = apply_chroma_dg_correction(out, self.rf, slope)
+        phase = float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
+        if slope != 0.0 or phase != 0.0:
+            out = apply_chroma_dg_correction(out, self.rf, slope, phase)
 
         return self.hz_to_output(out)
 

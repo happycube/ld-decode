@@ -21,7 +21,7 @@ from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
 from .field import (CHROMA_DG_ANCHOR_IRE, Field, FieldAnchor, FieldNTSC,
-                    FieldPAL)
+                    FieldPAL, apply_chroma_dg_correction_output)
 from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import detect_levels
@@ -151,16 +151,21 @@ def measure_vits_dg_staircase(field, lines=None):
     on second fields (usually line 19; searched over neighbours like the
     2T layout, because ITS placement varies by a line between discs).
     Each zone yields the luminance it sits at and the subcarrier
-    amplitude riding on it, by the same fs/4 quadrature the analysis
-    tree uses; a straight-line fit of amplitude against luminance then
-    gives the fractional gain change per IRE - the quantity
-    field.apply_chroma_dg_correction nulls.
+    amplitude and phase riding on it, by the same fs/4 quadrature the
+    analysis tree uses; straight-line fits against luminance then give
+    the fractional gain change per IRE and the phase rotation in
+    degrees per IRE - the two quantities
+    field.apply_chroma_dg_correction nulls.  The zone slices share one
+    line's 4-sample subcarrier lattice (lineslice_tbc keepphase), so
+    their quadrature phases are directly comparable; each zone's phase
+    is taken relative to the blanking-level zone, which is the burst's
+    level and therefore the hue reference.
 
     Validity checks reject anything that is not a modulated staircase:
     the luma-only staircase first fields carry, content lines, and discs
     with no ITS at all yield None and the correction stays off.
 
-    Returns (slope_per_ire, line) on success.
+    Returns (slope_per_ire, phase_deg_per_ire, line) on success.
     """
     if field.rf.system != "PAL" or field.isFirstField:
         return None
@@ -169,7 +174,7 @@ def measure_vits_dg_staircase(field, lines=None):
     if lines is None:
         lines = (19, 18, 20)
     for line in lines:
-        lumas, amps = [], []
+        lumas, amps, phasors = [], [], []
         for start, end in _VITS_DG_ZONES_PAL:
             try:
                 sl = field.lineslice_tbc(line, start, end - start,
@@ -190,6 +195,7 @@ def measure_vits_dg_staircase(field, lines=None):
                              * np.exp(-0.5j * np.pi * np.arange(usable)))
             lumas.append(luma)
             amps.append(float(2.0 * np.abs(phasor)))
+            phasors.append(phasor)
         if len(lumas) != len(_VITS_DG_ZONES_PAL):
             continue
 
@@ -214,7 +220,18 @@ def measure_vits_dg_staircase(field, lines=None):
         per_ire = float(slope / intercept)
         if abs(per_ire) > 0.01:
             continue
-        return per_ire, line
+
+        # Phase of each zone relative to the blanking-level zone, on the
+        # shared lattice.  True differential phase is a few degrees, so
+        # anything near a wrap is corruption the amplitude gates missed.
+        relative = np.angle(np.array(phasors) * np.conj(phasors[0]),
+                            deg=True)
+        if np.max(np.abs(relative)) > 90.0:
+            continue
+        phase_per_ire = float(np.polyfit(lumas, relative, 1)[0])
+        if abs(phase_per_ire) > 0.5:
+            continue
+        return per_ire, phase_per_ire, line
     return None
 
 
@@ -1096,6 +1113,38 @@ class LDdecode:
     #: conforming disc is left exactly alone.
     DG_SLOPE_ENGAGE = 0.0015
 
+    #: The differential-phase constants, in degrees of chroma rotation
+    #: per IRE of luminance, tracked from the same staircase readings and
+    #: corrected by the same write-time pass.  A single field's phase
+    #: fit is rough (std 0.014-0.06 deg/IRE across the discs in hand) -
+    #: far rougher relative to its engage margin than the gain fit is to
+    #: its own - so the phase decision is only taken from a full pool
+    #: (a 3-sample first-adoption median put GGV1011 over the line) and
+    #: holds its previous value until the pool fills.  The engage
+    #: threshold sits where the full-pool median separates the
+    #: populations: GGV1011's conforming capture pools 0.021-0.025
+    #: (a true 1.8 degree rise, well inside the 5.2 degree conformance
+    #: limit; threshold margin ~4 sigma of a 24-sample median), the
+    #: mildest Domesday cut ~0.026-0.031 (true DP 3.6 degrees, also
+    #: inside the limit), and the captures that genuinely fail pool
+    #: 0.044-0.061.  Below the threshold the servo holds zero:
+    #: rotations that small are invisible and the conforming control
+    #: capture must stay untouched by construction.
+    DG_PHASE_DEADBAND = 0.005
+    DG_PHASE_CLAMP = 0.15
+    DG_PHASE_ENGAGE = 0.035
+    #: Hysteresis: an engaged correction releases to zero only when the
+    #: pooled median falls below this, well under the engage threshold,
+    #: so a capture whose tilt sits right at the engage line corrects or
+    #: does not but never alternates.
+    DG_PHASE_RELEASE = 0.02
+    #: The other servos clear this pool whenever they adopt (their
+    #: calibration change makes the old readings stale), so demanding a
+    #: full 24 meant the phase decision often never arrived on an active
+    #: decode; 16 keeps ~2.7 sigma between GGV1011's pooled median and
+    #: the engage threshold.
+    DG_PHASE_MIN_SAMPLES = 16
+
     #: How far the inverse-MTF strength may be wound, in either
     #: direction.  Positive strengths give back what the disc's response
     #: took away; negative ones take back what the chain added, and the
@@ -1298,25 +1347,28 @@ class LDdecode:
         return float(max(-self.IMTF_STRENGTH_LIMIT, flat))
 
     def checkChromaDG(self, field):
-        """Track chroma differential gain from the ITS modulated staircase.
+        """Track chroma differential gain and phase from the ITS staircase.
 
-        Pools per-field slope estimates and adopts the pooled median into
-        DecoderParams["chroma_dg_slope"], which downscale_cvbs nulls at
-        CVBS write time.  Nothing about decoding depends on it - the
-        servos all measure upstream of the correction - so adopting never
-        invalidates a field, and there is nothing to hand to workers;
-        serial and threaded decodes pool the same committed fields at the
-        same points and so adopt identically.
+        Pools per-field slope and phase estimates and adopts the pooled
+        medians into DecoderParams["chroma_dg_slope"] and
+        ["chroma_dg_phase"], which the write-time corrector nulls on
+        both outputs (downscale_cvbs for CVBS,
+        apply_chroma_dg_correction_output for the TBC).  Nothing about
+        decoding depends on them - the servos all measure upstream of
+        the correction - so adopting never invalidates a field, and
+        there is nothing to hand to workers; serial and threaded decodes
+        pool the same committed fields at the same points and so adopt
+        identically.
 
-        Discs with no modulated staircase never feed the pool and the
-        slope stays 0.0: a capture with no measured differential gain
-        gets no correction, by construction.
+        Discs with no modulated staircase never feed the pool and both
+        corrections stay 0.0: a capture with no measured differential
+        distortion gets no correction, by construction.
         """
         if not self.chroma_dg_servo:
             return
         measured = measure_vits_dg_staircase(field)
         if measured is not None:
-            entry = (field.readloc, measured[0])
+            entry = (field.readloc, measured[0], measured[1])
             if self._dg_samples and self._dg_samples[-1][0] == entry[0]:
                 self._dg_samples[-1] = entry
             else:
@@ -1330,17 +1382,41 @@ class LDdecode:
             return
 
         estimate = float(np.clip(
-            np.median([slope for _, slope in self._dg_samples]),
+            np.median([slope for _, slope, _ in self._dg_samples]),
             self.DG_SLOPE_CLAMP_NEG, self.DG_SLOPE_CLAMP_POS))
         if abs(estimate) < self.DG_SLOPE_ENGAGE:
             estimate = 0.0
         current = float(
             self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
-        if abs(estimate - current) < self.DG_SLOPE_DEADBAND:
+        current_phase = float(
+            self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
+        if len(self._dg_samples) >= self.DG_PHASE_MIN_SAMPLES:
+            phase = float(np.clip(
+                np.median([ph for _, _, ph in self._dg_samples]),
+                -self.DG_PHASE_CLAMP, self.DG_PHASE_CLAMP))
+            threshold = (self.DG_PHASE_ENGAGE if current_phase == 0.0
+                         else self.DG_PHASE_RELEASE)
+            if abs(phase) < threshold:
+                phase = 0.0
+        else:
+            # A phase median from a part-filled pool cannot be trusted
+            # with the engage decision, so the phase holds until the
+            # pool fills - which also means an early gain adoption never
+            # carries a noisy phase with it.
+            phase = current_phase
+        if (abs(estimate - current) < self.DG_SLOPE_DEADBAND
+                and abs(phase - current_phase) < self.DG_PHASE_DEADBAND):
             self.dg_calibrated = True
             return
         if self.dg_calibrated and self.fields_written > 0:
-            if (self._dg_last_adopt is not None
+            # The rate limit bounds trim churn; a phase correction
+            # switching on is a one-time calibration event (the pool
+            # only just grew deep enough to take the decision, and the
+            # hysteresis band keeps it from cycling), so it does not
+            # wait out the previous trim's holdoff.
+            engaging = current_phase == 0.0 and phase != 0.0
+            if (not engaging
+                    and self._dg_last_adopt is not None
                     and (self.fdoffset - self._dg_last_adopt)
                     < self.DG_MIN_ADOPT_FIELDS * self.bytes_per_field):
                 return
@@ -1350,10 +1426,13 @@ class LDdecode:
                     / (1.0 + estimate * 100.0))
         logs.logger.debug(
             f"Chroma DG servo: slope {current:+.5f} \u2192 {estimate:+.5f}"
-            f" per IRE (chroma at 100 IRE scaled by {gain_100:.3f})"
+            f" per IRE, phase {current_phase:+.4f} \u2192 {phase:+.4f}"
+            f" deg per IRE (chroma at 100 IRE scaled by {gain_100:.3f},"
+            f" rotated by {-phase * 100.0:+.1f} deg)"
         )
         self.dg_calibrated = True
         self.rf.DecoderParams["chroma_dg_slope"] = estimate
+        self.rf.DecoderParams["chroma_dg_phase"] = phase
 
     def checkVideoEQ(self, field):
         """Adopt the multiburst-derived video EQ when it drifts past
@@ -2008,6 +2087,15 @@ class LDdecode:
             self.cvbs_writer.push_field(fi, picture, f, efm=efm_out,
                                         audio=audio)
         else:
+            # The differential gain/phase correction the CVBS path gets
+            # inside downscale_cvbs, applied to the TBC output at the
+            # same place in its life: parent-side, at write time, on a
+            # copy.  f.dspicture keeps the raw decode for the servos.
+            slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
+            phase = float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
+            if (slope != 0.0 or phase != 0.0) and f is not None:
+                picture = apply_chroma_dg_correction_output(
+                    picture, f, slope, phase)
             self.outfile_video.write(picture)
         self.fields_written += 1
 
