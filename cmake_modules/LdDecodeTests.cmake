@@ -45,6 +45,9 @@
 #                                                    roundtrip-pal-orc
 #   pal-cvbs-parallel   decode-pal-cvbs-parallel  -> compare-pal-cvbs-parallel-*
 #   jason-tbc           decode-jason-testpattern  -> efm-quality-jason-testpattern
+#   jason-pll-tbc       decode-jason-pll          -> efm-quality-jason-pll,
+#                                                    compare-jason-pll-parallel-*
+#   jason-pll-parallel  decode-jason-pll-parallel -> compare-jason-pll-parallel-*
 #   issue176-tbc        decode-issue176           -> efm-quality-issue176
 #   ntsc-cut-ldf        cut-ntsc-segment          -> decode-ntsc-cut
 #   pal-cut-ldf         cut-pal-segment           -> decode-pal-cut
@@ -747,11 +750,11 @@ add_vits_capture_conformance(ve-monitor NTSC ntsc/ve-monitor.ldf)
 # sharing the label keeps those decodes in the sweep's CI job instead of
 # forcing "ctest -LE vits" to repeat them.
 
-# jason-testpattern is the PAL EFM gate: a short, clean capture the current
-# demodulator frames perfectly (sync_rate 1.0, frame_588_fraction 1.0), so
-# it is pinned at (near) perfection.  The decode also opts in to the .efmc
-# confidence sidecar, making this the test that holds .efmc to its 1:1
-# contract with the .efm T-values.
+# jason-testpattern is the PAL EFM gate: a short, clean capture the default
+# (timing-recovery) demodulator frames perfectly (sync_rate 1.0,
+# frame_588_fraction 1.0), so it is pinned at (near) perfection.  The
+# decode also opts in to the .efmc confidence sidecar, making this the test
+# that holds .efmc to its 1:1 contract with the .efm T-values.
 add_test(
     NAME decode-jason-testpattern
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
@@ -816,6 +819,72 @@ set_tests_properties(efm-quality-issue176 PROPERTIES
     TIMEOUT 120
 )
 
+# The previous run-length PLL stays available behind --efm_demod pll (the
+# timing-recovery demodulator is the default); this chain keeps the PLL
+# gated at its own measured performance, holds its .efmc sidecar to the
+# 1:1 contract, and checks the serial/threaded .efm bit-identity guarantee
+# with the non-default selector too.
+add_test(
+    NAME decode-jason-pll
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --tbc --PAL --efm_demod pll
+        ${TESTDATA_DIR}/pal/jason-testpattern.ldf
+        ${CMAKE_BINARY_DIR}/testout/jason-pll
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-jason-pll PROPERTIES
+    LABELS "functional"
+    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
+    FIXTURES_SETUP jason-pll-tbc
+    TIMEOUT 600
+)
+
+add_test(
+    NAME efm-quality-jason-pll
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
+        ${CMAKE_BINARY_DIR}/testout/jason-pll.efm
+        --efmc ${CMAKE_BINARY_DIR}/testout/jason-pll.efmc
+        --min-sync-rate 0.999 --min-frame-588 0.999
+        --max-invalid-t 0 --min-t-values 143000
+        --json ${CMAKE_BINARY_DIR}/testout/jason-pll.efm-quality.json
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(efm-quality-jason-pll PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED jason-pll-tbc
+    PASS_REGULAR_EXPRESSION "EFM QUALITY: PASS"
+    TIMEOUT 120
+)
+
+add_test(
+    NAME decode-jason-pll-parallel
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --tbc --PAL --efm_demod pll -t 4 --exact-speculation
+        ${TESTDATA_DIR}/pal/jason-testpattern.ldf
+        ${CMAKE_BINARY_DIR}/testout/jason-pll-parallel
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-jason-pll-parallel PROPERTIES
+    LABELS "functional"
+    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
+    FIXTURES_SETUP jason-pll-parallel
+    TIMEOUT 600
+)
+
+foreach(ext efm efmc)
+    add_test(
+        NAME compare-jason-pll-parallel-${ext}
+        COMMAND ${CMAKE_COMMAND} -E compare_files
+            ${CMAKE_BINARY_DIR}/testout/jason-pll-parallel.${ext}
+            ${CMAKE_BINARY_DIR}/testout/jason-pll.${ext}
+    )
+    set_tests_properties(compare-jason-pll-parallel-${ext} PROPERTIES
+        LABELS "functional"
+        FIXTURES_REQUIRED "jason-pll-parallel;jason-pll-tbc"
+        TIMEOUT 120
+    )
+endforeach()
+
 # The remaining gates ride on decodes that already run: the basic NTSC TBC
 # and CVBS decodes (ve-snw-cut carries digital audio), and the EFM-bearing
 # VITS captures.  add_efm_quality(<label> <fixture> <labels> <efm-file>
@@ -840,23 +909,23 @@ function(add_efm_quality label fixture test_labels efm_file min_sync min_588 min
 endfunction()
 
 add_efm_quality(ntsc-basic ntsc-tbc "functional"
-    ntsc-basic.efm 0.997 0.995 860000)
+    ntsc-basic.efm 0.999 0.997 860000)
 add_efm_quality(ntsc-cvbs ntsc-cvbs "functional"
-    ntsc-cvbs.efm 0.995 0.986 178000)
+    ntsc-cvbs.efm 0.999 0.995 178000)
 add_efm_quality(ve-monitor ve-monitor-cvbs "functional;vits"
-    ve-monitor.efm 0.998 0.989 2610000)
+    ve-monitor.efm 0.998 0.995 2610000)
 add_efm_quality(dolby-surround-side1-inner dolby-surround-side1-inner-cvbs
-    "functional;vits" dolby-surround-side1-inner.efm 0.997 0.989 594000)
+    "functional;vits" dolby-surround-side1-inner.efm 0.998 0.994 594000)
 add_efm_quality(dolby-surround-side1-middle dolby-surround-side1-middle-cvbs
-    "functional;vits" dolby-surround-side1-middle.efm 0.997 0.990 564000)
+    "functional;vits" dolby-surround-side1-middle.efm 0.998 0.995 564000)
 add_efm_quality(dolby-surround-side1-outer dolby-surround-side1-outer-cvbs
-    "functional;vits" dolby-surround-side1-outer.efm 0.996 0.988 594000)
+    "functional;vits" dolby-surround-side1-outer.efm 0.998 0.995 594000)
 add_efm_quality(domesday-ds2-community-north-inner
     domesday-ds2-community-north-inner-cvbs "functional;vits"
-    domesday-ds2-community-north-inner.efm 0.996 0.990 891000)
+    domesday-ds2-community-north-inner.efm 0.999 0.995 891000)
 add_efm_quality(domesday-ds2-community-north-middle
     domesday-ds2-community-north-middle-cvbs "functional;vits"
-    domesday-ds2-community-north-middle.efm 0.996 0.991 1034000)
+    domesday-ds2-community-north-middle.efm 0.999 0.995 1034000)
 
 # ---------------------------------------------------------------------------
 # ld-cut and ld-compress

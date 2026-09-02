@@ -472,25 +472,39 @@ class LDdecode:
             if self.digital_audio:
                 # feed EFM stream into ld-ldstoefm; in CVBS mode the writer
                 # owns <out>.efm (frame-indexed EFM extension format)
-                self.efm_pll = efm_pll.EFM_PLL()
-                # Gear-shift / fast-reacquire PLL: ON by default.  While the loop
-                # is locked it runs bit-for-bit identical to the original fixed-gain
-                # loop, so clean discs are unchanged; it only speeds pull-in on cold
-                # start, post-dropout re-acquire and marginal-SNR regions (which is
-                # where the original loop drops sectors).
-                # Set LDDECODE_EFM_GEARSHIFT=0 to restore the original loop.
-                if os.environ.get("LDDECODE_EFM_GEARSHIFT", "1") != "0":
-                    self.efm_pll.gearshift = 1
-                # Advanced: override individual acquisition-loop parameters (e.g. for
-                # multi-decode ensembles that lock different marginal frames). Unset
-                # -> the tuned defaults are used.
-                for _ev, _at, _ty in (("LDDECODE_EFM_PHASEGAIN_ACQ", "phaseGainAcq", float),
-                                      ("LDDECODE_EFM_FREQSTEPMUL", "freqStepMul", float),
-                                      ("LDDECODE_EFM_LOCKERRFRAC", "lockErrorFrac", float),
-                                      ("LDDECODE_EFM_LOCKTHRESH", "lockThreshold", int)):
-                    _v = os.environ.get(_ev, "")
-                    if _v:
-                        setattr(self.efm_pll, _at, _ty(float(_v)))
+                if extra_options.get("efm_demod", "timing") == "timing":
+                    # Symbol-rate timing-recovery demodulator (the default):
+                    # decimation + M&M timing loop + bit-domain frame sync.
+                    # Loop constants are env-tunable for sweeps; --efm_demod
+                    # pll selects the previous run-length PLL.
+                    from . import efm_demod
+                    self.efm_pll = efm_demod.EFMTimingDemod(
+                        inputfreq * 1e6,
+                        fn_hz=float(os.environ.get("LDDECODE_EFM_TIMING_FN", "1200")),
+                        zeta=float(os.environ.get("LDDECODE_EFM_TIMING_ZETA", "0.6")),
+                        ted_gain=float(os.environ.get("LDDECODE_EFM_TIMING_TED", "0.5")),
+                        acq_boost=float(os.environ.get("LDDECODE_EFM_TIMING_ACQBOOST", "6")),
+                    )
+                else:
+                    self.efm_pll = efm_pll.EFM_PLL()
+                    # Gear-shift / fast-reacquire PLL: ON by default.  While the loop
+                    # is locked it runs bit-for-bit identical to the original fixed-gain
+                    # loop, so clean discs are unchanged; it only speeds pull-in on cold
+                    # start, post-dropout re-acquire and marginal-SNR regions (which is
+                    # where the original loop drops sectors).
+                    # Set LDDECODE_EFM_GEARSHIFT=0 to restore the original loop.
+                    if os.environ.get("LDDECODE_EFM_GEARSHIFT", "1") != "0":
+                        self.efm_pll.gearshift = 1
+                    # Advanced: override individual acquisition-loop parameters (e.g. for
+                    # multi-decode ensembles that lock different marginal frames). Unset
+                    # -> the tuned defaults are used.
+                    for _ev, _at, _ty in (("LDDECODE_EFM_PHASEGAIN_ACQ", "phaseGainAcq", float),
+                                          ("LDDECODE_EFM_FREQSTEPMUL", "freqStepMul", float),
+                                          ("LDDECODE_EFM_LOCKERRFRAC", "lockErrorFrac", float),
+                                          ("LDDECODE_EFM_LOCKTHRESH", "lockThreshold", int)):
+                        _v = os.environ.get(_ev, "")
+                        if _v:
+                            setattr(self.efm_pll, _at, _ty(float(_v)))
                 if not self.output_cvbs:
                     self.outfile_efm = open(fname_out + ".efm", "wb")
                     # Soft-decision: emit a per-T-value confidence sidecar (.efmc)
@@ -798,6 +812,20 @@ class LDdecode:
 
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
+
+        # Drain any T-values the EFM demodulator still holds: the timing
+        # demodulator buffers up to one frame awaiting its closing sync, and
+        # the stream's final frame can never be validated, so it flushes
+        # here with low confidence.  (The PLL has no flush; it only ever
+        # holds one open run.)  The tail lands after the last field's
+        # efmTValues count - it belongs to no field.
+        efm_demod_obj = getattr(self, "efm_pll", None)
+        if self.outfile_efm is not None and hasattr(efm_demod_obj, "flush"):
+            efm_tail = efm_demod_obj.flush()
+            if len(efm_tail):
+                self.outfile_efm.write(efm_tail.tobytes())
+                if self.outfile_efmc is not None:
+                    self.outfile_efmc.write(efm_demod_obj.conf_view().tobytes())
 
         if self._job_engine is not None:
             self._job_engine.stop()
@@ -1946,9 +1974,10 @@ class LDdecode:
         return len(symbols)
 
     def _process_efm(self, efm):
-        """Run one field's EFM slice through the PLL and write it out.
+        """Run one field's EFM slice through the selected demodulator
+        (EFM_PLL, or EFMTimingDemod with --efm_demod timing) and write it out.
 
-        The PLL is stateful over the concatenated stream, so this must be
+        The demodulator is stateful over the concatenated stream, so this must be
         fed strictly in field write order - it is the one per-field
         computation that can never fan out, which is why it sits behind a
         single ordered entry point (a candidate for its own lane once
@@ -1960,10 +1989,9 @@ class LDdecode:
         if self.outfile_efm is not None:
             self.outfile_efm.write(efm_out.tobytes())
         if self.outfile_efmc is not None:
-            # Per-T-value confidence, aligned 1:1 with the .efm T-values just written
-            self.outfile_efmc.write(
-                self.efm_pll.pllConf[: self.efm_pll.pllResultCount].tobytes()
-            )
+            # Per-T-value confidence, aligned 1:1 with the .efm T-values just
+            # written (both EFM_PLL and EFMTimingDemod expose conf_view).
+            self.outfile_efmc.write(self.efm_pll.conf_view().tobytes())
 
         return efm_out
 

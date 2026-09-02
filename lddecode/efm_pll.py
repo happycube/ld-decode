@@ -196,6 +196,13 @@ class EFM_PLL:
 
         return self.pllResult[: self.pllResultCount]
 
+    def conf_view(self):
+        """uint8 confidences, 1:1 with the last process() result (a view).
+
+        Same accessor as EFMTimingDemod.conf_view, so decoder._process_efm
+        can use either demodulator without caring which it holds."""
+        return self.pllConf[: self.pllResultCount]
+
     def pushEdge(self, sampleDelta):
         """Called when a ZC happens on a sample number."""
 

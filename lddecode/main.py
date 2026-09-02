@@ -176,6 +176,17 @@ def build_parser():
         "captures of the same disc for pre-PLL stacking)",
     )
     parser.add_argument(
+        "--efm_demod",
+        "--efm-demod",
+        dest="efm_demod",
+        choices=["pll", "timing"],
+        default="timing",
+        help="EFM demodulator: 'timing' (default) is the symbol-rate "
+        "timing-recovery demodulator (per-channel-bit Mueller & Muller loop "
+        "with bit-domain frame sync); 'pll' is the previous zero-crossing "
+        "run-length PLL",
+    )
+    parser.add_argument(
         "--disable_analog_audio",
         "--disable_analogue_audio",
         "--daa",
@@ -473,6 +484,7 @@ def build_options(args):
         "pipe_RF_TBC": None,
         "write_pre_efm": args.prefm,
         "tbc_efm": args.tbc_efm,
+        "efm_demod": args.efm_demod,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
         "auto_deemp": args.deemp_strength is None,

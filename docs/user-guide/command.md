@@ -4,7 +4,7 @@ ld-decode's execution is largely controlled by a number of command line switches
 
 ```
 ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC] [--NTSCJ] [-m mtf]
-                 [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--disable_analog_audio] [--AC3]
+                 [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}] [--disable_analog_audio] [--AC3]
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
                  [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--deemp_low deemp_low] [--deemp_high deemp_high]
                  [--deemp_strength deemp_str] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
@@ -371,6 +371,17 @@ Time-base-correct the EFM waveform onto the video line time-base before the EFM 
 **Example:**
 ```bash
 ld-decode --tbc_efm input.ldf output
+```
+
+#### `--efm_demod`
+Select the EFM demodulator that turns the equalised EFM waveform into `.efm` T-values.
+- **Default:** `timing`
+- **Choices:** `timing` (symbol-rate timing-recovery demodulator: per-channel-bit Mueller & Müller loop with bit-domain frame sync, sync restoration and legalised T emission), `pll` (the previous zero-crossing run-length PLL)
+- **Note:** `timing` recovers noticeably more valid frames on noisy or marginal captures — it met or beat the PLL on every validation capture — and fills the `.efmc` confidence sidecar from its framing state. Use `pll` to reproduce pre-switch `.efm` output byte for byte. See [EFM decoding](../technical/efm-decoding.md) for the architecture and its tuning environment variables.
+
+**Example:**
+```bash
+ld-decode --efm_demod pll input.ldf output
 ```
 
 #### `--AC3`
