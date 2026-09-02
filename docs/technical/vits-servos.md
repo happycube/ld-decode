@@ -165,6 +165,57 @@ relation between them — so NTSC elements stay absolute. Nothing material
 rides on that: the NTSC bars measure within 1.6 IRE of nominal on every
 radius cut.
 
+## The video low-pass and the top of the multiburst
+
+The PAL video low-pass was a 5.8 MHz order 7 Butterworth, chosen to reach the
+5.8 MHz multiburst packet IEC 60856-1986 Figure 8 specifies. A Butterworth's
+corner *is* its −3 dB point, so the filter took 3.01 dB out of the packet it
+was placed for — 3.65 dB on discs recording it at 5.9 MHz, as BBC Domesday
+does. That is most of the top-end loss visible on decoded PAL material.
+
+Widening the corner is the obvious fix and a bad one. Demodulated FM noise
+power density rises as *f²*, so the last MHz of passband carries far more
+noise than signal:
+
+| design | 5.8 MHz | 5.9 MHz | 4fsc Nyquist | FM-weighted noise |
+|---|---|---|---|---|
+| 5.8 MHz order 7 (was) | −3.01 dB | −3.65 dB | −32.5 dB | 1.00× |
+| 7.2 MHz order 7 | −0.11 dB | −0.15 dB | −16.9 dB | 1.89× |
+| **6.3 MHz order 16** | **−0.19 dB** | **−0.36 dB** | **−57.6 dB** | **1.23×** |
+
+The 7.2 MHz order 7 option was built and measured before being rejected: it
+roughly doubled the RMS on the two lines IEC 60856-1986 9.1.3 blanks for
+exactly this measurement (GGV1011 1.24 → 1.44 IRE, Domesday 3.57 → 9.53).
+
+A sharper filter buys the passband without opening the stopband. At order 16
+the corner only has to move to 6.3 MHz, which costs 1.23× the FM-weighted
+noise and *improves* the stopband by 25 dB. It is also easier on
+`build_groupdelay_equalizer()` — a corner sitting in the band generates the
+group delay the all-pass then has to undo, and the impulse response holding
+99.9 % of the equaliser's energy shrinks from 241 samples to 33. Passband
+ripple below 4 MHz stays at 0.000 dB.
+
+Measured over the six PAL radius cuts the top packet recovers **1.07 to
+2.70 dB**, and the blanked-line RMS moves 1.24 → 1.24, 1.37 → 1.41 and
+1.56 → 1.66 IRE on GGV1011.
+
+**It does not close the gap.** The top packet still reads −3.4 to −8.4 dB.
+What remains is the channel's, and the decoder has no reference that could
+correct it: the inverse-MTF is the only broadband lift available, its
+strength is set by burst amplitude and bounded by the chroma band, and both
+say "do not boost". A correction driven by the top packet itself would make
+the packet its own reference *and* its own verdict, which would destroy the
+conformance check rather than pass it.
+
+**One coupling worth knowing.** The 2T servo's scatter gate
+(`mtf_servo_scatter`, 0.35 level units) is measured on a pool whose noise
+depends on the passband. On BBC Domesday DD86-DS1 middle that scatter sat at
+0.35–0.41 — right on the threshold — and the wider passband takes it to
+0.42–0.50, so the servo now declines the pool on every field and `mtf_level`
+stays at its open-loop value. The gate is behaving correctly; the pool really
+is noisier. The consequence is that a static filter choice decides whether a
+servo engages, on a disc noisy enough to sit on the boundary.
+
 ## Measured results (2026-08-31)
 
 | Disc / point | Before | After |

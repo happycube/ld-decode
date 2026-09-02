@@ -304,6 +304,32 @@ The differential comparison is not a relaxation. On the PAL CI capture it
 newly fails `pal-its-field1/pulse_2t`, which sits 3.1 IRE above the bar on
 its own line; measured absolutely at 100.8 IRE it looked correct.
 
+## The top multiburst packet, and what is left of it
+
+Most of the 5.8/5.9 MHz loss this baseline records was the video low-pass. Its corner sat *on* the
+packet IEC 60856-1986 Figure 8 specifies, and a Butterworth's corner is its −3 dB point, so the
+filter took 3.01 dB (3.65 dB at 5.9 MHz) out of the thing it was placed to reach. A 6.3 MHz order
+16 design puts both packets inside the passband for 1.23× the FM-weighted noise, against 1.89× for
+simply moving a 7th-order corner out to 7.2 MHz — see [`vits-servos.md`](vits-servos.md).
+
+Measured over the six PAL cuts, the top packet recovers 1.07–2.70 dB:
+
+| cut | before | after |
+|---|---|---|
+| domesday-ds1 inner | −6.10 dB | −3.40 dB |
+| domesday-ds1 middle | −8.55 dB | −7.49 dB |
+| domesday-ds1 outer | −9.50 dB | −6.96 dB |
+| ggv1011 inner | −9.17 dB | −7.69 dB |
+| ggv1011 middle | −9.93 dB | −8.40 dB |
+| ggv1011 outer | −7.87 dB | −6.14 dB |
+
+The residual is not the filter's, and it is not correctable by one. The inverse-MTF is the only
+broadband lift the decoder has; its strength is set by burst amplitude and bounded by the chroma
+band, and both say "do not boost". Driving a correction from the top packet would make that packet
+its own reference and its own verdict. Separating what the medium loses from what the decoder loses
+needs evidence this project does not have — two unrelated pressings both losing 6–9 dB there cannot
+provide it.
+
 ## What this baseline sends to Phase 8
 
 | Allowance | System | Worst | Where | Reading |

@@ -206,11 +206,46 @@ FilterParams_PAL = {
     # (-3.4 vs +1.2 deg on he010) because the tuned NTSC chain's filter
     # phase cancels the second-order DP from sideband amplitude asymmetry.
     "video_rf_zero_phase": True,
-    # 5.8 MHz recovers recorded luma detail out to the 5.8 MHz VITS multiburst
-    # (IEC 60856); the extra group delay this Butterworth adds is corrected by
-    # the all-pass equaliser in build_groupdelay_equalizer().
-    "video_lpf_freq": 5800000,
-    "video_lpf_order": 7,
+    # The passband must *contain* the top of the recorded luma band, not end
+    # on it.  This was 5.8 MHz order 7, chosen to reach the 5.8 MHz VITS
+    # multiburst packet IEC 60856 Figure 8 specifies - but a Butterworth's
+    # corner is by definition its -3 dB point, so putting the corner on that
+    # packet cost 3.01 dB of the very thing it was placed for, and 3.65 dB on
+    # discs that record the packet at 5.9 MHz as BBC Domesday does.
+    #
+    # Simply moving the corner out is a bad trade.  Demodulated FM noise
+    # power density rises as f^2, so the last MHz of passband carries far
+    # more noise than signal; weighting |H|^2 by f^2 and integrating, a
+    # 7.2 MHz order 7 corner costs 1.89x the noise for 2.9 dB of packet, and
+    # measured on the radius cuts it roughly doubled the RMS on the two lines
+    # IEC 60856 9.1.3 requires blanked for exactly this measurement (GGV1011
+    # 1.24 -> 1.44 IRE, BBC Domesday 3.57 -> 9.53).
+    #
+    # A sharper filter buys the passband without opening the stopband.  At
+    # order 16 the corner only has to move to 6.3 MHz to put both packets
+    # inside it, which costs 1.23x the FM-weighted noise instead of 1.89x:
+    #
+    #     design            5.8 MHz   5.9 MHz   4fsc Nyquist   FM noise
+    #     5.8 MHz order  7   -3.01     -3.65      -32.5 dB       1.00x
+    #     7.2 MHz order  7   -0.11     -0.15      -16.9 dB       1.89x
+    #     6.3 MHz order 16   -0.19     -0.36      -57.6 dB       1.23x
+    #
+    # The stopband improves by 25 dB with it, and the sharper filter is also
+    # *easier* on build_groupdelay_equalizer(): a corner sitting in the band
+    # generates the group delay the all-pass then has to undo, and the
+    # impulse response holding 99.9% of that equaliser's energy shrinks from
+    # 241 samples to 33.  Passband ripple below 4 MHz stays at 0.000 dB.
+    #
+    # It does suppress the 8.5 MHz V4300D spurious less than a 5.8 MHz corner
+    # did; --V4300D_notch_filter is the tool for that and is unchanged.
+    #
+    # NTSC is deliberately not changed to match.  Its corner (4.5 MHz, order
+    # 6) sits 1.57 dB into its own top packet at 4.2 MHz, but the NTSC
+    # multiburst *measures* flat (-0.28 to +0.01 dB over six radius cuts), so
+    # that loss is cancelling something else in the chain; moving one half of
+    # a cancellation with no measured fault to fix would break it.
+    "video_lpf_freq": 6300000,
+    "video_lpf_order": 16,
     # MTF filter
     "MTF_basemult": 1.0,  # general ** level of the MTF filter for frame 0.
     "MTF_poledist": 0.70,
