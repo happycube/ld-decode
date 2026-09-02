@@ -193,10 +193,13 @@ TIME_ALIGN_MIN_CORRELATION = 0.5
 #: simply too small.  Sharing a fieldPhaseID does not guarantee a shared
 #: phase - it states a position in the analogue colour sequence, and a disc
 #: whose recorded subcarrier is slightly off its own burst walks through
-#: phase regardless of it.  BBC Domesday DD86-DS1 does exactly that on its
-#: second-parity fields, advancing about 146 degrees per frame (roughly a
-#: 10 Hz offset) where Pioneer GGV1011 sits on an exact 270 degrees, so the
-#: lock has to be measured rather than assumed.
+#: phase regardless of it.  The BBC Domesday AIV discs do exactly that on
+#: their second-parity fields, advancing about 146 degrees per frame
+#: (roughly a 10 Hz offset) where Pioneer GGV1011 sits on an exact 270, so
+#: the lock has to be measured rather than assumed.  It is a property of
+#: that disc family and not of one damaged pressing: DD86-DS1 keeps
+#: 0.216-0.304 of its chrominance through an average and DD86-DS2, an
+#: undamaged copy of the same title, keeps 0.101-0.371.
 #:
 #: The threshold is set by what a cancellation would do to a reading rather
 #: than by how far from 1.0 noise reaches.  The tightest chrominance
@@ -204,8 +207,8 @@ TIME_ALIGN_MIN_CORRELATION = 0.5
 #: a 50 IRE nominal, so a 13% loss of amplitude spends the whole of it;
 #: 0.85 trips before that.  Measured over the twelve radius cuts of
 #: docs/technical/vits-radius-baseline.md the separation is wide - every
-#: coherent average reads 0.999 to 1.000 and every cancelled one 0.26 to
-#: 0.35 - so nothing sits near the threshold either way.
+#: coherent average reads 0.999 to 1.000 and every cancelled one 0.10 to
+#: 0.37 - so nothing sits near the threshold either way.
 MIN_AVERAGE_COHERENCE = 0.85
 
 #: Window inside the active line, in (start_us, duration_us), over which

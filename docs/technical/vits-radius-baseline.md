@@ -31,9 +31,9 @@ around" below. Checks are grouped by the `allowance_kind` each one carries, so a
 | `ggv1011-side1-inner` | PAL | inner (5 %) | 1429–1458 | 30.3 MB | 60 (30 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
 | `ggv1011-side1-middle` | PAL | middle (50 %) | 12236–12265 | 32.3 MB | 54 (27 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
 | `ggv1011-side1-outer` | PAL | outer (95 %) | 23042–23071 | 33.1 MB | 58 (29 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `domesday-ds1-community-north-inner` | PAL | inner (5 %) | 3045–3074 | 25.7 MB | 58 (29 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `domesday-ds1-community-north-middle` | PAL | middle (50 %) | 27351–27380 | 36.2 MB | 46 (23 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
-| `domesday-ds1-community-north-outer` | PAL | outer (95 %) | 51657–51686 | 38.3 MB | 60 (30 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
+| `domesday-ds2-community-north-inner` | PAL | inner (5 %) | 3036–3065 | 25.6 MB | 50 (25 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
+| `domesday-ds2-community-north-middle` | PAL | middle (50 %) | 27336–27365 | 36.1 MB | 58 (29 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
+| `domesday-ds2-community-north-outer` | PAL | outer (95 %) | 51636–51665 | 38.3 MB | 58 (29 per parity) | blanked1, blanked2, its1, its2, mb1, mb2 |
 | `ggv1069-side1-inner` | NTSC | inner (5 %) | 1545–1564 | 17.5 MB | 38 (19 per parity) | fcc-multiburst, ntc7-combination, ntc7-composite, virs1, virs2 |
 | `ggv1069-side1-middle` | NTSC | middle (50 %) | 12888–12907 | 17.8 MB | 40 (20 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
 | `ggv1069-side1-outer` | NTSC | outer (95 %) | 24231–24250 | 18.9 MB | 38 (19 per parity) | ntc7-combination, ntc7-composite, virs1, virs2 |
@@ -144,11 +144,16 @@ across all twelve cuts, the chrominance an average keeps of what its members car
 | Cut | First parity | Second parity |
 |---|---|---|
 | `ggv1011-side1` (PAL), all three radii | no chrominance on the VBI | 0.999–1.000 |
-| `domesday-ds1-community-north` (PAL), all three radii | no chrominance on the VBI | **0.258–0.346** |
+| `domesday-ds2-community-north` (PAL), all three radii | no chrominance on the VBI | **0.101–0.371** |
 | `ggv1069-side1` (NTSC), all three radii | 1.000 | 1.000 |
 | `dolby-surround-side1` (NTSC), all three radii | 1.000 | 0.999–1.000 |
 
-One disc, one parity. The cause is not the grouping and not the sample lattice. Following one
+One disc *family*, one parity — and not a damaged pressing. The three Domesday cuts were re-taken
+from DD86-DS2, an undamaged copy of the same title, precisely to test that: it refuses exactly as
+DS1 did, keeping 0.101–0.371 of its chrominance where DS1 kept 0.216–0.304. Whatever the BBC's AIV
+mastering did to the subcarrier, it did to both pressings.
+
+The cause is not the grouping and not the sample lattice. Following one
 element down a line, each field's chrominance phase is *constant* — the same at 20, 40 and 50 µs
 into the line — so the fields do not differ in subcarrier frequency across a line. They differ from
 each other by a fixed rotation per field:
@@ -156,7 +161,7 @@ each other by a fixed rotation per field:
 | Disc, second parity | Chrominance phase advance per frame | Closes on the 8-field sequence? |
 |---|---|---|
 | `ggv1011-side1` | 270.0° (σ 2.2°) | yes, exactly |
-| `domesday-ds1-community-north` | 146° (σ 8–11°) | no |
+| `domesday-ds2-community-north` | 146° (σ 8–11°) | no |
 
 270° per frame is four frames to the turn, which is the 8-field PAL sequence exactly, and grouping
 by `fieldPhaseID` collects those fields correctly. Domesday's 146° closes on nothing: it is a
