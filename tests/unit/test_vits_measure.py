@@ -23,7 +23,7 @@ import vits_measure as vm
 import vits_reference as vr
 import vits_synth as vs
 
-pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+pytestmark = [pytest.mark.unit, pytest.mark.dsp, pytest.mark.vits]
 
 #: Origins to sweep: the row boundary itself, and the two a real decode was
 #: measured at (NTSC +1.95 samples, PAL -0.98 samples).

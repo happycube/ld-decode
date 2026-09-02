@@ -83,6 +83,7 @@ markers = [
     "decode: field/frame assembly, sync and TBC logic",
     "parallel: threading, block-cache and speculation",
     "slow: functional tests exceeding roughly 60 s",
+    "vits: vertical interval test signal identification, measurement and conformance",
 ]
 
 [tool.black]

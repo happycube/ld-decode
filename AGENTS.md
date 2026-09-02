@@ -152,6 +152,7 @@ Use pytest markers locally and CTest labels for the CMake-driven lanes; keep the
 | `decode` | Field/frame assembly, sync and TBC logic unit tests |
 | `parallel` | Threading, block-cache and speculation unit tests |
 | `slow` | Functional tests that exceed roughly 60 s |
+| `vits` | VITS identification, measurement and conformance, including the radius sweep |
 
 ### 4.4 Decoder Expectations
 
@@ -388,6 +389,9 @@ ld-decode/
 │   ├── vits_multiburst.py         # Multiburst frequency-response verdicts
 │   ├── vits_inventory.py          # What VITS a capture carries, at each radius
 │   ├── vits_manifest.py           # The surveyed VITS of the testdata captures
+│   ├── vits_deviations.py         # Faults the conformance lane may still find
+│   ├── vits_known_deviations.toml # The list itself; entries are deleted, never widened
+│   ├── vits_summary.py            # Conformance reports as a CI step summary
 │   └── video_common.py, video_frames.py
 ├── scripts/                       # Developer utilities (benchmarks, filter design, version gen)
 ├── cmake_modules/                 # CTest definitions
@@ -467,6 +471,7 @@ Rules:
 | Filter or servo tuning parameter added or changed | `docs/technical/filter-tuning-parameters.md` |
 | VITS-driven servo behaviour changed | `docs/technical/vits-servos.md` |
 | Conformance allowance added or changed | `docs/technical/vits-radius-baseline.md` |
+| Conformance check, manifest or known-deviation behaviour changed | `docs/technical/vits-conformance.md` |
 | Helper script added or behaviour changed | `docs/user-guide/scripts.md` |
 | Build, install, or dependency change | `BUILD.md` / `INSTALL.md` |
 
@@ -498,7 +503,8 @@ Rules:
 Current workflows (`.github/workflows/`):
 
 - **build-and-test.yml:** primary gate. Runs on Linux with Nix; configures CMake and runs `ctest`,
-  then fans out to the packaging workflows.
+  then fans out to the packaging workflows. The functional lane (`ctest -LE vits`) and the VITS
+  radius sweep (`ctest -L vits`) run as two jobs side by side; both must pass before packaging.
 - **functional-tests.yml:** the same functional lane, on manual dispatch.
 - **appimage.yml:** builds the Linux AppImage.
 - **macos-dmg.yml:** builds the macOS DMG.

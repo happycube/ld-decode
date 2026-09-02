@@ -266,6 +266,7 @@ Every test carries exactly one of `unit` or `functional`, plus an optional famil
 | `decode` | Field/frame assembly, sync and TBC logic |
 | `parallel` | Threading, block-cache and speculation |
 | `slow` | Functional tests exceeding roughly 60 s |
+| `vits` | Vertical interval test signal identification, measurement and conformance |
 
 `tests/conftest.py` enforces the lane markers at collection time, for both lanes: a test under
 `tests/unit/` without `unit`, or under `tests/functional/` without `functional`, fails the whole
@@ -299,6 +300,7 @@ from either side.
 | `unit` | The hermetic pytest lane (`tests/unit/`) |
 | `functional` | Decode, comparison, analysis, cut, and compress tests over `testdata/` |
 | `slow` | Functional tests exceeding roughly 60 s |
+| `vits` | The VITS conformance sweep across disc radius, and the decodes that feed it |
 
 Label assignment rules:
 - Every test registered in [cmake_modules/LdDecodeTests.cmake](cmake_modules/LdDecodeTests.cmake)
@@ -375,6 +377,11 @@ ctest --test-dir build -L unit --output-on-failure
 # Functional lane only
 ctest --test-dir build -L functional --output-on-failure
 
+# The VITS radius sweep alone, and everything but it: the two partition the
+# functional lane, and CI runs them as two jobs
+ctest --test-dir build -L vits --output-on-failure
+ctest --test-dir build -LE vits --output-on-failure
+
 # Everything (matches the CI expectation)
 ctest --test-dir build --output-on-failure
 
@@ -400,6 +407,8 @@ Decode outputs land in `build/testout/`; inspect them there when a comparison fa
 | `decode-*-cvbs` + `verify-*-cvbs` | `.cvbs` output conforms to the format specification |
 | `roundtrip-*-orc` | Rendering CVBS and TBC through the same chroma decoder agrees (skips without `orc-cli`) |
 | `analyze-*-patterns`, `analyze-ntsc-ntc7` | Expected VITS/test patterns are present and measurable |
+| `identify-*-vits`, `conformance-*-vits` | The VITS a disc carries are found where it carries them, and every element measures within its specification tolerance plus the decoder allowance |
+| `decode-<cut>-cvbs` + `conformance-<cut>-vits` (label `vits`) | The same, across four discs at three radii each, so a decoder tuned to one part of one disc cannot pass. See [docs/technical/vits-conformance.md](docs/technical/vits-conformance.md) |
 | `python-functional-tests` | The pytest suites needing real captures, including every raw input format reading back exactly, aligned and unaligned |
 | `cut-*`, `decode-*-cut`, `decode-ntsc-lds` | `ld-cut` output is well-formed and decodable |
 | `roundtrip-lds-bytes` | The bare `.lds` converter unpacks and repacks real capture data without changing a byte |

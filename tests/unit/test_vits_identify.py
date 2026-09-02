@@ -18,7 +18,7 @@ import vits_identify as vi
 import vits_reference as vr
 import vits_synth as vs
 
-pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+pytestmark = [pytest.mark.unit, pytest.mark.dsp, pytest.mark.vits]
 
 SYSTEMS = ("NTSC", "PAL")
 

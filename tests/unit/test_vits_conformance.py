@@ -25,7 +25,7 @@ import vits_measure as vm
 import vits_reference as vr
 import vits_synth as vs
 
-pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+pytestmark = [pytest.mark.unit, pytest.mark.dsp, pytest.mark.vits]
 
 #: Definitions with something to judge.
 MEASURABLE = tuple(

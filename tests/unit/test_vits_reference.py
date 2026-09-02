@@ -20,7 +20,7 @@ import pytest
 import vits_reference as vr
 from video_common import NTC7_MULTIBURST_FREQS
 
-pytestmark = [pytest.mark.unit, pytest.mark.format]
+pytestmark = [pytest.mark.unit, pytest.mark.format, pytest.mark.vits]
 
 ALL = vr.VITS_DEFINITIONS
 

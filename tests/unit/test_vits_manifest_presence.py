@@ -18,7 +18,7 @@ import vits_conformance as vc
 import vits_manifest as vmf
 import vits_reference as vr
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.vits]
 
 
 def record(label, carried, capture=None):

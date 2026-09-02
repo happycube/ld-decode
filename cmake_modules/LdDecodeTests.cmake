@@ -8,9 +8,14 @@
 #   functional  Decode, comparison, analysis, cut and compress tests over
 #               testdata/, plus the pytest suites that need real data.
 #   slow        Functional tests exceeding roughly 60 s.
+#   vits        The VITS conformance sweep across disc radius, and the
+#               decodes that feed it.  A subset of "functional", carried as
+#               its own label so CI can run the sweep as a separate job.
 #
 #   ctest -L unit --output-on-failure          # while iterating
 #   ctest -L functional --output-on-failure    # the contracts
+#   ctest -L vits --output-on-failure          # the radius sweep alone
+#   ctest -LE vits --output-on-failure         # everything but the sweep
 #
 # Every test below carries exactly one of "unit" or "functional" and an
 # explicit TIMEOUT, so a hang fails the run rather than stalling it.
@@ -44,6 +49,9 @@
 #   ntsc-cut-lds        cut-ntsc-lds              -> decode-ntsc-lds,
 #                                                    roundtrip-lds-bytes,
 #                                                    compress-lds-round-trip
+#   <cut>-cvbs          decode-<cut>-cvbs         -> conformance-<cut>-vits
+#                                                    one pair per radius cut;
+#                                                    see the sweep below
 #
 # No test both sets up and requires a fixture, so "ctest -R <name>" pulls in
 # exactly the producers listed above and nothing else.
@@ -515,6 +523,104 @@ set_tests_properties(conformance-pal-vits PROPERTIES
     PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(6 of 46 checks failed"
     TIMEOUT 300
 )
+
+# ---------------------------------------------------------------------------
+# VITS conformance across disc radius
+# ---------------------------------------------------------------------------
+
+# The modulation transfer function of a LaserDisc changes with radius, so a
+# decoder can pass every conformance check at one radius and fail at another,
+# and a suite that only ever sees one radius cannot tell a correct decoder
+# from a decoder tuned to one part of one disc.  testdata/radius/ holds twelve
+# cuts - four discs at 5 %, 50 % and 95 % of their recorded band - plus
+# domesday-ds1-community-north-outer, kept as a regression sample because its
+# multiburst finds the chroma band already flat and so declines the video EQ
+# servo's adoption, which is the path that once let the burst servo wind
+# unbounded.  See docs/technical/vits-radius-baseline.md.
+#
+# Each cut is judged against testdata/vits-manifest.json, the surveyed record
+# of what the disc carries, so a capture is only ever asked for the checks it
+# can carry and a decode that loses a signal the disc has is a failure rather
+# than a shorter report.  The faults the decoder is already known to have are
+# listed in analysis/vits_known_deviations.toml and report KNOWN; that list
+# fails the build the moment it stops being true, so this lane goes red for a
+# new fault while carrying the old ones.  See analysis/vits_deviations.py.
+#
+# The decodes take the default CVBS encoding (CVBS_U10_4FSC) rather than
+# forcing CVBS_U16_4FSC, so the encoding users actually get is the encoding
+# under test.
+#
+# Both halves carry the "vits" label, so "ctest -L vits" is the whole sweep
+# and "ctest -LE vits" is everything else - which is how the CI workflow runs
+# them as two jobs without decoding anything twice.
+
+function(add_vits_radius_cut label system)
+    set(system_flag "")
+    if(system STREQUAL "PAL")
+        set(system_flag "--PAL")
+    endif()
+
+    add_test(
+        NAME decode-${label}-cvbs
+        COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+            --cvbs ${system_flag}
+            ${TESTDATA_DIR}/radius/${label}.ldf
+            ${CMAKE_BINARY_DIR}/testout/${label}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(decode-${label}-cvbs PROPERTIES
+        LABELS "functional;slow;vits"
+        FIXTURES_SETUP ${label}-cvbs
+        TIMEOUT 1800
+    )
+
+    add_test(
+        NAME conformance-${label}-vits
+        COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/vits_conformance.py
+            ${CMAKE_BINARY_DIR}/testout/${label}.cvbs
+            --manifest ${TESTDATA_DIR}/vits-manifest.json
+            --known-deviations ${ANALYSIS_DIR}/vits_known_deviations.toml
+            --json ${CMAKE_BINARY_DIR}/testout/${label}.conformance.json
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    # SKIPPED is a pass because a cut the manifest records as carrying no
+    # measurable VITS has nothing to prove; a cut that carries them and loses
+    # them fails on the manifest's presence checks instead, which is the
+    # distinction the regex has to keep.
+    set_tests_properties(conformance-${label}-vits PROPERTIES
+        LABELS "functional;vits"
+        FIXTURES_REQUIRED ${label}-cvbs
+        PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: (PASS|SKIPPED)"
+        TIMEOUT 600
+    )
+endfunction()
+
+set(VITS_RADIUS_PAL_CUTS
+    ggv1011-side1-inner
+    ggv1011-side1-middle
+    ggv1011-side1-outer
+    domesday-ds2-community-north-inner
+    domesday-ds2-community-north-middle
+    domesday-ds2-community-north-outer
+    domesday-ds1-community-north-outer
+)
+
+set(VITS_RADIUS_NTSC_CUTS
+    ggv1069-side1-inner
+    ggv1069-side1-middle
+    ggv1069-side1-outer
+    dolby-surround-side1-inner
+    dolby-surround-side1-middle
+    dolby-surround-side1-outer
+)
+
+foreach(cut IN LISTS VITS_RADIUS_PAL_CUTS)
+    add_vits_radius_cut(${cut} PAL)
+endforeach()
+
+foreach(cut IN LISTS VITS_RADIUS_NTSC_CUTS)
+    add_vits_radius_cut(${cut} NTSC)
+endforeach()
 
 # Raw input-format coverage - converting the NTSC CI capture to .s16/.u16/
 # .u8/.rf/.lds/.r30, reading each back exactly through make_loader, and

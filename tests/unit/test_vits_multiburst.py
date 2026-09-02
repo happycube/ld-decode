@@ -24,7 +24,7 @@ import vits_multiburst as mb
 import vits_reference as vr
 import vits_synth as vs
 
-pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+pytestmark = [pytest.mark.unit, pytest.mark.dsp, pytest.mark.vits]
 
 #: Every definition carrying a multiburst, and the set each should match.
 MULTIBURST_IDS = ("pal-multiburst-field1", "ntsc-fcc-multiburst",

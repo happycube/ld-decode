@@ -24,7 +24,7 @@ from video_common import (
     unwrap_about,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+pytestmark = [pytest.mark.unit, pytest.mark.dsp, pytest.mark.vits]
 
 
 # ---------------------------------------------------------------------------

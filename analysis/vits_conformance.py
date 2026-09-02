@@ -39,6 +39,13 @@ matching the convention analysis/cvbs_verify.py uses, so a CTest entry can
 gate on it with PASS_REGULAR_EXPRESSION.  --json writes the same checks as a
 sidecar for CI artefact upload.
 
+--manifest names what the disc was surveyed as carrying, so a signal it does
+not have is reported as skipped by name rather than passing silently.
+--known-deviations names the faults the decoder is already known to have on
+that capture: those report KNOWN and do not fail the build, and the list
+fails the build the moment it stops being true.  See
+analysis/vits_deviations.py.
+
 CVBS only; see analysis/vits_measure.py for why.
 """
 
@@ -59,6 +66,12 @@ from video_common import (
     chrominance_gain_nonlinearity,
     differential_gain,
     differential_phase,
+)
+from vits_deviations import (
+    DEVIATIONS_FILENAME,
+    capture_name,
+    load_deviations,
+    reconcile,
 )
 from vits_geometry import FieldGeometry
 from vits_identify import identify_vits
@@ -941,7 +954,7 @@ def run_conformance(path, max_fields=None, average=DEFAULT_AVERAGE_FIELDS,
 
 def _format_check(check: Check) -> str:
     marker = {"PASS": "  [PASS] ", "FAIL": "  [FAIL] ",
-              "SKIP": "  [skip] "}[check.verdict]
+              "KNOWN": "  [known]", "SKIP": "  [skip] "}[check.verdict]
     where = "" if check.field_line is None else f" line {check.field_line}"
     head = f"{marker}{check.id}{where}: "
     if not np.isfinite(check.measured):
@@ -1014,18 +1027,55 @@ def report(checks, context, stream=None) -> int:
     print(file=stream)
 
     failed = [c for c in checks if c.verdict == "FAIL"]
+    known = [c for c in checks if c.verdict == "KNOWN"]
     judged = [c for c in checks if c.verdict != "SKIP"]
     skipped = len(checks) - len(judged)
+    # A known deviation is a fault the build has agreed to carry, not a fault
+    # that went away, so it is counted in its own right and never folded into
+    # the passes; see analysis/vits_deviations.py.
+    carried = f", {len(known)} known" if known else ""
     if not judged:
         print("VITS CONFORMANCE: SKIPPED (no VITS detected)", file=stream)
         return 0
     if failed:
         print(f"VITS CONFORMANCE: FAIL ({len(failed)} of {len(judged)} "
-              f"checks failed, {skipped} skipped)", file=stream)
+              f"checks failed, {skipped} skipped{carried})", file=stream)
         return 1
-    print(f"VITS CONFORMANCE: PASS ({len(judged)} checks, {skipped} skipped)",
-          file=stream)
+    print(f"VITS CONFORMANCE: PASS ({len(judged)} checks, "
+          f"{skipped} skipped{carried})", file=stream)
     return 0
+
+
+def apply_known_deviations(checks, entries, capture):
+    """Re-verdict `checks` against the known-deviation list, in place.
+
+    A failure the list accounts for becomes KNOWN and stops failing the
+    build.  Anything the list gets wrong about this capture - a check it
+    says fails that now passes, or one this run never made - is appended as
+    a failing check of its own, so a stale list is a red build rather than a
+    quiet one.  Returns the same list, extended.
+    """
+    verdicts, complaints = reconcile([asdict(check) for check in checks],
+                                     entries, capture)
+    for index, verdict, reason in verdicts:
+        check = checks[index]
+        check.verdict = verdict
+        if reason:
+            check.reason = (f"{check.reason} -- {reason}" if check.reason
+                            else reason)
+    for entry, reason in complaints:
+        checks.append(Check(
+            id=f"known-deviation/{entry.get('check', '?')}",
+            label="known deviation",
+            verdict="FAIL",
+            measured=float("nan"),
+            unit="",
+            clause=f"analysis/{DEVIATIONS_FILENAME}",
+            field_line=entry.get("field_line"),
+            parity=entry.get("parity"),
+            reason=reason,
+        ))
+    return checks
 
 
 def json_payload(checks, context):
@@ -1040,6 +1090,7 @@ def json_payload(checks, context):
         "summary": {
             "passed": sum(1 for c in checks if c.verdict == "PASS"),
             "failed": sum(1 for c in checks if c.verdict == "FAIL"),
+            "known": sum(1 for c in checks if c.verdict == "KNOWN"),
             "skipped": sum(1 for c in checks if c.verdict == "SKIP"),
         },
     }
@@ -1071,6 +1122,10 @@ def main(argv=None) -> int:
     parser.add_argument("--capture", default=None,
                         help=("name of the source capture in the manifest "
                               "(default: the name of the file being judged)"))
+    parser.add_argument("--known-deviations", default=None,
+                        help=("a vits_known_deviations.toml listing the "
+                              "faults this capture is already known to have; "
+                              "they report KNOWN and do not fail the build"))
     args = parser.parse_args(argv)
 
     record = None
@@ -1087,6 +1142,11 @@ def main(argv=None) -> int:
 
     checks, context = run_conformance(args.path, args.max_fields, args.average,
                                       manifest_record=record)
+    if args.known_deviations:
+        checks = apply_known_deviations(
+            checks, load_deviations(args.known_deviations),
+            capture_name(args.capture or args.path))
+        context["known_deviations"] = args.known_deviations
     status = report(checks, context)
     if args.json_path:
         write_json(args.json_path, checks, context)

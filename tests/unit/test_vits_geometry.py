@@ -18,7 +18,7 @@ import vits_geometry as vg
 import vits_synth as vs
 from video_common import CaptureParams, VideoField
 
-pytestmark = [pytest.mark.unit, pytest.mark.dsp]
+pytestmark = [pytest.mark.unit, pytest.mark.dsp, pytest.mark.vits]
 
 SYSTEMS = ("NTSC", "PAL")
 

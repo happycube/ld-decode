@@ -19,7 +19,7 @@ import pytest
 import vits_inventory as vi
 from vits_identify import Identification
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.vits]
 
 
 def identified(vits_id, field_line, score=1.0):

@@ -2,7 +2,7 @@
 
 The modulation transfer function of a LaserDisc changes with radius, so a decoder can pass every
 conformance check at one radius and fail at another. This is the measured baseline that says which
-of the decoder allowances in [`analysis/vits_reference.py`](../../analysis/vits_reference.py) hold
+of the decoder allowances in [`analysis/vits_reference.py`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_reference.py) hold
 across a whole side and which do not. It is the evidence base those allowances cite, and it is
 Phase 6 task 6 of the VITS conformance testing plan.
 
@@ -23,7 +23,7 @@ fields, which is what the coherent averaging in the conformance runner wants; th
 19.
 
 Each cut was decoded serially (`-t 1`) from frame 0 and judged with
-[`analysis/vits_conformance.py`](../../analysis/vits_conformance.py) at its **gated default** —
+[`analysis/vits_conformance.py`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_conformance.py) at its **gated default** —
 four fields coherently averaged per parity, falling back to a single field wherever the coherence
 gate refuses the group. The first edition of this baseline ran at one field per parity because
 that gate did not yet exist; see "What the coherence gate changed" below for what the two readings
