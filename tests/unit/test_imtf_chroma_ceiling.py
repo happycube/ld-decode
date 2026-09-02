@@ -281,35 +281,49 @@ def test_no_multiburst_leaves_the_strength_alone():
 # The wiring: checkVideoEQ is where the ceiling is both published and applied
 # ---------------------------------------------------------------------------
 
-def adopt_stub(samples_, strength, flat_band=None, calibrated=False):
-    """Enough of an LDdecode to run checkVideoEQ() to its adoption."""
+def adopt_stub(samples_, strength, flat_band=None, calibrated=False,
+               estimate=((1.0e6, 0.0), (2.0e6, 1.0)), applied_eq=None,
+               fields_written=0, last_publish=None):
+    """Enough of an LDdecode to run checkVideoEQ() to its adoption.
+
+    `estimate` is what the video EQ servo reports and `applied_eq` what is
+    already adopted, so a caller can put the EQ inside its own dead-band
+    and still exercise the chroma-band ceiling.
+    """
+    params = {"inverse_mtf_strength": strength}
+    if applied_eq is not None:
+        params["video_eq_auto"] = applied_eq
     it = types.SimpleNamespace(
         _veq_samples=samples_,
         VEQ_MIN_SAMPLES=6,
         VEQ_DEADBAND_DB=LDdecode.VEQ_DEADBAND_DB,
         VEQ_MIN_ADOPT_FIELDS=LDdecode.VEQ_MIN_ADOPT_FIELDS,
+        IMTF_CEILING_DEADBAND=LDdecode.IMTF_CEILING_DEADBAND,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
         _imtf_flat_band=flat_band,
+        _imtf_flat_band_last_publish=last_publish,
         _deemp_burst_samples=[],
         _deemp_burst_offset=None,
         _job_engine=None,
         _veq_last_adopt=None,
         veq_calibrated=calibrated,
-        fields_written=0,
+        fields_written=fields_written,
         fdoffset=0,
         bytes_per_field=1,
         exact_speculation=False,
         rf=types.SimpleNamespace(
             system="PAL",
-            DecoderParams={"inverse_mtf_strength": strength},
+            DecoderParams=params,
             recompute_fvideo=lambda: None,
             inverse_mtf_log_db=lambda freq_hz: DB_PER_STRENGTH),
     )
-    it._veq_estimate = lambda field: ((1.0e6, 0.0), (2.0e6, 1.0))
+    it._veq_estimate = lambda field: estimate
     it._imtf_ceiling = lambda current: LDdecode._imtf_ceiling(it, current)
     it._imtf_strength_for_flat_band = (
         lambda first=False: LDdecode._imtf_strength_for_flat_band(it, first))
     it._apply_imtf_ceiling = lambda: LDdecode._apply_imtf_ceiling(it)
+    it._publish_imtf_flat_band = (
+        lambda first: LDdecode._publish_imtf_flat_band(it, first))
     return it
 
 
@@ -342,3 +356,89 @@ def test_a_disc_with_no_multiburst_verdict_keeps_its_strength():
     LDdecode.checkVideoEQ(it, field=None)
     assert it._imtf_flat_band is None
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(1.2)
+
+
+# ---------------------------------------------------------------------------
+# The ceiling is not the video EQ's decision to make
+# ---------------------------------------------------------------------------
+
+#: A video EQ estimate that matches what is already adopted, so
+#: checkVideoEQ() declines inside VEQ_DEADBAND_DB without adopting.
+FLAT_EQ = ((1.0e6, 0.0), (2.0e6, 0.0))
+
+
+def test_a_band_the_eq_is_happy_with_still_publishes_its_ceiling():
+    """The defect: the ceiling rode on the EQ's adoption, not its own.
+
+    Measured on BBC Domesday DD86-DS1 outer.  The EQ wants +/-0.13 dB at
+    2 MHz - well inside its 0.3 dB dead-band - so it never adopts across
+    the whole decode, and the chroma-band ceiling was published only at an
+    adoption.  The burst servo then ran unbounded to 1.418 chasing a burst
+    the disc recorded at 15.7 IRE, and twenty of forty-nine conformance
+    checks failed.  A channel flat enough for the EQ to decline is exactly
+    the channel the multiburst is most confident about.
+    """
+    pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+    it = adopt_stub(pool, strength=1.2, estimate=FLAT_EQ,
+                    applied_eq=FLAT_EQ, calibrated=True)
+    LDdecode.checkVideoEQ(it, field=None)
+    assert it.rf.DecoderParams["video_eq_auto"] == FLAT_EQ, "EQ must decline"
+    assert it._imtf_flat_band == pytest.approx(1.2 - 2.0 / DB_PER_STRENGTH)
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
+
+
+def test_a_ceiling_that_has_not_moved_is_not_republished():
+    """Its own dead-band, on the quantity the burst servo holds inside.
+
+    A ceiling that moves by less than the burst servo's own dead-band
+    cannot change what the burst servo does, so republishing it is churn
+    on a value that crosses loops.
+    """
+    pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+    settled = 1.2 - 2.0 / DB_PER_STRENGTH
+    it = adopt_stub(pool, strength=0.2, estimate=FLAT_EQ, applied_eq=FLAT_EQ,
+                    calibrated=True,
+                    flat_band=settled + 0.9 * LDdecode.IMTF_CEILING_DEADBAND)
+    before = it._imtf_flat_band
+    LDdecode.checkVideoEQ(it, field=None)
+    assert it._imtf_flat_band == pytest.approx(before)
+
+
+def test_a_ceiling_that_has_moved_past_the_dead_band_is_published():
+    pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+    settled = 1.2 - 2.0 / DB_PER_STRENGTH
+    it = adopt_stub(pool, strength=0.2, estimate=FLAT_EQ, applied_eq=FLAT_EQ,
+                    calibrated=True,
+                    flat_band=settled + 1.1 * LDdecode.IMTF_CEILING_DEADBAND)
+    LDdecode.checkVideoEQ(it, field=None)
+    assert it._imtf_flat_band == pytest.approx(settled)
+
+
+def test_the_rate_limit_holds_a_republish_once_frames_are_written():
+    """Warmup is exempt; a committed decode is not.
+
+    The value crosses loops, so how often it may change has to be bounded
+    by something the decode schedule cannot influence - the same reason
+    the video EQ's own adoptions are rate limited.
+    """
+    pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+    it = adopt_stub(pool, strength=1.2, estimate=FLAT_EQ, applied_eq=FLAT_EQ,
+                    calibrated=True, fields_written=4, last_publish=0)
+    it.fdoffset = (LDdecode.VEQ_MIN_ADOPT_FIELDS - 1) * it.bytes_per_field
+    LDdecode.checkVideoEQ(it, field=None)
+    assert it._imtf_flat_band is None
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(1.2)
+
+    it.fdoffset = LDdecode.VEQ_MIN_ADOPT_FIELDS * it.bytes_per_field
+    LDdecode.checkVideoEQ(it, field=None)
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
+
+
+def test_the_first_publication_does_not_wait_for_the_rate_limit():
+    """Nothing has been written yet, so there is nothing to be consistent
+    with; the burst servo must be bounded before the first frame."""
+    pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+    it = adopt_stub(pool, strength=1.2, estimate=FLAT_EQ, applied_eq=FLAT_EQ,
+                    calibrated=True, fields_written=0, last_publish=0)
+    LDdecode.checkVideoEQ(it, field=None)
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)

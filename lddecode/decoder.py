@@ -556,9 +556,11 @@ class LDdecode:
         self._veq_samples = []
         self._veq_last_adopt = None
         #: Strength at which the multiburst last found the chroma band
-        #: flat, published by checkVideoEQ() at an adoption.  None until
-        #: a multiburst has been measured.
+        #: flat, published by _publish_imtf_flat_band() under its own
+        #: dead-band and rate limit.  None until a multiburst has been
+        #: measured.
         self._imtf_flat_band = None
+        self._imtf_flat_band_last_publish = None
         self.veq_calibrated = False
         self.useAGC = extra_options.get("useAGC", True)
         self.wow_level_adjust_smoothing = extra_options.get("wow_level_adjust_smoothing", 0)
@@ -948,6 +950,16 @@ class LDdecode:
     VEQ_MAX_AGE_FIELDS = 240
     VEQ_MIN_ADOPT_FIELDS = 100
 
+    # Dead-band on the published chroma-band ceiling, in inverse-MTF
+    # strength units.  The same figure _deemp_calibrate() holds its own
+    # tracking trims inside, for the same reason and on the same
+    # quantity: a ceiling that moves by less than the burst servo's
+    # dead-band cannot change what the burst servo does, so publishing
+    # the move would be churn.  Measured on BBC Domesday DD86-DS1 outer,
+    # where the pooled figure settles inside 0.008 of itself once the
+    # warmup is past.
+    IMTF_CEILING_DEADBAND = 0.05
+
     def _veq_estimate(self, field):
         """Absolute video-EQ anchor estimate from pooled multiburst
         measurements, or None.
@@ -1111,6 +1123,16 @@ class LDdecode:
         anchors = self._veq_estimate(field)
         if anchors is None:
             return True
+        # The multiburst's verdict on the chroma band is published before
+        # the EQ's own dead-band can decline below, because the two
+        # decisions are not the same decision.  The EQ adopts when it has
+        # a correction worth making inside the band it anchors; the
+        # ceiling says what the band *above* it needs, and "nothing" is a
+        # verdict.  Bundling them meant a channel already flat enough for
+        # the EQ to decline published no ceiling at all - and that is
+        # exactly the channel the multiburst is most confident about.
+        self._publish_imtf_flat_band(first=not self.veq_calibrated)
+
         current = self.rf.DecoderParams.get("video_eq_auto") or ()
         cur = dict(current)
         new = dict(anchors)
@@ -1132,21 +1154,9 @@ class LDdecode:
             + "  ".join(f"{f/1e6:.2f}MHz:{db:+.2f}dB" for f, db in anchors)
         )
         self.veq_calibrated = True
-        # Publish the multiburst's verdict on the chroma band here, at an
-        # adoption the dead-band and rate limit have already made
-        # reproducible, rather than letting the burst servo sample a live
-        # pool median.  Pool membership differs between a serial and a
-        # threaded decode - the same fields, but a different number of
-        # them in hand at the moment the burst servo happens to ask - and
-        # sampling it live made the adopted strength differ between the
-        # two, which broke bit-identity (compare-pal-parallel-tbc).
-        # A later adoption whose pool has thinned must not erase a
-        # verdict an earlier one was able to reach: the multiburst does
-        # not stop having said the chroma band was flat because fewer
-        # fields carry a packet now.
-        flat_band = self._imtf_strength_for_flat_band(first=first)
-        if flat_band is not None:
-            self._imtf_flat_band = flat_band
+        # The flat band was published above; this only enforces whatever
+        # ceiling stands, since the EQ change means recompute_fvideo() is
+        # about to run anyway.
         self.rf.DecoderParams["video_eq_auto"] = anchors
         self._apply_imtf_ceiling()
         self.rf.recompute_fvideo()
@@ -1157,6 +1167,62 @@ class LDdecode:
                 self._job_engine.set_veq(anchors)
             return True
         return False
+
+    def _publish_imtf_flat_band(self, first):
+        """Publish the multiburst's chroma-band verdict, if it has moved.
+
+        The verdict crosses loops - it is measured on the video EQ's pool
+        and it bounds the burst servo - so it may not be sampled live:
+        pool membership differs between a serial and a threaded decode,
+        the same fields but a different number of them in hand at the
+        moment the burst servo happens to ask, and sampling it live made
+        the adopted strength differ between the two, which broke
+        bit-identity (compare-pal-parallel-tbc).
+
+        It was therefore published only at a video EQ adoption, which the
+        dead-band and rate limit had already made reproducible.  That
+        borrowed reproducibility from the wrong decision.  The EQ adopts
+        when it has a correction worth making inside the band it anchors,
+        so a channel already flat there declines inside VEQ_DEADBAND_DB
+        and published no ceiling at all - leaving the burst servo
+        unbounded on exactly the discs whose multiburst is clearest.
+        Measured on BBC Domesday DD86-DS1 outer: the EQ wants +/-0.13 dB
+        at 2 MHz and never adopts, the chroma band measures flat at
+        -0.06 strength units from the tenth field on, and the burst servo
+        winds to 1.418 chasing a burst the disc recorded at 15.7 IRE
+        against the 21.4 it expects.
+
+        So the verdict gets its own dead-band and rate limit instead of
+        borrowing the EQ's, which is the same guarantee applied to the
+        quantity that actually crosses the loops.  It is still read from
+        the same pool at the same moment as the estimate the EQ was about
+        to judge, on the same sample-count threshold - two thresholds
+        over one pool is not a second opinion.
+
+        A pool that has thinned below that threshold yields None and must
+        not erase a verdict an earlier call was able to reach: the
+        multiburst does not stop having said the chroma band was flat
+        because fewer fields carry a packet now.
+        """
+        flat_band = self._imtf_strength_for_flat_band(first=first)
+        if flat_band is None:
+            return
+        if (self._imtf_flat_band is not None
+                and abs(flat_band - self._imtf_flat_band)
+                < self.IMTF_CEILING_DEADBAND):
+            return
+        # Rate limit, mirroring the EQ's: warmup is exempt because it
+        # needs to converge before the first frame is written, and after
+        # that a bound on a static channel has no reason to move often.
+        if self.fields_written > 0:
+            if (self._imtf_flat_band_last_publish is not None
+                    and (self.fdoffset - self._imtf_flat_band_last_publish)
+                    < self.VEQ_MIN_ADOPT_FIELDS * self.bytes_per_field):
+                return
+        self._imtf_flat_band_last_publish = self.fdoffset
+        self._imtf_flat_band = flat_band
+        if self._apply_imtf_ceiling():
+            self.rf.recompute_fvideo()
 
     def _apply_imtf_ceiling(self):
         """Bring the adopted inverse-MTF strength down to a new ceiling.
@@ -1174,12 +1240,13 @@ class LDdecode:
 
         Whether that race was won differed only by how many adoptions had
         happened first, so it was a coin toss and not a decision.  The
-        ceiling is therefore applied where it is published: at a video EQ
-        adoption, which the dead-band and rate limit have already made
-        reproducible, so this adds no order dependence.  Lowering only -
-        the ceiling never winds the correction up.
+        ceiling is therefore applied where it is published, by
+        _publish_imtf_flat_band(), whose own dead-band and rate limit
+        make that moment reproducible, so this adds no order dependence.
+        Lowering only - the ceiling never winds the correction up.
 
-        The caller does recompute_fvideo(); this only moves the value.
+        Returns True when the strength moved, so the caller knows whether
+        recompute_fvideo() is needed; this only moves the value.
         """
         ceiling = self._imtf_ceiling(
             self.rf.DecoderParams.get("inverse_mtf_strength", 0.0))
@@ -1191,7 +1258,7 @@ class LDdecode:
         logs.logger.debug(
             f"Auto inverse-MTF chroma: inverse_mtf_strength "
             f"{current:.3f} \u2192 {ceiling:.3f}, capped by the multiburst "
-            f"chroma band at a video EQ adoption"
+            f"chroma band"
         )
         self.rf.DecoderParams["inverse_mtf_strength"] = ceiling
         if self._job_engine is not None:

@@ -136,11 +136,9 @@ no further burst adoption ever happens — leaving chrominance about 20 % hot.
 EQ adoption, which the dead-band and rate limit have already made
 reproducible. It only ever lowers.
 
-That measurement was taken on a disc the test data no longer carries. The
-mechanism is visible on the sample that replaced it: on DD86-DS2 outer the
-strength reaches 0.936 on burst alone and the ceiling takes it to 0.633 at
-the video EQ adoption, and on DD86-DS2 middle it does so twice, 1.207 to
-0.716 and later 0.348 to 0.000.
+The mechanism is visible on DD86-DS2 outer, where the strength reaches
+0.936 on burst alone and the ceiling takes it to 0.633, and on DD86-DS2
+middle, where it does so twice, 1.207 to 0.716 and later 0.348 to 0.000.
 
 **Its evidence threshold did not match the pool's.** `_veq_estimate()`
 adopts a *first* video EQ on 3 samples and every later one on
@@ -152,10 +150,53 @@ one moment for one decision, is not a second opinion; both now take the same
 number. A later adoption whose pool has thinned also no longer erases a
 verdict an earlier one reached.
 
+**It borrowed its schedule from the wrong decision.** Publishing at a video
+EQ adoption made the ceiling's reproducibility depend on the EQ having
+something to adopt, and those are not the same question. The EQ adopts when
+it has a correction worth making inside the band it *anchors*; the ceiling
+says what the band *above* it needs, and "nothing" is a verdict. A channel
+already flat enough for the EQ to decline inside its 0.3 dB dead-band
+therefore published no ceiling at all - and that is exactly the channel the
+multiburst is most confident about.
+
+Measured on BBC Domesday DD86-DS1 outer, which is in the test data for this
+reason and no other: the EQ wants ±0.13 dB at 2 MHz and never adopts across
+the whole decode, the chroma band measures flat from the tenth field on, and
+the burst servo winds to 1.418 chasing a burst the disc recorded at 15.7 IRE
+against the 21.4 it expects. Twenty of forty-nine conformance checks fail,
+every one of them a chrominance amplitude. DD86-DS2 adopts an EQ at every
+radius, so the pressing that replaced DS1 in the sweep cannot catch this.
+
+`_publish_imtf_flat_band()` therefore gives the verdict its own dead-band
+(`IMTF_CEILING_DEADBAND`, 0.05 strength units - the same figure the burst
+servo holds its own trims inside, on the same quantity, because a ceiling
+that moves by less than that cannot change what the burst servo does) and
+its own rate limit, rather than borrowing the EQ's. It still reads the same
+pool at the same moment on the same sample-count threshold. On DD86-DS1
+outer the strength is now capped at 0.000 and six of forty-six checks fail.
+
+Across the twelve sweep cuts the change moves three checks from FAIL to PASS
+and one the other way, and the PAL CI capture goes from 5 of 46 failing to
+6. Both regressions are readings that already sat at 0.83× of their band:
+`pal-multiburst-field1/packet_5/response` on DD86-DS2 middle (0.83× → 1.28×)
+and `pal-its-field2/pulse_2t` on the CI capture (0.83× → 1.06×). The CI
+capture is six fields, fewer than any servo needs to settle, so whichever
+loop moves last decides the pulse; here that became the burst servo adopting
+a capped 0.200 after the 2T servo had already settled. Letting the 2T servo
+re-adopt when a ceiling moves was tried and changes nothing, because the
+move that matters is the burst servo's own capped adoption and not the
+ceiling's.
+
+One further effect is worth stating plainly rather than reading as a
+regression. The inverse-MTF is broadband, so a correction wound past what
+the chroma band justifies was propping up the top multiburst packet as a
+side effect: GGV1011 outer reads −7.84 dB there now against −5.82 before.
+Removing an unjustified lift is not allowed to be judged by the packet it
+happened to flatter.
+
 Measured over the twelve radius cuts as they then stood, this and the
 setpoint change together moved **25 checks from FAIL to PASS and none the
-other way**, and took the PAL CI capture from 16 of 46 failing to 5 of 46,
-where it remains.
+other way**, and took the PAL CI capture from 16 of 46 failing to 5 of 46.
 
 One consequence only became visible once the video low-pass was also fixed:
 the inverse-MTF running unbounded was most of the +1.4 to +2.9 dB peak the
@@ -275,14 +316,19 @@ which sets a limit from what two pressings genuinely *disagree* by
 rather than from what they share. With the inverse-MTF ceiling
 reaching the burst servo the shared component goes: GGV1011 now reads
 −0.24 to +1.47 dB across 4.0 and 4.8 MHz, and the two rows fail 2 of 6
-cuts each instead of 6 of 6 and 5 of 6. Three of the four remaining
-failures are Domesday; the fourth is GGV1011 at 4.8 MHz outer,
-+1.47 dB against 1.25. What is left does not track radius and differs
-by up to 3.5 dB between two pressings of the same title.
+cuts each instead of 6 of 6 and 5 of 6, and once the ceiling was also
+given its own publication schedule all four remaining failures are
+Domesday DD86-DS2, at the inner and middle radii. GGV1011 is clean
+across the whole band at every radius, within ±0.32 dB, and so is
+DD86-DS1. What is left does not track radius and differs by up to
+3.5 dB between two pressings of the same title.
 
 **The top packet is not.** All six PAL cuts still fail at 5.8/5.9 MHz,
 reading −3.4 to −8.3 dB, and no servo the decoder has can reach it —
-see "The video low-pass and the top of the multiburst" above.
+see "The video low-pass and the top of the multiburst" above. Part of
+what used to sit between those figures and the truth was the
+inverse-MTF running above what the chroma band justifies; with the
+ceiling now published on its own schedule the loss is fully exposed.
 
 NTSC is clean out of band at every packet (worst +0.90 dB), on the one
 cut whose multiburst amplitudes are admissible at this field count.
