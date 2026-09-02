@@ -44,6 +44,8 @@
 #                                                    compare-pal-cvbs-parallel-*,
 #                                                    roundtrip-pal-orc
 #   pal-cvbs-parallel   decode-pal-cvbs-parallel  -> compare-pal-cvbs-parallel-*
+#   jason-tbc           decode-jason-testpattern  -> efm-quality-jason-testpattern
+#   issue176-tbc        decode-issue176           -> efm-quality-issue176
 #   ntsc-cut-ldf        cut-ntsc-segment          -> decode-ntsc-cut
 #   pal-cut-ldf         cut-pal-segment           -> decode-pal-cut
 #   ntsc-cut-lds        cut-ntsc-lds              -> decode-ntsc-lds,
@@ -724,6 +726,137 @@ add_vits_capture_conformance(ve-monitor NTSC ntsc/ve-monitor.ldf)
 # decoding the packed conversions end-to-end - now runs as part of
 # python-functional-tests above (tests/functional/test_input_formats.py).
 # It needs no CTest entry of its own.
+
+# ---------------------------------------------------------------------------
+# EFM T-value quality
+# ---------------------------------------------------------------------------
+
+# analysis/efm_quality.py scores a .efm stream by its own frame structure
+# (IEC 60908: T11-T11 sync pairs every 588 channel bits), so the RF -> .efm
+# path is gated without any downstream EFM decoder.  Each threshold below is
+# set just under the capture's measured baseline - recorded in
+# docs/technical/efm-decoding.md - so the gate fails on regression while
+# tolerating float-level environment wobble.  Captures that carry no EFM
+# (the GGV pressings, industrial-lv, kagemusha-leadout) have nothing to
+# gate; the Domesday *outer* radius cuts land in one of that disc's
+# analogue-audio gaps between EFM sections and are left ungated for the
+# same reason.
+#
+# Gates on radius-cut and whole-capture decodes carry the "vits" label
+# alongside "functional": their fixtures are the VITS sweep's decodes, and
+# sharing the label keeps those decodes in the sweep's CI job instead of
+# forcing "ctest -LE vits" to repeat them.
+
+# jason-testpattern is the PAL EFM gate: a short, clean capture the current
+# demodulator frames perfectly (sync_rate 1.0, frame_588_fraction 1.0), so
+# it is pinned at (near) perfection.  The decode also opts in to the .efmc
+# confidence sidecar, making this the test that holds .efmc to its 1:1
+# contract with the .efm T-values.
+add_test(
+    NAME decode-jason-testpattern
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --tbc --PAL
+        ${TESTDATA_DIR}/pal/jason-testpattern.ldf
+        ${CMAKE_BINARY_DIR}/testout/jason-testpattern
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-jason-testpattern PROPERTIES
+    LABELS "functional"
+    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
+    FIXTURES_SETUP jason-tbc
+    TIMEOUT 600
+)
+
+add_test(
+    NAME efm-quality-jason-testpattern
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
+        ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efm
+        --efmc ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efmc
+        --min-sync-rate 0.999 --min-frame-588 0.999
+        --max-invalid-t 0 --min-t-values 143000
+        --json ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efm-quality.json
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(efm-quality-jason-testpattern PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED jason-tbc
+    PASS_REGULAR_EXPRESSION "EFM QUALITY: PASS"
+    TIMEOUT 120
+)
+
+# issue176 is the NTSC CLV movie-disc gate, also currently framing
+# perfectly.
+add_test(
+    NAME decode-issue176
+    COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
+        --tbc
+        ${TESTDATA_DIR}/ntsc/issue176.ldf
+        ${CMAKE_BINARY_DIR}/testout/issue176
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+set_tests_properties(decode-issue176 PROPERTIES
+    LABELS "functional"
+    FIXTURES_SETUP issue176-tbc
+    TIMEOUT 600
+)
+
+add_test(
+    NAME efm-quality-issue176
+    COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
+        ${CMAKE_BINARY_DIR}/testout/issue176.efm
+        --min-sync-rate 0.999 --min-frame-588 0.999
+        --max-invalid-t 0 --min-t-values 116000
+        --json ${CMAKE_BINARY_DIR}/testout/issue176.efm-quality.json
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+set_tests_properties(efm-quality-issue176 PROPERTIES
+    LABELS "functional"
+    FIXTURES_REQUIRED issue176-tbc
+    PASS_REGULAR_EXPRESSION "EFM QUALITY: PASS"
+    TIMEOUT 120
+)
+
+# The remaining gates ride on decodes that already run: the basic NTSC TBC
+# and CVBS decodes (ve-snw-cut carries digital audio), and the EFM-bearing
+# VITS captures.  add_efm_quality(<label> <fixture> <labels> <efm-file>
+# <min-sync-rate> <min-frame-588> <min-t-values>) keeps each threshold set
+# next to the capture it measures.
+function(add_efm_quality label fixture test_labels efm_file min_sync min_588 min_t)
+    add_test(
+        NAME efm-quality-${label}
+        COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
+            ${CMAKE_BINARY_DIR}/testout/${efm_file}
+            --min-sync-rate ${min_sync} --min-frame-588 ${min_588}
+            --max-invalid-t 0 --min-t-values ${min_t}
+            --json ${CMAKE_BINARY_DIR}/testout/${label}.efm-quality.json
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+    set_tests_properties(efm-quality-${label} PROPERTIES
+        LABELS "${test_labels}"
+        FIXTURES_REQUIRED ${fixture}
+        PASS_REGULAR_EXPRESSION "EFM QUALITY: PASS"
+        TIMEOUT 120
+    )
+endfunction()
+
+add_efm_quality(ntsc-basic ntsc-tbc "functional"
+    ntsc-basic.efm 0.997 0.995 860000)
+add_efm_quality(ntsc-cvbs ntsc-cvbs "functional"
+    ntsc-cvbs.efm 0.995 0.986 178000)
+add_efm_quality(ve-monitor ve-monitor-cvbs "functional;vits"
+    ve-monitor.efm 0.998 0.989 2610000)
+add_efm_quality(dolby-surround-side1-inner dolby-surround-side1-inner-cvbs
+    "functional;vits" dolby-surround-side1-inner.efm 0.997 0.989 594000)
+add_efm_quality(dolby-surround-side1-middle dolby-surround-side1-middle-cvbs
+    "functional;vits" dolby-surround-side1-middle.efm 0.997 0.990 564000)
+add_efm_quality(dolby-surround-side1-outer dolby-surround-side1-outer-cvbs
+    "functional;vits" dolby-surround-side1-outer.efm 0.996 0.988 594000)
+add_efm_quality(domesday-ds2-community-north-inner
+    domesday-ds2-community-north-inner-cvbs "functional;vits"
+    domesday-ds2-community-north-inner.efm 0.996 0.990 891000)
+add_efm_quality(domesday-ds2-community-north-middle
+    domesday-ds2-community-north-middle-cvbs "functional;vits"
+    domesday-ds2-community-north-middle.efm 0.996 0.991 1034000)
 
 # ---------------------------------------------------------------------------
 # ld-cut and ld-compress

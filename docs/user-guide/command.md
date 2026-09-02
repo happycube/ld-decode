@@ -4,7 +4,7 @@ ld-decode's execution is largely controlled by a number of command line switches
 
 ```
 ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC] [--NTSCJ] [-m mtf]
-                 [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--disable_analog_audio] [--AC3]
+                 [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--disable_analog_audio] [--AC3]
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
                  [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--deemp_low deemp_low] [--deemp_high deemp_high]
                  [--deemp_strength deemp_str] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
@@ -346,7 +346,7 @@ ld-decode --audio_filterwidth 150kHz input.ldf output
 #### `--noEFM`
 Disable EFM (Eight-to-Fourteen Modulation) front end for digital audio.
 - **Default:** EFM decoding is enabled
-- **Note:** EFM is used for digital audio (CD audio) on laserdiscs; disabling skips digital audio extraction
+- **Note:** EFM is used for digital audio (CD audio) on laserdiscs and for LV-ROM data; disabling skips digital audio extraction. See [EFM decoding](../technical/efm-decoding.md) for the EFM path, its tuning environment variables, and the `.efm`/`.efmc` output formats.
 
 **Example:**
 ```bash
@@ -361,6 +361,16 @@ Write filtered but otherwise pre-processed EFM data.
 **Example:**
 ```bash
 ld-decode --preEFM input.ldf output
+```
+
+#### `--tbc_efm`
+Time-base-correct the EFM waveform onto the video line time-base before the EFM PLL.
+- **Default:** Disabled (also enabled by `LDDECODE_TBC_EFM=1`)
+- **Note:** Experimental; does not improve a single-capture decode. It aligns the pre-PLL EFM of multiple captures of the same disc onto a common disc-position time-base for cross-capture stacking and waveform research — see [EFM decoding](../technical/efm-decoding.md).
+
+**Example:**
+```bash
+ld-decode --tbc_efm input.ldf output
 ```
 
 #### `--AC3`

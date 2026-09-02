@@ -22,3 +22,10 @@ For pictures like https://github.com/happycube/ld-decode/issues/206:
 In some cases, captures from LD-V4300D players in PAL mode have a spurious raw RF signal around 8.46mhz.
 
 Since it is above the white tip of 7.9mhz, it is possible to selectively remove the signal without severe side effects, which is the PAL version of --WibbleRemover.
+
+## EFM (digital audio) tuning
+
+The EFM bit-clock PLL has its own acquisition-loop tuning, controlled through
+`LDDECODE_EFM_*` environment variables rather than command-line flags — see
+[EFM decoding](efm-decoding.md) for the variable table, the defaults, and the
+multi-decode ensemble workflow for marginal discs.
