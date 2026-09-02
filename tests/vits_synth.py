@@ -224,7 +224,8 @@ def draw_colour_burst(field, line, peak_ire=None, phase_deg=0.0):
 
 def render_definition(field, entry, line=None, luma_gain=1.0, chroma_gain=1.0,
                       level_offset_ire=0.0, packet_gain=None,
-                      packet_freq_scale=1.0, chroma_phase_deg=0.0):
+                      packet_freq_scale=1.0, chroma_phase_deg=0.0,
+                      element_gain=None):
     """Draw every element of a definition at its nominal onto one line.
 
     ``luma_gain``, ``chroma_gain`` and ``level_offset_ire`` inject the fault
@@ -237,6 +238,12 @@ def render_definition(field, entry, line=None, luma_gain=1.0, chroma_gain=1.0,
     recorded subcarrier is slightly off its own burst: successive fields
     read the same amplitude at a walking phase, and averaging them cancels
     the chrominance the burst says is there.
+
+    ``element_gain`` is a mapping of element id to multiplier, applied to
+    that luminance element alone.  It draws the fault a flat ``luma_gain``
+    cannot: one element wrong *relative to the white reference bar on its
+    own line*, which is the form IEC 60856-1986 Figure 7 states its
+    tolerances in.
 
     ``packet_gain`` and ``packet_freq_scale`` do the same for a multiburst.
     ``packet_gain`` is called with a packet's nominal frequency in MHz and
@@ -291,17 +298,20 @@ def render_definition(field, entry, line=None, luma_gain=1.0, chroma_gain=1.0,
         elif element.kind == "staircase":
             windows = (element.step_windows_us
                        or _even_windows(element.window_us, len(element.steps)))
+            own = luma_gain * (element_gain or {}).get(element.id, 1.0)
             for tread, window in zip(element.steps, windows):
                 draw_bar(field, line, window[0], window[1],
-                         scale(tread) * luma_gain + level_offset_ire)
+                         scale(tread) * own + level_offset_ire)
         elif element.kind == "pulse":
             centre = (element.start_us + element.end_us) / 2.0
             half = (element.end_us - element.start_us) / 2.0
+            own = luma_gain * (element_gain or {}).get(element.id, 1.0)
             draw_pulse(field, line, centre, half,
-                       scale(element.nominal) * luma_gain)
+                       scale(element.nominal) * own)
         else:
+            own = luma_gain * (element_gain or {}).get(element.id, 1.0)
             draw_bar(field, line, element.start_us, element.end_us,
-                     scale(element.nominal) * luma_gain + level_offset_ire)
+                     scale(element.nominal) * own + level_offset_ire)
     return line
 
 

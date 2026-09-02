@@ -128,8 +128,7 @@ def test_a_train_with_no_packet_near_one_megahertz_has_no_reference():
     measurements = vm.measure_definition(field, entry, line, geom)
     _, _, rows = mb.multiburst_response(entry, measurements)
     assert not any(row.is_reference for row in rows)
-    judge, reason = mb.flatness_judgement(entry, rows[2], None, AVERAGED,
-                                          "NTSC")
+    judge, reason = mb.flatness_judgement(entry, rows[2], None, AVERAGED)
     assert judge is False
     assert "reference packet" in reason
 
@@ -197,32 +196,88 @@ def test_the_band_the_equaliser_anchors_comes_from_the_decoder():
         mb.servo_band_mhz("SECAM")
 
 
-def test_a_packet_above_the_equalisers_reach_is_reported_not_judged():
-    checks = checks_of("pal-multiburst-field1")
-    # 4.2, 4.8 and 5.8 MHz all sit above the 3.6 MHz PAL anchor limit.
-    for element_id in ("packet_4", "packet_5", "packet_6"):
-        check = suffixed(checks, f"{element_id}/response")[0]
-        assert check.verdict == "SKIP"
-        assert np.isfinite(check.measured)
+def test_every_packet_that_can_be_measured_carries_a_limit():
+    # The defect this replaced: of six PAL packets, one sat below the anchor
+    # floor, one was the reference, two were excluded as an "uncorrected
+    # band" and one sat above the anchor ceiling, so exactly one was judged
+    # - and the decoder's whole measured high-frequency error lay in the
+    # five that were not.  Only the reference may decline now.
+    for vits_id in ("pal-multiburst-field1", "ntsc-fcc-multiburst"):
+        checks = suffixed(checks_of(vits_id), "/response")
+        assert len(checks) == 6, vits_id
+        judged = [check for check in checks if check.verdict != "SKIP"]
+        assert len(judged) == 5, (vits_id, [c.id for c in checks
+                                            if c.verdict == "SKIP"])
+        for check in judged:
+            assert check.band > 0.0, check.id
 
 
-def test_a_packet_below_the_equalisers_reach_is_reported_not_judged():
-    checks = checks_of("pal-multiburst-field1")
-    check = suffixed(checks, "packet_1/response")[0]
-    assert check.verdict == "SKIP"
-    assert "0.7" in check.reason
+def test_the_reference_packet_is_the_only_one_that_declines():
+    checks = suffixed(checks_of("pal-multiburst-field1"), "/response")
+    skipped = [check for check in checks if check.verdict == "SKIP"]
+    assert len(skipped) == 1
+    assert "reference packet" in skipped[0].reason
 
 
-def test_the_uncorrectable_band_is_named_with_its_citation():
-    # The plan requires the excluded region to be a named constant carrying
-    # the measurement it came from, not a magic number inside an if.
-    assert mb.UNCORRECTED_BANDS_MHZ["PAL"] == ((4.0, 4.8),)
-    entry = vr.definition("pal-multiburst-field1")
-    _, _, rows = rows_of("pal-multiburst-field1")
-    row = next(r for r in rows if 4.0 <= r.freq_mhz <= 4.8)
-    assert row.uncorrected_band == (4.0, 4.8)
-    _, reason = mb.flatness_judgement(entry, row, rows[1], AVERAGED, "PAL")
-    assert "vits-servos.md" in reason
+def test_a_packet_outside_the_anchored_band_gets_the_wider_allowance():
+    # Both regimes are limits.  The one outside the servo's reach is wider
+    # because no servo acts there, not because anything is exempt.
+    checks = {check.id: check
+              for check in suffixed(checks_of("pal-multiburst-field1"),
+                                    "/response")}
+    inside = checks["pal-multiburst-field1/packet_3/response"]   # 2.3 MHz
+    outside = checks["pal-multiburst-field1/packet_6/response"]  # 5.8 MHz
+    assert inside.allowance_kind == "multiburst_flatness"
+    assert outside.allowance_kind == "multiburst_out_of_band_response"
+    assert outside.band > inside.band
+    assert "outside the band it anchors" in outside.clause
+    assert "inside the band it anchors" in inside.clause
+
+
+def test_the_band_below_the_anchor_floor_is_judged_too():
+    # 0.5 MHz sits below the 0.7 MHz anchor floor.  It was previously
+    # reported unjudged for that reason alone.
+    check = suffixed(checks_of("pal-multiburst-field1"),
+                     "packet_1/response")[0]
+    assert check.verdict != "SKIP"
+    assert check.allowance_kind == "multiburst_out_of_band_response"
+
+
+def test_a_top_end_that_is_ten_decibels_down_fails():
+    # The fault visual inspection found and no check could see: the extreme
+    # top of the multiburst lost, with everything below it flat.
+    def lost_top(freq_mhz):
+        return 10.0 ** (-10.0 / 20.0) if freq_mhz > 5.0 else 1.0
+
+    checks = suffixed(checks_of("pal-multiburst-field1",
+                                packet_gain=lost_top), "/response")
+    failed = [check for check in checks if check.verdict == "FAIL"]
+    assert [check.id for check in failed] == [
+        "pal-multiburst-field1/packet_6/response"]
+    assert failed[0].measured == pytest.approx(-10.0, abs=0.5)
+
+
+def test_a_deviation_inside_the_measured_spread_still_passes():
+    # The allowance is derived from what unrelated pressings disagree by at
+    # the same frequency, so a deviation that size must not be a failure.
+    allowed = vr.allowance("multiburst_out_of_band_response").band()
+    inside = allowed * 0.5
+
+    def lift_top(freq_mhz):
+        return 10.0 ** (inside / 20.0) if freq_mhz > 5.0 else 1.0
+
+    checks = suffixed(checks_of("pal-multiburst-field1",
+                                packet_gain=lift_top), "/response")
+    assert "FAIL" not in {check.verdict for check in checks}
+
+
+def test_the_out_of_band_allowance_is_wider_than_the_servos_but_finite():
+    # A limit that cannot be exceeded is not a limit.  It must be wider
+    # than the servo figure - no servo acts out there - and still well
+    # inside the loss the decoder is currently measured to have.
+    servo = vr.allowance("multiburst_flatness").band()
+    out_of_band = vr.allowance("multiburst_out_of_band_response").band()
+    assert servo < out_of_band < 6.0
 
 
 def test_a_short_window_reports_its_frequency_without_judging_it():
@@ -374,9 +429,16 @@ def test_every_frequency_check_names_the_set_it_was_judged_against():
 
 
 def test_every_response_check_cites_where_its_band_came_from():
-    for check in suffixed(checks_of("ntsc-fcc-multiburst"), "/response"):
-        assert "vits-servos.md" in check.clause
-        assert check.allowance == pytest.approx(vr.SERVO_FLATNESS_DB)
+    expected = {True: vr.SERVO_FLATNESS_DB,
+                False: vr.OUT_OF_BAND_RESPONSE_DB}
+    for vits_id in ("ntsc-fcc-multiburst", "pal-multiburst-field1"):
+        _, _, rows = rows_of(vits_id)
+        in_band = {row.element_id: row.in_servo_band for row in rows}
+        for check in suffixed(checks_of(vits_id), "/response"):
+            element_id = check.id.split("/")[-2]
+            assert "vits-servos.md" in check.clause
+            assert check.allowance == pytest.approx(
+                expected[in_band[element_id]]), check.id
 
 
 def test_the_response_table_carries_every_packet_whether_judged_or_not():

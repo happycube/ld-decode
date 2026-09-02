@@ -464,11 +464,12 @@ set_tests_properties(identify-pal-vits PROPERTIES
 # names the clause it enforces.  A JSON sidecar is written beside the
 # capture for CI artefact upload.
 #
-# NTSC passes today.  PAL does not: its chrominance runs about 25% hot,
-# which fails the chrominance levels, the saturation ceiling, the
-# chrominance/luminance gain ratio and differential gain, and its multiburst
-# loses the top of the band.  Those are real decoder faults, recorded in
-# docs-planning/vits-conformance-testing-plan.md and scheduled for Phase 8.
+# NTSC passes today.  PAL does not, on five counts: it loses the top
+# multiburst packet (-8.3 dB at 5.8 MHz, which also fails that packet's
+# absolute level), leaves 1.1-1.4 IRE on the two lines the standard requires
+# blanked, and fails differential gain on the modulated staircase.  Those
+# are real decoder faults, recorded in
+# docs-planning/vits-conformance-testing-plan.md.
 #
 # Rather than mark it WILL_FAIL, which would swallow a new PAL regression
 # alongside the known ones, the PAL entry pins the exact failure count.
@@ -500,7 +501,7 @@ add_test(
 set_tests_properties(conformance-pal-vits PROPERTIES
     LABELS "functional"
     FIXTURES_REQUIRED pal-cvbs
-    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(12 of 42 checks failed"
+    PASS_REGULAR_EXPRESSION "VITS CONFORMANCE: FAIL \\(5 of 46 checks failed"
     TIMEOUT 300
 )
 

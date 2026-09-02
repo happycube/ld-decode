@@ -679,6 +679,22 @@ class RFDecode:
         self._imtf_2t_gain_cache[key] = g
         return g
 
+    def inverse_mtf_log_db(self, freq_hz):
+        """dB the inverse-MTF filter adds at freq_hz per unit strength.
+
+        The filter is applied as ``Finverse_mtf_base ** strength``, so its
+        contribution is linear in strength once expressed in dB.  Callers
+        that need to convert a measured response deviation into the
+        strength that accounts for it divide by this.
+        """
+        base = self.Filters.get("Finverse_mtf_base")
+        if base is None:
+            return 0.0
+        index = int(round(freq_hz * self.blocklen / self.freq_hz))
+        if not 0 <= index < len(base):
+            return 0.0
+        return float(20.0 * np.log10(np.abs(base[index])))
+
     def video_eq_2t_peak_gain(self, points):
         """Peak gain of the dynamic video EQ on an ideal 2T pulse.
 

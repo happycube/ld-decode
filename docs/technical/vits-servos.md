@@ -82,6 +82,89 @@ not used: its ~3 µs packets are as short as the scan window at NTSC
 with the wrong sign (measured on he010 and issue176) — only the
 long-packet FCC line 22 variant is trusted.
 
+## Which pulse the 2T servo holds
+
+`_mtf_servo_estimate()` divides the inverse-MTF filter's and the video EQ's
+lift out of every measured pulse-to-bar ratio, so what it pools measures the
+pre-filter chain alone — a property of `mtf_level` and the disc, independent
+of what those two filters were set to when a field was decoded. That is what
+makes samples taken either side of a trim comparable, and it stays.
+
+What moved is the *setpoint*. Holding the pre-filter ratio at 1.0 leaves the
+pulse in the output high by exactly the gain those filters supply, and
+trimming either of them — the multiburst ceiling on `inverse_mtf_strength`
+does exactly that — walks the output pulse with nothing to pull it back.
+`_mtf_servo_target()` therefore returns `1 / (imtf_2t_gain × veq_2t_gain)`,
+read from the adopted `DecoderParams` and never from a live sample pool, so
+the sequence of setpoints is the same whether fields arrive serially or from
+the job engine.
+
+Measured over the twelve radius cuts, against the differential comparison
+IEC 60856-1986 Figure 7 states (see below): the PAL 2T pulse goes from 5 of
+12 checks inside their band to 8 of 12 — three moving to PASS, none the
+other way.
+
+## When the multiburst ceiling reaches the burst servo
+
+`_imtf_ceiling()` bounds the inverse-MTF strength by what the multiburst
+says the chroma band actually needs, because burst amplitude cannot tell a
+channel that lost the subcarrier from a disc that recorded it low. Two
+defects meant that bound often never arrived, both exposed by the 2T
+setpoint change shifting the order adoptions happen in:
+
+**It was only ever applied at the next burst adoption.**
+`_deemp_calibrate()` consults the ceiling while it is adopting an estimate,
+and returns early inside its own dead-band. A burst servo that had already
+converged therefore never saw a ceiling published after it settled.
+Measured on BBC Domesday DD86-DS1 outer: the servo settles at 0.456, the
+multiburst then reports the band flat at 0.000, and over a 150-frame decode
+no further burst adoption ever happens — leaving chrominance about 20 % hot.
+`_apply_imtf_ceiling()` now runs where the ceiling is published, at a video
+EQ adoption, which the dead-band and rate limit have already made
+reproducible. It only ever lowers.
+
+**Its evidence threshold did not match the pool's.** `_veq_estimate()`
+adopts a *first* video EQ on 3 samples and every later one on
+`VEQ_MIN_SAMPLES`; the flat-band measurement demanded `VEQ_MIN_SAMPLES`
+unconditionally. A first adoption holding 3 to 5 samples published no
+ceiling at all — and on DD86-DS1 outer that adoption holds exactly 5, every
+one carrying the chroma-band packets. Two thresholds over one pool, read at
+one moment for one decision, is not a second opinion; both now take the same
+number. A later adoption whose pool has thinned also no longer erases a
+verdict an earlier one reached.
+
+Measured over the twelve radius cuts, this and the setpoint change together
+move **25 checks from FAIL to PASS and none the other way**, and take the
+PAL CI capture from 16 of 46 failing to 5 of 46.
+
+## The 2T pulse is judged against its own bar
+
+IEC 60856-1986 Figure 7 states every element of the PAL insertion test
+signal as a tolerance about `B₂`, the white reference bar beside it on the
+same line — the 2T pulse "within ±0.5 % of `B₂`", the 20T pulse and the
+staircase within ±1 %. That is a differential statement, and
+`analysis/vits_conformance.py` now judges it as one (`Element.relative_to`).
+
+Judging those elements against an absolute nominal instead reported one
+fault several times and sent triage to the wrong subsystem. GGV1011's ITS
+line runs 2.3–2.6 IRE low at every radius; measured absolutely, the 2T pulse
+inherited the whole of that offset, so a servo holding the pulse at unity
+*against its own bar* — which is what `measure_its_2t_ratio()` reads, and
+what the pulse measures the HF response with — was reported as failing.
+The line's level is still caught, once, at the bar, which fails on three of
+the six GGV1011 cuts.
+
+It is not a relaxation. On the PAL CI capture the differential comparison
+newly fails `pal-its-field1/pulse_2t`: the pulse sits 3.1 IRE above the bar
+on its own line, an overshoot the absolute comparison hid because 100.8 IRE
+looks like 100.
+
+No NTSC source this project holds states a tolerance about the bar — the
+NTC-7 composite YAML gives the bar and the 2T pulse 100 IRE each and no
+relation between them — so NTSC elements stay absolute. Nothing material
+rides on that: the NTSC bars measure within 1.6 IRE of nominal on every
+radius cut.
+
 ## Measured results (2026-08-31)
 
 | Disc / point | Before | After |
@@ -94,8 +177,20 @@ long-packet FCC line 22 variant is trusted.
 | he010 inner multiburst | +1.2 dB peak at 3.5–4 MHz | flat within +0.4 dB |
 | GGV NTSC 2 MHz dip | −1.0 dB | corrected +1.02 dB via FCC line 22 |
 
-Known residual: GGV's disc-recorded +1.5–3 dB peak at 4–4.8 MHz (PAL)
-lies inside the chroma sidebands and is deliberately not corrected.
+Known residual: a +1.0–3.6 dB peak at 4–4.8 MHz on PAL, and a loss of
+5.6–9.3 dB at the top multiburst packet (5.8/5.9 MHz). Both were
+previously attributed to GGV's own recording and left uncorrected on
+the grounds that they lie inside the chroma sidebands. That
+attribution does not survive the radius baseline: BBC Domesday
+DD86-DS1, an unrelated pressing cut on different equipment, shows the
+same peak within 0.85 dB and the same top-end loss at all three radii.
+A residual two unrelated pressings share is the decoder's, not one
+disc's mastering, so it is now judged — see
+`vits_reference.OUT_OF_BAND_RESPONSE_DB`, which sets a limit from what
+the two pressings genuinely *disagree* by rather than from what they
+share. Six of the twelve radius cuts fail it at 4.0 MHz and all six
+PAL cuts fail it at the top packet; NTSC is clean out of band
+(worst +0.90 dB).
 
 ## NTSC specifics (measured on he010 radius sweeps, 2026-08-31)
 

@@ -22,14 +22,24 @@ passing the other.
 Flatness is judged in dB about the reference packet rather than against the
 absolute nominal, which is the convention lddecode/decoder.py's video EQ
 servo uses (_veq_estimate) and what makes the figure meaningful: the whole
-train is read through one window model, so a common under-read cancels.  It
-is judged only where a decode actually claims flatness - inside the band the
-EQ servo anchors.  Above that the EQ is pinned to 0 dB by design and the
-subcarrier region stays owned by the burst calibration, so what remains is
-the disc's own recorded response; GGV PAL's +1.5-3 dB peak at 4-4.8 MHz is
-recorded in docs/technical/vits-servos.md as exactly that, and demanding
-flatness there would report a conformant disc as faulty.  Those packets are
-measured and reported, not judged.
+train is read through one window model, so a common under-read cancels.
+
+Every packet whose amplitude can be read at all is judged.  What changes
+across the band is the *allowance*, not whether a limit exists at all:
+inside the band the EQ servo anchors, a decode claims flatness and is held
+to the servo's own figure (vits_reference.SERVO_FLATNESS_DB); outside it
+there is no servo, the response is whatever the static filter chain and the
+disc's own recording leave, and the packet is held to the wider figure
+vits_reference.OUT_OF_BAND_RESPONSE_DB states.
+
+An earlier revision declined to judge the outer packets entirely, on the
+grounds that the EQ does not act there.  That conflated "the servo does not
+correct this" with "the decoder may be arbitrarily wrong here", and the
+effect was severe: of the six packets in a PAL train, one is below the
+anchor floor, one is the reference, two were excluded as an "uncorrected
+band" and one sat above the anchor ceiling, leaving **one packet of six**
+judged - and the same count on NTSC.  Every high-frequency response fault
+this project has found by eye lay in that gap.
 
 The absolute amplitude of every packet against the level its own figure
 states is a separate matter and belongs to the level checks; this module is
@@ -38,7 +48,7 @@ about the shape of the response, not its height.
 
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence
 
 import numpy as np
 
@@ -50,6 +60,8 @@ from vits_identify import identify_multiburst_set
 __all__ = [
     "PacketResponse",
     "amplitude_admissible",
+    "flatness_allowance_kind",
+    "flatness_clause",
     "flatness_judgement",
     "frequency_clause",
     "frequency_band_mhz",
@@ -72,26 +84,14 @@ __all__ = [
 REFERENCE_BAND_MHZ = (0.75, 1.45)
 
 #: The band the video EQ servo anchors, and so the only band in which a
-#: decode claims a flat response.  lddecode/decoder.py _veq_estimate skips
-#: any packet below 0.7 MHz or above self.veq_max_freq, which __init__ sets
-#: to 3.6 MHz for PAL and 2.8 MHz for NTSC so the EQ - pinned to 0 dB beyond
-#: its last anchor plus 0.5 MHz - never reaches the chroma band.
+#: decode claims a *servo-held* flat response.  lddecode/decoder.py
+#: _veq_estimate skips any packet below 0.7 MHz or above self.veq_max_freq,
+#: which __init__ sets to 3.6 MHz for PAL and 2.8 MHz for NTSC so the EQ -
+#: pinned to 0 dB beyond its last anchor plus 0.5 MHz - never reaches the
+#: chroma band.  This selects which allowance a packet is judged under; it
+#: does not decide whether a packet is judged at all.
 SERVO_ANCHOR_MIN_MHZ = 0.7
 SERVO_ANCHOR_MAX_MHZ = {"PAL": 3.6, "NTSC": 2.8}
-
-#: Bands whose response a conformant disc is not required to record flat and
-#: a conformant decode is not permitted to correct.  docs/technical/
-#: vits-servos.md, "Known residual": GGV's disc-recorded +1.5-3 dB peak at
-#: 4-4.8 MHz on PAL lies inside the chroma sidebands, where a
-#: composite-domain filter cannot serve luminance and chrominance at once,
-#: so the EQ deliberately leaves it alone.  These sit above
-#: SERVO_ANCHOR_MAX_MHZ and would be reported unjudged anyway; they are
-#: named so the report can say which recorded residual a packet fell in
-#: rather than only that it was out of band.
-UNCORRECTED_BANDS_MHZ = {
-    "PAL": ((4.0, 4.8),),
-    "NTSC": (),
-}
 
 #: Same-parity fields that must be coherently averaged before the NTC-7
 #: combination multiburst may be judged on amplitude at all.  Its packets
@@ -131,7 +131,6 @@ class PacketResponse:
     quality: float
     is_reference: bool = False
     in_servo_band: bool = False
-    uncorrected_band: Optional[Tuple[float, float]] = None
     detail: dict = dataclass_field(default_factory=dict)
 
     @property
@@ -147,14 +146,6 @@ def servo_band_mhz(system):
         known = ", ".join(sorted(SERVO_ANCHOR_MAX_MHZ))
         raise KeyError(f"No servo band for {system!r} (have: {known})")
     return SERVO_ANCHOR_MIN_MHZ, SERVO_ANCHOR_MAX_MHZ[system]
-
-
-def _uncorrected_band(freq_mhz, system):
-    """The recorded uncorrectable band a frequency falls in, or None."""
-    for low, high in UNCORRECTED_BANDS_MHZ.get(system, ()):
-        if low <= freq_mhz <= high:
-            return (low, high)
-    return None
 
 
 def _reference_index(rows: Sequence[PacketResponse]):
@@ -209,7 +200,6 @@ def multiburst_response(entry, measurements, system=None):
             duty=float(measurement.detail.get("duty", 0.0)),
             quality=float(measurement.quality),
             in_servo_band=low <= freq <= high,
-            uncorrected_band=_uncorrected_band(freq, system),
             detail={"nominal_ire": measurement.nominal},
         ))
 
@@ -287,9 +277,14 @@ def amplitude_admissible(entry, fields_averaged):
         f"were available; see vits_reference.NTSC_MULTIBURST_NTC7")
 
 
-def flatness_judgement(entry, row: PacketResponse, reference, fields_averaged,
-                       system):
-    """(judge, reason) for one packet's dB deviation from the reference."""
+def flatness_judgement(entry, row: PacketResponse, reference,
+                       fields_averaged):
+    """(judge, reason) for whether one packet's response may be read at all.
+
+    Only genuine failures to measure decline here.  Which band a packet
+    sits in changes the allowance it is judged against, not whether it is
+    judged; see flatness_allowance_kind.
+    """
     admissible, reason = amplitude_admissible(entry, fields_averaged)
     if not admissible:
         return False, reason
@@ -301,16 +296,29 @@ def flatness_judgement(entry, row: PacketResponse, reference, fields_averaged,
         return False, "this is the reference packet the others are read from"
     if not np.isfinite(row.relative_db):
         return False, "no tone measured in this packet's window"
-    if row.uncorrected_band is not None:
-        low, high = row.uncorrected_band
-        return False, (
-            f"{low:.1f}-{high:.1f} MHz is recorded as a band the disc's own "
-            f"response is not flat over and the video EQ deliberately does "
-            f"not correct; see docs/technical/vits-servos.md")
-    if not row.in_servo_band:
-        low, high = servo_band_mhz(system)
-        return False, (
-            f"{row.freq_mhz:.2f} MHz is outside the {low:.1f}-{high:.1f} MHz "
-            f"band the video EQ anchors, where it is pinned to 0 dB and the "
-            f"response is the disc's own")
     return True, ""
+
+
+def flatness_allowance_kind(row: PacketResponse):
+    """Which decoder allowance one packet's response is judged under.
+
+    Inside the band the video EQ anchors, a decode actively holds the
+    response flat and answers for the servo's own residual.  Outside it
+    there is no servo: what reaches the output is the static filter chain
+    acting on whatever the disc recorded, and the wider allowance says so.
+    The distinction is in the size of the band, not in whether there is one
+    - a decode that halves the top of its own passband is wrong whether or
+    not a servo was watching.
+    """
+    return ("multiburst_flatness" if row.in_servo_band
+            else "multiburst_out_of_band_response")
+
+
+def flatness_clause(row: PacketResponse):
+    """What one packet's response is judged against, for the report."""
+    if row.in_servo_band:
+        return ("docs/technical/vits-servos.md, frequency-resolved video EQ, "
+                "inside the band it anchors")
+    return ("docs/technical/vits-servos.md, frequency-resolved video EQ, "
+            "outside the band it anchors: no servo acts, so the response is "
+            "the static filter chain's")

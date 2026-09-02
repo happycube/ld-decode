@@ -24,8 +24,10 @@ Three families of check:
     passes every absolute luminance check and fails these.
 *   **Multiburst frequency response**, in analysis/vits_multiburst.py: each
     packet's measured centre frequency against the published set the line
-    actually carries, and its amplitude in dB about the reference packet
-    across the band a decode claims to hold flat.
+    actually carries, and its amplitude in dB about the reference packet -
+    across the whole train, against the servo's own residual inside the
+    band the video EQ anchors and against the wider static-chain figure
+    outside it.
 
 The final line is exactly one of
 
@@ -74,6 +76,8 @@ from vits_measure import (
 )
 from vits_multiburst import (
     amplitude_admissible,
+    flatness_allowance_kind,
+    flatness_clause,
     flatness_judgement,
     frequency_band_mhz,
     frequency_clause,
@@ -199,6 +203,39 @@ def _level_kind(element):
     return "luma_level"
 
 
+def _referred_nominal(entry, element, measurements, absolute):
+    """(nominal, note) for one element, in IRE.
+
+    IEC 60856-1986 Figure 7 states every element of the PAL insertion test
+    signal as a tolerance about B2, the white reference bar *on the same
+    line*, not about an absolute level.  Judged absolutely instead, a line
+    that is simply recorded or decoded low fails at the bar and then fails
+    again at every element on it, which reports one fault several times and
+    sends triage to the wrong subsystem: the 2T pulse is how the high
+    frequency response is measured, and a level error is not a response
+    error.
+
+    So where the reference data names a referent, the nominal is that
+    element's *measured* amplitude scaled by the ratio of their published
+    nominals - the bar itself is still judged absolutely, so the level
+    error is caught exactly once, where it belongs.  With no referent, or
+    none measured on this line, the absolute nominal stands and the note
+    says why.
+    """
+    if not element.relative_to:
+        return absolute, ""
+    referent = entry.element(element.relative_to)
+    if referent is None or not referent.nominal:
+        return absolute, ""
+    measurement = measurements.get(element.relative_to)
+    if measurement is None or not np.isfinite(measurement.value):
+        return absolute, (
+            f"{element.relative_to} was not measured on this line, so the "
+            f"absolute nominal stands in for it")
+    scale = element.nominal / referent.nominal
+    return float(measurement.value) * scale, ""
+
+
 def check_levels(entry, measurements, line, parity,
                  fields_averaged=1) -> List[Check]:
     """Absolute level of every element of one identified signal.
@@ -240,7 +277,10 @@ def check_levels(entry, measurements, line, parity,
         allowed = vr.allowance(kind).band(nominal)
         band = spec + allowed
 
-        reason = ""
+        # Judged about the bar on this line where the standard states it
+        # that way; see _referred_nominal.
+        nominal, reason = _referred_nominal(
+            entry, element, measurements, nominal)
         admissible, refusal = amplitude_admissible(entry, fields_averaged)
         if not element.amplitude_measurable and not admissible:
             verdict = "SKIP"
@@ -279,7 +319,10 @@ def check_levels(entry, measurements, line, parity,
             parity=parity,
             reason=reason,
             detail={"quality": measurement.quality,
-                    "alignment_us": measurement.detail.get("alignment_us")},
+                    "alignment_us": measurement.detail.get("alignment_us"),
+                    "relative_to": element.relative_to,
+                    "absolute_nominal": vr.to_ire(element.nominal,
+                                                  entry.system)},
         ))
     return checks
 
@@ -766,10 +809,14 @@ def check_multiburst(entry, measurements, line, parity,
                     "cycles": row.cycles},
         ))
 
-    allowed_db = vr.allowance("multiburst_flatness").band()
     for row in rows:
         judge, reason = flatness_judgement(entry, row, reference,
-                                           fields_averaged, system)
+                                           fields_averaged)
+        # The allowance depends on where the packet sits: the servo's own
+        # residual inside the band it anchors, the static chain's wider
+        # figure outside it.  Both are limits; neither is an exemption.
+        kind = flatness_allowance_kind(row)
+        allowed_db = vr.allowance(kind).band()
         checks.append(Check(
             id=f"{entry.id}/{row.element_id}/response",
             label=f"{row.element_id} amplitude about the reference packet",
@@ -777,18 +824,19 @@ def check_multiburst(entry, measurements, line, parity,
                      else _verdict(row.relative_db, allowed_db)),
             measured=row.relative_db,
             unit="dB",
-            clause="docs/technical/vits-servos.md, frequency-resolved video EQ",
+            clause=flatness_clause(row),
             nominal=0.0,
             spec_tolerance=0.0,
             allowance=allowed_db,
-            allowance_kind="multiburst_flatness",
+            allowance_kind=kind,
             band=allowed_db,
             field_line=line,
             parity=parity,
             reason=reason,
             detail={"freq_mhz": row.freq_mhz,
                     "amplitude_ire": row.amplitude_ire,
-                    "duty": row.duty},
+                    "duty": row.duty,
+                    "in_servo_band": row.in_servo_band},
         ))
 
     response = {

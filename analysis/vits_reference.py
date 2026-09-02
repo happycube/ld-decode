@@ -257,6 +257,15 @@ class Element:
     to judge it rather than reporting a fault that is really a limit of the
     sampling.  The only such elements are the NTC-7 combination multiburst
     packets; see NTSC_MULTIBURST_NTC7.
+
+    relative_to names another element of the same signal when the standard
+    states this element's tolerance about that one's *measured* amplitude
+    rather than about an absolute level - IEC 60856-1986 Figure 7 states
+    every element of the PAL ITS "within +/-x% of B2", the white reference
+    bar on the same line.  A check judges the difference in that case, and
+    the absolute level of the line stays the reference bar's own check to
+    fail.  Left None the element is judged absolutely, which is what every
+    NTSC source states.
     """
 
     id: str
@@ -272,6 +281,7 @@ class Element:
     freq_mhz: Optional[float] = None
     freq_tolerance_mhz: Optional[float] = None
     amplitude_measurable: bool = True
+    relative_to: Optional[str] = None
     source: str = ""
 
     @property
@@ -357,7 +367,16 @@ class VitsDefinition:
 # ---------------------------------------------------------------------------
 
 # IEC 60856-1986-9.1.3 Figure 7: white reference bar B2 is 0.70 V p-p +/-0.5%,
-# and every other element's tolerance is stated relative to it.
+# and every other element's tolerance is stated relative to it.  That is a
+# differential statement and is judged as one: the elements below carry
+# relative_to="white_reference_bar", so a line recorded or decoded low fails
+# at the bar, once, instead of failing again at every element measured
+# against an absolute nominal the bar itself does not reach.  Measured on
+# GGV1011, whose ITS line runs 2.3-2.6 IRE low at every radius: judged
+# absolutely the 2T pulse inherits the whole of that offset, and a servo
+# holding the pulse at unity *against its own bar* - which is what
+# lddecode/decoder.py measure_its_2t_ratio() reads, and what the pulse
+# measures the HF response with - is reported as failing.
 _PAL_BAR_TOLERANCE = 0.005          # +/-0.5% of 0.70 V p-p
 _PAL_ELEMENT_TOLERANCE = 0.010      # +/-1% of B2
 
@@ -406,6 +425,7 @@ _PAL_LINE19_2T = Element(
     # IEC 60856-1986-9.1.3 Figure 7 b): 0.70 V p-p, within +/-0.5% of B2.
     nominal=1.00,
     tolerance=_PAL_BAR_TOLERANCE,
+    relative_to="white_reference_bar",
     source="IEC 60856-1986 9.1.3 Figure 7 b)",
 )
 
@@ -418,6 +438,7 @@ _PAL_LINE19_20T_LUMA = Element(
     # IEC 60856-1986-9.1.3 Figure 7 c): 0.70 V p-p, within +/-1% of B2.
     nominal=0.50,
     tolerance=_PAL_ELEMENT_TOLERANCE,
+    relative_to="white_reference_bar",
     source="IEC 60856-1986 9.1.3 Figure 7 c)",
 )
 
@@ -444,6 +465,7 @@ _PAL_STAIRCASE = Element(
     # IEC 60856-1986-9.1.3 Figure 7 d): 0.70 V p-p, within +/-1% of B2.
     nominal=1.00,
     tolerance=_PAL_ELEMENT_TOLERANCE,
+    relative_to="white_reference_bar",
     steps=_PAL_STAIRCASE_TREADS,
     step_windows_us=_PAL_STAIRCASE_TREAD_WINDOWS,
     source="IEC 60856-1986 9.1.3 Figure 7 d)",
@@ -1163,6 +1185,41 @@ CHAIN_GAIN_RATIO = 0.05
 #: a decode that simply never engages the servo.
 SERVO_FLATNESS_DB = 0.75
 
+#: Response error allowed, in dB about the reference packet, at a multiburst
+#: frequency the video EQ does not anchor - below its 0.7 MHz anchor floor,
+#: or above the 3.6 MHz (PAL) / 2.8 MHz (NTSC) ceiling.
+#
+#: No servo acts there, so SERVO_FLATNESS_DB does not apply and the response
+#: is whatever the static filter chain leaves of what the disc recorded.
+#: That makes the disc's own contribution the thing to allow for, and the
+#: only estimate of it this project holds is the agreement between unrelated
+#: pressings: where two discs cut on different equipment show the same
+#: deviation at the same frequency and radius, the deviation is the
+#: decoder's, not the medium's.  The allowance is therefore what the medium
+#: does *differ* by, plus what the measurement itself cannot resolve:
+#
+#:     within-capture repeatability          0.293 dB
+#:     pressing-to-pressing at one radius     0.85  dB
+#:                                           -----
+#:                                            1.14  dB, rounded up
+#
+#: The first is the widest spread the same packet shows across the probes
+#: and both parities of a single capture (GGV1069 inner, 4.1 MHz).  The
+#: second is the widest gap between the two PAL pressings at the same
+#: radius band and the same published nominal - 0.85 dB at 4.0 MHz inner,
+#: against 0.20 at 0.5 MHz and 0.78 at 4.8 MHz.  The 5.8 MHz packet is
+#: excluded from that term because the two discs carry different top
+#: nominals (5.8 IEC against 5.9), consistently 0.1 MHz apart at all three
+#: radii, and the response is steep enough there that the gap would be
+#: measuring the frequency difference rather than the pressings.
+#
+#: Deliberately not derived from the spread across *radii*: the optical MTF
+#: loss that varies with radius is what lddecode/rfdecode.py's inverse-MTF
+#: filter exists to correct, so forgiving it here would be excusing the
+#: decoder with its own uncorrected error.  See
+#: docs/technical/vits-radius-baseline.md.
+OUT_OF_BAND_RESPONSE_DB = 1.25
+
 #: Frequency error the packet estimator itself contributes, in cycles over
 #: the window it measured; divide by the window's duration in microseconds
 #: for a band in MHz.  It is expressed this way rather than as an Allowance
@@ -1294,6 +1351,18 @@ DECODER_ALLOWANCES = {
         rationale=(
             "the video EQ servo's own dead-band plus the largest residual "
             "it is recorded leaving; see SERVO_FLATNESS_DB"
+        ),
+        source=_SERVO_SOURCE + "; " + _BASELINE_SOURCE,
+    ),
+    "multiburst_out_of_band_response": Allowance(
+        absolute=OUT_OF_BAND_RESPONSE_DB,
+        unit="dB",
+        rationale=(
+            "what two unrelated pressings disagree by at the same frequency "
+            "and radius, plus what one capture's own repeat measurements "
+            "scatter by; no servo acts out here, so what a decode answers "
+            "for is the static chain, not a dead-band; see "
+            "OUT_OF_BAND_RESPONSE_DB"
         ),
         source=_SERVO_SOURCE + "; " + _BASELINE_SOURCE,
     ),

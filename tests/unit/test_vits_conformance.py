@@ -155,11 +155,53 @@ def test_a_composite_pulses_chrominance_is_declined():
 # Absolute levels
 # ---------------------------------------------------------------------------
 
-def test_a_luma_gain_error_fails_the_luminance_levels():
+def test_a_luma_gain_error_fails_the_bar_that_carries_the_level():
+    """A flat gain error is one fault and is reported once.
+
+    IEC 60856-1986 Figure 7 states every element of the line as a tolerance
+    about B2, the white reference bar beside it, so a line uniformly low is
+    the bar's failure.  Reporting it again at every element measured against
+    an absolute nominal the bar itself does not reach says the 2T pulse and
+    the staircase are wrong when only the level is, and sends triage to the
+    high-frequency path for a gain fault.
+    """
     entry = vr.definition("pal-its-field1")
     checks, _ = judged(entry, luma_gain=0.90)
     assert by_id(checks, "white_reference_bar").verdict == "FAIL"
-    assert by_id(checks, "/staircase").verdict == "FAIL"
+    for element_id in ("/staircase", "pulse_2t"):
+        check = by_id(checks, element_id)
+        assert check.verdict == "PASS", check.id
+        assert check.detail["relative_to"] == "white_reference_bar"
+
+
+def test_an_element_wrong_against_its_own_bar_still_fails():
+    """The differential fault the relative comparison exists to catch."""
+    entry = vr.definition("pal-its-field1")
+    checks, _ = judged(entry, luma_gain=0.90,
+                       element_gain={"pulse_2t": 0.90})
+    assert by_id(checks, "pulse_2t").verdict == "FAIL"
+    assert by_id(checks, "/staircase").verdict == "PASS"
+
+
+def test_the_bar_itself_is_never_judged_against_itself():
+    entry = vr.definition("pal-its-field1")
+    checks, _ = judged(entry, luma_gain=0.90)
+    check = by_id(checks, "white_reference_bar")
+    assert check.detail["relative_to"] is None
+    assert check.nominal == pytest.approx(check.detail["absolute_nominal"])
+
+
+def test_an_ntsc_element_is_judged_against_its_absolute_nominal():
+    """No NTSC source this project holds states a tolerance about the bar.
+
+    The NTC-7 composite YAML gives the bar and the 2T pulse 100 IRE each and
+    no relation between them, so both are judged absolutely; measured, the
+    NTSC bars sit within 1.6 IRE of nominal on every radius cut, so nothing
+    material rides on the difference there.
+    """
+    entry = vr.definition("ntsc-ntc7-composite")
+    for element in entry.elements:
+        assert element.relative_to is None, element.id
 
 
 def test_a_luma_gain_error_inside_the_band_passes():

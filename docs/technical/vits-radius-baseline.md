@@ -197,6 +197,113 @@ over at least ten same-parity fields — is unaffected, because it is NTSC only 
 verified working above. Note that on a capture where the gate does refuse, that restriction will
 now correctly decline to judge those amplitudes rather than judging a cancelled average.
 
+## The band no allowance covered
+
+The tables above judge one multiburst packet of six. The other five declined: one below the
+0.7 MHz anchor floor, one as the reference the rest are read against, two inside a recorded
+"uncorrected band" at 4–4.8 MHz, and one above the 3.6 MHz ceiling. NTSC judged one of six for the
+same reasons. `multiburst_flatness` holding at 0.63× therefore said nothing at all about the
+frequencies where the decoder was later found, by eye, to be wrong.
+
+The exclusion above the anchored band conflated two different claims — *the servo does not correct
+here* and *the decoder may be arbitrarily wrong here*. Only the first is true. Every packet whose
+amplitude can be read is now judged; what changes across the band is which allowance applies.
+
+### Setting the out-of-band allowance
+
+Out there the response is the static filter chain acting on whatever the disc recorded, so the
+disc's own contribution is what has to be allowed for. The only estimate of it this project holds
+is the agreement between unrelated pressings: where two discs cut on different equipment show the
+same deviation at the same frequency and radius, that deviation is the decoder's. So the allowance
+is built from what the pressings *disagree* by, never from what they share:
+
+| Term | Measured | Where |
+|---|---|---|
+| within-capture repeatability | 0.293 dB | widest spread of one packet across the probes and both parities of a single capture (GGV1069 inner, 4.1 MHz) |
+| pressing-to-pressing at one radius | 0.85 dB | widest gap between the two PAL pressings at the same radius band and the same published nominal (4.0 MHz, inner; against 0.20 at 0.5 MHz and 0.78 at 4.8 MHz) |
+| **`OUT_OF_BAND_RESPONSE_DB`** | **1.25 dB** | sum, rounded up from 1.14 |
+
+The top packet is excluded from the pressing term: the two discs carry different top nominals
+(5.8 MHz IEC against 5.9), consistently 0.1 MHz apart at all three radii, and the response is steep
+enough there that the gap would be measuring the frequency difference rather than the pressings.
+The spread across *radii* is excluded on principle — the optical MTF loss that varies with radius
+is what the inverse-MTF filter exists to correct, so forgiving it here would excuse the decoder
+with its own uncorrected error.
+
+### What the twelve cuts then read
+
+| System | Packet | Range over 12 cuts | Verdict |
+|---|---|---|---|
+| NTSC | 0.5 MHz | +0.58 … +0.64 dB | pass |
+| NTSC | 3.0 MHz | +0.24 … +0.48 dB | pass |
+| NTSC | 3.58 MHz | +0.66 … +0.90 dB | pass |
+| NTSC | 4.1 MHz | −0.28 … +0.01 dB | pass |
+| PAL | 0.5 MHz | −0.02 … +0.33 dB | pass |
+| PAL | 4.0 MHz | +1.41 … +2.94 dB | **fail, 6 of 6** |
+| PAL | 4.8 MHz | +1.02 … +3.60 dB | **fail, 5 of 6** |
+| PAL | 5.8/5.9 MHz | −9.32 … −5.55 dB | **fail, 6 of 6** |
+
+No in-band verdict changed. NTSC is clean across its whole train, which localises the fault: it is
+PAL-specific and above the 3.6 MHz anchor ceiling. The PAL CI capture agrees — `conformance-pal-vits`
+goes from 12 of 42 checks failing to 15 of 46, the three new failures being exactly
+`pal-multiburst-field1/packet_{4,5,6}/response` at +1.68, +3.09 and −5.36 dB.
+
+Both PAL residuals were previously attributed to GGV's own recording. That attribution does not
+survive this table: BBC Domesday DD86-DS1 is an unrelated pressing and shows the same peak within
+0.85 dB and the same top-end loss at every radius. [`vits-servos.md`](vits-servos.md) has been
+corrected.
+
+## The 2T pulse was judged against the wrong reference
+
+The table above makes the PAL 2T pulse the worst allowance in this document
+at 6.19x. Most of that was the comparison, not the pulse.
+
+IEC 60856-1986 Figure 7 states the 2T pulse "within +/-0.5 % of `B2`" — the
+white reference bar beside it on the same line — and the 20T pulse and
+staircase within +/-1 % of it. The check judged all three against an
+absolute nominal instead. GGV1011's ITS line runs 2.3-2.6 IRE low at every
+radius, and measured absolutely the 2T pulse inherited the whole of that
+offset on top of whatever its own error was. The line's level is a real
+fault, and it is caught: `white_reference_bar` fails on three of the six
+GGV1011 cuts. It was simply being counted again at every element beside it.
+
+`Element.relative_to` now carries the referent the standard names, and the
+three Figure 7 elements use it. NTSC stays absolute — no NTSC source this
+project holds states a tolerance about the bar, and the NTSC bars measure
+within 1.6 IRE of nominal at every radius, so nothing material rides on it.
+
+### What the changes did, separately
+
+The 2T servo's setpoint moved in the same round of work
+(`_mtf_servo_target()`; see [`vits-servos.md`](vits-servos.md)), so both
+decodes were measured against both comparisons to keep them apart:
+
+| PAL 2T pulse, 12 checks | absolute comparison | differential comparison |
+|---|---|---|
+| old setpoint | 8 pass / 4 fail | 5 pass / 7 fail |
+| new setpoint | 6 pass / 6 fail | **8 pass / 4 fail** |
+
+Read down the wrong column and the setpoint change looks like a regression
+of two checks. Read down the right one it is an improvement of three, and
+none of the twelve moves the other way. The absolute comparison was giving
+the old setpoint credit for GGV1011's low line — an offset that happened to
+cancel part of its error — and charging the new setpoint for removing it.
+
+The setpoint change also shifted the order the servos adopt in, which
+exposed two defects in the multiburst ceiling on the inverse-MTF: it was
+applied only at a *following* burst adoption, and its evidence threshold did
+not match the one the same pool was adopted on. Both are recorded in
+[`vits-servos.md`](vits-servos.md). Whether a disc got a ceiling at all had
+been decided by how many fields happened to be in hand.
+
+With all three fixed, and measured against the differential comparison
+throughout, the twelve cuts move **25 checks from FAIL to PASS and none the
+other way**; the PAL 2T pulse goes from 5 of 12 inside its band to 9 of 12.
+
+The differential comparison is not a relaxation. On the PAL CI capture it
+newly fails `pal-its-field1/pulse_2t`, which sits 3.1 IRE above the bar on
+its own line; measured absolutely at 100.8 IRE it looked correct.
+
 ## What this baseline sends to Phase 8
 
 | Allowance | System | Worst | Where | Reading |
