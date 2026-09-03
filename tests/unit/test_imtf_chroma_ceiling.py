@@ -458,6 +458,34 @@ def test_a_thinned_pool_does_not_erase_a_ceiling_already_published():
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
 
 
+def test_a_ceiling_move_is_a_redo_in_exact_mode_even_inside_the_eq_dead_band():
+    """The ceiling changes the demod filter; fields decoded ahead under the
+    old strength must not commit in exact mode, so checkVideoEQ reports a
+    redo (which flushes them) even when the EQ itself has nothing to adopt."""
+    estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
+    pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+    it = adopt_stub(pool, strength=1.2, calibrated=True, applied_eq=estimate)
+    it.exact_speculation = True
+    assert LDdecode.checkVideoEQ(it, field=None) is False
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
+
+
+def test_a_ceiling_move_is_a_tolerated_trim_otherwise():
+    estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
+    pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+    it = adopt_stub(pool, strength=1.2, calibrated=True, applied_eq=estimate)
+    assert LDdecode.checkVideoEQ(it, field=None) is True
+    assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
+
+
+def test_a_ceiling_that_does_not_move_is_no_redo_in_exact_mode():
+    estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
+    it = adopt_stub(samples({4.0e6: 2.0}, count=2), strength=0.2,
+                    flat_band=0.2, calibrated=True, applied_eq=estimate)
+    it.exact_speculation = True
+    assert LDdecode.checkVideoEQ(it, field=None) is True
+
+
 def test_a_disc_with_no_multiburst_verdict_keeps_its_strength():
     it = adopt_stub([], strength=1.2)
     LDdecode.checkVideoEQ(it, field=None)

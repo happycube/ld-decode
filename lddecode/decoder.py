@@ -1548,7 +1548,15 @@ class LDdecode:
         # verdict.  Bundling them meant a channel already flat enough for
         # the EQ to decline published no ceiling at all - and that is
         # exactly the channel the multiburst is most confident about.
-        self._publish_imtf_flat_band(first=not self.veq_calibrated)
+        ceiling_moved = self._publish_imtf_flat_band(
+            first=not self.veq_calibrated)
+        # The ceiling moving inverse_mtf_strength is a filter change like
+        # any other: tolerant mode hands it to future jobs and lets the
+        # in-flight fields commit under the old strength (a dead-band
+        # sized trim), but exact mode must redo and flush for it, or the
+        # fields decoded ahead would commit under a filter the serial
+        # decode had already left behind (compare-*-parallel-tbc).
+        hold = not (ceiling_moved and self.exact_speculation)
 
         current = self.rf.DecoderParams.get("video_eq_auto") or ()
         cur = dict(current)
@@ -1556,14 +1564,14 @@ class LDdecode:
         delta = max(abs(new.get(k, 0.0) - cur.get(k, 0.0))
                     for k in set(cur) | set(new))
         if delta < self.VEQ_DEADBAND_DB:
-            return True
+            return hold
 
         first = not self.veq_calibrated
         if not first and self.fields_written > 0:
             if (self._veq_last_adopt is not None
                     and (self.fdoffset - self._veq_last_adopt)
                     < self.VEQ_MIN_ADOPT_FIELDS * self.bytes_per_field):
-                return True
+                return hold
             self._veq_last_adopt = self.fdoffset
 
         logs.logger.debug(
@@ -1620,14 +1628,17 @@ class LDdecode:
         not erase a verdict an earlier call was able to reach: the
         multiburst does not stop having said the chroma band was flat
         because fewer fields carry a packet now.
+
+        Returns True when the published ceiling moved the adopted
+        inverse-MTF strength (the caller decides whether that is a redo).
         """
         flat_band = self._imtf_strength_for_flat_band(first=first)
         if flat_band is None:
-            return
+            return False
         if (self._imtf_flat_band is not None
                 and abs(flat_band - self._imtf_flat_band)
                 < self.IMTF_CEILING_DEADBAND):
-            return
+            return False
         # Rate limit, mirroring the EQ's: warmup is exempt because it
         # needs to converge before the first frame is written, and after
         # that a bound on a static channel has no reason to move often.
@@ -1635,11 +1646,13 @@ class LDdecode:
             if (self._imtf_flat_band_last_publish is not None
                     and (self.fdoffset - self._imtf_flat_band_last_publish)
                     < self.VEQ_MIN_ADOPT_FIELDS * self.bytes_per_field):
-                return
+                return False
         self._imtf_flat_band_last_publish = self.fdoffset
         self._imtf_flat_band = flat_band
-        if self._apply_imtf_ceiling():
+        moved = self._apply_imtf_ceiling()
+        if moved:
             self.rf.recompute_fvideo()
+        return moved
 
     def _apply_imtf_ceiling(self):
         """Bring the adopted inverse-MTF strength down to a new ceiling.
@@ -3119,6 +3132,24 @@ class LDdecode:
                 f"job used {res['mtf_level']:.4f}, current {self.mtf_level:.4f}",
             )
             return None
+
+        if self.exact_speculation:
+            # The inverse-MTF strength and the video EQ shape the demod
+            # filter too; a tolerant decode accepts dead-band trims of
+            # either on in-flight fields, an exact one accepts nothing
+            # a serial decode would not have used at this field.
+            imtf = self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)
+            if res["imtf_strength"] != imtf:
+                self._log_speculation(
+                    "stale-imtf",
+                    f"job used {res['imtf_strength']:.4f}, current {imtf:.4f}",
+                )
+                return None
+            veq = self.rf.DecoderParams.get("video_eq_auto")
+            veq = tuple(veq) if veq else None
+            if getattr(res["field"], "decoded_video_eq", None) != veq:
+                self._log_speculation("stale-veq", "job used a previous video EQ")
+                return None
 
         true_start = self.fdoffset
         readloc = int(true_start - self.rf.blockcut)

@@ -133,6 +133,51 @@ def test_no_field_means_no_correction(corrector):
     assert F.chroma_dg_output_picture(picture, None, 0.002, 0.0) is picture
 
 
+# --- exact speculation demands current filter parameters -----------------
+
+
+def accept_stub(exact, imtf=0.5, veq=((1.0e6, 0.0),)):
+    from lddecode.decoder import LDdecode
+
+    it = types.SimpleNamespace(
+        exact_speculation=exact,
+        mtf_level=0.0,
+        mtf_speculation_tolerance=0.1,
+        rf=types.SimpleNamespace(
+            DecoderParams={"inverse_mtf_strength": imtf, "video_eq_auto": veq}),
+        reasons=[],
+    )
+    it._log_speculation = lambda reason, detail="": it.reasons.append(reason)
+    it._accept_job = lambda res: LDdecode._accept_job(it, res)
+    return it
+
+
+def job_result(imtf=0.5, veq=((1.0e6, 0.0),)):
+    field = types.SimpleNamespace(decoded_video_eq=tuple(veq) if veq else None)
+    return {"valid": True, "mtf_level": 0.0, "imtf_strength": imtf, "field": field}
+
+
+def test_exact_mode_rejects_a_job_decoded_under_a_stale_inverse_mtf_strength():
+    it = accept_stub(exact=True, imtf=0.5)
+    assert it._accept_job(job_result(imtf=0.4)) is None
+    assert it.reasons == ["stale-imtf"]
+
+
+def test_exact_mode_rejects_a_job_decoded_under_a_previous_video_eq():
+    it = accept_stub(exact=True, veq=((1.0e6, 0.0), (2.0e6, 1.0)))
+    assert it._accept_job(job_result(veq=((1.0e6, 0.0),))) is None
+    assert it.reasons == ["stale-veq"]
+
+
+def test_tolerant_mode_lets_a_dead_band_trim_through(monkeypatch):
+    """Not rejected for the strength: the check falls through to the
+    window/chain validation, which this stub does not model."""
+    it = accept_stub(exact=False, imtf=0.5)
+    with pytest.raises(AttributeError):
+        it._accept_job(job_result(imtf=0.4))
+    assert it.reasons == []
+
+
 # --- the engine hands the pair to each job -------------------------------
 
 
