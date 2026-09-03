@@ -311,6 +311,57 @@ Domesday still peaks. The peak was therefore not one shared disc-side
 residual, and the reasoning that read it as one is set out in
 [`vits-radius-baseline.md`](vits-radius-baseline.md).
 
+## What authorises a cut, and what is only noise
+
+The multiburst ceiling reaches below zero so it can take back gain
+something upstream added — the case it exists for is BBC Domesday DD86-DS2
+inner, whose chroma band reads +3.6 dB at 4.0 MHz and +4.0 at 4.8 with the
+burst servo already bottomed out and the video EQ barred from the band by
+`veq_max_freq`. Nothing else in the chain can reach that.
+
+But a cut is a *claim* that gain was added, and the pooled multiburst
+estimate cannot carry that claim at any size. `_imtf_ceiling()` already
+calls a band "within about a dB of flat" when it is refusing burst
+amplitude a boost; the same dB has to mean the same thing in the other
+direction, so `IMTF_CUT_ENGAGE_DB` (1.0 dB at the subcarrier) gates the
+negative half and the ceiling floors at zero below it.
+
+The two sides of the threshold are far apart in practice, which is what
+makes it a threshold rather than a tuning knob. Across the thirteen radius
+cuts and the CI captures only two decodes ask for a cut at all:
+
+| capture | band at fsc | cut |
+|---|---|---|
+| domesday-ds2-community-north-inner | 4.58 dB hot | −1.701 |
+| pal-cut-decoded | 1.69 dB hot | −0.628 |
+| industrial-lv-side1-inner | 0.58 dB hot | none — under the threshold |
+
+industrial-lv side 1 inner is the case the threshold was written for. Its
+multiburst reads 0.58 dB hot while burst amplitude simultaneously asks for
+a 1.9 dB boost — two instruments disagreeing about which way to go, which
+is what a measurement at the noise floor looks like. Cutting on it took
+0.5 IRE off the 2T pulse, deepened the top packet from −7.9 to −8.7 dB and
+dropped the luma/chroma gain ratio from 0.279 to 0.261, outside its
+conformance band. Nothing was wrong with that decode's chroma before.
+
+It is a gate and not a subtraction: above the threshold the whole measured
+excess is spent, because half a blowout is still a blowout. And it is
+stated in dB rather than strength units because one unit of strength is
+2.69 dB at PAL's 4.43 MHz but only 1.66 dB at NTSC's 3.58 — a threshold
+held in strength units would mean a different channel fault on each system.
+
+Domesday's cut is unchanged by this, and the top packet it takes with it is
+the same effect stated above in reverse: with the band levelled, packets 1
+to 5 read flat within 0.6 dB and the 5.8 MHz packet falls to −10.3 dB from
+the −3.3 dB it read while the blowout was lifting it. The correction is
+measured at the subcarrier and the inverse-MTF curve it rides keeps
+deepening above it, so 5.8 MHz gets 7.8 dB of a cut worth 4.6 dB at 4.43.
+Capping the cut's extrapolation at the top of the probe band was tried and
+returns 1.4 dB of the 10.3, so it does not change the verdict; the packet's
+recorded deviation was re-taken against the corrected decode instead.
+Removing an unjustified lift is not allowed to be judged by the packet it
+happened to flatter, in this direction either.
+
 ## The 2T pulse is judged against its own bar
 
 IEC 60856-1986 Figure 7 states every element of the PAL insertion test

@@ -1189,6 +1189,24 @@ class LDdecode:
     #: letting a mismeasured field wind the band away.
     IMTF_STRENGTH_LIMIT = 2.0
 
+    #: How hot, in dB at the subcarrier, the multiburst must find the
+    #: chroma band before it may spend the negative half of that limit.
+    #: A cut is a claim that something upstream added gain, and below
+    #: about a dB the pooled multiburst estimate cannot carry that claim
+    #: - it is the same "within about a dB of flat" _imtf_ceiling calls
+    #: flat when it declines to let burst amplitude boost.  Measured
+    #: either side of it: BBC Domesday DD86-DS2 inner reads 4.6 dB hot
+    #: and is the blowout the cut exists for, while industrial-lv side 1
+    #: inner reads 0.6 dB hot with burst amplitude simultaneously asking
+    #: for a 1.9 dB boost - two instruments disagreeing about which way
+    #: to go, which is what a measurement at the noise floor looks like.
+    #: Cutting on that one costs it 0.5 IRE of 2T pulse and drops the
+    #: luma/chroma gain ratio from 0.279 to 0.261, outside its band.
+    #: A threshold, not a subtraction: once the band is measurably hot
+    #: the whole measured excess is taken out, because half a blowout is
+    #: still a blowout.
+    IMTF_CUT_ENGAGE_DB = 1.0
+
     def _veq_estimate(self, field):
         """Absolute video-EQ anchor estimate from pooled multiburst
         measurements, or None.
@@ -1374,11 +1392,37 @@ class LDdecode:
         disc whose chroma band nothing has measured - burst amplitude is
         a mastering choice as much as a channel gain in that direction as
         well as this one.
+
+        And it may only spend it on a band it finds hot by more than
+        IMTF_CUT_ENGAGE_DB, because a cut below that size is not a
+        measurement of anything: it is the same sub-dB scatter this
+        function calls flat when it is refusing burst amplitude a boost,
+        and reading it as a channel fault takes gain out of a disc that
+        never had any added.  Above the threshold the whole measured
+        excess is spent, so the discs the cut exists for are untouched
+        by it.
         """
         flat = self._imtf_flat_band
         if flat is None:
             return None
+        if flat < 0.0 and not self._imtf_cut_engaged(flat):
+            return 0.0
         return float(max(-self.IMTF_STRENGTH_LIMIT, flat))
+
+    def _imtf_cut_engaged(self, flat):
+        """Whether a negative flat-band strength is big enough to act on.
+
+        The threshold is stated in dB at the subcarrier rather than in
+        strength units so it means the same thing on both systems: one
+        unit of strength is 2.69 dB at PAL's 4.43 MHz but only 1.66 dB
+        at NTSC's 3.58 MHz, and it is the dB that says whether the band
+        is really hot.
+        """
+        per_unit = self.rf.inverse_mtf_log_db(
+            self.rf.SysParams["fsc_mhz"] * 1e6)
+        if per_unit <= 0.0:
+            return False
+        return -flat * per_unit >= self.IMTF_CUT_ENGAGE_DB
 
     def checkChromaDG(self, field):
         """Track chroma differential gain and phase from the ITS staircase.

@@ -185,7 +185,7 @@ ceiling = 1.16
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
 reason = "Chrominance amplitude varies with the luminance it rides on, measured on the modulated staircase.  A knife-edge disc fault the pooled measurement resolved out of the noise (the four-field probe read it either side of the limit): the equivalent gain slope, ~0.0011/IRE, sits below the DG servo's 0.0015/IRE trust threshold, so the corrector rightly leaves it alone.  DD86-DS1 is the badly degraded pressing of the set."
 
-# domesday-ds2-community-north-inner (PAL): 4 of its checks fail.
+# domesday-ds2-community-north-inner (PAL): 5 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
@@ -204,26 +204,38 @@ capture = "domesday-ds2-community-north-inner"
 check = "pal-multiburst-field1/packet_6"
 field_line = 20
 parity = "first"
-measured = 18.878
+measured = 8.412
 unit = "IRE"
-band_used = 2.59
-ceiling = 2.85
+band_used = 5.02
+ceiling = 5.52
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
+reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md.  Re-recorded when the chroma blowout on this capture was fixed: the earlier figure was read off a decode whose whole chroma band ran +3.6 dB at 4.0 MHz and +4.0 dB at 4.8, and the same boost was lifting this packet by about 6 dB with it.  With the band levelled (packets 1-5 now flat within 0.6 dB) what is left is the disc's own band-edge loss, unflattered; the correction that levelled the band is measured at the subcarrier and the inverse-MTF curve it rides deepens above it, so 5.8 MHz gets 7.8 dB of a cut worth 4.6 dB at 4.43."
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
 check = "pal-multiburst-field1/packet_6/response"
 field_line = 20
 parity = "first"
-measured = -3.301
+measured = -10.292
 unit = "dB"
-band_used = 2.64
-ceiling = 2.91
+band_used = 8.23
+ceiling = 9.06
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\"."
+reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\".  Re-recorded when the chroma blowout on this capture was fixed: the earlier figure was read off a decode whose whole chroma band ran +3.6 dB at 4.0 MHz and +4.0 dB at 4.8, and the same boost was lifting this packet by about 6 dB with it.  With the band levelled (packets 1-5 now flat within 0.6 dB) what is left is the disc's own band-edge loss, unflattered; the correction that levelled the band is measured at the subcarrier and the inverse-MTF curve it rides deepens above it, so 5.8 MHz gets 7.8 dB of a cut worth 4.6 dB at 4.43."
 
 
+
+[[deviation]]
+capture = "domesday-ds2-community-north-inner"
+check = "pal-its-field2/pulse_2t"
+field_line = 19
+parity = "second"
+measured = 97.928
+unit = "IRE"
+band_used = 1.19
+ceiling = 1.31
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\".  Listed when the chroma blowout on this capture was fixed: the inverse-MTF cut that levelled the band lowers a 2T pulse as surely as a boost lifts one, and the servo divides the filter's effect out of its own measurement rather than out of the output.  The pair is better centred than it was - the two fields read 100.95 and 97.93 against a 7.5 IRE spread before - but the second field now sits just outside its band rather than just inside."
 
 [[deviation]]
 capture = "domesday-ds2-community-north-inner"
@@ -954,7 +966,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# industrial-lv-side1-inner (PAL): 5 of its checks fail.
+# industrial-lv-side1-inner (PAL): 6 of its checks fail.
 
 [[deviation]]
 capture = "industrial-lv-side1-inner"
@@ -1003,6 +1015,17 @@ band_used = 6.34
 ceiling = 6.97
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Frequency response above the band the video EQ servo anchors, where no servo acts and the reading is the static filter chain's. PAL loses roughly 7-8 dB at 5.8 MHz at every radius; see docs/technical/vits-radius-baseline.md, \"The top multiburst packet, and what is left of it\"."
+
+[[deviation]]
+capture = "industrial-lv-side1-inner"
+check = "gain_ratio/PAL"
+parity = "second"
+measured = 0.278
+unit = "ratio"
+band_used = 1.00
+ceiling = 1.11
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own.  This capture has always sat on the line - 0.2791 against a 0.2785 limit - and the chroma differential-gain corrector moved it the last 0.0007 across.  The corrector anchors at the nominal 50 IRE the chroma reference rides on, where its gain is exactly 1; this capture's grey pedestal decodes at 51.1 IRE, so the reference sees 0.22 percent of correction it was meant to be exempt from.  Bought for differential gain 0.208 -> 0.008 and differential phase 6.7 -> 3.1 degrees on the same field, so the trade is not close; closing this entry means anchoring the corrector on the measured pedestal rather than the nominal, which couples it to the luma level servo."
 
 [[deviation]]
 capture = "industrial-lv-side1-inner"
