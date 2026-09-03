@@ -34,7 +34,7 @@ marginal disc.
 | File | Contents |
 |------|----------|
 | `.efm` | One signed byte per T-value (values 3–11), in disc order. Written in both TBC and CVBS output modes; in CVBS mode a `.efm.meta` SQLite sidecar additionally indexes the stream by frame (see the CVBS EFM extension format). |
-| `.efm` (confidence-packed) | With confidence output enabled (`--efm_conf`; the default for CVBS output), each `.efm` byte instead carries the T-value in its low nibble and a 4-bit confidence in its high nibble (`T_VALUE_CONF_U8` in the CVBS EFM extension format — see below). Same file, same length; consumers separate the fields with a mask and a shift. |
+| `.efm` (confidence-packed) | With confidence output enabled (`--efm_conf`; the default for CVBS output), each `.efm` byte instead carries the T-value in its low nibble and a 4-bit doubt (0 = trusted) in its high nibble (`T_VALUE_CONF_U8` in the CVBS EFM extension format — see below). Same file, same length; consumers separate the fields with a mask and a shift. |
 | `.prefm` | The filtered EFM waveform before the PLL (int16 samples), written with `--preEFM`; for debugging and cross-capture waveform research. |
 
 ## Defaults (no flags needed)
@@ -171,16 +171,17 @@ trusting its output.
 
 Legal T-values are 3–11, so they only ever occupy the low nibble of an
 `.efm` byte. With confidence output enabled, the high nibble carries the
-demodulator's soft decision for that run:
+demodulator's *doubt* about that run:
 
 ```
 bit  7 6 5 4   3 2 1 0
-     confidence  T-value        t = byte & 0x0F;  conf = byte >> 4
+      doubt     T-value        t = byte & 0x0F;  doubt = byte >> 4
 ```
 
-Confidence 15 means full trust; values approaching 0 mean the run is a
-likely Reed-Solomon erasure candidate for the downstream decoder. This is
-the `T_VALUE_CONF_U8` encoding of the CVBS EFM extension format.
+Doubt 0 means full trust — so a fully trusted run packs to its plain
+T-value — and values approaching 15 mean the run is a likely Reed-Solomon
+erasure candidate for the downstream decoder. This is the
+`T_VALUE_CONF_U8` encoding of the CVBS EFM extension format.
 
 The default follows the output mode:
 
@@ -192,9 +193,13 @@ The default follows the output mode:
   with legacy tools (`ld-process-efm` and friends). TBC mode has no
   metadata sidecar to declare the encoding, so forcing it on
   (`--efm_conf on`, or `LDDECODE_EFM_EMITCONF=1`) is for consumers that
-  already know they are getting a packed stream. A packed stream cannot
-  be told apart from a plain one by inspection — a plain stream is
-  byte-identical to a packed stream whose every confidence is zero.
+  already know they are getting a packed stream. Because the high nibble
+  stores doubt, a plain stream is byte-identical to a packed stream with
+  zero doubt throughout — a confidence-aware consumer therefore reads a
+  legacy plain `.efm` correctly as fully trusted, and a legacy tool fed a
+  packed stream only sees out-of-range bytes on the runs the demodulator
+  actually doubted. The encodings still cannot be told apart by
+  inspection, so packed output must be declared (or known out of band).
 
 What the confidence measures:
 
@@ -203,11 +208,12 @@ What the confidence measures:
 - With the **timing demodulator**, the weakest soft sample inside the run
   combined with the framing state: T-values inside frames that fail the
   sync/588-bit check — including everything decoded before frame lock —
-  are capped low (packed value 4), marking whole suspect frames as erasure
-  candidates rather than only individually mis-timed edges.
+  are capped low (packed doubt 11), marking whole suspect frames as
+  erasure candidates rather than only individually mis-timed edges.
 
-The demodulators produce 8-bit confidences internally; packing keeps the
-top four bits (255 → 15, and `packed * 17` restores the 0–255 scale).
+The demodulators produce 8-bit confidences internally; packing inverts
+and keeps the top four bits (confidence 255 → doubt 0, and
+`(15 - doubt) * 17` restores the 0–255 confidence scale).
 
 ## `--tbc_efm` (experimental, off by default)
 

@@ -191,8 +191,8 @@ def build_parser():
         dest="efm_conf",
         choices=["auto", "on", "off"],
         default="auto",
-        help="Confidence-packed .efm output (T_VALUE_CONF_U8: 4-bit "
-        "confidence in the high nibble of each T-value byte).  'auto' "
+        help="Confidence-packed .efm output (T_VALUE_CONF_U8: 4-bit doubt, "
+        "0 = trusted, in the high nibble of each T-value byte).  'auto' "
         "(default) enables it for CVBS output, where the .efm.meta sidecar "
         "declares the encoding, and disables it for .tbc output so the "
         "plain .efm keeps working with legacy tools.  LDDECODE_EFM_EMITCONF"

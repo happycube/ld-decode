@@ -272,8 +272,9 @@ class CVBSWriter:
         self._efm_offset = 0
         # How each .efm byte is to be read, declared in .efm.meta's
         # efm_stream table (EFM extension format v2): T_VALUE_U8 is one
-        # plain t-value per byte; T_VALUE_CONF_U8 packs a 4-bit confidence
-        # into the high nibble alongside the t-value in the low nibble.
+        # plain t-value per byte; T_VALUE_CONF_U8 packs a 4-bit doubt
+        # (0 = trusted) into the high nibble alongside the t-value in the
+        # low nibble.
         self.efm_t_value_encoding = efm_t_value_encoding
 
         # metadata fields

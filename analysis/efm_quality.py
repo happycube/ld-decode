@@ -11,7 +11,8 @@ lddecode.efm_score, prints a machine-parseable summary, and judges the
 scores against thresholds given on the command line.  A plain stream is
 one int8 T-value per byte; a confidence-packed stream (T_VALUE_CONF_U8 in
 the CVBS EFM extension format, the CVBS-mode default) carries the T-value
-in the low nibble and a 4-bit confidence in the high nibble - pass
+in the low nibble and a 4-bit doubt (0 = trusted) in the high nibble -
+pass
 ``--packed`` to unpack it (the encoding is declared, not sniffable, so the
 caller must know which it has).
 
@@ -146,7 +147,7 @@ def main(argv=None):
         "--packed",
         action="store_true",
         help="the .efm stream is confidence-packed (T_VALUE_CONF_U8: "
-        "T-value in the low nibble, 4-bit confidence in the high nibble); "
+        "T-value in the low nibble, 4-bit doubt in the high nibble); "
         "unpack it and include the confidence summary in the report",
     )
     parser.add_argument(

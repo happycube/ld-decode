@@ -443,7 +443,7 @@ class LDdecode:
 
         # Confidence-packed .efm output (EFM extension format v2,
         # T_VALUE_CONF_U8): the T-value keeps the low nibble and a 4-bit
-        # confidence rides the high nibble.  Defaults: ON for CVBS output
+        # doubt (0 = trusted) rides the high nibble.  Defaults: ON for CVBS output
         # (the extension metadata declares the encoding), OFF for TBC
         # output so the plain .efm keeps working with legacy tools.
         # --efm_conf on/off overrides; LDDECODE_EFM_EMITCONF=1/0 is the

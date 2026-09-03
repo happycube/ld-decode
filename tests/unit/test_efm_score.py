@@ -407,8 +407,9 @@ def test_pack_unpack_roundtrip_preserves_t_and_quantises_confidence():
     t_back, conf_back = unpack_t_conf(packed)
 
     # T-values are exact (they fit the low nibble); confidence keeps its
-    # top four bits, re-expanded so 255 maps back to 255 and thresholds
-    # carry over between the 8-bit and packed representations.
+    # top four bits (stored inverted as doubt), re-expanded so 255 maps
+    # back to 255 and thresholds carry over between the 8-bit and packed
+    # representations.
     assert packed.dtype == np.uint8
     assert np.array_equal(t_back, t)
     assert np.array_equal(conf_back, (conf >> 4).astype(np.uint8) * 17)
@@ -419,21 +420,32 @@ def test_pack_rejects_mismatched_lengths():
         pack_t_conf(np.full(5, 7, np.int8), np.zeros(4, np.uint8))
 
 
-def test_a_plain_stream_unpacks_as_zero_confidence():
+def test_a_plain_stream_unpacks_as_full_confidence():
     t = perfect_stream(3)
 
     t_back, conf_back = unpack_t_conf(t)
 
-    # A legacy T_VALUE_U8 stream is byte-identical to a packed stream
-    # whose every confidence is zero - the documented reason the encoding
-    # must be declared rather than sniffed.
+    # The high nibble stores doubt, so a legacy T_VALUE_U8 stream is
+    # byte-identical to a packed stream with zero doubt everywhere and
+    # unpacks - correctly - as fully trusted.
     assert np.array_equal(t_back, t)
-    assert conf_back.max() == 0
+    assert conf_back.min() == 255
+
+
+def test_fully_confident_packing_is_byte_identical_to_the_plain_stream():
+    t = perfect_stream(3)
+
+    packed = pack_t_conf(t, np.full(t.size, 255, np.uint8))
+
+    # The point of the inverted (doubt) sense: a fully-confident packed
+    # stream IS the plain stream, so legacy consumers only ever see
+    # out-of-range bytes on symbols the demodulator actually doubted.
+    assert np.array_equal(packed, t.astype(np.uint8))
 
 
 def test_packing_does_not_change_the_score():
     t = perfect_stream(20)
-    conf = np.full(t.size, 255, np.uint8)
+    conf = np.full(t.size, 128, np.uint8)
 
     t_back, _ = unpack_t_conf(pack_t_conf(t, conf))
     packed_score = score_t_values(t_back)

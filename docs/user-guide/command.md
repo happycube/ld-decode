@@ -385,7 +385,7 @@ ld-decode --efm_demod pll input.ldf output
 ```
 
 #### `--efm_conf`
-Confidence-packed `.efm` output: each byte carries the T-value in its low nibble and a 4-bit demodulator confidence in its high nibble (`T_VALUE_CONF_U8` in the CVBS EFM extension format; consumers separate them as `t = byte & 0x0F`, `conf = byte >> 4`).
+Confidence-packed `.efm` output: each byte carries the T-value in its low nibble and a 4-bit demodulator doubt in its high nibble (`T_VALUE_CONF_U8` in the CVBS EFM extension format; consumers separate them as `t = byte & 0x0F`, `doubt = byte >> 4` — 0 = full trust, so trusted bytes stay plain T-values).
 - **Default:** `auto` — **on** for CVBS output (the `.efm.meta` sidecar declares the encoding), **off** for `--tbc` output so the plain `.efm` keeps working with legacy tools
 - **Choices:** `auto`, `on`, `off` (`LDDECODE_EFM_EMITCONF=1`/`0` is the environment equivalent of on/off)
 - **Note:** a packed stream cannot be distinguished from a plain one by inspection, so only force `on` for `--tbc` output when the consumer knows it is getting packed data. See [EFM decoding](../technical/efm-decoding.md).
