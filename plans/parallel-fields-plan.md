@@ -458,6 +458,10 @@ needed at all.  Fields return from workers stripped of sample buffers
 driver.  RF-TBC/AC3 modes fall back to block-level parallelism; PAL
 CVBS ships the demod array back with the field (`keep_demod`) so the
 committer can run `downscale_cvbs` under the serial burst-lock shift.
+The TBC chroma DG correction rides each job as `(slope, phase)`, like
+`mtf_level`; the writer keeps the worker's corrected copy while the key
+(`chroma_dg_output_key`) is current and otherwise re-corrects the raw
+`dspicture` itself, so a servo adoption needs no flush.
 
 | Config | fields/s (steady state) |
 |---|---|

@@ -140,7 +140,7 @@ def build_parser():
         default=False,
         help="with -t: discard fields decoded ahead under old decoder parameters "
              "on any parameter change (bit-exact with -t 1); by default minor "
-             "MTF drift is tolerated for throughput",
+             "MTF drift and chroma DG trims are tolerated for throughput",
     )
     parser.add_argument(
         "--noAGC", dest="noAGC", action="store_true", default=False, help="Disable AGC"

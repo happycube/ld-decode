@@ -81,15 +81,20 @@ memory (~150–200 MB per worker process).  Steady-state throughput on a
 (≈5.7×).  Modes that consume raw RF samples at write time (`--RF-TBC`,
 AC3) automatically use block-level parallelism instead (~4×);
 `--demod-threads-only` keeps everything in threads (slower, lightest
-on memory).  PAL CVBS output resamples each field at write time (its
-burst lock runs in commit order), so workers ship the demodulated
-video back with the field (~4 MB each) and the committer resamples,
-the two fields of a frame concurrently.
+on memory).  The TBC output's chroma differential-gain correction is
+applied by the workers under the servo estimate current at dispatch
+(the writer re-applies it only if the estimate has since moved), so the
+committing thread stays light.  PAL CVBS output resamples each field
+at write time (its burst lock runs in commit order), so workers ship
+the demodulated video back with the field (~4 MB each) and the
+committer resamples, the two fields of a frame concurrently.
 
 By default, minor MTF calibration drift is tolerated: fields decoded
 ahead under an MTF level within 0.10 of the current one are kept
 (the visual difference of a dead-band step is fractions of a dB at
-high frequencies).  `--exact-speculation` instead discards everything
+high frequencies), and likewise a chroma DG correction applied by a
+worker within two servo dead-bands of the current estimate (~1.5% of
+chroma gain at 100 IRE).  `--exact-speculation` instead discards everything
 decoded under old parameters, keeping the output bit-exact with `-t 1`
 even across mid-run calibration changes.  Every speculation reject and
 parameter event is recorded with its cause in the `speculation_log`

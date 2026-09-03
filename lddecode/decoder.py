@@ -20,7 +20,7 @@ from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
 from .field import (CHROMA_DG_ANCHOR_IRE, Field, FieldAnchor, FieldNTSC,
-                    FieldPAL, apply_chroma_dg_correction_output)
+                    FieldPAL, chroma_dg_output_picture)
 from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import detect_levels
@@ -351,6 +351,10 @@ class LDdecode:
     # the per-system servo gain (mtf_speculation_tolerance) so it stays
     # the same size in pulse/bar ratio terms.
     MTF_SPECULATION_TOLERANCE = 0.10
+    # Likewise for the chroma DG (slope, phase) a field job corrected the
+    # TBC picture under, in dead-bands of the servo's own adoption
+    # thresholds (see dg_speculation_tolerance).
+    DG_SPECULATION_TOLERANCE = 2.0
 
     # The .tbc.db runs with journalling off for speed; a synchronous=FULL
     # commit is forced to disk every this many fields (~1000 frames) so a
@@ -778,6 +782,18 @@ class LDdecode:
         # discards everything decoded under the old values, keeping the
         # output bit-exact with -t 1 across adoptions.
         self.exact_speculation = extra_options.get("exact_speculation", False)
+        # The same allowance for the chroma DG correction a field job
+        # applied: a servo trim within DG_SPECULATION_TOLERANCE dead-bands
+        # of the current estimate keeps the worker's correction (the
+        # chroma-gain difference is ~1.5% at 100 IRE per slope dead-band);
+        # anything larger - the phase term engaging, say - is redone
+        # from the raw picture at write time.  Exact mode redoes all.
+        self.dg_speculation_tolerance = (
+            None if self.exact_speculation else (
+                self.DG_SPECULATION_TOLERANCE * self.DG_SLOPE_DEADBAND,
+                self.DG_SPECULATION_TOLERANCE * self.DG_PHASE_DEADBAND,
+            )
+        )
 
         # The field pipeline: stage 1 (sync/lineloc chain) runs on the
         # main thread; stage 2 (downscale/metrics/dropouts) fans out per
@@ -1512,6 +1528,9 @@ class LDdecode:
         self.dg_calibrated = True
         self.rf.DecoderParams["chroma_dg_slope"] = estimate
         self.rf.DecoderParams["chroma_dg_phase"] = phase
+        engine = getattr(self, "_job_engine", None)
+        if engine is not None:
+            engine.set_chroma_dg(self._engine_chroma_dg())
 
     def checkVideoEQ(self, field):
         """Adopt the multiburst-derived video EQ when it drifts past
@@ -2169,13 +2188,15 @@ class LDdecode:
         else:
             # The differential gain/phase correction the CVBS path gets
             # inside downscale_cvbs, applied to the TBC output at the
-            # same place in its life: parent-side, at write time, on a
-            # copy.  f.dspicture keeps the raw decode for the servos.
+            # same place in its life: at write time, on a copy
+            # (f.dspicture keeps the raw decode for the servos).  A
+            # field job has usually done it already under the current
+            # estimate; chroma_dg_output_picture keeps that or redoes it.
             slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
             phase = float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
-            if (slope != 0.0 or phase != 0.0) and f is not None:
-                picture = apply_chroma_dg_correction_output(
-                    picture, f, slope, phase)
+            picture = chroma_dg_output_picture(
+                picture, f, slope, phase,
+                tolerance=self.dg_speculation_tolerance)
             self.outfile_video.write(picture)
         self.fields_written += 1
 
@@ -3026,9 +3047,21 @@ class LDdecode:
             imtf_strength=self.rf.DecoderParams.get(
                 "inverse_mtf_strength", 0.0),
             veq=self.rf.DecoderParams.get("video_eq_auto"),
+            chroma_dg=self._engine_chroma_dg(),
         )
         self._engine_dirty = False
         self._job_rejects = 0
+
+    def _engine_chroma_dg(self):
+        """The chroma DG (slope, phase) field jobs should correct the TBC
+        picture under - None for CVBS output, whose writer applies the
+        correction itself on the 4fsc lattice."""
+        if self.output_cvbs:
+            return None
+        return (
+            float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0)),
+            float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0)),
+        )
 
     def _log_speculation(self, reason, detail=""):
         """Record a speculation reject (or engine resync) with its cause:

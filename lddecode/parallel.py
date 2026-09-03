@@ -124,7 +124,8 @@ def _demod_worker_block(rawinput, mtf_level, imtf_strength=None, veq=None):
 
 
 def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
-                         imtf_strength, veq, audio_field_number):
+                         imtf_strength, veq, audio_field_number,
+                         chroma_dg=None):
     """Decode one complete field in this worker process.
 
     Replicates decodefield()'s window math and demod_read()'s per-block
@@ -138,7 +139,8 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
     """
     import numpy as np
 
-    from .field import FieldNTSC, FieldPAL
+    from .field import (FieldNTSC, FieldPAL, apply_chroma_dg_correction_output,
+                        chroma_dg_output_key)
     from .metrics import computeMetrics, detect_levels
 
     try:
@@ -205,6 +207,18 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
             return {"seq": seq, "valid": False}
 
         picture, _, efm = f.downscale(linesout=cfg["output_lines"], final=True)
+
+        # The TBC output's chroma differential gain/phase correction is
+        # a pure function of the picture and the servo's (slope, phase),
+        # so it runs here on a copy - f.dspicture stays raw for the
+        # servos - and rides the result with the key it was computed
+        # under; the writer keeps it only while that key is current
+        # (see field.chroma_dg_output_picture).
+        f.chroma_dg_applied = None
+        if chroma_dg is not None and any(chroma_dg):
+            slope, phase = chroma_dg
+            picture = apply_chroma_dg_correction_output(picture, f, slope, phase)
+            f.chroma_dg_applied = chroma_dg_output_key(rf, slope, phase)
 
         metrics = computeMetrics(rf, f, None, verbose=True)
         f.precomputed_metrics = metrics
@@ -291,6 +305,7 @@ class FieldJobEngine:
         self._mtf = 0.0
         self._imtf = 0.0
         self._veq = None
+        self._chroma_dg = None
         self._rebase_seq = 0
 
         self._thread = threading.Thread(
@@ -299,7 +314,7 @@ class FieldJobEngine:
         self._thread.start()
 
     def reset(self, start, next_is_first, lastfieldwritten, mtf_level,
-              imtf_strength=0.0, veq=None):
+              imtf_strength=0.0, veq=None, chroma_dg=None):
         """(Re)start speculation from known chain state."""
         with self._cond:
             self._gen += 1
@@ -315,6 +330,7 @@ class FieldJobEngine:
             self._mtf = mtf_level
             self._imtf = imtf_strength
             self._veq = tuple(veq) if veq else None
+            self._chroma_dg = tuple(chroma_dg) if chroma_dg else None
             self._rebase_seq = 0
             self._active = True
             self._cond.notify_all()
@@ -346,6 +362,13 @@ class FieldJobEngine:
         """Adopt a new dynamic video EQ for future dispatches."""
         with self._cond:
             self._veq = tuple(veq) if veq else None
+
+    def set_chroma_dg(self, chroma_dg):
+        """Adopt a new chroma DG (slope, phase) for future dispatches.
+        Jobs in flight keep the old pair; the writer re-corrects those
+        from the raw picture, so nothing needs discarding."""
+        with self._cond:
+            self._chroma_dg = tuple(chroma_dg) if chroma_dg else None
 
     def stop(self):
         with self._cond:
@@ -426,6 +449,7 @@ class FieldJobEngine:
                 mtf = self._mtf
                 imtf = self._imtf
                 veq = self._veq
+                chroma_dg = self._chroma_dg
                 parity = self._cur_parity
                 fn = self._predict_field_number(start)
 
@@ -443,7 +467,7 @@ class FieldJobEngine:
 
                 fut = self.executor.submit(
                     _decode_field_worker, seq, start, raw, span_begin, mtf,
-                    imtf, veq, fn
+                    imtf, veq, fn, chroma_dg
                 )
                 self._futures[seq] = fut
                 self._next_dispatch = seq + 1

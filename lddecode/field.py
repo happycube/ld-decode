@@ -218,6 +218,53 @@ def apply_chroma_dg_correction_output(picture, field, slope, phase=0.0):
     return np.clip(out, 0, 65535).astype(np.uint16)
 
 
+def chroma_dg_output_key(rf, slope, phase):
+    """Everything apply_chroma_dg_correction_output's result depends on
+    beyond the picture: the servo's estimate and the AGC's vsync level
+    (out_scale and outputZero are per-system constants).  A worker
+    stamps the key it corrected under on the field (chroma_dg_applied);
+    the writer compares it with the current one."""
+    return (float(slope), float(phase), float(rf.DecoderParams["vsync_ire"]))
+
+
+def chroma_dg_output_picture(picture, field, slope, phase, tolerance=None):
+    """The TBC picture to write for a field under the current chroma DG
+    estimate, applying apply_chroma_dg_correction_output only when the
+    field does not already carry it.
+
+    A field decoded in a worker process may arrive with `picture`
+    already corrected (field.chroma_dg_applied records the key it was
+    corrected under, see chroma_dg_output_key); that copy is used as is
+    while the key is still current, and discarded for a fresh correction
+    of the raw field.dspicture when the servo has since adopted new
+    values - the same computation the serial decode performs at this
+    point, so the output does not depend on which path produced it.
+
+    tolerance, a (slope, phase) pair in per-IRE units, is the tolerant
+    speculation mode's allowance: a correction whose slope and phase are
+    each within it of the current estimate (and whose vsync level is
+    the same) is kept rather than redone, as an in-flight field decoded
+    under a slightly stale MTF level is.  None demands the exact key.
+    Returns picture itself when no correction applies."""
+    if field is None:
+        return picture
+    key = chroma_dg_output_key(field.rf, slope, phase)
+    applied = getattr(field, "chroma_dg_applied", None)
+    if applied is not None and applied != key:
+        close_enough = (
+            tolerance is not None
+            and applied[2] == key[2]
+            and abs(applied[0] - key[0]) <= tolerance[0]
+            and abs(applied[1] - key[1]) <= tolerance[1]
+        )
+        if not close_enough:
+            picture = field.dspicture
+            applied = None
+    if applied is None and (slope != 0.0 or phase != 0.0):
+        picture = apply_chroma_dg_correction_output(picture, field, slope, phase)
+    return picture
+
+
 class Field:
     burst_lines = (11, 264)  # NTSC default
     burst_max_ire = None  # PAL overrides to 30
