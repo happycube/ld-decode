@@ -221,7 +221,7 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
         )
 
         nextfieldoffset = float(f.nextfieldoffset)
-        f.prepare_transport()
+        f.prepare_transport(keep_demod=cfg.get("keep_demod", False))
 
         return {
             "seq": seq,

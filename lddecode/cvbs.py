@@ -70,6 +70,7 @@ def pal_lattice_positions(n_samples, origin_lines=Fraction(0)):
 import os
 import sqlite3
 import struct
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -225,7 +226,7 @@ class CVBSWriter:
                  black_level=None, write_audio=False,
                  audio_description="Analogue stereo", capture_notes=None,
                  has_nonstandard_values=None, write_efm=False,
-                 sample_encoding=None):
+                 sample_encoding=None, resample_executor=None):
         self.system = system
         self.params = CVBSParams_PAL if system == "PAL" else CVBSParams_NTSC
         self.fname_out = fname_out
@@ -255,6 +256,17 @@ class CVBSWriter:
         self._pal_shift = 0.0          # lattice-sample lattice shift
         self._lock_initialised = False
         self._lock_residuals = []      # per-frame residual, degrees
+
+        # PAL frames resample both fields under one lock shift, and only
+        # field A feeds the lock, so field B's resample (the longer one:
+        # its 354689-sample lattice length is prime, which puts every
+        # FFT in the chroma DG corrector on the Bluestein path) runs on
+        # this executor alongside field A's on the calling thread.  Both
+        # complete inside _emit_frame, so nothing they read (the lock
+        # shift, DecoderParams) can change under them.  Injectable for
+        # tests; created on first use otherwise, released by close().
+        self._resample_executor = resample_executor
+        self._owns_resample_executor = False
 
         # sequence continuity (spec sequence_continuous): the file is one
         # unbroken sequence unless the writer drops a field mid-file or the
@@ -356,14 +368,19 @@ class CVBSWriter:
             # (one re-resample); afterwards track with small corrections.
             # Burst measurement runs on the decoder-domain output (before
             # _to_spec_levels) so the amplitude threshold is consistent.
-            a_raw = f_a.downscale_cvbs(self._pal_shift)
             if not self._lock_initialised:
+                a_raw = f_a.downscale_cvbs(self._pal_shift)
                 delta = self._pal_phase_error(a_raw)
                 if delta is not None:
                     self._pal_shift += delta / 90.0
                     a_raw = f_a.downscale_cvbs(self._pal_shift)
                 self._lock_initialised = True
-            b_raw = f_b.downscale_cvbs(self._pal_shift)
+                b_raw = f_b.downscale_cvbs(self._pal_shift)
+            else:
+                b_pending = self._resampler().submit(
+                    f_b.downscale_cvbs, self._pal_shift)
+                a_raw = f_a.downscale_cvbs(self._pal_shift)
+                b_raw = b_pending.result()
 
             resid = self._pal_phase_error(a_raw)
             if resid is not None:
@@ -381,6 +398,13 @@ class CVBSWriter:
         for aud in (aud_a, aud_b):
             if aud is not None:
                 self.push_audio(aud)
+
+    def _resampler(self):
+        if self._resample_executor is None:
+            self._resample_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="cvbs-resample")
+            self._owns_resample_executor = True
+        return self._resample_executor
 
     def _as_u16(self, picture):
         return (np.frombuffer(picture, dtype=np.uint16)
@@ -612,6 +636,11 @@ class CVBSWriter:
             return
         self.f_video.close()
         self.f_video = None
+
+        if self._owns_resample_executor:
+            self._resample_executor.shutdown(wait=True)
+            self._resample_executor = None
+            self._owns_resample_executor = False
 
         if self.f_wav is not None:
             self._finalise_audio()

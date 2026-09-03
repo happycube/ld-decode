@@ -455,7 +455,9 @@ truth.  Prediction quality therefore affects only the discard rate
 (~5% on the CI disc), never the output, and no determinism rules are
 needed at all.  Fields return from workers stripped of sample buffers
 (`prepare_transport`); warm-up/tail/repair/redo all reuse the inline
-driver.  RF-TBC/AC3/CVBS modes fall back to block-level parallelism.
+driver.  RF-TBC/AC3 modes fall back to block-level parallelism; PAL
+CVBS ships the demod array back with the field (`keep_demod`) so the
+committer can run `downscale_cvbs` under the serial burst-lock shift.
 
 | Config | fields/s (steady state) |
 |---|---|

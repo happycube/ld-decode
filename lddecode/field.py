@@ -7,6 +7,7 @@ import itertools
 from dataclasses import dataclass, field as dc_field
 
 import numpy as np
+from scipy import fft as spfft
 from scipy import interpolate
 
 from . import utils_logging as logs
@@ -133,14 +134,17 @@ def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase):
     to; equalising every level's phase to the burst's is what zero
     differential phase means.
     """
+    # scipy's pocketfft returns the same bits as numpy's here but runs
+    # its Bluestein path twice as fast - and one of the two PAL field
+    # lattice lengths (354689) is prime, so every transform takes it.
     bandpass, lowpass = _chroma_dg_window(len(ire), fs_mhz)
-    spectrum = np.fft.rfft(ire)
-    luma = np.fft.irfft(spectrum * lowpass, len(ire))
+    spectrum = spfft.rfft(ire)
+    luma = spfft.irfft(spectrum * lowpass, len(ire))
     level = np.clip(luma, 0.0, None)
     gain = ((1.0 + slope * CHROMA_DG_ANCHOR_IRE)
             / (1.0 + slope * level))
     if phase == 0.0:
-        chroma = np.fft.irfft(spectrum * bandpass, len(ire))
+        chroma = spfft.irfft(spectrum * bandpass, len(ire))
         return ire + (gain - 1.0) * chroma
 
     # The rotation needs the chroma band's analytic signal: positive
@@ -151,7 +155,7 @@ def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase):
     full = np.zeros(n, dtype=np.complex128)
     full[: len(half)] = half
     full[1 : (n + 1) // 2] *= 2.0
-    chroma_analytic = np.fft.ifft(full)
+    chroma_analytic = spfft.ifft(full)
     g = gain * np.exp(-1j * np.deg2rad(phase) * level)
     return ire + np.real((g - 1.0) * chroma_analytic)
 
@@ -234,6 +238,8 @@ class Field:
     ):
         self.rawdata = decode["input"]
         self.data = decode
+        # set by prepare_transport(keep_demod=True) once data is stripped
+        self.transport_demod = None
         self.initphase = initphase  # used for seeking or first field
         self.readloc = readloc
 
@@ -1304,7 +1310,7 @@ class Field:
         "anchor",
     )
 
-    def prepare_transport(self):
+    def prepare_transport(self, keep_demod=False):
         """Make a fully processed (and downscaled) field small and
         picklable for return from a worker process.
 
@@ -1313,8 +1319,19 @@ class Field:
         are dropped.  What survives: dspicture, dsaudio, efmout,
         linelocs, and scalar decode results.  The receiver must rebind
         .rf before use.
+
+        keep_demod additionally retains a contiguous float32 copy of the
+        demodulated video (data["video"]["demod"], ~4 MB per PAL field)
+        as transport_demod: the PAL CVBS writer resamples the field onto
+        the 4fsc frame lattice at write time, under a burst-lock shift
+        that is only known in commit order, so that resample cannot run
+        in the worker (see downscale_cvbs).
         """
         self.anchor_out = FieldAnchor.from_field(self)
+        if keep_demod and self.data is not None:
+            self.transport_demod = np.ascontiguousarray(
+                self.data["video"]["demod"], dtype=np.float32
+            )
 
         for attr in self.TRANSPORT_STRIP:
             if hasattr(self, attr):
@@ -1901,9 +1918,22 @@ class FieldPAL(Field):
         locs = spl(pos)
         wow = spl(pos, 1)
 
+        # A field back from a worker process has had its sample buffers
+        # stripped; the demod survives as transport_demod when the
+        # worker was told to keep it (prepare_transport(keep_demod=True)).
+        if self.data is not None:
+            demod = self.data["video"]["demod"].astype(np.float32, copy=False)
+        elif self.transport_demod is not None:
+            demod = self.transport_demod
+        else:
+            raise ValueError(
+                "downscale_cvbs needs the field's demodulated video: "
+                "the field was transported without keep_demod"
+            )
+
         out = np.zeros(len(pos), dtype=np.float32)
         scale_positions(
-            self.data["video"]["demod"].astype(np.float32, copy=False),
+            demod,
             out, locs, wow, self.rf.downscale_sinc_lut,
             frame_samples / 625.0,
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing,

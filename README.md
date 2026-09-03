@@ -78,10 +78,13 @@ ahead of it.  **Output is bit-identical for any `-t` value** — this is
 asserted by the test suite — so there is no quality trade-off, only
 memory (~150–200 MB per worker process).  Steady-state throughput on a
 36-core machine: ~2.4 fields/s serial → ~13 fields/s at `-t 12`
-(≈5.7×).  Modes that consume raw field data at write time (`--RF-TBC`,
-AC3, `--cvbs`) automatically use block-level parallelism instead
-(~4×); `--demod-threads-only` keeps everything in threads (slower,
-lightest on memory).
+(≈5.7×).  Modes that consume raw RF samples at write time (`--RF-TBC`,
+AC3) automatically use block-level parallelism instead (~4×);
+`--demod-threads-only` keeps everything in threads (slower, lightest
+on memory).  PAL CVBS output resamples each field at write time (its
+burst lock runs in commit order), so workers ship the demodulated
+video back with the field (~4 MB each) and the committer resamples,
+the two fields of a frame concurrently.
 
 By default, minor MTF calibration drift is tolerated: fields decoded
 ahead under an MTF level within 0.10 of the current one are kept

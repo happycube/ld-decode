@@ -751,13 +751,14 @@ class LDdecode:
 
         # Whole-field speculative jobs (each field decoded end-to-end in
         # a worker process) need only the field's own outputs at commit;
-        # modes that consume a field's raw sample data at write time
-        # (RF-TBC/AC3 and the CVBS writer) fall back to block-level
-        # parallelism.
+        # modes that consume a field's raw *input* samples at write time
+        # (RF-TBC/AC3) fall back to block-level parallelism.  The PAL
+        # CVBS writer needs the demodulated video at write time instead
+        # (its burst-lock resample runs in commit order), which the
+        # workers ship back alongside the field (keep_demod below).
         self.use_field_jobs = (
             self.numthreads > 1
             and self.process_demod
-            and not self.output_cvbs
             and not self.do_rftbc
             and not self.ac3
             and not self._auto_echo
@@ -2993,6 +2994,8 @@ class LDdecode:
             "useAGC": self.useAGC,
             "analog_audio": self.analog_audio,
             "audio_bits": self.audio_output_bits,
+            # the PAL CVBS writer resamples from the demod at write time
+            "keep_demod": self.output_cvbs and self.system == "PAL",
         }
 
     def _field_engine_cfg(self):
