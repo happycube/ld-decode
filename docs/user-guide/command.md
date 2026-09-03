@@ -465,11 +465,11 @@ ld-decode -f 8fsc input.ldf output
 ### Processing Options
 
 #### `-t threads`, `--threads threads`
-Number of CPU threads to use for decoding.
+Number of worker processes to decode fields with.
 - **Type:** Integer
-- **Default:** 4
-- **Range:** 1 to number of CPU cores
-- **Note:** More threads can speed up processing but may have diminishing returns beyond the number of CPU cores
+- **Default:** 0 (auto): the machine's physical cores minus 2, capped at 10
+- **Range:** 1 (serial decode) to number of CPU cores
+- **Note:** The workers are FFT-bound, so counting SMT (hyper-threading) siblings as cores oversubscribes the machine; an 8-core/16-thread CPU decodes faster with 6 workers than with 10. Output is bit-identical for any thread count.
 
 **Example:**
 ```bash

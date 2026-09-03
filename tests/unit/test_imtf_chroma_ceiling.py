@@ -464,10 +464,25 @@ def test_a_ceiling_move_is_a_redo_in_exact_mode_even_inside_the_eq_dead_band():
     redo (which flushes them) even when the EQ itself has nothing to adopt."""
     estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
     pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
-    it = adopt_stub(pool, strength=1.2, calibrated=True, applied_eq=estimate)
+    it = adopt_stub(pool, strength=1.2, calibrated=True, applied_eq=estimate,
+                    fields_written=1)
     it.exact_speculation = True
     assert LDdecode.checkVideoEQ(it, field=None) is False
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
+
+
+def test_a_ceiling_move_during_warm_up_is_not_a_redo_in_either_mode():
+    """Nothing is in flight before the first field is written, so the
+    exact-mode redo has nothing to flush; the warm-up caps the strength
+    and moves on exactly as the tolerant decode does."""
+    estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
+    for exact in (False, True):
+        pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
+        it = adopt_stub(pool, strength=1.2, calibrated=True,
+                        applied_eq=estimate, fields_written=0)
+        it.exact_speculation = exact
+        assert LDdecode.checkVideoEQ(it, field=None) is True
+        assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
 
 
 def test_a_ceiling_move_is_a_tolerated_trim_otherwise():
@@ -481,7 +496,8 @@ def test_a_ceiling_move_is_a_tolerated_trim_otherwise():
 def test_a_ceiling_that_does_not_move_is_no_redo_in_exact_mode():
     estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
     it = adopt_stub(samples({4.0e6: 2.0}, count=2), strength=0.2,
-                    flat_band=0.2, calibrated=True, applied_eq=estimate)
+                    flat_band=0.2, calibrated=True, applied_eq=estimate,
+                    fields_written=1)
     it.exact_speculation = True
     assert LDdecode.checkVideoEQ(it, field=None) is True
 

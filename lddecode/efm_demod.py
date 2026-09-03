@@ -316,6 +316,22 @@ _timing_core_spec = [
 ]
 
 
+@numba.njit(nogil=True)
+def _consume_nogil(core, samples):
+    """Run one chunk through the timing core with the GIL released.
+
+    A jitclass method called from Python holds the GIL for its whole
+    run; called from inside this nopython wrapper it does not, so the
+    demodulator - which runs on the decoder's output thread when fields
+    decode in parallel - stops contending with the commit thread for it.
+    The compiled code is the same either way (the wrapper is not
+    cacheable, jitclass arguments never are, but its compile subsumes
+    the core's own first-call compile)."""
+    core.begin()
+    if samples.size:
+        core.consume(samples)
+
+
 @jitclass(_timing_core_spec)
 class _TimingCore:
     """Per-bit timing loop, framing and T emission (internal, Numba-compiled).
@@ -808,9 +824,7 @@ class EFMTimingDemod:
         input array is not modified.
         """
         conditioned = self.conditioner.process(self.decimator.process(np.asarray(input_buffer)))
-        self.core.begin()
-        if conditioned.size:
-            self.core.consume(conditioned)
+        _consume_nogil(self.core, conditioned)
         return self.core.out_t[: self.core.out_n]
 
     def flush(self):

@@ -86,8 +86,15 @@ applied by the workers under the servo estimate current at dispatch
 (the writer re-applies it only if the estimate has since moved), so the
 committing thread stays light.  PAL CVBS output resamples each field
 at write time (its burst lock runs in commit order), so workers ship
-the demodulated video back with the field (~4 MB each) and the
-committer resamples, the two fields of a frame concurrently.
+the demodulated video back with the field (~4 MB each).  Everything
+that happens to a field after it commits - the EFM demodulation, the
+`.tbc.db` row, CVBS frame assembly and the file writes - runs on a
+separate output thread that trails the committer by up to 16 fields,
+each field carrying a snapshot of the decoder parameters it committed
+under, so the output is the same bytes the inline write would have
+produced; a stale chroma DG correction is redone on a small pool
+ahead of that thread, and the two fields of a PAL CVBS frame resample
+concurrently.
 
 By default, minor MTF calibration drift is tolerated: fields decoded
 ahead under an MTF level within 0.10 of the current one are kept

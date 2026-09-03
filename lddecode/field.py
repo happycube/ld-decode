@@ -3,6 +3,7 @@
 Split verbatim out of core.py.
 """
 
+import copy
 import itertools
 from dataclasses import dataclass, field as dc_field
 
@@ -263,6 +264,30 @@ def chroma_dg_output_picture(picture, field, slope, phase, tolerance=None):
     if applied is None and (slope != 0.0 or phase != 0.0):
         picture = apply_chroma_dg_correction_output(picture, field, slope, phase)
     return picture
+
+
+def field_output_view(field):
+    """A shallow copy of a committed field bound to a snapshot of the
+    decoder parameters, for output work that runs after the commit.
+
+    Every write-time computation reads levels and servo estimates
+    through field.rf.DecoderParams (hz_to_output, the chroma DG
+    corrector, downscale_cvbs), and in the serial decode that read
+    happens the moment the field commits.  When the output stage trails
+    the commit loop (OrderedOutputLane), the live parameters may have
+    moved on by the time it runs, so the view carries the values as
+    they were at commit: a copy of the RFDecode with its own copy of
+    DecoderParams.  The field's sample arrays are shared, not copied,
+    and the original field stays bound to the live decoder for the
+    servos that keep measuring it.
+    """
+    if field is None:
+        return None
+    view = copy.copy(field)
+    rf = copy.copy(field.rf)
+    rf.DecoderParams = dict(field.rf.DecoderParams)
+    view.rf = rf
+    return view
 
 
 class Field:

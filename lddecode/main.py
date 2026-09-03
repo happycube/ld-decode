@@ -124,7 +124,7 @@ def build_parser():
         type=int,
         default=0,
         help="worker threads for block demodulation "
-             "(0 = auto (default): min(cores - 2, 10); 1 = serial)",
+             "(0 = auto (default): min(physical cores - 2, 10); 1 = serial)",
     )
     parser.add_argument(
         "--demod-threads-only",
@@ -496,8 +496,12 @@ def build_options(args):
     threads = args.threads
     if threads == 0:
         # auto (the default): leave 2 cores for the OS / main decode loop,
-        # capped at 10 (diminishing returns past that on the shared read path)
-        threads = min(max((os.cpu_count() or 4) - 2, 1), 10)
+        # capped at 10 (diminishing returns past that on the shared read
+        # path).  Physical cores, not SMT threads: the workers are
+        # FFT-bound and two of them on one core's siblings run at about
+        # half speed each, so an 8-core/16-thread box decodes faster with
+        # 6 workers than with 10.
+        threads = min(max(physical_cpu_count() - 2, 1), 10)
 
     extra_options = {
         "threads": threads,
@@ -576,6 +580,44 @@ def build_options(args):
         "extra_options": extra_options,
         "decoder_params_override": DecoderParamsOverride,
     }
+
+
+def count_cores(sibling_lists):
+    """Physical cores described by a set of sysfs thread_siblings_list
+    strings ("0,8", "1-3", ...): SMT siblings of one core share a
+    list, so the distinct lists count the cores."""
+    cores = set()
+    for text in sibling_lists:
+        cpus = set()
+        for part in text.strip().split(","):
+            if not part:
+                continue
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                cpus.update(range(int(lo), int(hi) + 1))
+            else:
+                cpus.add(int(part))
+        if cpus:
+            cores.add(frozenset(cpus))
+    return len(cores)
+
+
+def physical_cpu_count(sysfs="/sys/devices/system/cpu"):
+    """Physical cores on this machine, from the Linux CPU topology;
+    the logical count wherever that is not exposed."""
+    logical = os.cpu_count() or 4
+    try:
+        import glob
+        lists = [
+            open(path).read()
+            for path in glob.glob(
+                os.path.join(sysfs, "cpu[0-9]*", "topology",
+                             "thread_siblings_list"))
+        ]
+        cores = count_cores(lists)
+    except OSError:
+        return logical
+    return cores if 0 < cores <= logical else logical
 
 
 def main(args=None):

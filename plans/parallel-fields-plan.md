@@ -463,6 +463,39 @@ The TBC chroma DG correction rides each job as `(slope, phase)`, like
 (`chroma_dg_output_key`) is current and otherwise re-corrects the raw
 `dspicture` itself, so a servo adoption needs no flush.
 
+**Output lane:** `LDdecode.writeout` is split at the commit: the
+commit thread appends the field's metadata and counts it written (what
+`buildmetadata` and the audio clock read), then hands `_write_field` -
+EFM/AC3 demodulation, the `.tbc.db` row, `CVBSWriter.push_field`, the
+file writes - to an `OrderedOutputLane` (`parallel.py`): one thread,
+submission order, bounded look-ahead (`OUTPUT_LANE_DEPTH` = 16 fields),
+failures re-raised on the commit thread.  The field goes out as
+`field_output_view(f)`, a shallow copy bound to an `RFDecode` copy with
+its own `DecoderParams` dict, so every write-time read (`hz_to_output`,
+`downscale_cvbs`, the chroma DG key) sees the commit-time values the
+inline write would have seen even if AGC or a servo moves on before
+the lane gets there.  The TBC chroma DG decision
+(`chroma_dg_output_picture`) is submitted to a two-thread output pool
+at commit, so a burst of stale in-flight fields after an adoption is
+re-corrected concurrently; `_write_field` resolves the Future in order.
+`-t 1` keeps everything inline - it is the reference the threaded
+outputs are compared against.  The lane only pays off for work that
+releases the GIL: the EFM timing core (a jitclass, whose methods hold
+the GIL when called from Python) therefore runs through a
+`@njit(nogil=True)` wrapper (`efm_demod._consume_nogil`), and the
+interpreter's thread switch interval is shortened to 0.5 ms while the
+lane exists (`THREAD_SWITCH_INTERVAL`): GIL-releasing work re-takes the
+GIL between steps, and each re-take otherwise waits out the commit
+thread's 5 ms slice - measured 2.4-2.8x slowdowns of the chroma DG
+corrector and EFM demodulator beside a busy thread at the default,
+1.1-1.2x at 0.5 ms.  This box (8 cores / 16 threads) is now
+compute-bound overall: `-t 6` beats `-t 10` (34 s vs 39 s for 150 DS2
+frames, 5.1 vs 8.3 cores busy), so the auto thread count, which is
+derived from logical CPUs, deserves a look.  The `.tbc.db` connection is opened with
+`check_same_thread=False` and used only by the lane during the decode
+(speculation-log rows travel through it too); `close()` drains the lane
+before the EFM flush and the final metadata commit.
+
 | Config | fields/s (steady state) |
 |---|---|
 | `-t 1` | 2.36 |

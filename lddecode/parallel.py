@@ -732,3 +732,69 @@ class DemodBlockCache:
             return None
 
         return raw, self.demod_fn(raw, mtf_level, imtf_strength, veq)
+
+
+class OrderedOutputLane:
+    """Run the per-field output work on one background thread, in order.
+
+    Everything that happens to a field after it is committed - the EFM
+    demodulation, the metadata database row, the CVBS frame assembly
+    and the file writes - is a function of that field and of state only
+    the output stage touches, so it can trail the commit loop by a few
+    fields without changing a byte: the callables run one at a time, in
+    submission order, exactly as the serial decode would have run them
+    inline.  The commit thread only blocks when the lane's bounded
+    look-ahead is full.
+
+    A failure in the lane (a full disk, say) is re-raised on the
+    submitting thread at its next submit() or at close(); the work
+    queued behind the failed callable is dropped.
+    """
+
+    def __init__(self, depth=16, name="ld-output"):
+        import queue
+
+        self._queue = queue.Queue(maxsize=depth)
+        self._error = None
+        self._closed = False
+        self._thread = threading.Thread(
+            target=self._run, name=name, daemon=True)
+        self._thread.start()
+
+    def submit(self, fn, *args):
+        """Queue fn(*args) behind everything submitted before it."""
+        self._raise_error()
+        if self._closed:
+            raise RuntimeError("output lane is closed")
+        self._queue.put((fn, args))
+
+    def _run(self):
+        while True:
+            item = self._queue.get()
+            if item is None:
+                break
+            if self._error is not None:
+                continue  # drop what was queued behind the failure
+            fn, args = item
+            try:
+                fn(*args)
+            except BaseException as exc:  # surfaced on the submitting thread
+                self._error = exc
+
+    def _raise_error(self):
+        if self._error is not None:
+            exc, self._error = self._error, None
+            raise exc
+
+    @property
+    def failed(self):
+        return self._error is not None
+
+    def close(self):
+        """Finish the queued work and stop the thread; re-raises a
+        failure that has not been surfaced yet."""
+        if not self._closed:
+            self._closed = True
+            self._queue.put(None)
+        self._thread.join()
+        self._raise_error()

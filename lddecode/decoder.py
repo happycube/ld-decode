@@ -9,7 +9,7 @@ import sys
 import time
 import traceback
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from textwrap import dedent
 
 import numpy as np
@@ -20,7 +20,8 @@ from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
 from .field import (CHROMA_DG_ANCHOR_IRE, Field, FieldAnchor, FieldNTSC,
-                    FieldPAL, chroma_dg_output_picture)
+                    FieldPAL, chroma_dg_output_picture, field_output_view)
+from .parallel import OrderedOutputLane
 from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import detect_levels
@@ -361,6 +362,19 @@ class LDdecode:
     # killed decode loses at most that tail rather than the whole database.
     DB_SYNC_FIELDS = 2000
 
+    # How many fields the output stage may trail the commit loop by
+    # (OrderedOutputLane look-ahead) before the commit thread blocks.
+    OUTPUT_LANE_DEPTH = 16
+
+    # Interpreter thread switch interval while the output lane runs.
+    # The lane's work releases the GIL (FFTs, nogil kernels, file
+    # writes) but re-takes it between steps, and each re-take waits out
+    # whatever the commit thread still holds - up to the default 5 ms,
+    # dozens of times per field: a 2.4-2.8x slowdown of the chroma DG
+    # corrector and the EFM demodulator measured beside a busy thread,
+    # 1.1-1.2x at this setting.
+    THREAD_SWITCH_INTERVAL = 0.0005
+
     def __init__(
         self,
         fname_in,
@@ -554,7 +568,12 @@ class LDdecode:
                 for ext in ('.tbc.db', '.tbc.db-wal', '.tbc.db-shm'):
                     if os.path.exists(fname_out + ext):
                         os.unlink(fname_out + ext)
-                self.dbconn = sqlite3.connect(fname_out + '.tbc.db')
+                # The rows are written by the output stage, which runs
+                # on its own thread with -t N; the main thread only
+                # touches the connection at open and after close() has
+                # drained that stage.
+                self.dbconn = sqlite3.connect(fname_out + '.tbc.db',
+                                              check_same_thread=False)
                 self.create_db_schema()
 
         self.pipe_rftbc = extra_options.get("pipe_RF_TBC", None)
@@ -811,6 +830,21 @@ class LDdecode:
                 thread_name_prefix="stage2",
             )
 
+        # The output stage - EFM demodulation, the .tbc.db row, CVBS
+        # frame assembly and the file writes - trails the commit loop on
+        # its own thread (see writeout), and a stale field's chroma DG
+        # re-correction is fanned out to a small pool ahead of it.
+        # Single-threaded decodes keep it inline: that is the reference
+        # the threaded outputs are compared against.
+        self._output_lane = None
+        self._output_pool = None
+        if self.numthreads > 1:
+            self._output_lane = OrderedOutputLane(
+                depth=self.OUTPUT_LANE_DEPTH)
+            self._output_pool = ThreadPoolExecutor(
+                max_workers=2, thread_name_prefix="output")
+            sys.setswitchinterval(self.THREAD_SWITCH_INTERVAL)
+
         self.verboseVITS = extra_options.get("verboseVITS", False)
 
         self.bw_ratios = []
@@ -834,7 +868,25 @@ class LDdecode:
 
     def close(self):
         """ deletes all open files, so it's possible to pickle an LDDecode object """
+        try:
+            self._finish_output()
+        finally:
+            self._close_outputs()
 
+    def _finish_output(self):
+        """Let the output stage catch up with the commit loop and stop
+        it.  A failure it has not yet surfaced (a full disk on the last
+        field, say) is raised here, after its pool is released."""
+        lane, self._output_lane = self._output_lane, None
+        pool, self._output_pool = self._output_pool, None
+        try:
+            if lane is not None:
+                lane.close()
+        finally:
+            if pool is not None:
+                pool.shutdown(wait=False)
+
+    def _close_outputs(self):
         # Drain any T-values the EFM demodulator still holds: the timing
         # demodulator buffers up to one frame awaiting its closing sync, and
         # the stream's final frame can never be validated, so it flushes
@@ -911,11 +963,13 @@ class LDdecode:
 
         self.print_stats()
 
-    def update_sqlite_field_count(self):
+    def update_sqlite_field_count(self, n_fields=None):
+        if n_fields is None:
+            n_fields = len(self.fieldinfo)
         if self.capture_id:
             self.dbconn.execute(
                 "UPDATE capture SET number_of_sequential_fields = ? WHERE capture_id = ?",
-                (len(self.fieldinfo), self.capture_id),
+                (n_fields, self.capture_id),
             )
 
     def create_db_schema(self):
@@ -1555,8 +1609,14 @@ class LDdecode:
         # in-flight fields commit under the old strength (a dead-band
         # sized trim), but exact mode must redo and flush for it, or the
         # fields decoded ahead would commit under a filter the serial
-        # decode had already left behind (compare-*-parallel-tbc).
-        hold = not (ceiling_moved and self.exact_speculation)
+        # decode had already left behind (compare-*-parallel-tbc).  Only
+        # once fields are being written, though: the warm-up has nothing
+        # in flight, and its ceiling behaviour - cap now, let the burst
+        # tracker see the capped value on the next field - is the same
+        # in both modes (a warm-up redo here converged the servos to a
+        # different operating point on industrial-lv-side1-outer).
+        hold = not (ceiling_moved and self.exact_speculation
+                    and self.fields_written > 0)
 
         current = self.rf.DecoderParams.get("video_eq_auto") or ()
         cur = dict(current)
@@ -2080,31 +2140,114 @@ class LDdecode:
         return efm_out
 
     def writeout(self, dataset):
+        """Commit-time half of the output stage.
+
+        The field's metadata joins fieldinfo and the field is counted as
+        written here, on the commit thread, so buildmetadata and the
+        audio clock see it at once.  Everything else about writing it
+        (_write_field) is a function of the field and of state only the
+        output stage touches, so it follows on the output lane when
+        there is one - trailing the commit loop by up to
+        OUTPUT_LANE_DEPTH fields, one field at a time in this order -
+        and runs inline otherwise.  The field goes out as a view bound
+        to the decoder parameters as they are now (field_output_view),
+        which is what the inline write would have read."""
         f, fi, picture, audio, efm = dataset
+
+        fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
+        # efmTValues and ac3Symbols are filled in by _write_field
+        fi["efmTValues"] = 0
+        fi["ac3Symbols"] = 0
+        self.fieldinfo.append(fi)
+
+        field_id = self.fields_written
+        self.fields_written += 1
+
+        view = field_output_view(f)
+        if self.cvbs_writer is None:
+            picture = self._output_picture(picture, view)
+        else:
+            self._pair_cvbs_view(view)
+
+        job = (view, fi, picture, audio, efm, field_id, len(self.fieldinfo))
+        if self._output_lane is not None:
+            self._output_lane.submit(self._write_field, job)
+        else:
+            self._write_field(job)
+
+    def _pair_cvbs_view(self, view):
+        """Bind a CVBS frame's first field to its second field's
+        parameter snapshot.
+
+        CVBSWriter holds a first field until its second arrives and only
+        then resamples both (_emit_frame), so the inline write always
+        read the parameters current at the *second* field's commit for
+        both - a servo trim adopted between the two fields reached the
+        first as well, and through the burst lock's running shift every
+        frame after.  The first field's view is re-bound here, on the
+        commit thread before the second field's job is queued, so the
+        lane reproduces exactly that."""
+        if view is None:
+            return
+        if view.isFirstField:
+            self._cvbs_first_view = view
+            return
+        first = getattr(self, "_cvbs_first_view", None)
+        if first is not None:
+            first.rf = view.rf
+            self._cvbs_first_view = None
+
+    def _output_picture(self, picture, view):
+        """The TBC picture to write for a field under the commit-time
+        chroma DG estimate (see chroma_dg_output_picture).
+
+        A field job has usually applied the correction already, and the
+        estimate it used is kept while it is current; a field that
+        needs it redone (an adoption since it was dispatched) gets the
+        three whole-field FFTs on the output pool instead, so a burst
+        of stale in-flight fields after an adoption is corrected
+        concurrently, off the commit thread.  Returns the picture, or a
+        Future of it that _write_field resolves in order."""
+        dp = view.rf.DecoderParams
+        args = (picture, view,
+                float(dp.get("chroma_dg_slope", 0.0)),
+                float(dp.get("chroma_dg_phase", 0.0)),
+                self.dg_speculation_tolerance)
+        if self._output_pool is not None:
+            return self._output_pool.submit(chroma_dg_output_picture, *args)
+        return chroma_dg_output_picture(*args)
+
+    def _write_field(self, job):
+        """Output-stage half of writeout: the EFM and AC3 demodulation,
+        the metadata database row and the sample-data writes for one
+        committed field, in commit order.  Runs on the output lane
+        (with -t N) or inline; either way the demodulators, the
+        database connection and the output files are touched by this
+        stage alone."""
+        f, fi, picture, audio, efm, field_id, n_fields = job
+        if isinstance(picture, Future):
+            picture = picture.result()
+
         efm_out = None
         if self.digital_audio is True:
             efm_out = self._process_efm(efm)
-
-        fi["audioSamples"] = 0 if audio is None else int(len(audio) / 2)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
         # Per-field symbol count, analogous to efmTValues
         if self.outfile_ac3sym is not None:
             fi["ac3Symbols"] = self.AC3demodulate(f)
-        else:
-            fi["ac3Symbols"] = 0
 
-        self.fieldinfo.append(fi)
+        if self.dbconn is not None:
+            self._write_field_db(fi, field_id, n_fields)
 
-        if self.dbconn is None:
-            self._writeout_data(fi, picture, audio, f, efm_out)
-            return
+        self._writeout_data(fi, picture, audio, f, efm_out)
 
+    def _write_field_db(self, fi, f_id, n_fields):
+        """Insert one field's rows into the .tbc.db."""
         if not self.capture_id:
             self.build_sqlite_metadata()
 
         c_id = self.capture_id
-        f_id = self.fields_written
 
         # On a ~1000-frame boundary, raise durability to FULL *before* this
         # field's inserts open a transaction: the safety level cannot be
@@ -2182,7 +2325,7 @@ class LDdecode:
                 ) VALUES (?, ?, ?, ?, ?)''',
                 dropout_data)
 
-        self.update_sqlite_field_count()
+        self.update_sqlite_field_count(n_fields)
 
         # Commit per field so the DB stays consistent in the page cache.
         # With journalling off this reaches disk only on the boundary
@@ -2191,27 +2334,17 @@ class LDdecode:
         if sync_now:
             self.dbconn.execute("PRAGMA synchronous=OFF")
 
-        self._writeout_data(fi, picture, audio, f, None)
-
     def _writeout_data(self, fi, picture, audio, f, efm_out=None):
-        """Write the field's sample data (video/rf-tbc/audio outputs)."""
+        """Write the field's sample data (video/rf-tbc/audio outputs).
+
+        The TBC picture arrives with its chroma DG correction already
+        decided (_output_picture); the CVBS writer applies its own on
+        the 4fsc lattice."""
         if self.cvbs_writer is not None:
             self.cvbs_writer.push_field(fi, picture, f, efm=efm_out,
                                         audio=audio)
         else:
-            # The differential gain/phase correction the CVBS path gets
-            # inside downscale_cvbs, applied to the TBC output at the
-            # same place in its life: at write time, on a copy
-            # (f.dspicture keeps the raw decode for the servos).  A
-            # field job has usually done it already under the current
-            # estimate; chroma_dg_output_picture keeps that or redoes it.
-            slope = float(self.rf.DecoderParams.get("chroma_dg_slope", 0.0))
-            phase = float(self.rf.DecoderParams.get("chroma_dg_phase", 0.0))
-            picture = chroma_dg_output_picture(
-                picture, f, slope, phase,
-                tolerance=self.dg_speculation_tolerance)
             self.outfile_video.write(picture)
-        self.fields_written += 1
 
         if self.do_rftbc:
             rftbc = f.rf_tbc()
@@ -3087,17 +3220,25 @@ class LDdecode:
         )
 
         if self.dbconn is not None:
-            try:
-                self.dbconn.execute(
-                    "INSERT INTO speculation_log "
-                    "(capture_id, field_id, file_loc, reason, detail) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (self.capture_id or 0, self.fields_written,
-                     int(self.fdoffset), reason, detail),
-                )
-            except Exception:
-                # diagnostics must never break the decode
-                pass
+            # The database belongs to the output stage: the row is
+            # written from there, in sequence with the field rows.
+            row = (self.fields_written, int(self.fdoffset), reason, detail)
+            if self._output_lane is not None:
+                self._output_lane.submit(self._db_log_speculation, row)
+            else:
+                self._db_log_speculation(row)
+
+    def _db_log_speculation(self, row):
+        try:
+            self.dbconn.execute(
+                "INSERT INTO speculation_log "
+                "(capture_id, field_id, file_loc, reason, detail) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (self.capture_id or 0,) + row,
+            )
+        except Exception:
+            # diagnostics must never break the decode
+            pass
 
     def _accept_job(self, res):
         """Turn a speculative field result into a commit entry - or None
