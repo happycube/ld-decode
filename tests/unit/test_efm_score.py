@@ -395,7 +395,7 @@ def test_symbol_separation_of_a_dead_waveform():
     assert np.isnan(sep.rms_bits)
 
 
-# --- pack_t_conf / unpack_t_conf (T_VALUE_CONF_U8) --------------------------
+# --- pack_t_conf / unpack_t_conf (confidence-packed .efm bytes) -------------
 
 
 def test_pack_unpack_roundtrip_preserves_t_and_quantises_confidence():
@@ -425,7 +425,7 @@ def test_a_plain_stream_unpacks_as_full_confidence():
 
     t_back, conf_back = unpack_t_conf(t)
 
-    # The high nibble stores doubt, so a legacy T_VALUE_U8 stream is
+    # The high nibble stores doubt, so a legacy plain T-value stream is
     # byte-identical to a packed stream with zero doubt everywhere and
     # unpacks - correctly - as fully trusted.
     assert np.array_equal(t_back, t)

@@ -34,7 +34,7 @@ marginal disc.
 | File | Contents |
 |------|----------|
 | `.efm` | One signed byte per T-value (values 3–11), in disc order. Written in both TBC and CVBS output modes; in CVBS mode a `.efm.meta` SQLite sidecar additionally indexes the stream by frame (see the CVBS EFM extension format). |
-| `.efm` (confidence-packed) | With confidence output enabled (`--efm_conf`; the default for CVBS output), each `.efm` byte instead carries the T-value in its low nibble and a 4-bit doubt (0 = trusted) in its high nibble (`T_VALUE_CONF_U8` in the CVBS EFM extension format — see below). Same file, same length; consumers separate the fields with a mask and a shift. |
+| `.efm` (confidence-packed) | With confidence output enabled (always, for CVBS output; `--efm_conf on` for TBC), each `.efm` byte instead carries the T-value in its low nibble and a 4-bit doubt (0 = trusted) in its high nibble, the byte layout the CVBS EFM extension format defines — see below. Same file, same length; consumers separate the fields with a mask and a shift. |
 | `.prefm` | The filtered EFM waveform before the PLL (int16 samples), written with `--preEFM`; for debugging and cross-capture waveform research. |
 
 ## Defaults (no flags needed)
@@ -74,7 +74,7 @@ The timing demodulator's own hooks are in its section below.
 | `LDDECODE_EFM_FREQSTEPMUL` | `20` | Frequency-step multiplier while acquiring |
 | `LDDECODE_EFM_LOCKERRFRAC` | `0.125` | \|phase error\| < frac·period counts as "in lock" |
 | `LDDECODE_EFM_LOCKTHRESH` | `24` | Consecutive in-lock edges before declaring lock |
-| `LDDECODE_EFM_EMITCONF` | unset | `1`/`0` forces confidence-packed `.efm` output on/off (same as `--efm_conf on`/`off`) |
+| `LDDECODE_EFM_EMITCONF` | unset | `1`/`0` forces confidence-packed `.efm` output on/off for TBC output (same as `--efm_conf on`/`off`; CVBS output is always packed) |
 | `LDDECODE_TBC_EFM` | unset | `1` enables EFM time-base correction (same as `--tbc_efm`) |
 
 The equalisation front end has sweep hooks of its own (used for filter-tuning
@@ -180,26 +180,24 @@ bit  7 6 5 4   3 2 1 0
 
 Doubt 0 means full trust — so a fully trusted run packs to its plain
 T-value — and values approaching 15 mean the run is a likely Reed-Solomon
-erasure candidate for the downstream decoder. This is the
-`T_VALUE_CONF_U8` encoding of the CVBS EFM extension format.
+erasure candidate for the downstream decoder.
 
-The default follows the output mode:
+Whether the high nibble is populated follows the output mode:
 
-- **CVBS output: on.** The `.efm.meta` sidecar declares the encoding in
-  its `efm_stream` table (extension schema version 2), so consumers know
-  how to read the stream, and `analysis/cvbs_verify.py` checks the
-  declaration.
-- **TBC output: off**, so the plain `.efm` keeps working byte-for-byte
-  with legacy tools (`ld-process-efm` and friends). TBC mode has no
-  metadata sidecar to declare the encoding, so forcing it on
-  (`--efm_conf on`, or `LDDECODE_EFM_EMITCONF=1`) is for consumers that
-  already know they are getting a packed stream. Because the high nibble
-  stores doubt, a plain stream is byte-identical to a packed stream with
-  zero doubt throughout — a confidence-aware consumer therefore reads a
-  legacy plain `.efm` correctly as fully trusted, and a legacy tool fed a
-  packed stream only sees out-of-range bytes on the runs the demodulator
-  actually doubted. The encodings still cannot be told apart by
-  inspection, so packed output must be declared (or known out of band).
+- **CVBS output: always.** The CVBS EFM extension format defines every
+  `.efm` byte this way, so there is nothing to configure and nothing to
+  declare (`--efm_conf` is ignored, with a warning if `off` was asked
+  for). A producer with nothing to doubt simply writes zero high nibbles,
+  which is byte-identical to a plain T-value stream.
+- **TBC output: off by default**, so the plain `.efm` keeps working
+  byte-for-byte with legacy tools (`ld-process-efm` and friends).
+  Forcing it on (`--efm_conf on`, or `LDDECODE_EFM_EMITCONF=1`) is for
+  consumers that know they are getting a packed stream. Because the high
+  nibble stores doubt, a confidence-aware consumer reads a legacy plain
+  `.efm` correctly as fully trusted, and a legacy tool fed a packed
+  stream only sees out-of-range bytes on the runs the demodulator
+  actually doubted — but a packed stream cannot be told apart from a
+  plain one by inspection, so only force it on when the consumer knows.
 
 What the confidence measures:
 

@@ -9,11 +9,10 @@ CTest oracle for the RF -> .efm path: reads a ``.efm`` file (the same byte
 stream in both TBC and CVBS output modes), scores it with
 lddecode.efm_score, prints a machine-parseable summary, and judges the
 scores against thresholds given on the command line.  A plain stream is
-one int8 T-value per byte; a confidence-packed stream (T_VALUE_CONF_U8 in
-the CVBS EFM extension format, the CVBS-mode default) carries the T-value
-in the low nibble and a 4-bit doubt (0 = trusted) in the high nibble -
-pass
-``--packed`` to unpack it (the encoding is declared, not sniffable, so the
+one int8 T-value per byte; a confidence-packed stream (the CVBS EFM
+extension format's byte layout, always used for CVBS output) carries the
+T-value in the low nibble and a 4-bit doubt (0 = trusted) in the high
+nibble - pass ``--packed`` to unpack it (packing is not sniffable, so the
 caller must know which it has).
 
 The final line is exactly one of
@@ -64,7 +63,7 @@ ERROR_DETAIL_LIMIT = 10
 def load_t_values(path, packed=False):
     """Read a .efm file; returns (int8 T-values, uint8 confidence or None).
 
-    With ``packed`` the file is a T_VALUE_CONF_U8 stream and both halves
+    With ``packed`` the file is a confidence-packed stream and both halves
     come back (confidence re-expanded to the 0..255 scale); otherwise the
     bytes are plain T-values and there is no confidence.
     """
@@ -146,8 +145,8 @@ def main(argv=None):
     parser.add_argument(
         "--packed",
         action="store_true",
-        help="the .efm stream is confidence-packed (T_VALUE_CONF_U8: "
-        "T-value in the low nibble, 4-bit doubt in the high nibble); "
+        help="the .efm stream is confidence-packed (T-value in the low "
+        "nibble, 4-bit doubt in the high nibble); "
         "unpack it and include the confidence summary in the report",
     )
     parser.add_argument(

@@ -23,14 +23,13 @@ stream alongside the video output:
 
 - `.efm` — one byte per recovered T-value, in disc order. With
   confidence output off (the `--tbc` default) each byte is the plain
-  T-value 3–11; with it on (the CVBS default; `--efm_conf`) each byte
-  packs the T-value into its low nibble and a 4-bit demodulator doubt
-  into its high nibble (`t = byte & 0x0F`, `doubt = byte >> 4`;
-  0 = full trust — so trusted bytes stay plain T-values — and high
-  values are Reed-Solomon erasure candidates). In CVBS output mode a
-  `.efm.meta` SQLite sidecar
-  indexes the stream per frame and declares the encoding, as defined by
-  the
+  T-value 3–11; with it on (always, in CVBS output mode; `--efm_conf on`
+  for TBC) each byte packs the T-value into its low nibble and a 4-bit
+  demodulator doubt into its high nibble (`t = byte & 0x0F`,
+  `doubt = byte >> 4`; 0 = full trust — so trusted bytes stay plain
+  T-values — and high values are Reed-Solomon erasure candidates). In
+  CVBS output mode a `.efm.meta` SQLite sidecar
+  indexes the stream per frame, as defined by the
   [EFM extension format](https://github.com/simoninns/cvbs-file-format-specification/blob/main/docs/extensions/efm-extension-format.md)
   of the CVBS file format specification.
 - `.prefm` — the filtered EFM waveform before demodulation (int16 at the

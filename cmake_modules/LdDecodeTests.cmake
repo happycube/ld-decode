@@ -272,9 +272,9 @@ add_test(
 )
 set_tests_properties(decode-ntsc-cvbs PROPERTIES
     LABELS "functional;slow"
-    # CVBS output defaults to the confidence-packed .efm (T_VALUE_CONF_U8),
-    # so verify-ntsc-cvbs exercises the extension format's encoding
-    # declaration and efm-quality-ntsc-cvbs scores with --packed.
+    # CVBS output always writes the confidence-packed .efm (doubt in the
+    # high nibble, per the EFM extension format), so
+    # efm-quality-ntsc-cvbs scores with --packed.
     FIXTURES_SETUP ntsc-cvbs
     TIMEOUT 1800
 )
@@ -757,7 +757,7 @@ add_vits_capture_conformance(ve-monitor NTSC ntsc/ve-monitor.ldf)
 # (timing-recovery) demodulator frames perfectly (sync_rate 1.0,
 # frame_588_fraction 1.0), so it is pinned at (near) perfection.  The
 # decode also opts in to confidence-packed .efm output (off by default in
-# TBC mode), making this the test that holds the T_VALUE_CONF_U8 packing to
+# TBC mode), making this the test that holds the doubt-nibble packing to
 # its contract: the low nibbles must still score perfectly.
 add_test(
     NAME decode-jason-testpattern
@@ -896,8 +896,9 @@ endforeach()
 # <min-sync-rate> <min-frame-588> <min-t-values>) keeps each threshold set
 # next to the capture it measures.
 function(add_efm_quality label fixture test_labels efm_file min_sync min_588 min_t)
-    # Pass PACKED after the required arguments when the fixture writes the
-    # confidence-packed encoding (T_VALUE_CONF_U8 - the CVBS-mode default).
+    # Pass PACKED after the required arguments when the fixture writes
+    # confidence-packed bytes (doubt in the high nibble - always the case
+    # for CVBS output).
     set(packed_arg "")
     if("PACKED" IN_LIST ARGN)
         set(packed_arg "--packed")

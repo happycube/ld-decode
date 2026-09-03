@@ -225,7 +225,7 @@ class CVBSWriter:
                  black_level=None, write_audio=False,
                  audio_description="Analogue stereo", capture_notes=None,
                  has_nonstandard_values=None, write_efm=False,
-                 efm_t_value_encoding="T_VALUE_U8", sample_encoding=None):
+                 sample_encoding=None):
         self.system = system
         self.params = CVBSParams_PAL if system == "PAL" else CVBSParams_NTSC
         self.fname_out = fname_out
@@ -270,12 +270,6 @@ class CVBSWriter:
         self.f_efm = None
         self._efm_index = []           # (frame_id, offset, count)
         self._efm_offset = 0
-        # How each .efm byte is to be read, declared in .efm.meta's
-        # efm_stream table (EFM extension format v2): T_VALUE_U8 is one
-        # plain t-value per byte; T_VALUE_CONF_U8 packs a 4-bit doubt
-        # (0 = trusted) into the high nibble alongside the t-value in the
-        # low nibble.
-        self.efm_t_value_encoding = efm_t_value_encoding
 
         # metadata fields
         self.version = version or ""
@@ -741,7 +735,7 @@ class CVBSWriter:
             os.unlink(path)
         con = self._open_db(path)
         con.executescript("""
-            PRAGMA user_version = 2;
+            PRAGMA user_version = 1;
             CREATE TABLE efm_frame (
                 cvbs_file_id    INTEGER NOT NULL,
                 frame_id        INTEGER NOT NULL CHECK (frame_id >= 0),
@@ -751,16 +745,7 @@ class CVBSWriter:
             );
             CREATE INDEX idx_efm_frame_frame
                 ON efm_frame (cvbs_file_id, frame_id);
-            CREATE TABLE efm_stream (
-                cvbs_file_id     INTEGER PRIMARY KEY,
-                t_value_encoding TEXT NOT NULL
-                    CHECK (t_value_encoding IN
-                        ('T_VALUE_U8', 'T_VALUE_CONF_U8'))
-            );
         """)
-        con.execute(
-            "INSERT INTO efm_stream (cvbs_file_id, t_value_encoding) "
-            "VALUES (1, ?)", (self.efm_t_value_encoding,))
         con.executemany(
             "INSERT INTO efm_frame (cvbs_file_id, frame_id, t_value_offset, "
             "t_value_count) VALUES (1, ?, ?, ?)",

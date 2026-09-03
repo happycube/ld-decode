@@ -376,7 +376,7 @@ def main():
     if os.path.exists(efm_meta) and os.path.exists(efm_bin):
         econ = sqlite3.connect(efm_meta)
         euv = econ.execute("PRAGMA user_version").fetchone()[0]
-        check(euv in (1, 2), f"efm.meta user_version is 1 or 2 (got {euv})")
+        check(euv == 1, f"efm.meta user_version = 1 (got {euv})")
         rows = econ.execute(
             "SELECT frame_id, t_value_offset, t_value_count FROM efm_frame " "ORDER BY frame_id"
         ).fetchall()
@@ -394,18 +394,6 @@ def main():
         check(
             len(rows) == file_frames, f"efm index covers every frame ({len(rows)} vs {file_frames})"
         )
-        # Version 2 declares the t-value encoding in efm_stream (absence
-        # means the version-1 implied T_VALUE_U8); the byte stream itself
-        # is unconstrained either way, so the declaration is the check.
-        if euv >= 2:
-            enc_row = econ.execute(
-                "SELECT t_value_encoding FROM efm_stream WHERE cvbs_file_id = 1"
-            ).fetchone()
-            check(
-                enc_row is not None and enc_row[0] in ("T_VALUE_U8", "T_VALUE_CONF_U8"),
-                f"efm_stream declares a known t_value_encoding "
-                f"({enc_row[0] if enc_row else 'missing'})",
-            )
         econ.close()
     else:
         warn("no EFM extension sidecar")

@@ -441,22 +441,29 @@ class LDdecode:
         # output path stays 16-bit (CD-matched .pcm / .wav).
         self.audio_output_bits = 24 if self.output_cvbs else 16
 
-        # Confidence-packed .efm output (EFM extension format v2,
-        # T_VALUE_CONF_U8): the T-value keeps the low nibble and a 4-bit
-        # doubt (0 = trusted) rides the high nibble.  Defaults: ON for CVBS output
-        # (the extension metadata declares the encoding), OFF for TBC
-        # output so the plain .efm keeps working with legacy tools.
-        # --efm_conf on/off overrides; LDDECODE_EFM_EMITCONF=1/0 is the
-        # env equivalent.
+        # Confidence-packed .efm output: the T-value keeps the low nibble
+        # and a 4-bit doubt (0 = fully trusted) rides the high nibble.
+        # The CVBS EFM extension format defines every .efm byte this way,
+        # so CVBS output always packs (a fully trusted run packs to its
+        # plain T-value).  For TBC output the default is OFF so the plain
+        # .efm keeps working with legacy tools; --efm_conf on/off
+        # overrides, LDDECODE_EFM_EMITCONF=1/0 is the env equivalent.
         _conf_mode = extra_options.get("efm_conf", "auto")
         _conf_env = os.environ.get("LDDECODE_EFM_EMITCONF", "")
         if _conf_env == "1":
             _conf_mode = "on"
         elif _conf_env == "0":
             _conf_mode = "off"
-        self.efm_conf_packed = _conf_mode == "on" or (
-            _conf_mode == "auto" and self.output_cvbs
-        )
+        if self.output_cvbs:
+            if _conf_mode == "off":
+                _logger.warning(
+                    "CVBS .efm output always carries confidence "
+                    "(the EFM extension format defines the byte layout); "
+                    "ignoring --efm_conf off"
+                )
+            self.efm_conf_packed = True
+        else:
+            self.efm_conf_packed = _conf_mode == "on"
 
         if fname_out is not None:
             if self.output_cvbs:
@@ -479,10 +486,6 @@ class LDdecode:
                         if system == "PAL" else None),
                     has_nonstandard_values=True if system == "PAL" else None,
                     write_efm=bool(self.digital_audio),
-                    efm_t_value_encoding=(
-                        "T_VALUE_CONF_U8" if self.efm_conf_packed
-                        else "T_VALUE_U8"
-                    ),
                     sample_encoding=extra_options.get("cvbs_encoding"),
                 )
             else:
@@ -2007,9 +2010,9 @@ class LDdecode:
 
         efm_out = self.efm_pll.process(efm)
         if self.efm_conf_packed:
-            # T_VALUE_CONF_U8: fold the demodulator's per-T confidence
-            # (conf_view is 1:1 with the T-values on both demodulators)
-            # into the high nibble of each .efm byte.
+            # Fold the demodulator's per-T confidence (conf_view is 1:1
+            # with the T-values on both demodulators) into the high
+            # nibble of each .efm byte as doubt.
             efm_out = efm_score.pack_t_conf(efm_out, self.efm_pll.conf_view())
         if self.outfile_efm is not None:
             self.outfile_efm.write(efm_out.tobytes())

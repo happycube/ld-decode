@@ -57,12 +57,12 @@ SYNC_RUN_LENGTH = 11
 # margin to see illegal values); values outside are counted separately.
 T_HISTOGRAM_BINS = 16
 
-# Confidence-packed .efm encoding (T_VALUE_CONF_U8 in the CVBS EFM
+# Confidence-packed .efm encoding (the byte layout of the CVBS EFM
 # extension format): the T-value occupies the low nibble (legal values
 # are 3..11, so it always fits) and a 4-bit *doubt* the high nibble
 # (0 = full trust, 15 = positively distrusted, ordinal in between).
 # The inverted sense makes a fully-trusted packed stream byte-identical
-# to a plain T_VALUE_U8 stream, so legacy files unpack correctly as
+# to a plain T-value stream, so legacy files unpack correctly as
 # "full confidence throughout".
 PACKED_T_MASK = 0x0F
 PACKED_CONF_SHIFT = 4
