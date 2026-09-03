@@ -19,9 +19,20 @@ For pictures like https://github.com/happycube/ld-decode/issues/206:
 
 ### PAL
 
-In some cases, captures from LD-V4300D players in PAL mode have a spurious raw RF signal around 8.46mhz.
+Captures from LD-V4300D players of PAL discs with digital audio carry a
+spurious raw RF tone at 8.4672 MHz — the player's digital-audio master
+clock (192 x 44.1 kHz) leaking into the RF tap — with weaker satellites
+at ±88.2 kHz multiples (8.379, 8.555 and 8.644 MHz). It beats against
+the video FM carrier (7.1–7.9 MHz) and appears as a wavy pattern in
+solid picture areas, strongest in lighter ones.
 
-Since it is above the white tip of 7.9mhz, it is possible to selectively remove the signal without severe side effects, which is the PAL version of --WibbleRemover.
+Since the clock sits above the white tip of 7.9 MHz, it can be removed
+selectively: `--V4300D_coherent_subtract` fits and subtracts the clock
+line and its satellites coherently, leaving the video sidebands intact.
+(`--V4300D_notch_filter` is a legacy alias for the same filter; the
+original FFT-bin notch it named — the PAL version of --WibbleRemover —
+left the spur's leakage skirts and satellites behind and has been
+removed.)
 
 ## EFM (digital audio) tuning
 

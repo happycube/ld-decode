@@ -286,7 +286,9 @@ def build_parser():
         dest="V4300D_notch_filter",
         action="store_true",
         default=False,
-        help="LD-V4300D PAL/digital audio captures: remove spurious ~8.5mhz signal",
+        help="LD-V4300D PAL/digital audio captures: remove the spurious "
+        "~8.5mhz digital-audio clock signal (legacy alias for "
+        "--V4300D_coherent_subtract)",
     )
 
     parser.add_argument(
@@ -294,9 +296,9 @@ def build_parser():
         dest="V4300D_coherent_subtract",
         action="store_true",
         default=False,
-        help="Experimental alternative to --V4300D_notch_filter: coherently "
-        "estimate and time-domain subtract the ~8.5mhz LD-V4300D spur (also "
-        "removes its spectral-leakage skirts). PAL only.",
+        help="Coherently estimate and subtract the LD-V4300D's 8.4672mhz "
+        "digital-audio clock spur and its +-88.2khz satellites. "
+        "Self-disabling on captures without the spur. PAL only.",
     )
 
     parser.add_argument(
@@ -325,10 +327,9 @@ def build_parser():
         dest="V4300D_no_defer",
         action="store_true",
         default=False,
-        help="With --V4300D_coherent_subtract: apply the spur filter from the "
-        "first block instead of deferring until sync acquisition.  Keeps "
-        "parallel demod (deferring forces serial), but can break cold-start "
-        "sync on captures with a flat lead-in.",
+        help="Obsolete; accepted for compatibility and ignored.  The spur "
+        "filter no longer defers (its no-video guard makes it safe from the "
+        "first block) and parallel demod is always available.",
     )
 
     parser.add_argument(
@@ -534,18 +535,13 @@ def build_options(args):
     elif args.rf_echo_cancel:
         extra_options["rf_echo_cancel"] = True
 
-    if vid_standard == "PAL" and args.V4300D_notch_filter:
-        extra_options["PAL_V4300D_NotchFilter"] = True
-
-    if vid_standard == "PAL" and args.V4300D_coherent_subtract:
+    if vid_standard == "PAL" and (args.V4300D_notch_filter or args.V4300D_coherent_subtract):
+        # --V4300D_notch_filter is a legacy alias: the coherent subtract
+        # supersedes the FFT-bin notch (it also removes the leakage skirts
+        # and the clock's satellites), and its no-video guard makes lead-in
+        # deferral unnecessary, so both switches enable the same filter and
+        # parallel demod stays available.
         extra_options["PAL_V4300D_CoherentSubtract"] = True
-        # Defer the spur filter until sync is acquired: the filter breaks
-        # cold-start sync in the flat lead-in on some captures, so decode the
-        # lead-in plain and switch the filter on for the program content.
-        # --V4300D_no_defer opts out (keeps parallel demod; deferring forces
-        # serial because the acquired-event can't cross spawn workers).
-        if not args.V4300D_no_defer:
-            extra_options["V4300_defer"] = True
 
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")

@@ -236,8 +236,8 @@ FilterParams_PAL = {
     # impulse response holding 99.9% of that equaliser's energy shrinks from
     # 241 samples to 33.  Passband ripple below 4 MHz stays at 0.000 dB.
     #
-    # It does suppress the 8.5 MHz V4300D spurious less than a 5.8 MHz corner
-    # did; --V4300D_notch_filter is the tool for that and is unchanged.
+    # It does suppress the 8.4672 MHz V4300D clock spur less than a 5.8 MHz
+    # corner did; --V4300D_coherent_subtract is the tool for that.
     #
     # NTSC is deliberately not changed to match.  Its corner (4.5 MHz, order
     # 6) sits 1.57 dB into its own top packet at 4.2 MHz, but the NTSC

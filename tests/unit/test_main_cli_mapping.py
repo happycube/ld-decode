@@ -272,22 +272,25 @@ def test_a_malformed_echo_tap_is_dropped_rather_than_crashing():
 
 
 def test_the_v4300d_options_apply_to_pal_only():
-    """They exist for one PAL demodulator's 8.5 MHz spur; on NTSC the flags
-    parse but must not reach the decoder."""
-    assert extra("-p", "-V")["PAL_V4300D_NotchFilter"] is True
-    assert "PAL_V4300D_NotchFilter" not in extra("-V")
-
+    """They exist for one PAL player's 8.4672 MHz clock spur; on NTSC the
+    flags parse but must not reach the decoder."""
     assert extra("-p", "--V4300D_coherent_subtract")["PAL_V4300D_CoherentSubtract"] is True
     assert "PAL_V4300D_CoherentSubtract" not in extra("--V4300D_coherent_subtract")
 
 
-def test_coherent_subtraction_defers_until_sync_is_acquired():
-    """The spur filter breaks cold-start sync in the flat lead-in, so it is
-    switched on only once the decode has locked."""
-    assert extra("-p", "--V4300D_coherent_subtract")["V4300_defer"] is True
-    assert "V4300_defer" not in extra(
-        "-p", "--V4300D_coherent_subtract", "--V4300D_no_defer"
-    )
+def test_the_notch_switch_is_an_alias_for_the_coherent_subtract():
+    """--V4300D_notch_filter/-V predates the coherent subtract; it now maps
+    to the same (better) filter so existing command lines keep working."""
+    assert extra("-p", "-V")["PAL_V4300D_CoherentSubtract"] is True
+    assert "PAL_V4300D_CoherentSubtract" not in extra("-V")
+
+
+def test_the_spur_filter_no_longer_defers():
+    """The no-video guard makes the filter safe from the first block, so
+    nothing sets the old defer option (which forced serial demod), and the
+    obsolete --V4300D_no_defer switch still parses."""
+    assert "V4300_defer" not in extra("-p", "--V4300D_coherent_subtract")
+    assert "V4300_defer" not in extra("-p", "--V4300D_coherent_subtract", "--V4300D_no_defer")
 
 
 def test_the_colour_notch_filter_applies_to_ntsc_only():

@@ -6,7 +6,8 @@ ld-decode's execution is largely controlled by a number of command line switches
 ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC] [--NTSCJ] [-m mtf]
                  [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}] [--efm_conf {auto,on,off}] [--efm_eq_taps N] [--disable_analog_audio] [--AC3]
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
-                 [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--deemp_low deemp_low] [--deemp_high deemp_high]
+                 [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
+                 [--deemp_low deemp_low] [--deemp_high deemp_high]
                  [--deemp_strength deemp_str] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
                  [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
                  [--audio_filterwidth FREQ] [--use_profiler] [--write-test-ldf output.ldf]
@@ -242,15 +243,35 @@ ld-decode --NTSC --NTSC_color_notch_filter input.ldf output
 
 ### PAL-Specific Video Options
 
-#### `--V4300D_notch_filter`, `-V`
-Remove spurious ~8.5MHz signal present in LD-V4300D PAL/digital audio captures.
+Pioneer LD-V4300D players leak their digital-audio master clock
+(192 x 44.1 kHz = 8.4672 MHz, with weaker satellites at ±88.2 kHz
+multiples) into the RF output when playing PAL discs with digital audio.
+The tone beats against the video FM carrier and shows up as a fine wavy
+pattern rolling through solid picture areas.
+
+#### `--V4300D_coherent_subtract`
+Remove the LD-V4300D spur by estimating the clock line (and its
+satellites) coherently and subtracting the fitted tones from the
+spectrum, without cutting holes in the video sidebands. Self-disabling
+on captures without the spur, and inactive on blocks with no video
+carrier, so it is safe from the first block and keeps the parallel
+(multi-threaded) decode path available.
 - **Default:** Disabled
-- **Note:** Only effective with PAL video standard; specific to Pioneer LD-V4300D player captures
+- **Note:** Only effective with PAL video standard
 
 **Example:**
 ```bash
-ld-decode --PAL --V4300D_notch_filter input.ldf output
+ld-decode --PAL --V4300D_coherent_subtract input.ldf output
 ```
+
+#### `--V4300D_notch_filter`, `-V`
+Legacy alias for `--V4300D_coherent_subtract` (which supersedes the
+original FFT-bin notch: it also removes the spur's leakage skirts and
+its satellites). Kept so existing command lines continue to work.
+
+#### `--V4300D_no_defer`
+Obsolete; accepted for compatibility and ignored. The spur filter no
+longer defers until sync acquisition and never forces a serial decode.
 
 ### Deemphasis Options
 
@@ -585,7 +606,7 @@ ld-decode --NTSC --NTSC_color_notch_filter input.ldf output
 
 ### PAL V4300D Capture
 ```bash
-ld-decode --PAL --V4300D_notch_filter input.ldf output
+ld-decode --PAL --V4300D_coherent_subtract input.ldf output
 ```
 
 ### Video Only (No Audio)

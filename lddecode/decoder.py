@@ -6,7 +6,6 @@ Split verbatim out of core.py.
 import os
 import sqlite3
 import sys
-import threading
 import time
 import traceback
 from collections import deque
@@ -565,15 +564,6 @@ class LDdecode:
 
         self.system = system
 
-        # Deferred V4300D spur filtering: the "sync acquired" signal is a
-        # threading.Event shared by reference with the RFDecode instance(s) in
-        # this process.  Created only when deferring - it cannot cross spawn
-        # worker processes, so deferring also forces serial demod (below).
-        self._acquired_event = None
-        if extra_options.get("V4300_defer", False):
-            self._acquired_event = threading.Event()
-            extra_options["_acquired_event"] = self._acquired_event
-
         self.rf_opts = {
             'inputfreq':inputfreq,
             'system':system,
@@ -739,12 +729,6 @@ class LDdecode:
         # warm-up transition, once calibration is final) so its Python
         # glue stays off the GIL; the thread pool then just feeds them.
         self.process_demod = extra_options.get("process_demod", True)
-        # Deferred V4300D filtering flips a shared event mid-decode, so demod
-        # is not a pure function of (block, mtf) while deferring: the block
-        # cache's prefetch would race the flip (blocks demodulated before it
-        # commit after it), and spawn workers can never see the event at all.
-        # Force fully serial demod when deferring.
-        self._v4300_defer = bool(extra_options.get("V4300_defer", False))
         # Auto RF echo cancellation keeps a per-block magnitude EMA inside
         # RFDecode, so its demod is stateful (not a pure function of block
         # index) and is incompatible with the out-of-order block cache and the
@@ -756,7 +740,7 @@ class LDdecode:
             and not getattr(self.rf, "_echo_manual", False)
         )
         self.block_cache = None
-        if self.numthreads > 1 and not self._v4300_defer and not self._auto_echo:
+        if self.numthreads > 1 and not self._auto_echo:
             from .parallel import DemodBlockCache
 
             self.block_cache = DemodBlockCache(
@@ -776,7 +760,6 @@ class LDdecode:
             and not self.output_cvbs
             and not self.do_rftbc
             and not self.ac3
-            and not self._v4300_defer
             and not self._auto_echo
         )
         self._job_engine = None
@@ -2871,14 +2854,6 @@ class LDdecode:
         if ((f.sync_confidence < 50) and not
              inrange(fieldlength, self.output_lines - 2, self.output_lines + 2)):
             logs.logger.warning("WARNING: Possible player skip detected - check output")
-
-        # Deferred V4300D filtering: first solid field-length lock flips the
-        # shared event, enabling the spur filter for the rest of the decode.
-        if (self._v4300_defer and not self._acquired_event.is_set()
-                and inrange(fieldlength, self.output_lines - 2,
-                            self.output_lines + 2)):
-            self._acquired_event.set()
-            logs.logger.info("V4300D: sync acquired -- enabling spur filter for remaining decode")
 
         if len(self.fieldstack) >= 4:
             # Fields no longer hold a reference to their predecessor (they
