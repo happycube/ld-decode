@@ -187,6 +187,18 @@ def build_parser():
         "run-length PLL",
     )
     parser.add_argument(
+        "--efm_conf",
+        dest="efm_conf",
+        choices=["auto", "on", "off"],
+        default="auto",
+        help="Confidence-packed .efm output (T_VALUE_CONF_U8: 4-bit "
+        "confidence in the high nibble of each T-value byte).  'auto' "
+        "(default) enables it for CVBS output, where the .efm.meta sidecar "
+        "declares the encoding, and disables it for .tbc output so the "
+        "plain .efm keeps working with legacy tools.  LDDECODE_EFM_EMITCONF"
+        "=1/0 is the environment equivalent of on/off",
+    )
+    parser.add_argument(
         "--efm_eq_taps",
         dest="efm_eq_taps",
         type=int,
@@ -495,6 +507,7 @@ def build_options(args):
         "write_pre_efm": args.prefm,
         "tbc_efm": args.tbc_efm,
         "efm_demod": args.efm_demod,
+        "efm_conf": args.efm_conf,
         "efm_eq_taps": args.efm_eq_taps,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),

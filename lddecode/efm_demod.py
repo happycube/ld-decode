@@ -30,7 +30,7 @@ takes one soft decision per channel bit:
    Emitted runs are legalised (runs < 3 merged into the following run,
    runs > 11 split) preserving the total channel-bit count, so the ``.efm``
    contract - int8 T values in 3..11 - is unchanged.  Each T value carries a
-   uint8 confidence (255 = best) for the ``.efmc`` sidecar; T values inside
+   uint8 confidence (255 = best) for confidence-packed output; T values inside
    frames that fail the sync/588 check are capped low (erasure candidates).
 
 The architecture follows the timing-recovery design validated by the museld

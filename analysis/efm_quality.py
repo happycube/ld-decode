@@ -5,11 +5,15 @@ efm_quality - score a .efm T-value stream against frame-sync thresholds
 SPDX-License-Identifier: GPL-3.0-or-later
 SPDX-FileCopyrightText: 2026 ld-decode contributors
 
-CTest oracle for the RF -> .efm path: reads a ``.efm`` file (int8 T-values,
-the same byte stream in both TBC and CVBS output modes) and an optional
-``.efmc`` confidence sidecar (uint8, 1:1 with the T-values), scores it with
+CTest oracle for the RF -> .efm path: reads a ``.efm`` file (the same byte
+stream in both TBC and CVBS output modes), scores it with
 lddecode.efm_score, prints a machine-parseable summary, and judges the
-scores against thresholds given on the command line.
+scores against thresholds given on the command line.  A plain stream is
+one int8 T-value per byte; a confidence-packed stream (T_VALUE_CONF_U8 in
+the CVBS EFM extension format, the CVBS-mode default) carries the T-value
+in the low nibble and a 4-bit confidence in the high nibble - pass
+``--packed`` to unpack it (the encoding is declared, not sniffable, so the
+caller must know which it has).
 
 The final line is exactly one of
 
@@ -29,7 +33,7 @@ bounded below 1.0 by the disc layout itself - their thresholds encode the
 capture's own baseline, not an absolute standard.
 
 Usage:
-    efm_quality.py capture.efm [--efmc capture.efmc]
+    efm_quality.py capture.efm [--packed]
         [--min-sync-rate F] [--min-frame-588 F] [--max-invalid-t F]
         [--min-t-values N] [--json out.json]
 """
@@ -47,6 +51,7 @@ from lddecode.efm_score import (  # noqa: E402
     score_t_values,
     summarise_confidence,
     symbol_separation,
+    unpack_t_conf,
 )
 
 # Frame-length errors are reported individually up to this magnitude in
@@ -55,14 +60,17 @@ from lddecode.efm_score import (  # noqa: E402
 ERROR_DETAIL_LIMIT = 10
 
 
-def load_t_values(path):
-    """Read a .efm file as int8 T-values (returns a fresh array)."""
-    return np.fromfile(path, dtype=np.int8)
+def load_t_values(path, packed=False):
+    """Read a .efm file; returns (int8 T-values, uint8 confidence or None).
 
-
-def load_confidence(path):
-    """Read a .efmc file as uint8 confidence values (returns a fresh array)."""
-    return np.fromfile(path, dtype=np.uint8)
+    With ``packed`` the file is a T_VALUE_CONF_U8 stream and both halves
+    come back (confidence re-expanded to the 0..255 scale); otherwise the
+    bytes are plain T-values and there is no confidence.
+    """
+    raw = np.fromfile(path, dtype=np.uint8)
+    if packed:
+        return unpack_t_conf(raw)
+    return raw.astype(np.int8), None
 
 
 def summarise_separation(prefm_path, sample_rate_hz):
@@ -133,10 +141,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Score a .efm T-value stream against frame-sync thresholds"
     )
-    parser.add_argument("efm", help="path to the .efm file (int8 T-values)")
+    parser.add_argument("efm", help="path to the .efm file")
     parser.add_argument(
-        "--efmc",
-        help="path to the .efmc confidence sidecar (uint8, 1:1 with the T-values)",
+        "--packed",
+        action="store_true",
+        help="the .efm stream is confidence-packed (T_VALUE_CONF_U8: "
+        "T-value in the low nibble, 4-bit confidence in the high nibble); "
+        "unpack it and include the confidence summary in the report",
     )
     parser.add_argument(
         "--min-sync-rate",
@@ -179,18 +190,12 @@ def main(argv=None):
         print(f"EFM QUALITY: FAIL (no such file: {args.efm})")
         return 1
 
-    score = score_t_values(load_t_values(args.efm))
+    t_values, confidence = load_t_values(args.efm, packed=args.packed)
+    score = score_t_values(t_values)
 
     confidence_summary = None
-    if args.efmc:
-        confidence = load_confidence(args.efmc)
+    if confidence is not None:
         confidence_summary = summarise_confidence(confidence)
-        if confidence.size != score.n_t_values:
-            print(
-                f"EFM QUALITY: FAIL (.efmc carries {confidence.size} values "
-                f"for {score.n_t_values} T-values; must be 1:1)"
-            )
-            return 1
 
     report = summarise(score, confidence_summary)
     if args.prefm:

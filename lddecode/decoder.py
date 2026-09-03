@@ -16,7 +16,7 @@ from textwrap import dedent
 import numpy as np
 
 from . import ac3rf
-from . import efm_pll
+from . import efm_pll, efm_score
 from . import utils_logging as logs
 from .profiling import profile
 from .rfdecode import RFDecode
@@ -427,7 +427,6 @@ class LDdecode:
         self.outfile_video = None
         self.outfile_audio = None
         self.outfile_efm = None
-        self.outfile_efmc = None
         self.outfile_pre_efm = None
         self.outfile_ac3sym = None
         self.ac3_demodulator = None
@@ -441,6 +440,23 @@ class LDdecode:
         # CVBS output uses the 24-bit SMPTE 272M audio profile; every other
         # output path stays 16-bit (CD-matched .pcm / .wav).
         self.audio_output_bits = 24 if self.output_cvbs else 16
+
+        # Confidence-packed .efm output (EFM extension format v2,
+        # T_VALUE_CONF_U8): the T-value keeps the low nibble and a 4-bit
+        # confidence rides the high nibble.  Defaults: ON for CVBS output
+        # (the extension metadata declares the encoding), OFF for TBC
+        # output so the plain .efm keeps working with legacy tools.
+        # --efm_conf on/off overrides; LDDECODE_EFM_EMITCONF=1/0 is the
+        # env equivalent.
+        _conf_mode = extra_options.get("efm_conf", "auto")
+        _conf_env = os.environ.get("LDDECODE_EFM_EMITCONF", "")
+        if _conf_env == "1":
+            _conf_mode = "on"
+        elif _conf_env == "0":
+            _conf_mode = "off"
+        self.efm_conf_packed = _conf_mode == "on" or (
+            _conf_mode == "auto" and self.output_cvbs
+        )
 
         if fname_out is not None:
             if self.output_cvbs:
@@ -463,10 +479,9 @@ class LDdecode:
                         if system == "PAL" else None),
                     has_nonstandard_values=True if system == "PAL" else None,
                     write_efm=bool(self.digital_audio),
-                    # Optional .efmc confidence companion (same opt-in as
-                    # the TBC-mode sidecar; see the EFM extension format)
-                    write_efm_conf=(
-                        os.environ.get("LDDECODE_EFM_EMITCONF", "") == "1"
+                    efm_t_value_encoding=(
+                        "T_VALUE_CONF_U8" if self.efm_conf_packed
+                        else "T_VALUE_U8"
                     ),
                     sample_encoding=extra_options.get("cvbs_encoding"),
                 )
@@ -516,11 +531,6 @@ class LDdecode:
                             setattr(self.efm_pll, _at, _ty(float(_v)))
                 if not self.output_cvbs:
                     self.outfile_efm = open(fname_out + ".efm", "wb")
-                    # Soft-decision: emit a per-T-value confidence sidecar (.efmc)
-                    # that ld-process-efm turns into RS erasures.  Opt-in so
-                    # default decodes are unchanged.
-                    if os.environ.get("LDDECODE_EFM_EMITCONF", "") == "1":
-                        self.outfile_efmc = open(fname_out + ".efmc", "wb")
                 if extra_options.get("write_pre_efm", False):
                     self.outfile_pre_efm = open(fname_out + ".prefm", "wb")
             if self.write_rf_tbc:
@@ -832,9 +842,11 @@ class LDdecode:
         if self.outfile_efm is not None and hasattr(efm_demod_obj, "flush"):
             efm_tail = efm_demod_obj.flush()
             if len(efm_tail):
+                if self.efm_conf_packed:
+                    efm_tail = efm_score.pack_t_conf(
+                        efm_tail, efm_demod_obj.conf_view()
+                    )
                 self.outfile_efm.write(efm_tail.tobytes())
-                if self.outfile_efmc is not None:
-                    self.outfile_efmc.write(efm_demod_obj.conf_view().tobytes())
 
         if self._job_engine is not None:
             self._job_engine.stop()
@@ -868,7 +880,6 @@ class LDdecode:
             "outfile_video",
             "outfile_audio",
             "outfile_efm",
-            "outfile_efmc",
             "outfile_pre_efm",
             "outfile_rftbc",
             "outfile_ac3sym",
@@ -1995,12 +2006,13 @@ class LDdecode:
             self.outfile_pre_efm.write(efm.tobytes())
 
         efm_out = self.efm_pll.process(efm)
+        if self.efm_conf_packed:
+            # T_VALUE_CONF_U8: fold the demodulator's per-T confidence
+            # (conf_view is 1:1 with the T-values on both demodulators)
+            # into the high nibble of each .efm byte.
+            efm_out = efm_score.pack_t_conf(efm_out, self.efm_pll.conf_view())
         if self.outfile_efm is not None:
             self.outfile_efm.write(efm_out.tobytes())
-        if self.outfile_efmc is not None:
-            # Per-T-value confidence, aligned 1:1 with the .efm T-values just
-            # written (both EFM_PLL and EFMTimingDemod expose conf_view).
-            self.outfile_efmc.write(self.efm_pll.conf_view().tobytes())
 
         return efm_out
 
@@ -2121,13 +2133,8 @@ class LDdecode:
     def _writeout_data(self, fi, picture, audio, f, efm_out=None):
         """Write the field's sample data (video/rf-tbc/audio outputs)."""
         if self.cvbs_writer is not None:
-            efm_conf = None
-            if efm_out is not None and self.cvbs_writer.write_efm_conf:
-                # 1:1 with efm_out - both are views over the demodulator's
-                # buffers for the field just processed.
-                efm_conf = self.efm_pll.conf_view()
             self.cvbs_writer.push_field(fi, picture, f, efm=efm_out,
-                                        audio=audio, efm_conf=efm_conf)
+                                        audio=audio)
         else:
             # The differential gain/phase correction the CVBS path gets
             # inside downscale_cvbs, applied to the TBC output at the

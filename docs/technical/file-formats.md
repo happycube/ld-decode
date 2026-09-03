@@ -21,17 +21,17 @@ The frequency values for .tbc to analogue CVBS playback via DAC are the followin
 When digital audio is enabled (the default), the decoder writes the EFM
 stream alongside the video output:
 
-- `.efm` — one signed byte per recovered T-value (values 3–11), in disc
-  order. In CVBS output mode a `.efm.meta` SQLite sidecar indexes the
-  stream per frame, as defined by the
+- `.efm` — one byte per recovered T-value, in disc order. With
+  confidence output off (the `--tbc` default) each byte is the plain
+  T-value 3–11; with it on (the CVBS default; `--efm_conf`) each byte
+  packs the T-value into its low nibble and a 4-bit demodulator
+  confidence into its high nibble (`t = byte & 0x0F`,
+  `conf = byte >> 4`; 15 = full trust, low values are Reed-Solomon
+  erasure candidates). In CVBS output mode a `.efm.meta` SQLite sidecar
+  indexes the stream per frame and declares the encoding, as defined by
+  the
   [EFM extension format](https://github.com/simoninns/cvbs-file-format-specification/blob/main/docs/extensions/efm-extension-format.md)
   of the CVBS file format specification.
-- `.efmc` — optional confidence companion (opt-in via
-  `LDDECODE_EFM_EMITCONF=1`, both output modes): one unsigned byte per
-  T-value, byte-for-byte parallel to `.efm`, 255 = full trust and values
-  approaching 0 marking Reed-Solomon erasure candidates. Indexed by the
-  same `efm_frame` rows in CVBS mode; specified in the same extension
-  document.
 - `.prefm` — the filtered EFM waveform before demodulation (int16 at the
   capture sample rate), written with `--preEFM` for debugging and filter
   research.

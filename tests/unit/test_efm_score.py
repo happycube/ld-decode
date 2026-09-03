@@ -19,9 +19,11 @@ from lddecode.efm_score import (
     FRAME_CHANNEL_BITS,
     frame_gaps,
     frame_length_error_counts,
+    pack_t_conf,
     score_t_values,
     summarise_confidence,
     symbol_separation,
+    unpack_t_conf,
     sync_pair_positions,
 )
 
@@ -391,3 +393,53 @@ def test_symbol_separation_of_a_dead_waveform():
 
     assert sep.n_intervals == 0
     assert np.isnan(sep.rms_bits)
+
+
+# --- pack_t_conf / unpack_t_conf (T_VALUE_CONF_U8) --------------------------
+
+
+def test_pack_unpack_roundtrip_preserves_t_and_quantises_confidence():
+    rng = np.random.default_rng(12345)
+    t = rng.integers(3, 12, 500).astype(np.int8)
+    conf = rng.integers(0, 256, 500).astype(np.uint8)
+
+    packed = pack_t_conf(t, conf)
+    t_back, conf_back = unpack_t_conf(packed)
+
+    # T-values are exact (they fit the low nibble); confidence keeps its
+    # top four bits, re-expanded so 255 maps back to 255 and thresholds
+    # carry over between the 8-bit and packed representations.
+    assert packed.dtype == np.uint8
+    assert np.array_equal(t_back, t)
+    assert np.array_equal(conf_back, (conf >> 4).astype(np.uint8) * 17)
+
+
+def test_pack_rejects_mismatched_lengths():
+    with pytest.raises(ValueError):
+        pack_t_conf(np.full(5, 7, np.int8), np.zeros(4, np.uint8))
+
+
+def test_a_plain_stream_unpacks_as_zero_confidence():
+    t = perfect_stream(3)
+
+    t_back, conf_back = unpack_t_conf(t)
+
+    # A legacy T_VALUE_U8 stream is byte-identical to a packed stream
+    # whose every confidence is zero - the documented reason the encoding
+    # must be declared rather than sniffed.
+    assert np.array_equal(t_back, t)
+    assert conf_back.max() == 0
+
+
+def test_packing_does_not_change_the_score():
+    t = perfect_stream(20)
+    conf = np.full(t.size, 255, np.uint8)
+
+    t_back, _ = unpack_t_conf(pack_t_conf(t, conf))
+    packed_score = score_t_values(t_back)
+    plain_score = score_t_values(t)
+
+    # The whole point of the low-nibble layout: consumers that mask get
+    # exactly the stream they had before.
+    assert packed_score.sync_rate == plain_score.sync_rate
+    assert packed_score.frame_588_fraction == plain_score.frame_588_fraction

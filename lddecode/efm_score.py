@@ -57,6 +57,47 @@ SYNC_RUN_LENGTH = 11
 # margin to see illegal values); values outside are counted separately.
 T_HISTOGRAM_BINS = 16
 
+# Confidence-packed .efm encoding (T_VALUE_CONF_U8 in the CVBS EFM
+# extension format): the T-value occupies the low nibble (legal values
+# are 3..11, so it always fits) and a 4-bit confidence the high nibble
+# (15 = full trust, 0 = positively distrusted, ordinal in between).
+PACKED_T_MASK = 0x0F
+PACKED_CONF_SHIFT = 4
+# 15 * 17 == 255: expands a 4-bit confidence back onto the 8-bit scale
+# the demodulators produce, so both representations share thresholds.
+PACKED_CONF_SCALE = 17
+
+
+def pack_t_conf(t_values, confidence):
+    """Pack T-values and 8-bit confidences into one uint8 stream.
+
+    ``byte = (confidence & 0xF0) | t`` - the confidence keeps its top
+    four bits, the T-value its low nibble (callers must pass legal
+    3..11 T-values; larger values would collide with the confidence
+    field).  Arrays must be 1:1.  Returns a fresh uint8 array; inputs
+    are not modified.
+    """
+    t = np.asarray(t_values)
+    conf = np.asarray(confidence)
+    if t.size != conf.size:
+        raise ValueError(f"confidence must be 1:1 with T-values ({conf.size} vs {t.size})")
+    return (conf.astype(np.uint8) & 0xF0) | (t.astype(np.uint8) & PACKED_T_MASK)
+
+
+def unpack_t_conf(packed):
+    """Split a confidence-packed .efm stream back into (t_values, confidence).
+
+    Returns fresh arrays: int8 T-values (low nibbles) and uint8
+    confidences re-expanded onto the 0..255 scale (high nibble * 17, so
+    packed 15 -> 255).  A legacy plain stream (bytes 3..11) unpacks to
+    the same T-values with confidence 0 throughout - which is why the
+    encoding must be declared, not sniffed.  The input is not modified.
+    """
+    p = np.asarray(packed).astype(np.uint8)
+    t = (p & PACKED_T_MASK).astype(np.int8)
+    conf = ((p >> PACKED_CONF_SHIFT) * PACKED_CONF_SCALE).astype(np.uint8)
+    return t, conf
+
 
 @dataclass(frozen=True)
 class EFMScore:
@@ -84,7 +125,7 @@ class EFMScore:
 
 @dataclass(frozen=True)
 class ConfidenceSummary:
-    """Summary of a per-T-value confidence stream (``.efmc`` payload).
+    """Summary of a per-T-value confidence stream.
 
     Confidence is uint8, 255 = full trust (see ``efm_pll.EFM_PLL``).
     """
@@ -287,7 +328,7 @@ def symbol_separation(waveform, sample_rate_hz, bit_rate_hz=EFM_BIT_RATE_HZ):
 
 
 def summarise_confidence(confidence, low_threshold=128):
-    """Summarise a per-T-value confidence stream (``.efmc`` payload).
+    """Summarise a per-T-value confidence stream.
 
     ``confidence`` is a 1-D uint8-valued array, 255 = full trust;
     ``low_threshold`` is the exclusive lower bound of "trusted" - values

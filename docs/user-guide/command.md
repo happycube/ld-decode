@@ -4,7 +4,7 @@ ld-decode's execution is largely controlled by a number of command line switches
 
 ```
 ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC] [--NTSCJ] [-m mtf]
-                 [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}] [--disable_analog_audio] [--AC3]
+                 [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}] [--efm_conf {auto,on,off}] [--efm_eq_taps N] [--disable_analog_audio] [--AC3]
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
                  [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--deemp_low deemp_low] [--deemp_high deemp_high]
                  [--deemp_strength deemp_str] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
@@ -346,7 +346,7 @@ ld-decode --audio_filterwidth 150kHz input.ldf output
 #### `--noEFM`
 Disable EFM (Eight-to-Fourteen Modulation) front end for digital audio.
 - **Default:** EFM decoding is enabled
-- **Note:** EFM is used for digital audio (CD audio) on laserdiscs and for LV-ROM data; disabling skips digital audio extraction. See [EFM decoding](../technical/efm-decoding.md) for the EFM path, its tuning environment variables, and the `.efm`/`.efmc` output formats.
+- **Note:** EFM is used for digital audio (CD audio) on laserdiscs and for LV-ROM data; disabling skips digital audio extraction. See [EFM decoding](../technical/efm-decoding.md) for the EFM path, its tuning environment variables, and the `.efm` output format (including confidence-packed output).
 
 **Example:**
 ```bash
@@ -377,11 +377,22 @@ ld-decode --tbc_efm input.ldf output
 Select the EFM demodulator that turns the equalised EFM waveform into `.efm` T-values.
 - **Default:** `timing`
 - **Choices:** `timing` (symbol-rate timing-recovery demodulator: per-channel-bit Mueller & Müller loop with bit-domain frame sync, sync restoration and legalised T emission), `pll` (the previous zero-crossing run-length PLL)
-- **Note:** `timing` recovers noticeably more valid frames on noisy or marginal captures — it met or beat the PLL on every validation capture — and fills the `.efmc` confidence sidecar from its framing state. Use `pll` to reproduce pre-switch `.efm` output byte for byte. See [EFM decoding](../technical/efm-decoding.md) for the architecture and its tuning environment variables.
+- **Note:** `timing` recovers noticeably more valid frames on noisy or marginal captures — it met or beat the PLL on every validation capture — and derives per-T-value confidence from its framing state. Use `pll` to reproduce pre-switch `.efm` output byte for byte. See [EFM decoding](../technical/efm-decoding.md) for the architecture and its tuning environment variables.
 
 **Example:**
 ```bash
 ld-decode --efm_demod pll input.ldf output
+```
+
+#### `--efm_conf`
+Confidence-packed `.efm` output: each byte carries the T-value in its low nibble and a 4-bit demodulator confidence in its high nibble (`T_VALUE_CONF_U8` in the CVBS EFM extension format; consumers separate them as `t = byte & 0x0F`, `conf = byte >> 4`).
+- **Default:** `auto` — **on** for CVBS output (the `.efm.meta` sidecar declares the encoding), **off** for `--tbc` output so the plain `.efm` keeps working with legacy tools
+- **Choices:** `auto`, `on`, `off` (`LDDECODE_EFM_EMITCONF=1`/`0` is the environment equivalent of on/off)
+- **Note:** a packed stream cannot be distinguished from a plain one by inspection, so only force `on` for `--tbc` output when the consumer knows it is getting packed data. See [EFM decoding](../technical/efm-decoding.md).
+
+**Example:**
+```bash
+ld-decode --tbc --efm_conf on input.ldf output
 ```
 
 #### `--AC3`

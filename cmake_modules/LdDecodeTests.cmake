@@ -272,9 +272,9 @@ add_test(
 )
 set_tests_properties(decode-ntsc-cvbs PROPERTIES
     LABELS "functional;slow"
-    # Opt in to the .efmc confidence companion so verify-ntsc-cvbs
-    # exercises the EFM extension format's 1:1 sidecar contract.
-    ENVIRONMENT "LDDECODE_EFM_EMITCONF=1"
+    # CVBS output defaults to the confidence-packed .efm (T_VALUE_CONF_U8),
+    # so verify-ntsc-cvbs exercises the extension format's encoding
+    # declaration and efm-quality-ntsc-cvbs scores with --packed.
     FIXTURES_SETUP ntsc-cvbs
     TIMEOUT 1800
 )
@@ -756,8 +756,9 @@ add_vits_capture_conformance(ve-monitor NTSC ntsc/ve-monitor.ldf)
 # jason-testpattern is the PAL EFM gate: a short, clean capture the default
 # (timing-recovery) demodulator frames perfectly (sync_rate 1.0,
 # frame_588_fraction 1.0), so it is pinned at (near) perfection.  The
-# decode also opts in to the .efmc confidence sidecar, making this the test
-# that holds .efmc to its 1:1 contract with the .efm T-values.
+# decode also opts in to confidence-packed .efm output (off by default in
+# TBC mode), making this the test that holds the T_VALUE_CONF_U8 packing to
+# its contract: the low nibbles must still score perfectly.
 add_test(
     NAME decode-jason-testpattern
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
@@ -777,7 +778,7 @@ add_test(
     NAME efm-quality-jason-testpattern
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
         ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efm
-        --efmc ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efmc
+        --packed
         --min-sync-rate 0.999 --min-frame-588 0.999
         --max-invalid-t 0 --min-t-values 143000
         --json ${CMAKE_BINARY_DIR}/testout/jason-testpattern.efm-quality.json
@@ -824,9 +825,10 @@ set_tests_properties(efm-quality-issue176 PROPERTIES
 
 # The previous run-length PLL stays available behind --efm_demod pll (the
 # timing-recovery demodulator is the default); this chain keeps the PLL
-# gated at its own measured performance, holds its .efmc sidecar to the
-# 1:1 contract, and checks the serial/threaded .efm bit-identity guarantee
-# with the non-default selector too.
+# gated at its own measured performance (with confidence-packed output, so
+# the packing is covered on this path too), and checks the serial/threaded
+# .efm bit-identity guarantee with the non-default selector - the packed
+# stream carries the confidences, so the compare covers those as well.
 add_test(
     NAME decode-jason-pll
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
@@ -846,7 +848,7 @@ add_test(
     NAME efm-quality-jason-pll
     COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
         ${CMAKE_BINARY_DIR}/testout/jason-pll.efm
-        --efmc ${CMAKE_BINARY_DIR}/testout/jason-pll.efmc
+        --packed
         --min-sync-rate 0.999 --min-frame-588 0.999
         --max-invalid-t 0 --min-t-values 143000
         --json ${CMAKE_BINARY_DIR}/testout/jason-pll.efm-quality.json
@@ -874,7 +876,7 @@ set_tests_properties(decode-jason-pll-parallel PROPERTIES
     TIMEOUT 600
 )
 
-foreach(ext efm efmc)
+foreach(ext efm)
     add_test(
         NAME compare-jason-pll-parallel-${ext}
         COMMAND ${CMAKE_COMMAND} -E compare_files
@@ -894,10 +896,16 @@ endforeach()
 # <min-sync-rate> <min-frame-588> <min-t-values>) keeps each threshold set
 # next to the capture it measures.
 function(add_efm_quality label fixture test_labels efm_file min_sync min_588 min_t)
+    # Pass PACKED after the required arguments when the fixture writes the
+    # confidence-packed encoding (T_VALUE_CONF_U8 - the CVBS-mode default).
+    set(packed_arg "")
+    if("PACKED" IN_LIST ARGN)
+        set(packed_arg "--packed")
+    endif()
     add_test(
         NAME efm-quality-${label}
         COMMAND ${Python3_EXECUTABLE} ${ANALYSIS_DIR}/efm_quality.py
-            ${CMAKE_BINARY_DIR}/testout/${efm_file}
+            ${CMAKE_BINARY_DIR}/testout/${efm_file} ${packed_arg}
             --min-sync-rate ${min_sync} --min-frame-588 ${min_588}
             --max-invalid-t 0 --min-t-values ${min_t}
             --json ${CMAKE_BINARY_DIR}/testout/${label}.efm-quality.json
@@ -914,21 +922,21 @@ endfunction()
 add_efm_quality(ntsc-basic ntsc-tbc "functional"
     ntsc-basic.efm 0.999 0.997 860000)
 add_efm_quality(ntsc-cvbs ntsc-cvbs "functional"
-    ntsc-cvbs.efm 0.999 0.995 178000)
+    ntsc-cvbs.efm 0.999 0.995 178000 PACKED)
 add_efm_quality(ve-monitor ve-monitor-cvbs "functional;vits"
-    ve-monitor.efm 0.998 0.995 2610000)
+    ve-monitor.efm 0.998 0.995 2610000 PACKED)
 add_efm_quality(dolby-surround-side1-inner dolby-surround-side1-inner-cvbs
-    "functional;vits" dolby-surround-side1-inner.efm 0.998 0.994 594000)
+    "functional;vits" dolby-surround-side1-inner.efm 0.998 0.994 594000 PACKED)
 add_efm_quality(dolby-surround-side1-middle dolby-surround-side1-middle-cvbs
-    "functional;vits" dolby-surround-side1-middle.efm 0.998 0.995 564000)
+    "functional;vits" dolby-surround-side1-middle.efm 0.998 0.995 564000 PACKED)
 add_efm_quality(dolby-surround-side1-outer dolby-surround-side1-outer-cvbs
-    "functional;vits" dolby-surround-side1-outer.efm 0.998 0.995 594000)
+    "functional;vits" dolby-surround-side1-outer.efm 0.998 0.995 594000 PACKED)
 add_efm_quality(domesday-ds2-community-north-inner
     domesday-ds2-community-north-inner-cvbs "functional;vits"
-    domesday-ds2-community-north-inner.efm 0.999 0.995 891000)
+    domesday-ds2-community-north-inner.efm 0.999 0.995 891000 PACKED)
 add_efm_quality(domesday-ds2-community-north-middle
     domesday-ds2-community-north-middle-cvbs "functional;vits"
-    domesday-ds2-community-north-middle.efm 0.999 0.995 1034000)
+    domesday-ds2-community-north-middle.efm 0.999 0.995 1034000 PACKED)
 
 # ---------------------------------------------------------------------------
 # ld-cut and ld-compress
