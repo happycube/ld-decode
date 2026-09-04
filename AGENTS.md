@@ -289,6 +289,12 @@ skipping the gate silently.
 
 - **Profile before optimising** (`scripts/bench_rf.py`, `lddecode/profiling.py`, `cProfile`); prefer
   measurable gains over premature micro-optimisation.
+- **Measure whole-decode throughput and footprint with the committed harnesses**, so figures from
+  different changes are comparable: `scripts/bench_decode_throughput.py` (post-setup fps and peak
+  RSS for one `(system, mode, -t, -s, -l, capture)` cell, optionally several decoders at once) and
+  `scripts/report_working_set.py` (resident filters, the resample LUT, and the bytes `demodblock`
+  reads per block). Throughput on this project is set as much by what fits in the shared
+  last-level cache as by cycles, so quote footprint beside timing.
 - Minimise copies: prefer in-place NumPy operations and views where ownership allows, and avoid
   materialising a whole capture in memory.
 - Document Big-O complexity for public algorithms; note per-field and per-block allocation costs.

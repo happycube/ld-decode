@@ -8,11 +8,13 @@ before any further work is committed.
 
 The guiding decision: **fix single-decoder efficiency first, then expand threads.** Phase 0 of
 [`plans/batch-parallel-decode-plan.md`](batch-parallel-decode-plan.md) established that on an
-8-core box throughput plateaus at two concurrent decoders however the concurrency is arranged —
-eight independent serial processes and one process with eight workers land on the same figure —
-because two decoders' working sets fill the 32 MiB shared L3 and a third evicts them. Every byte
-removed from one decoder therefore raises the ceiling for `-t N` as it stands, for any future batch
-design, and for a single pipeline alike, which is why this work comes before any of them.
+8-core box PAL CVBS throughput plateaus at two workers however the concurrency is arranged — eight
+independent serial processes and one process with eight workers land on the same figure — because
+two decoders' working sets fill the 32 MiB shared L3 and a third evicts them. §1.1 measures the
+same ceiling from the other side: independent decoders stop adding throughput between two and four.
+Every byte removed from one decoder therefore raises the ceiling for `-t N` as it stands, for any
+future batch design, and for a single pipeline alike, which is why this work comes before any of
+them.
 
 Sources:
 - Measurements this plan rests on:
@@ -66,12 +68,13 @@ What is the cause — one decoder's hot working set, ~12 MiB:
 
 | Component | Size | Access pattern |
 |---|---:|---|
-| Filter bank, `complex128`, 32768-point (`rfdecode.py`) | 11.0 MiB PAL / 10.0 MiB NTSC resident; **~4.3 MiB read per 32 KiB block** | sequential, once per block |
+| Filter bank, mostly `complex128`, 32768-point (`rfdecode.py`) | 11.0 MiB PAL / 10.0 MiB NTSC resident; **2.53 MiB read per 32 KiB block**, both systems | sequential, once per block |
 | Sinc resample LUT `downscale_sinc_lut`, 65537 × 16 `float32` | **4.00 MiB** | one 64-byte row per output sample, ~1 MiB stride: one cache miss per output sample, ~43 MiB/frame PAL TBC, ~86 MiB/frame PAL CVBS |
-| Live temporaries in `demodblock` (no loop fusion) | ~4 MiB | one 512 KiB array per multiply |
+| Live temporaries in `demodblock` (no loop fusion) | **5.00 MiB PAL / 4.62 MiB NTSC** peak live | one full-blocklen array per multiply |
 
-Every full-blocklen `complex128` array is 512 KiB — sixteen L1d's and exactly one L2 — so no stage's
-operands fit in private cache. Two decoders (~25 MiB) fit L3; three (~37 MiB) do not.
+Hot set per decoder: **11.5 MiB PAL, 11.2 MiB NTSC**. Every full-blocklen `complex128` array is
+512 KiB — sixteen L1d's and exactly one L2 — so no stage's operands fit in private cache. Two
+decoders (23 MiB) fit L3; three (35 MiB) do not, which is where the plateau at `t=2` comes from.
 
 Costs found that are avoidable without changing what the decoder computes:
 
@@ -81,9 +84,49 @@ Costs found that are avoidable without changing what the decoder computes:
 | `scale_positions` has no `cache=True`; JIT-compiled in every process, every run | `dsp.py:169` | — |
 | `Filters["MTF"] ** mtf_level` recomputed per block; a 32768-point complex `pow` and a 512 KiB temporary, for a value constant over ≥100 fields | `rfdecode.py:1423` | 0.308 of 2.516 ms per block: **12.3% of `demodblock`** |
 | Chroma-DG correction transforms whole fields at hostile lengths: CVBS field B 354,689 is prime, field A carries a factor 563; `next_fast_len` is 354,816 | `field.py:164` | CVBS ~103 ms/frame and TBC ~62 ms/frame in four transforms; ~12 ms padded (2.15/3.77 ms per `rfft`/`ifft` at 354,816) |
-| Filter bank stored `complex128` for 16-bit-in / `float32`-out data | `rfdecode.py` filter setup | 11.0 MiB → 5.5 MiB if `complex64`; no gain in isolation (scipy's `complex64` `ifft` is slower, 0.352 vs 0.293 ms) — the value is footprint under contention only |
+| Filter bank stored `complex128` for 16-bit-in / `float32`-out data | `rfdecode.py` filter setup | resident 11.0 → 5.5 MiB, but read per block only 2.53 → 1.27 MiB and hot set 11.5 → 10.3 MiB; no gain in isolation (scipy's `complex64` `ifft` is slower, 0.352 vs 0.293 ms) — the value is footprint under contention only |
 | PAL CVBS resamples every field twice: the TBC picture is computed (`decode_stage2`) then discarded; NTSC reuses it because its 4fsc is line-locked (910.0000/line) | `decoder.py:2644`, `cvbs.py:_emit_frame` | `field.py:downscale` is 3.0% of serial time; the cost is footprint, not cycles |
 | Post-demod video carried at 40 MSPS for a 6.3 MHz (PAL) / 4.5 MHz (NTSC) band; EFM as `int16` at 40 MSPS for a 4.3218 Mbit/s channel; the audio path already decimates by spectrum slicing | `rfdecode.py:demodblock`, `filters.py:188` | 3.17× / 4.44× the LPF Nyquist |
+
+### 1.1 The Phase 0 baseline
+
+Recorded by [`scripts/bench_decode_throughput.py`](../scripts/bench_decode_throughput.py) on the
+box above, PAL `Domesday_DD86-DS2_NationalA` and NTSC `Bambi`, `-s 5000 -l 1000`, one cell at a
+time with nothing else running. Post-setup fps as the decoder reports it; RSS is the peak over the
+whole process tree, sampled twice a second. Every later phase compares against these rows.
+
+Run-to-run spread, three repeats of PAL CVBS `-t 6`: 4.57, 4.73, 4.68 fps — **3.4%** between the
+slowest and the fastest. A phase that moves a cell by less than that has not moved it.
+
+| Cell | `-t 1` | `-t 2` | `-t 4` | `-t 6` | `-t 8` |
+|---|---:|---:|---:|---:|---:|
+| PAL CVBS, fps | 2.71 | 4.67 | 4.66 | 4.79 | 4.81 |
+| PAL CVBS, peak tree RSS (MB) | 1015 | 1860 | 2503 | 3071 | 3591 |
+| PAL `--tbc`, fps | 2.82 | 5.43 | **7.38** | 6.99 | 6.69 |
+| PAL `--tbc`, peak tree RSS (MB) | 760 | 1635 | 2357 | 2973 | 3836 |
+| NTSC CVBS, fps | 3.01 | 5.56 | 9.15 | 10.01 | **10.50** |
+| NTSC CVBS, peak tree RSS (MB) | 751 | 1353 | 1847 | 2452 | 2958 |
+
+N independent serial PAL CVBS decoders over adjacent 1000-frame spans:
+
+| N | 1 | 2 | 4 | 8 |
+|---|---:|---:|---:|---:|
+| aggregate post-setup fps | 2.81 | 4.79 | 5.96 | 5.90 |
+| per-process efficiency | 100% | 85% | 53% | 26% |
+| peak tree RSS (MB) | 957 | 1910 | 3771 | 7579 |
+
+The `-t` sweep at `-l 1000` reproduces §1's rows within 4.6% (`-t 8`, the one cell outside the 3.4%
+spread; every other cell is within 2.2%). Two things in it are sharper than §1 states, and both
+matter to what the later phases are for:
+
+- **The plateau is PAL CVBS's, not the decoder's.** PAL CVBS is flat from `-t 2` (4.67 → 4.81
+  across `-t 2`…`-t 8`, all within the run-to-run spread). PAL `--tbc` scales to `-t 4` and then
+  *falls* — 7.38 at `-t 4`, 6.69 at `-t 8`. NTSC CVBS scales all the way to `-t 8`, at 3.5x its
+  serial rate. So the ceiling moves with how much a decoder keeps hot, which is what this plan
+  changes, rather than sitting at a fixed thread count.
+- **The concurrent-serial knee is between 2 and 4**, not at 2: the second decoder costs 15% and the
+  fourth is where the aggregate stops rising. That is the 11.5 MiB hot set against a 32 MiB L3 —
+  two fit, three do not — measured from the other side.
 
 ## 2. Rules for every phase
 
@@ -112,6 +155,9 @@ decoder code.
 *Acceptance:* three repeats of the PAL CVBS `-t 6 -l 1000` cell agree within a stated
 run-to-run spread; the §1 tables reproduce within that spread; the script's docstring states the
 box, the captures and the spans it expects.
+*Done:* [`scripts/bench_decode_throughput.py`](../scripts/bench_decode_throughput.py). Three
+repeats gave 4.57 / 4.73 / 4.68 fps, a 3.4% spread, which is the threshold every later phase is
+read against. The §1 `-t` sweep reproduces within 4.6%: only `-t 8` falls outside the 3.4% spread.
 
 **Task 2 — commit the working-set inventory.** A script that constructs an `RFDecode` per system and
 reports resident filter bytes by array, the LUT size, and the bytes `demodblock` reads per block,
@@ -119,11 +165,28 @@ so later phases report footprint numerically.
 *Acceptance:* on current code it prints 11.0 MiB / 10.0 MiB resident, 4.00 MiB LUT and ~4.3 MiB per
 block for PAL; the per-block figure is derived from the arrays `demodblock` actually indexes, not
 hand-listed.
+*Done:* [`scripts/report_working_set.py`](../scripts/report_working_set.py), which substitutes a
+recording mapping for the filter bank and recording proxies for the audio filters, demodulates one
+block with the MTF path and the PAL carrier notch engaged, and sums what was indexed; it also
+measures the block's temporaries as peak live allocation under `tracemalloc`. Resident (11.03 MiB
+PAL / 10.03 MiB NTSC) and LUT (4.00 MiB) are as expected. **The per-block figure is 2.53 MiB, not
+~4.3 MiB** — the estimate assumed every array was a full-blocklen `complex128`, where PAL's
+`RFVideo`, `MTF` and `FcutPAL` are real `float64` at half the size and `Frfhpf_half` is a half
+spectrum, and it counted the resident audio filters rather than the two 16 KiB stage-1 filters the
+block reads. With the measured temporaries (5.00 MiB PAL, 4.62 MiB NTSC) the hot set is 11.5 MiB
+PAL and 11.2 MiB NTSC, which is what §1 now states and what the L3 arithmetic already assumed;
+the derived figure supersedes the estimate everywhere it appeared. Its consequence is for Phase 3,
+recorded there: a narrower dtype moves the hot set by 10%, not by half.
 
 **Task 3 — record the baseline.** Run the harness over PAL CVBS, PAL `--tbc` and NTSC CVBS at
 `-t` 1, 2, 4, 6, 8 with `-l 1000`, plus 1, 2, 4, 8 concurrent serial decoders, and record it as the
 table every later phase compares against.
 *Acceptance:* the table is in this plan beneath §1; per-process peak RSS is recorded beside it.
+*Done:* §1.1, with peak tree RSS beside every cell. Twenty-two rows, all `rc=0`; the raw JSON, the
+inventory output and the driver are under `docs-planning/decode-working-set-baseline/` (local,
+untracked). Two refinements to §1 came out of it: the plateau is PAL CVBS's alone — PAL `--tbc`
+scales to `-t 4` and NTSC CVBS to `-t 8` — and the concurrent-serial knee is between 2 and 4
+decoders rather than at 2.
 
 ## 4. Phase 1 — remove work that changes no output byte
 
@@ -199,9 +262,12 @@ commit separate.
 nothing: `complex128 × complex64` takes the same 0.022 ms/block as `complex128 × complex128`, and
 scipy's `complex64` `ifft` is slower (0.352 vs 0.293 ms), so a `complex64` pipeline loses on the
 transforms what it gains on the multiplies. Its only value is the halved L3 footprint when other
-decoders share the cache, so it must be measured there: prototype "`complex64` filters only" and
-"`complex64` block pipeline" on a branch and run both through the harness at `-t 6` and as eight
-concurrent serial decoders.
+decoders share the cache, and Phase 0 Task 2 measured that as smaller than the resident figure
+suggests: the block reads 2.53 MiB of coefficients, so narrowing every one of them moves the hot
+set from 11.5 MiB to 10.3 MiB — 10%, not a halving, because the temporaries and the LUT dominate.
+Three of PAL's six per-block filters are already real `float64`, so PAL gains least. Measure before
+implementing: prototype "`complex64` filters only" and "`complex64` block pipeline" on a branch and
+run both through the harness at `-t 6` and as eight concurrent serial decoders.
 *Acceptance:* harness rows for both options against Phase 2's result at `-t 6` and N = 8; a stated
 choice with the reason, or a stated decision to skip this phase if neither option moves the
 contended figure by more than the harness's run-to-run spread.

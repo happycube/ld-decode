@@ -12,6 +12,12 @@ Nothing here changes behaviour. It records measurements taken for Phase 0 of
 [`plans/batch-parallel-decode-plan.md`](batch-parallel-decode-plan.md), whose premise —
 that N independent serial decoders beat one distributed decoder — these numbers refute.
 
+The figures below were taken with ad-hoc scripts. They have since been re-taken on the committed
+harnesses (`scripts/bench_decode_throughput.py`, `scripts/report_working_set.py`), and that run is
+the baseline later work is compared against: see
+[`plans/decode-working-set-plan.md`](decode-working-set-plan.md) §1.1. Where the two differ, §1.1
+is the current figure; the corrections it produced are folded into §3.2 and §4 here.
+
 Machine: AMD Ryzen 7 5800X, 8 physical cores / 16 SMT threads, 32 MiB L3 (one instance, shared),
 512 KiB L2 per core, 32 KiB L1d per core, 62 GiB dual-channel DDR4. Captures on an NFS mount
 (10.0.1.4) that sustains 618 MB/s single-stream and 934 MB/s across eight concurrent readers,
@@ -80,42 +86,59 @@ question, not a bandwidth one.
 
 ### 3.1 The filter bank
 
-`BLOCKSIZE = 32 * 1024` ([`params.py:17`](../lddecode/params.py#L17)), and every frequency-domain
-filter is stored as a full-blocklen `complex128` array — 32768 x 16 bytes = **512 KiB each**.
-Summing every array an `RFDecode` holds resident:
+`BLOCKSIZE = 32 * 1024` ([`params.py:17`](../lddecode/params.py#L17)), and most frequency-domain
+filters are stored as a full-blocklen `complex128` array — 32768 x 16 bytes = **512 KiB each**. A
+few are real `float64` magnitude responses at half that (on PAL: `RFVideo`, `MTF`, `FcutPAL`), and
+`FVideo_rfft` is a stack of half-spectra. Summing every array an `RFDecode` holds resident:
 
 | System | `Filters` | audio filters | total per process |
 |---|---:|---:|---:|
 | PAL | 10240 KiB | 1056 KiB | **11.0 MiB** |
 | NTSC | 9216 KiB | 1056 KiB | **10.0 MiB** |
 
-The largest entries are all the same size, because they are all the same shape:
-`FVideo_rfft` (4 x 16385, 1024 KiB), then `FVideo`, `FVideo05`, `FVideoBurst`, `FVideoGD`,
-`FVideoPilot`, `Fburst`, `Fcutl`, `Fcutr`, `Fdeemp`, `Fefm`, `Femp`, `Frfhpf`, `MTF`, `RFVideo`,
-`FcutPAL` … at 512 KiB apiece.
+The largest entries are nearly all the same size, because they are nearly all the same shape:
+`FVideo_rfft` (4 x 16385 on PAL, 1024 KiB), then `FVideo`, `FVideo05`, `FVideoBurst`, `FVideoGD`,
+`FVideoPilot`, `Fburst`, `Fcutl`, `Fcutr`, `Fdeemp`, `Fefm`, `Femp`, `Frfhpf` … at 512 KiB apiece.
+Both figures come from [`scripts/report_working_set.py`](../scripts/report_working_set.py), which
+also prints the per-array breakdown.
 
 ### 3.2 What one block touches
 
 `demodblock` ([`rfdecode.py:1365`](../lddecode/rfdecode.py#L1365)) runs, per 32 KiB block, roughly
-nine transforms and eight full-length spectrum multiplies. The filter coefficients it reads:
+nine transforms and eight full-length spectrum multiplies. Which filter arrays it indexes is
+measured, not listed, by [`scripts/report_working_set.py`](../scripts/report_working_set.py): the
+filter bank is substituted with a recording mapping and the audio filters with recording proxies,
+one block is demodulated with the MTF path and (PAL) the carrier notch engaged, and the arrays that
+were indexed are summed.
 
-| Array | Size |
-|---|---:|
-| `Frfhpf_half` | 256 KiB |
-| `RFVideo` | 512 KiB |
-| `MTF` (plus the `** mtf_level` temporary) | 1024 KiB |
-| `FcutPAL` (PAL, when the audio carriers are present) | 512 KiB |
-| `FVideo_rfft` | 1024 KiB |
-| `Fefm` (digital audio) | 512 KiB |
-| audio stage-1 filters and slicers | ~1056 KiB |
-| **filter coefficients read per block** | **~4.3 MiB** |
+| Array | PAL | NTSC |
+|---|---:|---:|
+| `FVideo_rfft` | 1024 KiB | 768 KiB |
+| `Fefm` (digital audio) | 512 KiB | 512 KiB |
+| `RFVideo` | 256 KiB (`float64`) | 512 KiB (`complex128`) |
+| `MTF` | 256 KiB (`float64`) | 512 KiB (`complex128`) |
+| `FcutPAL` (when the audio carriers are present) | 256 KiB (`float64`) | — |
+| `Frfhpf_half` | 256 KiB | 256 KiB |
+| audio stage-1 filters (`filt1`, both channels) | 32 KiB | 32 KiB |
+| **filter coefficients read per block** | **2.53 MiB** | **2.53 MiB** |
+
+This supersedes an earlier hand-listed estimate of ~4.3 MiB in this section, which assumed every
+array was a full-blocklen `complex128` and counted the resident audio filters rather than the two
+stage-1 filters the block actually reads. Three of the arrays PAL indexes are real `float64`
+magnitude responses at half the size (`RFVideo`, `MTF`, `FcutPAL`), `Frfhpf_half` is a half
+spectrum, and NTSC has no carrier notch; the two systems land on the same total by different routes.
+That PAL already carries three of its per-block filters as real arrays is also the answer to why
+§4 (below) expects less from a narrower dtype on PAL than on NTSC.
 
 On top of that sit the temporaries — `indata_fft`, its mirrored full spectrum, `indata_fft_filt`,
 the `hilbert` result, `demod`, `demod_fft`, the four-way `video_results` stack, the `float32` copies
-and the record-array copy — another ~4 MiB live at once. NumPy has no loop fusion, so each of those
-multiplies materialises its own 512 KiB array rather than being folded into its neighbour.
+and the record-array copy. NumPy has no loop fusion, so each of those multiplies materialises its
+own 512 KiB array rather than being folded into its neighbour. Measured as the peak simultaneously
+live allocation across one `demodblock` call (`tracemalloc`, which NumPy registers its buffers
+with): **5.00 MiB PAL, 4.62 MiB NTSC**.
 
-**A decoder's hot working set is therefore ~8-9 MiB, and none of it fits in private cache.** A
+**A decoder's hot set per block is therefore 11.5 MiB PAL and 11.2 MiB NTSC** — coefficients read,
+plus the resample LUT of §4c, plus the temporaries — **and none of it fits in private cache.** A
 single full-blocklen spectrum is 512 KiB: sixteen times L1d, and exactly the size of the whole
 per-core L2. No stage of the block has operands that fit in the cache private to the core running
 it, so every stage streams its operands in and its result out through L3.
@@ -123,15 +146,15 @@ it, so every stage streams its operands in and its result out through L3.
 ### 3.3 The arithmetic that predicts the cliff
 
 L3 is 32 MiB and shared by all cores. The hot set per decoder is the filter coefficients read every
-block (~4.3 MiB, §3.2), the resample LUT (4.0 MiB, §4c), and the live temporaries (~4 MiB) — call it
-~12 MiB:
+block (2.53 MiB, §3.2), the resample LUT (4.00 MiB, §4c), and the live temporaries (5.00 MiB
+measured, §3.2) — 11.5 MiB on PAL:
 
 | Concurrent decoders | Working set | Fits in 32 MiB L3? |
 |---:|---:|---|
-| 1 | ~12 MiB | yes, comfortably |
-| 2 | ~25 MiB | marginal |
-| 3 | ~37 MiB | **no** |
-| 8 | ~98 MiB | no, by 3x |
+| 1 | 11.5 MiB | yes, comfortably |
+| 2 | 23 MiB | marginal |
+| 3 | 35 MiB | **no** |
+| 8 | 92 MiB | no, by 3x |
 
 Below the cliff the filter bank stays resident in L3 and is read from cache on every block. Above
 it, the filters are evicted between blocks and re-read from DRAM — and §2 has already established
@@ -190,14 +213,21 @@ and ~0.33 GB from DRAM — ~4.3 GB/s of L2-miss traffic at 3.15 fps — which is
 These are observations from reading the block path, not a plan; each would need its own change and
 its own conformance evidence.
 
-**The filters are `complex128` and need not be.** They are frequency responses multiplying data
-whose input is 16-bit and whose output is `float32`. Storing them as `complex64` halves the filter
-bank from 11.0 MiB to 5.5 MiB per process, which moves the L3 cliff from ~3 decoders to ~6 — the
-single largest lever available, and it touches no algorithm.
+**Most of the filters are `complex128` and need not be.** They are frequency responses multiplying
+data whose input is 16-bit and whose output is `float32`. Narrowing them halves the resident bank
+from 11.0 MiB to 5.5 MiB per process — but resident bytes are not what competes for L3, read bytes
+are, and §3.2 measures those at 2.53 MiB per block. Narrowing every array the block reads takes
+that to 1.27 MiB, and the hot set from 11.5 MiB to 10.3 MiB: a 10% move, not a halving, because the
+5.00 MiB of temporaries and the 4.00 MiB LUT dominate it. Three of PAL's six per-block filters are
+already real `float64`, so PAL has less to gain here than NTSC. This is a smaller lever than the
+resident figure makes it look, which is why it must be measured under contention before it is
+implemented.
 
 **`Filters["MTF"] ** mtf_level` is recomputed on every block**
-([`rfdecode.py:1423`](../lddecode/rfdecode.py#L1423)). It is a complex `pow` — `exp(r log z)`, two
-transcendentals per element — over 32768 elements, producing a fresh 512 KiB temporary each time.
+([`rfdecode.py:1423`](../lddecode/rfdecode.py#L1423)). It is a `pow` over 32768 elements —
+transcendental per element, and on NTSC where `MTF` is `complex128` a complex `pow`, `exp(r log z)`
+— producing a fresh temporary each time (256 KiB PAL, where `MTF` is a real `float64` magnitude
+response; 512 KiB NTSC).
 `mtf_level` is constant within a field and, past warm-up, changes at most once per 100 fields
 (`MTF_SERVO_MIN_ADOPT_FIELDS`, [`decoder.py:1149`](../lddecode/decoder.py#L1149)). Caching the
 raised filter against `mtf_level` removes both the transcendental cost and a 512 KiB allocation per
@@ -455,10 +485,10 @@ rough order of size:
 |---|---|---|
 | 256-phase interpolated sinc LUT (§4c) | 4.00 MiB -> 16 KiB, and ~709k random DRAM fetches per frame become L1 hits | low: measured indistinguishable at 105.8 dB |
 | Chroma-DG transforms at `next_fast_len` (§4d) | none resident; ~90 ms/frame (CVBS) and ~50 ms/frame (TBC) off the output lane on DG-affected discs | low: padding-edge handling, DG/DP conformance figures |
-| `complex64` filter bank (§4, §4d) | 11.0 -> 5.5 MiB resident; cliff ~3 -> ~6 decoders | medium: no gain in isolation, scipy's `complex64` FFT is slower; must be measured under contention |
+| `complex64` filter bank (§4, §4d) | 11.0 -> 5.5 MiB resident, but only 2.53 -> 1.27 MiB read per block: hot set 11.5 -> 10.3 MiB | medium: no gain in isolation, scipy's `complex64` FFT is slower; must be measured under contention |
 | Decimate post-demod video to 20 MSPS (§4a) | halves 4-5 arrays/block and the `FVideo_rfft` bank | highest: lineloc precision, servo measurements |
 | `cache=True` on `scale_positions` (§4c) | none resident; removes a per-process JIT compile | none |
-| Cache `MTF ** mtf_level` (§4) | removes a 512 KiB temporary and 32768 complex `pow` per block | none |
+| Cache `MTF ** mtf_level` (§4) | removes a per-block temporary (256 KiB PAL, 512 KiB NTSC) and 32768 `pow` | none |
 | Drop the discarded PAL TBC picture (§4b) | removes a whole-field array in CVBS mode | low, but only ~3% of serial time |
 
 A single common intermediate rate serves both systems. The binding constraint is not the video LPF's
@@ -481,23 +511,25 @@ All of it runs from the dev shell. Note that the `nix develop "path:$PWD"` form 
 fails on this flake (`attribute 'shortRev' missing`, `flake.nix:22`) because a `path:` source
 carries no git metadata; use plain `nix develop`.
 
+The footprint and throughput measurements here are now made by two committed harnesses, so a later
+run compares against these figures rather than against an ad-hoc script:
+
 ```bash
-# per-process filter footprint
-nix develop --command python -c "
-from lddecode.core import RFDecode
-import numpy as np
-rf = RFDecode(system='PAL', decode_digital_audio=True,
-              decode_analog_audio=44100, has_analog_audio=True)
-print(sum(np.asarray(a).nbytes for a in rf.Filters.values()
-          if np.asarray(a).dtype != object) / 2**20, 'MiB')"
+# resident filters, the resample LUT, the bytes demodblock reads per block, temporaries
+nix develop --command python3 scripts/report_working_set.py --json working_set.json
 
-# one decode alone vs eight concurrent, same total frames
-nix develop --command python -m lddecode.main --pal -t 1 -s 5000 -l 250 <capture> /tmp/solo
-for k in $(seq 0 7); do
-  nix develop --command python -m lddecode.main --pal -t 1 \
-    -s $((5000 + k * 250)) -l 250 <capture> /tmp/b$k &
-done; wait
+# one decode alone, then eight concurrent serial decoders over adjacent spans
+nix develop --command python3 scripts/bench_decode_throughput.py \
+  --capture <capture> --system pal --mode cvbs --threads 1 \
+  --seek 5000 --length 1000 --out rows.jsonl
+nix develop --command python3 scripts/bench_decode_throughput.py \
+  --capture <capture> --system pal --mode cvbs --threads 1 --concurrency 8 \
+  --seek 5000 --length 1000 --out rows.jsonl
+```
 
+The remaining measurements are still ad hoc:
+
+```bash
 # cache fill sources, solo vs contended (user-space counters, paranoid=2 is enough)
 nix shell nixpkgs#linuxPackages_latest.perf --command perf stat \
   -e cycles,instructions,ls_any_fills_from_sys.int_cache,ls_any_fills_from_sys.mem_io_local \
