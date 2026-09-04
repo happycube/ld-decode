@@ -69,7 +69,7 @@ What is the cause — one decoder's hot working set, ~12 MiB:
 | Component | Size | Access pattern |
 |---|---:|---|
 | Filter bank, mostly `complex128`, 32768-point (`rfdecode.py`) | 11.0 MiB PAL / 10.0 MiB NTSC resident; **2.53 MiB read per 32 KiB block**, both systems | sequential, once per block |
-| Sinc resample LUT `downscale_sinc_lut`, 65537 × 16 `float32` | **4.00 MiB** | one 64-byte row per output sample, ~1 MiB stride: one cache miss per output sample, ~43 MiB/frame PAL TBC, ~86 MiB/frame PAL CVBS |
+| Sinc resample LUT `downscale_sinc_lut`, 65537 × 16 `float32` | **4.00 MiB** | one 64-byte row per output sample, ~1 MiB stride: one cache miss per output sample, ~43 MiB/frame PAL TBC, ~86 MiB/frame PAL CVBS. **Now 257 × 16 = 16 KiB (§5.1); the misses were L3 hits, not DRAM, and removing them bought no throughput** |
 | Live temporaries in `demodblock` (no loop fusion) | **5.00 MiB PAL / 4.62 MiB NTSC** peak live | one full-blocklen array per multiply |
 
 Hot set per decoder: **11.5 MiB PAL, 11.2 MiB NTSC**. Every full-blocklen `complex128` array is
@@ -80,10 +80,10 @@ Costs found that are avoidable without changing what the decoder computes:
 
 | Finding | Where | Measured |
 |---|---|---|
-| Sinc LUT 256× too large: 256 phases *with* interpolation is 16 KiB and indistinguishable | `dsp.py:105-217`, `sinc_lut.npz` | 105.8 dB below signal for both 65536-nearest and 256-interpolated; 57.7 dB for 256-nearest |
+| Sinc LUT 256× too large: 256 phases *with* interpolation is 16 KiB and indistinguishable | `dsp.py:105-217`, `sinc_lut.npz` | 105.8 dB below signal for both 65536-nearest and 256-interpolated; 57.7 dB for 256-nearest. **Done (§5), and it does not pay**: the footprint fell as designed (hot set 11.53 → 7.55 MiB, 1.1e6 fewer L2 misses per PAL frame) and throughput went *down* 1–3% |
 | `scale_positions` has no `cache=True`; JIT-compiled in every process, every run | `dsp.py:169` | **done (§4)**: 1.99 s compile becomes a 4 ms cache load; 1.83 s off every process that resamples |
 | `Filters["MTF"] ** mtf_level` recomputed per block; a 32768-point complex `pow` and a 512 KiB temporary, for a value constant over ≥100 fields | `rfdecode.py:1423` | 0.308 of 2.516 ms per block: **12.3% of `demodblock`**. **Done (§4)**, and the estimate understated NTSC: its `MTF` is `complex128`, so the `pow` is **2.29 of 5.18 ms**, and holding it takes NTSC CVBS `-t 1` from 3.01 to 4.83 fps |
-| Chroma-DG correction transforms whole fields at hostile lengths: CVBS field B 354,689 is prime, field A carries a factor 563; `next_fast_len` is 354,816 | `field.py:164` | CVBS ~103 ms/frame and TBC ~62 ms/frame in four transforms; ~12 ms padded (2.15/3.77 ms per `rfft`/`ifft` at 354,816) |
+| Chroma-DG correction transforms whole fields at hostile lengths: CVBS field B 354,689 is prime, field A carries a factor 563; `next_fast_len` is 354,816 | `field.py:164` | CVBS ~103 ms/frame and TBC ~62 ms/frame in four transforms; ~12 ms padded (2.15/3.77 ms per `rfft`/`ifft` at 354,816). **Done (§5)**: measured 105.6 → 9.1 ms on field B, and it is the whole of Phase 2's gain — PAL CVBS +18.7% to +43.5% |
 | Filter bank stored `complex128` for 16-bit-in / `float32`-out data | `rfdecode.py` filter setup | resident 11.0 → 5.5 MiB, but read per block only 2.53 → 1.27 MiB and hot set 11.5 → 10.3 MiB; no gain in isolation (scipy's `complex64` `ifft` is slower, 0.352 vs 0.293 ms) — the value is footprint under contention only |
 | PAL CVBS resamples every field twice: the TBC picture is computed (`decode_stage2`) then discarded; NTSC reuses it because its 4fsc is line-locked (910.0000/line) | `decoder.py:2644`, `cvbs.py:_emit_frame` | `field.py:downscale` is 3.0% of serial time; the cost is footprint, not cycles |
 | Post-demod video carried at 40 MSPS for a 6.3 MHz (PAL) / 4.5 MHz (NTSC) band; EFM as `int16` at 40 MSPS for a 4.3218 Mbit/s channel; the audio path already decimates by spectrum slicing | `rfdecode.py:demodblock`, `filters.py:188` | 3.17× / 4.44× the LPF Nyquist |
@@ -326,6 +326,18 @@ on a seeded DC–6.3 MHz band-limited signal at 10⁴ random fractional position
 is 5.1e-6; the tolerance is twice it and stays two decades under a 16-bit LSB); the shipped
 `.npz` is ≤ 64 KiB; `scale_field` and `scale_positions` produce identical samples at identical
 positions.
+*Done:* [`dsp.py`](../lddecode/dsp.py) — `sinc_phase_count` is 256, `build_kaiser_lut` is live code
+again (its `kaiser_beta` of 5 confirmed by rebuilding the shipped 65537-row table and matching it to
+one float32 ulp), and `scale_field` interpolates as `scale_positions` does. The array is 4194368 →
+16448 bytes and the `.npz` 3593572 → 12564. Measured against a 65536-phase nearest reference:
+**7.79e-7 rms** at the rate the resamplers actually read (40 MHz input, band to 6.3 MHz) and
+3.19e-6 with the same band at 4fsc, against a 1e-5 tolerance and a 3.05e-5 16-bit LSB;
+[`tests/unit/test_sinc_lut.py`](../tests/unit/test_sinc_lut.py) builds both tables in-process and
+checks both regimes. Two things the plan did not anticipate. First, **the old builder's guard row
+was a copy of its neighbour rather than the phase-1.0 filter** — invisible at 65536 phases, but at
+256 it puts the top phase bucket's error at 6.9e-5 rms and 4.1e-3 peak, twenty times worse than the
+table it replaces; built properly it is 7.8e-7. Second, **the change costs throughput rather than
+buying it** — 1% to 3% in every cell measured, for reasons recorded in §5.1.
 
 **Task 2 — re-record baselines and gate on conformance.** Run the full conformance and identity
 lanes on the change, then re-record every byte baseline the change moves in one commit containing
@@ -333,11 +345,22 @@ nothing else.
 *Acceptance:* `conformance-*-vits` within bands, no widening of `vits_known_deviations.toml`;
 `compare-*-parallel-*` identity holds on the new baselines; the re-record commit touches only
 baseline files.
+*Done:* the full suite passes, **91/91**, including all 48 `conformance-*-vits` lanes and all 15
+`compare-*-parallel-*` identity lanes, with `analysis/vits_known_deviations.toml` untouched. The
+re-record is smaller than the plan assumed: this project stores no golden decode bytes — identity is
+checked `-t 1` against `-t N` within a run, and conformance against bands in
+`analysis/vits_reference.py` — so the only recorded artefact the change moves is `sinc_lut.npz`
+itself, which is part of Task 1's commit rather than a separate one.
 
 **Task 3 — measure the footprint moving out of L3.** Harness rows, inventory, and the `perf`
 fill-source measurement of the analysis's §3.4 repeated on one decoder among eight.
 *Acceptance:* DRAM fills per frame drop by an amount consistent with ~700k fewer line fetches per
 PAL frame; the PAL CVBS `-t` sweep's plateau moves, and its new onset is stated.
+*Done:* §5.1, with the inventory, the harness grid and the `perf` counters. The acceptance is met
+in its second half and **refuted in its first**: the line fetches disappear as predicted (1.1e6
+fewer L2 misses per PAL frame, against ~1.4e6 predicted for PAL CVBS), but they were being served
+by L3, not DRAM — L3 fills fall by 1.1e6 and DRAM fills by only 0.27e6 — so nothing was waiting on
+memory to begin with.
 
 **Task 4 — transform the chroma-DG correction at a fast length.** In `_correct_chroma_vs_luma`
 (`field.py:164`), pad the field to `scipy.fft.next_fast_len` before the transform, build the
@@ -350,8 +373,138 @@ stated tolerance on a synthetic staircase-plus-subcarrier field, including the f
 lines; `conformance-*-vits` differential-gain and differential-phase figures within bands on the
 radius set; harness rows for PAL CVBS and PAL `--tbc` on DS2 NationalA before/after; re-record
 commit separate.
+*Done:* [`field.py`](../lddecode/field.py) — `_chroma_dg_plan` caches the transform length per
+field length and `_chroma_dg_pad` reaches it by **tiling the field's own periodic continuation**,
+not by zero-padding. That is what handles the discontinuity: the transform convolves circularly, so
+each end of the field already had the other as its neighbour, and a segment of the same periodic
+extension keeps that rather than introducing an edge. The padded array's own wrap is the only
+discontinuity, and `CHROMA_DG_GUARD` (2048 samples, where the windows' impulse tails are under
+1e-7) holds it clear of every sample kept.
+
+| field | length | before | after |
+|---|---:|---:|---:|
+| PAL CVBS field B (prime) | 354689 | 105.6 ms | **9.1 ms** |
+| PAL CVBS field A | 354690 | 39.9 | 9.2 |
+| PAL TBC field | 355255 | 38.4 | 10.1 |
+| NTSC field | 239330 | 14.4 | 5.3 |
+
+Worst deviation from the unpadded correction on a staircase-plus-subcarrier field is **5.1e-6 IRE**,
+in the first line of the rotating path, against the 0.0021 IRE the 16-bit TBC output quantises to;
+the tolerance asserted is 1e-4. The correction still costs about 20% of a PAL CVBS decode
+(`-s 5000 -l 200`: 6.22 fps against 7.47 with `--no_chroma_dg`), so there is more here later.
+
+### 5.1 The Phase 2 result
+
+Same harness, captures, spans and order as §1.1 and §4.2. Repeats of the PAL CVBS `-t 6` cell gave
+6.67 / 6.72 / 6.81 fps, a **2.1%** spread on this run.
+
+| Cell (Phase 1 → Phase 2) | `-t 1` | `-t 2` | `-t 4` | `-t 6` | `-t 8` |
+|---|---:|---:|---:|---:|---:|
+| PAL CVBS, fps | 2.87 → 3.30 | 4.99 → 6.36 | 4.96 → 6.90 | 5.02 → **7.21** | 4.94 → 6.71 |
+| PAL `--tbc`, fps | 2.93 → 3.51 | 5.72 → 6.90 | 7.94 → **8.12** | 7.60 → 7.11 | 6.91 → 6.53 |
+| NTSC CVBS, fps | 4.83 → 4.66 | 9.07 → 8.94 | 12.45 → 12.14 | 12.17 → 11.64 | 11.21 → 10.76 |
+
+N independent serial PAL CVBS decoders, aggregate post-setup fps: 2.87 → 3.30 (N=1), 4.83 → **5.89**,
+6.02 → **8.48**, 5.98 → **7.85** (N=8). Peak tree RSS is lower in every cell (PAL CVBS `-t 4`
+2357 → 2290 MB, N=8 6816 → 6466 MB).
+
+**The PAL CVBS plateau's onset moves from `-t 2` to about `-t 6`**, and its level from 4.7–5.0 to
+6.4–7.2 fps: Phase 1 was flat from two threads on, where Phase 2 still gains 8.5% from `-t 2` to
+`-t 4` and 4.5% again to `-t 6` before falling back at `-t 8`. PAL `--tbc` and NTSC CVBS both still
+peak at `-t 4`.
+
+#### Which change did it
+
+Both tasks landed together, so they were measured apart: the same cells with the LUT change alone
+and the chroma DG transform still at the field's own length.
+
+| Cell | Phase 1 | +LUT | +LUT +DG | LUT step | DG step |
+|---|---:|---:|---:|---:|---:|
+| PAL CVBS `-t 1` | 2.87 | 2.78 | 3.30 | **−3.1%** | +18.7% |
+| PAL `--tbc` `-t 1` | 2.93 | 2.87 | 3.51 | −2.0% | +22.3% |
+| NTSC CVBS `-t 1` | 4.83 | 4.75 | 4.66 | −1.7% | −1.9% |
+| PAL CVBS `-t 4` | 4.96 | 4.82 | 6.90 | −2.8% | +43.2% |
+| PAL `--tbc` `-t 4` | 7.94 | 7.88 | 8.12 | −0.8% | +3.0% |
+| NTSC CVBS `-t 4` | 12.45 | 12.21 | 12.14 | −1.9% | −0.6% |
+| PAL CVBS, N=4 serial | 6.02 | 5.91 | 8.48 | −1.8% | +43.5% |
+
+**Every gain in Phase 2 is Task 4. Task 1 — the change this plan called the one most likely to
+matter — costs 1% to 3% in every cell, including at four concurrent decoders, where its whole
+argument was supposed to apply.** Seven cells of the same sign against a 2.1% spread, so the sign
+is not in doubt even where a single magnitude is.
+
+#### Why the footprint did not convert
+
+The footprint moved exactly as designed. Hot set per decoder **11.53 → 7.55 MiB PAL** and
+11.16 → 7.17 MiB NTSC; resident filters plus LUT 15.28 → 11.30 MiB PAL; L3 now holds 4.2 decoders'
+hot sets where it held 2.8. What it bought is in the counters — one serial PAL CVBS decoder over
+60 frames at `-s 40000`, solo and among eight, per frame (the chroma DG servo does not engage in
+60 frames, confirmed at 5.65 fps against 5.58 with `--no_chroma_dg`, so these three trees differ
+only in the table):
+
+| per frame | P1 solo | LUT solo | P2 solo | P1 /8 | LUT /8 | P2 /8 |
+|---|---:|---:|---:|---:|---:|---:|
+| instructions | 6.27e9 | 6.33e9 | 6.33e9 | 6.27e9 | 6.33e9 | 6.33e9 |
+| cycles | 2.25e9 | 2.25e9 | 2.23e9 | 5.67e9 | 5.60e9 | 5.60e9 |
+| IPC | 2.78 | 2.82 | 2.84 | 1.11 | 1.13 | 1.13 |
+| L2 misses | 1.47e7 | **1.36e7** | 1.32e7 | 2.98e7 | 2.91e7 | 2.93e7 |
+| fills from L3 | 1.59e7 (973 MiB) | **1.48e7** (905) | 1.44e7 (878) | 2.46e7 (1504) | 2.43e7 (1484) | 2.45e7 (1496) |
+| fills from DRAM | 5.14e6 (313 MiB) | **4.87e6** (297) | 4.92e6 (300) | 2.38e7 (1450) | 2.35e7 (1435) | 2.34e7 (1428) |
+| DRAM share of fills | 24% | 25% | 25% | 49% | 49% | 49% |
+| post-setup fps | 3.61 | 3.55 | 3.60 | 1.21 | 1.21 | 1.22 |
+
+The line fetches vanish as predicted — **1.1e6 fewer L2 misses per PAL frame** — but they are
+subtracted almost entirely from **L3**, not DRAM: L3 fills fall by 1.1e6 and DRAM fills by 0.27e6.
+The 4 MiB table was living in L3 and its misses were L3 hits, which one decoder's out-of-order
+window covers: the loads are independent across output samples, so the latency was already hidden.
+Among eight the effect is smaller still (L2 misses −2.3%, DRAM fills −1.3%, fps unchanged at 1.21)
+— **eight-way contention does not make the table pay either**. Against that, the arithmetic the
+small table needs is real work that nothing hides. Per field, isolated:
+
+| kernel | nearest / 65536 | interp / 65536 | interp / 256 |
+|---|---:|---:|---:|
+| PAL field, 355255 samples | 4.21 ms | 6.71 ms | 5.43 ms |
+| NTSC field, 239330 samples | 3.25 ms | 4.95 ms | 3.65 ms |
+
+`scale_positions` already interpolated, so for it the small table is pure gain (−19% PAL, −26%
+NTSC). `scale_field` did not, so it now pays the blend (+29% PAL, +12.5% NTSC). Blending the two
+dot products instead of the two weight vectors is slower still (+35% / +29%), so the inner loop is
+already the better of the two shapes.
+
+That is what NTSC CVBS's 1.4–4.4% loss is: it resamples only through `scale_field` — its 4fsc is
+line-locked, so it reuses the TBC picture — and Bambi carries no differential gain for Task 4 to
+pay it back with. The trade is accepted deliberately: a few percent on one format against 15–44%
+on PAL CVBS threaded and 22–41% under concurrent decoders is the balance this work is optimising
+for. Task 1 is kept for what it is worth on its own terms rather than for throughput — both kernels
+now resample identically, where §4c of the analysis noted they did not; the shipped table is more
+accurate than the nearest lookup it replaces; and 4 MiB per worker process stops being allocated.
+
+#### What this means for the rest of the plan
+
+- **The concurrent-serial curve does move** — +22% to +41% at N = 2, 4, 8 — which is what §4.2 said
+  only footprint work would do. But it is not footprint that moved it. It is 96 ms per frame of
+  transform taken off the critical path.
+- **The plan's central premise is wrong in its mechanism.** §3.3 and §4c of the analysis reason
+  that the working set exceeds L3, so cutting it must help. Cutting it by a third helped nothing,
+  because the traffic it removed was L3-resident and latency-hidden. What is scarce under
+  contention is not L3 capacity for *this* array; the 49% DRAM share among eight is unchanged by
+  taking 4 MiB out of the picture.
+- **Phases 3 and 6 are footprint arguments of exactly this shape and must be re-justified before
+  they are implemented.** Phase 3 narrows the filter bank to `complex64` for a 1.27 MiB saving per
+  block that its own §6 already says buys nothing in isolation; Phase 6 carries video at a lower
+  rate. Neither should be started on the strength of a footprint estimate now that a 4 MiB
+  reduction has been measured to be worth −2%. Phase 4's "take stock and replan" should come first,
+  and should look for more of what Task 4 was: work on the critical path, not bytes in a cache.
+- **There is more left in the chroma DG correction**, which still costs about 20% of a PAL CVBS
+  decode after padding (6.22 fps against 7.47 with `--no_chroma_dg` at `-s 5000 -l 200`).
+
+Byte-identity is not claimed for this phase and is not expected: the resample table changed. The
+gate is the conformance and identity suite, which passes 91/91 with no deviation band widened.
 
 ## 6. Phase 3 — the filter bank's dtype
+
+> **Superseded** by [`decode-throughput-plan.md`](decode-throughput-plan.md) §6 Task 4, which keeps
+> only the pipeline form and justifies it on bytes streamed under contention, not footprint.
 
 **Task 1 — measure the dtype options under contention.** In isolation the dtype change buys
 nothing: `complex128 × complex64` takes the same 0.022 ms/block as `complex128 × complex128`, and
@@ -379,6 +532,9 @@ separate, as in Phase 2 Task 2.
 
 ## 7. Phase 4 — take stock and replan
 
+> **Done, early:** [`decode-throughput-plan.md`](decode-throughput-plan.md) is this take-stock, brought
+> forward because §5.1 falsified the premise the phases below rest on.
+
 No decoder changes. Decides whether the remaining phases are needed at all.
 
 **Task 1 — re-measure the ceiling.** Re-run the `-t` sweep and the N = 1…16 concurrent-serial curve
@@ -399,6 +555,9 @@ at
 or below the measured optimum on the reference box.
 
 ## 8. Phase 5 — one resampler, one picture per field
+
+> **Superseded:** Task 1 survives as a simplification with no throughput claim; Task 2 is folded into
+> [`decode-throughput-plan.md`](decode-throughput-plan.md) §5 Task 3.
 
 **Task 1 — one position-based kernel.** Express `scale_field`'s raster case as a position generator
 feeding `scale_positions` (after Phase 2 both interpolate on the same table), and retire the
@@ -421,6 +580,9 @@ whole-field array live per field in CVBS mode.
 re-stated.
 
 ## 9. Phase 6 — carry video at the rate it needs
+
+> **Superseded:** conditional on a traffic inventory, [`decode-throughput-plan.md`](decode-throughput-plan.md)
+> §6 Task 6.
 
 Gated on Phase 4 Task 2. The highest-risk change in the plan: it moves where timing precision comes
 from.
@@ -447,6 +609,8 @@ and hand `EFM_PLL` the lower-rate stream.
 `compare-*-parallel-efm` unchanged in verdict; T-value distributions stated before/after.
 
 ## 10. Phase 7 — take stock: is the concurrency architecture still the limit?
+
+> **Superseded** by [`decode-throughput-plan.md`](decode-throughput-plan.md) §8.
 
 No decoder changes.
 

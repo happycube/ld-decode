@@ -258,10 +258,9 @@ class CVBSWriter:
         self._lock_residuals = []      # per-frame residual, degrees
 
         # PAL frames resample both fields under one lock shift, and only
-        # field A feeds the lock, so field B's resample (the longer one:
-        # its 354689-sample lattice length is prime, which puts every
-        # FFT in the chroma DG corrector on the Bluestein path) runs on
-        # this executor alongside field A's on the calling thread.  Both
+        # field A feeds the lock, so field B's resample (the longer of the
+        # two lattices, at 354689 samples) runs on this executor alongside
+        # field A's on the calling thread.  Both
         # complete inside _emit_frame, so nothing they read (the lock
         # shift, DecoderParams) can change under them.  Injectable for
         # tests; created on first use otherwise, released by close().

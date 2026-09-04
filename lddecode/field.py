@@ -97,6 +97,54 @@ CHROMA_DG_ANCHOR_IRE = 50.0
 #: the luminance the chroma is riding on.
 _chroma_dg_windows = {}
 
+#: Samples of the field's own periodic continuation carried either side of
+#: it through the transform.  The windows are shaped in frequency, so their
+#: impulse responses are not compactly supported and the padding has to
+#: reach past where their tails still matter; at 2048 samples the largest
+#: tap outside the guard is under 1e-7, four decades below the output
+#: quantisation step.
+CHROMA_DG_GUARD = 2048
+
+#: Transform plans for the correction, cached per field length.
+_chroma_dg_plans = {}
+
+
+def _chroma_dg_plan(length):
+    """(transform length, leading guard) for a field of `length` samples.
+
+    The lengths the decoder hands the corrector are poor transform lengths:
+    the longer PAL CVBS field lattice is 354689 samples, which is prime, and
+    the PAL TBC field is 5 x 227 x 313 -- pocketfft reaches both through
+    Bluestein, at 30.2 ms and 13.9 ms a transform where the next fast length
+    takes 2.6 ms and 4.4 ms.  Padding to that length costs a few thousand
+    samples of arithmetic and saves three transforms' worth of it per field.
+
+    The guard is clamped to half the field so that the trailing pad is never
+    longer than one field, and the leading pad never longer than the field.
+    """
+    got = _chroma_dg_plans.get(length)
+    if got is None:
+        guard = min(CHROMA_DG_GUARD, length // 2)
+        got = (spfft.next_fast_len(length + 2 * guard), guard)
+        _chroma_dg_plans[length] = got
+    return got
+
+
+def _chroma_dg_pad(ire, padded_len, guard):
+    """Extend the field to the transform length with its own repetition.
+
+    The transform convolves circularly, so the unpadded correction already
+    treated each end of the field as the other's neighbour.  Tiling keeps
+    that: the padded array is a contiguous window of the same periodic
+    extension, so it introduces no edge anywhere, and its own wrap -- the
+    only discontinuity there is -- sits `guard` samples clear of the first
+    sample kept and at least that clear of the last.
+    """
+    n = len(ire)
+    return np.concatenate(
+        (ire[n - guard:], ire, np.resize(ire, padded_len - n - guard))
+    )
+
 
 def _chroma_dg_window(length, fs_mhz):
     key = (length, round(fs_mhz, 6))
@@ -135,28 +183,34 @@ def _correct_chroma_vs_luma(ire, fs_mhz, slope, phase):
     to; equalising every level's phase to the burst's is what zero
     differential phase means.
     """
-    # scipy's pocketfft returns the same bits as numpy's here but runs
-    # its Bluestein path twice as fast - and one of the two PAL field
-    # lattice lengths (354689) is prime, so every transform takes it.
-    bandpass, lowpass = _chroma_dg_window(len(ire), fs_mhz)
-    spectrum = spfft.rfft(ire)
-    luma = spfft.irfft(spectrum * lowpass, len(ire))
+    # Transformed at a fast length rather than the field's own, which is
+    # prime on one PAL lattice and near enough on the others (see
+    # _chroma_dg_plan); the field is padded with its own repetition, so the
+    # circular convolution the ends see is the one they saw before.  Windows,
+    # analytic construction and inverses all run on the padded grid; only the
+    # field's own samples are kept.
+    n = len(ire)
+    padded_len, guard = _chroma_dg_plan(n)
+    field = slice(guard, guard + n)
+    bandpass, lowpass = _chroma_dg_window(padded_len, fs_mhz)
+
+    spectrum = spfft.rfft(_chroma_dg_pad(ire, padded_len, guard))
+    luma = spfft.irfft(spectrum * lowpass, padded_len)[field]
     level = np.clip(luma, 0.0, None)
     gain = ((1.0 + slope * CHROMA_DG_ANCHOR_IRE)
             / (1.0 + slope * level))
     if phase == 0.0:
-        chroma = spfft.irfft(spectrum * bandpass, len(ire))
+        chroma = spfft.irfft(spectrum * bandpass, padded_len)[field]
         return ire + (gain - 1.0) * chroma
 
     # The rotation needs the chroma band's analytic signal: positive
     # frequencies only, doubled (DC and Nyquist stay, though the
     # bandpass has removed both anyway).
-    n = len(ire)
     half = spectrum * bandpass
-    full = np.zeros(n, dtype=np.complex128)
+    full = np.zeros(padded_len, dtype=np.complex128)
     full[: len(half)] = half
-    full[1 : (n + 1) // 2] *= 2.0
-    chroma_analytic = spfft.ifft(full)
+    full[1 : (padded_len + 1) // 2] *= 2.0
+    chroma_analytic = spfft.ifft(full)[field]
     g = gain * np.exp(-1j * np.deg2rad(phase) * level)
     return ire + np.real((g - 1.0) * chroma_analytic)
 

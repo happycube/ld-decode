@@ -260,7 +260,11 @@ its own; the TBC lengths factor into small primes. This is a plausible part of w
 (2.65 vs 2.68) — the penalty is memory traffic, and it only bites once the machine is contended.
 Zero-padding to `scipy.fft.next_fast_len` before the transform is local to one function, though the
 bandpass and the analytic-signal construction would have to be built on the padded grid, and the
-padding discontinuity handled.
+padding discontinuity handled. **Done**, and *zero*-padding is the wrong filling: the transform is
+circular, so each end of the field already had the other as its neighbour, and zeroing the pad
+would replace that with an edge. Tiling the field's own periodic continuation keeps it, leaving the
+padded array's own wrap as the only discontinuity and a 2048-sample guard to hold it clear. The
+correction moves by at most 5.1e-6 IRE, against a 0.0021 IRE output LSB.
 
 ## 4c. The resample LUT is 4 MiB and is read once per output sample
 
@@ -302,13 +306,25 @@ sinc window itself, not the phase quantisation, so the table can shrink by 256x 
 16 KiB, small enough to sit in L1d — with no measurable change. Without interpolation a small table
 is indeed bad (57.7 dB at 256 phases), which is what the comment is really observing.
 
+**Done, and the throughput argument above is wrong** (see §5.1 of the working-set plan). The table
+is now 16 KiB and the accuracy holds, but shrinking it *cost* 1–3% in every cell measured, at one
+decoder and at four and eight concurrent ones. The counters say why: the LUT's misses were being
+served by **L3, not DRAM**. Per PAL frame the change removes 1.1e6 L2 misses, of which 1.1e6 come
+off L3 fills and 0.27e6 off DRAM fills; the DRAM share of all fills is 24-25% solo and 49% among
+eight either way. The lookups are independent across output samples, so an L3 hit's latency is
+already covered by the out-of-order window — while the per-tap blend a coarse table needs is real
+work that nothing covers (`scale_field` +29% PAL / +12.5% NTSC per field, against `scale_positions`
+−19% / −26%). The size arithmetic in this section is right; the inference from size to time is
+not.
+
 Two further notes from comparing the kernels:
 
 - The nearest and interpolated lookups differ from each other by 5.11e-06 rms, so **PAL CVBS and
   PAL TBC do not resample identically today**; the interpolated path is the more accurate of the
-  two.
+  two. **Fixed**: both kernels now interpolate, so both paths resample the same way.
 - `scale_positions` is declared `@njit(nogil=True, fastmath=True)`
-  ([`dsp.py:169`](../lddecode/dsp.py#L169)) — **no `cache=True`**, where `scale_field`
+  ([`dsp.py:169`](../lddecode/dsp.py#L169)) — **no `cache=True`** (**done**, see §4 of the
+  working-set plan), where `scale_field`
   ([`dsp.py:105`](../lddecode/dsp.py#L105)) has it. The PAL CVBS resampler is therefore JIT-compiled
   from source in every process on every run, including in every `-t N` worker. That is a startup
   cost, and it is part of why short runs measure so much worse than long ones (§1 of the hotspot
@@ -493,8 +509,8 @@ rough order of size:
 
 | Change | Footprint effect | Risk |
 |---|---|---|
-| 256-phase interpolated sinc LUT (§4c) | 4.00 MiB -> 16 KiB, and ~709k random DRAM fetches per frame become L1 hits | low: measured indistinguishable at 105.8 dB |
-| Chroma-DG transforms at `next_fast_len` (§4d) | none resident; ~90 ms/frame (CVBS) and ~50 ms/frame (TBC) off the output lane on DG-affected discs | low: padding-edge handling, DG/DP conformance figures |
+| 256-phase interpolated sinc LUT (§4c) | 4.00 MiB -> 16 KiB, and ~709k random DRAM fetches per frame become L1 hits | low: measured indistinguishable at 105.8 dB. **Done, and it does not pay**: the fetches were L3 hits, not DRAM, and removing them cost 1-3% |
+| Chroma-DG transforms at `next_fast_len` (§4d) | none resident; ~90 ms/frame (CVBS) and ~50 ms/frame (TBC) off the output lane on DG-affected discs | low: padding-edge handling, DG/DP conformance figures. **Done**: 105.6 -> 9.1 ms on the prime field, PAL CVBS +18.7% to +43.5%, and the whole of Phase 2's gain |
 | `complex64` filter bank (§4, §4d) | 11.0 -> 5.5 MiB resident, but only 2.53 -> 1.27 MiB read per block: hot set 11.5 -> 10.3 MiB | medium: no gain in isolation, scipy's `complex64` FFT is slower; must be measured under contention |
 | Decimate post-demod video to 20 MSPS (§4a) | halves 4-5 arrays/block and the `FVideo_rfft` bank | highest: lineloc precision, servo measurements |
 | `cache=True` on `scale_positions` (§4c) — **done**, 1.99 s compile becomes a 4 ms cache load | none resident; removes a per-process JIT compile | none |

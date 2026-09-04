@@ -8,6 +8,7 @@ from math import tau
 
 import numpy as np
 from numba import njit
+from scipy.special import i0
 
 
 # This runs a cubic scaler on a line.
@@ -51,55 +52,51 @@ def scale(buf, begin, end, tgtlen, mult=1):
 # (more ringing))
 # Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff
 # (less ringing))
-# kaiser_beta = 5
+kaiser_beta = 5
 sinc_tap_count = 16  # must be multiple of 2
-sinc_phase_count = 2**16
 
-# @njit
-# def sinc(x):
-#     if x == 0.0:
-#         return 1.0
-#     x_pi = np.pi * x
-#     return math.sin(x_pi) / x_pi
-
-
-# def kaiser_window(x, a, beta, i0_beta):
-#     r = x / a
-#     if r < -1.0 or r > 1.0:
-#         return 0.0
-#
-#     t = math.sqrt(1.0 - r * r)
-#     return i0(beta * t) / i0_beta
+#: Tabulated fractional positions between one input sample and the next.  Both
+#: resampling kernels interpolate between adjacent rows, which recovers a phase
+#: resolution far finer than the step, so the table is sized to sit in L1d
+#: beside the signal rather than to resolve the phase on its own: 257 rows of
+#: 16 float32 weights is 16 KiB.
+sinc_phase_count = 256
 
 
 # https://ccrma.stanford.edu/~jos/sasp/Kaiser_Windows_Transforms.html
-# def build_kaiser_lut(beta, taps, phases):
-#     a = taps // 2
-#
-#     offsets = np.arange(a - 1, -a - 1, -1)
-#     offsets_len = len(offsets)
-#
-#     table = np.zeros((phases + 1, taps), dtype=np.float32)
-#     weights = np.empty(offsets_len, dtype=np.float32)
-#     i0_beta = i0(beta)
-#
-#     for i in range(phases):
-#         phase = i / phases
-#
-#         s = 0.0
-#         for j in range(offsets_len):
-#             x = offsets[j] + phase
-#             weight = sinc(x) * kaiser_window(x, a, beta, i0_beta)
-#
-#             weights[j] = weight
-#             s += weight
-#
-#         table[i, :] = weights / s
-#
-#     # copy the last phase to avoid bounds checking later on when we do linear interpolation
-#     table[phases] = table[phases - 1]
-#
-#     return table
+def build_kaiser_lut(beta, taps, phases):
+    """Build the fractional-delay filter bank the resamplers read.
+
+    Row ``i`` is the ``taps``-weight windowed-sinc filter that reconstructs a
+    sample ``i / phases`` of the way from one input sample to the next,
+    normalised to unit gain at DC.  The table has ``phases + 1`` rows: the last
+    is the phase-1.0 filter, which is both what the top bucket interpolates
+    towards and what lets the kernels read ``phase + 1`` without a bounds
+    check.  It must be the real filter and not a copy of its neighbour --
+    duplicating it biases every position in the top 1/phases of the range, by
+    an amount the coarse table no longer makes negligible.
+
+    ``scripts/build_sinc_lut.py`` writes the result to ``lddecode/sinc_lut.npz``,
+    which is what a decode loads; the tests rebuild it here to check that file.
+    """
+    half_taps = taps // 2
+
+    # Tap offsets from the sample below the fractional position, so that phase
+    # zero puts the peak of the sinc on tap half_taps - 1 -- the tap the
+    # kernels align with the truncated position.
+    offsets = np.arange(half_taps - 1, -half_taps - 1, -1, dtype=np.float64)
+    phase = np.arange(phases + 1, dtype=np.float64) / phases
+    x = offsets[np.newaxis, :] + phase[:, np.newaxis]
+
+    # Kaiser window on the same grid.  |x| never exceeds half_taps for these
+    # offsets, so the clamp is only there to keep the square root in domain.
+    r = x / half_taps
+    window = i0(beta * np.sqrt(np.maximum(1.0 - r * r, 0.0))) / i0(beta)
+
+    table = np.sinc(x) * window
+    table /= table.sum(axis=1, keepdims=True)
+
+    return table.astype(np.float32)
 
 
 @njit(nogil=True, cache=True, fastmath=True)
@@ -149,19 +146,23 @@ def scale_field(
         # fractional phase
         frac = coord - coord_int
 
-        # sinc_phase_count is 2**16, so the nearest tabulated phase is already
-        # accurate far below float32 precision. Interpolating between two
-        # adjacent phases would double LUT reads and add per-tap math in the
-        # innermost loop of the decoder for no change in output.
-        # If the LUT gets smaller, consider adding linear interpolation.
-        phase = int(frac * sinc_phase_count + np.float32(0.5))
-        w = sinc_lut[phase]
+        # The table is coarse enough to stay in L1d, so take the two phases
+        # either side of the position and interpolate between them.
+        # scale_positions resolves the phase the same way, and the two kernels
+        # must return the same sample for the same position.
+        phase_pos = frac * sinc_phase_count
+        phase_start = int(phase_pos)
+        phase_alpha = np.float32(phase_pos - phase_start)
+
+        w_start = sinc_lut[phase_start]
+        w_end = sinc_lut[phase_start + 1]
 
         start = coord_int - half_taps_m1
 
         result = 0.0
         for t in range(sinc_tap_count):
-            result += buf[start + t] * w[t]
+            ws = w_start[t]
+            result += buf[start + t] * (ws + phase_alpha * (w_end[t] - ws))
 
         dsout[i - dsout_start] = level_adjust * result
 
@@ -202,7 +203,7 @@ def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
 
         phase_pos = frac * sinc_phase_count
         phase_start = int(phase_pos)
-        alpha2 = np.float32(phase_pos - phase_start)
+        phase_alpha = np.float32(phase_pos - phase_start)
 
         w_start = sinc_lut[phase_start]
         w_end = sinc_lut[phase_start + 1]
@@ -212,7 +213,7 @@ def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
         result = 0.0
         for t in range(sinc_tap_count):
             ws = w_start[t]
-            result += buf[start + t] * (ws + alpha2 * (w_end[t] - ws))
+            result += buf[start + t] * (ws + phase_alpha * (w_end[t] - ws))
 
         dsout[i] = level_adjusts[i] * result
 
