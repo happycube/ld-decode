@@ -244,6 +244,7 @@ class RFDecode:
 
         if self.decode_digital_audio:
             self.computeefmfilter()
+            self.computeefmhalffilter()
 
         self.computedelays()
 
@@ -321,6 +322,31 @@ class RFDecode:
         _sghigh = float(os.environ.get("LDDECODE_EFM_SGHIGH", _sghigh_default))
         _sglow = float(os.environ.get("LDDECODE_EFM_SGLOW", "20000"))   # low band edge (bandwidth)
         self.Filters["Fefm"] *= gen_bpf_supergauss(_sglow, _sghigh, _sgorder, 20000000, 32768)
+
+    def computeefmhalffilter(self):
+        """Fold the EFM filter for a real half-spectrum transform.
+
+        Both EFM front ends build Fefm one-sided: it is non-zero only on
+        positive-frequency bins, so ifft(X * Fefm) is an analytic signal
+        and demodblock keeps only its real part.  For a spectrum with no
+        negative-frequency content that real part is exactly the inverse
+        real transform of the positive half with every bin but DC and
+        Nyquist halved - one real transform where there was a complex
+        one of the same length, at half the time and 85% of the L2
+        misses per block, and the same int16 samples out.
+
+        DC and Nyquist are their own conjugates, so they are not halved;
+        the input spectrum is real there (it is the transform of a real
+        block), which is why taking the filter's real part reproduces
+        the real part of the product.  Both bins are zero in either
+        front end - the equaliser starts at zero amplitude and stops
+        well below Nyquist - so this is the convention stated, not a
+        correction being applied.
+        """
+        half = self.Filters["Fefm"][: self.blocklen // 2 + 1] * 0.5
+        half[0] = self.Filters["Fefm"][0].real
+        half[-1] = self.Filters["Fefm"][self.blocklen // 2].real
+        self.Filters["Fefm_half"] = half
 
     def _efm_hardware_frontend(self):
         """Hardware-derived EFM front end as frequency-domain coefficients.
@@ -699,6 +725,23 @@ class RFDecode:
             stack.append(SF["FVideoPilot"][:nr])
 
         SF["FVideo_rfft"] = np.asarray(stack)
+
+        # The single-precision copy demodblock actually transforms, and
+        # the two constants that make it as accurate as the record array
+        # it feeds.  The video products are stored as float32, whose
+        # quantum at the 8.5 MHz carrier is about 1 Hz; filtering at that
+        # magnitude in float32 would spend five of them, because every
+        # intermediate carries the carrier.  The band is only +/-0.7 MHz
+        # wide, so the block is centred on blanking before the cast and
+        # each channel's own DC gain puts the offset back afterwards.
+        # Both constants are derived here, with the stack they belong to,
+        # so a rebuild can never leave demodblock subtracting one centre
+        # and adding another back.
+        SF["FVideo_rfft32"] = SF["FVideo_rfft"].astype(np.complex64)
+        SF["FVideo_rfft_centre"] = float(self.SysParams["ire0"])
+        SF["FVideo_rfft_dc"] = (
+            SF["FVideo_rfft"][:, 0].real * SF["FVideo_rfft_centre"]
+        ).astype(np.float32)
 
     def inverse_mtf_2t_peak_gain(self, strength):
         """Peak gain of the inverse-MTF chroma filter on an ideal 2T pulse.
@@ -1368,12 +1411,20 @@ class RFDecode:
         demod = unwrap_hilbert(hilbert, self.freq_hz)
 
         # FVideo05 carries its delay compensation as a phase ramp, so no roll
-        # is needed here (see computevideofilters).
-        demod_fft = npfft.rfft(np.clip(demod, 1500000, self.freq_hz * 0.75))
+        # is needed here (see computevideofilters).  Filtered exactly as
+        # demodblock filters the same channel - single precision, centred
+        # on blanking, the stack's own row - because the start finder's
+        # answer has to be the sync channel a real decode would produce,
+        # and test_start_finder holds the two to bit equality.
+        centre = self.Filters["FVideo_rfft_centre"]
+        clipped = np.empty(self.blocklen, dtype=np.float32)
+        np.subtract(np.clip(demod, 1500000, self.freq_hz * 0.75), centre,
+                    out=clipped)
         sync = npfft.irfft(
-            demod_fft * self.Filters["FVideo05"][: demod_fft.shape[0]],
+            npfft.rfft(clipped) * self.Filters["FVideo_rfft32"][1],
             n=self.blocklen,
         )
+        sync += self.Filters["FVideo_rfft_dc"][1]
 
         if cut:
             sync = sync[self.blockcut : -self.blockcut_end]
@@ -1393,10 +1444,10 @@ class RFDecode:
         elif data is not None:
             # The RF input is real, so its DFT is conjugate-symmetric.  Use rfft
             # (moves ~half the bytes of a full complex fft) and mirror it back to
-            # the full spectrum that demodblock's consumers (hilbert/EFM/audio and
-            # the symmetric V4300D notch below) expect.  Byte-identical to
-            # npfft.fft(real); helps under the memory-bandwidth contention of
-            # parallel decodes.
+            # the full spectrum that demodblock's remaining consumers (the
+            # hilbert transform, the audio slicers and the symmetric V4300D
+            # notch below) expect.  Byte-identical to npfft.fft(real); helps
+            # under the memory-bandwidth contention of parallel decodes.
             raw = data[: self.blocklen]
             nfft = raw.shape[0]
             half = npfft.rfft(raw)
@@ -1451,50 +1502,61 @@ class RFDecode:
         # are conjugate-symmetric) at ~2.3x the speed of the full complex transforms.
         # All four products share demod's transform, so filter and invert them
         # together in one batched irfft (see build_video_rfft_stack).
-        demod_fft = npfft.rfft(np.clip(demod, 1500000, self.freq_hz * 0.75))
         bl = self.blocklen
 
+        # Filter in single precision: the products are stored as float32,
+        # so this is the precision the answer is kept at either way.  The
+        # block is centred on blanking first (build_video_rfft_stack) so
+        # that the transform is not spending its mantissa on the carrier,
+        # and each channel's DC gain puts the offset back below, on the
+        # copy into the record array that had to happen anyway.  Halves
+        # the bytes of the largest stream in a decode.
+        centre = self.Filters["FVideo_rfft_centre"]
+        clipped = np.empty(bl, dtype=np.float32)
+        np.subtract(np.clip(demod, 1500000, self.freq_hz * 0.75), centre,
+                    out=clipped)
         video_results = npfft.irfft(
-            demod_fft * self.Filters["FVideo_rfft"], n=bl, axis=1
+            npfft.rfft(clipped) * self.Filters["FVideo_rfft32"], n=bl, axis=1
         )
-
-        out_video, out_video05, out_videoburst = video_results[:3]
 
         # Cast on assignment into the record array rather than building float32
         # copies first: np.rec.array() would copy those copies into the record
         # array anyway, so each channel was passed over twice and a whole
         # field-block of float32 temporaries was allocated to be thrown away.
-        # Assigning a float64 array into a float32 field runs the same cast as
-        # .astype(np.float32), so the record array's bytes are unchanged.
+        # demod_raw is the unfiltered demod and carries no centring; the
+        # filtered channels take theirs back as they are copied (np.add into
+        # the record array field reads and writes exactly what the plain
+        # assignment did).
+        names = ["demod", "demod_raw", "demod_05", "demod_burst"]
+        filtered = [("demod", 0), ("demod_05", 1), ("demod_burst", 2)]
         if self.system == "PAL":
-            channels = [
-                ("demod", out_video),
-                ("demod_raw", demod),
-                ("demod_05", out_video05),
-                ("demod_burst", out_videoburst),
-                ("demod_pilot", video_results[3]),
-            ]
-        else:
-            channels = [
-                ("demod", out_video),
-                ("demod_raw", demod),
-                ("demod_05", out_video05),
-                ("demod_burst", out_videoburst),
-            ]
+            names.append("demod_pilot")
+            filtered.append(("demod_pilot", 3))
 
-        video_out = np.recarray(bl, dtype=[(name, np.float32) for name, _ in channels])
-        for name, source in channels:
-            video_out[name] = source
+        dc = self.Filters["FVideo_rfft_dc"]
+        video_out = np.recarray(bl, dtype=[(name, np.float32) for name in names])
+        video_out["demod_raw"] = demod
+        for name, i in filtered:
+            if dc[i]:
+                np.add(video_results[i], dc[i], out=video_out[name])
+            else:
+                video_out[name] = video_results[i]
 
         rv["video"] = (
             video_out[self.blockcut : -self.blockcut_end] if cut else video_out
         )
 
         if self.decode_digital_audio:
-            efm_out = npfft.ifft(indata_fft * self.Filters["Fefm"])
+            # One real transform, not a complex one: Fefm is one-sided,
+            # so only the real part of the analytic signal is wanted and
+            # the folded half-spectrum filter delivers exactly that (see
+            # computeefmhalffilter).
+            efm_out = npfft.irfft(
+                indata_fft[:nrf] * self.Filters["Fefm_half"], n=self.blocklen
+            )
             if cut:
                 efm_out = efm_out[self.blockcut : -self.blockcut_end]
-            rv["efm"] = np.int16(np.clip(efm_out.real, -32768, 32767))
+            rv["efm"] = np.int16(np.clip(efm_out, -32768, 32767))
 
         # NOTE: AC3 RF is demodulated from the raw input samples at write time
         # (see LDdecode.AC3demodulate), not from the demod outputs here.
