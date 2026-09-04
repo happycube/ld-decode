@@ -152,6 +152,10 @@ Two different shapes:
   as one core. The GIL itself is held 56% of the time (`py-spy --gil`), so it is not saturated; the
   work is. **Chroma DG is still 83 ms of a 160 ms PAL CVBS frame** — the field transforms are
   cheap in isolation (9 ms per field) but not with six workers streaming through the same L3.
+
+  *This table is pre-Phase-3; §7 Task 1 re-measures it.* The two output threads are now 126.5
+  ms/frame rather than 175, the FLAC reader 32.6 rather than 55, and the GIL is held 60% of a
+  frame with no parent thread above 71% duty.
 - **PAL `--tbc` and NTSC are worker-bound at `-t 4` and contention-bound past it.** Four workers
   run at 94–95% each; eight workers at 90–92% each produce *less*. Cores are available (16 SMT
   threads) — each field just costs more once eight FFT-bound processes share eight FPUs and one
@@ -236,6 +240,16 @@ expensive (§5 Task 2). Work is not movable between these ceilings at par: the o
 have paid are the ones that **delete** work (§1's MTF hold, §1's transform length, §5's corrector).
 Phase 4's traffic items are of that kind; the "give it its own thread / its own process" kind is
 answered, and needs a new measurement before it is tried again.
+
+**Phase 5 measured the two kinds against each other at the same size.** Its two implemented changes
+each account for about the same parent milliseconds per frame — 24 for the reader's buffer, 7 for
+the VITS measurements — and they went opposite ways: deleting the reader's copies paid **+7.4%** at
+`-t 6`, and moving the VITS measurements from the parent's main thread into the workers cost
+**−2.0%** at the same `-t` and was reverted (§7 Tasks 2 and 3). Both are bit-identical decodes, both
+were measured interleaved on the same box in the same session. That is the rule's third and
+cleanest data point, and it is why §7 Task 5 declines a transport rewrite whose prize is a few per
+cent: the question to ask of a parent-side item is not how many milliseconds it is, but whether
+those milliseconds stop being spent at all.
 
 ## 4. Rules
 
@@ -809,26 +823,158 @@ instructions per frame down 7% and no conformance band widened.
 
 ## 7. Phase 5 — the parent's remaining per-frame work
 
-Only after Phases 3 and 4, and only if Phase 4 Task 7 shows `-t N` flattening below the worker
-knee. **It does.** With Phase 4 in, PAL `--tbc` at `-t 6` reaches 9.31 fps while PAL CVBS at the
-same `-t` reaches 7.93: the same workers, and the difference between them is the parent's output
-stage. Phase 4 also widened the gap rather than closing it (`--tbc` gained 14.4% against CVBS's
-9.2%), because a worker-side saving cannot be spent by a parent-bound cell. This phase is now the
-binding one for PAL CVBS. The candidates are known from §2.3, in order of size at `-t 6`:
+Ceiling A. Only after Phases 3 and 4, and only if Phase 4 Task 7 shows `-t N` flattening below the
+worker knee. **It does.** With Phase 4 in, PAL `--tbc` at `-t 6` reaches 9.31 fps while PAL CVBS at
+the same `-t` reaches 7.93: the same workers, and the difference between them is the parent's
+output stage. Phase 4 also widened the gap rather than closing it (`--tbc` gained 14.4% against
+CVBS's 9.2%), because a worker-side saving cannot be spent by a parent-bound cell. This phase is
+therefore the binding one for PAL CVBS.
 
-- **The FLAC reader** (55–70 ms/frame in the parent, holding the GIL for ~a third of it): decode in
-  a subprocess writing to shared memory, or hand PyAV a preallocated plane so the `bytes()` and
-  `extend` copies go; either way the reader stops being a GIL client of the parent.
-- **Result unpickling** (27 ms/frame): ship the worker's field through shared memory rather than a
-  pickle over a pipe; the `prepare_transport` payload is already contiguous arrays.
-- **VITS measurement on the main thread** (`measure_vits_multiburst`, 6–10 ms/frame): the
-  measurements are already made in the worker for the servos; the main-thread call is the
-  calibrate-time repeat and can read the worker's figures.
-- **Inline `demodblock` on the main thread** (7.5 ms/frame at `-t 6`): rejected speculations and
-  the input tail; state the rejection rate before deciding.
+**Outcome.** One of the four candidates landed, and it is the one that turned out to be a deletion:
+the FLAC reader's decode buffer was re-seating a 64 MB `bytearray` on nearly every extend, so
+36 ms of a PAL `--tbc` frame was spent copying bytes that had already arrived. Replacing it with a
+fixed-capacity ring gives **PAL CVBS +8.8% at `-t 1`, +7.4% at `-t 6`, and PAL `--tbc` +5.2% at
+`-t 6`**, bit-identical output, at a cost of 91 lines. The other three are answered with figures:
+the VITS measurements were moved to the workers, measured at **−2.0%** on the binding cell, and
+reverted; the inline `demodblock` is 6.7 ms/frame of which none is a rejected speculation
+(`speculation_log` is empty over the spans measured); and the result transport is priced at
+49 ms/frame of CPU across both ends but declined, with the condition that would reopen it stated.
+Conformance is 96/96 with no deviation widened; the unit suite is 1754 passed, 3 skipped.
 
-*Acceptance:* for each item taken, the parent's per-thread ms/frame before and after, and the
-harness row.
+**Task 1 — re-measure the parent, because §2.3's table predates Phases 3 and 4.**
+
+`py-spy record --rate 200 --threads --subprocesses`, 400 frames, attributed per parent thread
+(`docs-planning/.../phase5/parent_threads.py`). PAL CVBS `-t 6` at HEAD, and the same run sampled
+with `--gil` so each thread's *GIL-held* share is separated from its CPU:
+
+| parent thread | ms/frame CPU | of which GIL | what it is |
+|---|---:|---:|---|
+| `ld-output` | 82.7 | — | EFM `process` 30.3, `downscale_cvbs` 23.3, DG band 9.0, chroma-vs-luma 7.5, encode 4.0 |
+| `Thread-2 (_reader_loop)` | 56.6 | — | libav FLAC decode 33.1, **`buf.extend` 25.9** |
+| `cvbs-resample_0` | 43.8 | — | `downscale_cvbs` 24.7, DG band 9.2, chroma-vs-luma 6.5 |
+| `MainThread` | 27.9 | — | `demodblock` 6.7, `measure_vits_multiburst` 6.5, the rest scattered |
+| `Thread-3` (pool results) | 25.2 | — | `_recv` 10.6, `recv` 4.5 |
+| **total** | **252** | | 1.8 cores of parent at 7.18 fps under the sampler |
+
+Phase 3 has already halved what §2.3 measured: the two output threads were 175 ms/frame and are now
+126.5. The reader is now the second-largest thread and the largest single line in the parent is
+inside it.
+
+**Task 2 — the FLAC reader. Landed.**
+
+The 25.9 ms is not the FLAC decode and it is not the `bytes(rf.planes[0])` copy (0.56 ms/frame);
+it is `bytearray.extend` on the decode buffer, which is 100× what copying 3.2 MB per frame should
+cost. The cause is the buffer's shape, not its size: the reader runs ahead until backpressure, so
+the buffer sits at its 64 MB cap, and each extend near the cap re-seats the whole allocation.
+Reproduced in isolation — the same producer/consumer pattern at the cap costs 17.3 ms per frame's
+worth of bytes, against 1.1 ms when the buffer is kept small and 0.9 ms for a deque of chunks.
+
+What landed is `fileio.SampleRing`: one fixed allocation of `readahead + history` bytes, a write
+cursor and a read cursor. A byte is copied in once and out once, and nothing moves as the buffer
+fills. Holding the producer to `readahead` bytes ahead of the consumer is the same condition as
+keeping the ring from overwriting itself, so the backpressure rule and the safety rule are one
+test; the extra `history` is what makes a backward seek a cursor move. That deletes, besides the
+extend: the `bytes(buffer[:n])` slice and its `del` (1.7 ms), the separate `rewind_buf` and its
+trim (2.2 ms), and the `buf_data + read_data` concatenation (0.6 ms) — the reader now hands back a
+`np.empty` the samples were decoded straight into.
+
+*Before and after, same run and sampler* (PAL CVBS `-t 6`):
+
+| parent thread | ms/frame before | after |
+|---|---:|---:|
+| `Thread-2 (_reader_loop)` | 56.6 | **32.6** |
+| parent total | 252 | 237 |
+
+*Harness rows* (interleaved plain A/B, three rounds, `-l 300`, both trees warmed first):
+
+| cell | HEAD | ring reader | |
+|---|---:|---:|---:|
+| PAL CVBS `-t 1` | 3.61 | 3.93 | **+8.8%** |
+| PAL CVBS `-t 6` | 7.81 | 8.39 | **+7.4%** |
+| PAL `--tbc` `-t 6` | 9.05 | 9.52 | **+5.2%** |
+
+Per-round spreads are 3.58–3.64 / 3.91–3.95, 7.75–7.84 / 8.25–8.47, 8.90–9.13 / 9.37–9.65: every
+round of every cell is on the same side.
+
+*Identity.* The reader returns the same bytes on every path it has — sequential, a forward gap, a
+gap past `seek_threshold`, a backward seek inside the history and one past it — checked against
+fresh readers on the real capture. Decoded 40 frames PAL CVBS and PAL `--tbc` at `-t 4`: `.tbc`,
+`.cvbs`, `.efm`, `.pcm` and the `.wav` byte-identical, and every metadata row identical (80 field
+records, 80 `vits_metrics`, 80 VBI, 37 dropouts) but the git version stamp. `tests/unit/
+test_fileio_sample_ring.py` pins the ring's cursor arithmetic and the reader's seek paths against
+a byte generator, with no PyAV and no capture file.
+
+**Task 3 — VITS on the main thread. Built, measured, reverted.**
+
+The candidate was stated as "the measurements are already made in the worker"; they are not — all
+three (`measure_its_2t_ratio`, `measure_vits_dg_staircase`, `measure_vits_multiburst`, 7.8 ms/frame
+together) run only on the parent's main thread. They are pure functions of the field's TBC picture
+and the AGC's vsync level (`out_scale` is frozen at `process()` time), so the implementation was
+the established `precomputed_*` pattern: the worker makes the set the enabled servos will ask for
+and stamps it with the level it used, and the parent re-measures the moment the AGC has moved —
+the same bookkeeping `chroma_dg_output_key` does, and what keeps `-t 1` and `-t N` identical.
+
+It works and it is bit-identical (40 frames, both output modes, all metadata rows equal). It is
+also slower:
+
+| cell | ring reader | + worker-side VITS | |
+|---|---:|---:|---:|
+| PAL CVBS `-t 1` | 3.97 | 3.96 | −0.3% |
+| PAL CVBS `-t 6` | 8.54 | 8.37 | **−2.0%** |
+| PAL `--tbc` `-t 6` | 9.67 | 9.63 | −0.4% |
+
+Under the plan's own rule that is not a difference, but all three rounds of the binding cell are on
+the same side (8.47/8.59/8.56 against 8.33/8.36/8.42), and the sign is the point. 7 ms/frame came
+off a parent lane that is not the parent's binding one — the main thread is 27.9 ms/frame against
+`ld-output`'s 82.7 — and landed on six workers that are already contending. **Reverted.** This is
+the third measurement of §3's rule and the cleanest: the reader change and this one are the same
+size in parent milliseconds, and the one that *deleted* the work paid 7.4% where the one that
+*moved* it cost 2.0%.
+
+**Task 4 — inline `demodblock` on the main thread. Not taken; the rejection rate is zero.**
+
+The candidate asked for the rejection rate before deciding. `speculation_log` is empty over every
+span measured here (40 frames at `-t 4`, both output modes) — no rejected speculation at all on
+this capture, so none of the 6.7 ms/frame is a re-decode. It is, by stack: `_calibration_warmup`
+51%, `_advance_chain` 33%, `_commit_entry` 16%. The warmup runs once before the first commit and
+is amortised setup, not per-frame work; what is left is ~3 ms/frame of chain advance. Too small to
+restructure the commit path for, and the figure that would change that verdict is a capture with a
+non-zero rejection rate, which this one does not provide.
+
+**Task 5 — the result transport. Priced at 49 ms/frame, declined.**
+
+The payload is 6.0 MB per field, measured by re-pickling each component of a real job result
+(`phase5/payload.py`): `transport_demod` 3.71 MB, `efmout` 1.56 MB, `dspicture` 0.69 MB, everything
+else under 15 KB. `picture`, `efm` and `audio` are the same objects as the field's own attributes,
+so they cost nothing extra. Both ends of the pipe pay: the worker spends 15.1 ms/frame pickling and
+5.1 in `prepare_transport`, the parent's `Thread-3` 28.9 — **49 ms/frame of CPU to move 12 MB per
+frame between processes**, 8.7% of the 565 ms/frame the whole process tree uses.
+
+That is a deletion, not a relocation, so §3's rule does not rule it out. What rules it out is the
+size of the prize against the risk. The GIL profile says `Thread-3` is the parent's largest single
+GIL holder (18.4 of 76 ms/frame) — but the parent holds the GIL only 60% of a frame, nothing in it
+is saturated (`ld-output` is the closest at 71% duty), and the whole tree uses 4.5 of the box's 8
+cores at `-t 6`. Shared memory would delete the byte copies but not the object reconstruction, so
+the honest prediction is a few per cent — at the noise floor this document sets at 5% — for the
+change with the worst failure mode in it: the arrays live until the ordered output lane has written
+the field, and on PAL they live across two frames because `cvbs.py` holds a first field until its
+pair arrives, so a block recycled early is silent corruption of picture data.
+
+Two cheaper deletions inside the payload were looked for and are not there. `transport_demod` is
+949,811 samples against a PAL field's 800,000, so trimming it to the span `downscale_cvbs` actually
+indexes would save 9.8% of the payload — but every position in `locs` is an absolute index into it
+and would need the offset carried, for ~5 ms/frame. `efmout` cannot be decimated in the worker for
+the same reason the 4fsc resample cannot: the EFM decimator carries filter state across the whole
+capture, in commit order.
+
+*What would reopen this.* `ld-output` at 82.7 ms/frame is the parent's binding lane and 30.3 of it
+is `efm_demod.process`. If that lane comes down, the GIL becomes the parent's binding resource
+rather than one lane's CPU, and `Thread-3`'s 18.4 ms of it is then the largest thing left to
+delete. Measure the GIL occupancy again first: at 60% it is not yet the constraint.
+
+*Acceptance:* met for the item taken — the parent's per-thread ms/frame before (56.6) and after
+(32.6), and the harness rows above. Three items priced and not taken, each with the figure that
+decided it.
 
 ## 8. Phase 6 — take stock: is the concurrency architecture the limit?
 
@@ -838,6 +984,15 @@ now scales to the physical core count, close; re-derive the `-t` auto default fr
 parent, reopen the concurrency design with the batch-parallel plan's §3.6 as input — on the traffic
 figures, not a footprint. If it flattens at ceiling C, the remaining lever is bytes per frame in
 the demodulator itself, and that is a separate plan.
+
+What Phase 5 hands this phase is a parent that is no longer explained by any one number. At PAL
+CVBS `-t 6` the whole process tree uses 4.5 of the box's 8 cores, the parent holds the GIL 60% of a
+frame, and its busiest thread (`ld-output`) is at 71% duty — nothing is saturated, and yet the cell
+sits at 8.4 fps against `--tbc`'s 9.5 on the same workers. So the first question here is no longer
+"which lane is the ceiling" but whether the remaining gap is the serial dependency between the
+commit thread and the two output lanes, which is a concurrency-design question and not a
+per-function one. §7 Task 5 names the measurement that decides whether the transport is worth
+rewriting on the way (the GIL occupancy, re-taken after `ld-output` comes down).
 
 ## 9. Superseded
 

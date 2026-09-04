@@ -357,6 +357,97 @@ class LoadFFmpeg:
         return self.read(infile, sample, readlen)
 
 
+class SampleRing:
+    """Fixed-capacity byte ring between the FLAC decode thread and its reader.
+
+    The producer appends decoded bytes at a write cursor; the consumer takes
+    them in order at a read cursor and may seek backwards over the recent
+    past.  Nothing moves as the buffer fills: a byte is copied in once and
+    out once, where a growing `bytearray` re-seats the whole buffer every
+    time it is extended near its cap.
+
+    Capacity is `readahead + history`.  Holding the producer to `readahead`
+    bytes ahead of the consumer is therefore the same condition as keeping
+    the ring from overwriting itself, and it leaves `history` bytes behind
+    the read cursor intact for a backward seek.
+
+    Cursors are absolute byte counts since the ring was made, so they say
+    where the consumer is in the run as well as where it is in the ring.
+    """
+
+    def __init__(self, readahead, history):
+        self.readahead = int(readahead)
+        self.history = int(history)
+        self.capacity = self.readahead + self.history
+        self._buf = bytearray(self.capacity)
+        self._view = memoryview(self._buf)
+        self.wpos = 0
+        self.rpos = 0
+
+    @property
+    def available(self):
+        """Bytes written but not yet read."""
+        return self.wpos - self.rpos
+
+    @property
+    def writable(self):
+        """Bytes the producer may write without overrunning the consumer."""
+        return self.readahead - self.available
+
+    @property
+    def rewindable(self):
+        """Bytes behind the read cursor that are still intact."""
+        return min(self.rpos, self.capacity - self.available)
+
+    def write(self, data):
+        """Copy `data` in at the write cursor.  The caller must have checked
+        `writable` first; writing more than that corrupts unread bytes."""
+        n = len(data)
+        if n > self.writable:
+            raise ValueError("SampleRing.write of %d bytes over %d writable"
+                             % (n, self.writable))
+        start = self.wpos % self.capacity
+        end = start + n
+        if end <= self.capacity:
+            self._view[start:end] = data
+        else:
+            split = self.capacity - start
+            self._view[start:] = data[:split]
+            self._view[: n - split] = data[split:]
+        self.wpos += n
+
+    def read_into(self, out):
+        """Copy up to len(out) available bytes into `out`, advancing the read
+        cursor.  Returns the number copied (short only when the ring is
+        empty of unread bytes)."""
+        n = min(len(out), self.available)
+        if n:
+            start = self.rpos % self.capacity
+            end = start + n
+            if end <= self.capacity:
+                out[:n] = self._view[start:end]
+            else:
+                split = self.capacity - start
+                out[:split] = self._view[start:]
+                out[split:n] = self._view[: n - split]
+            self.rpos += n
+        return n
+
+    def skip(self, count):
+        """Advance the read cursor over `count` available bytes without
+        copying them.  Returns the number skipped."""
+        n = min(count, self.available)
+        self.rpos += n
+        return n
+
+    def rewind(self, count):
+        """Move the read cursor back over `count` retained bytes.  Returns
+        the number moved, which is short if the history does not reach."""
+        n = min(count, self.rewindable)
+        self.rpos -= n
+        return n
+
+
 class LoadLDF:
     """Load samples from an .ldf file using PyAV (FFmpeg) for in-process FLAC decode.
 
@@ -376,20 +467,19 @@ class LoadLDF:
 
         self.position = 0
         self.rewind_size = 2 * 1024 * 1024
-        self.rewind_buf = bytearray()
 
         # Forward seeks farther than this (in bytes) restart the decoder with a
         # container seek instead of reading and discarding samples one by one.
         self.seek_threshold = 40 * 1024 * 1024
 
-        # Soft cap on the decode buffer, to bound memory use.  The reader thread
-        # pauses once the buffer grows past this -- unless a single read needs
-        # more than this many bytes (see _read_data), to avoid a deadlock.
-        self._max_buffer = 64 * 1024 * 1024
+        # How far the decode thread may run ahead of the reader, to bound
+        # memory use.  A single read larger than this cannot be served out of
+        # the ring, so _ensure_readahead raises it (restarting the decoder) if
+        # one ever arrives; at a field per read it never does.
+        self._readahead = 64 * 1024 * 1024
 
         self._container = None
-        self._buffer = bytearray()
-        self._want = 0
+        self._ring = None
         self._cv = threading.Condition()
         self._eof = False
         self._reader_thread = None
@@ -425,28 +515,26 @@ class LoadLDF:
         # is the only thing that closes it: closing it from another thread
         # while the reader is inside a libav demux call frees the AVIOContext
         # under it and segfaults (NULL URLContext in ffurl_seek2).
-        buf = bytearray()
+        ring = SampleRing(self._readahead, self.rewind_size)
         stop_event = threading.Event()
         with self._cv:
-            self._buffer = buf
-            self._want = 0
+            self._ring = ring
             self._eof = False
         self._stop_event = stop_event
         self._container = container
 
         self.position = sample * 2
-        self.rewind_buf = bytearray()
 
         self._reader_thread = threading.Thread(
             target=self._reader_loop,
-            args=(stop_event, buf, sample, container, decode_iter, resampler),
+            args=(stop_event, ring, sample, container, decode_iter, resampler),
             daemon=True,
         )
         self._reader_thread.start()
 
-    def _reader_loop(self, stop_event, buf, target_sample, container,
+    def _reader_loop(self, stop_event, ring, target_sample, container,
                      decode_iter, resampler):
-        """Background thread: decode FLAC frames into `buf`.
+        """Background thread: decode FLAC frames into `ring`.
 
         Discards any samples decoded before `target_sample` (the lead-in that
         results from seeking to a frame before the requested position).
@@ -483,17 +571,14 @@ class LoadLDF:
                             continue
 
                     with self._cv:
-                        # Backpressure: pause while the buffer is over the cap,
-                        # but keep filling if a pending read needs even more.
-                        while (
-                            len(buf) >= self._max_buffer
-                            and len(buf) >= self._want
-                            and not stop_event.is_set()
-                        ):
+                        # Backpressure: pause until the ring has room for this
+                        # frame without overwriting bytes the reader has yet to
+                        # take, or the recent past it may still seek back over.
+                        while ring.writable < len(data) and not stop_event.is_set():
                             self._cv.wait()
                         if stop_event.is_set():
                             return
-                        buf.extend(data)
+                        ring.write(data)
                         self._cv.notify_all()
         except Exception:
             traceback.print_exc()
@@ -503,7 +588,7 @@ class LoadLDF:
             except Exception:
                 pass
             with self._cv:
-                if self._buffer is buf:
+                if self._ring is ring:
                     # Still the current run; a stale thread from a superseded
                     # run must not inject EOF into its successor's state.
                     self._eof = True
@@ -527,28 +612,36 @@ class LoadLDF:
         self._stop_event = None
         self._container = None
 
-    def _read_data(self, count):
-        """Read up to `count` bytes from the decoded buffer, blocking until they
-        are available or the decoder reaches EOF (so a short read means EOF)."""
+    def _consume(self, count, out=None):
+        """Take `count` decoded bytes, blocking until they are there or the
+        decoder reaches EOF (so a short return means EOF).  With `out` the
+        bytes are copied into it, otherwise they are discarded; either way the
+        ring keeps them behind the read cursor for a later backward seek.
+
+        Returns the number of bytes taken."""
         with self._cv:
-            self._want = count
-            self._cv.notify_all()
-            while len(self._buffer) < count and not self._eof:
+            while self._ring.available < count and not self._eof:
                 self._cv.wait()
-
-            available = min(count, len(self._buffer))
-            data = bytes(self._buffer[:available])
-            del self._buffer[:available]
-            self._want = 0
+            if out is None:
+                got = self._ring.skip(count)
+            else:
+                got = self._ring.read_into(out[:count])
             self._cv.notify_all()
 
-        self.position += len(data)
+        self.position += got
+        return got
 
-        self.rewind_buf += data
-        if len(self.rewind_buf) > 2 * self.rewind_size:
-            del self.rewind_buf[: len(self.rewind_buf) - self.rewind_size]
-
-        return data
+    def _ensure_readahead(self, count):
+        """Make sure a single read of `count` bytes can be served.  The ring
+        holds the decode thread `readahead` bytes ahead of the reader, so a
+        larger read would wait for bytes the producer is not allowed to write.
+        Raising the bound restarts the decoder, which at one field per read
+        never happens."""
+        if count <= self._readahead:
+            return
+        self._readahead = count + self.rewind_size
+        if self._container is not None:
+            self._start_decoder(self.position // 2)
 
     def _close(self):
         self._stop_decoder()
@@ -559,6 +652,7 @@ class LoadLDF:
     def read(self, infile, sample, readlen):
         sample_bytes = sample * 2
         readlen_bytes = readlen * 2
+        self._ensure_readahead(readlen_bytes)
 
         # (Re)start the decoder if it isn't running, or if the target is far
         # enough ahead that seeking beats reading and discarding.
@@ -566,37 +660,29 @@ class LoadLDF:
             self._start_decoder(sample)
 
         if sample_bytes < self.position:
-            # Seeking backwards - serve from rewind_buf if it reaches back far
-            # enough, otherwise reseek.
-            start = len(self.rewind_buf) - (self.position - sample_bytes)
-            end = min(start + readlen_bytes, len(self.rewind_buf))
-            if start < 0:
+            # Seeking backwards - the ring keeps the recent past behind the
+            # read cursor, so this is a cursor move if it reaches back far
+            # enough, and a reseek if it does not.
+            back = self.position - sample_bytes
+            with self._cv:
+                moved = self._ring.rewind(back)
+                self._cv.notify_all()
+            self.position -= moved
+            if moved < back:
                 self._start_decoder(sample)
-                buf_data = b""
-            else:
-                buf_data = bytes(self.rewind_buf[start:end])
-                sample_bytes += len(buf_data)
-                readlen_bytes -= len(buf_data)
-        else:
-            buf_data = b""
 
         while sample_bytes > self.position:
-            # Seeking forwards within range - read and discard samples.
+            # Seeking forwards within range - decode and discard samples.
             count = min(sample_bytes - self.position, self.rewind_size)
-            data = self._read_data(count)
-            if len(data) == 0:
+            if self._consume(count) == 0:
                 return None
 
+        out = np.empty(readlen, "<i2")
         if readlen_bytes > 0:
-            read_data = self._read_data(readlen_bytes)
-            if len(read_data) < readlen_bytes:
+            got = self._consume(readlen_bytes, out.view(np.uint8))
+            if got < readlen_bytes:
                 return None
-        else:
-            read_data = b""
-
-        data = buf_data + read_data
-        assert len(data) == readlen * 2
-        return np.frombuffer(data, "<i2")
+        return out
 
     def __call__(self, infile, sample, readlen):
         return self.read(infile, sample, readlen)
