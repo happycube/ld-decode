@@ -40,6 +40,10 @@ from lddecode.rfdecode import RFDecode  # noqa: E402
 
 MIB = float(2 ** 20)
 
+#: The mtf_level the recorded block is demodulated at.  Any non-zero level
+#: exercises the same arrays; a decode is at one from its first block.
+BLOCK_MTF_LEVEL = 1.13
+
 
 class RecordingMapping(dict):
     """A dict that records which keys were fetched, and how often.
@@ -103,6 +107,17 @@ def resident_filters(rf):
             continue
         seen.add(id(array))
         rows.append((name, tuple(array.shape), str(array.dtype), int(array.nbytes)))
+    held = getattr(rf, "_mtf_response_cache", None)
+    if held is not None:
+        # Held outside Filters: Filters["MTF"] raised to the current level,
+        # which demodblock reads per block instead of recomputing (see
+        # RFDecode.mtf_response).  Resident for as long as the level holds.
+        response = held[1]
+        seen.add(id(response))
+        rows.append(
+            ("MTF**level (held)", tuple(response.shape), str(response.dtype),
+             int(response.nbytes))
+        )
     for channel in getattr(rf, "audio", {}) or {}:
         namespace = rf.audio[channel]
         for attr in sorted(vars(namespace)):
@@ -128,6 +143,13 @@ def per_block_reads(rf):
     """
     data = synthetic_block(rf)
 
+    # A decode runs at a settled mtf_level for a whole field at a time, so the
+    # steady-state block reads the held MTF response, not Filters["MTF"] (which
+    # is only touched when the level moves).  Prime it so the recorded block is
+    # the steady-state one.
+    if hasattr(rf, "mtf_response"):
+        rf.mtf_response(BLOCK_MTF_LEVEL)
+
     original_filters = rf.Filters
     original_audio = dict(getattr(rf, "audio", {}) or {})
     original_carrier_test = getattr(rf, "pal_audio_carriers_present", None)
@@ -142,7 +164,7 @@ def per_block_reads(rf):
         rf.pal_audio_carriers_present = lambda _fft: True
 
     try:
-        rf.demodblock(data=data, mtf_level=1.0, cut=True, raw_mtf=True)
+        rf.demodblock(data=data, mtf_level=BLOCK_MTF_LEVEL, cut=True, raw_mtf=True)
     finally:
         rf.Filters = original_filters
         for channel, namespace in original_audio.items():
@@ -167,6 +189,9 @@ def per_block_reads(rf):
             continue
         seen.add(id(array))
         rows.append((name, int(array.nbytes), count))
+    held = getattr(rf, "_mtf_response_cache", None)
+    if held is not None and id(held[1]) not in seen:
+        rows.append(("MTF**level (held)", int(held[1].nbytes), 1))
     rows.sort(key=lambda row: -row[1])
     return rows
 
@@ -200,6 +225,11 @@ def report(system, json_rows):
         decode_analog_audio=44100,
         has_analog_audio=True,
     )
+
+    # Prime the held MTF response so the resident report counts it: a decode
+    # is at a non-zero level from its first block onwards.
+    if hasattr(rf, "mtf_response"):
+        rf.mtf_response(BLOCK_MTF_LEVEL)
 
     resident = resident_filters(rf)
     resident_total = sum(row[3] for row in resident)

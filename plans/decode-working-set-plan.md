@@ -81,8 +81,8 @@ Costs found that are avoidable without changing what the decoder computes:
 | Finding | Where | Measured |
 |---|---|---|
 | Sinc LUT 256× too large: 256 phases *with* interpolation is 16 KiB and indistinguishable | `dsp.py:105-217`, `sinc_lut.npz` | 105.8 dB below signal for both 65536-nearest and 256-interpolated; 57.7 dB for 256-nearest |
-| `scale_positions` has no `cache=True`; JIT-compiled in every process, every run | `dsp.py:169` | — |
-| `Filters["MTF"] ** mtf_level` recomputed per block; a 32768-point complex `pow` and a 512 KiB temporary, for a value constant over ≥100 fields | `rfdecode.py:1423` | 0.308 of 2.516 ms per block: **12.3% of `demodblock`** |
+| `scale_positions` has no `cache=True`; JIT-compiled in every process, every run | `dsp.py:169` | **done (§4)**: 1.99 s compile becomes a 4 ms cache load; 1.83 s off every process that resamples |
+| `Filters["MTF"] ** mtf_level` recomputed per block; a 32768-point complex `pow` and a 512 KiB temporary, for a value constant over ≥100 fields | `rfdecode.py:1423` | 0.308 of 2.516 ms per block: **12.3% of `demodblock`**. **Done (§4)**, and the estimate understated NTSC: its `MTF` is `complex128`, so the `pow` is **2.29 of 5.18 ms**, and holding it takes NTSC CVBS `-t 1` from 3.01 to 4.83 fps |
 | Chroma-DG correction transforms whole fields at hostile lengths: CVBS field B 354,689 is prime, field A carries a factor 563; `next_fast_len` is 354,816 | `field.py:164` | CVBS ~103 ms/frame and TBC ~62 ms/frame in four transforms; ~12 ms padded (2.15/3.77 ms per `rfft`/`ifft` at 354,816) |
 | Filter bank stored `complex128` for 16-bit-in / `float32`-out data | `rfdecode.py` filter setup | resident 11.0 → 5.5 MiB, but read per block only 2.53 → 1.27 MiB and hot set 11.5 → 10.3 MiB; no gain in isolation (scipy's `complex64` `ifft` is slower, 0.352 vs 0.293 ms) — the value is footprint under contention only |
 | PAL CVBS resamples every field twice: the TBC picture is computed (`decode_stage2`) then discarded; NTSC reuses it because its 4fsc is line-locked (910.0000/line) | `decoder.py:2644`, `cvbs.py:_emit_frame` | `field.py:downscale` is 3.0% of serial time; the cost is footprint, not cycles |
@@ -197,6 +197,14 @@ Each task is gated on byte-identity with Phase 0's baseline; none may move a con
 *Acceptance:* `compare-pal-cvbs-parallel-*` byte-identical; time to first committed frame of a PAL
 CVBS decode drops, stated before/after from the harness; second and later runs no longer show
 numba compiling the kernel under `NUMBA_DEBUG_CACHE=1`.
+*Done:* [`dsp.py:169`](../lddecode/dsp.py#L169). Compiling the kernel takes 1.99 s; loading it from
+the cache takes 4 ms. A six-frame PAL CVBS decode went 13.75 s to 11.92 s wall (mean of three each,
+cache file deleted before each cold run) — **1.83 s off every process that resamples**. The compile
+lands after the setup line, on the first written frame, so it was being charged to the frame rate:
+post-setup fps on that decode went 1.87 to 4.13. A decode instrumented with the dispatcher's own
+counters reports `cache_hits={...: 1}, cache_misses={}` where it previously compiled. On the
+`-l 1000` grid rows the effect is below the noise, as 1.8 s over 1000 frames should be. All fifteen
+`compare-*-parallel-*` lanes pass, and PAL CVBS `-t 1` and `-t 4` write byte-identical output.
 
 **Task 2 — stop raising the MTF filter to a power every block.** Cache
 `Filters["MTF"] ** mtf_level` against `mtf_level` and invalidate it wherever the MTF filter itself
@@ -206,16 +214,103 @@ an adoption.
 *Acceptance:* byte-identical across all `compare-*` lanes (the cached product is the same array the
 per-block expression produced); a unit test with an injected `RFDecode` asserts one `pow` per
 distinct `mtf_level`; the per-block microbenchmark shows the `pow` gone; `-t 1` fps before/after.
+*Done:* `RFDecode.mtf_response()`, invalidated in `computevideofilters()` — the only place that
+builds `Filters["MTF"]`. One entry, so a level that oscillates cannot grow the footprint one filter
+at a time. **This is the large one, and much larger on NTSC than the analysis expected.** On PAL
+`MTF` is a real `float64` magnitude and the power costs 0.308 ms of a 3.017 ms block; on NTSC it is
+`complex128` and the power is `exp(level * log z)` per bin, costing **2.29 ms of a 5.18 ms block**.
+Per-block time falls 3.017 to 2.721 ms on PAL (-9.8%) and 5.180 to 2.786 ms on NTSC (**-46%**).
+Whole-decode: NTSC CVBS `-t 1` goes 3.01 to 4.83 fps, **+60%**. Tests in
+[`tests/unit/test_block_constant_hoists.py`](../tests/unit/test_block_constant_hoists.py) count the
+powers against an injected filter, check the held array is what the expression produced, and check
+a filter rebuild drops it.
 
 **Task 3 — audit `demodblock` for other per-block constants.** Walk the block path for any further
 expression whose operands do not depend on the block's data (filter products, mirrored spectra,
 repeated `astype` copies) and either hoist it or record why it must stay.
 *Acceptance:* a list in the commit message of each candidate with its per-block cost, and for each
 either a hoist gated on byte-identity or a one-line reason.
+*Done:* §4.1 below. Two more hoists (the PAL notch applied in place; the video and audio record
+arrays cast on assignment instead of from float32 copies np.rec.array then copies again), and six
+candidates recorded with the reason they stay. The one worth naming is the fused
+`RFVideo * FcutPAL`: both are resident constants, so folding them would take a whole 256 KiB filter
+out of the per-block read set — 10% of it — but floating-point multiply is not associative, so it
+changes output bytes and cannot be done under this phase's gate.
 
 **Task 4 — measure.** Harness rows for the Phase 1 result against Phase 0's baseline.
 *Acceptance:* the table is recorded beneath Phase 0's; footprint inventory unchanged (Phase 1 adds
 one cached 512 KiB array and removes a 512 KiB temporary per block).
+*Done:* §4.2 below.
+
+### 4.1 The block-path audit
+
+Every expression `demodblock` evaluates per block, priced on the reference box at blocklen 32768
+with digital and analog audio on. "Constant" means the operands do not depend on the block's data.
+
+| Expression | Constant? | Cost per block | Disposition |
+|---|---|---|---|
+| `Filters["MTF"] ** mtf_level` | yes | 0.308 ms PAL, **2.29 ms NTSC**; a fresh 256/512 KiB array | **hoisted** into `mtf_response()` |
+| `indata_fft_filt * Filters["FcutPAL"]` (PAL) | no, but allocates | 0.020 ms, 512 KiB temporary | **hoisted**: applied in place, 0.017 ms and no temporary |
+| the video channels' `.astype(np.float32)` copies, which `np.rec.array` then copies again (and the same for the two audio channels) | no, but doubled | 0.087 ms PAL / 0.069 ms NTSC, 640/512 KiB thrown away, plus two audio copies | **hoisted**: cast on assignment, 0.057 / 0.042 ms |
+| `Filters["RFVideo"] * Filters["FcutPAL"]` fused into one filter | yes | would save 0.017 ms and 256 KiB of the 2.53 MiB read per PAL block | **kept**: float multiply is not associative, so a fused filter changes output bytes. Belongs with a phase that re-records baselines |
+| `Filters["MTF"]` folded in as well | yes within a field | as above | **kept**: same reason, and the level moves, so the fold would be rebuilt per adoption |
+| carrier-bin arithmetic in `pal_audio_carriers_present` | indices yes, power sums no | 0.015 ms for the whole call | **kept**: scalar index arithmetic, below the measurement floor |
+| window slices in `v4300d_coherent_subtract` | yes | only when the workaround is enabled; slice arithmetic | **kept**: same |
+| `np.clip(demod, 1500000, self.freq_hz * 0.75)` | upper bound yes | scalar | **kept** |
+| `Filters["FVideo05"][:n]` in `demodblock_sync` | yes | a view, no copy | **kept** |
+| mirroring the `rfft` half-spectrum back to full | no | 0.016 ms | data dependent |
+
+All three hoists are byte-identical by construction: holding the raised filter evaluates the same
+expression once instead of per block; an in-place `*=` on a freshly allocated array performs the
+same multiply as the out-of-place one; and assigning a `float64` array into a `float32` record field
+runs the same cast `.astype(np.float32)` does. That was checked rather than assumed — see §4.2.
+
+### 4.2 The Phase 1 result
+
+Same harness, same captures, same spans and the same order as §1.1, one cell at a time. Repeats of
+the PAL CVBS `-t 6` cell gave 4.77 / 4.98 / 4.96 fps, a **4.4%** spread on this run against 3.4% on
+Phase 0's, so read a single cell against 4.4%.
+
+| Cell | `-t 1` | `-t 2` | `-t 4` | `-t 6` | `-t 8` |
+|---|---:|---:|---:|---:|---:|
+| PAL CVBS, fps (Phase 0 → Phase 1) | 2.71 → 2.87 | 4.67 → 4.99 | 4.66 → 4.96 | 4.79 → 5.02 | 4.81 → 4.94 |
+| PAL `--tbc`, fps | 2.82 → 2.93 | 5.43 → 5.72 | 7.38 → **7.94** | 6.99 → 7.60 | 6.69 → 6.91 |
+| NTSC CVBS, fps | 3.01 → **4.83** | 5.56 → **9.07** | 9.15 → **12.45** | 10.01 → 12.17 | 10.50 → 11.21 |
+
+N independent serial PAL CVBS decoders, aggregate post-setup fps: 2.81 → 2.87 (N=1), 4.79 → 4.83,
+5.96 → 6.02, 5.90 → 5.98 (N=8). Peak tree RSS is unchanged or slightly lower in every cell (PAL
+CVBS `-t 4` 2503 → 2357 MB, N=8 7579 → 6816 MB); nothing here grew the decoder.
+
+Three readings, and the last two are the ones that matter to the rest of the plan:
+
+- **NTSC gains hugely, PAL modestly.** NTSC CVBS is +60% serial and +36% at `-t 4`, all of it the
+  complex `pow`. Every one of the fourteen PAL cells improved too, by +2.1% to +8.7%, mean about
+  +5%; individually several sit inside the 4.4% spread, but fourteen same-signed cells are not
+  noise, and the block microbenchmark independently shows -9.8%.
+- **Making the block cheaper moved NTSC's ceiling forward, it did not raise it much.** NTSC CVBS
+  now peaks at `-t 4` (12.45) and *falls* to 11.21 by `-t 8`, where before it climbed all the way
+  to `-t 8`. Its plateau is 2.6x its serial rate where it used to be 3.5x. Taking work out of the
+  block did not buy proportional throughput: it moved the decoder onto the contention limit sooner.
+  That is the plan's premise, measured from the inside.
+- **The concurrent-serial curve barely moves at all** (+0.8% to +1.4% across N = 1, 2, 4, 8). With
+  N whole decoders competing, per-block arithmetic is not what is scarce. Nothing short of the
+  footprint work in Phases 2, 3 and 6 will move that curve.
+
+The footprint inventory is unchanged where it counts: per-block reads stay at 2.53 MiB on both
+systems and the hot set at 11.53 MiB PAL / 11.16 MiB NTSC, because the held response is read in
+place of the filter it was raised from and is the same size. Resident grows by exactly that array —
+11.03 → 11.28 MiB PAL, 10.03 → 10.53 MiB NTSC. The plan expected the block's peak transient to fall
+by 512 KiB; it does not measurably, because the temporaries removed are not the ones live at the
+peak (the transforms are). [`scripts/report_working_set.py`](../scripts/report_working_set.py) now
+reports the held response, both as resident and as the block's read, so that stays visible.
+
+**Byte-identity.** Six decode configurations — PAL CVBS `-t 1` and `-t 4`, PAL `--tbc`, NTSC
+`--tbc`, NTSC CVBS `-t 4`, and a PAL decode with EFM and analog audio — were run on this branch and
+on a pristine copy of the previous commit. Every signal artefact (`.cvbs`, `.efm`, `.wav`) and every
+metadata table is identical; the only difference anywhere is the branch-name field, which records
+`unknown` for the copy because it is not a git checkout. Separately, all fifteen
+`compare-*-parallel-*` lanes pass, and a block-level digest over both systems at three `mtf_level`
+values with the PAL notch engaged matches the previous commit exactly.
 
 ## 5. Phase 2 — the resample LUT
 

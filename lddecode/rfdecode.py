@@ -80,6 +80,11 @@ class RFDecode:
 
     """
 
+    #: (mtf_level, Filters["MTF"] ** mtf_level) for the last exponent asked
+    #: for; see mtf_response().  Class-level so the attribute exists before
+    #: the filters are first built.
+    _mtf_response_cache = None
+
     def __init__(
         self,
         inputfreq               = 40,
@@ -450,6 +455,8 @@ class RFDecode:
 
     def computevideofilters(self):
         self.Filters = {}
+        # The MTF response is built from Filters["MTF"], which is replaced here.
+        self._mtf_response_cache = None
 
         # Use some shorthand to compact the code.
         SF = self.Filters
@@ -775,6 +782,24 @@ class RFDecode:
         g = float(np.max(out) / np.max(pulse))
         self._veq_2t_gain_cache[key] = g
         return g
+
+    def mtf_response(self, mtf_level):
+        """``Filters["MTF"] ** mtf_level``, held across blocks.
+
+        The exponent is constant within a field and, past warm-up, moves at
+        most once every ``MTF_SERVO_MIN_ADOPT_FIELDS`` fields, so one entry is
+        hit on every block but the first after an adoption.  Raising a
+        blocklen-sized spectrum to a power costs a transcendental per bin and
+        a whole spare filter of transient every block, for a result the block
+        does not vary.  Invalidated in computevideofilters(), the only place
+        that builds Filters["MTF"].
+        """
+        cached = self._mtf_response_cache
+        if cached is not None and cached[0] == mtf_level:
+            return cached[1]
+        response = self.Filters["MTF"] ** mtf_level
+        self._mtf_response_cache = (mtf_level, response)
+        return response
 
     def recompute_fvideo(self):
         """Rebuild only FVideo after an inverse MTF strength change.
@@ -1415,12 +1440,14 @@ class RFDecode:
         indata_fft_filt = indata_fft * self.Filters["RFVideo"]
 
         # PAL: notch the analog audio carriers out of the video path, but only
-        # when they're actually on the disc (see computevideofilters)
+        # when they're actually on the disc (see computevideofilters).  In
+        # place: indata_fft_filt is the fresh product above, so nothing else
+        # holds a reference to it, and a blocklen temporary is saved.
         if "FcutPAL" in self.Filters and self.pal_audio_carriers_present(indata_fft):
-            indata_fft_filt = indata_fft_filt * self.Filters["FcutPAL"]
+            indata_fft_filt *= self.Filters["FcutPAL"]
 
         if mtf_level != 0:
-            indata_fft_filt *= self.Filters["MTF"] ** mtf_level
+            indata_fft_filt *= self.mtf_response(mtf_level)
 
         hilbert = npfft.ifft(indata_fft_filt)
         demod = unwrap_hilbert(hilbert, self.freq_hz)
@@ -1440,34 +1467,31 @@ class RFDecode:
 
         out_video, out_video05, out_videoburst = video_results[:3]
 
+        # Cast on assignment into the record array rather than building float32
+        # copies first: np.rec.array() would copy those copies into the record
+        # array anyway, so each channel was passed over twice and a whole
+        # field-block of float32 temporaries was allocated to be thrown away.
+        # Assigning a float64 array into a float32 field runs the same cast as
+        # .astype(np.float32), so the record array's bytes are unchanged.
         if self.system == "PAL":
-            out_videopilot = video_results[3]
-            video_out = np.rec.array(
-                [
-                    out_video.astype(np.float32),
-                    demod.astype(np.float32),
-                    out_video05.astype(np.float32),
-                    out_videoburst.astype(np.float32),
-                    out_videopilot.astype(np.float32),
-                ],
-                names=[
-                    "demod",
-                    "demod_raw",
-                    "demod_05",
-                    "demod_burst",
-                    "demod_pilot",
-                ],
-            )
+            channels = [
+                ("demod", out_video),
+                ("demod_raw", demod),
+                ("demod_05", out_video05),
+                ("demod_burst", out_videoburst),
+                ("demod_pilot", video_results[3]),
+            ]
         else:
-            video_out = np.rec.array(
-                [
-                    out_video.astype(np.float32),
-                    demod.astype(np.float32),
-                    out_video05.astype(np.float32),
-                    out_videoburst.astype(np.float32),
-                ],
-                names=["demod", "demod_raw", "demod_05", "demod_burst"],
-            )
+            channels = [
+                ("demod", out_video),
+                ("demod_raw", demod),
+                ("demod_05", out_video05),
+                ("demod_burst", out_videoburst),
+            ]
+
+        video_out = np.recarray(bl, dtype=[(name, np.float32) for name, _ in channels])
+        for name, source in channels:
+            video_out[name] = source
 
         rv["video"] = (
             video_out[self.blockcut : -self.blockcut_end] if cut else video_out
@@ -1491,15 +1515,15 @@ class RFDecode:
                 # Demodulate and restore frequency after bin slicing
                 a1u = unwrap_hilbert(a1, afilter.a1_freq) + afilter.low_freq
 
-                stage1_out.append(a1u.astype(np.float32))
+                stage1_out.append(a1u)
 
-            audio_out = np.rec.array(
-                [
-                    stage1_out[0].astype(np.float32),
-                    stage1_out[1].astype(np.float32),
-                ],
-                names=["audio_left", "audio_right"],
+            # Cast on assignment, as the video channels above do.
+            audio_out = np.recarray(
+                stage1_out[0].shape[0],
+                dtype=[("audio_left", np.float32), ("audio_right", np.float32)],
             )
+            audio_out["audio_left"] = stage1_out[0]
+            audio_out["audio_right"] = stage1_out[1]
 
             fdiv = video_out.shape[0] // audio_out.shape[0]
             rv["audio"] = (

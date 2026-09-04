@@ -233,6 +233,14 @@ response; 512 KiB NTSC).
 raised filter against `mtf_level` removes both the transcendental cost and a 512 KiB allocation per
 block.
 
+**Measured, and much larger on NTSC than this estimate.** `RFDecode.mtf_response()` now holds the
+raised filter (working-set plan §4, Phase 1 Task 2). The complex `pow` NTSC pays is not merely
+"more expensive" than PAL's real one, it is the block: **2.29 ms of a 5.18 ms block**, against
+0.308 ms of 3.017 ms on PAL. Holding it takes the block to 2.786 ms on NTSC (-46%) and 2.721 ms on
+PAL (-9.8%), and a whole NTSC CVBS `-t 1` decode from 3.01 to 4.83 fps. The 512 KiB allocation is
+removed but the block's *peak* transient does not move: the temporaries live at the peak are the
+transforms', not this one.
+
 **The chroma-DG corrector transforms at hostile lengths on the CVBS path.** Already recorded in the
 hotspot analysis §3.2; repeated here with the factorisations because it is a working-set cost as
 much as a cycle cost. `_correct_chroma_vs_luma` ([`field.py:164`](../lddecode/field.py#L164))
@@ -317,14 +325,16 @@ repetitions after warm-up, on an otherwise idle machine:
 | `rfft(raw)` | 0.128 | 512 KiB | 4.1 |
 | mirror rfft → full spectrum | 0.016 | 512 KiB | 33.3 |
 | spectrum × filter | 0.021 | 1536 KiB | 74.9 |
-| **`MTF ** mtf_level`** | **0.308** | 1024 KiB | 3.4 |
+| **`MTF ** mtf_level`** (PAL; **2.29 ms** on NTSC, where `MTF` is complex — now held, §4) | **0.308** | 1024 KiB | 3.4 |
 | `ifft` (full complex, for the Hilbert) | 0.291 | 1024 KiB | 3.6 |
 | `rfft(demod)` | 0.127 | 512 KiB | 4.1 |
 | batched `irfft` (4 × half) | 0.388 | 2048 KiB | 5.4 |
 
 Two readings from this. First, the per-block `MTF ** mtf_level` costs 0.308 ms against 0.022 ms for
 the multiply it feeds: **hoisting it out of the block loop removes 12.3% of `demodblock`** for a
-value that is constant across ≥ 100 fields. Second, the effective bandwidths sort the stages into
+value that is constant across ≥ 100 fields. (Measured after the fact: 9.8% on PAL, and 46% on NTSC,
+which this PAL-only table does not show because NTSC's `MTF` is `complex128` and its `pow` costs
+2.29 ms rather than 0.308 ms.) Second, the effective bandwidths sort the stages into
 two kinds: the plain multiplies run at 60-75 GB/s (cache-resident in isolation — the operands were
 just written), the transforms and the `pow` at 3.4-5.4 GB/s. The transforms are not memory-bound
 here; they are the arithmetic. What the contended measurements in §1 add is that the multiplies
@@ -487,8 +497,8 @@ rough order of size:
 | Chroma-DG transforms at `next_fast_len` (§4d) | none resident; ~90 ms/frame (CVBS) and ~50 ms/frame (TBC) off the output lane on DG-affected discs | low: padding-edge handling, DG/DP conformance figures |
 | `complex64` filter bank (§4, §4d) | 11.0 -> 5.5 MiB resident, but only 2.53 -> 1.27 MiB read per block: hot set 11.5 -> 10.3 MiB | medium: no gain in isolation, scipy's `complex64` FFT is slower; must be measured under contention |
 | Decimate post-demod video to 20 MSPS (§4a) | halves 4-5 arrays/block and the `FVideo_rfft` bank | highest: lineloc precision, servo measurements |
-| `cache=True` on `scale_positions` (§4c) | none resident; removes a per-process JIT compile | none |
-| Cache `MTF ** mtf_level` (§4) | removes a per-block temporary (256 KiB PAL, 512 KiB NTSC) and 32768 `pow` | none |
+| `cache=True` on `scale_positions` (§4c) — **done**, 1.99 s compile becomes a 4 ms cache load | none resident; removes a per-process JIT compile | none |
+| Cache `MTF ** mtf_level` (§4) — **done**, -9.8% per block PAL, **-46% NTSC** | 256/512 KiB moves from per-block temporary to resident; per-block read unchanged | none |
 | Drop the discarded PAL TBC picture (§4b) | removes a whole-field array in CVBS mode | low, but only ~3% of serial time |
 
 A single common intermediate rate serves both systems. The binding constraint is not the video LPF's

@@ -166,7 +166,7 @@ def scale_field(
         dsout[i - dsout_start] = level_adjust * result
 
 
-@njit(nogil=True, fastmath=True)
+@njit(nogil=True, cache=True, fastmath=True)
 def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
                     samples_per_line, wow_level_adjust_smoothing=0,
                     level_adjust_threshold=15):
