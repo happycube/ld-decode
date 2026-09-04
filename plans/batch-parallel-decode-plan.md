@@ -264,6 +264,18 @@ PAL CVBS and to many-core machines where the parent ceiling currently bites. Exp
 move from its flat 3.6 fps to the neighbourhood of PAL `--tbc` (5.3 fps at `-t 6`), and everything
 to keep scaling past `-t 6` on boxes that have the cores.
 
+**The throughput ceiling above is measured false on the reference box** (`decode-throughput-plan.md`
+§8, Phase 6). "Roughly one serial decode per core" was the whole of this design's throughput case,
+and it does not hold: on an 8-core 5800X, *eight* independent serial PAL CVBS decoders — the best
+case this architecture can reach, with no orchestrator, no overlap and no seams — deliver 11.2 fps,
+below the 12.0 that four deliver, at the same instructions per frame for 2.4× the cycles. Past four
+concurrent decoders the added copies raise DRAM traffic per frame faster than they convert cores
+into frames. Meanwhile the existing field-job pool now reaches that same four-decoder figure on PAL
+`--tbc` (11.77 against 11.74) and comes within 17% of it on PAL CVBS. So the prize here is at most
+that 17%, on one mode, on this box — not the 2–3× the paragraph above assumed — and it is available
+from parent-side items already priced in `decode-throughput-plan.md` §7. This plan is not reopened
+on throughput grounds; the simplification case in §3.6 stands on its own merits and is unaffected.
+
 Costs: the overlap (6% at 60/1000), the extra read of each overlap, one `LDdecode` memory footprint
 per concurrent batch instead of one plus N slim workers, and N sequential read streams into the
 same file (fine on SSD; measure on spinning disks). Short captures gain little: a capture of two

@@ -114,6 +114,13 @@ Under eight-way contention every one of those passes goes to DRAM (§5.1: DRAM f
 20 GB/s ceiling of §2.1. **That is the N-serial plateau at 7.9–8.5 fps**, and it moves only with
 bytes streamed per frame.
 
+**Superseded by Phase 6 Task 4 (§8).** The bandwidth arithmetic no longer closes. Measured on the
+Phase 5 tree, four independent decoders plateau at 12.0 fps while moving 7.6 GB/s of DRAM fills,
+and eight move 11.9 GB/s for *less* throughput — so the plateau is reached at a third of the path's
+capacity, not at it. What binds past the knee is that traffic per frame rises 3.8× from N = 1 to
+N = 8 at constant instructions per frame: the added decoders manufacture fills rather than
+converting cores into frames. Ceiling C is restated there.
+
 ### 2.3 The parent process is the `-t N` ceiling
 
 Per-thread busy fraction of the parent and its workers, sampled from `/proc` over the second half of
@@ -153,7 +160,7 @@ Two different shapes:
   work is. **Chroma DG is still 83 ms of a 160 ms PAL CVBS frame** — the field transforms are
   cheap in isolation (9 ms per field) but not with six workers streaming through the same L3.
 
-  *This table is pre-Phase-3; §7 Task 1 re-measures it.* The two output threads are now 126.5
+  *This table is pre-Phase-3; §7 Task 1 re-measures it and §8 Task 3 re-takes the whole of it.* The two output threads are now 126.5
   ms/frame rather than 175, the FLAC reader 32.6 rather than 55, and the GIL is held 60% of a
   frame with no parent thread above 71% duty.
 - **PAL `--tbc` and NTSC are worker-bound at `-t 4` and contention-bound past it.** Four workers
@@ -222,6 +229,11 @@ already reads, and the reference's end-to-end NTSC figures are 3.4% gain and 3.1
 | A | parent per-frame work: 175 ms output stage, 55 ms reader, 27 ms unpickle, 29 ms main | PAL CVBS at any `-t`; every mode above ~12–15 fps | move work out of the parent or make it an order of magnitude cheaper | 3, 5 |
 | B | per-field worker cost under contention | PAL `--tbc`, NTSC past `-t 4` | fewer bytes streamed and cycles per field in the worker | 4 |
 | C | 20 GB/s DRAM, ~1.3–3 GB streamed per PAL frame | N independent decoders at N ≥ 4; `-t N` once A is lifted | bytes streamed per frame | 4 |
+
+**Ceiling C's statement in that table is superseded by §8 Task 4**: the plateau is not the 20 GB/s
+path, which the tree reaches only half of at its knee, but the point past which an added decoder
+raises DRAM traffic per frame faster than it converts cores into frames — N ≈ 4 on this box, set by
+L3 capacity per concurrent hot set rather than by the bus.
 
 B and C are now measured rather than estimated (§6 Task 1): at `-t 4` a PAL decode executes the
 same instructions per frame as at `-t 1` for 1.7–1.9× the cycles and 3.8–4.3× the DRAM fills, and
@@ -978,21 +990,166 @@ decided it.
 
 ## 8. Phase 6 — take stock: is the concurrency architecture the limit?
 
-No decoder changes. Re-run the `-t` sweep, the N-serial curve and the utilisation table. If `-t N`
-now scales to the physical core count, close; re-derive the `-t` auto default from the new knee
-(working-set plan Phase 4 Task 3, unchanged). If it flattens below it for a reason visible in the
-parent, reopen the concurrency design with the batch-parallel plan's §3.6 as input — on the traffic
-figures, not a footprint. If it flattens at ceiling C, the remaining lever is bytes per frame in
-the demodulator itself, and that is a separate plan.
+No decoder changes; nothing in this section is a proposal, only what the instruments now say.
 
-What Phase 5 hands this phase is a parent that is no longer explained by any one number. At PAL
-CVBS `-t 6` the whole process tree uses 4.5 of the box's 8 cores, the parent holds the GIL 60% of a
-frame, and its busiest thread (`ld-output`) is at 71% duty — nothing is saturated, and yet the cell
-sits at 8.4 fps against `--tbc`'s 9.5 on the same workers. So the first question here is no longer
-"which lane is the ceiling" but whether the remaining gap is the serial dependency between the
-commit thread and the two output lanes, which is a concurrency-design question and not a
-per-function one. §7 Task 5 names the measurement that decides whether the transport is worth
-rewriting on the way (the GIL occupancy, re-taken after `ld-output` comes down).
+**Outcome: the architecture is not the limit, and ceiling C is not the wall §2.2 described.** `-t N`
+does not scale to the physical core count — every cell peaks at `-t 4` of 8 — but the pool is no
+longer what stops it. PAL `--tbc` at `-t 4` delivers 11.77 fps and four *independent* serial
+decoders on the same box deliver 11.74: the field-job architecture at its knee now extracts
+everything a perfect partitioning would. Nor is there anything above that to extract — eight
+independent decoders return **11.29 fps, less than four do**, and a second arm with the counters
+attached puts that fall at the same instructions per frame for 2.4× the cycles. So the
+batch-parallel plan's premise, "roughly one serial decode per core" (that plan's §4, ≈ 8 × 4.0 =
+32 fps here), is refuted on this box by its own best case, and
+reopening the concurrency design would buy PAL `--tbc` nothing at all. What remains is one bounded
+item — PAL CVBS is 17% below that ceiling and the shortfall is parent-visible — and then bytes
+streamed per frame, which is a separate plan.
+
+**Task 1 — the `-t` sweep.** Two rounds, `-l 1000`, round-robin over the cells at each `-t` so
+session drift lands on all three equally; both rounds shown, then their mean. Round-to-round spread
+is 4.5% at worst (NTSC `-t 6`), under 2.3% in fourteen of fifteen cells and under 1% in nine.
+
+| cell | `-t 1` | `-t 2` | `-t 4` | `-t 6` | `-t 8` |
+|---|---:|---:|---:|---:|---:|
+| PAL CVBS, fps | 4.00 3.99 \| **4.00** | 8.06 8.12 \| **8.09** | 9.88 9.56 \| **9.72** | 9.84 9.74 \| **9.79** | 9.60 9.69 \| **9.64** |
+| PAL CVBS, peak tree RSS (MB) | 727 | 1400 | 2129 | 2762 | 3439 |
+| PAL `--tbc`, fps | 4.32 4.34 \| **4.33** | 8.29 8.21 \| **8.25** | 11.75 11.78 \| **11.77** | 10.98 11.16 \| **11.07** | 10.14 9.92 \| **10.03** |
+| PAL `--tbc`, peak tree RSS (MB) | 698 | 1386 | 2040 | 2651 | 3323 |
+| NTSC CVBS, fps | 5.48 5.47 \| **5.47** | 9.59 9.49 \| **9.54** | 14.66 14.57 \| **14.62** | 14.21 14.85 \| **14.53** | 13.28 13.29 \| **13.29** |
+| NTSC CVBS, peak tree RSS (MB) | 618 | 1179 | 1710 | 2240 | 2775 |
+
+Against the working-set plan's Phase 0 baseline (§1.1 there), best cell to best cell: PAL CVBS
+4.81 → 9.79 (**+104%**), PAL `--tbc` 7.38 → 11.77 (**+59%**), NTSC CVBS 10.50 → 14.62 (**+39%**).
+Serially: PAL CVBS 2.71 → 4.00 (+48%), PAL `--tbc` 2.82 → 4.33 (+54%), NTSC CVBS 3.01 → 5.47
+(+82%), each in 8–28% less resident memory.
+
+Two shape changes matter more than the levels:
+
+- **PAL CVBS is no longer flat from `-t 2`.** It was 4.67 → 4.81 across `-t 2`…`-t 8`, the signature
+  §2.3 read as a parent ceiling. It now doubles from `-t 2` to `-t 4` and only then flattens, which
+  is the same shape as the other two cells rather than a shape of its own.
+- **NTSC CVBS stopped scaling to `-t 8`.** It reached 3.5× its serial rate at `-t 8` at baseline;
+  it now peaks at `-t 4` and loses 9% by `-t 8`. Nothing about NTSC got worse — its serial rate rose
+  82%, so four workers now stream what eight used to, and the knee moved down to meet them. The
+  knee is a property of the box divided by the cost of a field, and Phases 1–5 halved the divisor.
+
+**Task 2 — the concurrent-serial curve.** N independent serial PAL CVBS decoders over adjacent
+1000-frame spans, Phase 0's arm re-run unchanged:
+
+| N | 1 | 2 | 4 | 8 |
+|---|---:|---:|---:|---:|
+| aggregate post-setup fps | 4.01 | 7.45 | **11.74** | 11.29 |
+| per-process efficiency | 100% | 93% | 73% | 35% |
+| peak tree RSS (MB) | 723 | 1431 | 2842 | 5582 |
+| *Phase 0: aggregate fps* | *2.81* | *4.79* | *5.96* | *5.90* |
+
+The knee is still between 2 and 4 and the aggregate still turns over after it, but the plateau has
+almost doubled (5.96 → 11.74) and the second decoder now costs 7% where it cost 15%. The
+per-decoder hot set, re-measured with `scripts/report_working_set.py`, is **5.60 MiB** against
+Phase 0's 11.5 MiB (resident filters 11.17 MiB, LUT 0.02, 1.91 MiB read per block, 3.68 MiB of
+block temporaries), so 32 MiB of L3 holds 5.7 hot sets where it held 2.8. That is the working-set
+plan's Phase 4 Task 1 acceptance — both knees and the hot set, stated beside Phase 0's.
+
+**Task 3 — the utilisation table.** Per-thread busy fraction of the parent and its children over
+the second half of a 300-frame run. `n` children is `-t` plus the stage-2 helper; the wrapper costs
+more at higher `-t`, so these rows are attribution and never a delta (§4).
+
+| cell | fps | parent Σ | busiest parent thread | children Σ | duty each |
+|---|---:|---:|---:|---:|---:|
+| PAL CVBS `-t 1` | 3.98 | 1.16 | 96% | — | — |
+| PAL CVBS `-t 4` | 8.76 | 1.91 | 75% | 3.69 | 74% (max 94%) |
+| PAL CVBS `-t 6` | 8.40 | 1.94 | 76% | 3.76 | 54% (max 67%) |
+| PAL CVBS `-t 8` | 8.50 | 1.97 | 76% | 3.89 | 43% (max 51%) |
+| PAL `--tbc` `-t 4` | 10.22 | 1.03 | 32% | 3.87 | 77% (max 98%) |
+| PAL `--tbc` `-t 6` | 9.62 | 1.30 | 39% | 5.81 | 83% |
+| PAL `--tbc` `-t 8` | 8.72 | 1.66 | 48% | 7.74 | 86% |
+| NTSC CVBS `-t 4` | 12.04 | 0.86 | 40% | 3.92 | 78% |
+| NTSC CVBS `-t 6` | 12.68 | 1.31 | 56% | 5.83 | 83% |
+| NTSC CVBS `-t 8` | 11.93 | 1.42 | 72% | 7.69 | 85% |
+
+`--tbc` and NTSC still do what §2.3 recorded: past `-t 4` the workers stay near saturation, the
+tree consumes 7–9 cores, and throughput *falls* — cores are available and each field simply costs
+more. PAL CVBS still does not: its children are pinned at 3.7–3.9 cores whatever `-t` is, and only
+their duty dilutes. That much is unchanged. What has changed is that nothing in its parent is
+saturated either — 1.9 cores across five threads with the busiest at 76% — so the residue is a
+dependency chain through the parent, not a full lane. `py-spy` on the parent at `-t 4`, 400 frames:
+
+| thread | ms/frame | of which | GIL ms/frame |
+|---|---:|---|---:|
+| `ld-output` | 83.5 | `efm_demod.process` 29.5, `downscale_cvbs` 21.3, `_chroma_dg_band` 8.9, `_correct_chroma_vs_luma` 7.8, encode 5.5 | 15.7 |
+| `cvbs-resample_0` | 44.9 | `downscale_cvbs` 22.9, `_chroma_dg_band` 9.8, `_correct_chroma_vs_luma` 7.7 | 10.2 |
+| `Thread-2 (_reader_loop)` (FLAC) | 27.1 | PyAV decode | 7.2 |
+| `MainThread` | 25.8 | VITS 6.8, inline `demodblock` 6.1 | 16.9 |
+| `Thread-3` (pool result unpickling) | 24.1 | `multiprocessing.connection.recv` | 16.2 |
+| *parent total* | *216* | | *70* |
+
+216 ms of parent CPU per frame, with the GIL held 58% of one. That is 1.9 cores of concurrency the
+parent must find inside a frame, and the utilisation table above says it finds 1.9 — so the parent
+fits, and still binds. Both figures are just under their `-t 6` values from §7 Task 1 (237 ms,
+60%): nothing in the parent moved when the knee did.
+
+**Task 4 — what the plateau is made of.** §2.2 derived the N-serial plateau from bandwidth: 1.43
+GB/frame at 8 × 1.21 fps ≈ 14 GB/s against §2.1's 20 GB/s. That arithmetic no longer closes, and
+the traffic says why. `ls_any_fills_from_sys.mem_io_local` over the whole tree, `-l 150` per
+decoder:
+
+| N independent serial PAL CVBS | 1 | 2 | 4 | 8 |
+|---|---:|---:|---:|---:|
+| aggregate post-setup fps | 3.96 | 7.38 | **11.99** | 11.20 |
+| DRAM fills per frame (MiB) | 266 | 368 | 608 | 1017 |
+| DRAM fills (GB/s) | 1.11 | 2.85 | 7.64 | 11.94 |
+| cycles per frame | 1.68e9 | 1.71e9 | 2.04e9 | 4.10e9 |
+| instructions per frame | 4.98e9 | 4.85e9 | 4.86e9 | 4.82e9 |
+
+and at the `-t 4` knee, 882 MiB/frame and 7.47 GB/s for PAL CVBS, 677 MiB/frame and 6.64 GB/s for
+PAL `--tbc`.
+
+The counter counts fills, not writebacks, so every figure is a floor on real DRAM traffic. Even so:
+**at the knee the box is moving 7.6 GB/s against a 20 GB/s path**, and the curve is already flat
+there. Bandwidth cannot be what stops it at N = 4. What does is in the last two rows — the same
+instructions per frame to within 4% across the whole curve, for 1.22× the cycles at N = 4 and
+2.44× at N = 8, with fills per frame rising 3.8×. Concurrency past the knee does not divide the
+work differently, it *manufactures traffic*: at N = 8 the eight hot sets are 45 MiB against 32 MiB
+of L3, each decoder's streams evict the others', and the extra fills buy stall rather than
+throughput. By N = 8 the 11.9 GB/s of fills plus their writebacks may well reach the 20 GB/s wall,
+but the plateau was reached at half that.
+
+*Ceiling C, restated.* Not "20 GB/s of DRAM, reached at N ≈ 4", but: **past N ≈ 4 an added decoder
+raises DRAM traffic per frame faster than it converts cores into frames**, and it does so at a
+bandwidth well short of the path's capacity. The lever named in §3 is unchanged — bytes streamed
+per frame — but the target it must beat is L3 capacity per concurrent decoder, not the bus.
+
+**Task 5 — the decision.** Of §8's three branches, none applies cleanly, so the finding is stated
+as measured rather than forced into one:
+
+- *`-t N` does not scale to the physical core count.* It peaks at `-t 4` of 8 in all three cells,
+  so the close-and-re-derive branch does not trigger on its own terms.
+- *The reason is not visible in the parent for two cells of three.* PAL `--tbc` at `-t 4` equals
+  four independent decoders to within 0.3% — the two best PAL figures the box produces by any
+  arrangement, and they agree. There is nothing for a different concurrency design to recover
+  there, and the batch-parallel plan's §3.6 is therefore **not** reopened: its promised prize is
+  the independent-decoder curve, and that curve is already met at N = 4 and falls at N = 8.
+- *It is visible in the parent for PAL CVBS,* which reaches 9.72 where the same box gives 11.74
+  to four independent decoders — a **17% gap**, against 216 ms/frame of parent CPU, a 58% GIL and
+  workers that starve rather than saturate. That is the residue of ceiling A, it is the size §7
+  Task 5 priced its declined item against, and it is bounded by a figure that did not exist when
+  §7 declined it: the most a perfect parent can be worth on this cell is 17%.
+- *The remaining lever is ceiling C's,* restated above, and §8's third branch applies: bytes per
+  frame inside the demodulator, in a separate plan. The block chain is 81% of a frame's L2-miss
+  traffic (§6 Task 1) and that is where the 608 MiB/frame at the knee comes from.
+
+**The `-t` auto default is now above the measured optimum.** `main.py:504` computes
+`min(max(physical - 2, 1), 10)`, which is 6 on the reference box; the optimum measured here is 4 in
+every cell. At `-t 6` PAL CVBS and NTSC are unchanged within the spread (9.79 against 9.72, 14.53
+against 14.62) but PAL `--tbc` loses 6.3% (11.07 against 11.77), and the default costs 630 MB of
+peak tree RSS (2762 against 2129). The working-set plan's Phase 4 Task 3 asks for the default to
+land at or below the measured optimum; it does not, and re-deriving it is the one decoder change
+this take-stock has evidence for. It is left for a following commit — this phase changes no code.
+
+*Acceptance:* met. The `-t` sweep, the concurrent-serial curve and the utilisation table are
+re-run and recorded above beside Phase 0's, both knees and the per-decoder hot set are stated, and
+the decision rests on two measurements the earlier phases did not have: that `--tbc` at its knee
+equals independent decoders, and that the plateau sits at 7.6 GB/s of a 20 GB/s path.
 
 ## 9. Superseded
 
