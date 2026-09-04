@@ -217,6 +217,43 @@ class CVBSWriter:
     NTSC_LOCK_TARGET = 147.25  # line-referenced burst phase target, deg
     LOCK_TOL = 3.0             # residual tolerance for claiming LOCKED
 
+    # How much of each frame's measured residual the PAL lock applies.
+    #
+    # The residual is a measurement, and on most discs it is almost all
+    # measurement noise rather than movement: over the radius set the
+    # per-frame residual has a mean of hundredths of a degree against a
+    # standard deviation of half a degree to three, and the shift's own
+    # movement over eight frames is no larger than over one - a bounded
+    # random walk.  Applying the whole residual therefore wrote the previous
+    # frame's noise into the next frame's lattice.  For a loop that applies
+    # a fraction g of a measurement carrying noise sigma, the written phase
+    # error settles at sigma*sqrt(g/(2-g)) and the residual it then reads
+    # back at sigma*sqrt(2/(2-g)); measured across the ten PAL cuts of the
+    # radius set, three quarters lowers the residual's rms on every one of
+    # them by 8 to 11%, which is what that predicts.
+    #
+    # Two things bound how far this can go down, and neither is the noise:
+    #
+    #  - A disc whose time base really is moving is followed with a standing
+    #    error of 90*r/g degrees for a movement of r lattice samples a frame.
+    #    Nine of the ten cuts have r < 0.0003; ggv1011-side1-outer has
+    #    r = 0.002, and a quarter gain costs it half a degree.
+    #  - A 2T pulse is only three and a half samples wide at 4fsc, so its
+    #    sampled crest moves several IRE with the lattice's sub-sample phase
+    #    - more than the analyser's parabolic peak interpolation takes back.
+    #    Below about g = 0.6 the lattice settles where the crest of
+    #    domesday-ds1-community-north-outer's averaged first fields falls
+    #    between two samples, and its VITS 2T reading drops 4 IRE without
+    #    anything about the decode being worse (its residual improves).
+    #    That measurement is owned by docs-planning/vits-conformance-testing-plan.md
+    #    Phase 8 task 5; until it reads a narrow pulse's crest independently
+    #    of sampling phase, it is what holds this constant up.
+    #
+    # Acquisition is unaffected: the first frame anchors at full gain, and
+    # above about 6 degrees of error the per-frame clamp below is what limits
+    # the correction rather than this.
+    PAL_LOCK_GAIN = 0.75
+
     # SMPTE 272M-1994 audio profile (spec's only permitted format)
     AUDIO_RATE = 48000         # Hz, synchronous to video
     AUDIO_BITS = 24            # signed little-endian PCM
@@ -384,7 +421,8 @@ class CVBSWriter:
             resid = self._pal_phase_error(a_raw)
             if resid is not None:
                 self._lock_residuals.append(resid)
-                self._pal_shift += np.clip(resid / 90.0, -0.05, 0.05)
+                self._pal_shift += np.clip(
+                    self.PAL_LOCK_GAIN * resid / 90.0, -0.05, 0.05)
 
             a = self._to_spec_levels(a_raw, f_a)
             b = self._to_spec_levels(b_raw, f_b)
@@ -664,11 +702,14 @@ class CVBSWriter:
             seq = self._sequence_continuous()
             self.logger.info(
                 "CVBS: wrote %d frames %s, %s, sequence %s (%d samples "
-                "clamped, burst residual max %.2f deg over %d frames)",
+                "clamped, burst residual max %.2f deg rms %.2f deg over "
+                "%d frames)",
                 self.frames_written, self.sample_encoding, state,
                 {1: "continuous", 0: "BROKEN"}.get(seq, "unknown"),
                 self.clamped_samples,
-                max((abs(v) for v in r), default=float("nan")), len(r))
+                max((abs(v) for v in r), default=float("nan")),
+                float(np.sqrt(np.mean(np.square(r)))) if r else float("nan"),
+                len(r))
 
     def _sequence_continuous(self):
         """Spec sequence_continuous value: 1 unbroken, 0 broken, None unknown."""

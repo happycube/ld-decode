@@ -704,5 +704,84 @@ def refine_pilot_zcs(demod_pilot, linelocs, n, length_px, freq, linelen, pilot_m
     return zcs, plen
 
 
+# ---------------------------------------------------------------------------
+# Chroma differential gain and phase correction
+# ---------------------------------------------------------------------------
+#
+# The corrector itself lives in field.py (_correct_chroma_vs_luma), which
+# separates the subcarrier band and the luminance it rides on with a pair of
+# zero-phase frequency windows.  These are the three passes it makes over the
+# whole field: the windowing of the spectrum and the two forms of the final
+# combination.  Each is one loop with no temporaries, so a field costs one
+# read and one write of itself rather than the eight whole-field arrays the
+# same arithmetic spelled in numpy allocates.
+
+
+@njit(cache=True, nogil=True)
+def select_band(spectrum, window, lo, hi, out, quadrature):
+    """Write `spectrum` through `window` over bins [lo, hi) into `out`.
+
+    A window is zero outside its own band, so only that band's bins are
+    touched and `out` keeps whatever it held elsewhere - it comes in zeroed,
+    so the inverse transform sees the windowed spectrum and nothing else.
+
+    With `quadrature` set each bin is multiplied by -1j, which is the Hilbert
+    transform's -1j*sgn(f) on a half spectrum: the inverse real transform
+    then returns the band's quadrature component instead of the band itself,
+    and the two together are its analytic signal.  Reaching the analytic
+    signal that way costs a second real transform rather than one complex
+    transform of twice the width, and never builds the doubled full-length
+    complex spectrum.
+    """
+    if quadrature:
+        for i in range(lo, hi):
+            v = spectrum[i] * window[i]
+            out[i] = complex(v.imag, -v.real)
+    else:
+        for i in range(lo, hi):
+            out[i] = spectrum[i] * window[i]
+
+
+@njit(cache=True, nogil=True, fastmath=True)
+def equalise_chroma_gain(ire, luma, chroma, slope, anchor):
+    """composite + (G(luma) - 1) * chroma, the real differential gain path.
+
+    G(L) = (1 + slope*anchor) / (1 + slope*max(L, 0)): the gain that flattens
+    a chroma amplitude rising `slope` per IRE of luminance, holding the level
+    at `anchor` where it is.  Sync and blanking are below the clip, so they
+    all take G(0) and nothing about the luminance staircase moves.
+    """
+    n = ire.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    numerator = 1.0 + slope * anchor
+    for i in range(n):
+        level = luma[i]
+        if level < 0.0:
+            level = 0.0
+        out[i] = ire[i] + (numerator / (1.0 + slope * level) - 1.0) * chroma[i]
+    return out
+
+
+@njit(cache=True, nogil=True, fastmath=True)
+def equalise_chroma_gain_phase(ire, level, cos_rotation, sin_rotation,
+                               chroma, quadrature, slope, anchor):
+    """composite + Re[(G(luma) - 1) * chroma_analytic] with G complex.
+
+    The rotation cos/sin pair is passed in already evaluated over the
+    clipped luminance `level`: they are two vectorised transcendental passes
+    over the field, which numpy does in SIMD and this loop's libm would not.
+    The analytic chroma arrives as its own two components (see select_band),
+    so the real part of the product is written out directly.
+    """
+    n = ire.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    numerator = 1.0 + slope * anchor
+    for i in range(n):
+        gain = numerator / (1.0 + slope * level[i])
+        out[i] = (ire[i] + (gain * cos_rotation[i] - 1.0) * chroma[i]
+                  - gain * sin_rotation[i] * quadrature[i])
+    return out
+
+
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")

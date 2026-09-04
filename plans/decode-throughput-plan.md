@@ -211,6 +211,14 @@ because everything in it is parent-resident CPU that the counters attribute to n
 and C share a lever and are one phase. The concurrency architecture is not reopened until Phase 6
 has re-measured with A and B/C moved.
 
+**Phase 3 priced B, and the price changes the strategy.** Moving one field's 4fsc resample into the
+workers cost the pool about three times what the same work costs in the parent (§5 Task 3), and
+giving one parent thread's work a thread of its own made every other parent thread ~30% more
+expensive (§5 Task 2). Work is not movable between these ceilings at par: the only changes that
+have paid are the ones that **delete** work (§1's MTF hold, §1's transform length, §5's corrector).
+Phase 4's traffic items are of that kind; the "give it its own thread / its own process" kind is
+answered, and needs a new measurement before it is tried again.
+
 ## 4. Rules
 
 As the working-set plan §2: harness rows for every claim, on the same captures and spans; byte
@@ -224,58 +232,244 @@ re-examination:
   and the harness row afterwards. Resident size is reported but never argued from.
 - **Measure one thing at a time.** Counter and utilisation runs are made on an otherwise idle box;
   a row taken while another cell was running is discarded, not corrected.
+- **Compare interleaved, and plain.** Back to back the same cell repeats to ±0.3% (7.20, 7.22,
+  7.24 fps), but the same tree measured an hour apart in a long session drifts by 5%, and the
+  `/proc` sampling wrapper costs more at higher `-t` than at lower. So a before/after claim runs
+  both trees alternately in one script, without the wrapper (the wrapper's rows are for
+  attribution, never for a delta), and a difference under ~5% taken any other way is not a
+  difference. Phase 3 nearly recorded two wrong verdicts on rows that were compared across
+  sessions.
 
 ## 5. Phase 3 — take the output stage off the critical path
 
 Ceiling A for PAL CVBS. Target: PAL CVBS within 10% of PAL `--tbc` at the same `-t`, and the
 parent's output threads under 40% busy at `-t 6`.
 
-**Task 1 — a time-domain chroma DG corrector.** `_correct_chroma_vs_luma` builds a subcarrier
-bandpass, a luma lowpass and (when the phase term is non-zero) an analytic signal with four
-whole-field transforms. On the output lattice both windows are short FIRs: the lattice is 4fsc
-(the PAL CVBS lattice exactly, the PAL TBC lattice within 6 ppm), so the ±1.1 MHz raised-cosine bandpass
-around fsc and the 1 MHz lowpass are each a few dozen taps, and the Hilbert pair at 4fsc is the
-same bandpass with its odd taps — no transform at all. Implement as one `@njit(nogil=True,
-cache=True)` pass over the field that computes luma level, chroma and its quadrature at each sample
-from a window that lives in L1d, and applies the gain and phase rotation in place. The taps depend only
-on the lattice rate, not on the servo's slope or phase, so they are designed once and cached as
-the frequency windows are today.
-*Acceptance:* a hermetic unit test compares the FIR corrector with the transform corrector on the
-synthetic staircase-plus-subcarrier field of `test_chroma_dg_corrector.py`, first and last lines
-included, and states the tolerance (target ≤ 0.01 IRE rms — five TBC LSBs — with the reason if
-looser); `conformance-*-vits` differential-gain and -phase within bands on the radius set; the
-corrector's cost per field stated solo and at `-t 6` (target ≤ 3 ms per field, from 42 ms
-contended); harness rows PAL CVBS and PAL `--tbc` `-t 1/4/6`; re-record commit separate. The
-correction stays on the written path only, as §2.5 records — the test that a CVBS-mode field's
-TBC picture is left uncorrected is part of this task.
+**Outcome: one task of the three paid, and the other two priced the ceilings.** Task 1 (the chroma
+DG corrector, single precision and one pass) is in: PAL +10–19%, NTSC +2%, and it brought PAL CVBS
+to within 10% of `--tbc` at `-t 6` on its own. Tasks 2 and 3 were built, measured and reverted:
+neither redistributing the output thread's work inside the parent nor pushing it into the workers
+raises throughput, and both cost more total CPU than they save. The phase's second target is
+retired with a reason (Task 4).
 
-**Task 2 — the EFM demodulator on its own lane.** `efm_demod.process` is 28–45 ms/frame on the
-output thread and already runs without the GIL (`_consume_nogil`). Give it its own ordered thread
-fed from the same commit sequence, so it overlaps the video output instead of serialising with it.
-The `.efm` stream is order-dependent (PLL state); one thread, in commit order, keeps that.
-*Acceptance:* `.efm` bytes identical to the previous baseline on the EFM-bearing captures;
-`compare-*-parallel-efm` passes; `ld-output` busy time per frame falls by the EFM figure.
+**Task 1 — the chroma DG corrector at a third of its cost. Done.**
 
-**Task 3 — the PAL 4fsc resample in the workers.** `downscale_cvbs` is 48 ms/frame of the output
-stage and is kept in the parent because the burst-lock shift `_pal_shift` is only known in commit
-order (`cvbs.py:369-384`). After the first frame the shift moves by at most ±0.05 sample per
-frame and its residual is measured on field A. Treat it as the chroma DG servo is treated: the
-dispatcher stamps each job with the shift at dispatch time; the worker resamples both fields (and
-applies Task 1's correction) on that shift; at commit the parent compares the stamped shift with
-the current one and re-resamples in the parent only when they differ by more than a stated
-tolerance (in samples, chosen so that the subcarrier phase error it admits is below the burst
-measurement's own noise — state it). The `keep_demod` transport (4 MB per field) goes with it: a
-worker that has already resampled ships the 4fsc field, not the demod.
-*Acceptance:* `.cvbs` bytes identical to the previous baseline on the CI captures when the
-tolerance is zero (proves the mechanism), and within `conformance-*-vits` bands at the chosen
-tolerance; the re-resample rate logged and stated (target: none after lock on the radius set);
-`-t 1` and `-t N` identity holds; harness rows PAL CVBS `-t 1/4/6/8`; the discarded PAL TBC
-picture (working-set plan Phase 5 Task 2) is reconsidered here — a worker that resamples to the
-4fsc lattice can measure VITS on that lattice and skip the line-locked picture entirely.
+*The time-domain premise this task was written on is wrong, and was dropped.* The two windows'
+transitions are 0.3 and 0.4 MHz against a 17.73 MHz lattice — two percent of the sample rate — and
+a raised-cosine amplitude taper's impulse response decays slowly, so the "few dozen taps" the task
+assumed is out by an order of magnitude. Holding every truncated tap below 1e-4 of the peak takes
+437 taps for the luminance low-pass and 491 for the subcarrier prototype (below 1e-5: 897 and
+1087). Over a 355k-sample field that is ~140 M multiply-adds even with the 4fsc identity splitting
+the bandpass and its quadrature across even and odd taps, tens of milliseconds a field against the
+21.6 ms the transform corrector already took. Decimating the luminance path by four still leaves
+19 M. A time-domain corrector is not the cheaper form at these transition widths, and the FIR
+design was abandoned rather than built.
 
-**Task 4 — measure.** The utilisation table of §2.3 and the harness grid, repeated.
-*Acceptance:* PAL CVBS's plateau onset and level restated; the parent's per-thread ms/frame table
-restated; whichever thread is now the busiest is named, with its composition.
+*Where the cost actually was.* Timed solo on a PAL field, the old corrector took 21.6 ms (gain
+only) and 27.2 ms (gain and phase), of which the three transforms were 7.4 ms. The rest was
+double-precision elementwise numpy over 355k-sample arrays: the gain divide alone 2.0 ms, the
+analytic signal's complex inverse transform 5.9 ms, and eight whole-field temporaries streamed
+through DRAM for one field's arithmetic. The filter design was never the cost; the width and the
+temporaries were.
+
+*What was done instead* — three changes, none of them to the filters or to what they compute:
+
+- **Single precision through the filtering** (`_chroma_dg_bands`, `field.py`). The transforms are
+  half the width and roughly twice the rate. What comes out is only ever multiplied by `(G - 1)`,
+  of order a tenth, before it is added back to the composite in double precision, so the correction
+  term carries the single-precision error and the composite does not.
+- **The analytic chroma as a band and its quadrature** (`select_band`, `dsp.py`): multiplying a
+  half spectrum by `-1j` is the Hilbert transform's `-1j*sgn(f)`, so a second *real* inverse
+  transform returns the quadrature component, replacing the complex transform across the doubled
+  full-length spectrum. The windowing touches only the bins a window can be non-zero over (a sixth
+  of the spectrum for the low-pass, a third for the bandpass) and writes into a zeroed buffer.
+- **One elementwise pass per field** (`equalise_chroma_gain`, `equalise_chroma_gain_phase`,
+  `dsp.py`, `njit(nogil=True)`): the clip, the gain, the rotation and the combination in a single
+  loop with no temporaries. The rotation's cosine and sine stay in numpy, which evaluates them in
+  SIMD; the same two calls inside the loop cost 5.1 ms a field through libm, as this build of numba
+  has no SVML.
+
+*Measured.* Per field, solo and warm: 21.6 → **6.1 ms** gain-only, 27.2 → **8.9 ms** with phase.
+Contended at `-t 6` (py-spy, PAL CVBS, both fields' corrections summed): 42.9 → **16.3 ms** per
+field. The 3 ms target was not reached and cannot be by this route: 5.6 ms of the 6.1 is the three
+transforms themselves.
+
+| cell | before | after | |
+|---|---:|---:|---|
+| PAL CVBS `-t 4` | 6.38, 6.47 fps | 7.19, 7.23 fps | +12% |
+| PAL CVBS `-t 6` | 6.43 fps | 7.07 fps | +10% |
+| PAL `--tbc` `-t 4` | 7.41 fps | 8.32 fps | +12% |
+| PAL `--tbc` `-t 6` | 6.62 fps | 7.90 fps | +19% |
+| NTSC CVBS `-t 4` | 10.65 fps | 10.83 fps | +2% |
+
+(Interleaved A/B, this tree against the same tree with `field.py` and `dsp.py` at HEAD,
+alternating cells so the session's own drift cannot land on one side — see §4.)
+
+`--tbc` gains as much as CVBS does even though its correction runs in the workers, which is
+ceiling B: the workers are the contended resource, and a correction three times cheaper is worker
+capacity returned. Per-thread at `-t 6` under py-spy (ms/frame): `ld-output` 105.1 → 79.2, of which
+the correction 43.4 → 17.2; `cvbs-resample_0` 70.1 → 43.2, of which the correction 42.3 → 15.4. In
+`--tbc` mode the output pool's re-correction of stale fields fell from 18.3 to 4.0 ms/frame across
+its two threads.
+
+*Against the acceptance criteria.* The hermetic comparison against the double-precision transform
+corrector is `test_the_corrector_matches_the_double_precision_transform` on the modulated staircase
+field, whole field and first and last lines separately: largest deviation 5.9e-5 IRE on the
+gain-and-phase path and 5.3e-6 on the gain-only path, against a stated tolerance of 1e-3 IRE — half
+the 0.0021 IRE the 16-bit TBC output quantises to, so neither the padding nor the working precision
+can move an output sample by an LSB without the test failing first. The plan's 0.01 IRE rms figure
+is carried as a second assertion and is three orders above what is measured. The written-path rule
+of §2.5 gained its test at the dispatch end
+(`test_cvbs_output_does_not_send_the_correction_to_the_field_jobs`): with the CVBS writer on, field
+jobs are told no chroma DG at all, so a worker leaves the TBC picture uncorrected and the
+correction happens once, on the lattice being written. The commit end already had
+`test_cvbs_output_leaves_the_picture_to_the_writer`. Unit suite 1719 passed, 3 skipped; the full
+CTest suite passed 96/96, including the VITS radius sweep (`conformance-*-vits` on twelve cuts) and
+the `-t 1` / `-t N` byte comparisons for `.tbc`, `.cvbs`, `.pcm`, `.efm` and the metadata.
+
+*What this leaves.* `ld-output` is still the busiest parent thread at `-t 6` (51% of a core, 79
+ms/frame), so the task's second target — output threads under 40% — stands open. Its composition is
+now the 4fsc resample (Task 3) and the EFM demodulator (Task 2), with the correction third.
+
+**Task 2 — the EFM demodulator on its own lane. Built, measured, reverted.**
+
+`efm_demod.process` is 28 ms/frame on the output thread and runs without the GIL, so it was given
+its own ordered lane (`OrderedOutputLane(name="ld-efm")` plus a `submit_result` that hands the
+write a Future for the T-values), fed from the same commit sequence. It is correct — serial and
+parallel `.efm` bytes stayed identical, `compare-{ntsc,pal,jason-pll}-parallel-efm` all pass — and
+it does what it was meant to do: `ld-output` fell from 79.2 to 68.5 ms/frame and the demodulation
+moved to a thread of its own.
+
+It buys nothing, because **the parent is already thread-saturated: the new thread made every other
+thread in the process about 30% more expensive.** Per-thread, PAL CVBS `-t 6` (ms/frame, before →
+after the lane): the correction on `ld-output` 17.2 → 23.6, `cvbs-resample_0` 43.2 → 56.6, the
+demodulation itself 28.2 → 36.0, the pool's result reader 25.3 → 34.5. Parent CPU rose from 176% of
+a core to 209% — 55 ms/frame of extra parent work to move 28 ms off one thread. Throughput did not
+move with it: every cell measured (PAL CVBS `-t 4`/`-t 6`, PAL `--tbc` `-t 4`/`-t 6`, NTSC CVBS
+`-t 4`) landed within a few percent of where it started, which is inside this harness's own
+session-to-session spread (§4) — the CPU figures, taken in the same run, are what the verdict
+rests on.
+
+The change was reverted (the diff is kept at
+`docs-planning/decode-throughput-replan/phase3/efm-lane.diff`). **The lesson is the same shape as
+Task 1's: redistributing parent work does not raise ceiling A, only removing it does.** Every
+remaining idea of the "give it its own thread" kind is answered by this measurement and should not
+be tried again without a reason to think the contention is different; Task 3, which moves work out
+of the parent process entirely, is the form that can win.
+
+**Task 3 — the PAL 4fsc resample in the workers. Built, measured, reverted.**
+
+Built as the task describes: the dispatcher stamps each job with the burst-lock shift and the
+chroma DG estimate (`FieldJobEngine.set_cvbs_resample`, fed by a listener the writer calls each
+frame), the worker resamples both of its field's lattices under that shift and rides the result
+with the key it was made under (`Field.cvbs_resample_key`: shift, estimate, and the three AGC
+levels `hz_to_output` reads), and the writer either writes what it was sent or resamples the field
+itself (`Field.cvbs_resample`, counted and logged). Correct: `compare-pal-cvbs-parallel-cvbs`,
+which decodes with `--exact-speculation` and compares bytes against the serial decode, passes —
+with a zero tolerance every shipped resample is either exactly current or redone here, which is
+what "proves the mechanism" meant.
+
+*The burst lock is chasing measurement noise, which the speculation exposed.* At the tolerance the
+task asked for — below the burst measurement's own noise — **99.5% of shipped resamples were
+redone**. The reason is in the lock itself: over 120 frames of the reference PAL capture the
+residual has a mean of 0.01 degrees and a standard deviation of 1.65, and the shift's movement over
+eight frames (0.019 samples rms) is the same as over one (0.018) — a bounded random walk, not a
+drift. Applying the whole of each frame's residual writes the previous frame's measurement noise
+into the next frame's lattice. Four discs from the radius set say the same: per-frame residual
+standard deviations of 0.5 to 2.3 degrees, mean movement per frame of 0.0003 lattice samples or
+less. Damping the loop to a quarter of the residual (`PAL_LOCK_GAIN`) cut the residual spread on
+every one of them (0.80 → 0.63, 1.10 → 0.88, 0.50 → 0.38, 2.27 → 1.62 degrees) and shrank the
+four-frame movement to 0.002–0.005 samples, at which point a tolerance of 0.02 samples (1.8 degrees
+of subcarrier, at or below the measurement noise on every disc) brought the redo rate down to
+18% at `-t 4` and 28% at `-t 6`.
+
+*It still does not pay, and the reason is worth more than the change.* With the resample in the
+workers the parent shed what it was meant to shed — parent CPU 178% of a core → 123% at `-t 4`,
+180% → 134% at `-t 6` — but the workers gained far more than the parent lost: 333% → 371% at `-t 4`
+and **333% → 511% at `-t 6`**, an extra 178% of a core for a resample that costs 85 ms/frame when
+the parent does it. Throughput did not improve at any thread count (and `-t 6` was, if anything,
+slightly worse). **A millisecond of work costs about three times as much in a contended worker as
+it does in the parent** — ceiling B, priced. Moving work from the parent into the workers is not a
+free rebalance; it is a purchase at 3x.
+
+The change was reverted (the diff is kept at
+`docs-planning/decode-throughput-replan/phase3/cvbs-worker-resample.diff`, the lock residual series
+beside it). Two things come out of it that outlive it:
+
+- **The PAL burst lock is damped, as its own change** (`PAL_LOCK_GAIN`, §5.1 below). It is a
+  quality change, not a throughput one: it lowers the residual's rms on nine of the ten PAL radius
+  cuts and on the 300-frame reference capture, and it costs nothing anywhere else.
+- **The 4 MB `keep_demod` transport stays**, because the parent must be able to resample. Removing
+  it needs the resample to be reproducible in the parent from something smaller than the demod
+  (a fractional-sample delay of the already-resampled field is the obvious candidate, at about a
+  fortieth of the cost), which is a Phase 4 traffic question, not this one.
+
+**Task 4 — measure. Done, and it moved the phase's target.**
+
+Where PAL CVBS stands after Task 1, against `--tbc` at the same thread count (interleaved A/B,
+plain runs): `-t 4` 7.2 against 8.3, `-t 6` 7.1 against 7.9 — **10% apart at `-t 6`, which is the
+phase's target met**, and 13% at `-t 4`. The second target, output threads under 40% busy at
+`-t 6`, is not met and is no longer the right target: `ld-output` is 51% of a core, and Tasks 2 and
+3 between them show that neither splitting that thread's work across more parent threads nor
+pushing it into the workers raises throughput. Nothing in the parent is saturated at `-t 6` —
+`ld-output` 51%, the reader thread 36%, the resample thread 28%, the main thread 19%, and the
+workers 48% — which is the signature of a **latency** limit rather than a resource one: fields are
+delivered in chain order, so the commit loop advances at the pace of the slowest job in the
+sequence, and every millisecond added to a worker's field job is paid on that path.
+
+Per-thread at `-t 6` after Task 1 (ms/frame, py-spy): `ld-output` 79.2 (the 4fsc resample 42.1, the
+EFM demodulation 28.2, the correction 17.2 inside the resample), the FLAC reader 55.0,
+`cvbs-resample_0` 43.2 (the correction 15.4), the main thread 27.1, the pool result reader 25.3.
+The busiest thread is still `ld-output`, and its largest single item is now the resample.
+
+### 5.1 The PAL burst lock's loop gain
+
+Phase 3 Task 3 found this and did not need it; it is the one output change the phase made.
+
+The writer's PAL lock resamples each frame under a shift, measures the burst-versus-lattice phase
+of the field it just wrote, and moved the shift by the whole of that measurement. But the
+measurement carries noise, and on most discs the noise is all there is: across the ten PAL radius
+cuts the per-frame residual has a mean of hundredths of a degree against an rms of 0.5 to 3
+degrees, and the shift's movement over eight frames is no larger than over one. Applying all of a
+noisy measurement writes the previous frame's noise into the next frame's lattice. For a loop
+applying a fraction `g` of a measurement whose noise is `sigma`, the written phase error settles at
+`sigma*sqrt(g/(2-g))` and the residual read back at `sigma*sqrt(2/(2-g))`; the measured figures
+follow that to within a few hundredths of a degree.
+
+| residual rms, deg | g = 1 | g = 0.75 | g = 0.5 | g = 0.25 |
+|---|---:|---:|---:|---:|
+| ggv1011-side1 inner / middle / outer | 0.79 / 0.64 / 0.48 | 0.73 / 0.57 / 0.47 | 0.67 / 0.52 / 0.50 | 0.62 / 0.49 / **0.70** |
+| domesday-ds2-community-north in / mid / out | 3.08 / 1.10 / 2.30 | 2.87 / 1.00 / 2.16 | 2.65 / 0.94 / 2.00 | 2.59 / 0.90 / 1.86 |
+| domesday-ds1-community-north-outer | 2.23 | 2.06 | 1.81 | 1.62 |
+| industrial-lv-side1 in / mid / out | 0.64 / 0.55 / 0.49 | 0.57 / 0.49 / 0.44 | 0.53 / 0.45 / 0.40 | 0.51 / 0.41 / 0.38 |
+| reference PAL capture, 300 frames | 1.65 (max 4.65) | 1.48 (max 4.15) | 1.36 (max 3.76) | — |
+
+**`g = 0.75` shipped**: every cut improves, by 8–11%, and the reference capture by 10% in rms and
+11% in its worst frame. Nothing else in the corpus moves — CTest 96/96, no `signal_state_preset`
+verdict changed (the three cuts that read `UNLOCKED` still do, on worst frames of 5–7 degrees
+against a 3 degree tolerance), and `vits_known_deviations.toml` is untouched.
+
+Two things stop the gain going lower, and **neither of them is the noise**:
+
+- **A disc whose time base really moves.** The standing error on a ramp of `r` samples a frame is
+  `90*r/g` degrees. Nine cuts have `r < 0.0003`; `ggv1011-side1-outer` has `r = 0.002`, and at
+  `g = 0.25` that costs it half a degree — the one cell in the table that goes the wrong way.
+  Following a ramp without that penalty needs a rate term (a type-2 loop), not a smaller gain.
+- **The VITS 2T pulse measurement is knife-edge in sampling phase.** A 2T pulse is three and a half
+  samples wide at 4fsc, so its sampled crest moves several IRE with where the lattice sits, and
+  `analysis/vits_measure.py` takes the crest by `argmax` plus a parabolic interpolation, which does
+  not recover that. Below about `g = 0.6` the lattice settles where the crest of
+  `domesday-ds1-community-north-outer`'s averaged first fields falls between two samples: its
+  reading steps from 90.60 to 86.51 IRE and `conformance-domesday-ds1-community-north-outer-vits`
+  fails against the ceiling recorded for its known deviation. The reading is bimodal, not drifting
+  — 90.60 at `g` = 1, 0.9 and 0.75, 86.51 at 0.5 and 0.25 — and the decode underneath is better,
+  not worse (that cut's residual falls from 2.23 to 1.81 degrees, and its single-field second-field
+  2T reading is unchanged at 93.30). So the ceiling was not widened and `g = 0.5` was not taken.
+
+The 2T pulse and the reference it is judged against are already owned by
+`docs-planning/vits-conformance-testing-plan.md` Phase 8 task 5. Once that measurement reads a
+narrow pulse's crest independently of sampling phase, `g = 0.5` is worth another 8% and this
+constant should be revisited; a rate term would be worth more again.
 
 ## 6. Phase 4 — bytes streamed per field
 
