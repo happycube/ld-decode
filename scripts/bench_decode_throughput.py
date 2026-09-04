@@ -21,12 +21,12 @@ The harness shells out to ``python -m lddecode.main`` with an argument list
 (``shell=False``) and imports nothing from ``lddecode``; it measures the decoder
 as shipped and never alters it.
 
-Reference box for the figures recorded in ``plans/decode-working-set-plan.md``:
+Reference box for the figures recorded in ``plans/decode-performance.md``:
 AMD Ryzen 7 5800X (8 physical cores, 16 SMT threads, 32 MiB shared L3), 64 GiB
 dual-channel DDR4, captures on NFS.  ``box`` in each row records the box actually
 used, so rows from different machines stay distinguishable.
 
-Reference captures and spans for that plan's baseline:
+Reference captures and spans for those figures:
 
 * PAL, ``Domesday_DD86-DS2_NationalA_PP_20191014_CAV_PAL_00001-54000.ldf``,
   ``-s 5000 -l 1000``;
