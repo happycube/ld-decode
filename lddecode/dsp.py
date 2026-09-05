@@ -242,13 +242,36 @@ def rms(arr):
 
 
 # MTF calculations
-def get_fmax(cavframe=0, laser=780, na=0.5, fps=30):
+#
+# The optical cutoff is the objective's spatial cutoff, 2*NA/lambda cycles
+# per unit length, carried past the readout spot at the track velocity.  A
+# CAV disc turns once per frame, so that velocity is 2*pi*r*fps and the
+# cutoff scales directly with the rotation rate: 25 rev/s on PAL, 29.97 on
+# NTSC.  The default is NTSC's, so a PAL caller must pass fps or it models
+# a cutoff 20 % high (13.82 against 11.52 MHz) and a video band that rolls
+# off far too gently.
+#
+# 54000 is the number of tracks between the CAV programme radii (55 to
+# 145 mm at the 1.67 um standard pitch).  It counts revolutions, not
+# seconds, so it is the same on both systems - only fps differs.
+def get_fmax(cavframe=0, laser=780, na=0.5, fps=30.0):
+    """Optical cutoff frequency, in MHz, at one CAV frame.
+
+    cavframe -- CAV frame number; 0 is the innermost programme radius
+    laser    -- readout wavelength, nm
+    na       -- numerical aperture of the readout objective
+    fps      -- disc revolutions per second (PAL 25, NTSC 29.97)
+    """
     loc = 0.055 + ((cavframe / 54000) * 0.090)
     return (2 * na / (laser / 1000)) * (2 * np.pi * fps) * loc
 
 
-def compute_mtf(freq, cavframe=0, laser=780, na=0.52):
-    fmax = get_fmax(cavframe, laser, na)
+def compute_mtf(freq, cavframe=0, laser=780, na=0.52, fps=30.0):
+    """Optical MTF at freq (Hz): 1.0 at DC, falling to 0 at the cutoff.
+
+    freq is not modified; fps carries the same meaning as in get_fmax().
+    """
+    fmax = get_fmax(cavframe, laser, na, fps)
 
     freq_mhz = freq / 1000000
 

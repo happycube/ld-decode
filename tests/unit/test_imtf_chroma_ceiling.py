@@ -37,6 +37,13 @@ AIV_BURST_IRE = 14.6
 #: dB the inverse-MTF filter adds per unit strength in these tests.
 DB_PER_STRENGTH = 2.0
 
+#: The strength-unit bounds LDdecode.__init__ derives from its
+#: dB-at-the-subcarrier thresholds.  The stubs carry them the same way, so
+#: a threshold restated in dB - or a correction to the modelled MTF curve
+#: that changes what a strength unit is worth - moves the tests with it.
+STRENGTH_LIMIT = LDdecode.IMTF_LIMIT_DB["PAL"] / DB_PER_STRENGTH
+STRENGTH_DEADBAND = LDdecode.IMTF_DEADBAND_DB["PAL"] / DB_PER_STRENGTH
+
 
 def stub(samples, system="PAL", min_samples=6,
          db_per_strength=DB_PER_STRENGTH):
@@ -44,7 +51,7 @@ def stub(samples, system="PAL", min_samples=6,
         _veq_samples=samples,
         VEQ_MIN_SAMPLES=min_samples,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
-        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
+        imtf_strength_limit=LDdecode.IMTF_LIMIT_DB[system] / db_per_strength,
         IMTF_CUT_ENGAGE_DB=LDdecode.IMTF_CUT_ENGAGE_DB,
         rf=types.SimpleNamespace(
             system=system,
@@ -261,7 +268,41 @@ def test_the_band_is_read_at_the_subcarrier_not_averaged_across_it():
 def test_the_cut_is_bounded_at_the_strength_limit():
     ceiling = LDdecode._imtf_ceiling(
         stub(samples({4.0e6: 40.0, 4.75e6: 40.0})), current=0.3)
-    assert ceiling == -LDdecode.IMTF_STRENGTH_LIMIT
+    assert ceiling == -STRENGTH_LIMIT
+
+
+@pytest.mark.parametrize("db_per_strength", [2.0, 2.6937, 3.4836])
+def test_the_bound_is_the_same_dB_whatever_a_strength_unit_is_worth(
+        db_per_strength):
+    """A strength unit is worth what the modelled MTF curve says it is.
+
+    It is 3.48 dB at PAL's subcarrier and 1.67 at NTSC's, and it was 2.69
+    on PAL for as long as that curve was built at NTSC's rotation rate -
+    so a bound written in strength units silently means a different
+    correction on each system, and a different one again when the curve
+    is corrected.  Written in dB it means the same thing throughout,
+    which is the whole reason these constants are stated that way.
+    """
+    it = stub(samples({4.0e6: 40.0, 4.75e6: 40.0}),
+              db_per_strength=db_per_strength)
+    ceiling = LDdecode._imtf_ceiling(it, current=0.3)
+    assert ceiling * db_per_strength == pytest.approx(
+        -LDdecode.IMTF_LIMIT_DB["PAL"])
+
+
+@pytest.mark.parametrize("system", ["PAL", "NTSC"])
+def test_each_system_keeps_the_limit_it_was_validated_at(system):
+    """Each dB figure is that system's historical 2.0 strength-unit clip
+    restated in the dB it meant there, so the two systems keep the bounds
+    they were separately validated at - 1.55 units on PAL under the
+    corrected curve, 2.00 on NTSC under one the correction barely
+    moved."""
+    per_unit = {"PAL": 3.4836, "NTSC": 1.6666}[system]
+    it = stub(samples({4.0e6: 40.0, 4.75e6: 40.0}), system=system,
+              db_per_strength=per_unit)
+    ceiling = LDdecode._imtf_ceiling(it, current=0.3)
+    assert ceiling == pytest.approx(
+        -LDdecode.IMTF_LIMIT_DB[system] / per_unit)
 
 
 def test_a_wind_up_the_size_aiv_discs_provoke_is_pulled_back():
@@ -298,7 +339,7 @@ def eq_stub(samples_, strength, flat_band=None, job_engine=None):
         _veq_samples=samples_,
         VEQ_MIN_SAMPLES=6,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
-        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
+        imtf_strength_limit=STRENGTH_LIMIT,
         IMTF_CUT_ENGAGE_DB=LDdecode.IMTF_CUT_ENGAGE_DB,
         _imtf_flat_band=flat_band,
         _deemp_burst_samples=[1.0, 2.0],
@@ -401,9 +442,9 @@ def adopt_stub(samples_, strength, flat_band=None, calibrated=False,
         VEQ_MIN_SAMPLES=6,
         VEQ_DEADBAND_DB=LDdecode.VEQ_DEADBAND_DB,
         VEQ_MIN_ADOPT_FIELDS=LDdecode.VEQ_MIN_ADOPT_FIELDS,
-        IMTF_CEILING_DEADBAND=LDdecode.IMTF_CEILING_DEADBAND,
+        imtf_strength_deadband=STRENGTH_DEADBAND,
         CHROMA_BAND_PROBE_HZ=LDdecode.CHROMA_BAND_PROBE_HZ,
-        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
+        imtf_strength_limit=STRENGTH_LIMIT,
         IMTF_CUT_ENGAGE_DB=LDdecode.IMTF_CUT_ENGAGE_DB,
         _imtf_flat_band=flat_band,
         _imtf_flat_band_last_publish=last_publish,
@@ -549,7 +590,7 @@ def test_a_ceiling_that_has_not_moved_is_not_republished():
     settled = 1.2 - 2.0 / DB_PER_STRENGTH
     it = adopt_stub(pool, strength=0.2, estimate=FLAT_EQ, applied_eq=FLAT_EQ,
                     calibrated=True,
-                    flat_band=settled + 0.9 * LDdecode.IMTF_CEILING_DEADBAND)
+                    flat_band=settled + 0.9 * STRENGTH_DEADBAND)
     before = it._imtf_flat_band
     LDdecode.checkVideoEQ(it, field=None)
     assert it._imtf_flat_band == pytest.approx(before)
@@ -560,7 +601,7 @@ def test_a_ceiling_that_has_moved_past_the_dead_band_is_published():
     settled = 1.2 - 2.0 / DB_PER_STRENGTH
     it = adopt_stub(pool, strength=0.2, estimate=FLAT_EQ, applied_eq=FLAT_EQ,
                     calibrated=True,
-                    flat_band=settled + 1.1 * LDdecode.IMTF_CEILING_DEADBAND)
+                    flat_band=settled + 1.1 * STRENGTH_DEADBAND)
     LDdecode.checkVideoEQ(it, field=None)
     assert it._imtf_flat_band == pytest.approx(settled)
 
@@ -611,10 +652,19 @@ def test_a_negative_ceiling_carries_the_strength_below_zero():
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(-1.4)
 
 
+#: The curve deemp_stub's rf carries: 20*log10(e**0.31) dB per unit.
+DEEMP_DB_PER_STRENGTH = 20.0 / math.log(10.0) * 0.31
+
+
 def deemp_stub(burst_ire, strength, flat_band=None, calibrated=True):
     """Enough of an LDdecode for _deemp_calibrate()."""
     it = types.SimpleNamespace(
-        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
+        imtf_strength_limit=(
+            LDdecode.IMTF_LIMIT_DB["PAL"] / DEEMP_DB_PER_STRENGTH),
+        imtf_strength_deadband=(
+            LDdecode.IMTF_DEADBAND_DB["PAL"] / DEEMP_DB_PER_STRENGTH),
+        imtf_strength_engage=(
+            LDdecode.IMTF_ENGAGE_DB["PAL"] / DEEMP_DB_PER_STRENGTH),
         IMTF_CUT_ENGAGE_DB=LDdecode.IMTF_CUT_ENGAGE_DB,
         _deemp_burst_samples=[burst_ire] * 4,
         _deemp_burst_offset=7,
@@ -626,7 +676,7 @@ def deemp_stub(burst_ire, strength, flat_band=None, calibrated=True):
             SysParams={"burst_ire": 21.4, "fsc_mhz": 4.43361875},
             # 20*log10(e**0.31) ~ 2.7 dB at fsc per strength unit
             inverse_mtf_log_at_fsc=0.31,
-            inverse_mtf_log_db=lambda freq_hz: 20.0 / math.log(10.0) * 0.31,
+            inverse_mtf_log_db=lambda freq_hz: DEEMP_DB_PER_STRENGTH,
             DecoderParams={"inverse_mtf_strength": strength},
             recompute_fvideo=lambda: None),
     )
@@ -668,7 +718,7 @@ def test_a_first_calibration_adopts_a_cut():
 def feedforward_stub(strength, delta):
     """The inverse-MTF half of checkMTF()'s adoption, in isolation."""
     it = types.SimpleNamespace(
-        IMTF_STRENGTH_LIMIT=LDdecode.IMTF_STRENGTH_LIMIT,
+        imtf_strength_limit=STRENGTH_LIMIT,
         IMTF_CUT_ENGAGE_DB=LDdecode.IMTF_CUT_ENGAGE_DB,
         mtf_deemp_feedforward=1.2,
         _deemp_burst_samples=[1.0],
@@ -681,7 +731,7 @@ def feedforward_stub(strength, delta):
     current = it.rf.DecoderParams["inverse_mtf_strength"]
     it.rf.DecoderParams["inverse_mtf_strength"] = float(np.clip(
         current + it.mtf_deemp_feedforward * delta,
-        min(0.0, current), it.IMTF_STRENGTH_LIMIT))
+        min(0.0, current), it.imtf_strength_limit))
     return it.rf.DecoderParams["inverse_mtf_strength"]
 
 

@@ -624,10 +624,17 @@ class RFDecode:
         # chroma band the VITS multiburst measures hot; the burst servo
         # may not ask for that, only the multiburst may (decoder's
         # _imtf_ceiling).
+        # The optical cutoff scales with the disc's rotation rate, which on
+        # a CAV disc is the frame rate - so the curve is per system, and
+        # SysParams["FPS"] is what says which (PAL 25, NTSC 29.97).  Left at
+        # compute_mtf's NTSC default, PAL modelled a cutoff 20 % high and a
+        # curve half again too shallow: 2.69 dB per unit of strength at
+        # 4.43 MHz where the disc's own response gives 3.48.
         freq_array = np.abs(np.fft.fftfreq(self.blocklen, 1.0 / self.freq_hz))
         crossover = 2.0e6
-        mtf_at_crossover = compute_mtf(crossover, cavframe=0)
-        mtf_vals = compute_mtf(freq_array.copy(), cavframe=0)
+        disc_fps = SP["FPS"]
+        mtf_at_crossover = compute_mtf(crossover, cavframe=0, fps=disc_fps)
+        mtf_vals = compute_mtf(freq_array.copy(), cavframe=0, fps=disc_fps)
         mtf_norm = np.clip(mtf_vals / mtf_at_crossover, 0.05, 1.0)
         SF["Finverse_mtf_base"] = 1.0 / mtf_norm
 

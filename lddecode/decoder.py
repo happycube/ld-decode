@@ -651,6 +651,26 @@ class LDdecode:
         self.isCLV = False
         self.frameNumber = None
 
+        # dB the inverse-MTF filter adds at the subcarrier per unit of
+        # strength - the exchange rate between the dB the thresholds on
+        # this filter are stated in and the strength units the servos
+        # actually hold.  Fixed for a decode: the curve is built once and
+        # only its exponent moves.
+        self._imtf_db_per_unit = self.rf.inverse_mtf_log_db(
+            self.rf.SysParams["fsc_mhz"] * 1e6)
+        if not self._imtf_db_per_unit > 0:
+            raise ValueError(
+                "inverse-MTF curve is flat or missing at the subcarrier; "
+                "the chroma calibration has no scale to work in")
+        #: Bounds on the inverse-MTF strength, converted from the dB at
+        #: the subcarrier they are stated in (see IMTF_LIMIT_DB).
+        self.imtf_strength_limit = (
+            self.IMTF_LIMIT_DB[system] / self._imtf_db_per_unit)
+        self.imtf_strength_deadband = (
+            self.IMTF_DEADBAND_DB[system] / self._imtf_db_per_unit)
+        self.imtf_strength_engage = (
+            self.IMTF_ENGAGE_DB[system] / self._imtf_db_per_unit)
+
         self.autoMTF = True
         # Closed-loop mtf_level servo from the ITS/NTC-7 2T pulse (the
         # b/w RF ratio mapping cannot predict the needed level across
@@ -694,11 +714,17 @@ class LDdecode:
             self.mtf_servo_clip = (-1.0, 1.0)
         else:
             self.mtf_servo_clip = (0.0, 1.5)
-        # Chroma cost of an MTF level change, in inverse-MTF strength
-        # units per level unit; deliberately below the measured slope
-        # (~1.7 Louvre PAL, ~0.85 he010 NTSC) so the burst tracking
-        # trims the rest instead of overshooting.
-        self.mtf_deemp_feedforward = 1.2 if system == "PAL" else 0.6
+        # Chroma cost of an MTF level change, as dB at the subcarrier per
+        # level unit; deliberately below the measured slope (~4.6 dB
+        # Louvre PAL, ~1.4 dB he010 NTSC) so the burst tracking trims the
+        # rest instead of overshooting.  In dB rather than strength units
+        # because what an MTF level step costs chroma is a property of the
+        # pre-demod filter and the disc, not of how steep the correction
+        # curve happens to be modelled: expressed in strength units it
+        # would have started over-predicting by a third the moment the
+        # PAL curve was corrected (see IMTF_DEADBAND_DB).
+        self.mtf_deemp_feedforward = (
+            self.MTF_DEEMP_FEEDFORWARD_DB[system] / self._imtf_db_per_unit)
         # Multiburst-driven video EQ servo (primary response reference
         # when a VITS multiburst line exists, with the 2T servo keeping
         # mtf_level as the fallback/second reference).
@@ -1148,6 +1174,11 @@ class LDdecode:
     # steps to converge before the first frame is written.)
     MTF_SERVO_MIN_ADOPT_FIELDS = 100
 
+    #: Chroma cost of one mtf_level unit, in dB at the subcarrier, fed
+    #: forward onto the inverse-MTF strength at every MTF adoption; see
+    #: where self.mtf_deemp_feedforward converts it.
+    MTF_DEEMP_FEEDFORWARD_DB = {"PAL": 3.23, "NTSC": 1.00}
+
     # Multiburst EQ servo: anchors only below self.veq_max_freq so the
     # EQ (pinned to 0 dB beyond its last anchor + 0.5 MHz) never touches
     # the chroma band - GGV PAL records luma HOT but chroma LOW around
@@ -1170,15 +1201,26 @@ class LDdecode:
     VEQ_MAX_AGE_FIELDS = 240
     VEQ_MIN_ADOPT_FIELDS = 100
 
-    # Dead-band on the published chroma-band ceiling, in inverse-MTF
-    # strength units.  The same figure _deemp_calibrate() holds its own
-    # tracking trims inside, for the same reason and on the same
-    # quantity: a ceiling that moves by less than the burst servo's
-    # dead-band cannot change what the burst servo does, so publishing
-    # the move would be churn.  Measured on BBC Domesday DD86-DS1 outer,
-    # where the pooled figure settles inside 0.008 of itself once the
-    # warmup is past.
-    IMTF_CEILING_DEADBAND = 0.05
+    # Dead-band on the published chroma-band ceiling, and the one
+    # _deemp_calibrate() holds its own tracking trims inside - the same
+    # figure on the same quantity, because a ceiling that moves by less
+    # than the burst servo's dead-band cannot change what the burst servo
+    # does, so publishing the move would be churn.  Measured on BBC
+    # Domesday DD86-DS1 outer, where the pooled figure settles inside a
+    # sixth of it once the warmup is past.
+    #
+    # Stated in dB at the subcarrier and divided into strength units per
+    # system in __init__, for the reason _imtf_cut_engaged() already gives
+    # about its own threshold: a strength unit is 3.48 dB at PAL's
+    # 4.43 MHz against 1.67 dB at NTSC's 3.58, so the same figure in
+    # strength units is a different dead-band on each system - and a
+    # different one again whenever the modelled MTF curve is corrected,
+    # which is how a dead-band meant as "under 2 % of chroma" grew by a
+    # third the moment PAL stopped being modelled at NTSC's rotation
+    # rate.  The values are each system's historical 0.05 strength units
+    # restated in the dB it meant there, so correcting the curve leaves
+    # the loop where it was tuned.
+    IMTF_DEADBAND_DB = {"PAL": 0.135, "NTSC": 0.083}
 
     # Chroma differential-gain servo: pools per-field slope readings from
     # measure_vits_dg_staircase and holds DecoderParams["chroma_dg_slope"],
@@ -1250,15 +1292,21 @@ class LDdecode:
     #: the engage threshold.
     DG_PHASE_MIN_SAMPLES = 16
 
-    #: How far the inverse-MTF strength may be wound, in either
-    #: direction.  Positive strengths give back what the disc's response
-    #: took away; negative ones take back what the chain added, and the
-    #: multiburst is what authorises them (see _imtf_ceiling).  The
-    #: measured need on the worst capture in hand - BBC Domesday DD86-DS2
-    #: at inner radius, whose chroma band reads +3.6 dB at 4.0 MHz and
-    #: +4.0 dB at 4.8 - is about -1.5, so this leaves headroom without
-    #: letting a mismeasured field wind the band away.
-    IMTF_STRENGTH_LIMIT = 2.0
+    #: How far the inverse-MTF filter may be wound, in either direction,
+    #: as dB at the subcarrier.  Positive strengths give back what the
+    #: disc's response took away; negative ones take back what the chain
+    #: added, and the multiburst is what authorises them (see
+    #: _imtf_ceiling).  The measured need on the worst capture in hand -
+    #: BBC Domesday DD86-DS2 at inner radius, whose chroma band reads
+    #: +3.6 dB at 4.0 MHz and +4.0 dB at 4.8 - is about -4 dB, so this
+    #: leaves headroom without letting a mismeasured field wind the band
+    #: away.  It is a backstop and not a loop parameter: NTSC captures
+    #: with a low-recorded burst and no multiburst to bound them (the
+    #: dolby-surround radius cuts) sit at nine tenths of it, so the two
+    #: systems keep the limits each was validated at rather than sharing
+    #: one - these are 2.0 strength units apiece under the curves in
+    #: force when they were set.
+    IMTF_LIMIT_DB = {"PAL": 5.39, "NTSC": 3.33}
 
     #: How hot, in dB at the subcarrier, the multiburst must find the
     #: chroma band before it may spend the negative half of that limit.
@@ -1277,6 +1325,14 @@ class LDdecode:
     #: the whole measured excess is taken out, because half a blowout is
     #: still a blowout.
     IMTF_CUT_ENGAGE_DB = 1.0
+
+    #: What a first calibration counts as a non-trivial correction, in dB
+    #: at the subcarrier: below it the burst pool has found the channel
+    #: flat and the filter stays out of the signal path entirely.  Small
+    #: enough to be a test for "nothing to do" rather than a second
+    #: dead-band; each system's is its historical 0.02 strength units in
+    #: the dB that meant, as IMTF_DEADBAND_DB.
+    IMTF_ENGAGE_DB = {"PAL": 0.054, "NTSC": 0.033}
 
     def _veq_estimate(self, field):
         """Absolute video-EQ anchor estimate from pooled multiburst
@@ -1478,16 +1534,17 @@ class LDdecode:
             return None
         if flat < 0.0 and not self._imtf_cut_engaged(flat):
             return 0.0
-        return float(max(-self.IMTF_STRENGTH_LIMIT, flat))
+        return float(max(-self.imtf_strength_limit, flat))
 
     def _imtf_cut_engaged(self, flat):
         """Whether a negative flat-band strength is big enough to act on.
 
         The threshold is stated in dB at the subcarrier rather than in
         strength units so it means the same thing on both systems: one
-        unit of strength is 2.69 dB at PAL's 4.43 MHz but only 1.66 dB
+        unit of strength is 3.48 dB at PAL's 4.43 MHz but only 1.67 dB
         at NTSC's 3.58 MHz, and it is the dB that says whether the band
-        is really hot.
+        is really hot.  Every other bound on this filter is now stated
+        the same way, for the same reason.
         """
         per_unit = self.rf.inverse_mtf_log_db(
             self.rf.SysParams["fsc_mhz"] * 1e6)
@@ -1697,7 +1754,7 @@ class LDdecode:
             return False
         if (self._imtf_flat_band is not None
                 and abs(flat_band - self._imtf_flat_band)
-                < self.IMTF_CEILING_DEADBAND):
+                < self.imtf_strength_deadband):
             return False
         # Rate limit, mirroring the EQ's: warmup is exempt because it
         # needs to converge before the first frame is written, and after
@@ -1949,7 +2006,7 @@ class LDdecode:
             # plain 0.0 floor would walk a negative strength back up to
             # zero on the next MTF adoption and undo the verdict.
             s = np.clip(current + self.mtf_deemp_feedforward * delta,
-                        min(0.0, current), self.IMTF_STRENGTH_LIMIT)
+                        min(0.0, current), self.imtf_strength_limit)
             self.rf.DecoderParams["inverse_mtf_strength"] = float(s)
             self.rf.recompute_fvideo()
             if self._job_engine is not None:
@@ -2041,7 +2098,7 @@ class LDdecode:
         # below.
         estimate = float(np.clip(
             current + np.log(expected / measured) / log_base,
-            0.0, self.IMTF_STRENGTH_LIMIT
+            0.0, self.imtf_strength_limit
         ))
 
         # Burst amplitude cannot tell a channel that lost the subcarrier
@@ -2057,10 +2114,10 @@ class LDdecode:
             # A first calibration adopts any non-trivial strength, in
             # either direction: a multiburst ceiling can make that first
             # verdict a cut.
-            if abs(estimate) < 0.02:
+            if abs(estimate) < self.imtf_strength_engage:
                 return False
         elif (len(self._deemp_burst_samples) < 3
-                or np.abs(estimate - current) < 0.05):
+                or np.abs(estimate - current) < self.imtf_strength_deadband):
             return False
 
         capped = "" if ceiling is None or estimate < ceiling else (
