@@ -225,7 +225,19 @@ reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour 
 
 
 
-# domesday-ds2-community-north-middle (PAL): 5 of its checks fail.
+# domesday-ds2-community-north-middle (PAL): 6 of its checks fail.
+
+[[deviation]]
+capture = "domesday-ds2-community-north-middle"
+check = "pal-its-field1/pulse_2t"
+field_line = 19
+parity = "first"
+measured = 80.278
+unit = "IRE"
+band_used = 8.11
+ceiling = 8.92
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\". Worst of the family: the optical MTF curve correction costs the 2T pulse about a third more band on the Domesday PAL cuts that carry this line, 3.19 to 4.15 on ds1-outer and 5.97 to 8.11 here; see docs/technical/vits-servos.md, \"The curve the correction rides\"."
 
 [[deviation]]
 capture = "domesday-ds2-community-north-middle"

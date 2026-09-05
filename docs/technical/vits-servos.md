@@ -420,18 +420,40 @@ either way). And work withdrawn from the inverse MTF falls to `mtf_level`,
 which on DD86-DS1 outer now reaches its −1.0 PAL clip and leaves the 2T
 pulse 2.4 IRE lower than the recorded deviation.
 
-One check the sweep makes is left failing rather than recorded, because it
-is not a deviation: DD86-DS2 middle stops identifying `pal-its-field1`.
-That line's only chrominance element is the 20T modulated pulse, and this
-pressing records it at 5.7 IRE against a 50 IRE nominal where GGV1011 and
-industrial-lv read 30 to 32 — so `chroma_present` in
+The second of those was hidden at first, because the change also cost
+DD86-DS2 middle its identification of `pal-its-field1` — and with it the 2T
+pulse deviation that line is the only place to read. That line's only
+chrominance element is the 20T modulated pulse, which this pressing records
+at 5.7 IRE against a 50 IRE nominal where GGV1011 and industrial-lv read 30
+to 32, so it sat a tenth of an IRE above the 5 IRE floor `chroma_present`
+in
 [`analysis/vits_identify.py`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_identify.py)
-is a single all-or-nothing test on a near-absent element sitting a tenth of
-an IRE above its 5 IRE floor, and this change moves it to 4.9. Every other
-feature of the line still matches: 0.975 alignment correlation, luminance
-levels within tolerance, a monotonic staircase. It is a fragility in the
-identifier on that one pressing, not a decode fault, and it is left to be
-fixed there.
+held it to, and this change moved it to 4.9. Every other feature of the
+line still matched: 0.975 alignment correlation, luminance levels within
+tolerance, a monotonic staircase.
+
+The floor was the wrong instrument, not the wrong number. A modulated
+pulse's chrominance window carries the pulse's envelope rather than an
+amplitude, which is why
+[`analysis/vits_conformance.py`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_conformance.py)
+already refuses to judge it against its nominal, citing EBU Tech. 3209
+7.2.4 c); across testdata it spans 4.9 to 37.5 IRE on discs whose sustained
+chrominance bars all read 41 to 46. Holding it to a level made a chrominance
+level fault delete the identification of the line reporting it, which is
+exactly what this layer's looseness against levels exists to prevent. It is
+now judged against the line's own chrominance-free windows instead — five
+times the quietest of them, floored at the demodulator's own 0.5 IRE — which
+every true reading in testdata clears twice over and the closest false one, a
+picture line matched at the 0.50 correlation limit, misses by the same
+margin. Sustained chrominance keeps the level floor, which is what still
+tells the two PAL ITS lines apart: they differ in chrominance alone, and the
+field 2 line's is a bar.
+
+With the line identified again, its 2T pulse reads 80.28 IRE against a
+100.56 reference — 8.11× its band, against the 5.97× recorded before this
+change. That is the same third more band the curve correction costs the
+pulse on DD86-DS1 outer (3.19× → 4.15×), on the worst cut of the family, and
+it is recorded as such.
 
 Because the strength unit is defined by this curve, every threshold on the
 filter is now written in dB at the subcarrier and divided into strength
