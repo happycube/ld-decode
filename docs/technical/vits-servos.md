@@ -46,8 +46,9 @@ Key stability properties (they were all learned the hard way):
 - The two PAL ITS parities differ a few percent in 2T amplitude, so the
   estimate averages per-parity medians rather than a plain median.
 - MTF adoptions feed-forward their known chroma cost onto the inverse-
-  MTF strength (about 1.2 strength units per level unit) so burst stays
-  continuous instead of sagging until the tracker notices.
+  MTF strength (about 3.2 dB at the subcarrier per level unit on PAL,
+  1.0 on NTSC) so burst stays continuous instead of sagging until the
+  tracker notices.
 
 Fallback: with no usable ITS (no line, noisy content, scattered
 estimates, or explicit `-m`/`--MTF_offset` overrides) the original
@@ -273,9 +274,10 @@ every one of them a chrominance amplitude. DD86-DS2 adopts an EQ at every
 radius, so the pressing that replaced DS1 in the sweep cannot catch this.
 
 `_publish_imtf_flat_band()` therefore gives the verdict its own dead-band
-(`IMTF_CEILING_DEADBAND`, 0.05 strength units - the same figure the burst
-servo holds its own trims inside, on the same quantity, because a ceiling
-that moves by less than that cannot change what the burst servo does) and
+(`IMTF_DEADBAND_DB`, 0.135 dB at the subcarrier on PAL - the same figure
+the burst servo holds its own trims inside, on the same quantity, because
+a ceiling that moves by less than that cannot change what the burst servo
+does) and
 its own rate limit, rather than borrowing the EQ's. It still reads the same
 pool at the same moment on the same sample-count threshold. On DD86-DS1
 outer the strength is now capped at 0.000 and six of forty-six checks fail.
@@ -347,8 +349,12 @@ conformance band. Nothing was wrong with that decode's chroma before.
 It is a gate and not a subtraction: above the threshold the whole measured
 excess is spent, because half a blowout is still a blowout. And it is
 stated in dB rather than strength units because one unit of strength is
-2.69 dB at PAL's 4.43 MHz but only 1.66 dB at NTSC's 3.58 — a threshold
+3.48 dB at PAL's 4.43 MHz but only 1.67 dB at NTSC's 3.58 — a threshold
 held in strength units would mean a different channel fault on each system.
+Every other bound on this filter is now stated the same way, for the same
+reason and for one more: a strength unit is worth whatever the modelled MTF
+curve says, so a bound in strength units also moves whenever that curve is
+corrected. See "The curve the correction rides" below.
 
 Domesday's cut is unchanged by this, and the top packet it takes with it is
 the same effect stated above in reverse: with the band levelled, packets 1
@@ -361,6 +367,103 @@ returns 1.4 dB of the 10.3, so it does not change the verdict; the packet's
 recorded deviation was re-taken against the corrected decode instead.
 Removing an unjustified lift is not allowed to be judged by the packet it
 happened to flatter, in this direction either.
+
+## The curve the correction rides
+
+Everything above is stated as dB at the subcarrier, and the exchange rate
+between those dB and the strength units the servos actually hold is the
+modelled optical MTF: `compute_mtf()` in `lddecode/dsp.py`, whose cutoff is
+the readout objective's spatial cutoff, 2·NA/λ cycles per unit length,
+carried past the spot at the track velocity. A CAV disc turns once per
+frame, so that velocity is 2·π·r·fps and the cutoff scales directly with the
+disc's rotation rate.
+
+`get_fmax()` defaulted that rate to 30 rev/s and nothing passed one, so PAL
+was modelled at NTSC's rotation: a cutoff of 13.82 MHz where a PAL disc's
+is 11.52, and a correction curve half again too shallow — 2.69 dB per unit
+of strength at 4.43 MHz against the 3.48 the disc's own response gives. It
+is now built at `SysParams["FPS"]`, 25 rev/s on PAL and 29.97 on NTSC. (The
+54000 in the same expression is a count of *tracks* between the CAV
+programme radii, not of seconds, so it is the same on both systems and does
+not move with the rate.)
+
+The first-order effect cancels: both loops that set the strength regulate
+dB at the subcarrier, so a converged decode lands at the same correction
+under either curve. What does not cancel is everything measured in strength
+units — and, on captures short enough that the loops take one or two steps
+rather than converging, the step size itself. A Jacobian a third too small
+lands a third short, and the residual shows up where the multiburst can see
+it. Across the ten PAL radius cuts, the two packets straddling the
+subcarrier (4.0 and 4.8 MHz — the band this filter owns and the only direct
+measurement of it) go from a worst residual of **1.54 dB to 0.75 dB**, and
+the two cuts that carried nearly all of it come back flat:
+
+| Cut | 4.0 MHz | 4.8 MHz | Adopted, dB at fsc |
+|---|---|---|---|
+| DD86-DS2 middle | +1.54 → +0.31 | +1.47 → +0.05 | +0.73 → +1.86 |
+| DD86-DS1 outer | +1.20 → +0.75 | +1.15 → +0.21 | +1.81 → 0.00 |
+| DD86-DS2 outer | +0.42 → +0.41 | +0.20 → −0.23 | +1.79 → −1.07 |
+| DD86-DS2 inner | +0.52 → +0.55 | −0.62 → −0.65 | −4.58 → −4.56 |
+| GGV1011 ×3, industrial-lv ×3 | within 0.06 | within 0.16 | unchanged, or 1.01 → 0.40 |
+
+The Domesday direction is the one to read: the pressing whose chrominance
+reads hot gets *less* lift, not more, and DD86-DS1 outer's is withdrawn
+entirely — the multiburst was already saying that band was flat and the
+under-steep curve was under-hearing it.
+
+The costs are the two effects this page has already described twice, in
+both directions. The correction still deepens above the subcarrier faster
+than the error does, so the 5.8 MHz packet moves with it (worse by 1.1 to
+1.9 dB on DD86-DS1 outer and DD86-DS2 middle, better by 0.3 to 0.5 on
+DD86-DS2 outer and industrial-lv outer, and 4 to 10 dB out on every PAL cut
+either way). And work withdrawn from the inverse MTF falls to `mtf_level`,
+which on DD86-DS1 outer now reaches its −1.0 PAL clip and leaves the 2T
+pulse 2.4 IRE lower than the recorded deviation.
+
+The second of those was hidden at first, because the change also cost
+DD86-DS2 middle its identification of `pal-its-field1` — and with it the 2T
+pulse deviation that line is the only place to read. That line's only
+chrominance element is the 20T modulated pulse, which this pressing records
+at 5.7 IRE against a 50 IRE nominal where GGV1011 and industrial-lv read 30
+to 32, so it sat a tenth of an IRE above the 5 IRE floor `chroma_present`
+in
+[`analysis/vits_identify.py`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_identify.py)
+held it to, and this change moved it to 4.9. Every other feature of the
+line still matched: 0.975 alignment correlation, luminance levels within
+tolerance, a monotonic staircase.
+
+The floor was the wrong instrument, not the wrong number. A modulated
+pulse's chrominance window carries the pulse's envelope rather than an
+amplitude, which is why
+[`analysis/vits_conformance.py`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_conformance.py)
+already refuses to judge it against its nominal, citing EBU Tech. 3209
+7.2.4 c); across testdata it spans 4.9 to 37.5 IRE on discs whose sustained
+chrominance bars all read 41 to 46. Holding it to a level made a chrominance
+level fault delete the identification of the line reporting it, which is
+exactly what this layer's looseness against levels exists to prevent. It is
+now judged against the line's own chrominance-free windows instead — five
+times the quietest of them, floored at the demodulator's own 0.5 IRE — which
+every true reading in testdata clears twice over and the closest false one, a
+picture line matched at the 0.50 correlation limit, misses by the same
+margin. Sustained chrominance keeps the level floor, which is what still
+tells the two PAL ITS lines apart: they differ in chrominance alone, and the
+field 2 line's is a bar.
+
+With the line identified again, its 2T pulse reads 80.28 IRE against a
+100.56 reference — 8.11× its band, against the 5.97× recorded before this
+change. That is the same third more band the curve correction costs the
+pulse on DD86-DS1 outer (3.19× → 4.15×), on the worst cut of the family, and
+it is recorded as such.
+
+Because the strength unit is defined by this curve, every threshold on the
+filter is now written in dB at the subcarrier and divided into strength
+units per system at construction — `IMTF_LIMIT_DB`, `IMTF_DEADBAND_DB`,
+`IMTF_ENGAGE_DB` and `MTF_DEEMP_FEEDFORWARD_DB`, joining the
+`IMTF_CUT_ENGAGE_DB` that was already stated that way. Each value is its
+system's historical strength-unit figure restated in the dB it meant there,
+so correcting the curve leaves every loop exactly where it was tuned and
+only the curve itself moves; on NTSC, where the rate changed by 0.1 %, the
+adopted `mtf_level` is identical on all nine radius cuts.
 
 ## The 2T pulse is judged against its own bar
 

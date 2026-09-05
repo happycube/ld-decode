@@ -8,6 +8,7 @@ from math import tau
 
 import numpy as np
 from numba import njit
+from scipy.special import i0
 
 
 # This runs a cubic scaler on a line.
@@ -51,55 +52,51 @@ def scale(buf, begin, end, tgtlen, mult=1):
 # (more ringing))
 # Large Beta = less sharpness / less ringing (wide main lobe (less sharp), more side lobe cutoff
 # (less ringing))
-# kaiser_beta = 5
+kaiser_beta = 5
 sinc_tap_count = 16  # must be multiple of 2
-sinc_phase_count = 2**16
 
-# @njit
-# def sinc(x):
-#     if x == 0.0:
-#         return 1.0
-#     x_pi = np.pi * x
-#     return math.sin(x_pi) / x_pi
-
-
-# def kaiser_window(x, a, beta, i0_beta):
-#     r = x / a
-#     if r < -1.0 or r > 1.0:
-#         return 0.0
-#
-#     t = math.sqrt(1.0 - r * r)
-#     return i0(beta * t) / i0_beta
+#: Tabulated fractional positions between one input sample and the next.  Both
+#: resampling kernels interpolate between adjacent rows, which recovers a phase
+#: resolution far finer than the step, so the table is sized to sit in L1d
+#: beside the signal rather than to resolve the phase on its own: 257 rows of
+#: 16 float32 weights is 16 KiB.
+sinc_phase_count = 256
 
 
 # https://ccrma.stanford.edu/~jos/sasp/Kaiser_Windows_Transforms.html
-# def build_kaiser_lut(beta, taps, phases):
-#     a = taps // 2
-#
-#     offsets = np.arange(a - 1, -a - 1, -1)
-#     offsets_len = len(offsets)
-#
-#     table = np.zeros((phases + 1, taps), dtype=np.float32)
-#     weights = np.empty(offsets_len, dtype=np.float32)
-#     i0_beta = i0(beta)
-#
-#     for i in range(phases):
-#         phase = i / phases
-#
-#         s = 0.0
-#         for j in range(offsets_len):
-#             x = offsets[j] + phase
-#             weight = sinc(x) * kaiser_window(x, a, beta, i0_beta)
-#
-#             weights[j] = weight
-#             s += weight
-#
-#         table[i, :] = weights / s
-#
-#     # copy the last phase to avoid bounds checking later on when we do linear interpolation
-#     table[phases] = table[phases - 1]
-#
-#     return table
+def build_kaiser_lut(beta, taps, phases):
+    """Build the fractional-delay filter bank the resamplers read.
+
+    Row ``i`` is the ``taps``-weight windowed-sinc filter that reconstructs a
+    sample ``i / phases`` of the way from one input sample to the next,
+    normalised to unit gain at DC.  The table has ``phases + 1`` rows: the last
+    is the phase-1.0 filter, which is both what the top bucket interpolates
+    towards and what lets the kernels read ``phase + 1`` without a bounds
+    check.  It must be the real filter and not a copy of its neighbour --
+    duplicating it biases every position in the top 1/phases of the range, by
+    an amount the coarse table no longer makes negligible.
+
+    ``scripts/build_sinc_lut.py`` writes the result to ``lddecode/sinc_lut.npz``,
+    which is what a decode loads; the tests rebuild it here to check that file.
+    """
+    half_taps = taps // 2
+
+    # Tap offsets from the sample below the fractional position, so that phase
+    # zero puts the peak of the sinc on tap half_taps - 1 -- the tap the
+    # kernels align with the truncated position.
+    offsets = np.arange(half_taps - 1, -half_taps - 1, -1, dtype=np.float64)
+    phase = np.arange(phases + 1, dtype=np.float64) / phases
+    x = offsets[np.newaxis, :] + phase[:, np.newaxis]
+
+    # Kaiser window on the same grid.  |x| never exceeds half_taps for these
+    # offsets, so the clamp is only there to keep the square root in domain.
+    r = x / half_taps
+    window = i0(beta * np.sqrt(np.maximum(1.0 - r * r, 0.0))) / i0(beta)
+
+    table = np.sinc(x) * window
+    table /= table.sum(axis=1, keepdims=True)
+
+    return table.astype(np.float32)
 
 
 @njit(nogil=True, cache=True, fastmath=True)
@@ -149,24 +146,28 @@ def scale_field(
         # fractional phase
         frac = coord - coord_int
 
-        # sinc_phase_count is 2**16, so the nearest tabulated phase is already
-        # accurate far below float32 precision. Interpolating between two
-        # adjacent phases would double LUT reads and add per-tap math in the
-        # innermost loop of the decoder for no change in output.
-        # If the LUT gets smaller, consider adding linear interpolation.
-        phase = int(frac * sinc_phase_count + np.float32(0.5))
-        w = sinc_lut[phase]
+        # The table is coarse enough to stay in L1d, so take the two phases
+        # either side of the position and interpolate between them.
+        # scale_positions resolves the phase the same way, and the two kernels
+        # must return the same sample for the same position.
+        phase_pos = frac * sinc_phase_count
+        phase_start = int(phase_pos)
+        phase_alpha = np.float32(phase_pos - phase_start)
+
+        w_start = sinc_lut[phase_start]
+        w_end = sinc_lut[phase_start + 1]
 
         start = coord_int - half_taps_m1
 
         result = 0.0
         for t in range(sinc_tap_count):
-            result += buf[start + t] * w[t]
+            ws = w_start[t]
+            result += buf[start + t] * (ws + phase_alpha * (w_end[t] - ws))
 
         dsout[i - dsout_start] = level_adjust * result
 
 
-@njit(nogil=True, fastmath=True)
+@njit(nogil=True, cache=True, fastmath=True)
 def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
                     samples_per_line, wow_level_adjust_smoothing=0,
                     level_adjust_threshold=15):
@@ -202,7 +203,7 @@ def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
 
         phase_pos = frac * sinc_phase_count
         phase_start = int(phase_pos)
-        alpha2 = np.float32(phase_pos - phase_start)
+        phase_alpha = np.float32(phase_pos - phase_start)
 
         w_start = sinc_lut[phase_start]
         w_end = sinc_lut[phase_start + 1]
@@ -212,7 +213,7 @@ def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
         result = 0.0
         for t in range(sinc_tap_count):
             ws = w_start[t]
-            result += buf[start + t] * (ws + alpha2 * (w_end[t] - ws))
+            result += buf[start + t] * (ws + phase_alpha * (w_end[t] - ws))
 
         dsout[i] = level_adjusts[i] * result
 
@@ -241,13 +242,36 @@ def rms(arr):
 
 
 # MTF calculations
-def get_fmax(cavframe=0, laser=780, na=0.5, fps=30):
+#
+# The optical cutoff is the objective's spatial cutoff, 2*NA/lambda cycles
+# per unit length, carried past the readout spot at the track velocity.  A
+# CAV disc turns once per frame, so that velocity is 2*pi*r*fps and the
+# cutoff scales directly with the rotation rate: 25 rev/s on PAL, 29.97 on
+# NTSC.  The default is NTSC's, so a PAL caller must pass fps or it models
+# a cutoff 20 % high (13.82 against 11.52 MHz) and a video band that rolls
+# off far too gently.
+#
+# 54000 is the number of tracks between the CAV programme radii (55 to
+# 145 mm at the 1.67 um standard pitch).  It counts revolutions, not
+# seconds, so it is the same on both systems - only fps differs.
+def get_fmax(cavframe=0, laser=780, na=0.5, fps=30.0):
+    """Optical cutoff frequency, in MHz, at one CAV frame.
+
+    cavframe -- CAV frame number; 0 is the innermost programme radius
+    laser    -- readout wavelength, nm
+    na       -- numerical aperture of the readout objective
+    fps      -- disc revolutions per second (PAL 25, NTSC 29.97)
+    """
     loc = 0.055 + ((cavframe / 54000) * 0.090)
     return (2 * na / (laser / 1000)) * (2 * np.pi * fps) * loc
 
 
-def compute_mtf(freq, cavframe=0, laser=780, na=0.52):
-    fmax = get_fmax(cavframe, laser, na)
+def compute_mtf(freq, cavframe=0, laser=780, na=0.52, fps=30.0):
+    """Optical MTF at freq (Hz): 1.0 at DC, falling to 0 at the cutoff.
+
+    freq is not modified; fps carries the same meaning as in get_fmax().
+    """
+    fmax = get_fmax(cavframe, laser, na, fps)
 
     freq_mhz = freq / 1000000
 
@@ -701,6 +725,85 @@ def refine_pilot_zcs(demod_pilot, linelocs, n, length_px, freq, linelen, pilot_m
         prev = zcs[l]
 
     return zcs, plen
+
+
+# ---------------------------------------------------------------------------
+# Chroma differential gain and phase correction
+# ---------------------------------------------------------------------------
+#
+# The corrector itself lives in field.py (_correct_chroma_vs_luma), which
+# separates the subcarrier band and the luminance it rides on with a pair of
+# zero-phase frequency windows.  These are the three passes it makes over the
+# whole field: the windowing of the spectrum and the two forms of the final
+# combination.  Each is one loop with no temporaries, so a field costs one
+# read and one write of itself rather than the eight whole-field arrays the
+# same arithmetic spelled in numpy allocates.
+
+
+@njit(cache=True, nogil=True)
+def select_band(spectrum, window, lo, hi, out, quadrature):
+    """Write `spectrum` through `window` over bins [lo, hi) into `out`.
+
+    A window is zero outside its own band, so only that band's bins are
+    touched and `out` keeps whatever it held elsewhere - it comes in zeroed,
+    so the inverse transform sees the windowed spectrum and nothing else.
+
+    With `quadrature` set each bin is multiplied by -1j, which is the Hilbert
+    transform's -1j*sgn(f) on a half spectrum: the inverse real transform
+    then returns the band's quadrature component instead of the band itself,
+    and the two together are its analytic signal.  Reaching the analytic
+    signal that way costs a second real transform rather than one complex
+    transform of twice the width, and never builds the doubled full-length
+    complex spectrum.
+    """
+    if quadrature:
+        for i in range(lo, hi):
+            v = spectrum[i] * window[i]
+            out[i] = complex(v.imag, -v.real)
+    else:
+        for i in range(lo, hi):
+            out[i] = spectrum[i] * window[i]
+
+
+@njit(cache=True, nogil=True, fastmath=True)
+def equalise_chroma_gain(ire, luma, chroma, slope, anchor):
+    """composite + (G(luma) - 1) * chroma, the real differential gain path.
+
+    G(L) = (1 + slope*anchor) / (1 + slope*max(L, 0)): the gain that flattens
+    a chroma amplitude rising `slope` per IRE of luminance, holding the level
+    at `anchor` where it is.  Sync and blanking are below the clip, so they
+    all take G(0) and nothing about the luminance staircase moves.
+    """
+    n = ire.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    numerator = 1.0 + slope * anchor
+    for i in range(n):
+        level = luma[i]
+        if level < 0.0:
+            level = 0.0
+        out[i] = ire[i] + (numerator / (1.0 + slope * level) - 1.0) * chroma[i]
+    return out
+
+
+@njit(cache=True, nogil=True, fastmath=True)
+def equalise_chroma_gain_phase(ire, level, cos_rotation, sin_rotation,
+                               chroma, quadrature, slope, anchor):
+    """composite + Re[(G(luma) - 1) * chroma_analytic] with G complex.
+
+    The rotation cos/sin pair is passed in already evaluated over the
+    clipped luminance `level`: they are two vectorised transcendental passes
+    over the field, which numpy does in SIMD and this loop's libm would not.
+    The analytic chroma arrives as its own two components (see select_band),
+    so the real part of the product is written out directly.
+    """
+    n = ire.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    numerator = 1.0 + slope * anchor
+    for i in range(n):
+        gain = numerator / (1.0 + slope * level[i])
+        out[i] = (ire[i] + (gain * cos_rotation[i] - 1.0) * chroma[i]
+                  - gain * sin_rotation[i] * quadrature[i])
+    return out
 
 
 if __name__ == "__main__":

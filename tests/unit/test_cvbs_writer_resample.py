@@ -100,7 +100,10 @@ def test_lock_tracks_from_field_a_only_and_is_clamped():
     ex = RecordingExecutor()
     w = make_writer(ex)
     w._lock_initialised = True
-    w._pal_phase_error = Mock(return_value=-20.0)  # asks for -0.222 sample
+    # -20 deg is -0.222 sample of error; three quarters of that is still
+    # past the per-frame clamp, so a large error slews at the clamp as it
+    # did before the loop was damped
+    w._pal_phase_error = Mock(return_value=-20.0)
     emit(w)
 
     w._pal_phase_error.assert_called_once()
@@ -108,6 +111,38 @@ def test_lock_tracks_from_field_a_only_and_is_clamped():
     assert len(called_with) == 354690  # field A's lattice share
     assert w._pal_shift == pytest.approx(-0.05)  # clamped per-frame step
     assert w._lock_residuals == [-20.0]
+
+
+def test_a_small_residual_moves_the_lock_by_a_fraction_of_it():
+    """The residual is mostly measurement noise (see PAL_LOCK_GAIN), so the
+    loop applies three quarters of it and leaves the rest to be re-measured
+    rather than writing this frame's noise into the next frame's
+    lattice."""
+    ex = RecordingExecutor()
+    w = make_writer(ex)
+    w._lock_initialised = True
+    w._pal_phase_error = Mock(return_value=1.8)   # 0.02 sample of error
+
+    emit(w)
+
+    assert w._pal_shift == pytest.approx(0.75 * 1.8 / 90.0)
+    assert w.PAL_LOCK_GAIN == 0.75
+
+
+def test_the_anchor_frame_takes_the_whole_measured_error():
+    """Acquisition is not damped: the first frame moves the lattice by all
+    of what it measures, so the loop starts from the right place instead of
+    walking there a fraction at a time."""
+    ex = RecordingExecutor()
+    w = make_writer(ex)
+    # 9 deg of error to anchor out, then 4 deg read back off the anchored
+    # field (inside the per-frame clamp, so the gain is what shows)
+    w._pal_phase_error = Mock(side_effect=[9.0, 4.0])
+
+    f_a, _ = emit(w)
+
+    assert [c.args[0] for c in f_a.downscale_cvbs.call_args_list] == [0.0, 0.1]
+    assert w._pal_shift == pytest.approx(0.1 + 0.75 * 4.0 / 90.0)
 
 
 def test_close_leaves_an_injected_executor_alone():

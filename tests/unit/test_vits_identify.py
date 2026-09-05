@@ -17,6 +17,7 @@ import vits_geometry as vg
 import vits_identify as vi
 import vits_reference as vr
 import vits_synth as vs
+from vits_measure import guarded_window, measure_definition
 
 pytestmark = [pytest.mark.unit, pytest.mark.dsp, pytest.mark.vits]
 
@@ -157,6 +158,116 @@ def test_a_level_fault_does_not_hide_the_signal():
     vs.render_definition(field, entry, luma_gain=0.80)
     found = vi.identify_vits(field, lines=[19])
     assert found[19].vits_id == entry.id
+
+
+# ---------------------------------------------------------------------------
+# Chrominance that has no level to be held to
+# ---------------------------------------------------------------------------
+
+#: Definitions whose chrominance rides on a sine-squared pulse, and the
+#: element that does.  vits_conformance.py refuses to judge these against
+#: their nominal - the window carries the pulse's envelope, not an amplitude
+#: (EBU Tech. 3209 7.2.4 c) - so identification cannot hold them to a level
+#: either.
+PULSE_CHROMA = [
+    ("pal-its-field1", "pulse_20t_chroma"),
+    ("ntsc-ntc7-composite", "pulse_12t5_chroma"),
+]
+
+
+@pytest.mark.parametrize("vits_id, element_id", PULSE_CHROMA)
+def test_a_pulses_chrominance_is_not_held_to_a_level(vits_id, element_id):
+    """A 20T pulse reading a tenth of its nominal is still identified.
+
+    The reading this element gives is not an amplitude, and across the
+    Domesday captures it lands between 4.9 and 11.4 IRE against a 50 IRE
+    nominal on discs whose sustained chrominance bars read 41 to 46 - so a
+    fixed IRE floor set to reject a blank line also rejects a real signal.
+    That is the level fault hiding itself, which this module exists to
+    prevent; it cost DD86-DS2 middle its whole ITS line, and with it the 2T
+    pulse deviation that line was the only place to see.
+    """
+    entry = vr.definition(vits_id)
+    field = vs.make_field(entry.system, is_first_field=(entry.field == 1))
+    vs.render_definition(field, entry, chroma_gain=0.07)
+    geom = vg.FieldGeometry(field, origin_samples=0.0)
+
+    measured = measure_definition(
+        field, entry, entry.field_line, geom)[element_id].value
+    assert measured < vi.IDENTIFY_CHROMA_PRESENT_IRE, (
+        "the point of the test is a reading a fixed floor would reject")
+
+    found = vi.identify_vits(field, geom=geom, lines=[entry.field_line])
+    assert found[entry.field_line].vits_id == entry.id
+
+
+@pytest.mark.parametrize("vits_id, element_id", PULSE_CHROMA)
+def test_a_pulse_carrying_no_chrominance_at_all_is_still_rejected(
+        vits_id, element_id):
+    # Loose against the level, not absent: the element still has to stand
+    # clear of what the line reads where the definition says there is none.
+    entry = vr.definition(vits_id)
+    field = vs.make_field(entry.system, is_first_field=(entry.field == 1))
+    vs.render_definition(field, entry, chroma_gain=0.0)
+    geom = vg.FieldGeometry(field, origin_samples=0.0)
+
+    score, features = vi.score_definition(geom, entry.field_line, entry)
+    assert features["chroma_present"] == 0.0
+    assert score == 0.0
+    assert entry.field_line not in vi.identify_vits(field, geom=geom)
+
+
+def test_sustained_chrominance_is_still_held_to_its_level():
+    """The relaxation reaches the pulse only, which is what keeps the PAL
+    ITS pair apart.
+
+    Line 19 and its field 2 counterpart carry the same bar, 2T pulse and
+    staircase and differ in chrominance alone - the counterpart's staircase
+    has subcarrier superimposed.  That chrominance is a sustained bar, whose
+    reading is an amplitude, so it keeps the level floor: a field 1 line,
+    where it is genuinely absent, cannot pass for a field 2 one.
+    """
+    entry = vr.definition("pal-its-field2")
+    field = vs.make_field("PAL", is_first_field=False)
+    vs.render_definition(field, entry, chroma_gain=0.09)
+    geom = vg.FieldGeometry(field, origin_samples=0.0)
+
+    score, features = vi.score_definition(geom, entry.field_line, entry)
+    assert features["chroma_present"] == 0.0
+    assert score == 0.0
+
+
+def test_the_floor_is_the_lines_own_quietest_chrominance_free_window():
+    """Not the mean of them, and not the loudest.
+
+    A window a definition states as chrominance-free can still read loud.
+    The NTC7 composite's staircase terminus begins where its chrominance
+    reference ends and takes 15 IRE of spill from it on every NTSC capture
+    in testdata, on a line that is otherwise clean.  Averaging that in, or
+    taking it for the floor, would put the threshold above the very signal
+    the floor exists to admit.
+    """
+    entry = vr.definition("ntsc-ntc7-composite")
+    pulse = next(e for e in entry.elements if e.id == "pulse_12t5_chroma")
+    terminus = next(e for e in entry.elements if e.id == "staircase_terminus")
+    field = vs.make_field("NTSC")
+    vs.render_definition(field, entry)
+    vs.draw_burst(field, entry.field_line, terminus.start_us,
+                  terminus.end_us, vr.to_ire(15.0, "NTSC"),
+                  field.params.sample_rate_mhz / 4.0)
+    geom = vg.FieldGeometry(field, origin_samples=0.0)
+
+    _, loud, _ = geom.demod(entry.field_line,
+                            *guarded_window(*terminus.window_us))
+    assert loud > vi.IDENTIFY_CHROMA_FLOOR_MIN_IRE, (
+        "one window has to be the loud one for this to mean anything")
+
+    # A floor taken from that window would put the threshold above the
+    # element's own nominal, so even this conformant rendering would fail it.
+    assert (vi.IDENTIFY_PULSE_CHROMA_MARGIN * loud
+            > vr.to_ire(pulse.nominal, "NTSC"))
+    _, features = vi.score_definition(geom, entry.field_line, entry)
+    assert features["chroma_present"] == 1.0
 
 
 # ---------------------------------------------------------------------------

@@ -152,6 +152,23 @@ def test_cvbs_output_leaves_the_picture_to_the_writer(corrector):
     assert corrector == []
 
 
+def test_cvbs_output_does_not_send_the_correction_to_the_field_jobs():
+    """The other half of the same rule: with the CVBS writer on, the field
+    jobs are told no chroma DG at all, so a worker leaves the TBC picture it
+    downscales uncorrected and the correction happens once, on the 4fsc
+    lattice the decode is actually writing (downscale_cvbs)."""
+    it = types.SimpleNamespace(
+        output_cvbs=True,
+        rf=types.SimpleNamespace(DecoderParams={
+            "chroma_dg_slope": 0.002, "chroma_dg_phase": 0.04}),
+    )
+
+    assert LDdecode._engine_chroma_dg(it) is None
+
+    it.output_cvbs = False
+    assert LDdecode._engine_chroma_dg(it) == (0.002, 0.04)
+
+
 def test_a_cvbs_frame_is_written_under_its_second_fields_parameters(corrector):
     """The writer resamples both fields when the second arrives, so the
     inline write read the second field's commit-time parameters for the

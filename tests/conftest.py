@@ -35,6 +35,14 @@ ANALYSIS_DIR = REPO_ROOT / "analysis"
 if str(ANALYSIS_DIR) not in sys.path:
     sys.path.insert(0, str(ANALYSIS_DIR))
 
+#: scripts/ holds the developer measurement harnesses.  Like analysis/ it is a
+#: directory of scripts rather than a package, so it has to be on sys.path for a
+#: test to reach the pure helpers inside one (argv construction, log parsing,
+#: the footprint recorders).  Import path only: nothing here opens a file.
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
 #: The ld-decode-testdata submodule.  Functional suites that read real captures
 #: locate them from here; nothing under tests/unit/ may refer to it.
 TESTDATA = REPO_ROOT / "testdata"

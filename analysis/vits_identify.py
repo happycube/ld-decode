@@ -41,6 +41,7 @@ from vits_measure import (
     guarded_window,
     load,
     measure_definition,
+    pulse_under,
 )
 
 __all__ = [
@@ -63,6 +64,34 @@ IDENTIFY_LEVEL_TOLERANCE_IRE = 30.0
 IDENTIFY_CHROMA_PRESENT_IRE = 5.0
 IDENTIFY_FREQ_TOLERANCE_MHZ = 0.5
 IDENTIFY_MIN_SCORE = 0.60
+
+#: Chrominance riding on a sine-squared pulse is judged present against the
+#: line's own chrominance-free windows instead, at this many times the
+#: quietest of them.  Its window reading is not an amplitude - it carries the
+#: pulse's envelope, which is why vits_conformance.py refuses to judge one
+#: against its nominal, citing EBU Tech. 3209 7.2.4 c) - so there is no level
+#: it can be held to.  Across testdata the PAL 20T pulse's chrominance reads
+#: 4.9 IRE on one Domesday pressing and 37.5 on a GGV test disc, against a
+#: 50 IRE nominal, while both discs' sustained chrominance bars read 41 to
+#: 46: judged against a fixed level it deletes the identification of a disc
+#: whose chrominance is fine, which is the outcome this module's looseness
+#: against levels exists to prevent.
+#:
+#: What it does do reliably is stand clear of a line that has no such pulse
+#: on it.  Against the floor below, every true reading in testdata clears
+#: five times its threshold twice over - the closest, that Domesday pressing,
+#: reads 4.9 against 2.5 - and the closest false one, a picture line matched
+#: at the 0.50 correlation limit, reads 2.2 against 3.9.
+IDENTIFY_PULSE_CHROMA_MARGIN = 5.0
+
+#: The floor above is never taken quieter than this.  A line's own
+#: chrominance-free windows are the right reference but a poor estimator at
+#: the bottom, where they are measuring the demodulator rather than the line:
+#: across testdata they land between 0.02 and 0.95 IRE, and a synthesised
+#: field reads exactly zero, which is no threshold at all.  Held at 0.5 IRE,
+#: the middle of that spread, the threshold stays a real one however quiet the
+#: reference goes.
+IDENTIFY_CHROMA_FLOOR_MIN_IRE = 0.5
 
 #: Every feature a definition offers must also clear this on its own.  The
 #: mean alone is not enough: a PAL VBI data line reads as six low-frequency
@@ -131,7 +160,9 @@ def score_definition(geom: FieldGeometry, line: int, entry):
       levels          fraction of luminance bars within
                       IDENTIFY_LEVEL_TOLERANCE_IRE of nominal
       chroma_present  fraction of the definition's chrominance elements
-                      actually carrying chrominance
+                      actually carrying chrominance - against a level, or
+                      against the line's own floor where the element rides
+                      on a sine-squared pulse and has no level to hold
       chroma_absent   fraction of its luminance-only windows correctly free
                       of chrominance
       frequency       mean per-packet agreement with the best-matching
@@ -191,22 +222,49 @@ def score_definition(geom: FieldGeometry, line: int, entry):
     # thirds, because its two luminance-only windows are correctly free of
     # chroma - which is how three blank VBI lines were each identified as an
     # NTSC VIRS.  A definition's chrominance has to be there.
-    present_scores = []
+    #
+    # Absence is measured first because presence is measured against it: the
+    # quietest window the definition says carries no chrominance is what
+    # nothing looks like on this line, and a pulse's chrominance is judged
+    # against that rather than against a level it does not have.
     absent_scores = []
+    chroma_floor_ire = None
     for element in entry.elements:
-        if element.id not in measurements:
+        if element.id not in measurements or element.channel == "chroma":
             continue
-        if element.channel == "chroma":
-            present_scores.append(float(
-                measurements[element.id].value >= IDENTIFY_CHROMA_PRESENT_IRE))
+        if chroma_expected(entry, element.start_us, element.end_us):
+            continue  # a luma window under a chroma element proves nothing
+        window = guarded_window(*element.window_us)
+        _, amplitude, _ = geom.demod(line, window[0], window[1])
+        absent_scores.append(float(
+            amplitude is None or amplitude < IDENTIFY_CHROMA_PRESENT_IRE))
+        if amplitude is not None:
+            # The quietest, not the mean and not the loudest.  A window the
+            # definition says carries no chrominance can still read loud: the
+            # NTC7 composite's staircase terminus abuts its chrominance
+            # reference and takes 15 IRE of spill from it across testdata,
+            # and any definition scored against a line that really does carry
+            # chrominance there reads the chrominance.  Either would put the
+            # threshold above the signal the floor exists to admit - and the
+            # second is the one already answered, by chroma_absent.
+            chroma_floor_ire = (amplitude if chroma_floor_ire is None
+                                else min(chroma_floor_ire, amplitude))
+
+    present_scores = []
+    for element in entry.elements:
+        if element.id not in measurements or element.channel != "chroma":
+            continue
+        value = measurements[element.id].value
+        # A definition all of whose windows carry chrominance offers no floor
+        # to judge against, and the absolute rule is what is left.  No
+        # definition in the reference is both that and carrying a composite
+        # pulse, so this is a guard rather than a path.
+        if pulse_under(entry, element) is None or chroma_floor_ire is None:
+            present_scores.append(float(value >= IDENTIFY_CHROMA_PRESENT_IRE))
         else:
-            if chroma_expected(entry, element.start_us, element.end_us):
-                continue  # a luma window under a chroma element proves nothing
-            window = guarded_window(*element.window_us)
-            _, amplitude, _ = geom.demod(line, window[0], window[1])
-            absent_scores.append(float(
-                amplitude is None
-                or amplitude < IDENTIFY_CHROMA_PRESENT_IRE))
+            floor = max(chroma_floor_ire, IDENTIFY_CHROMA_FLOOR_MIN_IRE)
+            present_scores.append(float(
+                value >= IDENTIFY_PULSE_CHROMA_MARGIN * floor))
     if present_scores:
         features["chroma_present"] = float(np.mean(present_scores))
     if absent_scores:

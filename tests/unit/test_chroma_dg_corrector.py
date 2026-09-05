@@ -21,6 +21,9 @@ import types
 import numpy as np
 import pytest
 
+from scipy import fft as spfft
+
+from lddecode import field as field_module
 from lddecode import utils_logging as logs
 from lddecode.decoder import LDdecode, measure_vits_dg_staircase
 from lddecode.field import (CHROMA_DG_ANCHOR_IRE, apply_chroma_dg_correction,
@@ -605,3 +608,131 @@ def test_a_part_filled_pool_never_takes_the_phase_decision():
     it.DG_PHASE_MIN_SAMPLES = 24
     run(it)
     assert phase_of(it) == 0.05
+
+
+# ---------------------------------------------------------------------------
+# The transform length and the working precision
+# ---------------------------------------------------------------------------
+#
+# The corrector transforms a whole field.  The lengths the decoder hands it
+# are arbitrary - the longer PAL CVBS field lattice, 354689 samples, is prime
+# - so pocketfft reached them through Bluestein and one field cost over
+# 100 ms.  It now pads to the next fast length instead, which is only correct
+# if the padding leaves the correction where it was, at the field's ends most
+# of all: the transform is circular, so each end was already the other's
+# neighbour, and the pad has to preserve that rather than introduce an edge.
+#
+# It also filters in single precision and adds the correction term back to
+# the composite in double, which is what the reference below is written in
+# throughout.  Both departures are checked the same way and against the same
+# reference: whatever they cost has to stay well inside the output's own
+# quantisation step.
+
+
+#: The longer of the two PAL CVBS field lattices, and the length the padding
+#: exists for: prime, so nothing about it factors.
+PAL_CVBS_FIELD_B = 354689
+
+#: Under half the 0.0021 IRE the 16-bit TBC output quantises to, so neither
+#: the padding nor the working precision can move an output sample by an LSB
+#: without this failing first, and seventeen times the largest deviation the
+#: two together are measured to produce (5.9e-5 IRE, on the gain-and-phase
+#: path; the gain-only path reads 5.3e-6).
+CORRECTION_TOLERANCE_IRE = 1e-3
+
+#: The plan's figure for the correction as a whole, an order below the
+#: tolerance above and three below what the deviation is measured at.
+CORRECTION_TOLERANCE_RMS_IRE = 0.01
+
+
+def unpadded_correction(ire, fs_mhz, slope, phase):
+    """The corrector as it was: one transform per field at the field's own
+    length, no padding, everything in double precision.  Kept here as the
+    thing the padding and the single-precision filtering have to match."""
+    bandpass, lowpass = field_module._chroma_dg_window(len(ire), fs_mhz)
+    spectrum = spfft.rfft(ire)
+    luma = spfft.irfft(spectrum * lowpass, len(ire))
+    level = np.clip(luma, 0.0, None)
+    gain = ((1.0 + slope * CHROMA_DG_ANCHOR_IRE) / (1.0 + slope * level))
+    if phase == 0.0:
+        chroma = spfft.irfft(spectrum * bandpass, len(ire))
+        return ire + (gain - 1.0) * chroma
+
+    n = len(ire)
+    half = spectrum * bandpass
+    full = np.zeros(n, dtype=np.complex128)
+    full[: len(half)] = half
+    full[1 : (n + 1) // 2] *= 2.0
+    chroma_analytic = spfft.ifft(full)
+    g = gain * np.exp(-1j * np.deg2rad(phase) * level)
+    return ire + np.real((g - 1.0) * chroma_analytic)
+
+
+def staircase_field_ire(length, fs_mhz, line_len):
+    """A modulated staircase run out to a whole field, in IRE.
+
+    Treads of rising luminance each carrying subcarrier, so both windows
+    have something to separate, plus a little noise so no bin is empty.
+    """
+    treads = np.array([0.0, 20.0, 40.0, 60.0, 80.0, 100.0])
+    tread_len = max(line_len, length // len(treads) + 1)
+    luma = np.resize(np.repeat(treads, tread_len), length)
+    t = np.arange(length)
+    chroma = 20.0 * np.sin(2.0 * np.pi * 0.25 * t)
+    return luma + chroma + np.random.default_rng(2026).normal(0.0, 0.05, length)
+
+
+@pytest.mark.parametrize("phase", [0.0, 3.0], ids=["gain-only", "gain-and-phase"])
+def test_the_corrector_matches_the_double_precision_transform(phase):
+    """Padded, filtered in single precision and combined in one pass, the
+    correction is the one the plain double-precision transform makes."""
+    ire = staircase_field_ire(PAL_CVBS_FIELD_B, OUTFREQ, LINELEN)
+
+    expected = unpadded_correction(ire, OUTFREQ, DOMESDAY_SLOPE, phase)
+    got = field_module._correct_chroma_vs_luma(ire, OUTFREQ, DOMESDAY_SLOPE, phase)
+
+    deviation = np.abs(got - expected)
+    assert deviation.max() < CORRECTION_TOLERANCE_IRE
+    assert np.sqrt(np.mean(deviation ** 2)) < CORRECTION_TOLERANCE_RMS_IRE
+
+
+@pytest.mark.parametrize("phase", [0.0, 3.0], ids=["gain-only", "gain-and-phase"])
+def test_the_first_and_last_lines_are_corrected_as_they_were(phase):
+    """The ends are where a pad can be told from no pad at all, so they are
+    checked on their own and not left to be averaged away by a whole field."""
+    ire = staircase_field_ire(PAL_CVBS_FIELD_B, OUTFREQ, LINELEN)
+
+    expected = unpadded_correction(ire, OUTFREQ, DOMESDAY_SLOPE, phase)
+    got = field_module._correct_chroma_vs_luma(ire, OUTFREQ, DOMESDAY_SLOPE, phase)
+
+    assert np.abs(got[:LINELEN] - expected[:LINELEN]).max() < CORRECTION_TOLERANCE_IRE
+    assert np.abs(got[-LINELEN:] - expected[-LINELEN:]).max() < CORRECTION_TOLERANCE_IRE
+
+
+@pytest.mark.parametrize(
+    "length", [PAL_CVBS_FIELD_B, 354690, 355255, 239330, 4096, 999, 8]
+)
+def test_the_pad_is_the_field_repeating(length):
+    """Every padded sample is the field's own periodic continuation, so the
+    padded array has no edge in it and the transform's wrap is the same wrap
+    the unpadded one had."""
+    padded_len, guard = field_module._chroma_dg_plan(length)
+    ire = np.arange(length, dtype=np.float64)
+
+    padded = field_module._chroma_dg_pad(ire, padded_len, guard)
+
+    assert len(padded) == padded_len
+    expected = ire[(np.arange(padded_len) - guard) % length]
+    np.testing.assert_array_equal(padded, expected)
+    np.testing.assert_array_equal(padded[guard : guard + length], ire)
+
+
+@pytest.mark.parametrize("length", [PAL_CVBS_FIELD_B, 354690, 355255, 239330])
+def test_the_transform_length_is_a_fast_one_with_room_for_the_guard(length):
+    padded_len, guard = field_module._chroma_dg_plan(length)
+
+    assert spfft.next_fast_len(padded_len) == padded_len
+    assert guard == field_module.CHROMA_DG_GUARD
+    # Guard either side, so neither end of the kept field is nearer the
+    # padded array's wrap than the windows' tails reach.
+    assert padded_len >= length + 2 * guard
