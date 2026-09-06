@@ -192,3 +192,53 @@ def test_no_video_guard_leaves_dead_regions_untouched(rf):
     fft_in = npfft.fft(x)
     fft_out = rf.v4300d_coherent_subtract(fft_in)
     assert fft_out is fft_in
+
+
+# --- the half-spectrum entry point -----------------------------------------
+#
+# demodblock holds only the positive half of the block's spectrum.  The
+# subtractor still works on the whole one, because it keeps the block real by
+# mirroring every line it removes; apply_v4300d is what bridges the two, and
+# it builds that mirror inside the option so a decode without the workaround
+# never pays for it.
+
+
+def test_apply_v4300d_on_the_half_is_the_whole_spectrum_call(rf):
+    rng = np.random.default_rng(64)
+    x = noise_block(rng) + tone(rf.V4300D_CLOCK_HZ, 60.0, phase=0.7)
+    nrf = BLOCKLEN // 2 + 1
+
+    expected = rf.v4300d_coherent_subtract(npfft.fft(x))[:nrf]
+    actual = rf.apply_v4300d(npfft.rfft(x))
+
+    assert actual.shape == (nrf,)
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_the_mirror_apply_v4300d_builds_is_the_whole_transform(rf):
+    """The subtractor's contract is a conjugate-symmetric spectrum, so the
+    mirror handed to it has to be the transform itself, not an approximation
+    of it."""
+    rng = np.random.default_rng(65)
+    x = noise_block(rng)
+
+    np.testing.assert_array_equal(rf.mirror_spectrum(npfft.rfft(x)), npfft.fft(x))
+
+
+def test_the_half_is_returned_untouched_when_the_workaround_is_off():
+    """Every non-V4300D decode takes this path, and it must not so much as
+    copy the block, let alone mirror it."""
+    off = RFDecode(system="PAL", decode_digital_audio=False, has_analog_audio=False)
+    half = npfft.rfft(np.zeros(BLOCKLEN))
+
+    assert off.apply_v4300d(half) is half
+
+
+def test_a_block_with_no_spur_comes_back_bit_for_bit(rf):
+    """Self-disabling on the half as on the whole: the mirror is built, finds
+    nothing to subtract, and the half that comes back is the half that went
+    in."""
+    rng = np.random.default_rng(66)
+    half = npfft.rfft(noise_block(rng))
+
+    np.testing.assert_array_equal(rf.apply_v4300d(half), half)

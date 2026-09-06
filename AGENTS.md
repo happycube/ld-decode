@@ -46,7 +46,7 @@ layers **below** it.
 | Layer | Modules | May import from |
 |-------|---------|-----------------|
 | 0 — primitives | `dsp`, `fft8`, `fdls`, `efm_pll`, `ac3rf`, `commpy_filters`, `profiling`, `utils_logging`, `utils_plotting`, `lds`, `ldf_reader` | stdlib / third-party only |
-| 1 — parameters & I/O | `filters`, `params`, `fileio`, `cvbs`, `cx` | layer 0 |
+| 1 — parameters & I/O | `filters`, `params`, `fileio`, `cvbs`, `cx`, `shared_filter_bank` | layer 0 |
 | 2 — measurement | `pulses`, `metrics`, `audio`, `parallel` | layers 0–1 |
 | 3 — demodulation & fields | `rfdecode`, `field` | layers 0–2 |
 | 4 — orchestration | `decoder` (`LDdecode`) | layers 0–3 |
@@ -372,6 +372,7 @@ ld-decode/
 │   ├── filters.py, params.py      # Filter construction, video-standard constants (layer 1)
 │   ├── fileio.py                  # Input-format loaders, ldf pipe (layer 1)
 │   ├── cvbs.py, cx.py             # CVBS 4fsc lattice, CX noise reduction (layer 1)
+│   ├── shared_filter_bank.py      # Filter segment shared by worker processes (layer 1)
 │   ├── pulses.py, metrics.py      # Sync/burst detection, level measurement (layer 2)
 │   ├── audio.py                   # Analogue audio downscaling (layer 2)
 │   ├── parallel.py                # Demod block cache and thread pool (layer 2)

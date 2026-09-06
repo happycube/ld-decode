@@ -121,7 +121,7 @@ takes one soft decision per channel bit:
    the `.efm` contract is unchanged. While locked, a sync the pattern
    matcher missed by a marginal edge is *restored* from the position
    counter — the pending runs are rewritten to T11-T11 (channel bits
-   preserved, confidence capped low) exactly as a hardware transport
+   preserved, marked as fabricated) exactly as a hardware transport
    regenerates sync, which keeps downstream sync-scanning decoders framed;
    damage that cannot be rewritten to legal run lengths is left visible.
    Up to one frame of T-values waits for its closing sync, so the decoder
@@ -203,11 +203,29 @@ What the confidence measures:
 
 - With the **PLL**, how close the run's closing edge fell to the loop's
   predicted clock grid (near half a bit period off → 0).
-- With the **timing demodulator**, the weakest soft sample inside the run
-  combined with the framing state: T-values inside frames that fail the
-  sync/588-bit check — including everything decoded before frame lock —
-  are capped low (packed doubt 11), marking whole suspect frames as
-  erasure candidates rather than only individually mis-timed edges.
+- With the **timing demodulator**, four measures, the weakest winning:
+
+  | measure | what it sees | packed doubt |
+  |---|---|---|
+  | amplitude | the weakest soft sample inside the run | graded |
+  | timing | the worse of the two edges bounding the run, as the normalised Mueller & Müller error — 1.0 when the crossing sits midway between strobes, 0.0 when it sits on one and the run length is a coin toss between two legal values | graded |
+  | fabrication | a T-value the legaliser invented rather than read: a run merged forward, a run split, or the remainder either leaves behind | 14 |
+  | restoration | a run the flywheel rewrote at a sync the pattern matcher missed | 15 |
+  | validation | every T-value in a frame that fails the sync/588-bit check, including everything decoded before frame lock | 8 |
+
+  The ordering is deliberate. Fabrication and restoration are per-symbol
+  certainties — the demodulator knows the channel did not show what was
+  emitted — so they sit *above* any sane consumer erasure threshold.
+  Whole-frame validation flags all ~74 T-values of a frame for the sake of
+  the few in it that are actually wrong, so it sits *below* one: useful as
+  context, too imprecise to spend a CIRC erasure on.
+
+  The timing measure matters because it is the only one that sees the
+  failure that hurts a data disc. A full-height run one channel bit adrift
+  decodes to a *legal but wrong* symbol: the frame is 588 bits, the sync is
+  present, every 14-bit codeword is valid, so C1 raises no erasure and C2
+  is left correcting unknown errors at half its erasure capacity. An
+  amplitude-only confidence reports that run as fully trusted.
 
 The demodulators produce 8-bit confidences internally; packing inverts
 and keeps the top four bits (confidence 255 → doubt 0, and

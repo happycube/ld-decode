@@ -3,7 +3,7 @@
 A record of the throughput work carried out on the decoder between the `05d60fd9` tree and the
 current one. It is not a plan — everything described here is either landed, reverted with its
 reason, or declined with the figure that decided it. It replaces four working documents that
-tracked the work as it went (§10).
+tracked the work as it went (§11).
 
 **Result in one paragraph.** On the reference box the decoder is **2.0× faster on PAL CVBS, 1.6× on
 PAL `--tbc` and 1.4× on NTSC CVBS** at their best thread counts, and 1.5–1.8× serially — in less
@@ -465,7 +465,16 @@ Note that `--subprocesses` sampling perturbs cells whose workers sit near satura
 `-t 4` run measured 4.08 fps under the sampler against 10.22 unsampled — so those rows are for
 attribution only, never for a delta.
 
-## 10. Provenance
+## 10. The FFT round
+
+§8 item 2 — bytes per frame inside the demodulator — was carried out, together with the
+precondition it set. It is recorded separately in [`fft-optimisation.md`](fft-optimisation.md):
+the half-rate FM discriminator, block reuse across adjacent field jobs, and the shared filter
+segment. In one line: serial decoding **+7.7% PAL CVBS, +13.5% PAL `--tbc`, +14.8% NTSC**, and the
+PAL hot set per block **7.36 → 5.74 MiB**, which is worth −11.1% of DRAM fills per frame among
+four decoders and nothing at all to a decoder running alone.
+
+## 11. Provenance
 
 This document replaces four working documents, removed alongside it and recoverable from git
 history:

@@ -5,6 +5,7 @@ Split verbatim out of core.py.
 
 import copy
 import os
+import threading
 import types
 
 import numpy as np
@@ -29,6 +30,7 @@ from .filters import (
     emphasis_iir,
     fft_determine_slices,
     fft_do_slice,
+    fft_do_slice_half,
     filtfft,
     gen_bpf_supergauss,
     polar2z,
@@ -47,6 +49,51 @@ try:
 except ImportError:
     # If not running Anaconda, we don't care that mkl doesn't exist.
     pass
+
+
+class _BlockScratch:
+    """The working buffers one thread reuses across ``demodblock`` calls.
+
+    Every intermediate in the block chain has the same shape on every block,
+    so allocating them per block means asking the allocator for, touching, and
+    freeing about 1.4 MiB per block per worker - cache lines fetched and
+    evicted for a result that is thrown away.  These are allocated once per
+    thread instead.
+
+    Not shared between threads: see ``RFDecode._block_scratch``.  Nothing here
+    escapes ``demodblock``; every array it returns is produced by a transform
+    or a cast, which allocate their own.
+    """
+
+    def __init__(self, blocklen, dtype, channels, full_rate):
+        nrf = blocklen // 2 + 1
+        # The discriminator's own length, and the number of bins its real
+        # transform produces: half of each when the analytic signal is taken
+        # at 20 MSPS (see demodblock).
+        demodlen = blocklen if full_rate else blocklen // 2
+        ndemod = demodlen // 2 + 1
+        self.dtype = np.dtype(dtype)
+        self.full_rate = full_rate
+        # The input half multiplied by a filter.  demodblock does that three
+        # times - the dropout high-pass, the video path, the EFM band-pass -
+        # and each one is finished with (inverted, or copied into the inverse
+        # buffer below) before the next begins, so one buffer serves all three.
+        # Keeping them apart would hold 512 KiB per thread to no end: what is
+        # saved here is the allocation, not the traffic.
+        self.half_product = np.empty(nrf, dtype=self.dtype)
+        # The complex inverse's input, on the full-rate path only.  Its upper
+        # half is zero for every block (RFVideo has no non-zero negative bin),
+        # so it is zeroed once here and only the positive half is written per
+        # block.  The half-rate path has no such buffer: it inverts the
+        # positive bins directly, and the zeroed half is what it deletes.
+        self.inverse_in = np.zeros(blocklen, dtype=self.dtype) if full_rate else None
+        # The single-precision, blanking-centred copy of the demod that the
+        # video transform is taken of.  There is no buffer for the clipped
+        # demod: demodblock clips in place once the record array holds the
+        # unclipped copy, which deletes that temporary rather than holding it.
+        self.centred = np.empty(demodlen, dtype=np.float32)
+        # The video output stack: one filtered spectrum per channel.
+        self.video_stack = np.empty((channels, ndemod), dtype=np.complex64)
 
 
 class RFDecode:
@@ -85,6 +132,27 @@ class RFDecode:
     #: the filters are first built.
     _mtf_response_cache = None
 
+    #: Filter arrays a worker process can read out of the parent's shared
+    #: segment instead of keeping its own copy (see shared_filter_bank and
+    #: adopt_shared_filters).  Every one of them is invariant once the
+    #: decoder is calibrated: the parameter changes that would move them
+    #: respawn the pool, which republishes.  FcutPAL_half is PAL-only and
+    #: is simply absent on an NTSC bank.
+    SHARED_FILTERS = ("RFVideo_half", "Frfhpf_half", "Fefm_half",
+                      "FcutPAL_half", "MTF_half")
+
+    #: The per-job filter families the segment holds rewritable slots for,
+    #: and the arrays of each that must move together.  FVideo_rfft32 and
+    #: FVideo_rfft_dc both come out of build_video_rfft_stack from one
+    #: FVideo, so a worker that took the stack from a slot and rebuilt the
+    #: DC gains privately could demodulate against two different parameter
+    #: sets.  "MTF_response" is not a bank entry: it is what mtf_response()
+    #: derives from MTF_half for one exponent.
+    SLOT_FILTERS = {
+        "video": ("FVideo_rfft32", "FVideo_rfft_dc"),
+        "mtf": ("MTF_response",),
+    }
+
     def __init__(
         self,
         inputfreq               = 40,
@@ -95,6 +163,7 @@ class RFDecode:
         has_analog_audio        = True,
         extra_options           = None,
         decoder_params_override = None,
+        full_rate_demod         = False,
     ):
         """Initialize the RF decoder object.
 
@@ -106,6 +175,12 @@ class RFDecode:
         decode_digital_audio -- Whether to apply EFM filtering
         decode_analog_audio  -- Whether or not to decode analog(ue) audio
         has_analog_audio     -- Whether or not analog(ue) audio channels are on the disk
+        full_rate_demod      -- Run the FM discriminator at the input rate rather
+                                than on the half-rate analytic signal.  Not a user
+                                option and not plumbed through to worker processes:
+                                it exists so the unit tests can hold the two chains
+                                against each other, and is removed once the quality
+                                analyses have signed the half-rate chain off.
 
         extra_options -- Dictionary of additional options (typically boolean) - these include:
           - PAL_V4300D_CoherentSubtract - remove the LD-V4300D 8.4672mhz digital-audio
@@ -133,6 +208,11 @@ class RFDecode:
         self.system       = system
 
         self.setupcount   = 0
+
+        # Per-thread demodblock working buffers, allocated on first use (see
+        # _block_scratch).  Held here rather than in computefilters() because
+        # a filter rebuild does not change any of their shapes.
+        self._scratch_store = threading.local()
 
         self.NTSC_ColorNotchFilter = extra_options.get("NTSC_ColorNotchFilter", False)
         self.PAL_V4300D_CoherentSubtract = extra_options.get("PAL_V4300D_CoherentSubtract", False)
@@ -166,6 +246,46 @@ class RFDecode:
         self.freq_half = freq / 2
         self.freq_hz = self.freq * 1000000
         self.freq_hz_half = self.freq_hz / 2
+
+        # The FM discriminator runs on the analytic signal at half the input
+        # rate: after the one-sided RF filter the spectrum is non-zero only
+        # over 0-20 MHz, and a complex signal at 20 MSPS represents that band
+        # exactly, so the N/2-point inverse of the positive bins is twice the
+        # even samples of the analytic signal with nothing lost.  Everything
+        # outside demodblock stays at the input rate.  freq_hz_demod is that
+        # rate, and the thresholds that are really statements about the
+        # discriminator's phase wrap are expressed against it rather than
+        # against freq_hz (demodblock's clip, field.dropout_detect_demod).
+        self.full_rate_demod = full_rate_demod
+        self.freq_hz_demod = self.freq_hz if full_rate_demod else self.freq_hz / 2
+
+        # Above this, the pre-de-emphasis demod is not reporting a carrier and
+        # field.dropout_detect_demod flags the sample.  It does not carry over
+        # from one rate to the other unchanged, because the two chains'
+        # demod_raw are different statistics: at the input rate each sample is
+        # one 25 ns phase increment, and at half rate it is the mean of two, so
+        # an isolated excursion reads about halfway back to the carrier.
+        # Measured over 40 blocks of each of the three test captures, the
+        # highest reading on an undamaged disc falls from 18.8 MHz to 13.5 MHz
+        # (ggv, PAL) while the damaged one still reaches 19.9 MHz.  Counts
+        # above a threshold, clean discs first:
+        #
+        #   threshold      10.0   12.0   13.8   15.0   18.0   20.0 MHz
+        #   ggv   full    25751   5106     49      6      1      0
+        #   ggv   half    22292     60      0      0      0      0
+        #   snw   full    15165      0      0      0      0      0
+        #   snw   half    12061      0      0      0      0      0
+        #   dsmid full        5      3      3      3      3      3
+        #   dsmid half        2      2      2      2      2      0
+        #
+        # So the input-rate half (20 MHz) is right where it always was, and at
+        # half rate anything in 14-18 MHz reproduces it; the middle of that
+        # plateau is three-quarters of the way to the phase wrap, which is
+        # already demodblock's clip bound - what the video path clips away and
+        # what the raw path calls a dropout are then the same statement.
+        self.demod_absurd_hz = (
+            self.freq_hz_half if full_rate_demod else self.freq_hz_demod * 0.75
+        )
 
         self.mtf_mult   = extra_options.get("MTF_level", 1.0)
         self.mtf_offset = extra_options.get("MTF_offset", 0)
@@ -248,6 +368,8 @@ class RFDecode:
 
         self.computedelays()
 
+        self.retire_construction_filters()
+
 
     def computeefmfilter(self):
         """Frequency-domain equalisation filter for the LaserDisc EFM signal.
@@ -321,7 +443,16 @@ class RFDecode:
         _sghigh_default = "1750000" if self.system == "PAL" else "1600000"
         _sghigh = float(os.environ.get("LDDECODE_EFM_SGHIGH", _sghigh_default))
         _sglow = float(os.environ.get("LDDECODE_EFM_SGLOW", "20000"))   # low band edge (bandwidth)
-        self.Filters["Fefm"] *= gen_bpf_supergauss(_sglow, _sghigh, _sgorder, 20000000, 32768)
+        # The block length is this decoder's, not a literal: every other filter
+        # is built across self.blocklen bins, so a hard-coded length made the
+        # EFM band-pass the one array that could not follow a changed block
+        # length.  Identical at the shipped 32768.
+        # TODO: the Nyquist argument is still the 40 Msps literal; making it
+        # self.freq_hz_half would also correct a non-40 Msps input, which is a
+        # behaviour change and needs its own measurement.
+        self.Filters["Fefm"] *= gen_bpf_supergauss(
+            _sglow, _sghigh, _sgorder, 20000000, self.blocklen
+        )
 
     def computeefmhalffilter(self):
         """Fold the EFM filter for a real half-spectrum transform.
@@ -472,6 +603,40 @@ class RFDecode:
 
         return eq
 
+    # Filters that exist only to build other filters.  Each is folded into
+    # something that is kept - the two audio notches into RFVideo (NTSC) or
+    # FcutPAL (PAL), the burst and pilot band-passes and the static EQ into
+    # their output filters, the Hilbert transform into RFVideo - and none is
+    # indexed again once the bank is built.  That is measured, not assumed:
+    # recorded over a decode that adopts both an inverse-MTF strength and a
+    # dynamic EQ, so the recompute_fvideo path is included, and
+    # recompute_fvideo builds only from filters that are kept.
+    #
+    # Dropping them is resident memory per process (4.0 MiB on PAL, 3.5 on
+    # NTSC) and nothing else: an array the block path never reads was never in
+    # cache to begin with, so this moves no throughput.
+    #
+    # Two groups are deliberately NOT here.  RFVideo, MTF, FcutPAL, Frfhpf and
+    # Fefm are each the array a half-spectrum filter is cut from, so dropping
+    # the entry would free only what the half does not cover, and they are the
+    # references the half-spectrum equivalence tests are held against - the
+    # evidence that the block path is exact.  Fcutl and Fcutr are the only
+    # place either audio notch can be measured on its own; on NTSC they are
+    # folded into RFVideo alongside the band-pass and cannot be separated from
+    # it again, so retiring them would cost a design assertion outright.
+    CONSTRUCTION_ONLY_FILTERS = (
+        "Fburst",
+        "Femp",
+        "Fpilot",
+        "Fvideo_eq",
+        "hilbert",
+    )
+
+    def retire_construction_filters(self):
+        """Drop the filters nothing reads once the bank is built."""
+        for name in self.CONSTRUCTION_ONLY_FILTERS:
+            self.Filters.pop(name, None)
+
     def computevideofilters(self):
         self.Filters = {}
         # The MTF response is built from Filters["MTF"], which is replaced here.
@@ -586,6 +751,19 @@ class RFDecode:
 
         SF["hilbert"] = build_hilbert(self.blocklen)
         SF["RFVideo"] *= SF["hilbert"]
+
+        # RFVideo carries the Hilbert transform, whose negative-frequency half
+        # is exactly zero, so multiplying a full spectrum by it produces a
+        # buffer whose upper half is zero and whose inverse is decided entirely
+        # by the positive half.  demodblock therefore filters the rfft of the
+        # block against these halves and zeroes the upper half itself, which
+        # halves the filter bytes read per block.  Views, not copies: the same
+        # cache lines the full arrays already occupy.
+        nrf = self.blocklen // 2 + 1
+        SF["RFVideo_half"] = SF["RFVideo"][:nrf]
+        SF["MTF_half"] = SF["MTF"][:nrf]
+        if "FcutPAL" in SF:
+            SF["FcutPAL_half"] = SF["FcutPAL"][:nrf]
 
         # Second phase FFT filtering, which is performed after the signal is demodulated
 
@@ -715,6 +893,44 @@ class RFDecode:
 
         self.build_video_rfft_stack()
 
+    def discriminator_rate_correction(self):
+        """What the half-rate video stack multiplies by, per bin.
+
+        Two factors, both exact functions of the bin, folded in where the
+        stack is built rather than paid per block.
+
+        **The zero-padded inverse.**  ``irfft(..., n=blocklen)`` of a spectrum
+        that only reaches the half-rate Nyquist is the band-limited
+        interpolation of the half-rate signal back onto the input lattice, but
+        it normalises by ``blocklen`` where the half-rate inverse would
+        normalise by ``blocklen // 2``, so every bin is scaled by two.  Every
+        bin except the last: the length-``blocklen`` Hermitian extension
+        counts the top bin twice, once at ``+k`` and once at ``-k``, which is
+        exactly what the half-rate inverse's single real Nyquist term does, so
+        doubling it as well would count it four times.
+
+        **The discriminator tilt.**  The conjugate-product discriminator
+        reports the phase advance across one of its own sample intervals, so
+        as an operator on the instantaneous frequency it is a boxcar of that
+        width: ``sinc(f*T) * exp(-i*pi*f*T)``.  Running it at ``T = 50 ns``
+        instead of 25 ns therefore both tilts the response (-0.84 dB at
+        5.5 MHz, measured) and delays it by a further 12.5 ns.  The ratio of
+        the two boxcars restores the full-rate response exactly:
+
+            sinc(f*T1) / sinc(f*T2) = 1 / cos(pi*f*T1)   for T2 = 2*T1
+
+        with a phase term ``exp(+i*pi*f*T1)`` - half an input sample of
+        advance, which is what puts the products back on the lattice
+        positions the full-rate chain wrote them at.  Both are written here in
+        bin terms: ``f*T1 = k / blocklen``, because the half-rate transform's
+        bin spacing is ``freq_hz / blocklen``, the same as the full-rate one's.
+        """
+        k = np.arange(self.blocklen // 4 + 1)
+        theta = np.pi * k / self.blocklen
+        correction = 2.0 * np.exp(1j * theta) / np.cos(theta)
+        correction[-1] /= 2.0
+        return correction
+
     def build_video_rfft_stack(self):
         """Stack the video output filters' positive-frequency halves.
 
@@ -731,7 +947,10 @@ class RFDecode:
         if self.system == "PAL":
             stack.append(SF["FVideoPilot"][:nr])
 
-        SF["FVideo_rfft"] = np.asarray(stack)
+        # A local, not a filter: this double-precision stack exists only to be
+        # cast and to yield the DC gains below, and at 1 MiB per PAL decoder
+        # it was the largest resident array in the bank.
+        rfft_stack = np.asarray(stack)
 
         # The single-precision copy demodblock actually transforms, and
         # the two constants that make it as accurate as the record array
@@ -744,11 +963,27 @@ class RFDecode:
         # Both constants are derived here, with the stack they belong to,
         # so a rebuild can never leave demodblock subtracting one centre
         # and adding another back.
-        SF["FVideo_rfft32"] = SF["FVideo_rfft"].astype(np.complex64)
         SF["FVideo_rfft_centre"] = float(self.SysParams["ire0"])
+        # Taken from the uncorrected stack, and so the same number on both
+        # chains: the rate correction is exactly 1 at DC, and the interpolation
+        # the doubling belongs to preserves the mean.
         SF["FVideo_rfft_dc"] = (
-            SF["FVideo_rfft"][:, 0].real * SF["FVideo_rfft_centre"]
+            rfft_stack[:, 0].real * SF["FVideo_rfft_centre"]
         ).astype(np.float32)
+
+        if self.full_rate_demod:
+            SF["FVideo_rfft32"] = rfft_stack.astype(np.complex64)
+        else:
+            # The demod is half as long, so its transform reaches only the
+            # half-rate Nyquist and the stack is cut to those bins - the same
+            # bins, at the same frequencies, because the two transforms share
+            # a bin spacing.  The rate correction carries the interpolation
+            # scaling and the discriminator tilt (see
+            # discriminator_rate_correction).
+            nh = self.blocklen // 4 + 1
+            SF["FVideo_rfft32"] = (
+                rfft_stack[:, :nh] * self.discriminator_rate_correction()
+            ).astype(np.complex64)
 
     def inverse_mtf_2t_peak_gain(self, strength):
         """Peak gain of the inverse-MTF chroma filter on an ideal 2T pulse.
@@ -827,20 +1062,22 @@ class RFDecode:
         return g
 
     def mtf_response(self, mtf_level):
-        """``Filters["MTF"] ** mtf_level``, held across blocks.
+        """``Filters["MTF_half"] ** mtf_level``, held across blocks.
 
         The exponent is constant within a field and, past warm-up, moves at
         most once every ``MTF_SERVO_MIN_ADOPT_FIELDS`` fields, so one entry is
         hit on every block but the first after an adoption.  Raising a
-        blocklen-sized spectrum to a power costs a transcendental per bin and
-        a whole spare filter of transient every block, for a result the block
-        does not vary.  Invalidated in computevideofilters(), the only place
-        that builds Filters["MTF"].
+        spectrum to a power costs a transcendental per bin and a whole spare
+        filter of transient every block, for a result the block does not vary.
+        Only the positive half is raised, because that is the half demodblock
+        multiplies by; the power is elementwise, so this is bit-for-bit the
+        first half of the full response it replaced.  Invalidated in
+        computevideofilters(), the only place that builds Filters["MTF"].
         """
         cached = self._mtf_response_cache
         if cached is not None and cached[0] == mtf_level:
             return cached[1]
-        response = self.Filters["MTF"] ** mtf_level
+        response = self.Filters["MTF_half"] ** mtf_level
         self._mtf_response_cache = (mtf_level, response)
         return response
 
@@ -872,6 +1109,122 @@ class RFDecode:
         SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 
         self.build_video_rfft_stack()
+
+    # -- shared filter bank (worker processes; see shared_filter_bank)
+
+    def shared_filter_spec(self, slot_depth=2):
+        """Arrays and slot shapes for shared_filter_bank.publish().
+
+        The arrays are copied into the segment as they stand; the slot
+        entries give shape and dtype only, so the templates here are
+        stand-ins for values published later by slot_filter_arrays().
+        """
+        arrays = {}
+        for name in self.SHARED_FILTERS:
+            value = self.Filters.get(name)
+            if value is not None:
+                arrays[name] = np.ascontiguousarray(value)
+        # No analog audio configured means no audio attribute at all.
+        for channel, chan in getattr(self, "audio", {}).items():
+            filt1 = getattr(chan, "filt1", None)
+            if filt1 is not None:
+                arrays["audio:%s:filt1" % channel] = np.ascontiguousarray(filt1)
+
+        slots = {}
+        video = {name: self.Filters[name]
+                 for name in self.SLOT_FILTERS["video"]
+                 if name in self.Filters}
+        if len(video) == len(self.SLOT_FILTERS["video"]):
+            slots["video"] = (slot_depth, video)
+        mtf_half = self.Filters.get("MTF_half")
+        if mtf_half is not None:
+            # The response has the shape and dtype of the base it is
+            # raised from, whatever the exponent.
+            slots["mtf"] = (slot_depth, {"MTF_response": mtf_half})
+
+        return {"arrays": arrays, "slots": slots}
+
+    def adopt_shared_filters(self, views):
+        """Point this bank's invariant filters at a shared segment.
+
+        Replaces exactly the entries the publisher put in the segment,
+        each one checked against the private array it displaces: the
+        views carry the parent's numbers, so a shape or dtype that does
+        not line up means the two banks were built from different
+        parameters and this worker's output would quietly stop matching
+        an inline decode.  The private arrays are then dropped, which is
+        the point - one copy serves the whole pool.
+
+        Returns the names replaced, in the order they were applied.
+        """
+        adopted = []
+        for name in sorted(views):
+            view = views[name]
+            if name.startswith("audio:"):
+                _, channel, attribute = name.split(":", 2)
+                owner = getattr(self, "audio", {}).get(channel)
+                current = getattr(owner, attribute, None) if owner else None
+            else:
+                owner = None
+                current = self.Filters.get(name)
+            if current is None:
+                raise KeyError(
+                    "shared filter %r has no counterpart in this bank" % name
+                )
+            current = np.asarray(current)
+            if current.shape != view.shape or current.dtype != view.dtype:
+                raise ValueError(
+                    "shared filter %r is %s %s here and %s %s in the segment"
+                    % (name, current.dtype, current.shape,
+                       view.dtype, view.shape)
+                )
+            if owner is None:
+                self.Filters[name] = view
+            else:
+                setattr(owner, attribute, view)
+            adopted.append(name)
+        return tuple(adopted)
+
+    def slot_filter_arrays(self, family, key):
+        """The per-job filters for a slot family at an exact key, or None
+        if this bank does not currently hold that key.
+
+        What the parent publishes is what its own bank holds, so a
+        worker that reads the slot gets bit for bit the array it would
+        otherwise have built.  That only holds while the bank really is
+        at the key being published, and it moves in two steps - the
+        decoder writes the parameter, then calls recompute_fvideo() - so
+        a publication taken between them would stamp the previous
+        strength's filter with the new key.  Refusing costs nothing:
+        the workers then rebuild privately, exactly as they did before
+        slots existed.
+        """
+        if family == "mtf":
+            base = self.Filters.get("MTF_half")
+            if base is None:
+                return None
+            # The expression mtf_response() evaluates, so a worker that
+            # takes this slot holds the array it would have computed.
+            return {"MTF_response": base ** key}
+
+        if family == "video":
+            imtf_strength, veq = key
+            params = self.DecoderParams
+            held = (
+                params.get("inverse_mtf_strength", 0.0),
+                tuple(params.get("video_eq_auto") or ()) or None,
+            )
+            if held != (imtf_strength, tuple(veq) if veq else None):
+                return None
+            arrays = {}
+            for name in self.SLOT_FILTERS["video"]:
+                value = self.Filters.get(name)
+                if value is None:
+                    return None
+                arrays[name] = value
+            return arrays
+
+        return None
 
     def build_video_eq(self, points):
         """Zero-phase magnitude EQ from (freq_hz, gain_db) anchor points.
@@ -924,8 +1277,12 @@ class RFDecode:
             )
             # Make a lambda to slice the regular block FFT into what we're demodulating
             # note, "ch=channel" is necessary to bind the channel ID to the lambda
+            # The block path holds the rfft of the block, so the slicer reads
+            # the negative-frequency bins off it by conjugate symmetry rather
+            # than making demodblock mirror the whole spectrum for two 16 KiB
+            # slices (see fft_do_slice_half).
             self.audio[channel].slicer = (
-                lambda x, ch=channel: fft_do_slice(
+                lambda x, ch=channel: fft_do_slice_half(
                     x, self.audio[ch].lowbin, self.audio[ch].nbins, self.blocklen
                 )
             )
@@ -937,8 +1294,19 @@ class RFDecode:
             self.audio[channel].low_freq = (
                 self.freq_hz * (self.audio[channel].lowbin / self.blocklen)
             )
-            # Finally create the stage 1 demodulation filter (including hilbert transform)
-            self.audio[channel].filt1 = self.audio[channel].slicer(audio1_fir) * sliced_hilbert
+            # Finally create the stage 1 demodulation filter (including hilbert
+            # transform).  Sliced whole here, not through the channel's slicer:
+            # audio1_fir is a filter, not a block spectrum, and it is built
+            # whole - so this stays the cut it always was, bin for bin.
+            self.audio[channel].filt1 = (
+                fft_do_slice(
+                    audio1_fir,
+                    self.audio[channel].lowbin,
+                    self.audio[channel].nbins,
+                    self.blocklen,
+                )
+                * sliced_hilbert
+            )
 
             # Compute stage 2 audio filters: 20k-ish LPF and deemphasis.
             N, Wn = sps.buttord(
@@ -1016,7 +1384,17 @@ class RFDecode:
         # removable singularity at integer multiples of N (delta = 0 here)
         with np.errstate(invalid="ignore", divide="ignore"):
             mag = np.where(np.abs(den) > 1e-12, num / den, float(N))
-        return mag * np.exp(1j * np.pi * d * (N - 1) / N)
+        # exp(1j t) written as cos t + 1j sin t, straight into the result's
+        # real/imag views: bit-identical to np.exp on a pure-imaginary
+        # argument, without its complex temporaries (this kernel is built
+        # over cut_bins points per subtracted line, so it is the stage's
+        # single hottest expression)
+        theta = np.pi * d * (N - 1) / N
+        out = np.empty(theta.shape, dtype=np.complex128)
+        np.cos(theta, out=out.real)
+        np.sin(theta, out=out.imag)
+        out *= mag
+        return out
 
     def _v4300d_refine_subtract(self, X, k, fit_bins=64, cut_bins=2048):
         """Refine the frequency of the tone near FFT bin k, estimate its
@@ -1045,7 +1423,7 @@ class RFDecode:
         N = self.blocklen
         fpb = self.freq_hz / N
         m = np.arange(k - fit_bins, k + fit_bins + 1)
-        Xw = X[m]
+        Xw = X[k - fit_bins : k + fit_bins + 1]
 
         # normalised least-squares projection c(f) = <X, E(f-m)> / ||E||^2
         # evaluated on a fine grid bracketing the argmax bin
@@ -1053,7 +1431,6 @@ class RFDecode:
         E = self._v4300d_dirichlet(grid[:, np.newaxis] - m[np.newaxis, :])
         num = E.conj() @ Xw
         den = np.sum(E.real**2 + E.imag**2, axis=1)
-        c = num / den
         mag = (num.real**2 + num.imag**2) / den  # captured tone energy
         g = int(np.argmax(mag))
         if 0 < g < len(grid) - 1:
@@ -1064,12 +1441,17 @@ class RFDecode:
         fbin = grid[g] + frac * (grid[1] - grid[0])
 
         # amplitude at the refined frequency, then subtract its footprint
-        mc = np.arange(k - cut_bins, k + cut_bins + 1)
+        lo, hi = k - cut_bins, k + cut_bins + 1
+        mc = np.arange(lo, hi)
         Ef = self._v4300d_dirichlet(fbin - m)
         c = np.dot(Ef.conj(), Xw) / np.sum(Ef.real**2 + Ef.imag**2)
-        X[mc] -= c * self._v4300d_dirichlet(fbin - mc)
-        # keep the spectrum that of a real signal
-        X[N - mc] = np.conj(X[mc])
+        # cut is a view, so this subtracts in place; indexing with mc would
+        # gather cut_bins complex128 out of X and scatter them back
+        cut = X[lo:hi]
+        cut -= c * self._v4300d_dirichlet(fbin - mc)
+        # keep the spectrum that of a real signal.  X[N - mc] is that same
+        # run reversed, so it slices too.
+        X[N - hi + 1 : N - lo + 1] = np.conj(cut[::-1])
         return fbin * fpb
 
     def v4300d_coherent_subtract(self, indata_fft, maxlines=10):
@@ -1365,6 +1747,45 @@ class RFDecode:
         if n >= self._ECHO_WARMUP and (n == self._ECHO_WARMUP or (n % self._ECHO_REEST) == 0):
             self._echo_reestimate()
 
+    def _block_scratch(self, dtype):
+        """This thread's ``_BlockScratch``, allocated on first use.
+
+        Thread safety: the parent demodulates blocks from several threads
+        through one RFDecode (parallel.DemodBlockCache runs demodblock on a
+        thread pool), so the buffers are thread-local and no two calls can be
+        writing the same one.  The filter bank they are used against is only
+        read during a block.  Worker processes each own their RFDecode and
+        demodulate on one thread, so they allocate one set.
+        """
+        store = self._scratch_store
+        scratch = getattr(store, "scratch", None)
+        if (scratch is None or scratch.dtype != dtype
+                or scratch.full_rate != self.full_rate_demod):
+            scratch = _BlockScratch(
+                self.blocklen,
+                dtype,
+                self.Filters["FVideo_rfft32"].shape[0],
+                self.full_rate_demod,
+            )
+            store.scratch = scratch
+        return scratch
+
+    def mirror_spectrum(self, half):
+        """The whole DFT of a real block, from its positive-frequency half.
+
+        ``half`` is an rfft result of length ``blocklen // 2 + 1``; the
+        returned array is what ``fft`` of the same real block holds, by the
+        conjugate symmetry ``X[N - k] == conj(X[k])``.  Only the handful of
+        consumers that genuinely index a negative bin need this (the echo
+        estimator, the V4300D notch, the audio slicers); the video, dropout
+        and EFM paths work on the half directly.
+        """
+        n = 2 * (half.shape[0] - 1)
+        whole = np.empty(n, dtype=half.dtype)
+        whole[: half.shape[0]] = half
+        whole[half.shape[0] :] = np.conj(half[1 : n // 2])[::-1]
+        return whole
+
     def pal_audio_carriers_present(self, indata_fft, threshold=5.0):
         """Detect whether the PAL analog audio FM carriers are present in this
         block, by comparing the mean RF power around each carrier (+-40 kHz,
@@ -1389,13 +1810,22 @@ class RFDecode:
         return True
 
     def apply_v4300d(self, indata_fft):
-        """PAL LD-V4300D spur removal, if enabled.  Returns the input FFT
-        unchanged (not a copy) when the workaround is off."""
+        """PAL LD-V4300D spur removal, if enabled.  Takes and returns the
+        positive-frequency half of the block's spectrum, and returns it
+        unchanged (not a copy) when the workaround is off.
+
+        The subtractor itself works on the whole spectrum, because it keeps
+        the block real by mirroring each line it removes into the negative
+        half.  Building that mirror is the only reason the block path would
+        need one, so it is built here, inside the option: a decode without
+        the workaround never pays for it.
+        """
 
         if self.system != "PAL" or not self.PAL_V4300D_CoherentSubtract:
             return indata_fft
 
-        return self.v4300d_coherent_subtract(indata_fft)
+        whole = self.v4300d_coherent_subtract(self.mirror_spectrum(indata_fft))
+        return whole[: indata_fft.shape[0]]
 
     def demodblock_sync(self, data=None, fftdata=None, cut=False):
         """Demodulate only the 0.5 MHz path used for vertical-sync detection.
@@ -1405,17 +1835,31 @@ class RFDecode:
         no MTF.  Not a substitute for a real decode.
         """
 
+        nrf = self.blocklen // 2 + 1
+
         if fftdata is not None:
-            indata_fft = fftdata
+            indata_fft = fftdata[:nrf]
         elif data is not None:
-            indata_fft = npfft.fft(data[: self.blocklen])
+            indata_fft = npfft.rfft(data[: self.blocklen])
         else:
             raise Exception("demodblock_sync called without raw or FFT data")
 
         indata_fft = self.apply_v4300d(indata_fft)
 
-        hilbert = npfft.ifft(indata_fft * self.Filters["RFVideo"])
-        demod = unwrap_hilbert(hilbert, self.freq_hz)
+        # The same half-spectrum filtering demodblock does, for the same
+        # reason: RFVideo's negative half is zero, so this block is the whole
+        # filtered spectrum bin for bin (see demodblock).
+        filtered = indata_fft * self.Filters["RFVideo_half"]
+        if self.full_rate_demod:
+            block = np.zeros(self.blocklen, dtype=filtered.dtype)
+            block[:nrf] = filtered
+            hilbert = npfft.ifft(block)
+        else:
+            # The half-rate analytic signal, exactly as demodblock takes it -
+            # the start finder's answer has to be the sync channel a real
+            # decode would produce.
+            hilbert = npfft.ifft(filtered[: self.blocklen // 2])
+        demod = unwrap_hilbert(hilbert, self.freq_hz_demod)
 
         # FVideo05 carries its delay compensation as a phase ramp, so no roll
         # is needed here (see computevideofilters).  Filtered exactly as
@@ -1424,8 +1868,8 @@ class RFDecode:
         # answer has to be the sync channel a real decode would produce,
         # and test_start_finder holds the two to bit equality.
         centre = self.Filters["FVideo_rfft_centre"]
-        clipped = np.empty(self.blocklen, dtype=np.float32)
-        np.subtract(np.clip(demod, 1500000, self.freq_hz * 0.75), centre,
+        clipped = np.empty(demod.shape[0], dtype=np.float32)
+        np.subtract(np.clip(demod, 1500000, self.freq_hz_demod * 0.75), centre,
                     out=clipped)
         sync = npfft.irfft(
             npfft.rfft(clipped) * self.Filters["FVideo_rfft32"][1],
@@ -1446,31 +1890,35 @@ class RFDecode:
             mtf_level = (mtf_level * self.mtf_mult + self.mtf_offset) * self.DecoderParams["MTF_basemult"]
         rv = {}
 
+        nrf = self.blocklen // 2 + 1
+
         if fftdata is not None:
-            indata_fft = fftdata
+            # A caller holding a whole spectrum keeps handing one over; take
+            # its positive half, which is all of it this function reads.
+            indata_fft = fftdata[:nrf]
         elif data is not None:
-            # The RF input is real, so its DFT is conjugate-symmetric.  Use rfft
-            # (moves ~half the bytes of a full complex fft) and mirror it back to
-            # the full spectrum that demodblock's remaining consumers (the
-            # hilbert transform, the audio slicers and the symmetric V4300D
-            # notch below) expect.  Byte-identical to npfft.fft(real); helps
-            # under the memory-bandwidth contention of parallel decodes.
-            raw = data[: self.blocklen]
-            nfft = raw.shape[0]
-            half = npfft.rfft(raw)
-            nr = half.shape[0]
-            full = np.empty(nfft, dtype=half.dtype)
-            full[:nr] = half
-            full[nr:] = np.conj(half[1:nfft - nr + 1])[::-1]
-            indata_fft = full
+            # The RF input is real, so its DFT is conjugate-symmetric and the
+            # negative half is redundant.  Every filter below is either
+            # one-sided (RFVideo, which carries the hilbert transform) or real
+            # and conjugate-symmetric (Frfhpf, Fefm), so keeping the rfft is
+            # exact and moves half the bytes of a full complex transform.
+            indata_fft = npfft.rfft(data[: self.blocklen])
         else:
             raise Exception("demodblock called without raw or FFT data")
 
         if self.rf_echo_cancel:
+            # Opt-in, and the last consumer that wants the whole spectrum: the
+            # estimator reads a magnitude over all of it and the inverse is
+            # built over all of it.  The inverse is exactly conjugate-symmetric
+            # (it is 1/fft of a real impulse response), so the corrected half
+            # taken back here is the half of the corrected whole, bin for bin.
+            whole = self.mirror_spectrum(indata_fft)
             if not self._echo_manual:
-                self._echo_update(indata_fft)
+                self._echo_update(whole)
             if self._echo_inv is not None:
-                indata_fft = indata_fft * self._echo_inv
+                indata_fft = (whole * self._echo_inv)[:nrf]
+
+        scratch = self._block_scratch(indata_fft.dtype)
 
         rotdelay = 0
         if getattr(self, "delays", None) is not None and "video_rot" in self.delays:
@@ -1478,9 +1926,11 @@ class RFDecode:
 
         # Real filter + real RF input => half-spectrum irfft is exact (see
         # computevideofilters).
-        nrf = indata_fft.shape[0] // 2 + 1
         rv["rfhpf"] = npfft.irfft(
-            indata_fft[:nrf] * self.Filters["Frfhpf_half"], n=self.blocklen
+            np.multiply(
+                indata_fft, self.Filters["Frfhpf_half"], out=scratch.half_product
+            ),
+            n=self.blocklen,
         )
         rv["rfhpf"] = rv["rfhpf"][
             self.blockcut - rotdelay : -self.blockcut_end - rotdelay
@@ -1488,27 +1938,48 @@ class RFDecode:
 
         indata_fft = self.apply_v4300d(indata_fft)
 
-        indata_fft_filt = indata_fft * self.Filters["RFVideo"]
+        indata_fft_filt = np.multiply(
+            indata_fft, self.Filters["RFVideo_half"], out=scratch.half_product
+        )
 
         # PAL: notch the analog audio carriers out of the video path, but only
         # when they're actually on the disc (see computevideofilters).  In
         # place: indata_fft_filt is the fresh product above, so nothing else
         # holds a reference to it, and a blocklen temporary is saved.
-        if "FcutPAL" in self.Filters and self.pal_audio_carriers_present(indata_fft):
-            indata_fft_filt *= self.Filters["FcutPAL"]
+        if "FcutPAL_half" in self.Filters and self.pal_audio_carriers_present(indata_fft):
+            indata_fft_filt *= self.Filters["FcutPAL_half"]
 
         if mtf_level != 0:
             indata_fft_filt *= self.mtf_response(mtf_level)
 
-        hilbert = npfft.ifft(indata_fft_filt)
-        demod = unwrap_hilbert(hilbert, self.freq_hz)
+        # The demodulator wants the analytic signal, so the inverse has to be
+        # the complex one.  RFVideo's negative half is zero, so the analytic
+        # signal's spectrum lives entirely in 0-20 MHz, and a complex signal
+        # at 20 MSPS spans exactly that: the blocklen/2-point inverse of the
+        # positive bins is twice the even samples of the analytic signal, with
+        # nothing lost.  Bin blocklen/2 is the one thing it cannot carry (at
+        # 20 MSPS that frequency is DC), and the RF band-pass is 60 dB down
+        # there.  The discriminator then runs at 20 MSPS - half the arithmetic
+        # and half the bytes - and its products are interpolated back onto the
+        # input lattice by the zero-padded inverse below.
+        if self.full_rate_demod:
+            block = scratch.inverse_in
+            block[:nrf] = indata_fft_filt
+            hilbert = npfft.ifft(block)
+        else:
+            hilbert = npfft.ifft(indata_fft_filt[: self.blocklen // 2])
+        demod = unwrap_hilbert(hilbert, self.freq_hz_demod)
 
         # use a clipped demod for video output processing to reduce speckling impact.
         # demod is real and these video outputs are real, so the half-spectrum
         # rfft/irfft pair is mathematically identical to fft/ifft.real (the filters
         # are conjugate-symmetric) at ~2.3x the speed of the full complex transforms.
         # All four products share demod's transform, so filter and invert them
-        # together in one batched irfft (see build_video_rfft_stack).
+        # together in one batched irfft (see build_video_rfft_stack).  On the
+        # half-rate chain that irfft is also the resampler: n=blocklen from a
+        # spectrum that stops at the half-rate Nyquist is the band-limited
+        # interpolation back onto the input lattice, so the record array, the
+        # cut offsets and every downstream consumer stay at the input rate.
         bl = self.blocklen
 
         # Filter in single precision: the products are stored as float32,
@@ -1518,14 +1989,6 @@ class RFDecode:
         # and each channel's DC gain puts the offset back below, on the
         # copy into the record array that had to happen anyway.  Halves
         # the bytes of the largest stream in a decode.
-        centre = self.Filters["FVideo_rfft_centre"]
-        clipped = np.empty(bl, dtype=np.float32)
-        np.subtract(np.clip(demod, 1500000, self.freq_hz * 0.75), centre,
-                    out=clipped)
-        video_results = npfft.irfft(
-            npfft.rfft(clipped) * self.Filters["FVideo_rfft32"], n=bl, axis=1
-        )
-
         # Cast on assignment into the record array rather than building float32
         # copies first: np.rec.array() would copy those copies into the record
         # array anyway, so each channel was passed over twice and a whole
@@ -1534,15 +1997,55 @@ class RFDecode:
         # filtered channels take theirs back as they are copied (np.add into
         # the record array field reads and writes exactly what the plain
         # assignment did).
+        # demod_raw is the unfiltered demod, and on the half-rate chain it is
+        # piecewise constant over sample pairs: demod[m] is the phase advance
+        # from analytic sample 2m-2 to 2m, so it is written back over the two
+        # input-rate samples it was formed from, 2m-1 and 2m.  Its only reader
+        # thresholds it (field.dropout_detect_demod), and that reader's bound
+        # had to be re-chosen for the new statistic - see demod_absurd_hz.
         names = ["demod", "demod_raw", "demod_05", "demod_burst"]
         filtered = [("demod", 0), ("demod_05", 1), ("demod_burst", 2)]
         if self.system == "PAL":
             names.append("demod_pilot")
             filtered.append(("demod_pilot", 3))
 
-        dc = self.Filters["FVideo_rfft_dc"]
         video_out = np.recarray(bl, dtype=[(name, np.float32) for name in names])
-        video_out["demod_raw"] = demod
+        # Taken before the clip below, which is the unfiltered channel's only
+        # reader and lets the clip run in place: demod is this block's own
+        # array, straight out of the discriminator, and clipping it where it
+        # lies deletes a blocklen float64 temporary instead of holding one.
+        if self.full_rate_demod:
+            video_out["demod_raw"] = demod
+        else:
+            # Written straight into the record array at both of the positions
+            # each estimate came from, rather than through np.repeat: the
+            # repeat would allocate a whole blocklen of float64 to be copied
+            # out of and thrown away, which is most of what the half-length
+            # discriminator just saved.
+            raw = video_out["demod_raw"]
+            raw[0::2] = demod
+            raw[1:-1:2] = demod[1:]
+            raw[-1] = demod[-1]
+
+        centre = self.Filters["FVideo_rfft_centre"]
+        centred = scratch.centred
+        # 0.75 of the discriminator's own rate, not of the input rate: this
+        # bound is the point three-quarters of the way to the phase wrap, and
+        # at 20 MSPS that is 15 MHz.  Against freq_hz it would sit above the
+        # half-rate demod's whole range and never clip anything.
+        np.clip(demod, 1500000, self.freq_hz_demod * 0.75, out=demod)
+        np.subtract(demod, centre, out=centred)
+        video_results = npfft.irfft(
+            np.multiply(
+                npfft.rfft(centred),
+                self.Filters["FVideo_rfft32"],
+                out=scratch.video_stack,
+            ),
+            n=bl,
+            axis=1,
+        )
+
+        dc = self.Filters["FVideo_rfft_dc"]
         for name, i in filtered:
             if dc[i]:
                 np.add(video_results[i], dc[i], out=video_out[name])
@@ -1559,7 +2062,10 @@ class RFDecode:
             # the folded half-spectrum filter delivers exactly that (see
             # computeefmhalffilter).
             efm_out = npfft.irfft(
-                indata_fft[:nrf] * self.Filters["Fefm_half"], n=self.blocklen
+                np.multiply(
+                    indata_fft, self.Filters["Fefm_half"], out=scratch.half_product
+                ),
+                n=self.blocklen,
             )
             if cut:
                 efm_out = efm_out[self.blockcut : -self.blockcut_end]

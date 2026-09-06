@@ -143,11 +143,19 @@ def quiet_logger(monkeypatch):
     monkeypatch.setattr(logs, "logger", logging.getLogger("test-servo"))
 
 
-def servo_stub(estimate, engaged, samples, level=0.0, bw_ratio=1.044):
-    """Enough of an LDdecode for checkMTF()'s level-selection branch."""
+def servo_stub(estimate, engaged, samples, level=0.0, bw_ratio=1.044,
+               flat_band=None, feedforward=0.928):
+    """Enough of an LDdecode for checkMTF()'s level-selection branch.
+
+    ``flat_band`` is the multiburst's held chroma-band verdict, which an
+    adoption carries across the level change; None is a disc whose
+    multiburst has never been measured.
+    """
     stub = types.SimpleNamespace(
         autoMTF=True,
         mtf_level=level,
+        _imtf_flat_band=flat_band,
+        mtf_deemp_feedforward=feedforward,
         mtf_servo_deadband=0.10,
         bw_ratios=[bw_ratio],
         fields_written=0,
@@ -334,3 +342,86 @@ def test_a_missing_filter_bank_leaves_the_setpoint_at_unity():
     stub = estimate_stub([])
     stub.rf.inverse_mtf_2t_peak_gain = lambda strength: 0.0
     assert LDdecode._mtf_servo_target(stub) == pytest.approx(1.0)
+
+
+# --- carrying the multiburst's chroma-band verdict across an adoption ----
+#
+# The verdict is a strength, measured under one mtf_level.  mtf_level is a
+# pre-demod HF boost and the one term _imtf_strength_for_flat_band() does
+# not take its samples back to bare for, so an adoption leaves the held
+# verdict describing a channel the decode has left behind - and the rate
+# limit on republishing it is 100 fields, longer than a 30-frame cut, so
+# on a short capture it never refreshes at all.
+
+
+def test_an_adoption_carries_the_chroma_band_verdict_with_it():
+    """A level drop withdraws boost from the bound, by the feed-forward.
+
+    Left uncarried on BBC Domesday DD86-DS2 middle, the +0.535 verdict
+    measured before the adoption bounded the burst servo for the whole
+    decode while the multiburst was concurrently reading -0.22: the
+    servo wound +0.319 onto a band the instrument called hot, about 2 dB
+    of excess chroma.
+    """
+    stub = servo_stub(estimate=-0.667, engaged=True, samples=[("s",)],
+                      level=0.0, flat_band=0.5349, feedforward=0.928)
+
+    LDdecode.checkMTF(stub, field=None)
+
+    assert stub.mtf_level == pytest.approx(-0.667)
+    # 0.5349 + 0.928 * (-0.667) = -0.084, and the clamp below leaves a
+    # withdrawal that stops at zero.
+    assert stub._imtf_flat_band == pytest.approx(0.0)
+
+
+def test_the_carried_verdict_may_not_open_a_cut():
+    """Only the multiburst may spend the negative half.
+
+    _imtf_ceiling() applies a cut on the multiburst's measurement alone,
+    because burst amplitude and a feed-forward both read a mastering
+    choice as channel loss.  An unclamped prediction reaches -0.475 on
+    BBC Domesday DD86-DS1 outer, engages a cut on a number nothing
+    measured, and costs differential gain 0.067 -> 0.157.
+    """
+    stub = servo_stub(estimate=-1.0, engaged=True, samples=[("s",)],
+                      level=0.0, flat_band=0.10, feedforward=0.928)
+
+    LDdecode.checkMTF(stub, field=None)
+
+    # 0.10 + 0.928 * (-1.0) = -0.828, clamped at zero because the held
+    # verdict was not itself negative.
+    assert stub._imtf_flat_band == pytest.approx(0.0)
+
+
+def test_the_carried_verdict_may_not_deepen_a_measured_cut():
+    """A cut the multiburst measured is a floor the prediction respects."""
+    stub = servo_stub(estimate=-1.0, engaged=True, samples=[("s",)],
+                      level=0.0, flat_band=-0.30, feedforward=0.928)
+
+    LDdecode.checkMTF(stub, field=None)
+
+    assert stub._imtf_flat_band == pytest.approx(-0.30)
+
+
+def test_a_rising_level_does_not_raise_the_bound():
+    """The prediction may withdraw a boost, never authorise more of one.
+
+    A level *rise* would shift the verdict up, which is the one direction
+    that hands the burst servo more room than anything measured.
+    """
+    stub = servo_stub(estimate=0.5, engaged=True, samples=[("s",)],
+                      level=0.0, flat_band=0.20, feedforward=0.928)
+
+    LDdecode.checkMTF(stub, field=None)
+
+    assert stub._imtf_flat_band == pytest.approx(0.20)
+
+
+def test_a_disc_with_no_measured_multiburst_carries_nothing():
+    """None is not a verdict, and must not become one."""
+    stub = servo_stub(estimate=-0.667, engaged=True, samples=[("s",)],
+                      level=0.0, flat_band=None)
+
+    LDdecode.checkMTF(stub, field=None)
+
+    assert stub._imtf_flat_band is None

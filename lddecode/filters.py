@@ -221,6 +221,39 @@ def fft_do_slice(fdomain, lowbin, nbins, blocklen):
     )
 
 
+def fft_do_slice_half(half, lowbin, nbins, blocklen):
+    """``fft_do_slice`` of a real block's spectrum, from its rfft.
+
+    ``half`` is the positive-frequency half (length ``blocklen // 2 + 1``) of
+    the transform of a real signal, so the negative-frequency bins the slice
+    needs are ``full[blocklen - j] == conj(half[j])``.  Reading them straight
+    off the half is bit-for-bit what slicing the mirrored whole spectrum gave,
+    and saves demodblock building that mirror at all.
+
+    Raises ValueError if the requested band would run past Nyquist, where the
+    conjugate relation stops holding - the whole-spectrum version would wrap
+    around into the mirror and return a silently wrong slice.
+    """
+    nbins_half = nbins // 2
+    highbin = lowbin + nbins_half
+    if half.shape[0] != blocklen // 2 + 1:
+        raise ValueError(
+            "half spectrum of %d bins is not the rfft of a %d-sample block"
+            % (half.shape[0], blocklen)
+        )
+    if lowbin < 0 or highbin > blocklen // 2:
+        raise ValueError(
+            "bins %d..%d fall outside the positive half of a %d-sample block"
+            % (lowbin, highbin, blocklen)
+        )
+    return np.concatenate(
+        [
+            half[lowbin:highbin],
+            np.conj(half[lowbin + 1 : highbin + 1])[::-1],
+        ]
+    )
+
+
 def overlap_save_fft(data, blocklen=32768, blockcut_begin=1024, blockcut_end=512):
     '''
     overlap/save [i]fft functions for testing.  use in a jupyter notebook or similar

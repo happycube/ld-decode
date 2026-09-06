@@ -94,7 +94,7 @@ ceiling = 1.36
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-# dolby-surround-side1-outer (NTSC): 1 of its checks fail.
+# dolby-surround-side1-outer (NTSC): 2 of its checks fail.
 
 [[deviation]]
 capture = "dolby-surround-side1-outer"
@@ -107,6 +107,18 @@ band_used = 4.18
 ceiling = 4.60
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
+
+[[deviation]]
+capture = "dolby-surround-side1-outer"
+check = "ntsc-ntc7-composite/pulse_12t5_luma"
+field_line = 20
+parity = "first"
+measured = 48.481
+unit = "IRE"
+band_used = 1.01
+ceiling = 1.11
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 12.5T modulated pulse's luminance component: the same sine-squared pulse measurement as pulse_2t above, on the same line of the same cut. The fault is already recorded one radius in, at 1.24x on dolby-surround-side1-middle; this cut has read within a fiftieth of its limit for as long as the sweep has measured it (0.99x, 48.512 IRE) and has now crossed. See docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
 
 # domesday-ds1-community-north-outer (PAL): 4 of its checks fail.
@@ -225,7 +237,7 @@ reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour 
 
 
 
-# domesday-ds2-community-north-middle (PAL): 6 of its checks fail.
+# domesday-ds2-community-north-middle (PAL): 5 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-middle"
@@ -289,19 +301,7 @@ ceiling = 1.22
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 2"
 reason = "Chrominance gain is not constant across the amplitudes the multiburst presents."
 
-[[deviation]]
-capture = "domesday-ds2-community-north-middle"
-check = "gain_ratio/PAL"
-parity = "second"
-measured = 0.275
-unit = "ratio"
-band_used = 1.18
-ceiling = 1.30
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
-
-
-# domesday-ds2-community-north-outer (PAL): 9 of its checks fail.
+# domesday-ds2-community-north-outer (PAL): 7 of its checks fail.
 
 [[deviation]]
 capture = "domesday-ds2-community-north-outer"
@@ -387,34 +387,6 @@ band_used = 1.75
 ceiling = 1.92
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
-
-
-[[deviation]]
-capture = "domesday-ds2-community-north-outer"
-check = "pal-its-field2/staircase_subcarrier/differential_gain"
-field_line = 19
-parity = "second"
-measured = 0.123
-unit = "fraction"
-band_used = 1.17
-ceiling = 1.29
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "Chroma differential gain left uncorrected on this cut. With the inverse-MTF curve built at PAL's own rotation rate the 2T servo adopts -0.724 here, where it adopted nothing before; that is a pre-demod HF boost, and it moves the FM sideband balance chrominance is recovered from - the mechanism docs/technical/vits-servos.md gives for differential gain in the first place. The staircase servo would take it out, but every other servo's adoption clears its pool and there are not 16 fields left inside a 30-frame cut to refill it. Inner and middle radius on the same pressing read 0.05 and 0.06."
-
-
-
-[[deviation]]
-capture = "domesday-ds2-community-north-outer"
-check = "pal-multiburst-field2/chroma_bar_60"
-field_line = 20
-parity = "second"
-measured = 25.359
-unit = "IRE"
-band_used = 1.03
-ceiling = 1.13
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "Chroma path gain, the same reading as chroma_bar_100 beside it and a tenth of a dB the wrong side of its band. This cut's chroma now sits 2.9 dB lower than it did, because the multiburst carries the strength to -1.07 dB at the subcarrier where it read +1.79 before; the band the multiburst measures is flat either way, and it is the bar that disagrees with it."
-
 
 
 # ggv1011-side1-inner (PAL): 5 of its checks fail.

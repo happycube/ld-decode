@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lddecode.rfdecode import RFDecode
 from lddecode.dsp import genwave
+from lddecode.filters import emphasis_iir, filtfft
 
 
 def make_fake_signal(rf):
@@ -58,10 +59,13 @@ def make_fake_signal(rf):
 
         pos += line_period_samples
 
-    # FM-modulate the baseband signal to produce RF
-    fakeoutput_emp = npfft.ifft(
-        npfft.fft(fakeoutput) * rf.Filters["Fvideo_lpf"] * rf.Filters["Femp"]
-    ).real
+    # FM-modulate the baseband signal to produce RF.  The pre-emphasis is
+    # built here rather than read from rf.Filters: the decoder never applies
+    # it, so it is not one of the filters the bank keeps (see
+    # RFDecode.CONSTRUCTION_ONLY_FILTERS).
+    deemp1, deemp2 = rf.DecoderParams["video_deemp"]
+    femp = filtfft(emphasis_iir(deemp2, deemp1, rf.freq_hz), rf.blocklen)
+    fakeoutput_emp = npfft.ifft(npfft.fft(fakeoutput) * rf.Filters["Fvideo_lpf"] * femp).real
 
     fakesignal = genwave(fakeoutput_emp, rf.freq_hz / 2)
     fakesignal *= 4096
