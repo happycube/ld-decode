@@ -17,6 +17,7 @@ import numpy as np
 from . import ac3rf
 from . import efm_pll, efm_score
 from . import utils_logging as logs
+from .params import resolve_block_length
 from .profiling import profile
 from .rfdecode import RFDecode
 from .field import (CHROMA_DG_ANCHOR_IRE, Field, FieldAnchor, FieldNTSC,
@@ -527,6 +528,10 @@ class LDdecode:
                         zeta=float(os.environ.get("LDDECODE_EFM_TIMING_ZETA", "0.6")),
                         ted_gain=float(os.environ.get("LDDECODE_EFM_TIMING_TED", "0.5")),
                         acq_boost=float(os.environ.get("LDDECODE_EFM_TIMING_ACQBOOST", "6")),
+                        # LDDECODE_EFM_RESTORE_SYNC=0 leaves a missed sync's
+                        # runs as read instead of rewriting them to T11-T11.
+                        restore_sync=os.environ.get(
+                            "LDDECODE_EFM_RESTORE_SYNC", "1") != "0",
                         eq_taps=_eq_taps,
                     )
                 else:
@@ -594,7 +599,11 @@ class LDdecode:
             'decode_digital_audio':digital_audio,
             'has_analog_audio':self.has_analog_audio,
             'extra_options':extra_options,
-            'blocklen': 32 * 1024,
+            # Normally BLOCKSIZE; LDDECODE_BLOCKLEN overrides it for the
+            # block-length sweep.  Resolved once here and carried in rf_opts,
+            # so worker processes are built at the parent's length rather than
+            # re-reading the environment (see params.resolve_block_length).
+            'blocklen': resolve_block_length(),
             'decoder_params_override': DecoderParamsOverride
         }
 
@@ -1992,6 +2001,55 @@ class LDdecode:
         delta = estimate - self.mtf_level
         self.mtf_level = estimate
 
+        # Carry the multiburst's chroma-band verdict across this
+        # adoption.  mtf_level is a pre-demod HF boost, and it is the one
+        # term _imtf_strength_for_flat_band() does not take its samples
+        # back to bare for - the applied EQ and the inverse-MTF strength
+        # both travel with a sample, the level does not - so a verdict
+        # published before this moment describes a channel that no longer
+        # exists.  The flat band is a strength, the level change moves
+        # the channel's HF by a known amount, and mtf_deemp_feedforward
+        # is the conversion the adopted strength itself is corrected by
+        # a few statements below.
+        #
+        # Left behind, that verdict does not merely age: the rate limit
+        # is 100 fields, which is longer than the whole of a 30-frame
+        # cut, so on any capture under 50 frames the first verdict
+        # published stands for the entire decode.  Measured on BBC
+        # Domesday DD86-DS2 middle, where the 2T servo takes mtf_level to
+        # -0.667 and the multiburst then reads the chroma band as wanting
+        # -0.22: every one of those readings was discarded by the rate
+        # limit, the ceiling stayed at the +0.535 measured before the
+        # adoption, and the burst servo wound +0.319 onto a band the
+        # instrument was concurrently measuring as hot - about 2 dB of
+        # excess chroma, seven conformance checks red.  Carried across,
+        # +0.535 becomes -0.084 and bounds the servo at nothing instead.
+        #
+        # The prediction may only withdraw a boost, never open or deepen
+        # a cut.  That is this filter's standing rule rather than a new
+        # one: _imtf_ceiling() spends the negative half on the
+        # multiburst's measurement alone, because burst amplitude and a
+        # feed-forward both read a mastering choice as channel loss.  On
+        # DD86-DS1 outer an unclamped prediction reaches -0.475, the
+        # ceiling engages a real cut on a number nothing measured, and
+        # differential gain goes 0.067 -> 0.157.
+        #
+        # Two alternatives were measured and are worse.  Dropping the
+        # rate limit here, so a real measurement could replace the
+        # verdict sooner, lets DD86-DS1 outer republish at -0.525 and
+        # apply that cut: differential gain 0.067 -> 0.117, and nothing
+        # else on the cut improves.  Holding the burst servo until the
+        # multiburst republished stalls it outright on the same cut,
+        # whose pool holds five samples against the six VEQ_MIN_SAMPLES
+        # asks for after calibration, so the verdict never republishes at
+        # all.  A bound that can go unmeasurable has to degrade to a
+        # prediction, not to a stall and not to a free hand.
+        if self._imtf_flat_band is not None:
+            shifted = self._imtf_flat_band + self.mtf_deemp_feedforward * delta
+            if shifted < self._imtf_flat_band:
+                self._imtf_flat_band = max(
+                    shifted, min(0.0, self._imtf_flat_band))
+
         # Feed-forward: an MTF level change moves chroma by a known
         # amount (~1.7 strength-equivalents per level unit on Louvre),
         # so bump the inverse-MTF strength in the same adoption instead
@@ -3155,6 +3213,7 @@ class LDdecode:
                         self._field_worker_cfg() if self.use_field_jobs
                         else None
                     ),
+                    shared_filters=self._shared_filter_spec(),
                 )
 
                 if self.use_field_jobs:
@@ -3178,6 +3237,8 @@ class LDdecode:
             read_lock=self.block_cache.read_lock,
             cfg=self._field_engine_cfg(),
             workers=self.numthreads,
+            filter_slots=self.block_cache.filter_slots,
+            slot_source=self.rf.slot_filter_arrays,
         )
         self._engine_dirty = True
 
@@ -3201,10 +3262,23 @@ class LDdecode:
             field_cfg=(
                 self._field_worker_cfg() if self.use_field_jobs else None
             ),
+            shared_filters=self._shared_filter_spec(),
         )
 
         if self.use_field_jobs:
             self._start_job_engine()
+
+    def _shared_filter_spec(self):
+        """The filters to publish for the worker pool to share.
+
+        None disables the segment entirely, leaving every worker with
+        its own copy of the bank: LDDECODE_NO_SHARED_FILTERS=1 is here to
+        bisect against, since sharing changes where the numbers live but
+        never what they are.
+        """
+        if os.environ.get("LDDECODE_NO_SHARED_FILTERS") == "1":
+            return None
+        return self.rf.shared_filter_spec()
 
     def _field_worker_cfg(self):
         """What a worker process needs beyond RFDecode to decode a

@@ -140,7 +140,7 @@ def scale_field(
 
         # reconstructs the waveform at the proper fractional sample position, undoing wow-induced
         # timing variations
-        coord = np.float32(interpolated_pixel_locs[i])
+        coord = interpolated_pixel_locs[i]
         coord_int = int(coord)
 
         # fractional phase
@@ -197,7 +197,7 @@ def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
     half_taps_m1 = (sinc_tap_count // 2) - 1
 
     for i in range(len(dsout)):
-        coord = np.float32(pixel_locs[i])
+        coord = pixel_locs[i]
         coord_int = int(coord)
         frac = coord - coord_int
 

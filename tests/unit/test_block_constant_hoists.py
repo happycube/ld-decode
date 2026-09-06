@@ -42,13 +42,18 @@ class CountingFilter(np.ndarray):
 
 
 class StubDecoder:
-    """The smallest object mtf_response() needs: a filter bank and a cache."""
+    """The smallest object mtf_response() needs: a filter bank and a cache.
+
+    demodblock multiplies the positive half of the block's spectrum, so it is
+    MTF_half that gets raised; the half here is a view of the same
+    CountingFilter, which shares its tally.
+    """
 
     mtf_response = RFDecode.mtf_response
     _mtf_response_cache = None
 
     def __init__(self, mtf):
-        self.Filters = {"MTF": mtf}
+        self.Filters = {"MTF": mtf, "MTF_half": mtf[: len(mtf) // 2 + 1]}
 
 
 @pytest.fixture(scope="module")
@@ -86,8 +91,9 @@ def test_mtf_response_raises_the_filter_once_per_level():
 def test_mtf_response_returns_the_power_it_replaced():
     mtf = CountingFilter.of([1.0, 2.0, 4.0, 8.0])
     rf = StubDecoder(mtf)
+    nrf = len(mtf) // 2 + 1
     for level in (1.13, 0.62, -0.4, 0.0):
-        expected = np.asarray(mtf) ** level
+        expected = (np.asarray(mtf) ** level)[:nrf]
         np.testing.assert_array_equal(rf.mtf_response(level), expected)
 
 
@@ -117,7 +123,10 @@ def test_rebuilding_the_filters_drops_the_held_response(system):
 
     rebuilt = rf.mtf_response(1.13)
     assert rebuilt is not held
-    np.testing.assert_array_equal(rebuilt, rf.Filters["MTF"] ** 1.13)
+    # Raising the half is bit-for-bit the first half of raising the whole:
+    # the power is elementwise, which is what lets demodblock filter the
+    # rfft of the block against it (see demodblock).
+    np.testing.assert_array_equal(rebuilt, (rf.Filters["MTF"] ** 1.13)[: rf.blocklen // 2 + 1])
 
 
 @parametrize_system

@@ -132,12 +132,65 @@ def tree_rss_kib(roots):
     return total, largest
 
 
+#: Suffixes sysfs uses for a cache size, and what they multiply by.
+CACHE_SIZE_UNITS = {"K": 1024, "M": 1024 ** 2, "G": 1024 ** 3}
+
+
+def parse_cache_sizes(entries):
+    """``{"l2_bytes_per_core": .., "l3_bytes": ..}`` from sysfs cache indexes.
+
+    entries -- iterable of ``(level_text, size_text)`` pairs, each exactly as
+               ``/sys/devices/system/cpu/cpu0/cache/index*/{level,size}`` hold
+               them ("2\\n", "512K\\n").  Pairs that do not parse are skipped
+               rather than raising, because a machine that reports its caches
+               oddly should still produce a usable row; a level that never
+               appears comes back as ``None``.
+
+    The L2 figure is cpu0's, which on a hybrid part (Intel P-core plus E-core
+    clusters) is the P-core's per-core L2 and not the E-cluster's shared one.
+    Cache capacity per worker is what the throughput knee is set by, so both
+    levels are recorded beside the core counts.
+    """
+    sizes = {"l2_bytes_per_core": None, "l3_bytes": None}
+    keys = {"2": "l2_bytes_per_core", "3": "l3_bytes"}
+    for level_text, size_text in entries:
+        key = keys.get((level_text or "").strip())
+        if key is None or sizes[key] is not None:
+            continue
+        size = (size_text or "").strip().upper()
+        if not size:
+            continue
+        multiplier = CACHE_SIZE_UNITS.get(size[-1:])
+        digits = size[:-1] if multiplier else size
+        if not digits.isdigit():
+            continue
+        sizes[key] = int(digits) * (multiplier or 1)
+    return sizes
+
+
+def read_cache_entries(cpu_dir="/sys/devices/system/cpu/cpu0/cache", indexes=range(5)):
+    """The (level, size) text pairs `parse_cache_sizes` takes, from sysfs."""
+    entries = []
+    for index in indexes:
+        path = os.path.join(cpu_dir, "index%d" % index)
+        try:
+            with open(os.path.join(path, "level")) as handle:
+                level = handle.read()
+            with open(os.path.join(path, "size")) as handle:
+                size = handle.read()
+        except OSError:
+            continue
+        entries.append((level, size))
+    return entries
+
+
 def describe_box():
     """Machine identity, so rows measured elsewhere stay distinguishable."""
     box = {
         "logical_cpus": os.cpu_count(),
         "physical_cores": None,
         "model_name": None,
+        "l2_bytes_per_core": None,
         "l3_bytes": None,
         "mem_total_kib": None,
     }
@@ -153,17 +206,7 @@ def describe_box():
                 box["physical_cores"] = len(cores)
     except OSError:
         pass
-    for index in range(4):
-        path = "/sys/devices/system/cpu/cpu0/cache/index%d" % index
-        try:
-            with open(os.path.join(path, "level")) as handle:
-                level = handle.read().strip()
-            with open(os.path.join(path, "size")) as handle:
-                size = handle.read().strip()
-        except OSError:
-            continue
-        if level == "3" and size.endswith("K"):
-            box["l3_bytes"] = int(size[:-1]) * 1024
+    box.update(parse_cache_sizes(read_cache_entries()))
     try:
         with open("/proc/meminfo") as handle:
             for line in handle:

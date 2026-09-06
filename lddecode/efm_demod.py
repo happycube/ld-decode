@@ -29,9 +29,25 @@ takes one soft decision per channel bit:
    counter with lock hysteresis that flywheels across corrupted syncs.
    Emitted runs are legalised (runs < 3 merged into the following run,
    runs > 11 split) preserving the total channel-bit count, so the ``.efm``
-   contract - int8 T values in 3..11 - is unchanged.  Each T value carries a
-   uint8 confidence (255 = best) for confidence-packed output; T values inside
-   frames that fail the sync/588 check are capped low (erasure candidates).
+   contract - int8 T values in 3..11 - is unchanged.
+5. **Confidence**: each T value carries a uint8 confidence (255 = best) for
+   confidence-packed output, from four sources, weakest wins:
+
+   * *amplitude* - the weakest soft sample in the run against ``conf_scale``;
+   * *timing* - the worse of the two edges bounding the run, measured as the
+     normalised Mueller & Muller error, so a full-height run whose length was
+     a coin toss is distrusted where the amplitude term alone sees nothing;
+   * *fabrication* - a T value the legaliser invented rather than read (a run
+     merged forward, a run split, or the remainder either leaves behind) is
+     capped at ``conf_legalised``, and runs the flywheel rewrote at a restored
+     sync are capped at ``conf_restored``.  Both are certain knowledge that
+     the channel did not show what was emitted;
+   * *validation* - every T value in a frame that fails the sync/588 check is
+     capped at ``conf_lowcap``.
+
+   The caps are ordered: fabrication is a per-symbol certainty and outranks
+   whole-frame validation, which flags a whole frame for the sake of the few
+   symbols in it that are actually wrong.
 
 The architecture follows the timing-recovery design validated by the museld
 project (https://github.com/staffanu/museld, GPLv3); the implementation here
@@ -67,6 +83,16 @@ SYNC_PATTERN_BITS = 24
 FRAME_CHANNEL_BITS = 588
 T_MIN = 3
 T_MAX = 11
+
+# Confidence ceilings, in the 0-255 scale an .efm packs as
+# ``doubt = 15 - (conf >> 4)``.  A fabricated T value (doubt 14) and a
+# flywheel-rewritten sync run (doubt 15) are per-symbol certainties and sit
+# above any sane erasure threshold; an unvalidated frame (doubt 8) flags all
+# 74 of its T values for the sake of the few that are wrong, so it sits
+# below one.
+CONF_LOWCAP = 112
+CONF_LEGALISED = 16
+CONF_RESTORED = 0
 
 # Keep the decimated rate at or above this so the 0-1.9 MHz EFM band and its
 # transition edges stay far from the fold-over frequency.
@@ -283,11 +309,16 @@ _timing_core_spec = [
     ("y_prev", numba.float64),
     ("d_prev", numba.int8),
     ("conf_scale", numba.float64),
+    ("timing_scale", numba.float64),
     ("conf_lowcap", numba.int64),
+    ("conf_legalised", numba.int64),
+    ("conf_restored", numba.int64),
+    ("restore_sync", numba.boolean),
     ("run_count", numba.int64),
     ("carry", numba.int64),
     ("run_start_bit", numba.int64),
     ("run_min_abs", numba.float64),
+    ("run_edge_min", numba.float64),
     ("bit_idx", numba.int64),
     ("reg", numba.int64),
     ("locked", numba.boolean),
@@ -351,7 +382,11 @@ class _TimingCore:
         prop_limit,
         integ_limit,
         conf_scale,
+        timing_scale,
         conf_lowcap,
+        conf_legalised,
+        conf_restored,
+        restore_sync,
         lock_threshold,
         unlock_threshold,
         sync_window,
@@ -390,12 +425,17 @@ class _TimingCore:
         self.d_prev = 1
 
         self.conf_scale = conf_scale
+        self.timing_scale = timing_scale
         self.conf_lowcap = conf_lowcap
+        self.conf_legalised = conf_legalised
+        self.conf_restored = conf_restored
+        self.restore_sync = restore_sync
 
         self.run_count = 0
         self.carry = 0
         self.run_start_bit = 1
         self.run_min_abs = 1.0e30
+        self.run_edge_min = 1.0
 
         self.bit_idx = 0
         self.reg = 0
@@ -539,6 +579,18 @@ class _TimingCore:
             self.run_min_abs = ay
 
         bit = 1 if d != self.d_prev else 0
+        if bit == 1:
+            # Edge timing margin.  Across a transition d = -d_prev, so the
+            # TED reduces to |e| = ||y| - |y_prev||: the imbalance of the two
+            # samples straddling the crossing.  Normalised by their sum it is
+            # level-independent - 1.0 when the crossing sits midway between
+            # the strobes, 0.0 when it sits on one of them and the run length
+            # is a coin toss between two legal values.
+            ap = -self.y_prev if self.y_prev < 0.0 else self.y_prev
+            span = ay + ap
+            em = 1.0 - ae / span if span > 0.0 else 0.0
+        else:
+            em = 1.0
         self.d_prev = d
         self.y_prev = y
 
@@ -547,41 +599,82 @@ class _TimingCore:
             # the next run.  Legalise: merge < 3 into the following run,
             # split > 11 (progressive emission below keeps rr <= 13 here),
             # always preserving the total channel-bit count.
+            edge = self.run_edge_min
+            if em < edge:
+                edge = em
             rr = self.run_count + self.carry
+            # A non-zero carry means this run absorbed the remainder of an
+            # earlier legalisation: its length is invented, not read.
+            merged = self.carry != 0
             self.carry = 0
-            conf = self._conf_value()
+            conf = self._conf_value(edge)
+            start = self.run_start_bit
+            next_start = self.bit_idx + 1
+            next_min = ay
+            next_edge = em
             if rr >= T_MIN:
                 if rr > T_MAX:
-                    self._emit(T_MAX, conf, self.run_start_bit)
+                    self._emit(T_MAX, self._fabricated(conf), start)
                     self.carry = rr - T_MAX
+                    # The remainder continues the same physical run, so it
+                    # keeps its start, its weakest sample and its margins.
+                    next_start = start + T_MAX
+                    next_min = self.run_min_abs
+                    next_edge = edge
                 else:
-                    self._emit(rr, conf, self.run_start_bit)
+                    self._emit(rr, self._fabricated(conf) if merged else conf, start)
             elif rr > 0:
                 self.carry = rr
+                next_start = start
+                next_min = self.run_min_abs
+                next_edge = edge
             self.run_count = 1
-            self.run_start_bit = self.bit_idx + 1
-            self.run_min_abs = ay
+            self.run_start_bit = next_start
+            self.run_min_abs = next_min
+            self.run_edge_min = next_edge
         else:
             self.run_count += 1
             if self.run_count + self.carry >= T_MAX + 1:
                 # Progressive split inside an over-long run (dropout or
                 # missed transition): emit T11 now so the pending buffer
-                # and the frame accounting keep flowing.
-                self._emit(T_MAX, self._conf_value(), self.run_start_bit)
+                # and the frame accounting keep flowing.  The boundary is
+                # invented, so this T11 and the remainder are both suspect.
+                self._emit(
+                    T_MAX,
+                    self._fabricated(self._conf_value(self.run_edge_min)),
+                    self.run_start_bit,
+                )
                 self.carry = self.run_count + self.carry - T_MAX
                 self.run_count = 0
                 self.run_start_bit = self.bit_idx + 1
 
         self._push_bit(bit)
 
-    def _conf_value(self):
-        """Confidence from the weakest soft sample in the run (255 = best)."""
+    def _conf_value(self, edge_margin):
+        """Confidence for one run: the worse of its amplitude and timing margins.
+
+        Amplitude is the weakest soft sample in the run against
+        ``conf_scale``; timing is the worse of the two edges bounding it
+        against ``timing_scale``.  Amplitude alone cannot see the failure
+        that matters here - a full-height run one channel bit adrift decodes
+        to a legal but wrong symbol, and reaches the CIRC stages disguised
+        as good data.
+        """
         c = self.run_min_abs / self.conf_scale
+        t = edge_margin / self.timing_scale
+        if t < c:
+            c = t
         if c > 1.0:
             c = 1.0
         elif c < 0.0:
             c = 0.0
         return np.uint8(255.0 * c)
+
+    def _fabricated(self, conf):
+        """Cap a T value the legaliser invented rather than read."""
+        if conf > self.conf_legalised:
+            return np.uint8(self.conf_legalised)
+        return conf
 
     def _push_bit(self, bit):
         """Advance the frame-sync state machine by one channel bit."""
@@ -601,7 +694,8 @@ class _TimingCore:
                 # Window closed with no sync: flywheel a boundary at the
                 # expected position; unlock after enough consecutive misses.
                 boundary = self.expected_match - (SYNC_PATTERN_BITS - 1)
-                self._restore_sync(boundary)
+                if self.restore_sync:
+                    self._restore_sync(boundary)
                 self._accept_boundary(boundary, False)
                 self.expected_match += FRAME_CHANNEL_BITS
                 self.miss += 1
@@ -632,8 +726,9 @@ class _TimingCore:
         [head, 11, 11, tail], preserving the total channel-bit count.  The
         rewrite happens only when head and tail land on legal run lengths
         (a marginal edge misplaced by a bit or two); anything messier - real
-        dropout garbage - is left alone.  Rewritten runs carry low
-        confidence: they are counter-backed guesses, not reads.
+        dropout garbage - is left alone.  Rewritten runs carry
+        ``conf_restored``: they are counter-backed guesses, not reads, and
+        the consumer should treat them as erasures rather than data.
         """
         first = -1
         last = -1
@@ -691,7 +786,7 @@ class _TimingCore:
                 self.pending_start[j + shift] = self.pending_start[j]
         for j in range(n_new):
             self.pending_t[first + j] = new_t[j]
-            self.pending_conf[first + j] = np.uint8(self.conf_lowcap)
+            self.pending_conf[first + j] = np.uint8(self.conf_restored)
             self.pending_start[first + j] = new_start[j]
         self.pending_n += shift
 
@@ -769,6 +864,19 @@ class EFMTimingDemod:
     Loop constants are exposed as constructor parameters; the defaults are
     fn = 1.2 kHz, zeta = 0.6 with per-symbol/integrator corrections clamped
     to 2 % / 4 % of the nominal step, and lock hysteresis of 7 frames.
+
+    The confidence ceilings are parameters too.  Packed into an ``.efm``
+    high nibble as ``doubt = 15 - (conf >> 4)`` the defaults give: a
+    fabricated T value doubt 14, a flywheel-rewritten sync run doubt 15, and
+    an unvalidated frame doubt 8.  Fabrication sits above a consumer's
+    erasure threshold and whole-frame validation sits below it, because the
+    first is per-symbol certainty and the second flags 74 T values for the
+    sake of the two in them that are wrong.
+
+    ``restore_sync=False`` stops the flywheel rewriting the runs at a sync
+    the pattern matcher missed, leaving the damage in the T stream instead
+    of repairing it.  Frames are still closed from the position counter, so
+    framing is unaffected; only the emitted runs differ.
     """
 
     def __init__(
@@ -784,7 +892,11 @@ class EFMTimingDemod:
         lock_frames=7,
         sync_window_bits=2,
         conf_scale=0.5,
-        conf_lowcap=64,
+        timing_scale=0.5,
+        conf_lowcap=CONF_LOWCAP,
+        conf_legalised=CONF_LEGALISED,
+        conf_restored=CONF_RESTORED,
+        restore_sync=True,
         eq_taps=0,
         eq_mu=1e-4,
         eq_leak=1e-5,
@@ -806,7 +918,11 @@ class EFMTimingDemod:
             prop_limit_frac,
             integ_limit_frac,
             conf_scale,
+            timing_scale,
             conf_lowcap,
+            conf_legalised,
+            conf_restored,
+            restore_sync,
             lock_frames,
             lock_frames,
             sync_window_bits,

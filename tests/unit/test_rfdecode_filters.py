@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 import scipy.signal as sps
 
-from lddecode.filters import filtfft
+from lddecode.filters import emphasis_iir, filtfft
 from lddecode.rfdecode import RFDecode
 
 pytestmark = [pytest.mark.unit, pytest.mark.dsp]
@@ -82,19 +82,54 @@ def test_the_decoder_builds_without_reading_a_capture(rf):
     """Nothing in the filter set depends on the input, which is what lets a
     worker process rebuild it from parameters alone."""
     expected = {
-        "RFVideo", "MTF", "hilbert", "Frfhpf", "Frfhpf_half",
-        "Fvideo_lpf", "Fdeemp", "Femp", "FVideo", "FVideo05", "FVideoBurst",
-        "FVideoGD", "FVideo_rfft", "Fburst", "Finverse_mtf_base",
-        "Fvideo_eq", "Fvideo_eq_auto",
+        "RFVideo", "RFVideo_half", "MTF", "MTF_half", "Frfhpf", "Frfhpf_half",
+        "Fvideo_lpf", "Fdeemp", "FVideo", "FVideo05", "FVideoBurst",
+        "FVideoGD", "FVideo_rfft32", "Finverse_mtf_base", "Fvideo_eq_auto",
     }
 
     assert expected <= set(rf.Filters)
 
-    # Everything but the batched stack and the half-spectrum copy spans the
+    # Everything but the batched stack and the half-spectrum copies spans the
     # whole transform, so they can be multiplied together bin for bin.
-    whole = expected - {"FVideo_rfft", "Frfhpf_half"}
-    assert all(len(rf.Filters[k]) == rf.blocklen for k in whole)
-    assert len(rf.Filters["Frfhpf_half"]) == rf.blocklen // 2 + 1
+    halves = {"RFVideo_half", "MTF_half", "Frfhpf_half", "FVideo_rfft32"}
+    assert all(len(rf.Filters[k]) == rf.blocklen for k in expected - halves)
+    for name in halves - {"FVideo_rfft32"}:
+        assert len(rf.Filters[name]) == rf.blocklen // 2 + 1
+
+
+@parametrize_system
+def test_the_filters_that_only_build_other_filters_are_dropped(rf):
+    """Each of these is folded into a filter that is kept, and nothing indexes
+    it again once the bank is built (measured over a decode that adopts an
+    inverse-MTF strength and a dynamic EQ).  Holding them is 3.0 MiB per PAL
+    process of arrays no block ever reads.
+    """
+    assert set(rf.Filters).isdisjoint(RFDecode.CONSTRUCTION_ONLY_FILTERS)
+    # The double-precision output stack goes the same way: it is a local in
+    # build_video_rfft_stack, cast to the single-precision stack demodblock
+    # reads and to the per-channel DC gains, and wanted no further.
+    assert "FVideo_rfft" not in rf.Filters
+    assert "FVideo_rfft32" in rf.Filters and "FVideo_rfft_dc" in rf.Filters
+
+
+@parametrize_system
+def test_the_retired_filters_are_still_folded_into_what_is_kept(rf):
+    """Dropping them is only safe because their effect is already in the
+    filters that survive; that is what these bins check, so a retirement that
+    dropped something load-bearing would fail here rather than in a decode.
+    """
+    # Fburst -> FVideoBurst: a band-pass at the colour subcarrier.
+    fsc = bin_at(rf, rf.SysParams["fsc_mhz"] * 1e6)
+    burst = np.abs(rf.Filters["FVideoBurst"])
+    assert burst[fsc] > 10 * burst[bin_at(rf, 1e6)]
+
+    # hilbert -> RFVideo: nothing at all above Nyquist.
+    np.testing.assert_array_equal(rf.Filters["RFVideo"][rf.blocklen // 2 + 1:], 0)
+
+    if rf.system == "PAL":
+        # Fpilot -> FVideoPilot: a band-pass at the PAL pilot tone.
+        pilot = np.abs(rf.Filters["FVideoPilot"])
+        assert pilot[bin_at(rf, rf.SysParams["pilot_mhz"] * 1e6)] > 10 * pilot[bin_at(rf, 2e6)]
 
 
 @parametrize_system
@@ -250,9 +285,17 @@ def test_de_emphasis_is_unity_at_dc_and_falls_with_frequency(rf):
 
 @parametrize_system
 def test_pre_emphasis_is_exactly_the_inverse_of_de_emphasis(rf):
-    """Femp exists to generate test signals that the de-emphasis will undo, so
-    the product has to be one at every bin, not just in the passband."""
-    assert np.abs(rf.Filters["Femp"] * rf.Filters["Fdeemp"] - 1.0).max() < 1e-12
+    """Pre-emphasis exists to generate test signals that the de-emphasis will
+    undo, so the product has to be one at every bin, not just in the passband.
+
+    Built here rather than read from the filter bank: it is the one filter the
+    decoder never applies, so it is not kept (see CONSTRUCTION_ONLY_FILTERS),
+    and what is being asserted is a property of the emphasis pair itself.
+    """
+    deemp1, deemp2 = rf.DecoderParams["video_deemp"]
+    femp = filtfft(emphasis_iir(deemp2, deemp1, rf.freq_hz), rf.blocklen)
+
+    assert np.abs(femp * rf.Filters["Fdeemp"] - 1.0).max() < 1e-12
 
 
 @parametrize_system
@@ -455,19 +498,55 @@ def test_the_cheap_rebuild_matches_a_full_one(system, change):
     cheap.recompute_fvideo()
 
     assert np.array_equal(full.Filters["FVideo"], cheap.Filters["FVideo"])
-    assert np.array_equal(full.Filters["FVideo_rfft"], cheap.Filters["FVideo_rfft"])
+    # The stack demodblock actually reads, and the DC gains derived with it.
+    assert np.array_equal(full.Filters["FVideo_rfft32"], cheap.Filters["FVideo_rfft32"])
+    assert np.array_equal(full.Filters["FVideo_rfft_dc"], cheap.Filters["FVideo_rfft_dc"])
+
+
+def _expected_stack(rf, bins):
+    expected = [rf.Filters[k][:bins] for k in ("FVideo", "FVideo05", "FVideoBurst")]
+    if rf.system == "PAL":
+        expected.append(rf.Filters["FVideoPilot"][:bins])
+    return np.asarray(expected)
 
 
 @parametrize_system
 def test_the_stacked_output_filters_are_the_ones_demodblock_uses(rf):
-    """demodblock does one batched inverse transform over FVideo_rfft; the
-    stack has to stay in step with the individual filters after any rebuild."""
-    half = rf.blocklen // 2 + 1
-    expected = [rf.Filters[k][:half] for k in ("FVideo", "FVideo05", "FVideoBurst")]
-    if rf.system == "PAL":
-        expected.append(rf.Filters["FVideoPilot"][:half])
+    """demodblock does one batched inverse transform over FVideo_rfft32; the
+    stack has to stay in step with the individual filters after any rebuild.
 
-    assert np.array_equal(rf.Filters["FVideo_rfft"], np.asarray(expected))
+    The discriminator runs at half the input rate, so the stack is cut to the
+    bins that transform reaches and carries the rate correction; the bins
+    themselves are the same bins at the same frequencies, because the two
+    transforms share a bin spacing.
+    """
+    expected = _expected_stack(rf, rf.blocklen // 4 + 1)
+    expected = expected * rf.discriminator_rate_correction()
+
+    assert np.array_equal(rf.Filters["FVideo_rfft32"], expected.astype(np.complex64))
+    # ...and the DC gain each channel's centring offset is restored through,
+    # which is derived from the same stack and has to match it row for row.
+    # It is taken before the correction, which is exactly 1 at DC, so it is
+    # the same number on both chains.
+    centre = rf.Filters["FVideo_rfft_centre"]
+    np.testing.assert_array_equal(
+        rf.Filters["FVideo_rfft_dc"],
+        (_expected_stack(rf, 1)[:, 0].real * centre).astype(np.float32),
+    )
+
+
+@parametrize_system
+def test_the_full_rate_stack_is_the_filters_themselves(rf):
+    """With the discriminator at the input rate there is nothing to correct:
+    the stack is the filters' positive halves and no more."""
+    full = RFDecode(system=rf.system, full_rate_demod=True)
+    expected = _expected_stack(full, full.blocklen // 2 + 1)
+
+    assert np.array_equal(full.Filters["FVideo_rfft32"], expected.astype(np.complex64))
+    np.testing.assert_array_equal(
+        full.Filters["FVideo_rfft_dc"],
+        rf.Filters["FVideo_rfft_dc"],
+    )
 
 
 # --- the EFM equaliser --------------------------------------------------
@@ -504,3 +583,71 @@ def test_the_two_systems_use_different_efm_equalisation():
     assert np.abs(pal.Filters["Fefm"][bin_at(pal, peak)]) > np.abs(
         ntsc.Filters["Fefm"][bin_at(ntsc, peak)]
     )
+
+
+@pytest.mark.parametrize("system", SYSTEMS)
+@pytest.mark.parametrize("blocklen", [8192, 16384, 65536])
+def test_every_filter_is_built_at_the_decoder_s_own_block_length(system, blocklen):
+    """A decoder built at another block length has no filter of the old one.
+
+    The block length is a filter-design parameter, so a filter built at a
+    hard-coded length is not merely inconsistent -- it cannot be multiplied by
+    the spectrum it is meant to shape.  The EFM band-pass was exactly that
+    until the length became a sweep control; this holds every filter to the
+    decoder's own length so the next one cannot slip in.
+    """
+    rf = RFDecode(system=system, blocklen=blocklen, decode_digital_audio=True,
+                  decode_analog_audio=44100)
+
+    #: Filters holds a few entries that are not spectra at all -- per-channel
+    #: DC gains, sample offsets, a bin divisor -- and they are all of order
+    #: the video channel count.  Anything longer than this is a spectrum of
+    #: the block and has to be at the block's own length.
+    METADATA_MAX = 64
+
+    spectra = 0
+    for name, value in rf.Filters.items():
+        array = np.asarray(value)
+        if array.ndim == 0 or array.dtype == object:
+            continue
+        length = array.shape[-1]
+        if length <= METADATA_MAX:
+            continue
+        spectra += 1
+        # blocklen // 4 + 1 is the video output stack: the discriminator runs
+        # at half the block's rate, so its real transform reaches only half as
+        # many bins (see rfdecode.build_video_rfft_stack).
+        assert length in (blocklen, blocklen // 2 + 1, blocklen // 4 + 1), (
+            name, length,
+        )
+
+    # Guard against the loop passing because it examined nothing.
+    assert spectra >= 10
+
+
+@pytest.mark.parametrize("system", SYSTEMS)
+def test_the_efm_filter_follows_the_block_length(system):
+    """Regression: the EFM band-pass was built at a literal 32768."""
+    rf = RFDecode(system=system, blocklen=16384, decode_digital_audio=True)
+    assert rf.Filters["Fefm"].shape == (16384,)
+    assert rf.Filters["Fefm_half"].shape == (16384 // 2 + 1,)
+
+
+@pytest.mark.parametrize("system", SYSTEMS)
+def test_the_efm_filter_at_the_shipped_length_is_unchanged_by_that_fix(system):
+    """The fix is byte-identical at 32768, which is what every decode uses.
+
+    Rebuilds the band-pass the way the code did before the block length was
+    threaded through it -- with the literal -- and holds the shipped filter to
+    it exactly, so the parametrisation cannot have moved an output byte.
+    """
+    from lddecode.filters import gen_bpf_supergauss
+    from lddecode.params import BLOCKSIZE
+
+    rf = RFDecode(system=system, decode_digital_audio=True)
+    assert rf.blocklen == BLOCKSIZE
+
+    sghigh = 1750000.0 if system == "PAL" else 1600000.0
+    literal = gen_bpf_supergauss(20000.0, sghigh, 60, 20000000, 32768)
+    threaded = gen_bpf_supergauss(20000.0, sghigh, 60, 20000000, rf.blocklen)
+    np.testing.assert_array_equal(literal, threaded)

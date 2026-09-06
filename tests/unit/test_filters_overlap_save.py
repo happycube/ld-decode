@@ -2,10 +2,12 @@
 
 Two related jobs live here:
 
-``fft_determine_slices`` / ``fft_do_slice``
+``fft_determine_slices`` / ``fft_do_slice`` / ``fft_do_slice_half``
     Pick a narrow band out of a wide FFT so the audio demodulators can work at
     a fraction of the RF rate.  The arithmetic is integer bin indexing, so it
-    is asserted exactly.
+    is asserted exactly.  The block path holds only the positive half of a
+    real block's spectrum, so the ``_half`` form takes the same band from that
+    by conjugate symmetry, and is held to the whole-spectrum form's bytes.
 
 ``overlap_save_fft`` / ``overlap_save_ifft``
     Split a signal into overlapping FFT blocks and put it back together.  The
@@ -23,9 +25,12 @@ import numpy as np
 import pytest
 import scipy.signal as sps
 
+import scipy.fft as npfft
+
 from lddecode.filters import (
     fft_determine_slices,
     fft_do_slice,
+    fft_do_slice_half,
     overlap_save_fft,
     overlap_save_ifft,
 )
@@ -100,6 +105,76 @@ def test_do_slice_takes_the_bins_determine_slices_named():
     # frequencies from the wrong end would silently conjugate the band.
     assert np.array_equal(sliced, expected)
     assert len(sliced) == nbins
+
+
+# --- the same slice, taken from a real block's rfft ------------------------
+#
+# demodblock holds the positive half of the block's spectrum, so the audio
+# slicers read their negative-frequency bins off it by conjugate symmetry
+# instead of the whole spectrum being mirrored for them.  The bytes have to be
+# the ones the mirror produced, so these compare against fft_do_slice itself.
+
+# The two systems' analog audio carriers, and a 200 kHz half-bandwidth, as
+# computeaudiofilters asks for them.
+AUDIO_CARRIERS_HZ = [2.301136e6, 2.812499e6, 2.30e6, 2.80e6]
+AUDIO_BLOCKLEN = 32768
+
+
+@pytest.mark.parametrize("center", AUDIO_CARRIERS_HZ)
+def test_the_half_slice_is_the_whole_slice(center):
+    rng = np.random.default_rng(20220)
+    block = rng.normal(0.0, 1.0, AUDIO_BLOCKLEN)
+    lowbin, nbins, _ = fft_determine_slices(center, 200e3, FREQ_HZ, AUDIO_BLOCKLEN)
+
+    expected = fft_do_slice(npfft.fft(block), lowbin, nbins, AUDIO_BLOCKLEN)
+    actual = fft_do_slice_half(npfft.rfft(block), lowbin, nbins, AUDIO_BLOCKLEN)
+
+    assert len(actual) == nbins
+    # Exact, not close: this slice feeds a demodulator whose output is written
+    # to a .pcm file that a decode is held byte-identical on.
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_the_half_slice_refuses_a_band_that_runs_past_nyquist():
+    """The whole-spectrum version wraps into the mirror and returns a silently
+    wrong slice; there is no mirror to wrap into here, so say so instead."""
+    blocklen = 1024
+    half = npfft.rfft(np.zeros(blocklen))
+
+    with pytest.raises(ValueError, match="outside the positive half"):
+        fft_do_slice_half(half, blocklen // 2 - 8, 64, blocklen)
+
+
+def test_the_half_slice_refuses_a_spectrum_of_the_wrong_length():
+    """Handed a whole spectrum by mistake, the conjugate mirror it builds
+    would be of the wrong bins entirely."""
+    blocklen = 1024
+    whole = npfft.fft(np.zeros(blocklen))
+
+    with pytest.raises(ValueError, match="is not the rfft"):
+        fft_do_slice_half(whole, 100, 64, blocklen)
+
+
+def test_the_half_slice_takes_the_band_it_was_asked_for():
+    """The conjugate mirror hides a reversed or off-by-one band, so pin the
+    bins themselves as the whole-spectrum test above does."""
+    blocklen = 1024
+    lowbin, nbins = 100, 64
+    # A complex ramp: the real part reports the bin index, and conjugating it
+    # flips the sign of the imaginary part, so a bin taken from the wrong end
+    # or without the conjugate cannot pass.
+    half = np.arange(blocklen // 2 + 1) + 1j * np.arange(blocklen // 2 + 1)
+
+    sliced = fft_do_slice_half(half, lowbin, nbins, blocklen)
+
+    mirror = np.arange(lowbin + 1, lowbin + nbins // 2 + 1)[::-1]
+    expected = np.concatenate(
+        [
+            np.arange(lowbin, lowbin + nbins // 2) * (1 + 1j),
+            mirror * (1 - 1j),
+        ]
+    )
+    assert np.array_equal(sliced, expected)
 
 
 # --- overlap_save round trip ----------------------------------------------

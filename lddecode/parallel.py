@@ -27,27 +27,110 @@ Correctness invariants:
 - The assembled output is the same per-block concatenation the serial
   path produces, so decode results are bit-identical for any thread
   count.
+- Worker processes cache the blocks they demodulate under the same key
+  (WorkerBlockLRU), and consecutive field jobs are pinned to one worker
+  so that cache sees the overlap between their windows (AffinityPool).
+  Both are pure reuse of an identical computation: they change how
+  often a block is demodulated, never what it demodulates to.
+- The filters every worker reads are published once into a shared
+  segment and adopted read-only (shared_filter_bank, FilterSlots), so
+  the pool holds one copy instead of one per process.  A worker only
+  reads a rewritable slot while it holds the publication id its job
+  carries, and the parent only rewrites a slot no job in flight names;
+  otherwise the worker rebuilds the filter privately, which is what it
+  did before the segment existed.  Either way it demodulates against
+  the same numbers.
 """
 
 import copy
 import multiprocessing
 import signal
 import threading
+from collections import OrderedDict
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from concurrent.futures import wait as futures_wait
 
 import numpy as np
 
+from . import shared_filter_bank
 from .dsp import concatenate_blocks
+
+
+class WorkerBlockLRU:
+    """Per-process cache of demodulated input blocks for field jobs.
+
+    A field's read window spans about thirty demod blocks and advances
+    by about twenty-five, so the last handful of blocks one job
+    demodulates are the first its successor needs.  Nothing shares them
+    today: the block cache's own cache lives in the parent, and a field
+    job demodulates its whole window inside the worker.  Holding the
+    tail of a job's window until the next one arrives turns that
+    overlap into hits, provided consecutive jobs reach the same process
+    (see AffinityPool).
+
+    Capacity is in blocks and only has to cover the overlap, which
+    measures 4-6 blocks on PAL and 5-7 on NTSC; more than that holds
+    demodulated blocks no reachable job can ask for.  It is resident
+    memory the worker did not hold before - a cached block is 834 KiB
+    on PAL and 706 KiB on NTSC, so a full cache is 6.5 / 5.5 MiB per
+    worker process.
+
+    Thread-safety: an instance belongs to one worker process, which
+    runs one work item at a time, so no lock is taken.  The parent
+    never touches it.
+    """
+
+    def __init__(self, capacity=8):
+        self.capacity = capacity
+        self.hits = 0
+        self.misses = 0
+        self._entries = OrderedDict()
+
+    def get(self, key, compute):
+        """The cached value for key, or compute() stored under it."""
+        # Membership, not a sentinel default: whether a value is worth
+        # caching is the caller's business, and a cache that silently
+        # recomputes one particular value is a trap to debug.
+        if key in self._entries:
+            self._entries.move_to_end(key)
+            self.hits += 1
+            return self._entries[key]
+
+        self.misses += 1
+        entry = compute()
+        self._entries[key] = entry
+        while len(self._entries) > self.capacity:
+            self._entries.popitem(last=False)
+        return entry
+
+    def clear(self):
+        self._entries.clear()
+        self.hits = 0
+        self.misses = 0
+
+    def __len__(self):
+        return len(self._entries)
+
 
 # Worker-process state: one RFDecode per process, built by the pool
 # initializer to reproduce the parent's post-calibration filter state.
 _worker_rf = None
 _worker_cfg = None
+_worker_block_lru = WorkerBlockLRU()
+# The shared segment's views, and whether what the bank currently holds
+# for each slot family came out of it (see _sync_worker_video).
+_worker_shared = None
+_worker_video_slot = False
+_worker_mtf_slot = False
+# Developer control (LDDECODE_SHARED_FILTER_STATS=1): how many jobs read
+# each slot family out of the segment rather than rebuilding it.
+_worker_slot_stats = {"video": [0, 0], "mtf": [0, 0]}
 
 
-def _demod_worker_init(rf_opts, decoder_params, field_cfg=None):
-    global _worker_rf, _worker_cfg
+def _demod_worker_init(rf_opts, decoder_params, field_cfg=None,
+                       shared_filters=None):
+    global _worker_rf, _worker_cfg, _worker_shared
+    global _worker_video_slot, _worker_mtf_slot
     import logging
     import os
     import time as _time
@@ -88,34 +171,127 @@ def _demod_worker_init(rf_opts, decoder_params, field_cfg=None):
     # calibrated during warm-up.
     _worker_rf.DecoderParams = copy.deepcopy(decoder_params)
     _worker_rf.computefilters()
+    if shared_filters is not None:
+        # The bank this worker just built duplicates, bin for bin, the
+        # one the parent published; swap the invariant half of it for
+        # read-only views and let the private copies go.
+        _worker_shared = shared_filter_bank.attach(shared_filters)
+        _worker_rf.adopt_shared_filters(_worker_shared.arrays)
     _worker_cfg = field_cfg
+    _worker_video_slot = False
+    _worker_mtf_slot = False
+    _worker_block_lru.clear()
 
 
-def _sync_worker_veq(veq):
-    """Adopt a per-job dynamic video EQ in this worker (see
-    _sync_worker_imtf)."""
+def _sync_worker_video(imtf_strength, veq, slot=None):
+    """Bring this worker's video output filters to a job's parameters.
+
+    The inverse-MTF strength and the dynamic EQ propagate per job (like
+    mtf_level) rather than by respawning the pool, and between them they
+    decide FVideo_rfft32 and FVideo_rfft_dc.  Three ways to arrive at
+    those, in order of preference:
+
+    - a slot in the shared segment the parent filled for exactly this
+      key, identified by the publication id the job carries;
+    - the bank as it stands, when the parameters have not moved and what
+      it holds is this worker's own;
+    - a private rebuild, which is what every worker did before the
+      segment existed.
+
+    The middle case is why the slot source is tracked.  A slot view is
+    the parent's to rewrite once no job naming it is in flight, so a
+    bank still pointing at one when a job arrives without a matching id
+    has to rebuild rather than read on, even though its parameters are
+    unchanged.
+
+    Thread-safety: this and the module state it keeps belong to one
+    worker process, which runs one work item at a time; nothing here is
+    reachable from the parent, and no lock is taken.  The same holds for
+    _sync_worker_mtf.
+    """
+    global _worker_video_slot
+
     veq = tuple(veq) if veq else None
-    if _worker_rf.DecoderParams.get("video_eq_auto") != veq:
-        _worker_rf.DecoderParams["video_eq_auto"] = veq
+    params = _worker_rf.DecoderParams
+    moved = (params.get("inverse_mtf_strength", 0.0) != imtf_strength
+             or params.get("video_eq_auto") != veq)
+    params["inverse_mtf_strength"] = imtf_strength
+    params["video_eq_auto"] = veq
+
+    arrays = None
+    if slot is not None and _worker_shared is not None:
+        arrays = _worker_shared.slot("video", slot[0], slot[1])
+
+    if arrays is not None:
+        for name, view in arrays.items():
+            _worker_rf.Filters[name] = view
+        _worker_video_slot = True
+        _worker_slot_stats["video"][0] += 1
+        return
+
+    _worker_slot_stats["video"][1] += 1
+    if moved or _worker_video_slot:
         _worker_rf.recompute_fvideo()
+        _worker_video_slot = False
 
 
-def _sync_worker_imtf(imtf_strength):
-    """Adopt a per-job inverse-MTF strength in this worker.
+def _sync_worker_mtf(mtf_level, slot=None):
+    """Prime mtf_response()'s held value from the shared segment.
 
-    Strength changes propagate per job (like mtf_level) instead of by
-    respawning the pool: rebuild only FVideo, and only when the value
-    actually changed (adoptions are dead-banded, so this is rare)."""
-    if (_worker_rf.DecoderParams.get("inverse_mtf_strength", 0.0)
-            != imtf_strength):
-        _worker_rf.DecoderParams["inverse_mtf_strength"] = imtf_strength
-        _worker_rf.recompute_fvideo()
+    mtf_response() already keeps the last exponent it was asked for, so
+    a slot is adopted by writing that cache: every block of the job then
+    reads the parent's array instead of raising MTF_half to the power
+    itself.  With no matching slot, a cache that came from one is
+    dropped - the parent may since have rewritten it - and the bank
+    rebuilds the response on the first block, as it always did.
+    """
+    global _worker_mtf_slot
+
+    arrays = None
+    if slot is not None and _worker_shared is not None:
+        arrays = _worker_shared.slot("mtf", slot[0], slot[1])
+
+    if arrays is not None:
+        _worker_rf._mtf_response_cache = (mtf_level, arrays["MTF_response"])
+        _worker_mtf_slot = True
+        _worker_slot_stats["mtf"][0] += 1
+        return
+
+    _worker_slot_stats["mtf"][1] += 1
+    if _worker_mtf_slot:
+        _worker_rf._mtf_response_cache = None
+        _worker_mtf_slot = False
+
+
+def _worker_demod_block(b, rawinput, mtf_level, imtf_strength, veq):
+    """One demodulated block of a field job, from this process's cache
+    when an earlier job on this worker already produced it.
+
+    The key carries every filter state a job can arrive with - the
+    absolute block index plus the three parameters the worker is
+    synced to before it decodes - so a hit is the same block the
+    recomputation would produce and nothing needs invalidating.  A
+    parameter change that is not in the key (an AGC readjustment)
+    respawns the pool, which discards the cache with the process.
+
+    The cached dict is handed to more than one job.  Every array in it
+    is freshly allocated by demodblock and is only ever read here
+    (concatenate_blocks copies), so the sharing is safe.
+    """
+    return _worker_block_lru.get(
+        (b, mtf_level, imtf_strength, tuple(veq) if veq else None),
+        lambda: _worker_rf.demodblock(
+            data=rawinput, mtf_level=mtf_level, cut=True
+        ),
+    )
 
 
 def _demod_worker_block(rawinput, mtf_level, imtf_strength=None, veq=None):
     if imtf_strength is not None:
-        _sync_worker_imtf(imtf_strength)
-        _sync_worker_veq(veq)
+        _sync_worker_video(imtf_strength, veq)
+    # No slot: these carry no job key, so any slot the bank is still
+    # pointing at has to go before the block is demodulated.
+    _sync_worker_mtf(mtf_level)
     return _worker_rf.demodblock(
         data=rawinput,
         mtf_level=mtf_level,
@@ -125,7 +301,7 @@ def _demod_worker_block(rawinput, mtf_level, imtf_strength=None, veq=None):
 
 def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
                          imtf_strength, veq, audio_field_number,
-                         chroma_dg=None):
+                         chroma_dg=None, slots=None):
     """Decode one complete field in this worker process.
 
     Replicates decodefield()'s window math and demod_read()'s per-block
@@ -137,6 +313,9 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
     Returns a dict; on success it carries the Field stripped of its
     sample buffers (prepare_transport) plus the downscaled outputs.
     """
+    import os
+    import sys
+
     import numpy as np
 
     from .field import (FieldNTSC, FieldPAL, apply_chroma_dg_correction_output,
@@ -144,10 +323,27 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
     from .metrics import computeMetrics, detect_levels
 
     try:
-        _sync_worker_imtf(imtf_strength)
-        _sync_worker_veq(veq)
+        _sync_worker_video(imtf_strength, veq,
+                           slots.get("video") if slots else None)
+        _sync_worker_mtf(mtf_level, slots.get("mtf") if slots else None)
         rf = _worker_rf
         cfg = _worker_cfg
+        stats = os.environ.get("LDDECODE_BLOCK_LRU_STATS") == "1"
+        if os.environ.get("LDDECODE_SHARED_FILTER_STATS") == "1":
+            # Developer control: whether the parent's slots are actually
+            # reaching the jobs, which depends on the publication landing
+            # before the job that carries its key (see FilterSlots).
+            # One line per job, cumulative for the process.
+            print(
+                "[shared-slots] pid %d seq %d shared %s mtf_level %.4f "
+                "video %d/%d mtf %d/%d"
+                % (os.getpid(), seq, _worker_shared is not None, mtf_level,
+                   _worker_slot_stats["video"][0],
+                   sum(_worker_slot_stats["video"]),
+                   _worker_slot_stats["mtf"][0],
+                   sum(_worker_slot_stats["mtf"])),
+                file=sys.stderr,
+            )
 
         # decodefield()'s window math, verbatim
         blocksize = rf.blocklen
@@ -162,19 +358,33 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
 
         # demod_read()'s per-block assembly, verbatim
         t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
-        for b in range(begin // dbs, ((begin + length) // dbs) + 1):
+        brange = range(begin // dbs, ((begin + length) // dbs) + 1)
+        for b in brange:
             off = b * dbs - span_begin
             rawinput = raw_span[off : off + rf.blocklen]
             if off < 0 or len(rawinput) < rf.blocklen:
                 return {"seq": seq, "eof": True}
 
-            demod = rf.demodblock(
-                data=rawinput, mtf_level=mtf_level, cut=True,
+            demod = _worker_demod_block(
+                b, rawinput, mtf_level, imtf_strength, veq
             )
             t["input"].append(rawinput[rf.blockcut : -rf.blockcut_end])
             for k in ("video", "audio", "efm", "rfhpf"):
                 if k in demod:
                     t[k].append(demod[k])
+
+        if stats:
+            # Developer control: how much of the window overlap this
+            # worker's cache is actually catching, which depends on the
+            # job-to-worker mapping holding (see AffinityPool).  One
+            # line per job, cumulative for the process.
+            lru = _worker_block_lru
+            print(
+                "[block-lru] pid %d seq %d blocks %d %d hits %d misses %d"
+                % (os.getpid(), seq, brange.start, brange.stop,
+                   lru.hits, lru.misses),
+                file=sys.stderr,
+            )
 
         rv = {}
         for k in t.keys():
@@ -256,6 +466,125 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
         return {"seq": seq, "error": traceback.format_exc()}
 
 
+class FilterSlots:
+    """The publisher's half of the shared segment's per-job filter slots.
+
+    Two of the filters a field job demodulates against are neither
+    invariant nor per-block: the video output stack moves when the
+    inverse-MTF strength or the dynamic EQ does, and the MTF response
+    moves with the level.  Both move rarely, because every adoption that
+    drives them is dead-banded, but when one does every worker rebuilds
+    it and then holds its own copy for as long as the value stands.
+    Publishing the parent's copy into a slot leaves one copy for the
+    pool and saves each worker the rebuild.
+
+    A slot cannot simply be overwritten: a job already running in a
+    worker may be reading it.  Each family therefore gets `depth` slots
+    - two is enough, one live and one free - and each slot a reference
+    count, raised when a job naming it is submitted and dropped when
+    that job finishes.  A slot with references outstanding is never
+    chosen.  The count, and not the engine's generation counter, is what
+    guards this: pause() abandons futures whose workers are still
+    running, so a new generation is no promise that the readers of the
+    old one have gone.
+
+    When no slot is free the publication is simply skipped, and the
+    workers rebuild privately as they did before slots existed.
+
+    Thread-safety: publish() runs on the decode thread, acquire() on the
+    dispatcher thread, and release() on whichever thread completes a
+    future.  One lock covers all three.  The window in which a slot is
+    being written is covered by a reference of its own, so nothing can
+    select a half-written slot.
+    """
+
+    def __init__(self, descriptor, families, depth=2, writer=None):
+        self.descriptor = descriptor
+        self._writer = writer or shared_filter_bank.write_slot
+        self._lock = threading.Lock()
+        self._next_pubid = 0
+        # family -> [[key, pubid, refcount], ...]
+        self._slots = {
+            family: [[None, 0, 0] for _ in range(depth)]
+            for family in families
+        }
+
+    def live(self, family, key):
+        """Whether `key` is already published in a slot of `family`."""
+        with self._lock:
+            return any(slot[1] and slot[0] == key
+                       for slot in self._slots.get(family, ()))
+
+    def publish(self, family, key, arrays):
+        """Write `arrays` into a free slot of `family` under `key`.
+
+        Returns whether the key is live in a slot afterwards, which
+        includes it having been there already.
+        """
+        slots = self._slots.get(family)
+        if slots is None:
+            return False
+
+        with self._lock:
+            for slot in slots:
+                if slot[1] and slot[0] == key:
+                    return True
+            # Of the slots no job is naming, take one that holds nothing
+            # first and otherwise the oldest publication: what the other
+            # slot holds is most likely the value still being dispatched,
+            # and overwriting that would cost every job in flight its
+            # read.
+            free = [(slot[1], i) for i, slot in enumerate(slots)
+                    if slot[2] == 0]
+            if not free:
+                return False
+            index = min(free)[1]
+            slot = slots[index]
+            # Unpublished and referenced for the duration of the write:
+            # no job can name it and no other publication can take it.
+            slot[0] = None
+            slot[1] = 0
+            slot[2] = 1
+            self._next_pubid += 1
+            pubid = self._next_pubid
+
+        self._writer(self.descriptor, family, index, arrays, pubid)
+
+        with self._lock:
+            slot[0] = key
+            slot[1] = pubid
+            slot[2] = 0
+        return True
+
+    def acquire(self, keys):
+        """Slot tokens for a job about to be submitted.
+
+        {family: (index, pubid)} for every family whose live slot holds
+        the key this job carries, with a reference held on each until
+        release().  None when nothing matched, which is what a job with
+        no shared filters to read is given.
+        """
+        tokens = {}
+        with self._lock:
+            for family, key in keys.items():
+                for index, slot in enumerate(self._slots.get(family, ())):
+                    if slot[1] and slot[0] == key:
+                        slot[2] += 1
+                        tokens[family] = (index, slot[1])
+                        break
+        return tokens or None
+
+    def release(self, tokens):
+        """Drop the references a finished job held."""
+        if not tokens:
+            return
+        with self._lock:
+            for family, (index, _pubid) in tokens.items():
+                slot = self._slots[family][index]
+                if slot[2] > 0:
+                    slot[2] -= 1
+
+
 class FieldJobEngine:
     """Speculative whole-field decode jobs on the worker-process pool.
 
@@ -275,11 +604,14 @@ class FieldJobEngine:
     rate, never the output.
     """
 
-    def __init__(self, executor, read_fn, read_lock, cfg, workers):
+    def __init__(self, executor, read_fn, read_lock, cfg, workers,
+                 filter_slots=None, slot_source=None):
         self.executor = executor
         self.read_fn = read_fn          # (sample, length) -> raw or None
         self.read_lock = read_lock      # shared with the block cache
         self.cfg = cfg
+        self.filter_slots = filter_slots    # FilterSlots or None
+        self.slot_source = slot_source      # (family, key) -> arrays or None
         # Twice the worker count: with similar job durations a shallow
         # window makes all workers start and finish in lockstep, idling
         # while the dispatcher serially reads the next wave's raw spans
@@ -334,6 +666,7 @@ class FieldJobEngine:
             self._rebase_seq = 0
             self._active = True
             self._cond.notify_all()
+        self.publish_slots()
 
     def pause(self):
         """Stop dispatching and discard everything in flight (results of
@@ -351,17 +684,45 @@ class FieldJobEngine:
         already-dispatched jobs (tolerant parameter mode)."""
         with self._cond:
             self._mtf = mtf_level
+        self.publish_slots()
 
     def set_imtf(self, imtf_strength):
         """Adopt a new inverse-MTF strength for future dispatches (the
-        workers rebuild FVideo per job; see _sync_worker_imtf)."""
+        workers rebuild FVideo per job; see _sync_worker_video)."""
         with self._cond:
             self._imtf = imtf_strength
+        self.publish_slots()
 
     def set_veq(self, veq):
         """Adopt a new dynamic video EQ for future dispatches."""
         with self._cond:
             self._veq = tuple(veq) if veq else None
+        self.publish_slots()
+
+    def publish_slots(self):
+        """Offer the current parameters to the shared segment's slots.
+
+        Called from the decode thread whenever one of them moves, and on
+        every reset, because the values a stretch of decoding starts on
+        are the ones most of its jobs will carry.  Every step is
+        best-effort: a source that declines (the parent's bank is
+        between the parameter write and the rebuild that follows it) or
+        a family with no free slot leaves the workers rebuilding
+        privately, which is correct and merely slower.
+        """
+        if self.filter_slots is None or self.slot_source is None:
+            return
+        with self._cond:
+            keys = {"video": (self._imtf, self._veq), "mtf": self._mtf}
+        for family, key in keys.items():
+            # Asked before the source is: building the value to publish
+            # costs a transcendental per bin, and the common case is
+            # that it is already there.
+            if self.filter_slots.live(family, key):
+                continue
+            arrays = self.slot_source(family, key)
+            if arrays is not None:
+                self.filter_slots.publish(family, key, arrays)
 
     def set_chroma_dg(self, chroma_dg):
         """Adopt a new chroma DG (slope, phase) for future dispatches.
@@ -465,9 +826,23 @@ class FieldJobEngine:
                     self._cond.notify_all()
                     continue
 
+                # Tokens name the slots holding this job's filters, and
+                # hold a reference on each until it finishes; the parent
+                # cannot rewrite a slot while one is outstanding (see
+                # FilterSlots).
+                slots = (
+                    self.filter_slots.acquire(
+                        {"video": (imtf, veq), "mtf": mtf}
+                    )
+                    if self.filter_slots is not None
+                    else None
+                )
+                # The key pins consecutive pairs to one worker so the
+                # blocks their windows share are demodulated once (see
+                # AffinityPool and WorkerBlockLRU).
                 fut = self.executor.submit(
                     _decode_field_worker, seq, start, raw, span_begin, mtf,
-                    imtf, veq, fn, chroma_dg
+                    imtf, veq, fn, chroma_dg, slots, key=seq
                 )
                 self._futures[seq] = fut
                 self._next_dispatch = seq + 1
@@ -475,6 +850,10 @@ class FieldJobEngine:
                 self._cur_parity = not parity
                 self._cond.notify_all()
 
+            if slots:
+                fut.add_done_callback(
+                    lambda ft, t=slots: self.filter_slots.release(t)
+                )
             fut.add_done_callback(
                 lambda ft, s=seq, st=start, g=gen: self._refine(s, st, g, ft)
             )
@@ -537,6 +916,125 @@ class FieldJobEngine:
             self._cond.notify_all()
 
 
+class AffinityPool:
+    """N single-worker process pools with a stable job-to-worker map.
+
+    A ProcessPoolExecutor hands each queued item to whichever worker is
+    free, so consecutive field jobs land in different processes and the
+    per-worker block cache never sees the overlap between them (see
+    WorkerBlockLRU).  Splitting the pool into N executors of one worker
+    each makes the assignment a function of the key instead: jobs 2k
+    and 2k+1 go to the same process, which is the one holding the
+    blocks they share.
+
+    Work with no key - block-level demodulation, which the parent's own
+    cache has already deduplicated - is spread round-robin.
+
+    Pairing recovers half the overlap and no more: every group boundary
+    still hands a fresh worker a window that overlaps its
+    predecessor's, so a PAL run goes from 1.18 demodulations per
+    distinct block to 1.09 rather than to 1.00.  Longer groups recover
+    more (1.05 at four) at the cost of queueing more jobs behind one
+    worker, which has not been measured; group_size is here so it can
+    be, and nothing sets it.
+
+    Thread-safety: submit() is called from the dispatcher thread and
+    from the block-cache feeder threads.  The round-robin counter is
+    taken under a lock, the in-flight set is a set of futures mutated
+    under the same lock, and the executors are themselves thread-safe.
+    """
+
+    def __init__(self, max_workers, mp_context=None, initializer=None,
+                 initargs=(), executor_factory=None, group_size=2):
+        if executor_factory is None:
+            def executor_factory():
+                return ProcessPoolExecutor(
+                    max_workers=1,
+                    mp_context=mp_context,
+                    initializer=initializer,
+                    initargs=initargs,
+                )
+
+        self._executors = [executor_factory() for _ in range(max_workers)]
+        self.group_size = group_size
+        self._lock = threading.Lock()
+        self._rr = 0
+        self._inflight = set()
+
+    def __len__(self):
+        return len(self._executors)
+
+    def index_for(self, key):
+        """Which executor a key goes to.  None means round-robin."""
+        n = len(self._executors)
+        if key is None:
+            with self._lock:
+                i = self._rr % n
+                self._rr += 1
+            return i
+        return (key // self.group_size) % n
+
+    def submit(self, fn, *args, key=None):
+        ex = self._executors[self.index_for(key)]
+        fut = ex.submit(fn, *args)
+        # Tracked so close() can drain the pool before touching the
+        # worker processes; see close().
+        with self._lock:
+            self._inflight.add(fut)
+        fut.add_done_callback(self._done)
+        return fut
+
+    def _done(self, fut):
+        with self._lock:
+            self._inflight.discard(fut)
+
+    def processes(self):
+        """The underlying worker processes, if the executors have any
+        (an injected stand-in need not)."""
+        out = []
+        for ex in self._executors:
+            out.extend(getattr(ex, "_processes", {}).values())
+        return out
+
+    def shutdown(self):
+        """Cancel queued work and refuse new submissions, without
+        waiting: what is already running in a worker keeps going and
+        the executors join it on their own threads.  This is the
+        teardown a pool restart wants - nothing is terminated, so
+        nothing can be interrupted mid-result."""
+        for ex in self._executors:
+            ex.shutdown(wait=False, cancel_futures=True)
+
+    def close(self, drain_timeout=10):
+        self.shutdown()
+
+        # Let those in-flight items drain before touching the worker
+        # processes.  terminate()ing a worker mid-result-write leaves the
+        # executor's manager thread blocked forever on a truncated pickle,
+        # the .result() waiters never wake, and the interpreter then hangs
+        # joining them at exit: the decode prints its summary and never
+        # exits (hit reliably by decode-pal-cvbs on a starved 4-vCPU CI
+        # runner, where prefetch is still busy at close time).  One item
+        # is a few seconds at worst, so the drain is short whenever the
+        # pool is healthy.
+        with self._lock:
+            pending = list(self._inflight)
+        futures_wait(pending, timeout=drain_timeout)
+
+        # Anything still running now is genuinely wedged (e.g. a worker
+        # stuck in futex_wait after a group SIGINT, the case the Ctrl-C
+        # fix targets).  Its result is no longer needed, and the
+        # interpreter's atexit join would block on it: terminate for a
+        # prompt exit.  An idle worker is not mid-write, so this cannot
+        # truncate a result.
+        if any(not f.done() for f in pending):
+            for p in self.processes():
+                try:
+                    p.terminate()
+                except Exception:
+                    pass
+
+
 class DemodBlockCache:
     """Thread-pooled, prefetching cache of demodulated input blocks.
 
@@ -556,14 +1054,15 @@ class DemodBlockCache:
             max_workers=nthreads, thread_name_prefix="demod"
         )
         self._procs = None
-        self._proc_inflight = set()         # submitted-to-pool, not yet done
+        self._shared = None                 # published filter descriptor
+        self.filter_slots = None            # FilterSlots over that segment
         self._lock = threading.Lock()       # protects _cache/_eof_block
         self._read_lock = threading.Lock()  # serializes the raw reader
         self._cache = {}                    # (block, mtf, imtf) -> Future
         self._eof_block = None
 
     def enable_processes(self, rf_opts, decoder_params, nprocs=None,
-                         field_cfg=None):
+                         field_cfg=None, shared_filters=None):
         """Move block demodulation into worker processes.
 
         The demod threads become lightweight feeders: they still read
@@ -578,6 +1077,11 @@ class DemodBlockCache:
 
         field_cfg, when given, additionally equips the workers to run
         whole-field decode jobs (FieldJobEngine) on the same pool.
+
+        shared_filters, when given (RFDecode.shared_filter_spec()), is
+        published into one shared-memory segment that every worker maps
+        instead of keeping its own copy of those filters; the segment's
+        rewritable slots are then driven by the returned FilterSlots.
         """
         rf_opts = dict(rf_opts)
         # Drop values demod does not need and that may not pickle.
@@ -587,37 +1091,56 @@ class DemodBlockCache:
             if k not in ("pipe_RF_TBC",)
         }
 
-        self._procs = ProcessPoolExecutor(
+        # Idempotent: a second enable without a restart would otherwise
+        # leave the first segment with nothing left to unlink it.
+        self._release_shared()
+
+        if shared_filters and shared_filters.get("arrays"):
+            self._shared = shared_filter_bank.publish(
+                shared_filters["arrays"],
+                slots=shared_filters.get("slots"),
+            )
+            if self._shared["slots"]:
+                self.filter_slots = FilterSlots(
+                    self._shared, tuple(self._shared["slots"])
+                )
+
+        self._procs = AffinityPool(
             max_workers=nprocs or self._nthreads,
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_demod_worker_init,
-            initargs=(rf_opts, copy.deepcopy(decoder_params), field_cfg),
+            initargs=(rf_opts, copy.deepcopy(decoder_params), field_cfg,
+                      self._shared),
         )
         procs = self._procs
-        inflight = self._proc_inflight
 
         def demod_in_process(rawinput, mtf_level, imtf_strength=None,
                              veq=None):
-            # Track the in-flight future so close() can drain the pool
-            # before touching the worker processes (see close()).
-            fut = procs.submit(_demod_worker_block, rawinput, mtf_level,
-                               imtf_strength, veq)
-            inflight.add(fut)
-            fut.add_done_callback(inflight.discard)
-            return fut.result()
+            # No key: these are already deduplicated by this cache, so
+            # there is nothing for a worker to reuse and spreading them
+            # round-robin keeps every worker fed.
+            return procs.submit(_demod_worker_block, rawinput, mtf_level,
+                                imtf_strength, veq).result()
 
         self.demod_fn = demod_in_process
 
     def restart_processes(self, rf_opts, decoder_params, nprocs=None,
-                          field_cfg=None):
+                          field_cfg=None, shared_filters=None):
         """Tear down and respawn the worker processes with a fresh
         parameter snapshot (needed after a post-warm-up AGC adjustment:
         workers hold DecoderParams frozen from their spawn)."""
         if self._procs is not None:
-            self._procs.shutdown(wait=False, cancel_futures=True)
+            # Not close(): a restart terminates nothing, so there is
+            # nothing to drain first (see AffinityPool.shutdown).
+            self._procs.shutdown()
             self._procs = None
+        # The filters go with the parameters that built them.  Unlinking
+        # only removes the name: a worker still finishing a job keeps the
+        # mapping it attached to until it exits.
+        self._release_shared()
         self.enable_processes(rf_opts, decoder_params, nprocs=nprocs,
-                              field_cfg=field_cfg)
+                              field_cfg=field_cfg,
+                              shared_filters=shared_filters)
 
     @property
     def process_executor(self):
@@ -664,35 +1187,18 @@ class DemodBlockCache:
         self.flush()
         self._pool.shutdown(wait=False, cancel_futures=True)
         if self._procs is not None:
-            procs = self._procs
-            # Cancel queued work and refuse new submissions; blocks already
-            # running in a worker keep going.
-            procs.shutdown(wait=False, cancel_futures=True)
-
-            # Let those in-flight demods drain before touching the worker
-            # processes.  terminate()ing a worker mid-result-write leaves the
-            # executor's manager thread blocked forever on a truncated pickle,
-            # the .result() waiters in the demod threads never wake, and the
-            # interpreter then hangs joining them at exit: the decode prints
-            # its summary and never exits (hit reliably by decode-pal-cvbs on
-            # a starved 4-vCPU CI runner, where prefetch is still busy at
-            # close time).  A block demod is a few seconds at worst, so the
-            # drain is short whenever the pool is healthy.
-            futures_wait(list(self._proc_inflight), timeout=10)
-
-            # Anything still running now is genuinely wedged (e.g. a worker
-            # stuck in futex_wait after a group SIGINT, the case the
-            # Ctrl-C fix targets).  Its result is no longer needed, and the
-            # interpreter's atexit join would block on it: terminate for a
-            # prompt exit.  An idle worker is not mid-write, so this cannot
-            # truncate a result.
-            if any(not f.done() for f in list(self._proc_inflight)):
-                for p in list(getattr(procs, "_processes", {}).values()):
-                    try:
-                        p.terminate()
-                    except Exception:
-                        pass
+            # Drains what is running before terminating whatever is
+            # wedged; see AffinityPool.close.
+            self._procs.close()
             self._procs = None
+        self._release_shared()
+
+    def _release_shared(self):
+        """Drop the published filter segment, if there is one."""
+        self.filter_slots = None
+        if self._shared is not None:
+            shared_filter_bank.unlink(self._shared)
+            self._shared = None
 
     # internal - callers hold self._lock
 

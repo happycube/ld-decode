@@ -85,10 +85,9 @@ def positions():
 
 def resample_nearest(buf, locs, lut, phases):
     """What the kernels used to do: the nearest tabulated phase, no blend."""
-    coords = locs.astype(np.float32)
-    ints = coords.astype(np.int64)
-    frac = coords - ints
-    rows = lut[(frac * phases + np.float32(0.5)).astype(np.int64)]
+    ints = locs.astype(np.int64)
+    frac = locs - ints
+    rows = lut[(frac * phases + 0.5).astype(np.int64)]
     starts = ints - (sinc_tap_count // 2 - 1)
     taps = buf[starts[:, None] + np.arange(sinc_tap_count)[None, :]]
     return np.einsum("ij,ij->i", taps, rows.astype(np.float64))
@@ -166,3 +165,32 @@ def test_both_kernels_resample_a_position_the_same_way(coarse, positions):
     )
 
     np.testing.assert_array_equal(raster, flat)
+
+
+def test_a_position_resamples_the_same_wherever_it_sits_in_the_buffer(coarse):
+    """The sample a position resolves to must not depend on how far into the
+    field that position is.
+
+    A field's demod buffer runs to about 8e5 samples, which is past the point
+    where a float32 can hold a sample position to better than 1/16 of a
+    sample.  Narrowing the coordinate before splitting off its fractional part
+    therefore snapped the lower half of every field onto a coarse grid and
+    threw away the resolution the table is interpolated for.  Tiling a
+    periodic signal puts identical waveform under both bases, so anything the
+    two resamples disagree about came from the coordinate.
+    """
+    period = SIGNAL_LENGTH
+    signal = np.tile(band_limited_signal(*BANDS[0]), (1 << 20) // period + 2)
+
+    # A step that is not a whole number of samples, so the fractional part
+    # sweeps the table rather than sitting on phase zero.
+    offsets = np.arange(2048) * (period / 2049.0)
+    near, far = float(period), float(1 << 20)
+
+    def resample(base):
+        out = np.zeros(len(offsets), dtype=np.float64)
+        wow = np.ones(len(offsets), dtype=np.float64)
+        scale_positions(signal, out, base + offsets, wow, coarse, 1.0)
+        return out
+
+    np.testing.assert_allclose(resample(far), resample(near), rtol=0, atol=1e-6)

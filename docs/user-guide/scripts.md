@@ -112,3 +112,59 @@ Using ld-cut, you can do parallel .ldf encodings (optionally targeting different
 ```
 for i in f1.lds f2.lds f3.lds f4.lds; do (ld-cut $i /someotherdirectory/`basename -s .lds $i`.ldf &); done
 ```
+
+## Measurement harnesses
+
+These live in `scripts/` and are development tools rather than installed commands; they are run from a source checkout inside the development shell. They exist so that a performance claim about the decoder is made in the same units every time — see `plans/decode-performance.md` for the figures they produced and the rules for reading them.
+
+### bench_decode_throughput.py
+
+Runs one measurement *cell* — a (system, mode, thread count, seek, length, capture) tuple — and writes one JSON row per repeat, carrying each decoder's own post-setup frame rate, the aggregate rate over wall time, and the peak resident set of the whole process tree. `--concurrency N` starts N identical decoders over adjacent spans, which is how the "N independent decoders" arm is measured.
+
+```
+python3 scripts/bench_decode_throughput.py --capture disc.ldf \
+    --system pal --mode cvbs --threads 4 --seek 5000 --length 1000 \
+    --repeats 3 --out results.jsonl
+```
+
+Every row records the machine it was measured on, including physical core count, per-core L2 and shared L3 size, so rows from different boxes stay distinguishable. Cache capacity per worker is what sets the point where adding threads stops paying, so rows from an unfamiliar machine should be read with those figures in view.
+
+### report_working_set.py
+
+Reports what one decoder keeps resident and what it touches per RF block: every filter array by name and size, the sinc resample look-up table, the bytes `demodblock` actually indexes, its peak transient allocation, and the pocketfft transform plans it needs. The last three are measured by instrumenting one real block rather than being listed by hand.
+
+```
+python3 scripts/report_working_set.py --json working_set.json
+```
+
+### report_decode_traffic.py
+
+Attributes hardware performance counters to named decoder stages, per thread, so a change that claims a memory effect can name the stage it takes the traffic out of. It reads the counters through `perf_event_open` directly and its default event encodings are AMD Zen 3; on another CPU pass `--events`.
+
+### Block-length override
+
+The demodulator works on blocks of 32,768 samples. Setting `LDDECODE_BLOCKLEN` to another power of two between 4096 and 131072 overrides that, for sweeping the block length against a machine's cache sizes:
+
+```
+LDDECODE_BLOCKLEN=16384 python3 -m lddecode.main --pal disc.ldf out
+```
+
+This is a developer control, not a decoding option. The block length is a filter-design parameter — every filter is evaluated across that many frequency bins — so a decode at a different length is not comparable byte for byte with one at the default, and output from a sweep should not be kept as a decode. An unusable value is rejected outright rather than falling back to the default, so a mistyped sweep value cannot be measured as though it were the default.
+
+The block length has been swept on the reference box and 32,768 is the measured optimum: 16,384 is inside the run-to-run spread on both systems (+0.2% NTSC, −0.9% PAL) and 8,192 costs 6.6% on PAL for 89 MB of peak resident set. The default is not expected to hold on a machine with a different cache hierarchy, which is what the override is for.
+
+### Parallel-decode developer controls
+
+Three further environment variables report on, or disable, the worker pool's caching. All are off by default, none changes decoded output, and each exists so that a claim about the pool can be checked rather than argued.
+
+```
+LDDECODE_BLOCK_LRU_STATS=1     # one line per field job: worker pid, block span, cumulative hits and misses
+LDDECODE_SHARED_FILTER_STATS=1 # one line per field job: whether the parent's filter slots reached it
+LDDECODE_NO_SHARED_FILTERS=1   # disable the shared filter segment; every worker builds its own bank
+```
+
+`LDDECODE_BLOCK_LRU_STATS` is how the block-reuse figures are produced. Adjacent field jobs overlap by design, and pairing each pair of jobs onto one worker lets the second reuse the first's demodulated blocks; the stats lines give the demodulations per distinct block that measures it (1.09 with the pairing, 1.18 without). The block spans on the same lines give the request count, so one run yields both halves of the ratio.
+
+`LDDECODE_NO_SHARED_FILTERS` is the bisect control for the shared filter segment. Sharing changes where the filter bank lives — one read-only mapping per decode rather than one private copy per worker — and never what it contains, so a decode with the segment off must be byte-identical to one with it on. That is what makes it useful: any difference in output with this set is a bug in the sharing, and any difference in *counters* is what the sharing is worth (measured at 3.3% of DRAM fills per frame at `-t 4` and `-t 6`, and nothing in throughput).
+
+Counters for the last of these need `perf` or `report_decode_traffic.py`; resident size will not show them, because the effect is on cache traffic among concurrent workers rather than on how much memory is held.

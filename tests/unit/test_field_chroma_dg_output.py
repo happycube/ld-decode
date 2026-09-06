@@ -184,10 +184,12 @@ def test_tolerant_mode_lets_a_dead_band_trim_through(monkeypatch):
 class RecordingExecutor:
     def __init__(self):
         self.calls = []
+        self.keys = []
         self.submitted = threading.Event()
 
-    def submit(self, fn, *args):
+    def submit(self, fn, *args, key=None):
         self.calls.append(args)
+        self.keys.append(key)
         fut = Future()
         fut.set_result({"seq": args[0], "valid": False})
         self.submitted.set()
@@ -222,7 +224,9 @@ def test_engine_dispatches_the_chroma_dg_pair_it_was_reset_with():
         assert ex.submitted.wait(5.0)
     finally:
         engine.stop()
-    assert ex.calls[0][-1] == (0.002, 0.04)
+    # _decode_field_worker(seq, start, raw, span_begin, mtf, imtf, veq,
+    # audio_field_number, chroma_dg, slots)
+    assert ex.calls[0][8] == (0.002, 0.04)
 
 
 def test_engine_adopts_a_new_pair_for_later_dispatches():

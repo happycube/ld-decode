@@ -5,6 +5,8 @@ follows each definition; that code is kept here so the tables are fully
 initialised on import.  Split verbatim out of core.py.
 """
 
+import os
+
 import numpy as np
 
 from .dsp import nb_round
@@ -15,6 +17,64 @@ from .dsp import nb_round
 # no distortion from the FFT and filtering.
 
 BLOCKSIZE = 32 * 1024
+
+#: Environment variable that overrides the demodulation block length.
+BLOCK_LENGTH_ENV = "LDDECODE_BLOCKLEN"
+
+#: Bounds on an overridden block length.  Below 4096 samples the fixed
+#: 1,056-sample overlap (blockcut plus blockcut_end) is a quarter of the block,
+#: so most of the demodulation is thrown away; above 131072 one block's
+#: temporaries are larger than any last-level cache the override exists to
+#: explore.
+BLOCK_LENGTH_MIN = 4 * 1024
+BLOCK_LENGTH_MAX = 128 * 1024
+
+
+def resolve_block_length(environ=None):
+    """The demodulation FFT block length, in samples.
+
+    ``BLOCKSIZE`` unless ``LDDECODE_BLOCKLEN`` names a different power of two
+    between ``BLOCK_LENGTH_MIN`` and ``BLOCK_LENGTH_MAX``.
+
+    This is a developer control for the block-length sweep, not a user option.
+    The length is a filter-design parameter -- every filter is evaluated on
+    ``blocklen`` bins and the 0.5 MHz path's delay compensation is measured in
+    them -- so a decode at another length is not comparable byte for byte with
+    one at the default.
+
+    environ -- mapping to read, defaulting to ``os.environ``.  Worker
+               processes receive the resolved value through ``rf_opts`` rather
+               than by re-reading the environment, so a parent and its workers
+               cannot disagree about it.
+
+    Raises ValueError when the variable is set to anything else, rather than
+    falling back to the default silently: a mistyped sweep value must not be
+    measured as though it were the default.
+    """
+    if environ is None:
+        environ = os.environ
+
+    raw = environ.get(BLOCK_LENGTH_ENV)
+    if raw is None or raw.strip() == "":
+        return BLOCKSIZE
+
+    text = raw.strip()
+    if not text.isdigit():
+        raise ValueError(
+            "%s must be a positive integer, got %r" % (BLOCK_LENGTH_ENV, raw)
+        )
+
+    length = int(text)
+    if length & (length - 1):
+        raise ValueError(
+            "%s must be a power of two, got %d" % (BLOCK_LENGTH_ENV, length)
+        )
+    if not BLOCK_LENGTH_MIN <= length <= BLOCK_LENGTH_MAX:
+        raise ValueError(
+            "%s must be between %d and %d samples, got %d"
+            % (BLOCK_LENGTH_ENV, BLOCK_LENGTH_MIN, BLOCK_LENGTH_MAX, length)
+        )
+    return length
 
 # These are constant, system-level parameters for PAL and NTSC
 

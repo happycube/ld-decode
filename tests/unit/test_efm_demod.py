@@ -20,6 +20,9 @@ import numpy as np
 import pytest
 
 from lddecode.efm_demod import (
+    CONF_LEGALISED,
+    CONF_LOWCAP,
+    CONF_RESTORED,
     EFM_BIT_RATE_HZ,
     EFMTimingDemod,
     StreamingConditioner,
@@ -28,7 +31,7 @@ from lddecode.efm_demod import (
     halfband_taps,
 )
 from lddecode.efm_pll import EFM_PLL
-from lddecode.efm_score import score_t_values
+from lddecode.efm_score import pack_t_conf, score_t_values
 
 pytestmark = [pytest.mark.unit, pytest.mark.dsp]
 
@@ -348,7 +351,7 @@ def test_flush_drains_the_pending_tail(clean_signal):
     assert len(tail) > 0
     assert tail.min() >= 3 and tail.max() <= 11
     assert len(tail_conf) == len(tail)
-    assert tail_conf.max() <= 64
+    assert tail_conf.max() <= CONF_LOWCAP
     combined = np.concatenate([streamed, tail])
     assert score_t_values(combined).sync_rate > score_t_values(streamed).sync_rate
     assert len(d.flush()) == 0
@@ -374,7 +377,7 @@ def test_emits_only_legal_run_lengths_on_pure_noise(seeded_rng):
     assert len(t_values) > 0
     assert t_values.min() >= 3
     assert t_values.max() <= 11
-    assert conf.max() <= 64
+    assert conf.max() <= CONF_LOWCAP
 
 
 def test_confidence_is_one_to_one_with_t_values(clean_signal):
@@ -390,7 +393,7 @@ def test_confidence_is_low_before_lock_and_high_after(clean_result):
     # Frames seen before the 7-frame sync hysteresis locks were never
     # validated, so they are erasure candidates; once locked and validated,
     # a clean signal must be trusted.
-    assert conf[0] <= 64
+    assert conf[0] <= CONF_LOWCAP
     assert conf[-200:].min() > 200
 
 
@@ -449,6 +452,22 @@ def test_flywheel_restores_a_corrupted_sync_from_the_position_counter():
     assert 1176 not in score.gap_bits
 
 
+def test_sync_restoration_can_be_switched_off():
+    frames = [FRAME.copy() for _ in range(60)]
+    frames[30] = [10, 10, 5] + [10] * 56 + [3]
+    signal = efm_waveform([t for frame in frames for t in frame])
+
+    restored = score_t_values(demod(signal)[0])
+    honest = score_t_values(demod(signal, restore_sync=False)[0])
+
+    # Repairing a missed sync keeps downstream decoders framed, but it also
+    # hands them a frame the channel never showed.  With restoration off the
+    # damage stays in the T stream, which is what makes the two policies
+    # comparable on real material.
+    assert restored.frame_588_fraction == 1.0
+    assert honest.frame_588_fraction < 1.0
+
+
 def test_an_unrestorable_sync_leaves_the_gap_honest():
     frames = [FRAME.copy() for _ in range(60)]
     # Corrupt the boundary so a run straddles the expected frame start by
@@ -481,7 +500,7 @@ def test_a_frame_that_fails_the_sync_check_gets_low_confidence():
     # clean frames around it keep full trust.
     frame_len = len(FRAME)
     middle = conf[len(conf) // 3 : 2 * len(conf) // 3]
-    capped = int(np.sum(middle <= 64))
+    capped = int(np.sum(middle <= CONF_LOWCAP))
     assert frame_len - 10 <= capped <= 3 * frame_len
     assert conf[-3 * frame_len :].min() > 200
 
@@ -490,6 +509,112 @@ def test_input_is_not_mutated(clean_signal):
     copy = clean_signal.copy()
     demod(clean_signal)
     assert np.array_equal(clean_signal, copy)
+
+
+# --- Fabrication and timing confidence --------------------------------------
+
+# The pre-lock frames are capped as unvalidated and the very first transition
+# has no predecessor to straddle, so confidence assertions about the body of a
+# stream start past the 7-frame lock hysteresis.
+LOCKED = 600
+
+
+def test_a_merged_short_run_is_marked_fabricated():
+    frames = [FRAME.copy() for _ in range(40)]
+    frames[20] = [11, 11, 3] + [10] * 30 + [2, 8] + [10] * 25 + [3]
+    assert sum(frames[20]) == 588
+    signal = efm_waveform([t for frame in frames for t in frame])
+
+    t_values, conf = demod(signal)
+
+    # The T10 the legaliser built out of T2+T8 is the only T value in the
+    # locked body of the stream the demodulator did not actually read, and
+    # it says so: without this the merge is invisible downstream, which is
+    # what lets a fabricated symbol reach the CIRC stages as trusted data.
+    fabricated = np.flatnonzero(conf[LOCKED:] <= CONF_LEGALISED) + LOCKED
+    assert len(fabricated) == 1
+    assert t_values[fabricated[0]] == 10
+
+
+def test_a_split_long_run_marks_both_halves_fabricated():
+    frames = [FRAME.copy() for _ in range(40)]
+    frames[20] = [11, 11, 3] + [10] * 30 + [14, 6] + [10] * 24 + [3]
+    assert sum(frames[20]) == 588
+    signal = efm_waveform([t for frame in frames for t in frame])
+
+    t_values, conf = demod(signal)
+
+    # The T14 becomes T11 plus a carried remainder: two adjacent T values,
+    # one invented boundary between them, both flagged.
+    fabricated = np.flatnonzero(conf[LOCKED:] <= CONF_LEGALISED) + LOCKED
+    assert len(fabricated) == 2
+    assert fabricated[1] == fabricated[0] + 1
+    assert t_values[fabricated[0]] == 11
+    assert sum(t_values[fabricated]) == 14
+
+
+def test_a_clean_stream_flags_nothing_once_locked(clean_result):
+    _, conf = clean_result
+
+    # No legalisation, no restoration, no timing margin lost: a clean
+    # capture must not spend erasure hints it has no reason to spend.
+    assert conf[LOCKED:].min() == 255
+
+
+def test_a_restored_sync_carries_the_restored_ceiling():
+    frames = [FRAME.copy() for _ in range(60)]
+    frames[30] = [10, 10, 5] + [10] * 56 + [3]
+    signal = efm_waveform([t for frame in frames for t in frame])
+
+    t_values, conf = demod(signal)
+
+    # The runs the flywheel rewrote back to T11-T11 are counter-backed
+    # guesses, not reads, and carry the strongest available distrust -
+    # distinct from the ordinary cap the rest of that frame gets.
+    restored = np.flatnonzero(conf[LOCKED:] == CONF_RESTORED) + LOCKED
+    assert len(restored) >= 2
+    assert np.all(np.diff(restored) == 1)
+    block = t_values[restored]
+    assert any(block[i] == 11 and block[i + 1] == 11 for i in range(len(block) - 1))
+
+
+@pytest.mark.parametrize(
+    "displacement, ceiling",
+    [(0.5, 32), (0.4, 128), (0.3, 224), (0.2, 256)],
+)
+def test_an_edge_adrift_loses_confidence_at_full_amplitude(displacement, ceiling):
+    frames = [FRAME.copy() for _ in range(40)]
+    # Move one NRZI edge off the midpoint between two strobes without
+    # touching the level or the frame's channel-bit count.
+    frames[20] = (
+        [11, 11, 3] + [10] * 30 + [10 + displacement, 10 - displacement] + [10] * 24 + [3]
+    )
+    assert sum(frames[20]) == 588
+    signal = efm_waveform([t for frame in frames for t in frame])
+
+    _, conf = demod(signal)
+
+    # A full-height run whose length was a coin toss is exactly the failure
+    # an amplitude-only confidence cannot see: at half a bit the two runs
+    # bounding the edge are barely trusted, and the response is graded, so
+    # a merely noisy edge is not thrown away with the ambiguous one.
+    body = conf[LOCKED:]
+    assert body.min() < ceiling
+    if displacement > 0.2:
+        assert int(np.sum(body < 250)) == 2
+
+
+def test_confidence_ceilings_pack_to_the_documented_doubt_levels():
+    # The .efm high nibble is doubt = 15 - (conf >> 4).  Fabrication must
+    # land above a consumer's erasure threshold and whole-frame validation
+    # below it, or the hint is spent on the 74 T values of a frame for the
+    # sake of the two in it that are wrong.
+    doubt = pack_t_conf(
+        np.full(3, 10, np.int8),
+        np.array([CONF_RESTORED, CONF_LEGALISED, CONF_LOWCAP], np.uint8),
+    ) >> 4
+
+    assert list(doubt) == [15, 14, 8]
 
 
 # --- Task 3.1: sign-sign LMS adaptive equaliser -----------------------------

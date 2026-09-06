@@ -17,9 +17,9 @@ from .fileio import (  # noqa: F401
 )
 from .filters import (  # noqa: F401
     build_hilbert, calczc, calczc_do, calczc_findfirst, emphasis_iir,
-    fft_determine_slices, fft_do_slice, filtfft, gen_bpf_supergauss, inrange,
-    overlap_save_fft, overlap_save_ifft, polar2z, sqsum, supergauss,
-    unwrap_hilbert,
+    fft_determine_slices, fft_do_slice, fft_do_slice_half, filtfft,
+    gen_bpf_supergauss, inrange, overlap_save_fft, overlap_save_ifft,
+    polar2z, sqsum, supergauss, unwrap_hilbert,
 )
 from .pulses import (  # noqa: F401
     Pulse, _dropout_unflag_sync, _to_pulses_list, clb_findbursts, findareas,

@@ -1702,8 +1702,13 @@ class Field:
 
         iserr |= iserr_rf
 
-        # detect absurd fluctuations in pre-deemp demod, since only dropouts can cause them
-        n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.freq_hz_half)
+        # detect absurd fluctuations in pre-deemp demod, since only dropouts can
+        # cause them.  The bound follows the discriminator's rate: demod_raw is
+        # one phase increment at the input rate and the mean of two at half
+        # rate, so the same excursion reads differently (see
+        # rfdecode.demod_absurd_hz, which records the counts both bounds give
+        # on the test captures).
+        n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.demod_absurd_hz)
 
         # filter out dropouts outside actual field
         iserr[:int(f.linelocs[f.lineoffset + 1])] = False
