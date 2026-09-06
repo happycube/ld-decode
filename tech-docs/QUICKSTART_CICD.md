@@ -1,162 +1,76 @@
-# Quick Start: CI/CD Setup
+# CI/CD Quick Start
 
-## ✅ What's Been Configured
+A short orientation to what CI does with your changes. Full detail is in
+[CICD.md](CICD.md); the workflows in [`.github/workflows/`](../.github/workflows/)
+are the source of truth.
 
-Your repository now has a complete CI/CD pipeline with automated packaging for Linux, Windows, and macOS.
+## What runs when
 
-### Files Created
+### On every pull request
 
-#### GitHub Actions Workflows
-- [`.github/workflows/build.yml`](.github/workflows/build.yml) - Main build and test workflow
-- [`.github/workflows/release.yml`](.github/workflows/release.yml) - Automated release packaging
-- [`.github/workflows/tests.yml`](.github/workflows/tests.yml) - Updated to use build.yml
+**Build and Test** ([`build-and-test.yml`](../.github/workflows/build-and-test.yml))
+runs, as three stages:
 
-#### Linux Flatpak
-- [`packaging/flatpak/com.github.happycube.LdDecode.yml`](packaging/flatpak/com.github.happycube.LdDecode.yml) - Flatpak manifest
-- [`packaging/flatpak/com.github.happycube.LdDecode.metainfo.xml`](packaging/flatpak/com.github.happycube.LdDecode.metainfo.xml) - App metadata
-- [`packaging/flatpak/com.github.happycube.LdDecode.desktop`](packaging/flatpak/com.github.happycube.LdDecode.desktop) - Desktop entry
-- [`packaging/flatpak/requirements.txt`](packaging/flatpak/requirements.txt) - Python dependencies
+1. **Unit Tests** — the hermetic pytest lane, ~minutes. Checked out without
+   submodules: if a test needs real capture data it fails here, which is the point.
+2. **Functional Tests** and **VITS Conformance**, side by side — the two CTest
+   lanes (`ctest -LE vits` and `ctest -L vits`), each with its own job so a
+   radius-specific fault names itself. These need the `testdata/` submodule, which
+   CI checks out recursively.
+3. **Packaging** — AppImage, macOS DMG and Windows ZIP builds, each gated on both
+   test lanes passing.
 
-#### Windows MSI
-- [`packaging/windows/ld-decode.spec`](packaging/windows/ld-decode.spec) - PyInstaller config
-- [`packaging/windows/installer.wxs`](packaging/windows/installer.wxs) - WiX installer config
-- [`packaging/windows/build_msi.ps1`](packaging/windows/build_msi.ps1) - Build script
+### On push to main
 
-#### macOS DMG
-- [`packaging/macos/ld-decode.spec`](packaging/macos/ld-decode.spec) - PyInstaller config for macOS
-- [`packaging/macos/build_dmg.sh`](packaging/macos/build_dmg.sh) - Build script
+The same pipeline, uncancellable, plus **deploy-docs**, which publishes the MkDocs
+site to GitHub Pages.
 
-#### Documentation
-- [`CICD.md`](CICD.md) - Complete CI/CD documentation
-- [`packaging/README.md`](packaging/README.md) - Packaging documentation
-- [`.gitignore`](.gitignore) - Updated with packaging artifacts
+### On a version tag
 
-#### Configuration Updates
-- [`pyproject.toml`](pyproject.toml) - Added `ld-decode` script entry point
+Pushing a tag `v*` runs the full pipeline, and on success the three packaging jobs
+attach their artefacts to the GitHub Release for that tag. That is the whole
+release process — there is no separate release workflow.
 
-## 🚀 How to Use
+## Reproducing the lanes locally
 
-### Every Commit
-When you push code to `main`, `master`, or `develop`:
-1. Tests run on Python 3.8-3.12
-2. Functional tests execute
-3. Build artifacts are created for all platforms
-4. Artifacts are available for download (7 days)
+CI runs exactly what the developer workflow runs, under Nix:
 
-### Creating a Release
-
-1. **Update version numbers:**
-   ```bash
-   # Edit pyproject.toml - change version = "7.0.0" to your version
-   # Edit lddecode/version - update version number
-   ```
-
-2. **Commit and tag:**
-   ```bash
-   git add pyproject.toml lddecode/version
-   git commit -m "Bump version to 7.0.0"
-   git tag -a v7.0.0 -m "Release version 7.0.0"
-   git push origin main
-   git push origin v7.0.0
-   ```
-
-3. **Automatic process:**
-   - ✅ All tests run
-   - ✅ Flatpak package built
-   - ✅ Windows MSI installer built
-   - ✅ macOS DMG disk image built
-   - ✅ GitHub Release created
-   - ✅ All packages attached to release
-
-### Manual Release (Optional)
-You can trigger a release without a git tag:
-1. Go to GitHub Actions tab
-2. Select "Release" workflow
-3. Click "Run workflow"
-4. Enter version number (e.g., `7.0.0`)
-
-## 📦 Installation Packages
-
-After a release, users can install via:
-
-**Linux (Flatpak):**
 ```bash
-flatpak install ld-decode-7.0.0-x86_64.flatpak
-flatpak run com.github.happycube.LdDecode
+nix develop
+
+python -m pytest -q tests/unit                     # the unit lane
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+ctest --test-dir build -L functional --output-on-failure
+ctest --test-dir build -L vits --output-on-failure
 ```
 
-**Windows (MSI):**
-```powershell
-# Double-click the .msi or:
-msiexec /i ld-decode-7.0.0-win64.msi
+The functional lanes need the `testdata/` submodule checked out.
+
+## Creating a release
+
+```bash
+# 1. Version metadata lives in pyproject.toml.
+#    Do not hand-edit lddecode/version - it is generated from git.
+# 2. Tag and push:
+git tag -a v7.0.0 -m "Release version 7.0.0"
+git push origin v7.0.0
 ```
 
-**macOS (DMG):**
-1. Open the `.dmg`
-2. Drag to Applications
-3. Run from Applications folder
+## When a build fails
 
-## 🔍 Monitoring
+- Read the failing job's log in the Actions tab; each lane logs separately.
+- A red **VITS Conformance** job still writes a step summary with the measured
+  values and the bands they missed — read that first.
+- To debug a functional failure without pushing, dispatch the manual
+  **Functional Tests** workflow ([`functional-tests.yml`](../.github/workflows/functional-tests.yml))
+  on your branch.
+- Reproduce locally with the commands above before opening a PR, especially for
+  decode-behaviour changes, which are also covered by the serial/threaded
+  bit-identity checks (`ctest -R "parallel"`).
 
-### Build Status
-Check the Actions tab on GitHub to see:
-- Current workflow runs
-- Build logs for each platform
-- Test results
-- Download artifacts
+## Additional Resources
 
-### Badges (Optional)
-Add to your README.md:
-```markdown
-![Build Status](https://github.com/USERNAME/ld-decode/workflows/Build%20and%20Test/badge.svg)
-![Release](https://github.com/USERNAME/ld-decode/workflows/Release/badge.svg)
-```
-
-## 🛠️ Next Steps
-
-1. **Test the workflow:**
-   ```bash
-   git add .
-   git commit -m "Add CI/CD packaging infrastructure"
-   git push
-   ```
-   Watch the Actions tab to see the build workflow run.
-
-2. **Create a test release:**
-   ```bash
-   git tag v7.0.0-test
-   git push origin v7.0.0-test
-   ```
-   This will trigger the full release process.
-
-3. **Customize (if needed):**
-   - Update app icons for Windows/macOS
-   - Adjust build scripts for your specific needs
-   - Modify Flatpak permissions in the manifest
-   - Add code signing for Windows/macOS
-
-## 📚 Additional Resources
-
-- **Full CI/CD Guide:** See [CICD.md](CICD.md)
-- **Packaging Details:** See [packaging/README.md](packaging/README.md)
-- **Build Instructions:** See [BUILD.md](BUILD.md)
-- **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md)
-
-## ⚠️ Important Notes
-
-1. **Version Consistency:** Always update both `pyproject.toml` and `lddecode/version`
-2. **Tag Format:** Release tags must start with 'v' (e.g., `v7.0.0`)
-3. **Artifact Retention:** Build artifacts kept 7 days, release artifacts 90 days
-4. **Platform Dependencies:** MSI requires WiX Toolset, DMG requires create-dmg (handled by CI)
-
-## 🐛 Troubleshooting
-
-If builds fail:
-1. Check the Actions tab for error logs
-2. Review [packaging/README.md](packaging/README.md) troubleshooting section
-3. Test packaging locally using the build scripts
-4. Ensure all dependencies are properly listed in pyproject.toml
-
----
-
-**Ready to go! 🎉** Your next push will automatically trigger the build workflow.
+- [CICD.md](CICD.md) — the full CI/CD reference
+- [BUILD.md](../BUILD.md) — build instructions
+- [TESTING.md](../TESTING.md) — test strategy and the unit/functional split
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — contribution guidelines

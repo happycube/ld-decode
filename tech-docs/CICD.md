@@ -1,146 +1,127 @@
 # CI/CD and Release Process
 
-This repository uses GitHub Actions for continuous integration, automated testing, and release packaging.
+This repository uses GitHub Actions for continuous integration and release packaging.
+The authoritative description of what CI does is the workflows themselves, in
+[`.github/workflows/`](../.github/workflows/); this document summarises them. If the two
+disagree, the workflows win.
+
+All test lanes run on `ubuntu-latest` under [Nix](../flake.nix), on the Python version
+pinned there (currently 3.12). There is no per-version test matrix.
 
 ## Workflows
 
-### 1. Build and Test ([`.github/workflows/build.yml`](.github/workflows/build.yml))
-**Triggers:** Push to main/master/develop, Pull Requests
+| Workflow | Purpose | Runs on |
+|----------|---------|---------|
+| [`build-and-test.yml`](../.github/workflows/build-and-test.yml) | The primary gate: tests, then packaging | Push (any branch), tags `v*`, PRs, releases |
+| [`functional-tests.yml`](../.github/workflows/functional-tests.yml) | The full functional lane, standalone | Manual dispatch only |
+| [`appimage.yml`](../.github/workflows/appimage.yml) | Linux AppImage | Called by build-and-test |
+| [`macos-dmg.yml`](../.github/workflows/macos-dmg.yml) | macOS DMG | Called by build-and-test |
+| [`windows-zip.yml`](../.github/workflows/windows-zip.yml) | Windows portable ZIP | Called by build-and-test |
+| [`deploy-docs.yml`](../.github/workflows/deploy-docs.yml) | MkDocs site to GitHub Pages | Push to main, PRs (build only), manual |
 
-**Jobs:**
-- **python-tests**: Tests on Python 3.8-3.12
-- **functional-tests**: CMake-based functional tests
-- **build-linux**: Creates Python wheels for Linux
-- **build-windows**: Creates Python wheels for Windows
-- **build-macos**: Creates Python wheels for macOS
+### Build and Test
 
-**Artifacts:** Platform-specific wheels (7-day retention)
+The primary gate. A superseded run is cancelled (the suite takes about two hours
+end to end), except on `main` and on tags, where the run produces release artefacts.
 
-### 2. Release ([`.github/workflows/release.yml`](.github/workflows/release.yml))
-**Triggers:** Version tags (e.g., `v7.0.0`), Manual workflow dispatch
+Jobs, in dependency order:
 
-**Jobs:**
-1. **test**: Reuses the build.yml workflow for all tests
-2. **build-flatpak**: Creates Linux Flatpak package
-3. **build-windows-msi**: Creates Windows MSI installer
-4. **build-macos-dmg**: Creates macOS DMG disk image
-5. **create-release**: Assembles GitHub Release with all packages
-6. **publish-flatpak**: Instructions for Flathub publication
+1. **unit-tests** — the fast gate. Checks out *without* submodules, which keeps the
+   hermeticity of the unit lane honest: a suite that reads capture data fails here
+   instead of passing quietly on a populated checkout. Runs
+   `pytest -q tests/unit --strict-markers` with coverage; coverage is reported, not
+   enforced. Timeout: 20 min.
+2. **functional-tests** — everything except the VITS radius sweep. Checks out
+   submodules recursively, configures CMake, runs `ctest -LE vits`. Needs the
+   `testdata/` submodule. Timeout: 120 min.
+3. **vits-conformance** — the VITS radius sweep (`ctest -L vits`), as its own job
+   so its output is a step summary a developer reads rather than a line in a
+   two-hour log. Uploads the `*.conformance.json` reports as an artefact whether
+   it passed or failed. Timeout: 90 min.
+4. **build-appimage / build-macos-dmg / build-windows-zip** — the three packaging
+   jobs (below), each gated on both test lanes passing.
 
-**Artifacts:** Installation packages (90-day retention)
+### Functional Tests (manual)
+
+[`functional-tests.yml`](../.github/workflows/functional-tests.yml) runs the complete
+`ctest` suite (functional *and* VITS, no label exclusion) on manual dispatch from the
+Actions tab, for debugging a failure without pushing.
+
+### deploy-docs
+
+Builds the MkDocs Material site (`mkdocs build --strict`) and deploys it to GitHub
+Pages on push to `main`. On pull requests it builds without deploying, so a broken
+docs build fails the PR.
+
+## Packaging
+
+Each packaging job builds its platform's artefact, smoke-tests it, uploads it as a
+workflow artefact (30-day retention), and attaches it to the GitHub Release when the
+run was triggered by a `v*` tag.
+
+- **Linux — AppImage** (`appimage.yml`): built around a relocatable
+  python-build-standalone CPython 3.12, with self-locating wrappers for
+  `ld-decode`, `ld-cut`, `ld-compress`, `ld-ldf-reader-py` and `ld-lds-converter-py`,
+  plus a statically-linked flac 1.5.0 (the one external program `ld-compress` shells
+  out to). The job verifies the bundle runs from a relocated copy with a scrubbed
+  environment and that an `ld-compress` round trip is lossless before packaging.
+- **macOS — DMG** (`macos-dmg.yml`): PyInstaller onefile binaries inside
+  `LD-Decode.app`, ad-hoc code signed, with flac built from source and linked
+  statically. Smoke-tested before packaging.
+- **Windows — portable ZIP** (`windows-zip.yml`): no installer; a ZIP containing
+  the full CPython 3.12 runtime, the `lddecode` package, `.bat` wrappers in `bin\`,
+  and the official Xiph flac 1.5.0 Win64 build. Smoke-tested, including the
+  `ld-compress` round trip, before packaging.
 
 ## Creating a Release
 
-### Prerequisites
-1. Update version in [`pyproject.toml`](pyproject.toml)
-2. Update version in [`lddecode/version`](lddecode/version)
-3. Update CHANGELOG or release notes
-4. Commit all changes
+1. Make sure the version in [`pyproject.toml`](../pyproject.toml) is current.
+   `lddecode/version` is **not** hand-edited: it is generated from git by CMake
+   configure and by [`scripts/generate_version.py`](../scripts/generate_version.py),
+   and the packaging jobs regenerate it during their build.
+2. Tag and push:
 
-### Release Steps
-```bash
-# Create and push a version tag
-git tag -a v7.0.0 -m "Release version 7.0.0"
-git push origin v7.0.0
-```
-
-### What Happens Automatically
-1. ✅ All tests run across multiple Python versions
-2. ✅ Functional tests execute with CMake
-3. ✅ Flatpak package is built for Linux
-4. ✅ MSI installer is built for Windows
-5. ✅ DMG disk image is built for macOS
-6. ✅ GitHub Release is created with all packages attached
-7. ✅ Release notes are auto-generated from commits
-
-### Manual Release Trigger
-You can also trigger a release manually from the GitHub Actions tab:
-1. Go to Actions → Release workflow
-2. Click "Run workflow"
-3. Enter the version number (e.g., `7.0.0`)
-
-## Installation Packages
-
-### Linux - Flatpak
-**Location:** `packaging/flatpak/`
-```bash
-# Install
-flatpak install ld-decode-7.0.0-x86_64.flatpak
-
-# Run
-flatpak run com.github.happycube.LdDecode
-```
-
-### Windows - MSI Installer
-```powershell
-# Install (GUI or command line)
-msiexec /i ld-decode-7.0.0-win64.msi
-
-# Run from any command prompt
-ld-decode --help
-```
-
-### macOS - DMG Disk Image
-1. Download and open `ld-decode-7.0.0-macos.dmg`
-2. Drag `ld-decode.app` to Applications
-3. Run from Applications or terminal:
    ```bash
-   /Applications/ld-decode.app/Contents/MacOS/ld-decode
+   git tag -a v7.0.0 -m "Release version 7.0.0"
+   git push origin v7.0.0
    ```
 
-## Artifact Reuse Strategy
+The tag runs the full Build and Test pipeline; when it passes, the three packaging
+jobs attach their artefacts to the GitHub Release for that tag. There is no separate
+release workflow and no manual dispatch path that publishes.
 
-The release workflow is designed for efficiency:
-- **Single test run**: Tests execute once at the start, not per platform
-- **Parallel packaging**: All three packages build simultaneously
-- **Artifact retention**: Build artifacts kept for 7 days, releases for 90 days
-- **No redundant builds**: Each commit builds once, tagged releases reuse artifacts
+## Reproducing CI Locally
 
-## Development Workflow
+The lanes are the same ones a developer runs (see [BUILD.md](../BUILD.md) and
+[TESTING.md](../TESTING.md)):
 
-### For Contributors
 ```bash
-# Your PR triggers:
-1. Python tests (all supported versions)
-2. Functional tests
-3. Build verification for all platforms
-```
+nix develop
 
-### For Maintainers
-```bash
-# Merging to main/master:
-1. All tests run
-2. Build artifacts are created
-3. Ready for manual testing
+# The unit lane
+python -m pytest -q tests/unit
 
-# Creating a release tag:
-1. Full test suite runs
-2. All platform packages are built
-3. GitHub Release is published automatically
+# The functional and VITS lanes (needs the testdata/ submodule)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+ctest --test-dir build -L unit --output-on-failure
+ctest --test-dir build -L functional --output-on-failure
+ctest --test-dir build -L vits --output-on-failure
 ```
 
 ## Troubleshooting
 
-### Build Failures
-- Check the Actions tab for detailed logs
-- Each job logs are available separately
-- Download artifacts to test locally
-
-### Package Testing
-See [`packaging/README.md`](packaging/README.md) for:
-- Manual build instructions
-- Local testing procedures
-- Platform-specific requirements
-
-### Version Mismatches
-Ensure version consistency across:
-- `pyproject.toml`
-- `lddecode/version`
-- Git tag (must start with 'v')
+- A red **Functional Tests** or **VITS Conformance** job on a PR usually means the
+  `testdata/` submodule is stale relative to the code; check what the failing test
+  reads.
+- The **VITS Conformance** step summary shows the measured values and the bands
+  they missed even when the job is red; read it before downloading the report
+  artefact.
+- To re-run the full suite against a PR branch without pushing, use the manual
+  **Functional Tests** dispatch after checking out the branch.
 
 ## Additional Resources
 
-- **Packaging Documentation**: See [`packaging/README.md`](packaging/README.md)
-- **Build Instructions**: See [`BUILD.md`](BUILD.md)
-- **Installation Guide**: See [`INSTALL.md`](INSTALL.md)
-- **Contributing**: See [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [BUILD.md](../BUILD.md) — build instructions
+- [INSTALL.md](../INSTALL.md) — installation instructions
+- [TESTING.md](../TESTING.md) — test strategy and the unit/functional split
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — contribution guidelines
