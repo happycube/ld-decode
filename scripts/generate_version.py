@@ -6,12 +6,15 @@ This script generates version info including branch, commit, and dirty state
 that can be embedded in builds. The output format is:
     branch:commit[:dirty]
 
-This supports all build types: source, GitHub Actions, flatpak, msi, dmg
+The base version is read from flake.nix (the single source of truth, as used
+by the CMake configure step and the Nix build), falling back to an exact git
+tag. This supports all build types: source and GitHub Actions packaging.
 """
 
 import subprocess
 import sys
 import os
+import re
 
 
 def get_git_branch():
@@ -35,10 +38,21 @@ def get_git_branch():
     return "release"
 
 
-def get_git_commit():
-    """Get the current git commit hash or version tag."""
+def get_base_version():
+    """Get the base version from flake.nix, falling back to an exact git tag."""
+    # flake.nix lives in the repository root, one level above scripts/
+    flake_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "flake.nix"
+    )
     try:
-        # First, try to get the version tag for the current commit
+        with open(flake_path, "r") as f:
+            match = re.search(r'version = "([^"]+)"', f.read())
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+
+    try:
         sp = subprocess.run(
             "git describe --tags --exact-match",
             shell=True,
@@ -52,23 +66,16 @@ def get_git_commit():
             if tag.startswith('v'):
                 tag = tag[1:]
             return tag
+    except Exception:
+        pass
 
-        # If not on a tag, use git describe with commits since tag
-        sp = subprocess.run(
-            "git describe --tags --always",
-            shell=True,
-            capture_output=True,
-            timeout=2,
-            text=True
-        )
-        if sp.returncode == 0:
-            commit = sp.stdout.strip()
-            # Remove 'v' prefix if present
-            if commit.startswith('v'):
-                commit = commit[1:]
-            return commit
+    return "unknown"
 
-        # Fallback to short commit hash
+
+def get_git_commit():
+    """Get the version: base version plus the short commit hash."""
+    base = get_base_version()
+    try:
         sp = subprocess.run(
             "git rev-parse --short HEAD",
             shell=True,
@@ -77,11 +84,10 @@ def get_git_commit():
             text=True
         )
         if sp.returncode == 0:
-            return sp.stdout.strip()
+            return f"{base}+git.{sp.stdout.strip()}"
     except Exception:
         pass
-
-    return "unknown"
+    return base
 
 
 def is_git_dirty():

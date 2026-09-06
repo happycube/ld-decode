@@ -260,7 +260,7 @@ private:
 
 ### Python Code
 
-- **Standard**: Python 3.6+
+- **Standard**: Python 3.12+
 - **Style**: Follow PEP 8
 - **Formatting**: 4 spaces for indentation (no tabs)
 - **Imports**: Group standard library, third-party, and local imports

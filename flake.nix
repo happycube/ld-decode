@@ -15,7 +15,7 @@
         pythonPackages = python.pkgs;
         
         # PEP-440 compatible version string (for package metadata)
-        version = "7.2.0";
+        version = "8.0.0pre1";
         
         # Use flake's built-in git properties
         # dirtyShortRev already includes "-dirty" suffix, so we need to handle it
