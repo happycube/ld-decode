@@ -210,7 +210,9 @@ class CVBSWriter:
     sample and cannot move 0H.  The V-switch folds out of the measurement
     via adjacent-line burst products (b_k * b_(k+1) has phase 2*theta).
     NTSC needs no re-anchoring (the decoder already rotates each field to
-    the fsc_phase_deg target); its lock is measured and declared honestly.
+    the fsc_phase_deg target, found on a burst path that carries the
+    picture path's phase at fsc whatever video chain was selected); its
+    lock is measured and declared honestly.
     """
 
     PAL_LOCK_TARGET = 45.0     # folded burst phase target, deg (mod 90)

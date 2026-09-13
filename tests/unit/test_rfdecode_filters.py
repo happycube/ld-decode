@@ -380,6 +380,68 @@ def test_the_burst_filter_delay_is_compensated_too(rf):
     assert rf.Filters["FVideoBurst_offset"] == 40
 
 
+#: Video chains a user can select, each of which moves the picture path's
+#: phase at the subcarrier.  The burst path has to move with it.
+NTSC_CHAIN_VARIANTS = {
+    "lowband": dict(extra_options={"lowband": True}),
+    "video_lpf": dict(decoder_params_override={"video_lpf_freq": 4.2e6}),
+    "video_lpf_order": dict(decoder_params_override={"video_lpf_order": 4}),
+    "colour_notch": dict(extra_options={"NTSC_ColorNotchFilter": True}),
+    "deemp_strength": dict(decoder_params_override={"video_deemp_strength": 1.3}),
+}
+
+
+def burst_path_without_the_picture_terms(rf):
+    """The burst reference path as it was built before it borrowed the
+    picture path's phase terms: LPF, de-emphasis, the delay-compensated burst
+    band-pass and the static EQ.  The last two are construction-only filters
+    the bank drops, so they are rebuilt here the way computevideofilters
+    builds them."""
+    taps = sps.firwin(81, rf.notchrange(rf.SysParams["fsc_mhz"], 0.2), pass_zero=False)
+    bins = np.arange(rf.blocklen)
+    fburst = filtfft((taps, [1.0]), rf.blocklen) * np.exp(
+        1j * 2 * np.pi * rf.Filters["FVideoBurst_offset"] * bins / rf.blocklen
+    )
+    video_eq = rf.build_video_eq(rf.DecoderParams.get("video_eq"))
+    return rf.Filters["Fvideo_lpf"] * rf.Filters["Fdeemp"] * fburst * video_eq
+
+
+def burst_to_picture_phase_deg(rf):
+    """Phase of the burst reference path relative to the picture path at fsc,
+    with the burst path's own (delay-compensated) band-pass and the plain
+    LPF-and-de-emphasis product divided out of both."""
+    i = bin_at(rf, rf.SysParams["fsc_mhz"] * 1e6)
+    plain = burst_path_without_the_picture_terms(rf)[i]
+    picture = rf.Filters["FVideo"][i] / (rf.Filters["Fvideo_lpf"][i] * rf.Filters["Fdeemp"][i])
+    return np.degrees(np.angle(rf.Filters["FVideoBurst"][i] / plain / picture))
+
+
+@pytest.mark.parametrize("variant", sorted(NTSC_CHAIN_VARIANTS))
+def test_the_ntsc_burst_path_keeps_the_picture_path_phase_at_fsc(variant):
+    """FieldNTSC rotates each field so the burst found on FVideoBurst lands
+    at fsc_phase_deg, and the CVBS writer judges the picture's burst against
+    a fixed lattice target.  Both hold only if the two paths agree in phase
+    at fsc under every selectable video chain; when they did not, --lowband,
+    --video_lpf and -N each left a constant 5-12 degree residual and the
+    output was stamped STANDARD_STABLE_UNLOCKED.
+    """
+    default = RFDecode(system="NTSC")
+    changed = RFDecode(system="NTSC", **NTSC_CHAIN_VARIANTS[variant])
+
+    assert burst_to_picture_phase_deg(default) == pytest.approx(0.0, abs=1e-6)
+    assert burst_to_picture_phase_deg(changed) == pytest.approx(0.0, abs=1e-6)
+
+
+@pytest.mark.parametrize("variant", sorted(NTSC_CHAIN_VARIANTS))
+def test_the_ntsc_burst_path_phase_terms_do_not_change_its_amplitude(variant):
+    """The inverse-MTF servo reads burst amplitude, so the terms the burst
+    path borrows from the picture path are all-pass."""
+    rf = RFDecode(system="NTSC", **NTSC_CHAIN_VARIANTS[variant])
+    plain = burst_path_without_the_picture_terms(rf)
+
+    assert np.abs(np.abs(rf.Filters["FVideoBurst"]) - np.abs(plain)).max() < 1e-9
+
+
 # --- inverse MTF and the dynamic EQ -------------------------------------
 
 

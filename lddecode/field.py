@@ -2254,8 +2254,17 @@ class FieldNTSC(Field):
         self.burstmedian = self.calc_burstmedian()
 
         # Subcarrier phase offset in degrees, calibrated for correct NTSC
-        # burst phase (~147°) at the output.  Increasing it decreases the
-        # output burst phase 1:1.  Calibrated per RF filter chain.
-        fsc_phase_deg = self.rf.DecoderParams.get("fsc_phase_deg", 117.25)
+        # burst phase (~147°, cvbs.CVBSWriter.NTSC_LOCK_TARGET) at the
+        # output.  Increasing it decreases the output burst phase 1:1.
+        #
+        # The burst is located on rfdecode's FVideoBurst path, which carries
+        # the picture path's phase at fsc for whatever video chain was
+        # selected, so this constant no longer depends on the LPF, notch or
+        # de-emphasis strength.  Its value keeps the default chain's output
+        # where it was before the burst path gained those terms: on six NTSC
+        # captures (the testdata cuts and a Doobie Brothers LD-V4400
+        # capture) that change moved the written burst by 4.44-4.48 degrees,
+        # so the earlier 117.25 became 121.71.
+        fsc_phase_deg = self.rf.DecoderParams.get("fsc_phase_deg", 121.71)
         shift_samples = (fsc_phase_deg / 360) / self.rf.SysParams["fsc_mhz"] * self.rf.freq
         self.linelocs = np.array(self.linelocs4) - shift_samples

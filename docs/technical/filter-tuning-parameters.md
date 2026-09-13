@@ -14,7 +14,9 @@ For pictures like https://github.com/happycube/ld-decode/issues/206:
 
 - Try --lowband first.  This uses a set of filter settings which are better for older disks.
 
-- If that does not work, use --WibbleRemover to reduce color waviness caused by bad data above 4.2mhz.  This has side effects on later/sharper disks, so only use when necessary.
+- If that does not work, use -N (--NTSC_color_notch_filter) to reduce color waviness caused by bad data above 4.2mhz.  This has side effects on later/sharper disks, so only use when necessary.
+
+Each of these (--lowband, --video_lpf, --video_lpf_order, -N and --deemp_strength) changes the phase of the decoded video at the colour subcarrier.  The decoder's burst reference path follows the same change, so the field is still rotated to the standard burst phase and the CVBS output stays `STANDARD_STABLE_LOCKED`; a residual of more than a few degrees in the writer's "burst residual" line is a fault, not a consequence of the option.
 
 
 ### PAL

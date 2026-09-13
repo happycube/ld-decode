@@ -852,9 +852,10 @@ class RFDecode:
         # disc was pre-distorted against (PAL: IEC 60856 9.1.6, NTSC: IEC 60857
         # 9.1.7).  The Butterworth LPF alone undershoots the target across the
         # chroma band, smearing colour and contributing to differential phase.
-        # This is a pure all-pass, so |FVideo| is unchanged; only the output
-        # video path is equalised (the burst/pilot/sync reference paths are
-        # left as-is).
+        # This is a pure all-pass, so |FVideo| is unchanged.  The pilot and
+        # sync reference paths are left as-is; the NTSC burst path picks up
+        # the same phase terms below so that the burst it locates is the
+        # burst the picture carries.
         SF["FVideoGD"] = self.build_groupdelay_equalizer(SF["Fvideo_lpf"])
         SF["FVideo"] = SF["FVideo"] * SF["FVideoGD"]
 
@@ -872,6 +873,23 @@ class RFDecode:
 
         SF["Fburst"] = filtfft((Fburst, [1.0]), self.blocklen)
         SF["FVideoBurst"] = SF["Fvideo_lpf"] * SF["Fdeemp"] * SF["Fburst"] * SF["Fvideo_eq"]
+
+        if self.system == "NTSC":
+            # The NTSC field is rotated so that the burst found on this path
+            # lands at fsc_phase_deg (field.FieldNTSC.process), and the CVBS
+            # writer judges the picture's burst against a fixed lattice
+            # target.  That only holds if the two paths agree in phase at
+            # fsc, so the burst path carries every term of FVideo that has a
+            # phase: the group-delay equaliser, and the part of the
+            # de-emphasis exponent that departs from the unity it is built
+            # with.  Both are taken as unit magnitude so the burst amplitude
+            # this path reports is unchanged.  Without this, any video LPF
+            # change (--lowband, --video_lpf, -N) or --deemp_strength moved
+            # the picture's burst by a constant the writer never removed and
+            # stamped the file STANDARD_STABLE_UNLOCKED.
+            deemp_excess = SF["Fdeemp"] ** (DP["video_deemp_strength"] - 1.0)
+            deemp_phase = deemp_excess / np.abs(deemp_excess)
+            SF["FVideoBurst"] *= SF["FVideoGD"] * deemp_phase
 
         # Fold delay compensation into the frequency-domain filters so demodblock
         # doesn't need np.roll (which copies the entire array).  A circular shift
