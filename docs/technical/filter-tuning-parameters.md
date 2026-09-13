@@ -12,7 +12,7 @@ These ld-decode parameters can be useful for handling disks with bandwidth issue
 
 For pictures like https://github.com/happycube/ld-decode/issues/206:
 
-- Try --lowband first.  This uses a set of filter settings which are better for older disks.
+- Try --lowband first.  This uses a set of filter settings which are better for older disks: on NTSC the RF bandpass narrows to 3.4-12.5 MHz (from 3.7-13.8) and the video low-pass to 4.2 MHz (from 4.5).  The bandpass low edge is kept at 3.4 MHz rather than higher because raising it tilts chroma gain with luminance (differential gain) without reducing noise.
 
 - If that does not work, use -N (--NTSC_color_notch_filter) to reduce color waviness caused by bad data above 4.2mhz.  This has side effects on later/sharper disks, so only use when necessary.
 

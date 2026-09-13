@@ -232,7 +232,14 @@ FilterParams_NTSC = {
 
 # Settings for use with noisier disks
 FilterParams_NTSC_lowband = FilterParams_NTSC.copy()
-FilterParams_NTSC_lowband['video_bpf_low']  = 3800000
+# The bandpass low edge (2nd order) sits under the chroma lower sideband at
+# blanking level (8.1 - 3.58 = 4.5 MHz) but not at white (9.3 - 3.58 = 5.7 MHz),
+# so raising it tilts chroma gain with luminance.  On a Doobie Brothers
+# LD-V4400 capture the NTC-7 differential gain read 0.149 with this preset's
+# edge at 3.8 MHz and 0.121 at 3.4 MHz (0.113 -> 0.093 for the same move on
+# the default chain), with no change in the measured noise.  3.4 MHz still
+# clears the analogue audio carriers at 2.3 and 2.8 MHz.
+FilterParams_NTSC_lowband['video_bpf_low']  = 3400000
 FilterParams_NTSC_lowband['video_bpf_high'] = 12500000
 FilterParams_NTSC_lowband['video_lpf_freq'] = 4200000
 
