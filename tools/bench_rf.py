@@ -170,7 +170,7 @@ def bench_substeps(rf, signal, n_blocks):
     for _ in range(n_blocks):
         st = time.perf_counter()
         video_results = npfft.irfft(
-            demod_rfft * rf.Filters["FVideo_rfft_stack"], n=rf.blocklen, axis=1
+            demod_rfft * rf.Filters["FVideo_rfft"], n=rf.blocklen, axis=1
         )
         times.append(time.perf_counter() - st)
     steps["5_batch_irfft"] = np.array(times)
@@ -192,7 +192,9 @@ def bench_substeps(rf, signal, n_blocks):
     times = []
     for _ in range(n_blocks):
         st = time.perf_counter()
-        rfhpf = npfft.irfft(indata_rfft * rf.Filters["Frfhpf_half"], n=rf.blocklen)
+        rfhpf = npfft.irfft(
+            indata_rfft * rf.Filters["Frfhpf_rfft"], n=rf.blocklen
+        )
         times.append(time.perf_counter() - st)
     steps["6_rfhpf_irfft"] = np.array(times)
 
