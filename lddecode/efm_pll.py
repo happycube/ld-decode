@@ -1,12 +1,12 @@
 #!/usr/bin/python3
 #
-# efm.py - LDS sample to EFM data processing
+# efm_pll.py - LDS sample to EFM data processing
 # Copyright (C) 2019 Simon Inns
 # Copyright (C) 2019 Adam Sampson
 #
 # This file is part of ld-decode.
 #
-# efm.py is free software: you can redistribute it and/or
+# efm_pll.py is free software: you can redistribute it and/or
 # modify it under the terms of the GNU General Public License as
 # published by the Free Software Foundation, either version 3 of the
 # License, or (at your option) any later version.

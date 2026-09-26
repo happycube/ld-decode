@@ -178,6 +178,10 @@ def encode_cvbs_frame(frame, sample_encoding, has_nonstandard_values=False):
     return (frame_10.astype(np.int32) << 6).astype("<u2").tobytes(), n_clamped
 
 
+#: Optional per-run outputs written next to <basename>.cvbs.
+SIDECAR_SUFFIXES = (".dropouts.meta", ".efm", ".efm.meta", "_audio_0.wav")
+
+
 class CVBSWriter:
     """Assembles decoded fields into spec-compliant CVBS output.
 
@@ -280,6 +284,14 @@ class CVBSWriter:
         self.sample_encoding = sample_encoding
 
         self.f_video = open(fname_out + ".cvbs", "wb")
+
+        # The optional sidecars are only (re)created when this run has
+        # something to put in them, so clear any left by an earlier run to
+        # the same basename; otherwise they would sit beside the new .cvbs
+        # looking like part of it.  (.meta is always rewritten at close.)
+        for suffix in SIDECAR_SUFFIXES:
+            if os.path.exists(fname_out + suffix):
+                os.unlink(fname_out + suffix)
 
         self._pending_first = None   # (field, fi, pic_or_None, efm, audio)
         self._started = False

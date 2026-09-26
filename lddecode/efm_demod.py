@@ -56,18 +56,14 @@ is written from the published theory, not copied from museld's code.
 All classes are streaming: state is carried across ``process`` calls, so the
 output is independent of how the input is chunked.  ``process`` returns a
 view into an internal buffer that the next call overwrites (the same
-contract as ``EFM_PLL.process``).  Consumed by ``decoder.py`` when
-``--efm_demod timing`` is selected.
+contract as ``EFM_PLL.process``).  Consumed by ``decoder.py`` as the default
+EFM demodulator (``--efm_demod pll`` selects the previous ``EFM_PLL``).
 """
 
 import numba
 import numpy as np
 
-try:
-    from numba.experimental import jitclass
-except ImportError:
-    # Prior to numba 0.49
-    from numba import jitclass
+from numba.experimental import jitclass
 
 # IEC 60908 section 9: EFM channel bit rate, 4.3218 Mbit/s.  IEC 60857
 # section 10.1 adopts the same coding for LaserDisc digital sound.

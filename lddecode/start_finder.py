@@ -13,8 +13,8 @@ import sys
 import warnings
 from collections import namedtuple
 
-from lddecode.core import LDdecode
-from lddecode.utils import make_loader, parse_frequency
+from lddecode.decoder import LDdecode
+from lddecode.fileio import make_loader, parse_frequency
 
 RF_SAMPLE_RATE = 40000000
 DEFAULT_MAX_SEARCH_SECONDS = 300.0

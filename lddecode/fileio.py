@@ -1,11 +1,11 @@
 """File loaders, ffmpeg/ldf readers and output pipes.
 
-Split verbatim out of utils.py (see that module's compatibility shim).
+Originally split out of utils.py, which now only re-exports it.
 """
 
+import logging
 import subprocess
 import threading
-import traceback
 
 import numpy as np
 from numba import njit
@@ -581,7 +581,10 @@ class LoadLDF:
                         ring.write(data)
                         self._cv.notify_all()
         except Exception:
-            traceback.print_exc()
+            # Treated as end of input, as before, but logged so a decode
+            # that stops early on a corrupt frame says why.
+            logging.getLogger("lddecode").error(
+                "FLAC decode failed; treating as end of input", exc_info=True)
         finally:
             try:
                 container.close()

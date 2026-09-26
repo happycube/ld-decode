@@ -2,7 +2,7 @@
 
 These dicts are mutated in place at import time by the derivation code that
 follows each definition; that code is kept here so the tables are fully
-initialised on import.  Split verbatim out of core.py.
+initialised on import.  Originally split out of core.py.
 """
 
 import os
@@ -212,11 +212,13 @@ FilterParams_NTSC = {
     "video_bpf_low_order": 2,
     "video_bpf_high": 13800000,
     "video_bpf_high_order": 3,
-    # video_bpf_order is retained for the --lowband override.
+    # video_bpf_order is only read by a table without video_bpf_low_order
+    # (the single-bandpass fallback in rfdecode); every built-in table has
+    # the split orders above.
     "video_bpf_order": 4,
     # This can easily be pushed up to 4.5mhz or even a bit higher on most disks.
     # A sharp 4.8-5.0 is probably the maximum before the audio carriers bleed into 0IRE.
-    "video_lpf_freq": 4500000,  # in mhz
+    "video_lpf_freq": 4500000,  # in Hz
     "video_lpf_order": 6,  # butterworth filter order
     # MTF filter
     "MTF_basemult": 0.4,  # general ** level of the MTF filter for frame 0.
@@ -263,8 +265,9 @@ FilterParams_PAL = {
     "video_bpf_low_order": 2,
     "video_bpf_high": 14000000,
     "video_bpf_high_order": 3,
-    # video_bpf_order is retained for the shared bandpass path (NTSC) and the
-    # --lowband override below; the PAL split path uses the two orders above.
+    # video_bpf_order is only read by a table without video_bpf_low_order
+    # (the single-bandpass fallback in rfdecode); every built-in table has
+    # the split orders above.
     "video_bpf_order": 2,
     # Zero-phase RF BPF + MTF: skirt/pole phase asymmetry across the chroma
     # sidebands demodulates as differential phase (+8..15 deg per 100 IRE

@@ -26,7 +26,7 @@ The .lds format stores 4 consecutive 10-bit samples in 5 bytes:
 Unpacked samples are in the DdD 16-bit format: signed, centred on zero and
 left-shifted by 6, i.e. sample = (tenbit - 512) * 64.
 
-Note that lddecode.utils has its own numba-jitted unpacker (unpack_data_4_40)
+Note that lddecode.fileio has its own numba-jitted unpacker (unpack_data_4_40)
 used on the decoder's hot path; the two must agree on the format above.
 """
 

@@ -278,17 +278,17 @@ longer defers until sync acquisition and never forces a serial decode.
 Video signals are typically pre-emphasized during recording and must be de-emphasized during playback.
 
 #### `--deemp_low deemp_low`
-Deemphasis low frequency in nanoseconds.
+Deemphasis low frequency in MHz.
 - **Type:** Float
 - **Default:** System-dependent
-  - NTSC: 3.125MHz equivalent
-  - PAL: 2.5MHz equivalent
+  - NTSC: 3.125MHz
+  - PAL: 2.5MHz
 - **Range:** Any positive float
-- **Note:** Specifies the time constant for low-frequency deemphasis
+- **Note:** Specifies the frequency for low-frequency deemphasis
 
 **Example:**
 ```bash
-ld-decode --deemp_low 320 input.ldf output
+ld-decode --deemp_low 3.125 input.ldf output
 ```
 
 #### `--deemp_high deemp_high`

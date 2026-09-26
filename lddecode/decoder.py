@@ -1,13 +1,19 @@
-"""The LDdecode top-level decoder / orchestrator.
+"""
+decoder - LDdecode, the top-level LaserDisc RF decode orchestrator
 
-Split verbatim out of core.py.
+SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-FileCopyrightText: 2026 ld-decode contributors
+
+Reads RF from a loader, demodulates it (RFDecode), assembles fields
+(Field/FieldNTSC/FieldPAL), runs AGC, MTF and VBI decoding, and writes the
+.cvbs/.tbc, audio, EFM and metadata outputs.  Used by main (ld-decode),
+cut (ld-cut) and start_finder.
 """
 
 import os
 import sqlite3
 import sys
 import time
-import traceback
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from textwrap import dedent
@@ -26,18 +32,23 @@ from .parallel import OrderedOutputLane
 from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import detect_levels
-from .dsp import FieldInfo, concatenate_blocks, nb_abs, nb_median, roundfloat
+from .dsp import FieldInfo, concatenate_blocks, nb_abs, roundfloat
 
 
-# 2T reference layouts: (bar, baseline, pulse) windows in us and the VITS
-# lines to search.  PAL: CCIR ITS (line 19, both parities).  NTSC: NTC-7
-# composite (line 20, first fields; the second-field combination signal at
-# the same line has no full bar and is rejected by the validity checks).
+#: Seconds to let the RF TBC (.tbc.ldf) encoder drain after its stdin is
+#: closed before it is killed.  FLAC-in-ogg finishes in well under a second;
+#: this only guards against a wedged ffmpeg holding up exit.
+RFTBC_ENCODER_EXIT_TIMEOUT_S = 30
+
 #: Largest ripple, as a fraction of the line's own white bar, that the ITS
 #: bar and baseline windows may show and still be taken for an insertion
 #: test signal.  Also the isolation limit for the 2T pulse's own tails.
 ITS_FLATNESS_FRACTION = 0.15
 
+# 2T reference layouts: (bar, baseline, pulse) windows in us and the VITS
+# lines to search.  PAL: CCIR ITS (line 19, both parities).  NTSC: NTC-7
+# composite (line 20, first fields; the second-field combination signal at
+# the same line has no full bar and is rejected by the validity checks).
 _VITS_2T_LAYOUT = {
     "PAL": ((13.0, 19.0), (22.2, 24.4), (24.4, 26.4), (19, 18, 20)),
     "NTSC": ((18.0, 28.0), (31.0, 33.0), (33.0, 35.0), (20, 19)),
@@ -451,6 +462,7 @@ class LDdecode:
         self.ac3_processed_samples = 0
         self.ffmpeg_rftbc, self.outfile_rftbc = None, None
         self.do_rftbc = False
+        self.dbconn = None
 
         self.output_cvbs = extra_options.get("output_cvbs", False)
         self.cvbs_writer = None
@@ -902,7 +914,8 @@ class LDdecode:
             reader._close()
 
     def close(self):
-        """ deletes all open files, so it's possible to pickle an LDDecode object """
+        """Flush and close every output (files, encoders, the .tbc.db) and
+        stop the worker pools and the input reader."""
         try:
             self._finish_output()
         finally:
@@ -955,18 +968,12 @@ class LDdecode:
             try:
                 self.cvbs_writer.close()
             except Exception:
-                pass
+                # Keep shutting down, but a failed WAV header / .meta /
+                # sidecar write must not pass silently.
+                logs.logger.error("Failed to finalise CVBS output", exc_info=True)
             self.cvbs_writer = None
 
-        if self.ffmpeg_rftbc is not None:
-            try:
-                self.ffmpeg_rftbc.kill()
-            except Exception:
-                pass
-
-        # use setattr to force file closure by unlinking the objects
-        for outfiles in [
-            "infile",
+        for name in [
             "outfile_video",
             "outfile_audio",
             "outfile_efm",
@@ -974,13 +981,35 @@ class LDdecode:
             "outfile_rftbc",
             "outfile_ac3sym",
         ]:
-            setattr(self, outfiles, None)
+            fh = getattr(self, name, None)
+            setattr(self, name, None)
+            if fh is not None:
+                try:
+                    fh.close()
+                except Exception:
+                    logs.logger.error("Failed to close %s", name, exc_info=True)
+
+        # outfile_rftbc (closed above) is the encoder's stdin; let it flush
+        # its final frames rather than killing it mid-stream, which would
+        # truncate the .tbc.ldf.
+        if self.ffmpeg_rftbc is not None:
+            try:
+                self.ffmpeg_rftbc.wait(timeout=RFTBC_ENCODER_EXIT_TIMEOUT_S)
+            except Exception:
+                logs.logger.error("RF TBC encoder did not exit; killing it")
+                self.ffmpeg_rftbc.kill()
+            self.ffmpeg_rftbc = None
 
         self._close_reader()
 
+        infile = getattr(self, "infile", None)
+        self.infile = None
+        if infile is not None and infile is not sys.stdin:
+            infile.close()
+
         # Refresh capture-level metadata with the final calibration values
         # (AGC may have adjusted levels after the first field) and commit.
-        if hasattr(self, 'dbconn') and self.dbconn is not None:
+        if self.dbconn is not None:
             try:
                 # Final durable flush: close any open transaction, then
                 # raise durability to FULL so build_sqlite_metadata's commit
@@ -991,7 +1020,10 @@ class LDdecode:
                 self.dbconn.execute("PRAGMA synchronous=FULL")
                 self.build_sqlite_metadata()
             except Exception:
-                pass
+                logs.logger.error("Failed to finalise .tbc.db metadata", exc_info=True)
+            finally:
+                self.dbconn.close()
+                self.dbconn = None
 
         if self.use_profiler:
             self.lpf.print_stats()
@@ -1241,7 +1273,7 @@ class LDdecode:
     DG_KEEP = 24
     DG_MAX_AGE_FIELDS = 240
     #: Samples before an adoption: 3 for the first (so a short decode is
-    #: still corrected), the full pool after.
+    #: still corrected), DG_MIN_SAMPLES after.
     DG_MIN_SAMPLES = 6
     #: Dead-band, in gain-per-IRE units.  0.0004/IRE is ~4% of chroma
     #: gain across the full luma range - about the pooled measurement's
@@ -2233,13 +2265,14 @@ class LDdecode:
 
     def _process_efm(self, efm):
         """Run one field's EFM slice through the selected demodulator
-        (EFM_PLL, or EFMTimingDemod with --efm_demod timing) and write it out.
+        (EFMTimingDemod by default, EFM_PLL with --efm_demod pll) and write
+        it out.
 
         The demodulator is stateful over the concatenated stream, so this must be
         fed strictly in field write order - it is the one per-field
-        computation that can never fan out, which is why it sits behind a
-        single ordered entry point (a candidate for its own lane once
-        fields decode in parallel)."""
+        computation that can never fan out, which is why it runs on the
+        ordered output lane (via _write_field) when fields decode in
+        parallel."""
         if self.outfile_pre_efm is not None:
             self.outfile_pre_efm.write(efm.tobytes())
 
@@ -2723,15 +2756,12 @@ class LDdecode:
             precomputed if precomputed is not None else self.detectLevels(f)
         )
 
-        actualwhiteIRE = f.rf.hztoire(ire100_hz)
-
         sync_ire_diff = nb_abs(self.rf.hztoire(sync_hz) - self.rf.DecoderParams["vsync_ire"])
-        whitediff = nb_abs(self.rf.hztoire(ire100_hz) - actualwhiteIRE)
         ire0_diff = nb_abs(self.rf.hztoire(ire0_hz))
 
         acceptable_diff = 2 if self.fields_written else 0.5
 
-        if max((whitediff, ire0_diff, sync_ire_diff)) > acceptable_diff:
+        if max((ire0_diff, sync_ire_diff)) > acceptable_diff:
             hz_ire = (ire100_hz - ire0_hz) / 100
             vsync_ire = (sync_hz - ire0_hz) / hz_ire
 
@@ -3589,9 +3619,12 @@ class LDdecode:
     def print_stats(self):
         if self.fields_written:
             timeused = time.time() - self.start_time
-            timeused2 = time.time() - self.second_decode
+            # second_decode is unset if the decode stopped during the first
+            # readfield() (Ctrl-C, say); fall back to the whole run.
+            post_setup_start = self.second_decode or self.start_time
+            timeused2 = time.time() - post_setup_start
             frames = self.fields_written // 2
-            fps = frames / timeused2
+            fps = frames / timeused2 if timeused2 > 0 else 0.0
 
             logs.logger.info(
                 f"Took {timeused:.2f} seconds to decode {frames} frames ({fps:.2f} FPS post-setup)"
@@ -3823,8 +3856,8 @@ class LDdecode:
 
                     self.logger.status(outstr)
                 except Exception:
-                    logs.logger.warning("file frame %d : VBI decoding error", rawloc)
-                    traceback.print_exc()
+                    logs.logger.warning(
+                        "file frame %d : VBI decoding error", rawloc, exc_info=True)
 
         return fi, False
 

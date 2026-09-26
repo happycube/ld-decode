@@ -81,3 +81,26 @@ def test_submit_after_close_is_refused():
     lane.close()
     with pytest.raises(RuntimeError):
         lane.submit(print)
+
+
+def test_work_submitted_after_a_surfaced_failure_is_still_dropped():
+    lane = OrderedOutputLane(depth=4)
+    ran = []
+
+    def boom():
+        raise IOError("disk full")
+
+    lane.submit(boom)
+    for _ in range(500):
+        if lane.failed:
+            break
+        threading.Event().wait(0.01)
+    with pytest.raises(IOError):
+        lane.submit(ran.append, "never")
+
+    # The failure has been surfaced once; the lane stays failed and runs
+    # nothing more, and close() does not raise it a second time.
+    assert lane.failed
+    lane.submit(ran.append, "after")
+    lane.close()
+    assert ran == []

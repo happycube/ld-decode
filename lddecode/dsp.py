@@ -1,6 +1,6 @@
 """Digital signal-processing primitives and small numeric helpers.
 
-Split verbatim out of utils.py (see that module's compatibility shim).
+Originally split out of utils.py, which now only re-exports it.
 """
 
 import math

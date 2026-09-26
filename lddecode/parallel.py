@@ -316,8 +316,6 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
     import os
     import sys
 
-    import numpy as np
-
     from .field import (FieldNTSC, FieldPAL, apply_chroma_dg_correction_output,
                         chroma_dg_output_key)
     from .metrics import computeMetrics, detect_levels
@@ -639,6 +637,9 @@ class FieldJobEngine:
         self._veq = None
         self._chroma_dg = None
         self._rebase_seq = 0
+        # Set (under _cond) if the dispatcher thread dies; next_result()
+        # re-raises it instead of waiting for a job that will never come.
+        self._dispatch_error = None
 
         self._thread = threading.Thread(
             target=self._dispatch_loop, daemon=True, name="fieldjobs"
@@ -751,6 +752,9 @@ class FieldJobEngine:
                 fut = self._futures.pop(seq, None)
                 if fut is not None:
                     break
+                if self._dispatch_error is not None:
+                    raise RuntimeError(
+                        "field job dispatcher failed") from self._dispatch_error
                 self._cond.wait()
 
         res = fut.result()
@@ -791,6 +795,14 @@ class FieldJobEngine:
         return int(np.round(self._lfw[0] + gap))
 
     def _dispatch_loop(self):
+        try:
+            self._dispatch_jobs()
+        except BaseException as exc:  # surfaced by next_result()
+            with self._cond:
+                self._dispatch_error = exc
+                self._cond.notify_all()
+
+    def _dispatch_jobs(self):
         while True:
             with self._cond:
                 while not self._stopped and (
@@ -840,10 +852,15 @@ class FieldJobEngine:
                 # The key pins consecutive pairs to one worker so the
                 # blocks their windows share are demodulated once (see
                 # AffinityPool and WorkerBlockLRU).
-                fut = self.executor.submit(
-                    _decode_field_worker, seq, start, raw, span_begin, mtf,
-                    imtf, veq, fn, chroma_dg, slots, key=seq
-                )
+                try:
+                    fut = self.executor.submit(
+                        _decode_field_worker, seq, start, raw, span_begin, mtf,
+                        imtf, veq, fn, chroma_dg, slots, key=seq
+                    )
+                except BaseException:
+                    if slots:
+                        self.filter_slots.release(slots)
+                    raise
                 self._futures[seq] = fut
                 self._next_dispatch = seq + 1
                 self._cur_start = start + self._parity_len[parity]
@@ -1261,7 +1278,8 @@ class OrderedOutputLane:
         import queue
 
         self._queue = queue.Queue(maxsize=depth)
-        self._error = None
+        self._error = None  # the failure, until it has been re-raised
+        self._failed = False  # stays set: nothing runs after a failure
         self._closed = False
         self._thread = threading.Thread(
             target=self._run, name=name, daemon=True)
@@ -1279,13 +1297,14 @@ class OrderedOutputLane:
             item = self._queue.get()
             if item is None:
                 break
-            if self._error is not None:
+            if self._failed:
                 continue  # drop what was queued behind the failure
             fn, args = item
             try:
                 fn(*args)
             except BaseException as exc:  # surfaced on the submitting thread
                 self._error = exc
+                self._failed = True
 
     def _raise_error(self):
         if self._error is not None:
@@ -1294,7 +1313,7 @@ class OrderedOutputLane:
 
     @property
     def failed(self):
-        return self._error is not None
+        return self._failed
 
     def close(self):
         """Finish the queued work and stop the thread; re-raises a

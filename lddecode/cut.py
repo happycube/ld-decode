@@ -8,10 +8,10 @@ import argparse
 
 import numpy as np
 
-from lddecode.core import *
+from lddecode.decoder import LDdecode
+from lddecode.fileio import ffmpeg_pipe, ldf_pipe, make_loader
 from lddecode.lds import LdsWriter
-from lddecode.utils import *
-from lddecode.utils_logging import *
+from lddecode.utils_logging import init_logging
 
 
 def build_parser():
@@ -88,7 +88,7 @@ def build_parser():
 
 
 def resolve_output(outname):
-    """Destination name and writer choice for an -o/outfile value.
+    """Destination name and writer choice for the outfile argument.
 
     "-" means stdout, and the writer is picked from the last three
     characters of the name: .lds packs in-process, .ldf pipes through
@@ -124,13 +124,13 @@ def main(args=None):
     outname, makelds, makeldf = resolve_output(args.outfile)
 
     if args.pal and args.ntsc:
-        print("ERROR: Can only be PAL or NTSC")
+        print("ERROR: Can only be PAL or NTSC", file=sys.stderr)
         sys.exit(1)
 
     try:
         loader = make_loader(filename, None)
     except ValueError as e:
-        print(e)
+        print(e, file=sys.stderr)
         sys.exit(1)
 
     system = "PAL" if args.pal else "NTSC"
@@ -147,7 +147,7 @@ def main(args=None):
     if args.seek != -1:
         startloc = ldd.seek(args.seek if args.start == 0 else args.start, args.seek)
         if startloc is None:
-            print("ERROR: Seeking failed")
+            print("ERROR: Seeking failed", file=sys.stderr)
             sys.exit(1)
         elif startloc > 1:
             startloc -= 1
@@ -157,7 +157,7 @@ def main(args=None):
     if args.end != -1:
         endloc = ldd.seek(startloc, args.end)
         if endloc is None:
-            print("ERROR: Seeking failed")
+            print("ERROR: Seeking failed", file=sys.stderr)
             sys.exit(1)
     elif args.length != -1:
         endloc = startloc + (args.length * 2) + 2
@@ -171,6 +171,7 @@ def main(args=None):
     ldd.roughseek(endloc)
     endidx = int(ldd.fdoffset)
 
+    process = None
     if args.ffmpeg_options is not None:
         process, fd = ffmpeg_pipe(outname, args.ffmpeg_options)
     elif makelds:
@@ -182,23 +183,22 @@ def main(args=None):
     else:
         fd = open(outname, "wb")
 
-    for i in range(startidx, endidx + 16384, 16384):
-        l = endidx - i
+    try:
+        for i in range(startidx, endidx, 16384):
+            l = min(endidx - i, 16384)
 
-        if l > 16384:
-            l = 16384
-        else:
-            break
-
-        data = ldd.freader(ldd.infile, i, l)
-        if data is not None and len(data) == l:
-            dataout = np.array(data, dtype=np.int16)
-            fd.write(dataout)
-        else:
-            break
-
-    fd.close()
-
+            data = ldd.freader(ldd.infile, i, l)
+            if data is not None and len(data) == l:
+                dataout = np.array(data, dtype=np.int16)
+                fd.write(dataout)
+            else:
+                break
+    finally:
+        fd.close()
+        # Let the encoder flush its last frames before ld-cut exits, so a
+        # following command never reads a truncated file.
+        if process is not None:
+            process.wait()
 
 if __name__ == "__main__":
     main(sys.argv[1:])

@@ -1,6 +1,6 @@
 """Sync-pulse, dropout and burst detection helpers.
 
-Split verbatim out of utils.py (see that module's compatibility shim).
+Originally split out of utils.py, which now only re-exports it.
 """
 
 from collections import namedtuple

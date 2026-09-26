@@ -337,7 +337,7 @@ def build_parser():
         metavar="deemp_low",
         type=float,
         default=0,
-        help="Deemphasis low frequency in nsecs (defaults:  NTSC 3.125mhz, PAL 2.5mhz)",
+        help="Deemphasis low frequency in mhz (defaults:  NTSC 3.125mhz, PAL 2.5mhz)",
     )
     parser.add_argument(
         "--deemp_high",
@@ -393,7 +393,7 @@ def build_parser():
         metavar="AFREQ",
         type=int,
         default=44100,
-        help="RF sampling frequency in source file (default is 44100hz)",
+        help="Analog audio output sample rate in hz (default is 44100hz)",
     )
 
     parser.add_argument(
@@ -412,7 +412,7 @@ def build_parser():
         metavar="FREQ",
         type=parse_frequency,
         default=None,
-        help="Video BPF high end frequency",
+        help="Video BPF low end frequency",
     )
     parser.add_argument(
         "--video_bpf_high",
@@ -608,14 +608,14 @@ def physical_cpu_count(sysfs="/sys/devices/system/cpu"):
     logical = os.cpu_count() or 4
     try:
         import glob
-        lists = [
-            open(path).read()
-            for path in glob.glob(
+        lists = []
+        for path in glob.glob(
                 os.path.join(sysfs, "cpu[0-9]*", "topology",
-                             "thread_siblings_list"))
-        ]
+                             "thread_siblings_list")):
+            with open(path) as fh:
+                lists.append(fh.read())
         cores = count_cores(lists)
-    except OSError:
+    except (OSError, ValueError):
         return logical
     return cores if 0 < cores <= logical else logical
 
@@ -653,12 +653,10 @@ def main(args=None):
             print(f"Output: {args.write_test_ldf}", file=sys.stderr)
             sys.exit(1)
 
-    audio_pipe = None
-
     try:
         loader = make_loader(filename, args.inputfreq)
     except ValueError as e:
-        print(e)
+        print(e, file=sys.stderr)
         sys.exit(1)
 
     # Wrap the LDdecode creation so that the signal handler is not taken by sub-threads,
@@ -686,9 +684,8 @@ def main(args=None):
 
     signal.signal(signal.SIGINT, original_sigint_handler)
 
-    # Store the starting sample position for --write-input-ldf
+    # Store the starting sample position for --write-test-ldf
     start_sample_position = None
-    end_sample_position = None
 
     if args.start_fileloc != -1:
         ldd.roughseek(args.start_fileloc, False)
@@ -716,13 +713,11 @@ def main(args=None):
 
     def cleanup():
         ldd.close()
-        if audio_pipe is not None:
-            audio_pipe.close()
 
     while not done and ldd.fields_written < (req_frames * 2):
         try:
             f = ldd.readfield()
-        except KeyboardInterrupt as kbd:
+        except KeyboardInterrupt:
             print("\nTerminated, exiting", file=sys.stderr)
             # cleanup() -> ldd.close() finalizes and flushes the .tbc.db;
             # confirm the interrupted decode's metadata was saved.
@@ -750,9 +745,9 @@ def main(args=None):
             done = True
 
     if ldd.fields_written:
-        print(f"\nCompleted, exiting.", file=sys.stderr)
+        print("\nCompleted, exiting.", file=sys.stderr)
     else:
-        print(f"\nCompleted without handling any frames.", file=sys.stderr)
+        print("\nCompleted without handling any frames.", file=sys.stderr)
 
     # Write the input .ldf file if requested
     if args.write_test_ldf is not None and start_sample_position is not None:
@@ -798,6 +793,11 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
     # Use compression level 6 (balanced between size and speed)
     process, fd = ldf_pipe(output_filename, compression_level=6)
     
+
+    # The raw loaders seek and read a file object (and LoadFFmpeg hands it to
+    # ffmpeg as stdin), so give them one rather than the filename.
+    infile = open(input_filename, "rb")
+
     try:
         # Write samples in chunks to avoid memory issues
         chunk_size = 16384
@@ -808,7 +808,7 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
             read_len = min(chunk_size, remaining)
             
             # Read the data from the input file using the independent loader
-            data = input_loader(input_filename, i, read_len)
+            data = input_loader(infile, i, read_len)
             if data is not None and len(data) == read_len:
                 dataout = np.array(data, dtype=np.int16)
                 fd.write(dataout)
@@ -820,6 +820,7 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
         print(f"  Samples written: {samples_written}", file=sys.stderr)
         
     finally:
+        infile.close()
         fd.close()
         # Wait for ffmpeg to finish encoding
         process.wait()

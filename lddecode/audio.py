@@ -1,6 +1,6 @@
 """Audio downscaling to 16-bit / 44.1 kHz output.
 
-Split verbatim out of core.py.
+Originally split out of core.py.
 """
 
 import numpy as np

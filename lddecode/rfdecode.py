@@ -1,6 +1,12 @@
-"""RF demodulation front-end (the RFDecode class).
+"""
+rfdecode - RF demodulation front-end for LaserDisc captures (RFDecode)
 
-Split verbatim out of core.py.
+SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-FileCopyrightText: 2026 ld-decode contributors
+
+Builds the RF, video, audio and EFM filter sets for a system and
+demodulates blocks of raw RF into video, analogue audio and EFM signals.
+Used by decoder.LDdecode, field.Field and the parallel field workers.
 """
 
 import copy
@@ -169,7 +175,7 @@ class RFDecode:
 
         inputfreq            -- frequency of raw RF data (in Msps)
                                 WARNING: only tested at 40Msps w/other frequencies
-                                scaled to 40 in utils.py.
+                                resampled to 40 by the loader (fileio.py).
         system               -- Which system is in use (PAL or NTSC)
         blocklen             -- Block length for FFT processing
         decode_digital_audio -- Whether to apply EFM filtering
@@ -822,9 +828,9 @@ class RFDecode:
         self._veq_2t_gain_cache = {}
 
         # Zero-phase magnitude EQ from (freq_hz, dB) anchor points.  Real
-        # valued, so it cannot move phase; applied to both the output and
-        # burst reference paths so burst-based auto-calibration measures the
-        # corrected signal.
+        # valued, so it cannot move phase.  Currently applied only on the
+        # burst reference path (FVideoBurst); the picture-path multiply
+        # below is disabled.
         SF["Fvideo_eq"] = self.build_video_eq(DP.get("video_eq"))
         # Dynamic per-disc EQ measured from VITS multiburst lines by the
         # decoder's servo (decoder._veq_estimate).  Zero-phase, pinned to
@@ -1860,7 +1866,7 @@ class RFDecode:
         elif data is not None:
             indata_fft = npfft.rfft(data[: self.blocklen])
         else:
-            raise Exception("demodblock_sync called without raw or FFT data")
+            raise ValueError("demodblock_sync called without raw or FFT data")
 
         indata_fft = self.apply_v4300d(indata_fft)
 
@@ -1922,7 +1928,7 @@ class RFDecode:
             # exact and moves half the bytes of a full complex transform.
             indata_fft = npfft.rfft(data[: self.blocklen])
         else:
-            raise Exception("demodblock called without raw or FFT data")
+            raise ValueError("demodblock called without raw or FFT data")
 
         if self.rf_echo_cancel:
             # Opt-in, and the last consumer that wants the whole spectrum: the
@@ -2275,7 +2281,6 @@ class RFDecode:
         fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level, raw_mtf=True)
 
         vdemod = fakedecode["video"]["demod"]
-        vdemod_raw = fakedecode["video"]["demod_raw"]
         vsync_cross_hz = rf.iretohz(rf.DecoderParams["vsync_ire"] / 2)
 
         # XXX: sync detector does NOT reflect actual sync detection, just regular filtering @ sync
@@ -2304,15 +2309,5 @@ class RFDecode:
         rot_base = np.median(vdemod[5900:5990])
         rot_dev = np.abs(vdemod[6000:6512] - rot_base)
         rf.delays["video_rot"] = int(np.argmax(rot_dev > 0.2 * rot_dev.max()))
-
-        rf.limits = {}
-        rf.limits["sync"] = (
-            np.min(vdemod_raw[1400:2800]),
-            np.max(vdemod_raw[1400:2800]),
-        )
-        rf.limits["viewable"] = (
-            np.min(vdemod_raw[2900:6000]),
-            np.max(vdemod_raw[2900:6000]),
-        )
 
         return fakedecode, fakeoutput_emp

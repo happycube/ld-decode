@@ -21,8 +21,8 @@ from pathlib import Path
 try:
     import av
 except ImportError:
-    print("Error: PyAV library not found. Install with: pip install av", file=sys.stderr)
-    sys.exit(1)
+    # Reported by main(); a library import must not exit the interpreter.
+    av = None
 
 
 
@@ -224,6 +224,10 @@ def main(args=None):
         from lddecode import __version__
         print(__version__)
         sys.exit(0)
+
+    if av is None:
+        print("Error: PyAV library not found. Install with: pip install av", file=sys.stderr)
+        return 1
     
     parser = argparse.ArgumentParser(
         description='ld-ldf-reader-py - LDF reader tool for ld-decode (Python implementation)\n\n'
@@ -254,7 +258,7 @@ def main(args=None):
         help='Input LDF file'
     )
     
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     
     # Validate start offset
     if args.start_offset < 0:

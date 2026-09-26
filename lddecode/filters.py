@@ -1,13 +1,11 @@
 """Filter and FFT design / application helpers.
 
-Split verbatim out of utils.py (see that module's compatibility shim).
+Originally split out of utils.py, which now only re-exports it.
 """
 
 import math
-import sys
 from math import tau
 
-import numba
 import numpy as np
 import scipy.signal as sps
 from numba import njit
@@ -92,9 +90,7 @@ def calczc_do(data, _start_offset, target, edge=0, count=16):
     if b - a != 0:
         y = -a / (-a + b)
     else:
-        print(
-            "RuntimeWarning: Div by zero prevented at lddecode/utils.calczc_do()", a, b
-        )
+        # Flat across the crossing: take the earlier sample.
         y = 0
 
     return x - 1 + y
@@ -147,11 +143,6 @@ def build_hilbert(fft_size):
     output[1 : fft_size // 2] = 2
 
     return output
-
-
-if not numba.version_info.major and numba.version_info.minor < 59:
-    print("DEPRECATION WARNING: Please upgrade numba to 0.59 or later.", file=sys.stderr)
-    print("(follow instructions on the ld-decode wiki to set up a virtualenv)", file=sys.stderr)
 
 
 @njit(cache=True, nogil=True)

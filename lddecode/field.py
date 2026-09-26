@@ -1,6 +1,13 @@
-"""The Field class hierarchy (Field, FieldPAL, FieldNTSC).
+"""
+field - LaserDisc field assembly (Field, FieldPAL, FieldNTSC)
 
-Split verbatim out of core.py.
+SPDX-License-Identifier: GPL-3.0-or-later
+SPDX-FileCopyrightText: 2026 ld-decode contributors
+
+Locates sync pulses and line positions in a demodulated field, refines
+them against burst/pilot, detects dropouts and resamples the field to
+output lines.  Constructed and driven by decoder.LDdecode and the parallel
+field workers.
 """
 
 import copy
@@ -25,10 +32,8 @@ from .dsp import (
     n_orgt,
     n_ornotrange_scalar,
     nb_absmax,
-    nb_max,
     nb_mean,
     nb_median,
-    nb_min,
     nb_round,
     nb_std,
     phase_distance,
@@ -632,7 +637,8 @@ class Field:
         if len(hlens) > 0:
             LT["hsync_median"] = np.median(hlens)
         else:
-            LT["hsync_median"] = self.rf.SysParams["hsyncPulseUS"]
+            # Nominal width, in samples like every other entry in LT.
+            LT["hsync_median"] = hsync_typical
 
         hsync_min = LT["hsync_median"] + self.usectoinpx(-0.5)
         hsync_max = LT["hsync_median"] + self.usectoinpx(0.5)
@@ -1134,9 +1140,6 @@ class Field:
             # sync level is close enough to use
             return pulses
 
-        if not vsync_locs:
-            return None
-
         # Now compute black level and try again
 
         # take the eq pulses before and after vsync
@@ -1160,6 +1163,15 @@ class Field:
                         ]
                     )
                 )
+
+        if not black_means:
+            # No usable equalising pulses to measure black from.  Report no
+            # pulses, so the caller skips ahead: this is what the NaN
+            # threshold a median of nothing used to produce did implicitly,
+            # and on undecodable input (noise, non-LaserDisc video) it is
+            # far cheaper than trying every field with the unreliable
+            # first-pass pulses.
+            return []
 
         blacklevel = np.median(black_means)
 
@@ -1232,7 +1244,9 @@ class Field:
         )
 
         if status == 1:
-            return None, None, line0loc + (self.inlinelen * self.outlinecount - 7)
+            # Skip ahead to 7 lines before the nominal end of the field, as
+            # the success path below does with linelocs_filled.
+            return None, None, line0loc + (self.inlinelen * (self.outlinecount - 7))
 
         rv_ll = [linelocs_filled[l] for l in range(0, proclines)]
 
@@ -1542,7 +1556,7 @@ class Field:
     @profile
     def rf_tbc(self, linelocs=None):
         """ This outputs a TBC'd version of the input RF data, mostly intended
-            to assist in audio processing.  Outputs a uint16 array.
+            to assist in audio processing.  Outputs an int16 array.
         """
 
         # Convert raw RF to floating point to help the scaler
@@ -1655,10 +1669,13 @@ class Field:
         iserr_rf1 = (f.data["rfhpf"] < (-rfstd * 3)) | (
             f.data["rfhpf"] > (rfstd * 3)
         )  # | (f.rawdata <= -32000)
-        iserr_rf = np.full_like(iserr_rf1, False)
-        iserr_rf[self.rf.delays["video_rot"] :] = iserr_rf1[
-            : -self.rf.delays["video_rot"]
-        ]
+        rot_delay = self.rf.delays["video_rot"]
+        if rot_delay:
+            iserr_rf = np.full_like(iserr_rf1, False)
+            iserr_rf[rot_delay:] = iserr_rf1[:-rot_delay]
+        else:
+            # [:-0] is empty; a zero delay needs no shift.
+            iserr_rf = iserr_rf1.copy()
 
         # Demod threshold flags are tracked separately from the RF flags so
         # that the sync-area unflagging below (which only knows the relaxed
@@ -1870,7 +1887,7 @@ class Field:
         # The first pass computes phase_offset, the second uses it to determine
         # the colo(u)r burst phase of the line.
         for passcount in range(2):
-            # this subroutine is in utils.py, broken out so it can be JIT'd
+            # this subroutine is in pulses.py, broken out so it can be JIT'd
             zc_count, phase_adjust, rising_count = clb_findbursts(
                 isrising, zcs, burstarea, 0, len(burstarea) - 1,
                 threshold, bstart, s_rem, zcburstdiv, phase_adjust
@@ -2159,8 +2176,14 @@ class FieldNTSC(Field):
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
         field14 = rising_sum > (len(adjs.keys()) // 4)
 
-        # store the full phase adjustment value here so things line up next time
-        self.phase_adjust_median = np.median([adjs[a] for a in adjs]) * 2
+        # store the full phase adjustment value here so things line up next
+        # time.  With no usable burst this field keeps its seed rather than
+        # storing NaN, which the next field's anchor would inherit and never
+        # recover from.
+        if adjs:
+            self.phase_adjust_median = np.median(list(adjs.values())) * 2
+        else:
+            self.phase_adjust_median = prev_phaseadjust
 
         return field14, adjs
 
@@ -2184,13 +2207,9 @@ class FieldNTSC(Field):
             if not (np.isnan(linelocs_adj[line]) or self.linebad[line]):
                 lfreq = self.get_linefreq(line, linelocs)
 
-                try:
+                # Line 0 is not marked bad above, so it may have no burst.
+                if line in adjs_new:
                     adjs[line] = adjs_new[line] * lfreq * (1 / self.rf.SysParams["fsc_mhz"])
-                except Exception:
-                    # Not sure if this is an error or just control flow.
-
-                    # traceback.print_exc()
-                    pass
 
         if len(adjs.keys()):
             adjs_median = np.median([adjs[a] for a in adjs])
