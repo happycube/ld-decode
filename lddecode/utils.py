@@ -125,19 +125,19 @@ sinc_phase_count = 2**16
 
 
 @njit(nogil=True, cache=True, fastmath=True)
-def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineoffset, outwidth, wow_level_adjust_smoothing = 0, level_adjust_threshold = 15):
+def scale_field_prepare(
+    wowfactors, outwidth, wow_level_adjust_smoothing=0, level_adjust_threshold=15
+):
+    """Prepare level adjustments for reuse with unchanged wow factors and settings."""
     # average out any unusual spikes in wow that happen on a per line basis
     # this indicates an hsync tbc error vs. being normal wow from playback speed variations
     # in this case for level adjusting we just want to fallback to the average wow to avoid a bright or dark line
     median = np.median(wowfactors)
-    mad = np.median(np.abs(wowfactors - median)) # median absolute deviation
+    abs_deviation = np.abs(wowfactors - median)
+    mad = np.median(abs_deviation)
     threshold = level_adjust_threshold * mad if mad > 0 else 0.001  # fallback for no variance
 
-    level_adjusts = np.where(
-        np.abs(wowfactors - median) > threshold,
-        median,
-        wowfactors
-    )
+    level_adjusts = np.where(abs_deviation > threshold, median, wowfactors)
 
     if wow_level_adjust_smoothing > 0:
         # removes oscillating brightness variations for video with lots of noise around the hsync pulses, i.e. noisy line locations result in noisy wow calculations
@@ -146,8 +146,22 @@ def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineo
         one_minus_alpha = 1 - alpha
 
         for i in range(1, len(level_adjusts)):
-            level_adjusts[i] = alpha * level_adjusts[i] + one_minus_alpha * level_adjusts[i-1]
+            level_adjusts[i] = alpha * level_adjusts[i] + one_minus_alpha * level_adjusts[i - 1]
 
+    return level_adjusts
+
+
+@njit(nogil=True, cache=True, fastmath=True)
+def scale_field_apply(
+    buf,
+    dsout,
+    interpolated_pixel_locs,
+    level_adjusts,
+    sinc_lut,
+    lineoffset,
+    outwidth,
+):
+    """Resample into dsout using prepared coordinates and level adjustments."""
     half_taps_m1 = (sinc_tap_count // 2) - 1
 
     dsout_start = outwidth * (lineoffset + 1)
@@ -178,6 +192,36 @@ def scale_field(buf, dsout, interpolated_pixel_locs, wowfactors, sinc_lut, lineo
             result += buf[start + t] * w[t]
 
         dsout[i - dsout_start] = level_adjust * result
+
+
+@njit(nogil=True, cache=True, fastmath=True)
+def scale_field(
+    buf,
+    dsout,
+    interpolated_pixel_locs,
+    wowfactors,
+    sinc_lut,
+    lineoffset,
+    outwidth,
+    wow_level_adjust_smoothing=0,
+    level_adjust_threshold=15,
+):
+    """Prepare level adjustments and resample using the original entry point."""
+    level_adjusts = scale_field_prepare(
+        wowfactors,
+        outwidth,
+        wow_level_adjust_smoothing,
+        level_adjust_threshold,
+    )
+    scale_field_apply(
+        buf,
+        dsout,
+        interpolated_pixel_locs,
+        level_adjusts,
+        sinc_lut,
+        lineoffset,
+        outwidth,
+    )
 
 
 frequency_suffixes = [
