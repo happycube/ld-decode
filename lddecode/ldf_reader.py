@@ -25,7 +25,15 @@ except ImportError:
     av = None
 
 
+def packed_s16_bytes(frame):
+    """Return the sample bytes of a packed mono s16 PyAV frame.
 
+    FFmpeg pads each plane's buffer out to its alignment, so bytes(planes[0])
+    carries up to 15 junk samples past the end of any frame whose length is
+    not a multiple of 16 -- the short last frame of a capture, at least.
+    Only the first frame.samples * 2 bytes are audio.
+    """
+    return bytes(frame.planes[0])[: frame.samples * 2]
 
 
 class LdfReader:
@@ -184,7 +192,7 @@ class LdfReader:
                 
                 for resampled_frame in frame_resampled:
                     # Get the raw audio data from the first plane
-                    audio_data = bytes(resampled_frame.planes[0])
+                    audio_data = packed_s16_bytes(resampled_frame)
                     
                     # Calculate byte offset (2 bytes per sample for s16)
                     byte_offset = offset_samples * 2

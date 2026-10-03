@@ -41,6 +41,7 @@ import numpy as np
 
 from lddecode import __version__
 from lddecode.lds import S16, LdsWriter, unpack_stream
+from lddecode.ldf_reader import packed_s16_bytes
 
 # flac gained -j, and with it a usable encoding speed for 30 GB captures, in
 # 1.5.0.  Nothing older is worth falling back to.
@@ -384,7 +385,7 @@ def decode_ldf(source, write_samples):
 
         def emit(frame):
             for resampled in resampler.resample(frame):
-                write_samples(np.frombuffer(bytes(resampled.planes[0]), dtype=S16))
+                write_samples(np.frombuffer(packed_s16_bytes(resampled), dtype=S16))
 
         for frame in container.decode(stream):
             emit(frame)

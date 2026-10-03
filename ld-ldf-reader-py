@@ -191,8 +191,9 @@ class LdfReader:
                 frame_resampled = resampler.resample(frame)
                 
                 for resampled_frame in frame_resampled:
-                    # Get the raw audio data from the first plane
-                    audio_data = bytes(resampled_frame.planes[0])
+                    # Get the raw audio data from the first plane, without the
+                    # alignment padding FFmpeg leaves past the last sample
+                    audio_data = bytes(resampled_frame.planes[0])[: resampled_frame.samples * 2]
                     
                     # Calculate byte offset (2 bytes per sample for s16)
                     byte_offset = offset_samples * 2

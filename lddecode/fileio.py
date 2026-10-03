@@ -18,6 +18,7 @@ try:
 except ImportError:
     pass
 
+from .ldf_reader import packed_s16_bytes
 from .profiling import profile
 
 
@@ -575,7 +576,7 @@ class LoadLDF:
                 for rf in resampler.resample(frame):
                     if stop_event.is_set():
                         return
-                    data = bytes(rf.planes[0])
+                    data = packed_s16_bytes(rf)
 
                     if skip_samples > 0:
                         skip_bytes = min(skip_samples * 2, len(data))
