@@ -647,6 +647,7 @@ class FieldJobEngine:
         self._veq = None
         self._chroma_dg = None
         self._rebase_seq = 0
+        self._rebases = 0               # counts every re-anchoring of _cur_start
         # Set (under _cond) if the dispatcher thread dies; next_result()
         # re-raises it instead of waiting for a job that will never come.
         self._dispatch_error = None
@@ -675,6 +676,7 @@ class FieldJobEngine:
             self._veq = tuple(veq) if veq else None
             self._chroma_dg = tuple(chroma_dg) if chroma_dg else None
             self._rebase_seq = 0
+            self._rebases += 1
             self._active = True
             self._cond.notify_all()
         self.publish_slots()
@@ -834,6 +836,7 @@ class FieldJobEngine:
                 veq = self._veq
                 chroma_dg = self._chroma_dg
                 parity = self._cur_parity
+                rebases = self._rebases
                 fn = self._predict_field_number(start)
 
             begin, span_begin, span_len = self._window(start)
@@ -873,7 +876,14 @@ class FieldJobEngine:
                     raise
                 self._futures[seq] = fut
                 self._next_dispatch = seq + 1
-                self._cur_start = start + self._parity_len[parity]
+                if self._rebases == rebases:
+                    self._cur_start = start + self._parity_len[parity]
+                else:
+                    # A completion re-anchored the chain while the span was
+                    # read (outside the lock): its estimate for this seq
+                    # is fresher than the one this job went out with, so
+                    # the successor extrapolates from that instead.
+                    self._cur_start += self._parity_len[parity]
                 self._cur_parity = not parity
                 self._cond.notify_all()
 
@@ -884,6 +894,17 @@ class FieldJobEngine:
             fut.add_done_callback(
                 lambda ft, s=seq, st=start, g=gen: self._refine(s, st, g, ft)
             )
+
+    def _observe_length(self, seq):
+        """Fold field seq's length into its parity's estimate, once the
+        start estimates on both sides of it are in.  Under _cond."""
+        end = self._nxt_by_seq.get(seq)
+        begin = self._nxt_by_seq.get(seq - 1)
+        if end is None or begin is None:
+            return
+        parity = end[1]
+        old = self._parity_len[parity]
+        self._parity_len[parity] = 0.75 * old + 0.25 * (end[0] - begin[0])
 
     def _refine(self, seq, start, gen, fut):
         """A finished job's own next-start estimate replaces the blind
@@ -912,12 +933,14 @@ class FieldJobEngine:
             # estimates - measuring against the predicted start would
             # feed each job's prediction error back into parity_len and
             # let errors compound.  EWMA smooths per-field wow jitter.
+            # A field's length needs the estimates on both sides of it,
+            # and jobs finish out of order (pairs share a worker, so 2k
+            # usually lands before 2k-1): measure this field if its
+            # predecessor is in, and the next one if it already was, or
+            # one parity's length is never learned at all.
             self._nxt_by_seq[seq] = (nxt, f.isFirstField)
-            prev = self._nxt_by_seq.get(seq - 1)
-            if prev is not None:
-                length = nxt - prev[0]
-                old = self._parity_len[f.isFirstField]
-                self._parity_len[f.isFirstField] = 0.75 * old + 0.25 * length
+            self._observe_length(seq)
+            self._observe_length(seq + 1)
             self._nxt_by_seq.pop(seq - 32, None)
 
             # Re-anchor the blind chain: at steady flow the dispatcher
@@ -939,6 +962,7 @@ class FieldJobEngine:
                         base += self._parity_len[parity]
                     self._cur_start = base
                     self._rebase_seq = seq
+                    self._rebases += 1
 
             self._cond.notify_all()
 
