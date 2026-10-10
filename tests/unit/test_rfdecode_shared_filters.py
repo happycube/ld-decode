@@ -179,7 +179,9 @@ def test_the_mtf_slot_carries_what_mtf_response_would_build(system):
 
     for level in (0.0, 0.62, 1.13):
         arrays = rf.slot_filter_arrays("mtf", level)
-        assert_array_equal(arrays["MTF_response"], rf.mtf_response(level))
+        assert_array_equal(
+            arrays["MTF_response"], rf.mtf_response(rf.scaled_mtf_level(level))
+        )
 
 
 @parametrize_system

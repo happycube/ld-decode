@@ -178,17 +178,18 @@ class FakeSegment:
 
 
 @pytest.fixture
-def banks(monkeypatch):
+def banks(monkeypatch, request):
     """A parent bank, a worker bank, and a segment between them.
 
     Both are real RFDecodes so that "the worker rebuilds it privately"
     and "the worker reads the parent's slot" can be compared as arrays
-    rather than as call counts.
+    rather than as call counts.  PAL unless parametrized indirectly.
     """
+    system = getattr(request, "param", "PAL")
     sfb._published.clear()
     sfb._attached.clear()
-    parent = RFDecode(inputfreq=40, system="PAL")
-    worker = RFDecode(inputfreq=40, system="PAL")
+    parent = RFDecode(inputfreq=40, system=system)
+    worker = RFDecode(inputfreq=40, system=system)
 
     spec = parent.shared_filter_spec()
     descriptor = sfb.publish(spec["arrays"], slots=spec["slots"],
@@ -285,6 +286,23 @@ def test_a_matching_token_primes_the_held_mtf_response(banks):
     held = worker.mtf_response(0.7)
     assert not held.flags.writeable
     assert_array_equal(held, parent.mtf_response(0.7))
+
+
+@pytest.mark.parametrize("banks", ["PAL", "NTSC"], indirect=True)
+def test_the_primed_mtf_response_is_the_one_demodblock_asks_for(banks):
+    """demodblock looks the response up by the scaled level (NTSC's
+    MTF_basemult is 0.4).  A slot keyed by the decoder's level missed
+    there, and priming it evicted the response the worker had rebuilt,
+    so every job raised MTF_half to the power again."""
+    parent, worker, descriptor = banks
+    sfb.write_slot(descriptor, "mtf", 0,
+                   parent.slot_filter_arrays("mtf", 0.7), 5)
+
+    parallel._sync_worker_mtf(0.7, slot=(0, 5))
+
+    held = worker.mtf_response(worker.scaled_mtf_level(0.7))
+    assert not held.flags.writeable  # the slot's array, not a rebuild
+    assert_array_equal(held, parent.mtf_response(parent.scaled_mtf_level(0.7)))
 
 
 def test_without_a_token_the_worker_raises_the_power_itself(banks):

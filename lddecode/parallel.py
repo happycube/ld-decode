@@ -259,7 +259,10 @@ def _sync_worker_mtf(mtf_level, slot=None):
         arrays = _worker_shared.slot("mtf", slot[0], slot[1])
 
     if arrays is not None:
-        _worker_rf._mtf_response_cache = (mtf_level, arrays["MTF_response"])
+        # Keyed as demodblock looks it up: by the scaled level
+        _worker_rf._mtf_response_cache = (
+            _worker_rf.scaled_mtf_level(mtf_level), arrays["MTF_response"]
+        )
         _worker_mtf_slot = True
         _worker_slot_stats["mtf"][0] += 1
         return

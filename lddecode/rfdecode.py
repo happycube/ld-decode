@@ -1098,6 +1098,13 @@ class RFDecode:
         self._veq_2t_gain_cache[key] = g
         return g
 
+    def scaled_mtf_level(self, mtf_level):
+        """The exponent demodblock raises MTF_half to for a decoder MTF level:
+        the level through the disc/player MTF model (--MTF, --MTF_offset and
+        the system's MTF_basemult).  mtf_response() is keyed by this, not by
+        the decoder's level."""
+        return (mtf_level * self.mtf_mult + self.mtf_offset) * self.DecoderParams["MTF_basemult"]
+
     def mtf_response(self, mtf_level):
         """``Filters["MTF_half"] ** mtf_level``, held across blocks.
 
@@ -1240,9 +1247,14 @@ class RFDecode:
             base = self.Filters.get("MTF_half")
             if base is None:
                 return None
-            # The expression mtf_response() evaluates, so a worker that
-            # takes this slot holds the array it would have computed.
-            return {"MTF_response": base ** key}
+            # The expression mtf_response() evaluates for this decoder
+            # level, so a worker that takes this slot holds the array it
+            # would have computed.  Raised to the scaled level, as
+            # demodblock asks for it: raised to the decoder's level (which
+            # differs on NTSC, MTF_basemult 0.4) it never matched, and
+            # priming the worker's held response with it evicted the one
+            # demodblock had just rebuilt, once a job.
+            return {"MTF_response": base ** self.scaled_mtf_level(key)}
 
         if family == "video":
             imtf_strength, veq = key
@@ -1923,7 +1935,7 @@ class RFDecode:
         # raw_mtf: use mtf_level as-is (delay calibration passes the true
         # filter level); otherwise scale by the disc/player MTF model.
         if not raw_mtf:
-            mtf_level = (mtf_level * self.mtf_mult + self.mtf_offset) * self.DecoderParams["MTF_basemult"]
+            mtf_level = self.scaled_mtf_level(mtf_level)
         rv = {}
 
         nrf = self.blocklen // 2 + 1
