@@ -16,7 +16,7 @@ takes one soft decision per channel bit:
 2. **Conditioning** (``StreamingConditioner``): a one-pole DC blocker and a
    running-power AGC normalise the waveform to unit RMS so the timing-error
    detector's gain is amplitude-independent.
-3. **Timing recovery** (``_TimingCore``): a cubic-interpolating fractional
+3. **Timing recovery** (``_consume`` / ``_symbol``): a cubic-interpolating fractional
    resampler emits one soft sample per channel bit; a Mueller & Muller
    timing-error detector updates a second-order proportional-integral loop
    every channel bit (K. H. Mueller and M. Muller, "Timing Recovery in
@@ -62,8 +62,6 @@ EFM demodulator (``--efm_demod pll`` selects the previous ``EFM_PLL``).
 
 import numba
 import numpy as np
-
-from numba.experimental import jitclass
 
 # IEC 60908 section 9: EFM channel bit rate, 4.3218 Mbit/s.  IEC 60857
 # section 10.1 adopts the same coding for LaserDisc digital sound.
@@ -282,91 +280,486 @@ def timing_loop_gains(fn_hz, zeta, bit_rate_hz, ted_gain):
 # stretches before the overflow flush engages.
 PENDING_CAPACITY = 4096
 
-_timing_core_spec = [
-    ("step_nominal", numba.float64),
-    ("kp", numba.float64),
-    ("ki", numba.float64),
-    ("kp_acq", numba.float64),
-    ("ki_acq", numba.float64),
-    ("e_ema", numba.float64),
-    ("e_alpha", numba.float64),
-    ("acq_enter", numba.float64),
-    ("acq_leave", numba.float64),
-    ("acquiring", numba.boolean),
-    ("prop_limit", numba.float64),
-    ("integ_limit", numba.float64),
-    ("integrator", numba.float64),
-    ("ctl", numba.float64),
-    ("mu", numba.float64),
-    ("p0", numba.float64),
-    ("p1", numba.float64),
-    ("p2", numba.float64),
-    ("p3", numba.float64),
-    ("y_prev", numba.float64),
-    ("d_prev", numba.int8),
-    ("conf_scale", numba.float64),
-    ("timing_scale", numba.float64),
-    ("conf_lowcap", numba.int64),
-    ("conf_legalised", numba.int64),
-    ("conf_restored", numba.int64),
-    ("restore_sync", numba.boolean),
-    ("run_count", numba.int64),
-    ("carry", numba.int64),
-    ("run_start_bit", numba.int64),
-    ("run_min_abs", numba.float64),
-    ("run_edge_min", numba.float64),
-    ("bit_idx", numba.int64),
-    ("reg", numba.int64),
-    ("locked", numba.boolean),
-    ("consec", numba.int64),
-    ("miss", numba.int64),
-    ("last_match", numba.int64),
-    ("expected_match", numba.int64),
-    ("prev_boundary", numba.int64),
-    ("lock_threshold", numba.int64),
-    ("unlock_threshold", numba.int64),
-    ("sync_window", numba.int64),
-    ("pending_t", numba.int8[:]),
-    ("pending_conf", numba.uint8[:]),
-    ("pending_start", numba.int64[:]),
-    ("pending_n", numba.int64),
-    ("out_t", numba.int8[:]),
-    ("out_conf", numba.uint8[:]),
-    ("out_n", numba.int64),
-    ("eq_n", numba.int64),
-    ("eq_w", numba.float64[:]),
-    ("eq_init", numba.float64[:]),
-    ("eq_buf", numba.float64[:]),
-    ("eq_mu", numba.float64),
-    ("eq_leak", numba.float64),
-    ("eq_bound", numba.float64),
-]
+# The timing core's state, held in plain arrays so every function that
+# touches it can be cached on disk.  It used to be a Numba jitclass, which
+# Numba cannot cache: every process paid ~7 s compiling it (2 s to build the
+# type, 5 s on the first chunk) before the first T value came out.  Scalars
+# live in one float64 and one int64 array, indexed by the names below
+# (booleans as 0/1); the pending and output buffers and the equaliser taps
+# are arrays of their own.  The functions below are the jitclass's methods
+# with ``self.x`` spelled ``fs[_F_X]`` / ``iv[_I_X]`` and the arithmetic
+# unchanged, operation for operation, so the T values and confidences are
+# bit-identical to what the jitclass produced.
+_F_STEP_NOMINAL = 0
+_F_KP = 1
+_F_KI = 2
+_F_KP_ACQ = 3
+_F_KI_ACQ = 4
+_F_E_EMA = 5
+_F_E_ALPHA = 6
+_F_ACQ_ENTER = 7
+_F_ACQ_LEAVE = 8
+_F_PROP_LIMIT = 9
+_F_INTEG_LIMIT = 10
+_F_INTEGRATOR = 11
+_F_CTL = 12
+_F_MU = 13
+_F_P0 = 14
+_F_P1 = 15
+_F_P2 = 16
+_F_P3 = 17
+_F_Y_PREV = 18
+_F_CONF_SCALE = 19
+_F_TIMING_SCALE = 20
+_F_RUN_MIN_ABS = 21
+_F_RUN_EDGE_MIN = 22
+_F_EQ_MU = 23
+_F_EQ_LEAK = 24
+_F_EQ_BOUND = 25
+_F_COUNT = 26
+
+_I_ACQUIRING = 0
+_I_D_PREV = 1
+_I_CONF_LOWCAP = 2
+_I_CONF_LEGALISED = 3
+_I_CONF_RESTORED = 4
+_I_RESTORE_SYNC = 5
+_I_RUN_COUNT = 6
+_I_CARRY = 7
+_I_RUN_START_BIT = 8
+_I_BIT_IDX = 9
+_I_REG = 10
+_I_LOCKED = 11
+_I_CONSEC = 12
+_I_MISS = 13
+_I_LAST_MATCH = 14
+_I_EXPECTED_MATCH = 15
+_I_PREV_BOUNDARY = 16
+_I_LOCK_THRESHOLD = 17
+_I_UNLOCK_THRESHOLD = 18
+_I_SYNC_WINDOW = 19
+_I_PENDING_N = 20
+_I_OUT_N = 21
+_I_EQ_N = 22
+_I_COUNT = 23
 
 
-@numba.njit(nogil=True)
-def _consume_nogil(core, samples):
-    """Run one chunk through the timing core with the GIL released.
+@numba.njit(nogil=True, cache=True)
+def _equalise(fs, iv, eq_w, eq_init, eq_buf, y):
+    """Sign-sign LMS FIR over the per-bit soft samples (symbol rate).
 
-    A jitclass method called from Python holds the GIL for its whole
-    run; called from inside this nopython wrapper it does not, so the
-    demodulator - which runs on the decoder's output thread when fields
-    decode in parallel - stops contending with the commit thread for it.
-    The compiled code is the same either way (the wrapper is not
-    cacheable, jitclass arguments never are, but its compile subsumes
-    the core's own first-call compile)."""
-    core.begin()
-    if samples.size:
-        core.consume(samples)
+    Output is centred on the middle tap, so the symbol chain runs
+    eq_taps//2 symbols behind the resampler - transparent to framing,
+    which is all relative.  The decision-directed error is taken
+    against the AGC's unit target; sign-sign updates move each tap a
+    fixed eq_mu per symbol, leakage decays the taps toward the
+    centre-spike identity, and each tap is hard-bounded around its
+    initial value.
+    """
+    n = iv[_I_EQ_N]
+    for j in range(n - 1):
+        eq_buf[j] = eq_buf[j + 1]
+    eq_buf[n - 1] = y
+    acc = 0.0
+    for j in range(n):
+        acc += eq_w[j] * eq_buf[j]
+    err = acc - (1.0 if acc >= 0.0 else -1.0)
+    step = fs[_F_EQ_MU] if err > 0.0 else -fs[_F_EQ_MU]
+    for j in range(n):
+        w = eq_w[j]
+        w -= step if eq_buf[j] >= 0.0 else -step
+        w += fs[_F_EQ_LEAK] * (eq_init[j] - w)
+        low = eq_init[j] - fs[_F_EQ_BOUND]
+        high = eq_init[j] + fs[_F_EQ_BOUND]
+        if w < low:
+            w = low
+        elif w > high:
+            w = high
+        eq_w[j] = w
+    return acc
 
 
-@jitclass(_timing_core_spec)
+@numba.njit(nogil=True, cache=True)
+def _conf_value(fs, edge_margin):
+    """Confidence for one run: the worse of its amplitude and timing margins.
+
+    Amplitude is the weakest soft sample in the run against
+    ``conf_scale``; timing is the worse of the two edges bounding it
+    against ``timing_scale``.  Amplitude alone cannot see the failure
+    that matters here - a full-height run one channel bit adrift decodes
+    to a legal but wrong symbol, and reaches the CIRC stages disguised
+    as good data.
+    """
+    c = fs[_F_RUN_MIN_ABS] / fs[_F_CONF_SCALE]
+    t = edge_margin / fs[_F_TIMING_SCALE]
+    if t < c:
+        c = t
+    if c > 1.0:
+        c = 1.0
+    elif c < 0.0:
+        c = 0.0
+    return np.uint8(255.0 * c)
+
+
+@numba.njit(nogil=True, cache=True)
+def _fabricated(iv, conf):
+    """Cap a T value the legaliser invented rather than read."""
+    if conf > iv[_I_CONF_LEGALISED]:
+        return np.uint8(iv[_I_CONF_LEGALISED])
+    return conf
+
+
+@numba.njit(nogil=True, cache=True)
+def _flush(iv, pending_t, pending_conf, pending_start, out_t, out_conf, count, frame_ok):
+    """Move the oldest ``count`` pending T values to the output buffers.
+
+    A frame that failed the sync/588 check (or was never validated) has
+    its confidences capped at ``conf_lowcap`` - those T values are the
+    downstream erasure candidates.  The caller guarantees the output
+    buffers have room.
+    """
+    out_n = iv[_I_OUT_N]
+    for j in range(count):
+        conf = pending_conf[j]
+        if not frame_ok and conf > iv[_I_CONF_LOWCAP]:
+            conf = np.uint8(iv[_I_CONF_LOWCAP])
+        out_t[out_n] = pending_t[j]
+        out_conf[out_n] = conf
+        out_n += 1
+    iv[_I_OUT_N] = out_n
+    pending_n = iv[_I_PENDING_N]
+    for j in range(count, pending_n):
+        pending_t[j - count] = pending_t[j]
+        pending_conf[j - count] = pending_conf[j]
+        pending_start[j - count] = pending_start[j]
+    iv[_I_PENDING_N] = pending_n - count
+
+
+@numba.njit(nogil=True, cache=True)
+def _emit(iv, pending_t, pending_conf, pending_start, out_t, out_conf, t, conf, start_bit):
+    """Queue one T value; overflow-flush if no frame boundary arrives."""
+    if iv[_I_PENDING_N] >= PENDING_CAPACITY:
+        # No accepted sync for thousands of runs (EFM gap, dead signal):
+        # release the oldest half as unvalidated so output keeps flowing.
+        _flush(
+            iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+            PENDING_CAPACITY // 2, False,
+        )
+    n = iv[_I_PENDING_N]
+    pending_t[n] = t
+    pending_conf[n] = conf
+    pending_start[n] = start_bit
+    iv[_I_PENDING_N] = n + 1
+
+
+@numba.njit(nogil=True, cache=True)
+def _restore_sync(iv, pending_t, pending_conf, pending_start, boundary_bit):
+    """Regenerate a T11-T11 sync the flywheel says must sit at boundary_bit.
+
+    While frame-locked the 588-bit position counter is more reliable than
+    a marginal local read, so - like a hardware CD/LaserDisc transport -
+    a sync the pattern matcher missed is rewritten from the counter: the
+    pending runs spanning the 22 sync channel bits become
+    [head, 11, 11, tail], preserving the total channel-bit count.  The
+    rewrite happens only when head and tail land on legal run lengths
+    (a marginal edge misplaced by a bit or two); anything messier - real
+    dropout garbage - is left alone.  Rewritten runs carry
+    ``conf_restored``: they are counter-backed guesses, not reads, and
+    the consumer should treat them as erasures rather than data.
+    """
+    pending_n = iv[_I_PENDING_N]
+    first = -1
+    last = -1
+    for j in range(pending_n):
+        start = pending_start[j]
+        if start >= boundary_bit + SYNC_PATTERN_BITS - 1:
+            break
+        if start + pending_t[j] > boundary_bit:
+            if first < 0:
+                first = j
+            last = j
+    if first < 0:
+        return
+    region_start = pending_start[first]
+    region_len = 0
+    for j in range(first, last + 1):
+        region_len += pending_t[j]
+    head = boundary_bit - region_start
+    tail = region_start + region_len - (boundary_bit + 2 * T_MAX)
+    if head < 0 or tail < 0:
+        return
+    if head != 0 and not (T_MIN <= head <= T_MAX):
+        return
+    if tail != 0 and not (T_MIN <= tail <= T_MAX):
+        return
+    new_t = np.empty(4, np.int8)
+    new_start = np.empty(4, np.int64)
+    n_new = 0
+    if head:
+        new_t[n_new] = head
+        new_start[n_new] = region_start
+        n_new += 1
+    new_t[n_new] = T_MAX
+    new_start[n_new] = boundary_bit
+    new_t[n_new + 1] = T_MAX
+    new_start[n_new + 1] = boundary_bit + T_MAX
+    n_new += 2
+    if tail:
+        new_t[n_new] = tail
+        new_start[n_new] = boundary_bit + 2 * T_MAX
+        n_new += 1
+    n_old = last - first + 1
+    shift = n_new - n_old
+    if pending_n + shift > PENDING_CAPACITY:
+        return
+    if shift > 0:
+        for j in range(pending_n - 1, last, -1):
+            pending_t[j + shift] = pending_t[j]
+            pending_conf[j + shift] = pending_conf[j]
+            pending_start[j + shift] = pending_start[j]
+    elif shift < 0:
+        for j in range(last + 1, pending_n):
+            pending_t[j + shift] = pending_t[j]
+            pending_conf[j + shift] = pending_conf[j]
+            pending_start[j + shift] = pending_start[j]
+    for j in range(n_new):
+        pending_t[first + j] = new_t[j]
+        pending_conf[first + j] = np.uint8(iv[_I_CONF_RESTORED])
+        pending_start[first + j] = new_start[j]
+    iv[_I_PENDING_N] = pending_n + shift
+
+
+@numba.njit(nogil=True, cache=True)
+def _accept_boundary(iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+                     boundary_bit, sync_found):
+    """Flush the pending T values that belong to the closing frame."""
+    ok = (
+        sync_found
+        and iv[_I_PREV_BOUNDARY] >= 0
+        and boundary_bit - iv[_I_PREV_BOUNDARY] == FRAME_CHANNEL_BITS
+    )
+    cut = 0
+    while cut < iv[_I_PENDING_N] and pending_start[cut] < boundary_bit:
+        cut += 1
+    _flush(iv, pending_t, pending_conf, pending_start, out_t, out_conf, cut, ok)
+    iv[_I_PREV_BOUNDARY] = boundary_bit
+
+
+@numba.njit(nogil=True, cache=True)
+def _push_bit(iv, pending_t, pending_conf, pending_start, out_t, out_conf, bit):
+    """Advance the frame-sync state machine by one channel bit."""
+    bit_idx = iv[_I_BIT_IDX] + 1
+    iv[_I_BIT_IDX] = bit_idx
+    reg = ((iv[_I_REG] << 1) | bit) & SYNC_MASK
+    iv[_I_REG] = reg
+    matched = reg == SYNC_PATTERN
+
+    if iv[_I_LOCKED]:
+        delta = bit_idx - iv[_I_EXPECTED_MATCH]
+        window = iv[_I_SYNC_WINDOW]
+        if matched and -window <= delta <= window:
+            # Sync where the position counter expected it (within the
+            # slip window): close the frame and re-anchor.
+            _accept_boundary(
+                iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+                bit_idx - (SYNC_PATTERN_BITS - 1), True,
+            )
+            iv[_I_EXPECTED_MATCH] = bit_idx + FRAME_CHANNEL_BITS
+            iv[_I_MISS] = 0
+        elif delta == window + 1:
+            # Window closed with no sync: flywheel a boundary at the
+            # expected position; unlock after enough consecutive misses.
+            boundary = iv[_I_EXPECTED_MATCH] - (SYNC_PATTERN_BITS - 1)
+            if iv[_I_RESTORE_SYNC]:
+                _restore_sync(iv, pending_t, pending_conf, pending_start, boundary)
+            _accept_boundary(
+                iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+                boundary, False,
+            )
+            iv[_I_EXPECTED_MATCH] += FRAME_CHANNEL_BITS
+            iv[_I_MISS] += 1
+            if iv[_I_MISS] >= iv[_I_UNLOCK_THRESHOLD]:
+                iv[_I_LOCKED] = 0
+                iv[_I_CONSEC] = 0
+    else:
+        if matched:
+            if bit_idx - iv[_I_LAST_MATCH] == FRAME_CHANNEL_BITS:
+                iv[_I_CONSEC] += 1
+            else:
+                iv[_I_CONSEC] = 1
+            iv[_I_LAST_MATCH] = bit_idx
+            if iv[_I_CONSEC] >= iv[_I_LOCK_THRESHOLD]:
+                iv[_I_LOCKED] = 1
+                iv[_I_MISS] = 0
+                # Frames seen before lock were never validated.
+                _accept_boundary(
+                    iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+                    bit_idx - (SYNC_PATTERN_BITS - 1), False,
+                )
+                iv[_I_EXPECTED_MATCH] = bit_idx + FRAME_CHANNEL_BITS
+
+
+@numba.njit(nogil=True, cache=True)
+def _symbol(fs, iv, pending_t, pending_conf, pending_start, out_t, out_conf, y):
+    """One channel-bit soft sample: TED, loop update, bit and framing."""
+    d = 1 if y >= 0.0 else -1
+    d_prev = iv[_I_D_PREV]
+    y_prev = fs[_F_Y_PREV]
+
+    # Mueller & Muller TED: e = d[k-1]*y[k] - d[k]*y[k-1].  Around an
+    # edge this is the sum of the two straddling samples, zero when the
+    # strobes are centred; negative means we are sampling late.
+    e = d_prev * y - d * y_prev
+    ae = -e if e < 0.0 else e
+    fs[_F_E_EMA] += fs[_F_E_ALPHA] * (ae - fs[_F_E_EMA])
+    if iv[_I_ACQUIRING]:
+        if fs[_F_E_EMA] < fs[_F_ACQ_LEAVE]:
+            iv[_I_ACQUIRING] = 0
+    elif fs[_F_E_EMA] > fs[_F_ACQ_ENTER]:
+        iv[_I_ACQUIRING] = 1
+    kp = fs[_F_KP_ACQ] if iv[_I_ACQUIRING] else fs[_F_KP]
+    ki = fs[_F_KI_ACQ] if iv[_I_ACQUIRING] else fs[_F_KI]
+    prop = kp * e
+    if prop > fs[_F_PROP_LIMIT]:
+        prop = fs[_F_PROP_LIMIT]
+    elif prop < -fs[_F_PROP_LIMIT]:
+        prop = -fs[_F_PROP_LIMIT]
+    integrator = fs[_F_INTEGRATOR] + ki * e
+    if integrator > fs[_F_INTEG_LIMIT]:
+        integrator = fs[_F_INTEG_LIMIT]
+    elif integrator < -fs[_F_INTEG_LIMIT]:
+        integrator = -fs[_F_INTEG_LIMIT]
+    fs[_F_INTEGRATOR] = integrator
+    fs[_F_CTL] = prop + integrator
+
+    ay = -y if y < 0.0 else y
+    if ay < fs[_F_RUN_MIN_ABS]:
+        fs[_F_RUN_MIN_ABS] = ay
+
+    bit = 1 if d != d_prev else 0
+    if bit == 1:
+        # Edge timing margin.  Across a transition d = -d_prev, so the
+        # TED reduces to |e| = ||y| - |y_prev||: the imbalance of the two
+        # samples straddling the crossing.  Normalised by their sum it is
+        # level-independent - 1.0 when the crossing sits midway between
+        # the strobes, 0.0 when it sits on one of them and the run length
+        # is a coin toss between two legal values.
+        ap = -y_prev if y_prev < 0.0 else y_prev
+        span = ay + ap
+        em = 1.0 - ae / span if span > 0.0 else 0.0
+    else:
+        em = 1.0
+    iv[_I_D_PREV] = d
+    fs[_F_Y_PREV] = y
+
+    if bit == 1:
+        # NRZI transition: the completed run ends here; this bit starts
+        # the next run.  Legalise: merge < 3 into the following run,
+        # split > 11 (progressive emission below keeps rr <= 13 here),
+        # always preserving the total channel-bit count.
+        edge = fs[_F_RUN_EDGE_MIN]
+        if em < edge:
+            edge = em
+        rr = iv[_I_RUN_COUNT] + iv[_I_CARRY]
+        # A non-zero carry means this run absorbed the remainder of an
+        # earlier legalisation: its length is invented, not read.
+        merged = iv[_I_CARRY] != 0
+        iv[_I_CARRY] = 0
+        conf = _conf_value(fs, edge)
+        start = iv[_I_RUN_START_BIT]
+        next_start = iv[_I_BIT_IDX] + 1
+        next_min = ay
+        next_edge = em
+        if rr >= T_MIN:
+            if rr > T_MAX:
+                _emit(
+                    iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+                    T_MAX, _fabricated(iv, conf), start,
+                )
+                iv[_I_CARRY] = rr - T_MAX
+                # The remainder continues the same physical run, so it
+                # keeps its start, its weakest sample and its margins.
+                next_start = start + T_MAX
+                next_min = fs[_F_RUN_MIN_ABS]
+                next_edge = edge
+            else:
+                _emit(
+                    iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+                    rr, _fabricated(iv, conf) if merged else conf, start,
+                )
+        elif rr > 0:
+            iv[_I_CARRY] = rr
+            next_start = start
+            next_min = fs[_F_RUN_MIN_ABS]
+            next_edge = edge
+        iv[_I_RUN_COUNT] = 1
+        iv[_I_RUN_START_BIT] = next_start
+        fs[_F_RUN_MIN_ABS] = next_min
+        fs[_F_RUN_EDGE_MIN] = next_edge
+    else:
+        iv[_I_RUN_COUNT] += 1
+        if iv[_I_RUN_COUNT] + iv[_I_CARRY] >= T_MAX + 1:
+            # Progressive split inside an over-long run (dropout or
+            # missed transition): emit T11 now so the pending buffer
+            # and the frame accounting keep flowing.  The boundary is
+            # invented, so this T11 and the remainder are both suspect.
+            _emit(
+                iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+                T_MAX, _fabricated(iv, _conf_value(fs, fs[_F_RUN_EDGE_MIN])),
+                iv[_I_RUN_START_BIT],
+            )
+            iv[_I_CARRY] = iv[_I_RUN_COUNT] + iv[_I_CARRY] - T_MAX
+            iv[_I_RUN_COUNT] = 0
+            iv[_I_RUN_START_BIT] = iv[_I_BIT_IDX] + 1
+
+    _push_bit(iv, pending_t, pending_conf, pending_start, out_t, out_conf, bit)
+
+
+@numba.njit(nogil=True, cache=True)
+def _consume(fs, iv, pending_t, pending_conf, pending_start, out_t, out_conf,
+             eq_w, eq_init, eq_buf, samples):
+    """Run the timing loop over one chunk of conditioned samples.
+
+    nogil: called from Python it releases the GIL for the whole chunk, so
+    the demodulator - which runs on the decoder's output thread when
+    fields decode in parallel - does not contend with the commit thread.
+    The output buffers must already have room for this chunk's T values
+    (see _TimingCore.consume).
+    """
+    for i in range(samples.size):
+        fs[_F_P0] = fs[_F_P1]
+        fs[_F_P1] = fs[_F_P2]
+        fs[_F_P2] = fs[_F_P3]
+        fs[_F_P3] = samples[i]
+        fs[_F_MU] -= 1.0
+        while fs[_F_MU] < 1.0:
+            p0 = fs[_F_P0]
+            p1 = fs[_F_P1]
+            p2 = fs[_F_P2]
+            p3 = fs[_F_P3]
+            f = fs[_F_MU]
+            if f < 0.0:
+                f = 0.0
+            # Catmull-Rom cubic between p1 and p2 at fraction f.
+            c1 = 0.5 * (p2 - p0)
+            c2 = p0 - 2.5 * p1 + 2.0 * p2 - 0.5 * p3
+            c3 = 0.5 * (p3 - p0) + 1.5 * (p1 - p2)
+            y = ((c3 * f + c2) * f + c1) * f + p1
+            if iv[_I_EQ_N] > 0:
+                y = _equalise(fs, iv, eq_w, eq_init, eq_buf, y)
+            _symbol(fs, iv, pending_t, pending_conf, pending_start, out_t, out_conf, y)
+            fs[_F_MU] += fs[_F_STEP_NOMINAL] * (1.0 + fs[_F_CTL])
+
+
 class _TimingCore:
-    """Per-bit timing loop, framing and T emission (internal, Numba-compiled).
+    """Per-bit timing loop, framing and T emission (internal).
 
-    Consumes conditioned (unit-RMS) samples at the decimated rate and fills
+    Holds the state the module's compiled functions work on: consumes
+    conditioned (unit-RMS) samples at the decimated rate and fills
     ``out_t``/``out_conf`` with legalised T values and their confidences.
     All state persists across ``consume`` calls; ``begin`` resets only the
     output cursor, so each call's output is a contiguous new segment.
+    Not thread-safe: one stream, fed from one thread at a time.
     """
 
     def __init__(
@@ -391,456 +784,120 @@ class _TimingCore:
         eq_leak,
         eq_bound,
     ):
-        self.step_nominal = step_nominal
-        self.kp = kp
-        self.ki = ki
+        fs = np.zeros(_F_COUNT, np.float64)
+        iv = np.zeros(_I_COUNT, np.int64)
+        fs[_F_STEP_NOMINAL] = step_nominal
+        fs[_F_KP] = kp
+        fs[_F_KI] = ki
         # Acquisition gear: while the timing-error EMA is large (cold start,
         # frequency offset, post-dropout) the loop runs with its natural
         # frequency boosted by acq_boost (kp scales with fn, ki with fn^2),
         # collapsing the second-order pull-in time; once the error settles
         # the tracking gains take over.  Mild hysteresis stops chatter.
-        self.kp_acq = kp * acq_boost
-        self.ki_acq = ki * acq_boost * acq_boost
-        self.e_ema = 1.0
-        self.e_alpha = 1.0 / 256.0
-        self.acq_enter = 0.40
-        self.acq_leave = 0.25
-        self.acquiring = True
-        self.prop_limit = prop_limit
-        self.integ_limit = integ_limit
-        self.integrator = 0.0
-        self.ctl = 0.0
+        fs[_F_KP_ACQ] = kp * acq_boost
+        fs[_F_KI_ACQ] = ki * acq_boost * acq_boost
+        fs[_F_E_EMA] = 1.0
+        fs[_F_E_ALPHA] = 1.0 / 256.0
+        fs[_F_ACQ_ENTER] = 0.40
+        fs[_F_ACQ_LEAVE] = 0.25
+        iv[_I_ACQUIRING] = 1
+        fs[_F_PROP_LIMIT] = prop_limit
+        fs[_F_INTEG_LIMIT] = integ_limit
         # Interpolator history and the next strobe's position relative to the
         # second-oldest sample; bounded, so no float accumulation drift.
-        self.mu = 2.0
-        self.p0 = 0.0
-        self.p1 = 0.0
-        self.p2 = 0.0
-        self.p3 = 0.0
-        self.y_prev = 0.0
-        self.d_prev = 1
+        fs[_F_MU] = 2.0
+        iv[_I_D_PREV] = 1
 
-        self.conf_scale = conf_scale
-        self.timing_scale = timing_scale
-        self.conf_lowcap = conf_lowcap
-        self.conf_legalised = conf_legalised
-        self.conf_restored = conf_restored
-        self.restore_sync = restore_sync
+        fs[_F_CONF_SCALE] = conf_scale
+        fs[_F_TIMING_SCALE] = timing_scale
+        iv[_I_CONF_LOWCAP] = conf_lowcap
+        iv[_I_CONF_LEGALISED] = conf_legalised
+        iv[_I_CONF_RESTORED] = conf_restored
+        iv[_I_RESTORE_SYNC] = int(bool(restore_sync))
 
-        self.run_count = 0
-        self.carry = 0
-        self.run_start_bit = 1
-        self.run_min_abs = 1.0e30
-        self.run_edge_min = 1.0
+        iv[_I_RUN_START_BIT] = 1
+        fs[_F_RUN_MIN_ABS] = 1.0e30
+        fs[_F_RUN_EDGE_MIN] = 1.0
 
-        self.bit_idx = 0
-        self.reg = 0
-        self.locked = False
-        self.consec = 0
-        self.miss = 0
-        self.last_match = -(1 << 40)
-        self.expected_match = -1
-        self.prev_boundary = -1
-        self.lock_threshold = lock_threshold
-        self.unlock_threshold = unlock_threshold
-        self.sync_window = sync_window
+        iv[_I_LAST_MATCH] = -(1 << 40)
+        iv[_I_EXPECTED_MATCH] = -1
+        iv[_I_PREV_BOUNDARY] = -1
+        iv[_I_LOCK_THRESHOLD] = lock_threshold
+        iv[_I_UNLOCK_THRESHOLD] = unlock_threshold
+        iv[_I_SYNC_WINDOW] = sync_window
+        self.fs = fs
+        self.iv = iv
 
         self.pending_t = np.empty(PENDING_CAPACITY, np.int8)
         self.pending_conf = np.empty(PENDING_CAPACITY, np.uint8)
         self.pending_start = np.empty(PENDING_CAPACITY, np.int64)
-        self.pending_n = 0
 
         self.out_t = np.empty(1 << 16, np.int8)
         self.out_conf = np.empty(1 << 16, np.uint8)
-        self.out_n = 0
 
         # Decision-directed sign-sign LMS equaliser at symbol rate
         # (eq_taps == 0 bypasses it entirely; the symbol path is then
         # untouched).  Centre-tap-initialised; leakage pulls the taps back
         # toward that identity and a hard per-tap bound keeps a noisy
         # stretch from walking them anywhere unrecoverable.
-        self.eq_n = eq_taps
+        iv[_I_EQ_N] = eq_taps
         self.eq_w = np.zeros(max(eq_taps, 1), np.float64)
         self.eq_init = np.zeros(max(eq_taps, 1), np.float64)
         if eq_taps > 0:
             self.eq_w[eq_taps // 2] = 1.0
             self.eq_init[eq_taps // 2] = 1.0
         self.eq_buf = np.zeros(max(eq_taps, 1), np.float64)
-        self.eq_mu = eq_mu
-        self.eq_leak = eq_leak
-        self.eq_bound = eq_bound
+        fs[_F_EQ_MU] = eq_mu
+        fs[_F_EQ_LEAK] = eq_leak
+        fs[_F_EQ_BOUND] = eq_bound
+
+    @property
+    def out_n(self):
+        return int(self.iv[_I_OUT_N])
+
+    @property
+    def pending_n(self):
+        return int(self.iv[_I_PENDING_N])
 
     def begin(self):
         """Start a new output segment (the previous segment's view dies)."""
-        self.out_n = 0
+        self.iv[_I_OUT_N] = 0
+
+    def _reserve(self, needed, spare):
+        """Grow the output buffers to hold ``needed`` T values, keeping the
+        current segment; ``spare`` is the growth factor."""
+        if len(self.out_t) < needed:
+            out_n = self.out_n
+            new_t = np.empty(needed * spare, np.int8)
+            new_c = np.empty(needed * spare, np.uint8)
+            new_t[:out_n] = self.out_t[:out_n]
+            new_c[:out_n] = self.out_conf[:out_n]
+            self.out_t = new_t
+            self.out_conf = new_c
 
     def consume(self, samples):
         """Run the timing loop over one chunk of conditioned samples."""
         # T emissions can never outnumber channel bits, and channel bits
         # can never outnumber input samples here (step_nominal > 1), so
         # input length plus a full pending flush bounds this call's output.
-        needed = self.out_n + samples.size + PENDING_CAPACITY
-        if len(self.out_t) < needed:
-            new_t = np.empty(needed * 2, np.int8)
-            new_c = np.empty(needed * 2, np.uint8)
-            new_t[: self.out_n] = self.out_t[: self.out_n]
-            new_c[: self.out_n] = self.out_conf[: self.out_n]
-            self.out_t = new_t
-            self.out_conf = new_c
-
-        for i in range(samples.size):
-            self.p0 = self.p1
-            self.p1 = self.p2
-            self.p2 = self.p3
-            self.p3 = samples[i]
-            self.mu -= 1.0
-            while self.mu < 1.0:
-                f = self.mu
-                if f < 0.0:
-                    f = 0.0
-                # Catmull-Rom cubic between p1 and p2 at fraction f.
-                c1 = 0.5 * (self.p2 - self.p0)
-                c2 = self.p0 - 2.5 * self.p1 + 2.0 * self.p2 - 0.5 * self.p3
-                c3 = 0.5 * (self.p3 - self.p0) + 1.5 * (self.p1 - self.p2)
-                y = ((c3 * f + c2) * f + c1) * f + self.p1
-                if self.eq_n > 0:
-                    y = self._equalise(y)
-                self._symbol(y)
-                self.mu += self.step_nominal * (1.0 + self.ctl)
+        self._reserve(self.out_n + samples.size + PENDING_CAPACITY, 2)
+        _consume(
+            self.fs, self.iv, self.pending_t, self.pending_conf, self.pending_start,
+            self.out_t, self.out_conf, self.eq_w, self.eq_init, self.eq_buf,
+            samples,
+        )
 
     def _equalise(self, y):
-        """Sign-sign LMS FIR over the per-bit soft samples (symbol rate).
-
-        Output is centred on the middle tap, so the symbol chain runs
-        eq_taps//2 symbols behind the resampler - transparent to framing,
-        which is all relative.  The decision-directed error is taken
-        against the AGC's unit target; sign-sign updates move each tap a
-        fixed eq_mu per symbol, leakage decays the taps toward the
-        centre-spike identity, and each tap is hard-bounded around its
-        initial value.
-        """
-        n = self.eq_n
-        for j in range(n - 1):
-            self.eq_buf[j] = self.eq_buf[j + 1]
-        self.eq_buf[n - 1] = y
-        acc = 0.0
-        for j in range(n):
-            acc += self.eq_w[j] * self.eq_buf[j]
-        err = acc - (1.0 if acc >= 0.0 else -1.0)
-        step = self.eq_mu if err > 0.0 else -self.eq_mu
-        for j in range(n):
-            w = self.eq_w[j]
-            w -= step if self.eq_buf[j] >= 0.0 else -step
-            w += self.eq_leak * (self.eq_init[j] - w)
-            low = self.eq_init[j] - self.eq_bound
-            high = self.eq_init[j] + self.eq_bound
-            if w < low:
-                w = low
-            elif w > high:
-                w = high
-            self.eq_w[j] = w
-        return acc
-
-    def _symbol(self, y):
-        """One channel-bit soft sample: TED, loop update, bit and framing."""
-        d = 1 if y >= 0.0 else -1
-
-        # Mueller & Muller TED: e = d[k-1]*y[k] - d[k]*y[k-1].  Around an
-        # edge this is the sum of the two straddling samples, zero when the
-        # strobes are centred; negative means we are sampling late.
-        e = self.d_prev * y - d * self.y_prev
-        ae = -e if e < 0.0 else e
-        self.e_ema += self.e_alpha * (ae - self.e_ema)
-        if self.acquiring:
-            if self.e_ema < self.acq_leave:
-                self.acquiring = False
-        elif self.e_ema > self.acq_enter:
-            self.acquiring = True
-        kp = self.kp_acq if self.acquiring else self.kp
-        ki = self.ki_acq if self.acquiring else self.ki
-        prop = kp * e
-        if prop > self.prop_limit:
-            prop = self.prop_limit
-        elif prop < -self.prop_limit:
-            prop = -self.prop_limit
-        self.integrator += ki * e
-        if self.integrator > self.integ_limit:
-            self.integrator = self.integ_limit
-        elif self.integrator < -self.integ_limit:
-            self.integrator = -self.integ_limit
-        self.ctl = prop + self.integrator
-
-        ay = -y if y < 0.0 else y
-        if ay < self.run_min_abs:
-            self.run_min_abs = ay
-
-        bit = 1 if d != self.d_prev else 0
-        if bit == 1:
-            # Edge timing margin.  Across a transition d = -d_prev, so the
-            # TED reduces to |e| = ||y| - |y_prev||: the imbalance of the two
-            # samples straddling the crossing.  Normalised by their sum it is
-            # level-independent - 1.0 when the crossing sits midway between
-            # the strobes, 0.0 when it sits on one of them and the run length
-            # is a coin toss between two legal values.
-            ap = -self.y_prev if self.y_prev < 0.0 else self.y_prev
-            span = ay + ap
-            em = 1.0 - ae / span if span > 0.0 else 0.0
-        else:
-            em = 1.0
-        self.d_prev = d
-        self.y_prev = y
-
-        if bit == 1:
-            # NRZI transition: the completed run ends here; this bit starts
-            # the next run.  Legalise: merge < 3 into the following run,
-            # split > 11 (progressive emission below keeps rr <= 13 here),
-            # always preserving the total channel-bit count.
-            edge = self.run_edge_min
-            if em < edge:
-                edge = em
-            rr = self.run_count + self.carry
-            # A non-zero carry means this run absorbed the remainder of an
-            # earlier legalisation: its length is invented, not read.
-            merged = self.carry != 0
-            self.carry = 0
-            conf = self._conf_value(edge)
-            start = self.run_start_bit
-            next_start = self.bit_idx + 1
-            next_min = ay
-            next_edge = em
-            if rr >= T_MIN:
-                if rr > T_MAX:
-                    self._emit(T_MAX, self._fabricated(conf), start)
-                    self.carry = rr - T_MAX
-                    # The remainder continues the same physical run, so it
-                    # keeps its start, its weakest sample and its margins.
-                    next_start = start + T_MAX
-                    next_min = self.run_min_abs
-                    next_edge = edge
-                else:
-                    self._emit(rr, self._fabricated(conf) if merged else conf, start)
-            elif rr > 0:
-                self.carry = rr
-                next_start = start
-                next_min = self.run_min_abs
-                next_edge = edge
-            self.run_count = 1
-            self.run_start_bit = next_start
-            self.run_min_abs = next_min
-            self.run_edge_min = next_edge
-        else:
-            self.run_count += 1
-            if self.run_count + self.carry >= T_MAX + 1:
-                # Progressive split inside an over-long run (dropout or
-                # missed transition): emit T11 now so the pending buffer
-                # and the frame accounting keep flowing.  The boundary is
-                # invented, so this T11 and the remainder are both suspect.
-                self._emit(
-                    T_MAX,
-                    self._fabricated(self._conf_value(self.run_edge_min)),
-                    self.run_start_bit,
-                )
-                self.carry = self.run_count + self.carry - T_MAX
-                self.run_count = 0
-                self.run_start_bit = self.bit_idx + 1
-
-        self._push_bit(bit)
-
-    def _conf_value(self, edge_margin):
-        """Confidence for one run: the worse of its amplitude and timing margins.
-
-        Amplitude is the weakest soft sample in the run against
-        ``conf_scale``; timing is the worse of the two edges bounding it
-        against ``timing_scale``.  Amplitude alone cannot see the failure
-        that matters here - a full-height run one channel bit adrift decodes
-        to a legal but wrong symbol, and reaches the CIRC stages disguised
-        as good data.
-        """
-        c = self.run_min_abs / self.conf_scale
-        t = edge_margin / self.timing_scale
-        if t < c:
-            c = t
-        if c > 1.0:
-            c = 1.0
-        elif c < 0.0:
-            c = 0.0
-        return np.uint8(255.0 * c)
-
-    def _fabricated(self, conf):
-        """Cap a T value the legaliser invented rather than read."""
-        if conf > self.conf_legalised:
-            return np.uint8(self.conf_legalised)
-        return conf
-
-    def _push_bit(self, bit):
-        """Advance the frame-sync state machine by one channel bit."""
-        self.bit_idx += 1
-        self.reg = ((self.reg << 1) | bit) & SYNC_MASK
-        matched = self.reg == SYNC_PATTERN
-
-        if self.locked:
-            delta = self.bit_idx - self.expected_match
-            if matched and -self.sync_window <= delta <= self.sync_window:
-                # Sync where the position counter expected it (within the
-                # slip window): close the frame and re-anchor.
-                self._accept_boundary(self.bit_idx - (SYNC_PATTERN_BITS - 1), True)
-                self.expected_match = self.bit_idx + FRAME_CHANNEL_BITS
-                self.miss = 0
-            elif delta == self.sync_window + 1:
-                # Window closed with no sync: flywheel a boundary at the
-                # expected position; unlock after enough consecutive misses.
-                boundary = self.expected_match - (SYNC_PATTERN_BITS - 1)
-                if self.restore_sync:
-                    self._restore_sync(boundary)
-                self._accept_boundary(boundary, False)
-                self.expected_match += FRAME_CHANNEL_BITS
-                self.miss += 1
-                if self.miss >= self.unlock_threshold:
-                    self.locked = False
-                    self.consec = 0
-        else:
-            if matched:
-                if self.bit_idx - self.last_match == FRAME_CHANNEL_BITS:
-                    self.consec += 1
-                else:
-                    self.consec = 1
-                self.last_match = self.bit_idx
-                if self.consec >= self.lock_threshold:
-                    self.locked = True
-                    self.miss = 0
-                    # Frames seen before lock were never validated.
-                    self._accept_boundary(self.bit_idx - (SYNC_PATTERN_BITS - 1), False)
-                    self.expected_match = self.bit_idx + FRAME_CHANNEL_BITS
-
-    def _restore_sync(self, boundary_bit):
-        """Regenerate a T11-T11 sync the flywheel says must sit at boundary_bit.
-
-        While frame-locked the 588-bit position counter is more reliable than
-        a marginal local read, so - like a hardware CD/LaserDisc transport -
-        a sync the pattern matcher missed is rewritten from the counter: the
-        pending runs spanning the 22 sync channel bits become
-        [head, 11, 11, tail], preserving the total channel-bit count.  The
-        rewrite happens only when head and tail land on legal run lengths
-        (a marginal edge misplaced by a bit or two); anything messier - real
-        dropout garbage - is left alone.  Rewritten runs carry
-        ``conf_restored``: they are counter-backed guesses, not reads, and
-        the consumer should treat them as erasures rather than data.
-        """
-        first = -1
-        last = -1
-        for j in range(self.pending_n):
-            start = self.pending_start[j]
-            if start >= boundary_bit + SYNC_PATTERN_BITS - 1:
-                break
-            if start + self.pending_t[j] > boundary_bit:
-                if first < 0:
-                    first = j
-                last = j
-        if first < 0:
-            return
-        region_start = self.pending_start[first]
-        region_len = 0
-        for j in range(first, last + 1):
-            region_len += self.pending_t[j]
-        head = boundary_bit - region_start
-        tail = region_start + region_len - (boundary_bit + 2 * T_MAX)
-        if head < 0 or tail < 0:
-            return
-        if head != 0 and not (T_MIN <= head <= T_MAX):
-            return
-        if tail != 0 and not (T_MIN <= tail <= T_MAX):
-            return
-        new_t = np.empty(4, np.int8)
-        new_start = np.empty(4, np.int64)
-        n_new = 0
-        if head:
-            new_t[n_new] = head
-            new_start[n_new] = region_start
-            n_new += 1
-        new_t[n_new] = T_MAX
-        new_start[n_new] = boundary_bit
-        new_t[n_new + 1] = T_MAX
-        new_start[n_new + 1] = boundary_bit + T_MAX
-        n_new += 2
-        if tail:
-            new_t[n_new] = tail
-            new_start[n_new] = boundary_bit + 2 * T_MAX
-            n_new += 1
-        n_old = last - first + 1
-        shift = n_new - n_old
-        if self.pending_n + shift > PENDING_CAPACITY:
-            return
-        if shift > 0:
-            for j in range(self.pending_n - 1, last, -1):
-                self.pending_t[j + shift] = self.pending_t[j]
-                self.pending_conf[j + shift] = self.pending_conf[j]
-                self.pending_start[j + shift] = self.pending_start[j]
-        elif shift < 0:
-            for j in range(last + 1, self.pending_n):
-                self.pending_t[j + shift] = self.pending_t[j]
-                self.pending_conf[j + shift] = self.pending_conf[j]
-                self.pending_start[j + shift] = self.pending_start[j]
-        for j in range(n_new):
-            self.pending_t[first + j] = new_t[j]
-            self.pending_conf[first + j] = np.uint8(self.conf_restored)
-            self.pending_start[first + j] = new_start[j]
-        self.pending_n += shift
-
-    def _accept_boundary(self, boundary_bit, sync_found):
-        """Flush the pending T values that belong to the closing frame."""
-        ok = (
-            sync_found
-            and self.prev_boundary >= 0
-            and boundary_bit - self.prev_boundary == FRAME_CHANNEL_BITS
-        )
-        cut = 0
-        while cut < self.pending_n and self.pending_start[cut] < boundary_bit:
-            cut += 1
-        self._flush(cut, ok)
-        self.prev_boundary = boundary_bit
-
-    def _emit(self, t, conf, start_bit):
-        """Queue one T value; overflow-flush if no frame boundary arrives."""
-        if self.pending_n >= PENDING_CAPACITY:
-            # No accepted sync for thousands of runs (EFM gap, dead signal):
-            # release the oldest half as unvalidated so output keeps flowing.
-            self._flush(PENDING_CAPACITY // 2, False)
-        self.pending_t[self.pending_n] = t
-        self.pending_conf[self.pending_n] = conf
-        self.pending_start[self.pending_n] = start_bit
-        self.pending_n += 1
+        """One symbol through the equaliser (exposed for its unit tests)."""
+        return _equalise(self.fs, self.iv, self.eq_w, self.eq_init, self.eq_buf, y)
 
     def final_flush(self):
         """End of stream: release everything still pending, unvalidated."""
-        if len(self.out_t) < self.out_n + self.pending_n:
-            needed = self.out_n + self.pending_n
-            new_t = np.empty(needed, np.int8)
-            new_c = np.empty(needed, np.uint8)
-            new_t[: self.out_n] = self.out_t[: self.out_n]
-            new_c[: self.out_n] = self.out_conf[: self.out_n]
-            self.out_t = new_t
-            self.out_conf = new_c
-        self._flush(self.pending_n, False)
-
-    def _flush(self, count, frame_ok):
-        """Move the oldest ``count`` pending T values to the output buffers.
-
-        A frame that failed the sync/588 check (or was never validated) has
-        its confidences capped at ``conf_lowcap`` - those T values are the
-        downstream erasure candidates.
-        """
-        for j in range(count):
-            conf = self.pending_conf[j]
-            if not frame_ok and conf > self.conf_lowcap:
-                conf = np.uint8(self.conf_lowcap)
-            self.out_t[self.out_n] = self.pending_t[j]
-            self.out_conf[self.out_n] = conf
-            self.out_n += 1
-        for j in range(count, self.pending_n):
-            self.pending_t[j - count] = self.pending_t[j]
-            self.pending_conf[j - count] = self.pending_conf[j]
-            self.pending_start[j - count] = self.pending_start[j]
-        self.pending_n -= count
+        self._reserve(self.out_n + self.pending_n, 1)
+        _flush(
+            self.iv, self.pending_t, self.pending_conf, self.pending_start,
+            self.out_t, self.out_conf, self.pending_n, False,
+        )
 
 
 class EFMTimingDemod:
@@ -936,7 +993,9 @@ class EFMTimingDemod:
         input array is not modified.
         """
         conditioned = self.conditioner.process(self.decimator.process(np.asarray(input_buffer)))
-        _consume_nogil(self.core, conditioned)
+        self.core.begin()
+        if conditioned.size:
+            self.core.consume(conditioned)
         return self.core.out_t[: self.core.out_n]
 
     def flush(self):

@@ -12,8 +12,9 @@ response and alias rejection against their stated tolerances, and exact
 chunking invariance, which is what lets decoder.py feed the demodulator one
 field at a time.
 
-These run compiled -- _TimingCore is a Numba jitclass, so a typing
-regression fails here rather than part-way through a decode.
+These run compiled -- the timing core is a set of cached Numba functions
+over its state arrays, so a typing regression fails here rather than
+part-way through a decode.
 """
 
 import numpy as np
