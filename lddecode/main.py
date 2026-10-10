@@ -10,6 +10,12 @@ from lddecode.decoder import LDdecode
 from lddecode.fileio import ldf_pipe, make_loader, parse_frequency, samples_to_s16
 from lddecode.utils_logging import init_logging
 
+# FLAC decode threads for a compressed input when the decode itself is
+# threaded (see fileio.LoadLDF).  On an 18-core box, NTSC CVBS: -t 8 19.1 ->
+# 21.9 fps and -t 4 11.4 -> 13.7 fps with 4; 2 was slower than 1, and one
+# per core no better than 4.
+FLAC_DECODE_THREADS = 4
+
 
 def build_parser():
     """The ld-decode command line, as an argparse parser.
@@ -657,7 +663,11 @@ def main(args=None):
             sys.exit(1)
 
     try:
-        loader = make_loader(filename, args.inputfreq)
+        loader = make_loader(
+            filename,
+            args.inputfreq,
+            decode_threads=FLAC_DECODE_THREADS if extra_options["threads"] > 1 else 1,
+        )
     except ValueError as e:
         print(e, file=sys.stderr)
         sys.exit(1)

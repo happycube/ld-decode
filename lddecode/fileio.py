@@ -58,13 +58,16 @@ is available)
 """
 
 
-def make_loader(filename, inputfreq=None):
+def make_loader(filename, inputfreq=None, decode_threads=1):
     """Return an appropriate loader function object for filename.
 
     If inputfreq is specified, it gives the sample rate in MHz of the source
     file, and the loader will resample from that rate to 40 MHz. Any sample
     rate specified by the source file's metadata will be ignored, as some
-    formats can't represent typical RF sample rates accurately."""
+    formats can't represent typical RF sample rates accurately.
+
+    decode_threads is how many threads may decode a compressed (.ldf/FLAC)
+    input; it does not affect the samples returned."""
 
     if inputfreq is not None:
         # We're resampling, so we have to use ffmpeg.
@@ -118,7 +121,7 @@ def make_loader(filename, inputfreq=None):
         or filename.endswith(".flac")
         or filename.endswith(".vhs")
     ):
-        return LoadLDF(filename)
+        return LoadLDF(filename, decode_threads=decode_threads)
 
     # Fallback to LoadFFmpeg for other formats (with stdin input)
     return LoadFFmpeg()
@@ -486,9 +489,14 @@ class LoadLDF:
 
     Uses a background thread to decode FLAC frames and fill a buffer.
     Eliminates the subprocess and pipe overhead of the previous design.
+
+    ``decode_threads`` > 1 lets libavcodec decode FLAC frames on that many
+    threads.  A single decode thread is what bounds a threaded decode: at
+    ``-t 8`` it runs ~87% busy at half its standalone rate, and the field
+    dispatcher spends most of its time waiting on it for raw samples.
     """
 
-    def __init__(self, filename):
+    def __init__(self, filename, decode_threads=1):
         try:
             import av  # noqa: F401
         except ImportError:
@@ -497,6 +505,7 @@ class LoadLDF:
             )
 
         self.filename = filename
+        self.decode_threads = int(decode_threads)
 
         self.position = 0
         self.rewind_size = 2 * 1024 * 1024
@@ -527,6 +536,11 @@ class LoadLDF:
         container = av.open(self.filename)
         try:
             stream = container.streams.audio[0]
+            if self.decode_threads > 1:
+                # libavcodec's FLAC frame threading.  Lossless, so the
+                # samples are the same whatever the thread count.
+                stream.thread_type = "FRAME"
+                stream.codec_context.thread_count = self.decode_threads
             resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono")
 
             if sample > 0:
