@@ -28,7 +28,6 @@ from .dsp import (
     equalise_chroma_gain,
     equalise_chroma_gain_phase,
     hz_to_output_array,
-    interp_spline_with_slope,
     n_orgt,
     n_ornotrange_scalar,
     nb_absmax,
@@ -41,9 +40,9 @@ from .dsp import (
     refine_pilot_zcs,
     rms,
     scale,
-    scale_field,
-    scale_positions,
+    scale_spline,
     select_band,
+    spline_pieces,
 )
 
 
@@ -452,9 +451,6 @@ class Field:
         self.dspicture = None
         self.dsaudio = None
         self.audio_field_number = None
-
-        self.interpolated_pixel_locs = None
-        self.wowfactors = None
 
         # On NTSC linecount rounds up to 263, and PAL 313
         self.outlinecount = (self.rf.SysParams["frame_lines"] // 2) + 1
@@ -1320,42 +1316,28 @@ class Field:
 
         return linelocs
 
-    def computewow_scaled(self):
-        """Compute how much the line deviates fron expected,
-           and scale input samples to output samples
-        """
-        actual_linelocs = np.array(self.linelocs, dtype=np.float64)
-        expected_linelocs = np.array(
-            [i * self.inlinelen for i in range(len(actual_linelocs))], dtype=np.float64
-        )
+    # wow_interpolation_method -> (spline degree, boundary condition)
+    WOW_METHODS = {
+        "linear": (1, None),
+        "quadratic": (2, None),
+        "cubic": (3, "natural"),
+    }
 
-        outscale = self.inlinelen / self.outlinelen
-        outsamples = self.outlinecount * self.outlinelen
-        outline_offset = (self.lineoffset + 1) * self.outlinelen
-
-        WOW_METHODS = {
-            "linear": (1, None),
-            "quadratic": (2, None),
-            "cubic": (3, "natural"),
-        }
-        if self.wow_interpolation_method not in WOW_METHODS:
+    def wow_spline(self):
+        """The spline from expected to actual input position - how far
+        each point of the field deviates from nominal timing - as
+        spline_pieces() (breaks, coeffs).  Its value at an expected
+        position is where to sample the input, and its slope there is the
+        wow, the playback speed relative to nominal."""
+        if self.wow_interpolation_method not in self.WOW_METHODS:
             raise ValueError(
                 f"Invalid wow_interpolation_method: {self.wow_interpolation_method!r}"
                 " (must be 'linear', 'quadratic', or 'cubic')"
             )
-        k, bc_type = WOW_METHODS[self.wow_interpolation_method]
-
-        # scale up to compute where the output pixel would fall on the interpolated line loc
-        scaled_pixel_locs = np.arange(outsamples + outline_offset) * outscale
-
-        # A spline that interpolates the exact sample position from expected
-        # vs. actual line locations, evaluated at every output pixel: the
-        # interpolated pixel location, and its slope - the amount of wow
-        self.interpolated_pixel_locs, self.wowfactors = interp_spline_with_slope(
-            expected_linelocs, actual_linelocs, scaled_pixel_locs, k=k, bc_type=bc_type
-        )
-
-        return self.interpolated_pixel_locs, self.wowfactors
+        k, bc_type = self.WOW_METHODS[self.wow_interpolation_method]
+        actual = np.array(self.linelocs, dtype=np.float64)
+        expected = np.arange(len(actual), dtype=np.float64) * self.inlinelen
+        return spline_pieces(expected, actual, k=k, bc_type=bc_type)
 
     @profile
     def downscale(
@@ -1380,14 +1362,21 @@ class Field:
             self.downscale_audio_out(audio, lastfieldwritten, lineinfo)
 
         dsout = np.zeros((linesout * outwidth), dtype=np.float32)
-        interpolated_pixel_locs, wowfactors = self.computewow_scaled()
-        scale_field(
+        # Every output pixel's position on the expected-time axis, from a
+        # line before display line 0 (the outlier medians and the level
+        # smoothing cover these too); the wow spline maps each onto the
+        # input and gives its level correction.
+        outscale = self.inlinelen / self.outlinelen
+        npixels = (self.outlinecount + self.lineoffset + 1) * self.outlinelen
+        breaks, coeffs = self.wow_spline()
+        scale_spline(
             self.data["video"][channel].astype(np.float32, copy=False),
             dsout,
-            interpolated_pixel_locs,
-            wowfactors,
+            outwidth * (self.lineoffset + 1),
+            np.arange(npixels) * outscale,
+            breaks,
+            coeffs,
             self.rf.downscale_sinc_lut,
-            self.lineoffset,
             outwidth,
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing
         )
@@ -1490,8 +1479,6 @@ class Field:
         "rawdata",
         "rawpulses",
         "validpulses",
-        "interpolated_pixel_locs",
-        "wowfactors",
         "rf",
         "anchor",
     )
@@ -2096,17 +2083,11 @@ class FieldPAL(Field):
         if phase_shift:
             t_lines = t_lines + phase_shift * step
 
-        # Same expected-time -> input-position spline computewow_scaled
-        # uses; field display line 0 sits at (lineoffset + 1) lines into
-        # the spline domain.
+        # Same expected-time -> input-position spline downscale uses;
+        # field display line 0 sits at (lineoffset + 1) lines into the
+        # spline domain.
         pos = (t_lines + (self.lineoffset + 1)) * self.inlinelen
-
-        actual = np.array(self.linelocs, dtype=np.float64)
-        expected = np.arange(len(actual), dtype=np.float64) * self.inlinelen
-        WOW_METHODS = {"linear": (1, None), "quadratic": (2, None),
-                       "cubic": (3, "natural")}
-        k, bc_type = WOW_METHODS[self.wow_interpolation_method]
-        locs, wow = interp_spline_with_slope(expected, actual, pos, k=k, bc_type=bc_type)
+        breaks, coeffs = self.wow_spline()
 
         # A field back from a worker process has had its sample buffers
         # stripped; the demod survives as transport_demod when the
@@ -2122,9 +2103,8 @@ class FieldPAL(Field):
             )
 
         out = np.zeros(len(pos), dtype=np.float32)
-        scale_positions(
-            demod,
-            out, locs, wow, self.rf.downscale_sinc_lut,
+        scale_spline(
+            demod, out, 0, pos, breaks, coeffs, self.rf.downscale_sinc_lut,
             frame_samples / 625.0,
             wow_level_adjust_smoothing=self.wow_level_adjust_smoothing,
         )

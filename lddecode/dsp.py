@@ -218,6 +218,84 @@ def scale_positions(buf, dsout, pixel_locs, wowfactors, sinc_lut,
         dsout[i] = level_adjusts[i] * result
 
 
+#: Output samples scale_spline evaluates the wow spline for at a time: small
+#: enough that the positions and levels stay in L1d beside the signal.
+SPLINE_CHUNK = 1024
+
+
+@njit(nogil=True, cache=True, fastmath=True)
+def scale_spline(buf, dsout, out_start, xq, breaks, coeffs, sinc_lut,
+                 samples_per_line, wow_level_adjust_smoothing=0,
+                 level_adjust_threshold=15):
+    """scale_field / scale_positions with the wow spline evaluated as it
+    is needed.
+
+    Resamples buf at the spline's value at xq[i] into dsout[i - out_start]
+    for i in [out_start, out_start + len(dsout)), scaled by its slope
+    there - bit for bit what evaluating interp_spline_with_slope() over
+    all of xq and handing the two arrays to scale_field (out_start = the
+    line offset in samples) or scale_positions (out_start = 0) does, but
+    a chunk at a time, so neither whole-field array is built and the
+    outlier medians need not sort one (_wow_median_mad).  The medians
+    and the level smoothing cover all of xq, as they do there.
+    """
+    median, mad = _wow_median_mad(breaks, coeffs, xq)
+    threshold = level_adjust_threshold * mad if mad > 0 else 0.001
+
+    smooth = wow_level_adjust_smoothing > 0
+    alpha = 0.0
+    if smooth:
+        alpha = 1 / (wow_level_adjust_smoothing * samples_per_line)
+    one_minus_alpha = 1 - alpha
+
+    half_taps_m1 = (sinc_tap_count // 2) - 1
+
+    locs = np.empty(SPLINE_CHUNK, dtype=np.float64)
+    levels = np.empty(SPLINE_CHUNK, dtype=np.float64)
+
+    # Without smoothing a level depends on its own sample alone, so the
+    # samples before out_start need not be visited.
+    end = out_start + len(dsout)
+    level_prev = 0.0
+    for c0 in range(0 if smooth else out_start, end, SPLINE_CHUNK):
+        m = min(SPLINE_CHUNK, end - c0)
+        _piecewise_poly_eval(breaks, coeffs, xq[c0 : c0 + m], locs, levels)
+
+        # compensates for the amplitude/frequency shift caused by FM
+        # demodulation under varying playback speed; a spike in wow is an
+        # hsync error, not playback speed, and gets the median instead.
+        for c in range(m):
+            wow = levels[c]
+            if abs(wow - median) > threshold:
+                levels[c] = median
+        if smooth:
+            for c in range(m):
+                if c0 + c > 0:
+                    levels[c] = alpha * levels[c] + one_minus_alpha * level_prev
+                level_prev = levels[c]
+
+        for c in range(max(0, out_start - c0), m):
+            coord = locs[c]
+            coord_int = int(coord)
+            frac = coord - coord_int
+
+            phase_pos = frac * sinc_phase_count
+            phase_start = int(phase_pos)
+            phase_alpha = np.float32(phase_pos - phase_start)
+
+            w_start = sinc_lut[phase_start]
+            w_end = sinc_lut[phase_start + 1]
+
+            start = coord_int - half_taps_m1
+
+            result = 0.0
+            for t in range(sinc_tap_count):
+                ws = w_start[t]
+                result += buf[start + t] * (ws + phase_alpha * (w_end[t] - ws))
+
+            dsout[c0 + c - out_start] = levels[c] * result
+
+
 @njit(cache=True)
 def genwave(rate, freq, initialphase=0):
     """ Generate an FM waveform from target frequency data """
@@ -825,10 +903,27 @@ def _piecewise_poly_eval(breaks, coeffs, xq, values, slopes):
     The interval search walks from the previous point's interval, so a
     sorted query - the only kind the field code makes - costs O(n).
     Writes into ``values`` and ``slopes``.
+
+    Compiled without fastmath, so the result does not depend on whether
+    it is called whole or a chunk at a time (scale_spline).
     """
     k = coeffs.shape[0] - 1
     last = breaks.shape[0] - 2
     j = 0
+    if k == 1:
+        # The linear case, which is the default wow method, spelt out:
+        # the general loop below computes exactly this, more slowly.
+        c0 = coeffs[0]
+        c1 = coeffs[1]
+        for i in range(xq.shape[0]):
+            x = xq[i]
+            while j < last and x >= breaks[j + 1]:
+                j += 1
+            while j > 0 and x < breaks[j]:
+                j -= 1
+            values[i] = c0[j] * (x - breaks[j]) + c1[j]
+            slopes[i] = c0[j]
+        return
     for i in range(xq.shape[0]):
         x = xq[i]
         while j < last and x >= breaks[j + 1]:
@@ -846,18 +941,13 @@ def _piecewise_poly_eval(breaks, coeffs, xq, values, slopes):
         slopes[i] = d
 
 
-def interp_spline_with_slope(x, y, xq, k=1, bc_type=None):
-    """Interpolating spline through (x, y), and its slope, at points xq.
+def spline_pieces(x, y, k=1, bc_type=None):
+    """The interpolating spline through (x, y) as one polynomial per knot
+    interval: (breaks, coeffs) in the layout _poly_at reads.
 
     The same spline ``scipy.interpolate.make_interp_spline(x, y, k=k,
-    bc_type=bc_type)`` builds, evaluated as one polynomial per knot
-    interval in a single compiled pass instead of two de Boor
-    evaluations.  ``x`` must be strictly increasing.  Agrees with the
-    BSpline to rounding (about 1e-15 relative), not bit for bit: the
-    polynomial form sums the same function in a different order.
-
-    Returns two new float64 arrays (value, first derivative), each
-    shaped like ``xq``.  O(len(x) * k) to set up plus O(len(xq) * k).
+    bc_type=bc_type)`` builds; ``x`` must be strictly increasing.
+    O(len(x) * k).
     """
     from scipy.interpolate import make_interp_spline
 
@@ -874,8 +964,80 @@ def interp_spline_with_slope(x, y, xq, k=1, bc_type=None):
         if m > 0:
             factorial *= m
         coeffs[k - m] = spl(left, m) / factorial
+    return breaks, coeffs
+
+
+def interp_spline_with_slope(x, y, xq, k=1, bc_type=None):
+    """Interpolating spline through (x, y), and its slope, at points xq.
+
+    The spline_pieces() polynomial evaluated in a single compiled pass
+    instead of two de Boor evaluations.  Agrees with the BSpline to
+    rounding (about 1e-15 relative), not bit for bit: the polynomial form
+    sums the same function in a different order.
+
+    Returns two new float64 arrays (value, first derivative), each
+    shaped like ``xq``.  O(len(x) * k) to set up plus O(len(xq) * k).
+    """
+    breaks, coeffs = spline_pieces(x, y, k=k, bc_type=bc_type)
     xq = np.ascontiguousarray(xq, dtype=np.float64)
     values = np.empty_like(xq)
     slopes = np.empty_like(xq)
     _piecewise_poly_eval(breaks, coeffs, xq.ravel(), values.ravel(), slopes.ravel())
     return values, slopes
+
+
+@njit(nogil=True, cache=True)
+def _counted_median(values, counts, total):
+    """np.median of the array holding counts[i] copies of values[i]
+    (total copies in all), without building it."""
+    order = np.argsort(values)
+    lo_rank = (total - 1) // 2
+    hi_rank = total // 2
+    lo = hi = values[order[0]]
+    seen = 0
+    found_lo = False
+    for idx in order:
+        seen += counts[idx]
+        if not found_lo and seen > lo_rank:
+            lo = values[idx]
+            found_lo = True
+        if seen > hi_rank:
+            hi = values[idx]
+            break
+    if lo_rank == hi_rank:
+        return lo
+    return (lo + hi) / 2
+
+
+@njit(nogil=True, cache=True)
+def _wow_median_mad(breaks, coeffs, xq):
+    """The median of the spline's slope over xq, and the median absolute
+    deviation from it - what scale_field computes from the per-sample
+    wow factors.
+
+    A linear spline's slope is constant on each interval, so the medians
+    come from one value per interval weighted by how many queries fall in
+    it, which is the same multiset and so the same answer; a curved
+    spline's slope is evaluated at every query.
+    """
+    n = xq.shape[0]
+    if coeffs.shape[0] == 2:
+        counts = np.zeros(coeffs.shape[1], dtype=np.int64)
+        j = 0
+        last = breaks.shape[0] - 2
+        for i in range(n):
+            x = xq[i]
+            while j < last and x >= breaks[j + 1]:
+                j += 1
+            while j > 0 and x < breaks[j]:
+                j -= 1
+            counts[j] += 1
+        slopes = coeffs[0].copy()
+        median = _counted_median(slopes, counts, n)
+        return median, _counted_median(np.abs(slopes - median), counts, n)
+
+    values = np.empty(n, dtype=np.float64)
+    slopes = np.empty(n, dtype=np.float64)
+    _piecewise_poly_eval(breaks, coeffs, xq, values, slopes)
+    median = np.median(slopes)
+    return median, np.median(np.abs(slopes - median))

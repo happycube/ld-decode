@@ -1,6 +1,6 @@
 """Unit tests for the compiled wow-spline evaluator in lddecode.dsp.
 
-computewow_scaled() and the CVBS resampler evaluate the expected-to-actual
+Field.downscale and the CVBS resampler evaluate the expected-to-actual
 line location spline, and its slope, at every output sample of every field.
 scipy's BSpline did that by de Boor recursion, twice, at about 5 % of a
 decode; interp_spline_with_slope() converts the same spline to one
