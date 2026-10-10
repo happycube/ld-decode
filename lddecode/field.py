@@ -16,7 +16,6 @@ from dataclasses import dataclass, field as dc_field
 
 import numpy as np
 from scipy import fft as spfft
-from scipy import interpolate
 
 from . import utils_logging as logs
 from .profiling import profile
@@ -29,6 +28,7 @@ from .dsp import (
     equalise_chroma_gain,
     equalise_chroma_gain_phase,
     hz_to_output_array,
+    interp_spline_with_slope,
     n_orgt,
     n_ornotrange_scalar,
     nb_absmax,
@@ -1345,19 +1345,15 @@ class Field:
             )
         k, bc_type = WOW_METHODS[self.wow_interpolation_method]
 
-        # create a spline that interpolates the exact sample value based on expected vs. actual
-        # line locations
-        spl = interpolate.make_interp_spline(
-            expected_linelocs, actual_linelocs, k=k, bc_type=bc_type, check_finite=False
-        )
-
         # scale up to compute where the output pixel would fall on the interpolated line loc
         scaled_pixel_locs = np.arange(outsamples + outline_offset) * outscale
 
-        # interpolate the expected pixel location
-        self.interpolated_pixel_locs = spl(scaled_pixel_locs)
-        # amount of wow for each scaled pixel
-        self.wowfactors = spl(scaled_pixel_locs, 1)
+        # A spline that interpolates the exact sample position from expected
+        # vs. actual line locations, evaluated at every output pixel: the
+        # interpolated pixel location, and its slope - the amount of wow
+        self.interpolated_pixel_locs, self.wowfactors = interp_spline_with_slope(
+            expected_linelocs, actual_linelocs, scaled_pixel_locs, k=k, bc_type=bc_type
+        )
 
         return self.interpolated_pixel_locs, self.wowfactors
 
@@ -2110,11 +2106,7 @@ class FieldPAL(Field):
         WOW_METHODS = {"linear": (1, None), "quadratic": (2, None),
                        "cubic": (3, "natural")}
         k, bc_type = WOW_METHODS[self.wow_interpolation_method]
-        spl = interpolate.make_interp_spline(
-            expected, actual, k=k, bc_type=bc_type, check_finite=False)
-
-        locs = spl(pos)
-        wow = spl(pos, 1)
+        locs, wow = interp_spline_with_slope(expected, actual, pos, k=k, bc_type=bc_type)
 
         # A field back from a worker process has had its sample buffers
         # stripped; the demod survives as transport_demod when the

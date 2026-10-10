@@ -808,3 +808,74 @@ def equalise_chroma_gain_phase(ire, level, cos_rotation, sin_rotation,
 
 if __name__ == "__main__":
     print("Nothing to see here, move along ;)")
+
+
+# ---------------------------------------------------------------------------
+# Wow spline evaluation
+# ---------------------------------------------------------------------------
+
+
+@njit(nogil=True, cache=True)
+def _piecewise_poly_eval(breaks, coeffs, xq, values, slopes):
+    """Value and first derivative of a piecewise polynomial at xq.
+
+    ``coeffs[m, j]`` multiplies ``(x - breaks[j]) ** (k - m)`` on interval
+    j (scipy PPoly layout, k = rows - 1); points outside the breakpoints
+    are extrapolated from the first or last interval, as BSpline does.
+    The interval search walks from the previous point's interval, so a
+    sorted query - the only kind the field code makes - costs O(n).
+    Writes into ``values`` and ``slopes``.
+    """
+    k = coeffs.shape[0] - 1
+    last = breaks.shape[0] - 2
+    j = 0
+    for i in range(xq.shape[0]):
+        x = xq[i]
+        while j < last and x >= breaks[j + 1]:
+            j += 1
+        while j > 0 and x < breaks[j]:
+            j -= 1
+        dx = x - breaks[j]
+        v = coeffs[0, j]
+        d = k * coeffs[0, j]
+        for m in range(1, k + 1):
+            v = v * dx + coeffs[m, j]
+            if m < k:
+                d = d * dx + (k - m) * coeffs[m, j]
+        values[i] = v
+        slopes[i] = d
+
+
+def interp_spline_with_slope(x, y, xq, k=1, bc_type=None):
+    """Interpolating spline through (x, y), and its slope, at points xq.
+
+    The same spline ``scipy.interpolate.make_interp_spline(x, y, k=k,
+    bc_type=bc_type)`` builds, evaluated as one polynomial per knot
+    interval in a single compiled pass instead of two de Boor
+    evaluations.  ``x`` must be strictly increasing.  Agrees with the
+    BSpline to rounding (about 1e-15 relative), not bit for bit: the
+    polynomial form sums the same function in a different order.
+
+    Returns two new float64 arrays (value, first derivative), each
+    shaped like ``xq``.  O(len(x) * k) to set up plus O(len(xq) * k).
+    """
+    from scipy.interpolate import make_interp_spline
+
+    spl = make_interp_spline(x, y, k=k, bc_type=bc_type, check_finite=False)
+    # The base intervals: the knots between the k-fold boundary repeats.
+    # Distinct even where make_interp_spline places them off the data
+    # sites (even k), so each carries one polynomial piece.
+    breaks = np.ascontiguousarray(spl.t[k : len(spl.t) - k], dtype=np.float64)
+    left = breaks[:-1]
+    coeffs = np.empty((k + 1, len(left)), dtype=np.float64)
+    factorial = 1.0
+    for m in range(k + 1):
+        # Taylor coefficient of order m at each interval's left edge
+        if m > 0:
+            factorial *= m
+        coeffs[k - m] = spl(left, m) / factorial
+    xq = np.ascontiguousarray(xq, dtype=np.float64)
+    values = np.empty_like(xq)
+    slopes = np.empty_like(xq)
+    _piecewise_poly_eval(breaks, coeffs, xq.ravel(), values.ravel(), slopes.ravel())
+    return values, slopes
