@@ -14,7 +14,9 @@ import numpy as np
 import pytest
 import scipy.signal as sps
 
-from lddecode.filters import build_hilbert, emphasis_iir, filtfft, gen_bpf_supergauss
+from lddecode.filters import (
+    build_hilbert, emphasis_iir, filtfft, gen_bpf_supergauss, supergauss,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.dsp]
 
@@ -82,15 +84,21 @@ def test_supergauss_stopband_floor(order):
     assert db(above.max()) < -50.0
 
 
-def test_supergauss_upper_half_mirrors_the_lower_half_exactly():
-    response = gen_bpf_supergauss(100 * BIN_HZ, 300 * BIN_HZ, 3, FREQ_HZ / 2, BLOCK_LEN)
+def test_supergauss_is_conjugate_symmetric_like_a_real_signals_spectrum():
+    # Wide enough that DC and Nyquist sit on the skirts at distinct,
+    # non-zero levels, so a one-bin slip in the mirror shows.
+    response = gen_bpf_supergauss(0, FREQ_HZ / 2, 1, FREQ_HZ / 2, BLOCK_LEN)
+    freqs = np.arange(BLOCK_LEN // 2 + 1) * BIN_HZ
+    expected = supergauss(freqs, FREQ_HZ / 2, 1, FREQ_HZ / 4)
 
     assert len(response) == BLOCK_LEN
-    # The negative-frequency half is a reversed copy of bins 0..N/2-1, so
-    # response[N-1-k] == response[k].  Built by np.flip, so this is exact.
-    lower = response[: BLOCK_LEN // 2]
-    upper = response[BLOCK_LEN // 2 :]
-    assert np.array_equal(upper, lower[::-1])
+    # Bins 0..N/2 are DC to Nyquist, and bin N-k is bin k's negative
+    # frequency, as in every other filter built on this FFT layout.  (The
+    # mirror used to be one bin out: Nyquist was missing and bin N-1 held
+    # the DC value.)  Built by np.flip, so this is exact.
+    np.testing.assert_allclose(response[: BLOCK_LEN // 2 + 1], expected, rtol=1e-12)
+    k = np.arange(1, BLOCK_LEN)
+    assert np.array_equal(response[BLOCK_LEN - k], response[k])
 
 
 def test_supergauss_is_real_and_non_negative():

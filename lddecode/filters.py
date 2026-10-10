@@ -112,14 +112,17 @@ def calczc(data, _start_offset, target, edge=0, count=16, reverse=False):
 # copied from vhs-decode
 
 def gen_bpf_supergauss(freq_low, freq_high, order, nyquist_hz, block_len):
+    """Super-gaussian band-pass over a full block_len FFT, conjugate-
+    symmetric like the spectrum of a real signal: bins 0..N/2 run from DC
+    to Nyquist, and bin N-k mirrors bin k."""
     sg = supergauss(
         np.linspace(0, nyquist_hz, block_len // 2 + 1),
         freq_high - freq_low,
         order,
         (freq_high + freq_low) / 2.0,
-    )[:-1]
+    )
 
-    return np.concatenate([sg, np.flip(sg)])
+    return np.concatenate([sg, np.flip(sg[1:-1])])
 
 
 def supergauss(x, freq, order=1, centerfreq=0):
