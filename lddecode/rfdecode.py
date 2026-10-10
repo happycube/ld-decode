@@ -1931,7 +1931,10 @@ class RFDecode:
         return sync.astype(np.float32)
 
     def demodblock(self, data=None, mtf_level=0, fftdata=None, cut=False,
-                   raw_mtf=False):
+                   raw_mtf=False, echo_cancel=True):
+        # echo_cancel=False skips --rf_echo_cancel for a block that did not
+        # come off the disc (computedelays' synthetic signal): it has no
+        # echo to remove, and must not feed the echo estimate either.
         # raw_mtf: use mtf_level as-is (delay calibration passes the true
         # filter level); otherwise scale by the disc/player MTF model.
         if not raw_mtf:
@@ -1954,7 +1957,7 @@ class RFDecode:
         else:
             raise ValueError("demodblock called without raw or FFT data")
 
-        if self.rf_echo_cancel:
+        if self.rf_echo_cancel and echo_cancel:
             # Opt-in, and the last consumer that wants the whole spectrum: the
             # estimator reads a magnitude over all of it and the inverse is
             # built over all of it.  The inverse is exactly conjugate-symmetric
@@ -2302,7 +2305,11 @@ class RFDecode:
         fakesignal += 8192
         fakesignal[6000:6005] = 0
 
-        fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level, raw_mtf=True)
+        # The synthetic signal has no echo: run it through the filters the
+        # delays describe, not through an echo inverse that would skew the
+        # edges they are measured from (or through the echo estimator).
+        fakedecode = rf.demodblock(fakesignal, mtf_level=mtf_level, raw_mtf=True,
+                                   echo_cancel=False)
 
         vdemod = fakedecode["video"]["demod"]
         vsync_cross_hz = rf.iretohz(rf.DecoderParams["vsync_ire"] / 2)
