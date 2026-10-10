@@ -321,6 +321,24 @@ def test_demod_is_unaffected_by_how_the_input_is_chunked(clean_signal, clean_res
     assert np.array_equal(chunk_conf, whole_conf)
 
 
+def test_front_end_may_run_ahead_of_back_end(clean_signal, clean_result):
+    """decoder.py runs the front end on its own thread, several field
+    slices ahead of the timing loop; only the order within each half
+    matters."""
+    whole_t, whole_conf = clean_result
+    d = EFMTimingDemod(FS)
+    chunks = [clean_signal[s : s + 99991] for s in range(0, len(clean_signal), 99991)]
+
+    fronts = [d.front_end(c) for c in chunks]
+    ts, cs = [], []
+    for front in fronts:
+        ts.append(d.back_end(front).copy())
+        cs.append(d.conf_view().copy())
+
+    assert np.array_equal(np.concatenate(ts), whole_t)
+    assert np.array_equal(np.concatenate(cs), whole_conf)
+
+
 def test_empty_input_produces_empty_output():
     d = EFMTimingDemod(FS)
     assert len(d.process(np.zeros(0, dtype=np.int16))) == 0

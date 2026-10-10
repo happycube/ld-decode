@@ -916,11 +916,17 @@ class LDdecode:
         # the threaded outputs are compared against.
         self._output_lane = None
         self._output_pool = None
+        self._efm_front_pool = None
         if self.numthreads > 1:
             self._output_lane = OrderedOutputLane(
                 depth=self.OUTPUT_LANE_DEPTH)
             self._output_pool = ThreadPoolExecutor(
                 max_workers=2, thread_name_prefix="output")
+            if self.digital_audio is True:
+                # One worker: the EFM front end is stateful over the
+                # stream, so its jobs must run one at a time, in order.
+                self._efm_front_pool = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="efm-front")
             sys.setswitchinterval(self.THREAD_SWITCH_INTERVAL)
 
         self.verboseVITS = extra_options.get("verboseVITS", False)
@@ -958,12 +964,17 @@ class LDdecode:
         field, say) is raised here, after its pool is released."""
         lane, self._output_lane = self._output_lane, None
         pool, self._output_pool = self._output_pool, None
+        front_pool, self._efm_front_pool = self._efm_front_pool, None
         try:
             if lane is not None:
                 lane.close()
         finally:
             if pool is not None:
                 pool.shutdown(wait=False)
+            if front_pool is not None:
+                # After a lane failure its queued front-end jobs have no
+                # reader; let the running one finish before the files close.
+                front_pool.shutdown(wait=True, cancel_futures=True)
 
     def _close_outputs(self):
         # Drain any T-values the EFM demodulator still holds: the timing
@@ -2304,10 +2315,25 @@ class LDdecode:
         computation that can never fan out, which is why it runs on the
         ordered output lane (via _write_field) when fields decode in
         parallel."""
+        return self._efm_back_end(self._efm_front_end(efm))
+
+    def _efm_front_end(self, efm):
+        """The half of _process_efm that can run ahead of the rest: the
+        .prefm write and, on the timing demodulator, decimation and
+        conditioning.  Fed in field order on the EFM front-end thread
+        (see writeout) when there is one."""
         if self.outfile_pre_efm is not None:
             self.outfile_pre_efm.write(efm.tobytes())
+        front_end = getattr(self.efm_pll, "front_end", None)
+        return efm if front_end is None else front_end(efm)
 
-        efm_out = self.efm_pll.process(efm)
+    def _efm_back_end(self, front):
+        """Demodulate _efm_front_end's output and write the T-values."""
+        back_end = getattr(self.efm_pll, "back_end", None)
+        if back_end is None:
+            efm_out = self.efm_pll.process(front)
+        else:
+            efm_out = back_end(front)
         if self.efm_conf_packed:
             # Fold the demodulator's per-T confidence (conf_view is 1:1
             # with the T-values on both demodulators) into the high
@@ -2347,6 +2373,14 @@ class LDdecode:
             picture = self._output_picture(picture, view)
         else:
             self._pair_cvbs_view(view)
+
+        front_pool = getattr(self, "_efm_front_pool", None)
+        if front_pool is not None and self.digital_audio is True:
+            # Decimating and conditioning the EFM slice depends only on
+            # the slices before it, so it starts now, on one thread in
+            # commit order, while the output lane is still on earlier
+            # fields; the lane runs the timing loop on the result.
+            efm = front_pool.submit(self._efm_front_end, efm)
 
         job = (view, fi, picture, audio, efm, field_id, len(self.fieldinfo))
         if self._output_lane is not None:
@@ -2409,7 +2443,10 @@ class LDdecode:
 
         efm_out = None
         if self.digital_audio is True:
-            efm_out = self._process_efm(efm)
+            if isinstance(efm, Future):
+                efm_out = self._efm_back_end(efm.result())
+            else:
+                efm_out = self._process_efm(efm)
         fi["efmTValues"] = len(efm_out) if self.digital_audio else 0
 
         # Per-field symbol count, analogous to efmTValues

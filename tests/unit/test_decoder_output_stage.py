@@ -191,6 +191,71 @@ def test_a_cvbs_frame_is_written_under_its_second_fields_parameters(corrector):
     assert lane.jobs[2][1][0][0].rf is not view_b.rf
 
 
+class StubEFMDemod:
+    """Front end and timing loop that record the order they were fed."""
+
+    def __init__(self):
+        self.fronts = []
+        self.backs = []
+
+    def front_end(self, efm):
+        self.fronts.append(int(efm[0]))
+        return efm * 10
+
+    def back_end(self, front):
+        self.backs.append(int(front[0]))
+        return front.astype(np.int8)
+
+
+def efm_decoder(lane=None, front_pool=None):
+    it = stub_decoder(lane=lane, cvbs=object())
+    it.digital_audio = True
+    it._efm_front_pool = front_pool
+    it.efm_pll = StubEFMDemod()
+    it.efm_conf_packed = False
+    it.outfile_efm = None
+    it.outfile_pre_efm = None
+    it.outfile_ac3sym = None
+    it._efm_front_end = lambda e: LDdecode._efm_front_end(it, e)
+    it._efm_back_end = lambda e: LDdecode._efm_back_end(it, e)
+    it._process_efm = lambda e: LDdecode._process_efm(it, e)
+    it._write_field = lambda job: LDdecode._write_field(it, job)
+    it._writeout_data = lambda fi, pic, aud, f, efm_out: it.written.append(efm_out)
+    return it
+
+
+def test_the_efm_front_end_starts_at_commit_on_its_pool(corrector):
+    lane = RecordingLane()
+    pool = ImmediateExecutor()
+    it = efm_decoder(lane=lane, front_pool=pool)
+
+    for n in (1, 2, 3):
+        it.writeout(dataset(stub_field(), efm=np.full(4, n, dtype=np.int16)))
+
+    # all three slices went through the front end at commit, in order,
+    # before the lane demodulated any of them
+    assert it.efm_pll.fronts == [1, 2, 3] and it.efm_pll.backs == []
+    efms = [args[0][4] for _, args in lane.jobs]
+    assert all(isinstance(e, Future) for e in efms)
+
+    for fn, args in lane.jobs:
+        fn(*args)
+    assert it.efm_pll.backs == [10, 20, 30]
+    assert [int(e[0]) for e in it.written] == [10, 20, 30]
+    assert [fi["efmTValues"] for fi in it.fieldinfo] == [4, 4, 4]
+
+
+def test_without_a_front_end_pool_the_efm_is_demodulated_on_the_lane(corrector):
+    lane = RecordingLane()
+    it = efm_decoder(lane=lane)
+
+    it.writeout(dataset(stub_field(), efm=np.full(4, 7, dtype=np.int16)))
+    assert it.efm_pll.fronts == []
+    fn, args = lane.jobs[0]
+    fn(*args)
+    assert it.efm_pll.fronts == [7] and it.efm_pll.backs == [70]
+
+
 @pytest.fixture
 def quiet_log(monkeypatch):
     monkeypatch.setattr(D.logs, "logger", types.SimpleNamespace(

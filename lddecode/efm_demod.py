@@ -992,7 +992,20 @@ class EFMTimingDemod:
         next call overwrites it); the caller must copy to keep it.  The
         input array is not modified.
         """
-        conditioned = self.conditioner.process(self.decimator.process(np.asarray(input_buffer)))
+        return self.back_end(self.front_end(input_buffer))
+
+    def front_end(self, input_buffer):
+        """Decimate and condition one chunk: the first half of process().
+
+        Its state (the half-band delay lines and the AGC) is disjoint from
+        back_end's, so with each half called in stream order the two may
+        run on different threads, one chunk apart.  Returns a fresh
+        float64 array."""
+        return self.conditioner.process(self.decimator.process(np.asarray(input_buffer)))
+
+    def back_end(self, conditioned):
+        """Run front_end's output through the timing loop: the second half
+        of process(), with the same return value."""
         self.core.begin()
         if conditioned.size:
             self.core.consume(conditioned)
