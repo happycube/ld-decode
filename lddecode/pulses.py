@@ -108,6 +108,115 @@ def _dropout_unflag_sync(iserr, demod, demod_05, start, end, sync_min, normal_ma
                 iserr[i] = False
 
 
+#: Samples _dropout_span copies out of the video record array at a time.
+DROPOUT_CHUNK = 2048
+
+
+@njit(cache=True, nogil=True)
+def _dropout_span(iserr, rfhpf, rf_lo, rf_hi, rot_delay,
+                  demod, demod_05, demod_raw,
+                  normal_min, normal_max, normal_min_05, normal_max_05,
+                  sync_min, sync_min_05, absurd_hz, i0, i1, in_sync):
+    """dropout_flags over [i0, i1), where in_sync is the same throughout
+    and every i is at or past rot_delay.
+
+    The three video channels are interleaved in one record array, so each
+    chunk is first copied out into contiguous buffers; the test itself is
+    then branch-free over plain slices, which vectorises.
+    """
+    d_buf = np.empty(DROPOUT_CHUNK, np.float32)
+    d5_buf = np.empty(DROPOUT_CHUNK, np.float32)
+    raw_buf = np.empty(DROPOUT_CHUNK, np.float32)
+    for c0 in range(i0, i1, DROPOUT_CHUNK):
+        m = min(DROPOUT_CHUNK, i1 - c0)
+        d_src = demod[c0 : c0 + m]
+        d5_src = demod_05[c0 : c0 + m]
+        raw_src = demod_raw[c0 : c0 + m]
+        for j in range(m):
+            d_buf[j] = d_src[j]
+            d5_buf[j] = d5_src[j]
+            raw_buf[j] = raw_src[j]
+
+        out = iserr[c0 : c0 + m]
+        rf = rfhpf[c0 - rot_delay : c0 - rot_delay + m]
+        for j in range(m):
+            d = d_buf[j]
+            d5 = d5_buf[j]
+            err = ((d < normal_min) | (d > normal_max)
+                   | (d5 < normal_min_05) | (d5 > normal_max_05))
+            if in_sync:
+                err &= ~((sync_min <= d) & (d <= normal_max)
+                         & (sync_min_05 <= d5) & (d5 <= normal_max_05))
+            x = rf[j]
+            out[j] = err | (x < rf_lo) | (x > rf_hi) | (raw_buf[j] > absurd_hz)
+
+
+@njit(cache=True, nogil=True)
+def dropout_flags(iserr, rfhpf, rf_lo, rf_hi, rot_delay,
+                  demod, demod_05, demod_raw,
+                  normal_min, normal_max, normal_min_05, normal_max_05,
+                  sync_min, sync_min_05, absurd_hz,
+                  sync_starts, sync_ends, keep_start, keep_end):
+    """Field.dropout_detect_demod's whole per-sample test in one pass.
+
+    A sample is a dropout when:
+
+    - demod or demod_05 leaves its normal range - unless the sample is in
+      one of the sync regions [sync_starts[r], sync_ends[r]) and both sit
+      within the relaxed sync ranges (what _dropout_unflag_sync clears);
+    - or the RF high-pass rot_delay samples earlier leaves (rf_lo, rf_hi);
+    - or demod_raw exceeds absurd_hz;
+
+    and only inside [keep_start, keep_end).  demod, demod_05 and
+    demod_raw are fields of one record array, so testing them together
+    reads it once rather than once per field.  rf_lo and rf_hi must be
+    float32-representable: the RF test was a float32 comparison.
+    """
+    n = len(iserr)
+    lo = max(0, keep_start)
+    hi = min(n, keep_end)
+    iserr[:lo] = False
+    iserr[max(lo, hi):] = False
+
+    # The samples before rot_delay have no RF sample to test: one at a
+    # time, through the same test with the RF term left out.
+    i = lo
+    for i in range(lo, min(hi, rot_delay)):
+        d = demod[i]
+        d5 = demod_05[i]
+        err = (d < normal_min or d > normal_max
+               or d5 < normal_min_05 or d5 > normal_max_05)
+        if err and sync_min <= d <= normal_max and sync_min_05 <= d5 <= normal_max_05:
+            for r in range(len(sync_starts)):
+                if sync_starts[r] <= i < sync_ends[r]:
+                    err = False
+                    break
+        iserr[i] = err or demod_raw[i] > absurd_hz
+    i = max(lo, min(hi, rot_delay))
+
+    # The rest in spans that are wholly inside or wholly outside the sync
+    # regions (merged, since lines can overlap).
+    order = np.argsort(sync_starts)
+    for k in order:
+        start = max(sync_starts[k], i)
+        end = min(sync_ends[k], hi)
+        if end <= start:
+            continue
+        _dropout_span(iserr, rfhpf, rf_lo, rf_hi, rot_delay, demod, demod_05,
+                      demod_raw, normal_min, normal_max, normal_min_05,
+                      normal_max_05, sync_min, sync_min_05, absurd_hz,
+                      i, start, False)
+        _dropout_span(iserr, rfhpf, rf_lo, rf_hi, rot_delay, demod, demod_05,
+                      demod_raw, normal_min, normal_max, normal_min_05,
+                      normal_max_05, sync_min, sync_min_05, absurd_hz,
+                      start, end, True)
+        i = end
+    _dropout_span(iserr, rfhpf, rf_lo, rf_hi, rot_delay, demod, demod_05,
+                  demod_raw, normal_min, normal_max, normal_min_05,
+                  normal_max_05, sync_min, sync_min_05, absurd_hz,
+                  i, hi, False)
+
+
 # Hotspot subroutines in FieldNTSC's compute_line_bursts function,
 # removed so that they can be JIT'd
 

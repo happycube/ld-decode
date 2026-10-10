@@ -21,15 +21,13 @@ from . import utils_logging as logs
 from .profiling import profile
 from .audio import downscale_audio
 from .filters import calczc, inrange
-from .pulses import Pulse, _dropout_unflag_sync, clb_findbursts, findpulses
+from .pulses import Pulse, clb_findbursts, dropout_flags, findpulses
 from .dsp import (
     angular_mean_helper,
     compute_linelocs_kernel,
     equalise_chroma_gain,
     equalise_chroma_gain_phase,
     hz_to_output_array,
-    n_orgt,
-    n_ornotrange_scalar,
     nb_absmax,
     nb_mean,
     nb_median,
@@ -1648,22 +1646,14 @@ class Field:
 
         isPAL = self.rf.system == "PAL"
 
-        rfstd = nb_std(f.data["rfhpf"])
-        iserr_rf1 = (f.data["rfhpf"] < (-rfstd * 3)) | (
-            f.data["rfhpf"] > (rfstd * 3)
-        )  # | (f.rawdata <= -32000)
+        rfhpf = f.data["rfhpf"]
+        n = len(rfhpf)
+        rfstd = nb_std(rfhpf)
+        # rfstd is a Python float, so comparing the float32 high-pass
+        # against it was a float32 comparison: round the bounds the same way.
+        rf_lo = float(np.float32(-rfstd * 3))
+        rf_hi = float(np.float32(rfstd * 3))
         rot_delay = self.rf.delays["video_rot"]
-        if rot_delay:
-            iserr_rf = np.full_like(iserr_rf1, False)
-            iserr_rf[rot_delay:] = iserr_rf1[:-rot_delay]
-        else:
-            # [:-0] is empty; a zero delay needs no shift.
-            iserr_rf = iserr_rf1.copy()
-
-        # Demod threshold flags are tracked separately from the RF flags so
-        # that the sync-area unflagging below (which only knows the relaxed
-        # demod thresholds) cannot erase RF-detected rot inside sync pulses.
-        iserr = np.full_like(iserr_rf1, False)
 
         # Scalar thresholds for normal video and sync areas
         normal_min    = f.rf.iretohz(-70 if isPAL else -50)
@@ -1678,41 +1668,36 @@ class Field:
         sync_min    = f.rf.iretohz(vsync_ire - 60 if isPAL else vsync_ire - 35)
         sync_min_05 = f.rf.iretohz(vsync_ire - 10)
 
-        # Build sync region lookup: array of (start, end) for sync-min regions
-        # and (start, end) for hsync-only regions
-        demod = f.data["video"]["demod"]
-        demod_05 = f.data["video"]["demod_05"]
+        # The sync areas, where the lower thresholds apply: whole lines in
+        # vsync, the hsync pulse elsewhere.  The relaxed thresholds only
+        # clear demod flags, never RF-detected rot inside a sync pulse.
+        lines = range(1, len(f.linelocs))
+        sync_starts = np.array([int(f.linelocs[line]) for line in lines], dtype=np.int64)
+        sync_ends = np.array([
+            int(f.linelocs[line + 1]) if line in vsync_lines
+            else int(f.linelocs[line]) + hsync_len
+            for line in lines
+        ], dtype=np.int64)
 
-        # Check normal regions with scalar comparison (avoids 4 large array allocs)
-        n_ornotrange_scalar(iserr, demod, normal_min, normal_max)
-        n_ornotrange_scalar(iserr, demod_05, normal_min_05, normal_max_05)
+        # Dropouts outside the field itself are dropped.
+        keep_start = slice(None, int(f.linelocs[f.lineoffset + 1])).indices(n)[1]
+        keep_end = slice(int(f.linelocs[f.lineoffset + f.linecount + 1]), None).indices(n)[0]
 
-        # Un-flag sync areas where the lower thresholds apply
-        for line in range(1, len(f.linelocs)):
-            if line in vsync_lines:
-                start = int(f.linelocs[line])
-                end = int(f.linelocs[line + 1])
-                _dropout_unflag_sync(iserr, demod, demod_05, start, end,
-                                     sync_min, normal_max, sync_min_05, normal_max_05)
-            else:
-                start = int(f.linelocs[line])
-                end = start + hsync_len
-                _dropout_unflag_sync(iserr, demod, demod_05, start, end,
-                                     sync_min, normal_max, sync_min_05, normal_max_05)
-
-        iserr |= iserr_rf
-
-        # detect absurd fluctuations in pre-deemp demod, since only dropouts can
-        # cause them.  The bound follows the discriminator's rate: demod_raw is
-        # one phase increment at the input rate and the mean of two at half
-        # rate, so the same excursion reads differently (see
+        # The absurd-fluctuation test on the pre-deemp demod catches what only
+        # a dropout can cause.  Its bound follows the discriminator's rate:
+        # demod_raw is one phase increment at the input rate and the mean of
+        # two at half rate, so the same excursion reads differently (see
         # rfdecode.demod_absurd_hz, which records the counts both bounds give
         # on the test captures).
-        n_orgt(iserr, f.data["video"]["demod_raw"], self.rf.demod_absurd_hz)
-
-        # filter out dropouts outside actual field
-        iserr[:int(f.linelocs[f.lineoffset + 1])] = False
-        iserr[int(f.linelocs[f.lineoffset + f.linecount + 1]):] = False
+        video = f.data["video"]
+        iserr = np.empty(n, dtype=np.bool_)
+        dropout_flags(
+            iserr, rfhpf, rf_lo, rf_hi, rot_delay,
+            video["demod"], video["demod_05"], video["demod_raw"],
+            normal_min, normal_max, normal_min_05, normal_max_05,
+            sync_min, sync_min_05, self.rf.demod_absurd_hz,
+            sync_starts, sync_ends, keep_start, keep_end,
+        )
 
         return iserr
 
