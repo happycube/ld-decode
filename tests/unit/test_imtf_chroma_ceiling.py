@@ -454,7 +454,7 @@ def adopt_stub(samples_, strength, flat_band=None, calibrated=False,
         _veq_last_adopt=None,
         veq_calibrated=calibrated,
         fields_written=fields_written,
-        fdoffset=0,
+        _servo_pos=0,
         bytes_per_field=1,
         exact_speculation=False,
         rf=types.SimpleNamespace(
@@ -616,12 +616,12 @@ def test_the_rate_limit_holds_a_republish_once_frames_are_written():
     pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
     it = adopt_stub(pool, strength=1.2, estimate=FLAT_EQ, applied_eq=FLAT_EQ,
                     calibrated=True, fields_written=4, last_publish=0)
-    it.fdoffset = (LDdecode.VEQ_MIN_ADOPT_FIELDS - 1) * it.bytes_per_field
+    it._servo_pos = (LDdecode.VEQ_MIN_ADOPT_FIELDS - 1) * it.bytes_per_field
     LDdecode.checkVideoEQ(it, field=None)
     assert it._imtf_flat_band is None
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(1.2)
 
-    it.fdoffset = LDdecode.VEQ_MIN_ADOPT_FIELDS * it.bytes_per_field
+    it._servo_pos = LDdecode.VEQ_MIN_ADOPT_FIELDS * it.bytes_per_field
     LDdecode.checkVideoEQ(it, field=None)
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
 

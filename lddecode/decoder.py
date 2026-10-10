@@ -688,6 +688,7 @@ class LDdecode:
         self.outwidth = self.rf.SysParams["outlinelen"]
 
         self.fdoffset = 0
+        self._servo_pos = 0   # see _commit_entry
         self.mtf_level = 1
 
         self.fieldstack = [None, None, None, None]
@@ -736,7 +737,7 @@ class LDdecode:
             and extra_options.get("MTF_offset", 0) == 0
         )
         self._servo_samples = []   # (field readloc, level_used, pulse/bar)
-        self._servo_last_adopt = None   # fdoffset of last servo adoption
+        self._servo_last_adopt = None   # _servo_pos of last servo adoption
         self._servo_engaged = False     # 2T servo has measured this disc
         # Loop gain is 1/|d(pulse/bar)/d(level)| — a near-Newton step.
         # Measured slope: -0.11..-0.17 on PAL (Louvre/jason sweeps);
@@ -1466,7 +1467,7 @@ class LDdecode:
                     self._veq_samples.append(entry)
                     self._veq_samples = self._veq_samples[-self.VEQ_KEEP:]
 
-        horizon = (self.fdoffset
+        horizon = (self._servo_pos
                    - self.VEQ_MAX_AGE_FIELDS * self.bytes_per_field)
         self._veq_samples = [s for s in self._veq_samples
                              if s[0] >= horizon]
@@ -1663,7 +1664,7 @@ class LDdecode:
             else:
                 self._dg_samples.append(entry)
                 self._dg_samples = self._dg_samples[-self.DG_KEEP:]
-        horizon = (self.fdoffset
+        horizon = (self._servo_pos
                    - self.DG_MAX_AGE_FIELDS * self.bytes_per_field)
         self._dg_samples = [x for x in self._dg_samples if x[0] >= horizon]
         need = 3 if not self.dg_calibrated else self.DG_MIN_SAMPLES
@@ -1706,10 +1707,10 @@ class LDdecode:
             engaging = current_phase == 0.0 and phase != 0.0
             if (not engaging
                     and self._dg_last_adopt is not None
-                    and (self.fdoffset - self._dg_last_adopt)
+                    and (self._servo_pos - self._dg_last_adopt)
                     < self.DG_MIN_ADOPT_FIELDS * self.bytes_per_field):
                 return
-            self._dg_last_adopt = self.fdoffset
+            self._dg_last_adopt = self._servo_pos
 
         gain_100 = ((1.0 + estimate * CHROMA_DG_ANCHOR_IRE)
                     / (1.0 + estimate * 100.0))
@@ -1769,10 +1770,10 @@ class LDdecode:
         first = not self.veq_calibrated
         if not first and self.fields_written > 0:
             if (self._veq_last_adopt is not None
-                    and (self.fdoffset - self._veq_last_adopt)
+                    and (self._servo_pos - self._veq_last_adopt)
                     < self.VEQ_MIN_ADOPT_FIELDS * self.bytes_per_field):
                 return hold
-            self._veq_last_adopt = self.fdoffset
+            self._veq_last_adopt = self._servo_pos
 
         logs.logger.debug(
             "Video EQ (VITS multiburst): "
@@ -1844,10 +1845,10 @@ class LDdecode:
         # that a bound on a static channel has no reason to move often.
         if self.fields_written > 0:
             if (self._imtf_flat_band_last_publish is not None
-                    and (self.fdoffset - self._imtf_flat_band_last_publish)
+                    and (self._servo_pos - self._imtf_flat_band_last_publish)
                     < self.VEQ_MIN_ADOPT_FIELDS * self.bytes_per_field):
                 return False
-        self._imtf_flat_band_last_publish = self.fdoffset
+        self._imtf_flat_band_last_publish = self._servo_pos
         self._imtf_flat_band = flat_band
         moved = self._apply_imtf_ceiling()
         if moved:
@@ -1983,7 +1984,7 @@ class LDdecode:
                     self._servo_samples = \
                         self._servo_samples[-self.MTF_SERVO_KEEP:]
 
-        horizon = (self.fdoffset
+        horizon = (self._servo_pos
                    - self.MTF_SERVO_MAX_AGE_FIELDS * self.bytes_per_field)
         self._servo_samples = [s for s in self._servo_samples
                                if s[0] >= horizon]
@@ -2064,10 +2065,10 @@ class LDdecode:
 
         if source == "2T servo" and self.fields_written > 0:
             if (self._servo_last_adopt is not None
-                    and (self.fdoffset - self._servo_last_adopt)
+                    and (self._servo_pos - self._servo_last_adopt)
                     < self.MTF_SERVO_MIN_ADOPT_FIELDS * self.bytes_per_field):
                 return True
-            self._servo_last_adopt = self.fdoffset
+            self._servo_last_adopt = self._servo_pos
 
         logs.logger.debug(
             f"MTF level {self.mtf_level:.3f} → {estimate:.3f} ({source})"
@@ -2179,13 +2180,13 @@ class LDdecode:
                 != self.rf.DecoderParams.get("inverse_mtf_strength", 0.0)):
             return True
 
-        # On a redo the same field comes through again (fdoffset unchanged);
+        # On a redo the same field comes through again (_servo_pos unchanged);
         # replace its sample rather than double-counting it.
-        if self._deemp_burst_offset == self.fdoffset and self._deemp_burst_samples:
+        if self._deemp_burst_offset == self._servo_pos and self._deemp_burst_samples:
             self._deemp_burst_samples[-1] = field.burstmedian
         else:
             self._deemp_burst_samples.append(field.burstmedian)
-            self._deemp_burst_offset = self.fdoffset
+            self._deemp_burst_offset = self._servo_pos
         # Rolling window so old-radius samples age out of the estimate.
         self._deemp_burst_samples = self._deemp_burst_samples[-30:]
 
@@ -3212,6 +3213,14 @@ class LDdecode:
         f = entry["f"]
         picture, efm, metrics = entry["result"]
 
+        # The servos' clock - sample ages and adoption rate limits - is
+        # the position just past the field being calibrated.  That is
+        # where fdoffset stands on a serial decode, but the stage-2
+        # pipeline advances the chain up to its depth ahead of the field
+        # it commits, which would age samples out and lift rate limits
+        # early whenever the decode runs pipelined.
+        self._servo_pos = entry["start"] + entry["offset"]
+
         # Settle all calibration loops before anything is written, so
         # the first frame carries the same parameters as the rest.
         force_redo = False
@@ -3270,6 +3279,7 @@ class LDdecode:
             entry.pop("audio", None)  # a redone field recomputes audio
             self._chain_prev = f
             self.fdoffset = entry["start"] + offset
+            self._servo_pos = self.fdoffset
 
             picture, efm, metrics = self.decode_stage2(f)
             entry["result"] = (picture, efm, metrics)

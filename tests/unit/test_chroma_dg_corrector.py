@@ -260,7 +260,7 @@ def servo_stub(slopes, calibrated=False, current=0.0, enabled=True,
                      for index, (s, ph) in enumerate(zip(slopes, phases))],
         _dg_last_adopt=None,
         dg_calibrated=calibrated,
-        fdoffset=len(slopes),
+        _servo_pos=len(slopes),
         bytes_per_field=1,
         fields_written=fields_written,
         DG_KEEP=LDdecode.DG_KEEP,
@@ -339,7 +339,7 @@ def test_the_negative_clamp_is_tighter():
 
 def test_the_rate_limit_holds_adoptions_once_frames_are_written():
     it = servo_stub([0.0034] * 8, calibrated=True, fields_written=5)
-    it._dg_last_adopt = it.fdoffset - 1
+    it._dg_last_adopt = it._servo_pos - 1
     run(it)
     assert slope_of(it) == 0.0
 
@@ -557,7 +557,7 @@ def test_a_phase_switching_on_is_not_held_by_the_rate_limit():
     it goes out immediately rather than waiting out the trim holdoff."""
     it = servo_stub([0.0034] * FULL, calibrated=True, current=0.0034,
                     phases=[0.058] * FULL, fields_written=5)
-    it._dg_last_adopt = it.fdoffset - 1
+    it._dg_last_adopt = it._servo_pos - 1
     run(it)
     assert phase_of(it) == pytest.approx(0.058)
 
@@ -566,7 +566,7 @@ def test_a_phase_trim_is_still_rate_limited():
     it = servo_stub([0.0034] * FULL, calibrated=True, current=0.0034,
                     phases=[0.058] * FULL, current_phase=0.045,
                     fields_written=5)
-    it._dg_last_adopt = it.fdoffset - 1
+    it._dg_last_adopt = it._servo_pos - 1
     run(it)
     assert phase_of(it) == pytest.approx(0.045)
 
