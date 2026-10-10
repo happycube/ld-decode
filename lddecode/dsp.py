@@ -695,8 +695,10 @@ def refine_pilot_zcs(demod_pilot, linelocs, n, length_px, freq, linelen, pilot_m
         adjfreq = freq
         if l > 1:
             spacing = (linelocs[l] - linelocs[l - 1]) / linelen
+            # The pilot is line-locked, so a line spanning more samples
+            # than nominal stretches its period by the same factor
             if spacing > 0.1:
-                adjfreq = freq / spacing
+                adjfreq = freq * spacing
         pl = (adjfreq / pilot_mhz) / 2
         plen[l] = pl
 

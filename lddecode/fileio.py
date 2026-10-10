@@ -157,6 +157,24 @@ def load_unpacked_data(infile, sample, readlen, sampletype):
     return indata
 
 
+def samples_to_s16(data):
+    """Convert loader output to signed 16-bit samples, as a new array.
+
+    The .u8 and .u16 loaders return unsigned samples centred on 128 and
+    32768; casting those straight to int16 wraps (u16) or leaves an 8-bit
+    signal in the bottom of the range (u8).  Convert them the way ffmpeg's
+    u8/u16le -> pcm_s16le conversion does, so a cut or test .ldf matches
+    what the resampling path would have produced.  Signed input is cast
+    unchanged.
+    """
+    data = np.asarray(data)
+    if data.dtype == np.uint8:
+        return ((data.astype(np.int16) - 128) * 256).astype(np.int16)
+    if data.dtype == np.uint16:
+        return (data.astype(np.int32) - 32768).astype(np.int16)
+    return data.astype(np.int16)
+
+
 def load_unpacked_data_u8(infile, sample, readlen):
     return load_unpacked_data(infile, sample, readlen, 1)
 

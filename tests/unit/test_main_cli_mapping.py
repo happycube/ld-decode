@@ -325,6 +325,13 @@ def test_the_video_low_pass_override_is_converted_to_hertz():
     assert override["video_lpf_freq"] == pytest.approx(4.2e6)
 
 
+def test_the_audio_filter_width_is_converted_to_hertz():
+    """The audio filters take Hz; passing parse_frequency's MHz through
+    turned the documented 150kHz into a 0.15 Hz pass band."""
+    assert extra("--audio_filterwidth", "150kHz")["audio_filterwidth"] == pytest.approx(150e3)
+    assert extra()["audio_filterwidth"] is None
+
+
 def test_the_low_pass_order_is_only_overridden_when_it_is_valid():
     """The sentinel is -1, and an order below 1 is not a filter."""
     assert "video_lpf_order" not in options("--video_lpf_order", "-1")[

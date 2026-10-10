@@ -9,7 +9,7 @@ import argparse
 import numpy as np
 
 from lddecode.decoder import LDdecode
-from lddecode.fileio import ffmpeg_pipe, ldf_pipe, make_loader
+from lddecode.fileio import ffmpeg_pipe, ldf_pipe, make_loader, samples_to_s16
 from lddecode.lds import LdsWriter
 from lddecode.utils_logging import init_logging
 
@@ -155,7 +155,8 @@ def main(args=None):
         startloc = args.start * 2
 
     if args.end != -1:
-        endloc = ldd.seek(startloc, args.end)
+        # seek() takes a frame number to start probing from, not a field
+        endloc = ldd.seek(startloc // 2, args.end)
         if endloc is None:
             print("ERROR: Seeking failed", file=sys.stderr)
             sys.exit(1)
@@ -189,7 +190,11 @@ def main(args=None):
 
             data = ldd.freader(ldd.infile, i, l)
             if data is not None and len(data) == l:
-                dataout = np.array(data, dtype=np.int16)
+                if makelds or makeldf or args.ffmpeg_options is not None:
+                    # Encoders take signed 16-bit samples
+                    dataout = samples_to_s16(data)
+                else:
+                    dataout = np.array(data, dtype=np.int16)
                 fd.write(dataout)
             else:
                 break

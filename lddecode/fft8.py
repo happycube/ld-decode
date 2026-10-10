@@ -21,7 +21,7 @@ def load(filename):
         max_samples = MAX_SAMPLES
         print("Assuming 8 bits per pixel")
     with open(filename, "rb") as binfile:
-        data = np.fromstring(
+        data = np.frombuffer(
             binfile.read(max_samples), dtype=ttype
         )  # Read at most 1e6 samples
         print("Loaded %d bytes of file %s" % (max_samples, filename))
@@ -46,7 +46,7 @@ def plotfft(data, filename=""):
     plt.xlabel("Frequency (MHz)")
     plt.ylabel("Power (linear)")
     fig = plt.figure(1)
-    fig.canvas.set_window_title(
+    fig.canvas.manager.set_window_title(
         "FFT8  %s  Range:%d(%d - %d) Mean:%.2f PkBG:%.2fdb"
         % (filename, sigrange, rawmax, rawmin, mean, peak_to_background)
     )

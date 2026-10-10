@@ -1009,6 +1009,19 @@ class RFDecode:
                 rfft_stack[:, :nh] * self.discriminator_rate_correction()
             ).astype(np.complex64)
 
+        # The video slot key this bank now holds; slot_filter_arrays()
+        # publishes only against it, never against DecoderParams alone.
+        self._fvideo_slot_key = self._video_slot_key()
+
+    def _video_slot_key(self):
+        """(inverse_mtf_strength, video_eq_auto) as DecoderParams hold them,
+        in the form the video filter slots are keyed by."""
+        params = self.DecoderParams
+        return (
+            params.get("inverse_mtf_strength", 0.0),
+            tuple(params.get("video_eq_auto") or ()) or None,
+        )
+
     def inverse_mtf_2t_peak_gain(self, strength):
         """Peak gain of the inverse-MTF chroma filter on an ideal 2T pulse.
 
@@ -1233,11 +1246,10 @@ class RFDecode:
 
         if family == "video":
             imtf_strength, veq = key
-            params = self.DecoderParams
-            held = (
-                params.get("inverse_mtf_strength", 0.0),
-                tuple(params.get("video_eq_auto") or ()) or None,
-            )
+            # The key the bank was last built for, not the parameters: a
+            # caller that writes a parameter and publishes before its
+            # recompute_fvideo() must be refused, not handed the old arrays.
+            held = getattr(self, "_fvideo_slot_key", None)
             if held != (imtf_strength, tuple(veq) if veq else None):
                 return None
             arrays = {}

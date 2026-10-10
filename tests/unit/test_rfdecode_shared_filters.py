@@ -207,6 +207,20 @@ def test_the_video_slot_is_refused_for_a_key_the_bank_is_not_at(system):
 
 
 @parametrize_system
+def test_the_video_slot_is_refused_between_the_parameter_and_the_rebuild(system):
+    """_apply_imtf_ceiling() writes the strength and publishes before its
+    caller runs recompute_fvideo(); the parameters then match the key, but
+    the bank still holds the previous strength's filters."""
+    rf = make_rf(system)
+    rf.DecoderParams["inverse_mtf_strength"] = 0.4
+
+    assert rf.slot_filter_arrays("video", (0.4, None)) is None
+
+    rf.recompute_fvideo()
+    assert rf.slot_filter_arrays("video", (0.4, None)) is not None
+
+
+@parametrize_system
 def test_the_video_slot_follows_the_bank_through_a_rebuild(system):
     rf = make_rf(system)
     rf.DecoderParams["inverse_mtf_strength"] = 0.4

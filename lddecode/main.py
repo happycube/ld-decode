@@ -7,7 +7,7 @@ import traceback
 import numpy as np
 
 from lddecode.decoder import LDdecode
-from lddecode.fileio import ldf_pipe, make_loader, parse_frequency
+from lddecode.fileio import ldf_pipe, make_loader, parse_frequency, samples_to_s16
 from lddecode.utils_logging import init_logging
 
 
@@ -521,7 +521,10 @@ def build_options(args):
         "chroma_dg": args.chroma_dg,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,
-        "audio_filterwidth": args.audio_filterwidth,
+        # parse_frequency gives MHz; the audio filters take Hz
+        "audio_filterwidth": (
+            args.audio_filterwidth * 1000000 if args.audio_filterwidth is not None else None
+        ),
         "AC3": args.AC3,
         "use_profiler": args.use_profiler,
         "wow_level_adjust_smoothing": args.wow_level_adjust_smoothing,
@@ -761,7 +764,8 @@ def main(args=None):
             args.write_test_ldf,
             start_sample_position,
             end_sample_position,
-            filename
+            filename,
+            args.inputfreq,
         )
 
     cleanup()
@@ -769,7 +773,9 @@ def main(args=None):
 #    print(time.time()-firstdecode)
 
 
-def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_filename):
+def write_input_ldf_file(
+    ldd, output_filename, start_sample, end_sample, input_filename, inputfreq=None
+):
     """
     Write the input samples that were decoded to a .ldf file.
     This creates a reproducible test case for bug reporting.
@@ -783,9 +789,11 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
         print("WARNING: No samples to write", file=sys.stderr)
         return
     
-    # Create a new loader for reading the input file independently
+    # Create a new loader for reading the input file independently.  It must
+    # resample exactly as the decode's loader did: the start and end positions
+    # count 40 MHz samples, and the .ldf is written at 40 MHz.
     try:
-        input_loader = make_loader(input_filename, None)
+        input_loader = make_loader(input_filename, inputfreq)
     except ValueError as e:
         print(f"ERROR: Cannot open input file for writing .ldf: {e}", file=sys.stderr)
         return
@@ -810,7 +818,7 @@ def write_input_ldf_file(ldd, output_filename, start_sample, end_sample, input_f
             # Read the data from the input file using the independent loader
             data = input_loader(infile, i, read_len)
             if data is not None and len(data) == read_len:
-                dataout = np.array(data, dtype=np.int16)
+                dataout = samples_to_s16(data)
                 fd.write(dataout)
                 samples_written += read_len
             else:

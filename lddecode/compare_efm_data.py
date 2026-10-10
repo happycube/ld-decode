@@ -41,9 +41,12 @@ def main(argv=None):
     off = loc // SEC - ref_first
     print(f"alignment: reference sector {ref_first} == image sector {loc // SEC}  ->  OFFSET = {off}")
 
-    n = min(nref, nimg - off)
-    sub = imgs[off:off + n]
-    r = refs[:n]
+    # off is negative when the reference has more leading blank sectors than
+    # the image; start each side where the other's sector 0 lands
+    ref0, img0 = max(0, -off), max(0, off)
+    n = min(nref - ref0, nimg - img0)
+    sub = imgs[img0:img0 + n]
+    r = refs[ref0:ref0 + n]
     eq = (sub == r).all(1)
     refdata = r.any(1)                      # non-blank reference sectors
     nd = int(refdata.sum())

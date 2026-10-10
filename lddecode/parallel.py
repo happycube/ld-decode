@@ -128,7 +128,7 @@ _worker_slot_stats = {"video": [0, 0], "mtf": [0, 0]}
 
 
 def _demod_worker_init(rf_opts, decoder_params, field_cfg=None,
-                       shared_filters=None):
+                       shared_filters=None, delays=None):
     global _worker_rf, _worker_cfg, _worker_shared
     global _worker_video_slot, _worker_mtf_slot
     import logging
@@ -171,6 +171,13 @@ def _demod_worker_init(rf_opts, decoder_params, field_cfg=None,
     # calibrated during warm-up.
     _worker_rf.DecoderParams = copy.deepcopy(decoder_params)
     _worker_rf.computefilters()
+    if delays is not None:
+        # Except the delays: computedelays() measures them on a synthetic
+        # signal built from the AGC-adjustable levels, and the parent
+        # measured its own once, at nominal levels, and never again.
+        # Recomputed here they move video_rot by a few samples after an
+        # AGC adjustment, shifting worker dropouts against a serial decode.
+        _worker_rf.delays = dict(delays)
     if shared_filters is not None:
         # The bank this worker just built duplicates, bin for bin, the
         # one the parent published; swap the invariant half of it for
@@ -1079,7 +1086,7 @@ class DemodBlockCache:
         self._eof_block = None
 
     def enable_processes(self, rf_opts, decoder_params, nprocs=None,
-                         field_cfg=None, shared_filters=None):
+                         field_cfg=None, shared_filters=None, delays=None):
         """Move block demodulation into worker processes.
 
         The demod threads become lightweight feeders: they still read
@@ -1099,6 +1106,9 @@ class DemodBlockCache:
         published into one shared-memory segment that every worker maps
         instead of keeping its own copy of those filters; the segment's
         rewritable slots are then driven by the returned FilterSlots.
+
+        delays, when given, is the parent's RFDecode.delays, which the
+        workers adopt rather than recompute from the snapshot.
         """
         rf_opts = dict(rf_opts)
         # Drop values demod does not need and that may not pickle.
@@ -1127,7 +1137,7 @@ class DemodBlockCache:
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_demod_worker_init,
             initargs=(rf_opts, copy.deepcopy(decoder_params), field_cfg,
-                      self._shared),
+                      self._shared, dict(delays) if delays is not None else None),
         )
         procs = self._procs
 
@@ -1142,7 +1152,7 @@ class DemodBlockCache:
         self.demod_fn = demod_in_process
 
     def restart_processes(self, rf_opts, decoder_params, nprocs=None,
-                          field_cfg=None, shared_filters=None):
+                          field_cfg=None, shared_filters=None, delays=None):
         """Tear down and respawn the worker processes with a fresh
         parameter snapshot (needed after a post-warm-up AGC adjustment:
         workers hold DecoderParams frozen from their spawn)."""
@@ -1157,7 +1167,8 @@ class DemodBlockCache:
         self._release_shared()
         self.enable_processes(rf_opts, decoder_params, nprocs=nprocs,
                               field_cfg=field_cfg,
-                              shared_filters=shared_filters)
+                              shared_filters=shared_filters,
+                              delays=delays)
 
     @property
     def process_executor(self):

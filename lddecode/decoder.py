@@ -357,6 +357,16 @@ def measure_vits_multiburst(field, lines=None):
     return None
 
 
+def vbi_line_codes(linecode):
+    """The per-field vbiData list: one code per VBI line (16, 17, 18).
+
+    A line with no code is 0 rather than dropped, so the list stays
+    positional -- the .tbc.db's vbi0/vbi1/vbi2 columns are lines 16/17/18,
+    and dropping a missing line 16 moved line 17's code into vbi0.
+    """
+    return [int(lc) if lc is not None else 0 for lc in linecode]
+
+
 class LDdecode:
     # Tolerant speculation: accept in-flight fields whose MTF level is
     # within this of the current one (2x the adoption dead-band; an MTF
@@ -2448,7 +2458,7 @@ class LDdecode:
 
         # Insert VBI data if present
         vbi_data = fi.get("vbi", {}).get("vbiData", [])
-        if vbi_data:
+        if any(vbi_data):
             vbi_row = (vbi_data + [0, 0, 0])[:3]
             self.dbconn.execute(
                 "INSERT INTO vbi (capture_id, field_id, vbi0, vbi1, vbi2) VALUES (?, ?, ?, ?, ?)",
@@ -3244,6 +3254,7 @@ class LDdecode:
                         else None
                     ),
                     shared_filters=self._shared_filter_spec(),
+                    delays=self.rf.delays,
                 )
 
                 if self.use_field_jobs:
@@ -3293,6 +3304,7 @@ class LDdecode:
                 self._field_worker_cfg() if self.use_field_jobs else None
             ),
             shared_filters=self._shared_filter_spec(),
+            delays=self.rf.delays,
         )
 
         if self.use_field_jobs:
@@ -3792,12 +3804,12 @@ class LDdecode:
             # only the previous-frame-dependent part is added here.
             from .metrics import computeMetricsFP
             fi["vitsMetrics"] = computeMetricsFP(
-                self.rf, self.fieldstack[0], fp_3d, base
+                self.rf, self.fieldstack[0], fp_3d, base, verbose=self.verboseVITS
             )
         else:
             fi["vitsMetrics"] = self.computeMetrics(self.fieldstack[0], fp_3d)
 
-        fi["vbi"] = {"vbiData": [int(lc) for lc in f.linecode if lc is not None]}
+        fi["vbi"] = {"vbiData": vbi_line_codes(f.linecode)}
 
         self.frameNumber = None
         if f.isFirstField:

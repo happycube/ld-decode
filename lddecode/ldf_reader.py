@@ -101,9 +101,12 @@ class LdfReader:
                         seek_time = 0
                     self.container.seek(seek_time, any_frame=True)
                 except Exception as e:
+                    # Keep start_offset: decoding carries on from wherever
+                    # the container is, and the pts check in
+                    # _decode_packets still skips up to the requested sample
+                    # (or refuses if the failed seek already passed it).
                     if self.debug:
-                        print(f"Seek failed, starting from beginning: {e}", file=sys.stderr)
-                    self.start_offset = 0
+                        print(f"Seek failed, decoding forward instead: {e}", file=sys.stderr)
 
             # Decode and write frames
             if not self._decode_packets():
@@ -165,8 +168,12 @@ class LdfReader:
         """
         try:
             samples_written = 0
+            # Sample position just past the last decoded frame, for frames
+            # without a pts (counts skipped frames too, unlike samples_written)
+            next_pts = 0
+            first_frame = True
             resampler = av.audio.resampler.AudioResampler(format='s16', layout='mono')
-            
+
             # Demux and decode frames
             for frame in self.container.decode(audio=0):
                 if frame is None:
@@ -177,7 +184,19 @@ class LdfReader:
                 if frame.pts is not None:
                     current_pts = int(frame.pts * self.audio_stream.time_base * self.audio_stream.sample_rate)
                 else:
-                    current_pts = samples_written
+                    current_pts = next_pts
+                next_pts = current_pts + frame.samples
+
+                # A seek (or failed seek) that landed past the start position
+                # cannot be recovered from without silently starting late
+                if first_frame and current_pts > self.start_offset:
+                    print(
+                        f"Cannot reach start offset {self.start_offset}: "
+                        f"decoding resumed at sample {current_pts}",
+                        file=sys.stderr,
+                    )
+                    return False
+                first_frame = False
 
                 # If we haven't reached the start position, skip this frame
                 if current_pts + frame.samples <= self.start_offset:

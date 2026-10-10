@@ -386,17 +386,19 @@ def _round_metrics(metrics, outputkeys):
     return metrics_rounded
 
 
-def computeMetricsFP(rf, f, fp, base_metrics):
+def computeMetricsFP(rf, f, fp, base_metrics, verbose=False):
     """Combine a per-field metrics dict precomputed with fp=None with the
     previous-frame-dependent metrics, yielding the same dict that
-    computeMetrics(rf, f, fp) returns.  The base values were already
+    computeMetrics(rf, f, fp, verbose) returns.  The base values were already
     rounded by the same rules, so only the fp-dependent part is computed
-    here."""
-    out = {k: base_metrics[k] for k in DEFAULT_OUTPUT_KEYS if k in base_metrics}
+    here.  base_metrics must have been computed with verbose=True, so that
+    every key is present to select from."""
+    outputkeys = base_metrics.keys() if verbose else DEFAULT_OUTPUT_KEYS
+    out = {k: base_metrics[k] for k in outputkeys if k in base_metrics}
 
     if f.rf.system == "NTSC":
         fpm = {}
         _metrics_fp_ntsc(fpm, f, fp)
-        out.update(_round_metrics(fpm, DEFAULT_OUTPUT_KEYS))
+        out.update(_round_metrics(fpm, fpm.keys() if verbose else DEFAULT_OUTPUT_KEYS))
 
     return out
