@@ -247,6 +247,48 @@ def measure_vits_dg_staircase(field, lines=None):
     return None
 
 
+def _multiburst_window_scan(y, fs_mhz, W, step):
+    """Single-tone windows along a VBI line: (freq_hz, amp_ire_pp, start).
+
+    Slides a W-sample Hann window along ``y`` (IRE) in steps of ``step``
+    and keeps the windows that hold one clean tone of at least 12 IRE
+    p-p, with the tone's frequency refined by a parabolic fit to the
+    spectral peak.  Every window is scanned at once as one (n, W) array -
+    one batched transform rather than ~65 small ones per line - with the
+    same operations, in the same order, as a per-window loop, so the
+    candidates are identical to it.  Returns a list in window order.
+    """
+    nwin = (len(y) - W) // step
+    if nwin <= 0:
+        return []
+    starts = np.arange(nwin) * step
+    windows = np.lib.stride_tricks.sliding_window_view(y, W)[starts]
+    wd = windows - windows.mean(axis=1, keepdims=True)
+    # p-p from rms: exact for a sine at any sampling phase
+    pp = 2.0 * np.sqrt(2.0) * np.std(wd, axis=1)
+    keep = ~(pp < 12.0)
+    starts, pp, wd = starts[keep], pp[keep], wd[keep]
+    if not len(starts):
+        return []
+    spec = np.abs(np.fft.rfft(wd * np.hanning(W), axis=1))
+    rows = np.arange(len(spec))
+    k = np.argmax(spec[:, 1:], axis=1) + 1
+    keep = k < spec.shape[1] - 1
+    rows, k, starts, pp = rows[keep], k[keep], starts[keep], pp[keep]
+    a, b, c = spec[rows, k - 1], spec[rows, k], spec[rows, k + 1]
+    # tone purity: reject windows that are not a single packet
+    e_pk = a ** 2 + b ** 2 + c ** 2
+    keep = ~(e_pk < 0.8 * np.sum(spec[rows] ** 2, axis=1))
+    k, starts, pp = k[keep], starts[keep], pp[keep]
+    a, b, c = a[keep], b[keep], c[keep]
+    denom = a - 2 * b + c
+    refine = np.abs(denom) > 1e-12
+    kf = k.astype(np.float64)
+    kf[refine] = k[refine] + 0.5 * (a[refine] - c[refine]) / denom[refine]
+    freqs = kf * fs_mhz / W * 1e6
+    return list(zip(freqs.tolist(), pp.tolist(), starts.tolist()))
+
+
 def measure_vits_multiburst(field, lines=None):
     """One-line VITS multiburst from a VBI line, or None.
 
@@ -285,29 +327,8 @@ def measure_vits_multiburst(field, lines=None):
         if len(y) < 400:
             continue
 
-        W, step = 44, 6
-        win = np.hanning(W)
-        cands = []
-        for i in range((len(y) - W) // step):
-            w = y[i * step:i * step + W]
-            wd = w - w.mean()
-            # p-p from rms: exact for a sine at any sampling phase
-            pp = float(2.0 * np.sqrt(2.0) * np.std(wd))
-            if pp < 12.0:
-                continue
-            spec = np.abs(np.fft.rfft(wd * win))
-            k = int(np.argmax(spec[1:])) + 1
-            if k >= len(spec) - 1:
-                continue
-            # tone purity: reject windows that are not a single packet
-            e_pk = spec[k - 1] ** 2 + spec[k] ** 2 + spec[k + 1] ** 2
-            if e_pk < 0.8 * float(np.sum(spec ** 2)):
-                continue
-            a, b, c = spec[k - 1], spec[k], spec[k + 1]
-            denom = a - 2 * b + c
-            if abs(denom) > 1e-12:
-                k = k + 0.5 * (a - c) / denom
-            cands.append((k * fs_mhz / W * 1e6, pp, i * step))
+        W = 44
+        cands = _multiburst_window_scan(y, fs_mhz, W, 6)
 
         if len(cands) < 8:
             continue
