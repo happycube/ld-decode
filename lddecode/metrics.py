@@ -402,3 +402,268 @@ def computeMetricsFP(rf, f, fp, base_metrics, verbose=False):
         out.update(_round_metrics(fpm, fpm.keys() if verbose else DEFAULT_OUTPUT_KEYS))
 
     return out
+
+
+# Single-field VITS measurements the decoder's servos pool (the 2T MTF
+# servo and the video EQ).  They live here rather than with the servos so
+# that a worker process can take them alongside the per-field metrics.
+
+#: Largest ripple, as a fraction of the line's own white bar, that the ITS
+#: bar and baseline windows may show and still be taken for an insertion
+#: test signal.  Also the isolation limit for the 2T pulse's own tails.
+ITS_FLATNESS_FRACTION = 0.15
+
+# 2T reference layouts: (bar, baseline, pulse) windows in us and the VITS
+# lines to search.  PAL: CCIR ITS (line 19, both parities).  NTSC: NTC-7
+# composite (line 20, first fields; the second-field combination signal at
+# the same line has no full bar and is rejected by the validity checks).
+_VITS_2T_LAYOUT = {
+    "PAL": ((13.0, 19.0), (22.2, 24.4), (24.4, 26.4), (19, 18, 20)),
+    "NTSC": ((18.0, 28.0), (31.0, 33.0), (33.0, 35.0), (20, 19)),
+}
+
+
+def measure_its_2t_ratio(field, lines=None):
+    """2T pulse-to-bar ratio from the insertion test signal, or None.
+
+    Cheap single-field version of the analysis-side transient measurement
+    (see _VITS_2T_LAYOUT for the per-system windows).  The line number is
+    searched over `lines` because ITS placement can vary by one line
+    between discs.  Validity checks reject anything that is not a clean
+    bar + 2T pulse, so content lines and discs without an ITS yield
+    None and the MTF servo falls back to the b/w RF ratio mapping.
+
+    Returns (ratio, line) on success, else None.
+    """
+    bar_win, base_win, pulse_win, def_lines = \
+        _VITS_2T_LAYOUT[field.rf.system]
+    if lines is None:
+        lines = def_lines
+    for line in lines:
+        try:
+            def seg(a, b):
+                sl = field.lineslice_tbc(line, a, b - a)
+                return field.output_to_ire(
+                    field.dspicture[sl].astype(np.float64))
+            baseline_seg = seg(*base_win)
+            bar_seg = seg(*bar_win)
+            pulse_seg = seg(*pulse_win)
+        except Exception:
+            continue
+        if len(pulse_seg) < 8 or len(bar_seg) < 8 or len(baseline_seg) < 8:
+            continue
+
+        baseline = float(np.median(baseline_seg))
+        bar = float(np.median(bar_seg)) - baseline
+        # must look like the ITS white bar over a blanking-level baseline
+        if not (80.0 <= bar <= 125.0) or abs(baseline) > 6.0:
+            continue
+        # Flatness is judged against the bar this line carries, not in
+        # absolute IRE.  A noisy pressing still presents a perfectly good
+        # ITS - BBC Domesday DD86-DS1 runs 6-10 IRE of noise on every line,
+        # against 2-4 IRE on a Pioneer calibration disc - and an absolute
+        # 4 IRE gate rejected it outright, so the 2T servo never engaged on
+        # exactly the discs whose HF response most needed correcting (its
+        # 2T pulse then reads 0.85-0.90 of the bar against 0.99 where the
+        # servo runs).  What separates an ITS from picture content is
+        # structure, and structure is a large fraction of the bar: content
+        # lines on the same disc scatter by 70-90% of it.  The same
+        # relative scale is used by the isolation test below.  Measurement
+        # noise is judged where it can be judged, over a pool of fields, by
+        # the scatter gate in _mtf_servo_estimate().
+        if (np.std(bar_seg) > ITS_FLATNESS_FRACTION * bar
+                or np.std(baseline_seg) > ITS_FLATNESS_FRACTION * bar):
+            continue
+
+        # Locate the peak on a 3-tap-smoothed copy (argmax over the raw
+        # window rides positive noise excursions, biasing the ratio high
+        # and shifting the servo equilibrium), then interpolate the
+        # height from the raw samples at that index.
+        sm = np.convolve(pulse_seg, [0.25, 0.5, 0.25], mode="same")
+        pk = int(np.argmax(sm[1:-1])) + 1
+        if pk == 0 or pk == len(pulse_seg) - 1:
+            continue
+        # parabolic sub-sample peak: the 2T pulse top spans few samples
+        a, b, c = pulse_seg[pk - 1], pulse_seg[pk], pulse_seg[pk + 1]
+        denom = a - 2 * b + c
+        peak = float(b) if denom >= 0 else float(b - 0.125 * (a - c) ** 2 / denom)
+        pulse = peak - baseline
+        ratio = pulse / bar
+        if not (0.5 <= ratio <= 1.6):
+            continue
+
+        # half-amplitude width sanity: rejects blobs that are not a 2T pulse
+        half = baseline + pulse / 2.0
+        width = int(np.count_nonzero(pulse_seg > half))
+        had_ns = width / field.rf.SysParams["outfreq"] * 1000.0
+        if not (80.0 <= had_ns <= 400.0):
+            continue
+
+        # the pulse must be isolated: away from the peak the window
+        # returns to baseline (rejects content/noise in the window)
+        tails = np.concatenate([pulse_seg[:max(pk - 6, 0)],
+                                pulse_seg[pk + 7:]])
+        if (len(tails) < 8 or np.median(np.abs(tails - baseline))
+                > ITS_FLATNESS_FRACTION * pulse):
+            continue
+        return ratio, line
+    return None
+
+
+def _multiburst_window_scan(y, fs_mhz, W, step):
+    """Single-tone windows along a VBI line: (freq_hz, amp_ire_pp, start).
+
+    Slides a W-sample Hann window along ``y`` (IRE) in steps of ``step``
+    and keeps the windows that hold one clean tone of at least 12 IRE
+    p-p, with the tone's frequency refined by a parabolic fit to the
+    spectral peak.  Every window is scanned at once as one (n, W) array -
+    one batched transform rather than ~65 small ones per line - with the
+    same operations, in the same order, as a per-window loop, so the
+    candidates are identical to it.  Returns a list in window order.
+    """
+    nwin = (len(y) - W) // step
+    if nwin <= 0:
+        return []
+    starts = np.arange(nwin) * step
+    windows = np.lib.stride_tricks.sliding_window_view(y, W)[starts]
+    wd = windows - windows.mean(axis=1, keepdims=True)
+    # p-p from rms: exact for a sine at any sampling phase
+    pp = 2.0 * np.sqrt(2.0) * np.std(wd, axis=1)
+    keep = ~(pp < 12.0)
+    starts, pp, wd = starts[keep], pp[keep], wd[keep]
+    if not len(starts):
+        return []
+    spec = np.abs(np.fft.rfft(wd * np.hanning(W), axis=1))
+    rows = np.arange(len(spec))
+    k = np.argmax(spec[:, 1:], axis=1) + 1
+    keep = k < spec.shape[1] - 1
+    rows, k, starts, pp = rows[keep], k[keep], starts[keep], pp[keep]
+    a, b, c = spec[rows, k - 1], spec[rows, k], spec[rows, k + 1]
+    # tone purity: reject windows that are not a single packet
+    e_pk = a ** 2 + b ** 2 + c ** 2
+    keep = ~(e_pk < 0.8 * np.sum(spec[rows] ** 2, axis=1))
+    k, starts, pp = k[keep], starts[keep], pp[keep]
+    a, b, c = a[keep], b[keep], c[keep]
+    denom = a - 2 * b + c
+    refine = np.abs(denom) > 1e-12
+    kf = k.astype(np.float64)
+    kf[refine] = k[refine] + 0.5 * (a[refine] - c[refine]) / denom[refine]
+    freqs = kf * fs_mhz / W * 1e6
+    return list(zip(freqs.tolist(), pp.tolist(), starts.tolist()))
+
+
+def measure_vits_multiburst(field, lines=None):
+    """One-line VITS multiburst from a VBI line, or None.
+
+    PAL (first fields): GGV carries one on line 13 (0.5-5.8 MHz
+    packets), the Louvre disc on line 20 (0.6-5.9 MHz).  NTSC (both
+    parities): the FCC multiburst some discs carry on line 22
+    (1.25-4.1 MHz).  The NTC-7 combination multiburst (line 20 second
+    fields) is deliberately NOT used: its packets are only ~3 us — as
+    short as the scan window at NTSC 4fsc — so nearly every window
+    straddles a packet edge and the amplitude fit under-reads by up to
+    2.5 dB (measured on he010/issue176), with the wrong sign vs the
+    averaged-field analysis measurement.  Returns (packets, line)
+    where packets is a list of
+    (freq_hz, amp_ire_pp) for at least 4 packets at monotonically
+    increasing frequencies including a reference packet near 1 MHz.
+    Validity checks reject picture content and plain reference lines,
+    so discs without a multiburst line yield None and the EQ servo
+    stays inactive.
+    """
+    if field.dspicture is None:
+        return None
+    if field.rf.system == "PAL":
+        if not field.isFirstField:
+            return None
+        if lines is None:
+            lines = (13, 20)
+    elif lines is None:
+        lines = (22,)
+    fs_mhz = field.rf.SysParams["outfreq"]
+    for line in lines:
+        try:
+            sl = field.lineslice_tbc(line, 16.0, 46.0)
+            y = field.output_to_ire(field.dspicture[sl].astype(np.float64))
+        except Exception:
+            continue
+        if len(y) < 400:
+            continue
+
+        W = 44
+        cands = _multiburst_window_scan(y, fs_mhz, W, 6)
+
+        if len(cands) < 8:
+            continue
+        cands.sort()
+        groups = []
+        for f, a, i0 in cands:
+            if groups and f - groups[-1][0][-1] < 0.3e6:
+                groups[-1][0].append(f)
+                groups[-1][2].append(i0)
+            else:
+                groups.append(([f], a, [i0]))
+        packets = []
+        for fl, _, il in groups:
+            if len(fl) < 2:
+                continue
+            fmed = float(np.median(fl))
+            # amplitude from a least-squares sine fit over the packet's
+            # central span: unbiased for any (non-integer) cycle count,
+            # unlike the per-window rms the scan uses
+            lo, hi = min(il), max(il) + W
+            span = hi - lo
+            lo += span // 5
+            hi -= span // 5
+            seg = y[lo:hi]
+            if len(seg) < 24:
+                continue
+            t = 2 * np.pi * fmed / (fs_mhz * 1e6) * np.arange(len(seg))
+            A = np.column_stack([np.sin(t), np.cos(t), np.ones(len(seg))])
+            coef, *_ = np.linalg.lstsq(A, seg, rcond=None)
+            amp = 2.0 * float(np.hypot(coef[0], coef[1]))
+            # the fit must explain the segment (rejects noise "packets")
+            resid = seg - A @ coef
+            if np.var(resid) > 0.35 * np.var(seg - seg.mean()):
+                continue
+            packets.append((fmed, amp))
+        if len(packets) < 4:
+            continue
+        freqs = [p[0] for p in packets]
+        if any(b <= a for a, b in zip(freqs, freqs[1:])):
+            continue
+        if freqs[-1] - freqs[0] < 2.5e6:
+            continue
+        ref = [p for p in packets if 0.75e6 <= p[0] <= 1.45e6]
+        if not ref or not (25.0 <= ref[0][1] <= 90.0):
+            continue
+        return packets, line
+    return None
+
+
+#: The VITS servo measurements precompute_vits() can take, by name.
+VITS_SERVO_MEASURES = {
+    "measure_its_2t_ratio": measure_its_2t_ratio,
+    "measure_vits_multiburst": measure_vits_multiburst,
+}
+
+
+def precompute_vits(field, names):
+    """The named VITS_SERVO_MEASURES of a field, each with the vsync
+    level it was read under: {name: (vsync_ire, result)}.
+
+    The measurements read the picture in IRE through the live
+    DecoderParams["vsync_ire"], which the AGC can move before the servo
+    pools the result.  Keeping the level with each result lets the
+    servo use it only while that level still stands (see
+    LDdecode._vits_measurement), and measure afresh otherwise.  A level
+    that moves while a measurement runs leaves nothing for that name.
+    """
+    dp = field.rf.DecoderParams
+    out = {}
+    for name in names:
+        vsync_ire = dp["vsync_ire"]
+        result = VITS_SERVO_MEASURES[name](field)
+        if dp["vsync_ire"] == vsync_ire:
+            out[name] = (vsync_ire, result)
+    return out

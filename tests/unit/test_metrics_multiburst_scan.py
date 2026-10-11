@@ -11,7 +11,7 @@ the per-window loop returned, not merely something close.
 import numpy as np
 import pytest
 
-from lddecode.decoder import _multiburst_window_scan
+from lddecode.metrics import _multiburst_window_scan
 
 pytestmark = [pytest.mark.unit, pytest.mark.decode]
 

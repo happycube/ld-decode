@@ -36,10 +36,10 @@ class ImmediateExecutor:
     def __init__(self):
         self.calls = []
 
-    def submit(self, fn, *args):
+    def submit(self, fn, *args, **kwargs):
         self.calls.append((fn, args))
         fut = Future()
-        fut.set_result(fn(*args))
+        fut.set_result(fn(*args, **kwargs))
         return fut
 
 
@@ -281,3 +281,89 @@ def test_speculation_log_is_immediate_without_a_lane(quiet_log):
     it = stub_decoder(dbconn=db)
     it._log_speculation("resync")
     assert db.rows == [(7, 3, 12345, "resync", "")]
+
+
+# --- the previous-frame VITS metrics ------------------------------------
+
+
+def metrics_decoder(pool=None):
+    it = stub_decoder(pool=pool)
+    it.fieldinfo = []
+    it.bytes_per_field = 1000.0
+    it.doDOD = False
+    it.verboseVITS = False
+    it.rf = types.SimpleNamespace(DecoderParams={"vsync_ire": -40.0},
+                                  SysParams={"fieldPhases": 4})
+    return it
+
+
+def metrics_field(it, n):
+    f = types.SimpleNamespace(
+        rf=it.rf, isFirstField=True, readloc=1000.0 * n, burstmedian=20.0,
+        fieldPhaseID=1, linecode=[None, None, None],
+        precomputed_metrics={"wSNR": 40.0 + n},
+        compute_syncconf=lambda: 100)
+    return f
+
+
+@pytest.fixture
+def fp_metrics(monkeypatch):
+    calls = []
+
+    def fake(rf, f, fp, base, verbose=False):
+        calls.append((f, fp, dict(f.rf.DecoderParams)))
+        return dict(base, fp=fp is not None)
+
+    from lddecode import metrics
+    monkeypatch.setattr(metrics, "computeMetricsFP", fake)
+    return calls
+
+
+def test_previous_frame_metrics_go_to_the_output_pool_at_commit_levels(fp_metrics):
+    pool = ImmediateExecutor()
+    it = metrics_decoder(pool=pool)
+    fields = [metrics_field(it, n) for n in range(3)]
+    it.fieldstack = [fields[2], fields[1], fields[0]]
+    it.fieldinfo = [{"fieldPhaseID": 4, "isFirstField": False, "diskLoc": 0.0}] * 3
+
+    fi, filler = LDdecode.buildmetadata(it, fields[2], check_phase=False)
+    # the live level moves on after the commit
+    it.rf.DecoderParams["vsync_ire"] = -45.0
+
+    assert not filler and isinstance(fi["vitsMetrics"], Future)
+    assert fi["vitsMetrics"].result() == {"wSNR": 42.0, "fp": True}
+    (f, fp, params), = fp_metrics
+    # views of the field and its previous frame, bound to the commit's
+    # levels, not the fields themselves
+    assert f is not fields[2] and f.readloc == fields[2].readloc
+    assert fp is not fields[0] and fp.readloc == fields[0].readloc
+    assert params == {"vsync_ire": -40.0}
+    # the key keeps its place in the row
+    assert list(fi).index("vitsMetrics") < list(fi).index("vbi")
+
+
+def test_previous_frame_metrics_are_computed_inline_without_a_pool(fp_metrics):
+    it = metrics_decoder()
+    f = metrics_field(it, 0)
+    it.fieldstack = [f]
+
+    fi, _ = LDdecode.buildmetadata(it, f, check_phase=False)
+
+    assert fi["vitsMetrics"] == {"wSNR": 40.0, "fp": False}
+    assert fp_metrics[0][0] is f
+
+
+def test_the_output_stage_collects_the_metrics_before_the_row(corrector):
+    it = efm_decoder()
+    it.digital_audio = False
+    it.dbconn = object()
+    rows = []
+    it._write_field_db = lambda fi, f_id, n: rows.append(fi["vitsMetrics"])
+    fut = Future()
+    fut.set_result({"wSNR": 41.0})
+    fi = {"vitsMetrics": fut}
+
+    LDdecode._write_field(it, (stub_field(), fi, None, None, None, 0, 1))
+
+    assert rows == [{"wSNR": 41.0}] and fi["vitsMetrics"] == {"wSNR": 41.0}
+

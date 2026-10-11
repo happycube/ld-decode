@@ -328,7 +328,7 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
 
     from .field import (FieldNTSC, FieldPAL, apply_chroma_dg_correction_output,
                         chroma_dg_output_key)
-    from .metrics import computeMetrics, detect_levels
+    from .metrics import computeMetrics, detect_levels, precompute_vits
 
     try:
         _sync_worker_video(imtf_strength, veq,
@@ -446,6 +446,8 @@ def _decode_field_worker(seq, start, raw_span, span_begin, mtf_level,
 
         if cfg["useAGC"] and f.isFirstField and f.sync_confidence > 80:
             f.precomputed_levels = detect_levels(rf, f, cfg["output_lines"])
+
+        f.precomputed_vits = precompute_vits(f, cfg.get("vits_measures", ()))
 
         audio = f.downscale_audio_out(
             cfg["analog_audio"], field_number=audio_field_number,

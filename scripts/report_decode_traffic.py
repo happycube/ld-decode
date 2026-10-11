@@ -367,9 +367,9 @@ STAGES = [
     ("dropout_detect_demod", ["lddecode.field.Field.dropout_detect_demod"]),
     ("dropout_detect", ["lddecode.field.Field.dropout_detect"]),
     ("downscale_audio", ["lddecode.field.downscale_audio"]),
-    ("measure_vits_multiburst", ["lddecode.decoder.measure_vits_multiburst"]),
+    ("measure_vits_multiburst", ["lddecode.metrics.measure_vits_multiburst"]),
     ("measure_vits_dg_staircase", ["lddecode.decoder.measure_vits_dg_staircase"]),
-    ("measure_its_2t_ratio", ["lddecode.decoder.measure_its_2t_ratio"]),
+    ("measure_its_2t_ratio", ["lddecode.metrics.measure_its_2t_ratio"]),
 
     # the decode driver and the output stage
     ("decodefield", ["lddecode.decoder.LDdecode.decodefield"]),

@@ -375,7 +375,7 @@ class VitsDefinition:
 # GGV1011, whose ITS line runs 2.3-2.6 IRE low at every radius: judged
 # absolutely the 2T pulse inherits the whole of that offset, and a servo
 # holding the pulse at unity *against its own bar* - which is what
-# lddecode/decoder.py measure_its_2t_ratio() reads, and what the pulse
+# lddecode/metrics.py measure_its_2t_ratio() reads, and what the pulse
 # measures the HF response with - is reported as failing.
 _PAL_BAR_TOLERANCE = 0.005          # +/-0.5% of 0.70 V p-p
 _PAL_ELEMENT_TOLERANCE = 0.010      # +/-1% of B2
