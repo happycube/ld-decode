@@ -642,6 +642,9 @@ class LDdecode:
         self._job_eof = False
         self._engine_dirty = False
         self._job_rejects = 0
+        # Set when an exact decode adopts a tracking trim; _commit_entry
+        # then discards what was decoded ahead (see _adopt_from_next_field)
+        self._discard_ahead = False
         self._agc_adjusted_last = False
 
         # Tolerant parameter mode (default): a speculative field decoded
@@ -1502,9 +1505,9 @@ class LDdecode:
 
     def checkVideoEQ(self, field):
         """Adopt the multiburst-derived video EQ when it drifts past
-        the dead-band.  Returns True if no redo is needed (tolerant
-        trims and holds), False to redo (first application, or exact
-        mode)."""
+        the dead-band.  Returns True if no redo is needed (holds, and
+        tracking trims, which apply from the next field on), False to
+        redo (the first application)."""
         anchors = self._veq_estimate(field)
         if anchors is None:
             return True
@@ -1519,18 +1522,15 @@ class LDdecode:
         ceiling_moved = self._publish_imtf_flat_band(
             first=not self.veq_calibrated)
         # The ceiling moving inverse_mtf_strength is a filter change like
-        # any other: tolerant mode hands it to future jobs and lets the
-        # in-flight fields commit under the old strength (a dead-band
-        # sized trim), but exact mode must redo and flush for it, or the
-        # fields decoded ahead would commit under a filter the serial
-        # decode had already left behind (compare-*-parallel-tbc).  Only
-        # once fields are being written, though: the warm-up has nothing
-        # in flight, and its ceiling behaviour - cap now, let the burst
-        # tracker see the capped value on the next field - is the same
-        # in both modes (a warm-up redo here converged the servos to a
-        # different operating point on industrial-lv-side1-outer).
-        hold = not (ceiling_moved and self.exact_speculation
-                    and self.fields_written > 0)
+        # any other, and like a tracking trim it applies from the next
+        # field on: _apply_imtf_ceiling has handed it to future jobs, and
+        # an exact decode discards the fields decoded ahead under the old
+        # strength, or they would commit under a filter the serial decode
+        # had already left behind (compare-*-parallel-tbc).  Only once
+        # fields are being written, though: the warm-up has nothing in
+        # flight.
+        if ceiling_moved and self.fields_written > 0:
+            self._adopt_from_next_field(lambda engine: None)
 
         current = self.rf.DecoderParams.get("video_eq_auto") or ()
         cur = dict(current)
@@ -1538,14 +1538,14 @@ class LDdecode:
         delta = max(abs(new.get(k, 0.0) - cur.get(k, 0.0))
                     for k in set(cur) | set(new))
         if delta < self.VEQ_DEADBAND_DB:
-            return hold
+            return True
 
         first = not self.veq_calibrated
         if not first and self.fields_written > 0:
             if (self._veq_last_adopt is not None
                     and (self._servo_pos - self._veq_last_adopt)
                     < self.VEQ_MIN_ADOPT_FIELDS * self.bytes_per_field):
-                return hold
+                return True
             self._veq_last_adopt = self._servo_pos
 
         logs.logger.debug(
@@ -1560,12 +1560,29 @@ class LDdecode:
         self._apply_imtf_ceiling()
         self.rf.recompute_fvideo()
 
-        if not first and not self.exact_speculation:
-            # dead-band-sized trim: hand to future jobs, keep in-flight
-            if self._job_engine is not None:
-                self._job_engine.set_veq(anchors)
+        if not first:
+            # dead-band-sized trim
+            self._adopt_from_next_field(lambda engine: engine.set_veq(anchors))
             return True
         return False
+
+    def _adopt_from_next_field(self, hand_over):
+        """Apply a tracking trim from the next field on, as the serial
+        decode does: the field being calibrated keeps the parameters it
+        was decoded under, with no redo.
+
+        Fields already decoded ahead under the old parameters are, by
+        default, tolerated - hand_over(engine) gives the new value to the
+        jobs not yet dispatched.  An exact decode discards them instead,
+        once the field being calibrated has committed (_commit_entry), so
+        -t N stays bit-identical with -t 1 whatever the flag.  (Exact mode
+        used to redo the calibrated field as well, which changed the
+        output of a serial decode that was given the flag.)
+        """
+        if self.exact_speculation:
+            self._discard_ahead = True
+        elif self._job_engine is not None:
+            hand_over(self._job_engine)
 
     def _publish_imtf_flat_band(self, first):
         """Publish the multiburst's chroma-band verdict, if it has moved.
@@ -1984,8 +2001,8 @@ class LDdecode:
         drifts, mirroring checkMTF so the decode stays reproducible.
 
         Returns True when the filter parameters changed in a way the
-        caller must re-decode for (initial calibration / exact mode);
-        dead-band tracking trims adopt tolerantly and return False."""
+        caller must re-decode for (the initial calibration); dead-band
+        tracking trims apply from the next field on and return False."""
         expected = self.rf.SysParams["burst_ire"]
         measured = np.median(self._deemp_burst_samples)
         log_base = self.rf.inverse_mtf_log_at_fsc
@@ -2039,16 +2056,14 @@ class LDdecode:
         self._deemp_burst_samples.clear()
         self._deemp_burst_offset = None
 
-        if not first and not self.exact_speculation:
-            # Tracking trims are dead-band-sized (<= ~2% chroma), so
-            # adopt tolerantly: no redo/flush - hand the new strength to
-            # future jobs and let in-flight fields commit under the old
-            # one (the burst pool's stale-strength guard keeps them out
-            # of the estimate).  A hard flush here pauses and reseeks
-            # the engine, which a pipe-backed reader cannot always
-            # rewind for.
-            if self._job_engine is not None:
-                self._job_engine.set_imtf(estimate)
+        if not first:
+            # Tracking trims are dead-band-sized (<= ~2% chroma): no redo,
+            # and by default no flush either - in-flight fields commit
+            # under the old strength (the burst pool's stale-strength
+            # guard keeps them out of the estimate).  A hard flush pauses
+            # and reseeks the engine, which a pipe-backed reader cannot
+            # always rewind for, so only an exact decode pays for one.
+            self._adopt_from_next_field(lambda engine: engine.set_imtf(estimate))
             return False
         return True
 
@@ -3021,6 +3036,7 @@ class LDdecode:
         # it commits, which would age samples out and lift rate limits
         # early whenever the decode runs pipelined.
         self._servo_pos = entry["start"] + entry["offset"]
+        self._discard_ahead = False
 
         # Settle all calibration loops before anything is written, so
         # the first frame carries the same parameters as the rest.
@@ -3084,6 +3100,16 @@ class LDdecode:
 
             picture, efm, metrics = self.decode_stage2(f)
             entry["result"] = (picture, efm, metrics)
+
+        if self._discard_ahead:
+            # An exact decode adopted a tracking trim on this field (see
+            # _adopt_from_next_field): this field stands, but everything
+            # decoded ahead of it used the old parameters, so the chain
+            # restarts just past it.
+            self._discard_ahead = False
+            self._flush_pipeline()
+            self._chain_prev = f
+            self.fdoffset = entry["start"] + entry["offset"]
 
         fieldlength = f.linelocs[self.output_lines] - f.linelocs[0]
         fieldlength /= f.inlinelen

@@ -464,6 +464,8 @@ def adopt_stub(samples_, strength, flat_band=None, calibrated=False,
             recompute_fvideo=lambda: None,
             inverse_mtf_log_db=lambda freq_hz: DB_PER_STRENGTH),
     )
+    it._discard_ahead = False
+    it._adopt_from_next_field = lambda hand_over: LDdecode._adopt_from_next_field(it, hand_over)
     it._veq_estimate = lambda field: estimate
     it._imtf_ceiling = lambda current: LDdecode._imtf_ceiling(it, current)
     it._imtf_cut_engaged = lambda flat: LDdecode._imtf_cut_engaged(it, flat)
@@ -499,23 +501,24 @@ def test_a_thinned_pool_does_not_erase_a_ceiling_already_published():
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
 
 
-def test_a_ceiling_move_is_a_redo_in_exact_mode_even_inside_the_eq_dead_band():
+def test_a_ceiling_move_in_exact_mode_discards_what_was_decoded_ahead():
     """The ceiling changes the demod filter; fields decoded ahead under the
-    old strength must not commit in exact mode, so checkVideoEQ reports a
-    redo (which flushes them) even when the EQ itself has nothing to adopt."""
+    old strength must not commit in exact mode, even when the EQ itself has
+    nothing to adopt.  The field being calibrated stands, as it does in a
+    serial decode: no redo, only the discard once it has committed."""
     estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
     pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
     it = adopt_stub(pool, strength=1.2, calibrated=True, applied_eq=estimate,
                     fields_written=1)
     it.exact_speculation = True
-    assert LDdecode.checkVideoEQ(it, field=None) is False
+    assert LDdecode.checkVideoEQ(it, field=None) is True
+    assert it._discard_ahead
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
 
 
-def test_a_ceiling_move_during_warm_up_is_not_a_redo_in_either_mode():
-    """Nothing is in flight before the first field is written, so the
-    exact-mode redo has nothing to flush; the warm-up caps the strength
-    and moves on exactly as the tolerant decode does."""
+def test_a_ceiling_move_during_warm_up_discards_nothing_in_either_mode():
+    """Nothing is in flight before the first field is written; the warm-up
+    caps the strength and moves on exactly as the tolerant decode does."""
     estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
     for exact in (False, True):
         pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
@@ -523,6 +526,7 @@ def test_a_ceiling_move_during_warm_up_is_not_a_redo_in_either_mode():
                         applied_eq=estimate, fields_written=0)
         it.exact_speculation = exact
         assert LDdecode.checkVideoEQ(it, field=None) is True
+        assert not it._discard_ahead
         assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
 
 
@@ -531,16 +535,18 @@ def test_a_ceiling_move_is_a_tolerated_trim_otherwise():
     pool = samples({4.0e6: 2.0, 4.75e6: 2.0}, count=8, strength=1.2)
     it = adopt_stub(pool, strength=1.2, calibrated=True, applied_eq=estimate)
     assert LDdecode.checkVideoEQ(it, field=None) is True
+    assert not it._discard_ahead
     assert it.rf.DecoderParams["inverse_mtf_strength"] == pytest.approx(0.2)
 
 
-def test_a_ceiling_that_does_not_move_is_no_redo_in_exact_mode():
+def test_a_ceiling_that_does_not_move_discards_nothing_in_exact_mode():
     estimate = ((1.0e6, 0.0), (2.0e6, 1.0))
     it = adopt_stub(samples({4.0e6: 2.0}, count=2), strength=0.2,
                     flat_band=0.2, calibrated=True, applied_eq=estimate,
                     fields_written=1)
     it.exact_speculation = True
     assert LDdecode.checkVideoEQ(it, field=None) is True
+    assert not it._discard_ahead
 
 
 def test_a_disc_with_no_multiburst_verdict_keeps_its_strength():
@@ -682,6 +688,8 @@ def deemp_stub(burst_ire, strength, flat_band=None, calibrated=True):
     )
     it._imtf_ceiling = lambda current: LDdecode._imtf_ceiling(it, current)
     it._imtf_cut_engaged = lambda flat: LDdecode._imtf_cut_engaged(it, flat)
+    it._discard_ahead = False
+    it._adopt_from_next_field = lambda hand_over: LDdecode._adopt_from_next_field(it, hand_over)
     return it
 
 
@@ -748,3 +756,15 @@ def test_the_feed_forward_does_not_close_a_cut_the_multiburst_asked_for():
 
 def test_the_feed_forward_still_winds_up_from_a_cut():
     assert feedforward_stub(strength=-1.4, delta=0.5) == pytest.approx(-0.8)
+
+
+@pytest.mark.parametrize("exact", [False, True])
+def test_a_burst_servo_trim_is_no_redo_in_either_mode(exact):
+    """A tracking trim applies from the next field on; exact mode only
+    marks what was decoded ahead for discarding."""
+    it = deemp_stub(burst_ire=18.0, strength=0.5, flat_band=None)
+    it.exact_speculation = exact
+
+    assert LDdecode._deemp_calibrate(it) is False
+    assert it.rf.DecoderParams["inverse_mtf_strength"] > 0.5 + it.imtf_strength_deadband
+    assert it._discard_ahead is exact

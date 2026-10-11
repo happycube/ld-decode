@@ -730,7 +730,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# ggv1069-side1-ldv4300d-inner (NTSC): 11 of its checks fail.
+# ggv1069-side1-ldv4300d-inner (NTSC): 10 of its checks fail.
 
 [[deviation]]
 capture = "ggv1069-side1-ldv4300d-inner"
@@ -850,18 +850,6 @@ band_used = 1.06
 ceiling = 1.16
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
-
-[[deviation]]
-capture = "ggv1069-side1-ldv4300d-inner"
-check = "ntsc-fcc-multiburst/packet_3/response"
-field_line = 24
-parity = "second"
-measured = 0.811
-unit = "dB"
-band_used = 1.08
-ceiling = 1.19
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "In-band multiburst flatness, the residual the video EQ servo leaves inside the band it anchors. The radius baseline recorded NTSC flatness at 0.46x of its allowance from ggv1069-side1-inner alone; a second capture of the same disc puts it over, which is the reading a one-capture row could not produce. See docs/technical/vits-radius-baseline.md, \"What the baseline says\"."
 
 
 # ggv1069-side1-ldv4300d-middle (NTSC): 2 of its checks fail.
