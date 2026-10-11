@@ -21,7 +21,14 @@ from . import utils_logging as logs
 from .profiling import profile
 from .audio import downscale_audio
 from .filters import calczc, inrange
-from .pulses import Pulse, clb_findbursts, dropout_flags, findpulses
+from .pulses import (
+    Pulse,
+    burst_levels,
+    clb_findbursts,
+    dropout_flags,
+    findpulses,
+    ntsc_line_bursts,
+)
 from .dsp import (
     angular_mean_helper,
     compute_linelocs_kernel,
@@ -530,8 +537,15 @@ class Field:
             return None
 
     def calc_burstmedian(self):
-        burstlevel = [b for b in (self.get_burstlevel(l) for l in range(*self.burst_lines)) if b is not None]
-        return (np.median(burstlevel) / self.rf.DecoderParams["hz_ire"]) if burstlevel else 0.0
+        """Median get_burstlevel over burst_lines, in IRE."""
+        hz_ire = self.rf.DecoderParams["hz_ire"]
+        max_level = np.inf if self.burst_max_ire is None else self.burst_max_ire * hz_ire
+        levels, valid = burst_levels(
+            self.data["video"]["demod"], np.asarray(self.linelocs, dtype=np.float64),
+            *self.burst_lines, self.lineoffset, self.linecount + self.lineoffset,
+            self.rf.linelen, self.rf.samplesperline, 5.5, 2.4, np.float32(max_level),
+        )
+        return (np.median(levels[valid]) / hz_ire) if valid.any() else 0.0
 
     def get_linefreq(self, line=None, linelocs=None):
         return self.rf.samplesperline * self.get_linelen(line, linelocs)
@@ -2108,41 +2122,93 @@ class FieldPAL(Field):
 class FieldNTSC(Field):
     phase_adjust_median = 0
 
+    BURST_LINES = 266
+
+    def line_bursts(self, linelocs, nlines, prev_phaseadjust):
+        """compute_line_bursts for lines 0..nlines-1, as arrays
+        (measured, rising, phase_adjust); a line is measured where
+        compute_line_bursts finds a usable burst."""
+        burst_locs = np.asarray(linelocs, dtype=np.float64)
+        freq_locs = getattr(self, "linelocs", None)
+        if freq_locs is not None:
+            freq_locs = np.asarray(freq_locs, dtype=np.float64)
+
+        lo, hi = max(self.lineoffset - 1, 0), self.lineoffset + nlines + 1
+        if (freq_locs is not None and min(len(burst_locs), len(freq_locs)) >= hi
+                and np.isfinite(burst_locs[lo:hi]).all()
+                and np.isfinite(freq_locs[lo:hi]).all()):
+            return ntsc_line_bursts(
+                self.data["video"]["demod_burst"], self.data["video"]["demod"],
+                burst_locs, freq_locs, nlines, self.lineoffset,
+                self.linecount + self.lineoffset, self.rf.linelen,
+                self.rf.samplesperline, self.rf.SysParams["fsc_mhz"],
+                30 * self.rf.DecoderParams["hz_ire"], float(prev_phaseadjust),
+            )
+
+        # Line locations the compiled loop can't take (not finite, or too
+        # few) go line by line, failing or falling back as they always have
+        measured = np.zeros(nlines, dtype=np.bool_)
+        rising = np.zeros(nlines, dtype=np.bool_)
+        phase = np.zeros(nlines, dtype=np.float64)
+        for line in range(nlines):
+            r, p = self.compute_line_bursts(linelocs, line, prev_phaseadjust)
+            if r is not None:
+                measured[line], rising[line], phase[line] = True, r, p
+        return measured, rising, phase
+
     @profile
     def compute_burst_offsets(self, linelocs):
-        rising_sum = 0
-        adjs = {}
+        """Burst phase of lines 0..BURST_LINES-1.
 
-        for line in range(0, 266):
-            prev_phaseadjust = self.phase_adjust_median
+        Returns (field14, measured, adjs): whether this is field 1 or 4,
+        which lines had a usable burst, and the phase adjustment to apply
+        to each measured line, in subcarrier cycles.
+        """
+        prev_phaseadjust = self.phase_adjust_median
 
-            if prev_phaseadjust == 0 and self.anchor is not None:
-                prev_phaseadjust = self.anchor.phase_adjust_median
+        if prev_phaseadjust == 0 and self.anchor is not None:
+            prev_phaseadjust = self.anchor.phase_adjust_median
 
-            rising, phase_adjust = self.compute_line_bursts(linelocs, line, prev_phaseadjust)
-            if rising is None:
-                continue
+        measured, rising, phase_adjust = self.line_bursts(
+            linelocs, self.BURST_LINES, prev_phaseadjust)
 
-            # For adjustments, 1/2 the phase_adjust value is used for better results
-            # (todo: recheck)
-            adjs[line] = phase_adjust / 2
-
-            even_line = not (line % 2)
-            rising_sum += 1 if (even_line and rising) else 0
+        # For adjustments, 1/2 the phase_adjust value is used for better results
+        # (todo: recheck)
+        adjs = phase_adjust / 2
 
         # If more than half of the lines have rising phase alignment, it's (probably) field 1 or 4
-        field14 = rising_sum > (len(adjs.keys()) // 4)
+        rising_sum = np.count_nonzero(measured[0::2] & rising[0::2])
+        field14 = rising_sum > (np.count_nonzero(measured) // 4)
 
         # store the full phase adjustment value here so things line up next
         # time.  With no usable burst this field keeps its seed rather than
         # storing NaN, which the next field's anchor would inherit and never
         # recover from.
-        if adjs:
-            self.phase_adjust_median = np.median(list(adjs.values())) * 2
+        if measured.any():
+            self.phase_adjust_median = np.median(adjs[measured]) * 2
         else:
             self.phase_adjust_median = prev_phaseadjust
 
-        return field14, adjs
+        return field14, measured, adjs
+
+    def get_linelens(self, lines, linelocs):
+        """get_linelen for each of lines, as an array."""
+        linelocs = np.asarray(linelocs, dtype=np.float64)
+        lines = np.asarray(lines)
+
+        tail = lines >= self.linecount + self.lineoffset
+        mid = ~tail & (lines > 0)
+        head = ~tail & ~mid
+
+        length = np.empty(len(lines), dtype=np.float64)
+        length[tail] = linelocs[lines[tail]] - linelocs[lines[tail] - 1]
+        length[mid] = (linelocs[lines[mid] + 1] - linelocs[lines[mid] - 1]) / 2
+        if head.any():
+            length[head] = linelocs[1] - linelocs[0]
+
+        # linelocs aren't monotonic -- probably TBC failure
+        length[length <= 0] = self.rf.linelen
+        return length
 
     @profile
     def refine_linelocs_burst(self, linelocs=None):
@@ -2150,34 +2216,30 @@ class FieldNTSC(Field):
             linelocs = self.linelocs2
 
         linelocs_adj = linelocs.copy()
+        nlines = self.BURST_LINES
 
-        field14, adjs_new = self.compute_burst_offsets(linelocs_adj)
+        field14, measured, adjs_new = self.compute_burst_offsets(linelocs_adj)
 
-        adjs = {}
+        self.linebad[1:nlines][~measured[1:]] = True
 
-        for line in range(1, 266):
-            if line not in adjs_new:
-                self.linebad[line] = True
+        # compute the adjustments for each line but *do not* apply, so outliers can be bypassed.
+        # Line 0 is not marked bad above, so it may have no burst.
+        use = measured & ~(np.isnan(linelocs_adj[:nlines]) | self.linebad[:nlines])
+        lines = np.flatnonzero(use)
+        lfreq = self.rf.samplesperline * self.get_linelens(lines, linelocs)
+        adjs = adjs_new[lines] * lfreq * (1 / self.rf.SysParams["fsc_mhz"])
 
-        # compute the adjustments for each line but *do not* apply, so outliers can be bypassed
-        for line in range(0, 266):
-            if not (np.isnan(linelocs_adj[line]) or self.linebad[line]):
-                lfreq = self.get_linefreq(line, linelocs)
+        if len(lines):
+            adjs_median = np.median(adjs)
 
-                # Line 0 is not marked bad above, so it may have no burst.
-                if line in adjs_new:
-                    adjs[line] = adjs_new[line] * lfreq * (1 / self.rf.SysParams["fsc_mhz"])
-
-        if len(adjs.keys()):
-            adjs_median = np.median([adjs[a] for a in adjs])
-            lastvalid_adj = adjs_median
-
-            for line in range(0, 266):
-                if line in adjs and inrange(adjs[line] - adjs_median, -2, 2):
-                    linelocs_adj[line] += adjs[line]
-                    lastvalid_adj = adjs[line]
-                else:
-                    linelocs_adj[line] += lastvalid_adj
+            # Each line takes its own adjustment if it is within 2 samples
+            # of the median, else the last line's that was (or the median)
+            valid = np.zeros(nlines, dtype=np.bool_)
+            valid[lines] = inrange(adjs - adjs_median, -2, 2)
+            adj = np.zeros(nlines, dtype=np.float64)
+            adj[lines] = adjs
+            lastvalid = np.maximum.accumulate(np.where(valid, np.arange(nlines), -1))
+            linelocs_adj[:nlines] += np.where(lastvalid >= 0, adj[lastvalid], adjs_median)
 
             # This map is based on (first field, field14)
             map4 = {
@@ -2186,7 +2248,7 @@ class FieldNTSC(Field):
                 (True, False): 3,
                 (False, True): 4,
             }
-            self.fieldPhaseID = map4[(self.isFirstField, field14)]
+            self.fieldPhaseID = map4[(self.isFirstField, bool(field14))]
         else:
             # No usable burst measurements on any line - the phase could
             # not be determined from this field itself.

@@ -8,7 +8,7 @@ from collections import namedtuple
 import numpy as np
 from numba import njit
 
-from .dsp import nb_median
+from .dsp import nb_median, rms
 from .filters import calczc_do, inrange
 
 
@@ -254,3 +254,156 @@ def clb_findbursts(
         rising_count = np.sum(np.bitwise_xor(isrising, (zc_rounds % 2) != 0))
 
     return zc_count, phase_adjust, rising_count
+
+
+# Whole-field loops over the per-line burst measurements.  Each line's
+# arithmetic is that of the Field method named in its docstring, operation
+# for operation and on the same numba helpers, so the results agree bit for
+# bit; the Python loop around them was most of their cost.
+
+
+@njit(cache=True, nogil=True)
+def _line_length(linelocs, line, last_line, linelen):
+    """Field.get_linelen for one line of linelocs."""
+    if line >= last_line:
+        length = linelocs[line] - linelocs[line - 1]
+    elif line > 0:
+        length = (linelocs[line + 1] - linelocs[line - 1]) / 2
+    else:
+        length = linelocs[1] - linelocs[0]
+
+    if length <= 0:
+        # linelocs aren't monotonic -- probably TBC failure
+        return float(linelen)
+
+    return length
+
+
+@njit(cache=True, nogil=True)
+def ntsc_line_bursts(
+    demod_burst, demod, linelocs, freq_linelocs, nlines, lineoffset,
+    last_line, linelen, samplesperline, fsc_mhz, max_swing_hz, prev_phaseadjust,
+):
+    """Field.compute_line_bursts for lines 0..nlines-1.
+
+    linelocs locates each line's burst; freq_linelocs gives the line
+    lengths, as Field.get_linefreq reads them from Field.linelocs.  Both
+    must be finite over the lines measured and their neighbours.
+
+    Returns (measured, rising, phase_adjust) per line; a line is not
+    measured where compute_line_bursts returns (None, None).
+    """
+    measured = np.zeros(nlines, dtype=np.bool_)
+    rising = np.zeros(nlines, dtype=np.bool_)
+    phase = np.zeros(nlines, dtype=np.float64)
+
+    isrising = np.zeros(16, dtype=np.bool_)
+    zcs = np.zeros(16, dtype=np.float32)
+
+    fsc_mhz_inv = 1 / fsc_mhz
+    bstime = 21 * fsc_mhz_inv
+    betime = 28 * fsc_mhz_inv
+
+    for i in range(nlines):
+        line = i + lineoffset
+        s = int(linelocs[line])
+        s_rem = linelocs[line] - s
+
+        lfreq = samplesperline * _line_length(freq_linelocs, line, last_line, linelen)
+
+        bstart = int(bstime * lfreq)
+        bend = int(betime * lfreq)
+
+        area = demod_burst[s + bstart : s + bend]
+        n = len(area)
+        if n == 0:
+            continue
+
+        # float32 less the float64 mean, rounded as NumPy rounds a Python
+        # float against a float32 array
+        mean = np.float32(np.mean(area))
+        burstarea = np.empty(n, dtype=np.float32)
+        for k in range(n):
+            burstarea[k] = area[k] - mean
+        threshold = np.float64(rms(burstarea))
+
+        area_demod = demod[s + bstart : s + bend]
+        mean = np.float32(np.mean(area_demod))
+        burstarea_demod = np.empty(n, dtype=np.float32)
+        for k in range(n):
+            burstarea_demod[k] = area_demod[k] - mean
+        if np.max(np.abs(burstarea_demod)) > max_swing_hz:
+            continue
+
+        zcburstdiv = (lfreq * fsc_mhz_inv) / 2
+        phase_adjust = -prev_phaseadjust
+        for _ in range(2):
+            zc_count, phase_adjust, rising_count = clb_findbursts(
+                isrising, zcs, burstarea, 0, n - 1,
+                threshold, bstart, s_rem, zcburstdiv, phase_adjust,
+            )
+
+        measured[i] = True
+        rising[i] = rising_count > (zc_count / 2)
+        phase[i] = -phase_adjust
+
+    return measured, rising, phase
+
+
+@njit(cache=True, nogil=True)
+def burst_levels(
+    demod, linelocs, first_line, stop_line, lineoffset, last_line, linelen,
+    samplesperline, begin_us, length_us, max_level_hz,
+):
+    """Field.get_burstlevel for lines first_line..stop_line-1.
+
+    Returns (levels, valid); a line is not valid where get_burstlevel
+    returns None.  max_level_hz is the float32 limit on the burst's peak
+    above its mean (inf for none).
+    """
+    nlines = stop_line - first_line
+    levels = np.zeros(nlines, dtype=np.float64)
+    valid = np.zeros(nlines, dtype=np.bool_)
+
+    n = len(demod)
+    length = length_us * (samplesperline * linelen)
+    sqrt2 = np.sqrt(2.0)
+
+    for i in range(nlines):
+        line = first_line + i + lineoffset
+
+        # where get_burstlevel's indexing raises
+        if line < 0 or line >= len(linelocs):
+            continue
+        if line < last_line and line + 1 >= len(linelocs):
+            continue
+
+        begin = linelocs[line] + begin_us * (
+            samplesperline * _line_length(linelocs, line, last_line, linelen))
+        end = begin + length + 1
+        if not (np.isfinite(begin) and np.isfinite(end)):
+            continue
+
+        # Past either end of demod, every index slices the same
+        lo = int(min(max(begin, -(n + 1.0)), n + 1.0))
+        hi = int(min(max(end, -(n + 1.0)), n + 1.0))
+        burstarea = demod[lo:hi].copy()
+        if len(burstarea) == 0:
+            continue
+
+        mean = np.float32(np.mean(burstarea))
+        for k in range(len(burstarea)):
+            burstarea[k] -= mean
+
+        # Python's max(): a NaN stands only in first place
+        peak = burstarea[0]
+        for k in range(1, len(burstarea)):
+            if burstarea[k] > peak:
+                peak = burstarea[k]
+        if peak > max_level_hz:
+            continue
+
+        levels[i] = np.float64(rms(burstarea)) * sqrt2
+        valid[i] = True
+
+    return levels, valid
