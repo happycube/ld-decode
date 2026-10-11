@@ -2889,10 +2889,19 @@ class LDdecode:
         if len(self.fieldinfo) == 0 and not f.isFirstField:
             return f
 
-        if f.anchor is None and f.phase_id_fallback and len(self.fieldinfo):
+        if f.phase_id_fallback and len(self.fieldinfo) and (
+                f.anchor is None
+                or self.fieldinfo[-1]["fileLoc"] == int(np.floor(f.anchor.startloc))):
             # The field couldn't measure its colour-sequence position from
-            # its own burst structure; continue the committed sequence
-            # (what the decode-time fallback does when an anchor exists).
+            # its own burst structure; continue the committed sequence.
+            # PAL's decode-time fallback does that from an anchor (NTSC's
+            # just says 1), but an anchor snapshotted before its own field
+            # committed - in the worker that decoded it, or a pipeline step
+            # ahead - carries that field's position from before this
+            # rewrite gave it its committed one.  Anchored to the field
+            # committed last, then, this takes the committed value.  An
+            # anchor further back (a field left out of fieldinfo between
+            # them) keeps the decode-time value.
             nphase = self.fieldinfo[-1]["fieldPhaseID"] + 1
             f.fieldPhaseID = (
                 1 if nphase > self.rf.SysParams["fieldPhases"] else nphase
