@@ -94,7 +94,7 @@ ceiling = 1.36
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-# dolby-surround-side1-outer (NTSC): 2 of its checks fail.
+# dolby-surround-side1-outer (NTSC): 1 of its checks fails.
 
 [[deviation]]
 capture = "dolby-surround-side1-outer"
@@ -107,18 +107,6 @@ band_used = 4.18
 ceiling = 4.60
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
-
-[[deviation]]
-capture = "dolby-surround-side1-outer"
-check = "ntsc-ntc7-composite/pulse_12t5_luma"
-field_line = 20
-parity = "first"
-measured = 48.481
-unit = "IRE"
-band_used = 1.01
-ceiling = 1.11
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 12.5T modulated pulse's luminance component: the same sine-squared pulse measurement as pulse_2t above, on the same line of the same cut. The fault is already recorded one radius in, at 1.24x on dolby-surround-side1-middle; this cut has read within a fiftieth of its limit for as long as the sweep has measured it (0.99x, 48.512 IRE) and has now crossed. See docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
 
 # domesday-ds1-community-north-outer (PAL): 4 of its checks fail.
@@ -904,19 +892,7 @@ owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Luminance and chrominance are not scaled by the same factor, so the ratio between the colour bar and its luminance reference is out even where each level passes on its own."
 
 
-# industrial-lv-side1-inner (PAL): 6 of its checks fail.
-
-[[deviation]]
-capture = "industrial-lv-side1-inner"
-check = "pal-its-field1/pulse_2t"
-field_line = 19
-parity = "first"
-measured = 104.966
-unit = "IRE"
-band_used = 1.77
-ceiling = 1.95
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
+# industrial-lv-side1-inner (PAL): 5 of its checks fail.
 
 [[deviation]]
 capture = "industrial-lv-side1-inner"
@@ -977,7 +953,19 @@ ceiling = 1.52
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
 
-# industrial-lv-side1-middle (PAL): 3 of its checks fail.
+# industrial-lv-side1-middle (PAL): 4 of its checks fail.
+
+[[deviation]]
+capture = "industrial-lv-side1-middle"
+check = "pal-its-field1/pulse_2t"
+field_line = 19
+parity = "first"
+measured = 97.691
+unit = "IRE"
+band_used = 1.07
+ceiling = 1.17
+owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
+reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\". Crossed when clb_findbursts stopped counting empty crossing slots, which corrected this disc's PAL sequence labelling by four fields, so the file now opens on frame 1 and the averaged fields are different ones."
 
 [[deviation]]
 capture = "industrial-lv-side1-middle"
@@ -1019,15 +1007,15 @@ reason = "Frequency response above the band the video EQ servo anchors, where no
 
 [[deviation]]
 capture = "industrial-lv-side1-outer"
-check = "pal-its-field1/pulse_2t"
+check = "pal-its-field2/pulse_2t"
 field_line = 19
-parity = "first"
-measured = 97.033
+parity = "second"
+measured = 102.771
 unit = "IRE"
-band_used = 1.25
-ceiling = 1.38
+band_used = 1.13
+ceiling = 1.24
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\"."
+reason = "The 2T pulse and the luminance references it is judged against. Worst allowance in the radius baseline on both systems, and it grows outwards; see docs/technical/vits-radius-baseline.md, \"The 2T pulse was judged against the wrong reference\". Crossed when clb_findbursts stopped counting empty crossing slots, which corrected this disc's PAL sequence labelling by four fields, so the file now opens on frame 1 and the averaged fields are different ones."
 
 [[deviation]]
 capture = "industrial-lv-side1-outer"

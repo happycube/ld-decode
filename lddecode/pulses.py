@@ -247,11 +247,15 @@ def clb_findbursts(
             j += 1
 
     if zc_count:
-        zc_cycles = ((bstart + zcs - s_rem) / zcburstdiv) + phase_adjust
+        # Only the crossings found: a burst has ~12-14 of them on NTSC and
+        # ~7 on PAL, and the slots past zc_count hold zeros that would join
+        # the median (as a crossing at the start of the burst window) and
+        # the rising count.
+        zc_cycles = ((bstart + zcs[:zc_count] - s_rem) / zcburstdiv) + phase_adjust
         # numba doesn't support np.round over an array, so we have to do this
         zc_rounds = (zc_cycles + .5).astype(np.int32)
         phase_adjust += nb_median(zc_rounds - zc_cycles)
-        rising_count = np.sum(np.bitwise_xor(isrising, (zc_rounds % 2) != 0))
+        rising_count = np.sum(np.bitwise_xor(isrising[:zc_count], (zc_rounds % 2) != 0))
 
     return zc_count, phase_adjust, rising_count
 
