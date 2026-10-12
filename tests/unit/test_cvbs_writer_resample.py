@@ -145,6 +145,39 @@ def test_the_anchor_frame_takes_the_whole_measured_error():
     assert w._pal_shift == pytest.approx(0.1 + 0.75 * 4.0 / 90.0)
 
 
+def synced_lattice(h0):
+    """A field-A lattice stream whose line syncs fall (half amplitude) at
+    h0 samples into each 1135.0064-sample line under a zero shift, with a
+    pilot burst riding the sync tip; a shift of s lattice samples moves
+    them s samples earlier, as downscale_cvbs does."""
+    spl = 709379 / 625
+
+    def downscale(shift):
+        n = np.arange(354690, dtype=np.float64)
+        t = (n + spl / 2) % spl - spl / 2 - (h0 - shift)
+        low = np.clip((t + 1.0) / 2.0, 0.0, 1.0) * np.clip((66.0 - t) / 2.0, 0.0, 1.0)
+        pilot = 60.0 * np.sin(2 * np.pi * n * 3.75 / 17.734475) * (low > 0.99)
+        return 16384.0 - 12000.0 * low + pilot
+
+    f = Mock()
+    f.downscale_cvbs = Mock(side_effect=downscale)
+    return f
+
+
+@pytest.mark.parametrize("h0, origin", [(-1.4, -1), (0.6, 1), (-0.3, 0)])
+def test_the_first_frame_moves_the_lattice_to_put_0h_before_sample_0(h0, origin):
+    """The lock fixes the lattice against the burst; 0H lands where the
+    disc's Sc-H puts it, and whole lattice samples bring it into the
+    sample before sample 0 without disturbing the lock."""
+    w = make_writer(RecordingExecutor())
+    f_a, f_b = synced_lattice(h0), make_field(354689)
+    w._emit_frame((f_a, {}, None, None, None), (f_b, {}, None, None, None))
+
+    assert w._pal_shift == origin
+    assert f_b.downscale_cvbs.call_args_list[0].args[0] == origin
+    assert origin - 1 < h0 <= origin
+
+
 def test_close_leaves_an_injected_executor_alone():
     ex = Mock()
     w = make_writer(ex)

@@ -36,8 +36,11 @@ from vits_reference import NTSC_MULTIBURST_NTC7
 # ---------------------------------------------------------------------------
 
 # CVBS 4fsc field geometry (see cvbs-file-format-specification/).  Levels
-# are the spec's 10-bit presets; active/burst windows match what ld-decode
-# writes to .tbc.db for the same 4fsc line convention (0H at +0.8).
+# are the spec's 10-bit presets; active/burst windows are what ld-decode
+# writes to .tbc.db.  The VITS measurements read the active window as a
+# time from the 0H they measure (vits_measure), so these stay the .tbc
+# figures although a stored CVBS line starts a disc-dependent sample or
+# two later than a .tbc line (lddecode.cvbs.CVBSWriter._origin_shift).
 CVBS_GEOMETRY = {
     "NTSC": {
         "field_width": 910, "field_height": 263,

@@ -349,12 +349,15 @@ CVBSParams_NTSC = {
     "frame_samples": 477750,          # 525 lines x 910 samples (orthogonal)
     "frame_lines": 525,
     "samples_per_line": 910,          # exact
-    # Stored lines use the ld-decode line convention (sample 0 at the line
-    # start, 0H sync edge ~ +0.8): this is what decode-orc's cvbs_source
-    # reader expects (burst window 72-108, active video at 126).  SMPTE
-    # 244M's digital-line origin (0H between samples 784/785) is
-    # informational background in the spec, not the file layout.
-    "zero_h_sample": 0.8,
+    # Stored lines are 0H-aligned (spec "Stored Frame and Line Origin"):
+    # sample 0 is the first sampling instant at or after 0H, so 0H sits
+    # in the sample before it - at -0.63 for 0 deg SC/H, where SMPTE
+    # 244M's sample 0 of the digital active line is stored sample 125.
+    # decode-orc's cvbs_source reader works to the same layout (burst
+    # window 72-108, active video at 126).  The decoder's own NTSC field
+    # lines start a disc-dependent few samples earlier (see
+    # CVBSWriter._origin_shift).
+    "zero_h_sample": -0.63,
     # 10-bit sample levels (SMPTE 244M-2003 / SMPTE 170M-2004)
     "levels": {"sync": 16, "blanking": 240, "black": 282, "white": 800,
                "peak": 1019},
@@ -365,10 +368,11 @@ CVBSParams_PAL = {
     "frame_samples": 709379,          # normative at frame level ONLY
     "frame_lines": 625,
     "samples_per_line": (709379, 625),  # exact rational: 1135.0064
-    # ld-decode line convention (see NTSC note above); EBU 3280's digital
-    # line origin (0H at 957.5 for frame line 1) is informational.  The
-    # lattice 0H drifts +0.0064 samples/line through the frame regardless.
-    "zero_h_sample": 0.8,
+    # 0H-aligned like NTSC: at 0 deg Sc-H, 0H of frame line 0 falls
+    # midway between EBU 3280's samples 957 and 958, half a sample before
+    # stored sample 0.  The lattice 0H drifts +0.0064 samples/line
+    # through the frame.
+    "zero_h_sample": -0.5,
     # 10-bit sample levels (EBU Tech 3280-E); PAL has no setup: black=blanking
     "levels": {"sync": 4, "blanking": 256, "black": 256, "white": 844,
                "peak": 1019},

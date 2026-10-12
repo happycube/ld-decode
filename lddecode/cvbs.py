@@ -202,17 +202,24 @@ class CVBSWriter:
     (1602/1601/1602/1601/1602), so the stored stream is trimmed or
     zero-padded at close to exactly offset(N) samples for N frames.
 
-    Frames use the ld-decode line convention (sample 0 at the line start,
-    0H ~ +0.8) — the layout decode-orc's cvbs_source reader expects.  One
-    field pair produces exactly one frame, so extension frame indices align
-    with the video by construction.
+    Frames are 0H-aligned as the spec requires: sample 0 of a frame is
+    the first sampling instant at or after 0H of its first line, so 0H
+    falls within the sample before it.  Both systems lock the burst, not
+    0H, to the 4fsc lattice, which leaves 0H wherever the disc's SC/H puts
+    it - 0.3 to 1.9 samples into the decoder's NTSC lines on the test
+    discs - so the first frame measures it (_origin_shift) and moves the
+    frame origin by whole samples, which keeps the lattice: NTSC frames
+    start that many samples into field A, PAL's resample adds them to its
+    lock shift.  One field pair produces exactly one frame, so extension
+    frame indices align with the video by construction.
 
     Burst lock: PAL output is anchored to the 4fsc lattice with a global
     time shift.  The spec lattice samples at 45/135/225/315 degrees to +U,
     a constraint defined only mod 90 degrees — and 90 degrees of subcarrier
-    is exactly one lattice sample, so the correction is always <= +/-0.5
-    sample and cannot move 0H.  The V-switch folds out of the measurement
-    via adjacent-line burst products (b_k * b_(k+1) has phase 2*theta).
+    is exactly one lattice sample, so the lock's own correction is always
+    <= +/-0.5 sample; the origin's whole samples come on top, once.  The
+    V-switch folds out of the measurement via adjacent-line burst products
+    (b_k * b_(k+1) has phase 2*theta).
     NTSC needs no re-anchoring (the decoder already rotates each field to
     the fsc_phase_deg target, found on a burst path that carries the
     picture path's phase at fsc whatever video chain was selected); its
@@ -220,7 +227,12 @@ class CVBSWriter:
     """
 
     PAL_LOCK_TARGET = 45.0     # folded burst phase target, deg (mod 90)
-    NTSC_LOCK_TARGET = 147.25  # line-referenced burst phase target, deg
+    # Line-referenced burst phase, deg, folded mod 90: the I/Q sampling
+    # lattice (SMPTE 244M: samples on the I and Q axes), which reads 147
+    # in colour frame A at 0 deg SC/H.  Which of the four lattice phases a
+    # frame shows depends on its colour frame and on where the origin rule
+    # puts sample 0 against the disc's SC/H; any of them is phase locked.
+    NTSC_LOCK_TARGET = 147.25
     LOCK_TOL = 3.0             # residual tolerance for claiming LOCKED
 
     # How much of each frame's measured residual the PAL lock applies.
@@ -305,6 +317,12 @@ class CVBSWriter:
 
         # burst lock state
         self._pal_shift = 0.0          # lattice-sample lattice shift
+        # NTSC: whole samples from a decoded field line's start to stored
+        # sample 0, set from the first frame (see _ntsc_origin_shift), and
+        # the samples that preceded the last frame's end (a shift below 0
+        # starts a frame inside the previous one)
+        self._ntsc_shift = None
+        self._ntsc_prev_tail = None
         self._lock_initialised = False
         self._lock_residuals = []      # per-frame residual, degrees
 
@@ -410,7 +428,23 @@ class CVBSWriter:
             a = self._to_spec_levels(self._as_u16(pic_a), f_a)
             b = self._to_spec_levels(self._as_u16(pic_b), f_b)
             spl = self.params["samples_per_line"]
-            frame = np.concatenate([a[: 263 * spl], b[: 262 * spl]])
+            if self._ntsc_shift is None:
+                self._ntsc_shift = self._ntsc_origin_shift(a)
+            # The decoder's fields are contiguous at the seam (field B's
+            # first row follows field A's last), and field B carries a
+            # 263rd row, the next frame's first, to finish the last line.
+            k = self._ntsc_shift
+            if k >= 0:
+                frame = np.concatenate([a[k: 263 * spl], b[: 262 * spl + k]])
+            else:
+                head = self._ntsc_prev_tail
+                if head is None:
+                    # nothing precedes the first frame: the samples just
+                    # before 0H are front porch
+                    head = np.full(-k, float(self.blank16))
+                frame = np.concatenate([head, a[: 263 * spl],
+                                        b[: 262 * spl + k]])
+                self._ntsc_prev_tail = b[262 * spl + k: 262 * spl]
             self._measure_ntsc_lock(frame)
         else:
             # PAL: resample both fields onto the frame lattice with the
@@ -423,6 +457,14 @@ class CVBSWriter:
                 delta = self._pal_phase_error(a_raw)
                 if delta is not None:
                     self._pal_shift += delta / 90.0
+                    a_raw = f_a.downscale_cvbs(self._pal_shift)
+                # The lock fixes the lattice against the burst; 0H falls
+                # where the disc's Sc-H puts it, and the origin rule wants
+                # it in the sample before sample 0.  Whole lattice samples
+                # move it there and keep the lock (90 degrees each).
+                origin = self._origin_shift(a_raw, PAL_FRAME_SAMPLES / 625)
+                if origin:
+                    self._pal_shift += origin
                     a_raw = f_a.downscale_cvbs(self._pal_shift)
                 self._lock_initialised = True
                 b_raw = f_b.downscale_cvbs(self._pal_shift)
@@ -539,24 +581,74 @@ class CVBSWriter:
         delta = (self.PAL_LOCK_TARGET - measured + 45.0) % 90.0 - 45.0
         return float(delta)
 
+    def _origin_shift(self, x, line_len):
+        """Whole samples from the start of x's lines to a stored line's
+        sample 0: the k with 0H at k-1 < h0 <= k, so that sample 0 is the
+        first sampling instant at or after 0H.  None when no sync edge
+        can be found.
+
+        h0 is the median, over lines 40-199 (starting at l * line_len),
+        of the sync edge's half-amplitude crossing between the front porch
+        and the sync tip, both measured: a disc's blanking can sit well
+        off the nominal level.  The tip is the floor of the sync region
+        (its 5th percentile): PAL LaserDiscs carry a 3.75 MHz pilot up
+        from it, which a mean or median would take for the tip and so
+        read 0H half a sample early.  The pilot starts after the edge, so
+        the crossing itself is clean.
+        """
+        x = np.asarray(x, dtype=np.float64)
+        starts = [int(np.ceil(r * line_len)) for r in range(40, 200)]
+        tip = np.median([np.percentile(x[s + 4: s + 60], 5) for s in starts])
+        porch = np.median([np.median(x[s - 18: s - 6]) for s in starts])
+        thr = (tip + porch) / 2.0
+        crossings = []
+        for r, s in zip(range(40, 200), starts):
+            seg = x[s - 8: s + 12]
+            i = np.nonzero((seg[:-1] >= thr) & (seg[1:] < thr))[0]
+            if len(i):
+                i = i[0]
+                at = s - 8 + i + (seg[i] - thr) / (seg[i] - seg[i + 1])
+                crossings.append(at - r * line_len)
+        if len(crossings) < len(starts) // 2:
+            return None
+        h0 = float(np.median(crossings))
+        if self.logger:
+            self.logger.debug("CVBS: 0H at %+.2f samples into the line", h0)
+        return int(np.ceil(h0))
+
+    def _ntsc_origin_shift(self, field_a):
+        """Whole samples from a decoded NTSC line's start to the stored
+        line's sample 0 (_origin_shift).  Taken once, from the first frame:
+        the frames of one file have to be contiguous slices of the stream,
+        and 0H holds to within a tenth of a sample through a disc."""
+        shift = self._origin_shift(field_a, self.params["samples_per_line"])
+        if shift is None:
+            if self.logger:
+                self.logger.warning(
+                    "CVBS: no NTSC sync edge to align frames to; leaving "
+                    "the decoder's line origin")
+            return 0
+        return shift
+
     def _measure_ntsc_lock(self, frame):
         """Record the frame's line-referenced burst phase residual."""
         x = frame.astype(np.float64)
         phasors = []
         for k in range(40, 200, 2):
-            seg = x[k * 910 + 74: k * 910 + 110]
+            seg = x[k * 910 + 72: k * 910 + 108]
             if len(seg) < 36:
                 return
-            n = np.arange(74, 110)
+            n = np.arange(72, 108)
             b = np.mean((seg - np.mean(seg)) * np.exp(-0.5j * np.pi * n))
             phasors.append(b)
         p = np.sum(phasors)
         if np.abs(p) < 40 * len(phasors) / 4:
             return
         measured = np.degrees(np.angle(p)) % 360.0
-        # the NTSC colour sequence alternates 180 degrees per frame (frames
-        # A/B) — fold it out; the lock criterion is phase mod 180
-        resid = (self.NTSC_LOCK_TARGET - measured + 90.0) % 180.0 - 90.0
+        # on the lattice whichever of its four phases the frame shows (the
+        # colour frame alternates 180 degrees, the origin shift moves it
+        # 90 per sample)
+        resid = (self.NTSC_LOCK_TARGET - measured + 45.0) % 90.0 - 45.0
         self._lock_residuals.append(float(resid))
 
     def _lock_state(self):
@@ -580,8 +672,15 @@ class CVBSWriter:
                                     do["endx"]):
                 if self.system == "NTSC":
                     base = 0 if parity == 0 else 263 * 910
-                    start = base + (int(line) - 1) * 910 + int(sx)
+                    start = (base + (int(line) - 1) * 910 + int(sx)
+                             - (self._ntsc_shift or 0))
                     count = max(1, int(ex) - int(sx))
+                    if start < 0:
+                        # it began before the frame's first sample
+                        count += start
+                        start = 0
+                        if count <= 0:
+                            continue
                 else:
                     # Field display line 0 maps to frame line 0 (field A)
                     # or 313 (field B) — see downscale_cvbs; the interlace

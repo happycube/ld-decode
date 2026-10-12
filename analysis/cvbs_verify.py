@@ -4,7 +4,8 @@
 Checks: exact frame sizing, protected-value exclusion, encoding LSBs,
 level sanity, the 0H sync lattice (orthogonal for NTSC; the PAL check
 asserts the non-line-locked +0.0064 samples/line drift accumulating to
-exactly +4 per frame), burst behaviour (informational under
+exactly +4 per frame) and its 0H-aligned origin, burst behaviour and the
+colour-sequence position of each frame (informational under
 STANDARD_STABLE_UNLOCKED), metadata schema, and WAV audio consistency.
 
 Usage: cvbs_verify.py <basename or file.composite>
@@ -18,23 +19,23 @@ import sys
 
 import numpy as np
 
-# zero_h: ld-decode line convention (sample 0 at line start, 0H ~ +0.8) —
-# the layout decode-orc's cvbs_source reader expects.
+# Frames are 0H-aligned (video-standard-presets, "Stored Frame and Line
+# Origin"): sample 0 is the first sampling instant at or after 0H of the
+# frame's first line, so 0H falls in the sample before it.
+ORIGIN_TOLERANCE = 0.1  # samples, for the measurement
 PRESETS = {
     "NTSC": {
         "frame_samples": 477750,
         "frame_lines": 525,
         "spl": 910.0,
-        "zero_h": 0.8,
         "drift_per_line": 0.0,
         "levels": {"sync": 16, "blanking": 240, "white": 800},
-        "burst": (74, 110),
+        "burst": (72, 108),
     },
     "PAL": {
         "frame_samples": 709379,
         "frame_lines": 625,
         "spl": 709379 / 625,
-        "zero_h": 0.8,
         "drift_per_line": 4 / 625,
         "levels": {"sync": 4, "blanking": 256, "white": 844},
         "burst": (98, 138),
@@ -103,6 +104,131 @@ def find_0h_positions(frame10, preset, sync_level=None, blank_level=None):
         frac = (a - thr) / (a - b) if a != b else 0.5
         out.append(e + frac)
     return np.array(out)
+
+
+def frame_origin(frame10, preset):
+    """Where 0H of the frame's line 0 sits, in samples from sample 0, or
+    None: the median over lines 40-199 of each line's sync edge
+    half-amplitude crossing, from its lattice position (PAL's
+    1135.0064-sample lines carry their own drift).
+
+    The levels are measured: blanking from the front porch (a disc's can
+    sit well off nominal - ggv1016-side1's histogram peak reads 260 where
+    its porch reads 240) and the tip as the floor of the sync region (its
+    5th percentile), since PAL LaserDiscs carry a 3.75 MHz pilot up from
+    it that a mean or median would take for the tip.  The same estimator
+    as lddecode.cvbs.CVBSWriter._origin_shift, which places sample 0.
+    """
+    x = frame10.astype(np.float64)
+    pitch = preset["frame_samples"] / preset["frame_lines"]
+    rows = range(40, 200)
+    starts = [int(np.ceil(r * pitch)) for r in rows]
+    tip = np.median([np.percentile(x[s + 4: s + 60], 5) for s in starts])
+    porch = np.median([np.median(x[s - 18: s - 6]) for s in starts])
+    thr = (tip + porch) / 2.0
+    crossings = []
+    for r, s in zip(rows, starts):
+        seg = x[s - 8: s + 12]
+        i = np.nonzero((seg[:-1] >= thr) & (seg[1:] < thr))[0]
+        if len(i):
+            i = i[0]
+            at = s - 8 + i + (seg[i] - thr) / (seg[i] - seg[i + 1])
+            crossings.append(at - r * pitch)
+    if len(crossings) < len(starts) // 2:
+        return None
+    return float(np.median(crossings))
+
+
+def _wrap(deg):
+    return (deg + 180.0) % 360.0 - 180.0
+
+
+#: Burst phase of colour frame A at 0 deg SC/H, deg, as the phase of
+#: cos(90 (n - h0) + phase) over the frame's sample index n, with h0 the
+#: frame's 0H.  The spec fixes frame A in stored coordinates - with 0H at
+#: -0.63, stored line 9 sample 125 is a +I sample (SMPTE 244M 4.1.2) -
+#: which puts the burst at cos(90 n + 147) on every line; frame B is 180
+#: degrees away.  A disc's SC/H moves both, so the colour frame is the one
+#: nearer, as read from the frame's own 0H.
+NTSC_FRAME_A_BURST = 147.0 + 90.0 * -0.63
+
+#: PAL frames 1-4 by (V-switch, +U phase at 0H of frame line 0), deg.  EBU
+#: 3280: +U at zero phase at 0H of line 1 field 1 (stored frame line 0) at
+#: 0 deg Sc-H, and each frame 270 degrees on; BT.470 2.16: the burst at
+#: +135 deg on odd broadcast lines - even stored ones - of fields 1, 2, 5
+#: and 6 and at -135 on the others, so odd stored lines lead even ones by
+#: 90 degrees in frames 1 and 3 and lag them in 2 and 4.  BT.470 note 21
+#: identifies the sequence by the +U phase to within 90 degrees.
+PAL_FRAMES = {(+1, 0.0): 1, (-1, 270.0): 2, (+1, 180.0): 3, (-1, 90.0): 4}
+
+
+#: How close to the boundary between two sequence positions (90 degrees
+#: from either) a frame's SC/H may read before its position is ambiguous:
+#: about the 0H measurement's own uncertainty.  A source that far off
+#: 0 deg SC/H has no well-defined colour frame for any reader.
+AMBIGUOUS_DEG = 10.0
+
+
+def colour_phase(frame10, preset_name, p, origin):
+    """The frame's colour-sequence phase from its burst against its 0H, or
+    None when it cannot be read: (sequence phase, V-switch).  The sequence
+    phase is SC/H plus the frame's offset in the sequence - about 0 in NTSC
+    colour frame A and 180 in B; for PAL the +U phase at 0H of frame line
+    0, about 270 (k - 1) in frame k.  V-switch is +1/-1 for PAL frames
+    1, 3 / 2, 4 and None for NTSC."""
+    if origin is None:
+        return None
+    b0, b1 = p["burst"]
+    x = frame10.astype(np.float64)
+    sums = [0j, 0j]
+    for k in range(40, 200):
+        j0 = int(np.ceil(k * p["spl"]))
+        n = np.arange(j0 + b0, j0 + b1)
+        seg = x[n]
+        sums[k % 2] += np.mean((seg - seg.mean()) * np.exp(-0.5j * np.pi * n))
+    if abs(sums[0]) == 0 or abs(sums[1]) == 0:
+        return None
+    if preset_name == "NTSC":
+        phase = np.degrees(np.angle(sums[0] + sums[1])) + 90.0 * origin
+        return (phase - NTSC_FRAME_A_BURST) % 360, None
+    even, odd = (np.degrees(np.angle(v)) + 90.0 * origin for v in sums)
+    vswitch = 1 if _wrap(odd - even) > 0 else -1
+    # A +135 deg burst reads the +U phase + 45 here, a -135 one + 135;
+    # frames 1/3 carry +135 on even stored lines, 2/4 on odd ones
+    lead_even, lead_odd = (45.0, 135.0) if vswitch > 0 else (135.0, 45.0)
+    u = np.degrees(np.angle(np.exp(1j * np.radians(even - lead_even))
+                            + np.exp(1j * np.radians(odd - lead_odd)))) % 360
+    return u, vswitch
+
+
+def colour_frame(reading, preset_name):
+    """'A'/'B' for NTSC, 1-4 for PAL, '?' within AMBIGUOUS_DEG of a
+    boundary, or None for no reading."""
+    if reading is None:
+        return None
+    phase, vswitch = reading
+    if preset_name == "NTSC":
+        candidates = {"A": 0.0, "B": 180.0}
+    else:
+        candidates = {n: u0 for (vs, u0), n in PAL_FRAMES.items() if vs == vswitch}
+    for label, centre in candidates.items():
+        if abs(_wrap(phase - centre)) < 90 - AMBIGUOUS_DEG:
+            return label
+    return "?"
+
+
+def sequence_steps_ok(readings, preset_name):
+    """Whether successive frames advance one sequence position each: NTSC
+    180 degrees, PAL 270 with the V-switch alternating."""
+    step = 180.0 if preset_name == "NTSC" else 270.0
+    for r0, r1 in zip(readings, readings[1:]):
+        if r0 is None or r1 is None:
+            return False
+        if abs(_wrap(r1[0] - r0[0] - step)) > 45:
+            return False
+        if preset_name != "NTSC" and r1[1] == r0[1]:
+            return False
+    return True
 
 
 def main():
@@ -291,23 +417,19 @@ def main():
         pos_dev = np.max(np.abs(np.array(frame_first_0h) - frame_first_0h[0]))
         check(pos_dev < 1.0, f"first 0H position stable across frames (max dev {pos_dev:.3f})")
 
-    if preset_name == "NTSC" and len(frame_first_0h):
-        # orthogonal lattice: the regular line syncs must sit at the spec's
-        # digital position modulo one line (the first detected edge can be
-        # a vsync equalizing pulse a half-line earlier, so use the run)
-        frame = v10[: p["frame_samples"]]
-        pos = find_0h_positions(frame, p)
-        # regular full-line syncs: spacing ~910 both sides
-        d = np.diff(pos)
-        mids = pos[1:-1][(np.abs(d[:-1] - p["spl"]) < 3) & (np.abs(d[1:] - p["spl"]) < 3)]
-        if len(mids) > 50:
-            spl = p["spl"]
-            dev = ((mids - p["zero_h"] + spl / 2) % spl) - spl / 2
-            phase = float(np.median(dev)) + p["zero_h"]
-            check(
-                abs(phase - p["zero_h"]) < 1.5,
-                f"0H at line position {phase:.2f} " f"(ld-decode convention {p['zero_h']})",
-            )
+    # 0H-aligned origin: 0H of line 0 within the sample before sample 0
+    # (a decoder's own line convention can put it a sample or two in,
+    # which on the orthogonal NTSC lattice also turns the colour frame
+    # the spec reads at its reference sample)
+    origin = frame_origin(v10[: p["frame_samples"]], p)
+    if origin is None:
+        check(False, "frame 0: 0H origin measurable from its line syncs")
+    else:
+        check(
+            -1.0 - ORIGIN_TOLERANCE < origin <= ORIGIN_TOLERANCE,
+            f"0H of frame line 0 at {origin:+.2f} samples "
+            f"(spec: in the sample before sample 0)",
+        )
 
     # --- burst phase: assertion when LOCKED, informational otherwise ---
     b0, b1 = p["burst"]
@@ -353,6 +475,35 @@ def main():
             check(bool(np.max(dev) <= 3.0), "LOCKED: " + msg)
         else:
             warn(msg)
+
+    # --- colour-sequence position ---
+    # The spec leaves the position out of band, to be read from the burst;
+    # a phase-locked file must make that reading correct, and one that
+    # declares itself continuous must progress through the sequence.
+    # ld-decode also opens every file on colour frame A / PAL frame 1,
+    # which load_cvbs numbers its fields from.
+    seq_frames = min(file_frames, 8)
+    readings = []
+    for fr in range(seq_frames):
+        frame = v10[fr * p["frame_samples"] : (fr + 1) * p["frame_samples"]]
+        fo = frame_origin(frame, p)
+        readings.append(colour_phase(frame, preset_name, p, fo))
+    if readings:
+        positions = [colour_frame(r, preset_name) for r in readings]
+        first = "A" if preset_name == "NTSC" else 1
+        msg = "colour sequence positions " + " ".join(str(v) for v in positions)
+        locked = state == "STANDARD_STABLE_LOCKED"
+        report = check if locked else (lambda ok, m: None if ok else warn(m))
+        if positions[0] == "?":
+            warn(f"{msg}: frame 0 is {_wrap(readings[0][0]):+.0f} deg from "
+                 f"{first}, too near a "
+                 f"boundary for its colour frame to be defined")
+        else:
+            report(positions[0] == first,
+                   f"{msg}: file opens on {first} (ld-decode convention)")
+        if seq_cont == 1:
+            report(sequence_steps_ok(readings, preset_name),
+                   f"{msg}: progress one position per frame")
 
     # --- extension sidecars ---
     do_meta = base + ".dropouts.meta"
