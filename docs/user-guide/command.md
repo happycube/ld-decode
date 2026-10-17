@@ -320,7 +320,7 @@ ld-decode --deemp_strength 0.8 input.ldf output
 #### `--auto_chroma_correction`
 Raise the chroma in the decoded samples until the colour burst reaches its nominal level.
 - **Default:** Off. The samples are left as the fixed filter chain produces them
-- **Note:** The correction is an inverse-MTF filter whose strength is tracked from the burst. Without it, the burst level that was measured is still written to the metadata (`median_burst_ire` in `field_record`), so a chroma decoder can apply the gain itself. Discs are mastered at different chroma levels, and the correction removes those differences from the `.tbc`
+- **Note:** The correction is an inverse-MTF filter whose strength is tracked from the burst. Without it, the burst level that was measured is still written to the metadata (`median_burst_ire` in `field_record`), together with the gain that would bring it to nominal (`chroma_gain` in `capture` for a `.tbc`; in `capture_notes` of the `.meta` for a `.cvbs`, which has no field for it), so a chroma decoder can apply the gain itself. Discs are mastered at different chroma levels, and the correction removes those differences from the `.tbc`
 - **Note:** Ignored when `--deemp_strength` is given
 
 **Example:**

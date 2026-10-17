@@ -43,7 +43,8 @@ CREATE TABLE capture (
     black_16b_ire INTEGER,
     blanking_16b_ire INTEGER,
 
-    capture_notes TEXT -- was JSON tape_format
+    capture_notes TEXT, -- was JSON tape_format
+    chroma_gain REAL
 );
 
 ------------------------------------------------------------------
@@ -206,6 +207,7 @@ Contains capture-level metadata (one record per capture/JSON file).
 | `black_16b_ire` | INTEGER | The black level IRE in a 16-bit scale |
 | `blanking_16b_ire` | INTEGER | The blanking level IRE in a 16-bit scale |
 | `capture_notes` | TEXT | Notes about the capture (was JSON `tapeFormat` field describing tape media format like VHS, Betamax, Video8) |
+| `chroma_gain` | REAL | The factor to multiply the chroma by for the colour burst of the written samples to reach its nominal amplitude: the system's nominal burst level over the median of the fields' `median_burst_ire`. 1.0 when the samples already carry the nominal burst (for example with `--auto_chroma_correction`); NULL when no field had a usable burst. Optional: files from before it was added lack the column |
 
 ### Table: pcm_audio_parameters
 

@@ -366,6 +366,28 @@ DEFAULT_OUTPUT_KEYS = [
 ]
 
 
+# A field whose burst reads at or below this is one with no usable burst.
+MIN_USABLE_BURST_IRE = 5.0
+
+
+def chroma_gain_to_nominal(burst_levels, nominal):
+    """Gain that brings the colour burst of the written samples to its nominal level.
+
+    burst_levels -- per-field median burst amplitudes in IRE (a field's medianBurstIRE)
+    nominal -- the system's nominal burst amplitude in IRE
+
+    Returns nominal over the median of the usable levels, so multiplying the chroma
+    by it puts the burst at nominal; 1.0 when the samples already carry it.  Levels
+    that are not finite, or at or below MIN_USABLE_BURST_IRE, are ignored.  Returns
+    None when no field has a usable level.
+    """
+    levels = np.asarray([x for x in burst_levels if x is not None], dtype=np.float64)
+    levels = levels[np.isfinite(levels) & (levels > MIN_USABLE_BURST_IRE)]
+    if levels.size == 0:
+        return None
+    return float(nominal / np.median(levels))
+
+
 def _round_metrics(metrics, outputkeys):
     metrics_rounded = {}
 
