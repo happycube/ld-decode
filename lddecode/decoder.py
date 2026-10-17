@@ -501,12 +501,13 @@ class LDdecode:
         # Closed-loop mtf_level servo from the ITS/NTC-7 2T pulse (the
         # b/w RF ratio mapping cannot predict the needed level across
         # discs, and the outer-radius droop needs negative levels it
-        # can't reach).  Disabled when the user overrides the MTF
-        # scaling, since the servo would just compensate the override
-        # away; when no valid 2T pulse is available the b/w mapping is
-        # the fallback.
+        # can't reach).  Disabled with --no_mtf_servo, and when the user
+        # overrides the MTF scaling, since the servo would just compensate
+        # the override away; when no valid 2T pulse is available the b/w
+        # mapping is the fallback.
         self.mtf_2t_servo = (
-            extra_options.get("MTF_level", 1.0) == 1.0
+            extra_options.get("mtf_servo", True)
+            and extra_options.get("MTF_level", 1.0) == 1.0
             and extra_options.get("MTF_offset", 0) == 0
         )
         self._servo_samples = []   # (field readloc, level_used, pulse/bar)

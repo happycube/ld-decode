@@ -8,7 +8,7 @@ ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] 
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
                  [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
                  [--deemp_low deemp_low] [--deemp_high deemp_high]
-                 [--deemp_strength deemp_str] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
+                 [--deemp_strength deemp_str] [--auto_chroma_correction] [--no_mtf_servo] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
                  [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
                  [--audio_filterwidth FREQ] [--use_profiler] [--write-test-ldf output.ldf]
                  infile outfile
@@ -308,13 +308,34 @@ ld-decode --deemp_high 10.0 input.ldf output
 #### `--deemp_strength deemp_str`
 Strength of deemphasis filter.
 - **Type:** Float
-- **Default:** 1.0
+- **Default:** 0.96 for NTSC, 1.0 for PAL
 - **Range:** Typically 0.0 to 2.0
-- **Note:** Multiplier for deemphasis effect; 1.0 is standard, <1.0 reduces effect, >1.0 increases effect
+- **Note:** Multiplier for deemphasis effect; 1.0 is standard, <1.0 reduces effect, >1.0 increases effect. Giving it also turns off `--auto_chroma_correction`
 
 **Example:**
 ```bash
 ld-decode --deemp_strength 0.8 input.ldf output
+```
+
+#### `--auto_chroma_correction`
+Raise the chroma in the decoded samples until the colour burst reaches its nominal level.
+- **Default:** Off. The samples are left as the fixed filter chain produces them
+- **Note:** The correction is an inverse-MTF filter whose strength is tracked from the burst. Without it, the burst level that was measured is still written to the metadata (`median_burst_ire` in `field_record`), so a chroma decoder can apply the gain itself. Discs are mastered at different chroma levels, and the correction removes those differences from the `.tbc`
+- **Note:** Ignored when `--deemp_strength` is given
+
+**Example:**
+```bash
+ld-decode --auto_chroma_correction input.ldf output
+```
+
+#### `--no_mtf_servo`
+Do not adapt the MTF level from the 2T pulse of the vertical-blanking test signal.
+- **Default:** The servo runs when the disc carries the pulse, and the RF black-to-white ratio gives the level otherwise
+- **Note:** The servo is already off when `-m` is not 1.0 or `--MTF_offset` is not 0; this flag turns it off without changing the level
+
+**Example:**
+```bash
+ld-decode --no_mtf_servo input.ldf output
 ```
 
 ### Audio Decoding Options

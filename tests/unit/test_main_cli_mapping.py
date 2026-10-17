@@ -218,18 +218,24 @@ def test_speculation_and_demod_only_threading_are_off_by_default():
 
 @pytest.mark.parametrize("system_flag, strength", [([], 0.96), (["-p"], 1.0)])
 def test_the_default_deemphasis_strength_is_per_system(system_flag, strength):
-    """NTSC discs are decoded slightly under full de-emphasis; PAL at full.
-    Leaving the flag off also arms the auto-calibration servo."""
-    options_out = extra(*system_flag)
+    """NTSC discs are decoded slightly under full de-emphasis; PAL at full."""
+    assert extra(*system_flag)["deemp_str"] == strength
 
-    assert options_out["deemp_str"] == strength
-    assert options_out["auto_deemp"] is True
+
+def test_the_chroma_correction_is_off_unless_asked_for():
+    """The decoded samples are left as the fixed filter chain produces them;
+    the burst level is in the metadata for the chroma decoder to act on."""
+    assert extra()["auto_deemp"] is False
+
+
+def test_asking_for_the_chroma_correction_arms_the_servo():
+    assert extra("--auto_chroma_correction")["auto_deemp"] is True
 
 
 def test_an_explicit_deemphasis_strength_disarms_the_servo():
     """Asking for a value means the user has chosen one; the auto servo must
-    not then move it underneath them."""
-    result = extra("--deemp_strength", "0.8")
+    not then move it underneath them, even if it was asked for as well."""
+    result = extra("--auto_chroma_correction", "--deemp_strength", "0.8")
 
     assert result["deemp_str"] == 0.8
     assert result["auto_deemp"] is False
@@ -350,6 +356,11 @@ def test_the_mtf_controls_reach_the_decoder():
 
     assert result["MTF_level"] == 1.4
     assert result["MTF_offset"] == 0.5
+
+
+def test_the_mtf_servo_runs_unless_switched_off():
+    assert extra()["mtf_servo"] is True
+    assert extra("--no_mtf_servo")["mtf_servo"] is False
 
 
 def test_the_diagnostic_outputs_are_off_by_default():

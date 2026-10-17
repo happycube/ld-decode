@@ -265,7 +265,7 @@ set_tests_properties(analyze-ntsc-patterns PROPERTIES
 add_test(
     NAME decode-ntsc-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs -l 6
+        --cvbs --auto_chroma_correction -l 6
         ${TESTDATA_DIR}/ntsc/ve-snw-cut.ldf
         ${CMAKE_BINARY_DIR}/testout/ntsc-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -297,7 +297,7 @@ set_tests_properties(verify-ntsc-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --PAL -l 6
+        --cvbs --PAL --auto_chroma_correction -l 6
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -331,7 +331,7 @@ set_tests_properties(verify-pal-cvbs PROPERTIES
 add_test(
     NAME decode-pal-cvbs-parallel
     COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-        --cvbs --PAL -l 6 -t 8 --exact-speculation
+        --cvbs --PAL --auto_chroma_correction -l 6 -t 8 --exact-speculation
         ${TESTDATA_DIR}/pal/ggv-mb-1khz.ldf
         ${CMAKE_BINARY_DIR}/testout/pal-cvbs-parallel
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -601,7 +601,7 @@ function(add_vits_radius_cut label system)
     add_test(
         NAME decode-${label}-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag} --exact-speculation
+            --cvbs ${system_flag} --auto_chroma_correction --exact-speculation
             ${TESTDATA_DIR}/radius/${label}.ldf
             ${CMAKE_BINARY_DIR}/testout/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -696,7 +696,7 @@ function(add_vits_capture_conformance label system capture)
     add_test(
         NAME decode-${label}-cvbs
         COMMAND ${CMAKE_SOURCE_DIR}/ld-decode
-            --cvbs ${system_flag} --exact-speculation
+            --cvbs ${system_flag} --auto_chroma_correction --exact-speculation
             ${TESTDATA_DIR}/${capture}
             ${CMAKE_BINARY_DIR}/testout/${label}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
