@@ -124,6 +124,12 @@ def build_parser():
         help="mtf compensation offset",
     )
     parser.add_argument(
+        "--no_mtf_servo",
+        action="store_true",
+        help="Do not adapt the MTF level from the 2T pulse; keep the level the RF black-to-white "
+        "ratio gives",
+    )
+    parser.add_argument(
         "-t",
         "--threads",
         metavar="threads",
@@ -357,7 +363,16 @@ def build_parser():
         metavar="deemp_str",
         type=float,
         default=None,
-        help="Strength of deemphasis (default: 1.0; disables auto inverse-MTF chroma calibration)",
+        help="Strength of deemphasis (default: NTSC 0.96, PAL 1.0); giving it also disables "
+        "--auto_chroma_correction",
+    )
+    parser.add_argument(
+        "--auto_chroma_correction",
+        action="store_true",
+        help="Raise the chroma in the decoded samples until the burst reaches its nominal level "
+        "(inverse-MTF filter, tracked from the burst).  Off by default: the samples are left as "
+        "the fixed filter chain produces them, and the burst level that was measured is recorded "
+        "in the metadata (median_burst_ire) for the chroma decoder to correct",
     )
 
     parser.add_argument(
@@ -523,7 +538,8 @@ def build_options(args):
         "efm_eq_taps": args.efm_eq_taps,
         "deemp_coeff": (args.deemp_low, args.deemp_high),
         "deemp_str": args.deemp_strength if args.deemp_strength is not None else (1.0 if args.pal else 0.96),
-        "auto_deemp": args.deemp_strength is None,
+        "auto_deemp": args.auto_chroma_correction and args.deemp_strength is None,
+        "mtf_servo": not args.no_mtf_servo,
         "chroma_dg": args.chroma_dg,
         "MTF_level": args.MTF,
         "MTF_offset": args.MTF_offset,

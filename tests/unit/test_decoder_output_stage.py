@@ -52,7 +52,7 @@ def stub_field(vsync_ire=-40.0, first=True):
 
 def stub_decoder(lane=None, pool=None, cvbs=None, dbconn=None):
     it = types.SimpleNamespace(
-        fieldinfo=[], fields_written=3, cvbs_writer=cvbs, dbconn=dbconn,
+        fieldinfo=[], _burst_levels=[], fields_written=3, cvbs_writer=cvbs, dbconn=dbconn,
         _output_lane=lane, _output_pool=pool, dg_speculation_tolerance=None,
         fdoffset=12345.0, capture_id=7, written=[],
     )
@@ -82,6 +82,19 @@ def dataset(f, picture=None, audio=None, efm=None):
     if picture is None:
         picture = f.dspicture
     return (f, fi, picture, audio, efm)
+
+
+def test_commit_half_keeps_every_fields_burst_level_for_the_chroma_gain(corrector):
+    """FieldInfo only holds the last few fields; the gain is over all of them."""
+    it = stub_decoder(lane=RecordingLane(), cvbs=object())
+    f = stub_field()
+
+    for level in (15.0, 15.5, 16.0, 15.25, None):
+        job = dataset(f)
+        job[1]["medianBurstIRE"] = level
+        it.writeout(job)
+
+    assert it._burst_levels == [15.0, 15.5, 16.0, 15.25, None]
 
 
 def test_commit_half_records_the_field_and_queues_the_rest_in_order(corrector):

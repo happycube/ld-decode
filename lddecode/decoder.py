@@ -33,6 +33,7 @@ from .fileio import ldf_pipe
 from .filters import inrange
 from .metrics import (
     ITS_FLATNESS_FRACTION,
+    chroma_gain_to_nominal,
     detect_levels,
     measure_its_2t_ratio,
     measure_vits_multiburst,
@@ -469,6 +470,8 @@ class LDdecode:
         self.doDOD = doDOD
 
         self.fieldinfo = FieldInfo()
+        # FieldInfo keeps only the last few fields; the chroma gain is over all of them.
+        self._burst_levels = []
 
         self.leadIn = False
         self.leadOut = False
@@ -501,12 +504,13 @@ class LDdecode:
         # Closed-loop mtf_level servo from the ITS/NTC-7 2T pulse (the
         # b/w RF ratio mapping cannot predict the needed level across
         # discs, and the outer-radius droop needs negative levels it
-        # can't reach).  Disabled when the user overrides the MTF
-        # scaling, since the servo would just compensate the override
-        # away; when no valid 2T pulse is available the b/w mapping is
-        # the fallback.
+        # can't reach).  Disabled with --no_mtf_servo, and when the user
+        # overrides the MTF scaling, since the servo would just compensate
+        # the override away; when no valid 2T pulse is available the b/w
+        # mapping is the fallback.
         self.mtf_2t_servo = (
-            extra_options.get("MTF_level", 1.0) == 1.0
+            extra_options.get("mtf_servo", True)
+            and extra_options.get("MTF_level", 1.0) == 1.0
             and extra_options.get("MTF_offset", 0) == 0
         )
         self._servo_samples = []   # (field readloc, level_used, pulse/bar)
@@ -785,6 +789,10 @@ class LDdecode:
 
         if self.cvbs_writer is not None:
             try:
+                note = self._chroma_gain_note()
+                if note:
+                    previous = self.cvbs_writer.capture_notes
+                    self.cvbs_writer.capture_notes = f"{previous}; {note}" if previous else note
                 self.cvbs_writer.close()
             except Exception:
                 # Keep shutting down, but a failed WAV header / .meta /
@@ -895,7 +903,8 @@ class LDdecode:
                 white_16b_ire INTEGER,
                 black_16b_ire INTEGER,
                 blanking_16b_ire INTEGER,
-                capture_notes TEXT
+                capture_notes TEXT,
+                chroma_gain REAL
             );
 
             CREATE TABLE pcm_audio_parameters (
@@ -2153,6 +2162,7 @@ class LDdecode:
         fi["efmTValues"] = 0
         fi["ac3Symbols"] = 0
         self.fieldinfo.append(fi)
+        self._burst_levels.append(fi.get("medianBurstIRE"))
 
         field_id = self.fields_written
         self.fields_written += 1
@@ -3863,6 +3873,23 @@ class LDdecode:
 
         return None
 
+    def _chroma_gain(self):
+        """The gain the chroma needs for the burst to reach its nominal level, from the
+        bursts of the fields decoded so far (None before any usable one)."""
+        return chroma_gain_to_nominal(self._burst_levels, self.rf.SysParams["burst_ire"])
+
+    def _chroma_gain_note(self):
+        """The same, as the text the CVBS metadata carries in capture_notes (None when
+        there is no gain to report).  The format has no field for it."""
+        gain = self._chroma_gain()
+        if gain is None:
+            return None
+        nominal = self.rf.SysParams["burst_ire"]
+        return (
+            f"chroma_gain={gain:.4f}; median_burst_ire={nominal / gain:.2f}; "
+            f"nominal_burst_ire={nominal:.2f}"
+        )
+
     def build_sqlite_metadata(self):
         cursor = self.dbconn.cursor()
 
@@ -3899,6 +3926,7 @@ class LDdecode:
             float(f.hz_to_output(f.rf.iretohz(self.blackIRE))),
             float(f.hz_to_output(f.rf.iretohz(0))),
             0, f.rf.system == "NTSC", 0,
+            self._chroma_gain(),
         )
 
         # capture_id is None on the first call (SQLite assigns the rowid);
@@ -3912,8 +3940,8 @@ class LDdecode:
                 field_width, field_height, number_of_sequential_fields,
                 colour_burst_start, colour_burst_end,
                 white_16b_ire, black_16b_ire, blanking_16b_ire,
-                is_mapped, is_subcarrier_locked, is_widescreen
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_mapped, is_subcarrier_locked, is_widescreen, chroma_gain
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(capture_id) DO UPDATE SET
                 system=excluded.system, decoder=excluded.decoder,
                 git_branch=excluded.git_branch, git_commit=excluded.git_commit,
@@ -3929,7 +3957,8 @@ class LDdecode:
                 blanking_16b_ire=excluded.blanking_16b_ire,
                 is_mapped=excluded.is_mapped,
                 is_subcarrier_locked=excluded.is_subcarrier_locked,
-                is_widescreen=excluded.is_widescreen
+                is_widescreen=excluded.is_widescreen,
+                chroma_gain=excluded.chroma_gain
         """, (self.capture_id,) + video_values)
 
         if not self.capture_id:

@@ -3,9 +3,13 @@
 The decoder continuously calibrates its filter parameters from the
 test signals many discs carry in the vertical blanking interval,
 replacing fixed calibrations that could not follow a CAV disc's response
-drift with radius. All three run automatically, are dead-banded and rate
-limited so decodes stay reproducible, and fall back gracefully when a
-disc does not carry the reference signal. Brought up on PAL
+drift with radius. They are dead-banded and rate limited so decodes stay
+reproducible, and fall back gracefully when a disc does not carry the
+reference signal. The inverse-MTF chroma strength (1) changes the decoded
+samples to bring the burst to its nominal level, so it only runs with
+`--auto_chroma_correction`; the burst level that was measured is recorded
+in the metadata either way. The `mtf_level` servo (2) runs unless
+`--no_mtf_servo` is given. Brought up on PAL
 (2026-08-30/31), ported to NTSC (2026-08-31); the measurement windows,
 loop gains and clamp ranges are per-system (see "NTSC specifics"
 below).
