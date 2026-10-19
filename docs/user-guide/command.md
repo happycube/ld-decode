@@ -519,6 +519,16 @@ Create a `.tbc.ldf` file containing time-base corrected RF data.
 ld-decode --RF_TBC input.ldf output
 ```
 
+#### `--cvbs-legacy-origin`, `--cvbs-spec-origin`
+Where each `.cvbs` frame starts relative to 0H.  The legacy origin keeps the decoder's own line origin, as written before frames were 0H-aligned (NTSC 0H 0.3-1.9 samples after sample 0, PAL -0.1 to -1.04), for readers built to that layout.  `--cvbs-spec-origin` moves the frame origin by whole samples so 0H falls in the sample before sample 0, as the CVBS specification requires.
+- **Default:** legacy origin, for now
+- **Note:** a legacy-origin file is not spec compliant (a spec reader can take NTSC colour frame A for B) and says so in the `.meta` `capture_notes`; `analysis/cvbs_verify.py` fails an NTSC one on its origin check
+
+**Example:**
+```bash
+ld-decode --cvbs-spec-origin input.ldf output
+```
+
 #### `--ignoreleadout`
 Continue decoding after detecting the lead-out section.
 - **Default:** Disabled (stop at lead-out)

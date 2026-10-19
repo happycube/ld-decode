@@ -107,14 +107,24 @@ def build_parser():
         help="sample encoding preset for CVBS output "
         "(default: CVBS_U10_4FSC for PAL, CVBS_U16_4FSC for NTSC)",
     )
+    # The legacy origin is the default for now, while readers built to
+    # that layout catch up with the spec's 0H-aligned frames.
     parser.add_argument(
         "--cvbs-legacy-origin",
         dest="cvbs_legacy_origin",
         action="store_true",
+        default=True,
         help="keep the decoder's own line origin in CVBS output, as written "
         "before frames were 0H-aligned (NTSC 0H 0.3-1.9 samples after "
         "sample 0), for readers built to that layout; not spec compliant, "
-        "and noted in the .meta capture_notes",
+        "and noted in the .meta capture_notes (default)",
+    )
+    parser.add_argument(
+        "--cvbs-spec-origin",
+        dest="cvbs_legacy_origin",
+        action="store_false",
+        help="0H-align CVBS frames as the specification requires: 0H of "
+        "each frame's line 0 in the sample before sample 0",
     )
     # parser.add_argument('-c', '--cut', dest='cut', action='store_true', help='cut (to r16) instead of decode')
     parser.add_argument(
@@ -602,8 +612,7 @@ def build_options(args):
             extra_options["cvbs_black_level"] = 240
         if args.cvbs_encoding:
             extra_options["cvbs_encoding"] = args.cvbs_encoding
-        if args.cvbs_legacy_origin:
-            extra_options["cvbs_legacy_origin"] = True
+        extra_options["cvbs_legacy_origin"] = args.cvbs_legacy_origin
 
     DecoderParamsOverride = {}
     if args.vbpf_low is not None:

@@ -123,6 +123,12 @@ def test_the_cvbs_encoding_is_passed_through():
     assert exit_info.value.code == 2
 
 
+def test_cvbs_keeps_the_legacy_line_origin_unless_asked_for_the_spec_one():
+    assert extra("--cvbs")["cvbs_legacy_origin"] is True
+    assert extra("--cvbs", "--cvbs-legacy-origin")["cvbs_legacy_origin"] is True
+    assert extra("--cvbs", "--cvbs-spec-origin")["cvbs_legacy_origin"] is False
+
+
 # --- system selection ---------------------------------------------------
 
 
