@@ -3,6 +3,7 @@
 Originally split out of utils.py, which now only re-exports it.
 """
 
+import functools
 import math
 from math import tau
 
@@ -546,6 +547,83 @@ def tone_sideband_powers(segments, fs_hz, carrier_hz, tone_hz,
     noise_lo, noise_hi = 0.5 * (p[2] + p[3]), 0.5 * (p[4] + p[5])
     return (float(p[0] - noise_lo), float(p[1] - noise_hi),
             float(noise_lo), float(noise_hi))
+
+
+def band_phasor(half_spectrum, lo, hi, n):
+    """The unit phasor of a real block's bins [lo, hi): the analytic signal
+    of that band, on an n-point lattice, reduced to its phase.
+
+    half_spectrum is the block's rfft.  With n the block length this is the
+    analytic signal sample for sample; with n half of it, its even samples
+    (the bins lie below n, so the shorter inverse holds them all)."""
+    spec = np.zeros(n, dtype=np.complex128)
+    spec[lo:hi] = half_spectrum[lo:hi]
+    s = np.fft.ifft(spec)
+    mag = np.abs(s)
+    return s / np.maximum(mag, 1e-6 * mag.max())
+
+
+@functools.lru_cache(maxsize=16)
+def _rotor(start, n, fs_hz, f_hz):
+    """exp(-j 2 pi f t) over samples start..start+n-1: the same handful of
+    lattices recur block after block."""
+    r = np.exp(-2j * np.pi * f_hz * (np.arange(start, start + n) / fs_hz))
+    r.flags.writeable = False
+    return r
+
+
+def coherent_line_estimate(target, phasor, level, fit, fs_hz,
+                           control_offsets_hz=(37e3, -53e3)):
+    """The part of target that is a line locked to phasor, with an amplitude
+    that may follow level: Re((c0 + c1 level) phasor) for complex c0, c1,
+    fitted by least squares over target[fit].  Returned at full length,
+    for the caller to subtract.
+
+    phasor has unit magnitude and turns fast (megahertz, against a fit
+    thousands of samples long), so the real least squares separates: with
+    z = y conj(phasor), y the target less its mean, the normal equations
+    are G c = 2 [sum z, sum z level] with G = [[n, sum level], [sum level,
+    sum level^2]], up to sums of phasor^2 terms that turn at twice the
+    line's frequency and average to ~1/n.  A 2x2 complex solve, not a fit
+    over the block.
+
+    Whatever else target holds near the line's frequency (picture, noise)
+    projects onto the model too, and for a weak line that error is as big
+    as the line.  So the same model is also fitted to copies of phasor
+    moved off frequency by control_offsets_hz, where there is no line to
+    find - z rotated by those offsets - and the power those fits explain
+    is what the error alone explains; the estimate is scaled by 1 - (that /
+    the line fit's power), floored at zero - a Wiener gain.  Returns
+    (estimate, gain)."""
+    n = len(target)
+    y = target[fit] - np.mean(target[fit])
+    lv = level[fit]
+    z = y * np.conj(phasor[fit])
+    m = len(y)
+    s1, s2 = float(np.sum(lv)), float(np.sum(lv * lv))
+    det = m * s2 - s1 * s1
+    if det <= 0:
+        return np.zeros(n), 0.0
+
+    # Element-wise sums and the 2x2 inverse written out, not np.dot or
+    # np.linalg: those go to BLAS, whose thread pool, started in every
+    # decode worker at once, oversubscribes the machine.
+    def solve(zz):
+        b0, b1 = np.sum(zz), np.sum(zz * lv)
+        c0 = 2.0 * (s2 * b0 - s1 * b1) / det
+        c1 = 2.0 * (m * b1 - s1 * b0) / det
+        # mean of Re(w phasor)^2 = mean |w|^2 / 2, w = c0 + c1 level
+        power = 0.5 * (abs(c0) ** 2 * m + 2 * (c0 * c1.conjugate()).real * s1
+                       + abs(c1) ** 2 * s2) / m
+        return (c0, c1), power
+
+    c, power = solve(z)
+    if power <= 0:
+        return np.zeros(n), 0.0
+    control = np.mean([solve(z * _rotor(fit.start or 0, len(y), fs_hz, f))[1]
+                       for f in control_offsets_hz])
+    gain = max(0.0, 1.0 - control / power)
+    return gain * np.real((c[0] + c[1] * level) * phasor), gain
 
 
 def roundfloat(fl, places=3):

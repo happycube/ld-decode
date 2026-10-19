@@ -6,7 +6,7 @@ ld-decode's execution is largely controlled by a number of command line switches
 ld-decode [-h] [--start file-location] [--length frames] [--seek frame] [--PAL] [--NTSC] [--NTSCJ] [-m mtf]
                  [--MTF_offset mtf_offset] [--noAGC] [--noDOD] [--noEFM] [--preEFM] [--tbc_efm] [--efm_demod {pll,timing}] [--efm_conf {auto,on,off}] [--efm_eq_taps N] [--disable_analog_audio] [--AC3]
                  [--start_fileloc start_fileloc] [--ignoreleadout] [--verboseVITS] [--RF_TBC] [--lowband]
-                 [--NTSC_color_notch_filter] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
+                 [--NTSC_color_notch_filter] [--audio_carrier_cancel] [--V4300D_notch_filter] [--V4300D_coherent_subtract] [--V4300D_no_defer]
                  [--deemp_low deemp_low] [--deemp_high deemp_high]
                  [--deemp_strength deemp_str] [--no_auto_chroma] [--no_mtf_servo] [-t threads] [-f FREQ] [--analog_audio_frequency AFREQ]
                  [--video_bpf_low FREQ] [--video_bpf_high FREQ] [--video_lpf FREQ] [--video_lpf_order VLPF_ORDER]
@@ -239,6 +239,23 @@ Mitigate interference from analog audio in red colors in NTSC captures.
 **Example:**
 ```bash
 ld-decode --NTSC --NTSC_color_notch_filter input.ldf output
+```
+
+#### `--audio_carrier_cancel`
+Prototype. Subtract the analog audio carriers' intermodulation lines from
+NTSC video. The audio FM carriers mix with the video carrier on the disc, and
+the demodulated video carries faint lines at the carriers' own frequencies
+(2.30 and 2.81 MHz), in the luminance band. Each block's line is fitted to the
+carrier's own phase, taken from the RF, and subtracted; a carrier that is not
+on the disc (and AC3's right channel) is left alone.
+- **Default:** Disabled
+- **Note:** NTSC only. The lines are strongest towards the outer radius of
+  some discs, where removing them lowers the weighted luminance noise by up to
+  about 1.3 dB; on most captures the gain is 0.1-0.5 dB.
+
+**Example:**
+```bash
+ld-decode --NTSC --audio_carrier_cancel input.ldf output
 ```
 
 ### PAL-Specific Video Options

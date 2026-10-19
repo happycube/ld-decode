@@ -321,6 +321,12 @@ def test_the_colour_notch_filter_applies_to_ntsc_only():
     assert "NTSC_ColorNotchFilter" not in extra("-p", "-N")
 
 
+def test_the_audio_carrier_canceller_is_opt_in_and_ntsc_only():
+    assert "AudioCarrierCancel" not in extra()
+    assert extra("--audio_carrier_cancel")["AudioCarrierCancel"] is True
+    assert "AudioCarrierCancel" not in extra("-p", "--audio_carrier_cancel")
+
+
 def test_lowband_selects_the_reduced_bandwidth_parameter_set():
     assert "lowband" not in extra()
     assert extra("--lowband")["lowband"] is True

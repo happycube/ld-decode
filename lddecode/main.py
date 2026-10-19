@@ -347,6 +347,16 @@ def build_parser():
     )
 
     parser.add_argument(
+        "--audio_carrier_cancel",
+        dest="audio_carrier_cancel",
+        action="store_true",
+        default=False,
+        help="Prototype: subtract the analog audio carriers' intermodulation "
+        "lines (2.30 and 2.81 MHz) from NTSC video, fitted per block to the "
+        "carriers' own phase.  NTSC only.",
+    )
+
+    parser.add_argument(
         "--rf_echo_cancel",
         dest="rf_echo_cancel",
         action="store_true",
@@ -598,6 +608,9 @@ def build_options(args):
         # deferral unnecessary, so both switches enable the same filter and
         # parallel demod stays available.
         extra_options["PAL_V4300D_CoherentSubtract"] = True
+
+    if vid_standard == "NTSC" and args.audio_carrier_cancel:
+        extra_options["AudioCarrierCancel"] = True
 
     if vid_standard == "PAL" and args.AC3:
         print("ERROR: AC3 audio decoding is only supported for NTSC")
