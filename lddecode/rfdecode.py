@@ -44,8 +44,10 @@ from .filters import (
     unwrap_hilbert,
 )
 from .dsp import (
-    band_phasor,
+    band_baseband,
+    band_subtract,
     coherent_line_estimate,
+    unit_phasor,
     compute_mtf,
     genwave,
     readout_compensation,
@@ -1966,10 +1968,19 @@ class RFDecode:
     #: A carrier is used only when its band holds this many times the power
     #: of the band beside it on the side away from the other carrier.
     AUDIO_CANCEL_MIN_SNR = 5.0
+    #: Bins in the slice of the spectra the canceller works on, centred
+    #: between the carriers (+-1.25 MHz at NTSC's block length): room for
+    #: each carrier's phase band and the level's band on either side of
+    #: it, so that their product does not wrap.
+    AUDIO_CANCEL_SLICE = 2048
+    #: The level the coupling follows is the demod low-passed to here
+    #: (cos^2 taper, -6 dB at half this).
+    AUDIO_CANCEL_LEVEL_HZ = 500e3
 
-    def audio_carrier_cancel(self, indata_fft, demod):
+    def audio_carrier_cancel(self, indata_fft, spectrum, centre):
         """Subtract the analog audio carriers' intermodulation lines from the
-        demodulated video, in place.  Prototype, opt-in (--audio_carrier_cancel).
+        demodulated video's spectrum, in place.  Prototype, opt-in
+        (--audio_carrier_cancel).
 
         The disc's pits carry the sum of the video and audio FM carriers,
         hard-limited, so the video carrier picks up sidebands at fv +- fa
@@ -1985,6 +1996,16 @@ class RFDecode:
         and the model is fitted over the block's kept span with a gain that
         backs off for lines too weak to fit (see coherent_line_estimate).
 
+        All of it happens on slices of the spectra: spectrum is the rfft of
+        the demod less centre, indata_fft the RF block's.  The phase, the
+        demod around the carrier and the level are each a few thousand
+        bins, taken down to 0 Hz on a lattice every n/m samples
+        (band_baseband), and the fitted line goes back into spectrum's bins
+        the same way - no transform or product over the whole block.  So
+        the fit sees the demod as the video filters do, clipped to the
+        discriminator's range rather than to the video's, and demod_raw
+        (the dropout detector's) keeps its lines.
+
         Only the phase reference is taken from the RF.  The RF below the
         video band also carries a copy of the picture (the pits' duty
         cycle), so regressing the video on the band's own signal, its
@@ -1996,8 +2017,8 @@ class RFDecode:
         never used) is skipped, so the fit cannot chase noise.
         """
         SP = self.SysParams
-        step = 1 if self.full_rate_demod else 2
         bl = self.blocklen
+        n = 2 * (len(spectrum) - 1)
         fpb = self.freq_hz / bl
         hw = self.AUDIO_CANCEL_HALFBAND_HZ
 
@@ -2009,33 +2030,40 @@ class RFDecode:
         if not SP["AC3"]:
             carriers.append(SP["audio_rfreq"])
         mid = (SP["audio_lfreq"] + SP["audio_rfreq"]) / 2
+        # Against the flank away from the other carrier: a loud programme
+        # spreads each carrier +-150 kHz, into the gap between the two.
+        carriers = [
+            fa for fa in carriers
+            if bandpower(fa, hw) >= self.AUDIO_CANCEL_MIN_SNR * bandpower(
+                fa + (-1 if fa < mid else 1) * (hw + 150e3), 75e3)
+        ]
+        if not carriers:
+            return
 
-        fit = slice(self.blockcut // step, (bl - self.blockcut_end) // step)
-        # Fitted to the demod clipped to the video range, so that a
-        # dropout's discriminator spikes cannot pull the coefficients.
-        lo_hz = SP["ire0"] + SP["hz_ire"] * (SP["vsync_ire"] - 20)
-        hi_hz = SP["ire0"] + SP["hz_ire"] * 120
-        target = np.clip(demod, lo_hz, hi_hz)
-        # The level the coupling follows: 100 IRE = 1, smoothed over ~2 us.
-        smooth = max(1, int(round(2e-6 * self.freq_hz_demod)))
-        level = ndi.uniform_filter1d(
-            (target - SP["ire0"]) / (100 * SP["hz_ire"]), smooth, mode="nearest")
+        # One slice holds both carriers, centred between them.  Its lattice:
+        # sample j is RF sample j*bl/m.
+        m = self.AUDIO_CANCEL_SLICE
+        lo = int(round(mid / fpb)) - m // 2
+        fit = slice(-(-self.blockcut * m // bl), (bl - self.blockcut_end) * m // bl)
+        fs = self.freq_hz * m / bl
 
+        # The level the coupling follows, 100 IRE = 1.
+        kl = int(self.AUDIO_CANCEL_LEVEL_HZ / fpb)
+        low = np.zeros(m // 2 + 1, dtype=np.complex128)
+        low[:kl] = spectrum[:kl] * np.cos(0.5 * np.pi * np.arange(kl) / kl) ** 2
+        level = ((npfft.irfft(low, m) * (m / n) + centre - SP["ire0"])
+                 / (100 * SP["hz_ire"]))
+
+        video = band_baseband(spectrum, lo, m, n)
+        lines = np.zeros(m, dtype=np.complex128)
         for fa in carriers:
-            # Against the flank away from the other carrier: a loud programme
-            # spreads each carrier +-150 kHz, into the gap between the two.
-            side = -1 if fa < mid else 1
-            if bandpower(fa, hw) < self.AUDIO_CANCEL_MIN_SNR * bandpower(
-                    fa + side * (hw + 150e3), 75e3):
-                continue
-            # On the demod's own lattice: on the half-rate chain the bl/2-
-            # point inverse holds the even samples, as for the video.
-            phasor = band_phasor(indata_fft, int((fa - hw) / fpb),
-                                 int((fa + hw) / fpb) + 1, bl // step)
-            line, _ = coherent_line_estimate(target, phasor, level, fit,
-                                             self.freq_hz_demod)
-            demod -= line
-            target -= line
+            k, hwb = int(round(fa / fpb)) - lo, int(hw / fpb)
+            phasor = unit_phasor(
+                band_baseband(indata_fft, lo, m, bl, slice(k - hwb, k + hwb + 1)))
+            line, _ = coherent_line_estimate(video, phasor, level, fit, fs)
+            video -= line
+            lines += line
+        band_subtract(spectrum, lines, lo, n)
 
     def demodblock_sync(self, data=None, fftdata=None, cut=False):
         """Demodulate only the 0.5 MHz path used for vertical-sync detection.
@@ -2183,9 +2211,6 @@ class RFDecode:
             hilbert = npfft.ifft(indata_fft_filt[: self.blocklen // 2])
         demod = unwrap_hilbert(hilbert, self.freq_hz_demod)
 
-        if self.AudioCarrierCancel and self.SysParams["analog_audio"]:
-            self.audio_carrier_cancel(indata_fft, demod)
-
         # use a clipped demod for video output processing to reduce speckling impact.
         # demod is real and these video outputs are real, so the half-spectrum
         # rfft/irfft pair is mathematically identical to fft/ifft.real (the filters
@@ -2251,9 +2276,12 @@ class RFDecode:
         # half-rate demod's whole range and never clip anything.
         np.clip(demod, 1500000, self.freq_hz_demod * 0.75, out=demod)
         np.subtract(demod, centre, out=centred)
+        spectrum = npfft.rfft(centred)
+        if self.AudioCarrierCancel and self.SysParams["analog_audio"]:
+            self.audio_carrier_cancel(indata_fft, spectrum, centre)
         video_results = npfft.irfft(
             np.multiply(
-                npfft.rfft(centred),
+                spectrum,
                 self.Filters["FVideo_rfft32"],
                 out=scratch.video_stack,
             ),

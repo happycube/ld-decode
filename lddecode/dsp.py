@@ -8,6 +8,7 @@ import math
 from math import tau
 
 import numpy as np
+import scipy.fft
 from numba import njit
 from scipy.special import i0
 
@@ -549,45 +550,74 @@ def tone_sideband_powers(segments, fs_hz, carrier_hz, tone_hz,
             float(noise_lo), float(noise_hi))
 
 
-def band_phasor(half_spectrum, lo, hi, n):
-    """The unit phasor of a real block's bins [lo, hi): the analytic signal
-    of that band, on an n-point lattice, reduced to its phase.
+def band_baseband(half_spectrum, lo, m, n, keep=None):
+    """The analytic signal of a real n-point block's bins lo .. lo+m-1,
+    moved down by lo to 0 Hz, on every (n/m)th sample of the block.
 
-    half_spectrum is the block's rfft.  With n the block length this is the
-    analytic signal sample for sample; with n half of it, its even samples
-    (the bins lie below n, so the shorter inverse holds them all)."""
-    spec = np.zeros(n, dtype=np.complex128)
-    spec[lo:hi] = half_spectrum[lo:hi]
-    s = np.fft.ifft(spec)
+    half_spectrum is the block's rfft.  The m-point inverse of those bins,
+    times 2m/n, is the analytic signal times exp(-j 2 pi lo j / m) at
+    sample j*n/m - nothing lost for a signal inside them.  With keep (a
+    slice of the m bins) the rest are zeroed first."""
+    band = half_spectrum[lo : lo + m]
+    if keep is not None:
+        band = np.zeros(m, dtype=np.complex128)
+        band[keep] = half_spectrum[lo : lo + m][keep]
+    return scipy.fft.ifft(band) * (2.0 * m / n)
+
+
+def band_subtract(half_spectrum, x, lo, n):
+    """Subtract, in place, from a real n-point block's rfft the real signal
+    whose analytic signal band_baseband(..., lo, len(x), n) gives as x."""
+    m = len(x)
+    half_spectrum[lo : lo + m] -= scipy.fft.fft(x) * (n / (2.0 * m))
+
+
+def unit_phasor(s):
+    """s reduced to its phase: s / |s|, floored well below its peak."""
     mag = np.abs(s)
     return s / np.maximum(mag, 1e-6 * mag.max())
 
 
-@functools.lru_cache(maxsize=16)
-def _rotor(start, n, fs_hz, f_hz):
-    """exp(-j 2 pi f t) over samples start..start+n-1: the same handful of
-    lattices recur block after block."""
-    r = np.exp(-2j * np.pi * f_hz * (np.arange(start, start + n) / fs_hz))
-    r.flags.writeable = False
-    return r
+@njit(cache=True, nogil=True)
+def _line_sums(signal, phasor, level, start, stop, steps):
+    """One pass over start..stop for coherent_line_estimate: sum level,
+    sum level^2, and sum z, sum z level for z = signal conj(phasor) - and
+    again for z turned by each of steps per sample (the control fits)."""
+    k = len(steps)
+    s1 = 0.0
+    s2 = 0.0
+    b = np.zeros(2 * (k + 1), dtype=np.complex128)
+    rot = np.ones(k, dtype=np.complex128)
+    for j in range(start, stop):
+        z = signal[j] * np.conj(phasor[j])
+        lv = level[j]
+        s1 += lv
+        s2 += lv * lv
+        b[0] += z
+        b[1] += z * lv
+        for i in range(k):
+            zr = z * rot[i]
+            b[2 + 2 * i] += zr
+            b[3 + 2 * i] += zr * lv
+            rot[i] *= steps[i]
+    return s1, s2, b
 
 
-def coherent_line_estimate(target, phasor, level, fit, fs_hz,
+def coherent_line_estimate(signal, phasor, level, fit, fs_hz,
                            control_offsets_hz=(37e3, -53e3)):
-    """The part of target that is a line locked to phasor, with an amplitude
-    that may follow level: Re((c0 + c1 level) phasor) for complex c0, c1,
-    fitted by least squares over target[fit].  Returned at full length,
-    for the caller to subtract.
+    """The part of signal that is a line locked to phasor, with an amplitude
+    that may follow level: (c0 + c1 level) phasor for complex c0, c1, fitted
+    by least squares over signal[fit].  Returned at full length, for the
+    caller to subtract.
 
-    phasor has unit magnitude and turns fast (megahertz, against a fit
-    thousands of samples long), so the real least squares separates: with
-    z = y conj(phasor), y the target less its mean, the normal equations
-    are G c = 2 [sum z, sum z level] with G = [[n, sum level], [sum level,
-    sum level^2]], up to sums of phasor^2 terms that turn at twice the
-    line's frequency and average to ~1/n.  A 2x2 complex solve, not a fit
-    over the block.
+    signal and phasor are analytic signals on one lattice (band_baseband;
+    a real line Re(w phasor) has the analytic signal w phasor), and phasor
+    has unit magnitude, so with z = signal conj(phasor) the normal
+    equations are G c = [sum z, sum z level], G = [[n, sum level],
+    [sum level, sum level^2]]: a 2x2 complex solve, not a fit over the
+    block.
 
-    Whatever else target holds near the line's frequency (picture, noise)
+    Whatever else signal holds near the line's frequency (picture, noise)
     projects onto the model too, and for a weak line that error is as big
     as the line.  So the same model is also fitted to copies of phasor
     moved off frequency by control_offsets_hz, where there is no line to
@@ -595,35 +625,30 @@ def coherent_line_estimate(target, phasor, level, fit, fs_hz,
     is what the error alone explains; the estimate is scaled by 1 - (that /
     the line fit's power), floored at zero - a Wiener gain.  Returns
     (estimate, gain)."""
-    n = len(target)
-    y = target[fit] - np.mean(target[fit])
-    lv = level[fit]
-    z = y * np.conj(phasor[fit])
-    m = len(y)
-    s1, s2 = float(np.sum(lv)), float(np.sum(lv * lv))
+    n = len(signal)
+    start, stop, _ = fit.indices(n)
+    m = stop - start
+    steps = np.exp(-2j * np.pi * np.asarray(control_offsets_hz, dtype=np.float64) / fs_hz)
+    s1, s2, b = _line_sums(signal, phasor, level, start, stop, steps)
     det = m * s2 - s1 * s1
     if det <= 0:
-        return np.zeros(n), 0.0
+        return np.zeros(n, dtype=np.complex128), 0.0
 
-    # Element-wise sums and the 2x2 inverse written out, not np.dot or
-    # np.linalg: those go to BLAS, whose thread pool, started in every
-    # decode worker at once, oversubscribes the machine.
-    def solve(zz):
-        b0, b1 = np.sum(zz), np.sum(zz * lv)
-        c0 = 2.0 * (s2 * b0 - s1 * b1) / det
-        c1 = 2.0 * (m * b1 - s1 * b0) / det
+    def solve(b0, b1):
+        c0 = (s2 * b0 - s1 * b1) / det
+        c1 = (m * b1 - s1 * b0) / det
         # mean of Re(w phasor)^2 = mean |w|^2 / 2, w = c0 + c1 level
         power = 0.5 * (abs(c0) ** 2 * m + 2 * (c0 * c1.conjugate()).real * s1
                        + abs(c1) ** 2 * s2) / m
         return (c0, c1), power
 
-    c, power = solve(z)
+    c, power = solve(b[0], b[1])
     if power <= 0:
-        return np.zeros(n), 0.0
-    control = np.mean([solve(z * _rotor(fit.start or 0, len(y), fs_hz, f))[1]
-                       for f in control_offsets_hz])
+        return np.zeros(n, dtype=np.complex128), 0.0
+    control = np.mean([solve(b[2 + 2 * i], b[3 + 2 * i])[1]
+                       for i in range(len(steps))])
     gain = max(0.0, 1.0 - control / power)
-    return gain * np.real((c[0] + c[1] * level) * phasor), gain
+    return gain * (c[0] + c[1] * level) * phasor, gain
 
 
 def roundfloat(fl, places=3):
