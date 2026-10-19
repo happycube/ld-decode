@@ -652,6 +652,31 @@ put the differential gain back up (0.042 to 0.075 on GGV1069 LDV4300D
 middle). Only the inner radii notice either way: from about 17 MHz up
 the upper sideband is strong enough that the lift costs little.
 
+The clipping that did not cost a check there does cost the chroma. A
+carrier whose upper chroma sideband lies past the zero keeps only its
+lower one, and the line then lifts chroma with luminance: on a disc that
+matches the readout model exactly, at an MTF level of 0.96 (13.6 MHz),
+by +4.6 % at 72 IRE, +8.5 % at 90 and +11 % at 100. Doobie (CLV, 0.96)
+read an NTC-7 differential gain of 0.105 that way, the only NTSC capture
+over its band. So the zero is never put below `readout_zero_min_hz`,
+13.0 MHz: peak white's carrier plus the subcarrier, with 0.1 MHz to
+spare. Only cutoffs under 14.4 MHz (levels above about 0.906) move. On
+the model-matched synthetic disc the chroma then stays within 0.4 % at
+0.96 and 2.2 % at 1.0; a higher floor asks for more lift above 13 MHz
+than the boost bound allows and the chroma falls instead. On the real
+inner cuts Doobie goes to 0.047, dbcut 0.080 to 0.056 and GGV1069
+LDV4300D inner 0.067 to 0.037, for no change in weighted noise (within
+±0.1 dB). It also takes away a lift the clipped line was giving 4.1 MHz
+luminance through the lower sideband, about 4 %: the FCC multiburst's
+4.1 MHz packet reads 0.4 dB lower on the GGV1069 inner cuts, which puts
+it past its band. And it uncovers a second error the clipping had been
+offsetting: on real inner-radius discs the compensation now pulls chroma
+*down* with luminance (GGV1069 inner from 0.069 to 0.085), where the
+model-matched disc stays flat. The real channel falls faster above 12
+MHz than the model, and by different amounts on the same disc in two
+players (0.089 against 0.034 peak to peak), so part of it is the player's
+own response, which a disc model cannot carry.
+
 ### Measuring the cutoff
 
 The cutoff is read from the RF, field by field, and pooled like the

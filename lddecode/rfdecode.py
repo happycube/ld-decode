@@ -1186,7 +1186,8 @@ class RFDecode:
             zero_fraction=DP["readout_zero_fraction"],
             max_boost_db=DP["readout_max_boost_db"],
             rim_intensity=DP["readout_rim_intensity"],
-            chain=self._readout_chain())
+            chain=self._readout_chain(),
+            zero_min_hz=DP.get("readout_zero_min_hz", 0.0))
         return comp.astype(base.dtype)
 
     def mtf_response(self, mtf_level):

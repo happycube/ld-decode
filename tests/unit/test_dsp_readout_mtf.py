@@ -70,6 +70,26 @@ def test_the_compensated_channel_is_a_straight_line_to_zero():
         np.array([13.0e6, 14e6]), cutoff, ref) == 0.0)
 
 
+def test_the_zero_is_never_put_below_its_floor():
+    """At a cutoff low enough that 0.90 x cutoff falls under peak white's
+    upper chroma sideband, the line runs to the floor instead and that
+    sideband is still carried on it (the line is checked where the
+    readout has something left to equalise, as above)."""
+    cutoff, ref, floor = 13.6e6, 8.1e6, 13.0e6
+    f = np.linspace(3e6, 11.5e6, 50)
+    comp = dsp.readout_compensation(f, cutoff, ref, zero_fraction=0.90,
+                                    zero_min_hz=floor)
+    channel = dsp.readout_otf(f, cutoff) / dsp.readout_otf(ref, cutoff)
+    line = (floor - f) / (floor - ref)
+    assert comp * channel == pytest.approx(line, abs=0.01)
+    assert dsp.readout_compensation(12.9e6, cutoff, ref, zero_fraction=0.90,
+                                    zero_min_hz=floor) > 0.0
+    # a cutoff whose own zero is above the floor is left as it was
+    np.testing.assert_array_equal(
+        dsp.readout_compensation(f, 16e6, ref, zero_fraction=0.90, zero_min_hz=floor),
+        dsp.readout_compensation(f, 16e6, ref, zero_fraction=0.90))
+
+
 def test_the_boost_is_bounded_where_the_readout_has_nothing_left():
     f = np.linspace(1e6, 20e6, 400)
     comp = dsp.readout_compensation(f, 13.6e6, 8.1e6, zero_fraction=1.2,

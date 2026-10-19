@@ -247,6 +247,14 @@ FilterParams_NTSC = {
     # noise; 0.90 puts the zero at peak white's 4.2 MHz upper sideband
     # (13.5 MHz) at a 15 MHz cutoff.  See docs/technical/vits-servos.md.
     "readout_zero_fraction": 0.90,
+    # ...but never below the chroma's upper sideband at peak white (9.31
+    # MHz + 3.58 MHz, with 0.1 MHz to spare).  Past the zero the line is
+    # clipped at nothing, and a carrier whose upper chroma sideband lies
+    # there keeps only its lower one: the line then lifts chroma with
+    # luminance, +8.5% at 90 IRE on a disc that matches the model at an
+    # MTF level of 0.96, and Doobie's NTC-7 differential gain read 0.105.
+    # Only levels above ~0.906 (cutoff under 14.4 MHz) are affected.
+    "readout_zero_min_hz": 13.0e6,
     "readout_max_boost_db": 26.0,
     # The compensation makes up the RF band-pass's own loss only between
     # the lowest and highest sidebands the video carries: the sync tip

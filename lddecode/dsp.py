@@ -447,7 +447,8 @@ def readout_cutoff_from_tilt(ratio, f_lo, f_hi,
 
 def readout_compensation(freq_hz, cutoff_hz, ref_hz, zero_fraction=0.95,
                          max_boost_db=26.0,
-                         rim_intensity=READOUT_RIM_INTENSITY, chain=None):
+                         rim_intensity=READOUT_RIM_INTENSITY, chain=None,
+                         zero_min_hz=0.0):
     """Zero-phase pre-demodulation compensation for the readout, unity at
     ref_hz (the blanking carrier).
 
@@ -462,6 +463,10 @@ def readout_compensation(freq_hz, cutoff_hz, ref_hz, zero_fraction=0.95,
     across stay balanced (the differential gain a flat target puts in
     when the upper chroma sideband crosses the cutoff).  A Wiener floor
     bounds the boost at max_boost_db where the readout has nothing left.
+
+    zero_min_hz is a floor on that zero: below the highest upper chroma
+    sideband the luminance reaches, the line would discard that sideband
+    and put differential gain in rather than keep it out.
 
     chain, if given, is the magnitude of the rest of the pre-demodulation
     chain at freq_hz (the RF band-pass and its notches): the line is the
@@ -481,7 +486,7 @@ def readout_compensation(freq_hz, cutoff_hz, ref_hz, zero_fraction=0.95,
         chain_ref = np.interp(ref_hz, f, chain)
         if chain_ref > 0:
             h = h * chain / chain_ref
-    zero = zero_fraction * cutoff_hz
+    zero = max(zero_fraction * cutoff_hz, zero_min_hz)
     target = np.clip((zero - f) / (zero - ref_hz), 0.0, None)
     eps = 10 ** (-max_boost_db / 10) / 4
     comp = target * h / (h * h + eps)
