@@ -239,7 +239,14 @@ FilterParams_NTSC = {
     "readout_ref_cutoff_hz": 2 * 0.40 / 632.8e-9 * 2 * np.pi * 0.055 * (30000 / 1001),
     # the compensation is unity at the blanking carrier
     "readout_ref_hz": 8.1e6,
-    "readout_zero_fraction": 0.95,
+    # The straight line the channel is equalised to reaches zero here.
+    # Any slope leaves the FM alone; what it sets is how hard the upper
+    # sideband, which the readout has taken 12-20 dB down at inner radius
+    # while the capture's noise floor stays flat there, is lifted back.
+    # 0.95 lifted it 4-6.5 dB and doubled its share of the 3-4.2 MHz
+    # noise; 0.90 puts the zero at peak white's 4.2 MHz upper sideband
+    # (13.5 MHz) at a 15 MHz cutoff.  See docs/technical/vits-servos.md.
+    "readout_zero_fraction": 0.90,
     "readout_max_boost_db": 26.0,
     # The compensation makes up the RF band-pass's own loss only between
     # the lowest and highest sidebands the video carries: the sync tip

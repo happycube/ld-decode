@@ -42,9 +42,11 @@ are measured from those decodes. It matters to the numbers and not only to their
 loose speculation on many cores was reading the PAL chroma path better than it is. See "What the
 third edition moved" below for the separation.
 
-This is the fourth edition. Its decodes are the CTest radius sweep's at `912a12e1`, at the
-decoder's defaults plus `--exact-speculation`, which since that commit includes the legacy CVBS
-line origin rather than the spec's 0H-aligned one. The runner reads every window against the 0H it
+This is the fourth edition. Its decodes are the CTest radius sweep's at the decoder's defaults
+plus `--exact-speculation`, after `21eeeffa` and with the readout model's line reaching zero at
+0.90 of the cutoff rather than 0.95 (`readout_zero_fraction`; see "What the fourth edition moved").
+The defaults include, since `912a12e1`, the legacy CVBS line origin rather than the spec's
+0H-aligned one. The runner reads every window against the 0H it
 measures, so the origin does not move the figures: decoded again with `--cvbs-spec-origin`,
 `ggv1011-side1-inner` is byte-identical, `dolby-surround-side1-inner` differs by float rounding,
 and `industrial-lv-side1-inner`, whose legacy 0H sits a whole sample from the spec's, moves no
@@ -83,27 +85,27 @@ above it is a failure. A blank cell means nothing of that kind was judged at tha
 | Allowance | System | Unit | Worst inner | Worst middle | Worst outer | Worst check |
 |---|---|---|---|---|---|---|
 | `blanking_level` | PAL | IRE | +1.166 (1.17×) | +1.094 (1.09×) | +1.120 (1.12×) | `pal-blanked-field2/blanked` (ggv1011-side1) |
-| `chroma_level` | NTSC | IRE | -5.753 (1.44×) | +1.816 (0.61×) | -2.296 (0.46×) | `ntsc-fcc-multiburst/packet_6` (ggv1069-side1-ldv4300d) |
+| `chroma_level` | NTSC | IRE | -4.727 (1.18×) | +1.828 (0.61×) | -2.234 (0.45×) | `ntsc-fcc-multiburst/packet_4` (ggv1069-side1) |
 | `chroma_level` | PAL | IRE | -21.793 (5.07×) | -19.830 (4.61×) | -19.333 (4.50×) | `pal-multiburst-field1/packet_6` (domesday-ds2-community-north) |
-| `chroma_nonlinearity` | NTSC | fraction | +0.028 (0.28×) | +0.026 (0.26×) | +0.018 (0.18×) | `ntsc-ntc7-combination/chroma_nonlinearity` (ggv1069-side1) |
+| `chroma_nonlinearity` | NTSC | fraction | +0.047 (0.47×) | +0.027 (0.27×) | +0.018 (0.18×) | `ntsc-ntc7-combination/chroma_nonlinearity` (dolby-surround-side1) |
 | `chroma_nonlinearity` | PAL | fraction | +0.061 (0.61×) | +0.119 (1.19×) | +0.051 (0.51×) | `pal-multiburst-field2/chroma_nonlinearity` (domesday-ds2-community-north) |
-| `differential_gain` | NTSC | fraction | +0.087 (0.87×) | +0.042 (0.42×) | +0.049 (0.49×) | `ntsc-ntc7-composite/chroma_reference/differential_gain` (ggv1069-side1) |
+| `differential_gain` | NTSC | fraction | +0.069 (0.69×) | +0.043 (0.43×) | +0.049 (0.49×) | `ntsc-ntc7-composite/chroma_reference/differential_gain` (ggv1069-side1) |
 | `differential_gain` | PAL | fraction | +0.106 (1.01×) | +0.090 (0.86×) | +0.075 (0.71×) | `pal-its-field2/staircase_subcarrier/differential_gain` (ggv1011-side1) |
-| `differential_phase` | NTSC | degrees | +4.184 (0.84×) | +2.430 (0.49×) | +2.411 (0.48×) | `ntsc-ntc7-composite/chroma_reference/differential_phase` (ggv1069-side1-ldv4300d) |
+| `differential_phase` | NTSC | degrees | +4.497 (0.90×) | +2.498 (0.50×) | +2.432 (0.49×) | `ntsc-ntc7-composite/chroma_reference/differential_phase` (dolby-surround-side1) |
 | `differential_phase` | PAL | degrees | +3.168 (0.61×) | +2.166 (0.42×) | +2.637 (0.51×) | `pal-its-field2/staircase_subcarrier/differential_phase` (domesday-ds2-community-north) |
-| `level_ceiling` | NTSC | IRE/percent | +102.464 (0.92×) | +101.585 (0.92×) | +102.138 (0.92×) | `ntsc-ntc7-composite/ceiling/luminance` (ggv1069-side1-ldv4300d) |
+| `level_ceiling` | NTSC | IRE/percent | +102.670 (0.92×) | +101.606 (0.92×) | +102.168 (0.92×) | `ntsc-ntc7-composite/ceiling/luminance` (ggv1069-side1-ldv4300d) |
 | `level_ceiling` | PAL | IRE/percent | +94.864 (0.94×) | +98.922 (0.98×) | +97.260 (0.96×) | `pal-multiburst-field2/ceiling/saturation` (domesday-ds2-community-north) |
-| `luma_chroma_ratio` | NTSC | ratio | -0.011 (1.09×) | +0.017 (1.66×) | -0.014 (1.35×) | `gain_ratio/NTSC` (ggv1069-side1-ldv4300d) |
+| `luma_chroma_ratio` | NTSC | ratio | -0.009 (0.89×) | +0.017 (1.67×) | -0.013 (1.34×) | `gain_ratio/NTSC` (ggv1069-side1-ldv4300d) |
 | `luma_chroma_ratio` | PAL | ratio | -0.023 (1.06×) | -0.012 (0.55×) | -0.035 (1.63×) | `gain_ratio/PAL` (domesday-ds2-community-north) |
-| `luma_level` | NTSC | IRE | -9.731 (4.87×) | -7.869 (3.93×) | -8.884 (4.44×) | `ntsc-ntc7-composite/pulse_2t` (dolby-surround-side1) |
+| `luma_level` | NTSC | IRE | -9.330 (4.66×) | -8.047 (4.02×) | -8.800 (4.40×) | `ntsc-ntc7-composite/pulse_2t` (dolby-surround-side1) |
 | `luma_level` | PAL | IRE | -3.011 (1.20×) | -14.138 (5.66×) | -11.104 (4.44×) | `pal-its-field1/pulse_2t` (domesday-ds2-community-north) |
-| `multiburst_flatness` | NTSC | dB | +0.779 (1.04×) | — | — | `ntsc-fcc-multiburst/packet_3/response` (ggv1069-side1-ldv4300d) |
+| `multiburst_flatness` | NTSC | dB | +0.773 (1.03×) | — | — | `ntsc-fcc-multiburst/packet_3/response` (ggv1069-side1-ldv4300d) |
 | `multiburst_flatness` | PAL | dB | -0.121 (0.16×) | +0.281 (0.37×) | +0.532 (0.71×) | `pal-multiburst-field1/packet_3/response` (domesday-ds2-community-north) |
-| `multiburst_frequency` | NTSC | MHz | -0.031 (0.63×) | +0.011 (0.22×) | +0.012 (0.24×) | `ntsc-ntc7-combination/packet_6/frequency` (dolby-surround-side1) |
+| `multiburst_frequency` | NTSC | MHz | -0.026 (0.53×) | +0.011 (0.22×) | +0.012 (0.23×) | `ntsc-ntc7-combination/packet_6/frequency` (dolby-surround-side1) |
 | `multiburst_frequency` | PAL | MHz | +0.230 (1.69×) | +0.227 (1.67×) | +0.227 (1.67×) | `pal-multiburst-field1/packet_6/frequency` (industrial-lv-side1) |
-| `multiburst_out_of_band_response` | NTSC | dB | +0.735 (0.59×) | — | — | `ntsc-fcc-multiburst/packet_1/response` (ggv1069-side1-ldv4300d) |
+| `multiburst_out_of_band_response` | NTSC | dB | +0.758 (0.61×) | — | — | `ntsc-fcc-multiburst/packet_1/response` (ggv1069-side1-ldv4300d) |
 | `multiburst_out_of_band_response` | PAL | dB | -10.506 (8.40×) | -8.852 (7.08×) | -8.436 (6.75×) | `pal-multiburst-field1/packet_6/response` (domesday-ds2-community-north) |
-| `step_inequality` | NTSC | fraction | +0.071 (0.71×) | +0.070 (0.70×) | +0.069 (0.69×) | `ntsc-ntc7-composite/staircase/nonlinearity` (dolby-surround-side1) |
+| `step_inequality` | NTSC | fraction | +0.071 (0.71×) | +0.070 (0.70×) | +0.067 (0.67×) | `ntsc-ntc7-composite/staircase/nonlinearity` (dolby-surround-side1) |
 | `step_inequality` | PAL | fraction | +0.040 (0.39×) | +0.027 (0.26×) | +0.034 (0.32×) | `pal-its-field2/staircase/nonlinearity` (ggv1011-side1) |
 
 Two rows used to read from one cut only. `ntsc-fcc-multiburst` is the sole NTSC train whose
@@ -119,9 +121,8 @@ different player six years later, and `ntsc/ggv-ntsc-mb-v2800.ldf` is a third re
 own conformance lane. **The second image immediately put `multiburst_flatness` NTSC over its
 allowance** — `ntsc-fcc-multiburst/packet_3/response` reads 0.811 dB on field line 24 of the second
 parity and 0.773 dB on line 23 of the first, against 0.75 allowed, so 1.08× and 1.03×, where the
-same row read 0.55× on the first capture alone. It still does in this edition: 0.779 dB on
-line 23 of the first parity and 0.750 dB on line 24 of the second, 1.04× and 1.00×, against 0.60×
-on the first capture. So the claim "this allowance holds across a whole
+same row read 0.55× on the first capture alone. It still does in this edition, on one reading: 0.773 dB
+on line 23 of the first parity, 1.03×, against 0.73× on the first capture. So the claim "this allowance holds across a whole
 side" was resting on the one capture that fitted it; it is now carried as a known deviation rather
 than as a row that holds. Every other row is eighteen cuts.
 
@@ -134,9 +135,9 @@ third edition are still lost.
 | Allowance | Second edition (12 cuts) | Third edition (18 cuts) | This edition (18 cuts) | Allowed | Holds |
 |---|---|---|---|---|---|
 | `step_inequality` | 0.72× | 0.72× | 0.71× | 0.100 | yes |
-| `differential_phase` | 2.22× | 2.13× | 0.84× | 5.0° NTSC, 5.2° PAL | yes |
+| `differential_phase` | 2.22× | 2.13× | 0.90× | 5.0° NTSC, 5.2° PAL | yes |
 | `level_ceiling` | 1.23× | 1.31× | 0.98× | 101 IRE / 111 % | yes |
-| `multiburst_flatness` | 0.86× | **1.08×** | **1.04×** | 0.75 dB | no |
+| `multiburst_flatness` | 0.86× | **1.08×** | **1.03×** | 0.75 dB | no |
 | `multiburst_frequency` | 0.75× | **1.71×** | **1.69×** | 0.020–0.051 MHz | no |
 
 `differential_gain` misses joining them by one reading: GGV1011 inner on PAL at 1.01×, where the
@@ -159,9 +160,9 @@ hold.
 It was resting on one capture. NTSC flatness is measurable only where the FCC multiburst is, which
 of the original twelve cuts was `ggv1069-side1-inner` alone. Read the *same pressing* on a different
 player six years later — `ggv1069-side1-ldv4300d-inner` — and `ntsc-fcc-multiburst/packet_3/response`
-goes over on two of its six readings: 0.779 dB on field line 23 of the first parity and 0.750 dB
-on line 24 of the second, against 0.75 allowed, so 1.04× and 1.00× (the third edition read 0.811
-and 0.773 dB). Two captures of one disc are enough to put it over, so the 0.86× figure was the
+goes over on one of its six readings: 0.773 dB on field line 23 of the first parity, against 0.75
+allowed, so 1.03× (the third edition read 0.811 and 0.773 dB, on two). Two captures of one disc
+are enough to put it over, so the 0.86× figure was the
 spread of one capture and not of the medium. The allowance is not widened; the excess is carried in
 [`analysis/vits_known_deviations.toml`](https://github.com/happycube/ld-decode/blob/main/analysis/vits_known_deviations.toml)
 as a fault to explain, per AGENTS.md § 15.
@@ -175,7 +176,7 @@ top nominals 0.1 MHz apart and says a third unrelated PAL pressing is what the d
 this is that third pressing, and telling a disc nominal from a measurement bias is the work the
 deviation entry waits on.
 
-`multiburst_out_of_band_response` holds on NTSC (0.59×) and fails on PAL at every radius, now on the
+`multiburst_out_of_band_response` holds on NTSC (0.61×) and fails on PAL at every radius, now on the
 5.8 MHz packet alone. It is new since the first edition, which had no allowance covering those
 frequencies at all; see "The band no allowance covered" below.
 
@@ -185,7 +186,7 @@ The three 2T pulses are the worst luminance elements measured, by more than a fa
 | Element | Worst | System |
 |---|---|---|
 | `pal-its-field1/pulse_2t` | 5.66× (−14.1 IRE) | PAL |
-| `ntsc-ntc7-composite/pulse_2t` | 4.87× (−9.7 IRE) | NTSC |
+| `ntsc-ntc7-composite/pulse_2t` | 4.66× (−9.3 IRE) | NTSC |
 | `pal-its-field2/pulse_2t` | 4.44× (−11.1 IRE) | PAL |
 | *next worst luminance element of any kind* | 1.73× (+4.3 IRE) | PAL 20T luminance |
 
@@ -207,7 +208,7 @@ third edition had every NTSC cut failing, calibration and programme disc alike, 
 not explain. That is no longer so: on the readout MTF model NTSC now uses, the GGV1069 calibration
 disc passes three of its six readings across the two captures, and Dolby Surround still passes
 none. NTSC splits the way PAL does. Dolby's worst reading has moved, though, from +5.8 IRE over at
-the inner radius in the third edition to −9.7 IRE under (2.92× → 4.87×), the worst NTSC luminance
+the inner radius in the third edition to −9.3 IRE under (2.92× → 4.66×), the worst NTSC luminance
 reading in the sweep; the readout model does not run the 2T servo. In the third edition, on the
 same cuts decoded by the same tree, DD86-DS1 passed 3 of 6 where DD86-DS2 passed 1, so among the
 PAL programme discs the difference was between the two pressings and not between the decoder and
@@ -221,11 +222,12 @@ averages, so the measured pulse is unchanged either way; what the probe does est
 loop is already asking for the correction in the right direction and is not being held back by its
 own convergence time inside a cut.
 
-**`luma_chroma_ratio` fails on NTSC at every radius** — 1.09×, 1.66×, 1.35×, down from the third
-edition's 1.85×, 2.46×, 1.80×, with 3 of 9 readings failing where 7 did. Phase 4 measured it on the
+**`luma_chroma_ratio` on NTSC now passes at the inner radius** and still fails at the middle and
+outer ones — 0.89×, 1.67×, 1.34×, from the third edition's 1.85×, 2.46×, 1.80×, with 4 of 9
+readings failing where 7 did. Phase 4 measured it on the
 NTSC CI capture alone, where it passed. It is the second finding here that only a radius sweep
 could produce. The worst reading is still at the middle radius and still on the second GGV1069
-capture rather than the first (1.66× against 0.88× on the same pressing read on a different
+capture rather than the first (1.67× against 0.87× on the same pressing read on a different
 player), so part of what the row measures is the capture and not only the disc. On PAL it now
 fails only at the inner and outer radii (1.06×, 1.63×), from 6.69× at the inner radius.
 
@@ -250,10 +252,11 @@ chrominance bars and the 4.8 MHz packet go down with the peak it removes. The 20
 which the determinism fix put on the third edition's list at 1.33×, reads 0.61×.
 
 **`chroma_level` on NTSC is the row this edition made worse.** The FCC multiburst's 1.25, 3.0 and
-4.1 MHz packets read low on both GGV1069 captures, and 26 of their readings fail where 11 did; the
-worst is the 4.1 MHz packet on the LDV4300D capture, 1.44× (−5.8 IRE), from 1.15×. That is the
-readout model's equalisation reading the upper luminance band 1–2 IRE lower than the pole model
-did, the same change that moves the NTSC 2T pulse.
+4.1 MHz packets read low on both GGV1069 captures, and 21 of their readings fail where 11 did at
+`6a5c3a1f`; the worst is the 3.0 MHz packet on GGV1069 inner, 1.18× (−4.7 IRE), against 1.15× in
+the third edition. That is the readout model's equalisation reading the upper luminance band lower
+than the pole model did, the same change that moves the NTSC 2T pulse. With the line's zero at
+0.95 of the cutoff it was worse: 26 failing readings, the worst 1.44× (−5.8 IRE).
 
 ## What moved between the first and second editions
 
@@ -385,38 +388,43 @@ matter here.
   decoder measures from the burst's FM sidebands (or, short of those, the carrier tilt) and does not
   run the 2T servo, and gained the
   chroma differential-gain corrector PAL already had. PAL output is byte-identical across it.
+- **The readout line's zero at 0.90 of the cutoff**, not 0.95 (`readout_zero_fraction`, after
+  `21eeeffa`). The slope of the line the channel is equalised to does not touch the video, but it
+  sets how hard the weak upper RF sideband is lifted, and with it the 3–4.2 MHz noise at inner
+  radius; see [`vits-servos.md`](vits-servos.md). NTSC only; PAL runs the pole model.
 
-The NTSC rows were also measured at `6a5c3a1f`, which separates the two; those readings are
-bracketed in the last column (inner / middle / outer). Direction is third edition → this one, and
+The NTSC rows were also measured at `6a5c3a1f`, which separates the work before it from the
+readout model; those readings are bracketed in the last column (inner / middle / outer), and
+`f50f23dd` there includes the zero at 0.90. Direction is third edition → this one, and
 a bold cell crosses 1.00×:
 
 | Allowance | System | inner | middle | outer | moved by (NTSC at `6a5c3a1f`) |
 |---|---|---|---|---|---|
 | `blanking_level` | PAL | 1.17 = 1.17 | 1.09 = 1.09 | 1.12 = 1.12 | — |
-| `chroma_level` | NTSC | 1.15 ↑ 1.44 | 0.87 ↓ 0.61 | 0.76 ↓ 0.46 | `f50f23dd` (1.15 / 0.87 / 0.76) |
+| `chroma_level` | NTSC | 1.15 ↑ 1.18 | 0.87 ↓ 0.61 | 0.76 ↓ 0.45 | `f50f23dd` (1.15 / 0.87 / 0.76) |
 | `chroma_level` | PAL | 4.37 ↑ 5.07 | 4.52 ↑ 4.61 | 4.49 ↑ 4.50 | before `6a5c3a1f` |
-| `chroma_nonlinearity` | NTSC | 0.46 ↓ 0.28 | 0.28 ↓ 0.26 | 0.18 = 0.18 | `f50f23dd` (0.48 / 0.27 / 0.17) |
+| `chroma_nonlinearity` | NTSC | 0.46 ↑ 0.47 | 0.28 ↓ 0.27 | 0.18 = 0.18 | — (0.48 / 0.27 / 0.17) |
 | `chroma_nonlinearity` | PAL | 0.49 ↑ 0.61 | 1.11 ↑ 1.19 | 0.51 = 0.51 | before `6a5c3a1f` |
-| `differential_gain` | NTSC | **1.08 ↓ 0.87** | **1.06 ↓ 0.42** | 0.98 ↓ 0.49 | both (0.94 / 0.71 / 0.63) |
+| `differential_gain` | NTSC | **1.08 ↓ 0.69** | **1.06 ↓ 0.43** | 0.98 ↓ 0.49 | both (0.94 / 0.71 / 0.63) |
 | `differential_gain` | PAL | 3.22 ↓ 1.01 | **1.57 ↓ 0.86** | **1.44 ↓ 0.71** | before `6a5c3a1f` |
-| `differential_phase` | NTSC | **1.21 ↓ 0.84** | 0.40 ↑ 0.49 | 0.60 ↓ 0.48 | both (1.01 / 0.45 / 0.54) |
+| `differential_phase` | NTSC | **1.21 ↓ 0.90** | 0.40 ↑ 0.50 | 0.60 ↓ 0.49 | both (1.01 / 0.45 / 0.54) |
 | `differential_phase` | PAL | **1.04 ↓ 0.61** | 0.83 ↓ 0.42 | **2.13 ↓ 0.51** | before `6a5c3a1f` |
 | `level_ceiling` | NTSC | 0.95 ↓ 0.92 | 0.93 ↓ 0.92 | 0.93 ↓ 0.92 | — (0.95 / 0.93 / 0.93) |
 | `level_ceiling` | PAL | **1.31 ↓ 0.94** | 0.98 = 0.98 | 0.97 ↓ 0.96 | before `6a5c3a1f` |
-| `luma_chroma_ratio` | NTSC | 1.85 ↓ 1.09 | 2.46 ↓ 1.66 | 1.80 ↓ 1.35 | `f50f23dd` (1.83 / 2.45 / 1.80) |
+| `luma_chroma_ratio` | NTSC | **1.85 ↓ 0.89** | 2.46 ↓ 1.67 | 1.80 ↓ 1.34 | `f50f23dd` (1.83 / 2.45 / 1.80) |
 | `luma_chroma_ratio` | PAL | 6.69 ↓ 1.06 | **1.18 ↓ 0.55** | 1.54 ↑ 1.63 | before `6a5c3a1f` |
-| `luma_level` | NTSC | 2.92 ↑ 4.87 | 3.92 ↑ 3.93 | 4.18 ↑ 4.44 | both (2.88 / 3.92 / 4.18) |
+| `luma_level` | NTSC | 2.92 ↑ 4.66 | 3.92 ↑ 4.02 | 4.18 ↑ 4.40 | both (2.88 / 3.92 / 4.18) |
 | `luma_level` | PAL | 2.44 ↓ 1.20 | 5.97 ↓ 5.66 | 4.45 ↓ 4.44 | before `6a5c3a1f` |
-| `multiburst_flatness` | NTSC | 1.08 ↓ 1.04 | — | — | before `6a5c3a1f` (1.03 / — / —) |
+| `multiburst_flatness` | NTSC | 1.08 ↓ 1.03 | — | — | before `6a5c3a1f` (1.03 / — / —) |
 | `multiburst_flatness` | PAL | 0.04 ↑ 0.16 | 0.24 ↑ 0.37 | 0.72 ↓ 0.71 | before `6a5c3a1f` |
-| `multiburst_frequency` | NTSC | 0.52 ↑ 0.63 | 0.20 ↑ 0.22 | 0.23 ↑ 0.24 | `f50f23dd` (0.52 / 0.20 / 0.22) |
+| `multiburst_frequency` | NTSC | 0.52 ↑ 0.53 | 0.20 ↑ 0.22 | 0.23 = 0.23 | — (0.52 / 0.20 / 0.22) |
 | `multiburst_frequency` | PAL | 1.71 ↓ 1.69 | 1.67 = 1.67 | 1.71 ↓ 1.67 | before `6a5c3a1f` |
-| `multiburst_out_of_band_response` | NTSC | 0.76 ↓ 0.59 | — | — | `f50f23dd` (0.77 / — / —) |
+| `multiburst_out_of_band_response` | NTSC | 0.76 ↓ 0.61 | — | — | `f50f23dd` (0.77 / — / —) |
 | `multiburst_out_of_band_response` | PAL | 6.34 ↑ 8.40 | 6.87 ↑ 7.08 | 6.91 ↓ 6.75 | before `6a5c3a1f` |
-| `step_inequality` | NTSC | 0.70 ↑ 0.71 | 0.72 ↓ 0.70 | 0.66 ↑ 0.69 | — (0.69 / 0.71 / 0.69) |
+| `step_inequality` | NTSC | 0.70 ↑ 0.71 | 0.72 ↓ 0.70 | 0.66 ↑ 0.67 | — (0.69 / 0.71 / 0.69) |
 | `step_inequality` | PAL | 0.60 ↓ 0.39 | 0.26 = 0.26 | 0.31 ↑ 0.32 | before `6a5c3a1f` |
 
-**Nine readings cross 1.00×, and every one of them downwards.** No row that passed in the third
+**Ten readings cross 1.00×, and every one of them downwards.** No row that passed in the third
 edition fails in this one.
 
 **Most of the movement is PAL chrominance, and it is the work before `6a5c3a1f`.**
@@ -429,15 +437,22 @@ the inner radius, and `multiburst_out_of_band_response` PAL inner goes 6.34× �
 `chroma_level` PAL inner 4.37× → 5.07× on that one packet.
 
 **The NTSC readout model trades the upper luminance band for the gain ratio and the 2T pass rate.**
-`luma_chroma_ratio` NTSC goes 1.83×/2.45×/1.80× → 1.09×/1.66×/1.35× across it, 7 of 9 readings
-failing to 3, and the NTSC 2T pulse passes 3 of 9 where it passed none. The differential-gain
-corrector takes `differential_gain` NTSC from 0.94×/0.71×/0.63× to 0.87×/0.42×/0.49× and
-`differential_phase` NTSC inner from 1.01× to 0.84×; the work before it had already taken those
-rows from 1.08× and 1.21×. Against that, the FCC multiburst packets at 3.0, 3.58 and 4.1 MHz read
-1–2 IRE lower — the 4.1 MHz packet on GGV1069 inner from −4.1 to −5.0 IRE — which takes
-`chroma_level` NTSC inner from 1.15× to 1.44×, and Dolby Surround's inner 2T pulse from +5.8 IRE
-over to −9.7 IRE under. The middle and outer `chroma_level` readings improve (0.87× → 0.61×, 0.76×
-→ 0.46×), and `multiburst_out_of_band_response` NTSC goes 0.77× → 0.59×.
+`luma_chroma_ratio` NTSC goes 1.83×/2.45×/1.80× → 0.89×/1.67×/1.34× across it, 7 of 9 readings
+failing to 4, and the NTSC 2T pulse passes 3 of 9 where it passed none. The differential-gain
+corrector takes `differential_gain` NTSC from 0.94×/0.71×/0.63× to 0.69×/0.43×/0.49× and
+`differential_phase` NTSC inner from 1.01× to 0.90×; the work before it had already taken those
+rows from 1.08× and 1.21×. Against that, the FCC multiburst packets at 1.25, 3.0 and 4.1 MHz read
+lower, which takes `chroma_level` NTSC inner from 1.15× to 1.18×, and Dolby Surround's inner 2T
+pulse goes from +5.8 IRE over to −9.3 IRE under. The middle and outer `chroma_level` readings
+improve (0.87× → 0.61×, 0.76× → 0.45×), and `multiburst_out_of_band_response` NTSC goes 0.77× →
+0.61×.
+
+**The zero at 0.90 rather than 0.95 is most of what the readout model gives back.** Measured at
+0.95 the same sweep read `chroma_level` NTSC inner 1.44× (the 4.1 MHz packet on GGV1069 inner −5.0
+IRE, against −3.8 at 0.90 and −4.1 at `6a5c3a1f`), the Dolby inner 2T 4.87×, the NTSC gain ratio
+at the inner radius 1.09×, and failed 51 checks across the NTSC captures where 0.90 fails 44. What
+0.90 costs is `differential_phase` NTSC inner, 0.84× → 0.90× (Dolby Surround inner, 3.57° to
+4.50°), and the gain ratio on the two GGV1069 outer cuts, which go just over: 1.00× and 1.05×.
 
 ## What the coherence gate changed
 
@@ -572,7 +587,7 @@ is what the inverse-MTF filter exists to correct, so forgiving it here would exc
 with its own uncorrected error.
 
 **Neither term re-measures as it was derived.** On the current decoder the within-capture spread
-is 0.285 dB on the first GGV1069 capture (at 3.58 MHz) and 0.456 dB on the second (at 3.0 MHz).
+is 0.294 dB on the first GGV1069 capture (at 3.58 MHz) and 0.406 dB on the second (at 3.0 MHz).
 The pressing-to-pressing gap went up and has come back down. The third edition read it at 3.71 dB
 at 4.0 MHz inner and 3.59 dB at 4.8 MHz, because the inverse-MTF ceiling fix had removed
 GGV1011's share of the 4–4.8 MHz peak and left Domesday's standing. The ceiling now also winds the
@@ -622,10 +637,10 @@ derivation it unblocks is Phase 8 work and is not attempted here; the allowance 
 
 | System | Packet | Range | Cuts | Verdict |
 |---|---|---|---|---|
-| NTSC | 0.5 MHz | +0.60 … +0.74 dB | 2 | pass, 12 of 12 |
-| NTSC | 3.0 MHz | −0.34 … +0.11 dB | 2 | pass, 12 of 12 |
-| NTSC | 3.58 MHz | +0.10 … +0.46 dB | 2 | pass, 12 of 12 |
-| NTSC | 4.1 MHz | −0.58 … −0.22 dB | 2 | pass, 12 of 12 |
+| NTSC | 0.5 MHz | +0.61 … +0.76 dB | 2 | pass, 12 of 12 |
+| NTSC | 3.0 MHz | −0.29 … +0.12 dB | 2 | pass, 12 of 12 |
+| NTSC | 3.58 MHz | +0.18 … +0.58 dB | 2 | pass, 12 of 12 |
+| NTSC | 4.1 MHz | −0.15 … +0.23 dB | 2 | pass, 12 of 12 |
 | PAL | 0.5 MHz | −0.32 … +0.50 dB | 9 | pass, 9 of 9 |
 | PAL | 4.0/4.2 MHz | −0.26 … +1.06 dB | 9 | pass, 9 of 9 |
 | PAL | 4.8 MHz | −0.66 … +0.71 dB | 9 | pass, 9 of 9 |
@@ -800,15 +815,15 @@ it is the decoder's, on the evidence of two unrelated pressings, and it is Phase
 | Allowance | System | Worst | Where | Reading |
 |---|---|---|---|---|
 | `multiburst_out_of_band_response` | PAL | 8.40× | 5.8 MHz packet, all nine cuts | Top-end loss beyond the video low-pass; located as the decoder's, on two unrelated pressings agreeing to 0.6 dB. Worst now on Domesday inner, where the negative inverse-MTF strength takes the band edge down |
-| `luma_level` | PAL, NTSC | 5.66×, 4.87× | `pulse_2t`, Domesday on PAL and Dolby on NTSC | High-frequency luminance above the EQ's anchor band. The PAL 2T servo is already at or driving to its clip; NTSC's readout model does not run it, and Dolby inner went from over to under on it |
+| `luma_level` | PAL, NTSC | 5.66×, 4.66× | `pulse_2t`, Domesday on PAL and Dolby on NTSC | High-frequency luminance above the EQ's anchor band. The PAL 2T servo is already at or driving to its clip; NTSC's readout model does not run it, and Dolby inner went from over to under on it |
 | `chroma_level` | PAL | 5.07× | 5.8 MHz packet, all nine cuts; the 100 % bar and 4.8 MHz packet on Domesday inner | The high-reading PAL chrominance error of earlier editions is gone; what is left reads low |
-| `luma_chroma_ratio` | PAL, NTSC | 1.63×, 1.66× | Domesday outer; second GGV1069 capture, middle | Much reduced on both (from 6.69× and 2.46×); the NTSC worst is still the second capture of one pressing |
+| `luma_chroma_ratio` | PAL, NTSC | 1.63×, 1.67× | Domesday outer; second GGV1069 capture, middle | Much reduced on both (from 6.69× and 2.46×); the NTSC worst is still the second capture of one pressing |
 | `multiburst_frequency` | PAL | 1.69× | Industrial LaserVision top packet, all radii | 6.03 MHz against a 5.8 MHz nominal on a packet already 8 dB down; disc nominal or measurement bias is not yet separated |
-| `chroma_level` | NTSC | 1.44× | FCC multiburst 1.25, 3.0 and 4.1 MHz packets, both GGV1069 captures | New to this edition's list at this size: the readout model reads the upper luminance band 1–2 IRE lower; only measurable where the FCC multiburst is |
+| `chroma_level` | NTSC | 1.18× | FCC multiburst 1.25, 3.0 and 4.1 MHz packets, both GGV1069 captures | The readout model reads the upper luminance band lower (21 failing readings, from 11); only measurable where the FCC multiburst is |
 | `chroma_nonlinearity` | PAL | 1.19× | Domesday middle only | Marginal, one radius, and on the unaveragable parity |
 | `blanking_level` | PAL | 1.17× | GGV1011, all radii | The pedestal offset Phase 4 found, confirmed across the side |
-| `multiburst_flatness` | NTSC | 1.04× | FCC multiburst, second GGV1069 capture | Was 0.46× when one capture carried the only reading; see "What the baseline says" |
-| `differential_gain` | PAL | 1.01× | GGV1011 inner | Marginal, one reading; was 3.22× on Domesday. NTSC passes (0.87×) |
+| `multiburst_flatness` | NTSC | 1.03× | FCC multiburst, second GGV1069 capture | Was 0.46× when one capture carried the only reading; see "What the baseline says" |
+| `differential_gain` | PAL | 1.01× | GGV1011 inner | Marginal, one reading; was 3.22× on Domesday. NTSC passes (0.69×) |
 
 `differential_phase` and `level_ceiling` have left the list: both hold on both systems.
 

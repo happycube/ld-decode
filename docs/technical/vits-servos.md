@@ -621,13 +621,36 @@ it. `mtf_level` names the cutoff as `readout_ref_cutoff_hz` over it.
 `dsp.readout_compensation` equalises the channel, readout times the
 decoder's own RF band-pass (`RFVideo`), to a straight line rather than
 to flat. The line is unity at the blanking carrier and reaches zero at
-0.95 fc. A zero-phase response affine in frequency multiplies an analytic
-FM signal by a real envelope and leaves its phase, which is the video,
-untouched, so only curvature distorts. A flat target put
-luminance-dependent gain on the chroma once the upper sideband crossed
-the cutoff (differential gain 0.31 on GGV1069 inner). Designing against
-the band-pass as well fixed the low burst (11-13 IRE) on discs whose
-lower chroma sideband the band-pass's low edge was cutting.
+0.90 fc (`readout_zero_fraction`). A zero-phase response affine in
+frequency multiplies an analytic FM signal by a real envelope and leaves
+its phase, which is the video, untouched, so only curvature distorts. A
+flat target put luminance-dependent gain on the chroma once the upper
+sideband crossed the cutoff (differential gain 0.31 on GGV1069 inner).
+Designing against the band-pass as well fixed the low burst (11-13 IRE)
+on discs whose lower chroma sideband the band-pass's low edge was
+cutting.
+
+The line's slope is free as far as the video is concerned, but not as
+far as the noise is. Baseband noise at f comes from the RF at fc ± f,
+each side scaled by the compensation there relative to the carrier. At
+inner radius the readout has the upper sideband 12-20 dB down while the
+capture's noise floor is flat out there, so the compensation's lift of
+that side is mostly lift of noise. With the zero at 0.95 fc it lifted
+11-13 MHz by 4-6.5 dB, doubled the upper side's share of the 3-4.2 MHz
+noise (27-31 % to 58-61 %), and left that band 2.5 dB noisier per unit
+response than no compensation at all, on an NTSC DdD capture at a
+14.9 MHz cutoff. A steeper line lifts the upper side less and the lower
+side more. At that capture's cutoff 0.90 fc puts the zero at 13.5 MHz,
+peak white's 4.2 MHz upper sideband; below about 15 MHz the line clips
+the highest sidebands of the brightest picture, as 0.95 fc already did
+below 14.2 MHz, and on the GGV1069 inner cuts (13.8 MHz) that did not
+cost a check. On that capture it took 0.9 dB off the 3-4.2
+MHz band, and across the NTSC VITS captures it failed 44 checks where
+0.95 failed 51. Bounding the boost instead (`readout_max_boost_db` 8 or
+12 dB, a Wiener floor) is quieter still but is not a straight line, and
+put the differential gain back up (0.042 to 0.075 on GGV1069 LDV4300D
+middle). Only the inner radii notice either way: from about 17 MHz up
+the upper sideband is strong enough that the lift costs little.
 
 ### Measuring the cutoff
 
