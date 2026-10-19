@@ -1148,17 +1148,17 @@ reason = "The 2T pulse and the luminance references it is judged against. Worst 
 # on one cut says nothing about whether its allowance holds.  Entries here
 # are read exactly as the radius ones are.
 
-# ggv-ntsc-mb-v2800 (NTSC): 13 of its checks fail.
+# ggv-ntsc-mb-v2800 (NTSC): 12 of its checks fail.
 
 [[deviation]]
 capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_4"
 field_line = 22
 parity = "first"
-measured = 24.323
+measured = 24.510
 unit = "IRE"
-band_used = 1.42
-ceiling = 1.56
+band_used = 1.37
+ceiling = 1.51
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain on NTSC: the FCC multiburst's chrominance packets and the NTC-7 combination's chrominance zones read low against their nominals, where the PAL sweep records the same path reading high; see docs/technical/vits-radius-baseline.md."
 
@@ -1167,10 +1167,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_6"
 field_line = 22
 parity = "first"
-measured = 24.969
+measured = 25.050
 unit = "IRE"
-band_used = 1.26
-ceiling = 1.38
+band_used = 1.24
+ceiling = 1.36
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
 
@@ -1179,10 +1179,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_4"
 field_line = 23
 parity = "first"
-measured = 25.738
+measured = 25.703
 unit = "IRE"
 band_used = 1.07
-ceiling = 1.17
+ceiling = 1.18
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain on NTSC: the FCC multiburst's chrominance packets and the NTC-7 combination's chrominance zones read low against their nominals, where the PAL sweep records the same path reading high; see docs/technical/vits-radius-baseline.md."
 
@@ -1191,10 +1191,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_6"
 field_line = 23
 parity = "first"
-measured = 25.483
+measured = 25.656
 unit = "IRE"
-band_used = 1.13
-ceiling = 1.24
+band_used = 1.09
+ceiling = 1.19
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
 
@@ -1203,10 +1203,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_4"
 field_line = 24
 parity = "first"
-measured = 24.867
+measured = 24.959
 unit = "IRE"
-band_used = 1.28
-ceiling = 1.41
+band_used = 1.26
+ceiling = 1.39
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain on NTSC: the FCC multiburst's chrominance packets and the NTC-7 combination's chrominance zones read low against their nominals, where the PAL sweep records the same path reading high; see docs/technical/vits-radius-baseline.md."
 
@@ -1215,10 +1215,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_6"
 field_line = 24
 parity = "first"
-measured = 24.746
+measured = 25.119
 unit = "IRE"
-band_used = 1.31
-ceiling = 1.44
+band_used = 1.22
+ceiling = 1.34
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
 
@@ -1227,10 +1227,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_4"
 field_line = 22
 parity = "second"
-measured = 25.038
+measured = 25.312
 unit = "IRE"
-band_used = 1.24
-ceiling = 1.36
+band_used = 1.17
+ceiling = 1.29
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain on NTSC: the FCC multiburst's chrominance packets and the NTC-7 combination's chrominance zones read low against their nominals, where the PAL sweep records the same path reading high; see docs/technical/vits-radius-baseline.md."
 
@@ -1239,9 +1239,9 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_2"
 field_line = 23
 parity = "second"
-measured = 25.940
+measured = 25.913
 unit = "IRE"
-band_used = 1.01
+band_used = 1.02
 ceiling = 1.12
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain on NTSC: the FCC multiburst's chrominance packets and the NTC-7 combination's chrominance zones read low against their nominals, where the PAL sweep records the same path reading high; see docs/technical/vits-radius-baseline.md."
@@ -1251,34 +1251,22 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_4"
 field_line = 23
 parity = "second"
-measured = 25.274
+measured = 25.600
 unit = "IRE"
-band_used = 1.18
-ceiling = 1.30
+band_used = 1.10
+ceiling = 1.21
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain on NTSC: the FCC multiburst's chrominance packets and the NTC-7 combination's chrominance zones read low against their nominals, where the PAL sweep records the same path reading high; see docs/technical/vits-radius-baseline.md."
-
-[[deviation]]
-capture = "ggv-ntsc-mb-v2800"
-check = "ntsc-fcc-multiburst/packet_3/response"
-field_line = 23
-parity = "second"
-measured = 0.767
-unit = "dB"
-band_used = 1.02
-ceiling = 1.12
-owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
-reason = "In-band multiburst flatness, the residual the video EQ servo leaves inside the band it anchors. The radius baseline recorded NTSC flatness at 0.46x of its allowance from ggv1069-side1-inner alone; a second capture of the same disc puts it over, which is the reading a one-capture row could not produce. See docs/technical/vits-radius-baseline.md, \"What the baseline says\"."
 
 [[deviation]]
 capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_4"
 field_line = 24
 parity = "second"
-measured = 25.670
+measured = 25.532
 unit = "IRE"
-band_used = 1.08
-ceiling = 1.19
+band_used = 1.12
+ceiling = 1.23
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain on NTSC: the FCC multiburst's chrominance packets and the NTC-7 combination's chrominance zones read low against their nominals, where the PAL sweep records the same path reading high; see docs/technical/vits-radius-baseline.md."
 
@@ -1287,10 +1275,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_6"
 field_line = 24
 parity = "second"
-measured = 25.001
+measured = 25.545
 unit = "IRE"
-band_used = 1.25
-ceiling = 1.37
+band_used = 1.11
+ceiling = 1.23
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "Chroma path gain. The PAL multiburst's chrominance packets and colour bars read high, and the 5.8 MHz packet reads low because the top of the band is lost before it is measured; see docs/technical/vits-radius-baseline.md."
 
@@ -1299,10 +1287,10 @@ capture = "ggv-ntsc-mb-v2800"
 check = "ntsc-fcc-multiburst/packet_3/response"
 field_line = 24
 parity = "second"
-measured = 0.887
+measured = 0.823
 unit = "dB"
-band_used = 1.18
-ceiling = 1.30
+band_used = 1.10
+ceiling = 1.21
 owner = "docs-planning/vits-conformance-testing-plan.md Phase 8 task 5"
 reason = "In-band multiburst flatness, the residual the video EQ servo leaves inside the band it anchors. The radius baseline recorded NTSC flatness at 0.46x of its allowance from ggv1069-side1-inner alone; a second capture of the same disc puts it over, which is the reading a one-capture row could not produce. See docs/technical/vits-radius-baseline.md, \"What the baseline says\"."
 

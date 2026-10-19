@@ -2614,9 +2614,14 @@ class LDdecode:
                     break
                 blockdata.append((rawinput, self._demod_raw_block(rawinput, MTF)))
 
+        truncated = False
         if blockdata is None:
-            # EOF
-            return None
+            # EOF inside the window: the last field can still be whole
+            # in the blocks before it (decodefield takes it only if so)
+            blockdata = self._demod_read_tail(brange, MTF)
+            if blockdata is None:
+                return None
+            truncated = True
 
         t = {"input": [], "video": [], "audio": [], "efm": [], "rfhpf": []}
 
@@ -2635,8 +2640,34 @@ class LDdecode:
             rv["audio"] = self.rf.audio_phase2(rv["audio"])
 
         rv["startloc"] = (begin // blocksize) * blocksize
+        rv["truncated"] = truncated
 
         return rv
+
+    def _demod_read_tail(self, brange, MTF):
+        """The blocks of brange before EOF, demodulated inline, or None
+        when they cannot hold a field.
+
+        A field's read window runs well past the field (a whole
+        readlen, plus two blocks), so near the end of the input the
+        window can overhang EOF while the field, and the following
+        vertical sync it needs, are all in the file.  Every path reads
+        the tail here, block by block, so a serial and a threaded decode
+        see the same window."""
+        blockdata = []
+        for b in brange:
+            if self.block_cache is not None:
+                with self.block_cache.read_lock:
+                    rawinput = self._read_raw_block(b)
+            else:
+                rawinput = self._read_raw_block(b)
+            if rawinput is None:
+                break
+            blockdata.append((rawinput, self._demod_raw_block(rawinput, MTF)))
+
+        if len(blockdata) * self.demod_blocksize < self.rf.linelen * self.output_lines:
+            return None
+        return blockdata
 
     def read_sync(self, begin, length):
         """ Return only the demodulated 0.5 MHz sync path for an input range.
@@ -2783,6 +2814,10 @@ class LDdecode:
         offset = f.nextfieldoffset - (readloc - rawdecode["startloc"])
 
         if not f.valid:
+            if rawdecode.get("truncated"):
+                # the window was cut short by EOF and holds no whole
+                # field: nothing further in the input can either
+                return None, None
             # logs.logger.info("Bad data - jumping one second")
             offset = f.nextfieldoffset
 
